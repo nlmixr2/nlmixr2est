@@ -658,11 +658,14 @@ List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0,
     }
     double step = 1.0; bool ok = false;
     for (int ls = 0; ls < 40; ++ls) {
+      // Project onto the feasible region (a,b >= eps) rather than rejecting a step
+      // that violates the boundary, so the optimizer does not stall when one
+      // component sits on the boundary.
       double an = a + step * da, bn = bpar + step * db;
-      if (an > eps && bn > eps) {
-        double Qn = qFun(an, bn);
-        if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; }
-      }
+      if (an < eps) an = eps;
+      if (bn < eps) bn = eps;
+      double Qn = qFun(an, bn);
+      if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; }
       step *= 0.5;
     }
     if (!ok) break;
@@ -927,8 +930,74 @@ NumericVector rpemMstepBeta(NumericVector base, IntegerVector etaIdx,
 // errTypes[b] is 0 additive or 1 proportional for endpoint b.  Returns the new
 // per-endpoint residual SDs (add.sd or prop.sd).
 //[[Rcpp::export]]
+// Guarded (a=add^2,b=prop^2) optimize over endpoint endB's observations (verbatim
+// copy of rpemMstepK1Comb's optimizer with an endpoint filter).
+static void rpemGuardedComb(const std::vector<long> &counts, const int *endpt,
+                            int endB, double a0, double b0, double &aOut, double &bOut) {
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  const double eps = 1e-12;
+  auto inB = [&](int i, int o) -> bool { return endB < 0 || endpt[rpemOp.idS[i] + o] == endB; };
+  auto qFun = [&](double a, double bp) -> double {
+    double Q = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j]; if (!c) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          if (!inB(i, o)) continue;
+          double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
+          double V = a + bp * cp * cp; if (V < eps) V = eps;
+          Q += (double)c * (-0.5 * log(V) - 0.5 * rr * rr / V);
+        }
+      }
+    }
+    return Q;
+  };
+  double a = a0, bpar = b0, Qcur = qFun(a, bpar);
+  for (int it = 0; it < 200; ++it) {
+    double ga = 0, gb = 0, Haa = 0, Hab = 0, Hbb = 0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j]; if (!c) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          if (!inB(i, o)) continue;
+          double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
+          double w = cp * cp, r2 = rr * rr;
+          double V = a + bpar * w; if (V < eps) V = eps; double iv = 1.0 / V;
+          double g = -0.5 * iv + 0.5 * r2 * iv * iv, hh = 0.5 * iv * iv - r2 * iv * iv * iv;
+          ga += c * g; gb += c * w * g; Haa += c * hh; Hab += c * w * hh; Hbb += c * w * w * hh;
+        }
+      }
+    }
+    if (fabs(ga) + fabs(gb) < 1e-9) break;
+    double det = Haa * Hbb - Hab * Hab, da, db;
+    if (Haa < 0.0 && det > 0.0) { da = -(Hbb * ga - Hab * gb) / det; db = -(-Hab * ga + Haa * gb) / det; }
+    else { double sc = 1.0 / (fabs(Haa) + fabs(Hbb) + 1.0); da = sc * ga; db = sc * gb; }
+    double step = 1.0; bool ok = false;
+    for (int ls = 0; ls < 40; ++ls) {
+      // Project the trial point onto the feasible region (a,b >= eps) rather than
+      // rejecting it -- otherwise, once one component sits on the boundary, a step
+      // whose OTHER component would improve Q is thrown away and the optimizer
+      // stalls at a non-stationary point.
+      double an = a + step * da, bn = bpar + step * db;
+      if (an < eps) an = eps;
+      if (bn < eps) bn = eps;
+      double Qn = qFun(an, bn);
+      if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; }
+      step *= 0.5;
+    }
+    if (!ok) break;
+  }
+  aOut = a; bOut = bpar;
+}
+
+//[[Rcpp::export]]
 List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt,
-                      IntegerVector errTypes, int nTrials, int burn) {
+                      IntegerVector errTypes, NumericVector add0, NumericVector prop0,
+                      int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Multi");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Multi currently supports nEta==1");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
@@ -936,6 +1005,7 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
   std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
   rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
 
+  // additive/proportional endpoints: closed form over their own observations.
   std::vector<double> sumSS((size_t)nEndpt, 0.0);
   std::vector<long> sumN((size_t)nEndpt, 0);
   for (int i = 0; i < nsub; ++i) {
@@ -946,16 +1016,26 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
       for (int o = 0; o < nobsi; ++o) {
         int b = endpt[base + o];
+        if (errTypes[b] == 2) continue;
         double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
-        double contrib = (errTypes[b] == 1) ? (cp != 0.0 ? (rr / cp) * (rr / cp) : 0.0)
-                                            : rr * rr;
+        double contrib = (errTypes[b] == 1) ? (cp != 0.0 ? (rr / cp) * (rr / cp) : 0.0) : rr * rr;
         sumSS[b] += (double)c * contrib;
         sumN[b] += c;
       }
     }
   }
-  NumericVector sdOut(nEndpt);
-  for (int b = 0; b < nEndpt; ++b) sdOut[b] = sqrt(sumSS[b] / (double)sumN[b]);
+  // combined endpoints: guarded 2-D optimize over just their observations.
+  NumericVector sdAdd(nEndpt), sdProp(nEndpt);
+  const int *endptp = &endpt[0];
+  for (int b = 0; b < nEndpt; ++b) {
+    if (errTypes[b] == 2) {
+      double aa, bp;
+      rpemGuardedComb(counts, endptp, b, add0[b] * add0[b], prop0[b] * prop0[b], aa, bp);
+      sdAdd[b] = sqrt(aa); sdProp[b] = sqrt(bp);
+    } else {
+      sdAdd[b] = sqrt(sumSS[b] / (double)sumN[b]); sdProp[b] = NA_REAL;
+    }
+  }
   return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
-                      _["sd"] = sdOut, _["accept"] = accept);
+                      _["sd"] = sdAdd, _["propSd"] = sdProp, _["accept"] = accept);
 }

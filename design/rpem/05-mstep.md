@@ -101,15 +101,23 @@ paper's `beta`. Two paths, chosen per parameter:
   DONE: multiple endpoints (errType 5), mirroring SAEM's per-endpoint residual
   loop. The E-step already computes the joint multi-endpoint likelihood (the
   rxode2 llik model branches on cmt), so `rpemMstepK1Multi` shares one MH +
-  regression and then updates each endpoint's scale over just its own observations.
-  `.rpemClassify` maps each predDf row to its residual via iniDf$condition;
-  `.rpemEndptIndex` builds the per-obs endpoint index (0-based) in the (id, time)
-  solve order from the data dvid/cmt tag (== SAEM's `ix_endpnt`). Additive or
-  proportional per endpoint for now. Matches FOCEI on tka + both endpoint residuals
-  (`test-rpem-multi.R`).
-  REMAINING: per-endpoint combined/TBS/power (currently add/prop per endpoint);
-  power/lambda (propT) closed forms could reuse SAEM's `ares`/`bres`/`yptp` if
-  faster.
+  regression and then updates each endpoint's residual over just its own
+  observations. `.rpemClassify` maps each predDf row to its residual via
+  iniDf$condition; `.rpemEndptIndex` builds the per-obs endpoint index (0-based) in
+  the (id, time) solve order from the data dvid/cmt tag (== SAEM's `ix_endpnt`).
+  Each endpoint may be additive, proportional (closed form), or COMBINED (add+prop)
+  -- combined endpoints run `rpemGuardedComb`, the guarded 2-D optimizer restricted
+  to that endpoint's observations. Matches FOCEI on tka + all endpoint residuals
+  (`test-rpem-multi.R`, `test-rpem-multi-comb.R`).
+  BUG FIXED here: the guarded combined line search REJECTED any trial step whose a
+  or b component crossed the a,b>=eps boundary; once prop^2 hit the boundary the
+  whole step (including the improving add component) was discarded and the optimizer
+  stalled at a non-stationary point (add inflated, prop stuck at 0). Fix: PROJECT
+  the trial point onto the feasible region (clamp to eps) instead of rejecting it --
+  applied to both `rpemGuardedComb` and `rpemMstepK1Comb`. Single-endpoint combined
+  never hit the boundary so it had masked the bug.
+  REMAINING: per-endpoint TBS/power (combined done); power/lambda (propT) closed
+  forms could reuse SAEM's `ares`/`bres`/`yptp` if faster.
 - **Numeric** for non-mu-referenced STRUCTURAL fixed effects (the paper's beta):
   parameters with no random effect, which the conjugate mu update cannot move
   (their sampled eta is identically 0). DONE (`rpemMstepBeta`, errType-independent,

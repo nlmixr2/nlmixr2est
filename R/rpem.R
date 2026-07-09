@@ -88,25 +88,32 @@
     # E-step already computes the joint multi-endpoint likelihood.
     .iniErr <- .ini[!is.na(.ini$err), , drop = FALSE]
     .cmt <- integer(.nEndpt); .dvid <- integer(.nEndpt); .et <- integer(.nEndpt)
-    .sclIdx <- integer(.nEndpt); .scl0 <- numeric(.nEndpt); .enm <- character(.nEndpt)
+    .sclIdx <- integer(.nEndpt); .scl0 <- numeric(.nEndpt)
+    .propIdx <- integer(.nEndpt); .prop0 <- numeric(.nEndpt); .enm <- character(.nEndpt)
     for (.b in seq_len(.nEndpt)) {
       .cond <- as.character(.pred$cond[.b])
-      if (!(as.character(.pred$errType[.b]) %in% c("add", "prop")))
-        stop("RPEM multiple-endpoint currently supports an additive or proportional residual per endpoint")
       .er <- .iniErr[as.character(.iniErr$condition) == .cond &
                        .iniErr$err %in% c("add", "prop"), , drop = FALSE]
-      if (nrow(.er) != 1L)
-        stop("RPEM multiple-endpoint expects exactly one add/prop residual per endpoint")
-      .cmt[.b] <- as.integer(.pred$cmt[.b])
-      .dvid[.b] <- as.integer(.pred$dvid[.b])
-      .et[.b] <- if (.er$err[1] == "prop") 1L else 0L
-      .sclIdx[.b] <- as.integer(match(.er$name, .thetas$name) - 1L)
-      .scl0[.b] <- .er$est; .enm[.b] <- .cond
+      .es <- sort(.er$err)
+      .cmt[.b] <- as.integer(.pred$cmt[.b]); .dvid[.b] <- as.integer(.pred$dvid[.b])
+      .enm[.b] <- .cond; .propIdx[.b] <- NA_integer_; .prop0[.b] <- NA_real_
+      if (nrow(.er) == 1L && .er$err[1] %in% c("add", "prop")) {
+        .et[.b] <- if (.er$err[1] == "prop") 1L else 0L
+        .sclIdx[.b] <- as.integer(match(.er$name, .thetas$name) - 1L); .scl0[.b] <- .er$est
+      } else if (nrow(.er) == 2L && identical(.es, c("add", "prop"))) {
+        .et[.b] <- 2L
+        .aRow <- .er[.er$err == "add", , drop = FALSE]; .pRow <- .er[.er$err == "prop", , drop = FALSE]
+        .sclIdx[.b] <- as.integer(match(.aRow$name, .thetas$name) - 1L); .scl0[.b] <- .aRow$est
+        .propIdx[.b] <- as.integer(match(.pRow$name, .thetas$name) - 1L); .prop0[.b] <- .pRow$est
+      } else {
+        stop("RPEM multiple-endpoint supports additive, proportional, or combined (add + prop) error per endpoint")
+      }
     }
     errType <- 5L; errName <- "multiEndpoint"
     addSdIdx <- NA_integer_; addSd0 <- NA_real_; propSdIdx <- NA_integer_; propSd0 <- NA_real_
     .endpt <- list(nEndpt = .nEndpt, cmt = .cmt, dvid = .dvid, errType = .et,
-                   sclIdx = .sclIdx, scl0 = .scl0, name = .enm)
+                   sclIdx = .sclIdx, scl0 = .scl0,
+                   propIdx = .propIdx, prop0 = .prop0, name = .enm)
   } else if (nrow(.res) == 1L && .res$err[1] %in% c("add", "prop")) {
     errType <- if (.res$err[1] == "prop") 1L else 0L
     # addSdIdx points at the single residual (holds add.sd or prop.sd)
@@ -241,7 +248,10 @@
   addSd <- .cl$addSd0; propSd <- if (.comb) .cl$propSd0 else NA_real_
   lambda <- if (.tbs) .cl$lambda0 else NA_real_
   power <- if (.pow) .cl$pow0 else NA_real_
-  if (.multi) { .endptIdx <- .rpemEndptIndex(data, .cl); sdVec <- .cl$endpt$scl0 }
+  if (.multi) {
+    .endptIdx <- .rpemEndptIndex(data, .cl); sdVec <- .cl$endpt$scl0
+    propVec <- .cl$endpt$prop0; .combE <- .cl$endpt$errType == 2L
+  }
   .structOn <- length(.cl$structIdx) > 0L
   niter <- control$niter
   coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
@@ -249,6 +259,7 @@
   sdTr <- numeric(niter); propTr <- numeric(niter); lamTr <- numeric(niter)
   powTr <- numeric(niter); llTr <- numeric(niter)
   sdMat <- if (.multi) matrix(0, niter, .cl$endpt$nEndpt) else NULL
+  propMat <- if (.multi) matrix(NA_real_, niter, .cl$endpt$nEndpt) else NULL
   betaMat <- if (.structOn) matrix(0, niter, length(.cl$structIdx)) else NULL
   for (.it in seq_len(niter)) {
     if (.useReg) {
@@ -261,7 +272,10 @@
     if (.comb) base[.cl$propSdIdx + 1L] <- propSd
     if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
     if (.pow) base[.cl$powIdx + 1L] <- power
-    if (.multi) base[.cl$endpt$sclIdx + 1L] <- sdVec
+    if (.multi) {
+      base[.cl$endpt$sclIdx + 1L] <- sdVec
+      if (any(.combE)) base[.cl$endpt$propIdx[.combE] + 1L] <- propVec[.combE]
+    }
     rxode2::rxSetSeed(control$seed + .it)
     .etaMat <- .drawEtas(omega)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores)
@@ -288,11 +302,13 @@
       addSd <- .ms$propSd; power <- .ms$power
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else if (.multi) {
+      .prop0 <- ifelse(is.na(propVec), 0.0, propVec)
       .ms <- rpemMstepK1Multi(.design, coefs, .endptIdx, .cl$endpt$errType,
-                              control$nMH, control$mhBurn)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); sdVec <- .ms$sd
+                              sdVec, .prop0, control$nMH, control$mhBurn)
+      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
+      sdVec <- .ms$sd; propVec <- .ms$propSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-      sdMat[.it, ] <- sdVec
+      sdMat[.it, ] <- sdVec; propMat[.it, ] <- propVec
     } else if (.useReg) {
       .ms <- rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
@@ -318,6 +334,8 @@
   lambdaHat <- if (.tbs) mean(lamTr[.w]) else NA_real_
   powerHat <- if (.pow) mean(powTr[.w]) else NA_real_
   endptSdHat <- if (.multi) colMeans(sdMat[.w, , drop = FALSE]) else NULL
+  endptPropHat <- if (.multi)
+    apply(propMat[.w, , drop = FALSE], 2, function(x) if (all(is.na(x))) NA_real_ else mean(x)) else NULL
   structHat <- if (.structOn) colMeans(betaMat[.w, , drop = FALSE]) else NULL
   covCoefHat <- if (.useReg && length(.cl$covCoefIdx))
                   colMeans(coefTr[.w, -1, drop = FALSE]) else numeric(0)
@@ -332,7 +350,10 @@
   if (.comb) base[.cl$propSdIdx + 1L] <- propHat
   if (.tbs) base[.cl$lambdaIdx + 1L] <- lambdaHat
   if (.pow) base[.cl$powIdx + 1L] <- powerHat
-  if (.multi) base[.cl$endpt$sclIdx + 1L] <- endptSdHat
+  if (.multi) {
+    base[.cl$endpt$sclIdx + 1L] <- endptSdHat
+    if (any(.combE)) base[.cl$endpt$propIdx[.combE] + 1L] <- endptPropHat[.combE]
+  }
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
   .feEta <- .drawEtas(omegaHat)
@@ -351,7 +372,7 @@
   list(mu = stats::setNames(muHat, .cl$muNames),
        omega = stats::setNames(omHat, .cl$etaNames),
        addSd = sdHat, propSd = propHat, lambda = lambdaHat, power = powerHat,
-       endptSd = endptSdHat,
+       endptSd = endptSdHat, endptProp = endptPropHat,
        struct = if (.structOn) stats::setNames(structHat, .cl$thetaNames[.cl$structIdx + 1L]) else NULL,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
        ebe = ebe,
@@ -405,8 +426,11 @@ getValidNlmixrCtl.rpem <- function(control) {
   .tn <- .cl$thetaNames
   .ft <- stats::setNames(.cl$base[seq_along(.tn)], .tn)
   .ft[.cl$muNames] <- rfit$mu
-  if (.cl$errType == 5L) .ft[.tn[.cl$endpt$sclIdx + 1L]] <- rfit$endptSd
-  else .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
+  if (.cl$errType == 5L) {
+    .ft[.tn[.cl$endpt$sclIdx + 1L]] <- rfit$endptSd
+    .cE <- which(.cl$endpt$errType == 2L)
+    if (length(.cE)) .ft[.tn[.cl$endpt$propIdx[.cE] + 1L]] <- rfit$endptProp[.cE]
+  } else .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
   if (.cl$errType == 2L) .ft[.tn[.cl$propSdIdx + 1L]] <- rfit$propSd
   if (.cl$errType == 3L) .ft[.tn[.cl$lambdaIdx + 1L]] <- rfit$lambda
   # power: exponent set here; the scale (prop.sd) is set via the addSd slot above.
