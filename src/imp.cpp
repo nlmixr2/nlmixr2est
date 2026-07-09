@@ -219,6 +219,9 @@ void impOuter(Environment e) {
   impSyncInitParToFullTheta();
   impMapPass(e);
 
+  // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
+  impClearInnerNeqOverride();
+
   // Stash the last-iteration E-step diagnostics.
   List condVarList(nsub);
   for (int id = 0; id < nsub; ++id) condVarList[id] = wrap(condVar[id]);

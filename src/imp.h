@@ -73,6 +73,10 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
+
+// Clear the persistent inner neqOverride (multi-endpoint pool) at fit end so it
+// does not leak into a subsequent fit sharing the global solve context.
+void impClearInnerNeqOverride();
 // Apply a Newton step: add `step` (length nSens) to the non-mu structural thetas
 // and propagate to the full parameter vector.
 void impUpdateStructThetas(const arma::vec& step);

@@ -8525,6 +8525,18 @@ void impSetInnerNeqOverride() {
   }
 }
 
+// Clear the persistent inner neqOverride at the end of the fit so it does not
+// bleed into a later fit whose op->neq differs (the shared rx_global is reused).
+void impClearInnerNeqOverride() {
+  if (op_focei.innerNeq <= 0) return;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndNeqOverride(ind, -1);
+  }
+}
+
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
