@@ -83,3 +83,45 @@
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
 }
+
+#' Validate the RPEM control (est="rpem")
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.rpem <- function(control) {
+  .ctl <- control[[1]]
+  if (is.null(.ctl)) .ctl <- rpemControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("rpemControl", .ctl)
+  if (!inherits(.ctl, "rpemControl")) {
+    .minfo("invalid control for `est=\"rpem\"`, using default")
+    .ctl <- rpemControl()
+  } else {
+    .ctl <- do.call(rpemControl, .ctl)
+  }
+  .ctl
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.rpem <- function(env, ...) {
+  .ui <- env$ui
+  .control <- env$control
+  if (!inherits(.control, "rpemControl")) .control <- rpemControl()
+  # M1: single-endpoint, mu-referenced, diagonal omega, additive residual.
+  # .rpemClassify raises a clear error if the model is outside that scope.
+  .fit <- .rpemFit(.ui, env$data, .control)
+  .fit$ui <- .ui
+  .fit$control <- .control
+  class(.fit) <- "nlmixr2rpem"
+  .fit
+}
+
+#' @export
+print.nlmixr2rpem <- function(x, ...) {
+  cat("RPEM fit (K=1 minimal core -- not yet a full nlmixr2 fit object)\n")
+  cat("-- typical values (mu):\n"); print(round(x$mu, 4))
+  cat("-- omega (between-subject variance):\n"); print(round(x$omega, 4))
+  cat(sprintf("-- add.sd: %.4f\n", x$addSd))
+  cat(sprintf("-- final lnL: %.3f over %d iterations\n",
+              x$lnL[length(x$lnL)], length(x$lnL)))
+  invisible(x)
+}
