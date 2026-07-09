@@ -91,11 +91,24 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       // density (minimized by the inner optimizer), so it enters with a minus;
       // the proposal density is subtracted, contributing +(1/(2 gamma)) d'H d.
       arma::vec q(isample);
+      int nGood = 0;
       for (int k = 0; k < isample; ++k) {
         arma::vec eta = S.row(k).t();
         arma::vec d = eta - modes[id];
-        q[k] = -impEvalJointLik(eta, id) +
+        double qk = -impEvalJointLik(eta, id) +
           invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
+        // A proposal sample whose inner solve fails (NA/NaN, even after the
+        // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
+        // giving it -Inf log-weight (weight 0), rather than poisoning the whole
+        // subject's conditional moments.
+        if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
+      }
+      if (nGood == 0) {
+        // no usable sample: keep condMean at the mode (set above), condVar 0.
+#ifdef _OPENMP
+        if (doPar) setRxThreadId(-1);
+#endif
+        continue;
       }
       double qmax = q.max();
       arma::vec w = arma::exp(q - qmax);
