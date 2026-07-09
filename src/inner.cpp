@@ -159,6 +159,8 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+  int thetaSensOffset = -1; // lhs offset of rx__sens_rx_pred__BY_THETA_1___ (impmap)
+  int thetaSensNeq = 0;     // ODE state count of the theta-sensitivity model (impmap)
 
   unsigned int neta;
   unsigned int ntheta;
@@ -651,6 +653,7 @@ void freeFocei(){
 
 rxSolveF rxInner;
 rxSolveF rxPred;
+rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
 
 void rxUpdateFuns(SEXP trans, rxSolveF *inner){
   const char *lib, *s_dydt, *s_calc_jac, *s_calc_lhs, *s_inis, *s_dydt_lsoda_dum, *s_dydt_jdum_lsoda,
@@ -8421,6 +8424,26 @@ Environment foceiFitCpp_(Environment e){
         }
       } else {
         stop(_("focei cannot be run without 'predNoLhs'"));
+      }
+      // est="impmap": load the theta-sensitivity model (peer of rxInner/rxPred)
+      // and record its ODE state count + the lhs offset of the first
+      // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
+      op_focei.thetaSensOffset = -1;
+      op_focei.thetaSensNeq = 0;
+      if (op_focei.isImpmap && model.containsElementNamed("thetaSens")) {
+        RObject ts = model["thetaSens"];
+        if (rxode2::rxIs(ts, "rxode2")) {
+          List mvts = rxode2::rxModelVars_(ts);
+          rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
+          op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
+          rxThetaSens.neq = op_focei.thetaSensNeq;
+          CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+          for (int il = 0; il < tsLhs.size(); ++il) {
+            if (as<std::string>(tsLhs[il]) == "rx__sens_rx_pred__BY_THETA_1___") {
+              op_focei.thetaSensOffset = il; break;
+            }
+          }
+        }
       }
       // Now setup which ETAs need a finite difference
       if (model.containsElementNamed("eventEta")) {
