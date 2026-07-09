@@ -1469,6 +1469,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
     }
   }
+  if (!is.null(env$model$inner) &&
+      isTRUE(rxode2::rxModelVars(env$model$inner)$flags[["hasDelay"]] == 1L)) {
+    .rxControl2 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+    if (isTRUE(unname(.rxControl2$method) == 2L)) {
+      .rxControl2$method <- 0L
+      .rxControl2$stiff2 <- 13L
+      .rxControl2$dense <- TRUE
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
+    }
+  }
 }
 #' Assign the number of log likelihood items that need to be allocated
 #'

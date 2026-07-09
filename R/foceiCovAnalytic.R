@@ -895,7 +895,16 @@
       .fun <- if (.m[2L] == "lag") "alag" else .m[2L]     # rxode2 stores lag() as alag()
       paste0(.fun, "(", .m[3L], ")=", .toRx(get(.v, envir = .s)))
     }, character(1))
-    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
+    # DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    # per-sensitivity-compartment 1st/2nd-order histories that .rxSens()
+    # accumulated as a side effect of the .s1/.s2 calls above (rxode2's
+    # .rxDelaySensAugment/.rxDelaySensAugment2).  Spliced after all d/dt +
+    # sensitivity-ODE declarations so the referenced state/sens compartments
+    # are already defined -- same convention as .rxFinalizeInner (focei.R).
+    # NULL (no delay()) for ordinary models.
+    .pastLines <- .s$..pastLines
+    if (is.null(.pastLines)) .pastLines <- character(0)
+    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2

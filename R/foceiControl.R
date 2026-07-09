@@ -1378,7 +1378,6 @@ foceiControl <- function(sigdig = 4, #
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
-    eventSens=eventSens,
     sensMethod=sensMethod,
     boundedTransform=boundedTransform
   )

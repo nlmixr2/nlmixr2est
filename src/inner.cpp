@@ -1821,6 +1821,15 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // old 0.5*(a*B*a + c*c) form.  rp = dr/deta = c*r = c*(2/B).
     arma::vec cHff(fInd->cHff, nO, false, true), cHfr(fInd->cHfr, nO, false, true), cHrr(fInd->cHrr, nO, false, true);
     arma::vec r2 = 2.0 / B.col(0);   // r per obs (= 2/B)
+    // A non-observation row counted in nO but never filled by the per-obs loop
+    // (a/B/cHff/cHfr/cHrr all left at their zero-initialized default -- e.g. a
+    // DDE model's extra time-zero bookkeeping row) has B==0, so 2/B is +Inf;
+    // that Inf then turns a legitimately-zero cHfr/cHrr*rp term into 0*Inf=NaN,
+    // corrupting the whole sum even though the row should contribute nothing.
+    // Zero it explicitly -- r2 is only ever multiplied by other per-row
+    // coefficients that are themselves 0 for such a row, so this changes
+    // nothing for any row with a real (nonzero) B.
+    r2.elem(arma::find_nonfinite(r2)).zeros();
     for (k = op_focei.neta; k--;){
       arma::vec rpk = c.col(k) % r2;
       for (l = k+1; l--;){
