@@ -49,6 +49,11 @@ struct rpemOptions {
   std::vector<double> cpv;   // [nGauss*nobsTot] structural prediction cp
   std::vector<double> dvv;   // [nGauss*nobsTot] observed DV
   std::vector<long> sampObsOff; // [nsub] start offset of subject i's sample blocks
+  // Per-observation transform code / bounds (constant across samples, indexed by
+  // idS[i]+o), for the per-endpoint TBS lambda profile with boxCox/yeoJohnson.
+  std::vector<int> yjv;      // [nobsTot] yj0 transform code
+  std::vector<double> lowv;  // [nobsTot] transform lower bound
+  std::vector<double> hiv;   // [nobsTot] transform upper bound
 };
 
 rpemOptions rpemOp;
@@ -63,6 +68,9 @@ RObject rpemFree() {
   rpemOp.cpv.clear();
   rpemOp.dvv.clear();
   rpemOp.sampObsOff.clear();
+  rpemOp.yjv.clear();
+  rpemOp.lowv.clear();
+  rpemOp.hiv.clear();
   return R_NilValue;
 }
 
@@ -130,7 +138,8 @@ static inline void rpemSetSubject(const double *par, int id) {
 // cp / DV.  No solving happens here, so it is safe to call serially after a
 // batched par_solve.
 static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *wssOut = nullptr,
-                                     double *cpOut = nullptr, double *dvOut = nullptr) {
+                                     double *cpOut = nullptr, double *dvOut = nullptr,
+                                     int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   double s = 0.0, ss = 0.0, wss = 0.0, curT;
@@ -155,6 +164,11 @@ static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *ws
       if (wssOut != nullptr && cp != 0.0) { double rc = r / cp; wss += rc * rc; }
       if (cpOut != nullptr) cpOut[oi] = cp;
       if (dvOut != nullptr) dvOut[oi] = dv;
+      // per-obs transform code / bounds (set by calc_lhs for this observation's
+      // endpoint), for the per-endpoint TBS lambda profile.
+      if (yjOut != nullptr) yjOut[oi] = getIndYj(ind);
+      if (lowOut != nullptr) lowOut[oi] = getIndLogitLow(ind);
+      if (hiOut != nullptr) hiOut[oi] = getIndLogitHi(ind);
       ++oi;
     }
   }
@@ -166,10 +180,11 @@ static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *ws
 // Serial solve of one subject (set params, solve its ODE, read predictions).
 static inline double rpemSolveSubject(const double *par, int id,
                                       double *ssOut = nullptr, double *wssOut = nullptr,
-                                      double *cpOut = nullptr, double *dvOut = nullptr) {
+                                      double *cpOut = nullptr, double *dvOut = nullptr,
+                                      int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr) {
   rpemSetSubject(par, id);
   rpemPredOde(id);
-  return rpemReadSubject(id, ssOut, wssOut, cpOut, dvOut);
+  return rpemReadSubject(id, ssOut, wssOut, cpOut, dvOut, yjOut, lowOut, hiOut);
 }
 
 // parMat: nsub rows x ntheta cols (each subject's THETA+ETA). Returns per-subject
@@ -261,6 +276,9 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int id = 0; id < nsub; ++id) { rpemOp.sampObsOff[id] = acc; acc += (long)nGauss * rpemOp.nobs[id]; }
   rpemOp.cpv.assign((size_t)acc, 0.0);
   rpemOp.dvv.assign((size_t)acc, 0.0);
+  rpemOp.yjv.assign((size_t)rpemOp.nobsTot, 0);      // per subject-obs (idS[i]+o)
+  rpemOp.lowv.assign((size_t)rpemOp.nobsTot, 0.0);
+  rpemOp.hiv.assign((size_t)rpemOp.nobsTot, 1.0);
 
   // Copy all R objects into plain C++ buffers BEFORE the parallel region; the
   // OpenMP loop must not touch any Rcpp/R object (only these buffers + the
@@ -295,7 +313,9 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         size_t r = (size_t)id * nGauss + j;
         double ssTmp = 0.0, wssTmp = 0.0;
         long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
-        double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob]);
+        long so = rpemOp.idS[id];
+        double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                       &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so]);
         rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
@@ -316,8 +336,10 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
         double ssTmp = 0.0, wssTmp = 0.0;
         long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
+        long so = rpemOp.idS[id];
         double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
-                                        &rpemOp.cpv[ob], &rpemOp.dvv[ob]);
+                                        &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                        &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so]);
         lp[j] = logp;
         rpemOp.logp[r] = logp;
         rpemOp.ssv[r] = ssTmp;
@@ -1038,6 +1060,46 @@ static void rpemGuardedPow(const std::vector<long> &counts, const int *endpt,
   sclOut = sqrt(SSc / (double)N); powOut = cHat;
 }
 
+// TBS lambda profile over endpoint endB's observations: additive error on the
+// transformed scale, add.sd profiled out (add.sd^2 = SS(lambda)/N), golden-section
+// on lambda maximizing -0.5 N log(SS/N) + sum log|dt/dDV|.  Uses the per-obs
+// transform code/bounds cached in the E-step (yjv/lowv/hiv) so each endpoint's own
+// boxCox/yeoJohnson transform is applied.
+static void rpemGuardedTBS(const std::vector<long> &counts, const int *endpt,
+                           int endB, double &addOut, double &lamOut) {
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  auto inB = [&](int i, int o) -> bool { return endB < 0 || endpt[rpemOp.idS[i] + o] == endB; };
+  long N = 0;
+  for (int i = 0; i < nsub; ++i) {
+    int nobsi = rpemOp.nobs[i];
+    for (int j = 0; j < nG; ++j) { long c = counts[(size_t)i * nG + j]; if (!c) continue;
+      for (int o = 0; o < nobsi; ++o) if (inB(i, o)) N += c; }
+  }
+  auto ssJac = [&](double lam, double &SS, double &Jac) {
+    SS = 0.0; Jac = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i]; long so0 = rpemOp.idS[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j]; if (!c) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          if (!inB(i, o)) continue;
+          long so = so0 + o; int yj = rpemOp.yjv[so]; double low = rpemOp.lowv[so], hi = rpemOp.hiv[so];
+          double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+          double d = _powerD(dv, lam, yj, low, hi) - _powerD(cp, lam, yj, low, hi);
+          SS += (double)c * d * d;
+          Jac += (double)c * log(fabs(_powerDD(dv, lam, yj, low, hi)) + 1e-300);
+        }
+      }
+    }
+  };
+  std::function<double(double)> f = [&](double lam) { double SS, Jac; ssJac(lam, SS, Jac);
+    if (SS < 1e-300) SS = 1e-300; return -0.5 * (double)N * log(SS / (double)N) + Jac; };
+  double lamHat = rpemGolden(f, -2.0, 3.0, 100);
+  double SS, Jac; ssJac(lamHat, SS, Jac);
+  addOut = sqrt(SS / (double)N); lamOut = lamHat;
+}
+
 //[[Rcpp::export]]
 List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt,
                       IntegerVector errTypes, NumericVector add0, NumericVector prop0,
@@ -1060,7 +1122,7 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
       for (int o = 0; o < nobsi; ++o) {
         int b = endpt[base + o];
-        if (errTypes[b] == 2 || errTypes[b] == 4) continue;  // combined/power done below
+        if (errTypes[b] == 2 || errTypes[b] == 3 || errTypes[b] == 4) continue;  // numeric, done below
         double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o], rr = dv - cp;
         double contrib;
         if (errTypes[b] == 6) {                    // lognormal: additive on log scale
@@ -1088,6 +1150,10 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       double scl, pw;
       rpemGuardedPow(counts, endptp, b, scl, pw);
       sdAdd[b] = scl; sdProp[b] = pw;   // scale in add slot, exponent in prop slot
+    } else if (errTypes[b] == 3) {
+      double add, lam;
+      rpemGuardedTBS(counts, endptp, b, add, lam);
+      sdAdd[b] = add; sdProp[b] = lam;  // add.sd in add slot, lambda in prop slot
     } else {
       sdAdd[b] = sqrt(sumSS[b] / (double)sumN[b]); sdProp[b] = NA_REAL;
     }

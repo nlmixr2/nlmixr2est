@@ -115,8 +115,17 @@
         .sRow <- .er[.er$err == "pow", , drop = FALSE]; .pwRow <- .er[.er$err == "pow2", , drop = FALSE]
         .sclIdx[.b] <- as.integer(match(.sRow$name, .thetas$name) - 1L); .scl0[.b] <- .sRow$est
         .propIdx[.b] <- as.integer(match(.pwRow$name, .thetas$name) - 1L); .prop0[.b] <- .pwRow$est
+      } else if (nrow(.er) == 2L && "add" %in% .er$err &&
+                 any(.er$err %in% c("boxCox", "yeoJohnson"))) {
+        # TBS on this endpoint: additive on the transformed scale + dynamic lambda
+        # (errType 3); the second slot (propIdx/prop0) carries the estimated lambda.
+        .et[.b] <- 3L
+        .aRow <- .er[.er$err == "add", , drop = FALSE]
+        .lRow <- .er[.er$err %in% c("boxCox", "yeoJohnson"), , drop = FALSE]
+        .sclIdx[.b] <- as.integer(match(.aRow$name, .thetas$name) - 1L); .scl0[.b] <- .aRow$est
+        .propIdx[.b] <- as.integer(match(.lRow$name, .thetas$name) - 1L); .prop0[.b] <- .lRow$est
       } else {
-        stop("RPEM multiple-endpoint supports additive, proportional, combined (add + prop), or power (pow) error per endpoint")
+        stop("RPEM multiple-endpoint supports additive, proportional, lognormal, combined (add + prop), power (pow), or TBS (add + boxCox/yeoJohnson) error per endpoint")
       }
     }
     errType <- 5L; errName <- "multiEndpoint"
@@ -262,7 +271,7 @@
   if (.multi) {
     .endptIdx <- .rpemEndptIndex(data, .cl); sdVec <- .cl$endpt$scl0
     propVec <- .cl$endpt$prop0
-    .combE <- .cl$endpt$errType %in% c(2L, 4L)  # endpoints with a 2nd residual param
+    .combE <- .cl$endpt$errType %in% c(2L, 3L, 4L)  # endpoints with a 2nd residual param
   }
   .structOn <- length(.cl$structIdx) > 0L
   niter <- control$niter
@@ -440,7 +449,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ft[.cl$muNames] <- rfit$mu
   if (.cl$errType == 5L) {
     .ft[.tn[.cl$endpt$sclIdx + 1L]] <- rfit$endptSd
-    .cE <- which(.cl$endpt$errType %in% c(2L, 4L))  # 2nd param: prop.sd (combined) or exponent (power)
+    .cE <- which(.cl$endpt$errType %in% c(2L, 3L, 4L))  # 2nd param: prop.sd (combined) or exponent (power)
     if (length(.cE)) .ft[.tn[.cl$endpt$propIdx[.cE] + 1L]] <- rfit$endptProp[.cE]
   } else .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
   if (.cl$errType == 2L) .ft[.tn[.cl$propSdIdx + 1L]] <- rfit$propSd
