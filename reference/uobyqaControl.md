@@ -333,42 +333,42 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -714.4211 1129.456 1144.179       -561.728         361.496        60.18601
+#>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -754.8202 1089.057 1103.78      -541.5284        99.51714        34.24803
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01708806 0.001903481  7.021e-06      0.053       0.013 0.026    0.001
+#> elapsed 0.01568099 0.002460064   5.25e-06      0.043       0.014 0.025    0.001
 #>             other
-#> elapsed 0.6710014
+#> elapsed 0.6388537
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.5873 0.2499 42.55 -0.5873 (-1.077, -0.09754)                    
-#> Em    5.431  2.276 41.91      5.431 (0.9694, 9.893)                    
-#> E50   2.619  1.112 42.44      2.619 (0.4404, 4.798)                    
-#> g         2  FIXED FIXED                          2                    
+#>       Est.     SE  %RSE  Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -1.041 0.2894  27.8 -1.041 (-1.608, -0.4738)                    
+#> Em   4.716  1.077 22.84     4.716 (2.605, 6.827)                    
+#> E50  1.827 0.5591  30.6    1.827 (0.7312, 2.923)                    
+#> g        2  FIXED FIXED                        2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0358     0 -0.442 -0.586
-#> 2 1     0.0383     1 -1.03  -0.586
-#> 3 1     0.0509     0 -0.443 -0.585
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0490     0 -0.303 -1.04
+#> 2 1     0.0520     0 -0.303 -1.04
+#> 3 1     0.0525     0 -0.303 -1.04
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.587284282457662, 5.43112062514237, 2.61929171601032 
-#> objective: 561.727968481139 
-#> number of function evaluations: 64 
+#> parameter estimates: -1.04100744730652, 4.71613741001156, 1.82687976426281 
+#> objective: 541.528427129743 
+#> number of function evaluations: 58 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters
