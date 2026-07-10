@@ -96,6 +96,9 @@ nmObjGetControl(x, ...)
 
 # S3 method for class 'uobyqa'
 nmObjGetControl(x, ...)
+
+# S3 method for class 'vae'
+nmObjGetControl(x, ...)
 ```
 
 ## Arguments

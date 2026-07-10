@@ -1,0 +1,297 @@
+# Control for vae (variational autoencoder) estimation method in nlmixr2
+
+Variational-autoencoder NLME estimation (Rohleff et al., CPT:PSP 2025):
+an LSTM encoder learns the individual posterior q(eta\|y) and an rxode2
+decoder reconstructs the observations, trained on an ELBO / BICc-ELBO
+objective for simultaneous population-parameter estimation and covariate
+selection.
+
+## Usage
+
+``` r
+vaeControl(
+  seed = 1L,
+  itersBurnIn = 100L,
+  klWarmup = 50L,
+  gammaIter = 250L,
+  iters = 300L,
+  nGradStep = 5L,
+  hiddenDim = 25L,
+  learningRate = 0.005,
+  burnInLearningRate = 0.008,
+  sigma0 = NULL,
+  covariateSelection = TRUE,
+  objf = c("importanceSampling", "linear"),
+  nIsSample = 3000L,
+  returnVae = FALSE,
+  print = 1L,
+  useColor = NULL,
+  printNcol = NULL,
+  covMethod = c("linear", ""),
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = NULL,
+  sigdigTable = NULL,
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
+  eventSens = c("jump", "fd"),
+  rxControl = NULL,
+  ...
+)
+```
+
+## Arguments
+
+- seed:
+
+  Random seed for the VAE training (encoder init, Adam,
+  reparameterization sampling).
+
+- itersBurnIn:
+
+  Number of burn-in iterations (encoder-only, tiny KL weight) before the
+  main EM phase.
+
+- klWarmup:
+
+  Number of KL-annealing iterations over which the KL weight is ramped
+  from a small value to 1 (prevents posterior collapse).
+
+- gammaIter:
+
+  Number of main iterations before the EMA-smoothing phase of the
+  population-parameter update begins.
+
+- iters:
+
+  Total number of main-loop iterations (after burn-in).
+
+- nGradStep:
+
+  Number of Adam gradient steps per EM outer iteration (the reference
+  \`L_iter\`).
+
+- hiddenDim:
+
+  LSTM hidden dimension (the reference \`h_dim\`).
+
+- learningRate:
+
+  Adam learning rate used in the main training phase.
+
+- burnInLearningRate:
+
+  Adam learning rate used during burn-in.
+
+- sigma0:
+
+  Encoder prior standard deviation(s) at initialization (a small value
+  giving a sharp initial posterior). \`NULL\` uses a small default per
+  individual parameter. This is distinct from the \`ini()\` omega.
+
+- covariateSelection:
+
+  When \`TRUE\` (default) perform automated BICc-ELBO covariate
+  selection during training; when \`FALSE\` fit the given fixed
+  covariate structure only (faster population-only mode).
+
+- objf:
+
+  Which objective-function value is active for AIC/BIC/BICc. Both the
+  linearization and importance-sampling -2LL are always computed and
+  stored; this selects the default active one.
+
+- nIsSample:
+
+  Number of importance-sampling draws for the IS -2LL.
+
+- returnVae:
+
+  When \`TRUE\` return the raw VAE training object instead of the
+  nlmixr2 fit.
+
+- print:
+
+  Either a scalar print-frequency (\`0\` = suppress, \`1\` (default) =
+  every evaluation, \`N\` = every Nth), OR a pre-built
+  \[iterPrintControl()\] object. Equivalent to \`iterPrintControl(every
+  = print, ncol = printNcol, useColor = useColor)\`.
+
+- useColor:
+
+  Logical (or \`NULL\`) emit ANSI bold/color escapes in the iteration
+  print. \`NULL\` (default) defers to \[crayon::has_color()\].
+
+- printNcol:
+
+  Integer (or \`NULL\`) parameter columns per row before wrapping.
+  \`NULL\` (default) uses \`floor((getOption("width") - 23) / 12)\`.
+
+- covMethod:
+
+  Method for calculating covariance. In this discussion, R is the
+  Hessian matrix of the objective function. The S matrix is the sum of
+  each individual's gradient cross-product (evaluated at the individual
+  empirical Bayes estimates).
+
+  "`linFim`" Use the Linearized Fisher Information Matrix to calculate
+  the covariance.
+
+  "`fim`" Use the Fisher Information Matrix accumulated during SAEM
+  estimation to calculate the covariance. Like `sa` it inverts the
+  observed information to a full theta + `Omega` diagonal + residual
+  covariance, but uses the (noisier) estimation-phase matrix rather than
+  a dedicated cov phase.
+
+  "`sa`" Use the stochastic-approximation Fisher Information Matrix.
+  After estimation, a dedicated covariance phase (`nSaCov` iterations)
+  holds the parameters at the converged estimate and keeps resimulating
+  the individual parameters, Monte-Carlo averaging the Louis
+  observed-information integrand into a converged FIM decoupled from the
+  cooling schedule (the approach used by Monolix; Kuhn & Lavielle 2005).
+  Always includes every estimated population parameter (theta, the
+  `Omega` diagonal variances, and residual).
+
+  For both `fim` and `sa` the simulation-based Fisher information covers
+  the structural theta, the `Omega` diagonal variances, and additive
+  residual error. Off-diagonal `Omega` covariances and
+  proportional/combined residual error are not estimated reliably by the
+  simulation FIM (the complete-data correction is unstable when
+  between-subject variability dominates the residual), so those
+  variance-block standard errors are spliced in from the linearized FIM
+  (`linFim`).
+
+  "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
+  \\R^-1 \times S \times R^-1\\
+
+  "`r`" Uses the Hessian matrix to calculate the covariance as \\2\times
+  R^-1\\
+
+  "`s`" Uses the crossproduct matrix to calculate the covariance as
+  \\4\times S^-1\\
+
+  "" Does not calculate the covariance step.
+
+- optExpression:
+
+  Optimize the rxode2 expression to speed up calculation. By default
+  this is turned on.
+
+- sumProd:
+
+  Is a boolean indicating if the model should change multiplication to
+  high precision multiplication and sums to high precision sums using
+  the PreciseSums package. By default this is `FALSE`.
+
+- literalFix:
+
+  boolean, substitute fixed population values as literals and re-adjust
+  ui and parameter estimates after optimization; Default is \`TRUE\`.
+
+- literalFixRes:
+
+  boolean, substitute fixed population values as literals and re-adjust
+  ui and parameter estimates after optimization; Default is \`TRUE\`.
+
+- addProp:
+
+  Type of additive-plus-proportional error: \`"combined1"\`, where
+  standard deviations add: \$\$y = f + (a + b\times f^c) \times
+  \varepsilon\$\$; or \`"combined2"\`, where variances add: \$\$y = f +
+  \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon\$\$. Here y =
+  observed, f = predicted, a = additive sd, b = proportional/power sd, c
+  = power exponent (1 in the proportional case).
+
+- calcTables:
+
+  This boolean is to determine if the foceiFit will calculate tables. By
+  default this is `TRUE`
+
+- compress:
+
+  Should the object have compressed items
+
+- adjObf:
+
+  is a boolean to indicate if the objective function should be adjusted
+  to be closer to NONMEM's default objective function. By default this
+  is `TRUE`
+
+- ci:
+
+  Confidence level for some tables. By default this is 0.95 or 95%
+  confidence.
+
+- sigdig:
+
+  Specifies the "significant digits" that the ode solving requests. When
+  specified this controls the relative and absolute tolerances of the
+  ODE solvers. By default the tolerance is `0.5*10^(-sigdig-2)` for
+  regular ODEs. For the sensitivity equations the default is
+  `0.5*10\^(-sigdig-1.5)` (sensitivity changes only applicable for
+  liblsoda). This also controls the `atol`/`rtol` of the steady state
+  solutions. The `ssAtol`/`ssRtol` is `0.5*10\^(-sigdig)` and for the
+  sensitivities `0.5*10\^(-sigdig+0.625)`. By default this is
+  unspecified (`NULL`) and uses the standard `atol`/`rtol`.
+
+- sigdigTable:
+
+  Significant digits in the final output table. If not specified, then
+  it matches the significant digits in the \`sigdig\` optimization
+  algorithm. If \`sigdig\` is NULL, use 3.
+
+- stickyRecalcN:
+
+  The number of bad ODE solves before reducing the atol/rtol for the
+  rest of the problem.
+
+- maxOdeRecalc:
+
+  Maximum number of times to reduce the ODE tolerances and try to
+  resolve the system if there was a bad ODE solve.
+
+- odeRecalcFactor:
+
+  The ODE recalculation factor when ODE solving goes bad, this is the
+  factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
+
+- eventSens:
+
+  Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
+  \`dur\`) sensitivities are computed for THETA/ETA gradients:
+  \`"jump"\` (default) uses rxode2's analytic event sensitivities;
+  \`"fd"\` uses the legacy finite-difference behavior.
+
+- rxControl:
+
+  \`rxode2\` ODE solving options during fitting, created with
+  \`rxControl()\`
+
+- ...:
+
+  Other arguments to control SAEM.
+
+## Value
+
+vae control structure (class \`vaeControl\`)
+
+## Author
+
+Matthew L. Fidler

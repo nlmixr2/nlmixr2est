@@ -187,5 +187,8 @@
   : Output table/data.frame options
 - [`uobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.md)
   : Control for uobyqa estimation method in nlmixr2
+- [`vaeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeControl.md)
+  : Control for vae (variational autoencoder) estimation method in
+  nlmixr2
 - [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
   : VPC simulation

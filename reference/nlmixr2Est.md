@@ -138,6 +138,9 @@ nlmixr2Est(env, ...)
 
 # S3 method for class 'uobyqa'
 nlmixr2Est(env, ...)
+
+# S3 method for class 'vae'
+nlmixr2Est(env, ...)
 ```
 
 ## Arguments

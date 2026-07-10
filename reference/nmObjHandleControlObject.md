@@ -96,6 +96,9 @@ nmObjHandleControlObject(control, env)
 
 # S3 method for class 'uobyqaControl'
 nmObjHandleControlObject(control, env)
+
+# S3 method for class 'vaeControl'
+nmObjHandleControlObject(control, env)
 ```
 
 ## Arguments
