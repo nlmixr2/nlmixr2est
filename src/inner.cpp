@@ -8719,6 +8719,54 @@ RObject vaeInnerFree_() {
   return R_NilValue;
 }
 
+// VAE optimization printing + parameter-history capture. Reuses the SHARED
+// iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
+// scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
+// VAE prints the exact same iteration table and produces parHistData in the
+// standard format -- no duplicated formatting. Identity scaling (scaleTypeMult
+// with scaleTo=0) keeps values on their natural scale while still emitting the
+// "Unscaled" rows that .parHistCalc() reads.
+static scaling _vaeScale;
+static std::vector<double> _vaeIpInit;
+static std::vector<double> _vaeIpScaleC;
+static std::vector<int> _vaeIpXPar;
+
+//[[Rcpp::export]]
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
+                           List iterPrintControl) {
+  int np = initPar.size();
+  _vaeIpInit.assign(initPar.begin(), initPar.end());
+  _vaeIpScaleC.assign(np, 1.0);
+  scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ 1, /*scaleType*/ scaleTypeMult,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  // zero xform: natural-scale values, no back-transform. xPar must be non-NULL
+  // because scalePrintFun indexes it unconditionally.
+  _vaeIpXPar.assign(np, 0);
+  _vaeScale.xPar = _vaeIpXPar.data();
+  _vaeScale.probitIdx = NULL;
+  _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+  _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
+  scalePrintHeader(&_vaeScale);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintRow_(NumericVector x, double f) {
+  scalePrintFun(&_vaeScale, &x[0], f);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintGet_(bool printLine = true) {
+  _vaeScale.save = 0;
+  _vaeScale.every = 0;
+  if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
+  return scaleParHisDf(&_vaeScale);
+}
+
 //[[Rcpp::export]]
 NumericVector boxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
   NumericVector ret(x.size());

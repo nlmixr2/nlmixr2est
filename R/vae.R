@@ -9,7 +9,8 @@
 #' @inheritParams foceiControl
 #'
 #' @param seed Random seed for the VAE training (encoder init, Adam,
-#'   reparameterization sampling).
+#'   reparameterization sampling); default 42. Training is stochastic, so a fixed
+#'   seed makes every fit reproducible.
 #' @param itersBurnIn Number of burn-in iterations (encoder-only, tiny KL
 #'   weight) before the main EM phase.
 #' @param klWarmup Number of KL-annealing iterations over which the KL weight is
@@ -43,7 +44,7 @@
 #' @return vae control structure (class `vaeControl`)
 #' @export
 #' @author Matthew L. Fidler
-vaeControl <- function(seed = 1L,
+vaeControl <- function(seed = 42L,
                        itersBurnIn = 100L,
                        klWarmup = 50L,
                        gammaIter = 250L,

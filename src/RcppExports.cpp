@@ -684,6 +684,42 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeIterPrintStart_
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl);
+RcppExport SEXP _nlmixr2est_vaeIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintStart_(initPar, names, iterPrintControl));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintRow_
+RObject vaeIterPrintRow_(NumericVector x, double f);
+RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< double >::type f(fSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintGet_
+RObject vaeIterPrintGet_(bool printLine);
+RcppExport SEXP _nlmixr2est_vaeIterPrintGet_(SEXP printLineSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
 // boxCox_
 NumericVector boxCox_(NumericVector x, double lambda, int yj);
 RcppExport SEXP _nlmixr2est_boxCox_(SEXP xSEXP, SEXP lambdaSEXP, SEXP yjSEXP) {

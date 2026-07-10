@@ -180,6 +180,18 @@ vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
 
+vaeIterPrintStart_ <- function(initPar, names, iterPrintControl) {
+    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl)
+}
+
+vaeIterPrintRow_ <- function(x, f) {
+    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f)
+}
+
+vaeIterPrintGet_ <- function(printLine = TRUE) {
+    .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
+}
+
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }

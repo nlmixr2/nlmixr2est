@@ -236,10 +236,20 @@
        omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
 }
 
-#' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
-#' -> EMA smoothing. Returns the trained encoder + population estimates + traces.
+#' Tracked population parameters (structural typical values, omega diagonal,
+#' residual error) as a single named vector -- one parameter-history row.
 #' @noRd
-.vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1, verbose = FALSE) {
+.vaeParRow <- function(zPop, omega, a, parInfo) {
+  .z <- if (length(parInfo$structIdx)) setNames(zPop[parInfo$structIdx], parInfo$structNames) else numeric(0)
+  c(.z, setNames(omega, parInfo$omegaNames), setNames(as.numeric(a), parInfo$aNames))
+}
+
+#' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
+#' -> EMA smoothing. Returns the trained encoder + population estimates + traces,
+#' and the full parameter-history walk (`parHist`).
+#' @noRd
+.vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1,
+                      parInfo = NULL, verbose = FALSE) {
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
   params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0, seed = control$seed)
@@ -248,6 +258,18 @@
   Lg <- control$nGradStep
   set.seed(control$seed)
   .t <- 0L; last <- NULL
+
+  ## The parameter-history walk is ALWAYS captured (it is central to this method)
+  ## via the shared iteration-print machinery (scale.h), so the walk prints like
+  ## saem/focei and becomes standard parHistData. `parInfo` only supplies nicer
+  ## structural names (the mu-referenced theta names) -- default to the eta names.
+  if (is.null(parInfo)) {
+    .sIdx <- which(!prep$isFree)
+    parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
+                    omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
+  }
+  .row0 <- .vaeParRow(zPop, omega, a, parInfo)
+  vaeIterPrintStart_(.row0, names(.row0), control$iterPrintControl)
 
   ## burn-in: encoder-only training with a tiny fixed KL weight
   for (it in seq_len(control$itersBurnIn)) {
@@ -262,6 +284,7 @@
       zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
       last <- st
     }
+    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), last$pxz + last$DKL)
   }
 
   ## main EM (optionally with BICc-ELBO covariate selection)
@@ -294,16 +317,19 @@
       last <- st
     }
     elboTrace[it] <- mean(elbos)
+    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), elboTrace[it])
     if (verbose && it %% 25 == 0)
       message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=(%s)", it, nMain,
                       elboTrace[it], paste(round(zPop, 3), collapse = ","),
                       paste(round(a, 3), collapse = ",")))
   }
 
+  parHist <- vaeIterPrintGet_(isTRUE(control$print >= 1L))
+
   zPopMat <- if (is.matrix(zPopArg)) zPopArg else matrix(zPopArg, N, zDim, byrow = TRUE)
   list(params = params, zPop = zPop, omega = omega, a = a,
        intercept = intercept, beta = beta, selected = selected,
-       covNames = prep$covNames, elboTrace = elboTrace,
+       covNames = prep$covNames, elboTrace = elboTrace, parHist = parHist,
        mu = last$mu, zPopMat = zPopMat, prep = prep,
        nMix = nMix, mixProb = mixProb, mixnum = last$mixnum)
 }
@@ -322,8 +348,16 @@
     .p <- as.numeric(.prep$th[.ui$thetaMixIndex])
     .mixProb <- c(.p, 1 - sum(.p))
   }
+  ## parameter-history / iteration-print names: structural typical values on the
+  ## mu-referenced etas, the omega diagonal, and the residual error params
+  .map <- .foceiEtaThetaMap(.ui)
+  .structIdx <- which(!.prep$isFree)
+  .parInfo <- list(structIdx = .structIdx,
+                   structNames = .map$thetaForEta[.structIdx],
+                   omegaNames = paste0("o(", .prep$etaNames, ")"),
+                   aNames = names(.prep$a))
   ## set up the inner likelihood once (compiled model + processed data)
   .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
   on.exit(.vaeInnerFree(), add = TRUE)
-  .vaeTrain(.prep, .innerEnv, .control, .nMix, .mixProb)
+  .vaeTrain(.prep, .innerEnv, .control, .nMix, .mixProb, parInfo = .parInfo)
 }

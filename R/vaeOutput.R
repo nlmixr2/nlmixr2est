@@ -89,7 +89,13 @@
   .e <- .fit$env
   .e$method <- "vae"
   .e$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
-                 covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a)
+                 covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
+                 seed = .control$seed)
+  ## the VAE optimization walk (standard parHistData -> $parHist accessor)
+  if (!is.null(fit$parHist)) {
+    .e$parHistData <- fit$parHist
+    .foceiSetupParHistData(.e)
+  }
   .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
   .fit
 }
