@@ -32,8 +32,10 @@
 #'   matrix at the mode.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
 #'   (NONMEM ISCALE_MIN / ISCALE_MAX).
-#' @param iaccept Target importance-sampling acceptance ratio used to adapt
-#'   `gamma` (NONMEM IACCEPT).
+#' @param iaccept Minimum importance-sampling effective-sample fraction
+#'   (NONMEM IACCEPT).  The proposal scale `gamma` is kept at its efficient
+#'   starting value while the achieved fraction stays at or above `iaccept`, and
+#'   is inflated (toward `iscaleMax`) only when it drops below this floor.
 #' @param ctol Convergence tolerance on the windowed objective-function change;
 #'   `NULL` derives it from `sigdig`.
 #' @param nConvWindow Length of the trailing iteration window used to average

@@ -2,14 +2,16 @@
 % Please edit documentation in R/impmapThetaSens.R
 \name{rxUiGet.impmapThetaSens}
 \alias{rxUiGet.impmapThetaSens}
-\title{Build the symengine env carrying the impmap theta-sensitivity model
-(`..thetaSens`), whose output lhs `rx__sens_rx_pred__BY_THETA_j___` is
-d(f)/d(theta_j).}
+\title{Build the symengine env carrying the impmap sensitivity model
+(\code{..thetaSens}).  For each estimated non-mu theta j it outputs
+rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
+rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).}
 \usage{
 \method{rxUiGet}{impmapThetaSens}(x, ...)
 }
 \description{
-Build the symengine env carrying the impmap theta-sensitivity model
-(`..thetaSens`), whose output lhs `rx__sens_rx_pred__BY_THETA_j___` is
-d(f)/d(theta_j).
+Build the symengine env carrying the impmap sensitivity model
+(\code{..thetaSens}).  For each estimated non-mu theta j it outputs
+rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
+rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).
 }

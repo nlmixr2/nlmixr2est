@@ -440,6 +440,11 @@ struct focei_options {
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
+  double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
+  double impIscaleMin = 0.1; // lower bound for adapted gamma
+  double impIscaleMax = 10.0;// upper bound for adapted gamma
+  double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
+  int impNconvWindow = 10;   // trailing-iteration window for the convergence check
   std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
@@ -4707,6 +4712,12 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
+    if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
+    if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
+    if (foceiO.containsElementNamed("iscaleMax")) op_focei.impIscaleMax = as<double>(foceiO["iscaleMax"]);
+    if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
+      op_focei.impCtol = as<double>(foceiO["ctol"]);
+    if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
     if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
       op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
     if (foceiO.containsElementNamed("impMuThetaIdx"))
@@ -8280,6 +8291,18 @@ std::string impDiagXform() {
   return op_focei.impDiagXform;
 }
 
+double impIaccept() { return op_focei.impIaccept; }
+double impIscaleMin() { return op_focei.impIscaleMin; }
+double impIscaleMax() { return op_focei.impIscaleMax; }
+int impNconvWindow() { return op_focei.impNconvWindow; }
+
+// Windowed-convergence tolerance on the (relative) objective change; derived
+// from the table sigdig (10^-sigdig) when the control leaves it unset (<0).
+double impCtol() {
+  if (op_focei.impCtol >= 0) return op_focei.impCtol;
+  return std::pow(10.0, -op_focei.sigdig);
+}
+
 int impMuGroupN() {
   return (int)op_focei.muGroupN;
 }
@@ -8391,6 +8414,15 @@ void impSyncInitParToFullTheta() {
   }
 }
 
+// Current estimated (free) parameter vector -- the estimated thetas plus the
+// parameterized Omega elements -- for the EM convergence check.
+void impGetEstPar(arma::vec& par) {
+  par.set_size(op_focei.npars);
+  for (unsigned int k = 0; k < op_focei.npars; k++) {
+    par[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  }
+}
+
 void impMapPass(Environment e) {
   // Single MAP pass at the initial parameters -- the same posthoc path
   // foceiOuter() takes when maxOuterIterations == 0.
@@ -8417,7 +8449,16 @@ bool impGetHessian(int id, arma::mat& H) {
   int neta = op_focei.neta;
   // Establish the inner solve at this subject's mode before the FD Hessian.
   double f = likInner0(fInd->eta, id);
-  if (ISNA(f)) return false;
+  if (ISNA(f)) {
+    // The MAP already evaluated this mode, so an NA here means the cached solve
+    // state is stale (e.g. left by a prior fit of a different-sized model).
+    // Force a fresh solve and retry at the same mode before giving up.
+    rx = getRxSolve_();
+    setIndSolve(getSolvingOptionsInd(rx, getRxId(id)), -1);
+    resetOpBadSolve(getSolvingOptions(rx));
+    f = likInner0(fInd->eta, id);
+    if (ISNA(f)) return false;
+  }
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
   H.set_size(neta, neta);

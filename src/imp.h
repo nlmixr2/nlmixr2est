@@ -28,6 +28,13 @@ int impNiter();
 // Omega diagonal parameterization ("sqrt"/"log"/"identity") for the EM Omega update.
 std::string impDiagXform();
 
+// Convergence controller / proposal-scale adaptation controls (from impmapControl):
+double impIaccept();      // target effective-sample fraction that gamma adapts toward
+double impIscaleMin();    // lower bound for the adapted gamma
+double impIscaleMax();    // upper bound for the adapted gamma
+int impNconvWindow();     // trailing-iteration window for the convergence check
+double impCtol();         // relative windowed-convergence tolerance (derived from sigdig if unset)
+
 int impMuGroupN();                    // number of mu-referenced covariate groups (diagnostic)
 
 // M-step helpers (the EM loop is in impOuter):
@@ -39,6 +46,7 @@ void impMuInterceptStep();                         // simple mu intercept EM upd
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega
 void impSyncInitParToFullTheta();                  // sync optimizer reference to converged fullTheta
+void impGetEstPar(arma::vec& par);                 // current estimated free-parameter vector (EM convergence)
 
 // Run a single MAP pass over all subjects at the initial parameters (reuses the
 // FOCEI posthoc path, foceiOuterFinal) and populate the fit environment `e`.

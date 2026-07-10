@@ -160,6 +160,13 @@ void impOuter(Environment e) {
   int cores = impCores();
   if (cores < 1) cores = 1;
 
+  // Convergence controller + proposal-scale adaptation (NONMEM ISCALE/IACCEPT/CTYPE).
+  double iaccept = impIaccept();
+  double iscaleMin = impIscaleMin();
+  double iscaleMax = impIscaleMax();
+  int nConvWindow = impNconvWindow();
+  double ctol = impCtol();
+
   arma::mat condMean;
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
@@ -178,14 +185,29 @@ void impOuter(Environment e) {
   impGetOmega(Om0);
   arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
 
+  std::vector<double> objTrace, gammaTrace, neffTrace;
+  std::vector<arma::vec> parHist;
+  bool converged = false;
+  int iterRun = 0;
+
   arma::vec r(neta);
   for (int iter = 0; iter < nIter; ++iter) {
     if (iter > 0) impReMap();
-    Environment* stash = (iter == nIter - 1) ? &e : nullptr;
+    // Stash the E-step diagnostics on every iteration so the fit environment
+    // reflects the last iteration actually run (the loop may stop early).
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(),
-             condMean, condVar, Li, Neff, sampS, sampZk, stash);
+             condMean, condVar, Li, Neff, sampS, sampZk, &e);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
+    // Mean effective-sample fraction (importance-sampling "acceptance ratio").
+    double accFrac = 0.0; int nAcc = 0;
+    for (int id = 0; id < nsub; ++id)
+      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isample; ++nAcc; }
+    if (nAcc > 0) accFrac /= (double)nAcc;
+    objTrace.push_back(obj);
+    gammaTrace.push_back(gamma);
+    neffTrace.push_back(accFrac);
+    iterRun = iter + 1;
 
     // M-step.  First a Newton step on the non-mu structural thetas from the
     // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
@@ -226,6 +248,55 @@ void impOuter(Environment e) {
     Omega /= (double)nsub;
     Omega %= omMask;
     impSetOmega(Omega, diagXform);
+
+    // Record the current estimates for the parameter-stability half of the test.
+    arma::vec parNow; impGetEstPar(parNow);
+    parHist.push_back(parNow);
+
+    // Windowed convergence check (NONMEM-style CTYPE).  Requires all of:
+    //  (a) the mean absolute objective change over the trailing nConvWindow
+    //      iterations, relative to the current objective, is below ctol
+    //      (window-averaging suppresses the per-iteration Monte-Carlo noise);
+    //  (b) the estimates have stopped drifting -- the max relative net change of
+    //      any parameter across the window is below ctol -- so a low-leverage
+    //      parameter (e.g. a small-endpoint sigma barely moving the objective)
+    //      still converging does not trip an objective-only test;
+    //  (c) the proposal scale gamma has settled, so objective drift while gamma
+    //      is still adapting is not mistaken for convergence.
+    if (nConvWindow > 0 && R_finite(obj) &&
+        (int)objTrace.size() >= nConvWindow + 1) {
+      int n = (int)objTrace.size();
+      double s = 0.0;
+      for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
+      double objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
+      const arma::vec& parOld = parHist[n - nConvWindow - 1];
+      double parMetric = arma::max(arma::abs(parNow - parOld) / (arma::abs(parOld) + 1e-8));
+      // A settled parameter still has ~1-2% Monte-Carlo net drift across the
+      // window, so this gate sits above that floor: it is a safety against
+      // premature stopping on a systematically-drifting low-leverage parameter,
+      // not a precision requirement (the objMetric gate carries the precision).
+      double parTol = 0.02;
+      double gWin0 = gammaTrace[n - nConvWindow - 1];
+      bool gammaStable = std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0);
+      if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
+    }
+
+    // Adapt the proposal scale gamma (NONMEM ISCALE) treating iaccept as an
+    // effective-sample-fraction FLOOR, not a rigid target: the effective sample
+    // size is maximized near gamma = 1 (the Laplace proposal matches a Gaussian
+    // posterior), so deliberately forcing accFrac down to iaccept would only add
+    // Monte-Carlo noise.  gamma is left at the efficient starting value while
+    // coverage is healthy (accFrac >= iaccept) and inflated only when coverage
+    // drops below the floor (heavy-tailed/skewed posterior), with a gentle
+    // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
+    // correct for gamma, so this changes only the variance, not the estimates.
+    if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
+      double fac = std::sqrt(iaccept / accFrac);
+      if (fac > 1.25) fac = 1.25;
+      gamma *= fac;
+      if (gamma < iscaleMin) gamma = iscaleMin;
+      if (gamma > iscaleMax) gamma = iscaleMax;
+    }
   }
 
   // Finalize the fit at the converged estimates.
@@ -246,5 +317,10 @@ void impOuter(Environment e) {
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
   e["impNiter"]    = nIter;
+  e["impIter"]     = iterRun;
+  e["impConverged"] = converged;
+  e["impObjTrace"] = wrap(objTrace);
+  e["impGammaTrace"] = wrap(gammaTrace);
+  e["impNeffFrac"] = wrap(neffTrace);
   e["impMuGroupN"] = impMuGroupN();
 }
