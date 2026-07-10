@@ -681,13 +681,15 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // muK is the per-component typical value of the mixed eta (paper's mu_k); w the
 // current mixture weights.  errType 0=additive, 1=proportional, 6=lognormal.
 //[[Rcpp::export]]
-List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp,
+List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
                   int errType, int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepMixDraw before rpemMstepMix");
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix, nEta = rpemOp.nEta;
-  if ((int)muK.size() != K || (int)w.size() != K) stop("muK and w must have K entries");
-  if ((int)etaForComp.size() != K) stop("etaForComp must have K entries");
+  int nParam = muK.nrow();                       // one mix() call (mixed parameter) per row
+  if (muK.ncol() != K || (int)w.size() != K) stop("muK/w must have K components");
+  if (etaForComp.nrow() != nParam || etaForComp.ncol() != K)
+    stop("etaForComp must be nParam x K");
 
   std::vector<double> logw(K);
   for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
@@ -727,7 +729,7 @@ List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp,
 
   int ci = 0, cj = 0, ck = 0;
   double clogp = rpemOp.logp[0];
-  std::vector<double> sumTk(K, 0.0), sumTTk(K, 0.0);
+  std::vector<double> sumTk((size_t)nParam * K, 0.0), sumTTk((size_t)nParam * K, 0.0);
   std::vector<long> countK(K, 0);
   double sumSS = 0.0; long sumNobs = 0, m = 0, naccept = 0;
   for (int t = 0; t < total; ++t) {
@@ -740,11 +742,17 @@ List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp,
     double logA = (logw[pkh] + plogp - logn[pih]) - (logw[ck] + clogp - logn[ci]);
     if (log(u4) < logA) { ci = pih; cj = pjh; ck = pkh; clogp = plogp; ++naccept; }
     if (t >= burn) {
-      // per-component active eta: shared-eta maps every component to eta 0; split-ETA
-      // maps component k to its own eta (etaForComp[k]) -> its own Sigma^(k).
-      double eta = rpemOp.etaS[((size_t)ci * nG + cj) * nEta + etaForComp[ck]];
-      double theta = muK[ck] + eta;
-      sumTk[ck] += theta; sumTTk[ck] += theta * theta; ++countK[ck];
+      // one latent class label ck governs every mixed parameter; accumulate each
+      // parameter's per-component typical value using that parameter's active eta
+      // (shared-eta -> one eta per parameter; split-ETA -> its own eta per component).
+      size_t etaBase = ((size_t)ci * nG + cj) * nEta;
+      for (int p = 0; p < nParam; ++p) {
+        double eta = rpemOp.etaS[etaBase + etaForComp(p, ck)];
+        double theta = muK(p, ck) + eta;
+        sumTk[(size_t)p * K + ck] += theta;
+        sumTTk[(size_t)p * K + ck] += theta * theta;
+      }
+      ++countK[ck];
       int nobsi = rpemOp.nobs[ci];
       size_t r = ((size_t)ci * nG + cj) * K + ck;
       if (errType == 6) {
@@ -759,17 +767,19 @@ List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp,
       sumNobs += nobsi; ++m;
     }
   }
-  NumericVector muNew(K), wNew(K), omegaNew(nEta);
+  NumericMatrix muNew(nParam, K); NumericVector wNew(K), omegaNew(nEta);
   std::vector<double> sumSSk(nEta, 0.0);   // within-component SS grouped by active eta
   std::vector<long> countEta(nEta, 0);
   for (int k = 0; k < K; ++k) {
-    if (countK[k] > 0) {
-      muNew[k] = sumTk[k] / (double)countK[k];
-      int a = etaForComp[k];             // components sharing an eta pool into its Sigma
-      sumSSk[a] += sumTTk[k] - (double)countK[k] * muNew[k] * muNew[k];
-      countEta[a] += countK[k];
-    } else {
-      muNew[k] = muK[k];                 // component starved this iteration: hold
+    for (int p = 0; p < nParam; ++p) {
+      if (countK[k] > 0) {
+        muNew(p, k) = sumTk[(size_t)p * K + k] / (double)countK[k];
+        int a = etaForComp(p, k);        // components sharing an eta pool into its Sigma
+        sumSSk[a] += sumTTk[(size_t)p * K + k] - (double)countK[k] * muNew(p, k) * muNew(p, k);
+        countEta[a] += countK[k];
+      } else {
+        muNew(p, k) = muK(p, k);         // component starved this iteration: hold
+      }
     }
     wNew[k] = (double)countK[k] / (double)m;
   }

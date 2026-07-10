@@ -1101,14 +1101,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepMix
-List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp, int errType, int nTrials, int burn);
+List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp, int errType, int nTrials, int burn);
 RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP etaForCompSEXP, SEXP errTypeSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type muK(muKSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type muK(muKSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type etaForComp(etaForCompSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type etaForComp(etaForCompSEXP);
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
