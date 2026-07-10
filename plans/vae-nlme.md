@@ -277,16 +277,35 @@ mixesti[j] (inner.cpp:3338) = best component per physical subject. setIndMixest_
 is rxode2ptr.h:190 (extern, ptr table idx 50) -- a C++/solve-level hook, NOT an
 R rxSolve param.
 
-RE-ARCHITECTURE NEEDED (major, focused next session): build the VAE decoder like
-the INNER model (.rxFinalizeInner form keeping rxEq(mixest,k) + state sensitivities
-rx__sens_*, combined by chain rule) rather than the analytic cov aug model, and
-drive the per-id solve at the C++ level with setIndMixest(ind, getRxMixFromId(id))
-over nSub*nMix ids. Then .vaeToFit concatenated etaMat + mixNum/mixList (saem
-.saemMixFix); training decoder sets mixest per id. Kernel (vaeFoceLik hard
-assignment) already ready and tested; this decoder re-arch is the last piece.
-NOTE the current decoder uses .foceiAnalyticSolveFA (R rxSolve of the cov aug
-model) -- convenient rx_f1_<eta> columns but no mixest hook; the inner-model path
-trades those columns for the C++ chain-rule + mixest solve loop.
+CONFIRMED ARCHITECTURE (user, 2026-07-10): reuse the FOCEi inner likelihood at
+the C++ level; DO NOT reimplement it (drop hand-rolled vaeFoceLik Laplace) and DO
+NOT use the nlmixr2 R interface (nlmixr2(est="focei")) every call -- that is
+unnecessary overhead. "don't run focei" = don't run the OUTER optimizer.
+
+C++ inner interface (all in inner.cpp, file-local, operate on global op_focei):
+  double  likInner0(double *eta, int id)        # individual objective at eta
+  double *lpInner(double *eta, double *g, int id) # g = d objective / d eta
+  void    updateTheta(double *theta)            # single-threaded, before parallel
+  getRxMixFromId(id)=floor(id/nSub)+1; setIndMixest(ind,...) # mixture per id
+Setup: foceiFitCpp_ (inner.cpp:8177) prepares an R env {inner model (ui$foceiModel
+inner), dataSav (.foceiPreProcessData), thetaIni (=ui$thetaIniMix), mixIdx
+(=ui$thetaMixIndex), rxInv (=rxSymInvCholCreate(omega)), etaMat, control} and
+calls foceiSetup_ (inner.cpp:8207). foceiSetup_ is R-exported.
+
+BUILD (major focused effort): (1) R helper .vaeInnerSetup(ui2, data, theta, omega,
+etaMat, control) replicating that env prep + calling foceiSetup_ ONCE; (2) NEW
+inner.cpp export vaeInnerLik(etaMat[nSub*nMix,neta], cores) -- parallel OpenMP loop
+(setRxThreadId) over ids calling likInner0 (+lpInner for gradient), combine per
+physical subject (mixture logsumexp already in vaeFoceLik logic), return obji +
+gradients + mixest; (3) rewire TRAINING (.vaeElboStep decoder term -> vaeInnerLik/
+lpInner, updateTheta per M-step) and the FIT (.vaeToFit -> vaeInnerLik at final
+etas for objective/EBEs/mixNum/mixList) to the C++ inner interface. This gives
+mixtures + multiple endpoints + multiple error structures + log-likelihood +
+censoring + OpenMP, all reused, none reimplemented.
+CURRENT STATE: .vaeToFit uses nlmixr2(est="focei",maxOuter=0) as a WORKING but
+SUBOPTIMAL placeholder (reuses the inner problem but via the R interface); replace
+with the C++ vaeInnerLik driver. vaeFoceLik/vaeLinPrecomp/vaeObjective/vaeCov are
+now UNUSED by the fit (superseded by the inner reuse) -- candidates for removal.
 Other REMAINING: dual OFV (IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
 general error-model R-scale in cov (additive exact now).
 
