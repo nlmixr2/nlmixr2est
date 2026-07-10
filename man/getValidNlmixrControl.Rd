@@ -3,7 +3,7 @@
 %   R/foceiFast.R, R/focep.R, R/foi.R, R/irlsfocep.R, R/laplace.R,
 %   R/lbfgsb3c.R, R/muRefControl.R, R/mufocep.R, R/n1qn1.R, R/newuoa.R,
 %   R/nlm.R, R/nlminb.R, R/nls.R, R/optim.R, R/posthoc.R, R/sharedControl.R,
-%   R/uobyqa.R
+%   R/uobyqa.R, R/vae.R
 \name{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.bobyqa}
@@ -51,6 +51,7 @@
 \alias{getValidNlmixrCtl.tableControl}
 \alias{getValidNlmixrCtl.default}
 \alias{getValidNlmixrCtl.uobyqa}
+\alias{getValidNlmixrCtl.vae}
 \title{Get valid nlmixr control object}
 \usage{
 \method{getValidNlmixrCtl}{agq}(control)
@@ -144,6 +145,8 @@ getValidNlmixrCtl(control)
 \method{getValidNlmixrCtl}{default}(control)
 
 \method{getValidNlmixrCtl}{uobyqa}(control)
+
+\method{getValidNlmixrCtl}{vae}(control)
 }
 \arguments{
 \item{control}{nlmixr control object}
