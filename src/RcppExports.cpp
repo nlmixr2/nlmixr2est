@@ -1102,8 +1102,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepMix
-List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp, int errType, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP etaForCompSEXP, SEXP errTypeSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp, int errType, double addSd0, double propSd0, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP etaForCompSEXP, SEXP errTypeSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1111,9 +1111,11 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
     Rcpp::traits::input_parameter< IntegerMatrix >::type etaForComp(etaForCompSEXP);
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
+    Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
+    Rcpp::traits::input_parameter< double >::type propSd0(propSd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepMix(muK, w, etaForComp, errType, nTrials, burn));
+    rcpp_result_gen = Rcpp::wrap(rpemMstepMix(muK, w, etaForComp, errType, addSd0, propSd0, nTrials, burn));
     return rcpp_result_gen;
 END_RCPP
 }

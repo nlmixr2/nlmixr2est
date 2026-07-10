@@ -29,9 +29,17 @@ omega, whereas RPEM separates the components (~0.11/1.71) and reports one omega 
 component -- so RPEM meets/exceeds SAEM's mixture values (the target bar).  The
 high-variance component's omega is still under-estimated (the known multi-eta E-step
 under-coverage), but SAEM does not separate per-component BSV at all.  test-rpem-mix-percomp.R.
-Still open: >1 mix() call, and the SAEM-representation backend benchmark.  Mixture
-component-probability SEs are intentionally not reported (not reported elsewhere in the
-ecosystem; mixtures keep covMethod "r,s").
+MULTIPLE mix() CALLS DONE: more than one mixed parameter sharing one latent class (same
+K + probabilities), e.g. ka and cl both mixed.  rpemMstepMix takes muK / etaForComp as
+nParam x K matrices and accumulates each parameter's per-component typical value under
+the shared class label (the E-step and MH loop are unchanged, since setIndMixest forces
+the component across all mix() calls).  COMBINED RESIDUAL DONE: mixtures now support
+`add + prop` -- rpemMstepMix accumulates per-(subject, sample, component) visit counts
+and guarded-Newton-maximizes the shared (add.sd^2, prop.sd^2) over the stored cp/dv (the
+same optimizer as the non-mixture combined M-step; add/prop/lnorm keep the closed-form
+pooled SS).  Still open: mixtures x power/TBS residual, and the SAEM-representation backend
+benchmark.  Mixture component-probability SEs are intentionally not reported (not reported
+elsewhere in the ecosystem; mixtures keep covMethod "r,s").
 
 ## Two backends to build and compare
 

@@ -682,7 +682,7 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // current mixture weights.  errType 0=additive, 1=proportional, 6=lognormal.
 //[[Rcpp::export]]
 List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
-                  int errType, int nTrials, int burn) {
+                  int errType, double addSd0, double propSd0, int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepMixDraw before rpemMstepMix");
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix, nEta = rpemOp.nEta;
@@ -690,6 +690,8 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
   if (muK.ncol() != K || (int)w.size() != K) stop("muK/w must have K components");
   if (etaForComp.nrow() != nParam || etaForComp.ncol() != K)
     stop("etaForComp must be nParam x K");
+  bool doComb = (errType == 2);                  // combined add+prop: no closed form
+  std::vector<long> counts3(doComb ? (size_t)nsub * nG * K : 0, 0);  // per-(i,j,k) visits
 
   std::vector<double> logw(K);
   for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
@@ -753,6 +755,7 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
         sumTTk[(size_t)p * K + ck] += theta * theta;
       }
       ++countK[ck];
+      if (doComb) counts3[((size_t)ci * nG + cj) * K + ck]++;
       int nobsi = rpemOp.nobs[ci];
       size_t r = ((size_t)ci * nG + cj) * K + ck;
       if (errType == 6) {
@@ -792,9 +795,61 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
   double wFloor = 1e-3, wsum = 0.0;
   for (int k = 0; k < K; ++k) { if (wNew[k] < wFloor) wNew[k] = wFloor; wsum += wNew[k]; }
   for (int k = 0; k < K; ++k) wNew[k] /= wsum;
-  double addNew = sqrt(sumSS / (double)sumNobs);
+  // Residual: additive/proportional/lognormal use the pooled SS; combined (add+prop)
+  // has no closed form, so guarded-Newton-maximize the shared (a=add^2, b=prop^2)
+  // Gaussian log-likelihood over the accepted (i,j,k) states' stored cp/dv (mixture
+  // stride) -- the same optimizer as the non-mixture combined M-step.
+  double addNew, propNew = NA_REAL;
+  if (doComb) {
+    const double eps = 1e-12;
+    auto over = [&](double aa, double bb, double &Q, double *ga, double *gb,
+                    double *Haa, double *Hab, double *Hbb) {
+      Q = 0.0; if (ga) { *ga = *gb = *Haa = *Hab = *Hbb = 0.0; }
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i];
+        for (int j = 0; j < nG; ++j) for (int k = 0; k < K; ++k) {
+          long c = counts3[((size_t)i * nG + j) * K + k]; if (!c) continue;
+          long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
+            double wcp = cp * cp, r2 = rr * rr, V = aa + bb * wcp; if (V < eps) V = eps;
+            double invV = 1.0 / V;
+            Q += (double)c * (-0.5 * log(V) - 0.5 * r2 * invV);
+            if (ga) {
+              double g = -0.5 * invV + 0.5 * r2 * invV * invV;
+              double h = 0.5 * invV * invV - r2 * invV * invV * invV;
+              *ga += c * g; *gb += c * wcp * g;
+              *Haa += c * h; *Hab += c * wcp * h; *Hbb += c * wcp * wcp * h;
+            }
+          }
+        }
+      }
+    };
+    double a = addSd0 * addSd0, bpar = propSd0 * propSd0, Qcur; over(a, bpar, Qcur, 0,0,0,0,0);
+    for (int it = 0; it < 200; ++it) {
+      double Qtmp, ga, gb, Haa, Hab, Hbb;
+      over(a, bpar, Qtmp, &ga, &gb, &Haa, &Hab, &Hbb);
+      if (fabs(ga) + fabs(gb) < 1e-9) break;
+      double det = Haa * Hbb - Hab * Hab, da, db;
+      if (Haa < 0.0 && det > 0.0) { da = -(Hbb * ga - Hab * gb) / det; db = -(-Hab * ga + Haa * gb) / det; }
+      else { double sc = 1.0 / (fabs(Haa) + fabs(Hbb) + 1.0); da = sc * ga; db = sc * gb; }
+      double step = 1.0; bool ok = false;
+      for (int ls = 0; ls < 40; ++ls) {
+        double an = a + step * da, bn = bpar + step * db;
+        if (an < eps) an = eps; if (bn < eps) bn = eps;
+        double Qn; over(an, bn, Qn, 0,0,0,0,0);
+        if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; }
+        step *= 0.5;
+      }
+      if (!ok) break;
+    }
+    addNew = sqrt(a); propNew = sqrt(bpar);
+  } else {
+    addNew = sqrt(sumSS / (double)sumNobs);
+  }
   return List::create(_["muK"] = muNew, _["omega"] = omegaNew, _["w"] = wNew,
-                      _["addSd"] = addNew, _["accept"] = (double)naccept / total);
+                      _["addSd"] = addNew, _["propSd"] = propNew,
+                      _["accept"] = (double)naccept / total);
 }
 
 // K=1 M-step with a covariate design (mu2, D22).  Generalizes rpemMstepK1's mu
