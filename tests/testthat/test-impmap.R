@@ -572,3 +572,34 @@ test_that("Mixture: recovers the sub-population proportion and the two clearance
   # Omega did not collapse
   expect_true(.fi$omega[1, 1] > 0.01)
 })
+
+test_that("IOV: an inter-occasion-variability model fits (BSV eta on a param without IOV)", {
+  # This is the case that exercised the rxFromSE Subs/relational path: a between-
+  # subject eta (eta.ka) on a parameter that does NOT carry the IOV (iov.cl).
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ 0.1 | occ
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_md
+  .d$occ <- 1L
+  .d$occ[.d$TIME >= 144] <- 2L
+  .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+  # the fit completes and reports the per-occasion IOV estimates
+  expect_true("iov.cl" %in% names(.fi))
+  expect_true(is.finite(.fi$objDf$OBJF[1]))
+  # the structural population parameters come back finite and sensible
+  expect_true(all(is.finite(fixef(.fi))))
+  expect_true(fixef(.fi)["tcl"] > 0 && fixef(.fi)["tcl"] < 2)
+})
