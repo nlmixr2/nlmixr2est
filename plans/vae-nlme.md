@@ -129,11 +129,14 @@ Controls / performance / reproducibility
 
 ## 6. Phased plan (each phase = commit checkpoint)
 
-Phase 0 -- Reference capture & spec.
+Phase 0 -- Reference capture & spec. [DONE]
 - Reverse-engineer encoder.c / pop_parameter.c; write plans/vae-encoder-spec.md
-  (exact layer config, init, gate order, FC layout, standardization).
+  (exact layer config, init, gate order, FC layout, standardization). DONE.
 - Golden fixtures: fixed seed + tiny input -> encoder forward outputs, ELBO,
-  gradients from the prototype/torch, saved under tests/testthat/fixtures/vae/.
+  gradients from the torch oracle, saved under tests/testthat/fixtures/vae/.
+  DONE via tools/vaeGenEncoderFixtures.R -> encoder_golden.rds (torch 0.17.0
+  oracle; forward + autograd grads for all encoder params, all finite).
+- pop_parameter.c (M-step/covsel) detail deferred to a Phase 5 spec.
 
 Phase 1 -- Dispatch skeleton (R).
 - vaeControl() (full knob set above) + nlmixr2Est.vae + vaeRxUiGet* handlers;
