@@ -251,14 +251,23 @@ Polish DONE:
   eta-sensitivities when the analytic sens states blow up but f/R are finite
   (inner.cpp-style). Jump event sensitivities already on (aug model
   eventSens="jump"). Decoder/fit tests still pass.
-REMAINING:
-- Mixture fit-object etaMat: for nMix>1 the fit etaMat is the mix-1 etas
-  concatenated with mix-2 etas, ... (rows = N*nMix). FOLLOW how saem passes
-  mixture models to focei (.saemMixFix / mixList) to assemble it. FORWARD-LOOKING:
-  the VAE encoder/M-step do not yet PRODUCE mixture components, so nMix>1 fits
-  aren't reachable end-to-end -- wire when mixture training lands.
-- dual OFV (add IS -2LL, IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
-  general error-model R-scale in cov (additive exact now).
+Mixtures -- architecture (per user): mixture is ALL in the model (mix(v1,v2,..)
+via ui$mixProbs / ui$saemNMix; component selected by data column mymixest=m, the
+mymixest==k form the inner/analytic model already keeps -- focei.R:1212). No
+M-step extension: the likelihood expands to nMix*N pseudo-subjects, each
+component gets its own MAP eta; mixnum=argmax assigned for the fit.
+- DONE: vaeFoceLik returns zStar for EVERY (component, subject) -- nMix*N rows
+  component-major (mix-1 all subjects, then mix-2, ...); + obji (combined -2
+  logsumexp) + mixest. test-vae-lik.R 8/8. nMix=1 unchanged.
+REMAINING mixture integration (kernel ready; needs a concrete mix() model to
+test e2e): (1) .vaeDataPrep detect nMix/mixProbs from ui; (2) .vaeLinPrecomp
+solve the decoder PER COMPONENT by setting mymixest=m in the event data (reuses
+the existing aug model -- it keeps the mymixest form) -> per-component
+f0/J0/R; (3) .vaeToFit build the concatenated etaMat (nMix*N) + mixNum/mixList
+from zStar/mixest, following saem .saemMixFix; (4) training decoder solve sets
+mymixest per subject. This is the last piece for FOCEI feature parity.
+Other REMAINING: dual OFV (IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
+general error-model R-scale in cov (additive exact now).
 
 Phase 7 -- Error-model parity.
 - Proportional/combined, transform-both-sides, and M2/M3/M4 censoring in the
