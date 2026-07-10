@@ -158,9 +158,17 @@ Phase 2 -- C++ LSTM encoder (fwd + analytic bwd). [DONE]
   torch oracle ~1e-7; analytic backward vs torch autograd ~1e-6; vs finite
   differences ~5e-7. 13/13 expectations pass.
 
-Phase 3 -- Decoder + analytic d(pred)/d(eta) via rxode2.
-- Solve structural model; extract pred + per-obs eta-Jacobian from focei
-  sensitivity machinery. Validate on theophylline closed-form + FD.
+Phase 3 -- Decoder + analytic d(pred)/d(eta) via rxode2. [DONE]
+- R/vaeDecoder.R REUSES focei's analytic sensitivity machinery (per user):
+  .vaeDecoderModel wraps .foceiAnalyticAugModelDirs(ui, dirs=etas) -> augmented
+  rxode2 model emitting rx_predf_ (f), rx_f1_<eta> (df/deta), rx_rvarf_ (R),
+  rx_rvar1_<eta> (dR/deta) as solve columns; .vaeDecoderSolveSubject reads them
+  via .foceiAnalyticSolveFA. No ODE-sensitivity code re-implemented.
+- .vaeDecoderPxz: ELBO data term p(x|z) + d(p_x_z)/d(eta) = sum(rf*a + rR*aR)
+  reusing focei rho(f,R) partials; this IS the encoder's dLoss/dz upstream
+  (z = z_pop + eta).
+- Verified (test-vae-decoder.R, 12/12): f vs theophylline closed form ~5e-12;
+  df/deta vs FD ~1e-9; R=add.err^2, dR/deta=0 additive; p(x|z) grad vs FD ~1e-6.
 
 Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A).
 - ELBO gradient chaining encoder bwd with decoder sensitivities; Adam in C++;
