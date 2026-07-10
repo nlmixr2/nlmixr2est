@@ -8687,26 +8687,53 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
   // per-id predictions (F) gathered thread-locally, converted to an R list after
   std::vector<std::vector<double> > pf(preds ? nid : 0);
-  const bool doParallel = (cores > 1);
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  // rxode2 sizes every per-thread solve buffer by op->cores (1 for models it
+  // flags not thread safe, e.g. linCmtB); more external threads than that
+  // index past the pools and corrupt the heap.
+  cores = min2(cores, getOpCores(op));
+  // Mixture components (id = m*nsub + subject) share the physical subject's
+  // rx_solving_options_ind struct, so parallelize over physical subjects and
+  // keep the component loop serial within a work item.
+  int nsub = (int)getRxNsub(rx);
+  int nMix = (nsub > 0 && nid % nsub == 0) ? nid / nsub : 0;
+  if (nMix == 0) { nsub = nid; nMix = 1; cores = 1; } // unexpected shape: serial
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) {
+    sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+  }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
-  for (int id = 0; id < nid; ++id) {
+  for (int i = 0; i < nsub; ++i) {
+    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
-    std::vector<double> eta(neta);
-    for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
-    if (grad) {
-      std::vector<double> g(neta);
-      lpInner(&eta[0], &g[0], id);
-      for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+    for (int m = 0; m < nMix; ++m) {
+      int id = base + m * nsub;
+      std::vector<double> eta(neta);
+      for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
+      if (grad) {
+        std::vector<double> g(neta);
+        lpInner(&eta[0], &g[0], id);
+        for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+      }
+      obj[id] = likInner0(&eta[0], id);
+      if (preds) {
+        arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
+        pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
+      }
     }
-    obj[id] = likInner0(&eta[0], id);
-    if (preds) {
-      arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
-      pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
-    }
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) {
+    _innerParallel.store(0, std::memory_order_release);
+    sortIds(rx, 0);
   }
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
