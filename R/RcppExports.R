@@ -180,6 +180,10 @@ fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }
 
+fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores) {
+    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores)
+}
+
 vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }

@@ -8845,6 +8845,61 @@ List fsaemInnerMap_(int cores) {
   return List::create(_["eta"] = etaHat, _["hess"] = hess, _["ok"] = ok);
 }
 
+// f-SAEM independent Metropolis-Hastings kernel (paper Alg 2 / Eq 23).  Runs on
+// the FOCEi inner allocation: the Gaussian proposal N(eta_hat_i, Gamma_i) is
+// independent of the chain state, and the joint target p(y_i, eta_i) is the
+// FOCEi inner objective (exp(-likInner0)).  For each chain c and subject id a
+// candidate is drawn, accepted/rejected by the exact IMH ratio, and the updated
+// state returned.  `etaCur` is chain-major ((nchain*nsub) x neta, row = c*nsub +
+// id); `cholGamma` row id is the vectorized lower-triangular L (col-major) with
+// Gamma_i = L L'.  The proposal-density normalizers (log|L|, (p/2)log 2pi)
+// cancel in the ratio, so only the quadratic forms enter.
+// Sign: likInner0 = -log p(y_i, eta_i) + C (the minimized inner objective), so
+// log alpha = (fCur - fProp) + (0.5||z||^2 - 0.5||L^-1(eta_cur - eta_hat)||^2).
+//[[Rcpp::export]]
+List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
+                     NumericMatrix cholGamma, int nchain, int cores) {
+  (void)cores;
+  const int neta = op_focei.neta;
+  if (neta == 0) stop("fsaemImhKernel_ requires a model with random effects");
+  const int nsub = etaHat.nrow();
+  NumericMatrix etaOut = clone(etaCur);
+  IntegerVector nAcc(nsub);
+  std::vector<arma::mat> L(nsub), Linv(nsub);
+  std::vector<bool> good(nsub, false);
+  for (int id = 0; id < nsub; ++id) {
+    arma::mat Lid(neta, neta);
+    for (int j = 0; j < neta*neta; ++j) Lid(j) = cholGamma(id, j);
+    if (Lid.is_finite()) {
+      arma::mat Li;
+      if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
+    }
+  }
+  GetRNGstate();
+  for (int c = 0; c < nchain; ++c) {
+    for (int id = 0; id < nsub; ++id) {
+      int row = c*nsub + id;
+      if (!good[id]) continue; // no valid proposal -> keep current state
+      arma::vec ecur(neta), ehat(neta), z(neta);
+      for (int j = 0; j < neta; ++j) { ecur(j) = etaOut(row, j); ehat(j) = etaHat(id, j); z(j) = norm_rand(); }
+      arma::vec eprop = ehat + L[id]*z;
+      std::vector<double> ec(neta), ep(neta);
+      for (int j = 0; j < neta; ++j) { ec[j] = ecur(j); ep[j] = eprop(j); }
+      double fCur = likInner0(ec.data(), id);
+      double fProp = likInner0(ep.data(), id);
+      if (!R_FINITE(fProp)) continue; // reject un-solvable candidate
+      arma::vec dCur = Linv[id]*(ecur - ehat);
+      double logAlpha = (fCur - fProp) + 0.5*(arma::dot(z, z) - arma::dot(dCur, dCur));
+      if (R_FINITE(fCur) ? (std::log(unif_rand()) < logAlpha) : true) {
+        for (int j = 0; j < neta; ++j) etaOut(row, j) = eprop(j);
+        nAcc[id]++;
+      }
+    }
+  }
+  PutRNGstate();
+  return List::create(_["eta"] = etaOut, _["nAcc"] = nAcc, _["nchain"] = nchain);
+}
+
 //[[Rcpp::export]]
 RObject vaeInnerFree_() {
   rxOptionsFreeFocei();

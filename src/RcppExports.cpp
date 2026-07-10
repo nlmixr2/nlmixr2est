@@ -685,6 +685,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// fsaemImhKernel_
+List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat, NumericMatrix cholGamma, int nchain, int cores);
+RcppExport SEXP _nlmixr2est_fsaemImhKernel_(SEXP etaCurSEXP, SEXP etaHatSEXP, SEXP cholGammaSEXP, SEXP nchainSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaCur(etaCurSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaHat(etaHatSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type cholGamma(cholGammaSEXP);
+    Rcpp::traits::input_parameter< int >::type nchain(nchainSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(fsaemImhKernel_(etaCur, etaHat, cholGamma, nchain, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeInnerFree_
 RObject vaeInnerFree_();
 RcppExport SEXP _nlmixr2est_vaeInnerFree_() {

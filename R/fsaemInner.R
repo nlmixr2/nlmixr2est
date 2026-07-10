@@ -99,3 +99,32 @@
   })
   list(eta = .r$eta, gamma = .gamma, hess = .hess, ok = .r$ok)
 }
+
+#' Run `nchain` independent Metropolis-Hastings sweeps of the f-SAEM kernel.
+#'
+#' @param map result of `.fsaemInnerMap()` (proposal mean + covariance)
+#' @param etaCur chain-major current state, ((nchain*nsub) x neta), row = c*nsub + id
+#' @param nchain number of chains
+#' @param nsweep number of IMH sweeps to run (each sweep = one proposal per
+#'   subject per chain); the SAEM simulation step uses a small number
+#' @return list with updated `eta` and per-subject acceptance count `nAcc`
+#'   (summed over sweeps and chains)
+#' @noRd
+.fsaemImh <- function(map, etaCur, nchain, nsweep = 1L, cores = 1L) {
+  .neta <- ncol(map$eta)
+  .nsub <- nrow(map$eta)
+  # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed)
+  .cholGamma <- t(vapply(seq_len(.nsub), function(i) {
+    .g <- map$gamma[[i]]
+    .L <- tryCatch(t(chol(.g)), error = function(e) matrix(NA_real_, .neta, .neta))
+    as.numeric(.L)
+  }, numeric(.neta*.neta)))
+  .nAcc <- integer(.nsub)
+  .eta <- etaCur
+  for (.s in seq_len(nsweep)) {
+    .r <- fsaemImhKernel_(.eta, map$eta, .cholGamma, as.integer(nchain), as.integer(cores))
+    .eta <- .r$eta
+    .nAcc <- .nAcc + .r$nAcc
+  }
+  list(eta = .eta, nAcc = .nAcc)
+}
