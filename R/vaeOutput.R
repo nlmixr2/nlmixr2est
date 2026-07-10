@@ -88,9 +88,11 @@
 #' the C++ kernel. `zPopMat` is the per-subject population center; `Rscale`
 #' multiplies the base variance (a/aFit)^2 for additive.
 #' @noRd
-.vaeObjective <- function(pc, zPopMat, omega, Rscale = 1, cores = 1L) {
+.vaeObjective <- function(pc, zPopMat, omega, Rscale = 1, cores = 1L,
+                          nMix = 1L, mixProb = 1) {
   vaeFoceLik(pc$f0, pc$J0, pc$R, pc$y, pc$cens, pc$limit, pc$zLin, zPopMat, omega,
-             as.integer(pc$subjOffset), Rscale, 0L, 30L, 1e-8, as.integer(cores))
+             as.integer(pc$subjOffset), Rscale, 0L, 30L, 1e-8, as.integer(cores),
+             as.integer(nMix), as.numeric(mixProb))
 }
 
 #' Thread count for the VAE likelihood: from the rxode2 control object's `cores`,

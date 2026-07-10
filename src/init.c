@@ -32,7 +32,7 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 // FOCEi
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_vaeFoceLik(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_vaeFoceLik(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
 SEXP _nlmixr2est_censNormalPartials_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -151,7 +151,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},
   {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},
   {"_nlmixr2est_vaeEncoderFwdBwd", (DL_FUNC) &_nlmixr2est_vaeEncoderFwdBwd, 13},
-  {"_nlmixr2est_vaeFoceLik", (DL_FUNC) &_nlmixr2est_vaeFoceLik, 15},
+  {"_nlmixr2est_vaeFoceLik", (DL_FUNC) &_nlmixr2est_vaeFoceLik, 17},
   {"_nlmixr2est_rxode2stateOde", (DL_FUNC) &_nlmixr2est_rxode2stateOde, 1},
   {"_nlmixr2est_iniLbfgsb3ptr", (DL_FUNC) &_nlmixr2est_iniLbfgsb3ptr, 1},
   {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
