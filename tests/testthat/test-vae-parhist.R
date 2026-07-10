@@ -39,3 +39,17 @@ test_that("est=vae captures the parameter walk and is reproducible", {
     nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)))
   expect_equal(fit$parHist, fit2$parHist)
 })
+
+test_that("est=vae does not perturb the caller's global RNG state", {
+  skip_on_cran()
+  ## the seed is set ONCE for the whole estimation (rxWithSeed in nlmixr2Est.vae)
+  ## and the caller's global .Random.seed is restored on exit
+  ctl <- vaeControl(itersBurnIn = 3L, iters = 4L, klWarmup = 2L, gammaIter = 3L,
+                    nGradStep = 2L, covariateSelection = FALSE, print = 0L)
+  set.seed(123); want <- runif(3)
+  set.seed(123)
+  invisible(suppressMessages(suppressWarnings(
+    nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl))))
+  got <- runif(3)
+  expect_equal(got, want)
+})

@@ -3,10 +3,9 @@
 # burn-in -> KL-anneal -> smoothing schedule. Orchestration is thin R; the heavy
 # work is the C++ encoder BPTT (vaeEncoderFwdBwd) and the rxode2 decoder solve.
 
-#' Initialize encoder parameters
+#' Initialize encoder parameters (RNG seeded once by the caller under rxWithSeed)
 #' @noRd
-.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0, seed = 1L) {
-  set.seed(seed)
+.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0) {
   nOff <- as.integer(zDim * (zDim - 1L) / 2L)
   outDim <- 2L * zDim + nOff
   .sd <- 1 / sqrt(hDim)
@@ -250,13 +249,14 @@
 #' @noRd
 .vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1,
                       parInfo = NULL, verbose = FALSE) {
+  ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
+  ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0, seed = control$seed)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
   adam <- .vaeAdamInit(params)
   zPop <- prep$zPop; omega <- prep$omega; a <- prep$a
   Lg <- control$nGradStep
-  set.seed(control$seed)
   .t <- 0L; last <- NULL
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)

@@ -254,9 +254,14 @@ nlmixr2Est.vae <- function(env, ...) {
   } else {
     assign("vaeControl", vaeControl(), envir = env)
   }
-  .fit <- .vaeFitModel(env)
-  if (isTRUE(env$vaeControl$returnVae)) return(.fit)
-  .vaeToFit(env, .fit)
+  ## Seed the ENTIRE estimation ONCE here (encoder init, Adam, reparam sampling,
+  ## and any random draws in the model / residual-table simulation) and restore
+  ## the caller's global RNG state afterward -- a fit never perturbs it, and a
+  ## given seed makes the whole process reproducible.
+  rxode2::rxWithSeed(env$vaeControl$seed, {
+    .fit <- .vaeFitModel(env)
+    if (isTRUE(env$vaeControl$returnVae)) .fit else .vaeToFit(env, .fit)
+  })
 }
 attr(nlmixr2Est.vae, "covPresent") <- TRUE
 attr(nlmixr2Est.vae, "unbounded") <- FALSE
