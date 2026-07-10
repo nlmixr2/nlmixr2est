@@ -18,6 +18,7 @@ int impNeta();
 int impNsample();
 double impGammaProp();
 int impCores();
+int impSetSolveCores(int cores);   // override solve cores (returns previous); forces mixture EM serial
 
 // 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
 double impLogDetOmegaInv5();
@@ -75,6 +76,11 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
+
+// ---- mixture (sub-population) support ----
+int impNmix();                                     // number of components (1 if none)
+double impMixProb(int j);                          // population proportion of component j (0-based)
+void impSetMixThetas(const arma::vec& theta);      // install absolute $MIX thetas (mean-posterior EM) + recompute proportions
 
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas

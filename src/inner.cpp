@@ -8279,6 +8279,17 @@ int impCores() {
   return getOpCores(getSolvingOptions(rx));
 }
 
+// Override the solve core count (returns the previous value).  Used to force the
+// mixture EM single-threaded: the expanded pseudo-subject inner solves are not
+// thread-safe for a mixture, so parallel E-step / innerOpt passes race.
+int impSetSolveCores(int cores) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int old = op->cores;
+  op->cores = cores;
+  return old;
+}
+
 // 0.5 * log|Omega^-1| ( = -0.5 * log|Omega| ), the per-iteration normalizer that
 // enters each subject's importance-sampling objective L_i.
 double impLogDetOmegaInv5() {
@@ -8314,6 +8325,35 @@ int impMuGroupN() {
 int impNtheta() { return (int)op_focei.ntheta; }
 
 bool impCovEnabled() { return op_focei.impCov; }
+
+// ---- mixture (sub-population) support -------------------------------------
+// impmap computes its OWN importance-sampling mixture posterior + proportion
+// update (NONMEM-style, separate from FOCEI's Laplace fInd->mixProb).  It only
+// READS op_focei.mixProb (the population proportions = the parameter) and reuses
+// the per-component MAP modes solved for the expanded pseudo-subjects.
+
+int impNmix() { return (int)op_focei.mixIdxN + 1; }        // number of components (1 if none)
+double impMixProb(int j) { return op_focei.mixProb[j]; }    // population proportion of component j (0-based)
+
+// Install absolute $MIX thetas (the multinomial-logit of the target proportions)
+// and recompute the population proportions / Jacobian -- used for the stable
+// mean-posterior EM update (mirrors the Omega-theta path in updateTheta()).
+void impSetMixThetas(const arma::vec& theta) {
+  for (int m = 0; m < (int)op_focei.mixIdxN; ++m)
+    op_focei.fullTheta[op_focei.mixIdx[m] - 1] = theta[m];
+  NumericVector curTheta(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, curTheta.begin());
+  IntegerVector mixIdx(op_focei.mixIdxN);
+  std::copy(&op_focei.mixIdx[0], &op_focei.mixIdx[0] + op_focei.mixIdxN, mixIdx.begin());
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  Function f = as<Function>(nlmixr2[".getMixFromLog"]);
+  NumericVector mp = f(curTheta, mixIdx);
+  std::copy(mp.begin(), mp.end(), &op_focei.mixProb[0]);
+  f = as<Function>(nlmixr2[".getMixJacFromLog"]);
+  NumericVector mj = f(curTheta, mixIdx);
+  std::copy(mj.begin(), mj.end(), &op_focei.mixProbGrad[0]);
+}
 
 // fullTheta indices of the estimated (non-fixed) thetas, in free-parameter order.
 void impGetEstThetaIdx(std::vector<int>& idx) {
@@ -8594,6 +8634,10 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
   focei_ind *fInd = &(inds_focei[id]);
   int nsamp = S.n_rows;
+  // Mixture: when called with an expanded pseudo-subject id, pin the theta-sens
+  // solve to that subject's mixture component (like likInner0), so the sensitivity
+  // reflects the component's structural parameters.
+  if (op_focei.mixIdxN != 0) setIndMixest(ind, getRxMixFromId(id));
   // The shared solve pool is sized for the theta-sensitivity model (the largest
   // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
   // to thetaSensNeq for these solves and restore on exit (mirrors the predNeq FD

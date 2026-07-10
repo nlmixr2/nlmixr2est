@@ -525,3 +525,50 @@ test_that("Censoring: the M-step gradient uses the analytic censored score (matc
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
 })
+
+test_that("Mixture: recovers the sub-population proportion and the two clearance groups", {
+  # two well-separated clearance groups (CL ~ 3 and ~ 9) with true proportion 0.6
+  .mkg <- function(cl0, ids) {
+    ka <- 1.5; v <- 8
+    do.call(rbind, lapply(ids, function(id) {
+      cli <- cl0 * exp(stats::rnorm(1, 0, 0.25))
+      tt <- seq(0.25, 24, by = 2)
+      cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
+      cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.12))
+      rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+            data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
+    }))
+  }
+  set.seed(11); rxode2::rxSetSeed(11)
+  .d <- rbind(.mkg(3.0, 1:30), .mkg(9.0, 31:50))
+  .d <- .d[order(.d$id, .d$time, -.d$evid), ]
+  m <- function() {
+    ini({
+      tka <- log(1.5); tcl1 <- log(2.5); tcl2 <- log(8); tv <- log(8)
+      p1 <- 0.5
+      eta.cl ~ 0.2
+      add.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka)
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(cen) <- ka * depot - cl / v * cen
+      cp <- cen / v
+      cp ~ add(add.sd)
+    })
+  }
+  .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+  .cl1 <- exp(unname(fixef(.fi)["tcl1"]))
+  .cl2 <- exp(unname(fixef(.fi)["tcl2"]))
+  .p1 <- unname(fixef(.fi)["p1"])
+  # the mean-posterior proportion update recovers the true 0.6 (does not collapse
+  # to a single component -- the collapse would drive p1 to 0/1 and Omega to 0)
+  expect_equal(.p1, 0.6, tolerance = 0.15)
+  # the two clearance groups stay separated (comp 1 low, comp 2 high)
+  expect_true(.cl2 > 1.8 * .cl1)
+  # Omega did not collapse
+  expect_true(.fi$omega[1, 1] > 0.01)
+})

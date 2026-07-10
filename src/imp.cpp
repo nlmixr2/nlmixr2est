@@ -32,19 +32,21 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
-                     Environment* eStash) {
+                     arma::mat& aMat, Environment* eStash) {
   double invGamma2 = 1.0 / (2.0 * gamma);
+  int Nm = impNmix();
+  int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
 
-  // Per-subject mode, information matrix H_i, log|H_i|, and the lower Cholesky
-  // factor of the proposal covariance gamma * H_i^-1 -- computed serially.
-  std::vector<arma::vec> modes(nsub);
-  std::vector<arma::mat> Hs(nsub);
-  std::vector<double> logDetH(nsub, 0.0);
-  std::vector<arma::mat> cholL(nsub);
-  std::vector<char> haveL(nsub, 0);
+  // Per-expanded-subject proposal (mode, information H_i, log|H_i|, lower Cholesky
+  // of gamma * H_i^-1) -- from the per-component MAP modes, computed serially.
+  std::vector<arma::vec> modes(nExp);
+  std::vector<arma::mat> Hs(nExp);
+  std::vector<double> logDetH(nExp, 0.0);
+  std::vector<arma::mat> cholL(nExp);
+  std::vector<char> haveL(nExp, 0);
   arma::vec mode(neta);
   arma::mat H(neta, neta, arma::fill::zeros);
-  for (int id = 0; id < nsub; ++id) {
+  for (int id = 0; id < nExp; ++id) {
     impGetMode(id, mode);
     modes[id] = mode;
     if (impGetHessian(id, H)) {
@@ -60,31 +62,40 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
     }
   }
 
-  condMean.set_size(nsub, neta);
-  condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
-  Li.set_size(nsub); Li.fill(NA_REAL);
-  Neff.set_size(nsub); Neff.fill(NA_REAL);
-
-  outS.assign(nsub, arma::mat());
-  outZk.assign(nsub, arma::vec());
+  // Per-expanded-subject E-step results (combined per base subject below).
+  arma::mat cmExp(nExp, neta, arma::fill::zeros);
+  std::vector<arma::mat> cvExp(nExp, arma::mat(neta, neta, arma::fill::zeros));
+  arma::vec LiExp(nExp); LiExp.fill(NA_REAL);
+  arma::vec NeffExp(nExp); NeffExp.fill(NA_REAL);
+  std::vector<char> okExp(nExp, 0);
+  outS.assign(nExp, arma::mat());
+  outZk.assign(nExp, arma::vec());
   seedEng(cores);
   uint32_t seed0 = getRxSeed1(cores);
   bool doPar = (cores > 1);
+  // Parallelize over base subjects, iterating a subject's mixture components
+  // serially within one thread.  A base subject's expanded pseudo-subjects (id =
+  // i + j*nsub) share the same underlying rxode2 solve rows, so evaluating two of
+  // its components concurrently would race on that solve buffer -- keeping them on
+  // one thread avoids the race while preserving nsub-way parallelism.  For Nm == 1
+  // this is the same nsub-iteration loop as before (bit-identical, same seeds).
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doPar)
 #endif
-  for (int id = 0; id < nsub; ++id) {
+  for (int i = 0; i < nsub; ++i) {
 #ifdef _OPENMP
     if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-    // fresh per-(iter,subject) stream, independent of thread count
-    setSeedEng1(seed0 + (uint32_t)((iter * nsub + id) * 2));
-    condMean.row(id) = modes[id].t();
-    if (haveL[id]) {
+    for (int j = 0; j < Nm; ++j) {
+      int id = i + j * nsub;
+      // fresh per-(iter, expanded-subject) stream, independent of thread count
+      setSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
+      cmExp.row(id) = modes[id].t();
+      if (!haveL[id]) continue;
       arma::mat S(isample, neta);
       for (int k = 0; k < isample; ++k) {
         arma::vec z(neta);
-        for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+        for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
         S.row(k) = (modes[id] + cholL[id] * z).t();
       }
       // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
@@ -99,43 +110,101 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
           invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
         // A proposal sample whose inner solve fails (NA/NaN, even after the
         // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
-        // giving it -Inf log-weight (weight 0), rather than poisoning the whole
-        // subject's conditional moments.
+        // giving it -Inf log-weight (weight 0).
         if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
       }
-      if (nGood == 0) {
-        // no usable sample: keep condMean at the mode (set above), condVar 0.
-#ifdef _OPENMP
-        if (doPar) setRxThreadId(-1);
-#endif
-        continue;
-      }
+      if (nGood == 0) continue;
       double qmax = q.max();
       arma::vec w = arma::exp(q - qmax);
       double sumw = arma::accu(w);
       arma::vec zk = w / sumw;
       outS[id] = S;
       outZk[id] = zk;
+      okExp[id] = 1;
       double logMeanExp = qmax + std::log(sumw / (double)isample);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) -
         0.5 * logDetH[id];
-      Li[id] = -(logMeanExp + Ci);
-      Neff[id] = 1.0 / arma::accu(arma::square(zk));
+      LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
+      NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
       arma::rowvec pbar = zk.t() * S;
-      condMean.row(id) = pbar;
+      cmExp.row(id) = pbar;
       arma::mat B(neta, neta, arma::fill::zeros);
       for (int k = 0; k < isample; ++k) {
         arma::rowvec dr = S.row(k) - pbar;
         B += zk[k] * (dr.t() * dr);
       }
-      condVar[id] = B;
+      cvExp[id] = B;
     }
 #ifdef _OPENMP
     if (doPar) setRxThreadId(-1);
 #endif
   }
 
-  // On the last iteration, stash the per-subject sampler diagnostics.
+  // Combine over mixture components per base subject.  For a single component
+  // (Nm == 1) this is bit-identical to the non-mixture E-step.
+  condMean.set_size(nsub, neta);
+  condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
+  Li.set_size(nsub); Li.fill(NA_REAL);
+  Neff.set_size(nsub); Neff.fill(NA_REAL);
+  aMat.set_size(nsub, Nm); aMat.zeros();
+  for (int i = 0; i < nsub; ++i) {
+    if (Nm == 1) {
+      condMean.row(i) = cmExp.row(i);
+      condVar[i] = cvExp[i];
+      Li[i] = LiExp[i];
+      Neff[i] = NeffExp[i];
+      aMat(i, 0) = 1.0;
+      continue;
+    }
+    // Posterior mixture weights a_ij = a_j exp(-L_ij) / sum_k a_k exp(-L_ik),
+    // with the min-L shift for numerical stability (as saem does).
+    double minL = R_PosInf;
+    for (int j = 0; j < Nm; ++j) {
+      int eid = i + j * nsub;
+      if (okExp[eid] && R_finite(LiExp[eid]) && LiExp[eid] < minL) minL = LiExp[eid];
+    }
+    if (!R_finite(minL)) { condMean.row(i) = cmExp.row(i); aMat(i, 0) = 1.0; continue; }
+    arma::vec wj(Nm, arma::fill::zeros); double sumW = 0.0;
+    for (int j = 0; j < Nm; ++j) {
+      int eid = i + j * nsub;
+      if (okExp[eid] && R_finite(LiExp[eid])) {
+        wj[j] = impMixProb(j) * std::exp(minL - LiExp[eid]);
+        sumW += wj[j];
+      }
+    }
+    if (sumW <= 0.0) { condMean.row(i) = cmExp.row(i); aMat(i, 0) = 1.0; continue; }
+    arma::rowvec cm(neta, arma::fill::zeros);
+    for (int j = 0; j < Nm; ++j) {
+      double a = wj[j] / sumW; aMat(i, j) = a;
+      if (a > 0) cm += a * cmExp.row(i + j * nsub);
+    }
+    condMean.row(i) = cm;
+    // Component-weighted conditional variance: sum_j a_ij (B_ij + m_ij m_ij') - m_i m_i'.
+    arma::mat cv(neta, neta, arma::fill::zeros);
+    for (int j = 0; j < Nm; ++j) {
+      double a = aMat(i, j); if (a <= 0) continue;
+      arma::rowvec mj = cmExp.row(i + j * nsub);
+      cv += a * (cvExp[i + j * nsub] + mj.t() * mj);
+    }
+    cv -= cm.t() * cm;
+    condVar[i] = cv;
+    Li[i] = minL - std::log(sumW);           // marginal (mixture) negative log-likelihood
+    double nf = 0.0;
+    for (int j = 0; j < Nm; ++j) {
+      double a = aMat(i, j);
+      if (a > 0 && R_finite(NeffExp[i + j * nsub])) nf += a * NeffExp[i + j * nsub];
+    }
+    if (nf > 0) Neff[i] = nf;
+    // Fold the responsibility a_ij into each component's importance weights so the
+    // M-step, iterating the expanded subjects, forms the component-weighted score.
+    for (int j = 0; j < Nm; ++j) {
+      int eid = i + j * nsub;
+      if (outZk[eid].n_elem > 0) outZk[eid] *= aMat(i, j);
+    }
+  }
+
+  // On the last iteration, stash the per-subject sampler diagnostics (first
+  // component for a mixture).
   if (eStash != nullptr) {
     arma::mat modeMat(nsub, neta);
     List hessList(nsub), samplesList(nsub);
@@ -335,8 +404,18 @@ void impOuter(Environment e) {
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
   arma::vec Li, Neff;
+  arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
+  int Nmix = impNmix();
+  int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
   double obj = R_PosInf;
   int nSens = impThetaSensN();
+
+  // The mixture E-step / innerOpt passes solve the expanded pseudo-subjects, whose
+  // per-component inner solves are not thread-safe, so parallel runs race and the
+  // proportions/Omega drift and collapse.  Force the whole mixture EM serial (the
+  // single-component path keeps full parallelism); restored before returning.
+  int savedCores = -1;
+  if (Nmix > 1 && cores > 1) { savedCores = impSetSolveCores(1); cores = 1; }
 
   // Initial MAP at the starting parameters.
   impMapPass(e);
@@ -359,7 +438,7 @@ void impOuter(Environment e) {
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(),
-             condMean, condVar, Li, Neff, sampS, sampZk, &e);
+             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -382,13 +461,37 @@ void impOuter(Environment e) {
       arma::mat H(nSens, nSens, arma::fill::zeros);
       // Batched gradient pass over the theta-sensitivity model (impThetaScore
       // switches ind->neqOverride to thetaSensNeq); single shared pool, no swap.
-      for (int id = 0; id < nsub; ++id) {
-        if (sampS[id].n_rows > 0) impThetaScore(id, sampS[id], sampZk[id], g, H);
+      // For a mixture the loop runs over the expanded pseudo-subjects and the
+      // component weight a_ij is already folded into sampZk, so this forms the
+      // component-weighted score directly.
+      for (int eid = 0; eid < nExp; ++eid) {
+        if (sampS[eid].n_rows > 0) impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
       }
       g /= (double)nsub;
       H /= (double)nsub;
       arma::vec step;
       if (arma::solve(step, H, g) && step.is_finite()) impUpdateStructThetas(step);
+    }
+
+    // Mixture: mean-posterior EM update of the $MIX proportions (the stable M-step
+    // SAEM uses).  For constant proportions the fixed point of the NONMEM
+    // Gauss-Newton score d_ij = a_{Nm,i}/a_Nm - a_ji/a_j is exactly a_j = mean_i
+    // a_ij, and this update stays in the simplex (a full Newton step overshoots to
+    // the boundary and collapses a component).  Install the target proportions as
+    // absolute $MIX thetas via the multinomial logit theta_m = log(a_m / a_Nm),
+    // floored away from 0 so a transiently-empty component can recover.  Uses
+    // impmap's own responsibilities a_ij, separate from FOCEI's Laplace mixProb.
+    if (Nmix > 1) {
+      arma::vec aStar(Nmix, arma::fill::zeros);
+      for (int i = 0; i < nsub; ++i)
+        for (int j = 0; j < Nmix; ++j) aStar[j] += aMat(i, j);
+      aStar /= (double)nsub;
+      double aFloor = 1e-3;
+      for (int j = 0; j < Nmix; ++j) if (aStar[j] < aFloor) aStar[j] = aFloor;
+      aStar /= arma::accu(aStar);
+      arma::vec thetaM(Nmix - 1);
+      for (int m = 0; m < Nmix - 1; ++m) thetaM[m] = std::log(aStar[m] / aStar[Nmix - 1]);
+      if (thetaM.is_finite()) impSetMixThetas(thetaM);
     }
 
     // Seed each subject's eta with its conditional mean, then update the mu-
@@ -491,4 +594,7 @@ void impOuter(Environment e) {
   e["impGammaTrace"] = wrap(gammaTrace);
   e["impNeffFrac"] = wrap(neffTrace);
   e["impMuGroupN"] = impMuGroupN();
+
+  // Restore the solve core count if it was forced serial for the mixture EM.
+  if (savedCores > 0) impSetSolveCores(savedCores);
 }
