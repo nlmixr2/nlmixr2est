@@ -261,10 +261,10 @@ analytically from Almquist (2015) sensitivity equations instead of by
 finite differences, and use the Eq-48 random-effect extrapolation for the
 next inner-problem starting values.  Requires an analytic-scope model
 (single additive/proportional Gaussian endpoint); out-of-scope models fall
-back to the finite-difference gradient with a message.  When unspecified,
-the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
-\code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
-\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+back to the finite-difference gradient with a message.  The outer
+optimizer defaults to \code{"nlminb"} (as for \code{fast=FALSE}), which
+converges robustly with the analytic gradient; pairing \code{fast=TRUE}
+with a derivative-free \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
 
 \item{hessEps}{is a double value representing the epsilon for the

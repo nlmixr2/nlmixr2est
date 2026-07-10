@@ -14,6 +14,7 @@ rpemControl(
   atol = 1e-08,
   rtol = 1e-08,
   cores = 1L,
+  impInflate = 0,
   ...
 )
 }
@@ -36,6 +37,14 @@ count).}
 
 \item{cores}{Number of cores for the threefry draw (solve threading is set by
 rxode2).}
+
+\item{impInflate}{Opt-in mode-centered importance sampling for the E-step.  `0`
+(default) keeps the paper's prior sampling (draw eta ~ N(0, Omega)).  A value
+`>= 1` draws instead from N(EBE, impInflate*Omega) -- centered at the previous
+iteration's posterior mean with that variance-inflation factor -- and
+importance-weights, improving posterior-tail coverage for high-variance random
+effects in multi-eta models (whose largest Omega prior sampling under-estimates).
+Experimental: a partial mitigation, not a full fix (see design/rpem/04).}
 
 \item{...}{Ignored (reserved for future options).}
 }

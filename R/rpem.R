@@ -595,6 +595,12 @@
     .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
     .ms <- rpemMstepMix(muK, w, .cl$errType, control$nMH, control$mhBurn)
     muK <- .ms$muK; omega <- matrix(.ms$omega, 1, 1); w <- .ms$w; addSd <- .ms$addSd
+    # Label-switching guard (design/rpem/07): components are exchangeable in the
+    # likelihood, so the MH labels can swap between iterations and corrupt the
+    # collected trace.  Enforce a canonical order (ascending mu) each iteration so
+    # component k is stable across iterations and the averaged estimate is coherent.
+    .ord <- order(muK)
+    muK <- muK[.ord]; w <- w[.ord]
     muMat[.it, ] <- muK; wMat[.it, ] <- w; omTr[.it] <- .ms$omega
     sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
   }

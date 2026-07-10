@@ -4,6 +4,20 @@ Deferred past the M1 breadth-first core, but the engine and control surface must
 not hard-code K=1. This spec covers the K>1 design and the benchmark-and-choose
 plan (D8).
 
+STATUS (2026-07-10): K=2 single-`mix()` split-ETA mixtures work end-to-end via the
+nlmixr2 `mix()` interface (E-step `rpemEstepMixDraw`, joint (i,j,k) MH M-step
+`rpemMstepMix`; full `nlmixr2FitData` with mixProbabilities/mixNum/mixList).  M2 guards
+DONE: (1) label switching -- components are exchangeable, so `.rpemFitMix` enforces an
+ascending-mu canonical order every iteration (`order(muK)`), keeping the collected trace
+coherent (verified: a reversed init still returns components in truth order); (2) empty /
+collapsing components -- a weight of exactly 0 makes `logw = -Inf` next iteration and
+permanently kills the component, so `rpemMstepMix` floors each weight at 1e-3 and
+renormalizes so every component stays reachable (verified finite on a single population
+fit as K=2).  Recovers unequal weights (0.75/0.25) and mu/omega/add.sd.  Still open:
+per-component Sigma^(k) (currently shared Omega), >1 mixed eta, and the SAEM-representation
+backend benchmark.  Mixture component-probability SEs are intentionally not reported (not
+reported elsewhere in the ecosystem; mixtures keep covMethod "r,s").
+
 ## Two backends to build and compare
 
 RPEM's identity is the joint `(i, k, theta)` MH sampling of discrete labels and

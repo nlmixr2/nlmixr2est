@@ -8622,6 +8622,151 @@ Environment foceiFitCpp_(Environment e){
   return e;
 }
 
+// ---------------------------------------------------------------------------
+// VAE inner-likelihood interface: set up the FOCEi inner problem ONCE (no outer
+// optimizer), then evaluate the inner objective/gradient per subject (and per
+// mixture component) directly through likInner0/lpInner in a parallel OpenMP
+// loop -- reusing the inner logic (mixtures via setIndMixest, multiple
+// endpoints, error structures, log-likelihood, censoring) without the nlmixr2 R
+// interface. `e` is the same env foceiFitCpp_ consumes (built by .vaeInnerSetup
+// in R). updateTheta() populates op_focei's omega inverse + theta state that the
+// inner solve needs (normally done inside the outer objective evaluation).
+static NumericVector _vaeInitPar;
+
+//[[Rcpp::export]]
+RObject vaeInnerSetup_(Environment e) {
+  op_focei.canDoFD = false;
+  op_focei.nEstOmega = e.exists("nEstOmega") ? as<int>(e["nEstOmega"]) : 0;
+  setupAq0_(e);
+  List model = e["model"];
+  RObject inner = model.containsElementNamed("innerLlik") ? model["innerLlik"] : model["inner"];
+  if (!rxode2::rxIs(inner, "rxode2")) stop("vaeInnerSetup_ needs an rxode2 inner model");
+  RObject _dataSav = as<RObject>(e["dataSav"]);
+  NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+  IntegerVector _mixIdx = as<IntegerVector>(e["mixIdx"]);
+  Nullable<LogicalVector> _thetaFixed = as<Nullable<LogicalVector>>(e["thetaFixed"]);
+  Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
+  RObject _rxInv = e["rxInv"];
+  Nullable<NumericVector> _lower = as<Nullable<NumericVector>>(e["lower"]);
+  Nullable<NumericVector> _upper = as<Nullable<NumericVector>>(e["upper"]);
+  Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
+  Nullable<List> _control = as<Nullable<List>>(e["control"]);
+  NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
+                                      _rxInv, _lower, _upper, _etaMat, _control);
+  // predNoLhs -> finite-difference event sensitivities
+  if (model.containsElementNamed("predNoLhs")) {
+    RObject noLhs = model.containsElementNamed("predNoLhsLlik") ? model["predNoLhsLlik"] : model["predNoLhs"];
+    if (rxode2::rxIs(noLhs, "rxode2")) {
+      List mvp = rxode2::rxModelVars_(noLhs);
+      rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
+      op_focei.canDoFD = true;
+      op_focei.predNoLhsOffset = 0;
+      CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
+      for (int il = 0; il < predLhs.size(); ++il)
+        if (as<std::string>(predLhs[il]) == "rx_pred_") { op_focei.predNoLhsOffset = il; break; }
+    }
+  }
+  if (model.containsElementNamed("eventEta")) {
+    IntegerVector eventEta = model["eventEta"];
+    std::copy(eventEta.begin(), eventEta.end(), &op_focei.etaFD[0]);
+  }
+  // populate the omega inverse + theta-dependent state for the inner solve
+  _vaeInitPar = clone(initPar);
+  updateTheta(&_vaeInitPar[0]);
+  return initPar;
+}
+
+// Per-id inner objective (and optional gradient) at the supplied etas, parallel
+// over ids. id in [0, nSub) are the physical subjects; for mixtures the caller
+// passes nSub*nMix rows (id = component*nSub + subject) and combines.
+//[[Rcpp::export]]
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  NumericVector obj(nid);
+  NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
+  // per-id predictions (F) gathered thread-locally, converted to an R list after
+  std::vector<std::vector<double> > pf(preds ? nid : 0);
+  const bool doParallel = (cores > 1);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int id = 0; id < nid; ++id) {
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
+    if (grad) {
+      std::vector<double> g(neta);
+      lpInner(&eta[0], &g[0], id);
+      for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+    }
+    obj[id] = likInner0(&eta[0], id);
+    if (preds) {
+      arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
+      pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
+    }
+  }
+  List fl(preds ? nid : 0);
+  if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
+  return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
+}
+
+//[[Rcpp::export]]
+RObject vaeInnerFree_() {
+  rxOptionsFreeFocei();
+  return R_NilValue;
+}
+
+// VAE optimization printing + parameter-history capture. Reuses the SHARED
+// iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
+// scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
+// VAE prints the exact same iteration table and produces parHistData in the
+// standard format -- no duplicated formatting. Identity scaling (scaleTypeMult
+// with scaleTo=0) keeps values on their natural scale while still emitting the
+// "Unscaled" rows that .parHistCalc() reads.
+static scaling _vaeScale;
+static std::vector<double> _vaeIpInit;
+static std::vector<double> _vaeIpScaleC;
+static std::vector<int> _vaeIpXPar;
+
+//[[Rcpp::export]]
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
+                           List iterPrintControl) {
+  int np = initPar.size();
+  _vaeIpInit.assign(initPar.begin(), initPar.end());
+  _vaeIpScaleC.assign(np, 1.0);
+  scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ 1, /*scaleType*/ scaleTypeMult,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  // zero xform: natural-scale values, no back-transform. xPar must be non-NULL
+  // because scalePrintFun indexes it unconditionally.
+  _vaeIpXPar.assign(np, 0);
+  _vaeScale.xPar = _vaeIpXPar.data();
+  _vaeScale.probitIdx = NULL;
+  _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+  _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
+  scalePrintHeader(&_vaeScale);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintRow_(NumericVector x, double f) {
+  scalePrintFun(&_vaeScale, &x[0], f);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintGet_(bool printLine = true) {
+  _vaeScale.save = 0;
+  _vaeScale.every = 0;
+  if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
+  return scaleParHisDf(&_vaeScale);
+}
+
 //[[Rcpp::export]]
 NumericVector boxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
   NumericVector ret(x.size());

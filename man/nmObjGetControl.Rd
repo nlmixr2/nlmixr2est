@@ -3,7 +3,7 @@
 %   R/focep.R, R/foi.R, R/irlsfocep.R, R/laplace.R, R/lbfgsb3c.R,
 %   R/muRefControl.R, R/mufocep.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R,
 %   R/nlminb.R, R/nls.R, R/nmObjHandle.R, R/optim.R, R/posthoc.R, R/rpem.R,
-%   R/uobyqa.R
+%   R/uobyqa.R, R/vae.R
 \name{nmObjGetControl.agq}
 \alias{nmObjGetControl.agq}
 \alias{nmObjGetControl.bobyqa}
@@ -37,6 +37,7 @@
 \alias{nmObjGetControl.posthoc}
 \alias{nmObjGetControl.rpem}
 \alias{nmObjGetControl.uobyqa}
+\alias{nmObjGetControl.vae}
 \title{Get control object from fit}
 \usage{
 \method{nmObjGetControl}{agq}(x, ...)
@@ -102,6 +103,8 @@ nmObjGetControl(x, ...)
 \method{nmObjGetControl}{rpem}(x, ...)
 
 \method{nmObjGetControl}{uobyqa}(x, ...)
+
+\method{nmObjGetControl}{vae}(x, ...)
 }
 \arguments{
 \item{x}{nlmixr fit object}

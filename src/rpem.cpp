@@ -767,6 +767,13 @@ List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, 
     wNew[k] = (double)countK[k] / (double)m;
   }
   omegaNew /= (double)m;
+  // Empty/collapsing-component guard (design/rpem/07): a weight of exactly 0 makes
+  // logw = -Inf next iteration, permanently killing the component (it can never be
+  // accepted back).  Floor each weight at a small share and renormalize so every
+  // component stays reachable; a genuinely empty component then decays to the floor.
+  double wFloor = 1e-3, wsum = 0.0;
+  for (int k = 0; k < K; ++k) { if (wNew[k] < wFloor) wNew[k] = wFloor; wsum += wNew[k]; }
+  for (int k = 0; k < K; ++k) wNew[k] /= wsum;
   double addNew = sqrt(sumSS / (double)sumNobs);
   return List::create(_["muK"] = muNew, _["omega"] = omegaNew, _["w"] = wNew,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);

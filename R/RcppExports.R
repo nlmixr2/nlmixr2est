@@ -168,6 +168,30 @@ foceiFitCpp_ <- function(e) {
     .Call(`_nlmixr2est_foceiFitCpp_`, e)
 }
 
+vaeInnerSetup_ <- function(e) {
+    .Call(`_nlmixr2est_vaeInnerSetup_`, e)
+}
+
+vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
+    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
+}
+
+vaeInnerFree_ <- function() {
+    .Call(`_nlmixr2est_vaeInnerFree_`)
+}
+
+vaeIterPrintStart_ <- function(initPar, names, iterPrintControl) {
+    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl)
+}
+
+vaeIterPrintRow_ <- function(x, f) {
+    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f)
+}
+
+vaeIterPrintGet_ <- function(printLine = TRUE) {
+    .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
+}
+
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }
@@ -368,6 +392,10 @@ saem_fit <- function(xSEXP) {
 
 nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
+}
+
+vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect) {
+    .Call(`_nlmixr2est_vaeEncoderFwdBwd`, dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect)
 }
 
 # Register entry points for exported C++ functions

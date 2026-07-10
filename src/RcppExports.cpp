@@ -649,6 +649,77 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeInnerSetup_
+RObject vaeInnerSetup_(Environment e);
+RcppExport SEXP _nlmixr2est_vaeInnerSetup_(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerSetup_(e));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeInnerLik
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad, bool preds);
+RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP, SEXP predsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< bool >::type grad(gradSEXP);
+    Rcpp::traits::input_parameter< bool >::type preds(predsSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerLik(etaMat, cores, grad, preds));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeInnerFree_
+RObject vaeInnerFree_();
+RcppExport SEXP _nlmixr2est_vaeInnerFree_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(vaeInnerFree_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintStart_
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl);
+RcppExport SEXP _nlmixr2est_vaeIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintStart_(initPar, names, iterPrintControl));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintRow_
+RObject vaeIterPrintRow_(NumericVector x, double f);
+RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< double >::type f(fSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintGet_
+RObject vaeIterPrintGet_(bool printLine);
+RcppExport SEXP _nlmixr2est_vaeIterPrintGet_(SEXP printLineSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
 // boxCox_
 NumericVector boxCox_(NumericVector x, double lambda, int yj);
 RcppExport SEXP _nlmixr2est_boxCox_(SEXP xSEXP, SEXP lambdaSEXP, SEXP yjSEXP) {
@@ -1230,6 +1301,29 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< DataFrame >::type eta(etaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmixr2Parameters(theta, eta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeEncoderFwdBwd
+List vaeEncoderFwdBwd(arma::cube dataIn, IntegerVector lengths, arma::mat covIn, arma::mat eps, arma::mat Wih, arma::mat Whh, arma::vec bih, arma::vec bhh, arma::mat fcW, arma::vec fcB, int zDim, arma::mat gZ, arma::mat gLogSigmaDirect);
+RcppExport SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP dataInSEXP, SEXP lengthsSEXP, SEXP covInSEXP, SEXP epsSEXP, SEXP WihSEXP, SEXP WhhSEXP, SEXP bihSEXP, SEXP bhhSEXP, SEXP fcWSEXP, SEXP fcBSEXP, SEXP zDimSEXP, SEXP gZSEXP, SEXP gLogSigmaDirectSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::cube >::type dataIn(dataInSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type lengths(lengthsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type covIn(covInSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Wih(WihSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Whh(WhhSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bih(bihSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bhh(bhhSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type fcW(fcWSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type fcB(fcBSEXP);
+    Rcpp::traits::input_parameter< int >::type zDim(zDimSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type gZ(gZSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type gLogSigmaDirect(gLogSigmaDirectSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeEncoderFwdBwd(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect));
     return rcpp_result_gen;
 END_RCPP
 }
