@@ -281,23 +281,21 @@
 #' @noRd
 #' Form the RPEM Fisher-score covariance from the per-subject score matrix.
 #'
-#' `S` is nsub x (nCoef+2) (columns: regression coefs, residual sd, omega); the
-#' empirical Fisher information is `I = t(S) %*% S` and the covariance its inverse.
-#' Returns the theta block (typical value + covariate coefs + residual sd, named for
-#' the fit's `cov`) and the omega SE, or NULL if the information is not invertible /
+#' `S` is nsub x (nCoef+2) (columns: regression coefs, residual sd, omega variance);
+#' the empirical Fisher information is `I = t(S) %*% S` and the covariance its inverse.
+#' Returns the full covariance named `c(coefs, residual sd, om.<eta>)` -- the theta
+#' rows drive parFixedDf SEs and the `om.<eta>` row carries the omega-variance SE
+#' (reported in `$cov`, as SAEM does).  NULL if the information is not invertible or
 #' the covariance is not a valid (finite, non-negative-diagonal) matrix.
 #' @noRd
-.rpemFisherCov <- function(S, nCoef, coefNames, sdName) {
+.rpemFisherCov <- function(S, nCoef, coefNames, sdName, omName) {
   .I <- crossprod(S)
   .cov <- tryCatch(solve(.I), error = function(e) NULL)
   if (is.null(.cov) || anyNA(.cov) || any(!is.finite(.cov)) || any(diag(.cov) < 0))
     return(NULL)
-  .p <- ncol(S)
-  .thIdx <- seq_len(nCoef + 1L)                       # coefs + residual sd
-  .thCov <- .cov[.thIdx, .thIdx, drop = FALSE]
-  .thNames <- c(coefNames, sdName)
-  dimnames(.thCov) <- list(.thNames, .thNames)
-  list(cov = .thCov, omegaSE = sqrt(.cov[.p, .p]))
+  .nm <- c(coefNames, sdName, omName)                 # length nCoef + 2 == ncol(S)
+  dimnames(.cov) <- list(.nm, .nm)
+  list(cov = .cov, omegaSE = sqrt(.cov[nCoef + 2L, nCoef + 2L]))
 }
 
 .rpemFit <- function(ui, data, control = rpemControl()) {
@@ -474,7 +472,8 @@
     .S <- rpemFisherReg(.design, .coefsF, omHat[1], .cl$errType, sdHat)
     .coefNames <- c(.cl$muNames, .cl$covCoefNames)
     .sdName <- .cl$thetaNames[.cl$addSdIdx + 1L]
-    .fisher <- .rpemFisherCov(.S, ncol(.design), .coefNames, .sdName)
+    .omName <- paste0("om.", .cl$etaNames[1])
+    .fisher <- .rpemFisherCov(.S, ncol(.design), .coefNames, .sdName, .omName)
   }
   rpemFree()
   .nG <- control$nGauss

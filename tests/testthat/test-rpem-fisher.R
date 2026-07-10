@@ -42,6 +42,10 @@ test_that("RPEM reports Fisher-score SEs (close to FOCEI, shrinking ~1/sqrt(n))"
   .fse <- ff$parFixedDf[c("tka", "add.sd"), "SE"]
   expect_equal(unname(.se[1]), unname(.fse[1]), tolerance = 0.25)   # tka SE
   expect_equal(unname(.se[2]), unname(.fse[2]), tolerance = 0.25)   # add.sd SE
+  # the omega-variance SE is reported in $cov (named om.<eta>), finite and positive
+  expect_true("om.eta.ka" %in% rownames(rf$cov))
+  expect_true(is.finite(rf$cov["om.eta.ka", "om.eta.ka"]) &&
+                rf$cov["om.eta.ka", "om.eta.ka"] > 0)
 
   # SE shrinks ~1/sqrt(n): 4x subjects -> ~2x smaller tka SE
   rf4 <- suppressMessages(nlmixr2(mod, simDat(160L, 9), est = "rpem", control = ctl))
