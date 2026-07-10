@@ -19,9 +19,10 @@
 }
 
 test_that("fast=TRUE control defaults: outerOpt + derivative-free downgrade", {
-  # base default outer optimizer is nlminb; fast default is lbfgsb3c
+  # default outer optimizer is nlminb for both base and fast (fast=TRUE with
+  # lbfgsb3c can settle at a worse optimum on ill-conditioned models)
   expect_equal(foceiControl()$outerOpt, -1L)                 # nlminb -> custom (-1)
-  expect_equal(foceiControl(fast = TRUE)$outerOpt, 1L)       # lbfgsb3c
+  expect_equal(foceiControl(fast = TRUE)$outerOpt, -1L)      # nlminb -> custom (-1)
   expect_true(foceiControl(fast = TRUE)$fast)
   expect_false(foceiControl()$fast)
   # an explicit outerOpt still wins under fast
