@@ -227,7 +227,7 @@ mufoceiControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5571db181500>
+#> <bytecode: 0x55ffd2a07fd8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
