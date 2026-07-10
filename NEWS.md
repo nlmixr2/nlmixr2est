@@ -1,8 +1,14 @@
 # nlmixr2est (development version)
 
+- `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
+  `fast=FALSE` up front with a message instead of re-attempting the symengine
+  augmented-model build (and silently falling back to finite differences) on every
+  outer-gradient call; the analytic covariance likewise reports the `linCmt()`
+  fallback instead of failing silently.
 - Iteration printing now labels the estimation phase on the back-transformed (`X`)
-  row: `est = "vae"` shows `Burn in` in the objective column during burn-in, and
-  `est = "saem"` tags the row `SA: X` / `EM: X` for the burn-in and EM phases.
+  row: `est = "vae"` shows `Burn in`/`KL anneal`/`EM`/`Smooth` in the objective
+  column (with a key legend in the header), and `est = "saem"` tags the row
+  `SA: X` / `EM: X` for the burn-in and EM phases.
 - Fixed `muModel = "lin"`/`"irls"` erroring with "undefined columns selected" when a
   model has two or more mu-referenced covariates that are expressions (e.g.
   `log(WT/70)`) rather than bare data columns (#711).
