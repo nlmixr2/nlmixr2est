@@ -242,9 +242,11 @@
                       elboTrace[it], paste(round(zPop, 3), collapse = ","), a))
   }
 
+  zPopMat <- if (is.matrix(zPopArg)) zPopArg else matrix(zPopArg, N, zDim, byrow = TRUE)
   list(params = params, zPop = zPop, omega = omega, a = a,
        intercept = intercept, beta = beta, selected = selected,
-       covNames = prep$covNames, elboTrace = elboTrace, prep = prep, am = am)
+       covNames = prep$covNames, elboTrace = elboTrace,
+       mu = last$mu, zPopMat = zPopMat, prep = prep, am = am)
 }
 
 #' Fit entry: prepare data, build decoder model, train.

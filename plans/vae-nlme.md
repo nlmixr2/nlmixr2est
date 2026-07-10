@@ -202,10 +202,32 @@ Phase 5 -- Covariate selection (MILESTONE B). [DONE]
   match; ka intercept 1.77 ~8% high (secondary).
 - test-vae-covariate.R (skip_on_cran).
 
-Phase 6 -- Fit object: SEs, dual OFV, diagnostics, benchmark.
-- Linearization-Hessian covariance -> $parFixed SEs; both Lin and IS -2LL stored
-  with IS active for AIC/BIC/BICc; EBEs from encoder posterior/MAP;
-  addCwres/addNpde/VPC/GOF; benchmark vs SAEM/FOCEI on the same data.
+Phase 6 -- Fit object: SEs, dual OFV, diagnostics, benchmark. [PARTIAL]
+DONE + verified (test-vae-fit.R):
+- R/vaeOutput.R .vaeUpdateModel: injects selected covariate effects into each
+  mu-ref model line as EXACT centered expressions (continuous beta*log(COV/center),
+  categorical beta*(COV-center)) via the canonical model() line-replacement API
+  (auto-adds beta as a population param; per rxode2 Modifying-Models vignette);
+  sets ini() to the VAE solution. Result e.g.
+  ka <- exp((lka + beta_lka_WT*log(WT/69.58)) + eta.ka), ke unmodified.
+- .vaeLinPrecomp/.vaeLinObj: FOCE-linearized marginal -2LL from the decoder f/J
+  at the encoder EBEs (theo ~346 vs paper ~331; gap = short schedule + encoder
+  mean used as EBE instead of a re-optimized MAP). Because f/J are fixed at the
+  encoder z, the -2LL is an explicit fn of (intercepts, betas, omega, a).
+- .vaeCov: linearization-Hessian covariance = 2*solve(Hessian of -2LL) (cheap,
+  no ODE re-solves); returns NULL on a non-PD Hessian (hardened).
+- .vaeToFit currently returns a `vaeFit` list: finalUi (covariate model), uiIni
+  (original model), objective (lin -2LL), cov, eta (EBEs), estimates, selection.
+  Do NOT run focei (user directive).
+REMAINING (handoff):
+- Wrap into a real nlmixr2FitData via nlmixr2CreateOutputFromUi WITHOUT focei --
+  follow ~/src/babelmixr2-nlmer/R/nlmer.R (cleaner than saem/focei). Blocked on
+  the output-env contract ("argument 'args' is missing").
+- Original-vs-final model accessors: store the ORIGINAL ui in fit$env$iniDf0;
+  update nmObjGet.iniDf0 (-> original iniDf) and nmObjGet.iniUi/add nmObjGet.uiIni
+  (-> original ui) to handle iniDf0 being a ui (model changes under optimization).
+- Harden .vaeCov (PD Hessian at converged fit); MAP-EBE re-opt for exact -2LL;
+  dual OFV (add IS -2LL, IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark.
 
 Phase 7 -- Error-model parity.
 - Proportional/combined, transform-both-sides, and M2/M3/M4 censoring in the
