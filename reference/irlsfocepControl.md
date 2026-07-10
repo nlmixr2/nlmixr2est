@@ -246,7 +246,7 @@ irlsfocepControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55a6915a33c8>
+#> <bytecode: 0x563180677a60>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

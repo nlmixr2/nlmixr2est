@@ -2,11 +2,47 @@
 
 ## nlmixr2est (development version)
 
+- Fixed `muModel = "lin"`/`"irls"` erroring with “undefined columns
+  selected” when a model has two or more mu-referenced covariates that
+  are expressions (e.g. `log(WT/70)`) rather than bare data columns
+  ([\#711](https://github.com/nlmixr2/nlmixr2est/issues/711)).
+
 - `est = "vae"` now assembles its fit with
   [`nlmixr2CreateOutputFromUi()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2CreateOutputFromUi.md)
   and computes its covariance directly in the focei covariance step;
   `vaeControl(covMethod=)` now takes the focei choices (`"analytic"`
   (default), `"r,s"`, `"r"`, `"s"`, `""`) instead of `"linear"`.
+
+- Fixed the analytic (`fast=TRUE`) outer gradient never being used
+  during live optimization: the gradient hook read
+  `omega`/`theta`/`etaObf` from the fit environment, which are only
+  written at finalize, so every call silently fell back to finite
+  differences. The C++ hook now refreshes that state each gradient call;
+  the cached augmented-model metadata (`foceiModel$outerMeta`) carries
+  all fields the batched solve needs.
+
+- The mu-referenced families (`mufoceif`/`irlsfoceif`/…) now consume the
+  analytic gradient on the profiled (mu-reduced) parameter set; a
+  gradient/parameter-set size mismatch stops (never a silent FD
+  fallback) and FD is only used when the sensitivity system fails to
+  solve (with a one-time warning).
+
+- `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods
+  keep `nlminb`); an explicit `outerOpt` is honored.
+
+- The iteration print and `$parHistData` track analytic gradients as
+  their own type (`A`/`"Analytic Gradient"`), and the fit header reports
+  the gradient actually used and the mu-model variant,
+  e.g. `(outer: lbfgsb3c; grad: analytic; mu: irls)`.
+
+- `est = "vae"` iteration print now shows back-transformed (`X`)
+  parameters (e.g. [`exp()`](https://rdrr.io/r/base/Log.html) thetas)
+  like focei/saem, drops the redundant unscaled (`U`) block (vae never
+  scales), and the development-time verbose print was removed.
+
+- Mixture models: parallel inner loops now solve mixture components
+  strictly one at a time (components share the physical subjects’ data
+  structures), parallelizing over subjects within each component.
 
 - Fixed a segmentation fault in `est = "vae"`: the parallel
   inner-likelihood loop now caps its thread count at the rxode2 solve’s
