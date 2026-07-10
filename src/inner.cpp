@@ -287,6 +287,10 @@ struct focei_options {
   int interaction;
   int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
   int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
+  int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
+  int nAnalyticGrad = 0;    // # outer gradients from the analytic path
+  int nFDGradFast = 0;      // # FD fallbacks while fast was requested
+  int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
   double cholSEtol;
   double hessEps;
   double hessEpsLlik;
@@ -3869,12 +3873,26 @@ static void loadAnalyticEtaP(double *theta) {
 
 // Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
 // the gate is live.  Returns true on success (g filled), false to fall back to
-// the finite-difference gradient.  theta is the current scaled optimizer point.
+// the finite-difference gradient -- ONLY when the sensitivity system could not
+// be solved (a size mismatch is a wiring bug and stops).  theta is the current
+// scaled optimizer point.
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
+  // Refresh the live state the R gradient reads; omega/theta/etaObf are
+  // otherwise only written into the fit env at finalize.
+  NumericVector _th(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta,
+            _th.begin());
+  op_foceiFitEnv[".gradTheta"] = _th;
+  op_foceiFitEnv["omega"] = getOmega();
+  if (op_focei.mixIdxN != 0) {
+    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv, true);
+  } else {
+    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv);
+  }
   Environment _nlmixr2est = Environment::namespace_env("nlmixr2est");
   Function _agf = as<Function>(_nlmixr2est[".foceiCalcGradAnalytic"]);
   RObject _res = _agf(op_foceiFitEnv);
@@ -3882,11 +3900,29 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // so the next foceiOfv0 (objective/inner solve) reads the fit, not the last
   // augmented subject.  A failed restore -> fall back to FD (which re-solves).
   bool _restored = restoreFitSolve_();
-  if (Rf_isNull(_res) || !_restored) return false;
+  if (Rf_isNull(_res) || !_restored) {
+    if (!op_focei.warnedAnalyticFallback) {
+      op_focei.warnedAnalyticFallback = 1;
+      Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+    }
+    return false;
+  }
   NumericVector _gv = as<NumericVector>(_res);
-  if ((int)_gv.size() != (int)op_focei.npars) return false;
+  if ((int)_gv.size() != (int)op_focei.npars) {
+    // never silently degrade to FD on a length mismatch -- it means the R-side
+    // parameter mapping disagrees with the optimizer's free-parameter set
+    stop("fast=TRUE: analytic gradient length (%d) does not match the number of outer parameters (%d)",
+         (int)_gv.size(), (int)op_focei.npars);
+  }
   for (int i = 0; i < (int)op_focei.npars; i++) {
-    if (!R_finite(_gv[i])) return false;
+    if (!R_finite(_gv[i])) {
+      // non-finite element = the sensitivity system did not solve cleanly
+      if (!op_focei.warnedAnalyticFallback) {
+        op_focei.warnedAnalyticFallback = 1;
+        Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+      }
+      return false;
+    }
     g[i] = _gv[i] * dUnscaleParDx(i);
   }
   // Stash the per-subject EBE sensitivity etaP (Almquist Eq 46) that the R gradient
@@ -3899,9 +3935,13 @@ void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
   op_focei.curGill=0;
+  op_focei.curAnalytic=0;
   if (analyticOuterGrad(theta, g)) {
+    op_focei.curAnalytic=1;
+    op_focei.nAnalyticGrad++;
     return;
   }
+  if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -5654,7 +5694,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   op_focei.nG++;
   int finalize=0, i = 0;
   niterGrad.push_back(niter.back());
-  if (op_focei.derivMethod == 0){
+  if (op_focei.curAnalytic){
+    gradType.push_back(8);
+  } else if (op_focei.derivMethod == 0){
     if (op_focei.curGill == 1){
       gradType.push_back(1);
     } else if (op_focei.curGill == 2){
@@ -5667,7 +5709,8 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
+  // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21,
+  // 8=analytic (forward sensitivity, fast=TRUE).
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
   printMuGroupThetaRow(true);
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -5797,6 +5840,10 @@ void foceiCustomFun(Environment e){
 Environment foceiOuter(Environment e){
   op_focei.nF=0;
   op_focei.nG=0;
+  op_focei.curAnalytic=0;
+  op_focei.nAnalyticGrad=0;
+  op_focei.nFDGradFast=0;
+  op_focei.warnedAnalyticFallback=0;
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
@@ -8217,17 +8264,35 @@ void foceiFinalizeTables(Environment e){
       e["extra"] = "";
     }
     List ctl = e["control"];
+    // What the outer optimizer actually consumed: the analytic ("fast")
+    // gradient, the finite-difference gradient, or a mix (per-iteration solve
+    // fallbacks); plus the mu-referenced regression variant when active.
+    std::string _details = as<std::string>(ctl["outerOptTxt"]);
+    if (op_focei.fast && op_focei.maxOuterIterations > 0) {
+      if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
+        _details += "; grad: analytic";
+      } else if (op_focei.nAnalyticGrad > 0) {
+        _details += "; grad: analytic+fd";
+      } else if (op_focei.nG > 0 || op_focei.nFDGradFast > 0) {
+        _details += "; grad: fd";
+      }
+    }
+    if (op_focei.muModel == 1) {
+      _details += "; mu: lin";
+    } else if (op_focei.muModel == 2) {
+      _details += "; mu: irls";
+    }
     if (_aqn == 0) {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         ")";
     } else if (_aqn == 1) {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         "; Laplace)";
     } else {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         "; nAGQ=" + std::to_string(_nagq)  + ")";
     }
   }
@@ -9176,6 +9241,7 @@ Environment foceiFitCpp_(Environment e){
       "F: Forward difference gradient approximation\n"
       "C: Central difference gradient approximation\n"
       "M: Mixed forward and central difference gradient approximation\n"
+      "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
       "Unscaled parameters for Omegas=chol(solve(omega));\n"
       "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
     op_focei.scale.printCount    = 0;
@@ -9420,26 +9486,53 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
   // per-id predictions (F) gathered thread-locally, converted to an R list after
   std::vector<std::vector<double> > pf(preds ? nid : 0);
-  const bool doParallel = (cores > 1);
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  // rxode2 sizes every per-thread solve buffer by op->cores (1 for models it
+  // flags not thread safe, e.g. linCmtB); more external threads than that
+  // index past the pools and corrupt the heap.
+  cores = min2(cores, getOpCores(op));
+  // Mixture components (id = m*nsub + subject) share the physical subject's
+  // rx_solving_options_ind struct, so parallelize over physical subjects and
+  // keep the component loop serial within a work item.
+  int nsub = (int)getRxNsub(rx);
+  int nMix = (nsub > 0 && nid % nsub == 0) ? nid / nsub : 0;
+  if (nMix == 0) { nsub = nid; nMix = 1; cores = 1; } // unexpected shape: serial
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) {
+    sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+  }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
-  for (int id = 0; id < nid; ++id) {
+  for (int i = 0; i < nsub; ++i) {
+    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
-    std::vector<double> eta(neta);
-    for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
-    if (grad) {
-      std::vector<double> g(neta);
-      lpInner(&eta[0], &g[0], id);
-      for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+    for (int m = 0; m < nMix; ++m) {
+      int id = base + m * nsub;
+      std::vector<double> eta(neta);
+      for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
+      if (grad) {
+        std::vector<double> g(neta);
+        lpInner(&eta[0], &g[0], id);
+        for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+      }
+      obj[id] = likInner0(&eta[0], id);
+      if (preds) {
+        arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
+        pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
+      }
     }
-    obj[id] = likInner0(&eta[0], id);
-    if (preds) {
-      arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
-      pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
-    }
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) {
+    _innerParallel.store(0, std::memory_order_release);
+    sortIds(rx, 0);
   }
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
@@ -9456,9 +9549,10 @@ RObject vaeInnerFree_() {
 // iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
 // scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
 // VAE prints the exact same iteration table and produces parHistData in the
-// standard format -- no duplicated formatting. Identity scaling (scaleTypeMult
-// with scaleTo=0) keeps values on their natural scale while still emitting the
-// "Unscaled" rows that .parHistCalc() reads.
+// standard format -- no duplicated formatting. The VAE never scales its
+// parameters, so scaleTypeNone drops the redundant "U" (Unscaled) rows; the
+// R-side `xform` list (.iterPrintXParFromUi) drives the "X" back-transform row
+// (e.g. exp() thetas), like focei/saem.
 static scaling _vaeScale;
 static std::vector<double> _vaeIpInit;
 static std::vector<double> _vaeIpScaleC;
@@ -9466,21 +9560,26 @@ static std::vector<int> _vaeIpXPar;
 
 //[[Rcpp::export]]
 RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
-                           List iterPrintControl) {
+                           List iterPrintControl, RObject xform = R_NilValue) {
   int np = initPar.size();
   _vaeIpInit.assign(initPar.begin(), initPar.end());
   _vaeIpScaleC.assign(np, 1.0);
   scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
              /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
-             /*normType*/ 1, /*scaleType*/ scaleTypeMult,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
              /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
-  // zero xform: natural-scale values, no back-transform. xPar must be non-NULL
-  // because scalePrintFun indexes it unconditionally.
-  _vaeIpXPar.assign(np, 0);
-  _vaeScale.xPar = _vaeIpXPar.data();
-  _vaeScale.probitIdx = NULL;
-  _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
-  _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(&_vaeScale, as<List>(xform));
+  }
+  if (_vaeScale.xPar == NULL) {
+    // zero xform: natural-scale values, no back-transform. xPar must be
+    // non-NULL because scalePrintFun indexes it unconditionally.
+    _vaeIpXPar.assign(np, 0);
+    _vaeScale.xPar = _vaeIpXPar.data();
+    _vaeScale.probitIdx = NULL;
+    _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+    _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  }
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   scalePrintHeader(&_vaeScale);
   return R_NilValue;

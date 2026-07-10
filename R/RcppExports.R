@@ -180,8 +180,8 @@ vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
 
-vaeIterPrintStart_ <- function(initPar, names, iterPrintControl) {
-    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl)
+vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
+    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
 }
 
 vaeIterPrintRow_ <- function(x, f) {

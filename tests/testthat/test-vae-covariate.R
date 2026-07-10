@@ -23,11 +23,14 @@ test_that("vae selects WT on ka and V (not ke) for theophylline", {
   prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
   expect_equal(prep$covNames, "WT")
   expect_equal(prep$covType, "continuous")
-  am <- .vaeDecoderModel(ui)
 
   ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                    iters = 160L, hiddenDim = 25L, seed = 1L, covariateSelection = TRUE)
-  fit <- .vaeTrain(prep, am, ctl)
+                    iters = 160L, hiddenDim = 25L, seed = 1L, covariateSelection = TRUE,
+                    print = 0L)
+  innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd,
+                             matrix(0, prep$N, prep$zDim), ctl)
+  on.exit(.vaeInnerFree(), add = TRUE)
+  fit <- rxode2::rxWithSeed(1L, .vaeTrain(prep, innerEnv, ctl))
 
   ## rows = params (ka, ke, V), single column WT
   expect_true(fit$selected[1, 1])   # WT -> ka

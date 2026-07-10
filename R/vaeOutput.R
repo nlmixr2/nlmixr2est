@@ -2,9 +2,10 @@
 # updated with the selected covariate effects (exact centered expressions, e.g.
 # ka <- exp(lka + beta_lka_WT*log(WT/79.6) + eta.ka)) and the ini() estimates are
 # set to the VAE solution. The standard nlmixr2FitData (objective, parFixed/SEs,
-# EBEs, residuals, tables) is then assembled by driving the FOCEi inner problem at
-# the VAE estimates with a 0-outer-iteration focei control (no outer optimizer),
-# which reuses inner.cpp's engine wholesale (see .vaeToFit).
+# EBEs, residuals, tables) is then assembled with nlmixr2CreateOutputFromUi
+# driving the FOCEi inner problem at the VAE estimates (no outer optimizer),
+# which reuses inner.cpp's engine wholesale -- including the focei covariance
+# step ("analytic", "r,s", "r", "s") -- see .vaeToFit.
 
 #' Update a ui with the VAE's selected covariate effects and fitted estimates.
 #'
@@ -59,43 +60,87 @@
   ui2
 }
 
-#' Assemble the standard nlmixr2FitData from a trained VAE by driving the FOCEi
-#' INNER problem at the VAE's fixed population estimates (maxOuterIterations=0 --
-#' no outer optimizer is run) with the encoder etas supplied as etaMat. This
-#' reuses inner.cpp's parallel (OpenMP) inner likelihood wholesale: multiple
-#' endpoints, multiple error structures, log-likelihood, M2/M3/M4 censoring, and
-#' MIXTURE hard-assignment (nSub*nMix per-component solves via setIndMixest ->
-#' mixNum/mixList) -- none of which is reimplemented here. The model is first
-#' updated with the selected covariate effects; the ORIGINAL (pre-covariate) ui
-#' is stashed in $iniDf0 for the iniUi/iniDf0 accessors.
+#' Translate the vaeControl into the foceiControl that drives the output step:
+#' no outer/inner optimization (the VAE estimates and encoder etas are final),
+#' the VAE's chosen inner likelihood (focei -> interaction=1; foce/focep ->
+#' interaction=0, focep = FOCE+ with R at the live conditional eta), and the
+#' covMethod passed through so the focei covariance step ("analytic", "r,s",
+#' "r", "s", "") runs directly on the frozen problem.
+#' @noRd
+.vaeControlToFoceiControl <- function(env, assign = TRUE) {
+  .control <- env$vaeControl
+  .lik <- .control$likelihood
+  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
+  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
+  .fc <- foceiControl(rxControl = .control$rxControl,
+                      maxOuterIterations = 0L, maxInnerIterations = 0L,
+                      covMethod = .control$covMethod,
+                      etaMat = env$etaMat,
+                      interaction = .interaction, foce = .foce,
+                      sumProd = .control$sumProd,
+                      optExpression = .control$optExpression,
+                      literalFix = .control$literalFix,
+                      literalFixRes = .control$literalFixRes,
+                      addProp = .control$addProp,
+                      calcTables = .control$calcTables,
+                      compress = .control$compress,
+                      ci = .control$ci,
+                      sigdigTable = .control$sigdigTable,
+                      stickyRecalcN = .control$stickyRecalcN,
+                      maxOdeRecalc = .control$maxOdeRecalc,
+                      odeRecalcFactor = .control$odeRecalcFactor,
+                      indTolRelax = .control$indTolRelax,
+                      eventSens = .control$eventSens,
+                      fast = FALSE, # no outer optimizer -- skip the outer gradient model
+                      print = 0L)
+  if (assign) env$control <- .fc
+  .fc
+}
+
+#' Assemble the standard nlmixr2FitData from a trained VAE with
+#' nlmixr2CreateOutputFromUi (the nlme/nlm/nlmer output pattern), driving the
+#' FOCEi INNER problem at the VAE's fixed population estimates
+#' (maxOuterIterations=0 -- no outer optimizer is run) with the encoder etas
+#' supplied as etaMat. This reuses inner.cpp's parallel (OpenMP) inner
+#' likelihood wholesale: multiple endpoints, multiple error structures,
+#' log-likelihood, M2/M3/M4 censoring, and MIXTURE hard-assignment (nSub*nMix
+#' per-component solves via setIndMixest -> mixNum/mixList) -- none of which is
+#' reimplemented here. The covariance is computed by the focei covariance step
+#' itself (covMethod passed through .vaeControlToFoceiControl) and returned on
+#' the fit. The model is first updated with the selected covariate effects; the
+#' ORIGINAL (pre-covariate) ui is stashed in $iniDf0 for the iniUi/iniDf0
+#' accessors.
 #' @noRd
 .vaeToFit <- function(env, fit) {
   .ui <- env$ui
   .control <- env$vaeControl
   .ui2 <- .vaeUpdateModel(.ui, fit)
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
   ## encoder etas as the FOCEi inner starting point [nsub, neta] in eta order
   .etaMat <- fit$mu - fit$zPopMat
   colnames(.etaMat) <- fit$prep$etaNames
-  ## VAE "linear" SEs == FOCEi R-matrix (linearization Hessian) covariance
-  .cov <- if (identical(.control$covMethod, "linear")) "r" else ""
-  .fc <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 0L,
-                      etaMat = .etaMat, covMethod = .cov,
-                      rxControl = .control$rxControl, calcTables = .control$calcTables,
-                      print = 0L, compress = .control$compress, ci = .control$ci,
-                      sigdigTable = .control$sigdigTable, addProp = .control$addProp,
-                      eventSens = .control$eventSens)
-  .fit <- nlmixr2(.ui2, env$data, est = "focei", control = .fc)
-  ## attach the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
-  .e <- .fit$env
-  .e$method <- "vae"
-  .e$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
-                 covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
-                 seed = .control$seed)
+  .ret$etaMat <- .etaMat
+  ## presetting $method/$extra keeps the C++ finalize from writing the focei
+  ## "FOCE"/"i (outer: ...)" labels (and from clobbering $parHistData below)
+  .ret$method <- "vae"
+  .ret$extra <- ""
+  .ret$est <- "vae"
+  .ret$adjObf <- .control$adjObf
+  ## the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
+  .ret$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
+                   covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
+                   seed = .control$seed)
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
-  if (!is.null(fit$parHist)) {
-    .e$parHistData <- fit$parHist
-    .foceiSetupParHistData(.e)
-  }
+  if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist
+  nmObjHandleControlObject(.control, .ret) # stores $vaeControl for nmObjGetControl.vae
+  .vaeControlToFoceiControl(.ret)
+  .fit <- nlmixr2CreateOutputFromUi(.ui2, data = env$data, control = .ret$control,
+                                    table = env$table, env = .ret, est = "vae")
+  ## the ORIGINAL (pre-covariate-selection) model for $uiIni/$iniDf0; must be set
+  ## AFTER assembly (.nlmixr2FitUpdateParams overwrites $iniDf0 with the global
+  ## iniDf data.frame, which cannot represent the structure change)
+  .e <- .fit$env
   .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
   .fit
 }

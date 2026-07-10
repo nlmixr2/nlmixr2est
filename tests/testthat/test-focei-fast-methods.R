@@ -49,6 +49,13 @@ test_that("mu-referenced families use the analytic gradient (fast matches FD)", 
     f0 <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = FALSE))))
     fF <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = TRUE))))
     expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)
+    # analytic gradient actually consumed on the mu-profiled parameter set
+    .gt <- fF$parHistData$type
+    expect_gt(sum(.gt == "Forward Sensitivity"), 0)
+    expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
+                                "Forward Difference", "Central Difference")), 0)
+    expect_match(fF$extra, "grad: analytic", info = est)
+    expect_match(fF$extra, if (grepl("^irls", est)) "mu: irls" else "mu: lin", info = est)
   }
 })
 
@@ -61,4 +68,7 @@ test_that("est='foceif' equals est='focei' + fast=TRUE", {
   fRef <- suppressMessages(nlmixr2(.fastm_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
   expect_equal(fF$objf, fRef$objf, tolerance = 0.02)
   expect_equal(unname(fixef(fF)), unname(fixef(fRef)), tolerance = 1e-2)
+  # both consumed the analytic gradient and default to lbfgsb3c
+  expect_match(fF$extra, "outer: lbfgsb3c; grad: analytic")
+  expect_match(fRef$extra, "outer: lbfgsb3c; grad: analytic")
 })

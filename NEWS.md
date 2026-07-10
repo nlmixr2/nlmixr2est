@@ -1,5 +1,13 @@
 # nlmixr2est (development version)
 
+- `est = "vae"` now assembles its fit with `nlmixr2CreateOutputFromUi()` and computes
+  its covariance directly in the focei covariance step; `vaeControl(covMethod=)` now
+  takes the focei choices (`"analytic"` (default), `"r,s"`, `"r"`, `"s"`, `""`)
+  instead of `"linear"`.
+- Fixed a segmentation fault in `est = "vae"`: the parallel inner-likelihood
+  loop now caps its thread count at the rxode2 solve's `op->cores` (1 for
+  models rxode2 flags not thread safe, e.g. `linCmt()` gradients), matching
+  the other FOCEi parallel loops.
 - SAEM no longer errors with `No data with ID: <id>` for a subject that has
   a dose but no usable observation (e.g. all of its `DV` values are missing,
   which `rxode2::etTrans()` converts to `EVID==2` records).  The shared
