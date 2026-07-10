@@ -483,6 +483,9 @@ test_that("C2: experimental MC covariance (impCov) is off by default; theta SEs 
   .cov <- .fi$env$impCov
   expect_equal(.cov, t(.cov), tolerance = 1e-8)
   expect_true(all(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+  # published as the fit covariance so standard errors show in the parameter table
+  expect_false(is.null(.fi$cov))
+  expect_true(all(is.finite(.fi$parFixedDf[["SE"]][seq_len(.nth)])))
   # theta SEs match the Hessian-based FOCEI covariance (|r|)
   .ff <- suppressWarnings(nlmixr2(one.cmt, .d, "focei",
                                   foceiControl(print = 0L, covMethod = "r")))

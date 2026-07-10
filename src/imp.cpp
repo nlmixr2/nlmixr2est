@@ -169,15 +169,16 @@ void impComputeCov(Environment e) {
   double gamma = impGammaProp();
   double invGamma2 = 1.0 / (2.0 * gamma);
 
-  // Estimated free parameters = the estimated thetas followed by the
-  // parameterized Omega free parameters.  Parameter j < nTh is theta
-  // fullTheta[thIdx[j]]; j >= nTh is Omega free parameter (j - nTh).
-  std::vector<int> thIdx;
-  impGetEstThetaIdx(thIdx);
-  int nTh = (int)thIdx.size();
-  int nOm = impOmegaN();
-  int np = nTh + nOm;
+  // Free parameters in the optimizer's (fixedTrans) order -- the same order the
+  // fit's covariance uses.  pl[j] is a theta fullTheta index when < ntheta, else
+  // the Omega parameter (pl[j] - ntheta).
+  std::vector<int> pl;
+  impGetCovParList(pl);
+  int np = (int)pl.size();
   if (np == 0) return;
+  int ntheta = impNtheta();
+  int nTh = 0;
+  for (int j = 0; j < np; ++j) if (pl[j] < ntheta) ++nTh;
 
   // Per-subject proposal: mode, information H, lower Cholesky of gamma*H^-1, and
   // one fixed sample matrix.
@@ -222,8 +223,8 @@ void impComputeCov(Environment e) {
   // Perturb parameter j: a theta on the subjects' parameter pointers, or an
   // Omega free parameter (which also rebuilds omegaInv / logDetOmegaInv5).
   auto setPar = [&](int j, double val) {
-    if (j < nTh) impSetThetaAll(thIdx[j], val);
-    else impSetOmegaThetaAll(j - nTh, val);
+    if (pl[j] < ntheta) impSetThetaAll(pl[j], val);
+    else impSetOmegaThetaAll(pl[j] - ntheta, val);
   };
 
   // Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
@@ -254,8 +255,9 @@ void impComputeCov(Environment e) {
   };
 
   arma::vec par0(np);
-  for (int j = 0; j < nTh; ++j) par0[j] = impGetFullThetaVal(thIdx[j]);
-  for (int m = 0; m < nOm; ++m) par0[nTh + m] = impGetOmegaThetaVal(m);
+  for (int j = 0; j < np; ++j)
+    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
+                               : impGetOmegaThetaVal(pl[j] - ntheta);
   double f0 = evalObj(par0);
   arma::vec hstep(np);
   for (int j = 0; j < np; ++j) {
@@ -292,17 +294,22 @@ void impComputeCov(Environment e) {
   }
   arma::vec se(np);
   for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
-  // Full covariance (thetas then Omega parameters).
+  // Full covariance in free-parameter order (matches the fit's covariance layout).
   e["impCov"] = wrap(cov);
   e["impSe"] = wrap(se);
-  e["impCovThetaN"] = nTh; // first nTh entries are thetas, the rest Omega parameters
+  e["impCovThetaN"] = nTh;
   IntegerVector thIdxR(nTh);
-  for (int j = 0; j < nTh; ++j) thIdxR[j] = thIdx[j] + 1; // 1-based fullTheta index
+  { int t = 0; for (int j = 0; j < np; ++j) if (pl[j] < ntheta) thIdxR[t++] = pl[j] + 1; }
   e["impCovThetaIdx"] = thIdxR;
-  // Backwards-compatible theta-block views.
   if (nTh > 0) {
     e["impCovTheta"] = wrap(arma::mat(cov.submat(0, 0, nTh - 1, nTh - 1)));
     e["impSeTheta"] = wrap(arma::vec(se.subvec(0, nTh - 1)));
+  }
+  // Publish as the fit's covariance so the standard SE / CI / correlation table
+  // machinery (foceiFinalizeTables) picks it up.
+  if (cov.is_finite()) {
+    e["cov"] = wrap(cov);
+    e["covMethod"] = CharacterVector::create("imp");
   }
 }
 

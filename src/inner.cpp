@@ -8324,6 +8324,14 @@ void impGetEstThetaIdx(std::vector<int>& idx) {
   }
 }
 
+// fullTheta index of every free (estimated) parameter, in the optimizer's
+// free-parameter (fixedTrans) order -- the order the fit's covariance uses.
+// idx[k] < ntheta is a theta; idx[k] >= ntheta is the Omega parameter idx-ntheta.
+void impGetCovParList(std::vector<int>& idx) {
+  idx.clear();
+  for (unsigned int k = 0; k < op_focei.npars; ++k) idx.push_back(op_focei.fixedTrans[k]);
+}
+
 double impGetFullThetaVal(int idx) { return op_focei.fullTheta[idx]; }
 
 // Set theta fullTheta[idx] on every subject's parameter pointer (FD perturbation).

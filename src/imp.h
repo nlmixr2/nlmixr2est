@@ -80,6 +80,7 @@ int impThetaSensN();
 int impNtheta();                                   // number of thetas
 bool impCovEnabled();                              // whether impCov=TRUE was requested
 void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the estimated thetas
+void impGetCovParList(std::vector<int>& idx);      // fullTheta index of every free param (fixedTrans order)
 double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
 void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on every subject (FD perturb)
 void impForceResolve(int id);                      // force likInner0 to re-solve subject id
