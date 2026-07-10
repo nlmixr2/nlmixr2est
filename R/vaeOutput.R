@@ -52,8 +52,10 @@
   }
   for (bn in names(betaVals)) ui2 <- .setIni(ui2, paste0(bn, " <- ", signif(betaVals[[bn]], 12)))
   .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
-  if (nrow(.errRow) > 0L)
-    ui2 <- .setIni(ui2, paste0(.errRow$name[1], " <- ", signif(fit$a, 12)))
+  for (en in .errRow$name) {
+    .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
+    ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
+  }
   ui2
 }
 

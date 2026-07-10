@@ -27,8 +27,9 @@
 #'   individual parameter. This is distinct from the `ini()` omega.
 #' @param likelihood Inner likelihood used for the objective, EBEs, and
 #'   gradients, all run through the same FOCEi inner interface: `"focei"`
-#'   (default, with eta-epsilon interaction), `"foce"` (no interaction), or
-#'   `"laplace"`.
+#'   (default, with eta-epsilon interaction), `"foce"` (no interaction, NONMEM
+#'   FOCE with R frozen at the population prediction), `"focep"` (FOCE+, no
+#'   interaction but R evaluated at the live conditional eta), or `"laplace"`.
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
 #'   covariate selection during training; when `FALSE` fit the given fixed
 #'   covariate structure only (faster population-only mode).
@@ -53,7 +54,7 @@ vaeControl <- function(seed = 1L,
                        burnInLearningRate = 8e-3,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
-                       likelihood = c("focei", "foce", "laplace"),
+                       likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
                        returnVae = FALSE,

@@ -38,9 +38,14 @@
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     as.numeric(.r$est[1])
   }, numeric(1))
+  ## residual error params (all of them, in theta order): value, theta index,
+  ## and type (add/prop/...). Combined models have >1 row; log-likelihood models
+  ## may have none. `a` is the (named) error-param vector.
   .errRow <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
-  .a <- if (nrow(.errRow) > 0) as.numeric(.errRow$est[1]) else 1.0
-  .aThetaIdx <- if (nrow(.errRow) > 0) as.integer(.errRow$ntheta[1]) else NA_integer_
+  .errRow <- .errRow[order(.errRow$ntheta), , drop = FALSE]
+  .a <- if (nrow(.errRow) > 0) setNames(as.numeric(.errRow$est), .errRow$name) else numeric(0)
+  .errThetaIdx <- as.integer(.errRow$ntheta)
+  .errType <- as.character(.errRow$err)
 
   ## normalize data columns
   d <- as.data.frame(data)
@@ -105,7 +110,8 @@
   }
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
-       th = .th, zPopThetaIdx = .zPopThetaIdx, aThetaIdx = .aThetaIdx, isMix = .isMix,
+       th = .th, zPopThetaIdx = .zPopThetaIdx, isMix = .isMix,
+       errThetaIdx = .errThetaIdx, errType = .errType,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .covNames, covMat = .covMat, covType = .covType, covPop = .covPop,

@@ -6,12 +6,16 @@
 # censoring) without the nlmixr2 R interface.
 
 #' A foceiControl carrying the VAE's chosen inner likelihood + solving options.
-#' focei -> interaction=1; foce -> interaction=0; laplace -> the Laplace method.
+#' focei -> interaction=1; foce/focep -> interaction=0 (focep = FOCE+, R at the
+#' live conditional eta); laplace -> the Laplace method.
 #' @noRd
 .vaeInnerFoceiControl <- function(control) {
-  .interaction <- if (identical(control$likelihood, "foce")) 0L else 1L
+  .lik <- control$likelihood
+  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
+  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
   foceiControl(rxControl = control$rxControl, maxOuterIterations = 0L,
                maxInnerIterations = 0L, covMethod = "", interaction = .interaction,
+               foce = .foce,
                sumProd = control$sumProd, optExpression = control$optExpression,
                literalFix = control$literalFix, literalFixRes = control$literalFixRes,
                addProp = control$addProp, calcTables = FALSE, compress = FALSE,

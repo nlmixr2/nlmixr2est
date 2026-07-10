@@ -27,7 +27,7 @@
   ## mixture etas (NA index) keep their fixed component thetas in `th`
   .ok <- !is.na(prep$zPopThetaIdx)
   th[prep$zPopThetaIdx[.ok]] <- zPop[.ok]
-  if (!is.na(prep$aThetaIdx)) th[prep$aThetaIdx] <- a
+  if (length(prep$errThetaIdx) > 0L) th[prep$errThetaIdx] <- a
   th
 }
 
@@ -132,7 +132,7 @@
     for (i in seq_len(N)) v <- v + (mu[i, k] - zPopCur[k])^2 + sum(L[k, , i]^2)
     omegaCur[k] <- v / N
   }
-  aCur <- .vaeResidSd(preds, prep, a)
+  aCur <- .vaeUpdateErr(preds, prep, a)
   ## mixture etas center at 0 (component-independent prior); don't drift zPop there
   if (!is.null(prep$isMix)) zPopCur[prep$isMix] <- 0
   if (!all(is.finite(zPopCur))) zPopCur <- zPop
@@ -142,17 +142,41 @@
        a = a + gamma * (aCur - a))
 }
 
-#' Residual SD (additive a) update, robust to non-finite predictions from a
-#' failed/extreme solve -- such observations are dropped rather than poisoning a.
+#' Closed-form error-parameter M-step for additive / proportional / combined
+#' residual models, robust to non-finite predictions (dropped, not poisoning the
+#' estimate). Returns the error-param vector in `prep$errThetaIdx` order.
+#'  add:      R = a^2               -> a = sqrt(mean(res^2))
+#'  prop:     R = (b*f)^2           -> b = sqrt(mean((res/f)^2))
+#'  combined: R = a^2 + (b*f)^2     -> nnls of res^2 on [1, f^2]
+#' Other error types keep their current value (the inner likelihood still uses
+#' them correctly; only their closed-form update is unavailable).
 #' @noRd
-.vaeResidSd <- function(preds, prep, a) {
-  ssr <- 0; nObs <- 0L
+.vaeUpdateErr <- function(preds, prep, a) {
+  if (length(a) == 0L) return(a)
+  res <- numeric(0); f <- numeric(0)
   for (i in seq_len(prep$N)) {
-    d <- (prep$subj[[i]]$y - preds[[i]])^2
-    ok <- is.finite(d)
-    if (any(ok)) { ssr <- ssr + sum(d[ok]); nObs <- nObs + sum(ok) }
+    r <- prep$subj[[i]]$y - preds[[i]]; ff <- preds[[i]]
+    ok <- is.finite(r) & is.finite(ff)
+    res <- c(res, r[ok]); f <- c(f, ff[ok])
   }
-  if (nObs > 0L) sqrt(ssr / nObs) else a
+  if (length(res) == 0L) return(a)
+  types <- prep$errType
+  hasAdd <- which(types == "add"); hasProp <- which(types == "prop")
+  aNew <- a
+  if (length(hasAdd) && length(hasProp)) {
+    ## combined: res^2 ~ a^2 + b^2 f^2 (non-negative least squares, 2 columns)
+    X <- cbind(1, f^2); cf <- tryCatch(stats::lm.fit(X, res^2)$coefficients, error = function(e) c(NA, NA))
+    v0 <- max(cf[1], .Machine$double.eps); v1 <- max(cf[2], .Machine$double.eps)
+    if (is.finite(v0)) aNew[hasAdd[1]] <- sqrt(v0)
+    if (is.finite(v1)) aNew[hasProp[1]] <- sqrt(v1)
+  } else if (length(hasAdd)) {
+    aNew[hasAdd[1]] <- sqrt(mean(res^2))
+  } else if (length(hasProp)) {
+    ok <- abs(f) > 1e-8
+    if (any(ok)) aNew[hasProp[1]] <- sqrt(mean((res[ok] / f[ok])^2))
+  }
+  aNew[!is.finite(aNew)] <- a[!is.finite(aNew)]
+  aNew
 }
 
 #' Closed-form M-step WITH BICc-ELBO covariate selection. For each parameter k,
@@ -192,7 +216,7 @@
     for (i in seq_len(N)) v <- v + (mu[i, k] - zPopMat[i, k])^2 + sum(L[k, , i]^2)
     omegaCur[k] <- v / N
   }
-  aCur <- .vaeResidSd(preds, prep, a)
+  aCur <- .vaeUpdateErr(preds, prep, a)
   if (!all(is.finite(omegaCur))) omegaCur <- omega
   list(intercept = intercept, beta = beta, selected = selected, zPopMat = zPopMat,
        omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
@@ -257,8 +281,9 @@
     }
     elboTrace[it] <- mean(elbos)
     if (verbose && it %% 25 == 0)
-      message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=%.3f", it, nMain,
-                      elboTrace[it], paste(round(zPop, 3), collapse = ","), a))
+      message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=(%s)", it, nMain,
+                      elboTrace[it], paste(round(zPop, 3), collapse = ","),
+                      paste(round(a, 3), collapse = ",")))
   }
 
   zPopMat <- if (is.matrix(zPopArg)) zPopArg else matrix(zPopArg, N, zDim, byrow = TRUE)

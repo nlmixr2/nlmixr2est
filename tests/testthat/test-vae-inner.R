@@ -27,6 +27,20 @@ test_that("vae inner driver matches likInner/foceiInnerLp (theophylline)", {
   expect_lt(abs(r$obj[5] - likInner(etaMat[5, ], 5L)), 1e-6)
 })
 
+test_that("vae likelihood choices map to the right FOCEi inner control", {
+  ## focei -> interaction; foce -> NONMEM FOCE; focep -> FOCE+ (R at live eta)
+  expect_identical(formals(vaeControl)$likelihood,
+                   quote(c("focei", "foce", "focep", "laplace")))
+  fi <- .vaeInnerFoceiControl(vaeControl(likelihood = "focei"))
+  fe <- .vaeInnerFoceiControl(vaeControl(likelihood = "foce"))
+  fp <- .vaeInnerFoceiControl(vaeControl(likelihood = "focep"))
+  expect_equal(fi$interaction, 1L)
+  expect_equal(fe$interaction, 0L)
+  expect_equal(fp$interaction, 0L)
+  expect_equal(fe$foceType, 0L)   # NONMEM FOCE
+  expect_equal(fp$foceType, 1L)   # FOCE+
+})
+
 test_that("vae inner driver selects mixture components per id", {
   mixmod <- function() {
     ini({ lka <- log(1.8); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32); p1 <- 0.6
