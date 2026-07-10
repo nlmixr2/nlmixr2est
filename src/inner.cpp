@@ -5601,7 +5601,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   int finalize=0, i = 0;
   niterGrad.push_back(niter.back());
   if (op_focei.curAnalytic){
-    gradType.push_back(8);
+    gradType.push_back(9);
   } else if (op_focei.derivMethod == 0){
     if (op_focei.curGill == 1){
       gradType.push_back(1);
@@ -5616,7 +5616,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
     gradType.push_back(4);
   }
   // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21,
-  // 8=analytic (forward sensitivity, fast=TRUE).
+  // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
   printMuGroupThetaRow(true);
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -7690,7 +7690,7 @@ void parHistData(Environment e, bool focei){
     tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                  "Forward Difference", "Central Difference",
                                                  "Scaled", "Unscaled", "Back-Transformed",
-                                                 "Forward Sensitivity");
+                                                 "Forward Sensitivity", "Analytic Gradient");
     tmp.attr("class") = "factor";
     ret[1] = tmp;
     arma::mat cPar(vPar.size()/iterType.size(), iterType.size());

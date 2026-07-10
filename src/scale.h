@@ -778,8 +778,8 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
     // Gradient row label by `type` (1=Gill,2=Mixed,3=Forward,4=Central,5=Shi21,
-    // 8=analytic forward sensitivity); other codes fall through to generic
-    // "Gradient".
+    // 8=nlm forward sensitivity, 9=analytic outer gradient); other codes fall
+    // through to generic "Gradient".
     const char *label = NULL;
     if (scale->showOfv) {
       switch (type) {
@@ -788,7 +788,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|    Forward    |"; break;  // Forward
       case 4:  label = "    C|    Central    |"; break;  // Central
       case 5:  label = "    S|     Shi21     |"; break;  // Shi21
-      case 8:  label = "    A|    Analytic   |"; break;  // analytic sensitivity
+      case 9:  label = "    A|    Analytic   |"; break;  // analytic gradient
       default: label = "    G|    Gradient   |"; break;
       }
     } else {
@@ -798,7 +798,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|"; break;  // Forward
       case 4:  label = "    C|"; break;  // Central
       case 5:  label = "    S|"; break;  // Shi21
-      case 8:  label = "    A|"; break;  // analytic sensitivity
+      case 9:  label = "    A|"; break;  // analytic gradient
       default: label = "    G|"; break;
       }
     }
@@ -875,7 +875,7 @@ static inline RObject scaleParHisDf(scaling *scale) {
   tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                "Forward Difference", "Central Difference",
                                                "Scaled", "Unscaled", "Back-Transformed",
-                                               "Forward Sensitivity");
+                                               "Forward Sensitivity", "Analytic Gradient");
   tmp.attr("class") = "factor";
   ret[1] = tmp;
   arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());
