@@ -235,5 +235,12 @@
   if (length(covNames) == 0L) return(matrix(numeric(0), nrow = 0, ncol = 0))
   .byId <- dataSav[!duplicated(dataSav$ID), , drop = FALSE]
   .byId <- .byId[order(.byId$ID), , drop = FALSE]
-  as.matrix(.byId[, covNames, drop = FALSE])
+  # a name can be a covariate expression (e.g. log(WT/70)) rather than a
+  # bare column; evaluate those against the baseline rows
+  .cols <- lapply(covNames, function(.cn) {
+    if (.cn %in% names(.byId)) return(as.numeric(.byId[[.cn]]))
+    as.numeric(eval(parse(text = .cn), envir = .byId))
+  })
+  matrix(unlist(.cols, use.names = FALSE),
+         nrow = nrow(.byId), ncol = length(covNames))
 }

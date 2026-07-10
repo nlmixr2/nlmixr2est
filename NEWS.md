@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fixed `muModel = "lin"`/`"irls"` erroring with "undefined columns selected" when a
+  model has two or more mu-referenced covariates that are expressions (e.g.
+  `log(WT/70)`) rather than bare data columns (#711).
 - `est = "vae"` now assembles its fit with `nlmixr2CreateOutputFromUi()` and computes
   its covariance directly in the focei covariance step; `vaeControl(covMethod=)` now
   takes the focei choices (`"analytic"` (default), `"r,s"`, `"r"`, `"s"`, `""`)

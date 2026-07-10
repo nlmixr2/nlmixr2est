@@ -331,3 +331,33 @@ nmTest({
     expect_true(any(grepl("[-0-9]\\.[0-9]", gradRows)))
   })
 })
+
+nmTest({
+  test_that("mufocei handles >=2 mu-ref covariate expressions (#711)", {
+    # two mu-referenced covariates that are expressions (log(WT/70)), not
+    # bare data columns, used to error with "undefined columns selected"
+    mod <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        wtcl <- 0.75; wtv <- 1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + wtcl * log(WT/70))
+        v <- exp(tv + eta.v + wtv * log(WT/70))
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl/v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(mod, nlmixr2data::theo_sd, "focei",
+                  foceiControl(muModel = "lin", print = 0,
+                               maxOuterIterations = 0L, covMethod = "",
+                               calcTables = FALSE))
+    expect_true(inherits(.f, "nlmixr2FitCore"))
+    expect_true(all(is.finite(.f$theta)))
+  })
+})
