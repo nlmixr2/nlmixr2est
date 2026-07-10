@@ -2291,6 +2291,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .control$fast <- FALSE
     }
   }
+  # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
+  # cannot be built -- downgrade fast once here (plain focei gradient) instead of
+  # re-attempting the symengine build on every outer-gradient call.
+  if (isTRUE(.control$fast) && isTRUE(any(.ui$predDfFocei$linCmt))) {
+    .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+    .control$fast <- FALSE
+  }
   assign("control", .control, envir=.ui)
 }
 
