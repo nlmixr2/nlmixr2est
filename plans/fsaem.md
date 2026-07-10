@@ -178,6 +178,25 @@ Empirical findings (scratch coexist.R, 2026-07-10) that fix the mechanism:
   pointer (not the global), so it keeps working while global == inner, PROVIDED
   nothing in the SAEM M-step re-reads `getRxSolve_()` (to verify in P1-3).
 
+HARD CONSTRAINT (rxode2 codegen2.h:614): every compiled model function begins
+`_solveData = _getRxSolve_()`, so the *compiled model code itself* reads the
+global current solve at run time. Therefore the SAEM model's `par_solve` and the
+inner's `likInner0` each require THEIR OWN model to be the current global solve;
+they cannot interleave without re-pointing the global (= re-running that model's
+setup/solve) on every switch. This is why the fast kernel and the SAEM M-step
+must be sequenced as explicit segments, re-pointing between them.
+
+Implementation approach (per-iteration re-point, reuses the SAEM M-step as-is):
+each `firstN` iteration -- (a) re-point to inner (re-run inner setup at the
+current SAEM theta/omega) -> `fsaemInnerMap_` + `fsaemImhKernel_` -> accepted
+etas copied out; (b) write etas into `phiM`; (c) re-point to SAEM (re-establish
+its solve) so the existing M-step / `user_function` run unchanged. Cost: two
+extra model solves per fast iteration (~firstN, ~20) -- acceptable. iter >= N or
+`fast=FALSE`: skip -> existing `do_mcmc` (degrade, bit-identical). The two-phase
+alternative (run all `firstN` iterations on the inner with an inner-native SA
+M-step, single A->B re-point) is more efficient but reimplements the M-step;
+deferred unless the per-iteration re-point proves too costly.
+
 Concrete P1-3 integration (validated cores: `fsaemInnerMap_`, `fsaemImhKernel_`):
 pass the pre-built inner env into `saem_fit`. Each `firstN` iteration, in C++:
 (1) write the current SAEM estimate (Plambda->theta, Gamma2->omega) into the
