@@ -50,7 +50,9 @@ List vaeFoceLik(arma::vec f0, arma::mat J0, arma::vec R, arma::vec y,
   const bool doParallel = (cores > 1);
 
   arma::vec obji(N, arma::fill::zeros);
-  arma::mat zStar(N, neta, arma::fill::zeros);
+  // one MAP eta per (component, subject): component-major, row m*N+i, matching
+  // the fit etaMat (mix-1 etas for all subjects, then mix-2, ...).
+  arma::mat zStar(N * nMix, neta, arma::fill::zeros);
   arma::ivec mixest(N, arma::fill::ones);
 
   // Laplace -2LL for one subject under one mixture component (its data block
@@ -124,9 +126,9 @@ List vaeFoceLik(arma::vec f0, arma::mat J0, arma::vec R, arma::vec y,
     // failure (singular Hessian, non-finite solve) falls back to a large
     // objective and the encoder mode.
     try {
-      // per-component Laplace log-likelihood (mixture insertion)
+      // per-component Laplace log-likelihood (mixture insertion): each component
+      // gets its own MAP eta (as if nMix*N pseudo-subjects), stored per component.
       arma::vec compLL(nMix);
-      arma::vec zBest = zLin.row(i).t();
       int bestM = 0;
       double bestLL = -std::numeric_limits<double>::infinity();
       for (int m = 0; m < nMix; ++m) {
@@ -134,18 +136,18 @@ List vaeFoceLik(arma::vec f0, arma::mat J0, arma::vec R, arma::vec y,
         const double objM = laplace(m * totalObs, o0, o1,
                                     zLin.row(m * N + i).t(), zPop.row(m * N + i).t(), zMode);
         compLL[m] = std::log(mixProb[m]) - 0.5 * objM;
-        if (compLL[m] > bestLL) { bestLL = compLL[m]; bestM = m; zBest = zMode; }
+        zStar.row(m * N + i) = zMode.t();
+        if (compLL[m] > bestLL) { bestLL = compLL[m]; bestM = m; }
       }
       // -2 logsumexp_m( log mixProb[m] + ll_i^(m) )
       double s = 0.0;
       for (int m = 0; m < nMix; ++m) s += std::exp(compLL[m] - bestLL);
       double val = -2.0 * (bestLL + std::log(s));
       obji[i] = R_FINITE(val) ? val : 1e30;
-      zStar.row(i) = zBest.t();
       mixest[i] = bestM + 1;
     } catch (...) {
       obji[i] = 1e30;
-      zStar.row(i) = zLin.row(i);
+      for (int m = 0; m < nMix; ++m) zStar.row(m * N + i) = zLin.row(m * N + i);
       mixest[i] = 1;
     }
   }

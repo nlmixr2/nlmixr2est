@@ -136,4 +136,8 @@ test_that("vaeFoceLik combines mixture components as -2 logsumexp (inner.cpp)", 
   expect_lt(abs(r1$objective - s1), 1e-4)
   ## mixest reports a valid component per subject
   expect_true(all(r$mixest %in% seq_len(nMix)))
+  ## an eta per (component, subject): nMix*N rows, component-major
+  expect_equal(nrow(r$zStar), N * nMix)
+  ## nMix=1 keeps the plain N-row eta matrix
+  expect_equal(nrow(r1$zStar), N)
 })
