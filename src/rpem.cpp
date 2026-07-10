@@ -825,6 +825,49 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }
 
+// Fisher-score information for the K=1 regression case (design/rpem/08).  At the
+// converged estimates, each subject's marginal-likelihood score is formed by the
+// Fisher identity s_i = E_{eta|Y_i}[grad complete-data loglik], with the posterior
+// expectation taken over the stored samples via the self-normalized importance
+// weights w_ij = softmax_j logp_ij (the samples were drawn from the prior N(0,omega),
+// so these weights ARE the posterior).  Score blocks per subject:
+//   coef_k  : design_i,k * (theta_ij - design_i.coefs)/omega = design_i,k * eta_ij/omega
+//   sd      : -nobs_i/sd + acc_ij/sd^3   (acc = SS additive / WSS proportional)
+//   omega   : -1/(2 omega) + eta_ij^2/(2 omega^2)
+// Returns the nsub x (nCoef+2) per-subject score matrix S (columns: coefs, sd,
+// omega); the caller forms the empirical Fisher information I = S^T S and inverts it.
+//[[Rcpp::export]]
+NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double omega,
+                            int errType, double sd) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemFisherReg");
+  if (rpemOp.nEta != 1) stop("rpemFisherReg currently supports nEta==1");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nCoef = design.ncol();
+  if (design.nrow() != nsub) stop("design must have one row per subject");
+  int p = nCoef + 2;                            // coefs, residual sd, omega
+  NumericMatrix S(nsub, p);
+  double sd3 = sd * sd * sd, om2 = omega * omega;
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double sw = 0.0;
+    for (int j = 0; j < nG; ++j) sw += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
+    int nobsi = rpemOp.nobs[i];
+    double sEta = 0.0, sEta2 = 0.0, sSd = 0.0;   // importance-weighted score sums
+    for (int j = 0; j < nG; ++j) {
+      double w = exp(rpemOp.logp[(size_t)i * nG + j] - mx) / sw;
+      double eta = rpemOp.etaS[(size_t)i * nG + j];
+      sEta  += w * eta;
+      sEta2 += w * eta * eta;
+      double acc = (errType == 1) ? rpemOp.wssv[(size_t)i * nG + j] : rpemOp.ssv[(size_t)i * nG + j];
+      sSd += w * (-(double)nobsi / sd + acc / sd3);
+    }
+    for (int k = 0; k < nCoef; ++k) S(i, k) = design(i, k) * sEta / omega;
+    S(i, nCoef)     = sSd;
+    S(i, nCoef + 1) = -0.5 / omega + 0.5 * sEta2 / om2;
+  }
+  return S;
+}
+
 // K=1 combined-error M-step (add + prop, errType 2).  Same regression MH as
 // rpemMstepK1Reg for the structural coefs / omega, but the residual has no closed
 // form: obs variance V = a + b*cp^2 with a=add.sd^2, b=prop.sd^2.  We accumulate

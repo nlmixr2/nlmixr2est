@@ -2,15 +2,26 @@
 
 In scope for the first increment (D9).
 
-STATUS (2026-07-09): SEs are DONE via the FOCEI-covariance path -- the eval-only
-finalize (`.rpemBuildFit`) now uses `foceiControl(covMethod="r,s")`, so FOCEI
-computes the R/S sandwich covariance at the fixed RPEM estimates and `parFixedDf`
-reports SE / %RSE / CI. This reuses existing machinery and gives immediate
-uncertainty. Caveat: these are FOCEI-covariance SEs, not the paper's Fisher-score
-SEs (below) -- a later refinement. (The M1-held non-mu-ref structural params are
-now marked fixed in the fit, so they correctly report NA SE rather than a
-misleading FOCEI SE; they get real estimates + SEs once the numeric fixed-effect
-update (D20) lands.)
+STATUS (2026-07-09): Fisher-score SEs DONE for the single-eta additive/proportional
+case (the paper's native method). At the converged estimates `rpemFisherReg` (C++)
+forms each subject's marginal-likelihood score from the stored samples via the
+Fisher identity s_i = E_{eta|Y_i}[grad complete-data loglik], with the posterior
+expectation taken over the samples using the self-normalized importance weights
+w_ij = softmax_j logp_ij (samples were drawn from the prior, so these ARE the
+posterior). Score blocks: coef_k = design_i,k * eta_ij/omega (typical value +
+covariate coefs); residual sd = -nobs_i/sd + acc_ij/sd^3 (acc = SS additive / WSS
+proportional); omega = -1/(2 omega) + eta_ij^2/(2 omega^2). The empirical Fisher
+information I = t(S) %*% S is inverted (`.rpemFisherCov`); the theta block (typical
+value + covariate coefs + residual sd) is installed as the fit's `cov` and the
+parFixedDf SE/%RSE/CI overwritten (`.rpemInstallFisherCov`, mirrors SAEM's
+`.saemInstallFullCov`) with covMethod "fisher". Matches FOCEI SEs closely (tka SE
+0.097 vs 0.097; add.sd SE 0.0028 vs 0.0030) and shrinks ~1/sqrt(n). KEY gotcha: the
+eval-only FOCEI reports the ui iniDf theta (maxOuter=0 holds the starting value), so
+`.rpemBuildFit` now SEEDS iniDf$est with the RPEM estimates before the eval -- this
+also fixed a latent non-mixture estimate-display bug (parFixedDf showed ini values).
+Other structures (combined/tbs/power, >1 eta, structural betas, mixtures) keep the
+FOCEI-covariance (`covMethod="r,s"`) SEs. Follow-ups: omega diagonal SE into the
+reported varCov; scores for combined/power residual and structural betas; mixtures.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:

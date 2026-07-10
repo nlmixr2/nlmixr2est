@@ -279,6 +279,27 @@
 #' @param control `rpemControl()`.
 #' @return list of estimates (`mu`, `omega`, `addSd`) plus per-iteration traces.
 #' @noRd
+#' Form the RPEM Fisher-score covariance from the per-subject score matrix.
+#'
+#' `S` is nsub x (nCoef+2) (columns: regression coefs, residual sd, omega); the
+#' empirical Fisher information is `I = t(S) %*% S` and the covariance its inverse.
+#' Returns the theta block (typical value + covariate coefs + residual sd, named for
+#' the fit's `cov`) and the omega SE, or NULL if the information is not invertible /
+#' the covariance is not a valid (finite, non-negative-diagonal) matrix.
+#' @noRd
+.rpemFisherCov <- function(S, nCoef, coefNames, sdName) {
+  .I <- crossprod(S)
+  .cov <- tryCatch(solve(.I), error = function(e) NULL)
+  if (is.null(.cov) || anyNA(.cov) || any(!is.finite(.cov)) || any(diag(.cov) < 0))
+    return(NULL)
+  .p <- ncol(S)
+  .thIdx <- seq_len(nCoef + 1L)                       # coefs + residual sd
+  .thCov <- .cov[.thIdx, .thIdx, drop = FALSE]
+  .thNames <- c(coefNames, sdName)
+  dimnames(.thCov) <- list(.thNames, .thNames)
+  list(cov = .thCov, omegaSE = sqrt(.cov[.p, .p]))
+}
+
 .rpemFit <- function(ui, data, control = rpemControl()) {
   .cl <- .rpemClassify(ui)
   if (!is.null(.cl$mix)) return(.rpemFitMix(ui, data, .cl, control))
@@ -443,6 +464,18 @@
   rxode2::rxSetSeed(control$seed)
   .feEta <- .drawEtas(omegaHat)
   .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores)
+  # Fisher-score covariance (design/rpem/08) from the converged samples, computed
+  # while they are still loaded (before rpemFree).  Supported for the single-eta
+  # additive/proportional case (typical value + covariate coefs + residual sd);
+  # other structures keep the FOCEI-covariance SEs.
+  .fisher <- NULL
+  if (.useReg && .cl$errType %in% c(0L, 1L) && !.structOn) {
+    .coefsF <- c(muHat, covCoefHat)
+    .S <- rpemFisherReg(.design, .coefsF, omHat[1], .cl$errType, sdHat)
+    .coefNames <- c(.cl$muNames, .cl$covCoefNames)
+    .sdName <- .cl$thetaNames[.cl$addSdIdx + 1L]
+    .fisher <- .rpemFisherCov(.S, ncol(.design), .coefNames, .sdName)
+  }
   rpemFree()
   .nG <- control$nGauss
   .nsub <- length(.fe$logp) / .nG
@@ -460,7 +493,7 @@
        endptSd = endptSdHat, endptProp = endptPropHat,
        struct = if (.structOn) stats::setNames(structHat, .cl$thetaNames[.cl$structIdx + 1L]) else NULL,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
-       ebe = ebe,
+       ebe = ebe, fisher = .fisher,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
 }
@@ -631,18 +664,6 @@ getValidNlmixrCtl.rpem <- function(control) {
     .ret$table$cwres <- FALSE
     .ret$table$npde <- FALSE
   }
-  # Only user-fixed (fix()) thetas are held; non-mu-ref structural params are now
-  # estimated by the numeric re-solve M-step.  Mark the held ones fixed so the fit
-  # reports them as held rather than assigning FOCEI-covariance SEs.
-  .heldNames <- .cl$fixNames
-  if (length(.heldNames) > 0L) {
-    .uiD <- rxode2::rxUiDecompress(ui)
-    .idf <- .uiD$iniDf
-    .idf$fix[.idf$name %in% .heldNames] <- TRUE
-    assign("iniDf", .idf, envir = .uiD)
-    ui <- rxode2::rxUiCompress(.uiD)
-  }
-  .ret$ui <- ui
   # full theta (named over all theta names): mu-referenced -> RPEM mu, additive
   # residual -> RPEM add.sd, held structural -> ini values.
   .tn <- .cl$thetaNames
@@ -668,6 +689,18 @@ getValidNlmixrCtl.rpem <- function(control) {
     if (length(.cl$mix$probNames))
       .ft[.cl$mix$probNames] <- rxode2::mexpit(rfit$mix$w[seq_along(.cl$mix$probNames)])
   }
+  # Seed the ui iniDf with the RPEM estimates so the eval-only FOCEI (maxOuter=0)
+  # reports them (it starts from -- and holds -- the iniDf theta).  Only user-fixed
+  # (fix()) thetas are held; mark them fixed so they report as held (NA SE).
+  .heldNames <- .cl$fixNames
+  .uiD <- rxode2::rxUiDecompress(ui)
+  .idf <- .uiD$iniDf
+  .thRow <- !is.na(.idf$ntheta)
+  .idf$est[.thRow] <- .ft[.idf$name[.thRow]]
+  if (length(.heldNames) > 0L) .idf$fix[.idf$name %in% .heldNames] <- TRUE
+  assign("iniDf", .idf, envir = .uiD)
+  ui <- rxode2::rxUiCompress(.uiD)
+  .ret$ui <- ui
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas
   .om <- diag(rfit$omega, .cl$nEta)
@@ -687,15 +720,24 @@ getValidNlmixrCtl.rpem <- function(control) {
   # SAEM's .saemMixFix), then hand the FOCEI eval an N-row etaMat via the control only
   # (remove env$.etaMat so no mixnum column leaks into it, exactly as SAEM does).
   if (.isMix) .rpemMixSetFit(.ret, .cl, rfit)
-  .nlmixr2FitUpdateParams(.ret)
-  # covMethod "r,s" gives FOCEI-covariance SEs at the fixed RPEM estimates (the paper's
-  # Fisher-score SEs are a later refinement); mixtures skip it (perturbing the mixture
-  # probability breaks the solve), matching SAEM's covMethod=0 for the eval.
+  # RPEM Fisher-score covariance (design/rpem/08): when available, install it as the
+  # fit's cov (the paper's native SEs) and skip the FOCEI covariance calc; otherwise
+  # covMethod "r,s" gives FOCEI-covariance SEs at the fixed RPEM estimates.  Mixtures
+  # skip the covariance entirely (perturbing the mixture probability breaks the solve),
+  # matching SAEM's covMethod=0 for the eval.
+  # The FOCEI eval runs with covMethod "r,s" for non-mixtures (it also settles the
+  # displayed estimates); when Fisher-score SEs are available they OVERWRITE the
+  # FOCEI covariance / parFixedDf SEs afterward (.rpemInstallFisherCov).
+  .fisherOn <- !is.null(rfit$fisher)
+  # eventSens="jump" enables rxode2's analytic dose-parameter ("jump") sensitivities
+  # for the FOCEI eval's gradient model (residual tables + R/S covariance) -- set
+  # explicitly so dose-parameter models (bioavailability / lag / rate / dur) get the
+  # correct event sensitivities regardless of the foceiControl default.
   .foceiControl <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 0L,
                                 covMethod = if (.isMix) 0L else "r,s",
                                 etaMat = .eb, scaleTo = 0,
                                 skipCov = if (.isMix) ui$foceiSkipCov else NULL,
-                                calcTables = TRUE, interaction = 1L,
+                                calcTables = TRUE, interaction = 1L, eventSens = "jump",
                                 rxControl = .rxControl, est = "rpem")
   if (.isMix) {
     # the FOCEI eval must read the etaMat from the control, not env$.etaMat.
@@ -725,7 +767,42 @@ getValidNlmixrCtl.rpem <- function(control) {
   if (!inherits(.out, "nlmixr2FitData")) {
     stop("rpem residual-table step incomplete")
   }
+  # Install the RPEM Fisher-score covariance AFTER the fit is built (so the eval-only
+  # finalize does not clobber the estimates) and patch the parFixedDf SE/%RSE/CI from
+  # it -- mirrors SAEM's .saemInstallFullCov.
+  if (.fisherOn) .rpemInstallFisherCov(.out, rfit$fisher$cov)
   .out
+}
+
+#' Install the RPEM Fisher-score covariance on a built fit and surface its SEs in
+#' parFixedDf (SE / %RSE / CI) for the theta rows it covers.  Mirrors
+#' `.saemInstallFullCov`; `cov` is the theta-block covariance (typical value +
+#' covariate coefs + residual sd) named over the estimated thetas.
+#' @noRd
+.rpemInstallFisherCov <- function(fit, cov) {
+  .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
+  if (!is.environment(.env) || is.null(cov)) return(invisible())
+  .env$cov <- cov
+  .env$covMethod <- "fisher"
+  if (!exists("parFixedDf", envir = .env, inherits = FALSE)) return(invisible())
+  .pf <- .env$parFixedDf
+  .se <- sqrt(diag(cov))
+  .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)), error = function(e) 0.95)
+  .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+  for (.n in rownames(.pf)) {
+    if (.n %in% names(.se) && "SE" %in% names(.pf)) {
+      .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
+      .pf[.n, "SE"] <- .s
+      if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
+      if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
+            isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
+        .pf[.n, "CI Lower"] <- .e - .qn * .s
+        .pf[.n, "CI Upper"] <- .e + .qn * .s
+      }
+    }
+  }
+  .env$parFixedDf <- .pf
+  invisible()
 }
 
 #' Retrieve the (focei eval) control stored on an RPEM fit.
