@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fixed `muModel = "lin"`/`"irls"` erroring with "undefined columns selected" when a
+  model has two or more mu-referenced covariates that are expressions (e.g.
+  `log(WT/70)`) rather than bare data columns (#711).
 - `est = "vae"` now assembles its fit with `nlmixr2CreateOutputFromUi()` and computes
   its covariance directly in the focei covariance step; `vaeControl(covMethod=)` now
   takes the focei choices (`"analytic"` (default), `"r,s"`, `"r"`, `"s"`, `""`)
@@ -17,7 +20,7 @@
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type
-  (`A`/`"Forward Sensitivity"`), and the fit header reports the gradient actually
+  (`A`/`"Analytic Gradient"`), and the fit header reports the gradient actually
   used and the mu-model variant, e.g. `(outer: lbfgsb3c; grad: analytic; mu: irls)`.
 - `est = "vae"` iteration print now shows back-transformed (`X`) parameters (e.g.
   `exp()` thetas) like focei/saem, drops the redundant unscaled (`U`) block (vae

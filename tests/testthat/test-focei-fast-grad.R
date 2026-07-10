@@ -252,7 +252,7 @@ test_that("fast=TRUE fit matches the finite-difference fit", {
   # the analytic gradient must actually be CONSUMED by the optimizer (a fit that
   # silently falls back to FD also "matches", so assert usage directly)
   .gt <- fF$parHistData$type
-  expect_gt(sum(.gt == "Forward Sensitivity"), 0)
+  expect_gt(sum(.gt == "Analytic Gradient"), 0)
   expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
                               "Forward Difference", "Central Difference")), 0)
   expect_match(fF$extra, "grad: analytic")

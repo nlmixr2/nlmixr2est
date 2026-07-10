@@ -51,7 +51,7 @@ test_that("mu-referenced families use the analytic gradient (fast matches FD)", 
     expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)
     # analytic gradient actually consumed on the mu-profiled parameter set
     .gt <- fF$parHistData$type
-    expect_gt(sum(.gt == "Forward Sensitivity"), 0)
+    expect_gt(sum(.gt == "Analytic Gradient"), 0)
     expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
                                 "Forward Difference", "Central Difference")), 0)
     expect_match(fF$extra, "grad: analytic", info = est)
