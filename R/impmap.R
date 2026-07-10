@@ -10,7 +10,12 @@
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
                            "iscaleMin", "iscaleMax", "iaccept",
-                           "ctol", "nConvWindow", "impSeed", "impCov")
+                           "ctol", "nConvWindow", "impSeed", "impCov",
+                           # internal M-step index maps added in .impmapFamilyFit;
+                           # not foceiControl() arguments, so they must be dropped
+                           # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
+                           "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
+                           "impOmegaFixedEta")
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'

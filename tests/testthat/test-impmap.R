@@ -631,6 +631,29 @@ test_that("General likelihood: a custom ll() model fits and matches FOCEI", {
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
 })
 
+test_that("General likelihood: a + dnorm() (Laplace-form) endpoint fits", {
+  skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
+  # dnorm() switches an otherwise-normal endpoint to the exact-likelihood
+  # (Laplace) form; it drives the predMinusDv residual path where the fit's
+  # foceiControl is reconstructed, so the impmap-internal M-step control fields
+  # must be stripped from that down-conversion (else do.call(foceiControl, .)
+  # errors "unused argument: impMuThetaIdx, ...").
+  m <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      linCmt() ~ add(add.sd) + dnorm()
+    })
+  }
+  .fi <- suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, "impmap",
+                                  impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  expect_true("CWRES" %in% names(.fi))
+  expect_true(all(is.finite(fixef(.fi))))
+  # the down-converted foceiControl is valid (the failure mode was it not being one)
+  expect_true(inherits(.fi$foceiControl, "foceiControl"))
+})
+
 test_that("Bounds and fixed parameters are respected (theta bounds, fix(theta), fix(omega))", {
   # bounded tcl (log(c(lower, est, upper))), a fixed theta (tv), and a fixed
   # Omega diagonal (eta.cl) -- the EM M-step must hold the fixed values and keep
