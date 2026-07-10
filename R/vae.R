@@ -244,7 +244,10 @@ nlmixr2Est.vae <- function(env, ...) {
   } else {
     assign("vaeControl", vaeControl(), envir = env)
   }
-  stop("est=\"vae\" is not yet implemented -- Phase 1 skeleton: dispatch and control are wired (see plans/vae-nlme.md)",
+  .fit <- .vaeFitModel(env)
+  if (isTRUE(env$vaeControl$returnVae)) return(.fit)
+  ## full nlmixr2FitData assembly (SEs, OFV, diagnostics) lands in Phase 6.
+  stop("est=\"vae\" training runs; the full nlmixr2 fit object (SEs/OFV/tables) is pending Phase 6. Use vaeControl(returnVae=TRUE) to get the raw trained VAE for now (see plans/vae-nlme.md).",
        call. = FALSE)
 }
 attr(nlmixr2Est.vae, "covPresent") <- TRUE

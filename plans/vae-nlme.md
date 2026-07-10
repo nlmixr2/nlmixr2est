@@ -170,11 +170,17 @@ Phase 3 -- Decoder + analytic d(pred)/d(eta) via rxode2. [DONE]
 - Verified (test-vae-decoder.R, 12/12): f vs theophylline closed form ~5e-12;
   df/deta vs FD ~1e-9; R=add.err^2, dR/deta=0 additive; p(x|z) grad vs FD ~1e-6.
 
-Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A).
-- ELBO gradient chaining encoder bwd with decoder sensitivities; Adam in C++;
-  M-step z_pop/omega/a; schedule in the thin R loop. Additive error only.
-- MILESTONE A: theophylline single-dose pop params (covariateSelection=FALSE)
-  reproduce Table 1 within tolerance.
+Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A). [DONE]
+- R/vaeFit.R: .vaeElboStep (encoder C++ fwd -> decoder p(x|z) -> KL -> encoder
+  C++ bwd), .vaeAdam*, .vaeMStep (zPop=mean mu; omega_k=mean[(mu-zPop)^2+
+  (LL')_kk]; a=sqrt(SSR/Nobs); EMA gamma), .vaeTrain (burn-in tiny-KL ->
+  main KL-anneal+M-step -> smoothing), .vaeFitModel. nlmixr2Est.vae runs training
+  (returnVae=TRUE returns raw fit; full FitData deferred to Phase 6).
+- Verified: test-vae-elbo.R full-pipeline gradient vs FD ~1e-6; test-vae-train.R
+  end-to-end. Short 30/80 run (58s): ka=1.59(1.63), ke=0.0863(0.0867),
+  V=31.84(31.97), a=0.725(0.71) -- fixed effects + a inside the ~2-3% gate;
+  omegas close (wKa 0.62 vs 0.53). Full 100/300 schedule tightens further.
+- Orchestration is thin R; heavy work = C++ encoder BPTT + rxode2 decoder solve.
 
 Phase 5 -- Covariate selection (MILESTONE B).
 - Full beta matrix; auto-discovered candidates + override; paper-style covariate

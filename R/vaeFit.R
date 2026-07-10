@@ -88,3 +88,117 @@
   list(loss = loss, pxz = pxz, DKL = DKL, grads = grads,
        mu = mu, L = L, z = z, preds = preds)
 }
+
+#' Adam optimizer state (per encoder parameter block)
+#' @noRd
+.vaeAdamInit <- function(params) {
+  lapply(params, function(p) {
+    z <- p; z[] <- 0
+    list(m = z, v = z)
+  })
+}
+
+#' One Adam update over all encoder parameter blocks
+#' @noRd
+.vaeAdamStep <- function(params, grads, state, lr, t, b1 = 0.9, b2 = 0.999, eps = 1e-8) {
+  for (nm in names(params)) {
+    g <- grads[[nm]]
+    state[[nm]]$m <- b1 * state[[nm]]$m + (1 - b1) * g
+    state[[nm]]$v <- b2 * state[[nm]]$v + (1 - b2) * g^2
+    mhat <- state[[nm]]$m / (1 - b1^t)
+    vhat <- state[[nm]]$v / (1 - b2^t)
+    params[[nm]] <- params[[nm]] - lr * mhat / (sqrt(vhat) + eps)
+  }
+  list(params = params, state = state)
+}
+
+#' Closed-form M-step (no covariate selection): z_pop = mean posterior mean;
+#' omega_k = mean_i[(mu_ik - z_pop_k)^2 + (L_i L_i^T)_kk]; a = sqrt(SSR / Nobs).
+#' `gamma` is the EMA smoothing rate (1 = direct update).
+#' @noRd
+.vaeMStep <- function(mu, L, preds, prep, zPop, omega, a, gamma) {
+  N <- prep$N; zDim <- prep$zDim
+  zPopCur <- colMeans(mu)
+  omegaCur <- numeric(zDim)
+  for (k in seq_len(zDim)) {
+    v <- 0
+    for (i in seq_len(N)) v <- v + (mu[i, k] - zPopCur[k])^2 + sum(L[k, , i]^2)
+    omegaCur[k] <- v / N
+  }
+  ssr <- 0
+  for (i in seq_len(N)) ssr <- ssr + sum((prep$subj[[i]]$y - preds[[i]])^2)
+  aCur <- sqrt(ssr / prep$Nobs)
+  list(zPop = zPop + gamma * (zPopCur - zPop),
+       omega = omega + gamma * (omegaCur - omega),
+       a = a + gamma * (aCur - a))
+}
+
+#' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
+#' -> EMA smoothing. Returns the trained encoder + population estimates + traces.
+#' @noRd
+.vaeTrain <- function(prep, am, control, verbose = FALSE) {
+  zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0, seed = control$seed)
+  adam <- .vaeAdamInit(params)
+  zPop <- prep$zPop; omega <- prep$omega; a <- prep$a
+  Lg <- control$nGradStep
+  set.seed(control$seed)
+  .t <- 0L; last <- NULL
+
+  ## burn-in: encoder-only training with a tiny fixed KL weight
+  for (it in seq_len(control$itersBurnIn)) {
+    for (l in seq_len(Lg)) {
+      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
+      st <- .vaeElboStep(params, prep, am, zPop, omega, a, 0.001, eps)
+      if (is.null(st)) stop("est=\"vae\" decoder solve failed during burn-in", call. = FALSE)
+      .t <- .t + 1L
+      .ad <- .vaeAdamStep(params, st$grads, adam, control$burnInLearningRate, .t)
+      params <- .ad$params; adam <- .ad$state
+      .ms <- .vaeMStep(st$mu, st$L, st$preds, prep, zPop, omega, a, 1)
+      zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
+      last <- st
+    }
+  }
+
+  ## main EM
+  nMain <- control$iters
+  elboTrace <- numeric(nMain)
+  zPopTrace <- matrix(0, nMain, zDim); omegaTrace <- matrix(0, nMain, zDim); aTrace <- numeric(nMain)
+  for (it in seq_len(nMain)) {
+    gamma <- if (it <= control$gammaIter) 1 else 1 / (1 + it - control$gammaIter)
+    .ms <- .vaeMStep(last$mu, last$L, last$preds, prep, zPop, omega, a, gamma)
+    zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
+    alphaKL <- if (it <= control$klWarmup) 0.01 + 0.99 * (it - 1) / max(1, control$klWarmup - 1) else 1
+    elbos <- numeric(Lg)
+    for (l in seq_len(Lg)) {
+      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
+      st <- .vaeElboStep(params, prep, am, zPop, omega, a, alphaKL, eps)
+      if (is.null(st)) stop("est=\"vae\" decoder solve failed during training", call. = FALSE)
+      .t <- .t + 1L
+      .ad <- .vaeAdamStep(params, st$grads, adam, control$learningRate, .t)
+      params <- .ad$params; adam <- .ad$state
+      elbos[l] <- st$pxz + st$DKL
+      last <- st
+    }
+    elboTrace[it] <- mean(elbos); zPopTrace[it, ] <- zPop; omegaTrace[it, ] <- omega; aTrace[it] <- a
+    if (verbose && it %% 25 == 0)
+      message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=%.3f", it, nMain,
+                      elboTrace[it], paste(round(zPop, 3), collapse = ","), a))
+  }
+
+  list(params = params, zPop = zPop, omega = omega, a = a,
+       elboTrace = elboTrace, zPopTrace = zPopTrace, omegaTrace = omegaTrace, aTrace = aTrace,
+       prep = prep, am = am)
+}
+
+#' Fit entry: prepare data, build decoder model, train.
+#' @noRd
+.vaeFitModel <- function(env) {
+  .ui <- env$ui
+  .control <- if (exists("vaeControl", envir = env)) env$vaeControl else vaeControl()
+  .prep <- .vaeDataPrep(.ui, env$data)
+  .am <- .vaeDecoderModel(.ui)
+  if (is.null(.am)) stop("est=\"vae\" could not build the decoder sensitivity model", call. = FALSE)
+  .vaeTrain(.prep, .am, .control)
+}
