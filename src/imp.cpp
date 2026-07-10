@@ -426,6 +426,10 @@ void impOuter(Environment e) {
   arma::mat Om0;
   impGetOmega(Om0);
   arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
+  // Eta indices whose Omega diagonal is fix()ed: their rows/columns are held at
+  // the starting Omega through every EM update.
+  std::vector<int> omFixedEta;
+  impGetOmegaFixedEta(omFixedEta);
 
   std::vector<double> objTrace, gammaTrace, neffTrace;
   std::vector<arma::vec> parHist;
@@ -513,6 +517,11 @@ void impOuter(Environment e) {
     }
     Omega /= (double)nsub;
     Omega %= omMask;
+    // Restore fix()ed Omega rows/columns to their starting values.
+    for (size_t k = 0; k < omFixedEta.size(); ++k) {
+      int fi = omFixedEta[k];
+      if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
+    }
     impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.

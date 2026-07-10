@@ -630,3 +630,31 @@ test_that("General likelihood: a custom ll() model fits and matches FOCEI", {
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
 })
+
+test_that("Bounds and fixed parameters are respected (theta bounds, fix(theta), fix(omega))", {
+  # bounded tcl (log(c(lower, est, upper))), a fixed theta (tv), and a fixed
+  # Omega diagonal (eta.cl) -- the EM M-step must hold the fixed values and keep
+  # the bounded theta inside its limits.
+  m <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(c(0, 2.7, 100))
+      tv <- fix(3.45)
+      eta.cl ~ fix(0.1)
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .fi <- suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, "impmap",
+                                  impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+  # the fixed theta is held exactly
+  expect_equal(unname(fixef(.fi)["tv"]), 3.45)
+  expect_true(.fi$iniDf[.fi$iniDf$name == "tv", "fix"])
+  # the fixed Omega diagonal is held exactly
+  expect_equal(unname(.fi$omega[1, 1]), 0.1)
+  # the bounded theta stayed inside (0, 100) on the natural scale
+  expect_true(exp(unname(fixef(.fi)["tcl"])) > 0 && exp(unname(fixef(.fi)["tcl"])) < 100)
+})

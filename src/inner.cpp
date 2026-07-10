@@ -450,6 +450,7 @@ struct focei_options {
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
+  IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
 };
 
 focei_options op_focei;
@@ -4728,6 +4729,8 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
     if (foceiO.containsElementNamed("impThetaSensIdx"))
       op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    if (foceiO.containsElementNamed("impOmegaFixedEta"))
+      op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
   }
 
   op_focei.zeroGrad = false;
@@ -8466,6 +8469,12 @@ void impMuInterceptStep() {
 }
 
 int impThetaSensN() { return op_focei.impThetaSensIdx.size(); }
+
+// 0-based eta indices whose Omega diagonal is fixed (the EM Omega update restores
+// their rows/columns to the starting Omega so fix()ed variances are held).
+void impGetOmegaFixedEta(std::vector<int>& idx) {
+  idx.assign(op_focei.impOmegaFixedEta.begin(), op_focei.impOmegaFixedEta.end());
+}
 
 // Newton step on the non-mu structural thetas: add step[s] to theta
 // impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.

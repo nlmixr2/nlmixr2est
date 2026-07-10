@@ -203,6 +203,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # error) with sensitivity outputs in the sensitivity model; the M-step Newton
   # update maps its output columns back to these thetas.
   .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
+  # 0-based eta indices whose Omega diagonal is FIXED; the EM Omega update
+  # restores their rows/columns to the starting value so fix()ed variances hold.
+  .etaOrd <- .etaRows[order(.etaRows$neta1), ]
+  .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
   assign("control", .control, envir=ui)
   # Seed the importance-sampling RNG from the control (impSeed) right before the
   # fit, mirroring saem's set.seed(seed).  The E-step draws through rxode2's

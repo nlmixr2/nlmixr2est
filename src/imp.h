@@ -77,6 +77,9 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
+// 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
+void impGetOmegaFixedEta(std::vector<int>& idx);
+
 // ---- mixture (sub-population) support ----
 int impNmix();                                     // number of components (1 if none)
 double impMixProb(int j);                          // population proportion of component j (0-based)
