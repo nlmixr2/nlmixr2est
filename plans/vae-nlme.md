@@ -187,11 +187,20 @@ Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A). [DONE]
   MILESTONE A CLOSED.
 - Orchestration is thin R; heavy work = C++ encoder BPTT + rxode2 decoder solve.
 
-Phase 5 -- Covariate selection (MILESTONE B).
-- Full beta matrix; auto-discovered candidates + override; paper-style covariate
-  encoding; BICc-ELBO via R-level solver (enumeration fallback); periodic
-  selection in the EM loop; updated-model output.
-- MILESTONE B: theophylline reproduces WT on ka and V, not ke.
+Phase 5 -- Covariate selection (MILESTONE B). [DONE]
+- .vaeDataPrep auto-discovers subject-constant covariates (excl reserved cols),
+  paper encoding (continuous log(v/mean), categorical centered).
+- .vaeMStepCov: per-parameter subset enumeration minimizing RSS_k/omega_k +
+  log(N)*|S| = the exact per-parameter reduction of the global BICc-ELBO L0
+  MIQP (problem decouples by parameter; enumeration is exact + CRAN-safe for the
+  paper's covariate counts). .vaeElboStep refactored for subject-specific z_pop
+  matrix (KL center); decoder baseline immaterial to f.
+- MILESTONE B (full 100/300, 213s): auto-found WT; WT->ka beta=2.47(2.55),
+  WT->V beta=0.51(0.57), WT->ke NOT selected -- EXACT paper match. omega dropped
+  to (0.538,0.139,0.134) vs paper (0.53,0.15,0.13) -- ALL inside gate (confirms
+  the Milestone-A wKa diagnosis: WT absorbs ka variance). ke/V/a intercepts
+  match; ka intercept 1.77 ~8% high (secondary).
+- test-vae-covariate.R (skip_on_cran).
 
 Phase 6 -- Fit object: SEs, dual OFV, diagnostics, benchmark.
 - Linearization-Hessian covariance -> $parFixed SEs; both Lin and IS -2LL stored

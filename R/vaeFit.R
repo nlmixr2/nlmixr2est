@@ -41,7 +41,12 @@
 #' @noRd
 .vaeElboStep <- function(params, prep, am, zPop, omega, a, alphaKL, eps, withGrad = TRUE) {
   N <- prep$N; zDim <- prep$zDim
-  th <- .vaeBuildTh(prep, zPop, a)
+  ## zPop may be a shared vector (no covariates) or an N x zDim matrix of
+  ## subject-specific KL centers (covariate model). The decoder baseline
+  ## (THETA) is immaterial to f (only THETA+ETA=z matters), so use the intercept.
+  if (is.matrix(zPop)) { zPopMat <- zPop; baseline <- colMeans(zPop) }
+  else { zPopMat <- matrix(zPop, N, zDim, byrow = TRUE); baseline <- zPop }
+  th <- .vaeBuildTh(prep, baseline, a)
   z0 <- matrix(0, N, zDim)
   ## forward (grads ignored)
   fw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
@@ -55,7 +60,7 @@
   preds <- vector("list", N)
   for (i in seq_len(N)) {
     s <- prep$subj[[i]]
-    eta <- z[i, ] - zPop
+    eta <- z[i, ] - baseline
     E <- .vaeDecoderSolveSubject(am, th, eta, s$ev, s$times)
     if (is.null(E)) return(NULL)
     px <- .vaeDecoderPxz(E, s$y)
@@ -64,11 +69,11 @@
     preds[[i]] <- E$f
   }
 
-  ## KL: p_z - q_z (z_pop shared across subjects in Milestone A)
+  ## KL: p_z - q_z, centered on the (possibly subject-specific) z_pop
   ln2pi <- log(2 * pi)
   pz <- 0; qz <- 0
   for (i in seq_len(N)) {
-    pz <- pz + 0.5 * sum((z[i, ] - zPop)^2 / omega + log(omega) + ln2pi)
+    pz <- pz + 0.5 * sum((z[i, ] - zPopMat[i, ])^2 / omega + log(omega) + ln2pi)
     qz <- qz + 0.5 * sum(eps[i, ]^2 + ln2pi + 2 * logSigma[i, ])
   }
   DKL <- pz - qz
@@ -77,7 +82,7 @@
   grads <- NULL
   if (withGrad) {
     gZ <- gZdec
-    for (i in seq_len(N)) gZ[i, ] <- gZ[i, ] + alphaKL * (z[i, ] - zPop) / omega
+    for (i in seq_len(N)) gZ[i, ] <- gZ[i, ] + alphaKL * (z[i, ] - zPopMat[i, ]) / omega
     gLS <- matrix(-alphaKL, N, zDim)
     bw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
                            params$Wih, params$Whh, params$bih, params$bhh,
@@ -133,6 +138,47 @@
        a = a + gamma * (aCur - a))
 }
 
+#' Closed-form M-step WITH BICc-ELBO covariate selection. For each parameter k,
+#' enumerate the 2^nCov covariate subsets, fit OLS mu_ik ~ [1 | cov_S], and pick
+#' the subset minimizing RSS_S/omega_k + log(N)*|S| (the per-parameter reduction
+#' of the global BICc-ELBO L0 objective -- exact since the problem decouples by
+#' parameter). Returns intercept + beta matrix + selected mask + subject-specific
+#' z_pop matrix, and the residual-variance omega / a.
+#' @noRd
+.vaeMStepCov <- function(mu, L, preds, prep, omega, a, gamma) {
+  N <- prep$N; zDim <- prep$zDim; nCov <- ncol(prep$covMat)
+  X <- cbind(1, prep$covMat)                       # [N, 1 + nCov]
+  intercept <- numeric(zDim); beta <- matrix(0, zDim, nCov)
+  selected <- matrix(FALSE, zDim, nCov)
+  zPopMat <- matrix(0, N, zDim)
+  logN <- log(N)
+  for (k in seq_len(zDim)) {
+    yk <- mu[, k]; best <- NULL; bestScore <- Inf
+    for (mask in 0:(2^nCov - 1L)) {
+      S <- which(bitwAnd(mask, bitwShiftL(1L, seq_len(nCov) - 1L)) != 0L)
+      cols <- c(1L, 1L + S)
+      Xs <- X[, cols, drop = FALSE]
+      fit <- stats::lm.fit(Xs, yk)
+      score <- sum(fit$residuals^2) / omega[k] + logN * length(S)
+      if (score < bestScore) { bestScore <- score; best <- list(S = S, coef = fit$coefficients, cols = cols) }
+    }
+    intercept[k] <- best$coef[1]
+    if (length(best$S) > 0L) { beta[k, best$S] <- best$coef[-1]; selected[k, best$S] <- TRUE }
+    zPopMat[, k] <- X[, best$cols, drop = FALSE] %*% best$coef
+  }
+  omegaCur <- numeric(zDim)
+  for (k in seq_len(zDim)) {
+    v <- 0
+    for (i in seq_len(N)) v <- v + (mu[i, k] - zPopMat[i, k])^2 + sum(L[k, , i]^2)
+    omegaCur[k] <- v / N
+  }
+  ssr <- 0
+  for (i in seq_len(N)) ssr <- ssr + sum((prep$subj[[i]]$y - preds[[i]])^2)
+  aCur <- sqrt(ssr / prep$Nobs)
+  list(intercept = intercept, beta = beta, selected = selected, zPopMat = zPopMat,
+       omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
+}
+
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
 #' -> EMA smoothing. Returns the trained encoder + population estimates + traces.
 #' @noRd
@@ -161,19 +207,28 @@
     }
   }
 
-  ## main EM
+  ## main EM (optionally with BICc-ELBO covariate selection)
+  doCov <- isTRUE(control$covariateSelection) && ncol(prep$covMat) > 0L
+  intercept <- zPop; beta <- matrix(0, zDim, ncol(prep$covMat))
+  selected <- matrix(FALSE, zDim, ncol(prep$covMat))
+  zPopArg <- zPop
   nMain <- control$iters
   elboTrace <- numeric(nMain)
-  zPopTrace <- matrix(0, nMain, zDim); omegaTrace <- matrix(0, nMain, zDim); aTrace <- numeric(nMain)
   for (it in seq_len(nMain)) {
     gamma <- if (it <= control$gammaIter) 1 else 1 / (1 + it - control$gammaIter)
-    .ms <- .vaeMStep(last$mu, last$L, last$preds, prep, zPop, omega, a, gamma)
-    zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
+    if (doCov) {
+      .ms <- .vaeMStepCov(last$mu, last$L, last$preds, prep, omega, a, gamma)
+      intercept <- .ms$intercept; beta <- .ms$beta; selected <- .ms$selected
+      zPopArg <- .ms$zPopMat; zPop <- intercept; omega <- .ms$omega; a <- .ms$a
+    } else {
+      .ms <- .vaeMStep(last$mu, last$L, last$preds, prep, zPop, omega, a, gamma)
+      zPop <- .ms$zPop; zPopArg <- zPop; omega <- .ms$omega; a <- .ms$a
+    }
     alphaKL <- if (it <= control$klWarmup) 0.01 + 0.99 * (it - 1) / max(1, control$klWarmup - 1) else 1
     elbos <- numeric(Lg)
     for (l in seq_len(Lg)) {
       eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-      st <- .vaeElboStep(params, prep, am, zPop, omega, a, alphaKL, eps)
+      st <- .vaeElboStep(params, prep, am, zPopArg, omega, a, alphaKL, eps)
       if (is.null(st)) stop("est=\"vae\" decoder solve failed during training", call. = FALSE)
       .t <- .t + 1L
       .ad <- .vaeAdamStep(params, st$grads, adam, control$learningRate, .t)
@@ -181,15 +236,15 @@
       elbos[l] <- st$pxz + st$DKL
       last <- st
     }
-    elboTrace[it] <- mean(elbos); zPopTrace[it, ] <- zPop; omegaTrace[it, ] <- omega; aTrace[it] <- a
+    elboTrace[it] <- mean(elbos)
     if (verbose && it %% 25 == 0)
       message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=%.3f", it, nMain,
                       elboTrace[it], paste(round(zPop, 3), collapse = ","), a))
   }
 
   list(params = params, zPop = zPop, omega = omega, a = a,
-       elboTrace = elboTrace, zPopTrace = zPopTrace, omegaTrace = omegaTrace, aTrace = aTrace,
-       prep = prep, am = am)
+       intercept = intercept, beta = beta, selected = selected,
+       covNames = prep$covNames, elboTrace = elboTrace, prep = prep, am = am)
 }
 
 #' Fit entry: prepare data, build decoder model, train.
