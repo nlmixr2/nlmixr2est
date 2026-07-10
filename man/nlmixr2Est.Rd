@@ -5,7 +5,7 @@
 %   R/lbfgsb3c.R, R/muagq.R, R/mufoce.R, R/mufocei.R, R/mufocep.R,
 %   R/mulaplace.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R,
 %   R/nlmixr2Est.R, R/nls.R, R/optim.R, R/posthoc.R, R/rxsolve.R, R/saem.R,
-%   R/uobyqa.R
+%   R/uobyqa.R, R/vae.R
 \name{nlmixr2Est.agq}
 \alias{nlmixr2Est.agq}
 \alias{nlmixr2Est.bobyqa}
@@ -53,6 +53,7 @@
 \alias{nlmixr2Est.predict}
 \alias{nlmixr2Est.saem}
 \alias{nlmixr2Est.uobyqa}
+\alias{nlmixr2Est.vae}
 \title{Generic for nlmixr2 estimation methods}
 \usage{
 \method{nlmixr2Est}{agq}(env, ...)
@@ -146,6 +147,8 @@ nlmixr2Est(env, ...)
 \method{nlmixr2Est}{saem}(env, ...)
 
 \method{nlmixr2Est}{uobyqa}(env, ...)
+
+\method{nlmixr2Est}{vae}(env, ...)
 }
 \arguments{
 \item{env}{Environment for the nlmixr2 estimation routines.
