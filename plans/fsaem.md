@@ -140,18 +140,32 @@ kernels, unchanged -- a regression fixture guards bit-identical plain-SAEM
 output. Precompute the per-subject `psi_hat_i` / Cholesky of `Gamma_i` once per
 active iteration; reuse across the M chain steps.
 
-### 4.4 Orchestration: swapping the active rxode2 solve (top integration risk)
+### 4.4 Orchestration: function-table swap on a shared allocation (chosen)
 
 The validated proposal core (`fsaemInnerMap_`, done) runs while the FOCEi inner
-model is the active global `rx` solve. But inside `saem_fit` the active global
-solve is the SAEM model's own (`setupRx` + `rxInner`), used by `user_function`.
-Both subsystems read `getRxSolve_()`, so they cannot be active simultaneously.
-Integrating the proposal INTO the SAEM loop therefore requires, each active
-iteration: (a) point the global solve at the inner + `updateTheta`/omega to the
-current SAEM estimate, (b) run the per-subject MAP+`Gamma_i`, (c) point the
-global solve back at the SAEM model, (d) run the IMH kernel via `user_function`.
-This solve-swap (and doing it without corrupting either subsystem's per-thread
-buffers) is the top remaining integration risk and the subject of P1-3.
+model is the active global `rx` solve. Inside `saem_fit` the active global solve
+is the SAEM model's own (`setupRx` + `rxInner`), used by `user_function`. Both
+read `getRxSolve_()`, so they cannot be active simultaneously.
+
+Chosen mechanism (user directive, 2026-07-10) -- do NOT swap the global
+`rx_solve` pointer or add an rxode2 setter API. Instead, allocate ONE solve
+sized for the LARGER problem (the inner/sensitivity-augmented model, a superset
+of the SAEM prediction model) and swap the compiled-model FUNCTION TABLES
+(`calc_lhs`/`update_inis`, the `rxUpdateFuns` / existing `saem_lhs`/`saem_inis`
+pattern) between the SAEM model and the inner model on that shared allocation.
+Per active SAEM iteration, in C++ segments:
+
+1. Swap function table -> inner model; `updateTheta`/omega to the current SAEM
+   estimate; run the per-subject MAP + `Gamma_i`; COPY the small results out
+   (eta_hat_i: neta each; chol(Gamma_i): neta x neta each) into fsaem-owned
+   storage.  The big shared solve memory is about to be overwritten.
+2. Swap function table -> SAEM model; run the IMH kernel via `user_function`,
+   using the copied-out proposals.
+
+The first segment's solve buffers are gone after the swap (shared memory) --
+hence the copy-out. Memory-efficient and API-change-free. The remaining risk is
+sizing/allocation compatibility (inner allocation must cover the SAEM solve) and
+correct save/restore of the function-table globals; this is the subject of P1-3.
 
 ### 4.4 R plumbing
 
