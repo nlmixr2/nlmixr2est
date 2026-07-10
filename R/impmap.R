@@ -210,8 +210,40 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # and independent of the thread count / ambient RNG state; rxWithSeed restores
   # the prior seed state afterward so it does not leak globally.
   .impSeed <- if (is.null(.control$impSeed)) 42L else as.integer(.control$impSeed)
-  rxode2::rxWithSeed(.impSeed, rxseed=.impSeed,
-                     code=.foceiFamilyReturn(env, ui, ..., est="impmap"))
+  .fit <- rxode2::rxWithSeed(.impSeed, rxseed=.impSeed,
+                             code=.foceiFamilyReturn(env, ui, ..., est="impmap"))
+  # The MC covariance (impCov=TRUE) is published with theta row/column names but
+  # the Omega parameters come out unnamed on this path; fill them in (defensively,
+  # only when the counts line up) so vcov()/$cov and the correlation are labelled.
+  .impmapNameCov(.fit, ui)
+  .fit
+}
+
+#' Fill the Omega row/column names on the impmap covariance
+#' @param fit impmap fit
+#' @param ui rxode2 ui
+#' @return Nothing, called for side effects
+#' @noRd
+.impmapNameCov <- function(fit, ui) {
+  .fenv <- tryCatch(fit$env, error=function(e) NULL)
+  if (is.null(.fenv) || is.null(.fenv$cov) || !is.matrix(.fenv$cov)) return(invisible())
+  tryCatch({
+    .dn <- dimnames(.fenv$cov)[[1]]
+    if (is.null(.dn)) return(invisible())
+    .empty <- which(is.na(.dn) | .dn == "")
+    if (length(.empty) == 0L) return(invisible())
+    .etaN <- .foceiEtaThetaMap(ui)$etaNames
+    .op <- .foceiOmegaPairs(.fenv$omega, ui$iniDf)
+    .omN <- .foceiOmegaCovNames(.op, .etaN)
+    if (length(.omN) == length(.empty)) {
+      .dn[.empty] <- .omN
+      dimnames(.fenv$cov) <- list(.dn, .dn)
+      if (!is.null(.fenv$fullCor) && is.matrix(.fenv$fullCor)) {
+        dimnames(.fenv$fullCor) <- list(.dn, .dn)
+      }
+    }
+  }, error=function(e) NULL)
+  invisible()
 }
 
 #' @rdname nlmixr2Est
