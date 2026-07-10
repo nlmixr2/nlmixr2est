@@ -308,10 +308,30 @@ lpInner, updateTheta per M-step) and the FIT (.vaeToFit -> vaeInnerLik at final
 etas for objective/EBEs/mixNum/mixList) to the C++ inner interface. This gives
 mixtures + multiple endpoints + multiple error structures + log-likelihood +
 censoring + OpenMP, all reused, none reimplemented.
-CURRENT STATE: .vaeToFit uses nlmixr2(est="focei",maxOuter=0) as a WORKING but
-SUBOPTIMAL placeholder (reuses the inner problem but via the R interface); replace
-with the C++ vaeInnerLik driver. vaeFoceLik/vaeLinPrecomp/vaeObjective/vaeCov are
-now UNUSED by the fit (superseded by the inner reuse) -- candidates for removal.
+DONE (built + tested, commit 3934b829): C++ inner driver.
+- src/inner.cpp vaeInnerSetup_(env) [foceiSetup_ + predNoLhs FD + updateTheta],
+  vaeInnerLik(etaMat,cores,grad) [parallel OpenMP likInner0(+lpInner)],
+  vaeInnerFree_(). R/vaeInner.R .vaeInnerFoceiControl (likelihood->interaction),
+  .vaeInnerSetup (build focei opt env + augment needOptimHess/est/AGQ), .vaeInnerEval.
+- Verified test-vae-inner.R 8/8: matches R likInner/foceiInnerLp to 1e-6; d/dt
+  mix() model gives DISTINCT per-component objectives over nSub*nMix ids (setIndMixest
+  inside likInner0) -> mixnum recoverable. MIXTURE BLOCKER SOLVED at the C++ level.
+KEY INSIGHT: likInner0(eta,id) = p(x|z) + p(z) (data -loglik + eta prior);
+foceiInnerLp = its eta-gradient. So VAE ELBO (loss = p_x_z + alpha*(p_z - q_z)):
+  loss = likInner0 + (alpha-1)*p_z - alpha*q_z   (p_z, q_z from R; q_z=encoder entropy)
+  gZ (encoder upstream, d/dz=d/deta) = foceiInnerLp + (alpha-1)*Omega^-1 eta
+  For alpha=1: loss data+prior = likInner0, gZ = foceiInnerLp exactly.
+REMAINING WIRING:
+- TRAINING (.vaeElboStep): replace .vaeDecoderSolveSubject/.vaeDecoderPxz with the
+  inner driver. Per M-step (omega/theta change) call updateTheta (expose a C++
+  vaeUpdateTheta_(par) OR re-setup); per grad step .vaeInnerEval at sampled z's eta
+  (nSub*nMix rows for mixtures), combine mixtures via -2 logsumexp with mixProb; gZ
+  per above; gLogSigmaDirect = -alpha (unchanged). This unblocks MIXTURE TRAINING.
+- FIT: keep nlmixr2(est="focei",maxOuter=0) for the ONE-TIME full fit object
+  (parFixed/cov/tables/mixNum/mixList) -- "every time" (training) is the R-interface
+  problem, not the single fit; OR drive the inner driver + assemble. Once mixture
+  training works, the fit produces mixNum/mixList natively.
+- Then remove unused vaeFoceLik/vaeLinPrecomp/vaeObjective/vaeCov.
 Other REMAINING: dual OFV (IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
 general error-model R-scale in cov (additive exact now).
 
