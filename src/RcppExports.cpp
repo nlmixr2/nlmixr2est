@@ -1070,6 +1070,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemFisherDiag
+NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec, int errType, double sd);
+RcppExport SEXP _nlmixr2est_rpemFisherDiag(SEXP muVecSEXP, SEXP omVecSEXP, SEXP errTypeSEXP, SEXP sdSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type muVec(muVecSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omVec(omVecSEXP);
+    Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
+    Rcpp::traits::input_parameter< double >::type sd(sdSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemFisherDiag(muVec, omVec, errType, sd));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpemMstepK1Comb
 List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0, double propSd0, int nTrials, int burn);
 RcppExport SEXP _nlmixr2est_rpemMstepK1Comb(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {

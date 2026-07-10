@@ -19,10 +19,15 @@ parFixedDf SE/%RSE/CI overwritten (`.rpemInstallFisherCov`, mirrors SAEM's
 eval-only FOCEI reports the ui iniDf theta (maxOuter=0 holds the starting value), so
 `.rpemBuildFit` now SEEDS iniDf$est with the RPEM estimates before the eval -- this
 also fixed a latent non-mixture estimate-display bug (parFixedDf showed ini values).
-Other structures (combined/tbs/power, >1 eta, structural betas, mixtures) keep the
-FOCEI-covariance (`covMethod="r,s"`) SEs. The omega-variance SE is reported in the
-fit `$cov` (row/col `om.<eta>`, on the variance scale -- the score is already in
-those units so no delta method), matching SAEM. Follow-ups: Fisher scores for
+Multiple diagonal etas are supported via `rpemFisherDiag` (one typical-value and one
+`om.<eta>` variance score per random effect); nEta==1 with covariates uses
+`rpemFisherReg` (regression).  The omega-variance SEs are reported in the fit `$cov`
+(rows/cols `om.<eta>`, on the variance scale -- the score is already in those units so
+no delta method), matching SAEM.  The empirical Fisher (score outer product) is
+asymptotically exact (E[EBE^2]/om^2 == I_1), so SEs converge to FOCEI's with enough
+subjects (verified at n=100; small n like theo's 12 gives noisier SEs).  Other
+structures (combined/tbs/power residual, non-mu-ref structural betas, mixtures) keep
+the FOCEI-covariance (`covMethod="r,s"`) SEs.  Follow-ups: Fisher scores for
 combined/power residual and structural betas; mixtures.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains

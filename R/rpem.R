@@ -281,21 +281,20 @@
 #' @noRd
 #' Form the RPEM Fisher-score covariance from the per-subject score matrix.
 #'
-#' `S` is nsub x (nCoef+2) (columns: regression coefs, residual sd, omega variance);
-#' the empirical Fisher information is `I = t(S) %*% S` and the covariance its inverse.
-#' Returns the full covariance named `c(coefs, residual sd, om.<eta>)` -- the theta
-#' rows drive parFixedDf SEs and the `om.<eta>` row carries the omega-variance SE
-#' (reported in `$cov`, as SAEM does).  NULL if the information is not invertible or
-#' the covariance is not a valid (finite, non-negative-diagonal) matrix.
+#' The empirical Fisher information is `I = t(S) %*% S` and the covariance its
+#' inverse.  `colNames` names the columns of `S` in order (typical value / covariate
+#' coefs + residual sd + `om.<eta>` variances); the theta-named rows drive the
+#' parFixedDf SEs and the `om.<eta>` rows carry the omega-variance SEs (reported in
+#' `$cov`, as SAEM does).  NULL if the information is not invertible / the covariance
+#' is not a valid (finite, non-negative-diagonal) matrix.
 #' @noRd
-.rpemFisherCov <- function(S, nCoef, coefNames, sdName, omName) {
+.rpemFisherCov <- function(S, colNames) {
   .I <- crossprod(S)
   .cov <- tryCatch(solve(.I), error = function(e) NULL)
   if (is.null(.cov) || anyNA(.cov) || any(!is.finite(.cov)) || any(diag(.cov) < 0))
     return(NULL)
-  .nm <- c(coefNames, sdName, omName)                 # length nCoef + 2 == ncol(S)
-  dimnames(.cov) <- list(.nm, .nm)
-  list(cov = .cov, omegaSE = sqrt(.cov[nCoef + 2L, nCoef + 2L]))
+  dimnames(.cov) <- list(colNames, colNames)
+  list(cov = .cov)
 }
 
 .rpemFit <- function(ui, data, control = rpemControl()) {
@@ -463,17 +462,22 @@
   .feEta <- .drawEtas(omegaHat)
   .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores)
   # Fisher-score covariance (design/rpem/08) from the converged samples, computed
-  # while they are still loaded (before rpemFree).  Supported for the single-eta
-  # additive/proportional case (typical value + covariate coefs + residual sd);
-  # other structures keep the FOCEI-covariance SEs.
+  # while they are still loaded (before rpemFree).  Supported for additive/proportional
+  # residuals with no non-mu-ref structural fixed effect: single eta with covariates
+  # (rpemFisherReg, regression) or multiple diagonal etas (rpemFisherDiag).  Other
+  # structures keep the FOCEI-covariance SEs.
   .fisher <- NULL
-  if (.useReg && .cl$errType %in% c(0L, 1L) && !.structOn) {
-    .coefsF <- c(muHat, covCoefHat)
-    .S <- rpemFisherReg(.design, .coefsF, omHat[1], .cl$errType, sdHat)
-    .coefNames <- c(.cl$muNames, .cl$covCoefNames)
+  if (.cl$errType %in% c(0L, 1L) && !.structOn) {
     .sdName <- .cl$thetaNames[.cl$addSdIdx + 1L]
-    .omName <- paste0("om.", .cl$etaNames[1])
-    .fisher <- .rpemFisherCov(.S, ncol(.design), .coefNames, .sdName, .omName)
+    .omNames <- paste0("om.", .cl$etaNames)
+    if (.useReg) {                                    # nEta == 1 (+ optional covariates)
+      .S <- rpemFisherReg(.design, c(muHat, covCoefHat), omHat[1], .cl$errType, sdHat)
+      .colN <- c(.cl$muNames, .cl$covCoefNames, .sdName, .omNames)
+    } else {                                          # nEta > 1, diagonal Omega
+      .S <- rpemFisherDiag(muHat, omHat, .cl$errType, sdHat)
+      .colN <- c(.cl$muNames, .sdName, .omNames)
+    }
+    .fisher <- .rpemFisherCov(.S, .colN)
   }
   rpemFree()
   .nG <- control$nGauss

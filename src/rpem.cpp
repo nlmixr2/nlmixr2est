@@ -868,6 +868,51 @@ NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double om
   return S;
 }
 
+// Fisher-score information for the general multi-eta case (diagonal Omega, no
+// covariates).  Same Fisher-identity construction as rpemFisherReg, but with one
+// typical-value (mu_a) and one variance (om_a) score per random effect a:
+//   mu_a  : eta_ij,a / om_a
+//   sd    : -nobs_i/sd + acc_ij/sd^3   (acc = SS additive / WSS proportional)
+//   om_a  : -1/(2 om_a) + eta_ij,a^2/(2 om_a^2)
+// Returns the nsub x (2*nEta+1) per-subject score matrix S with columns ordered
+// [mu_1..nEta, sd, om_1..nEta]; the caller forms I = S^T S and inverts it.
+//[[Rcpp::export]]
+NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec,
+                             int errType, double sd) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemFisherDiag");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
+  if ((int)muVec.size() != nEta || (int)omVec.size() != nEta)
+    stop("muVec/omVec must have nEta entries");
+  int p = 2 * nEta + 1;
+  NumericMatrix S(nsub, p);
+  double sd3 = sd * sd * sd;
+  std::vector<double> sMu(nEta), sOm(nEta);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double sw = 0.0;
+    for (int j = 0; j < nG; ++j) sw += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
+    int nobsi = rpemOp.nobs[i];
+    for (int a = 0; a < nEta; ++a) { sMu[a] = 0.0; sOm[a] = 0.0; }
+    double sSd = 0.0;
+    for (int j = 0; j < nG; ++j) {
+      double w = exp(rpemOp.logp[(size_t)i * nG + j] - mx) / sw;
+      for (int a = 0; a < nEta; ++a) {
+        double eta = rpemOp.etaS[((size_t)i * nG + j) * nEta + a];
+        double om = omVec[a];
+        sMu[a] += w * eta / om;
+        sOm[a] += w * (-0.5 / om + 0.5 * eta * eta / (om * om));
+      }
+      double acc = (errType == 1) ? rpemOp.wssv[(size_t)i * nG + j] : rpemOp.ssv[(size_t)i * nG + j];
+      sSd += w * (-(double)nobsi / sd + acc / sd3);
+    }
+    for (int a = 0; a < nEta; ++a) S(i, a) = sMu[a];
+    S(i, nEta) = sSd;
+    for (int a = 0; a < nEta; ++a) S(i, nEta + 1 + a) = sOm[a];
+  }
+  return S;
+}
+
 // K=1 combined-error M-step (add + prop, errType 2).  Same regression MH as
 // rpemMstepK1Reg for the structural coefs / omega, but the residual has no closed
 // form: obs variance V = a + b*cp^2 with a=add.sd^2, b=prop.sd^2.  We accumulate

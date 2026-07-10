@@ -326,6 +326,10 @@ rpemFisherReg <- function(design, coefs, omega, errType, sd) {
     .Call(`_nlmixr2est_rpemFisherReg`, design, coefs, omega, errType, sd)
 }
 
+rpemFisherDiag <- function(muVec, omVec, errType, sd) {
+    .Call(`_nlmixr2est_rpemFisherDiag`, muVec, omVec, errType, sd)
+}
+
 rpemMstepK1Comb <- function(design, coefs, addSd0, propSd0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Comb`, design, coefs, addSd0, propSd0, nTrials, burn)
 }
