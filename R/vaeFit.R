@@ -24,7 +24,9 @@
 #' @noRd
 .vaeBuildTh <- function(prep, zPop, a) {
   th <- prep$th
-  th[prep$zPopThetaIdx] <- zPop
+  ## mixture etas (NA index) keep their fixed component thetas in `th`
+  .ok <- !is.na(prep$zPopThetaIdx)
+  th[prep$zPopThetaIdx[.ok]] <- zPop[.ok]
   if (!is.na(prep$aThetaIdx)) th[prep$aThetaIdx] <- a
   th
 }
@@ -130,12 +132,27 @@
     for (i in seq_len(N)) v <- v + (mu[i, k] - zPopCur[k])^2 + sum(L[k, , i]^2)
     omegaCur[k] <- v / N
   }
-  ssr <- 0
-  for (i in seq_len(N)) ssr <- ssr + sum((prep$subj[[i]]$y - preds[[i]])^2)
-  aCur <- sqrt(ssr / prep$Nobs)
+  aCur <- .vaeResidSd(preds, prep, a)
+  ## mixture etas center at 0 (component-independent prior); don't drift zPop there
+  if (!is.null(prep$isMix)) zPopCur[prep$isMix] <- 0
+  if (!all(is.finite(zPopCur))) zPopCur <- zPop
+  if (!all(is.finite(omegaCur))) omegaCur <- omega
   list(zPop = zPop + gamma * (zPopCur - zPop),
        omega = omega + gamma * (omegaCur - omega),
        a = a + gamma * (aCur - a))
+}
+
+#' Residual SD (additive a) update, robust to non-finite predictions from a
+#' failed/extreme solve -- such observations are dropped rather than poisoning a.
+#' @noRd
+.vaeResidSd <- function(preds, prep, a) {
+  ssr <- 0; nObs <- 0L
+  for (i in seq_len(prep$N)) {
+    d <- (prep$subj[[i]]$y - preds[[i]])^2
+    ok <- is.finite(d)
+    if (any(ok)) { ssr <- ssr + sum(d[ok]); nObs <- nObs + sum(ok) }
+  }
+  if (nObs > 0L) sqrt(ssr / nObs) else a
 }
 
 #' Closed-form M-step WITH BICc-ELBO covariate selection. For each parameter k,
@@ -153,6 +170,9 @@
   zPopMat <- matrix(0, N, zDim)
   logN <- log(N)
   for (k in seq_len(zDim)) {
+    ## a mixture eta is a component-independent N(0,omega) random effect: no
+    ## intercept, no covariates (the fixed component thetas carry the structure)
+    if (!is.null(prep$isMix) && prep$isMix[k]) next
     yk <- mu[, k]; best <- NULL; bestScore <- Inf
     for (mask in 0:(2^nCov - 1L)) {
       S <- which(bitwAnd(mask, bitwShiftL(1L, seq_len(nCov) - 1L)) != 0L)
@@ -172,9 +192,8 @@
     for (i in seq_len(N)) v <- v + (mu[i, k] - zPopMat[i, k])^2 + sum(L[k, , i]^2)
     omegaCur[k] <- v / N
   }
-  ssr <- 0
-  for (i in seq_len(N)) ssr <- ssr + sum((prep$subj[[i]]$y - preds[[i]])^2)
-  aCur <- sqrt(ssr / prep$Nobs)
+  aCur <- .vaeResidSd(preds, prep, a)
+  if (!all(is.finite(omegaCur))) omegaCur <- omega
   list(intercept = intercept, beta = beta, selected = selected, zPopMat = zPopMat,
        omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
 }
@@ -182,7 +201,7 @@
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
 #' -> EMA smoothing. Returns the trained encoder + population estimates + traces.
 #' @noRd
-.vaeTrain <- function(prep, am, control, verbose = FALSE) {
+.vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1, verbose = FALSE) {
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
   params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0, seed = control$seed)
@@ -196,8 +215,8 @@
   for (it in seq_len(control$itersBurnIn)) {
     for (l in seq_len(Lg)) {
       eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-      st <- .vaeElboStep(params, prep, am, zPop, omega, a, 0.001, eps)
-      if (is.null(st)) stop("est=\"vae\" decoder solve failed during burn-in", call. = FALSE)
+      st <- .vaeElboStepInner(params, prep, innerEnv, zPop, omega, a, 0.001, eps, control, nMix, mixProb)
+      if (is.null(st)) stop("est=\"vae\" inner solve failed during burn-in", call. = FALSE)
       .t <- .t + 1L
       .ad <- .vaeAdamStep(params, st$grads, adam, control$burnInLearningRate, .t)
       params <- .ad$params; adam <- .ad$state
@@ -228,8 +247,8 @@
     elbos <- numeric(Lg)
     for (l in seq_len(Lg)) {
       eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-      st <- .vaeElboStep(params, prep, am, zPopArg, omega, a, alphaKL, eps)
-      if (is.null(st)) stop("est=\"vae\" decoder solve failed during training", call. = FALSE)
+      st <- .vaeElboStepInner(params, prep, innerEnv, zPopArg, omega, a, alphaKL, eps, control, nMix, mixProb)
+      if (is.null(st)) stop("est=\"vae\" inner solve failed during training", call. = FALSE)
       .t <- .t + 1L
       .ad <- .vaeAdamStep(params, st$grads, adam, control$learningRate, .t)
       params <- .ad$params; adam <- .ad$state
@@ -246,16 +265,26 @@
   list(params = params, zPop = zPop, omega = omega, a = a,
        intercept = intercept, beta = beta, selected = selected,
        covNames = prep$covNames, elboTrace = elboTrace,
-       mu = last$mu, zPopMat = zPopMat, prep = prep, am = am)
+       mu = last$mu, zPopMat = zPopMat, prep = prep,
+       nMix = nMix, mixProb = mixProb, mixnum = last$mixnum)
 }
 
-#' Fit entry: prepare data, build decoder model, train.
+#' Fit entry: prepare data, set up the FOCEi inner problem once, train.
 #' @noRd
 .vaeFitModel <- function(env) {
   .ui <- env$ui
   .control <- if (exists("vaeControl", envir = env)) env$vaeControl else vaeControl()
   .prep <- .vaeDataPrep(.ui, env$data)
-  .am <- .vaeDecoderModel(.ui)
-  if (is.null(.am)) stop("est=\"vae\" could not build the decoder sensitivity model", call. = FALSE)
-  .vaeTrain(.prep, .am, .control)
+  ## mixture info from the ui: nMix components with probs (p1,...,1-sum)
+  .nMix <- tryCatch(as.integer(.ui$saemNMix), error = function(e) 1L)
+  if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
+  .mixProb <- 1
+  if (.nMix > 1L) {
+    .p <- as.numeric(.prep$th[.ui$thetaMixIndex])
+    .mixProb <- c(.p, 1 - sum(.p))
+  }
+  ## set up the inner likelihood once (compiled model + processed data)
+  .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
+  on.exit(.vaeInnerFree(), add = TRUE)
+  .vaeTrain(.prep, .innerEnv, .control, .nMix, .mixProb)
 }

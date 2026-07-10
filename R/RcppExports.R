@@ -172,8 +172,8 @@ vaeInnerSetup_ <- function(e) {
     .Call(`_nlmixr2est_vaeInnerSetup_`, e)
 }
 
-vaeInnerLik <- function(etaMat, cores, grad = FALSE) {
-    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad)
+vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
+    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
 vaeInnerFree_ <- function() {

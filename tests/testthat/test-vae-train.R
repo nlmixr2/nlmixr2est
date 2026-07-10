@@ -21,11 +21,13 @@ test_that("vae trains end to end and approaches theophylline Table 1", {
     })
   }
   ui <- rxode2::assertRxUi(theo)
-  prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
-  am <- .vaeDecoderModel(ui)
   ctl <- vaeControl(itersBurnIn = 30L, klWarmup = 30L, gammaIter = 60L,
                     iters = 80L, hiddenDim = 25L, seed = 1L)
-  fit <- .vaeTrain(prep, am, ctl)
+  prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+  ## training drives the FOCEi inner likelihood directly (set up once)
+  innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, prep$N, prep$zDim), ctl)
+  on.exit(.vaeInnerFree(), add = TRUE)
+  fit <- .vaeTrain(prep, innerEnv, ctl)
 
   ka <- exp(fit$zPop[1]); ke <- exp(fit$zPop[2]); V <- exp(fit$zPop[3])
   ## ELBO trace should have descended and estimates be finite

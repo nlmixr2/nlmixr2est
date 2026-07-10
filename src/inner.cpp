@@ -8680,11 +8680,13 @@ RObject vaeInnerSetup_(Environment e) {
 // over ids. id in [0, nSub) are the physical subjects; for mixtures the caller
 // passes nSub*nMix rows (id = component*nSub + subject) and combines.
 //[[Rcpp::export]]
-List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false) {
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
   const int nid = etaMat.nrow();
   const int neta = etaMat.ncol();
   NumericVector obj(nid);
   NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
+  // per-id predictions (F) gathered thread-locally, converted to an R list after
+  std::vector<std::vector<double> > pf(preds ? nid : 0);
   const bool doParallel = (cores > 1);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
@@ -8701,8 +8703,14 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false) {
       for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
     }
     obj[id] = likInner0(&eta[0], id);
+    if (preds) {
+      arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
+      pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
+    }
   }
-  return List::create(_["obj"] = obj, _["lp"] = lp);
+  List fl(preds ? nid : 0);
+  if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
+  return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
 }
 
 //[[Rcpp::export]]

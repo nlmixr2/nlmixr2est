@@ -20,10 +20,18 @@
   .thRows <- .idf[!is.na(.idf$ntheta), , drop = FALSE]
   .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
   .th <- setNames(as.numeric(.thRows$est), paste0("THETA_", seq_len(nrow(.thRows)), "_"))
-  ## structural theta index (in the full theta vector) paired with each eta
+  ## structural theta index (in the full theta vector) paired with each eta.
+  ## A mixture random effect (e.g. eta.ke in mix(exp(lke1+eta.ke),p,exp(lke2+
+  ## eta.ke))) has no single structural theta -- its prior is the component-
+  ## independent N(0,omega), so it centers at 0 and the fixed component thetas in
+  ## the full theta vector carry the structure (the inner problem selects them).
   .zPopThetaIdx <- match(.map$thetaForEta, .thRows$name)
-  if (anyNA(.zPopThetaIdx)) stop("est=\"vae\" needs every random effect mu-referenced to a theta", call. = FALSE)
-  .zPop <- as.numeric(.th[.zPopThetaIdx])                      # structural population means (transformed)
+  .isMix <- is.na(.zPopThetaIdx)
+  .nMix <- tryCatch(as.integer(ui$saemNMix), error = function(e) 1L)
+  if (any(.isMix) && (is.na(.nMix) || .nMix < 2L))
+    stop("est=\"vae\" needs every random effect mu-referenced to a theta", call. = FALSE)
+  .zPop <- numeric(.neta)                                      # structural population means (transformed)
+  .zPop[!.isMix] <- as.numeric(.th[.zPopThetaIdx[!.isMix]])
 
   ## omega init (diagonal) for the etas, and residual a init (error theta est)
   .omega <- vapply(.etaNames, function(nm) {
@@ -97,7 +105,7 @@
   }
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
-       th = .th, zPopThetaIdx = .zPopThetaIdx, aThetaIdx = .aThetaIdx,
+       th = .th, zPopThetaIdx = .zPopThetaIdx, aThetaIdx = .aThetaIdx, isMix = .isMix,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .covNames, covMat = .covMat, covType = .covType, covPop = .covPop,

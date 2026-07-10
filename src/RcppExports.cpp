@@ -661,15 +661,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeInnerLik
-List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad);
-RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP) {
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad, bool preds);
+RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP, SEXP predsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     Rcpp::traits::input_parameter< bool >::type grad(gradSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeInnerLik(etaMat, cores, grad));
+    Rcpp::traits::input_parameter< bool >::type preds(predsSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerLik(etaMat, cores, grad, preds));
     return rcpp_result_gen;
 END_RCPP
 }
