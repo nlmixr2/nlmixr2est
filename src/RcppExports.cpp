@@ -980,6 +980,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeEncoderFwdBwd
+List vaeEncoderFwdBwd(arma::cube dataIn, IntegerVector lengths, arma::mat covIn, arma::mat eps, arma::mat Wih, arma::mat Whh, arma::vec bih, arma::vec bhh, arma::mat fcW, arma::vec fcB, int zDim, arma::mat gZ, arma::mat gLogSigmaDirect);
+RcppExport SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP dataInSEXP, SEXP lengthsSEXP, SEXP covInSEXP, SEXP epsSEXP, SEXP WihSEXP, SEXP WhhSEXP, SEXP bihSEXP, SEXP bhhSEXP, SEXP fcWSEXP, SEXP fcBSEXP, SEXP zDimSEXP, SEXP gZSEXP, SEXP gLogSigmaDirectSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::cube >::type dataIn(dataInSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type lengths(lengthsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type covIn(covInSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Wih(WihSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Whh(WhhSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bih(bihSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bhh(bhhSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type fcW(fcWSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type fcB(fcBSEXP);
+    Rcpp::traits::input_parameter< int >::type zDim(zDimSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type gZ(gZSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type gLogSigmaDirect(gLogSigmaDirectSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeEncoderFwdBwd(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 // validate (ensure exported C++ functions exist before calling them)
 static int _nlmixr2est_RcppExport_validate(const char* sig) { 

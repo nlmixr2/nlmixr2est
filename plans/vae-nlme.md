@@ -147,9 +147,16 @@ Phase 1 -- Dispatch skeleton (R). [DONE]
 - Remaining for later phases: vaeRxUiGet* handlers, rxPipeline data prep,
   theta/eta ordering, no-IIV handling (wired as the C++ kernel lands).
 
-Phase 2 -- C++ LSTM encoder (fwd + analytic bwd).
-- src/vaeEncoder.cpp; compileAttributes + init.c. Gradient-check vs torch oracle
-  and finite differences against Phase 0 fixtures (tol ~1e-6).
+Phase 2 -- C++ LSTM encoder (fwd + analytic bwd). [DONE]
+- src/vaeEncoder.cpp: vaeEncoderFwdBwd -- LSTM fwd (PyTorch i,f,g,o), FC head,
+  L build, reparam; analytic backward = FC + reparam + LSTM BPTT. Backward takes
+  the two ELBO upstream signals (dLoss/dz, direct dLoss/dlogSigma).
+- Registration: compileAttributes; MANUAL init.c (prototype + CallEntries arity
+  13); MANUAL src/Makevars.in SOURCES_CPP (explicit object list, NOT wildcard --
+  src/Makevars is generated/gitignored).
+- Verified (tests/testthat/test-vae-encoder.R, no torch at run time): forward vs
+  torch oracle ~1e-7; analytic backward vs torch autograd ~1e-6; vs finite
+  differences ~5e-7. 13/13 expectations pass.
 
 Phase 3 -- Decoder + analytic d(pred)/d(eta) via rxode2.
 - Solve structural model; extract pred + per-obs eta-Jacobian from focei

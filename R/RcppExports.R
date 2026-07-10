@@ -302,6 +302,10 @@ nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
 }
 
+vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect) {
+    .Call(`_nlmixr2est_vaeEncoderFwdBwd`, dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect)
+}
+
 # Register entry points for exported C++ functions
 methods::setLoadAction(function(ns) {
     .Call(`_nlmixr2est_RcppExport_registerCCallable`)
