@@ -681,12 +681,13 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // muK is the per-component typical value of the mixed eta (paper's mu_k); w the
 // current mixture weights.  errType 0=additive, 1=proportional, 6=lognormal.
 //[[Rcpp::export]]
-List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, int burn) {
+List rpemMstepMix(NumericVector muK, NumericVector w, IntegerVector etaForComp,
+                  int errType, int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepMixDraw before rpemMstepMix");
-  if (rpemOp.nEta != 1) stop("rpemMstepMix currently supports a single mixed eta");
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
-  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix;
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix, nEta = rpemOp.nEta;
   if ((int)muK.size() != K || (int)w.size() != K) stop("muK and w must have K entries");
+  if ((int)etaForComp.size() != K) stop("etaForComp must have K entries");
 
   std::vector<double> logw(K);
   for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
@@ -739,7 +740,10 @@ List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, 
     double logA = (logw[pkh] + plogp - logn[pih]) - (logw[ck] + clogp - logn[ci]);
     if (log(u4) < logA) { ci = pih; cj = pjh; ck = pkh; clogp = plogp; ++naccept; }
     if (t >= burn) {
-      double theta = muK[ck] + rpemOp.etaS[(size_t)ci * nG + cj];
+      // per-component active eta: shared-eta maps every component to eta 0; split-ETA
+      // maps component k to its own eta (etaForComp[k]) -> its own Sigma^(k).
+      double eta = rpemOp.etaS[((size_t)ci * nG + cj) * nEta + etaForComp[ck]];
+      double theta = muK[ck] + eta;
       sumTk[ck] += theta; sumTTk[ck] += theta * theta; ++countK[ck];
       int nobsi = rpemOp.nobs[ci];
       size_t r = ((size_t)ci * nG + cj) * K + ck;
@@ -755,18 +759,22 @@ List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, 
       sumNobs += nobsi; ++m;
     }
   }
-  NumericVector muNew(K), wNew(K);
-  double omegaNew = 0.0;
+  NumericVector muNew(K), wNew(K), omegaNew(nEta);
+  std::vector<double> sumSSk(nEta, 0.0);   // within-component SS grouped by active eta
+  std::vector<long> countEta(nEta, 0);
   for (int k = 0; k < K; ++k) {
     if (countK[k] > 0) {
       muNew[k] = sumTk[k] / (double)countK[k];
-      omegaNew += sumTTk[k] - (double)countK[k] * muNew[k] * muNew[k];
+      int a = etaForComp[k];             // components sharing an eta pool into its Sigma
+      sumSSk[a] += sumTTk[k] - (double)countK[k] * muNew[k] * muNew[k];
+      countEta[a] += countK[k];
     } else {
       muNew[k] = muK[k];                 // component starved this iteration: hold
     }
     wNew[k] = (double)countK[k] / (double)m;
   }
-  omegaNew /= (double)m;
+  for (int a = 0; a < nEta; ++a)
+    omegaNew[a] = (countEta[a] > 0) ? sumSSk[a] / (double)countEta[a] : 0.0;
   // Empty/collapsing-component guard (design/rpem/07): a weight of exactly 0 makes
   // logw = -Inf next iteration, permanently killing the component (it can never be
   // accepted back).  Floor each weight at a small share and renormalize so every

@@ -77,18 +77,24 @@
   .K <- (length(.args) + 1L) / 2L
   .compExprs <- .args[seq(1, length(.args), by = 2)]
   .probExprs <- if (.K > 1L) .args[seq(2, length(.args), by = 2)] else list()
-  .muNames <- character(.K); .etaName <- NULL
+  .muNames <- character(.K); .compEta <- character(.K)
   for (.k in seq_len(.K)) {
     .th <- intersect(all.vars(.compExprs[[.k]]), thetaNames)
     .et <- intersect(all.vars(.compExprs[[.k]]), etaNames)
     if (length(.th) != 1L)
       stop("RPEM mix() component must reference exactly one typical-value parameter")
     .muNames[.k] <- .th
-    if (length(.et) == 1L) .etaName <- .et
+    if (length(.et) != 1L)
+      stop("RPEM mix() component must reference exactly one random effect")
+    .compEta[.k] <- .et
   }
-  if (is.null(.etaName)) stop("RPEM mix() components must share one random effect")
+  # Shared-eta (one omega for all components) if every component uses the same eta;
+  # per-component (split-ETA-per-component) if each component has its own eta -- then
+  # each carries its own Sigma^(k) (design/rpem/07).
+  .perComp <- length(unique(.compEta)) > 1L
   .probNames <- vapply(.probExprs, function(e) as.character(e), character(1))
-  list(K = as.integer(.K), muNames = .muNames, etaName = .etaName, probNames = .probNames)
+  list(K = as.integer(.K), muNames = .muNames, compEta = .compEta,
+       etaName = .compEta[1], perComp = .perComp, probNames = .probNames)
 }
 
 .rpemClassify <- function(ui) {
@@ -115,16 +121,20 @@
   .muName <- .mu$theta[match(.etas$name, .mu$eta)]
   .mix <- NULL
   if (!is.null(.mixI)) {
-    # the mixed eta uses component 1's typical value as its nominal mu (the others
-    # come from setIndMixest); non-mixed etas must still be mu-referenced.
-    .mixEtaRow <- which(.etas$name == .mixI$etaName)
-    .muName[.mixEtaRow] <- .mixI$muNames[1]
-    if (nEta != 1L)
-      stop("RPEM mixtures currently support a single mixed random effect")
+    # each component's mixed eta mu-references that component's typical value; the
+    # model selects the component (setIndMixest) so RPEM forces each in the E-step.
+    # Shared-eta -> all components map to one eta (one shared Omega); per-component
+    # (split-ETA-per-component) -> each component has its own eta and its own Sigma^(k).
+    .mixEtaRows <- match(.mixI$compEta, .etas$name)     # eta row per component (1-based)
+    if (anyNA(.mixEtaRows)) stop("RPEM mix() random effect not found")
+    for (.k in seq_len(.mixI$K)) .muName[.mixEtaRows[.k]] <- .mixI$muNames[.k]
+    if (nEta != length(unique(.mixEtaRows)))
+      stop("RPEM mixtures currently require every random effect to be a mixed eta")
     .muCompIdx <- as.integer(match(.mixI$muNames, .thetas$name) - 1L)   # 0-based tka_k
     .probIdx <- as.integer(match(.mixI$probNames, .thetas$name) - 1L)   # 0-based p_k
     .p <- .thetas$est[.probIdx + 1L]
-    .mix <- list(K = .mixI$K, etaRow = as.integer(.mixEtaRow), muCompIdx = .muCompIdx,
+    .mix <- list(K = .mixI$K, etaForComp = as.integer(.mixEtaRows - 1L),  # 0-based eta idx/comp
+                 perComp = .mixI$perComp, muCompIdx = .muCompIdx,
                  muComp0 = .thetas$est[.muCompIdx + 1L], probIdx = .probIdx,
                  probNames = .mixI$probNames, muNames = .mixI$muNames,
                  w0 = c(.p, 1 - sum(.p)))
@@ -593,38 +603,42 @@
   .idColF <- names(data)[tolower(names(data)) == "id"][1]
   if (is.na(.idColF)) stop("data must have an ID column")
   .nsub <- length(unique(data[[.idColF]]))
-  .drawEtas <- function(omega) rxode2::rxRmvn(.nsub * control$nGauss, mu = 0, sigma = omega)
+  # per-eta omega (length nEta): shared-eta mixtures have one, split-ETA-per-component
+  # mixtures have one Sigma^(k) per component's eta.
+  .drawEtas <- function(omegaVec)
+    rxode2::rxRmvn(.nsub * control$nGauss, mu = rep(0, .cl$nEta),
+                   sigma = diag(omegaVec, .cl$nEta))
 
   base <- .cl$base; muK <- .mix$muComp0; w <- .mix$w0
-  omega <- matrix(.cl$omega0[1, 1], 1, 1); addSd <- .cl$addSd0
+  omega <- diag(.cl$omega0); addSd <- .cl$addSd0
   niter <- control$niter
   muMat <- matrix(0, niter, K); wMat <- matrix(0, niter, K)
-  omTr <- numeric(niter); sdTr <- numeric(niter); llTr <- numeric(niter)
+  omTr <- matrix(0, niter, .cl$nEta); sdTr <- numeric(niter); llTr <- numeric(niter)
   for (.it in seq_len(niter)) {
     base[.mix$muCompIdx + 1L] <- muK
     base[.cl$addSdIdx + 1L] <- addSd
     rxode2::rxSetSeed(control$seed + .it)
     .etaMat <- .drawEtas(omega)
     .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
-    .ms <- rpemMstepMix(muK, w, .cl$errType, control$nMH, control$mhBurn)
-    muK <- .ms$muK; omega <- matrix(.ms$omega, 1, 1); w <- .ms$w; addSd <- .ms$addSd
-    # Label-switching guard (design/rpem/07): components are exchangeable in the
-    # likelihood, so the MH labels can swap between iterations and corrupt the
-    # collected trace.  Enforce a canonical order (ascending mu) each iteration so
-    # component k is stable across iterations and the averaged estimate is coherent.
-    .ord <- order(muK)
-    muK <- muK[.ord]; w <- w[.ord]
-    muMat[.it, ] <- muK; wMat[.it, ] <- w; omTr[.it] <- .ms$omega
+    .ms <- rpemMstepMix(muK, w, .mix$etaForComp, .cl$errType, control$nMH, control$mhBurn)
+    muK <- .ms$muK; omega <- .ms$omega; w <- .ms$w; addSd <- .ms$addSd
+    # Label-switching guard (design/rpem/07): shared-eta components are exchangeable in
+    # the likelihood, so the MH labels can swap between iterations and corrupt the
+    # collected trace -- enforce a canonical order (ascending mu) each iteration.  With
+    # split-ETA per-component etas the components are tied to distinct eta/theta symbols
+    # (not exchangeable), so no reorder is applied there.
+    if (!.mix$perComp) { .ord <- order(muK); muK <- muK[.ord]; w <- w[.ord] }
+    muMat[.it, ] <- muK; wMat[.it, ] <- w; omTr[.it, ] <- omega
     sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
   }
   .k <- min(control$collect, niter); .wi <- (niter - .k + 1L):niter
   muHat <- colMeans(muMat[.wi, , drop = FALSE])
   wHat <- colMeans(wMat[.wi, , drop = FALSE])
-  omHat <- mean(omTr[.wi]); sdHat <- mean(sdTr[.wi])
+  omHat <- colMeans(omTr[.wi, , drop = FALSE]); sdHat <- mean(sdTr[.wi])
 
   # Final E-step at the converged estimates: EBEs + per-subject component posteriors.
   base[.mix$muCompIdx + 1L] <- muHat; base[.cl$addSdIdx + 1L] <- sdHat
-  omegaHat <- matrix(omHat, 1, 1)
+  omegaHat <- omHat
   rxode2::rxSetSeed(control$seed)
   .feEta <- .drawEtas(omegaHat)
   .fe <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores, K, wHat)
@@ -636,29 +650,32 @@
   # Per-component EBEs (self-normalized importance weights within each component):
   # EBE_ik = sum_j eta_ij * softmax_j(log p(Y_i | k, eta_ij)).  ebeK is nsub x K.
   .nG <- control$nGauss
-  .etaVec <- as.numeric(.fe$eta)
+  .etaM <- matrix(.fe$eta, ncol = .cl$nEta)
   ebeK <- matrix(0, .nsub, K)
   for (.i in seq_len(.nsub)) {
     .idx <- ((.i - 1L) * .nG + 1L):(.i * .nG)
     for (.kc in seq_len(K)) {
       .lp <- .fe$logp[.idx, .kc]
       .wt <- exp(.lp - max(.lp)); .wt <- .wt / sum(.wt)
-      ebeK[.i, .kc] <- sum(.etaVec[.idx] * .wt)
+      ebeK[.i, .kc] <- sum(.etaM[.idx, .mix$etaForComp[.kc] + 1L] * .wt)  # component's own eta
     }
   }
-  # Display EBE = winning component's; FOCEI eval etaMat = per-component EBEs stacked
-  # (component 1 for all subjects, then component 2, ...): (K*nsub) x neta.
-  ebe <- matrix(ebeK[cbind(seq_len(.nsub), mixNum)], .nsub, 1L,
-                dimnames = list(NULL, .cl$etaNames))
-  ebeStack <- matrix(as.numeric(ebeK), K * .nsub, 1L, dimnames = list(NULL, .cl$etaNames))
+  # Display EBE = winning component's, placed in that component's eta column; FOCEI eval
+  # etaMat = per-component EBEs stacked (component 1 for all subjects, then 2, ...) with
+  # each component's EBE in its own eta column: (K*nsub) x nEta.
+  ebe <- matrix(0, .nsub, .cl$nEta, dimnames = list(NULL, .cl$etaNames))
+  for (.i in seq_len(.nsub)) ebe[.i, .mix$etaForComp[mixNum[.i]] + 1L] <- ebeK[.i, mixNum[.i]]
+  ebeStack <- matrix(0, K * .nsub, .cl$nEta, dimnames = list(NULL, .cl$etaNames))
+  for (.kc in seq_len(K))
+    ebeStack[((.kc - 1L) * .nsub + 1L):(.kc * .nsub), .mix$etaForComp[.kc] + 1L] <- ebeK[, .kc]
 
-  list(mu = stats::setNames(muHat[1], .cl$muNames),   # nominal (comp-1) mu for the eta
+  list(mu = stats::setNames(muHat[match(seq_len(.cl$nEta) - 1L, .mix$etaForComp)], .cl$muNames),
        omega = stats::setNames(omHat, .cl$etaNames),
        addSd = sdHat, propSd = if (.cl$errType == 1L) sdHat else NA_real_,
        lambda = NA_real_, power = NA_real_,
        endptSd = NULL, endptProp = NULL, struct = NULL,
        covCoef = stats::setNames(numeric(0), character(0)), ebe = ebe,
-       lnL = llTr, muTrace = muMat, omegaTrace = matrix(omTr, ncol = 1), sdTrace = sdTr,
+       lnL = llTr, muTrace = muMat, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl,
        mix = list(K = K, muK = stats::setNames(muHat, .mix$muNames),
                   w = wHat, probNames = .mix$probNames, mixNum = mixNum, tau = .tau,
@@ -770,6 +787,10 @@ getValidNlmixrCtl.rpem <- function(control) {
   .idf <- .uiD$iniDf
   .thRow <- !is.na(.idf$ntheta)
   .idf$est[.thRow] <- .ft[.idf$name[.thRow]]
+  # seed the diagonal omega (eta rows) with the RPEM estimate so the eval reports it
+  # rather than the ini value (mirrors the theta seeding above)
+  .etaRow <- !is.na(.idf$neta1) & .idf$neta1 == .idf$neta2
+  .idf$est[.etaRow] <- rfit$omega[.idf$name[.etaRow]]
   if (length(.heldNames) > 0L) .idf$fix[.idf$name %in% .heldNames] <- TRUE
   assign("iniDf", .idf, envir = .uiD)
   ui <- rxode2::rxUiCompress(.uiD)

@@ -13,10 +13,25 @@ coherent (verified: a reversed init still returns components in truth order); (2
 collapsing components -- a weight of exactly 0 makes `logw = -Inf` next iteration and
 permanently kills the component, so `rpemMstepMix` floors each weight at 1e-3 and
 renormalizes so every component stays reachable (verified finite on a single population
-fit as K=2).  Recovers unequal weights (0.75/0.25) and mu/omega/add.sd.  Still open:
-per-component Sigma^(k) (currently shared Omega), >1 mixed eta, and the SAEM-representation
-backend benchmark.  Mixture component-probability SEs are intentionally not reported (not
-reported elsewhere in the ecosystem; mixtures keep covMethod "r,s").
+fit as K=2).  Recovers unequal weights (0.75/0.25) and mu/omega/add.sd.
+
+PER-COMPONENT Sigma^(k) DONE: the split-ETA-per-component form
+`mix(exp(tka1 + eta.ka1), p1, exp(tka2 + eta.ka2))` -- each component with its own eta
+and its own omega -- is now supported.  `.rpemMixInfo` parses the per-component etas and
+sets `perComp`/`etaForComp` (component k -> its eta index); the classifier allows
+nEta == number of distinct mixed etas; `.rpemFitMix` draws each component's eta from its
+own omega (diag draw), and `rpemMstepMix` (C++) takes `etaForComp` and returns a per-eta
+omega vector (components sharing an eta pool into one Sigma, so shared-eta stays a
+special case).  Label-switching reorder is applied only for the shared-eta (exchangeable)
+form; split-ETA components are tied to distinct symbols.  On split-ETA data SAEM collapses
+the component means (tka1/tka2 ~ 0.45/0.67 for a true 0.0/1.4) and reports a single merged
+omega, whereas RPEM separates the components (~0.11/1.71) and reports one omega per
+component -- so RPEM meets/exceeds SAEM's mixture values (the target bar).  The
+high-variance component's omega is still under-estimated (the known multi-eta E-step
+under-coverage), but SAEM does not separate per-component BSV at all.  test-rpem-mix-percomp.R.
+Still open: >1 mix() call, and the SAEM-representation backend benchmark.  Mixture
+component-probability SEs are intentionally not reported (not reported elsewhere in the
+ecosystem; mixtures keep covMethod "r,s").
 
 ## Two backends to build and compare
 

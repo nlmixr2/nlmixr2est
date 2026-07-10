@@ -338,8 +338,8 @@ rpemMstepK1 <- function(muIn, addSd0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1`, muIn, addSd0, nTrials, burn)
 }
 
-rpemMstepMix <- function(muK, w, errType, nTrials, burn) {
-    .Call(`_nlmixr2est_rpemMstepMix`, muK, w, errType, nTrials, burn)
+rpemMstepMix <- function(muK, w, etaForComp, errType, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepMix`, muK, w, etaForComp, errType, nTrials, burn)
 }
 
 rpemMstepK1Reg <- function(design, coefs, errType, nTrials, burn) {
