@@ -259,3 +259,8 @@ nlmixr2Est.vae <- function(env, ...) {
 }
 attr(nlmixr2Est.vae, "covPresent") <- TRUE
 attr(nlmixr2Est.vae, "unbounded") <- FALSE
+## enable the IOV preprocessing hook (.uiApplyIov): occasion-level random effects
+## are materialized into the model so theta+eta+iov reads as a mu-referenced
+## theta+eta expression (the ID-level eta the encoder learns) plus per-occasion
+## deviations handled by the inner problem
+attr(nlmixr2Est.vae, "iov") <- TRUE
