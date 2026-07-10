@@ -2,7 +2,8 @@
 % Please edit documentation in R/agq.R, R/bobyqa.R, R/fo.R, R/foce.R,
 %   R/focep.R, R/foi.R, R/irlsfocep.R, R/laplace.R, R/lbfgsb3c.R,
 %   R/muRefControl.R, R/mufocep.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R,
-%   R/nlminb.R, R/nls.R, R/nmObjHandle.R, R/optim.R, R/posthoc.R, R/uobyqa.R
+%   R/nlminb.R, R/nls.R, R/nmObjHandle.R, R/optim.R, R/posthoc.R, R/uobyqa.R,
+%   R/vae.R
 \name{nmObjHandleControlObject.agqControl}
 \alias{nmObjHandleControlObject.agqControl}
 \alias{nmObjHandleControlObject.bobyqaControl}
@@ -35,6 +36,7 @@
 \alias{nmObjHandleControlObject.optimControl}
 \alias{nmObjHandleControlObject.posthocControl}
 \alias{nmObjHandleControlObject.uobyqaControl}
+\alias{nmObjHandleControlObject.vaeControl}
 \title{Handle the control object}
 \usage{
 \method{nmObjHandleControlObject}{agqControl}(control, env)
@@ -98,6 +100,8 @@ nmObjHandleControlObject(control, env)
 \method{nmObjHandleControlObject}{posthocControl}(control, env)
 
 \method{nmObjHandleControlObject}{uobyqaControl}(control, env)
+
+\method{nmObjHandleControlObject}{vaeControl}(control, env)
 }
 \arguments{
 \item{control}{Control object}

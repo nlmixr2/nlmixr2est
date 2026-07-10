@@ -138,10 +138,14 @@ Phase 0 -- Reference capture & spec. [DONE]
   oracle; forward + autograd grads for all encoder params, all finite).
 - pop_parameter.c (M-step/covsel) detail deferred to a Phase 5 spec.
 
-Phase 1 -- Dispatch skeleton (R).
-- vaeControl() (full knob set above) + nlmixr2Est.vae + vaeRxUiGet* handlers;
-  wire into rxPipeline, data prep, theta/eta ordering, no-IIV handling. Errors
-  "not implemented" but validates UI->rxode2.
+Phase 1 -- Dispatch skeleton (R). [DONE]
+- R/vae.R: vaeControl() (paper defaults + shared plumbing), getValidNlmixrCtl.vae,
+  nmObjHandleControlObject.vaeControl, nmObjGetControl.vae, rxUiDeparse.vaeControl,
+  nlmixr2Est.vae. Validates UI (random-on-id, mu-ref) + control, then stops
+  "not yet implemented". Verified: control defaults, unused-arg rejection, est
+  in nlmixr2AllEst(), dispatch reaches stub on theo_sd. NAMESPACE/Rd via document().
+- Remaining for later phases: vaeRxUiGet* handlers, rxPipeline data prep,
+  theta/eta ordering, no-IIV handling (wired as the C++ kernel lands).
 
 Phase 2 -- C++ LSTM encoder (fwd + analytic bwd).
 - src/vaeEncoder.cpp; compileAttributes + init.c. Gradient-check vs torch oracle
