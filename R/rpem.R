@@ -479,15 +479,26 @@
   # (rpemFisherReg, regression) or multiple diagonal etas (rpemFisherDiag).  Other
   # structures keep the FOCEI-covariance SEs.
   .fisher <- NULL
-  if (.cl$errType %in% c(0L, 1L) && !.structOn) {
-    .sdName <- .cl$thetaNames[.cl$addSdIdx + 1L]
+  if (.cl$errType %in% c(0L, 1L, 2L, 4L) && !.structOn) {
     .omNames <- paste0("om.", .cl$etaNames)
+    # residual parameter(s) + their theta names, ordered to match the C++ score
+    # columns: combined = (add.sd, prop.sd); power = (prop.sd, power); else single sd
+    if (.cl$errType == 2L) {
+      .resPar <- c(sdHat, propHat)
+      .resNm <- .cl$thetaNames[c(.cl$addSdIdx, .cl$propSdIdx) + 1L]
+    } else if (.cl$errType == 4L) {
+      .resPar <- c(sdHat, powerHat)
+      .resNm <- .cl$thetaNames[c(.cl$addSdIdx, .cl$powIdx) + 1L]
+    } else {
+      .resPar <- sdHat
+      .resNm <- .cl$thetaNames[.cl$addSdIdx + 1L]
+    }
     if (.useReg) {                                    # nEta == 1 (+ optional covariates)
-      .S <- rpemFisherReg(.design, c(muHat, covCoefHat), omHat[1], .cl$errType, sdHat)
-      .colN <- c(.cl$muNames, .cl$covCoefNames, .sdName, .omNames)
+      .S <- rpemFisherReg(.design, c(muHat, covCoefHat), omHat[1], .cl$errType, .resPar)
+      .colN <- c(.cl$muNames, .cl$covCoefNames, .resNm, .omNames)
     } else {                                          # nEta > 1, diagonal Omega
-      .S <- rpemFisherDiag(muHat, omHat, .cl$errType, sdHat)
-      .colN <- c(.cl$muNames, .sdName, .omNames)
+      .S <- rpemFisherDiag(muHat, omHat, .cl$errType, .resPar)
+      .colN <- c(.cl$muNames, .resNm, .omNames)
     }
     .fisher <- .rpemFisherCov(.S, .colN)
   }

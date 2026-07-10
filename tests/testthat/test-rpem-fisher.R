@@ -54,6 +54,76 @@ test_that("RPEM reports Fisher-score SEs (close to FOCEI, shrinking ~1/sqrt(n))"
   expect_lt(.ratio, 2.6)
 })
 
+test_that("RPEM reports Fisher-score SEs for combined error (add.sd + prop.sd)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: FOCEI + RPEM fits
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(21); nsub <- 60L; etasTrue <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 1.5)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = etasTrue[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + rnorm(nrow(s), 0, sqrt(0.05^2 + (0.1 * s$cp)^2))
+    d
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.1; prop.sd <- 0.15; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt()
+            cp ~ add(add.sd) + prop(prop.sd) })
+  }
+  ctl <- rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 30L,
+                     collect = 12L, seed = 100L, cores = 4L)
+  rf <- suppressMessages(nlmixr2(mod, dat, est = "rpem", control = ctl))
+  ff <- suppressMessages(nlmixr2(mod, dat, est = "focei",
+                                 control = foceiControl(print = 0, calcTables = FALSE)))
+
+  expect_match(as.character(rf$covMethod), "fisher")
+  .th <- c("tka", "add.sd", "prop.sd")
+  .se <- rf$parFixedDf[.th, "SE"]
+  expect_true(all(is.finite(.se) & .se > 0))
+  .fse <- ff$parFixedDf[.th, "SE"]
+  expect_equal(unname(.se[1]), unname(.fse[1]), tolerance = 0.25)   # tka
+  expect_equal(unname(.se[2]), unname(.fse[2]), tolerance = 0.25)   # add.sd
+  expect_equal(unname(.se[3]), unname(.fse[3]), tolerance = 0.25)   # prop.sd
+})
+
+test_that("RPEM reports Fisher-score SEs for power error (prop.sd + exponent)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: FOCEI + RPEM fits
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(22); nsub <- 60L; etasTrue <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 1.5)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = etasTrue[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + rnorm(nrow(s), 0, 0.15 * s$cp^0.8)
+    d
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); prop.sd <- 0.2; pw <- 0.5; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt()
+            cp ~ pow(prop.sd, pw) })
+  }
+  ctl <- rpemControl(nGauss = 500L, nMH = 60000L, mhBurn = 6000L, niter = 35L,
+                     collect = 12L, seed = 100L, cores = 4L)
+  rf <- suppressMessages(nlmixr2(mod, dat, est = "rpem", control = ctl))
+  ff <- suppressMessages(nlmixr2(mod, dat, est = "focei",
+                                 control = foceiControl(print = 0, calcTables = FALSE)))
+
+  expect_match(as.character(rf$covMethod), "fisher")
+  .th <- c("tka", "prop.sd", "pw")
+  .se <- rf$parFixedDf[.th, "SE"]
+  expect_true(all(is.finite(.se) & .se > 0))
+  .fse <- ff$parFixedDf[.th, "SE"]
+  expect_equal(unname(.se[1]), unname(.fse[1]), tolerance = 0.25)   # tka
+  expect_equal(unname(.se[2]), unname(.fse[2]), tolerance = 0.3)    # prop.sd
+  expect_true(is.finite(.se[3]) && .se[3] > 0)                      # power exponent
+})
+
 test_that("RPEM reports multi-eta Fisher-score SEs (diagonal Omega)", {
   skip_on_cran()
   skip_on_ci()  # heavy: FOCEI + RPEM fits

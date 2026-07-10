@@ -322,12 +322,12 @@ rpemMstepK1Reg <- function(design, coefs, errType, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Reg`, design, coefs, errType, nTrials, burn)
 }
 
-rpemFisherReg <- function(design, coefs, omega, errType, sd) {
-    .Call(`_nlmixr2est_rpemFisherReg`, design, coefs, omega, errType, sd)
+rpemFisherReg <- function(design, coefs, omega, errType, resPar) {
+    .Call(`_nlmixr2est_rpemFisherReg`, design, coefs, omega, errType, resPar)
 }
 
-rpemFisherDiag <- function(muVec, omVec, errType, sd) {
-    .Call(`_nlmixr2est_rpemFisherDiag`, muVec, omVec, errType, sd)
+rpemFisherDiag <- function(muVec, omVec, errType, resPar) {
+    .Call(`_nlmixr2est_rpemFisherDiag`, muVec, omVec, errType, resPar)
 }
 
 rpemMstepK1Comb <- function(design, coefs, addSd0, propSd0, nTrials, burn) {

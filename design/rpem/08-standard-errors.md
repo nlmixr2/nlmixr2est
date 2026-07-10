@@ -21,14 +21,20 @@ eval-only FOCEI reports the ui iniDf theta (maxOuter=0 holds the starting value)
 also fixed a latent non-mixture estimate-display bug (parFixedDf showed ini values).
 Multiple diagonal etas are supported via `rpemFisherDiag` (one typical-value and one
 `om.<eta>` variance score per random effect); nEta==1 with covariates uses
-`rpemFisherReg` (regression).  The omega-variance SEs are reported in the fit `$cov`
+`rpemFisherReg` (regression).  Combined (add.sd + prop.sd) and power (prop.sd +
+exponent) residuals now emit native Fisher SEs too: their residual score has no closed
+form, so `rpemResidScoreSample` re-scores each residual parameter per observation from
+the stored structural prediction (`cpv`) and observation (`dvv`) using
+d/dtheta = sum_obs (r^2 - V)/(2 V^2) dV/dtheta, with V = add^2 + prop^2 cp^2 (combined)
+or V = b^2 cp^(2c) (power).  Verified against FOCEI SEs (combined tka/add.sd/prop.sd,
+power tka/prop.sd/exponent).  The omega-variance SEs are reported in the fit `$cov`
 (rows/cols `om.<eta>`, on the variance scale -- the score is already in those units so
 no delta method), matching SAEM.  The empirical Fisher (score outer product) is
 asymptotically exact (E[EBE^2]/om^2 == I_1), so SEs converge to FOCEI's with enough
 subjects (verified at n=100; small n like theo's 12 gives noisier SEs).  Other
-structures (combined/tbs/power residual, non-mu-ref structural betas, mixtures) keep
-the FOCEI-covariance (`covMethod="r,s"`) SEs.  Follow-ups: Fisher scores for
-combined/power residual and structural betas; mixtures.
+structures (tbs residual, non-mu-ref structural betas, mixtures) keep the
+FOCEI-covariance (`covMethod="r,s"`) SEs.  Follow-ups: Fisher scores for tbs residual,
+structural betas, and mixtures.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:

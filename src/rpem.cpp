@@ -871,6 +871,53 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }
 
+// Number of residual score parameters for a given errType (design/rpem/08).
+//   0 add / 1 prop / 6 lnorm : single sd
+//   2 combined (add.sd, prop.sd) ; 4 power (prop.sd, power)
+static inline int rpemNResPar(int errType) {
+  return (errType == 2 || errType == 4) ? 2 : 1;
+}
+
+// Unweighted residual-parameter score for one stored sample (i,j), written into
+// sRes (length rpemNResPar(errType)).  For add/prop the closed-form uses the
+// precomputed SS/WSS; combined and power have no closed form, so re-score per obs
+// from the stored structural prediction cp (rpemOp.cpv) and observation dv
+// (rpemOp.dvv).  Score of a Gaussian residual param theta with per-obs variance V:
+//   d/dtheta = sum_obs (r^2 - V)/(2 V^2) * dV/dtheta ,  r = dv - cp.
+static inline void rpemResidScoreSample(int errType, int i, int j,
+                                        const double *resPar, double *sRes) {
+  int nG = rpemOp.nGauss, nobsi = rpemOp.nobs[i];
+  size_t r = (size_t)i * nG + j;
+  if (errType == 2 || errType == 4) {
+    long off = rpemOp.sampObsOff[i] + (long)j * nobsi;
+    double d0 = 0.0, d1 = 0.0;
+    if (errType == 2) {                       // combined: V = add^2 + prop^2 cp^2
+      double add = resPar[0], prop = resPar[1], add2 = add * add, prop2 = prop * prop;
+      for (int o = 0; o < nobsi; ++o) {
+        double cp = rpemOp.cpv[off + o], dv = rpemOp.dvv[off + o];
+        double cp2 = cp * cp, V = add2 + prop2 * cp2, rr = dv - cp;
+        double g = (rr * rr - V) / (V * V);
+        d0 += add * g;                        // d/d add.sd
+        d1 += prop * cp2 * g;                 // d/d prop.sd
+      }
+    } else {                                  // power: V = b^2 cp^(2c)
+      double b = resPar[0], c = resPar[1];
+      for (int o = 0; o < nobsi; ++o) {
+        double cp = rpemOp.cpv[off + o], dv = rpemOp.dvv[off + o];
+        double cp2c = pow(cp, 2.0 * c), V = b * b * cp2c, rr = dv - cp;
+        double g = (rr * rr - V) / (V * V);
+        d0 += b * cp2c * g;                   // d/d prop.sd (b)
+        d1 += V * log(cp) * g;                // d/d power (c)
+      }
+    }
+    sRes[0] = d0; sRes[1] = d1;
+    return;
+  }
+  double sd = resPar[0], sd3 = sd * sd * sd;  // add (0) / prop (1) / lnorm (6)
+  double acc = (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
+  sRes[0] = -(double)nobsi / sd + acc / sd3;
+}
+
 // Fisher-score information for the K=1 regression case (design/rpem/08).  At the
 // converged estimates, each subject's marginal-likelihood score is formed by the
 // Fisher identity s_i = E_{eta|Y_i}[grad complete-data loglik], with the posterior
@@ -884,32 +931,35 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
 // omega); the caller forms the empirical Fisher information I = S^T S and inverts it.
 //[[Rcpp::export]]
 NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double omega,
-                            int errType, double sd) {
+                            int errType, NumericVector resPar) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemFisherReg");
   if (rpemOp.nEta != 1) stop("rpemFisherReg currently supports nEta==1");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nCoef = design.ncol();
   if (design.nrow() != nsub) stop("design must have one row per subject");
-  int p = nCoef + 2;                            // coefs, residual sd, omega
+  int nRes = rpemNResPar(errType);
+  if ((int)resPar.size() != nRes) stop("resPar length must match errType");
+  int p = nCoef + nRes + 1;                     // coefs, residual params, omega
   NumericMatrix S(nsub, p);
-  double sd3 = sd * sd * sd, om2 = omega * omega;
+  double om2 = omega * omega;
+  std::vector<double> sRes(nRes), sResAcc(nRes);
   for (int i = 0; i < nsub; ++i) {
     double mx = R_NegInf;
     for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
     double sw = 0.0;
     for (int j = 0; j < nG; ++j) sw += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
-    int nobsi = rpemOp.nobs[i];
-    double sEta = 0.0, sEta2 = 0.0, sSd = 0.0;   // importance-weighted score sums
+    double sEta = 0.0, sEta2 = 0.0;              // importance-weighted score sums
+    for (int m = 0; m < nRes; ++m) sResAcc[m] = 0.0;
     for (int j = 0; j < nG; ++j) {
       double w = exp(rpemOp.logp[(size_t)i * nG + j] - mx) / sw;
       double eta = rpemOp.etaS[(size_t)i * nG + j];
       sEta  += w * eta;
       sEta2 += w * eta * eta;
-      double acc = (errType == 1) ? rpemOp.wssv[(size_t)i * nG + j] : rpemOp.ssv[(size_t)i * nG + j];
-      sSd += w * (-(double)nobsi / sd + acc / sd3);
+      rpemResidScoreSample(errType, i, j, resPar.begin(), sRes.data());
+      for (int m = 0; m < nRes; ++m) sResAcc[m] += w * sRes[m];
     }
     for (int k = 0; k < nCoef; ++k) S(i, k) = design(i, k) * sEta / omega;
-    S(i, nCoef)     = sSd;
-    S(i, nCoef + 1) = -0.5 / omega + 0.5 * sEta2 / om2;
+    for (int m = 0; m < nRes; ++m) S(i, nCoef + m) = sResAcc[m];
+    S(i, nCoef + nRes) = -0.5 / omega + 0.5 * sEta2 / om2;
   }
   return S;
 }
@@ -924,23 +974,23 @@ NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double om
 // [mu_1..nEta, sd, om_1..nEta]; the caller forms I = S^T S and inverts it.
 //[[Rcpp::export]]
 NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec,
-                             int errType, double sd) {
+                             int errType, NumericVector resPar) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemFisherDiag");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
   if ((int)muVec.size() != nEta || (int)omVec.size() != nEta)
     stop("muVec/omVec must have nEta entries");
-  int p = 2 * nEta + 1;
+  int nRes = rpemNResPar(errType);
+  if ((int)resPar.size() != nRes) stop("resPar length must match errType");
+  int p = 2 * nEta + nRes;                       // mu_1..nEta, residual params, om_1..nEta
   NumericMatrix S(nsub, p);
-  double sd3 = sd * sd * sd;
-  std::vector<double> sMu(nEta), sOm(nEta);
+  std::vector<double> sMu(nEta), sOm(nEta), sRes(nRes), sResAcc(nRes);
   for (int i = 0; i < nsub; ++i) {
     double mx = R_NegInf;
     for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
     double sw = 0.0;
     for (int j = 0; j < nG; ++j) sw += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
-    int nobsi = rpemOp.nobs[i];
     for (int a = 0; a < nEta; ++a) { sMu[a] = 0.0; sOm[a] = 0.0; }
-    double sSd = 0.0;
+    for (int m = 0; m < nRes; ++m) sResAcc[m] = 0.0;
     for (int j = 0; j < nG; ++j) {
       double w = exp(rpemOp.logp[(size_t)i * nG + j] - mx) / sw;
       for (int a = 0; a < nEta; ++a) {
@@ -949,12 +999,12 @@ NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec,
         sMu[a] += w * eta / om;
         sOm[a] += w * (-0.5 / om + 0.5 * eta * eta / (om * om));
       }
-      double acc = (errType == 1) ? rpemOp.wssv[(size_t)i * nG + j] : rpemOp.ssv[(size_t)i * nG + j];
-      sSd += w * (-(double)nobsi / sd + acc / sd3);
+      rpemResidScoreSample(errType, i, j, resPar.begin(), sRes.data());
+      for (int m = 0; m < nRes; ++m) sResAcc[m] += w * sRes[m];
     }
     for (int a = 0; a < nEta; ++a) S(i, a) = sMu[a];
-    S(i, nEta) = sSd;
-    for (int a = 0; a < nEta; ++a) S(i, nEta + 1 + a) = sOm[a];
+    for (int m = 0; m < nRes; ++m) S(i, nEta + m) = sResAcc[m];
+    for (int a = 0; a < nEta; ++a) S(i, nEta + nRes + a) = sOm[a];
   }
   return S;
 }

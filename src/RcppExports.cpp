@@ -1059,8 +1059,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemFisherReg
-NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double omega, int errType, double sd);
-RcppExport SEXP _nlmixr2est_rpemFisherReg(SEXP designSEXP, SEXP coefsSEXP, SEXP omegaSEXP, SEXP errTypeSEXP, SEXP sdSEXP) {
+NumericMatrix rpemFisherReg(NumericMatrix design, NumericVector coefs, double omega, int errType, NumericVector resPar);
+RcppExport SEXP _nlmixr2est_rpemFisherReg(SEXP designSEXP, SEXP coefsSEXP, SEXP omegaSEXP, SEXP errTypeSEXP, SEXP resParSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1068,22 +1068,22 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type coefs(coefsSEXP);
     Rcpp::traits::input_parameter< double >::type omega(omegaSEXP);
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
-    Rcpp::traits::input_parameter< double >::type sd(sdSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemFisherReg(design, coefs, omega, errType, sd));
+    Rcpp::traits::input_parameter< NumericVector >::type resPar(resParSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemFisherReg(design, coefs, omega, errType, resPar));
     return rcpp_result_gen;
 END_RCPP
 }
 // rpemFisherDiag
-NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec, int errType, double sd);
-RcppExport SEXP _nlmixr2est_rpemFisherDiag(SEXP muVecSEXP, SEXP omVecSEXP, SEXP errTypeSEXP, SEXP sdSEXP) {
+NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec, int errType, NumericVector resPar);
+RcppExport SEXP _nlmixr2est_rpemFisherDiag(SEXP muVecSEXP, SEXP omVecSEXP, SEXP errTypeSEXP, SEXP resParSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type muVec(muVecSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type omVec(omVecSEXP);
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
-    Rcpp::traits::input_parameter< double >::type sd(sdSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemFisherDiag(muVec, omVec, errType, sd));
+    Rcpp::traits::input_parameter< NumericVector >::type resPar(resParSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemFisherDiag(muVec, omVec, errType, resPar));
     return rcpp_result_gen;
 END_RCPP
 }
