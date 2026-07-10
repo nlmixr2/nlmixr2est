@@ -248,7 +248,7 @@
 #' and the full parameter-history walk (`parHist`).
 #' @noRd
 .vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1,
-                      parInfo = NULL, verbose = FALSE) {
+                      parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
@@ -262,14 +262,15 @@
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
   ## via the shared iteration-print machinery (scale.h), so the walk prints like
   ## saem/focei and becomes standard parHistData. `parInfo` only supplies nicer
-  ## structural names (the mu-referenced theta names) -- default to the eta names.
+  ## structural names (the mu-referenced theta names) and the back-transform
+  ## codes (`xform`, from .iterPrintXParFromUi) -- default to the eta names.
   if (is.null(parInfo)) {
     .sIdx <- which(!prep$isFree)
     parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
                     omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
   }
   .row0 <- .vaeParRow(zPop, omega, a, parInfo)
-  vaeIterPrintStart_(.row0, names(.row0), control$iterPrintControl)
+  vaeIterPrintStart_(.row0, names(.row0), control$iterPrintControl, parInfo$xform)
 
   ## burn-in: encoder-only training with a tiny fixed KL weight
   for (it in seq_len(control$itersBurnIn)) {
@@ -318,10 +319,6 @@
     }
     elboTrace[it] <- mean(elbos)
     vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), elboTrace[it])
-    if (verbose && it %% 25 == 0)
-      message(sprintf("iter %d/%d  -ELBO=%.2f  zPop=(%s)  a=(%s)", it, nMain,
-                      elboTrace[it], paste(round(zPop, 3), collapse = ","),
-                      paste(round(a, 3), collapse = ",")))
   }
 
   parHist <- vaeIterPrintGet_(isTRUE(control$print >= 1L))
@@ -356,6 +353,9 @@
                    structNames = .map$thetaForEta[.structIdx],
                    omegaNames = paste0("o(", .prep$etaNames, ")"),
                    aNames = names(.prep$a))
+  ## back-transform codes for the printed walk (X row: exp/expit/probit thetas)
+  .parInfo$xform <- .iterPrintXParFromUi(
+    .ui, c(.parInfo$structNames, .parInfo$omegaNames, .parInfo$aNames))
   ## set up the inner likelihood once (compiled model + processed data)
   .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
   on.exit(.vaeInnerFree(), add = TRUE)

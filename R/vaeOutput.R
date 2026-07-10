@@ -65,8 +65,7 @@
 #' the VAE's chosen inner likelihood (focei -> interaction=1; foce/focep ->
 #' interaction=0, focep = FOCE+ with R at the live conditional eta), and the
 #' covMethod passed through so the focei covariance step ("analytic", "r,s",
-#' "r", "s", "") runs directly on the frozen problem. keepInteraction stops
-#' nlmixr2Est.output from downgrading the likelihood to non-interaction.
+#' "r", "s", "") runs directly on the frozen problem.
 #' @noRd
 .vaeControlToFoceiControl <- function(env, assign = TRUE) {
   .control <- env$vaeControl
@@ -94,7 +93,6 @@
                       eventSens = .control$eventSens,
                       fast = FALSE, # no outer optimizer -- skip the outer gradient model
                       print = 0L)
-  .fc$keepInteraction <- TRUE
   if (assign) env$control <- .fc
   .fc
 }
@@ -142,6 +140,7 @@
   ## the ORIGINAL (pre-covariate-selection) model for $uiIni/$iniDf0; must be set
   ## AFTER assembly (.nlmixr2FitUpdateParams overwrites $iniDf0 with the global
   ## iniDf data.frame, which cannot represent the structure change)
-  .fit$env$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
+  .e <- .fit$env
+  .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
   .fit
 }

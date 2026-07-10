@@ -279,6 +279,10 @@ struct focei_options {
   int interaction;
   int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
   int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
+  int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
+  int nAnalyticGrad = 0;    // # outer gradients from the analytic path
+  int nFDGradFast = 0;      // # FD fallbacks while fast was requested
+  int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
   double cholSEtol;
   double hessEps;
   double hessEpsLlik;
@@ -3805,12 +3809,26 @@ static void loadAnalyticEtaP(double *theta) {
 
 // Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
 // the gate is live.  Returns true on success (g filled), false to fall back to
-// the finite-difference gradient.  theta is the current scaled optimizer point.
+// the finite-difference gradient -- ONLY when the sensitivity system could not
+// be solved (a size mismatch is a wiring bug and stops).  theta is the current
+// scaled optimizer point.
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
+  // Refresh the live state the R gradient reads; omega/theta/etaObf are
+  // otherwise only written into the fit env at finalize.
+  NumericVector _th(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta,
+            _th.begin());
+  op_foceiFitEnv[".gradTheta"] = _th;
+  op_foceiFitEnv["omega"] = getOmega();
+  if (op_focei.mixIdxN != 0) {
+    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv, true);
+  } else {
+    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv);
+  }
   Environment _nlmixr2est = Environment::namespace_env("nlmixr2est");
   Function _agf = as<Function>(_nlmixr2est[".foceiCalcGradAnalytic"]);
   RObject _res = _agf(op_foceiFitEnv);
@@ -3818,11 +3836,29 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // so the next foceiOfv0 (objective/inner solve) reads the fit, not the last
   // augmented subject.  A failed restore -> fall back to FD (which re-solves).
   bool _restored = restoreFitSolve_();
-  if (Rf_isNull(_res) || !_restored) return false;
+  if (Rf_isNull(_res) || !_restored) {
+    if (!op_focei.warnedAnalyticFallback) {
+      op_focei.warnedAnalyticFallback = 1;
+      Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+    }
+    return false;
+  }
   NumericVector _gv = as<NumericVector>(_res);
-  if ((int)_gv.size() != (int)op_focei.npars) return false;
+  if ((int)_gv.size() != (int)op_focei.npars) {
+    // never silently degrade to FD on a length mismatch -- it means the R-side
+    // parameter mapping disagrees with the optimizer's free-parameter set
+    stop("fast=TRUE: analytic gradient length (%d) does not match the number of outer parameters (%d)",
+         (int)_gv.size(), (int)op_focei.npars);
+  }
   for (int i = 0; i < (int)op_focei.npars; i++) {
-    if (!R_finite(_gv[i])) return false;
+    if (!R_finite(_gv[i])) {
+      // non-finite element = the sensitivity system did not solve cleanly
+      if (!op_focei.warnedAnalyticFallback) {
+        op_focei.warnedAnalyticFallback = 1;
+        Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+      }
+      return false;
+    }
     g[i] = _gv[i] * dUnscaleParDx(i);
   }
   // Stash the per-subject EBE sensitivity etaP (Almquist Eq 46) that the R gradient
@@ -3835,9 +3871,13 @@ void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
   op_focei.curGill=0;
+  op_focei.curAnalytic=0;
   if (analyticOuterGrad(theta, g)) {
+    op_focei.curAnalytic=1;
+    op_focei.nAnalyticGrad++;
     return;
   }
+  if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -5560,7 +5600,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   op_focei.nG++;
   int finalize=0, i = 0;
   niterGrad.push_back(niter.back());
-  if (op_focei.derivMethod == 0){
+  if (op_focei.curAnalytic){
+    gradType.push_back(8);
+  } else if (op_focei.derivMethod == 0){
     if (op_focei.curGill == 1){
       gradType.push_back(1);
     } else if (op_focei.curGill == 2){
@@ -5573,7 +5615,8 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
+  // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21,
+  // 8=analytic (forward sensitivity, fast=TRUE).
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
   printMuGroupThetaRow(true);
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -5703,6 +5746,10 @@ void foceiCustomFun(Environment e){
 Environment foceiOuter(Environment e){
   op_focei.nF=0;
   op_focei.nG=0;
+  op_focei.curAnalytic=0;
+  op_focei.nAnalyticGrad=0;
+  op_focei.nFDGradFast=0;
+  op_focei.warnedAnalyticFallback=0;
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
@@ -8123,17 +8170,35 @@ void foceiFinalizeTables(Environment e){
       e["extra"] = "";
     }
     List ctl = e["control"];
+    // What the outer optimizer actually consumed: the analytic ("fast")
+    // gradient, the finite-difference gradient, or a mix (per-iteration solve
+    // fallbacks); plus the mu-referenced regression variant when active.
+    std::string _details = as<std::string>(ctl["outerOptTxt"]);
+    if (op_focei.fast && op_focei.maxOuterIterations > 0) {
+      if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
+        _details += "; grad: analytic";
+      } else if (op_focei.nAnalyticGrad > 0) {
+        _details += "; grad: analytic+fd";
+      } else if (op_focei.nG > 0 || op_focei.nFDGradFast > 0) {
+        _details += "; grad: fd";
+      }
+    }
+    if (op_focei.muModel == 1) {
+      _details += "; mu: lin";
+    } else if (op_focei.muModel == 2) {
+      _details += "; mu: irls";
+    }
     if (_aqn == 0) {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         ")";
     } else if (_aqn == 1) {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         "; Laplace)";
     } else {
       e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        " (outer: " + _details +
         "; nAGQ=" + std::to_string(_nagq)  + ")";
     }
   }
@@ -8449,6 +8514,7 @@ Environment foceiFitCpp_(Environment e){
       "F: Forward difference gradient approximation\n"
       "C: Central difference gradient approximation\n"
       "M: Mixed forward and central difference gradient approximation\n"
+      "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
       "Unscaled parameters for Omegas=chol(solve(omega));\n"
       "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
     op_focei.scale.printCount    = 0;
@@ -8750,9 +8816,10 @@ RObject vaeInnerFree_() {
 // iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
 // scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
 // VAE prints the exact same iteration table and produces parHistData in the
-// standard format -- no duplicated formatting. Identity scaling (scaleTypeMult
-// with scaleTo=0) keeps values on their natural scale while still emitting the
-// "Unscaled" rows that .parHistCalc() reads.
+// standard format -- no duplicated formatting. The VAE never scales its
+// parameters, so scaleTypeNone drops the redundant "U" (Unscaled) rows; the
+// R-side `xform` list (.iterPrintXParFromUi) drives the "X" back-transform row
+// (e.g. exp() thetas), like focei/saem.
 static scaling _vaeScale;
 static std::vector<double> _vaeIpInit;
 static std::vector<double> _vaeIpScaleC;
@@ -8760,21 +8827,26 @@ static std::vector<int> _vaeIpXPar;
 
 //[[Rcpp::export]]
 RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
-                           List iterPrintControl) {
+                           List iterPrintControl, RObject xform = R_NilValue) {
   int np = initPar.size();
   _vaeIpInit.assign(initPar.begin(), initPar.end());
   _vaeIpScaleC.assign(np, 1.0);
   scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
              /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
-             /*normType*/ 1, /*scaleType*/ scaleTypeMult,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
              /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
-  // zero xform: natural-scale values, no back-transform. xPar must be non-NULL
-  // because scalePrintFun indexes it unconditionally.
-  _vaeIpXPar.assign(np, 0);
-  _vaeScale.xPar = _vaeIpXPar.data();
-  _vaeScale.probitIdx = NULL;
-  _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
-  _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(&_vaeScale, as<List>(xform));
+  }
+  if (_vaeScale.xPar == NULL) {
+    // zero xform: natural-scale values, no back-transform. xPar must be
+    // non-NULL because scalePrintFun indexes it unconditionally.
+    _vaeIpXPar.assign(np, 0);
+    _vaeScale.xPar = _vaeIpXPar.data();
+    _vaeScale.probitIdx = NULL;
+    _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+    _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  }
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   scalePrintHeader(&_vaeScale);
   return R_NilValue;
