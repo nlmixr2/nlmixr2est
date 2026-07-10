@@ -2998,19 +2998,19 @@ void innerOpt() {
     // solve buffers onto slot 0 and corrupting the heap. Hand rxode2 our real
     // thread id around each per-subject solve (resolved once on main thread).
     //
-    // Mixture models (nMix > 1): parallelize over PHYSICAL subjects, keeping
-    // the jMix loop serial inside each thread's work item. rxode2 only
-    // allocates nsub_orig physical rx_solving_options_ind structs, shared
-    // (non-atomic) across all mixture components of that subject; flattening
-    // to the full nsub_orig*nMix index space would let two threads race on
-    // the same struct. Per-physical-subject parallelism still collapses to a
-    // single parallel region while keeping "one thread per struct at a time".
+    // Mixture models (nMix > 1): components share the physical subjects' data
+    // and solving structures (the memory-saving default from the saem/focei
+    // setup), so no two mixture components may ever be solved concurrently.
+    // Solve component-by-component (serial jMix OUTSIDE), parallelizing over
+    // physical subjects INSIDE each component -- partial parallelism, but
+    // mixture-safe. Non-mixture models (nMix == 1) keep the single fully
+    // parallel subject loop.
+    for (int jMix = 0; jMix < nMix; jMix++) {
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
-    for (int i = 0; i < nsub_orig; i++) {
-      int _id0 = _doParallel ? (getOrdId(rx, i) - 1) : i;
-      for (int jMix = 0; jMix < nMix; jMix++) {
+      for (int i = 0; i < nsub_orig; i++) {
+        int _id0 = _doParallel ? (getOrdId(rx, i) - 1) : i;
         int _id = _id0 + jMix * nsub_orig;
 #ifdef _OPENMP
         if (_doParallel) {
@@ -8759,9 +8759,10 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   // flags not thread safe, e.g. linCmtB); more external threads than that
   // index past the pools and corrupt the heap.
   cores = min2(cores, getOpCores(op));
-  // Mixture components (id = m*nsub + subject) share the physical subject's
-  // rx_solving_options_ind struct, so parallelize over physical subjects and
-  // keep the component loop serial within a work item.
+  // Mixture components (id = m*nsub + subject) share the physical subjects'
+  // data/solving structures (the memory-saving default), so no two components
+  // may ever be solved concurrently: solve component-by-component (serial m
+  // OUTSIDE), parallelizing over physical subjects INSIDE each component.
   int nsub = (int)getRxNsub(rx);
   int nMix = (nsub > 0 && nid % nsub == 0) ? nid / nsub : 0;
   if (nMix == 0) { nsub = nid; nMix = 1; cores = 1; } // unexpected shape: serial
@@ -8770,15 +8771,15 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
     sortIds(rx, 2);
     _innerParallel.store(1, std::memory_order_release);
   }
+  for (int m = 0; m < nMix; ++m) {
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
-  for (int i = 0; i < nsub; ++i) {
-    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
+      if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
-    for (int m = 0; m < nMix; ++m) {
       int id = base + m * nsub;
       std::vector<double> eta(neta);
       for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
@@ -8792,10 +8793,10 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
         arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
         pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
       }
-    }
 #ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
+      if (doParallel) setRxThreadId(-1);
 #endif
+    }
   }
   if (doParallel) {
     _innerParallel.store(0, std::memory_order_release);
