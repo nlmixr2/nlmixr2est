@@ -177,9 +177,12 @@ Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A). [DONE]
   main KL-anneal+M-step -> smoothing), .vaeFitModel. nlmixr2Est.vae runs training
   (returnVae=TRUE returns raw fit; full FitData deferred to Phase 6).
 - Verified: test-vae-elbo.R full-pipeline gradient vs FD ~1e-6; test-vae-train.R
-  end-to-end. Short 30/80 run (58s): ka=1.59(1.63), ke=0.0863(0.0867),
-  V=31.84(31.97), a=0.725(0.71) -- fixed effects + a inside the ~2-3% gate;
-  omegas close (wKa 0.62 vs 0.53). Full 100/300 schedule tightens further.
+  end-to-end. Full 100/300 schedule (211s): ka=1.617(1.63,0.8%),
+  ke=0.0849(0.0867,2.1%), V=32.08(31.97,0.3%), a=0.718(0.71,1.1%) -- fixed
+  effects + a inside the ~2-3% gate. Omegas close but wKa=0.62 vs 0.53 (outside
+  the 0.02-0.05 band); wKe/wV ~0.02 borderline. OMEGA TIGHTENING is the open
+  Milestone-A refinement (candidates: sigma0 default vs param-specific, M-step
+  omega formula, lr/schedule); fixed-effect parity achieved.
 - Orchestration is thin R; heavy work = C++ encoder BPTT + rxode2 decoder solve.
 
 Phase 5 -- Covariate selection (MILESTONE B).
