@@ -1,4 +1,6 @@
 #include <math.h>
+#include <string.h>
+#include <stdio.h>
 #include "solveWarnHelper.h"
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
@@ -42,6 +44,9 @@ struct scaling {
   // keyExtra: estimator-specific text appended to the "Key:" legend line;
   // NULL for the standard Key. focei uses this for its gradient-method legend.
   const char *keyExtra;
+  // phaseLabel: optional label (e.g. "Burn in") shown centered in the X row's
+  // otherwise-blank Function-Val cell; NULL/empty = blank (used by vae).
+  const char *phaseLabel;
   // printCount: count of parameter-print events so far; gates header re-prints
   // when headerEvery > 0.
   int printCount;
@@ -129,6 +134,7 @@ static inline void scaleSetup(scaling *scale,
   scale->simple = 0;
   scale->showOfv = 1;
   scale->keyExtra = NULL;
+  scale->phaseLabel = NULL;
   scale->headerEvery = 10;
   scale->printCount = 0;
   scale->save = 1;
@@ -728,8 +734,28 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
     if (!scale->simple && !skipX) {
-      if (scale->showOfv) RSprintf("|    X|               |");
-      else                RSprintf("|    X|");
+      if (scale->showOfv) {
+        if (scale->phaseLabel != NULL && scale->phaseLabel[0] != '\0') {
+          // Center the phase label in the 15-char Function-Val cell.
+          char cell[16];
+          int len = (int)strlen(scale->phaseLabel);
+          if (len > 15) len = 15;
+          int pad = (15 - len)/2;
+          memset(cell, ' ', 15);
+          cell[15] = '\0';
+          memcpy(cell + pad, scale->phaseLabel, len);
+          RSprintf("|    X|%s|", cell);
+        } else {
+          RSprintf("|    X|               |");
+        }
+      } else if (scale->phaseLabel != NULL && scale->phaseLabel[0] != '\0') {
+        // No-OFV layout: fold the phase into the 5-char row tag ("SA: X").
+        char tag[6];
+        snprintf(tag, sizeof(tag), "%.2s: X", scale->phaseLabel);
+        RSprintf("|%5s|", tag);
+      } else {
+        RSprintf("|    X|");
+      }
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
         RSprintf("%#10.4g |",

@@ -8825,6 +8825,7 @@ static scaling _vaeScale;
 static std::vector<double> _vaeIpInit;
 static std::vector<double> _vaeIpScaleC;
 static std::vector<int> _vaeIpXPar;
+static std::string _vaeIpPhase;
 
 //[[Rcpp::export]]
 RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
@@ -8854,7 +8855,9 @@ RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
 }
 
 //[[Rcpp::export]]
-RObject vaeIterPrintRow_(NumericVector x, double f) {
+RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
+  _vaeIpPhase = phase;
+  _vaeScale.phaseLabel = _vaeIpPhase.empty() ? NULL : _vaeIpPhase.c_str();
   scalePrintFun(&_vaeScale, &x[0], f);
   return R_NilValue;
 }

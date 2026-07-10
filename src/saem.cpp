@@ -810,6 +810,9 @@ public:
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
     nb_sa = as<int>(x["nb_sa"]);
+    // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
+    // (missing, e.g. a saved cfg from an older version) disables the tag.
+    nPhase1 = x.containsElementNamed("nPhase1") ? as<int>(x["nPhase1"]) : -1;
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
     pas = as<vec>(x["pas"]);
@@ -1026,6 +1029,9 @@ public:
     // Val column entirely so users don't see "nan" in every iteration row.
     scale.showOfv = 0;
     scale.save = 0; // par_hist already records the iteration history
+    if (nPhase1 >= 0) {
+      scale.keyExtra = "SA: Stochastic-approximation (burn-in) phase; EM: EM phase\n";
+    }
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -2777,6 +2783,10 @@ public:
         // saem has no per-iteration objective function; scale.showOfv=0 so the
         // `f` argument is ignored here.  scalePrintFun gates printing on
         // (cn % every == 0) and runs the user-interrupt check internally.
+        // The X row's tag carries the phase: "SA: X" (burn) / "EM: X".
+        if (nPhase1 >= 0) {
+          scale.phaseLabel = (kiter < (unsigned int)nPhase1) ? "SA" : "EM";
+        }
         scalePrintFun(&scale, pl.memptr(), NA_REAL);
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
@@ -2804,6 +2814,7 @@ private:
 
   uvec nu;
   int niter;
+  int nPhase1;
   int nb_sa;
   int nb_correl;
   int nb_fixOmega;

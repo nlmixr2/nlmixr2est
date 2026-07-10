@@ -699,14 +699,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeIterPrintRow_
-RObject vaeIterPrintRow_(NumericVector x, double f);
-RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP) {
+RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase);
+RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP, SEXP phaseSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
     Rcpp::traits::input_parameter< double >::type f(fSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f));
+    Rcpp::traits::input_parameter< std::string >::type phase(phaseSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f, phase));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -184,8 +184,8 @@ vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
     .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
 }
 
-vaeIterPrintRow_ <- function(x, f) {
-    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f)
+vaeIterPrintRow_ <- function(x, f, phase = "") {
+    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f, phase)
 }
 
 vaeIterPrintGet_ <- function(printLine = TRUE) {
