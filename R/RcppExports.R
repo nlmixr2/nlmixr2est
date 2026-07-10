@@ -318,10 +318,6 @@ vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fc
     .Call(`_nlmixr2est_vaeEncoderFwdBwd`, dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect)
 }
 
-vaeFoceLik <- function(f0, J0, R, y, cens, limit, zLin, zPop, omega, subjOffset, Rscale, adjLik, maxit, tol, cores, nMix, mixProb) {
-    .Call(`_nlmixr2est_vaeFoceLik`, f0, J0, R, y, cens, limit, zLin, zPop, omega, subjOffset, Rscale, adjLik, maxit, tol, cores, nMix, mixProb)
-}
-
 # Register entry points for exported C++ functions
 methods::setLoadAction(function(ns) {
     .Call(`_nlmixr2est_RcppExport_registerCCallable`)

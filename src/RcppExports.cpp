@@ -1038,33 +1038,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// vaeFoceLik
-List vaeFoceLik(arma::vec f0, arma::mat J0, arma::vec R, arma::vec y, arma::ivec cens, arma::vec limit, arma::mat zLin, arma::mat zPop, arma::vec omega, arma::ivec subjOffset, double Rscale, int adjLik, int maxit, double tol, int cores, int nMix, arma::vec mixProb);
-RcppExport SEXP _nlmixr2est_vaeFoceLik(SEXP f0SEXP, SEXP J0SEXP, SEXP RSEXP, SEXP ySEXP, SEXP censSEXP, SEXP limitSEXP, SEXP zLinSEXP, SEXP zPopSEXP, SEXP omegaSEXP, SEXP subjOffsetSEXP, SEXP RscaleSEXP, SEXP adjLikSEXP, SEXP maxitSEXP, SEXP tolSEXP, SEXP coresSEXP, SEXP nMixSEXP, SEXP mixProbSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type f0(f0SEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type J0(J0SEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type R(RSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type y(ySEXP);
-    Rcpp::traits::input_parameter< arma::ivec >::type cens(censSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type limit(limitSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type zLin(zLinSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type zPop(zPopSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type omega(omegaSEXP);
-    Rcpp::traits::input_parameter< arma::ivec >::type subjOffset(subjOffsetSEXP);
-    Rcpp::traits::input_parameter< double >::type Rscale(RscaleSEXP);
-    Rcpp::traits::input_parameter< int >::type adjLik(adjLikSEXP);
-    Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
-    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    Rcpp::traits::input_parameter< int >::type nMix(nMixSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type mixProb(mixProbSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeFoceLik(f0, J0, R, y, cens, limit, zLin, zPop, omega, subjOffset, Rscale, adjLik, maxit, tol, cores, nMix, mixProb));
-    return rcpp_result_gen;
-END_RCPP
-}
 
 // validate (ensure exported C++ functions exist before calling them)
 static int _nlmixr2est_RcppExport_validate(const char* sig) { 
