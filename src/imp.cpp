@@ -410,12 +410,16 @@ void impOuter(Environment e) {
   double obj = R_PosInf;
   int nSens = impThetaSensN();
 
-  // The mixture E-step / innerOpt passes solve the expanded pseudo-subjects, whose
-  // per-component inner solves are not thread-safe, so parallel runs race and the
-  // proportions/Omega drift and collapse.  Force the whole mixture EM serial (the
-  // single-component path keeps full parallelism); restored before returning.
+  // Force the EM serial when the per-subject inner solves are not thread-safe:
+  //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
+  //      the proportions/Omega drift and collapse;
+  //  (b) multi-endpoint pool-sizing -- the inner MAP runs with ind->neqOverride
+  //      against a pool sized for the larger theta-sensitivity model, whose
+  //      per-thread work arrays are not safe under the override, so the parallel
+  //      E-step non-deterministically rejects a subject's samples (neff collapse).
+  // The plain single-endpoint path keeps full parallelism; restored before return.
   int savedCores = -1;
-  if (Nmix > 1 && cores > 1) { savedCores = impSetSolveCores(1); cores = 1; }
+  if ((Nmix > 1 || impPoolSizing()) && cores > 1) { savedCores = impSetSolveCores(1); cores = 1; }
 
   // Initial MAP at the starting parameters.
   impMapPass(e);

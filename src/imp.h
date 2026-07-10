@@ -19,6 +19,7 @@ int impNsample();
 double impGammaProp();
 int impCores();
 int impSetSolveCores(int cores);   // override solve cores (returns previous); forces mixture EM serial
+bool impPoolSizing();              // true when the pool is sized for the theta-sens model (force serial)
 
 // 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
 double impLogDetOmegaInv5();

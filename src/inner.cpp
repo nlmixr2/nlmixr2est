@@ -8879,6 +8879,14 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 // path), and the theta-sensitivity solve overrides to thetaSensNeq.
 // (_impPoolModel is declared earlier, before foceiSetup_.)
 
+// True when the solve pool is sized for the larger theta-sensitivity model
+// (multi-endpoint pool-sizing).  The inner solves then run with ind->neqOverride
+// against a pool sized differently from op->neq, whose per-thread work arrays are
+// not thread-safe under this override -- so the EM must run serial (like the
+// mixture path), else the parallel E-step non-deterministically rejects a
+// subject's importance samples (neff collapse).
+bool impPoolSizing() { return op_focei.innerNeq > 0; }
+
 // Pin every subject's effective inner state count to op_focei.innerNeq, since the
 // pool (and op->neq) is sized for the larger theta-sensitivity model.
 void impSetInnerNeqOverride() {
