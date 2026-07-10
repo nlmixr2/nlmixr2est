@@ -264,17 +264,29 @@ model: ke <- mix(exp(lke1+eta.ke), p1, exp(lke2+eta.ke)). ui$saemNMix=2,
 ui$mixProbs="p1" detectable. loadPruneSens keeps rxEq(mixest,k) in the ODEs. BUT
 the decoder aug model from .foceiAnalyticAugModelDirs does NOT correctly select
 components: solving with mixest=1 vs 2 (whether via event-data col OR a scalar
-param) gives IDENTICAL, degenerate predictions (f~10 flat). The rxEq(mixest,k)
-form is converted away and unresponsive in the analytic cov aug model -- it was
-built for covariance (single model), not mixtures. The INNER model handles mix
-correctly (focei.R:1208-1214): predOnly is built from the PRUNED model (preserves
-mix(), nMix>0, rxode2 accepts per-id mixest from iCov); the sens model keeps the
-mixest==k form and inner.cpp manages selection. NEXT: build the VAE decoder's
-per-component solve from the inner-model machinery (pruned/predOnly + iCov mixest)
-or fix .foceiAnalyticAugModelDirs to preserve a working mixest selection -- study
-how the inner model assembly (with d/dt states + f/r) removes the mixture. THEN
-(3) .vaeToFit concatenated etaMat + mixNum/mixList from zStar/mixest; (4) training
-decoder sets mixest per subject. Kernel (vaeFoceLik) already ready.
+param) gives IDENTICAL, degenerate predictions (f~10 flat). In the analytic cov aug model an undeclared mixest defaults to 0 so BOTH
+rxEq(mixest,k) terms are 0 -> ke=0 -> f plateaus at dose/V=10 (degenerate).
+
+EXACT MECHANISM (from user + inner.cpp): the mixture is exercised at the SOLVE
+level, not via data/params. inner.cpp keeps the rxEq(mixest,k) form (model built
+by .rxFinalizeInner, nMix=0) and its per-id solve loop expands to nSub*nMix ids:
+  getRxMixFromId(id) = floor(id / nSub) + 1        # inner.cpp:455 (id->component)
+  setIndMixest(ind, getRxMixFromId(id))            # inner.cpp:1189 (rxode2 ptr #50)
+sets each individual's mixest before its solve so rxEq(mixest,k) picks the branch;
+mixesti[j] (inner.cpp:3338) = best component per physical subject. setIndMixest_t
+is rxode2ptr.h:190 (extern, ptr table idx 50) -- a C++/solve-level hook, NOT an
+R rxSolve param.
+
+RE-ARCHITECTURE NEEDED (major, focused next session): build the VAE decoder like
+the INNER model (.rxFinalizeInner form keeping rxEq(mixest,k) + state sensitivities
+rx__sens_*, combined by chain rule) rather than the analytic cov aug model, and
+drive the per-id solve at the C++ level with setIndMixest(ind, getRxMixFromId(id))
+over nSub*nMix ids. Then .vaeToFit concatenated etaMat + mixNum/mixList (saem
+.saemMixFix); training decoder sets mixest per id. Kernel (vaeFoceLik hard
+assignment) already ready and tested; this decoder re-arch is the last piece.
+NOTE the current decoder uses .foceiAnalyticSolveFA (R rxSolve of the cov aug
+model) -- convenient rx_f1_<eta> columns but no mixest hook; the inner-model path
+trades those columns for the C++ chain-rule + mixest solve loop.
 Other REMAINING: dual OFV (IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
 general error-model R-scale in cov (additive exact now).
 
