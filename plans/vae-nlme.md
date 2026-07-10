@@ -231,9 +231,20 @@ DONE + verified (test-vae-fit.R):
 - Verified (test-vae-fit.R, 11/11): FitData with beta_lka_WT/beta_lV_WT, objDf,
   final covariate model, $uiIni/$iniDf0 recover the original (no-covariate) model,
   encoder EBEs.
-REMAINING: harden .vaeCov (PD Hessian at converged fit -> SEs; NULL on short
-runs); MAP-EBE re-opt for exact -2LL; dual OFV (add IS -2LL, IS active for
-AIC/BIC/BICc); SAEM/FOCEI benchmark; addCwres/VPC.
+Polish DONE:
+- Likelihood moved to C++/OpenMP (src/vaeLik.cpp vaeFoceLik): per-subject
+  FOCE-linearized marginal -2LL, Newton MAP-EBE re-optimization on the linearized
+  model (no ODE re-solves), Laplace determinant; M2/M3/M4 CENSORING via
+  censEst.h doCensNormal1 (value) + censNormalPartials (score/curvature) exactly
+  like inner.cpp. Parallel over subjects; num_threads from rxControl$cores
+  (fallback getRxThreads); setRxThreadId(omp_get_thread_num()) cross-DLL fix.
+  Includes armahead.h/censEst.h/rxomp.h. Registered (arity 15).
+- EBEs are the MAP-refined zStar; .vaeObjective/.vaeCov use the C++ kernel;
+  cov = 2*solve(numeric Hessian of -2LL) (cheap, f/J fixed), NULL on non-PD.
+- Verified: test-vae-lik.R (3/3) C++ vs R Laplace reference, observed + M3;
+  test-vae-fit.R (11/11) still passes.
+REMAINING (minor): dual OFV (add IS -2LL, IS active for AIC/BIC/BICc);
+SAEM/FOCEI benchmark; general error-model R-scale in cov (additive exact now).
 
 Phase 7 -- Error-model parity.
 - Proportional/combined, transform-both-sides, and M2/M3/M4 censoring in the

@@ -49,7 +49,11 @@
     .obs <- .di[.di$EVID == 0, , drop = FALSE]
     .times <- .obs$TIME
     .y <- .obs$DV
-    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times))
+    ## M2/M3/M4 censoring columns (0 / NA when absent)
+    .cens <- if (is.null(.obs$CENS)) integer(length(.y)) else as.integer(.obs$CENS)
+    .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, length(.y)) else as.numeric(.obs$LIMIT)
+    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times),
+                      cens = .cens, limit = .limit)
     .allTime <- c(.allTime, .times); .allDv <- c(.allDv, .y)
   }
   .tMax <- max(.allTime); .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)

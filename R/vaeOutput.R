@@ -1,10 +1,12 @@
 # vaeOutput.R -- build the fitted nlmixr2 output from a trained VAE. The model is
 # updated with the selected covariate effects (exact centered expressions, e.g.
-# ka <- exp(lka + beta_lka_WT*log(WT/79.6) + eta.ka)), the ini() estimates are
-# set to the VAE solution, and the standard fit object (parFixed, SEs, EBEs,
-# residuals, diagnostics) is produced by re-fitting focei at zero outer
-# iterations -- i.e. focei only assembles the conditional diagnostics at the
-# VAE's population estimates and selected covariate model.
+# ka <- exp(lka + beta_lka_WT*log(WT/79.6) + eta.ka)) and the ini() estimates are
+# set to the VAE solution. The objective (FOCE-linearized marginal -2LL with
+# M2/M3/M4 censoring and MAP-EBE re-optimization) and the linearization-Hessian
+# covariance are computed by the C++/OpenMP kernel vaeFoceLik; then
+# nlmixr2CreateOutputFromUi assembles the standard nlmixr2FitData (parFixed/SEs,
+# EBEs, residuals, tables) WITHOUT running focei estimation (a 0-iteration focei
+# control drives only the residual/table engine at the supplied etas).
 
 #' Update a ui with the VAE's selected covariate effects and fitted estimates.
 #'
@@ -57,39 +59,48 @@
   ui2
 }
 
-#' Per-subject FOCE-linearized marginal -2LL pieces from the decoder at the
-#' encoder EBEs. f and J=df/deta depend only on the (fixed) encoder z, so the
-#' -2LL is an explicit function of (intercepts+betas via zPopMat, omega, a) --
-#' the covariance Hessian needs NO ODE re-solves.
-#' @return list(precomp per-subject list, objective, obji vector)
+#' Flatten the decoder linearization for the C++ likelihood: one solve per
+#' subject at the encoder z gives f0, J0 = d f/d eta and the residual variance R
+#' for every observation, stacked over subjects (subjOffset marks the blocks).
+#' zLin = encoder posterior means (the linearization point / individual params).
 #' @noRd
 .vaeLinPrecomp <- function(fit) {
-  prep <- fit$prep; N <- prep$N
+  prep <- fit$prep; N <- prep$N; zDim <- prep$zDim
   baseline <- fit$zPop
   th <- .vaeBuildTh(prep, baseline, fit$a)
-  lapply(seq_len(N), function(i) {
+  f0 <- numeric(0); Rv <- numeric(0); y <- numeric(0)
+  cens <- integer(0); limit <- numeric(0)
+  Jl <- vector("list", N); off <- integer(N + 1L)
+  for (i in seq_len(N)) {
     s <- prep$subj[[i]]
     E <- .vaeDecoderSolveSubject(fit$am, th, fit$mu[i, ] - baseline, s$ev, s$times)
-    list(f = E$f, J = E$a, R0 = E$R, y = s$y, n = length(s$y),
-         etaHat = fit$mu[i, ] - fit$zPopMat[i, ])
-  })
+    if (is.null(E)) return(NULL)
+    off[i + 1L] <- off[i] + s$n
+    f0 <- c(f0, E$f); Rv <- c(Rv, E$R); y <- c(y, s$y)
+    cens <- c(cens, s$cens); limit <- c(limit, s$limit)
+    Jl[[i]] <- E$a
+  }
+  list(f0 = f0, J0 = do.call(rbind, Jl), R = Rv, y = y, cens = cens, limit = limit,
+       subjOffset = off, zLin = fit$mu, N = N, zDim = zDim)
 }
 
-#' FOCE-linearized marginal -2LL given omega (diag) and residual scale factor for
-#' R. `precomp` from .vaeLinPrecomp; `etaHat` supplied per subject; `Rscale`
-#' multiplies the base variance R0 (a^2 for additive: (a/aFit)^2).
+#' FOCE-linearized marginal -2LL (with M2/M3/M4 censoring, MAP-EBE, OpenMP) via
+#' the C++ kernel. `zPopMat` is the per-subject population center; `Rscale`
+#' multiplies the base variance (a/aFit)^2 for additive.
 #' @noRd
-.vaeLinObj <- function(precomp, omega, etaHatList, Rscale) {
-  Om <- diag(omega, length(omega)); ln2pi <- log(2 * pi)
-  obji <- vapply(seq_along(precomp), function(i) {
-    p <- precomp[[i]]; J <- p$J
-    m <- p$f - as.numeric(J %*% etaHatList[[i]])
-    Gamma <- J %*% Om %*% t(J) + diag(p$R0 * Rscale, p$n)
-    res <- p$y - m
-    .sl <- determinant(Gamma, logarithm = TRUE)$modulus
-    p$n * ln2pi + as.numeric(.sl) + as.numeric(crossprod(res, solve(Gamma, res)))
-  }, numeric(1))
-  list(objective = sum(obji), obji = obji)
+.vaeObjective <- function(pc, zPopMat, omega, Rscale = 1, cores = 1L) {
+  vaeFoceLik(pc$f0, pc$J0, pc$R, pc$y, pc$cens, pc$limit, pc$zLin, zPopMat, omega,
+             as.integer(pc$subjOffset), Rscale, 0L, 30L, 1e-8, as.integer(cores))
+}
+
+#' Thread count for the VAE likelihood: from the rxode2 control object's `cores`,
+#' falling back to the rxode2 global thread count.
+#' @noRd
+.vaeCores <- function(control) {
+  .c <- tryCatch(control$rxControl$cores, error = function(e) NULL)
+  if (is.null(.c) || is.na(.c) || .c < 1L)
+    .c <- tryCatch(rxode2::getRxThreads(), error = function(e) 1L)
+  as.integer(.c)
 }
 
 #' Linearization-Hessian covariance of the fixed effects (intercepts + covariate
@@ -98,7 +109,7 @@
 #' numerical Hessian: cov = 2 * solve(Hessian of -2LL), holding omega.
 #' Returns list(cov, names) with names matching the free-theta order, or NULL.
 #' @noRd
-.vaeCov <- function(fit, ui2, precomp) {
+.vaeCov <- function(fit, ui2, precomp, cores = 1L) {
   prep <- fit$prep
   .idf <- ui2$iniDf
   .thR <- .idf[!is.na(.idf$ntheta) & !(!is.na(.idf$fix) & .idf$fix), , drop = FALSE]
@@ -126,8 +137,7 @@
       bc <- betaLU[[nm[p]]]
       if (!is.null(bc)) zPopMat[, bc["k"]] <- zPopMat[, bc["k"]] + v[p] * prep$covMat[, bc["j"]]
     }
-    etaHatList <- lapply(seq_len(prep$N), function(i) fit$mu[i, ] - zPopMat[i, ])
-    .vaeLinObj(precomp, fit$omega, etaHatList, (aVal / fit$a)^2)$objective
+    .vaeObjective(precomp, zPopMat, fit$omega, (aVal / fit$a)^2, cores)$objective
   }
   H <- matrix(0, np, np); h <- pmax(1e-4, abs(base) * 1e-4)
   f0 <- obj(base)
@@ -184,10 +194,12 @@
   fit$am <- if (is.null(fit$am)) .vaeDecoderModel(.ui) else fit$am
   prep <- fit$prep
 
-  ## VAE linearization -2LL + Hessian covariance (no ODE re-solves in the Hessian)
+  ## VAE FOCE-linearized -2LL (C++/OpenMP, M2/M3/M4 censoring, MAP-EBE) +
+  ## linearization-Hessian covariance (no ODE re-solves in the Hessian)
   precomp <- .vaeLinPrecomp(fit)
-  .obj <- .vaeLinObj(precomp, fit$omega, lapply(precomp, function(p) p$etaHat), 1)
-  .cov <- .vaeCov(fit, .ui2, precomp)
+  .cores <- .vaeCores(.control)
+  .obj <- .vaeObjective(precomp, fit$zPopMat, fit$omega, 1, .cores)
+  .cov <- .vaeCov(fit, .ui2, precomp, .cores)
 
   ## assemble the output env (mirrors babelmixr2 nlmer .nlmerFamilyFit)
   .ret <- new.env(parent = emptyenv())
@@ -199,7 +211,8 @@
   .thR <- .idf[!is.na(.idf$ntheta), , drop = FALSE]; .thR <- .thR[order(.thR$ntheta), ]
   .ret$fullTheta <- setNames(.thR$est, .thR$name)
   if (!is.null(.cov)) { .ret$cov <- .cov$cov; .ret$covMethod <- "linear" }
-  .etaMat <- fit$mu - fit$zPopMat
+  ## MAP-refined EBEs from the Laplace re-optimization (zStar), else encoder means
+  .etaMat <- .obj$zStar - fit$zPopMat
   colnames(.etaMat) <- prep$etaNames
   .ret$etaMat <- .etaMat
   .ret$etaObf <- data.frame(ID = seq_len(nrow(.etaMat)), as.data.frame(.etaMat),
