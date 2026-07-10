@@ -436,6 +436,9 @@ void impOuter(Environment e) {
   bool converged = false;
   int iterRun = 0;
 
+  // Iteration print + parameter-history capture (shared scale.h machinery).
+  impIterPrintStart();
+
   arma::vec r(neta);
   for (int iter = 0; iter < nIter; ++iter) {
     if (iter > 0) impReMap();
@@ -527,6 +530,8 @@ void impOuter(Environment e) {
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
     parHist.push_back(parNow);
+    // Print this iteration + record it into the parameter-history walk.
+    impIterPrintRow(parNow, obj);
 
     // Windowed convergence check (NONMEM-style CTYPE).  Requires all of:
     //  (a) the mean absolute objective change over the trailing nConvWindow
@@ -573,6 +578,9 @@ void impOuter(Environment e) {
       if (gamma > iscaleMax) gamma = iscaleMax;
     }
   }
+
+  // Close the iteration print and stash the parameter-history walk (e$parHistData).
+  impIterPrintGet(e);
 
   // Finalize the fit at the converged estimates.
   impSyncInitParToFullTheta();

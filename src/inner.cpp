@@ -8476,6 +8476,44 @@ void impGetOmegaFixedEta(std::vector<int>& idx) {
   idx.assign(op_focei.impOmegaFixedEta.begin(), op_focei.impOmegaFixedEta.end());
 }
 
+// ---- iteration print + parameter-history (shared scale.h machinery) ----
+// The main setup already populated op_focei.scale (column names, back-transform
+// codes, iterPrintControl cadence) for the FOCEI free parameters in fixedTrans
+// order -- the same order impGetEstPar() returns.  Reconfigure it for impmap's
+// natural-scale EM walk: identity scaling (scaleTypeMult with scaleTo=0) so the
+// fullTheta values ARE the "Unscaled" rows .parHistCalc() reads, while the
+// "Back-Transformed" rows still apply the per-theta transform.  Records every
+// iteration (save=1); prints at the control's cadence (scale.every, already set
+// from iterPrintControl -- 0 when print is off).
+static std::vector<double> _impScaleC;
+void impIterPrintStart() {
+  scaling *s = &op_focei.scale;
+  int np = (int)op_focei.npars;
+  _impScaleC.assign(std::max(np, 1), 1.0);
+  s->scaleC = _impScaleC.data();
+  s->scaleType = scaleTypeMult;
+  s->scaleTo = 0.0; s->scaleCmin = 0.0; s->scaleCmax = 0.0;
+  s->save = 1; s->simple = 0; s->showOfv = 1;
+  s->vPar.clear(); s->niter.clear(); s->iterType.clear();
+  s->vGrad.clear(); s->gradType.clear(); s->niterGrad.clear();
+  s->cn = 0; s->printCount = 0;
+  if (s->every != 0) scalePrintHeader(s);
+}
+
+void impIterPrintRow(arma::vec& par, double obj) {
+  scalePrintFun(&op_focei.scale, par.memptr(), obj);
+}
+
+// Emit the closing rule (if printing) and stash the recorded walk on the fit
+// environment as parHistData (iter/type/objf + one column per parameter);
+// scaleParHisDf clears the accumulators.
+void impIterPrintGet(Environment e) {
+  scaling *s = &op_focei.scale;
+  if (s->every != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  RObject ph = scaleParHisDf(s);
+  if (!ph.isNULL()) e["parHistData"] = ph;
+}
+
 // Newton step on the non-mu structural thetas: add step[s] to theta
 // impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
 void impUpdateStructThetas(const arma::vec& step) {

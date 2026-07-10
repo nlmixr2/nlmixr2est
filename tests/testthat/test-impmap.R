@@ -658,3 +658,22 @@ test_that("Bounds and fixed parameters are respected (theta bounds, fix(theta), 
   # the bounded theta stayed inside (0, 100) on the natural scale
   expect_true(exp(unname(fixef(.fi)["tcl"])) > 0 && exp(unname(fixef(.fi)["tcl"])) < 100)
 })
+
+test_that("Parameter history is captured as the standard $parHist", {
+  one.cmt <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); linCmt() ~ add(add.sd) })
+  }
+  .n <- 8L
+  .fi <- suppressWarnings(nlmixr2(one.cmt, nlmixr2data::theo_sd, "impmap",
+                                  impmapControl(print = 0L, nIter = .n, isample = 150L)))
+  .ph <- .fi$parHist
+  expect_true(is.data.frame(.ph))
+  # one row per EM iteration, standard iter/objf columns + the estimated params
+  expect_equal(nrow(.ph), .n)
+  expect_true(all(c("iter", "objf", "tka", "tcl", "tv", "add.sd") %in% names(.ph)))
+  expect_equal(.ph$iter, seq_len(.n))
+  # the objective and the estimates are finite and moving toward convergence
+  expect_true(all(is.finite(.ph$objf)))
+  expect_true(.ph$objf[.n] < .ph$objf[1])
+})

@@ -80,6 +80,11 @@ int impThetaSensN();
 // 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
 void impGetOmegaFixedEta(std::vector<int>& idx);
 
+// Iteration print + parameter-history via the shared scale.h machinery.
+void impIterPrintStart();                        // configure/reset op_focei.scale + print header
+void impIterPrintRow(arma::vec& par, double obj);// record + (throttled) print one EM iteration
+void impIterPrintGet(Rcpp::Environment e);       // closing rule + stash e$parHistData
+
 // ---- mixture (sub-population) support ----
 int impNmix();                                     // number of components (1 if none)
 double impMixProb(int j);                          // population proportion of component j (0-based)
