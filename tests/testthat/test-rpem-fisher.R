@@ -89,6 +89,41 @@ test_that("RPEM reports Fisher-score SEs for combined error (add.sd + prop.sd)",
   expect_equal(unname(.se[3]), unname(.fse[3]), tolerance = 0.25)   # prop.sd
 })
 
+test_that("RPEM reports Fisher-score SEs for a non-mu-ref structural beta", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: FOCEI + RPEM (extra CRN-FD solve per structural beta)
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(9); nsub <- 50L; obsT <- seq(0.5, 24, by = 1.5); etasTrue <- rnorm(nsub, 0, sqrt(0.3))
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = etasTrue[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; d$DV <- 0; o <- d$evid == 0
+    d$DV[o] <- s$cp + rnorm(nrow(s), 0, 0.1)
+    d
+  }))
+  # tcl is structural (no eta, not fixed); tv is fixed
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- 0.5; tv <- fix(3.45); add.sd <- 0.2; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  rf <- suppressMessages(nlmixr2(mod, dat, est = "rpem",
+                                 control = rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L,
+                                                       niter = 30L, collect = 12L, seed = 400L, cores = 4L)))
+  ff <- suppressMessages(nlmixr2(mod, dat, est = "focei",
+                                 control = foceiControl(print = 0, calcTables = FALSE)))
+
+  expect_match(as.character(rf$covMethod), "fisher")
+  .th <- c("tka", "tcl", "add.sd")
+  .se <- rf$parFixedDf[.th, "SE"]
+  expect_true(all(is.finite(.se) & .se > 0))
+  # the structural-beta SE (CRN finite difference of the marginal loglik) matches FOCEI
+  expect_equal(unname(rf$parFixedDf["tcl", "SE"]),
+               unname(ff$parFixedDf["tcl", "SE"]), tolerance = 0.25)
+  expect_equal(unname(.se[1]), unname(ff$parFixedDf["tka", "SE"]), tolerance = 0.25)
+})
+
 test_that("RPEM reports Fisher-score SEs for power error (prop.sd + exponent)", {
   skip_on_cran()
   skip_on_ci()  # heavy: FOCEI + RPEM fits

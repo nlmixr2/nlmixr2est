@@ -31,10 +31,14 @@ power tka/prop.sd/exponent).  The omega-variance SEs are reported in the fit `$c
 (rows/cols `om.<eta>`, on the variance scale -- the score is already in those units so
 no delta method), matching SAEM.  The empirical Fisher (score outer product) is
 asymptotically exact (E[EBE^2]/om^2 == I_1), so SEs converge to FOCEI's with enough
-subjects (verified at n=100; small n like theo's 12 gives noisier SEs).  Other
-structures (tbs residual, non-mu-ref structural betas, mixtures) keep the
-FOCEI-covariance (`covMethod="r,s"`) SEs.  Follow-ups: Fisher scores for tbs residual,
-structural betas, and mixtures.
+subjects (verified at n=100; small n like theo's 12 gives noisier SEs).  Non-mu-ref structural fixed effects (no eta, numeric M-step) have no stored dcp/dbeta,
+so their per-subject marginal-loglik score is appended by a common-random-number
+finite difference: at the converged estimates re-run the E-step with the SAME drawn
+etas (`.feEta`) and only beta_m moved by h, then score_i,m = (logsumexp_j logp_ij(beta+h)
+- logsumexp_j logp_ij(beta))/h.  These columns join the analytic S so I = S^T S is the
+joint empirical Fisher.  Verified the structural-beta SE matches FOCEI.  Other
+structures (tbs residual, mixtures) keep the FOCEI-covariance (`covMethod="r,s"`) SEs.
+Follow-ups: Fisher scores for tbs residual and mixtures.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:

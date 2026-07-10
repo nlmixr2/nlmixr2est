@@ -474,12 +474,15 @@
   .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores,
                          ebe, diag(as.matrix(omegaHat)), .cInf)
   # Fisher-score covariance (design/rpem/08) from the converged samples, computed
-  # while they are still loaded (before rpemFree).  Supported for additive/proportional
-  # residuals with no non-mu-ref structural fixed effect: single eta with covariates
-  # (rpemFisherReg, regression) or multiple diagonal etas (rpemFisherDiag).  Other
-  # structures keep the FOCEI-covariance SEs.
+  # while they are still loaded (before rpemFree).  Analytic (importance-weighted
+  # complete-data) scores for mu / diagonal Omega / residual (add, prop, combined,
+  # power) via rpemFisherReg (single eta + covariates) or rpemFisherDiag (multi eta).
+  # Non-mu-ref structural betas have no analytic score here (no stored dcp/dbeta), so
+  # their per-subject marginal-loglik score is appended by a common-random-number
+  # finite difference (reuse .feEta; only the beta moves).  TBS residual and mixtures
+  # still keep the FOCEI-covariance SEs.
   .fisher <- NULL
-  if (.cl$errType %in% c(0L, 1L, 2L, 4L) && !.structOn) {
+  if (.cl$errType %in% c(0L, 1L, 2L, 4L)) {
     .omNames <- paste0("om.", .cl$etaNames)
     # residual parameter(s) + their theta names, ordered to match the C++ score
     # columns: combined = (add.sd, prop.sd); power = (prop.sd, power); else single sd
@@ -499,6 +502,27 @@
     } else {                                          # nEta > 1, diagonal Omega
       .S <- rpemFisherDiag(muHat, omHat, .cl$errType, .resPar)
       .colN <- c(.cl$muNames, .resNm, .omNames)
+    }
+    if (.structOn) {
+      # per-subject marginal loglik s_i = logsumexp_j logp_ij (the -log(nG) constant
+      # cancels in the difference); score_i,m = (s_i(beta_m + h) - s_i(beta_m))/h with
+      # the same drawn etas .feEta, so only beta_m changes between the two solves.
+      .nGf <- control$nGauss; .nsubF <- length(.fe$logp) / .nGf
+      .lseSub <- function(lp) vapply(seq_len(.nsubF), function(.i) {
+        .v <- lp[((.i - 1L) * .nGf + 1L):(.i * .nGf)]; .mx <- max(.v)
+        .mx + log(sum(exp(.v - .mx)))
+      }, numeric(1))
+      .s0 <- .lseSub(.fe$logp)
+      .Sb <- matrix(0, .nsubF, length(.cl$structIdx))
+      for (.m in seq_along(.cl$structIdx)) {
+        .h <- 1e-4 * max(abs(structHat[.m]), 1)
+        .bp <- base; .bp[.cl$structIdx[.m] + 1L] <- .bp[.cl$structIdx[.m] + 1L] + .h
+        .ep <- rpemEstepK1Draw(.e, .bp, .cl$etaIdx, .feEta, control$nGauss, control$cores,
+                               ebe, diag(as.matrix(omegaHat)), .cInf)
+        .Sb[, .m] <- (.lseSub(.ep$logp) - .s0) / .h
+      }
+      .S <- cbind(.S, .Sb)
+      .colN <- c(.colN, .cl$thetaNames[.cl$structIdx + 1L])
     }
     .fisher <- .rpemFisherCov(.S, .colN)
   }
