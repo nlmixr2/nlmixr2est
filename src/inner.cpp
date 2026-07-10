@@ -8942,6 +8942,10 @@ RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
     _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
     _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
   }
+  // phase legend for the labels shown in the Function-Val cell
+  _vaeScale.keyExtra =
+    "Burn in: encoder-only burn-in; KL anneal: KL-weight ramp;\n"
+    "EM: main EM phase; Smooth: EMA-smoothing phase\n";
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   scalePrintHeader(&_vaeScale);
   return R_NilValue;

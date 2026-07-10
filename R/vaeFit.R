@@ -318,7 +318,14 @@
       last <- st
     }
     elboTrace[it] <- mean(elbos)
-    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), elboTrace[it])
+    .phase <- if (it <= control$klWarmup) {
+      "KL anneal"
+    } else if (it <= control$gammaIter) {
+      "EM"
+    } else {
+      "Smooth"
+    }
+    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), elboTrace[it], .phase)
   }
 
   parHist <- vaeIterPrintGet_(isTRUE(control$print >= 1L))
