@@ -521,6 +521,7 @@
     inits = inits.save,
     nu = mcmc$nu,
     niter = niter,
+    nPhase1 = vna[1],
     nb_sa = nb_sa,
     nb_correl = nb_correl,
     nb_fixOmega=nb_fixOmega,

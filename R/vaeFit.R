@@ -285,7 +285,7 @@
       zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
       last <- st
     }
-    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), last$pxz + last$DKL)
+    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), last$pxz + last$DKL, "Burn in")
   }
 
   ## main EM (optionally with BICc-ELBO covariate selection)
