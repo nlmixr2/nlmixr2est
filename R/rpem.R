@@ -104,6 +104,9 @@
   base <- c(.thetas$est, rep(0, nEta))
   etaIdx <- as.integer(nTheta + seq_len(nEta) - 1L)          # 0-based
   omega0 <- diag(.etas$est, nEta)
+  # etas fixed in the ini (e.g. unit-variance occasion/IOV deviations whose
+  # magnitude is carried by a separate theta) have their omega held, not estimated.
+  .etaFix <- as.logical(.etas$fix)
   # mixture (mix(), split-ETA): the mixed eta's typical value is per-component and
   # selected by the model, so it is exempt from the plain mu-reference requirement.
   .mixI <- .rpemMixInfo(ui, .thetas$name, .etas$name)
@@ -126,8 +129,16 @@
                  probNames = .mixI$probNames, muNames = .mixI$muNames,
                  w0 = c(.p, 1 - sum(.p)))
   }
-  if (anyNA(.muName)) stop("RPEM requires every random effect to be mu-referenced")
-  muIdx <- as.integer(match(.muName, .thetas$name) - 1L)     # 0-based theta positions
+  # Non-mu-referenced random effects (e.g. materialized occasion / IOV deviations,
+  # or any eta with no paired typical-value theta) are allowed: their typical value
+  # is fixed at 0 -- they enter the model directly (`+ eta`) with no theta -- and
+  # only their omega is estimated.  .muRef marks which etas carry a typical-value
+  # theta; muIdx holds those theta positions (in mu-ref eta order).
+  .muRef <- !is.na(.muName)
+  muIdx <- as.integer(match(.muName[.muRef], .thetas$name) - 1L)  # 0-based theta positions
+  # per-eta initial typical value (0 for centered etas)
+  .mu0Full <- numeric(nEta)
+  .mu0Full[.muRef] <- .thetas$est[match(.muName[.muRef], .thetas$name)]
   # residual: additive (add), proportional (prop), or combined (add + prop).
   .res <- .thetas[!is.na(.thetas$err), , drop = FALSE]
   .errs <- sort(.res$err)
@@ -258,7 +269,7 @@
                          as.integer(.mixIdx)))
   structIdx <- as.integer(structIdx)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
-       muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
+       muIdx = muIdx, mu0 = .mu0Full, muRef = .muRef, etaFix = .etaFix,
        addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
        propSdIdx = propSdIdx, propSd0 = propSd0, errName = errName,
        lambdaIdx = lambdaIdx, lambda0 = lambda0,
@@ -333,7 +344,7 @@
   # mu2 covariate design (D22): for a single random effect, estimate the typical
   # value + covariate coefficients via the regression M-step.  design row i =
   # [1, cov1_i, ...] with per-subject covariate values (solve order = sorted id).
-  .useReg <- (.cl$nEta == 1L)
+  .useReg <- (.cl$nEta == 1L) && all(.cl$muRef)
   if (!.useReg && length(.cl$covCoefNames) > 0L)
     stop("RPEM does not yet support covariates with more than one random effect")
   if (.useReg) {
@@ -376,7 +387,7 @@
       base[.cl$muIdx + 1L] <- coefs[1]
       if (length(.cl$covCoefIdx)) base[.cl$covCoefIdx + 1L] <- coefs[-1]
     } else {
-      base[.cl$muIdx + 1L] <- mu
+      base[.cl$muIdx + 1L] <- mu[.cl$muRef]     # only mu-ref etas carry a theta
     }
     if (!.multi) base[.cl$addSdIdx + 1L] <- addSd
     if (.comb) base[.cl$propSdIdx + 1L] <- propSd
@@ -429,7 +440,9 @@
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else {
       .ms <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn)
-      mu <- .ms$mu; omega <- .ms$omega; addSd <- .ms$addSd
+      mu <- .ms$mu; mu[!.cl$muRef] <- 0        # centered etas: typical value held at 0
+      omega <- .ms$omega; addSd <- .ms$addSd
+      if (any(.cl$etaFix)) diag(omega)[.cl$etaFix] <- diag(.cl$omega0)[.cl$etaFix]  # held omegas
       muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
     }
     sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
@@ -457,7 +470,7 @@
   # One final E-step at the converged estimates to compute per-subject EBEs
   # (posterior-mean etas, Eq 53): EBE_i = sum_j eta_ij * w_ij with the
   # self-normalized importance weights w_ij = softmax_j(log p_ij).
-  base[.cl$muIdx + 1L] <- muHat
+  base[.cl$muIdx + 1L] <- muHat[.cl$muRef]     # only mu-ref etas carry a theta
   if (.structOn) base[.cl$structIdx + 1L] <- structHat
   if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
   if (!.multi) base[.cl$addSdIdx + 1L] <- sdHat
@@ -482,7 +495,7 @@
   # finite difference (reuse .feEta; only the beta moves).  TBS residual and mixtures
   # still keep the FOCEI-covariance SEs.
   .fisher <- NULL
-  if (.cl$errType %in% c(0L, 1L, 2L, 3L, 4L)) {
+  if (.cl$errType %in% c(0L, 1L, 2L, 3L, 4L) && all(.cl$muRef)) {
     .omNames <- paste0("om.", .cl$etaNames)
     # residual parameter(s) + their theta names, ordered to match the C++ score cols:
     # combined = (add.sd, prop.sd); TBS = (add.sd, lambda); power = (prop.sd, power);
@@ -541,7 +554,7 @@
     ebe[.i, ] <- colSums(.etaM[.idx, , drop = FALSE] * .wt)
   }
 
-  list(mu = stats::setNames(muHat, .cl$muNames),
+  list(mu = stats::setNames(muHat[.cl$muRef], .cl$muNames[.cl$muRef]),
        omega = stats::setNames(omHat, .cl$etaNames),
        addSd = sdHat, propSd = propHat, lambda = lambdaHat, power = powerHat,
        endptSd = endptSdHat, endptProp = endptPropHat,
@@ -728,7 +741,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   # residual -> RPEM add.sd, held structural -> ini values.
   .tn <- .cl$thetaNames
   .ft <- stats::setNames(.cl$base[seq_along(.tn)], .tn)
-  .ft[.cl$muNames] <- rfit$mu
+  .ft[names(rfit$mu)] <- rfit$mu     # only mu-ref etas have a typical-value theta
   if (.cl$errType == 5L) {
     .ft[.tn[.cl$endpt$sclIdx + 1L]] <- rfit$endptSd
     .cE <- which(.cl$endpt$errType %in% c(2L, 3L, 4L))  # 2nd param: prop.sd (combined) or exponent (power)
@@ -902,6 +915,10 @@ nlmixr2Est.rpem <- function(env, ...) {
   class(.fit) <- "nlmixr2rpem"
   .fit
 }
+## Enable the IOV preprocessing hook (.uiApplyIov): occasion-level random effects
+## are materialized into synthetic per-occasion etas upstream, so RPEM sees a plain
+## diagonal multi-eta model (which it already fits) and IOV models run end-to-end.
+attr(nlmixr2Est.rpem, "iov") <- TRUE
 
 #' @export
 print.nlmixr2rpem <- function(x, ...) {
