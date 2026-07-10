@@ -245,7 +245,8 @@ getValidNlmixrCtl.vae <- function(control) {
 nlmixr2Est.vae <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'vae'", .var.name = .ui$modelName)
-  rxode2::assertRxUiMuRefOnly(.ui, " for the estimation routine 'vae'", .var.name = .ui$modelName)
+  ## mu-referencing is NOT required: a non-mu-referenced eta is modeled as
+  ## theta+eta with theta forced to 0 (see .vaeDataPrep isFree handling)
   ## absorb the validated control (set by getValidNlmixrControl before dispatch)
   if (exists("control", envir = env) && inherits(env$control, "vaeControl")) {
     assign("vaeControl", env$control, envir = env)

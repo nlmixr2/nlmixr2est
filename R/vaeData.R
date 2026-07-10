@@ -21,31 +21,43 @@
   .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
   .th <- setNames(as.numeric(.thRows$est), paste0("THETA_", seq_len(nrow(.thRows)), "_"))
   ## structural theta index (in the full theta vector) paired with each eta.
-  ## A mixture random effect (e.g. eta.ke in mix(exp(lke1+eta.ke),p,exp(lke2+
-  ## eta.ke))) has no single structural theta -- its prior is the component-
-  ## independent N(0,omega), so it centers at 0 and the fixed component thetas in
-  ## the full theta vector carry the structure (the inner problem selects them).
+  ## A random effect that is not mu-referenced to a single theta -- a mixture eta
+  ## (mix(exp(lke1+eta.ke),p,exp(lke2+eta.ke))), an eta on a fixed (literalFix-ed)
+  ## theta, or a genuinely free eta -- is modeled as theta+eta with theta forced
+  ## to 0: it centers at 0, is held there by the M-step, and is excluded from
+  ## covariate selection; the rest of the model (literal / component thetas /
+  ## covariate expression) carries its structure.
   .zPopThetaIdx <- match(.map$thetaForEta, .thRows$name)
-  .isMix <- is.na(.zPopThetaIdx)
-  .nMix <- tryCatch(as.integer(ui$saemNMix), error = function(e) 1L)
-  if (any(.isMix) && (is.na(.nMix) || .nMix < 2L))
-    stop("est=\"vae\" needs every random effect mu-referenced to a theta", call. = FALSE)
+  .isFree <- is.na(.zPopThetaIdx)
   .zPop <- numeric(.neta)                                      # structural population means (transformed)
-  .zPop[!.isMix] <- as.numeric(.th[.zPopThetaIdx[!.isMix]])
+  .zPop[!.isFree] <- as.numeric(.th[.zPopThetaIdx[!.isFree]])
 
-  ## omega init (diagonal) for the etas, and residual a init (error theta est)
+  ## omega init (diagonal) for the etas + which variances are FIXED (held by the
+  ## M-step, not estimated)
   .omega <- vapply(.etaNames, function(nm) {
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     as.numeric(.r$est[1])
   }, numeric(1))
+  .omegaFix <- vapply(.etaNames, function(nm) {
+    .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
+    isTRUE(as.logical(.r$fix[1]))
+  }, logical(1))
+  ## structural-theta bounds per eta (Inf/-Inf when unbounded or free): the M-step
+  ## clamps the population estimate to [lower, upper], giving the constrained
+  ## estimate (at the bound when the unconstrained optimum is outside).
+  .zPopLower <- rep(-Inf, .neta); .zPopUpper <- rep(Inf, .neta)
+  .zPopLower[!.isFree] <- as.numeric(.thRows$lower[.zPopThetaIdx[!.isFree]])
+  .zPopUpper[!.isFree] <- as.numeric(.thRows$upper[.zPopThetaIdx[!.isFree]])
+
   ## residual error params (all of them, in theta order): value, theta index,
-  ## and type (add/prop/...). Combined models have >1 row; log-likelihood models
-  ## may have none. `a` is the (named) error-param vector.
+  ## type (add/prop/...), and bounds. Combined models have >1 row; log-likelihood
+  ## models may have none. `a` is the (named) error-param vector.
   .errRow <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
   .errRow <- .errRow[order(.errRow$ntheta), , drop = FALSE]
   .a <- if (nrow(.errRow) > 0) setNames(as.numeric(.errRow$est), .errRow$name) else numeric(0)
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
+  .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
 
   ## normalize data columns
   d <- as.data.frame(data)
@@ -110,8 +122,10 @@
   }
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
-       th = .th, zPopThetaIdx = .zPopThetaIdx, isMix = .isMix,
+       th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
+       zPopLower = .zPopLower, zPopUpper = .zPopUpper,
        errThetaIdx = .errThetaIdx, errType = .errType,
+       errLower = .errLower, errUpper = .errUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .covNames, covMat = .covMat, covType = .covType, covPop = .covPop,

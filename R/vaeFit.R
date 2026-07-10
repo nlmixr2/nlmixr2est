@@ -20,6 +20,14 @@
   )
 }
 
+#' Clamp a parameter vector to [lower, upper] (elementwise; NULL bounds = no-op).
+#' @noRd
+.vaeClamp <- function(v, lower, upper) {
+  if (!is.null(lower)) v <- pmax(v, lower)
+  if (!is.null(upper)) v <- pmin(v, upper)
+  v
+}
+
 #' Assemble the full theta vector from current z_pop (structural) + a (residual)
 #' @noRd
 .vaeBuildTh <- function(prep, zPop, a) {
@@ -133,10 +141,13 @@
     omegaCur[k] <- v / N
   }
   aCur <- .vaeUpdateErr(preds, prep, a)
-  ## mixture etas center at 0 (component-independent prior); don't drift zPop there
-  if (!is.null(prep$isMix)) zPopCur[prep$isMix] <- 0
+  ## non-mu-referenced (free) etas center at 0 (theta forced to 0); fixed omega
+  ## entries are held at their current value (not estimated)
+  if (!is.null(prep$isFree)) zPopCur[prep$isFree] <- 0
+  if (!is.null(prep$omegaFix)) omegaCur[prep$omegaFix] <- omega[prep$omegaFix]
   if (!all(is.finite(zPopCur))) zPopCur <- zPop
   if (!all(is.finite(omegaCur))) omegaCur <- omega
+  zPopCur <- .vaeClamp(zPopCur, prep$zPopLower, prep$zPopUpper)
   list(zPop = zPop + gamma * (zPopCur - zPop),
        omega = omega + gamma * (omegaCur - omega),
        a = a + gamma * (aCur - a))
@@ -176,7 +187,7 @@
     if (any(ok)) aNew[hasProp[1]] <- sqrt(mean((res[ok] / f[ok])^2))
   }
   aNew[!is.finite(aNew)] <- a[!is.finite(aNew)]
-  aNew
+  .vaeClamp(aNew, prep$errLower, prep$errUpper)
 }
 
 #' Closed-form M-step WITH BICc-ELBO covariate selection. For each parameter k,
@@ -194,9 +205,9 @@
   zPopMat <- matrix(0, N, zDim)
   logN <- log(N)
   for (k in seq_len(zDim)) {
-    ## a mixture eta is a component-independent N(0,omega) random effect: no
-    ## intercept, no covariates (the fixed component thetas carry the structure)
-    if (!is.null(prep$isMix) && prep$isMix[k]) next
+    ## a non-mu-referenced (free) eta is a theta=0-centered random effect: no
+    ## intercept, no covariates (its structure is carried elsewhere in the model)
+    if (!is.null(prep$isFree) && prep$isFree[k]) next
     yk <- mu[, k]; best <- NULL; bestScore <- Inf
     for (mask in 0:(2^nCov - 1L)) {
       S <- which(bitwAnd(mask, bitwShiftL(1L, seq_len(nCov) - 1L)) != 0L)
@@ -206,7 +217,9 @@
       score <- sum(fit$residuals^2) / omega[k] + logN * length(S)
       if (score < bestScore) { bestScore <- score; best <- list(S = S, coef = fit$coefficients, cols = cols) }
     }
-    intercept[k] <- best$coef[1]
+    ## clamp the typical value (intercept) to its bounds
+    intercept[k] <- .vaeClamp(best$coef[1], prep$zPopLower[k], prep$zPopUpper[k])
+    best$coef[1] <- intercept[k]
     if (length(best$S) > 0L) { beta[k, best$S] <- best$coef[-1]; selected[k, best$S] <- TRUE }
     zPopMat[, k] <- X[, best$cols, drop = FALSE] %*% best$coef
   }
@@ -217,6 +230,7 @@
     omegaCur[k] <- v / N
   }
   aCur <- .vaeUpdateErr(preds, prep, a)
+  if (!is.null(prep$omegaFix)) omegaCur[prep$omegaFix] <- omega[prep$omegaFix]
   if (!all(is.finite(omegaCur))) omegaCur <- omega
   list(intercept = intercept, beta = beta, selected = selected, zPopMat = zPopMat,
        omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
