@@ -8605,12 +8605,24 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
     curTheta[t] = op_focei.fullTheta[t];
     setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
   }
-  // per-observation DV (same across samples).
-  std::vector<double> dvv;
+  // per-observation DV and censoring info (same across samples), on the
+  // transformed scale -- matching how the inner problem reads them.
+  std::vector<double> dvv, limv;
+  std::vector<int> censv;
   { int kk;
     for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj);
-      if (getIndEvid(ind, kk) == 0) dvv.push_back(tbs(getIndDv(ind, kk)));
+      if (getIndEvid(ind, kk) == 0) {
+        dvv.push_back(tbs(getIndDv(ind, kk)));
+        double lim = R_NegInf;
+        if (hasRxLimit(rx)) {
+          lim = getIndLimit(ind, kk);
+          if (ISNA(lim)) lim = R_NegInf;
+          else if (R_FINITE(lim)) lim = tbs(lim);
+        }
+        limv.push_back(lim);
+        censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
+      }
     }
   }
   int nobs = (int)dvv.size();
@@ -8679,12 +8691,27 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
     for (int jo = 0; jo < nobs; ++jo) {
       double f = fvec[jo], V = Vvec[jo];
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
-      double err = f - dvv[jo];
       arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
       if (!df.is_finite() || !dV.is_finite()) continue;
-      g += zk[k] * ((-err / V) * df.t() +
-                    (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-      H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+      bool isCens = (censv[jo] != 0) || (R_FINITE(limv[jo]) && !ISNA(limv[jo]));
+      if (isCens) {
+        // Exact censored score/information from the analytic partials of
+        // rho = -logLik (out[0]=rho_f, out[1]=rho_r, out[2..4]=rho_ff/rho_fr/rho_rr),
+        // so the M-step gradient for BLQ/M2/M3/M4 points is correct (no FD).  The
+        // log-likelihood score is -rho_f, -rho_r; the information is the rho 2nd
+        // derivatives.  A normal obs reduces to the Gauss-Newton form below.
+        double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
+        censNormalPartials((double)censv[jo], dvv[jo], limv[jo], f, V, 2, cp);
+        g += zk[k] * (-cp[0] * df.t() - cp[1] * dV.t());
+        H += zk[k] * (cp[2] * (df.t() * df) +
+                      cp[3] * (df.t() * dV + dV.t() * df) +
+                      cp[4] * (dV.t() * dV));
+      } else {
+        double err = f - dvv[jo];
+        g += zk[k] * ((-err / V) * df.t() +
+                      (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+        H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+      }
     }
   }
 }

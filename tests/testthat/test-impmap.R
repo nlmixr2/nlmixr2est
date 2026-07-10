@@ -496,3 +496,32 @@ test_that("C2: experimental MC covariance (impCov) is off by default; theta SEs 
   .fse <- sqrt(diag(.ff$cov))[seq_len(.nth)]
   expect_equal(.se[seq_len(.nth)], unname(.fse), tolerance = 0.1)
 })
+
+test_that("Censoring: the M-step gradient uses the analytic censored score (matches FOCEI)", {
+  m <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # Left-censor (BLQ / M3): observations below the LOQ carry DV = LOQ, CENS = 1.
+  .d <- nlmixr2data::theo_sd
+  .loq <- 2.5
+  .d$CENS <- 0L
+  .blq <- .d$EVID == 0 & .d$DV < .loq & .d$DV > 0
+  .d$CENS[.blq] <- 1L
+  .d$DV[.blq] <- .loq
+  expect_true(sum(.blq) > 5) # the censored branch is actually exercised
+  .ff <- suppressWarnings(nlmixr2(m, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 40L, isample = 500L)))
+  # the residual sigma is the parameter most sensitive to censoring; the non-mu
+  # structural theta goes through the same M-step gradient
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
+})
