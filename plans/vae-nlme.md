@@ -178,11 +178,13 @@ Phase 4 -- ELBO + Adam + closed-form M-step (MILESTONE A). [DONE]
   (returnVae=TRUE returns raw fit; full FitData deferred to Phase 6).
 - Verified: test-vae-elbo.R full-pipeline gradient vs FD ~1e-6; test-vae-train.R
   end-to-end. Full 100/300 schedule (211s): ka=1.617(1.63,0.8%),
-  ke=0.0849(0.0867,2.1%), V=32.08(31.97,0.3%), a=0.718(0.71,1.1%) -- fixed
-  effects + a inside the ~2-3% gate. Omegas close but wKa=0.62 vs 0.53 (outside
-  the 0.02-0.05 band); wKe/wV ~0.02 borderline. OMEGA TIGHTENING is the open
-  Milestone-A refinement (candidates: sigma0 default vs param-specific, M-step
-  omega formula, lr/schedule); fixed-effect parity achieved.
+  ke=0.0849(0.0867,2.1%), V=32.08(31.97,0.3%), a=0.718(0.71,1.1%) -- all inside
+  the ~2-3% gate. wKa=0.61 is the CORRECT no-covariate value: paper Table 1
+  (0.53) is POST-covariate-selection; Fig 2 shows wKa rising to ~0.6 in burn-in
+  and dropping to 0.53 only when WT->ka is selected. So wKa drops in Phase 5.
+  (Confirmed sigma0 and encoder weight decay do not move wKa -- decomposition
+  showed Var(mu_ka)=0.36 dominates, i.e. the unexplained WT variance.)
+  MILESTONE A CLOSED.
 - Orchestration is thin R; heavy work = C++ encoder BPTT + rxode2 decoder solve.
 
 Phase 5 -- Covariate selection (MILESTONE B).
