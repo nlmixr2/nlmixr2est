@@ -45,10 +45,13 @@
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.
 #' @param impCov Experimental: when `TRUE`, compute a Monte-Carlo
-#'   observed-information covariance for the estimated thetas (a finite-difference
-#'   Hessian of the importance-sampling objective over fixed samples), stashed as
-#'   `$impSeTheta`.  Off by default; the Omega block and mu-referenced mode
-#'   tracking are not yet included.
+#'   observed-information covariance for the estimated thetas and Omega
+#'   parameters (a finite-difference Hessian of the importance-sampling objective
+#'   over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
+#'   Off by default.  The theta standard errors match the Hessian-based FOCEI
+#'   covariance; the variance of a tightly-determined random effect (an Omega
+#'   diagonal) can still be over-estimated because the fixed samples barely span
+#'   its prior variation.
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler

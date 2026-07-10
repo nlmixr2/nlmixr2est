@@ -150,27 +150,33 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   }
 }
 
-// Monte-Carlo observed-information covariance for the estimated thetas.
+// Monte-Carlo observed-information covariance for the estimated thetas and Omega.
 //
 // At the converged estimate this recomputes each subject's proposal (mode +
 // Hessian), draws one fixed set of importance samples, and takes the finite-
-// difference Hessian of the importance-sampling -2LL with respect to the thetas.
-// Because the SAME samples are reused for every perturbation (common random
-// numbers) the reweighted objective is a deterministic smooth function of the
-// parameters, so the FD Hessian is well behaved.  The observed information is
-// 0.5 * d2(-2LL)/dtheta2 and the covariance is its inverse.  Omega is held
-// fixed here (the theta block); the Omega block is a later increment.
+// difference Hessian of the importance-sampling -2LL with respect to the thetas
+// and the parameterized Omega elements (an Omega perturbation rebuilds omegaInv
+// and the -0.5 log|Omega| normalizer).  Because the SAME samples are reused for
+// every perturbation (common random numbers) the reweighted objective is a
+// deterministic smooth function of the parameters, so the FD Hessian is well
+// behaved.  The observed information is 0.5 * d2(-2LL)/dpar2 and the covariance
+// is its inverse.  (mu-referenced thetas still need mode tracking -- a later
+// increment -- since the fixed samples do not follow the mode shift.)
 void impComputeCov(Environment e) {
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
   double gamma = impGammaProp();
   double invGamma2 = 1.0 / (2.0 * gamma);
-  double negHalfLogDetOmega = impLogDetOmegaInv5();
 
-  std::vector<int> th;
-  impGetEstThetaIdx(th);
-  int np = (int)th.size();
+  // Estimated free parameters = the estimated thetas followed by the
+  // parameterized Omega free parameters.  Parameter j < nTh is theta
+  // fullTheta[thIdx[j]]; j >= nTh is Omega free parameter (j - nTh).
+  std::vector<int> thIdx;
+  impGetEstThetaIdx(thIdx);
+  int nTh = (int)thIdx.size();
+  int nOm = impOmegaN();
+  int np = nTh + nOm;
   if (np == 0) return;
 
   // Per-subject proposal: mode, information H, lower Cholesky of gamma*H^-1, and
@@ -213,9 +219,18 @@ void impComputeCov(Environment e) {
   }
   setRxThreadId(-1);
 
-  // Importance-sampling -2LL at a theta vector, reusing the fixed samples.
+  // Perturb parameter j: a theta on the subjects' parameter pointers, or an
+  // Omega free parameter (which also rebuilds omegaInv / logDetOmegaInv5).
+  auto setPar = [&](int j, double val) {
+    if (j < nTh) impSetThetaAll(thIdx[j], val);
+    else impSetOmegaThetaAll(j - nTh, val);
+  };
+
+  // Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
   auto evalObj = [&](const arma::vec& par) -> double {
-    for (int j = 0; j < np; ++j) impSetThetaAll(th[j], par[j]);
+    for (int j = 0; j < np; ++j) setPar(j, par[j]);
+    // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
+    double negHalfLogDetOmega = impLogDetOmegaInv5();
     double obj = 0.0;
     for (int id = 0; id < nsub; ++id) {
       if (!ok[id]) continue;
@@ -239,7 +254,8 @@ void impComputeCov(Environment e) {
   };
 
   arma::vec par0(np);
-  for (int j = 0; j < np; ++j) par0[j] = impGetFullThetaVal(th[j]);
+  for (int j = 0; j < nTh; ++j) par0[j] = impGetFullThetaVal(thIdx[j]);
+  for (int m = 0; m < nOm; ++m) par0[nTh + m] = impGetOmegaThetaVal(m);
   double f0 = evalObj(par0);
   arma::vec hstep(np);
   for (int j = 0; j < np; ++j) {
@@ -264,8 +280,8 @@ void impComputeCov(Environment e) {
       Hess(a, b) = v; Hess(b, a) = v;
     }
   }
-  // Restore the converged thetas.
-  for (int j = 0; j < np; ++j) impSetThetaAll(th[j], par0[j]);
+  // Restore the converged estimates.
+  for (int j = 0; j < np; ++j) setPar(j, par0[j]);
   for (int id = 0; id < nsub; ++id) impForceResolve(id);
 
   // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
@@ -276,11 +292,18 @@ void impComputeCov(Environment e) {
   }
   arma::vec se(np);
   for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
-  IntegerVector thIdxR(np);
-  for (int j = 0; j < np; ++j) thIdxR[j] = th[j] + 1; // 1-based fullTheta index
-  e["impCovTheta"] = wrap(cov);
-  e["impSeTheta"] = wrap(se);
+  // Full covariance (thetas then Omega parameters).
+  e["impCov"] = wrap(cov);
+  e["impSe"] = wrap(se);
+  e["impCovThetaN"] = nTh; // first nTh entries are thetas, the rest Omega parameters
+  IntegerVector thIdxR(nTh);
+  for (int j = 0; j < nTh; ++j) thIdxR[j] = thIdx[j] + 1; // 1-based fullTheta index
   e["impCovThetaIdx"] = thIdxR;
+  // Backwards-compatible theta-block views.
+  if (nTh > 0) {
+    e["impCovTheta"] = wrap(arma::mat(cov.submat(0, 0, nTh - 1, nTh - 1)));
+    e["impSeTheta"] = wrap(arma::vec(se.subvec(0, nTh - 1)));
+  }
 }
 
 void impOuter(Environment e) {

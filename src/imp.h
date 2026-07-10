@@ -83,6 +83,9 @@ void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the e
 double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
 void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on every subject (FD perturb)
 void impForceResolve(int id);                      // force likInner0 to re-solve subject id
+int impOmegaN();                                   // number of parameterized Omega free parameters
+double impGetOmegaThetaVal(int m);                 // current value of Omega free parameter m
+void impSetOmegaThetaAll(int m, double val);       // set Omega free param m + rebuild omegaInv/logdet
 
 // Clear the persistent inner neqOverride (multi-endpoint pool) at fit end so it
 // does not leak into a subsequent fit sharing the global solve context.

@@ -453,15 +453,15 @@ test_that("M8: windowed convergence controller stops early and adapts gamma", {
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
 })
 
-test_that("C1: experimental MC theta covariance (impCov) is off by default and finite when on", {
+test_that("C2: experimental MC covariance (impCov) is off by default; theta SEs match FOCEI |r|", {
   one.cmt <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
-      eta.cl ~ 0.1
+      eta.ka ~ 0.6; eta.cl ~ 0.3
       add.sd <- 0.7
     })
     model({
-      ka <- exp(tka)
+      ka <- exp(tka + eta.ka)
       cl <- exp(tcl + eta.cl)
       v <- exp(tv)
       linCmt() ~ add(add.sd)
@@ -471,17 +471,22 @@ test_that("C1: experimental MC theta covariance (impCov) is off by default and f
   # off by default: no covariance stash
   .f0 <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
                                   impmapControl(print = 0L, nIter = 1L)))
-  expect_null(.f0$env$impSeTheta)
-  # opt-in: a positive, finite SE per estimated theta
+  expect_null(.f0$env$impSe)
+  # opt-in: the full (theta + Omega) covariance
   .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                  impmapControl(print = 0L, nIter = 30L, isample = 300L,
+                                  impmapControl(print = 0L, nIter = 40L, isample = 500L,
                                                 impCov = TRUE)))
-  .se <- .fi$env$impSeTheta
-  .nth <- sum(!is.na(.fi$ui$iniDf$ntheta))
-  expect_length(as.numeric(.se), .nth)
+  .se <- as.numeric(.fi$env$impSe)
+  .nth <- .fi$env$impCovThetaN
   expect_true(all(is.finite(.se) & .se > 0))
-  # theta covariance is symmetric positive-definite
-  .cov <- .fi$env$impCovTheta
+  # the full covariance is symmetric positive-definite
+  .cov <- .fi$env$impCov
   expect_equal(.cov, t(.cov), tolerance = 1e-8)
   expect_true(all(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+  # theta SEs match the Hessian-based FOCEI covariance (|r|)
+  .ff <- suppressWarnings(nlmixr2(one.cmt, .d, "focei",
+                                  foceiControl(print = 0L, covMethod = "r")))
+  skip_if(is.null(.ff$cov), "FOCEI |r| covariance unavailable")
+  .fse <- sqrt(diag(.ff$cov))[seq_len(.nth)]
+  expect_equal(.se[seq_len(.nth)], unname(.fse), tolerance = 0.1)
 })

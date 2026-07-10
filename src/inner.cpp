@@ -8341,6 +8341,29 @@ void impSetThetaAll(int idx, double val) {
 // eta may repeat a cached value, which would otherwise skip the re-solve).
 void impForceResolve(int id) { inds_focei[id].setup = 0; }
 
+// ---- Omega block of the MC covariance ----
+
+// Number of parameterized Omega free parameters (fullTheta[ntheta .. +omegan-1]).
+int impOmegaN() { return (int)op_focei.omegan; }
+
+double impGetOmegaThetaVal(int m) { return op_focei.fullTheta[op_focei.ntheta + m]; }
+
+// Set Omega free parameter m (FD perturbation) and rebuild omegaInv / cholOmegaInv
+// / logDetOmegaInv5 from the full Omega-parameter vector (the same path
+// updateTheta() takes), so likInner0's prior term and the objective normalizer
+// both reflect it.
+void impSetOmegaThetaAll(int m, double val) {
+  op_focei.fullTheta[op_focei.ntheta + m] = val;
+  NumericVector omegaTheta(op_focei.omegan);
+  std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
+            &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
+            omegaTheta.begin());
+  setOmegaTheta(omegaTheta);
+  op_focei.omegaInv = getOmegaInv();
+  op_focei.cholOmegaInv = getCholOmegaInv();
+  op_focei.logDetOmegaInv5 = getOmegaDet();
+}
+
 // M-step helpers (EM loop lives in impOuter, src/imp.cpp).
 
 // Overwrite subject id's eta (used to seed updateMuGroups with the conditional mean).
