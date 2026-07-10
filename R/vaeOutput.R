@@ -88,6 +88,7 @@
   ## attach the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
   .e <- .fit$env
   .e$method <- "vae"
+  .e$extra <- "" # drop the inner focei fit's "i (outer: ...)" print suffix
   .e$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
                  covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
                  seed = .control$seed)

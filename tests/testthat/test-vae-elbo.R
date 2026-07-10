@@ -25,7 +25,8 @@ test_that("vae ELBO gradient w.r.t. encoder params matches finite differences", 
   am <- .vaeDecoderModel(ui)
 
   zDim <- prep$zDim; hDim <- 6L; nCov <- 0L
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim), seed = 7L)
+  set.seed(7)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim))
   set.seed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
   alphaKL <- 0.7
 
