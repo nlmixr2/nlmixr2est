@@ -271,15 +271,41 @@
   .resIdx <- stats::na.omit(c(addSdIdx, propSdIdx, lambdaIdx, powIdx,
                               if (!is.null(.endpt)) .endpt$sclIdx))
   .fixIdx <- which(.thetas$fix) - 1L
+  # IOV occasion blocks (iov.R): the shared preprocessing hook materializes each
+  # occasion effect as unit-variance per-occasion etas (rx.iov.<v>.<occ>) scaled by a
+  # magnitude theta (iov.<v>).  Recover the IOV variance the way SAEM does -- a single
+  # shared omega across a parameter's occasion etas -- rather than a magnitude fixed
+  # effect: fix the magnitude theta at 1 and estimate one pooled omega for the block.
+  .omGroup <- seq_len(nEta)                          # singleton omega groups by default
+  .iovMagIdx <- integer(0)
+  .iovEtaNames <- tryCatch(.getSyntheticIovEtaNames(ui), error = function(e) character(0))
+  if (length(.iovEtaNames) > 0L) {
+    .omDiag <- diag(omega0)
+    .grpBase <- sub("\\.[0-9]+$", "", .iovEtaNames)  # rx.iov.<v> (occasion block base)
+    .magName <- sub("^rx\\.", "", .grpBase)          # iov.<v> (magnitude theta)
+    for (.b in unique(.grpBase)) {
+      .members <- match(.iovEtaNames[.grpBase == .b], .etas$name)
+      .omGroup[.members] <- min(.omGroup[.members])  # all occasions share one omega
+      .etaFix[.members] <- FALSE                      # estimate that shared omega
+      .mi <- match(.magName[.grpBase == .b][1], .thetas$name)
+      if (!is.na(.mi)) {
+        base[.mi] <- 1                                # magnitude fixed at 1 (variance -> omega)
+        .omDiag[.members] <- .thetas$est[.mi]^2       # init shared omega = magnitude^2
+        .iovMagIdx <- c(.iovMagIdx, .mi - 1L)         # exclude the magnitude from struct set
+      }
+    }
+    omega0 <- diag(.omDiag, nEta)
+  }
   # mixture component typical values (tka_k) and probabilities (p_k) are estimated
   # by the mixture M-step, not the structural (beta) re-solve.
   .mixIdx <- if (is.null(.mix)) integer(0) else c(.mix$muCompIdx, .mix$probIdx)
   structIdx <- setdiff(seq_len(nTheta) - 1L,
                        c(muIdx, covCoefIdx, as.integer(.resIdx), as.integer(.fixIdx),
-                         as.integer(.mixIdx)))
+                         as.integer(.mixIdx), .iovMagIdx))
   structIdx <- as.integer(structIdx)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
-       muIdx = muIdx, mu0 = .mu0Full, muRef = .muRef, etaFix = .etaFix,
+       muIdx = muIdx, mu0 = .mu0Full, muRef = .muRef, etaFix = .etaFix, omGroup = .omGroup,
+       iovMagIdx = .iovMagIdx,
        addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
        propSdIdx = propSdIdx, propSd0 = propSd0, errName = errName,
        lambdaIdx = lambdaIdx, lambda0 = lambda0,
@@ -453,6 +479,9 @@
       mu <- .ms$mu; mu[!.cl$muRef] <- 0        # centered etas: typical value held at 0
       omega <- .ms$omega; addSd <- .ms$addSd
       if (any(.cl$etaFix)) diag(omega)[.cl$etaFix] <- diag(.cl$omega0)[.cl$etaFix]  # held omegas
+      # shared-omega occasion blocks (IOV): equalize omega within each block (singletons
+      # unchanged), so a parameter's occasion etas estimate one pooled variance
+      diag(omega) <- stats::ave(diag(omega), .cl$omGroup)
       muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
     }
     sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
@@ -782,7 +811,9 @@ getValidNlmixrCtl.rpem <- function(control) {
   # Seed the ui iniDf with the RPEM estimates so the eval-only FOCEI (maxOuter=0)
   # reports them (it starts from -- and holds -- the iniDf theta).  Only user-fixed
   # (fix()) thetas are held; mark them fixed so they report as held (NA SE).
-  .heldNames <- .cl$fixNames
+  # user-fixed thetas plus the IOV magnitude thetas we hold at 1 (their variance is
+  # carried by the shared occasion-block omega) display as held (NA SE).
+  .heldNames <- c(.cl$fixNames, .cl$thetaNames[.cl$iovMagIdx + 1L])
   .uiD <- rxode2::rxUiDecompress(ui)
   .idf <- .uiD$iniDf
   .thRow <- !is.na(.idf$ntheta)
