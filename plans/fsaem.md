@@ -57,6 +57,12 @@ accelerator across model types.
    (Jacobian for continuous endpoints, Hessian otherwise), then revert to RWM.
 8. `est="fsaem"` is PURE sugar: `fsaemControl()` inherits `saemControl()` with
    `fast` forced TRUE and un-overridable; no other default changes.
+9. The fast kernel is integrated INTO the real SAEM C++ loop, not a parallel
+   silo: it must run in both the plain-SAEM MCMC path (`do_mcmc`) AND the
+   mixture path (`do_mcmc_msaem`, MSAEM).  For the non-fast (tail) iterations of
+   the `firstN` schedule -- and whenever `fast=FALSE` -- the loop degrades to
+   the existing plain-SAEM random-walk kernels bit-for-bit.  (User directive,
+   2026-07-10.)
 
 ## 3. Algorithm background
 
@@ -118,14 +124,34 @@ Per SAEM iteration (while the IMH kernel is active) and per subject:
 The inner theta is set from the current SAEM parameter estimate each iteration
 (the analogue of FOCEI's `updateTheta`).
 
-### 4.3 New SAEM kernel (method 4)
+### 4.3 New SAEM kernel (method 4) -- integrated, mixture-inclusive, degrading
 
-Add `do_mcmc` "method 4" (or a sibling `do_mcmc_imh`) implementing steps 3-4
-above: draw from `N(psi_hat_i, Gamma_i)`, evaluate the full IMH acceptance ratio
-including the Gaussian proposal density both directions. Wire it into the kernel
-dispatch at `src/saem.cpp:1715+` (and the MSAEM path only if mixtures are in
-scope -- deferred to phase 2). Precompute the per-subject `psi_hat_i` / Cholesky
-of `Gamma_i` once per iteration; reuse across the M chain steps.
+Add a new IMH kernel to the SAEM loop implementing steps 3-4 above: draw from
+`N(psi_hat_i, Gamma_i)`, evaluate the full IMH acceptance ratio including the
+Gaussian proposal density both directions. Per decision 9 it is wired into BOTH
+kernel-dispatch sites:
+
+- plain SAEM: alongside `do_mcmc` (`src/saem.cpp:1715+`);
+- mixture SAEM: alongside `do_mcmc_msaem` (`src/saem.cpp:1181+`).
+
+Degrade rule: on iterations where the fast kernel is not active (the tail of
+`firstN`, or `fast=FALSE`) the loop calls exactly the existing random-walk
+kernels, unchanged -- a regression fixture guards bit-identical plain-SAEM
+output. Precompute the per-subject `psi_hat_i` / Cholesky of `Gamma_i` once per
+active iteration; reuse across the M chain steps.
+
+### 4.4 Orchestration: swapping the active rxode2 solve (top integration risk)
+
+The validated proposal core (`fsaemInnerMap_`, done) runs while the FOCEi inner
+model is the active global `rx` solve. But inside `saem_fit` the active global
+solve is the SAEM model's own (`setupRx` + `rxInner`), used by `user_function`.
+Both subsystems read `getRxSolve_()`, so they cannot be active simultaneously.
+Integrating the proposal INTO the SAEM loop therefore requires, each active
+iteration: (a) point the global solve at the inner + `updateTheta`/omega to the
+current SAEM estimate, (b) run the per-subject MAP+`Gamma_i`, (c) point the
+global solve back at the SAEM model, (d) run the IMH kernel via `user_function`.
+This solve-swap (and doing it without corrupting either subsystem's per-thread
+buffers) is the top remaining integration risk and the subject of P1-3.
 
 ### 4.4 R plumbing
 
@@ -169,18 +195,22 @@ checkpoint, not one batch). Merge `origin/main` before any push.
   RWM SAEM (fast path still a no-op). Gate: a trivial model fits via `fsaem`.
 
 ### Phase 1 -- reproduce the paper (acceptance gate)
-- P1-1: FOCEI-inner setup alongside SAEM (adapt `vaeInnerSetup_`); per-iteration
-  theta sync. Gate: inner objective/MAP evaluable per subject inside a SAEM run
-  (checked against a standalone FOCEI inner on the same model).
-- P1-2: phi <-> eta bridge; produce `psi_hat_i` and `Gamma_i` in phi-space.
-  Gate: for warfarin, `Gamma_i` matches Eq 17 computed independently to ~1e-6.
-- P1-3: `do_mcmc` method 4 (IMH kernel) + `firstN` schedule + Jacobian cov.
-  Gate: warfarin PK converges to the saemix/FOCEI reference in far fewer
-  iterations; parHist/counters show the IMH kernel actually fired (per repo
-  policy that fast-path tests must assert the mechanism was used).
+- P1-1/P1-2 (DONE, commit 21dde70f): FOCEi-inner reuse producing the per-subject
+  MAP + proposal precision `H = Gamma_i^-1` (`fsaemInnerMap_` in src/inner.cpp;
+  R/fsaemInner.R).  Validated on theo_sd: MAP stationary to grad ~1e-6 and `H`
+  matches the independent Eq-17 information to ~4e-5 relative
+  (tests/testthat/test-fsaem-inner.R).  This is the standalone proposal core; it
+  is NOT yet wired into the SAEM loop.
+- P1-3: integrate the IMH kernel into the SAEM loop with the solve-swap
+  orchestration (Section 4.4), the new IMH kernel (Section 4.3), the `firstN`
+  schedule + Jacobian cov, degrading to the plain RWM kernels for the tail.
+  Wire BOTH `do_mcmc` and `do_mcmc_msaem` (mixture) per decision 9.  Gate:
+  warfarin PK converges to the saemix/FOCEI reference in far fewer iterations;
+  parHist/counters show the IMH kernel actually fired (repo policy: fast-path
+  tests must assert the mechanism was used); `fast=FALSE` bit-identical.
 - P1-4: Hessian cov path via inner Hessian + `throughout`/`additive` schedules +
-  `auto` selection. Gate: Weibull repeated-events TTE reproduces the paper's
-  faster convergence.
+  `auto` selection; mixture (MSAEM) fast path exercised.  Gate: Weibull
+  repeated-events TTE reproduces the paper's faster convergence.
 - P1-5: tests + `NEWS.md` + roxygen `devtools::document()`; `R CMD check`.
   Gate: acceptance = both paper examples reproduced (Section 7).
 
