@@ -37,6 +37,10 @@
 #' @param objf Which objective-function value is active for AIC/BIC/BICc. Both
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
+#' @param covMethod Method for calculating the covariance at the VAE estimates,
+#'   run through the FOCEi covariance step; the same choices as
+#'   \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
+#'   \code{"r"}, \code{"s"}, or \code{""} to skip.
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
@@ -64,7 +68,7 @@ vaeControl <- function(seed = 42L,
                        useColor = NULL,
                        printNcol = NULL,
 
-                       covMethod = c("linear", ""),
+                       covMethod = c("analytic", "r,s", "r", "s", ""),
                        optExpression = TRUE,
                        sumProd = FALSE,
                        literalFix = TRUE,
@@ -113,7 +117,12 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
   likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
-  covMethod <- match.arg(covMethod)
+  # match.arg cannot match ""; treat it (skip covariance) like foceiControl does
+  if (length(covMethod) == 1L && covMethod == "") {
+    covMethod <- ""
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
 
