@@ -318,8 +318,16 @@
   .hasCens <- !is.na(.censColF) && any(data[[.censColF]] != 0, na.rm = TRUE)
   # Draw the E-step etas in R (deterministic given the seed) so the sampling RNG is
   # independent of the solve's core count -- the fit is reproducible across cores.
-  .drawEtas <- function(omega) {
-    rxode2::rxRmvn(.nsub * control$nGauss, mu = rep(0, .cl$nEta), sigma = omega)
+  # Optional mode-centered importance sampling (impInflate > 0): draw z ~ N(0,
+  # impInflate*Omega) then shift each subject's block by its EBE (posterior mean from
+  # the previous iteration).  impInflate == 0 keeps the paper's prior sampling
+  # (.cInf = 1, ebe = 0 -> draw is exactly N(0, Omega)).
+  .modeIS <- control$impInflate > 0
+  .cInf <- if (.modeIS) control$impInflate else 1
+  .drawEtas <- function(omega, ebe) {
+    .z <- matrix(rxode2::rxRmvn(.nsub * control$nGauss, mu = rep(0, .cl$nEta),
+                                sigma = .cInf * omega), ncol = .cl$nEta)
+    .z + ebe[rep(seq_len(.nsub), each = control$nGauss), , drop = FALSE]
   }
 
   # mu2 covariate design (D22): for a single random effect, estimate the typical
@@ -362,6 +370,7 @@
   sdMat <- if (.multi) matrix(0, niter, .cl$endpt$nEndpt) else NULL
   propMat <- if (.multi) matrix(NA_real_, niter, .cl$endpt$nEndpt) else NULL
   betaMat <- if (.structOn) matrix(0, niter, length(.cl$structIdx)) else NULL
+  ebe <- matrix(0, .nsub, .cl$nEta)     # IS proposal center; updated each E-step when on
   for (.it in seq_len(niter)) {
     if (.useReg) {
       base[.cl$muIdx + 1L] <- coefs[1]
@@ -378,8 +387,10 @@
       if (any(.combE)) base[.cl$endpt$propIdx[.combE] + 1L] <- propVec[.combE]
     }
     rxode2::rxSetSeed(control$seed + .it)
-    .etaMat <- .drawEtas(omega)
-    .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores)
+    .etaMat <- .drawEtas(omega, ebe)
+    .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores,
+                            ebe, diag(as.matrix(omega)), .cInf)
+    if (.modeIS) ebe <- .est$ebe        # posterior mean -> next proposal center
     # numeric M-step for non-mu-ref structural fixed effects, while the E-step
     # solve is still loaded (before the MH step's rxRmvn draw clobbers it).
     if (.structOn) {
@@ -459,8 +470,9 @@
   }
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
-  .feEta <- .drawEtas(omegaHat)
-  .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores)
+  .feEta <- .drawEtas(omegaHat, ebe)
+  .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores,
+                         ebe, diag(as.matrix(omegaHat)), .cInf)
   # Fisher-score covariance (design/rpem/08) from the converged samples, computed
   # while they are still loaded (before rpemFree).  Supported for additive/proportional
   # residuals with no non-mu-ref structural fixed effect: single eta with covariates

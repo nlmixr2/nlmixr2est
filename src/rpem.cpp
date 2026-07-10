@@ -278,9 +278,19 @@ List rpemEstepK1(NumericMatrix parBig, int nGauss) {
 //   ncores: >1 solves each Monte Carlo sample's subjects in parallel via par_solve
 // Solves, accumulates n_i via log-sum-exp, stores per-sample log p / etas / cp /
 // DV for the M-step, and returns logn, lnL, and the etas.
+// Optional mode-centered importance sampling (rpemControl(impInflate=)): etaMat is
+// drawn per subject from N(ebe_i, cInflate*Omega) instead of the prior N(0, Omega),
+// covering the posterior tails of high-variance random effects the prior proposal
+// misses (which under-estimated the largest Omega in multi-eta models).  The stored
+// rpemOp.logp becomes the IMPORTANCE LOG-WEIGHT logw = logLik + log N(eta;0,Omega) -
+// log N(eta;ebe,cInflate*Omega), so every downstream weight / logn / MH acceptance is
+// the correct self-normalized posterior; the raw residual SS stays in rpemOp.ssv.
+// ebe=0, cInflate=1 (the default) reduces logw to logLik -- exactly the paper's prior
+// sampling.  Returns the posterior mean (ebe) for the next iteration's proposal center.
 //[[Rcpp::export]]
 List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
-                     NumericMatrix etaMat, int nGauss, int ncores) {
+                     NumericMatrix etaMat, int nGauss, int ncores,
+                     NumericMatrix ebeCenter, NumericVector omVec, double cInflate) {
   int nEta = etaIdx.size();
 
   RObject pred = e["predOnly"];
@@ -325,6 +335,25 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
   std::vector<double> lognV(nsub, 0.0);
 
+  // Importance-weight buffers: proposal center ebe_i (nsub x nEta) and prior variances.
+  if (ebeCenter.nrow() != nsub || ebeCenter.ncol() != nEta) stop("ebeCenter must be nsub x nEta");
+  if ((int)omVec.size() != nEta) stop("omVec must have nEta entries");
+  std::vector<double> ebeBuf((size_t)nsub * nEta), omBuf(nEta);
+  for (size_t k = 0; k < (size_t)nsub * nEta; ++k) ebeBuf[k] = ebeCenter[k];
+  for (int a = 0; a < nEta; ++a) omBuf[a] = omVec[a];
+  double halfNetaLogC = 0.5 * nEta * log(cInflate);
+  // logw - logLik: prior N(eta;0,Om) over proposal N(eta;ebe,cInflate*Om), diagonal Om.
+  auto logRatio = [&](int id, int j) -> double {
+    double lr = halfNetaLogC;
+    for (int a = 0; a < nEta; ++a) {
+      double eta = rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+      double om = omBuf[a];
+      double d = eta - ebeBuf[(size_t)id * nEta + a];
+      lr += -0.5 * eta * eta / om + 0.5 * d * d / (cInflate * om);
+    }
+    return lr;
+  };
+
   std::vector<double> row(rpemOp.ntheta), lp(nGauss);
   if (ncores > 1) {
     // Parallel E-step: for each Monte Carlo sample, set every subject's parameters
@@ -349,10 +378,10 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         double ssTmp = 0.0, wssTmp = 0.0;
         long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
         long so = rpemOp.idS[id];
-        double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
-                                       &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
-                                       &rpemOp.censv[so], &rpemOp.limv[so]);
-        rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+        double logLik = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                         &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                         &rpemOp.censv[so], &rpemOp.limv[so]);
+        rpemOp.logp[r] = logLik + logRatio(id, j); rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
     for (int id = 0; id < nsub; ++id) {
@@ -373,15 +402,16 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         double ssTmp = 0.0, wssTmp = 0.0;
         long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
         long so = rpemOp.idS[id];
-        double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
-                                        &rpemOp.cpv[ob], &rpemOp.dvv[ob],
-                                        &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
-                                        &rpemOp.censv[so], &rpemOp.limv[so]);
-        lp[j] = logp;
-        rpemOp.logp[r] = logp;
+        double logLik = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
+                                          &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                          &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                          &rpemOp.censv[so], &rpemOp.limv[so]);
+        double lw = logLik + logRatio(id, j);
+        lp[j] = lw;
+        rpemOp.logp[r] = lw;
         rpemOp.ssv[r] = ssTmp;
         rpemOp.wssv[r] = wssTmp;
-        if (logp > mx) mx = logp;
+        if (lw > mx) mx = lw;
       }
       double s = 0.0;
       for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
@@ -393,12 +423,28 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   NumericVector logn(nsub);
   NumericMatrix etaOut(nAll, nEta);
   NumericVector logpOut(nAll);        // layout [i*nGauss + j]
+  NumericMatrix ebeOut(nsub, nEta);   // posterior-mean eta (proposal center next iter)
   double lnL = 0.0;
   for (int id = 0; id < nsub; ++id) { logn[id] = lognV[id]; lnL += lognV[id]; }
   for (size_t k = 0; k < (size_t)nAll * nEta; ++k) etaOut[k] = rpemOp.etaS[k];
   for (int k = 0; k < nAll; ++k) logpOut[k] = rpemOp.logp[k];
+  // EBE_i = sum_j w_ij eta_ij with w_ij = softmax_j(logw) -- the self-normalized
+  // importance weights (posterior mean), fed back as the next proposal center.
+  for (int id = 0; id < nsub; ++id) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nGauss; ++j) { double v = rpemOp.logp[(size_t)id * nGauss + j]; if (v > mx) mx = v; }
+    double sw = 0.0;
+    for (int j = 0; j < nGauss; ++j) sw += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
+    for (int a = 0; a < nEta; ++a) {
+      double acc = 0.0;
+      for (int j = 0; j < nGauss; ++j)
+        acc += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx) / sw *
+               rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+      ebeOut(id, a) = acc;
+    }
+  }
   return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut,
-                      _["logp"] = logpOut);
+                      _["logp"] = logpOut, _["ebe"] = ebeOut);
 }
 
 // Mixture E-step (mix(), split-ETA).  The mixed parameter's typical value is
@@ -554,9 +600,9 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
   if ((int)muIn.size() != nEta) stop("muIn must have nEta entries");
-  double resC = 0.5 * log(2.0 * M_PI) + log(addSd0);
+  (void)addSd0;
 
-  // Per-subject log n_i (= log of the MC-mean likelihood) from the stored log p.
+  // Per-subject log n_i (= log of the MC-mean importance weight) from the stored logw.
   std::vector<double> logn(nsub);
   for (int i = 0; i < nsub; ++i) {
     double mx = R_NegInf;
@@ -604,10 +650,10 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
         for (int b = 0; b < nEta; ++b)
           sumTT[(size_t)a * nEta + b] += tha * (muIn[b] + rpemOp.etaS[off + b]);
       }
-      // Additive residual: back out this sample's SS from its stored log p.
+      // Additive residual: this sample's raw SS = sum (dv - cp)^2 (stored in ssv;
+      // logp now holds the importance weight, so it can no longer back out SS).
       int nobsi = rpemOp.nobs[ci];
-      double SS = -2.0 * addSd0 * addSd0 * (clogp + nobsi * resC);
-      sumSS += SS; sumNobs += nobsi;
+      sumSS += rpemOp.ssv[(size_t)ci * nG + cj]; sumNobs += nobsi;
       ++m;
     }
   }

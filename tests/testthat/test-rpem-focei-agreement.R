@@ -47,7 +47,7 @@ test_that("RPEM E-M loop agrees with FOCEI on population mu and Omega (K=1)", {
     base[1] <- mu; base[4] <- sdHat            # estimate mu, Omega, AND add.sd
     rxode2::rxSetSeed(2000 + it)
     etaMat <- rxode2::rxRmvn(nsubF * nG, mu = 0, sigma = matrix(Om, 1, 1))
-    rpemEstepK1Draw(e, base, 4L, etaMat, nG, 1L)
+    rpemEstepK1Draw(e, base, 4L, etaMat, nG, 1L, matrix(0, nrow(etaMat)/nG, ncol(etaMat)), rep(1, ncol(etaMat)), 1.0)
     ms <- rpemMstepK1(mu, sdHat, 80000L, 8000L)
     mu <- ms$mu[1]; Om <- ms$omega[1, 1]; sdHat <- ms$addSd
     muTr[it] <- mu; omTr[it] <- Om; sdTr[it] <- sdHat

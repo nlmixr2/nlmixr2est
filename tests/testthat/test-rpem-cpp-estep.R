@@ -124,7 +124,7 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
 
   rxode2::rxSetSeed(1234)
   etaMat <- rxode2::rxRmvn(nG, mu = 0, sigma = omega)   # single subject: nAll = nG
-  res <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 1L)
+  res <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 1L, matrix(0, nrow(etaMat)/nG, ncol(etaMat)), rep(1, ncol(etaMat)), 1.0)
 
   # correctness: recompute lnL from the etas the C++ engine drew
   etas <- as.numeric(res$eta)
@@ -142,7 +142,7 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
   # reproducibility (C3.1): same threefry seed -> identical draws and lnL
   rxode2::rxSetSeed(1234)
   etaMat2 <- rxode2::rxRmvn(nG, mu = 0, sigma = omega)
-  res2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 1L)
+  res2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 1L, matrix(0, nrow(etaMat2)/nG, ncol(etaMat2)), rep(1, ncol(etaMat2)), 1.0)
   expect_equal(res2$eta, res$eta)
   expect_equal(res2$lnL, res$lnL)
 })
@@ -184,7 +184,7 @@ test_that("rpem C++ E-step is correct and deterministic (multi-subject)", {
 
   rxode2::rxSetSeed(7)
   etaMat <- rxode2::rxRmvn(nid * nG, mu = 0, sigma = omega)
-  r1 <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 2L)   # solve on 2 cores
+  r1 <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 2L, matrix(0, nrow(etaMat)/nG, ncol(etaMat)), rep(1, ncol(etaMat)), 1.0)   # solve on 2 cores
 
   # correctness under threading: recompute each subject's logn from its etas
   etas <- as.numeric(r1$eta)
@@ -204,7 +204,7 @@ test_that("rpem C++ E-step is correct and deterministic (multi-subject)", {
   # determinism (C3.1): same seed + same cores -> identical
   rxode2::rxSetSeed(7)
   etaMat2 <- rxode2::rxRmvn(nid * nG, mu = 0, sigma = omega)
-  r2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 2L)
+  r2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 2L, matrix(0, nrow(etaMat2)/nG, ncol(etaMat2)), rep(1, ncol(etaMat2)), 1.0)
   expect_equal(r2$logn, r1$logn)
   expect_equal(r2$lnL, r1$lnL)
 })

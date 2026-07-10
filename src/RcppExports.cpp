@@ -978,8 +978,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemEstepK1Draw
-List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix etaMat, int nGauss, int ncores);
-RcppExport SEXP _nlmixr2est_rpemEstepK1Draw(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP etaMatSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP) {
+List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix etaMat, int nGauss, int ncores, NumericMatrix ebeCenter, NumericVector omVec, double cInflate);
+RcppExport SEXP _nlmixr2est_rpemEstepK1Draw(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP etaMatSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP ebeCenterSEXP, SEXP omVecSEXP, SEXP cInflateSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -989,7 +989,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
     Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
     Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemEstepK1Draw(e, base, etaIdx, etaMat, nGauss, ncores));
+    Rcpp::traits::input_parameter< NumericMatrix >::type ebeCenter(ebeCenterSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omVec(omVecSEXP);
+    Rcpp::traits::input_parameter< double >::type cInflate(cInflateSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepK1Draw(e, base, etaIdx, etaMat, nGauss, ncores, ebeCenter, omVec, cInflate));
     return rcpp_result_gen;
 END_RCPP
 }
