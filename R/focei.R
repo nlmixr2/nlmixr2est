@@ -2411,7 +2411,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control <- ui$control
   .control$est <- est
   ui$control <- .control
-  .env <- ui$foceiOptEnv
+  # Building the optimization environment (`ui$foceiOptEnv`) is where the
+  # symengine translation, sensitivity generation, and rxode2 compilation
+  # happen -- the bulk of setup cost.  It is timed as "setup" (matching the
+  # historical setupTime, which was measured around rxSymPySetupPred) so it is
+  # not silently absorbed into the "other" bucket.
+  .env <- nlmixrWithTiming("setup", {
+    ui$foceiOptEnv
+  })
   .env$table <- env$table
   .data <- env$data
   .env$ui <- ui

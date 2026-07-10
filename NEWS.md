@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- The reported fit timing (`fit$time`) again attributes the symengine model
+  build and rxode2 compilation to `setup` (focei family) / `configure` (saem)
+  instead of leaking it into the `other` bucket.
 - `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
   `fast=FALSE` up front with a message instead of re-attempting the symengine
   augmented-model build (and silently falling back to finite differences) on every
