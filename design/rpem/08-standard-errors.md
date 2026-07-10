@@ -20,8 +20,10 @@ eval-only FOCEI reports the ui iniDf theta (maxOuter=0 holds the starting value)
 `.rpemBuildFit` now SEEDS iniDf$est with the RPEM estimates before the eval -- this
 also fixed a latent non-mixture estimate-display bug (parFixedDf showed ini values).
 Other structures (combined/tbs/power, >1 eta, structural betas, mixtures) keep the
-FOCEI-covariance (`covMethod="r,s"`) SEs. Follow-ups: omega diagonal SE into the
-reported varCov; scores for combined/power residual and structural betas; mixtures.
+FOCEI-covariance (`covMethod="r,s"`) SEs. The omega-variance SE is reported in the
+fit `$cov` (row/col `om.<eta>`, on the variance scale -- the score is already in
+those units so no delta method), matching SAEM. Follow-ups: Fisher scores for
+combined/power residual and structural betas; mixtures.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:
