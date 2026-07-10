@@ -163,9 +163,30 @@ Per active SAEM iteration, in C++ segments:
    using the copied-out proposals.
 
 The first segment's solve buffers are gone after the swap (shared memory) --
-hence the copy-out. Memory-efficient and API-change-free. The remaining risk is
-sizing/allocation compatibility (inner allocation must cover the SAEM solve) and
-correct save/restore of the function-table globals; this is the subject of P1-3.
+hence the copy-out. Memory-efficient and API-change-free.
+
+Empirical findings (scratch coexist.R, 2026-07-10) that fix the mechanism:
+- `likInner0` re-reads `rx = getRxSolve_()` each call, so the inner only works
+  when the inner model is the CURRENT global solve. An intervening unrelated
+  `rxSolve` makes the next inner call crash (`setIndParPtr i should be between
+  [0,0)`) -- the two cannot be "current" at once.
+- Re-running the inner setup (`vaeInnerSetup_`/`foceiSetup_`, which re-solves)
+  re-points the global back to the inner and reproduces bit-identical MAPs.
+  So switching TO the inner = re-run its setup (idempotent).
+- rxode2 caches up to 64 model solves, so the SAEM model's solve is NOT freed
+  when the inner becomes current. SAEM's `user_function` uses its captured `_rx`
+  pointer (not the global), so it keeps working while global == inner, PROVIDED
+  nothing in the SAEM M-step re-reads `getRxSolve_()` (to verify in P1-3).
+
+Concrete P1-3 integration (validated cores: `fsaemInnerMap_`, `fsaemImhKernel_`):
+pass the pre-built inner env into `saem_fit`. Each `firstN` iteration, in C++:
+(1) write the current SAEM estimate (Plambda->theta, Gamma2->omega) into the
+inner env and call `vaeInnerSetup_(innerEnv)` to make the inner current;
+(2) `fsaemInnerMap_` -> per-subject MAP + `Gamma_i`; `fsaemImhKernel_` -> accepted
+etas for the chains; (3) write etas into `phiM` (phi = mprior + eta, mu-ref/cov
+aware); the SAEM M-step then runs on its captured `_rx`. For iter >= N (and
+`fast=FALSE`) skip all of this and call the existing `do_mcmc` -- the degrade
+path, guarded bit-identical. Mirror into `do_mcmc_msaem` for mixtures.
 
 ### 4.4 R plumbing
 
