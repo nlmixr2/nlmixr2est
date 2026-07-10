@@ -10,7 +10,7 @@
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
                            "iscaleMin", "iscaleMax", "iaccept",
-                           "ctol", "nConvWindow", "impSeed")
+                           "ctol", "nConvWindow", "impSeed", "impCov")
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
@@ -44,6 +44,11 @@
 #'   `impmapControl()` this is always `"lin"` and cannot be changed.
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.
+#' @param impCov Experimental: when `TRUE`, compute a Monte-Carlo
+#'   observed-information covariance for the estimated thetas (a finite-difference
+#'   Hessian of the importance-sampling objective over fixed samples), stashed as
+#'   `$impSeTheta`.  Off by default; the Omega block and mu-referenced mode
+#'   tracking are not yet included.
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -62,6 +67,7 @@ impmapControl <- function(sigdig=3,
                           ctol=NULL,
                           nConvWindow=10L,
                           impSeed=42L,
+                          impCov=FALSE,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
   .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
@@ -75,6 +81,7 @@ impmapControl <- function(sigdig=3,
   .control$ctol <- if (is.null(ctol)) NULL else as.double(ctol)
   .control$nConvWindow <- as.integer(nConvWindow)
   .control$impSeed <- as.integer(impSeed)
+  .control$impCov <- as.logical(impCov)
   class(.control) <- "impmapControl"
   .control
 }

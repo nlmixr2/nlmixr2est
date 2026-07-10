@@ -452,3 +452,36 @@ test_that("M8: windowed convergence controller stops early and adapts gamma", {
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
 })
+
+test_that("C1: experimental MC theta covariance (impCov) is off by default and finite when on", {
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  # off by default: no covariance stash
+  .f0 <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 1L)))
+  expect_null(.f0$env$impSeTheta)
+  # opt-in: a positive, finite SE per estimated theta
+  .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 30L, isample = 300L,
+                                                impCov = TRUE)))
+  .se <- .fi$env$impSeTheta
+  .nth <- sum(!is.na(.fi$ui$iniDf$ntheta))
+  expect_length(as.numeric(.se), .nth)
+  expect_true(all(is.finite(.se) & .se > 0))
+  # theta covariance is symmetric positive-definite
+  .cov <- .fi$env$impCovTheta
+  expect_equal(.cov, t(.cov), tolerance = 1e-8)
+  expect_true(all(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+})

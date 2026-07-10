@@ -445,6 +445,7 @@ struct focei_options {
   double impIscaleMax = 10.0;// upper bound for adapted gamma
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
   int impNconvWindow = 10;   // trailing-iteration window for the convergence check
+  bool impCov = false;       // experimental: compute the MC observed-information theta covariance
   std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
@@ -4718,6 +4719,7 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
       op_focei.impCtol = as<double>(foceiO["ctol"]);
     if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
+    if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
     if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
       op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
     if (foceiO.containsElementNamed("impMuThetaIdx"))
@@ -8306,6 +8308,38 @@ double impCtol() {
 int impMuGroupN() {
   return (int)op_focei.muGroupN;
 }
+
+// ---- Monte-Carlo covariance support (imp.cpp orchestrates the sampling + FD) ----
+
+int impNtheta() { return (int)op_focei.ntheta; }
+
+bool impCovEnabled() { return op_focei.impCov; }
+
+// fullTheta indices of the estimated (non-fixed) thetas, in free-parameter order.
+void impGetEstThetaIdx(std::vector<int>& idx) {
+  idx.clear();
+  for (unsigned int k = 0; k < op_focei.npars; ++k) {
+    int j = op_focei.fixedTrans[k];
+    if (j >= 0 && j < (int)op_focei.ntheta) idx.push_back(j);
+  }
+}
+
+double impGetFullThetaVal(int idx) { return op_focei.fullTheta[idx]; }
+
+// Set theta fullTheta[idx] on every subject's parameter pointer (FD perturbation).
+void impSetThetaAll(int idx, double val) {
+  rx = getRxSolve_();
+  op_focei.fullTheta[idx] = val;
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndParPtr(ind, op_focei.thetaTrans[idx], val);
+  }
+}
+
+// Force likInner0 to re-solve subject id on its next call (theta changed but its
+// eta may repeat a cached value, which would otherwise skip the re-solve).
+void impForceResolve(int id) { inds_focei[id].setup = 0; }
 
 // M-step helpers (EM loop lives in impOuter, src/imp.cpp).
 

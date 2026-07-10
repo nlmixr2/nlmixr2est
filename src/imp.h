@@ -76,6 +76,14 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
+// ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
+int impNtheta();                                   // number of thetas
+bool impCovEnabled();                              // whether impCov=TRUE was requested
+void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the estimated thetas
+double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
+void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on every subject (FD perturb)
+void impForceResolve(int id);                      // force likInner0 to re-solve subject id
+
 // Clear the persistent inner neqOverride (multi-endpoint pool) at fit end so it
 // does not leak into a subsequent fit sharing the global solve context.
 void impClearInnerNeqOverride();
@@ -84,6 +92,11 @@ void impClearInnerNeqOverride();
 void impUpdateStructThetas(const arma::vec& step);
 
 // ---- implemented in imp.cpp ----
+
+// Monte-Carlo observed-information covariance for the estimated thetas: FD
+// Hessian of the importance-sampling -2LL over fixed (common-random-number)
+// samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
+void impComputeCov(Rcpp::Environment e);
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"
 // (in place of foceiOuter).  Module M1: a single MAP pass plus per-subject

@@ -150,6 +150,139 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   }
 }
 
+// Monte-Carlo observed-information covariance for the estimated thetas.
+//
+// At the converged estimate this recomputes each subject's proposal (mode +
+// Hessian), draws one fixed set of importance samples, and takes the finite-
+// difference Hessian of the importance-sampling -2LL with respect to the thetas.
+// Because the SAME samples are reused for every perturbation (common random
+// numbers) the reweighted objective is a deterministic smooth function of the
+// parameters, so the FD Hessian is well behaved.  The observed information is
+// 0.5 * d2(-2LL)/dtheta2 and the covariance is its inverse.  Omega is held
+// fixed here (the theta block); the Omega block is a later increment.
+void impComputeCov(Environment e) {
+  int nsub = impNsub();
+  int neta = impNeta();
+  int isample = impNsample();
+  double gamma = impGammaProp();
+  double invGamma2 = 1.0 / (2.0 * gamma);
+  double negHalfLogDetOmega = impLogDetOmegaInv5();
+
+  std::vector<int> th;
+  impGetEstThetaIdx(th);
+  int np = (int)th.size();
+  if (np == 0) return;
+
+  // Per-subject proposal: mode, information H, lower Cholesky of gamma*H^-1, and
+  // one fixed sample matrix.
+  std::vector<arma::vec> modes(nsub);
+  std::vector<arma::mat> Hs(nsub), Ls(nsub), Ss(nsub);
+  std::vector<double> logDetH(nsub, 0.0);
+  std::vector<char> ok(nsub, 0);
+  arma::vec mode(neta);
+  arma::mat H(neta, neta, arma::fill::zeros);
+  for (int id = 0; id < nsub; ++id) {
+    impGetMode(id, mode);
+    modes[id] = mode;
+    if (impGetHessian(id, H)) {
+      H = 0.5 * (H + H.t()); // guard against tiny numerical asymmetry
+      arma::mat Sigma; double ldv, lds;
+      if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
+        Sigma *= gamma;
+        arma::mat L;
+        if (arma::chol(L, Sigma, "lower")) {
+          Hs[id] = H; Ls[id] = L; logDetH[id] = ldv; ok[id] = 1;
+        }
+      }
+    }
+  }
+  // Draw one fixed sample set per subject (serial, deterministic seed).
+  seedEng(1);
+  uint32_t seed0 = getRxSeed1(1);
+  setRxThreadId(0);
+  for (int id = 0; id < nsub; ++id) {
+    if (!ok[id]) continue;
+    setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
+    arma::mat S(isample, neta);
+    for (int k = 0; k < isample; ++k) {
+      arma::vec z(neta);
+      for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+      S.row(k) = (modes[id] + Ls[id] * z).t();
+    }
+    Ss[id] = S;
+  }
+  setRxThreadId(-1);
+
+  // Importance-sampling -2LL at a theta vector, reusing the fixed samples.
+  auto evalObj = [&](const arma::vec& par) -> double {
+    for (int j = 0; j < np; ++j) impSetThetaAll(th[j], par[j]);
+    double obj = 0.0;
+    for (int id = 0; id < nsub; ++id) {
+      if (!ok[id]) continue;
+      impForceResolve(id);
+      arma::vec q(isample); int nGood = 0;
+      for (int k = 0; k < isample; ++k) {
+        arma::vec eta = Ss[id].row(k).t();
+        arma::vec d = eta - modes[id];
+        double qk = -impEvalJointLik(eta, id) +
+          invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
+        if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
+      }
+      if (nGood == 0) continue;
+      double qmax = q.max();
+      double sumw = arma::accu(arma::exp(q - qmax));
+      double logMeanExp = qmax + std::log(sumw / (double)isample);
+      double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) - 0.5 * logDetH[id];
+      obj += -2.0 * (logMeanExp + Ci);
+    }
+    return obj;
+  };
+
+  arma::vec par0(np);
+  for (int j = 0; j < np; ++j) par0[j] = impGetFullThetaVal(th[j]);
+  double f0 = evalObj(par0);
+  arma::vec hstep(np);
+  for (int j = 0; j < np; ++j) {
+    double a = std::fabs(par0[j]);
+    hstep[j] = 1e-3 * (a > 1e-3 ? a : 1.0);
+  }
+  arma::vec fp(np), fm(np);
+  for (int j = 0; j < np; ++j) {
+    arma::vec p = par0; p[j] = par0[j] + hstep[j]; fp[j] = evalObj(p);
+    p = par0; p[j] = par0[j] - hstep[j]; fm[j] = evalObj(p);
+  }
+  arma::mat Hess(np, np, arma::fill::zeros);
+  for (int j = 0; j < np; ++j)
+    Hess(j, j) = (fp[j] - 2.0 * f0 + fm[j]) / (hstep[j] * hstep[j]);
+  for (int a = 0; a < np; ++a) {
+    for (int b = a + 1; b < np; ++b) {
+      arma::vec p = par0; p[a] += hstep[a]; p[b] += hstep[b]; double fpp = evalObj(p);
+      p = par0; p[a] += hstep[a]; p[b] -= hstep[b]; double fpm = evalObj(p);
+      p = par0; p[a] -= hstep[a]; p[b] += hstep[b]; double fmp = evalObj(p);
+      p = par0; p[a] -= hstep[a]; p[b] -= hstep[b]; double fmm = evalObj(p);
+      double v = (fpp - fpm - fmp + fmm) / (4.0 * hstep[a] * hstep[b]);
+      Hess(a, b) = v; Hess(b, a) = v;
+    }
+  }
+  // Restore the converged thetas.
+  for (int j = 0; j < np; ++j) impSetThetaAll(th[j], par0[j]);
+  for (int id = 0; id < nsub; ++id) impForceResolve(id);
+
+  // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
+  arma::mat info = 0.25 * (Hess + Hess.t());
+  arma::mat cov;
+  if (!arma::inv_sympd(cov, info)) {
+    if (!arma::pinv(cov, info)) { cov = arma::mat(np, np, arma::fill::zeros); cov.fill(NA_REAL); }
+  }
+  arma::vec se(np);
+  for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
+  IntegerVector thIdxR(np);
+  for (int j = 0; j < np; ++j) thIdxR[j] = th[j] + 1; // 1-based fullTheta index
+  e["impCovTheta"] = wrap(cov);
+  e["impSeTheta"] = wrap(se);
+  e["impCovThetaIdx"] = thIdxR;
+}
+
 void impOuter(Environment e) {
   int nIter = impNiter();
   std::string diagXform = impDiagXform();
@@ -302,6 +435,11 @@ void impOuter(Environment e) {
   // Finalize the fit at the converged estimates.
   impSyncInitParToFullTheta();
   impMapPass(e);
+
+  // Monte-Carlo observed-information covariance (theta block) at the converged
+  // estimate, before the inner neqOverride is cleared (the inner solves use it).
+  // Experimental, opt-in via impmapControl(impCov=TRUE).
+  if (impCovEnabled()) impComputeCov(e);
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
