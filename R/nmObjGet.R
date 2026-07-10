@@ -43,14 +43,37 @@ nmObjGet <- function(x, ...) {
 #' @export
 nmObjGet.iniUi <- function(x, ...) {
   .env <- x[[1]]
+  .iniDf0 <- get("iniDf0", envir=.env)
+  if (is.null(.iniDf0)) return(NULL)
+  ## When the estimation method changes the model STRUCTURE (e.g. est="vae"
+  ## covariate selection), the original model is stashed as a full ui in iniDf0;
+  ## return it directly. Otherwise iniDf0 is the original iniDf data.frame -- swap
+  ## it into the (structurally identical) final ui.
+  if (!is.data.frame(.iniDf0)) {
+    .ui <- rxode2::rxUiDecompress(.iniDf0)
+    return(if (nlmixr2global$finalUiCompressed) rxode2::rxUiCompress(.ui) else .ui)
+  }
   .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
-  .iniDf <- get("iniDf0", envir=.env)
-  if (is.null(.iniDf)) return(NULL)
-  assign("iniDf", .iniDf, envir=.ui)
+  assign("iniDf", .iniDf0, envir=.ui)
   rxode2::rxUiCompress(.ui)
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 attr(nmObjGet.iniUi, "rstudio") <- emptyenv()
+
+#' @export
+nmObjGet.uiIni <- nmObjGet.iniUi
+
+#' @export
+nmObjGet.iniDf0 <- function(x, ...) {
+  .env <- x[[1]]
+  .iniDf0 <- get("iniDf0", envir=.env)
+  if (is.null(.iniDf0)) return(NULL)
+  ## a ui (structure changed) -> the original model's iniDf; else the data.frame
+  if (!is.data.frame(.iniDf0)) return(rxode2::rxUiDecompress(.iniDf0)$iniDf)
+  .iniDf0
+}
+attr(nmObjGet.iniDf0, "desc") <- "The initial estimate data frame of the original model"
+attr(nmObjGet.iniDf0, "rstudio") <- emptyenv()
 
 #' Set if the nlmixr2 object will return a compressed ui
 #'

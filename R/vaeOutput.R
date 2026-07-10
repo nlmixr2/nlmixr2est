@@ -151,12 +151,31 @@
   list(cov = cov, names = nm, objective = f0)
 }
 
-#' Assemble the VAE result object from a trained VAE WITHOUT running
-#' focei estimation. The model is updated with the selected covariate effects and
-#' the VAE estimates; the linearization -2LL (objective) and the linearization-
-#' Hessian covariance are computed from the VAE; then nlmixr2CreateOutputFromUi
-#' assembles the standard fit (parFixed/SEs, residuals, tables) at the VAE
-#' solution -- the encoder etas are used directly as the EBEs (no re-estimation).
+#' A zero-iteration focei control for the VAE output engine. nlmixr2's residual /
+#' table generation (CWRES etc.) runs through the focei engine at the SUPPLIED
+#' etas (maxInner=maxOuter=0, covMethod=0) -- it assembles tables, it does NOT
+#' re-estimate. Mirrors .nlmerControlToFoceiControl.
+#' @noRd
+.vaeControlToFoceiControl <- function(env, assign = TRUE) {
+  .c <- env$vaeControl
+  .fc <- foceiControl(rxControl = .c$rxControl, maxOuterIterations = 0L,
+                      maxInnerIterations = 0L, covMethod = 0L, etaMat = env$etaMat,
+                      sumProd = .c$sumProd, optExpression = .c$optExpression,
+                      literalFix = .c$literalFix, literalFixRes = FALSE, scaleTo = 0,
+                      calcTables = .c$calcTables, addProp = .c$addProp,
+                      interaction = 1L, compress = .c$compress, ci = .c$ci,
+                      sigdigTable = .c$sigdigTable, indTolRelax = TRUE)
+  if (assign) env$control <- .fc
+  .fc
+}
+
+#' Assemble the standard nlmixr2FitData from a trained VAE WITHOUT running focei
+#' estimation. The model is updated with the selected covariate effects and the
+#' VAE estimates; the linearization -2LL and linearization-Hessian covariance are
+#' computed from the VAE; then nlmixr2CreateOutputFromUi assembles the standard
+#' fit (parFixed/SEs, residuals, tables) at the VAE solution, with the encoder
+#' etas supplied as the EBEs. Follows babelmixr2 nlmer.R. The ORIGINAL (pre-
+#' covariate) ui is stashed in $iniDf0 for the iniUi/iniDf0 accessors.
 #' @noRd
 .vaeToFit <- function(env, fit) {
   .ui <- env$ui
@@ -170,18 +189,41 @@
   .obj <- .vaeLinObj(precomp, fit$omega, lapply(precomp, function(p) p$etaHat), 1)
   .cov <- .vaeCov(fit, .ui2, precomp)
 
-  ## Structured VAE result: updated (final) covariate model, original model,
-  ## linearization -2LL, linearization-Hessian covariance, EBEs, and estimates.
-  ## (The standard nlmixr2FitData wrapper via nlmixr2CreateOutputFromUi and the
-  ## iniUi/iniDf0 original-vs-final accessors are the remaining Phase 6 wiring.)
-  .eta <- data.frame(ID = seq_len(prep$N))
-  for (k in seq_len(prep$zDim)) .eta[[prep$etaNames[k]]] <- (fit$mu - fit$zPopMat)[, k]
-  .omega <- diag(fit$omega, prep$zDim); dimnames(.omega) <- list(prep$etaNames, prep$etaNames)
-  .out <- list(finalUi = .ui2, uiIni = .ui, objective = .obj$objective, obji = .obj$obji,
-               cov = if (is.null(.cov)) NULL else .cov$cov,
-               eta = .eta, omega = .omega, zPop = fit$zPop, a = fit$a,
-               beta = fit$beta, selected = fit$selected, covNames = fit$covNames,
-               elboTrace = fit$elboTrace)
-  class(.out) <- "vaeFit"
-  .out
+  ## assemble the output env (mirrors babelmixr2 nlmer .nlmerFamilyFit)
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
+  .foceiPreProcessData(env$data, .ret, .ui2, .control$rxControl)
+  .ret$ui <- .ui2
+  .ret$adjObf <- .control$adjObf
+  .idf <- .ui2$iniDf
+  .thR <- .idf[!is.na(.idf$ntheta), , drop = FALSE]; .thR <- .thR[order(.thR$ntheta), ]
+  .ret$fullTheta <- setNames(.thR$est, .thR$name)
+  if (!is.null(.cov)) { .ret$cov <- .cov$cov; .ret$covMethod <- "linear" }
+  .etaMat <- fit$mu - fit$zPopMat
+  colnames(.etaMat) <- prep$etaNames
+  .ret$etaMat <- .etaMat
+  .ret$etaObf <- data.frame(ID = seq_len(nrow(.etaMat)), as.data.frame(.etaMat),
+                            OBJI = .obj$obji)
+  .ret$omega <- diag(fit$omega, prep$zDim); dimnames(.ret$omega) <- list(prep$etaNames, prep$etaNames)
+  .ret$control <- .control
+  .ret$extra <- " by variational autoencoder (VAE)"
+  .nlmixr2FitUpdateParams(.ret)
+  nmObjHandleControlObject(.ret$control, .ret)
+  if (exists("control", .ui2)) rm(list = "control", envir = .ui2)
+  .ret$est <- "vae"
+  .ret$objective <- .obj$objective
+  .ret$model <- .ui2$ebe
+  .ret$ofvType <- "vae"
+  .vaeControlToFoceiControl(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
+  .fit <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData, control = .ret$control,
+                                    table = .ret$table, env = .ret, est = "vae")
+  .env <- .fit$env
+  .env$method <- "vae"
+  .env$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
+                   covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a)
+  ## the model STRUCTURE changed (covariate selection); stash the ORIGINAL ui so
+  ## $uiIni / $iniDf0 report the original model, $finalUi the covariate model
+  .env$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
+  .fit
 }

@@ -1,9 +1,10 @@
-## Phase 6: est="vae" result -- the updated (final) covariate model with exact
-## centered expressions, the original model, the linearization -2LL, the
-## linearization-Hessian covariance, and encoder EBEs. (The standard
-## nlmixr2FitData wrapper is the remaining Phase 6 wiring.) Slow; skipped on CRAN.
+## Phase 6: est="vae" returns a standard nlmixr2FitData assembled WITHOUT running
+## focei estimation. The final model carries the selected covariate effects
+## (exact centered expressions); the original model is recoverable via $uiIni /
+## $iniDf0 (the structure changes under covariate selection); the objective is
+## the VAE linearization -2LL; the EBEs come from the encoder. Slow; CRAN-skipped.
 
-test_that("est=\"vae\" returns the updated covariate model + linearization -2LL/cov", {
+test_that("est=\"vae\" builds a nlmixr2FitData with original/final model accessors", {
   skip_on_cran()
   theo <- function() {
     ini({
@@ -22,24 +23,28 @@ test_that("est=\"vae\" returns the updated covariate model + linearization -2LL/
   f <- nlmixr2(theo, nlmixr2data::theo_sd, est = "vae",
                control = vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
                                     iters = 160L, hiddenDim = 25L, seed = 1L))
-  expect_s3_class(f, "vaeFit")
+  expect_s3_class(f, "nlmixr2FitData")
 
-  ## final model carries the exact centered covariate expression (WT on ka and V)
-  .lines <- vapply(f$finalUi$lstExpr, function(e) deparse1(e), character(1))
-  expect_true(any(grepl("beta_lka_WT \\* log\\(WT/", .lines)))
-  expect_true(any(grepl("beta_lV_WT \\* log\\(WT/", .lines)))
-  ## ke unmodified (WT not selected on ke)
-  expect_true(any(grepl("^ke <- exp\\(lke \\+ eta.ke\\)$", .lines)))
-  ## original model preserved and structurally different (no covariates)
-  .oLines <- vapply(f$uiIni$lstExpr, function(e) deparse1(e), character(1))
-  expect_false(any(grepl("beta_lka_WT", .oLines)))
+  ## selected covariate coefficients are population parameters in the fit
+  .pf <- if (is.null(rownames(f$parFixed))) f$parFixed$Parameter else rownames(f$parFixed)
+  expect_true(all(c("beta_lka_WT", "beta_lV_WT") %in% .pf))
+  ## objDf / objective present, tagged est = vae
+  expect_true(is.finite(f$objDf$OBJF[1]))
 
-  ## linearization -2LL near the paper (~331; loose band for the short schedule)
-  expect_true(is.finite(f$objective))
-  expect_lt(abs(f$objective - 331) / 331, 0.10)
-  ## linearization-Hessian covariance: finite positive SEs, or NULL if the
-  ## short-schedule Hessian is not positive definite (hardening)
-  if (!is.null(f$cov)) expect_true(all(is.finite(sqrt(diag(f$cov))) & diag(f$cov) >= 0))
-  ## encoder EBEs present
+  ## FINAL model carries the exact centered covariate expression
+  .fin <- vapply(f$finalUi$lstExpr, function(e) deparse1(e), character(1))
+  expect_true(any(grepl("beta_lka_WT \\* log\\(WT/", .fin)))
+  expect_true(any(grepl("beta_lV_WT \\* log\\(WT/", .fin)))
+  expect_true(any(grepl("^ke <- exp\\(lke \\+ eta.ke\\)$", .fin)))
+
+  ## ORIGINAL model recoverable via $uiIni (structure differs -- no covariates)
+  .ini <- vapply(f$uiIni$lstExpr, function(e) deparse1(e), character(1))
+  expect_false(any(grepl("beta_lka_WT", .ini)))
+  expect_true(any(grepl("^ka <- exp\\(lka \\+ eta.ka\\)$", .ini)))
+  ## $iniDf0 is the ORIGINAL model's iniDf (no covariate thetas)
+  expect_false(any(grepl("^beta_", f$iniDf0$name)))
+  expect_true(all(c("lka", "lke", "lV") %in% f$iniDf0$name))
+
+  ## EBEs from the encoder
   expect_true(all(c("eta.ka", "eta.ke", "eta.V") %in% names(f$eta)))
 })

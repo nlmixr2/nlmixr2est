@@ -216,18 +216,24 @@ DONE + verified (test-vae-fit.R):
   encoder z, the -2LL is an explicit fn of (intercepts, betas, omega, a).
 - .vaeCov: linearization-Hessian covariance = 2*solve(Hessian of -2LL) (cheap,
   no ODE re-solves); returns NULL on a non-PD Hessian (hardened).
-- .vaeToFit currently returns a `vaeFit` list: finalUi (covariate model), uiIni
-  (original model), objective (lin -2LL), cov, eta (EBEs), estimates, selection.
-  Do NOT run focei (user directive).
-REMAINING (handoff):
-- Wrap into a real nlmixr2FitData via nlmixr2CreateOutputFromUi WITHOUT focei --
-  follow ~/src/babelmixr2-nlmer/R/nlmer.R (cleaner than saem/focei). Blocked on
-  the output-env contract ("argument 'args' is missing").
-- Original-vs-final model accessors: store the ORIGINAL ui in fit$env$iniDf0;
-  update nmObjGet.iniDf0 (-> original iniDf) and nmObjGet.iniUi/add nmObjGet.uiIni
-  (-> original ui) to handle iniDf0 being a ui (model changes under optimization).
-- Harden .vaeCov (PD Hessian at converged fit); MAP-EBE re-opt for exact -2LL;
-  dual OFV (add IS -2LL, IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark.
+- .vaeToFit builds a real nlmixr2FitData WITHOUT running focei (follows
+  babelmixr2 nlmer.R .nlmerFamilyFit): .foceiPreProcessData -> fullTheta, omega,
+  cov (=.vaeCov), etaMat/etaObf (encoder EBEs), objective (=lin -2LL),
+  model=ui2$ebe (KEY -- saemModelPred caused "args missing"),
+  .vaeControlToFoceiControl attaches a 0-iter focei control for the residual/
+  table ENGINE (assembles tables at supplied etas; does NOT estimate), then
+  nlmixr2CreateOutputFromUi(est="vae"). class nlmixr2FitData/nlmixr2.vae; OBJF =
+  lin -2LL minus the 2pi constant (AIC/BIC use the full -2LL).
+- Original-vs-final accessors: original ui stashed in fit$env$iniDf0;
+  nmObjGet.iniUi/added nmObjGet.uiIni return the ORIGINAL ui when iniDf0 is a ui
+  (else prior behavior); added nmObjGet.iniDf0 returns the original iniDf. Fully
+  backward-compatible (data.frame path unchanged for all other methods).
+- Verified (test-vae-fit.R, 11/11): FitData with beta_lka_WT/beta_lV_WT, objDf,
+  final covariate model, $uiIni/$iniDf0 recover the original (no-covariate) model,
+  encoder EBEs.
+REMAINING: harden .vaeCov (PD Hessian at converged fit -> SEs; NULL on short
+runs); MAP-EBE re-opt for exact -2LL; dual OFV (add IS -2LL, IS active for
+AIC/BIC/BICc); SAEM/FOCEI benchmark; addCwres/VPC.
 
 Phase 7 -- Error-model parity.
 - Proportional/combined, transform-both-sides, and M2/M3/M4 censoring in the
