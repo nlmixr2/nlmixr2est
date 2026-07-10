@@ -1,4 +1,6 @@
 #include <math.h>
+#include <string.h>
+#include <stdio.h>
 #include "solveWarnHelper.h"
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
@@ -42,6 +44,9 @@ struct scaling {
   // keyExtra: estimator-specific text appended to the "Key:" legend line;
   // NULL for the standard Key. focei uses this for its gradient-method legend.
   const char *keyExtra;
+  // phaseLabel: optional label (e.g. "Burn in") shown centered in the X row's
+  // otherwise-blank Function-Val cell; NULL/empty = blank (used by vae).
+  const char *phaseLabel;
   // printCount: count of parameter-print events so far; gates header re-prints
   // when headerEvery > 0.
   int printCount;
@@ -129,6 +134,7 @@ static inline void scaleSetup(scaling *scale,
   scale->simple = 0;
   scale->showOfv = 1;
   scale->keyExtra = NULL;
+  scale->phaseLabel = NULL;
   scale->headerEvery = 10;
   scale->printCount = 0;
   scale->save = 1;
@@ -728,8 +734,28 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
     if (!scale->simple && !skipX) {
-      if (scale->showOfv) RSprintf("|    X|               |");
-      else                RSprintf("|    X|");
+      if (scale->showOfv) {
+        if (scale->phaseLabel != NULL && scale->phaseLabel[0] != '\0') {
+          // Center the phase label in the 15-char Function-Val cell.
+          char cell[16];
+          int len = (int)strlen(scale->phaseLabel);
+          if (len > 15) len = 15;
+          int pad = (15 - len)/2;
+          memset(cell, ' ', 15);
+          cell[15] = '\0';
+          memcpy(cell + pad, scale->phaseLabel, len);
+          RSprintf("|    X|%s|", cell);
+        } else {
+          RSprintf("|    X|               |");
+        }
+      } else if (scale->phaseLabel != NULL && scale->phaseLabel[0] != '\0') {
+        // No-OFV layout: fold the phase into the 5-char row tag ("SA: X").
+        char tag[6];
+        snprintf(tag, sizeof(tag), "%.2s: X", scale->phaseLabel);
+        RSprintf("|%5s|", tag);
+      } else {
+        RSprintf("|    X|");
+      }
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
         RSprintf("%#10.4g |",
@@ -778,8 +804,8 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
     // Gradient row label by `type` (1=Gill,2=Mixed,3=Forward,4=Central,5=Shi21,
-    // 8=analytic forward sensitivity); other codes fall through to generic
-    // "Gradient".
+    // 8=nlm forward sensitivity, 9=analytic outer gradient); other codes fall
+    // through to generic "Gradient".
     const char *label = NULL;
     if (scale->showOfv) {
       switch (type) {
@@ -788,7 +814,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|    Forward    |"; break;  // Forward
       case 4:  label = "    C|    Central    |"; break;  // Central
       case 5:  label = "    S|     Shi21     |"; break;  // Shi21
-      case 8:  label = "    A|    Analytic   |"; break;  // analytic sensitivity
+      case 9:  label = "    A|    Analytic   |"; break;  // analytic gradient
       default: label = "    G|    Gradient   |"; break;
       }
     } else {
@@ -798,7 +824,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|"; break;  // Forward
       case 4:  label = "    C|"; break;  // Central
       case 5:  label = "    S|"; break;  // Shi21
-      case 8:  label = "    A|"; break;  // analytic sensitivity
+      case 9:  label = "    A|"; break;  // analytic gradient
       default: label = "    G|"; break;
       }
     }
@@ -875,7 +901,7 @@ static inline RObject scaleParHisDf(scaling *scale) {
   tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                "Forward Difference", "Central Difference",
                                                "Scaled", "Unscaled", "Back-Transformed",
-                                               "Forward Sensitivity");
+                                               "Forward Sensitivity", "Analytic Gradient");
   tmp.attr("class") = "factor";
   ret[1] = tmp;
   arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());

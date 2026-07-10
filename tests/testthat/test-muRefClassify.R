@@ -234,3 +234,23 @@ test_that(".muRefGroups only marks the bounded covariate when a group has severa
   expect_false(.cv$bounded[.cv$covariateParameter == "allo.cl"])
   expect_true(.cv$bounded[.cv$covariateParameter == "allo.cl2"])
 })
+
+test_that(".muRefCppCovData evaluates covariate expressions that are not data columns (#711)", {
+  dataSav <- data.frame(
+    ID = c(2L, 2L, 1L, 1L),
+    WT = c(80, 80, 60, 60),
+    logWT = log(c(80, 80, 60, 60) / 70)
+  )
+  # bare columns still subset directly
+  .m <- .muRefCppCovData(c("logWT", "WT"), dataSav)
+  expect_equal(dim(.m), c(2L, 2L))
+  expect_equal(.m[, 1], log(c(60, 80) / 70))
+  expect_equal(.m[, 2], c(60, 80))
+  # expression names (e.g. from >=2 mu-ref covariate expressions) are
+  # evaluated against the baseline rows instead of erroring
+  .m2 <- .muRefCppCovData(c("log(WT/70)", "log(WT/70)", "WT"), dataSav)
+  expect_equal(dim(.m2), c(2L, 3L))
+  expect_equal(.m2[, 1], log(c(60, 80) / 70))
+  expect_equal(.m2[, 2], .m2[, 1])
+  expect_equal(.m2[, 3], c(60, 80))
+})

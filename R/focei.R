@@ -2344,7 +2344,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .ret$parHistData$type <- factor(.ret$parHistData$type,
                                     levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
                                              "Central Difference", "Scaled", "Unscaled",
-                                             "Back-Transformed", "Forward Sensitivity"))
+                                             "Back-Transformed", "Forward Sensitivity",
+                                             "Analytic Gradient"))
     .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }
