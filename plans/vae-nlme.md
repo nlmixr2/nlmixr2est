@@ -259,13 +259,22 @@ component gets its own MAP eta; mixnum=argmax assigned for the fit.
 - DONE: vaeFoceLik returns zStar for EVERY (component, subject) -- nMix*N rows
   component-major (mix-1 all subjects, then mix-2, ...); + obji (combined -2
   logsumexp) + mixest. test-vae-lik.R 8/8. nMix=1 unchanged.
-REMAINING mixture integration (kernel ready; needs a concrete mix() model to
-test e2e): (1) .vaeDataPrep detect nMix/mixProbs from ui; (2) .vaeLinPrecomp
-solve the decoder PER COMPONENT by setting mymixest=m in the event data (reuses
-the existing aug model -- it keeps the mymixest form) -> per-component
-f0/J0/R; (3) .vaeToFit build the concatenated etaMat (nMix*N) + mixNum/mixList
-from zStar/mixest, following saem .saemMixFix; (4) training decoder solve sets
-mymixest per subject. This is the last piece for FOCEI feature parity.
+REMAINING mixture integration -- BLOCKER FOUND (2026-07-10). Concrete d/dt mix
+model: ke <- mix(exp(lke1+eta.ke), p1, exp(lke2+eta.ke)). ui$saemNMix=2,
+ui$mixProbs="p1" detectable. loadPruneSens keeps rxEq(mixest,k) in the ODEs. BUT
+the decoder aug model from .foceiAnalyticAugModelDirs does NOT correctly select
+components: solving with mixest=1 vs 2 (whether via event-data col OR a scalar
+param) gives IDENTICAL, degenerate predictions (f~10 flat). The rxEq(mixest,k)
+form is converted away and unresponsive in the analytic cov aug model -- it was
+built for covariance (single model), not mixtures. The INNER model handles mix
+correctly (focei.R:1208-1214): predOnly is built from the PRUNED model (preserves
+mix(), nMix>0, rxode2 accepts per-id mixest from iCov); the sens model keeps the
+mixest==k form and inner.cpp manages selection. NEXT: build the VAE decoder's
+per-component solve from the inner-model machinery (pruned/predOnly + iCov mixest)
+or fix .foceiAnalyticAugModelDirs to preserve a working mixest selection -- study
+how the inner model assembly (with d/dt states + f/r) removes the mixture. THEN
+(3) .vaeToFit concatenated etaMat + mixNum/mixList from zStar/mixest; (4) training
+decoder sets mixest per subject. Kernel (vaeFoceLik) already ready.
 Other REMAINING: dual OFV (IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
 general error-model R-scale in cov (additive exact now).
 
