@@ -305,7 +305,8 @@ foceiControl(
   differences, and use the Eq-48 random-effect extrapolation for the
   next inner-problem starting values. Requires an analytic-scope model
   (single additive/proportional Gaussian endpoint); out-of-scope models
-  fall back to the finite-difference gradient with a message. When
+  fall back to the finite-difference gradient with a message (linCmt()
+  and log-likelihood models downgrade to `fast=FALSE` up front). When
   unspecified, the outer optimizer defaults to `"lbfgsb3c"` (vs
   `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods

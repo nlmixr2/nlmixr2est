@@ -253,7 +253,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55a901175210>
+#> <bytecode: 0x56165d45f980>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1084,7 +1084,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": adaptive Gaussian quadrature (nAGQ > 1) is out of analytic-covariance scope; using the finite-difference covariance instead
+#> covType="analytic": a linCmt() model is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 
