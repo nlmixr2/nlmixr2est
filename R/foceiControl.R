@@ -11,7 +11,10 @@
                            "foceiMuGroupMaxCycles",
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
-                           "covType")
+                           "covType",
+                           # TRUE when the outer optimizer was defaulted (not user
+                           # specified); lets *f wrappers re-default under fast=TRUE
+                           "outerOptDefault")
 
 #' Control Options for FOCEi
 #'
@@ -86,10 +89,10 @@
 #'     finite differences, and use the Eq-48 random-effect extrapolation for the
 #'     next inner-problem starting values.  Requires an analytic-scope model
 #'     (single additive/proportional Gaussian endpoint); out-of-scope models fall
-#'     back to the finite-difference gradient with a message.  The outer
-#'     optimizer defaults to \code{"nlminb"} (as for \code{fast=FALSE}), which
-#'     converges robustly with the analytic gradient; pairing \code{fast=TRUE}
-#'     with a derivative-free \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+#'     back to the finite-difference gradient with a message.  When unspecified,
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+#'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
@@ -1048,19 +1051,19 @@ foceiControl <- function(sigdig = 4, #
   if (!is.null(.xtra$outerOptTxt)) {
     .outerOptTxt <- .xtra$outerOptTxt
   }
+  .outerOptDefault <- isTRUE(.xtra$outerOptDefault)
   outerOptFun <- NULL
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
-    # Default outer optimizer (when the user did not specify one): nlminb for both
-    # base and fast methods.  nlminb converges robustly with the analytic ("fast")
-    # gradient; lbfgsb3c is faster on well-conditioned problems but can settle at a
-    # worse local optimum on ill-conditioned models (e.g. multi-compartment), which
-    # both changes the reported objective and leaves the observed-information
-    # covariance indefinite (the analytic cov then falls back to FD).  An explicit
-    # outerOpt (a single string) skips this.
+    # Default outer optimizer (when the user did not specify one): lbfgsb3c for
+    # the analytic-gradient ("fast") methods, nlminb for the finite-difference
+    # methods.  An explicit outerOpt (a single string) skips this;
+    # outerOptDefault records that the default was taken so a *f wrapper
+    # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- "nlminb"
+      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "nlminb"
+      .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
@@ -1333,6 +1336,7 @@ foceiControl <- function(sigdig = 4, #
     scaleCmax = as.double(scaleCmax),
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
+    outerOptDefault = .outerOptDefault,
     rmatNorm = rmatNorm,
     rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,

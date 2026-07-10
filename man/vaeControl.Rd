@@ -23,7 +23,7 @@ vaeControl(
   print = 1L,
   useColor = NULL,
   printNcol = NULL,
-  covMethod = c("linear", ""),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -103,41 +103,10 @@ iteration print. `NULL` (default) defers to [crayon::has_color()].}
 \item{printNcol}{Integer (or `NULL`) parameter columns per row before
 wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
-\item{covMethod}{Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of each individual's
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).
-
- "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
-
- "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM
- estimation to calculate the covariance.  Like \code{sa} it inverts the observed
- information to a full theta + \code{Omega} diagonal + residual covariance, but
- uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.
-
- "\code{sa}" Use the stochastic-approximation Fisher Information Matrix.  After
- estimation, a dedicated covariance phase (\code{nSaCov} iterations) holds the
- parameters at the converged estimate and keeps resimulating the individual
- parameters, Monte-Carlo averaging the Louis observed-information integrand into a
- converged FIM decoupled from the cooling schedule (the approach used by Monolix;
- Kuhn & Lavielle 2005).  Always includes every estimated population parameter
- (theta, the \code{Omega} diagonal variances, and residual).
-
- For both \code{fim} and \code{sa} the simulation-based Fisher information covers the
- structural theta, the \code{Omega} diagonal variances, and additive residual error.
- Off-diagonal \code{Omega} covariances and proportional/combined residual error are not
- estimated reliably by the simulation FIM (the complete-data correction is unstable when
- between-subject variability dominates the residual), so those variance-block standard
- errors are spliced in from the linearized FIM (\code{linFim}).
-
- "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-
- "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-
- "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
-
- "" Does not calculate the covariance step.}
+\item{covMethod}{Method for calculating the covariance at the VAE estimates,
+run through the FOCEi covariance step; the same choices as
+\code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
+\code{"r"}, \code{"s"}, or \code{""} to skip.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}

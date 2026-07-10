@@ -777,8 +777,9 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
-    // Gradient row label by `type` (1=Gill,2=Mixed,3=Forward,4=Central,5=Shi21);
-    // other codes (e.g. iterTypeSens=8) fall through to generic "Gradient".
+    // Gradient row label by `type` (1=Gill,2=Mixed,3=Forward,4=Central,5=Shi21,
+    // 8=analytic forward sensitivity); other codes fall through to generic
+    // "Gradient".
     const char *label = NULL;
     if (scale->showOfv) {
       switch (type) {
@@ -787,6 +788,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|    Forward    |"; break;  // Forward
       case 4:  label = "    C|    Central    |"; break;  // Central
       case 5:  label = "    S|     Shi21     |"; break;  // Shi21
+      case 8:  label = "    A|    Analytic   |"; break;  // analytic sensitivity
       default: label = "    G|    Gradient   |"; break;
       }
     } else {
@@ -796,6 +798,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|"; break;  // Forward
       case 4:  label = "    C|"; break;  // Central
       case 5:  label = "    S|"; break;  // Shi21
+      case 8:  label = "    A|"; break;  // analytic sensitivity
       default: label = "    G|"; break;
       }
     }

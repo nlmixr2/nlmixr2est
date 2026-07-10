@@ -656,7 +656,15 @@
     ui <- get("ui", e)
     Om <- get("omega", e)
     thNames <- get("thetaNames", e)
-    thVals  <- get("theta", e)$theta; names(thVals) <- thNames
+    ## live gradient calls: the C++ hook (analyticOuterGrad) refreshes
+    ## .gradTheta/omega/etaObf into the env each call -- the theta data.frame
+    ## (and omega/etaObf) are otherwise only written into the env at finalize
+    thVals <- if (exists(".gradTheta", e, inherits = FALSE)) {
+      get(".gradTheta", e)
+    } else {
+      get("theta", e)$theta
+    }
+    names(thVals) <- thNames
     st <- .foceiAnalyticGradSetup(ui, thVals, Om)
     if (is.null(st)) return(NULL)
     th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
@@ -741,6 +749,23 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
   }, error = function(e) NULL)
 }
 
+#' Theta names excluded from the outer optimizer's free-parameter set by the
+#' mu-referenced (lin/irls) regression -- mirrors inner.cpp isMuGroupSkip: the
+#' mu-group thetas plus the unbounded mu-group covariate coefficients (bounded
+#' ones stay outer-optimized).  Index arrays are 0-based (see
+#' `.muRefCppGroupSetup`).
+#' @noRd
+.foceiMuSkipThetaNames <- function(ui, thNames) {
+  if (identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
+    return(character(0))
+  }
+  .g <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0)))
+  .ct <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovTheta", integer(0)))
+  .cb <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovBounded", integer(0)))
+  if (length(.ct) > 0L && length(.cb) == length(.ct)) .ct <- .ct[.cb == 0L]
+  thNames[c(.g, .ct) + 1L]
+}
+
 #' Analytic outer gradient of the FOCE/FOCEI objective (Almquist 2015 Eq 23).
 #'
 #' Called from C++ (`analyticOuterGrad`) when `foceiControl(fast=TRUE)`.  The fit
@@ -759,10 +784,15 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
     g <- .r$g; gn <- names(g)
     # op_focei parameter order is fullTheta = [non-fixed thetas by ntheta order |
     # omega Cholesky params] (inner.cpp fullTheta layout).  Map the named
-    # natural-scale gradient onto that order; the C++ hook length-checks against
-    # op_focei.npars and falls back to FD on any mismatch.
+    # natural-scale gradient onto that order; the C++ hook stops on any length
+    # mismatch (a mapping bug must never silently degrade to FD).
+    # Mu-referenced (lin/irls) fits profile the mu-group thetas out of the outer
+    # free-parameter set (inner.cpp isMuGroupSkip); at the profiled optimum the
+    # envelope theorem makes the free-parameter partials the profiled gradient,
+    # so those thetas are simply dropped from the mapping.
     thNames <- get("thetaNames", e)
-    thOrder <- thNames[thNames %in% gn]                 # non-fixed structural+sigma thetas, in order
+    .muSkip <- .foceiMuSkipThetaNames(get("ui", e), thNames)
+    thOrder <- thNames[thNames %in% gn & !(thNames %in% .muSkip)] # outer-free structural+sigma thetas, in order
     omIdx <- grep("^om\\.chol\\.", gn)
     parOrder <- c(match(thOrder, gn), omIdx)            # gradient/etaP column order -> npars order
     gvec <- g[parOrder]

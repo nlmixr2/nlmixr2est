@@ -1235,7 +1235,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
     outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
-    outerMeta = if (is.null(.outerAm)) NULL else .outerAm[c("dirs", "ndir", "st", "P2")],
+    # ALL the aug-model metadata except the compiled model itself: the batched
+    # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
+    # subset breaks the live gradient (E$R/E$aR never filled)
+    outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
@@ -2313,7 +2316,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #' @author Matthew L. Fidler
 .parHistCalc <- function(.ret) {
   .tmp <- .ret$parHistData
-  .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
+  # an unscaled estimator (scaleTypeNone, e.g. vae) emits no "Unscaled" rows --
+  # its "Scaled" rows already hold the natural-scale values
+  .type <- if (any(.tmp$type == "Unscaled")) "Unscaled" else "Scaled"
+  .tmp <- .tmp[.tmp$type == .type, names(.tmp) != "type"]
   .iter <- .tmp$iter
   .tmp <- .tmp[, names(.tmp) != "iter"]
   data.frame(iter = .iter, .tmp, check.names=FALSE)
