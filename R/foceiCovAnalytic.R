@@ -480,6 +480,9 @@
     # single Gaussian endpoint; FO/FOI and anything else -> FD.
     if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
       return(.foceiAnalyticFallback("the FO/FOI method"))
+    # linCmt() has no symbolic state sensitivities for the augmented model
+    if (isTRUE(any(ui$predDf$linCmt)))
+      return(.foceiAnalyticFallback("a linCmt() model"))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
     # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
     # it only matters when interaction=0 (FOCEI always uses the live conditional R).
@@ -1953,6 +1956,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
     return(.foceiAnalyticFallback("the FO/FOI method"))
+  # linCmt() has no symbolic state sensitivities for the augmented model
+  if (isTRUE(any(ui$predDf$linCmt)))
+    return(.foceiAnalyticFallback("a linCmt() model"))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
