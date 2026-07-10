@@ -305,11 +305,11 @@ foceiControl(
   differences, and use the Eq-48 random-effect extrapolation for the
   next inner-problem starting values. Requires an analytic-scope model
   (single additive/proportional Gaussian endpoint); out-of-scope models
-  fall back to the finite-difference gradient with a message. When
-  unspecified, the outer optimizer defaults to `"lbfgsb3c"` (vs
-  `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
-  derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
-  (e.g. `foceif`) default this to `TRUE`.
+  fall back to the finite-difference gradient with a message. The outer
+  optimizer defaults to `"nlminb"` (as for `fast=FALSE`), which
+  converges robustly with the analytic gradient; pairing `fast=TRUE`
+  with a derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f`
+  methods (e.g. `foceif`) default this to `TRUE`.
 
 - hessEps:
 

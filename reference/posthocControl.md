@@ -230,7 +230,7 @@ posthocControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x565231511278>
+#> <bytecode: 0x55a6915a33c8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -325,6 +325,9 @@ posthocControl()
 #> 
 #> $outerOptTxt
 #> [1] "nlminb"
+#> 
+#> $outerOptDefault
+#> [1] TRUE
 #> 
 #> $rmatNorm
 #> [1] 1

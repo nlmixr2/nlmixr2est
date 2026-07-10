@@ -10,7 +10,7 @@ selection.
 
 ``` r
 vaeControl(
-  seed = 1L,
+  seed = 42L,
   itersBurnIn = 100L,
   klWarmup = 50L,
   gammaIter = 250L,
@@ -21,13 +21,14 @@ vaeControl(
   burnInLearningRate = 0.008,
   sigma0 = NULL,
   covariateSelection = TRUE,
+  likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
   nIsSample = 3000L,
   returnVae = FALSE,
   print = 1L,
   useColor = NULL,
   printNcol = NULL,
-  covMethod = c("linear", ""),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -54,7 +55,8 @@ vaeControl(
 - seed:
 
   Random seed for the VAE training (encoder init, Adam,
-  reparameterization sampling).
+  reparameterization sampling); default 42. Training is stochastic, so a
+  fixed seed makes every fit reproducible.
 
 - itersBurnIn:
 
@@ -104,6 +106,15 @@ vaeControl(
   selection during training; when \`FALSE\` fit the given fixed
   covariate structure only (faster population-only mode).
 
+- likelihood:
+
+  Inner likelihood used for the objective, EBEs, and gradients, all run
+  through the same FOCEi inner interface: \`"focei"\` (default, with
+  eta-epsilon interaction), \`"foce"\` (no interaction, NONMEM FOCE with
+  R frozen at the population prediction), \`"focep"\` (FOCE+, no
+  interaction but R evaluated at the live conditional eta), or
+  \`"laplace"\`.
+
 - objf:
 
   Which objective-function value is active for AIC/BIC/BICc. Both the
@@ -138,48 +149,10 @@ vaeControl(
 
 - covMethod:
 
-  Method for calculating covariance. In this discussion, R is the
-  Hessian matrix of the objective function. The S matrix is the sum of
-  each individual's gradient cross-product (evaluated at the individual
-  empirical Bayes estimates).
-
-  "`linFim`" Use the Linearized Fisher Information Matrix to calculate
-  the covariance.
-
-  "`fim`" Use the Fisher Information Matrix accumulated during SAEM
-  estimation to calculate the covariance. Like `sa` it inverts the
-  observed information to a full theta + `Omega` diagonal + residual
-  covariance, but uses the (noisier) estimation-phase matrix rather than
-  a dedicated cov phase.
-
-  "`sa`" Use the stochastic-approximation Fisher Information Matrix.
-  After estimation, a dedicated covariance phase (`nSaCov` iterations)
-  holds the parameters at the converged estimate and keeps resimulating
-  the individual parameters, Monte-Carlo averaging the Louis
-  observed-information integrand into a converged FIM decoupled from the
-  cooling schedule (the approach used by Monolix; Kuhn & Lavielle 2005).
-  Always includes every estimated population parameter (theta, the
-  `Omega` diagonal variances, and residual).
-
-  For both `fim` and `sa` the simulation-based Fisher information covers
-  the structural theta, the `Omega` diagonal variances, and additive
-  residual error. Off-diagonal `Omega` covariances and
-  proportional/combined residual error are not estimated reliably by the
-  simulation FIM (the complete-data correction is unstable when
-  between-subject variability dominates the residual), so those
-  variance-block standard errors are spliced in from the linearized FIM
-  (`linFim`).
-
-  "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
-  \\R^-1 \times S \times R^-1\\
-
-  "`r`" Uses the Hessian matrix to calculate the covariance as \\2\times
-  R^-1\\
-
-  "`s`" Uses the crossproduct matrix to calculate the covariance as
-  \\4\times S^-1\\
-
-  "" Does not calculate the covariance step.
+  Method for calculating the covariance at the VAE estimates, run
+  through the FOCEi covariance step; the same choices as
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md):
+  `"analytic"` (default), `"r,s"`, `"r"`, `"s"`, or `""` to skip.
 
 - optExpression:
 

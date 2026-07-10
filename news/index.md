@@ -2,6 +2,12 @@
 
 ## nlmixr2est (development version)
 
+- `est = "vae"` now assembles its fit with
+  [`nlmixr2CreateOutputFromUi()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2CreateOutputFromUi.md)
+  and computes its covariance directly in the focei covariance step;
+  `vaeControl(covMethod=)` now takes the focei choices (`"analytic"`
+  (default), `"r,s"`, `"r"`, `"s"`, `""`) instead of `"linear"`.
+
 - Fixed a segmentation fault in `est = "vae"`: the parallel
   inner-likelihood loop now caps its thread count at the rxode2 solve’s
   `op->cores` (1 for models rxode2 flags not thread safe,

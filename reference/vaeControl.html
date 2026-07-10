@@ -48,7 +48,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">vaeControl</span><span class="op">(</span></span>
-<span>  seed <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">42L</span>,</span>
 <span>  itersBurnIn <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  klWarmup <span class="op">=</span> <span class="fl">50L</span>,</span>
 <span>  gammaIter <span class="op">=</span> <span class="fl">250L</span>,</span>
@@ -59,13 +59,14 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  burnInLearningRate <span class="op">=</span> <span class="fl">0.008</span>,</span>
 <span>  sigma0 <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covariateSelection <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  likelihood <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"foce"</span>, <span class="st">"focep"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  objf <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"importanceSampling"</span>, <span class="st">"linear"</span><span class="op">)</span>,</span>
 <span>  nIsSample <span class="op">=</span> <span class="fl">3000L</span>,</span>
 <span>  returnVae <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linear"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  literalFix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -93,7 +94,8 @@ simultaneous population-parameter estimation and covariate selection.</p>
 
 <dl><dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
 <dd><p>Random seed for the VAE training (encoder init, Adam,
-reparameterization sampling).</p></dd>
+reparameterization sampling); default 42. Training is stochastic, so a fixed
+seed makes every fit reproducible.</p></dd>
 
 
 <dt id="arg-itersburnin">itersBurnIn<a class="anchor" aria-label="anchor" href="#arg-itersburnin"></a></dt>
@@ -144,6 +146,14 @@ covariate selection during training; when `FALSE` fit the given fixed
 covariate structure only (faster population-only mode).</p></dd>
 
 
+<dt id="arg-likelihood">likelihood<a class="anchor" aria-label="anchor" href="#arg-likelihood"></a></dt>
+<dd><p>Inner likelihood used for the objective, EBEs, and
+gradients, all run through the same FOCEi inner interface: `"focei"`
+(default, with eta-epsilon interaction), `"foce"` (no interaction, NONMEM
+FOCE with R frozen at the population prediction), `"focep"` (FOCE+, no
+interaction but R evaluated at the live conditional eta), or `"laplace"`.</p></dd>
+
+
 <dt id="arg-objf">objf<a class="anchor" aria-label="anchor" href="#arg-objf"></a></dt>
 <dd><p>Which objective-function value is active for AIC/BIC/BICc. Both
 the linearization and importance-sampling -2LL are always computed and
@@ -177,33 +187,10 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.</p></dd
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of each individual's
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).</p>
-<p>"<code>linFim</code>" Use the Linearized Fisher Information Matrix to calculate the covariance.</p>
-<p>"<code>fim</code>" Use the Fisher Information Matrix accumulated during SAEM
- estimation to calculate the covariance.  Like <code>sa</code> it inverts the observed
- information to a full theta + <code>Omega</code> diagonal + residual covariance, but
- uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.</p>
-<p>"<code>sa</code>" Use the stochastic-approximation Fisher Information Matrix.  After
- estimation, a dedicated covariance phase (<code>nSaCov</code> iterations) holds the
- parameters at the converged estimate and keeps resimulating the individual
- parameters, Monte-Carlo averaging the Louis observed-information integrand into a
- converged FIM decoupled from the cooling schedule (the approach used by Monolix;
- Kuhn &amp; Lavielle 2005).  Always includes every estimated population parameter
- (theta, the <code>Omega</code> diagonal variances, and residual).</p>
-<p>For both <code>fim</code> and <code>sa</code> the simulation-based Fisher information covers the
- structural theta, the <code>Omega</code> diagonal variances, and additive residual error.
- Off-diagonal <code>Omega</code> covariances and proportional/combined residual error are not
- estimated reliably by the simulation FIM (the complete-data correction is unstable when
- between-subject variability dominates the residual), so those variance-block standard
- errors are spliced in from the linearized FIM (<code>linFim</code>).</p>
-<p>"<code>r,s</code>" Uses the sandwich matrix to calculate the covariance, that is: \(R^-1 \times S \times R^-1\)</p>
-<p>"<code>r</code>" Uses the Hessian matrix to calculate the covariance as \(2\times R^-1\)</p>
-<p>"<code>s</code>" Uses the crossproduct matrix to calculate the covariance as \(4\times S^-1\)</p>
-<p>"" Does not calculate the covariance step.</p></dd>
+<dd><p>Method for calculating the covariance at the VAE estimates,
+run through the FOCEi covariance step; the same choices as
+<code><a href="foceiControl.html">foceiControl()</a></code>: <code>"analytic"</code> (default), <code>"r,s"</code>,
+<code>"r"</code>, <code>"s"</code>, or <code>""</code> to skip.</p></dd>
 
 
 <dt id="arg-optexpression">optExpression<a class="anchor" aria-label="anchor" href="#arg-optexpression"></a></dt>

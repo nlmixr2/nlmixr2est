@@ -346,10 +346,10 @@ analytically from Almquist (2015) sensitivity equations instead of by
 finite differences, and use the Eq-48 random-effect extrapolation for the
 next inner-problem starting values.  Requires an analytic-scope model
 (single additive/proportional Gaussian endpoint); out-of-scope models fall
-back to the finite-difference gradient with a message.  When unspecified,
-the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"nlminb"</code> for
-<code>fast=FALSE</code>); pairing <code>fast=TRUE</code> with a derivative-free
-<code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
+back to the finite-difference gradient with a message.  The outer
+optimizer defaults to <code>"nlminb"</code> (as for <code>fast=FALSE</code>), which
+converges robustly with the analytic gradient; pairing <code>fast=TRUE</code>
+with a derivative-free <code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
 <code>foceif</code>) default this to <code>TRUE</code>.</p></dd>
 
 
