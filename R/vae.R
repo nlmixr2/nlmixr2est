@@ -25,6 +25,10 @@
 #' @param sigma0 Encoder prior standard deviation(s) at initialization (a small
 #'   value giving a sharp initial posterior). `NULL` uses a small default per
 #'   individual parameter. This is distinct from the `ini()` omega.
+#' @param likelihood Inner likelihood used for the objective, EBEs, and
+#'   gradients, all run through the same FOCEi inner interface: `"focei"`
+#'   (default, with eta-epsilon interaction), `"foce"` (no interaction), or
+#'   `"laplace"`.
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
 #'   covariate selection during training; when `FALSE` fit the given fixed
 #'   covariate structure only (faster population-only mode).
@@ -49,6 +53,7 @@ vaeControl <- function(seed = 1L,
                        burnInLearningRate = 8e-3,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
+                       likelihood = c("focei", "foce", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
                        returnVae = FALSE,
@@ -104,6 +109,7 @@ vaeControl <- function(seed = 1L,
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
+  likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
   covMethod <- match.arg(covMethod)
   addProp <- match.arg(addProp)
@@ -162,6 +168,7 @@ vaeControl <- function(seed = 1L,
                burnInLearningRate = burnInLearningRate,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
+               likelihood = likelihood,
                objf = objf,
                nIsSample = as.integer(nIsSample),
                returnVae = returnVae,

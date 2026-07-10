@@ -292,8 +292,14 @@ inner), dataSav (.foceiPreProcessData), thetaIni (=ui$thetaIniMix), mixIdx
 (=ui$thetaMixIndex), rxInv (=rxSymInvCholCreate(omega)), etaMat, control} and
 calls foceiSetup_ (inner.cpp:8207). foceiSetup_ is R-exported.
 
+LIKELIHOOD CHOICE (user, vaeControl(likelihood=)): foce / focei / laplace,
+DEFAULT focei -- each is generated (the inner model / control differs: focei
+interaction=1, foce interaction=0, laplace) and run through the SAME inner
+interface (foceiSetup_ + likInner0/lpInner). Wire likelihood -> foceiControl
+(interaction / method) in the setup.
 BUILD (major focused effort): (1) R helper .vaeInnerSetup(ui2, data, theta, omega,
-etaMat, control) replicating that env prep + calling foceiSetup_ ONCE; (2) NEW
+etaMat, control) replicating that env prep + calling foceiSetup_ ONCE (with the
+likelihood-derived foceiControl); (2) NEW
 inner.cpp export vaeInnerLik(etaMat[nSub*nMix,neta], cores) -- parallel OpenMP loop
 (setRxThreadId) over ids calling likInner0 (+lpInner for gradient), combine per
 physical subject (mixture logsumexp already in vaeFoceLik logic), return obji +
