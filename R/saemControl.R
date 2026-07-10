@@ -213,6 +213,52 @@
 #'     value rather than the true variance. Prefer `"parallel"` unless
 #'     specifically evaluating this method.
 #'
+#' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
+#'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+#'   simulation of the individual random effects uses an independent
+#'   Metropolis-Hastings proposal centered at each subject's conditional
+#'   MAP estimate with a Laplace/linearization covariance, which converges
+#'   in far fewer SAEM iterations than the default random-walk Metropolis.
+#'   The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+#'   default this is `FALSE` (standard SAEM).  The `fast*` options below are
+#'   only consulted when `fast=TRUE`.
+#'
+#' @param fastKernel Schedule for the f-SAEM independent Metropolis-Hastings
+#'   (IMH) kernel:
+#'
+#'   * `"firstN"` (default): use the IMH kernel for the first `fastIter`
+#'     iterations, then revert to the standard random-walk kernels.  This is
+#'     the recipe used in the f-SAEM paper -- the early iterations only need
+#'     an approximate posterior, so the fast kernel accelerates the initial
+#'     convergence and the steady-state behavior is unchanged.
+#'
+#'   * `"throughout"`: use the IMH kernel on every iteration for the whole
+#'     run.  Simpler, but recomputing the MAP/covariance every iteration is
+#'     costlier and unnecessary near convergence.
+#'
+#'   * `"additive"`: append the IMH kernel alongside the standard random-walk
+#'     kernels on every iteration.  Most mixing, most cost.
+#'
+#' @param fastCov Covariance used for the IMH Gaussian proposal:
+#'
+#'   * `"auto"` (default): Jacobian linearization for continuous-data
+#'     endpoints, Hessian (Laplace) for non-continuous endpoints.
+#'
+#'   * `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
+#'     structural-model Jacobian at the MAP (continuous data only).
+#'
+#'   * `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
+#'     individual log-likelihood at the MAP (any data type).
+#'
+#' @param fastIter Integer number of initial iterations to run the IMH kernel
+#'   when `fastKernel="firstN"` (default 20).  Ignored by the other
+#'   schedules.
+#'
+#' @param fastLik Inner likelihood used for the Hessian proposal path, one of
+#'   `"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
+#'   individual likelihood is reused to build the proposal (and, when the
+#'   Hessian path is active, reported by SAEM).
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -277,6 +323,11 @@ saemControl <- function(seed = 99,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         censOption = c("gauss", "laplace"),
+                        fast = FALSE,
+                        fastKernel = c("firstN", "throughout", "additive"),
+                        fastCov = c("auto", "jacobian", "hessian"),
+                        fastIter = 20L,
+                        fastLik = c("focei", "foce", "focep"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -342,6 +393,12 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(mixProbStepExp, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   mixSampleMethod <- match.arg(mixSampleMethod)
+
+  checkmate::assertLogical(fast, any.missing=FALSE, len=1)
+  fastKernel <- match.arg(fastKernel)
+  fastCov <- match.arg(fastCov)
+  checkmate::assertIntegerish(fastIter, any.missing=FALSE, len=1, lower=1)
+  fastLik <- match.arg(fastLik)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -445,7 +502,12 @@ saemControl <- function(seed = 99,
     mixProbMethod=mixProbMethod,
     mixProbStepExp=mixProbStepExp,
     mixProbPriorN=mixProbPriorN,
-    mixSampleMethod=mixSampleMethod
+    mixSampleMethod=mixSampleMethod,
+    fast=fast,
+    fastKernel=fastKernel,
+    fastCov=fastCov,
+    fastIter=as.integer(fastIter),
+    fastLik=fastLik
   )
   class(.ret) <- "saemControl"
   .ret

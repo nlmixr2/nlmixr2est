@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- Added scaffolding for a fast-SAEM (f-SAEM) simulation step: `saemControl()`
+  gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik` options and a new
+  `est = "fsaem"` method (sugar for `saemControl(fast = TRUE)`).  The fast
+  kernel itself is not yet implemented, so `fast = TRUE` currently runs
+  standard SAEM.
 - Iteration printing now labels the estimation phase on the back-transformed (`X`)
   row: `est = "vae"` shows `Burn in` in the objective column during burn-in, and
   `est = "saem"` tags the row `SA: X` / `EM: X` for the burn-in and EM phases.
