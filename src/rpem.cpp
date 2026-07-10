@@ -873,9 +873,9 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
 
 // Number of residual score parameters for a given errType (design/rpem/08).
 //   0 add / 1 prop / 6 lnorm : single sd
-//   2 combined (add.sd, prop.sd) ; 4 power (prop.sd, power)
+//   2 combined (add.sd, prop.sd) ; 3 TBS (add.sd, lambda) ; 4 power (prop.sd, power)
 static inline int rpemNResPar(int errType) {
-  return (errType == 2 || errType == 4) ? 2 : 1;
+  return (errType == 2 || errType == 3 || errType == 4) ? 2 : 1;
 }
 
 // Unweighted residual-parameter score for one stored sample (i,j), written into
@@ -911,6 +911,27 @@ static inline void rpemResidScoreSample(int errType, int i, int j,
       }
     }
     sRes[0] = d0; sRes[1] = d1;
+    return;
+  }
+  if (errType == 3) {                         // TBS: add.sd (transformed scale) + lambda
+    double sd = resPar[0], lam = resPar[1], sd2 = sd * sd, sd3 = sd2 * sd;
+    long off = rpemOp.sampObsOff[i] + (long)j * nobsi, so0 = rpemOp.idS[i];
+    double h = 1e-4 * (fabs(lam) + 1.0);      // central FD step for the lambda score
+    double SSt = 0.0, Lp = 0.0, Lm = 0.0;
+    for (int o = 0; o < nobsi; ++o) {
+      double cp = rpemOp.cpv[off + o], dv = rpemOp.dvv[off + o];
+      int yj = rpemOp.yjv[so0 + o]; double low = rpemOp.lowv[so0 + o], hi = rpemOp.hiv[so0 + o];
+      double d = _powerD(dv, lam, yj, low, hi) - _powerD(cp, lam, yj, low, hi);
+      SSt += d * d;
+      // lambda score by central difference of the lambda-dependent residual + Jacobian
+      // loglik (the -0.5 log(2pi sd^2) constant is lambda-free and drops out):
+      double dp = _powerD(dv, lam + h, yj, low, hi) - _powerD(cp, lam + h, yj, low, hi);
+      double dm = _powerD(dv, lam - h, yj, low, hi) - _powerD(cp, lam - h, yj, low, hi);
+      Lp += -0.5 * dp * dp / sd2 + log(fabs(_powerDD(dv, lam + h, yj, low, hi)) + 1e-300);
+      Lm += -0.5 * dm * dm / sd2 + log(fabs(_powerDD(dv, lam - h, yj, low, hi)) + 1e-300);
+    }
+    sRes[0] = -(double)nobsi / sd + SSt / sd3; // d/d add.sd
+    sRes[1] = (Lp - Lm) / (2.0 * h);           // d/d lambda
     return;
   }
   double sd = resPar[0], sd3 = sd * sd * sd;  // add (0) / prop (1) / lnorm (6)

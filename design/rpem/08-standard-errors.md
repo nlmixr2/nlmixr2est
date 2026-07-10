@@ -21,13 +21,19 @@ eval-only FOCEI reports the ui iniDf theta (maxOuter=0 holds the starting value)
 also fixed a latent non-mixture estimate-display bug (parFixedDf showed ini values).
 Multiple diagonal etas are supported via `rpemFisherDiag` (one typical-value and one
 `om.<eta>` variance score per random effect); nEta==1 with covariates uses
-`rpemFisherReg` (regression).  Combined (add.sd + prop.sd) and power (prop.sd +
-exponent) residuals now emit native Fisher SEs too: their residual score has no closed
-form, so `rpemResidScoreSample` re-scores each residual parameter per observation from
-the stored structural prediction (`cpv`) and observation (`dvv`) using
-d/dtheta = sum_obs (r^2 - V)/(2 V^2) dV/dtheta, with V = add^2 + prop^2 cp^2 (combined)
-or V = b^2 cp^(2c) (power).  Verified against FOCEI SEs (combined tka/add.sd/prop.sd,
-power tka/prop.sd/exponent).  The omega-variance SEs are reported in the fit `$cov`
+`rpemFisherReg` (regression).  Combined (add.sd + prop.sd), power (prop.sd + exponent), and
+TBS (add.sd + boxCox/yeoJohnson lambda) residuals now emit native Fisher SEs too: their
+residual score has no closed form, so `rpemResidScoreSample` re-scores each residual
+parameter per observation from the stored structural prediction (`cpv`) and observation
+(`dvv`).  Combined/power use d/dtheta = sum_obs (r^2 - V)/(2 V^2) dV/dtheta with
+V = add^2 + prop^2 cp^2 (combined) or V = b^2 cp^(2c) (power).  TBS scores add.sd
+analytically on the transformed scale (-nobs/sd + SSt/sd^3, SSt = sum (t(DV)-t(f))^2)
+and lambda by a central finite difference of the per-sample transformed-residual +
+log-Jacobian loglik (using `_powerD`/`_powerDD`; no re-solve, since lambda leaves the
+structural prediction unchanged).  Verified against FOCEI SEs (combined tka/add.sd/
+prop.sd, power tka/prop.sd/exponent, TBS tka/add.sd/lambda -- the empirical Fisher is
+noisier than FOCEI's Hessian for weakly-identified lambda at small n but converges:
+42% at n=60 -> 7% at n=150).  The omega-variance SEs are reported in the fit `$cov`
 (rows/cols `om.<eta>`, on the variance scale -- the score is already in those units so
 no delta method), matching SAEM.  The empirical Fisher (score outer product) is
 asymptotically exact (E[EBE^2]/om^2 == I_1), so SEs converge to FOCEI's with enough
@@ -36,9 +42,12 @@ so their per-subject marginal-loglik score is appended by a common-random-number
 finite difference: at the converged estimates re-run the E-step with the SAME drawn
 etas (`.feEta`) and only beta_m moved by h, then score_i,m = (logsumexp_j logp_ij(beta+h)
 - logsumexp_j logp_ij(beta))/h.  These columns join the analytic S so I = S^T S is the
-joint empirical Fisher.  Verified the structural-beta SE matches FOCEI.  Other
-structures (tbs residual, mixtures) keep the FOCEI-covariance (`covMethod="r,s"`) SEs.
-Follow-ups: Fisher scores for tbs residual and mixtures.
+joint empirical Fisher.  Verified the structural-beta SE matches FOCEI.  Mixtures keep
+the FOCEI-covariance (`covMethod="r,s"`) SEs -- mixture component-probability SEs are not
+reported elsewhere in the ecosystem, so no native Fisher path is planned for them.  With
+add/prop/combined/power/TBS residuals, single + multi diagonal eta, covariates, and
+non-mu-ref structural betas all covered, native Fisher SEs now span every continuous
+error model RPEM supports.
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:

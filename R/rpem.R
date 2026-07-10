@@ -482,13 +482,17 @@
   # finite difference (reuse .feEta; only the beta moves).  TBS residual and mixtures
   # still keep the FOCEI-covariance SEs.
   .fisher <- NULL
-  if (.cl$errType %in% c(0L, 1L, 2L, 4L)) {
+  if (.cl$errType %in% c(0L, 1L, 2L, 3L, 4L)) {
     .omNames <- paste0("om.", .cl$etaNames)
-    # residual parameter(s) + their theta names, ordered to match the C++ score
-    # columns: combined = (add.sd, prop.sd); power = (prop.sd, power); else single sd
+    # residual parameter(s) + their theta names, ordered to match the C++ score cols:
+    # combined = (add.sd, prop.sd); TBS = (add.sd, lambda); power = (prop.sd, power);
+    # else single sd
     if (.cl$errType == 2L) {
       .resPar <- c(sdHat, propHat)
       .resNm <- .cl$thetaNames[c(.cl$addSdIdx, .cl$propSdIdx) + 1L]
+    } else if (.cl$errType == 3L) {
+      .resPar <- c(sdHat, lambdaHat)
+      .resNm <- .cl$thetaNames[c(.cl$addSdIdx, .cl$lambdaIdx) + 1L]
     } else if (.cl$errType == 4L) {
       .resPar <- c(sdHat, powerHat)
       .resNm <- .cl$thetaNames[c(.cl$addSdIdx, .cl$powIdx) + 1L]

@@ -124,6 +124,46 @@ test_that("RPEM reports Fisher-score SEs for a non-mu-ref structural beta", {
   expect_equal(unname(.se[1]), unname(ff$parFixedDf["tka", "SE"]), tolerance = 0.25)
 })
 
+test_that("RPEM reports Fisher-score SEs for TBS Box-Cox (add.sd + lambda)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: FOCEI + RPEM fits
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(7); nsub <- 60L; obsT <- seq(0.5, 24, by = 1.5); trueLam <- 0.5; trueAdd <- 0.1
+  etasTrue <- rnorm(nsub, 0, sqrt(0.3))
+  bcI <- function(y, l) if (l == 0) exp(y) else (l * y + 1)^(1 / l)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = etasTrue[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; d$DV <- 0; o <- d$evid == 0
+    tcp <- ((s$cp)^trueLam - 1) / trueLam
+    d$DV[o] <- pmax(bcI(tcp + rnorm(nrow(s), 0, trueAdd), trueLam), 1e-3)
+    d
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.2; lambda <- 1; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt()
+            cp ~ add(add.sd) + boxCox(lambda) })
+  }
+  ctl <- rpemControl(nGauss = 400L, nMH = 80000L, mhBurn = 8000L, niter = 30L,
+                     collect = 12L, seed = 100L, cores = 4L)
+  rf <- suppressMessages(nlmixr2(mod, dat, est = "rpem", control = ctl))
+  ff <- suppressMessages(nlmixr2(mod, dat, est = "focei",
+                                 control = foceiControl(print = 0, calcTables = FALSE)))
+
+  expect_match(as.character(rf$covMethod), "fisher")
+  .th <- c("tka", "add.sd", "lambda")
+  .se <- rf$parFixedDf[.th, "SE"]
+  expect_true(all(is.finite(.se) & .se > 0))
+  .fse <- ff$parFixedDf[.th, "SE"]
+  expect_equal(unname(.se[1]), unname(.fse[1]), tolerance = 0.25)   # tka
+  expect_equal(unname(.se[2]), unname(.fse[2]), tolerance = 0.3)    # add.sd (transformed scale)
+  # lambda (weakly identified) -- the empirical Fisher is noisier than FOCEI's Hessian
+  # at small n (this converges: 42% at n=60 -> 7% at n=150), so allow a wider band here
+  expect_equal(unname(.se[3]), unname(.fse[3]), tolerance = 0.6)    # lambda
+})
+
 test_that("RPEM reports Fisher-score SEs for power error (prop.sd + exponent)", {
   skip_on_cran()
   skip_on_ci()  # heavy: FOCEI + RPEM fits
