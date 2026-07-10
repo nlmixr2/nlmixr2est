@@ -27,13 +27,42 @@
 #' @param ev per-subject event table (dosing + covariates)
 #' @param times observation times
 #' @param tol solve tolerance
+#' @param maxRecalc max tolerance-relaxation retries on a failed/non-finite solve
+#' @param recalcFactor multiplicative tolerance loosening per retry
+#' @param fdFallback when TRUE, if the analytic eta-sensitivities come back
+#'   non-finite, replace them with central finite differences of the (robust)
+#'   prediction/variance columns
 #' @return list(f, R, a = df/deta [nObs x neta], aR = dR/deta [nObs x neta]) or NULL
 #' @noRd
-.vaeDecoderSolveSubject <- function(am, th, eta, ev, times, tol = 1e-10) {
+.vaeDecoderSolveSubject <- function(am, th, eta, ev, times, tol = 1e-10,
+                                    maxRecalc = 5L, recalcFactor = 10^(0.5),
+                                    fdFallback = TRUE) {
   .etav <- am$dirs
-  E <- .foceiAnalyticSolveFA(am, c(th, setNames(eta, .etav)), ev, times, tol = tol)
-  if (is.null(E)) return(NULL)
-  list(f = E$f, R = E$R, a = E$a, aR = E$aR)
+  .solve <- function(e, t) .foceiAnalyticSolveFA(am, c(th, setNames(e, .etav)), ev, times, tol = t)
+  .allFin <- function(E) !is.null(E) && all(is.finite(E$f)) && all(is.finite(E$a)) &&
+    all(is.finite(E$R)) && all(is.finite(E$aR))
+  ## tolerance relaxation: retry with progressively looser tol (inner.cpp-style)
+  .t <- tol; E <- NULL
+  for (.attempt in 0:maxRecalc) {
+    E <- .solve(eta, .t)
+    if (.allFin(E)) return(list(f = E$f, R = E$R, a = E$a, aR = E$aR))
+    .t <- .t * recalcFactor
+  }
+  ## can't get a usable prediction even relaxed -> give up
+  if (is.null(E) || !all(is.finite(E$f)) || !all(is.finite(E$R))) return(NULL)
+  if (!fdFallback) return(NULL)
+  ## finite-difference fallback for the eta-sensitivities (the analytic sens
+  ## states blew up but f/R from the same solve are finite)
+  .neta <- length(eta); .no <- length(E$f); .h <- 1e-4
+  a <- matrix(0, .no, .neta); aR <- matrix(0, .no, .neta)
+  for (k in seq_len(.neta)) {
+    ep <- eta; ep[k] <- ep[k] + .h; em <- eta; em[k] <- em[k] - .h
+    Ep <- .solve(ep, .t); Em <- .solve(em, .t)
+    if (is.null(Ep) || is.null(Em) || !all(is.finite(Ep$f)) || !all(is.finite(Em$f))) return(NULL)
+    a[, k] <- (Ep$f - Em$f) / (2 * .h)
+    aR[, k] <- (Ep$R - Em$R) / (2 * .h)
+  }
+  list(f = E$f, R = E$R, a = a, aR = aR)
 }
 
 #' ELBO data term p(x|z) and its eta-gradient for one subject

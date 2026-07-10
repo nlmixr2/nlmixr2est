@@ -243,8 +243,22 @@ Polish DONE:
   cov = 2*solve(numeric Hessian of -2LL) (cheap, f/J fixed), NULL on non-PD.
 - Verified: test-vae-lik.R (3/3) C++ vs R Laplace reference, observed + M3;
   test-vae-fit.R (11/11) still passes.
-REMAINING (minor): dual OFV (add IS -2LL, IS active for AIC/BIC/BICc);
-SAEM/FOCEI benchmark; general error-model R-scale in cov (additive exact now).
+- Mixture likelihood: vaeFoceLik(nMix, mixProb) combines components as
+  -2 logsumexp_m(log mixProb[m] + ll_i^(m)) like inner.cpp; per-subject try/catch
+  guards the OpenMP region (inner.cpp pattern); test-vae-lik.R 6/6.
+- Decoder-solve hardening (.vaeDecoderSolveSubject): tolerance-relaxation retry
+  loop (maxRecalc x recalcFactor) + finite-difference fallback for the
+  eta-sensitivities when the analytic sens states blow up but f/R are finite
+  (inner.cpp-style). Jump event sensitivities already on (aug model
+  eventSens="jump"). Decoder/fit tests still pass.
+REMAINING:
+- Mixture fit-object etaMat: for nMix>1 the fit etaMat is the mix-1 etas
+  concatenated with mix-2 etas, ... (rows = N*nMix). FOLLOW how saem passes
+  mixture models to focei (.saemMixFix / mixList) to assemble it. FORWARD-LOOKING:
+  the VAE encoder/M-step do not yet PRODUCE mixture components, so nMix>1 fits
+  aren't reachable end-to-end -- wire when mixture training lands.
+- dual OFV (add IS -2LL, IS active for AIC/BIC/BICc); SAEM/FOCEI benchmark;
+  general error-model R-scale in cov (additive exact now).
 
 Phase 7 -- Error-model parity.
 - Proportional/combined, transform-both-sides, and M2/M3/M4 censoring in the
