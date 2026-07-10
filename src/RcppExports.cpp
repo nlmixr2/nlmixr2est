@@ -649,6 +649,40 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeInnerSetup_
+RObject vaeInnerSetup_(Environment e);
+RcppExport SEXP _nlmixr2est_vaeInnerSetup_(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerSetup_(e));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeInnerLik
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad);
+RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< bool >::type grad(gradSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerLik(etaMat, cores, grad));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeInnerFree_
+RObject vaeInnerFree_();
+RcppExport SEXP _nlmixr2est_vaeInnerFree_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(vaeInnerFree_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // boxCox_
 NumericVector boxCox_(NumericVector x, double lambda, int yj);
 RcppExport SEXP _nlmixr2est_boxCox_(SEXP xSEXP, SEXP lambdaSEXP, SEXP yjSEXP) {

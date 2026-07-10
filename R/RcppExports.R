@@ -168,6 +168,18 @@ foceiFitCpp_ <- function(e) {
     .Call(`_nlmixr2est_foceiFitCpp_`, e)
 }
 
+vaeInnerSetup_ <- function(e) {
+    .Call(`_nlmixr2est_vaeInnerSetup_`, e)
+}
+
+vaeInnerLik <- function(etaMat, cores, grad = FALSE) {
+    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad)
+}
+
+vaeInnerFree_ <- function() {
+    .Call(`_nlmixr2est_vaeInnerFree_`)
+}
+
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }
