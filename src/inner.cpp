@@ -440,7 +440,8 @@ struct focei_options {
   scaling scale;
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
-  bool isImpmap = false; // importance-sampling EM (est="impmap"); outer runs impOuter
+  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"); outer runs impOuter
+  bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -4744,11 +4745,13 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
-    op_focei.isImpmap = (estStr == "impmap");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp");
+    op_focei.isImp = (estStr == "imp");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
     op_focei.isImpmap = false;
+    op_focei.isImp = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -8492,6 +8495,10 @@ void impSetEta(int id, const arma::vec& eta) {
 void impGetOmega(arma::mat& Om) {
   Om = getOmegaMat();
 }
+
+// est="imp": no per-iteration MAP search (the E-step proposal is centered at the
+// running conditional mean with covariance gamma * V_i instead of gamma * H_i^-1).
+bool impIsImp() { return op_focei.isImp; }
 
 // Read subject id's current eta (after updateMuGroups this is the recentered residual).
 void impGetEta(int id, arma::vec& eta) {

@@ -219,8 +219,11 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # and independent of the thread count / ambient RNG state; rxWithSeed restores
   # the prior seed state afterward so it does not leak globally.
   .impSeed <- if (is.null(.control$impSeed)) 42L else as.integer(.control$impSeed)
+  # est is "impmap" or "imp" (the no-MAP-search variant); pass it through so the
+  # C++ kernel (impOuter) selects the proposal accordingly.
+  .est <- if (exists("est", envir=env)) get("est", envir=env) else "impmap"
   .fit <- rxode2::rxWithSeed(.impSeed, rxseed=.impSeed,
-                             code=.foceiFamilyReturn(env, ui, ..., est="impmap"))
+                             code=.foceiFamilyReturn(env, ui, ..., est=.est))
   # The MC covariance (impCov=TRUE) is published with theta row/column names but
   # the Omega parameters come out unnamed on this path; fill them in (defensively,
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.

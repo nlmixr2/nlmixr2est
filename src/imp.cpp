@@ -28,7 +28,7 @@ using namespace Rcpp;
 // size.  `iter` shifts the per-subject RNG stream so successive iterations use
 // fresh (still thread-count-independent) samples.
 static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
-                     int iter, double negHalfLogDetOmega,
+                     int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
@@ -46,7 +46,36 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   std::vector<char> haveL(nExp, 0);
   arma::vec mode(neta);
   arma::mat H(neta, neta, arma::fill::zeros);
+  // est="imp": no MAP search.  The proposal is centered at each subject's running
+  // conditional mean (the current eta) with covariance gamma * V_i, where V_i is
+  // that subject's conditional variance from the PREVIOUS E-step (passed in via
+  // condVar, before it is overwritten below).  On the first iteration -- or a
+  // pseudo-subject / degenerate V_i -- fall back to the population Omega, which is
+  // over-dispersed and always available.
+  arma::mat impOmega;
+  if (isImp) impGetOmega(impOmega);
+  arma::vec eta(neta);
   for (int id = 0; id < nExp; ++id) {
+    if (isImp) {
+      impGetEta(id, eta);
+      modes[id] = eta;
+      arma::mat Sig;
+      if ((size_t)id < condVar.size() && condVar[id].n_rows == (arma::uword)neta &&
+          arma::any(arma::vectorise(condVar[id]) != 0.0)) {
+        Sig = condVar[id];
+      } else {
+        Sig = impOmega;
+      }
+      arma::mat Hi;
+      double ldv, lds;
+      if (arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0) {
+        arma::mat L;
+        if (arma::chol(L, gamma * Sig, "lower")) {
+          Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
+        }
+      }
+      continue;
+    }
     impGetMode(id, mode);
     modes[id] = mode;
     if (impGetHessian(id, H)) {
@@ -409,6 +438,9 @@ void impOuter(Environment e) {
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
   double obj = R_PosInf;
   int nSens = impThetaSensN();
+  // est="imp": skip the per-iteration MAP search; the E-step proposal is centered
+  // at the running conditional mean with covariance gamma*Omega.
+  bool isImp = impIsImp();
 
   // Force the EM serial when the per-subject inner solves are not thread-safe:
   //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
@@ -445,10 +477,10 @@ void impOuter(Environment e) {
 
   arma::vec r(neta);
   for (int iter = 0; iter < nIter; ++iter) {
-    if (iter > 0) impReMap();
+    if (iter > 0 && !isImp) impReMap();
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
-    impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(),
+    impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
