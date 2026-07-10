@@ -250,7 +250,12 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @export
 nlmixr2Est.impmap <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name=.ui$modelName)
+  # General (dnorm/ll) likelihoods flow through the shared FOCEI inner problem
+  # (impEvalJointLik = likInner0), so only require transformable normality when
+  # the rxode2 build has no llik support -- mirrors nlmixr2Est.focei.
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name=.ui$modelName)
+  }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'impmap'",
                              .var.name=.ui$modelName)
   .control <- env$control

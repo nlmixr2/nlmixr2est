@@ -603,3 +603,30 @@ test_that("IOV: an inter-occasion-variability model fits (BSV eta on a param wit
   expect_true(all(is.finite(fixef(.fi))))
   expect_true(fixef(.fi)["tcl"] > 0 && fixef(.fi)["tcl"] < 2)
 })
+
+test_that("General likelihood: a custom ll() model fits and matches FOCEI", {
+  skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
+  # A general (custom) likelihood -- exactly the normal log-density written out --
+  # flows through the shared FOCEI inner problem, so impmap should estimate it and
+  # match FOCEI (the transform-normal assertion is relaxed when llik is available).
+  m <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      cp <- linCmt()
+      ll(cp) ~ -0.5 * log(2 * pi) - log(add.sd) - 0.5 * ((DV - cp) / add.sd)^2
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(m, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+  expect_true(all(is.finite(fixef(.fi))))
+  # the residual sigma and structural non-mu theta go through the M-step gradient
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
+})
