@@ -8807,6 +8807,44 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
 }
 
+// f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
+// subject, optimize the conditional MAP of the random effects and return that
+// MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the
+// proposal precision).  innerOpt1(id, 0) runs the n1qn1 inner optimizer and
+// finalizes with LikInner2, which -- with _finalObfCalc set -- stores H into
+// op_focei.gH.  H is the no-interaction Jacobian information (paper Eq 17) or
+// the interaction/Laplace Hessian (Eq 13), selected by the inner control the
+// caller set up.  The proposal lives in eta-space; the SAEM chain adds the
+// prior mean (phi = mprior + eta) so the covariance transfers unchanged.
+// Serial by design here (the SAEM solve is not the active rx during this call,
+// and the validation path wants determinism); id-parallelism is added later.
+//[[Rcpp::export]]
+List fsaemInnerMap_(int cores) {
+  (void)cores;
+  const int neta = op_focei.neta;
+  if (neta == 0) stop("fsaemInnerMap_ requires a model with random effects");
+  rx = getRxSolve_();
+  const int nsub = (int)getRxNsub(rx);
+  NumericMatrix etaHat(nsub, neta);
+  NumericMatrix hess(nsub, neta*neta); // row id = vectorized neta x neta H (col-major)
+  IntegerVector ok(nsub);
+  bool savedFinal = _finalObfCalc;
+  _finalObfCalc = true; // make LikInner2 stash H into op_focei.gH
+  for (int id = 0; id < nsub; ++id) {
+    ok[id] = innerOpt1(id, 0);
+    focei_ind *fInd = &(inds_focei[id]);
+    for (int j = 0; j < neta; ++j) etaHat(id, j) = fInd->eta[j];
+    if (ok[id]) {
+      double *Hid = op_focei.gH + (size_t)id*neta*neta;
+      for (int j = 0; j < neta*neta; ++j) hess(id, j) = Hid[j];
+    } else {
+      for (int j = 0; j < neta*neta; ++j) hess(id, j) = NA_REAL;
+    }
+  }
+  _finalObfCalc = savedFinal;
+  return List::create(_["eta"] = etaHat, _["hess"] = hess, _["ok"] = ok);
+}
+
 //[[Rcpp::export]]
 RObject vaeInnerFree_() {
   rxOptionsFreeFocei();

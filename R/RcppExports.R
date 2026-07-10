@@ -176,6 +176,10 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+fsaemInnerMap_ <- function(cores) {
+    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
+}
+
 vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
