@@ -68,6 +68,10 @@ struct rpemOptions {
 
 rpemOptions rpemOp;
 
+// golden-section maximizer (defined below); used by the power-residual profile in the
+// mixture M-step as well as the non-mixture power / TBS M-steps.
+static double rpemGolden(const std::function<double(double)> &f, double a, double b, int iter);
+
 //[[Rcpp::export]]
 RObject rpemFree() {
   rpemOp.buf.clear();
@@ -691,7 +695,8 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
   if (etaForComp.nrow() != nParam || etaForComp.ncol() != K)
     stop("etaForComp must be nParam x K");
   bool doComb = (errType == 2);                  // combined add+prop: no closed form
-  std::vector<long> counts3(doComb ? (size_t)nsub * nG * K : 0, 0);  // per-(i,j,k) visits
+  bool doPow = (errType == 4);                   // power (scale*cp^exponent)^2: profile
+  std::vector<long> counts3((doComb || doPow) ? (size_t)nsub * nG * K : 0, 0);  // per-(i,j,k) visits
 
   std::vector<double> logw(K);
   for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
@@ -755,7 +760,7 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
         sumTTk[(size_t)p * K + ck] += theta * theta;
       }
       ++countK[ck];
-      if (doComb) counts3[((size_t)ci * nG + cj) * K + ck]++;
+      if (doComb || doPow) counts3[((size_t)ci * nG + cj) * K + ck]++;
       int nobsi = rpemOp.nobs[ci];
       size_t r = ((size_t)ci * nG + cj) * K + ck;
       if (errType == 6) {
@@ -799,7 +804,7 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
   // has no closed form, so guarded-Newton-maximize the shared (a=add^2, b=prop^2)
   // Gaussian log-likelihood over the accepted (i,j,k) states' stored cp/dv (mixture
   // stride) -- the same optimizer as the non-mixture combined M-step.
-  double addNew, propNew = NA_REAL;
+  double addNew, propNew = NA_REAL, powNew = NA_REAL;
   if (doComb) {
     const double eps = 1e-12;
     auto over = [&](double aa, double bb, double &Q, double *ga, double *gb,
@@ -844,11 +849,37 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
       if (!ok) break;
     }
     addNew = sqrt(a); propNew = sqrt(bpar);
+  } else if (doPow) {
+    // power residual V = (scale * cp^c)^2: the scale profiles out (scale^2 = SSc/N,
+    // SSc = sum count r^2 / cp^(2c)), so golden-section the exponent c over the accepted
+    // (i,j,k) states -- same profile as the non-mixture power M-step.  addNew holds the
+    // scale (its theta slot), powNew the exponent.
+    auto stat = [&](double cc, double &SSc, double &SumLogCp) {
+      SSc = 0.0; SumLogCp = 0.0;
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i];
+        for (int j = 0; j < nG; ++j) for (int k = 0; k < K; ++k) {
+          long c = counts3[((size_t)i * nG + j) * K + k]; if (!c) continue;
+          long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp, acp = fabs(cp) + 1e-300;
+            SSc += (double)c * rr * rr / pow(acp, 2.0 * cc);
+            SumLogCp += (double)c * log(acp);
+          }
+        }
+      }
+    };
+    double N = (double)sumNobs;
+    auto f = [&](double cc) { double SSc, SL; stat(cc, SSc, SL);
+      if (SSc < 1e-300) SSc = 1e-300; return -0.5 * (N * log(SSc / N) + 2.0 * cc * SL); };
+    powNew = rpemGolden(f, 0.0, 3.0, 100);
+    double SSc, SL; stat(powNew, SSc, SL);
+    addNew = sqrt(SSc / N);
   } else {
     addNew = sqrt(sumSS / (double)sumNobs);
   }
   return List::create(_["muK"] = muNew, _["omega"] = omegaNew, _["w"] = wNew,
-                      _["addSd"] = addNew, _["propSd"] = propNew,
+                      _["addSd"] = addNew, _["propSd"] = propNew, _["power"] = powNew,
                       _["accept"] = (double)naccept / total);
 }
 

@@ -37,8 +37,10 @@ the component across all mix() calls).  COMBINED RESIDUAL DONE: mixtures now sup
 `add + prop` -- rpemMstepMix accumulates per-(subject, sample, component) visit counts
 and guarded-Newton-maximizes the shared (add.sd^2, prop.sd^2) over the stored cp/dv (the
 same optimizer as the non-mixture combined M-step; add/prop/lnorm keep the closed-form
-pooled SS).  Still open: mixtures x power/TBS residual, and the SAEM-representation backend
-benchmark.  Mixture component-probability SEs are intentionally not reported (not reported
+pooled SS).  POWER RESIDUAL DONE: mixtures also support `pow(scale, exponent)` -- the
+scale profiles out and the exponent is golden-sectioned over the accepted (subject,
+sample, component) states (same profile as the non-mixture power M-step).  Still open:
+mixtures x TBS residual, and the SAEM-representation backend benchmark.  Mixture component-probability SEs are intentionally not reported (not reported
 elsewhere in the ecosystem; mixtures keep covMethod "r,s").
 
 ## Two backends to build and compare
