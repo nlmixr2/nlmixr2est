@@ -993,6 +993,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemEstepMixDraw
+List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix etaMat, int nGauss, int ncores, int K, NumericVector w);
+RcppExport SEXP _nlmixr2est_rpemEstepMixDraw(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP etaMatSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP KSEXP, SEXP wSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type base(baseSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type etaIdx(etaIdxSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
+    Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
+    Rcpp::traits::input_parameter< int >::type K(KSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepMixDraw(e, base, etaIdx, etaMat, nGauss, ncores, K, w));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpemMstepK1
 List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn);
 RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP addSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
@@ -1004,6 +1022,21 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
     rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, addSd0, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemMstepMix
+List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP errTypeSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type muK(muKSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepMix(muK, w, errType, nTrials, burn));
     return rcpp_result_gen;
 END_RCPP
 }

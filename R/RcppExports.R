@@ -306,8 +306,16 @@ rpemEstepK1Draw <- function(e, base, etaIdx, etaMat, nGauss, ncores) {
     .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, etaMat, nGauss, ncores)
 }
 
+rpemEstepMixDraw <- function(e, base, etaIdx, etaMat, nGauss, ncores, K, w) {
+    .Call(`_nlmixr2est_rpemEstepMixDraw`, e, base, etaIdx, etaMat, nGauss, ncores, K, w)
+}
+
 rpemMstepK1 <- function(muIn, addSd0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1`, muIn, addSd0, nTrials, burn)
+}
+
+rpemMstepMix <- function(muK, w, errType, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepMix`, muK, w, errType, nTrials, burn)
 }
 
 rpemMstepK1Reg <- function(design, coefs, errType, nTrials, burn) {

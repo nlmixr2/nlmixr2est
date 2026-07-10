@@ -39,6 +39,10 @@ struct rpemOptions {
   // E-step sample store (populated by rpemEstepK1Draw) for M-step reuse
   int nGauss = 0;
   int nEta = 0;
+  // Mixture components (mix()): 1 for a non-mixture fit.  The per-sample stores
+  // below get a trailing component stride of nMix, so [i*nGauss+j] indexes the
+  // (nMix==1) case unchanged and [(i*nGauss+j)*nMix + k] the mixture case.
+  int nMix = 1;
   std::vector<double> logp;  // [nsub*nGauss] log p(Y_i | theta_ij)
   std::vector<double> etaS;  // [nsub*nGauss*nEta] drawn etas
   std::vector<double> ssv;   // [nsub*nGauss] additive SS = sum (DV-cp)^2
@@ -294,6 +298,7 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
 
   rpemOp.nGauss = nGauss;
   rpemOp.nEta = nEta;
+  rpemOp.nMix = 1;
   rpemOp.logp.assign((size_t)nAll, 0.0);
   rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
   rpemOp.ssv.assign((size_t)nAll, 0.0);
@@ -396,6 +401,138 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
                       _["logp"] = logpOut);
 }
 
+// Mixture E-step (mix(), split-ETA).  The mixed parameter's typical value is
+// selected by the rxode2 model via setIndMixest, so we solve every Monte Carlo
+// sample once per component k (1..K), storing the per-component log p(Y_i|k,eta_ij)
+// with a trailing stride of nMix=K.  The subject likelihood mixes the components,
+//   n_i = sum_k w_k * mean_j p(Y_i | k, eta_ij),
+// and the returned per-component log n_ik = logsumexp_j logp_ijk - log nGauss lets
+// the M-step form the component posteriors tau_ik.  Shares one eta draw across
+// components (etaMat), so the mixture differs only in the typical value.
+//   w: length-K mixture weights (probabilities), used only for lnL/logn here.
+//[[Rcpp::export]]
+List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
+                      NumericMatrix etaMat, int nGauss, int ncores,
+                      int K, NumericVector w) {
+  int nEta = etaIdx.size();
+  RObject pred = e["predOnly"];
+  List rxControl = as<List>(e["rxControl"]);
+  NumericVector param = as<NumericVector>(e["param"]);
+  RObject data = e["data"];
+
+  rpemDoSetup(pred, rxControl, param, data);
+  int nsub = rpemOp.nsub;
+  if ((unsigned int)base.size() != rpemOp.ntheta) stop("base must have ntheta entries");
+  if (K < 1) stop("K must be >= 1");
+  if (w.size() != K) stop("w must have K entries");
+  int nAll = nsub * nGauss;
+  if (etaMat.nrow() != nAll || etaMat.ncol() != nEta) stop("etaMat must be (nsub*nGauss) x nEta");
+
+  rpemOp.nGauss = nGauss;
+  rpemOp.nEta = nEta;
+  rpemOp.nMix = K;
+  rpemOp.logp.assign((size_t)nAll * K, 0.0);
+  rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
+  rpemOp.ssv.assign((size_t)nAll * K, 0.0);
+  rpemOp.wssv.assign((size_t)nAll * K, 0.0);
+  rpemOp.sampObsOff.assign((size_t)nsub, 0);
+  long acc = 0;
+  for (int id = 0; id < nsub; ++id) { rpemOp.sampObsOff[id] = acc; acc += (long)nGauss * rpemOp.nobs[id]; }
+  rpemOp.cpv.assign((size_t)acc * K, 0.0);
+  rpemOp.dvv.assign((size_t)acc * K, 0.0);
+  rpemOp.yjv.assign((size_t)rpemOp.nobsTot, 0);
+  rpemOp.lowv.assign((size_t)rpemOp.nobsTot, 0.0);
+  rpemOp.hiv.assign((size_t)rpemOp.nobsTot, 1.0);
+  rpemOp.censv.assign((size_t)rpemOp.nobsTot, 0);
+  rpemOp.limv.assign((size_t)rpemOp.nobsTot, R_NegInf);
+
+  for (size_t k = 0; k < (size_t)nAll * nEta; ++k) rpemOp.etaS[k] = etaMat[k];
+  std::vector<double> baseBuf(rpemOp.ntheta);
+  for (unsigned int i = 0; i < rpemOp.ntheta; ++i) baseBuf[i] = base[i];
+  std::vector<int> etaIdxBuf(nEta);
+  for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
+  std::vector<double> row(rpemOp.ntheta);
+
+  // Solve each Monte Carlo sample once per component; the yj/cens per-obs buffers
+  // are constant across components/samples so only the last write is kept.
+  for (int kc = 0; kc < K; ++kc) {
+    for (int j = 0; j < nGauss; ++j) {
+      if (ncores > 1) {
+        for (int id = 0; id < nsub; ++id) {
+          for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+          for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+          rpemSetSubject(row.data(), id);
+          setIndMixest(getSolvingOptionsInd(rx, id), kc + 1);   // 1-based component
+          setIndSolve(getSolvingOptionsInd(rx, id), -1);
+        }
+        resetRxBadSolve(rx);
+        par_solve(rx);
+        for (int id = 0; id < nsub; ++id) {
+          size_t r = ((size_t)id * nGauss + j) * K + kc;
+          double ssTmp = 0.0, wssTmp = 0.0;
+          long ob = (rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id]) * K + (long)kc * rpemOp.nobs[id];
+          long so = rpemOp.idS[id];
+          double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                         &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                         &rpemOp.censv[so], &rpemOp.limv[so]);
+          rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+        }
+      } else {
+        for (int id = 0; id < nsub; ++id) {
+          size_t r = ((size_t)id * nGauss + j) * K + kc;
+          for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+          for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+          rpemSetSubject(row.data(), id);
+          setIndMixest(getSolvingOptionsInd(rx, id), kc + 1);
+          rpemPredOde(id);
+          double ssTmp = 0.0, wssTmp = 0.0;
+          long ob = (rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id]) * K + (long)kc * rpemOp.nobs[id];
+          long so = rpemOp.idS[id];
+          double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                         &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                         &rpemOp.censv[so], &rpemOp.limv[so]);
+          rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+        }
+      }
+    }
+  }
+
+  // Per-component log n_ik and mixture log n_i = logsumexp_k (log w_k + log n_ik).
+  NumericVector logn(nsub);
+  NumericMatrix lognik(nsub, K);       // log mean_j p(Y_i | k, eta_ij)
+  NumericMatrix etaOut(nAll, nEta);
+  double lnL = 0.0;
+  std::vector<double> logw(K);
+  for (int kc = 0; kc < K; ++kc) logw[kc] = log(w[kc]);
+  for (int id = 0; id < nsub; ++id) {
+    double mxk = R_NegInf;
+    for (int kc = 0; kc < K; ++kc) {
+      double mx = R_NegInf;
+      for (int j = 0; j < nGauss; ++j) {
+        double v = rpemOp.logp[((size_t)id * nGauss + j) * K + kc];
+        if (v > mx) mx = v;
+      }
+      double s = 0.0;
+      for (int j = 0; j < nGauss; ++j) s += exp(rpemOp.logp[((size_t)id * nGauss + j) * K + kc] - mx);
+      double lnik = mx + log(s) - log((double)nGauss);
+      lognik(id, kc) = lnik;
+      double wk = logw[kc] + lnik;
+      if (wk > mxk) mxk = wk;
+    }
+    double sk = 0.0;
+    for (int kc = 0; kc < K; ++kc) sk += exp(logw[kc] + lognik(id, kc) - mxk);
+    double lni = mxk + log(sk);
+    logn[id] = lni; lnL += lni;
+  }
+  for (size_t k = 0; k < (size_t)nAll * nEta; ++k) etaOut[k] = rpemOp.etaS[k];
+  // Per-component per-sample log p (nAll x K, row = i*nGauss+j) for EBE weights.
+  NumericMatrix logpOut(nAll, K);
+  for (int r = 0; r < nAll; ++r)
+    for (int kc = 0; kc < K; ++kc) logpOut(r, kc) = rpemOp.logp[(size_t)r * K + kc];
+  return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut,
+                      _["lognik"] = lognik, _["logp"] = logpOut);
+}
+
 // K=1 M-step: Metropolis-Hastings over the stored E-step samples (design/rpem/05).
 // State s=(i,j) indexes a stored sample; propose (i',j') uniformly and accept by
 // Eq 32 with w=1: A = min(1, exp((logp' - logp) + (logn_i - logn_i'))).  The
@@ -482,6 +619,110 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
       omegaNew(a, b) = sumTT[(size_t)a * nEta + b] / m - muNew[a] * muNew[b];
   double addNew = sqrt(sumSS / (double)sumNobs);
   return List::create(_["mu"] = muNew, _["omega"] = omegaNew,
+                      _["addSd"] = addNew, _["accept"] = (double)naccept / total);
+}
+
+// Mixture M-step (mix(), split-ETA, single mixed eta).  The MH state is now
+// (i, j, k) -- subject, Monte Carlo sample, and component -- with stationary
+// distribution proportional to w_k p(Y_i | k, eta_ij) / n_i (the joint posterior
+// of subject, sample and component).  Proposing (i',j',k') uniformly accepts by
+//   A = min(1, exp[ (logw_k' + logp_i'j'k' - logn_i') - (logw_k + logp_ijk - logn_i) ]).
+// Accepted states give the mixture conjugate updates:
+//   w_k    = fraction of accepted states in component k
+//   mu_k   = mean accepted theta among component-k states (theta = muK_k + eta_ij)
+//   Omega  = pooled within-component variance of accepted theta (shared, scalar)
+// and the shared additive/proportional residual from the pooled accepted SS.
+// muK is the per-component typical value of the mixed eta (paper's mu_k); w the
+// current mixture weights.  errType 0=additive, 1=proportional, 6=lognormal.
+//[[Rcpp::export]]
+List rpemMstepMix(NumericVector muK, NumericVector w, int errType, int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepMixDraw before rpemMstepMix");
+  if (rpemOp.nEta != 1) stop("rpemMstepMix currently supports a single mixed eta");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix;
+  if ((int)muK.size() != K || (int)w.size() != K) stop("muK and w must have K entries");
+
+  std::vector<double> logw(K);
+  for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
+  // Per-subject mixture log n_i from the stored per-component log p.
+  std::vector<double> logn(nsub);
+  for (int i = 0; i < nsub; ++i) {
+    double mxk = R_NegInf; std::vector<double> lnik(K);
+    for (int k = 0; k < K; ++k) {
+      double mx = R_NegInf;
+      for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[((size_t)i * nG + j) * K + k]; if (v > mx) mx = v; }
+      double s = 0.0;
+      for (int j = 0; j < nG; ++j) s += exp(rpemOp.logp[((size_t)i * nG + j) * K + k] - mx);
+      lnik[k] = mx + log(s) - log((double)nG);
+      double wk = logw[k] + lnik[k]; if (wk > mxk) mxk = wk;
+    }
+    double sk = 0.0;
+    for (int k = 0; k < K; ++k) sk += exp(logw[k] + lnik[k] - mxk);
+    logn[i] = mxk + log(sk);
+  }
+
+  int total = nTrials + burn;
+  size_t nU = (size_t)4 * total;                 // proposal i', j', k', accept
+  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
+  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
+  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
+                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
+                                wrap(IntegerVector::create(1)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(NumericVector::create(0.4)),
+                                wrap(NumericVector::create(2.05)),
+                                wrap(NumericVector::create(1e-10)),
+                                wrap(IntegerVector::create(100)));
+  NumericMatrix zm(zr);
+  std::vector<double> U(nU);
+  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+
+  int ci = 0, cj = 0, ck = 0;
+  double clogp = rpemOp.logp[0];
+  std::vector<double> sumTk(K, 0.0), sumTTk(K, 0.0);
+  std::vector<long> countK(K, 0);
+  double sumSS = 0.0; long sumNobs = 0, m = 0, naccept = 0;
+  for (int t = 0; t < total; ++t) {
+    double u1 = U[(size_t)4 * t], u2 = U[(size_t)4 * t + 1],
+           u3 = U[(size_t)4 * t + 2], u4 = U[(size_t)4 * t + 3];
+    int pih = (int)(u1 * nsub); if (pih >= nsub) pih = nsub - 1;
+    int pjh = (int)(u2 * nG);   if (pjh >= nG)   pjh = nG - 1;
+    int pkh = (int)(u3 * K);    if (pkh >= K)    pkh = K - 1;
+    double plogp = rpemOp.logp[((size_t)pih * nG + pjh) * K + pkh];
+    double logA = (logw[pkh] + plogp - logn[pih]) - (logw[ck] + clogp - logn[ci]);
+    if (log(u4) < logA) { ci = pih; cj = pjh; ck = pkh; clogp = plogp; ++naccept; }
+    if (t >= burn) {
+      double theta = muK[ck] + rpemOp.etaS[(size_t)ci * nG + cj];
+      sumTk[ck] += theta; sumTTk[ck] += theta * theta; ++countK[ck];
+      int nobsi = rpemOp.nobs[ci];
+      size_t r = ((size_t)ci * nG + cj) * K + ck;
+      if (errType == 6) {
+        long ob = (rpemOp.sampObsOff[ci] + (long)cj * nobsi) * K + (long)ck * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+          if (cp > 0.0 && dv > 0.0) { double lr = log(dv) - log(cp); sumSS += lr * lr; }
+        }
+      } else {
+        sumSS += (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
+      }
+      sumNobs += nobsi; ++m;
+    }
+  }
+  NumericVector muNew(K), wNew(K);
+  double omegaNew = 0.0;
+  for (int k = 0; k < K; ++k) {
+    if (countK[k] > 0) {
+      muNew[k] = sumTk[k] / (double)countK[k];
+      omegaNew += sumTTk[k] - (double)countK[k] * muNew[k] * muNew[k];
+    } else {
+      muNew[k] = muK[k];                 // component starved this iteration: hold
+    }
+    wNew[k] = (double)countK[k] / (double)m;
+  }
+  omegaNew /= (double)m;
+  double addNew = sqrt(sumSS / (double)sumNobs);
+  return List::create(_["muK"] = muNew, _["omega"] = omegaNew, _["w"] = wNew,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }
 

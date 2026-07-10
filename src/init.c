@@ -128,6 +128,8 @@ SEXP _nlmixr2est_rpemMstepK1TBS(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, 
 SEXP _nlmixr2est_rpemMstepK1Pow(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1Cens(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1Multi(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemEstepMixDraw(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemMstepMix(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepBeta(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
@@ -198,6 +200,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rpemMstepK1Pow", (DL_FUNC) &_nlmixr2est_rpemMstepK1Pow, 6},
   {"_nlmixr2est_rpemMstepK1Cens", (DL_FUNC) &_nlmixr2est_rpemMstepK1Cens, 6},
   {"_nlmixr2est_rpemMstepK1Multi", (DL_FUNC) &_nlmixr2est_rpemMstepK1Multi, 8},
+  {"_nlmixr2est_rpemEstepMixDraw", (DL_FUNC) &_nlmixr2est_rpemEstepMixDraw, 8},
+  {"_nlmixr2est_rpemMstepMix", (DL_FUNC) &_nlmixr2est_rpemMstepMix, 5},
   {"_nlmixr2est_rpemMstepBeta", (DL_FUNC) &_nlmixr2est_rpemMstepBeta, 4},
   {"_nlmixr2est_rpemFree", (DL_FUNC) &_nlmixr2est_rpemFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},

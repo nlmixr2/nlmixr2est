@@ -58,6 +58,39 @@
   as.integer(.idx - 1L)
 }
 
+#' Extract the mix() mixture structure (split-ETA) from the UI.
+#'
+#' A model like `ka <- mix(exp(tka1 + eta.ka), p1, exp(tka2 + eta.ka))` is a
+#' K-component mixture whose components differ only in the typical value
+#' (tka1/tka2) and share the random effect (eta.ka).  Returns the number of
+#' components, the per-component typical-value theta names (the paper's mu_k), the
+#' mixed eta, and the K-1 mixture-probability theta names (P of components 1..K-1).
+#' The rxode2 model selects the component via setIndMixest, so RPEM forces each
+#' component in the E-step; the model uses that component's typical value.
+#' @noRd
+.rpemMixInfo <- function(ui, thetaNames, etaNames) {
+  if (length(ui$mixProbs) == 0L) return(NULL)
+  .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
+  if (length(.mixCalls) != 1L)
+    stop("RPEM currently supports a single mix() call (one mixed parameter)")
+  .args <- as.list(.mixCalls[[1]])[-1]
+  .K <- (length(.args) + 1L) / 2L
+  .compExprs <- .args[seq(1, length(.args), by = 2)]
+  .probExprs <- if (.K > 1L) .args[seq(2, length(.args), by = 2)] else list()
+  .muNames <- character(.K); .etaName <- NULL
+  for (.k in seq_len(.K)) {
+    .th <- intersect(all.vars(.compExprs[[.k]]), thetaNames)
+    .et <- intersect(all.vars(.compExprs[[.k]]), etaNames)
+    if (length(.th) != 1L)
+      stop("RPEM mix() component must reference exactly one typical-value parameter")
+    .muNames[.k] <- .th
+    if (length(.et) == 1L) .etaName <- .et
+  }
+  if (is.null(.etaName)) stop("RPEM mix() components must share one random effect")
+  .probNames <- vapply(.probExprs, function(e) as.character(e), character(1))
+  list(K = as.integer(.K), muNames = .muNames, etaName = .etaName, probNames = .probNames)
+}
+
 .rpemClassify <- function(ui) {
   .ini <- ui$iniDf
   .thetas <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
@@ -71,9 +104,28 @@
   base <- c(.thetas$est, rep(0, nEta))
   etaIdx <- as.integer(nTheta + seq_len(nEta) - 1L)          # 0-based
   omega0 <- diag(.etas$est, nEta)
+  # mixture (mix(), split-ETA): the mixed eta's typical value is per-component and
+  # selected by the model, so it is exempt from the plain mu-reference requirement.
+  .mixI <- .rpemMixInfo(ui, .thetas$name, .etas$name)
   # mu-referenced typical-value theta for each eta (in eta order)
   .mu <- ui$muRefDataFrame
   .muName <- .mu$theta[match(.etas$name, .mu$eta)]
+  .mix <- NULL
+  if (!is.null(.mixI)) {
+    # the mixed eta uses component 1's typical value as its nominal mu (the others
+    # come from setIndMixest); non-mixed etas must still be mu-referenced.
+    .mixEtaRow <- which(.etas$name == .mixI$etaName)
+    .muName[.mixEtaRow] <- .mixI$muNames[1]
+    if (nEta != 1L)
+      stop("RPEM mixtures currently support a single mixed random effect")
+    .muCompIdx <- as.integer(match(.mixI$muNames, .thetas$name) - 1L)   # 0-based tka_k
+    .probIdx <- as.integer(match(.mixI$probNames, .thetas$name) - 1L)   # 0-based p_k
+    .p <- .thetas$est[.probIdx + 1L]
+    .mix <- list(K = .mixI$K, etaRow = as.integer(.mixEtaRow), muCompIdx = .muCompIdx,
+                 muComp0 = .thetas$est[.muCompIdx + 1L], probIdx = .probIdx,
+                 probNames = .mixI$probNames, muNames = .mixI$muNames,
+                 w0 = c(.p, 1 - sum(.p)))
+  }
   if (anyNA(.muName)) stop("RPEM requires every random effect to be mu-referenced")
   muIdx <- as.integer(match(.muName, .thetas$name) - 1L)     # 0-based theta positions
   # residual: additive (add), proportional (prop), or combined (add + prop).
@@ -198,8 +250,12 @@
   .resIdx <- stats::na.omit(c(addSdIdx, propSdIdx, lambdaIdx, powIdx,
                               if (!is.null(.endpt)) .endpt$sclIdx))
   .fixIdx <- which(.thetas$fix) - 1L
+  # mixture component typical values (tka_k) and probabilities (p_k) are estimated
+  # by the mixture M-step, not the structural (beta) re-solve.
+  .mixIdx <- if (is.null(.mix)) integer(0) else c(.mix$muCompIdx, .mix$probIdx)
   structIdx <- setdiff(seq_len(nTheta) - 1L,
-                       c(muIdx, covCoefIdx, as.integer(.resIdx), as.integer(.fixIdx)))
+                       c(muIdx, covCoefIdx, as.integer(.resIdx), as.integer(.fixIdx),
+                         as.integer(.mixIdx)))
   structIdx <- as.integer(structIdx)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
@@ -212,7 +268,8 @@
        fixIdx = as.integer(.fixIdx), fixNames = .thetas$name[.thetas$fix],
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
-       thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
+       thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName,
+       mix = .mix)
 }
 
 #' Fit a mu-referenced model with RPEM (K=1 core).
@@ -224,6 +281,7 @@
 #' @noRd
 .rpemFit <- function(ui, data, control = rpemControl()) {
   .cl <- .rpemClassify(ui)
+  if (!is.null(.cl$mix)) return(.rpemFitMix(ui, data, .cl, control))
   .m <- ui$rpemRxModel$predOnly
   .nm <- c(paste0("THETA[", seq_len(.cl$nTheta), "]"),
            paste0("ETA[", seq_len(.cl$nEta), "]"))
@@ -407,6 +465,136 @@
        classify = .cl)
 }
 
+#' Fit a mix() split-ETA mixture with RPEM.
+#'
+#' Mixture EM (paper section on finite mixtures): the E-step solves each Monte
+#' Carlo sample once per component (rpemEstepMixDraw), and the M-step (rpemMstepMix)
+#' runs a Metropolis-Hastings over the joint (subject, sample, component) posterior
+#' to update the per-component typical values (mu_k), the shared BSV (Omega), the
+#' mixture weights (w_k) and the shared residual.  Requires a single mixed random
+#' effect, an additive / proportional / lognormal residual, and no non-mixture
+#' structural fixed effects to estimate (fix() any structural typical values).
+#' @noRd
+.rpemFitMix <- function(ui, data, .cl, control = rpemControl()) {
+  .mix <- .cl$mix; K <- .mix$K
+  if (!.cl$errType %in% c(0L, 1L, 6L))
+    stop("RPEM mixtures currently support additive, proportional or lognormal residuals")
+  if (length(.cl$structIdx) > 0L)
+    stop("RPEM mixtures require non-mixture structural typical values to be fix()ed")
+  .m <- ui$rpemRxModel$predOnly
+  .nm <- c(paste0("THETA[", seq_len(.cl$nTheta), "]"),
+           paste0("ETA[", seq_len(.cl$nEta), "]"))
+  .e <- new.env()
+  .e$predOnly <- .m
+  .e$rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol,
+                                    cores = control$cores)
+  .e$param <- stats::setNames(.cl$base, .nm)
+  .e$data <- data
+  .idColF <- names(data)[tolower(names(data)) == "id"][1]
+  if (is.na(.idColF)) stop("data must have an ID column")
+  .nsub <- length(unique(data[[.idColF]]))
+  .drawEtas <- function(omega) rxode2::rxRmvn(.nsub * control$nGauss, mu = 0, sigma = omega)
+
+  base <- .cl$base; muK <- .mix$muComp0; w <- .mix$w0
+  omega <- matrix(.cl$omega0[1, 1], 1, 1); addSd <- .cl$addSd0
+  niter <- control$niter
+  muMat <- matrix(0, niter, K); wMat <- matrix(0, niter, K)
+  omTr <- numeric(niter); sdTr <- numeric(niter); llTr <- numeric(niter)
+  for (.it in seq_len(niter)) {
+    base[.mix$muCompIdx + 1L] <- muK
+    base[.cl$addSdIdx + 1L] <- addSd
+    rxode2::rxSetSeed(control$seed + .it)
+    .etaMat <- .drawEtas(omega)
+    .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
+    .ms <- rpemMstepMix(muK, w, .cl$errType, control$nMH, control$mhBurn)
+    muK <- .ms$muK; omega <- matrix(.ms$omega, 1, 1); w <- .ms$w; addSd <- .ms$addSd
+    muMat[.it, ] <- muK; wMat[.it, ] <- w; omTr[.it] <- .ms$omega
+    sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
+  }
+  .k <- min(control$collect, niter); .wi <- (niter - .k + 1L):niter
+  muHat <- colMeans(muMat[.wi, , drop = FALSE])
+  wHat <- colMeans(wMat[.wi, , drop = FALSE])
+  omHat <- mean(omTr[.wi]); sdHat <- mean(sdTr[.wi])
+
+  # Final E-step at the converged estimates: EBEs + per-subject component posteriors.
+  base[.mix$muCompIdx + 1L] <- muHat; base[.cl$addSdIdx + 1L] <- sdHat
+  omegaHat <- matrix(omHat, 1, 1)
+  rxode2::rxSetSeed(control$seed)
+  .feEta <- .drawEtas(omegaHat)
+  .fe <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores, K, wHat)
+  rpemFree()
+  # component posteriors tau_ik = w_k n_ik / sum_k, mixNum = argmax.
+  .lw <- sweep(.fe$lognik, 2, log(wHat), "+")
+  .tau <- exp(.lw - apply(.lw, 1, max)); .tau <- .tau / rowSums(.tau)
+  mixNum <- max.col(.tau, ties.method = "first")
+  # Per-component EBEs (self-normalized importance weights within each component):
+  # EBE_ik = sum_j eta_ij * softmax_j(log p(Y_i | k, eta_ij)).  ebeK is nsub x K.
+  .nG <- control$nGauss
+  .etaVec <- as.numeric(.fe$eta)
+  ebeK <- matrix(0, .nsub, K)
+  for (.i in seq_len(.nsub)) {
+    .idx <- ((.i - 1L) * .nG + 1L):(.i * .nG)
+    for (.kc in seq_len(K)) {
+      .lp <- .fe$logp[.idx, .kc]
+      .wt <- exp(.lp - max(.lp)); .wt <- .wt / sum(.wt)
+      ebeK[.i, .kc] <- sum(.etaVec[.idx] * .wt)
+    }
+  }
+  # Display EBE = winning component's; FOCEI eval etaMat = per-component EBEs stacked
+  # (component 1 for all subjects, then component 2, ...): (K*nsub) x neta.
+  ebe <- matrix(ebeK[cbind(seq_len(.nsub), mixNum)], .nsub, 1L,
+                dimnames = list(NULL, .cl$etaNames))
+  ebeStack <- matrix(as.numeric(ebeK), K * .nsub, 1L, dimnames = list(NULL, .cl$etaNames))
+
+  list(mu = stats::setNames(muHat[1], .cl$muNames),   # nominal (comp-1) mu for the eta
+       omega = stats::setNames(omHat, .cl$etaNames),
+       addSd = sdHat, propSd = if (.cl$errType == 1L) sdHat else NA_real_,
+       lambda = NA_real_, power = NA_real_,
+       endptSd = NULL, endptProp = NULL, struct = NULL,
+       covCoef = stats::setNames(numeric(0), character(0)), ebe = ebe,
+       lnL = llTr, muTrace = muMat, omegaTrace = matrix(omTr, ncol = 1), sdTrace = sdTr,
+       classify = .cl,
+       mix = list(K = K, muK = stats::setNames(muHat, .mix$muNames),
+                  w = wHat, probNames = .mix$probNames, mixNum = mixNum, tau = .tau,
+                  ebeK = ebeK, ebeStack = ebeStack))
+}
+
+#' Populate the mixture fit fields (mixList / mixNum / probabilities / iCov) on
+#' the RPEM fit env from the RPEM posterior component weights (tau) and mixture
+#' probabilities (w).  Analogous to `.saemMixFix` for the single-mixed-eta case
+#' (no eta-group collapsing needed since the components share one random effect).
+#' @noRd
+.rpemMixSetFit <- function(env, .cl, rfit) {
+  .mix <- rfit$mix; .K <- .mix$K
+  .etaNames <- .cl$etaNames
+  .tau <- .mix$tau                         # nsub x K posterior weights
+  .best <- .mix$mixNum
+  # subject IDs + EBEs from the fit ranef (post-eval) or the pre-eval etaObf.
+  .src <- if (!is.null(env$ranef)) as.data.frame(env$ranef) else as.data.frame(env$etaObf)
+  .ids <- .src$ID
+  .etaDf <- .src[, .etaNames, drop = FALSE]
+  env$mixProbabilities <- unname(.mix$w)
+  # ranef gains a mixnum column; mixList: one frame per component (ID, etas, prob).
+  .ranef <- cbind(data.frame(ID = .ids), .etaDf); .ranef$mixnum <- as.integer(.best)
+  assign("ranef", .ranef, envir = env)
+  .mixList <- lapply(seq_len(.K), function(k) {
+    .r <- cbind(data.frame(ID = .ids), .etaDf, data.frame(prob = .tau[, k]))
+    names(.r) <- c("ID", .etaNames, "prob"); row.names(.r) <- NULL; .r
+  })
+  names(.mixList) <- paste0("mix", seq_len(.K))
+  assign("mixList", .mixList, envir = env)
+  .mixNum <- data.frame(ID = .ids, mixnum = as.integer(.best)); row.names(.mixNum) <- NULL
+  assign("mixNum", .mixNum, envir = env)
+  # expected etas (for shrinkage): sum_k prob_k * eta_k -- one shared eta, so the
+  # posterior-weighted eta reduces to the EBE already in etaObf.
+  .etaExp <- cbind(data.frame(ID = .ids), .etaDf)
+  assign("etaExpected", .etaExp, envir = env)
+  # iCov fixes each subject's mixture component during the eval table solve.
+  assign("mixIcov", data.frame(ID = as.integer(.ids), mixest = as.integer(.best)),
+         envir = env)
+  invisible(NULL)
+}
+
 #' Validate the RPEM control (est="rpem")
 #' @rdname getValidNlmixrControl
 #' @export
@@ -436,6 +624,13 @@ getValidNlmixrCtl.rpem <- function(control) {
                                   method = "liblsoda")
   .foceiPreProcessData(env$data, .ret, ui, .rxControl)
   .cl <- rfit$classify
+  # Mixtures produce IPRED/PRED tables but skip CWRES/NPDE (as SAEM does): those add
+  # a FOCEi re-fit whose per-subject mixture etaMat carries a mixnum column that the
+  # inner solver rejects.  Disable them in the table control for a mixture fit.
+  if (!is.null(.cl$mix) && inherits(.ret$table, "tableControl")) {
+    .ret$table$cwres <- FALSE
+    .ret$table$npde <- FALSE
+  }
   # Only user-fixed (fix()) thetas are held; non-mu-ref structural params are now
   # estimated by the numeric re-solve M-step.  Mark the held ones fixed so the fit
   # reports them as held rather than assigning FOCEI-covariance SEs.
@@ -464,12 +659,23 @@ getValidNlmixrCtl.rpem <- function(control) {
   if (.cl$errType == 4L) .ft[.tn[.cl$powIdx + 1L]] <- rfit$power
   if (length(rfit$struct)) .ft[.tn[.cl$structIdx + 1L]] <- rfit$struct
   if (length(rfit$covCoef)) .ft[.cl$covCoefNames] <- rfit$covCoef
+  # mixture: per-component typical values (tka_k) and mixture probabilities (p_k).
+  if (!is.null(.cl$mix)) {
+    .ft[.cl$mix$muNames] <- rfit$mix$muK
+    # the eval reads fullTheta[p1] through its mlogit parameter transform before the
+    # solve (yet validates it as natural at setup); mexpit(w) satisfies both, since
+    # mlogit(mexpit(w)) == w recovers the natural weight for the model.
+    if (length(.cl$mix$probNames))
+      .ft[.cl$mix$probNames] <- rxode2::mexpit(rfit$mix$w[seq_along(.cl$mix$probNames)])
+  }
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas
   .om <- diag(rfit$omega, .cl$nEta)
   dimnames(.om) <- list(.cl$etaNames, .cl$etaNames)
   .ret$omega <- .om
-  # per-subject EBEs -> etaMat for the FOCEI eval
+  # per-subject EBEs -> etaMat for the FOCEI eval (nsub x neta; display EBE = winning
+  # component for a mixture).  FOCEI expands this to K*nsub for the mixture itself.
+  .isMix <- !is.null(.cl$mix)
   .eb <- rfit$ebe
   colnames(.eb) <- .cl$etaNames
   .ret$.etaMat <- .eb
@@ -477,14 +683,25 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ret$etaObf <- data.frame(ID = seq_len(nrow(.eb)),
                             stats::setNames(as.data.frame(.eb), .cl$etaNames),
                             OBJI = NA)
+  # mixture: build mixList / mixNum / mixIcov / probabilities BEFORE the eval (mirrors
+  # SAEM's .saemMixFix), then hand the FOCEI eval an N-row etaMat via the control only
+  # (remove env$.etaMat so no mixnum column leaks into it, exactly as SAEM does).
+  if (.isMix) .rpemMixSetFit(.ret, .cl, rfit)
   .nlmixr2FitUpdateParams(.ret)
-  # covMethod "r,s" makes FOCEI compute the covariance (hence SEs / %RSE / CIs)
-  # at the fixed RPEM estimates.  These are FOCEI-covariance-based SEs; the
-  # paper's Fisher-score SEs (design/rpem/08) are a later refinement.
+  # covMethod "r,s" gives FOCEI-covariance SEs at the fixed RPEM estimates (the paper's
+  # Fisher-score SEs are a later refinement); mixtures skip it (perturbing the mixture
+  # probability breaks the solve), matching SAEM's covMethod=0 for the eval.
   .foceiControl <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 0L,
-                                covMethod = "r,s", etaMat = .eb, scaleTo = 0,
+                                covMethod = if (.isMix) 0L else "r,s",
+                                etaMat = .eb, scaleTo = 0,
+                                skipCov = if (.isMix) ui$foceiSkipCov else NULL,
                                 calcTables = TRUE, interaction = 1L,
                                 rxControl = .rxControl, est = "rpem")
+  if (.isMix) {
+    # the FOCEI eval must read the etaMat from the control, not env$.etaMat.
+    if (exists(".etaMat", envir = .ret, inherits = FALSE)) rm(".etaMat", envir = .ret)
+    if (exists(".etaMatBase", envir = .ret, inherits = FALSE)) rm(".etaMatBase", envir = .ret)
+  }
   .ret$control <- .foceiControl
   .ret$est <- "rpem"
   .ret$ofvType <- "rpem"
