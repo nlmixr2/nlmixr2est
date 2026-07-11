@@ -3063,6 +3063,9 @@ private:
   // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
   // now (guarded by the caller / closure arg length).
   void fsaemImhStep(mat &phiM) {
+    // population phi (constant across subjects for the no-covariate models the
+    // fast kernel currently supports).  Covariate models are guarded out until
+    // the inner is set up on a covariate-free phi model (see .fsaemSupported).
     arma::rowvec popPhi = mprior_phi1.row(0);
     arma::vec omega = Gamma2_phi1.diag();
     arma::mat etaCur(phiM.n_rows, nphi1);

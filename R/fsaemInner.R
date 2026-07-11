@@ -113,7 +113,7 @@
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
-  .cov <- ui$muRefCovariateDataFrame                            # no mu-ref covariates (mprior would vary by subject)
+  .cov <- ui$muRefCovariateDataFrame                            # covariate mu-ref reparameterizes theta (TODO)
   if (!is.null(.cov) && nrow(.cov) > 0L) return(FALSE)
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
   TRUE
