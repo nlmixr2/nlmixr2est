@@ -12,6 +12,10 @@
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
                            "covType",
+                           # subject-constant covariates stashed by .foceiFamilyReturn
+                           # for the analytic covariate-coefficient reuse; internal so
+                           # a built control round-trips (e.g. posthoc re-validation).
+                           "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
                            "outerOptDefault")
