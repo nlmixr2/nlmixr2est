@@ -397,8 +397,13 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
     .thetaValue <- c(.thetaValue, .nonMuThetas)
   }
   .thetaErrNames <- .iniDf[!is.na(.iniDf$ntheta) & !is.na(.iniDf$err), ]
-
-  .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  # a general log-likelihood endpoint has no residual error theta, so guard the
+  # empty case (else setNames() injects a spurious NA=THETA[] entry)
+  if (nrow(.thetaErrNames) == 0L) {
+    .thetaValueErr <- character(0L)
+  } else {
+    .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
   for (.e in seq_along(.etaTrans)) {

@@ -1733,6 +1733,17 @@ public:
             uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
             DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
           }
+        } else if (distribution == 4) {
+          // General log-likelihood endpoint: the model returns the per-observation
+          // log-likelihood as its prediction (rx_pred_ ~ <ll>, saemix modeltype
+          // "likelihood"), so the observation loss is simply -ll.  The standard
+          // RWM kernels (do_mcmc) then run unchanged, so plain saem (not just
+          // fsaem) supports it.
+          for (int k = 0; k < nmc; k++) {
+            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -fk;
+          }
         }
         else {
           RSprintf("unknown distribution (id=%d)\n", distribution);
@@ -1788,6 +1799,10 @@ public:
           vec gk, y_cur, f_cur;
           double ft, fa;
           //loop thru endpoints here
+          // general log-likelihood (distribution==4) has no residual error, so
+          // skip the residual SSR accumulation entirely (fsM above is kept for
+          // downstream predictions)
+          if (distribution != 4)
           for(int b=0; b<nendpnt; ++b) {
             if (hasFixedObsTransform) {
               y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
@@ -1841,7 +1856,8 @@ public:
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
           vec d1_logsigma2(1);
-          d1_logsigma2[0] =  0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          // general log-likelihood: no residual param, so its FIM row is 0
+          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -1856,7 +1872,7 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
+          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
           D2=D2+d2logk;
         }
       }//k
@@ -2080,6 +2096,8 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
+      // general log-likelihood (distribution==4): no residual error params to update
+      if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
         // AR(1): update the correlation from this iteration's residual pairs
         // (grid-search profile likelihood + stochastic approximation).  statrese
@@ -3197,6 +3215,17 @@ private:
             }
           }
           break;
+        case 4:
+          {
+            // general log-likelihood: model prediction is the per-obs loglik
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -fck;
+            }
+          }
+          break;
         }
 
         Uc_y=sum(DYF,0).t();
@@ -3293,6 +3322,17 @@ private:
             vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
             DYFm(_scratch_indio) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+          }
+        }
+        break;
+      case 4:
+        {
+          // general log-likelihood: model prediction is the per-obs loglik
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            _scratch_indio = mx.indio + (arma::uword)k * stride;
+            DYFm(_scratch_indio) = -fck;
           }
         }
         break;

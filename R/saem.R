@@ -1152,7 +1152,12 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  # saem supports a general log-likelihood endpoint (ll() ~ expr) the same way
+  # saemix does (the model returns the per-obs loglik; the RWM kernels use -ll as
+  # the observation loss); only require normality for the ordinary case.
+  if (!.fsaemGeneralLik(.ui)) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
