@@ -296,9 +296,6 @@ nlmControl <- function(typsize = NULL,
                eventSens=eventSens,
                sensMethod=sensMethod,
 
-               eventSens=eventSens,
-               sensMethod=sensMethod,
-
                iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
