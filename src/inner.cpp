@@ -68,6 +68,26 @@ extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
 }
 extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
 
+// Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
+// a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
+// downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
+extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
+  const char *nm[5] = {"registerLikContrib", "removeLikContrib",
+                       "registerEmLik", "removeEmLik", "hasLikContrib"};
+  DL_FUNC fn[5] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
+                   (DL_FUNC) &nlmixrRegisterEmLik, (DL_FUNC) &nlmixrRemoveEmLik,
+                   (DL_FUNC) &nlmixrHasLikContrib};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 5));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 5));
+  for (int i = 0; i < 5; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
 // test-only contributor (tests/testthat/test-lik-contrib.R): records per-obs
 // values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
 // accumulators, so the test runs single-threaded.

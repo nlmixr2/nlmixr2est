@@ -156,8 +156,10 @@ SEXP _nlmixr2est_registerTestContrib(void);
 SEXP _nlmixr2est_removeTestContrib(void);
 SEXP _nlmixr2est_getTestContrib(void);
 SEXP _nlmixr2est_setTestContribAddLL(SEXP);
+SEXP _nlmixr2est_likContribPtrs(void);
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
   {"_nlmixr2est_registerTestContrib", (DL_FUNC) &_nlmixr2est_registerTestContrib, 0},
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},

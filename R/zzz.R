@@ -131,3 +131,16 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   ## nocov end
 }
 
+
+#' External likelihood-contribution registry pointers
+#'
+#' Returns the small external-pointer table (register/remove LikContrib, EmLik,
+#' has) that contributor packages install via
+#' `inst/include/nlmixr2estLikContribPtr.h`.
+#'
+#' @return a named list of external pointers.
+#' @export
+#' @keywords internal
+.nlmixr2estLikContribPtrs <- function() {
+  .Call("_nlmixr2est_likContribPtrs", PACKAGE = "nlmixr2est")
+}
