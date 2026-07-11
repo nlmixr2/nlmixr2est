@@ -1,5 +1,22 @@
 # nlmixr2est (development version)
 
+- The analytic FOCEI/FOCE outer gradient and observed-information covariance
+  (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now build a smaller
+  augmented sensitivity model by reusing eta sensitivities for mu-referenced
+  covariate coefficients.  A covariate coefficient `b` enters through an eta's
+  parameter (`cl = exp(tcl + eta.cl + b*cov)`), so for a covariate that is
+  constant within each subject every sensitivity of `b` equals the linked eta's
+  scaled by the covariate value (`df/db = cov*df/deta`).  Those covariate
+  directions are therefore emitted as algebraic scaled copies instead of
+  integrating their own state-sensitivity ODEs, shrinking the compiled model
+  ~25-58% and cutting its (super-linear) build time ~1.3x-4x on larger covariate
+  models -- the result is bit-identical.  Detection reuses rxode2's own mu-reference
+  classification (`muRefCovariateDataFrame` + `mu2RefCovariateReplaceDataFrame`),
+  covers bare and algebraic (`log(WT/70)`, `WT-70`) covariates, and falls back to
+  the full symbolic build for anything the eta-scaling identity does not cover
+  (time-varying covariates, a shared/reused eta).  The analytic covariance also now
+  restricts itself to Gaussian endpoints (`t`/`cauchy`/count/ordinal likelihoods and
+  multiple estimated transform lambdas fall back to the finite-difference covariance).
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the

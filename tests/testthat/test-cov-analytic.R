@@ -361,6 +361,47 @@ test_that("lnorm and logitNorm transforms run the analytic cov (FOCEI and FOCE)"
   chk(mLogit, d, "foce")
 })
 
+test_that("mu-referenced covariate coefficients reuse eta sensitivities (bare + algebraic)", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # A subject-constant mu-ref covariate coefficient's sensitivities are the linked eta's scaled
+  # by the covariate, so its state-sensitivity ODEs are skipped and its columns emitted as scaled
+  # copies (always on).  The analytic path must run (not fall back) and give a finite, positive,
+  # symmetric covariance for BOTH a BARE data-column covariate (muRefCovariateDataFrame) and an
+  # ALGEBRAIC covariate expression (mu2RefCovariateReplaceDataFrame), with the covariate
+  # coefficient's SE finite.  (Exactness vs the full non-reused build is a bit-identical property
+  # of the eta-scaling identity, exercised by the other analytic-cov tests here now that reuse is
+  # always on; a finite-difference cross-check is too ill-conditioned on theo_sd's ka to assert.)
+  d <- nlmixr2data::theo_sd
+  d$WTN <- d$WT / 70
+  mBare <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.1); tv <- log(8); cl.wt <- 0.1
+          eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.05; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + cl.wt * WTN); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) })
+  }
+  mAlg <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.1); tv <- log(8); cl.wt <- 0.75
+          eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.05; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + cl.wt * log(WT / 70)); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) })
+  }
+  chk <- function(m, coefName) {
+    fit <- suppressMessages(nlmixr2(m, d, "focei",
+                                    foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 5)))
+    expect_identical(fit$covMethod, "analytic")             # analytic ran (covariate reuse in the aug model)
+    se <- sqrt(diag(fit$cov))
+    expect_true(all(is.finite(se)) && all(se > 0))          # finite, positive SEs
+    expect_true(isSymmetric(unclass(fit$cov), tol = 1e-6))
+    expect_true(coefName %in% names(se) && is.finite(se[[coefName]]))  # covariate coeff SE present
+  }
+  chk(mBare, "cl.wt")
+  chk(mAlg, "cl.wt")
+})
+
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
