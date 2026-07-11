@@ -2281,7 +2281,6 @@ static inline int innerOpt1(int id, int likId) {
     if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
       bool tryAgain=false;
       // if (nF <= 3) tryAgain = true;
-      op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
       if (!tryAgain){
         tryAgain = true;
         for (int i = fop->neta; i--;){
@@ -2292,6 +2291,11 @@ static inline int innerOpt1(int id, int likId) {
         }
       }
       if (tryAgain) {
+        // an ETA actually stayed at zero, so a real nudge is performed; only
+        // then flag it (mirrors didHessianReset below) so the "initial ETAs
+        // were nudged" warning is not raised when the inner optimization moved
+        // the ETAs off zero on its own and no nudge was needed
+        op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset.store(1, std::memory_order_relaxed);
