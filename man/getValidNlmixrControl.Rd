@@ -4,6 +4,10 @@
 %   R/lbfgsb3c.R, R/muRefControl.R, R/mufocep.R, R/n1qn1.R, R/newuoa.R,
 %   R/nlm.R, R/nlminb.R, R/nls.R, R/optim.R, R/posthoc.R, R/sharedControl.R,
 %   R/uobyqa.R, R/vae.R
+%   R/foceiFast.R, R/focep.R, R/foi.R, R/imp.R, R/impmap.R, R/irlsfocep.R,
+%   R/laplace.R, R/lbfgsb3c.R, R/muRefControl.R, R/mufocep.R, R/n1qn1.R,
+%   R/newuoa.R, R/nlm.R, R/nlminb.R, R/nls.R, R/optim.R, R/posthoc.R,
+%   R/sharedControl.R, R/uobyqa.R, R/vae.R
 \name{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.bobyqa}
@@ -21,6 +25,8 @@
 \alias{getValidNlmixrCtl.focep}
 \alias{getValidNlmixrCtl.foi}
 \alias{getValidNlmixrCtl.fsaem}
+\alias{getValidNlmixrCtl.imp}
+\alias{getValidNlmixrCtl.impmap}
 \alias{getValidNlmixrCtl.irlsfocep}
 \alias{getValidNlmixrCtl.laplace}
 \alias{getValidNlmixrCtl.lbfgsb3c}
@@ -86,6 +92,9 @@
 \method{getValidNlmixrCtl}{foi}(control)
 
 \method{getValidNlmixrCtl}{fsaem}(control)
+\method{getValidNlmixrCtl}{imp}(control)
+
+\method{getValidNlmixrCtl}{impmap}(control)
 
 \method{getValidNlmixrCtl}{irlsfocep}(control)
 

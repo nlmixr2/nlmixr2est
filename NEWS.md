@@ -18,7 +18,13 @@
   starting-point search has nothing to explore.
 - The reported fit timing (`fit$time`) again attributes the symengine model
   build and rxode2 compilation to `setup` (focei family) / `configure` (saem)
-  instead of leaking it into the `other` bucket.
+  instead of leaking it into the `other` bucket.  The nlm-family methods
+  (nlm/nlminb/bobyqa/newuoa/uobyqa/n1qn1/lbfgsb3c/optim/nls) now time their
+  preprocessing and EBE model build as `setup` and the model build + optimizer
+  as `optimize`, instead of leaving nearly all of it in `other`.
+- Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice, which made a
+  control round-trip (`do.call(nlmControl, ...)`) error with "formal argument
+  ... matched by multiple actual arguments".
 - `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
   `fast=FALSE` up front with a message instead of re-attempting the symengine
   augmented-model build (and silently falling back to finite differences) on every

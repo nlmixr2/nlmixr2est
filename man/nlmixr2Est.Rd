@@ -3,6 +3,9 @@
 %   R/focei.R, R/foceiFast.R, R/focep.R, R/foi.R, R/fsaem.R, R/irlsagq.R,
 %   R/irlsfoce.R, R/irlsfocei.R, R/irlsfocep.R, R/irlslaplace.R, R/laplace.R,
 %   R/lbfgsb3c.R, R/muagq.R, R/mufoce.R, R/mufocei.R, R/mufocep.R,
+%   R/focei.R, R/foceiFast.R, R/focep.R, R/foi.R, R/imp.R, R/impmap.R,
+%   R/irlsagq.R, R/irlsfoce.R, R/irlsfocei.R, R/irlsfocep.R, R/irlslaplace.R,
+%   R/laplace.R, R/lbfgsb3c.R, R/muagq.R, R/mufoce.R, R/mufocei.R, R/mufocep.R,
 %   R/mulaplace.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R,
 %   R/nlmixr2Est.R, R/nls.R, R/optim.R, R/posthoc.R, R/rxsolve.R, R/saem.R,
 %   R/uobyqa.R, R/vae.R
@@ -25,6 +28,8 @@
 \alias{nlmixr2Est.focep}
 \alias{nlmixr2Est.foi}
 \alias{nlmixr2Est.fsaem}
+\alias{nlmixr2Est.imp}
+\alias{nlmixr2Est.impmap}
 \alias{nlmixr2Est.irlsagq}
 \alias{nlmixr2Est.irlsfoce}
 \alias{nlmixr2Est.irlsfocei}
@@ -91,6 +96,9 @@
 \method{nlmixr2Est}{foi}(env, ...)
 
 \method{nlmixr2Est}{fsaem}(env, ...)
+\method{nlmixr2Est}{imp}(env, ...)
+
+\method{nlmixr2Est}{impmap}(env, ...)
 
 \method{nlmixr2Est}{irlsagq}(env, ...)
 

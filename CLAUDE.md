@@ -109,9 +109,13 @@ shutdown signal"):
   does. One line is usually enough; only explain non-obvious *why*.
 - Roxygen descriptions should be short (a sentence or two) -- keep every `@param`/`@return`
   tag, but don't pad `@details` with tutorial-style prose.
-- `NEWS.md` entries should be terse, single-bullet, past-tense, similar to the existing
-  entries under older version headers (e.g. `# nlmixr2est 6.0.1` / `6.0.0`) -- not multi-line
-  narrations of root cause and mechanism.
+- `NEWS.md` is organized per version (`# nlmixr2est X.Y.Z`) the same way the current rxode2
+  NEWS is: user-facing changes first under a `## New features` heading, then a `## Bug fixes`
+  heading.  When `## Bug fixes` has several entries, group them by subsystem/type in `### <category>`
+  subsections (e.g. `### Estimation`, `### Solving`, `### Output / tables`); a single fix can just be
+  a bullet directly under `## Bug fixes`.  Add each entry to the existing subsection when one fits
+  rather than creating a near-duplicate.  Entries are past-tense bullets and may briefly state the
+  fix/feature and its user-visible effect, but not a multi-paragraph root-cause narration.
 - No Unicode in source, comments, or docs (em dashes, smart quotes, arrows, etc.) -- CRAN
   policy expects plain ASCII. Use ` -- `, `'`/`"`, or `->` instead.
 
