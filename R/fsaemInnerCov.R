@@ -81,13 +81,41 @@
 }
 
 #' Set up the covariate-aware f-SAEM inner (mprior-as-data model).  Compiles the
-#' inner model ONCE; per-iteration updates only refresh the mprior data + omega.
-#' @return list(env, built, control, neta)
+#' inner model ONCE (distinct cache entry from the plain focei inner); per-
+#' iteration updates only refresh the mprior data + residual theta + omega.
+#' @return list(env, built, control, neta, data0, innerTheta0)
 #' @noRd
 .fsaemInnerSetupCov <- function(ui, data, mpriorMat, control) {
   .built <- .fsaemInnerMpriorUi(ui)
   .neta <- nrow(ui$muRefDataFrame)
   .data <- .fsaemSetMpriorData(data, mpriorMat, .built)
   .env <- .fsaemInnerSetup(.built$ui, .data, matrix(0, nrow(mpriorMat), .neta), control)
-  list(env = .env, built = .built, control = control, neta = .neta, data = .data)
+  # inner THETA vector template (residual + any time-varying betas), in the inner
+  # ui's ntheta order; refreshed from ares/bres each iteration.
+  .innerTheta <- .built$ui$iniDf
+  .innerTheta <- .innerTheta[!is.na(.innerTheta$ntheta), , drop = FALSE]
+  .innerTheta <- .innerTheta[order(.innerTheta$ntheta), ]
+  list(env = .env, built = .built, control = control, neta = .neta,
+       data0 = data, innerTheta = .innerTheta)
+}
+
+#' Refresh the covariate-aware inner at a new estimate.  Rewrites the per-subject
+#' mprior data + residual theta + omega and re-solves; the inner model is reused
+#' (cache-safe, no recompile).
+#' @noRd
+.fsaemInnerUpdateCov <- function(setup, mpriorMat, ares, bres, omega) {
+  .data <- .fsaemSetMpriorData(setup$data0, mpriorMat, setup$built)
+  # inner theta: residual thetas from ares/bres (structural intercepts are the
+  # mprior data; time-varying covariate betas keep their current inner value).
+  .it <- setup$innerTheta
+  .theta <- as.numeric(.it$est)
+  .residW <- which(!is.na(.it$err))
+  if (length(.residW)) {
+    .isAdd <- .it$err[.residW] == "add"
+    .theta[.residW] <- ifelse(.isAdd, ares[1], bres[1])
+  }
+  setup$env <- .fsaemInnerSetup(setup$built$ui, .data, matrix(0, nrow(mpriorMat), setup$neta),
+                                setup$control)
+  .fsaemInnerUpdate(setup$env, .theta, omega, matrix(0, nrow(mpriorMat), setup$neta))
+  invisible(setup)
 }

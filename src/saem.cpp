@@ -3063,20 +3063,19 @@ private:
   // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
   // now (guarded by the caller / closure arg length).
   void fsaemImhStep(mat &phiM) {
-    // population phi (constant across subjects for the no-covariate models the
-    // fast kernel currently supports).  Covariate models are guarded out until
-    // the inner is set up on a covariate-free phi model (see .fsaemSupported).
-    arma::rowvec popPhi = mprior_phi1.row(0);
+    // Pass the full per-subject prior mean mprior_phi1 (N x nphi1).  For a
+    // no-covariate model every row is the same population phi; for a covariate
+    // model the time-invariant covariate effect is absorbed here per subject.
+    // The R closure decides how to use it (constant intercept vs mprior-as-data
+    // inner) and returns the accepted etas.
     arma::vec omega = Gamma2_phi1.diag();
     arma::mat etaCur(phiM.n_rows, nphi1);
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
     }
-    // pass the raw estimate components; the R closure assembles the inner THETA
-    // (structural = popPhi; residual = ares/bres per endpoint).
     Rcpp::Function stepFn(fsaemStepFn);
-    arma::mat acc = as<arma::mat>(stepFn(NumericVector(popPhi.begin(), popPhi.end()),
+    arma::mat acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
                                          NumericVector(ares.begin(), ares.end()),
                                          NumericVector(bres.begin(), bres.end()),
                                          NumericVector(omega.begin(), omega.end()),

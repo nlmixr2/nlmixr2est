@@ -113,8 +113,14 @@
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
-  .cov <- ui$muRefCovariateDataFrame                            # covariate mu-ref reparameterizes theta (TODO)
-  if (!is.null(.cov) && nrow(.cov) > 0L) return(FALSE)
+  # non-time-varying mu-ref covariates are supported (absorbed into the
+  # per-subject mprior data of the covariate-aware inner); a time-varying mu-ref
+  # covariate regressor in the inner is not wired yet.  Only consider actual
+  # mu-ref covariates -- .nlmixrTimeVaryingCovariates also reports structural
+  # columns like CMT, which are not covariates.
+  .tv <- ui$timeVaryingCovariates
+  .covs <- ui$muRefCovariateDataFrame$covariate
+  if (length(intersect(.tv, .covs)) > 0L) return(FALSE)
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
   TRUE
 }
@@ -154,11 +160,32 @@
   if (identical(.fc$fastCov, "auto")) {
     .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
   }
+  .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
+  if (.hasCov) {
+    # Covariate path: the time-invariant covariate effect is absorbed into the
+    # per-subject prior mean, so the inner is built on the mprior-as-data model
+    # (each mu-ref intercept is a per-subject nlmixrMprior* data column, etas
+    # kept).  The C++ loop passes the full per-subject mprior_phi1 each iteration.
+    .iniPhi <- vapply(ui$muRefDataFrame$theta, function(th)
+      ui$iniDf$est[match(th, ui$iniDf$name)], numeric(1))
+    .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
+    .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
+    cfg$fsaemInnerEnv <- .setup$env
+    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
+      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, omega)
+      .map <- .fsaemInnerMap(.fc, .neta)
+      .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
+      .imh$eta
+    }
+    return(cfg)
+  }
+  # No-covariate path: the inner uses the ui model directly with a constant
+  # population phi (mprior is the same for every subject).
   .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
   cfg$fsaemInnerEnv <- .env
   # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
-  # the current population phi; residual positions take the current additive
-  # (ares) / proportional (bres) estimate for their endpoint.
+  # the current population phi (mprior row 1); residual positions take the
+  # current additive (ares) / proportional (bres) estimate for their endpoint.
   .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "err", "condition")]
   .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
   .nTheta <- nrow(.thetaDf)
@@ -166,9 +193,9 @@
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
-  cfg$fsaemStep <- function(popPhi, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
+  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
     .theta <- numeric(.nTheta)
-    .theta[.structPos] <- popPhi
+    .theta[.structPos] <- mpriorMat[1, ]
     if (length(.residPos)) {
       .theta[.residPos] <- ifelse(.residIsAdd, ares[.residEp], bres[.residEp])
     }
