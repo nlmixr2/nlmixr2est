@@ -232,7 +232,7 @@
                         DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                         tol=rxode2::rxGetControl(ui, "tol", 1e-6),
                         itmax=rxode2::rxGetControl(ui, "itmax", 30),
-                        type=rxode2::rxGetControl(ui, "type", "nelder-mead"),
+                        type=rxode2::rxGetControl(ui, "type", "newuoa"),
                         lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
                         powRange=rxode2::rxGetControl(ui, "powRange", 10),
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),

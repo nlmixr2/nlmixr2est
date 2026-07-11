@@ -106,7 +106,7 @@
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
                        DEBUG = 0,
-                       tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
+                       tol = 1e-4, itmax = 100L, type = c("newuoa", "nelder-mead"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
                        maxOdeRecalc=5L,

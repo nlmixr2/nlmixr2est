@@ -1168,10 +1168,9 @@ public:
   }
 
   void saem_fit() {
-    // Seed Armadillo's RNG (used by the MCMC randn proposals below) from the
-    // control seed so a fit is deterministic regardless of the global arma RNG
-    // state left by a previous fit -- needed for bit-identical runs.
-    arma_rng::set_seed((arma::uword)saemSeed);
+    // (arma_rng::set_seed removed -- arma::randn uses R's RNG under
+    // RcppArmadillo, seeded by set.seed(seed); the explicit arma seed was a
+    // no-op that is under test as a determinism-cycle suspect.)
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
