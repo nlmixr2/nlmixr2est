@@ -113,14 +113,9 @@
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
-  # non-time-varying mu-ref covariates are supported (absorbed into the
-  # per-subject mprior data of the covariate-aware inner); a time-varying mu-ref
-  # covariate regressor in the inner is not wired yet.  Only consider actual
-  # mu-ref covariates -- .nlmixrTimeVaryingCovariates also reports structural
-  # columns like CMT, which are not covariates.
-  .tv <- ui$timeVaryingCovariates
-  .covs <- ui$muRefCovariateDataFrame$covariate
-  if (length(intersect(.tv, .covs)) > 0L) return(FALSE)
+  # mu-ref covariates are supported: non-time-varying ones are absorbed into the
+  # per-subject mprior data, time-varying ones are kept as inner regressor betas
+  # refreshed from the live Plambda each iteration.
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
   TRUE
 }
@@ -171,8 +166,8 @@
     .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
     .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
     cfg$fsaemInnerEnv <- .setup$env
-    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
-      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, omega)
+    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, nsweep = 5L) {
+      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
       .map <- .fsaemInnerMap(.fc, .neta)
       .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
       .imh$eta
@@ -193,7 +188,7 @@
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
-  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
+  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, nsweep = 5L) {
     .theta <- numeric(.nTheta)
     .theta[.structPos] <- mpriorMat[1, ]
     if (length(.residPos)) {

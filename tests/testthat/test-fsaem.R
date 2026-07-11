@@ -139,29 +139,25 @@ nmTest({
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
   })
 
-  test_that("est='fsaem' degrades to standard SAEM for unsupported models", {
-    # a TIME-VARYING mu-ref covariate is outside the current fast-kernel envelope
-    # (its inner regressor beta is not wired yet), so fsaem must fall back to
-    # standard SAEM bit-for-bit (with a message).
-    tvm <- function() {
+  test_that("est='fsaem' rejects unsupported models (mixture) from the fast kernel", {
+    # mixture models are outside the fast-kernel envelope: .fsaemSupported must
+    # return FALSE so the fit degrades to standard SAEM.
+    mixm <- function() {
       ini({
-        tka <- 0.45; tcl <- 1; tv <- 3.45; cl.tv <- 0.1
-        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-        add.sd <- 0.7
+        tka <- 0.45; tcl1 <- 1; tcl2 <- 1.4; tv <- 3.45; p1 <- 0.5
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7
       })
       model({
         ka <- exp(tka + eta.ka)
-        cl <- exp(tcl + eta.cl + cl.tv * TVC)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
         v  <- exp(tv + eta.v)
         linCmt() ~ add(add.sd)
       })
     }
-    .d <- nlmixr2data::theo_sd; .d$TVC <- as.numeric(scale(.d$TIME))
-    .ctl <- saemControl(nBurn = 40, nEm = 30, nmc = 2, seed = 3, print = 0L, calcTables = FALSE)
-    expect_message(
-      .f <- nlmixr2(tvm, .d, est = "fsaem", control = .ctl),
-      "not yet supported")
-    .s <- suppressMessages(nlmixr2(tvm, .d, est = "saem", control = .ctl))
-    expect_equal(unname(fixef(.f)), unname(fixef(.s)))
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mixm))
+    expect_true(length(.ui$mixProbs) > 0L)
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    expect_false(nlmixr2est:::.fsaemSupported(.ui))
   })
 })

@@ -3074,11 +3074,16 @@ private:
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
     }
+    // Plambda holds the current structural fixed effects (in saemParamsToEstimate
+    // order); the covariate closure reads any time-varying covariate coefficient
+    // from it.  Not yet populated on the first iteration (stays at the inner's
+    // ini beta in that case).
     Rcpp::Function stepFn(fsaemStepFn);
     arma::mat acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
                                          NumericVector(ares.begin(), ares.end()),
                                          NumericVector(bres.begin(), bres.end()),
                                          NumericVector(omega.begin(), omega.end()),
+                                         NumericVector(Plambda.begin(), Plambda.end()),
                                          wrap(etaCur), nmc));
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
     for (unsigned int r = 0; r < phiM.n_rows; r++) {

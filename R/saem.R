@@ -1076,6 +1076,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  # Re-stage the mu-ref time-varying split for the post-processing: the theta
+  # table and parameter history are named from saemParamsToEstimate/
+  # saemParHistNames, which only put a time-varying covariate in the correct
+  # (Plambda) order while the split is staged (.saemFitModel stages it only for
+  # the fit itself, then unstages on exit).
+  .nlmixrSetMuRefTimeVarying(.ui, .tv)
+  on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
   .ret$ui <- .ui
   .saemCalcCov(.ret)
   .ret <- nlmixrWithTiming("postprocess", {

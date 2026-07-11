@@ -91,28 +91,40 @@
   .data <- .fsaemSetMpriorData(data, mpriorMat, .built)
   .env <- .fsaemInnerSetup(.built$ui, .data, matrix(0, nrow(mpriorMat), .neta), control)
   # inner THETA vector template (residual + any time-varying betas), in the inner
-  # ui's ntheta order; refreshed from ares/bres each iteration.
+  # ui's ntheta order; refreshed each iteration.
   .innerTheta <- .built$ui$iniDf
   .innerTheta <- .innerTheta[!is.na(.innerTheta$ntheta), , drop = FALSE]
   .innerTheta <- .innerTheta[order(.innerTheta$ntheta), ]
+  # non-residual inner thetas are time-varying covariate betas; map each to its
+  # position in SAEM's Plambda (saemParamsToEstimate order) so it can be
+  # refreshed from the live estimate each iteration.
+  .betaW <- which(is.na(.innerTheta$err))
+  .betaPlambda <- if (length(.betaW)) match(.innerTheta$name[.betaW], ui$saemParamsToEstimate) else integer(0)
   list(env = .env, built = .built, control = control, neta = .neta,
-       data0 = data, innerTheta = .innerTheta)
+       data0 = data, innerTheta = .innerTheta, betaW = .betaW, betaPlambda = .betaPlambda)
 }
 
 #' Refresh the covariate-aware inner at a new estimate.  Rewrites the per-subject
 #' mprior data + residual theta + omega and re-solves; the inner model is reused
 #' (cache-safe, no recompile).
 #' @noRd
-.fsaemInnerUpdateCov <- function(setup, mpriorMat, ares, bres, omega) {
+.fsaemInnerUpdateCov <- function(setup, mpriorMat, ares, bres, plambda, omega) {
   .data <- .fsaemSetMpriorData(setup$data0, mpriorMat, setup$built)
-  # inner theta: residual thetas from ares/bres (structural intercepts are the
-  # mprior data; time-varying covariate betas keep their current inner value).
+  # inner theta: residuals from ares/bres; time-varying covariate betas from the
+  # live Plambda (falling back to the ini value until Plambda is populated);
+  # structural intercepts are the per-subject mprior data.
   .it <- setup$innerTheta
   .theta <- as.numeric(.it$est)
   .residW <- which(!is.na(.it$err))
   if (length(.residW)) {
     .isAdd <- .it$err[.residW] == "add"
     .theta[.residW] <- ifelse(.isAdd, ares[1], bres[1])
+  }
+  for (i in seq_along(setup$betaW)) {
+    .pp <- setup$betaPlambda[i]
+    if (!is.na(.pp) && .pp <= length(plambda) && is.finite(plambda[.pp]) && plambda[.pp] != 0) {
+      .theta[setup$betaW[i]] <- plambda[.pp]
+    }
   }
   setup$env <- .fsaemInnerSetup(setup$built$ui, .data, matrix(0, nrow(mpriorMat), setup$neta),
                                 setup$control)

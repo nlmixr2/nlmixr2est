@@ -120,6 +120,25 @@ nmTest({
     nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
   })
 
+  test_that("time-varying covariate parameters are named in the correct order", {
+    skip_if_not_installed("nlmixr2data")
+    # a time-varying covariate is not absorbed into the mu-ref regression, so its
+    # coefficient sits at the end of Plambda; the theta table / parameter history
+    # must name it accordingly (previously tv and cl.tv were swapped because the
+    # naming ran after the mu-ref split was unstaged).
+    tvlin <- function() {
+      ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.tv<-0.1; eta.ka~0.3; eta.cl~0.1; eta.v~0.1; add.sd<-0.7 })
+      model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.tv*TVC); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
+    }
+    .d <- nlmixr2data::theo_sd; .d$TVC <- as.numeric(scale(.d$TIME))
+    .f <- suppressMessages(nlmixr2(tvlin, .d, est = "saem",
+      control = saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 7, print = 0L, calcTables = FALSE)))
+    # theo has no real time-varying CL effect: tv stays ~3.45, cl.tv ~ 0
+    expect_gt(fixef(.f)[["tv"]], 3)              # tv correctly labelled (not ~0)
+    expect_lt(abs(fixef(.f)[["cl.tv"]]), 1)      # cl.tv correctly labelled (not ~3.45)
+    expect_true(all(c("tka", "tcl", "tv", "cl.tv") %in% names(.f$parHist)))
+  })
+
   test_that("mufocei recovers non-time-varying and time-varying covariate effects", {
     skip_if_not_installed("nlmixr2data")
     .fc <- foceiControl(print = 0L, calcTables = FALSE,
