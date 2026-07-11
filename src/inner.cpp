@@ -33,6 +33,79 @@
 // to avoid a TSan-flagged data race on worker threads' reads.
 static std::atomic<int> _innerParallel{0};
 
+// --- external likelihood-contribution registry (nlmixr2estLikContrib.h) ------
+// Contributor packages register bundles of plain-C hooks; likInner0 cycles them
+// in series inside the per-observation loop.  Registration happens single-
+// threaded before solving; the arrays are read-only during the parallel solve.
+#include "../inst/include/nlmixr2estLikContrib.h"
+#define NLMIXR_MAX_CONTRIB 16
+static const nlmixrLikContrib* _nlmixrContrib[NLMIXR_MAX_CONTRIB] = {NULL};
+static int _nlmixrNContrib = 0;
+static nlmixrEmLik_fn _nlmixrEmLik[NLMIXR_MAX_CONTRIB] = {NULL};
+static int _nlmixrNEmLik = 0;
+
+extern "C" void nlmixrRegisterLikContrib(const nlmixrLikContrib *c) {
+  if (c == NULL || c->obs == NULL) return;
+  for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) return;
+  if (_nlmixrNContrib < NLMIXR_MAX_CONTRIB) _nlmixrContrib[_nlmixrNContrib++] = c;
+}
+extern "C" void nlmixrRemoveLikContrib(const nlmixrLikContrib *c) {
+  for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) {
+    for (int k = i; k < _nlmixrNContrib - 1; ++k) _nlmixrContrib[k] = _nlmixrContrib[k + 1];
+    _nlmixrContrib[--_nlmixrNContrib] = NULL; return;
+  }
+}
+extern "C" void nlmixrRegisterEmLik(nlmixrEmLik_fn fn) {
+  if (fn == NULL) return;
+  for (int i = 0; i < _nlmixrNEmLik; ++i) if (_nlmixrEmLik[i] == fn) return;
+  if (_nlmixrNEmLik < NLMIXR_MAX_CONTRIB) _nlmixrEmLik[_nlmixrNEmLik++] = fn;
+}
+extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
+  for (int i = 0; i < _nlmixrNEmLik; ++i) if (_nlmixrEmLik[i] == fn) {
+    for (int k = i; k < _nlmixrNEmLik - 1; ++k) _nlmixrEmLik[k] = _nlmixrEmLik[k + 1];
+    _nlmixrEmLik[--_nlmixrNEmLik] = NULL; return;
+  }
+}
+extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
+
+// test-only contributor (tests/testthat/test-lik-contrib.R): records per-obs
+// values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
+// accumulators, so the test runs single-threaded.
+static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL;
+static int _testNObs, _testNBegin, _testNEnd;
+static void _testBegin(const nlmixrLikSubj *s) { (void)s; _testNBegin++; }
+static void _testEnd(const nlmixrLikSubj *s) { (void)s; _testNEnd++; }
+static void _testObs(nlmixrLikObs *o) {
+  _testNObs++;
+  _testSumDLLdf += o->dLL_df;
+  _testSumErr += (o->f - o->dv);
+  _testSumF += o->f;
+  if (_testAddLL != 0.0) *o->llik += _testAddLL;   // constant LL shift per obs
+}
+extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
+  _testAddLL = Rf_asReal(v);
+  return R_NilValue;
+}
+static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
+extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
+  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = 0.0;
+  _testNObs = _testNBegin = _testNEnd = 0;
+  nlmixrRegisterLikContrib(&_testContribBundle);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_removeTestContrib(void) {
+  nlmixrRemoveLikContrib(&_testContribBundle);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_getTestContrib(void) {
+  SEXP r = PROTECT(Rf_allocVector(REALSXP, 6));
+  REAL(r)[0] = (double) _testNObs;   REAL(r)[1] = _testSumDLLdf;
+  REAL(r)[2] = _testSumErr;          REAL(r)[3] = _testSumF;
+  REAL(r)[4] = (double) _testNBegin; REAL(r)[5] = (double) _testNEnd;
+  UNPROTECT(1);
+  return r;
+}
+
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
   iniLbfgsb3
@@ -1490,6 +1563,19 @@ double likInner0(double *eta, int id) {
       fInd->nNonNormal = 0;
       fInd->nObs = 0;
       fInd->tbsLik=0.0;
+      // external likelihood contributions (cycled in series); zero overhead when none
+      const int _nContrib = _nlmixrNContrib;
+      std::vector<double> _cDeta, _cDfdeta;
+      if (_nContrib > 0) {
+        _cDeta.assign(op_focei.neta, 0.0);
+        _cDfdeta.assign(op_focei.neta, 0.0);
+        nlmixrLikSubj _subj;
+        _subj.id = id; _subj.neta = op_focei.neta;
+        _subj.nobs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+        _subj.eta = eta;
+        for (int _ci = 0; _ci < _nContrib; ++_ci)
+          if (_nlmixrContrib[_ci]->beginSubject) _nlmixrContrib[_ci]->beginSubject(&_subj);
+      }
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
       if (predSolve) {
@@ -1709,6 +1795,30 @@ double likInner0(double *eta, int id) {
               }
             }
           }
+          // external per-observation contributions (this record was evid==0).
+          // Base outputs f/dv/r and cotangents dLL/df, dLL/dr are read-only; the
+          // contributor may add extra LL and dLL/deta (folded into fInd->llik/lp).
+          if (_nContrib > 0 && getIndEvid(ind, kk) == 0) {
+            double _dLLdf, _dLLdr;
+            if (dist == rxDistributionNorm) {
+              double _rz = _safe_zero(r);
+              _dLLdf = -err / _rz;
+              _dLLdr = 0.5 * err * err / (_rz * _rz) - 0.5 / _rz;
+            } else { _dLLdf = 1.0; _dLLdr = 0.0; }
+            const double *_dfp = NULL;
+            if (op_focei.neta > 0) {
+              for (int _q = 0; _q < op_focei.neta; ++_q) { _cDfdeta[_q] = a(k, _q); _cDeta[_q] = 0.0; }
+              _dfp = _cDfdeta.data();
+            }
+            double _llAdd = 0.0;
+            nlmixrLikObs _o;
+            _o.id = id; _o.k = k; _o.neta = op_focei.neta;
+            _o.f = f; _o.dv = dv; _o.r = r; _o.dLL_df = _dLLdf; _o.dLL_dr = _dLLdr;
+            _o.df_deta = _dfp; _o.llik = &_llAdd; _o.dLL_deta = _cDeta.data();
+            for (int _ci = 0; _ci < _nContrib; ++_ci) _nlmixrContrib[_ci]->obs(&_o);
+            fInd->llik += _llAdd;
+            for (int _q = 0; _q < op_focei.neta; ++_q) lp(_q, 0) += _cDeta[_q];
+          }
           // k--;
           k++;
           if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
@@ -1716,6 +1826,12 @@ double likInner0(double *eta, int id) {
             break;
           }
         }
+      }
+      if (_nContrib > 0) {
+        nlmixrLikSubj _subj;
+        _subj.id = id; _subj.neta = op_focei.neta; _subj.nobs = fInd->nObs; _subj.eta = eta;
+        for (int _ci = 0; _ci < _nContrib; ++_ci)
+          if (_nlmixrContrib[_ci]->endSubject) _nlmixrContrib[_ci]->endSubject(&_subj);
       }
       if (op_focei.neta == 0) {
         if (fInd->nNonNormal && op_focei.adjLik) {
