@@ -640,9 +640,9 @@
 #' @noRd
 .rpemFitMix <- function(ui, data, .cl, control = rpemControl()) {
   .mix <- .cl$mix; K <- .mix$K
-  if (!.cl$errType %in% c(0L, 1L, 2L, 4L, 6L))
-    stop("RPEM mixtures currently support additive, proportional, combined, power or lognormal residuals")
-  .comb <- (.cl$errType == 2L); .pow <- (.cl$errType == 4L)
+  if (!.cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 6L))
+    stop("RPEM mixtures currently support additive, proportional, combined, power, TBS or lognormal residuals")
+  .comb <- (.cl$errType == 2L); .pow <- (.cl$errType == 4L); .tbs <- (.cl$errType == 3L)
   if (length(.cl$structIdx) > 0L)
     stop("RPEM mixtures require non-mixture structural typical values to be fix()ed")
   .m <- ui$rpemRxModel$predOnly
@@ -666,16 +666,17 @@
   .P <- .mix$nParam
   base <- .cl$base; muK <- .mix$muComp0; w <- .mix$w0     # muK is nParam x K
   omega <- diag(.cl$omega0); addSd <- .cl$addSd0; propSd <- if (.comb) .cl$propSd0 else NA_real_
-  power <- if (.pow) .cl$pow0 else NA_real_
+  power <- if (.pow) .cl$pow0 else NA_real_; lambda <- if (.tbs) .cl$lambda0 else NA_real_
   niter <- control$niter
   muArr <- array(0, c(niter, .P, K)); wMat <- matrix(0, niter, K)
   omTr <- matrix(0, niter, .cl$nEta); sdTr <- numeric(niter); propTr <- numeric(niter)
-  powTr <- numeric(niter); llTr <- numeric(niter)
+  powTr <- numeric(niter); lamTr <- numeric(niter); llTr <- numeric(niter)
   for (.it in seq_len(niter)) {
     base[.mix$muCompIdx + 1L] <- muK
     base[.cl$addSdIdx + 1L] <- addSd            # power: addSd slot holds the scale
     if (.comb) base[.cl$propSdIdx + 1L] <- propSd
     if (.pow) base[.cl$powIdx + 1L] <- power
+    if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
     rxode2::rxSetSeed(control$seed + .it)
     .etaMat <- .drawEtas(omega)
     .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
@@ -684,6 +685,7 @@
     muK <- .ms$muK; omega <- .ms$omega; w <- .ms$w; addSd <- .ms$addSd
     if (.comb) propSd <- .ms$propSd
     if (.pow) power <- .ms$power
+    if (.tbs) lambda <- .ms$lambda
     # Label-switching guard (design/rpem/07): shared-eta components are exchangeable in
     # the likelihood, so the MH labels can swap between iterations and corrupt the
     # collected trace -- enforce a canonical order (ascending first-parameter mu) each
@@ -694,7 +696,8 @@
     }
     muArr[.it, , ] <- muK; wMat[.it, ] <- w; omTr[.it, ] <- omega
     sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
-    powTr[.it] <- if (.pow) power else NA_real_; llTr[.it] <- .est$lnL
+    powTr[.it] <- if (.pow) power else NA_real_
+    lamTr[.it] <- if (.tbs) lambda else NA_real_; llTr[.it] <- .est$lnL
   }
   .k <- min(control$collect, niter); .wi <- (niter - .k + 1L):niter
   muHat <- apply(muArr[.wi, , , drop = FALSE], c(2, 3), mean)   # nParam x K
@@ -702,11 +705,13 @@
   omHat <- colMeans(omTr[.wi, , drop = FALSE]); sdHat <- mean(sdTr[.wi])
   propHat <- if (.comb) mean(propTr[.wi]) else NA_real_
   powerHat <- if (.pow) mean(powTr[.wi]) else NA_real_
+  lambdaHat <- if (.tbs) mean(lamTr[.wi]) else NA_real_
 
   # Final E-step at the converged estimates: EBEs + per-subject component posteriors.
   base[.mix$muCompIdx + 1L] <- muHat; base[.cl$addSdIdx + 1L] <- sdHat
   if (.comb) base[.cl$propSdIdx + 1L] <- propHat
   if (.pow) base[.cl$powIdx + 1L] <- powerHat
+  if (.tbs) base[.cl$lambdaIdx + 1L] <- lambdaHat
   omegaHat <- omHat
   rxode2::rxSetSeed(control$seed)
   .feEta <- .drawEtas(omegaHat)
@@ -752,7 +757,7 @@
        omega = stats::setNames(omHat, .cl$etaNames),
        addSd = sdHat,
        propSd = if (.comb) propHat else if (.cl$errType == 1L) sdHat else NA_real_,
-       lambda = NA_real_, power = if (.pow) powerHat else NA_real_,
+       lambda = if (.tbs) lambdaHat else NA_real_, power = if (.pow) powerHat else NA_real_,
        endptSd = NULL, endptProp = NULL, struct = NULL,
        covCoef = stats::setNames(numeric(0), character(0)), ebe = ebe,
        lnL = llTr, muTrace = muArr, omegaTrace = omTr, sdTrace = sdTr,

@@ -39,8 +39,12 @@ and guarded-Newton-maximizes the shared (add.sd^2, prop.sd^2) over the stored cp
 same optimizer as the non-mixture combined M-step; add/prop/lnorm keep the closed-form
 pooled SS).  POWER RESIDUAL DONE: mixtures also support `pow(scale, exponent)` -- the
 scale profiles out and the exponent is golden-sectioned over the accepted (subject,
-sample, component) states (same profile as the non-mixture power M-step).  Still open:
-mixtures x TBS residual, and the SAEM-representation backend benchmark.  Mixture component-probability SEs are intentionally not reported (not reported
+sample, component) states (same profile as the non-mixture power M-step).  TBS RESIDUAL
+DONE: mixtures also support add + boxCox/yeoJohnson (transform-both-sides) -- the
+transformed-scale add.sd profiles out and lambda is golden-sectioned over the accepted
+states with the log-Jacobian (per-obs transform code/bounds from the E-step).  The
+residual x mixture matrix is now COMPLETE (add / prop / lnorm / combined / power / TBS).
+Still open: the SAEM-representation backend benchmark.  Mixture component-probability SEs are intentionally not reported (not reported
 elsewhere in the ecosystem; mixtures keep covMethod "r,s").
 
 ## Two backends to build and compare

@@ -696,7 +696,8 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
     stop("etaForComp must be nParam x K");
   bool doComb = (errType == 2);                  // combined add+prop: no closed form
   bool doPow = (errType == 4);                   // power (scale*cp^exponent)^2: profile
-  std::vector<long> counts3((doComb || doPow) ? (size_t)nsub * nG * K : 0, 0);  // per-(i,j,k) visits
+  bool doTbs = (errType == 3);                   // transform-both-sides + dynamic lambda
+  std::vector<long> counts3((doComb || doPow || doTbs) ? (size_t)nsub * nG * K : 0, 0);  // per-(i,j,k)
 
   std::vector<double> logw(K);
   for (int k = 0; k < K; ++k) logw[k] = log(w[k]);
@@ -760,7 +761,7 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
         sumTTk[(size_t)p * K + ck] += theta * theta;
       }
       ++countK[ck];
-      if (doComb || doPow) counts3[((size_t)ci * nG + cj) * K + ck]++;
+      if (doComb || doPow || doTbs) counts3[((size_t)ci * nG + cj) * K + ck]++;
       int nobsi = rpemOp.nobs[ci];
       size_t r = ((size_t)ci * nG + cj) * K + ck;
       if (errType == 6) {
@@ -804,7 +805,7 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
   // has no closed form, so guarded-Newton-maximize the shared (a=add^2, b=prop^2)
   // Gaussian log-likelihood over the accepted (i,j,k) states' stored cp/dv (mixture
   // stride) -- the same optimizer as the non-mixture combined M-step.
-  double addNew, propNew = NA_REAL, powNew = NA_REAL;
+  double addNew, propNew = NA_REAL, powNew = NA_REAL, lamNew = NA_REAL;
   if (doComb) {
     const double eps = 1e-12;
     auto over = [&](double aa, double bb, double &Q, double *ga, double *gb,
@@ -875,12 +876,41 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
     powNew = rpemGolden(f, 0.0, 3.0, 100);
     double SSc, SL; stat(powNew, SSc, SL);
     addNew = sqrt(SSc / N);
+  } else if (doTbs) {
+    // transform-both-sides: additive on the transformed scale + dynamic lambda.  The
+    // transformed-scale variance profiles out (add^2 = SS(lambda)/N), so golden-section
+    // the profile loglik -0.5 N log(SS/N) + sum log|dt/dDV| over the accepted (i,j,k)
+    // states -- same profile as the non-mixture TBS M-step (per-obs yj/low/hi from the
+    // E-step).  addNew holds the transformed-scale add.sd, lamNew the lambda.
+    auto ssJac = [&](double lam, double &SS, double &Jac) {
+      SS = 0.0; Jac = 0.0;
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i]; long so0 = rpemOp.idS[i];
+        for (int j = 0; j < nG; ++j) for (int k = 0; k < K; ++k) {
+          long c = counts3[((size_t)i * nG + j) * K + k]; if (!c) continue;
+          long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+            int yj = rpemOp.yjv[so0 + o]; double low = rpemOp.lowv[so0 + o], hi = rpemOp.hiv[so0 + o];
+            double d = _powerD(dv, lam, yj, low, hi) - _powerD(cp, lam, yj, low, hi);
+            SS += (double)c * d * d;
+            Jac += (double)c * log(fabs(_powerDD(dv, lam, yj, low, hi)) + 1e-300);
+          }
+        }
+      }
+    };
+    double N = (double)sumNobs;
+    auto f = [&](double lam) { double SS, Jac; ssJac(lam, SS, Jac);
+      if (SS < 1e-300) SS = 1e-300; return -0.5 * N * log(SS / N) + Jac; };
+    lamNew = rpemGolden(f, -2.0, 3.0, 100);
+    double SS, Jac; ssJac(lamNew, SS, Jac);
+    addNew = sqrt(SS / N);
   } else {
     addNew = sqrt(sumSS / (double)sumNobs);
   }
   return List::create(_["muK"] = muNew, _["omega"] = omegaNew, _["w"] = wNew,
                       _["addSd"] = addNew, _["propSd"] = propNew, _["power"] = powNew,
-                      _["accept"] = (double)naccept / total);
+                      _["lambda"] = lamNew, _["accept"] = (double)naccept / total);
 }
 
 // K=1 M-step with a covariate design (mu2, D22).  Generalizes rpemMstepK1's mu
