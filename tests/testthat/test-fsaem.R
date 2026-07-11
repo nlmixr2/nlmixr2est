@@ -90,25 +90,47 @@ nmTest({
     expect_lt(.short("fsaem", 20L), .short("saem", 20L))
   })
 
+  test_that("est='fsaem' supports proportional and combined error", {
+    .ctl <- saemControl(nBurn = 150, nEm = 100, nmc = 3, seed = 8, print = 0L, calcTables = FALSE)
+    prop <- function() {
+      ini({ tka<-0.45; tcl<-1; tv<-3.45; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; prop.sd<-0.15 })
+      model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl); v<-exp(tv+eta.v); linCmt() ~ prop(prop.sd) })
+    }
+    comb <- function() {
+      ini({ tka<-0.45; tcl<-1; tv<-3.45; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.3; prop.sd<-0.1 })
+      model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl); v<-exp(tv+eta.v); linCmt() ~ add(add.sd) + prop(prop.sd) })
+    }
+    for (.m in list(prop, comb)) {
+      .fs <- suppressMessages(nlmixr2(.m, nlmixr2data::theo_sd, est = "fsaem", control = .ctl))
+      .ss <- suppressMessages(nlmixr2(.m, nlmixr2data::theo_sd, est = "saem", control = .ctl))
+      # fast kernel active (fsaem differs) but converges near the SAEM estimate
+      expect_true(.fs$saemControl$fast)
+      expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.06)
+    }
+  })
+
   test_that("est='fsaem' degrades to standard SAEM for unsupported models", {
     # proportional error is outside the current fast-kernel envelope, so fsaem
-    # must fall back to standard SAEM bit-for-bit (with a message).
-    prop <- function() {
+    # a mu-referenced covariate is outside the current fast-kernel envelope, so
+    # fsaem must fall back to standard SAEM bit-for-bit (with a message).
+    covm <- function() {
       ini({
-        tka <- 0.45; tcl <- 1; tv <- 3.45
+        tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.75
         eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-        prop.sd <- 0.2
+        add.sd <- 0.7
       })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-        linCmt() ~ prop(prop.sd)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + cl.wt * log(WT / 70))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
       })
     }
     .ctl <- saemControl(nBurn = 40, nEm = 30, nmc = 2, seed = 3, print = 0L, calcTables = FALSE)
     expect_message(
-      .f <- nlmixr2(prop, nlmixr2data::theo_sd, est = "fsaem", control = .ctl),
+      .f <- nlmixr2(covm, nlmixr2data::theo_sd, est = "fsaem", control = .ctl),
       "not yet supported")
-    .s <- suppressMessages(nlmixr2(prop, nlmixr2data::theo_sd, est = "saem", control = .ctl))
+    .s <- suppressMessages(nlmixr2(covm, nlmixr2data::theo_sd, est = "saem", control = .ctl))
     expect_equal(unname(fixef(.f)), unname(fixef(.s)))
   })
 })

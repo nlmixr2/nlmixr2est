@@ -3064,17 +3064,18 @@ private:
   // now (guarded by the caller / closure arg length).
   void fsaemImhStep(mat &phiM) {
     arma::rowvec popPhi = mprior_phi1.row(0);
-    arma::vec theta(nphi1 + 1);
-    for (int j = 0; j < nphi1; j++) theta(j) = popPhi(j);
-    theta(nphi1) = ares(0);
     arma::vec omega = Gamma2_phi1.diag();
     arma::mat etaCur(phiM.n_rows, nphi1);
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
     }
+    // pass the raw estimate components; the R closure assembles the inner THETA
+    // (structural = popPhi; residual = ares/bres per endpoint).
     Rcpp::Function stepFn(fsaemStepFn);
-    arma::mat acc = as<arma::mat>(stepFn(NumericVector(theta.begin(), theta.end()),
+    arma::mat acc = as<arma::mat>(stepFn(NumericVector(popPhi.begin(), popPhi.end()),
+                                         NumericVector(ares.begin(), ares.end()),
+                                         NumericVector(bres.begin(), bres.end()),
                                          NumericVector(omega.begin(), omega.end()),
                                          wrap(etaCur), nmc));
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;

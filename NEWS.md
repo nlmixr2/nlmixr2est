@@ -8,7 +8,8 @@
   Gaussian proposal is centered at each subject's conditional MAP (reusing the
   FOCEi inner likelihood), which reaches the MLE in fewer iterations; later
   iterations degrade to the standard kernels.  Currently limited to continuous
-  single-endpoint additive-error models without covariates.
+  single-endpoint models (additive, proportional or combined error) without
+  covariates; other models transparently run standard SAEM.
 - The "initial ETAs were nudged" warning is now only raised when an ETA
   actually stayed at zero and a nudge was performed, not merely when the nudge
   check ran (which previously produced a spurious warning on well-behaved fits).

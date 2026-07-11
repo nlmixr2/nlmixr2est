@@ -112,7 +112,7 @@
   if (!all(.pred$distribution == "norm")) return(FALSE)         # continuous normal (Hessian path TODO)
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
-  if (!all(.err == "add")) return(FALSE)                        # additive residual only for now
+  if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
   .cov <- ui$muRefCovariateDataFrame                            # no mu-ref covariates (mprior would vary by subject)
   if (!is.null(.cov) && nrow(.cov) > 0L) return(FALSE)
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
@@ -156,8 +156,23 @@
   }
   .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
   cfg$fsaemInnerEnv <- .env
-  cfg$fsaemStep <- function(theta, omega, etaCur, nchain, nsweep = 5L) {
-    .fsaemInnerUpdate(.env, theta, omega, matrix(0, .N, .neta))
+  # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
+  # the current population phi; residual positions take the current additive
+  # (ares) / proportional (bres) estimate for their endpoint.
+  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "err", "condition")]
+  .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
+  .nTheta <- nrow(.thetaDf)
+  .structPos <- which(is.na(.thetaDf$err))
+  .residPos <- which(!is.na(.thetaDf$err))
+  .residIsAdd <- .thetaDf$err[.residPos] == "add"
+  .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
+  cfg$fsaemStep <- function(popPhi, ares, bres, omega, etaCur, nchain, nsweep = 5L) {
+    .theta <- numeric(.nTheta)
+    .theta[.structPos] <- popPhi
+    if (length(.residPos)) {
+      .theta[.residPos] <- ifelse(.residIsAdd, ares[.residEp], bres[.residEp])
+    }
+    .fsaemInnerUpdate(.env, .theta, omega, matrix(0, .N, .neta))
     .map <- .fsaemInnerMap(.fc, .neta)
     .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
     .imh$eta
