@@ -48,3 +48,71 @@ test_that("RPEM estimates a mu2 covariate coefficient (matches FOCEI)", {
   expect_equal(unname(rf$mu["tka"]), fTka, tolerance = 0.05)
   expect_equal(unname(rf$covCoef["kawt"]), fKawt, tolerance = 0.05)
 })
+
+# Time-varying vs non-time-varying covariate split (same detection mechanism as
+# the mu-referenced SAEM family): a time-varying covariate cannot be a per-subject
+# mu regressor, so it is routed to the structural beta re-solve; a non-time-varying
+# covariate stays in the mu2 regression.
+
+test_that("RPEM classifier routes time-varying covariates to the structural set", {
+  set.seed(3); nsub <- 8L; obsT <- c(0.5, 2, 6, 12)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ntv <- round(rnorm(1), 2)
+    rbind(data.frame(id = i, time = 0, evid = 1, amt = 100, cmt = 1, DV = 0, NTV = ntv, TV = 0),
+          data.frame(id = i, time = obsT, evid = 0, amt = 0, cmt = 1, DV = 1, NTV = ntv,
+                     TV = round(rnorm(length(obsT)), 2)))
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); lv <- fix(3.45); b_tv <- 0.1; b_ntv <- 0.1
+          add.sd <- 0.2; eta.ka ~ 0.5 })
+    model({ ka <- exp(tka + b_tv * TV + b_ntv * NTV + eta.ka); cl <- exp(tcl); v <- exp(lv)
+            cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxode2(mod)
+  tv <- .nlmixrTimeVaryingCovariates(dat, ui, rxode2::rxControl())
+  expect_true("TV" %in% tv)         # TV varies within subject -> detected
+  expect_false("NTV" %in% tv)       # NTV is constant per subject -> not detected
+
+  cl <- .rpemClassify(ui, tv)
+  # non-time-varying stays in the mu regression
+  expect_true("b_ntv" %in% cl$covCoefNames)
+  expect_false("b_tv" %in% cl$covCoefNames)
+  # time-varying coefficient falls into the structural (beta re-solve) set
+  expect_true("b_tv" %in% cl$thetaNames[cl$structIdx + 1L])
+
+  # without the split both would be mu regressors (regression M-step could not
+  # represent a within-subject covariate)
+  cl0 <- .rpemClassify(ui, character(0))
+  expect_true(all(c("b_tv", "b_ntv") %in% cl0$covCoefNames))
+})
+
+test_that("RPEM recovers time-varying (structural) and non-time-varying (mu) covariates", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: multi-iteration RPEM loop
+  simMod <- rxode2::rxode2({
+    ka <- exp(0.45 + 0.3 * NTV + 0.25 * TV + eka); cl <- exp(1); v <- exp(3.45); cp <- linCmt()
+  })
+  set.seed(5); nsub <- 70L; obsT <- seq(0.5, 24, by = 1.5)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ntv <- rnorm(1, 0, 1); eka <- rnorm(1, 0, sqrt(0.15)); n <- length(obsT)
+    ev <- data.frame(id = i, time = c(0, obsT), evid = c(1, rep(0, n)), amt = c(100, rep(0, n)),
+                     cmt = 1, NTV = ntv, TV = c(0, rnorm(n, 0, 1)), eka = eka)
+    s <- rxode2::rxSolve(simMod, ev, returnType = "data.frame", addDosing = FALSE)
+    ev$DV <- 0; o <- ev$evid == 0; ev$DV[o] <- s$cp + rnorm(sum(o), 0, 0.1)
+    ev$eka <- NULL; ev
+  }))
+  rmod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); lv <- fix(3.45); b_ntv <- 0.1; b_tv <- 0.1
+          add.sd <- 0.2; eta.ka ~ 0.3 })
+    model({ ka <- exp(tka + b_ntv * NTV + b_tv * TV + eta.ka); cl <- exp(tcl); v <- exp(lv)
+            cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  # reset the global threefry stream so the non-cLoop M-step MH is reproducible
+  # regardless of test order (it draws proposals from the global stream)
+  rxode2::rxSetSeed(42)
+  rf <- .rpemFit(rxode2::rxode2(rmod),
+                 dat, rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                                  collect = 10L, seed = 1L))
+  expect_equal(unname(rf$covCoef["b_ntv"]), 0.3, tolerance = 0.2)   # mu regression
+  expect_equal(unname(rf$struct["b_tv"]), 0.25, tolerance = 0.2)    # structural beta
+})

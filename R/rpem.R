@@ -109,7 +109,7 @@
        etaName = .params[[1]]$compEta[1], perComp = .params[[1]]$perComp)
 }
 
-.rpemClassify <- function(ui) {
+.rpemClassify <- function(ui, tvCovs = character(0)) {
   .ini <- ui$iniDf
   .thetas <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
   .thetas <- .thetas[order(.thetas$ntheta), , drop = FALSE]
@@ -283,6 +283,13 @@
     covCoefNames <- character(0); covNames <- character(0)
   } else {
     .covDf <- .covDf[.covDf$theta %in% .muName, , drop = FALSE]
+    # time-varying / non-time-varying split (same mechanism as the mu-referenced SAEM
+    # family, .nlmixrTimeVaryingCovariates): a time-varying covariate varies within a
+    # subject, so it cannot be a per-subject mu regressor -- drop it from the mu2
+    # regression here; it then falls into the structural set below and is estimated as
+    # a beta regressor by the numeric re-solve M-step.  Non-time-varying covariates
+    # stay in the mu regression.
+    .covDf <- .covDf[!(.covDf$covariate %in% tvCovs), , drop = FALSE]
     covCoefNames <- as.character(.covDf$covariateParameter)
     covNames <- as.character(.covDf$covariate)
   }
@@ -368,7 +375,11 @@
 }
 
 .rpemFit <- function(ui, data, control = rpemControl()) {
-  .cl <- .rpemClassify(ui)
+  # time-varying covariates (shared detection) become structural beta regressors; the
+  # non-time-varying ones stay in the mu2 regression -- classified accordingly.
+  .tv <- tryCatch(.nlmixrTimeVaryingCovariates(data, ui, rxode2::rxControl()),
+                  error = function(e) character(0))
+  .cl <- .rpemClassify(ui, .tv)
   if (!is.null(.cl$mix)) return(.rpemFitMix(ui, data, .cl, control))
   .m <- ui$rpemRxModel$predOnly
   .nm <- c(paste0("THETA[", seq_len(.cl$nTheta), "]"),
