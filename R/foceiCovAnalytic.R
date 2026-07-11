@@ -852,7 +852,7 @@
   Rstr <- if (hasA && hasP) "sa^2+sp^2*f^2" else if (hasP) "sp^2*f^2" else "sa^2"
   Rq <- parse(text = Rstr)[[1]]
   rhoE <- bquote(0.5 * ((y - f)^2 / .(Rq) + log(.(Rq))))
-  pE <- bquote(1 / .(Rq) + 0.5 * (.(D(Rq, "f")) / .(Rq))^2)
+  pE <- bquote(1 / .(Rq) + 0.5 * (.(stats::D(Rq, "f")) / .(Rq))^2)
   # FOCE (interaction=0) pieces: the inner problem drops dR/deta, so its gradient
   # coefficient is the least-squares part only, qE = drho/df = -(y-f)/R
   # (q'=dq/df, q''=d2q/df2 build the FOCE inner Hessian Hf and its 3-tensor); the FOCE
@@ -862,7 +862,7 @@
   # are built below with the separate f0 symbol.
   qE <- bquote(-(y - f) / .(Rq))
   pFE <- bquote(1 / .(Rq))
-  DD <- function(e, ...) { for (v in c(...)) e <- D(e, v); e }
+  DD <- function(e, ...) { for (v in c(...)) e <- stats::D(e, v); e }
   sgVar <- c(if (hasA) "sa", if (hasP) "sp"); sgName <- c(if (hasA) addN, if (hasP) propN)
   val <- setNames(c(if (hasA) er$est[er$name == addN], if (hasP) er$est[er$name == propN]), sgVar)
   sc <- list(r1 = DD(rhoE, "f"), r2 = DD(rhoE, "f", "f"), r3 = DD(rhoE, "f", "f", "f"),
