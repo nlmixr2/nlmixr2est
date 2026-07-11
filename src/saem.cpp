@@ -588,7 +588,9 @@ public:
       phiCand.col(i0(c)).fill(p[c]);
     }
     mat fMat = user_fn(phiCand, evt, optM);
-    return -accu(fMat.col(0));
+    double v = -accu(fMat.col(0));
+    if (!std::isfinite(v)) return 1e300;
+    return v;
   }
 
   // Central finite-difference gradient of phi0Objective (the model does not emit
@@ -612,6 +614,12 @@ public:
   // (no phi0 covariate) case is handled.
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
+    // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
+    // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
+    if (!Rf_isNull(fsaemStepFn)) {
+      setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+      _rx = getRxSolve_();
+    }
     std::vector<double> x(nphi0), lower(nphi0, 0.0), upper(nphi0, 0.0);
     std::vector<int> nbd(nphi0, 0);
     for (int c = 0; c < nphi0; c++) {
@@ -2046,11 +2054,9 @@ public:
       // General log-likelihood: the sampled-mean update above only weakly informs
       // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
       // phase has begun, refine them by a direct L-BFGS-B optimization of the
-      // observation likelihood (saemix ind.fix10).  Restricted to plain saem: the
-      // f-SAEM fast kernel re-points the global solve to the FOCEi inner, and the
-      // extra user_fn solves here are not yet safe against that state.
-      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
-          Rf_isNull(fsaemStepFn)) {
+      // observation likelihood (saemix ind.fix10).  refinePhi0Lik restores the
+      // SAEM solve first, so it is safe under the f-SAEM fast kernel too.
+      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
