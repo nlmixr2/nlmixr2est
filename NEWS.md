@@ -1,10 +1,14 @@
 # nlmixr2est (development version)
 
-- Added scaffolding for a fast-SAEM (f-SAEM) simulation step: `saemControl()`
-  gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik` options and a new
-  `est = "fsaem"` method (sugar for `saemControl(fast = TRUE)`).  The fast
-  kernel itself is not yet implemented, so `fast = TRUE` currently runs
-  standard SAEM.
+- Added a fast-SAEM (f-SAEM, Karimi, Lavielle and Moulines 2020) simulation
+  step: `saemControl()` gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik`
+  options and a new `est = "fsaem"` method (sugar for `saemControl(fast =
+  TRUE)`).  When enabled, the early SAEM iterations replace the random-walk
+  Metropolis simulation with an independent Metropolis-Hastings kernel whose
+  Gaussian proposal is centered at each subject's conditional MAP (reusing the
+  FOCEi inner likelihood), which reaches the MLE in fewer iterations; later
+  iterations degrade to the standard kernels.  Currently limited to continuous
+  single-endpoint additive-error models without covariates.
 - The "initial ETAs were nudged" warning is now only raised when an ETA
   actually stayed at zero and a nudge was performed, not merely when the nudge
   check ran (which previously produced a spurious warning on well-behaved fits).

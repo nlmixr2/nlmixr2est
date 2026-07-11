@@ -63,4 +63,30 @@ nmTest({
     expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
   })
+
+  test_that("est='fsaem' converges faster than saem from poor starts (the point)", {
+    # deliberately poor initial estimates; with a short burn-in the f-SAEM IMH
+    # kernel should land closer to the MLE than the standard random-walk SAEM.
+    poor <- function() {
+      ini({
+        tka <- 0.1; tcl <- 0.5; tv <- 3.0
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .ref <- fixef(suppressMessages(nlmixr2(poor, .d, est = "saem",
+      control = saemControl(nBurn = 400, nEm = 150, nmc = 3, seed = 7, print = 0L, calcTables = FALSE))))
+    .short <- function(est, nb) {
+      .f <- suppressMessages(nlmixr2(poor, .d, est = est,
+        control = saemControl(nBurn = nb, nEm = 20, nmc = 3, seed = 7, print = 0L,
+                              calcTables = FALSE, fastIter = nb)))
+      sqrt(sum((fixef(.f) - .ref)^2))
+    }
+    expect_lt(.short("fsaem", 20L), .short("saem", 20L))
+  })
 })
