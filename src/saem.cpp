@@ -2046,8 +2046,11 @@ public:
       // General log-likelihood: the sampled-mean update above only weakly informs
       // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
       // phase has begun, refine them by a direct L-BFGS-B optimization of the
-      // observation likelihood (saemix ind.fix10).
-      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+      // observation likelihood (saemix ind.fix10).  Restricted to plain saem: the
+      // f-SAEM fast kernel re-points the global solve to the FOCEi inner, and the
+      // extra user_fn solves here are not yet safe against that state.
+      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
+          Rf_isNull(fsaemStepFn)) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
