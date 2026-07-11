@@ -37,6 +37,7 @@ extern SEXP _nlmixr2est_vaeInnerLik(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerFree_(void);
 extern SEXP _nlmixr2est_fsaemInnerMap_(SEXP);
 extern SEXP _nlmixr2est_fsaemImhKernel_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_fsaemStepCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeIterPrintStart_(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeIterPrintRow_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeIterPrintGet_(SEXP);
@@ -163,6 +164,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_vaeInnerFree_", (DL_FUNC) &_nlmixr2est_vaeInnerFree_, 0},
   {"_nlmixr2est_fsaemInnerMap_", (DL_FUNC) &_nlmixr2est_fsaemInnerMap_, 1},
   {"_nlmixr2est_fsaemImhKernel_", (DL_FUNC) &_nlmixr2est_fsaemImhKernel_, 11},
+  {"_nlmixr2est_fsaemStepCpp_", (DL_FUNC) &_nlmixr2est_fsaemStepCpp_, 14},
   {"_nlmixr2est_vaeIterPrintStart_", (DL_FUNC) &_nlmixr2est_vaeIterPrintStart_, 4},
   {"_nlmixr2est_vaeIterPrintRow_", (DL_FUNC) &_nlmixr2est_vaeIterPrintRow_, 3},
   {"_nlmixr2est_vaeIterPrintGet_", (DL_FUNC) &_nlmixr2est_vaeIterPrintGet_, 1},

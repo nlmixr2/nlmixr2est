@@ -9708,6 +9708,67 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   return List::create(_["eta"] = etaOut, _["nAcc"] = nAcc, _["nchain"] = nchain);
 }
 
+// C++-native f-SAEM step: the whole per-iteration orchestration that was the R
+// closure (.fsaemInnerUpdate + .fsaemInnerMap + .fsaemImh).  Re-parameterizes the
+// FOCEi inner (theta + omega), optimizes the per-subject MAP + proposal
+// covariance (Gamma_i = H_i^-1), and runs the IMH kernel over the chains,
+// returning the accepted etas.  Keeping the orchestration in C++ lets the SAEM
+// loop drive it directly (no per-iteration R round-trip), which is what makes it
+// safe to change a phase's step count dynamically.
+//[[Rcpp::export]]
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega,
+                            NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                            int nsweep, int cores, NumericVector lower, NumericVector upper,
+                            IntegerVector nbd, double seed, int nRetry, int kiter) {
+  // ---- 1. re-parameterize the inner (mirror .fsaemInnerUpdate) ----
+  int nth = theta.size();
+  NumericVector th = clone(theta);
+  CharacterVector thNames(nth);
+  for (int i = 0; i < nth; ++i) thNames[i] = "THETA[" + std::to_string(i + 1) + "]";
+  th.attr("names") = thNames;
+  env["thetaIni"] = th;
+  int no = omega.size();
+  NumericMatrix om(no, no);
+  for (int i = 0; i < no; ++i) om(i, i) = omega[i];
+  Environment rxns = Environment::namespace_env("rxode2");
+  Function symInvCreate = rxns["rxSymInvCholCreate"];
+  env["rxInv"] = symInvCreate(_["mat"] = om, _["diag.xform"] = "sqrt");
+  env["etaMat"] = NumericMatrix(mprior.nrow(), no);   // zeros
+  vaeInnerSetup_(env);
+  // ---- 2. MAP + information (mirror .fsaemInnerMap) ----
+  List mapL = fsaemInnerMap_(cores);
+  NumericMatrix etaHat = mapL["eta"];
+  NumericMatrix hess = mapL["hess"];
+  IntegerVector ok = mapL["ok"];
+  const int neta = op_focei.neta;
+  const int nsub = etaHat.nrow();
+  // cholGamma row id = vec(lower Cholesky of Gamma_i = H_i^-1); NA where the MAP
+  // failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
+  // symmatu() reproduces that input and "lower" == t(chol()).
+  NumericMatrix cholGamma(nsub, neta * neta);
+  for (int id = 0; id < nsub; ++id) {
+    bool bad = (ok[id] == 0);
+    arma::mat L(neta, neta, arma::fill::zeros);
+    if (!bad) {
+      arma::mat H(neta, neta);
+      for (int j = 0; j < neta * neta; ++j) H(j) = hess(id, j);
+      arma::mat G;
+      if (!arma::inv(G, H)) bad = true;
+      else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
+    }
+    for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
+  }
+  // ---- 3. IMH sweeps (mirror .fsaemImh: iteration-indexed streams) ----
+  NumericMatrix eta = clone(etaCur);
+  for (int s = 0; s < nsweep; ++s) {
+    double streamBase = seed + ((double)kiter * nsweep + s) * ((double)nchain * nsub);
+    List r = fsaemImhKernel_(eta, etaHat, cholGamma, nchain, cores,
+                             mprior, lower, upper, nbd, streamBase, nRetry);
+    eta = as<NumericMatrix>(r["eta"]);
+  }
+  return eta;
+}
+
 //[[Rcpp::export]]
 RObject vaeInnerFree_() {
   rxOptionsFreeFocei();

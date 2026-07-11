@@ -184,6 +184,10 @@ fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lo
     .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
 }
 
+fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
 vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }

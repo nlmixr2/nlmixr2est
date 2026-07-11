@@ -706,6 +706,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// fsaemStepCpp_
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega, NumericMatrix mprior, NumericMatrix etaCur, int nchain, int nsweep, int cores, NumericVector lower, NumericVector upper, IntegerVector nbd, double seed, int nRetry, int kiter);
+RcppExport SEXP _nlmixr2est_fsaemStepCpp_(SEXP envSEXP, SEXP thetaSEXP, SEXP omegaSEXP, SEXP mpriorSEXP, SEXP etaCurSEXP, SEXP nchainSEXP, SEXP nsweepSEXP, SEXP coresSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP nbdSEXP, SEXP seedSEXP, SEXP nRetrySEXP, SEXP kiterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type env(envSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type mprior(mpriorSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaCur(etaCurSEXP);
+    Rcpp::traits::input_parameter< int >::type nchain(nchainSEXP);
+    Rcpp::traits::input_parameter< int >::type nsweep(nsweepSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upper(upperSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type nbd(nbdSEXP);
+    Rcpp::traits::input_parameter< double >::type seed(seedSEXP);
+    Rcpp::traits::input_parameter< int >::type nRetry(nRetrySEXP);
+    Rcpp::traits::input_parameter< int >::type kiter(kiterSEXP);
+    rcpp_result_gen = Rcpp::wrap(fsaemStepCpp_(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeInnerFree_
 RObject vaeInnerFree_();
 RcppExport SEXP _nlmixr2est_vaeInnerFree_() {

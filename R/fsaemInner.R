@@ -229,18 +229,23 @@
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
+  # bound vectors for the C++ orchestration (empty = unbounded)
+  .lower <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
+  .upper <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
+  .nbd   <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
   cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
     .theta <- numeric(.nTheta)
     .theta[.structPos] <- mpriorMat[1, ]
     if (length(.residPos)) {
       .theta[.residPos] <- ifelse(.residIsAdd, ares[.residEp], bres[.residEp])
     }
-    .fsaemInnerUpdate(.env, .theta, omega, matrix(0, .N, .neta))
-    .map <- .fsaemInnerMap(.fc, .neta)
-    .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
-                      mprior = mpriorMat, bounds = .bounds, seed = .seed,
-                      nRetry = .nRetry, kiter = as.integer(kiter))
-    .imh$eta
+    .cores <- as.integer(rxode2::getRxThreads())
+    if (is.na(.cores) || .cores < 1L) .cores <- 1L
+    # whole per-iteration orchestration in C++ (inner update + MAP + IMH)
+    fsaemStepCpp_(.env, as.numeric(.theta), as.numeric(omega), mpriorMat, etaCur,
+                  as.integer(nchain), as.integer(nsweep), .cores,
+                  .lower, .upper, .nbd, as.double(.seed), as.integer(.nRetry),
+                  as.integer(kiter))
   }
   cfg
 }
