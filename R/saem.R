@@ -298,6 +298,9 @@
     .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })

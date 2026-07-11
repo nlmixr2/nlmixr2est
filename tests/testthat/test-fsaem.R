@@ -38,7 +38,7 @@ nmTest({
     expect_true(.gv$fast)
   })
 
-  test_that("est='fsaem' runs and (fast being a no-op) matches est='saem'", {
+  test_that("est='fsaem' runs the live IMH kernel and converges to the SAEM MLE", {
     one.cmt <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -52,13 +52,15 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    .ctl <- saemControl(nBurn=30, nEm=30, nmc=2, seed=42, print=0L, calcTables=FALSE)
+    .ctl <- saemControl(nBurn=200, nEm=100, nmc=3, seed=42, print=0L, calcTables=FALSE)
     .fs <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="fsaem", control=.ctl))
     .ss <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="saem", control=.ctl))
     # fast flag flows through to the stored control (mechanism is wired up)
     expect_true(.fs$saemControl$fast)
     expect_false(.ss$saemControl$fast)
-    # fast is a no-op for now, so results are byte-identical to standard SAEM
-    expect_equal(unname(fixef(.fs)), unname(fixef(.ss)))
+    # the fast kernel changes the simulation trajectory (it fired) -- so fsaem is
+    # NOT bit-identical to saem, but converges to the same MLE
+    expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
   })
 })

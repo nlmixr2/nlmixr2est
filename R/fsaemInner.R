@@ -100,6 +100,46 @@
   list(eta = .r$eta, gamma = .gamma, hess = .hess, ok = .r$ok)
 }
 
+#' Build the f-SAEM fast-simulation step for a SAEM fit and attach it to `cfg`.
+#'
+#' Sets up the FOCEi inner once and returns a closure the C++ SAEM loop calls
+#' each fast iteration with the current estimate.  The closure re-parameterizes
+#' the inner (theta = [structural fixed effects, residual] in THETA order; omega
+#' = current diagonal), optimizes the per-subject MAP + proposal covariance, and
+#' runs the independent Metropolis-Hastings kernel over the chains.
+#' @return `cfg` with `$fsaemStep` (closure) and `$fsaemInnerEnv` (keep-alive).
+#' @noRd
+.fsaemInstallStep <- function(ui, data, rxControl, cfg) {
+  .iniDf <- ui$iniDf
+  .neta <- sum(.iniDf$neta1 == .iniDf$neta2, na.rm = TRUE)
+  .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
+  .fc <- list(rxControl = rxControl,
+              fastCov = rxode2::rxGetControl(ui, "fastCov", "auto"),
+              fastLik = rxode2::rxGetControl(ui, "fastLik", "focei"),
+              fastInnerIt = 100L,
+              sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
+              optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
+              literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
+              addProp = rxode2::rxGetControl(ui, "addProp", "combined2"),
+              eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
+              indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
+              maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),
+              odeRecalcFactor = rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5))
+  # "auto": Jacobian for continuous single-endpoint normal data, else Hessian
+  if (identical(.fc$fastCov, "auto")) {
+    .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
+  }
+  .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
+  cfg$fsaemInnerEnv <- .env
+  cfg$fsaemStep <- function(theta, omega, etaCur, nchain, nsweep = 5L) {
+    .fsaemInnerUpdate(.env, theta, omega, matrix(0, .N, .neta))
+    .map <- .fsaemInnerMap(.fc, .neta)
+    .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
+    .imh$eta
+  }
+  cfg
+}
+
 #' Run `nchain` independent Metropolis-Hastings sweeps of the f-SAEM kernel.
 #'
 #' @param map result of `.fsaemInnerMap()` (proposal mean + covariance)

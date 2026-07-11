@@ -545,6 +545,11 @@ uvec getObsIdx(umat m) {
 }
 
 
+// f-SAEM: forward declarations so the SAEM loop can restore the SAEM model as the
+// current global solve after the fast R closure re-points it to the FOCEi inner.
+void setupRx(List &opt, SEXP evt, int nmc, int N);
+extern rx_solve* _rx;
+
 // class def starts
 class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
@@ -806,6 +811,11 @@ public:
       fsaemFastKernel = as<std::string>(x["fastKernel"]);
       fsaemFastCov = as<std::string>(x["fastCov"]);
       fsaemFastLik = as<std::string>(x["fastLik"]);
+      if (x.containsElementNamed("fsaemStep")) {
+        fsaemStepFn = x["fsaemStep"];
+        fsaemSaemOpt = as<List>(x["opt"]);
+        fsaemSaemEvt = x["evt"];
+      }
     }
     niter = as<int>(x["niter"]);
     nb_correl = as<int>(x["nb_correl"]);
@@ -1731,6 +1741,15 @@ public:
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
 
+        // f-SAEM: on active iterations, precondition phiM's random-effect columns
+        // with the independent Metropolis-Hastings kernel (via the R closure that
+        // reuses the FOCEi inner MAP + proposal).  The standard random-walk
+        // kernels below then run as usual (so U_y/fsave stay consistent) -- this
+        // is the additive form; the firstN/throughout schedules select when it
+        // fires (see fsaemActive).
+        if (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn)) {
+          fsaemImhStep(phiM);
+        }
         if(nphi1>0) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
@@ -2858,6 +2877,9 @@ private:
   std::string fsaemFastKernel = "firstN";
   std::string fsaemFastCov = "auto";
   std::string fsaemFastLik = "focei";
+  RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
+  List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
+  RObject fsaemSaemEvt = R_NilValue;// x["evt"]
 
   int ntotal, N, mlen;
   vec y, ys;    //ys is y sorted by endpnt
@@ -3030,6 +3052,40 @@ private:
     for (int j = (int)cens.size(); j--;) {
       DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
     }
+  }
+
+  // f-SAEM independent Metropolis-Hastings preconditioning of phiM's mu-referenced
+  // random-effect columns.  Reconstructs the inner's current parameterization from
+  // the live SAEM estimate (theta = [population phi (mprior row 0), additive
+  // residual]; omega = Gamma2_phi1 diagonal), hands the current etas to the R
+  // closure (which re-parameterizes the FOCEi inner, optimizes the per-subject MAP
+  // + proposal covariance, and runs the IMH kernel), and writes the accepted etas
+  // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
+  // now (guarded by the caller / closure arg length).
+  void fsaemImhStep(mat &phiM) {
+    arma::rowvec popPhi = mprior_phi1.row(0);
+    arma::vec theta(nphi1 + 1);
+    for (int j = 0; j < nphi1; j++) theta(j) = popPhi(j);
+    theta(nphi1) = ares(0);
+    arma::vec omega = Gamma2_phi1.diag();
+    arma::mat etaCur(phiM.n_rows, nphi1);
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
+    }
+    Rcpp::Function stepFn(fsaemStepFn);
+    arma::mat acc = as<arma::mat>(stepFn(NumericVector(theta.begin(), theta.end()),
+                                         NumericVector(omega.begin(), omega.end()),
+                                         wrap(etaCur), nmc));
+    if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) phiM(r, i1(j)) = acc(r, j) + mprior_phi1(subj, j);
+    }
+    // the R closure re-pointed the global solve to the FOCEi inner (N subjects);
+    // restore the SAEM model's (N*nmc) solve as current before the M-step reads it.
+    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    _rx = getRxSolve_();
   }
 
   void do_mcmc(const int method,
