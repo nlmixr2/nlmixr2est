@@ -56,6 +56,8 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/impControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsagqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceControl.html</loc></url>
@@ -135,6 +137,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.foceiOuter.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.impmapThetaSens.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setOfv.html</loc></url>

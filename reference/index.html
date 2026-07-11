@@ -189,6 +189,20 @@
 
         <dt>
 
+          <code><a href="impControl.html">impControl()</a></code>
+
+        </dt>
+        <dd>Control for the imp (importance-sampling EM without MAP search) method</dd>
+
+        <dt>
+
+          <code><a href="impmapControl.html">impmapControl()</a></code>
+
+        </dt>
+        <dd>Control options for the impmap (importance-sampling EM) estimation method</dd>
+
+        <dt>
+
           <code><a href="irlsagqControl.html">irlsagqControl()</a></code>
 
         </dt>
@@ -564,6 +578,13 @@
 
         </dt>
         <dd>Build the augmented outer-gradient sensitivity model (compiled model + `dirs` + `P2`) for a UI. This is the persistent `..outer` sibling of the inner model: it depends only on the model + direction set (NOT theta/eta/omega), so it is built once during model setup (via `rxUiGet.foceiModel`/`foceModel`, which qs2-cache the whole model list) and reused across every outer-gradient call. Callable independently as `ui$foceiOuter`. `NULL` when out of analytic scope (the gradient then falls back to finite differences).</dd>
+
+        <dt>
+
+          <code><a href="rxUiGet.impmapThetaSens.html">rxUiGet(<i>&lt;impmapThetaSens&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Build the symengine env carrying the impmap sensitivity model (<code>..thetaSens</code>). For each estimated non-mu theta j it outputs rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).</dd>
 
         <dt>
 

@@ -23,6 +23,12 @@ nmObjGetControl(x, ...)
 # S3 method for class 'foi'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'imp'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'impmap'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'irlsfocep'
 nmObjGetControl(x, ...)
 

@@ -14,6 +14,12 @@ nmObjGetFoceiControl(x, ...)
 # S3 method for class 'focep'
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'imp'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'impmap'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'irlsfocep'
 nmObjGetFoceiControl(x, ...)
 

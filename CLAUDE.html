@@ -116,7 +116,7 @@
 <ul><li>Avoid AI-typical verbosity: no multi-paragraph explanations in code comments, no worked examples or numeric anecdotes embedded in comments, no restating what the code obviously does. One line is usually enough; only explain non-obvious <em>why</em>.</li>
 <li>Roxygen descriptions should be short (a sentence or two) – keep every <code>@param</code>/<code>@return</code> tag, but don’t pad <code>@details</code> with tutorial-style prose.</li>
 <li>
-<code>NEWS.md</code> entries should be terse, single-bullet, past-tense, similar to the existing entries under older version headers (e.g. <code># nlmixr2est 6.0.1</code> / <code>6.0.0</code>) – not multi-line narrations of root cause and mechanism.</li>
+<code>NEWS.md</code> is organized per version (<code># nlmixr2est X.Y.Z</code>) the same way the current rxode2 NEWS is: user-facing changes first under a <code>## New features</code> heading, then a <code>## Bug fixes</code> heading. When <code>## Bug fixes</code> has several entries, group them by subsystem/type in <code>### &lt;category&gt;</code> subsections (e.g. <code>### Estimation</code>, <code>### Solving</code>, <code>### Output / tables</code>); a single fix can just be a bullet directly under <code>## Bug fixes</code>. Add each entry to the existing subsection when one fits rather than creating a near-duplicate. Entries are past-tense bullets and may briefly state the fix/feature and its user-visible effect, but not a multi-paragraph root-cause narration.</li>
 <li>No Unicode in source, comments, or docs (em dashes, smart quotes, arrows, etc.) – CRAN policy expects plain ASCII. Use <code>--</code>, <code>'</code>/<code>"</code>, or <code>-&gt;</code> instead.</li>
 </ul></div>
 <div class="section level2">
