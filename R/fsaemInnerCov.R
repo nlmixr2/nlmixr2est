@@ -63,3 +63,31 @@
   .innerUi <- rxode2::rxUiDecompress(rxode2::rxode2(.fn))
   list(ui = .innerUi, mpriorCols = .mpriorCols, etaThetas = .etaThetas)
 }
+
+#' Add/overwrite the per-subject nlmixrMprior* columns in `data`.
+#'
+#' `mpriorMat` is N x neta (eta/i1 order); column k for eta k is written to the
+#' data column for that eta's mu-ref theta, constant within each subject.
+#' @noRd
+.fsaemSetMpriorData <- function(data, mpriorMat, built) {
+  .idn <- if ("ID" %in% names(data)) "ID" else "id"
+  .ids <- unique(data[[.idn]])
+  .idx <- match(data[[.idn]], .ids)                 # per-row subject index
+  for (k in seq_along(built$etaThetas)) {
+    .col <- built$mpriorCols[[built$etaThetas[k]]]
+    data[[.col]] <- mpriorMat[.idx, k]
+  }
+  data
+}
+
+#' Set up the covariate-aware f-SAEM inner (mprior-as-data model).  Compiles the
+#' inner model ONCE; per-iteration updates only refresh the mprior data + omega.
+#' @return list(env, built, control, neta)
+#' @noRd
+.fsaemInnerSetupCov <- function(ui, data, mpriorMat, control) {
+  .built <- .fsaemInnerMpriorUi(ui)
+  .neta <- nrow(ui$muRefDataFrame)
+  .data <- .fsaemSetMpriorData(data, mpriorMat, .built)
+  .env <- .fsaemInnerSetup(.built$ui, .data, matrix(0, nrow(mpriorMat), .neta), control)
+  list(env = .env, built = .built, control = control, neta = .neta, data = .data)
+}
