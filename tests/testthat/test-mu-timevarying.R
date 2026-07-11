@@ -92,6 +92,34 @@ nmTest({
     expect_false(any(grepl("cl.wt", .inner)))          # covariate absorbed
   })
 
+  test_that(".fsaemInnerMpriorUi builds the mprior-as-data inner model", {
+    covm <- function() {
+      ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.wt<-0.5; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
+      model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.wt*WT); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covm))
+
+    # non-time-varying: covariate absorbed into the per-subject mprior data,
+    # mu-ref intercepts become nlmixrMprior* data columns, etas kept
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
+    .r <- nlmixr2est:::.fsaemInnerMpriorUi(.ui)
+    .m <- vapply(.r$ui$lstExpr, function(e) paste(deparse(e), collapse = ""), character(1))
+    expect_true(any(grepl("cl <- exp\\(nlmixrMprior2 \\+ eta.cl\\)$", .m)))
+    expect_false(any(grepl("cl.wt", .m)))                 # absorbed
+    expect_equal(unname(.r$mpriorCols[["tcl"]]), "nlmixrMprior2")
+    expect_false("cl.wt" %in% .r$ui$iniDf$name)
+    expect_true(all(c("eta.ka", "eta.cl", "eta.v", "add.sd") %in% .r$ui$iniDf$name))
+    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+
+    # time-varying: covariate kept as a beta regressor, beta stays in the ini
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, "WT")
+    .r2 <- nlmixr2est:::.fsaemInnerMpriorUi(.ui)
+    .m2 <- vapply(.r2$ui$lstExpr, function(e) paste(deparse(e), collapse = ""), character(1))
+    expect_true(any(grepl("cl.wt \\* WT", .m2)))
+    expect_true("cl.wt" %in% .r2$ui$iniDf$name)
+    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+  })
+
   test_that("mufocei recovers non-time-varying and time-varying covariate effects", {
     skip_if_not_installed("nlmixr2data")
     .fc <- foceiControl(print = 0L, calcTables = FALSE,
