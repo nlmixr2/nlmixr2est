@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "imp.h"
 #include "rxomp.h"
 #include "solveWarnHelper.h"
 
@@ -58,6 +59,7 @@ void restoreFromEnvrionment(Environment e);
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
+#define thetaSensOde(id) ind_solve(rx, getRxId(id), rxThetaSens.dydt_liblsoda, rxThetaSens.dydt_lsoda_dum, rxThetaSens.jdum_lsoda, rxThetaSens.dydt, rxThetaSens.update_inis, rxThetaSens.global_jt)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
 #define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
 #define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
@@ -158,6 +160,12 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+  int thetaSensOffset = -1;   // lhs offset of the first d(f)/d(theta) output (impmap)
+  int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
+  int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
+  int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
+  int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
+  int innerNeq = 0;           // inner model state count when the pool is sized larger (impmap)
 
   unsigned int neta;
   unsigned int ntheta;
@@ -432,6 +440,22 @@ struct focei_options {
   scaling scale;
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
+  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"); outer runs impOuter
+  bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
+  int impIsample = 300;  // importance samples drawn per subject per iteration
+  double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
+  int impNiter = 100;    // maximum EM iterations
+  double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
+  double impIscaleMin = 0.1; // lower bound for adapted gamma
+  double impIscaleMax = 10.0;// upper bound for adapted gamma
+  double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
+  int impNconvWindow = 10;   // trailing-iteration window for the convergence check
+  bool impCov = false;       // experimental: compute the MC observed-information theta covariance
+  std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
+  IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
+  IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
+  IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
+  IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
 };
 
 focei_options op_focei;
@@ -647,6 +671,7 @@ void freeFocei(){
 
 rxSolveF rxInner;
 rxSolveF rxPred;
+rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
 
 void rxUpdateFuns(SEXP trans, rxSolveF *inner){
   const char *lib, *s_dydt, *s_calc_jac, *s_calc_lhs, *s_inis, *s_dydt_lsoda_dum, *s_dydt_jdum_lsoda,
@@ -1094,6 +1119,46 @@ arma::vec shi21EtaF(arma::vec &eta, int id) {
 arma::vec shi21EtaR(arma::vec &eta, int id) {
   return shi21EtaGeneral(eta, id, 1);
 }
+
+// est="impmap" gradient FD fallback: perturb the THETAS (holding the current eta,
+// set by the caller) and solve the pred model, returning per-observation f (w=0,
+// rx_pred_) or V (w=1, rx_r_).  Mirrors shi21EtaGeneral but over thetas; the
+// caller restores fullTheta afterward.  Used by shi21Central()/shi21Forward().
+arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
+  focei_ind *fInd = &(inds_focei[id]);
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  rx_solving_options *op = getSolvingOptions(rx);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
+  }
+  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq);
+  setIndSolve(ind, -1);
+  predOde(_rxId);
+  int nObs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+  fInd->nObs = nObs; // keep consistent for callers
+  arma::vec ret(nObs);
+  iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
+  int kk, k = 0;
+  double curT;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      continue;
+    }
+    rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+    if (k < nObs) ret(k) = lhs[op_focei.predNoLhsOffset + w];
+    k++;
+    if (k >= nObs) break;
+  }
+  return ret;
+}
+arma::vec shi21ThetaF(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 0); }
+arma::vec shi21ThetaR(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 1); }
 
 arma::vec calcGradForward(arma::vec &f0,
                           arma::vec &grPH,  double h) {
@@ -4588,6 +4653,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
 // the fit solve before the finite-difference Hessian.
 static SEXP covSolveArgs_ = R_NilValue;
+// est="impmap": theta-sensitivity model that sizes the shared pool (the largest
+// structure), or R_NilValue to size for the inner model as usual.
+SEXP _impPoolModel = R_NilValue;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -4681,9 +4749,35 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp");
+    op_focei.isImp = (estStr == "imp");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
+    op_focei.isImpmap = false;
+    op_focei.isImp = false;
+  }
+  if (op_focei.isImpmap) {
+    if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
+    if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
+    if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
+    if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
+    if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
+    if (foceiO.containsElementNamed("iscaleMax")) op_focei.impIscaleMax = as<double>(foceiO["iscaleMax"]);
+    if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
+      op_focei.impCtol = as<double>(foceiO["ctol"]);
+    if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
+    if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
+    if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
+      op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
+    if (foceiO.containsElementNamed("impMuThetaIdx"))
+      op_focei.impMuThetaIdx = as<IntegerVector>(foceiO["impMuThetaIdx"]);
+    if (foceiO.containsElementNamed("impMuEtaIdx"))
+      op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    if (foceiO.containsElementNamed("impOmegaFixedEta"))
+      op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
   }
 
   op_focei.zeroGrad = false;
@@ -4962,7 +5056,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (_needSolveArgs) {
       storeCovSolveArgs_(obj, rxControl, params, data);
     }
-    rxode2::rxSolve_(obj, rxControl,
+    // est="impmap": size the shared solve pool for the theta-sensitivity model (the
+    // largest structure) when set; the inner MAP then uses ind->neqOverride.
+    RObject _poolObj = (_impPoolModel != R_NilValue) ? RObject(_impPoolModel) : obj;
+    rxode2::rxSolve_(_poolObj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
                      as<RObject>(params),//const RObject &params =
@@ -8232,6 +8329,599 @@ void setupAq1_(Environment e) {
   }
 }
 
+// ---- Importance-sampling EM interface (imp.h); reuses the FOCEI inner state.
+// These run on the live op_focei / inds_focei set up by foceiSetup_ and are
+// called from the impOuter() driver (src/imp.cpp).
+int impNsub() {
+  rx = getRxSolve_();
+  return getRxNsub(rx);
+}
+
+int impNeta() {
+  return op_focei.neta;
+}
+
+int impNsample() {
+  return op_focei.impIsample;
+}
+
+double impGammaProp() {
+  return op_focei.impGamma;
+}
+
+int impCores() {
+  rx = getRxSolve_();
+  return getOpCores(getSolvingOptions(rx));
+}
+
+// Override the solve core count (returns the previous value).  Used to force the
+// mixture EM single-threaded: the expanded pseudo-subject inner solves are not
+// thread-safe for a mixture, so parallel E-step / innerOpt passes race.
+int impSetSolveCores(int cores) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int old = op->cores;
+  op->cores = cores;
+  return old;
+}
+
+// 0.5 * log|Omega^-1| ( = -0.5 * log|Omega| ), the per-iteration normalizer that
+// enters each subject's importance-sampling objective L_i.
+double impLogDetOmegaInv5() {
+  return op_focei.logDetOmegaInv5;
+}
+
+int impNiter() {
+  return op_focei.impNiter;
+}
+
+std::string impDiagXform() {
+  return op_focei.impDiagXform;
+}
+
+double impIaccept() { return op_focei.impIaccept; }
+double impIscaleMin() { return op_focei.impIscaleMin; }
+double impIscaleMax() { return op_focei.impIscaleMax; }
+int impNconvWindow() { return op_focei.impNconvWindow; }
+
+// Windowed-convergence tolerance on the (relative) objective change; derived
+// from the table sigdig (10^-sigdig) when the control leaves it unset (<0).
+double impCtol() {
+  if (op_focei.impCtol >= 0) return op_focei.impCtol;
+  return std::pow(10.0, -op_focei.sigdig);
+}
+
+int impMuGroupN() {
+  return (int)op_focei.muGroupN;
+}
+
+// ---- Monte-Carlo covariance support (imp.cpp orchestrates the sampling + FD) ----
+
+int impNtheta() { return (int)op_focei.ntheta; }
+
+bool impCovEnabled() { return op_focei.impCov; }
+
+// ---- mixture (sub-population) support -------------------------------------
+// impmap computes its OWN importance-sampling mixture posterior + proportion
+// update (NONMEM-style, separate from FOCEI's Laplace fInd->mixProb).  It only
+// READS op_focei.mixProb (the population proportions = the parameter) and reuses
+// the per-component MAP modes solved for the expanded pseudo-subjects.
+
+int impNmix() { return (int)op_focei.mixIdxN + 1; }        // number of components (1 if none)
+double impMixProb(int j) { return op_focei.mixProb[j]; }    // population proportion of component j (0-based)
+
+// Install absolute $MIX thetas (the multinomial-logit of the target proportions)
+// and recompute the population proportions / Jacobian -- used for the stable
+// mean-posterior EM update (mirrors the Omega-theta path in updateTheta()).
+void impSetMixThetas(const arma::vec& theta) {
+  for (int m = 0; m < (int)op_focei.mixIdxN; ++m)
+    op_focei.fullTheta[op_focei.mixIdx[m] - 1] = theta[m];
+  NumericVector curTheta(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, curTheta.begin());
+  IntegerVector mixIdx(op_focei.mixIdxN);
+  std::copy(&op_focei.mixIdx[0], &op_focei.mixIdx[0] + op_focei.mixIdxN, mixIdx.begin());
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  Function f = as<Function>(nlmixr2[".getMixFromLog"]);
+  NumericVector mp = f(curTheta, mixIdx);
+  std::copy(mp.begin(), mp.end(), &op_focei.mixProb[0]);
+  f = as<Function>(nlmixr2[".getMixJacFromLog"]);
+  NumericVector mj = f(curTheta, mixIdx);
+  std::copy(mj.begin(), mj.end(), &op_focei.mixProbGrad[0]);
+}
+
+// fullTheta indices of the estimated (non-fixed) thetas, in free-parameter order.
+void impGetEstThetaIdx(std::vector<int>& idx) {
+  idx.clear();
+  for (unsigned int k = 0; k < op_focei.npars; ++k) {
+    int j = op_focei.fixedTrans[k];
+    if (j >= 0 && j < (int)op_focei.ntheta) idx.push_back(j);
+  }
+}
+
+// fullTheta index of every free (estimated) parameter, in the optimizer's
+// free-parameter (fixedTrans) order -- the order the fit's covariance uses.
+// idx[k] < ntheta is a theta; idx[k] >= ntheta is the Omega parameter idx-ntheta.
+void impGetCovParList(std::vector<int>& idx) {
+  idx.clear();
+  for (unsigned int k = 0; k < op_focei.npars; ++k) idx.push_back(op_focei.fixedTrans[k]);
+}
+
+double impGetFullThetaVal(int idx) { return op_focei.fullTheta[idx]; }
+
+// Set theta fullTheta[idx] on every subject's parameter pointer (FD perturbation).
+void impSetThetaAll(int idx, double val) {
+  rx = getRxSolve_();
+  op_focei.fullTheta[idx] = val;
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndParPtr(ind, op_focei.thetaTrans[idx], val);
+  }
+}
+
+// Force likInner0 to re-solve subject id on its next call (theta changed but its
+// eta may repeat a cached value, which would otherwise skip the re-solve).
+void impForceResolve(int id) { inds_focei[id].setup = 0; }
+
+// ---- Omega block of the MC covariance ----
+
+// Number of parameterized Omega free parameters (fullTheta[ntheta .. +omegan-1]).
+int impOmegaN() { return (int)op_focei.omegan; }
+
+double impGetOmegaThetaVal(int m) { return op_focei.fullTheta[op_focei.ntheta + m]; }
+
+// Set Omega free parameter m (FD perturbation) and rebuild omegaInv / cholOmegaInv
+// / logDetOmegaInv5 from the full Omega-parameter vector (the same path
+// updateTheta() takes), so likInner0's prior term and the objective normalizer
+// both reflect it.
+void impSetOmegaThetaAll(int m, double val) {
+  op_focei.fullTheta[op_focei.ntheta + m] = val;
+  NumericVector omegaTheta(op_focei.omegan);
+  std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
+            &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
+            omegaTheta.begin());
+  setOmegaTheta(omegaTheta);
+  op_focei.omegaInv = getOmegaInv();
+  op_focei.cholOmegaInv = getCholOmegaInv();
+  op_focei.logDetOmegaInv5 = getOmegaDet();
+}
+
+// M-step helpers (EM loop lives in impOuter, src/imp.cpp).
+
+// Overwrite subject id's eta (used to seed updateMuGroups with the conditional mean).
+void impSetEta(int id, const arma::vec& eta) {
+  focei_ind *fInd = &(inds_focei[id]);
+  std::copy(eta.begin(), eta.begin() + op_focei.neta, &fInd->eta[0]);
+}
+
+// Current Omega matrix (its zero pattern gives the estimated-element structure).
+void impGetOmega(arma::mat& Om) {
+  Om = getOmegaMat();
+}
+
+// est="imp": no per-iteration MAP search (the E-step proposal is centered at the
+// running conditional mean with covariance gamma * V_i instead of gamma * H_i^-1).
+bool impIsImp() { return op_focei.isImp; }
+
+// Read subject id's current eta (after updateMuGroups this is the recentered residual).
+void impGetEta(int id, arma::vec& eta) {
+  focei_ind *fInd = &(inds_focei[id]);
+  eta.set_size(op_focei.neta);
+  std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, eta.begin());
+}
+
+// Mu-referenced population-parameter update: OLS-regress the (conditional-mean)
+// etas onto the mu-group covariates, updating fullTheta and recentering etas.
+double impUpdateMuThetas() {
+  return updateMuGroups();
+}
+
+// EM update for the simple mu-referenced intercepts (thetas that are the
+// population mean of an eta, with no covariates -- these are not handled by the
+// covariate regression in updateMuGroups()).  Operates on the current per-subject
+// etas (which the caller has set to the conditional means): shifts each theta by
+// the mean eta, recenters that eta to a mean-zero residual, and propagates both
+// to every subject's solve.
+void impMuInterceptStep() {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  if (nsub == 0) return;
+  IntegerVector &thIdx = op_focei.impMuThetaIdx;
+  IntegerVector &etIdx = op_focei.impMuEtaIdx;
+  for (int g = 0; g < thIdx.size(); ++g) {
+    int th = thIdx[g], et = etIdx[g];
+    double s = 0.0;
+    for (int id = 0; id < nsub; ++id) s += inds_focei[id].eta[et];
+    double delta = s / (double)nsub;
+    op_focei.fullTheta[th] += delta;
+    for (int id = 0; id < nsub; ++id) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      inds_focei[id].eta[et] -= delta;
+      setIndParPtr(ind, op_focei.thetaTrans[th], op_focei.fullTheta[th]);
+      setIndParPtr(ind, op_focei.etaTrans[et], inds_focei[id].eta[et]);
+    }
+  }
+}
+
+int impThetaSensN() { return op_focei.impThetaSensIdx.size(); }
+
+// 0-based eta indices whose Omega diagonal is fixed (the EM Omega update restores
+// their rows/columns to the starting Omega so fix()ed variances are held).
+void impGetOmegaFixedEta(std::vector<int>& idx) {
+  idx.assign(op_focei.impOmegaFixedEta.begin(), op_focei.impOmegaFixedEta.end());
+}
+
+// ---- iteration print + parameter-history (shared scale.h machinery) ----
+// The main setup already populated op_focei.scale (column names, back-transform
+// codes, iterPrintControl cadence) for the FOCEI free parameters in fixedTrans
+// order -- the same order impGetEstPar() returns.  Reconfigure it for impmap's
+// natural-scale EM walk: identity scaling (scaleTypeMult with scaleTo=0) so the
+// fullTheta values ARE the "Unscaled" rows .parHistCalc() reads, while the
+// "Back-Transformed" rows still apply the per-theta transform.  Records every
+// iteration (save=1); prints at the control's cadence (scale.every, already set
+// from iterPrintControl -- 0 when print is off).
+static std::vector<double> _impScaleC;
+void impIterPrintStart() {
+  scaling *s = &op_focei.scale;
+  int np = (int)op_focei.npars;
+  _impScaleC.assign(std::max(np, 1), 1.0);
+  s->scaleC = _impScaleC.data();
+  s->scaleType = scaleTypeMult;
+  s->scaleTo = 0.0; s->scaleCmin = 0.0; s->scaleCmax = 0.0;
+  s->save = 1; s->simple = 0; s->showOfv = 1;
+  s->vPar.clear(); s->niter.clear(); s->iterType.clear();
+  s->vGrad.clear(); s->gradType.clear(); s->niterGrad.clear();
+  s->cn = 0; s->printCount = 0;
+  if (s->every != 0) scalePrintHeader(s);
+}
+
+void impIterPrintRow(arma::vec& par, double obj) {
+  scalePrintFun(&op_focei.scale, par.memptr(), obj);
+}
+
+// Emit the closing rule (if printing) and stash the recorded walk on the fit
+// environment as parHistData (iter/type/objf + one column per parameter);
+// scaleParHisDf clears the accumulators.
+void impIterPrintGet(Environment e) {
+  scaling *s = &op_focei.scale;
+  if (s->every != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  RObject ph = scaleParHisDf(s);
+  if (!ph.isNULL()) e["parHistData"] = ph;
+}
+
+// Newton step on the non-mu structural thetas: add step[s] to theta
+// impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
+void impUpdateStructThetas(const arma::vec& step) {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  IntegerVector &thIdx = op_focei.impThetaSensIdx;
+  for (int s = 0; s < thIdx.size(); ++s) {
+    int th = thIdx[s];
+    op_focei.fullTheta[th] += step[s];
+    for (int id = 0; id < nsub; ++id) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      setIndParPtr(ind, op_focei.thetaTrans[th], op_focei.fullTheta[th]);
+    }
+  }
+}
+
+// Re-optimize every subject's conditional mode at the current parameters.
+void impReMap() {
+  innerOpt();
+}
+
+// Install a new Omega: rebuild the rxSymInvChol environment (reusing the rxode2
+// matrix->parameterization machinery), refresh the cached inverse/Cholesky/log-
+// determinant, and copy the new Omega thetas into fullTheta so the next MAP and
+// the output see them.
+void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+  Environment rxode2ns = Environment::namespace_env("rxode2");
+  Function f = rxode2ns["rxSymInvCholCreate"];
+  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Omega),
+                      Rcpp::Named("diag.xform") = diagXform));
+  if (op_focei.fo == 1) {
+    op_focei.omega = getOmegaMat();
+  } else {
+    op_focei.omegaInv = getOmegaInv();
+    op_focei.cholOmegaInv = getCholOmegaInv();
+    op_focei.logDetOmegaInv5 = getOmegaDet();
+  }
+  NumericVector omegaTheta = getOmegaTheta();
+  std::copy(omegaTheta.begin(),
+            omegaTheta.begin() + op_focei.omegan,
+            &op_focei.fullTheta[0] + op_focei.ntheta);
+}
+
+// Sync the optimizer's reference point (initPar) to the current natural
+// fullTheta so the final foceiOuterFinal populates the fit at the converged
+// estimates rather than the initial ones.
+void impSyncInitParToFullTheta() {
+  for (unsigned int k = 0; k < op_focei.npars; k++) {
+    op_focei.initPar[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  }
+}
+
+// Current estimated (free) parameter vector -- the estimated thetas plus the
+// parameterized Omega elements -- for the EM convergence check.
+void impGetEstPar(arma::vec& par) {
+  par.set_size(op_focei.npars);
+  for (unsigned int k = 0; k < op_focei.npars; k++) {
+    par[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  }
+}
+
+void impMapPass(Environment e) {
+  // Single MAP pass at the initial parameters -- the same posthoc path
+  // foceiOuter() takes when maxOuterIterations == 0.
+  NumericVector x(op_focei.npars);
+  for (unsigned int k = op_focei.npars; k--;) {
+    x[k] = scalePar(op_focei.initPar, k);
+  }
+  foceiOuterFinal(x.begin(), e);
+}
+
+void impGetMode(int id, arma::vec& mode) {
+  focei_ind *fInd = &(inds_focei[id]);
+  mode.set_size(op_focei.neta);
+  std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, mode.begin());
+}
+
+double impGetIndLik(int id) {
+  focei_ind *fInd = &(inds_focei[id]);
+  return fInd->lik[0];
+}
+
+bool impGetHessian(int id, arma::mat& H) {
+  focei_ind *fInd = &(inds_focei[id]);
+  int neta = op_focei.neta;
+  // Establish the inner solve at this subject's mode before the FD Hessian.
+  double f = likInner0(fInd->eta, id);
+  if (ISNA(f)) {
+    // The MAP already evaluated this mode, so an NA here means the cached solve
+    // state is stale (e.g. left by a prior fit of a different-sized model).
+    // Force a fresh solve and retry at the same mode before giving up.
+    rx = getRxSolve_();
+    setIndSolve(getSolvingOptionsInd(rx, getRxId(id)), -1);
+    resetOpBadSolve(getSolvingOptions(rx));
+    f = likInner0(fInd->eta, id);
+    if (ISNA(f)) return false;
+  }
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  H.set_size(neta, neta);
+  H.zeros();
+  arma::mat H0(neta, neta, arma::fill::zeros);
+  return calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0);
+}
+
+double impEvalJointLik(const arma::vec& eta, int id) {
+  std::vector<double> ev(eta.begin(), eta.end());
+  return likInner0(ev.data(), id);
+}
+
+// Central-FD fallback for the theta-sensitivity gradient (mirrors the pred-model
+// finite-difference fallback the inner problem uses when the sensitivity ODE will
+// not solve).  Solves the pred model at the current (theta, eta) for per-obs f and
+// V, then shi21-optimized central differences over each estimated theta for
+// d(f)/d(theta) and d(V)/d(theta).  Fills fvec/Vvec (nobs) and dfmat/dVmat
+// (nobs x nSens); restores fullTheta on exit.
+static void impThetaSensFD(int id, arma::vec& curTheta,
+                           arma::vec& fvec, arma::vec& Vvec,
+                           arma::mat& dfmat, arma::mat& dVmat) {
+  int nSens = op_focei.impThetaSensIdx.size();
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  focei_ind *fInd = &(inds_focei[id]);
+  fvec = shi21ThetaGeneral(curTheta, id, 0); // f0 (also sets fInd->nObs)
+  Vvec = shi21ThetaGeneral(curTheta, id, 1); // V0
+  int nobs = (int)fInd->nObs;
+  dfmat.set_size(nobs, nSens); dfmat.zeros();
+  dVmat.set_size(nobs, nSens); dVmat.zeros();
+  for (int s = 0; s < nSens; ++s) {
+    int tIdx = op_focei.impThetaSensIdx[s];
+    arma::vec grF(nobs), grV(nobs);
+    double h = 0.0;
+    shi21Central(shi21ThetaF, curTheta, h, fvec, grF, id, tIdx,
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+    h = 0.0;
+    shi21Central(shi21ThetaR, curTheta, h, Vvec, grV, id, tIdx,
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+    dfmat.col(s) = grF;
+    dVmat.col(s) = grV;
+  }
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
+  }
+}
+
+// Accumulate subject id's importance-sampling contribution to the score `g`
+// (length nSens) and Fisher-information Hessian `H` (nSens x nSens) for the
+// estimated non-mu thetas, from its samples `S` (nsamp x neta) and normalized
+// weights `zk`.  The theta-sensitivity model outputs per-observation f (rx_pred_),
+// V (rx_r_), d(f)/d(theta) and d(V)/d(theta) in one solve; a bad ODE solve triggers
+// the FOCEI-style tolerance-relaxation retry and, if it still fails, the pred-model
+// central-FD fallback (impThetaSensFD).  For a Gaussian endpoint the score is
+//   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
+// and the (mean+variance) Fisher information is
+//   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
+void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
+                   arma::vec& g, arma::mat& H) {
+  int nSens = op_focei.impThetaSensIdx.size();
+  if (nSens == 0 || op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
+      op_focei.thetaSensPredOffset < 0 || op_focei.thetaSensROffset < 0 ||
+      rxThetaSens.calc_lhs == NULL) return;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  focei_ind *fInd = &(inds_focei[id]);
+  int nsamp = S.n_rows;
+  // Mixture: when called with an expanded pseudo-subject id, pin the theta-sens
+  // solve to that subject's mixture component (like likInner0), so the sensitivity
+  // reflects the component's structural parameters.
+  if (op_focei.mixIdxN != 0) setIndMixest(ind, getRxMixFromId(id));
+  // The shared solve pool is sized for the theta-sensitivity model (the largest
+  // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
+  // to thetaSensNeq for these solves and restore on exit (mirrors the predNeq FD
+  // pattern).
+  IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
+  // Sync the current thetas into this subject before solving (etas set per sample).
+  arma::vec curTheta((unsigned int)op_focei.ntheta);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    curTheta[t] = op_focei.fullTheta[t];
+    setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
+  }
+  // per-observation DV and censoring info (same across samples), on the
+  // transformed scale -- matching how the inner problem reads them.
+  std::vector<double> dvv, limv;
+  std::vector<int> censv;
+  { int kk;
+    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+      setIndIdx(ind, jj); kk = getIndIx(ind, jj);
+      if (getIndEvid(ind, kk) == 0) {
+        dvv.push_back(tbs(getIndDv(ind, kk)));
+        double lim = R_NegInf;
+        if (hasRxLimit(rx)) {
+          lim = getIndLimit(ind, kk);
+          if (ISNA(lim)) lim = R_NegInf;
+          else if (R_FINITE(lim)) lim = tbs(lim);
+        }
+        limv.push_back(lim);
+        censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
+      }
+    }
+  }
+  int nobs = (int)dvv.size();
+  if (nobs == 0) return;
+  arma::vec fvec(nobs), Vvec(nobs);
+  arma::mat dfmat(nobs, nSens), dVmat(nobs, nSens);
+  for (int k = 0; k < nsamp; ++k) {
+    for (int j = 0; j < (int)op_focei.neta; ++j) {
+      setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
+    }
+    // Solve the sensitivity model, relaxing ODE tolerances on a bad solve (as the
+    // inner problem does), up to maxOdeRecalc; then fall back to central FD.
+    if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) fInd->stickyRecalcN2 = 0;
+    double prevTol = getIndTolFactor(ind);
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);
+    thetaSensOde(_rxId);
+    int jr = 0;
+    while (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN &&
+           indHasBadSolve(op, ind) && jr < op_focei.maxOdeRecalc) {
+      fInd->stickyRecalcN2++;
+      op_focei.reducedTol.store(1, std::memory_order_relaxed);
+      op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+      atolRtolFactor_(op_focei.odeRecalcFactor);
+      setIndSolve(ind, -1);
+      resetOpBadSolve(op);
+      thetaSensOde(_rxId);
+      jr++;
+    }
+    if (jr != 0) {
+      if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) setIndTolFactor(ind, prevTol);
+      else op_focei.stickyTol.store(1, std::memory_order_relaxed);
+    }
+    if (!indHasBadSolve(op, ind)) {
+      // read f, V, d(f)/d(theta), d(V)/d(theta) from the sensitivity model lhs
+      int ko = 0, kk;
+      double curT;
+      for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
+        setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
+        double *lhs = getIndLhs(ind);
+        if (isDose(getIndEvid(ind, kk))) {
+          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          continue;
+        } else if (getIndEvid(ind, kk) == 0) {
+          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          fvec[ko] = lhs[op_focei.thetaSensPredOffset];
+          Vvec[ko] = lhs[op_focei.thetaSensROffset];
+          for (int s = 0; s < nSens; ++s) {
+            dfmat(ko, s) = lhs[op_focei.thetaSensOffset + s];
+            dVmat(ko, s) = lhs[op_focei.thetaSensDvOffset + s];
+          }
+          ko++;
+        }
+      }
+    } else {
+      // sensitivity ODE unsolvable: central FD on the pred model.  Flag it as an
+      // optimization problem (same warning as the inner FD fallback).
+      op_focei.didPredSolve.store(true, std::memory_order_relaxed);
+      impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
+      // restore this sample's eta (impThetaSensFD only touched thetas)
+      for (int j = 0; j < (int)op_focei.neta; ++j) {
+        setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
+      }
+      if ((int)dfmat.n_rows != nobs) continue;
+    }
+    for (int jo = 0; jo < nobs; ++jo) {
+      double f = fvec[jo], V = Vvec[jo];
+      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
+      arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
+      if (!df.is_finite() || !dV.is_finite()) continue;
+      bool isCens = (censv[jo] != 0) || (R_FINITE(limv[jo]) && !ISNA(limv[jo]));
+      if (isCens) {
+        // Exact censored score/information from the analytic partials of
+        // rho = -logLik (out[0]=rho_f, out[1]=rho_r, out[2..4]=rho_ff/rho_fr/rho_rr),
+        // so the M-step gradient for BLQ/M2/M3/M4 points is correct (no FD).  The
+        // log-likelihood score is -rho_f, -rho_r; the information is the rho 2nd
+        // derivatives.  A normal obs reduces to the Gauss-Newton form below.
+        double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
+        censNormalPartials((double)censv[jo], dvv[jo], limv[jo], f, V, 2, cp);
+        g += zk[k] * (-cp[0] * df.t() - cp[1] * dV.t());
+        H += zk[k] * (cp[2] * (df.t() * df) +
+                      cp[3] * (df.t() * dV + dV.t() * df) +
+                      cp[4] * (dV.t() * dV));
+      } else {
+        double err = f - dvv[jo];
+        g += zk[k] * ((-err / V) * df.t() +
+                      (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+        H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+      }
+    }
+  }
+}
+
+// est="impmap": the theta-sensitivity model is the largest structure, so it sizes
+// the single shared solve pool (foceiSetup_'s rxSolve_ uses _impPoolModel when set,
+// mirroring how the pool is sized for the inner model in plain FOCEI).  The inner
+// MAP then runs with ind->neqOverride = op_focei.innerNeq (like the predNeq FD
+// path), and the theta-sensitivity solve overrides to thetaSensNeq.
+// (_impPoolModel is declared earlier, before foceiSetup_.)
+
+// True when the solve pool is sized for the larger theta-sensitivity model
+// (multi-endpoint pool-sizing).  The inner solves then run with ind->neqOverride
+// against a pool sized differently from op->neq, whose per-thread work arrays are
+// not thread-safe under this override -- so the EM must run serial (like the
+// mixture path), else the parallel E-step non-deterministically rejects a
+// subject's importance samples (neff collapse).
+bool impPoolSizing() { return op_focei.innerNeq > 0; }
+
+// Pin every subject's effective inner state count to op_focei.innerNeq, since the
+// pool (and op->neq) is sized for the larger theta-sensitivity model.
+void impSetInnerNeqOverride() {
+  if (op_focei.innerNeq <= 0) return;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndNeqOverride(ind, op_focei.innerNeq);
+  }
+}
+
+// Clear the persistent inner neqOverride at the end of the fit so it does not
+// bleed into a later fit whose op->neq differs (the shared rx_global is reused).
+void impClearInnerNeqOverride() {
+  if (op_focei.innerNeq <= 0) return;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndNeqOverride(ind, -1);
+  }
+}
+
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
@@ -8273,8 +8963,22 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
+      // est="impmap": if the theta-sensitivity model has more ODE states than the
+      // inner model, use it to size the shared solve pool (foceiSetup_'s rxSolve_)
+      // and record the inner state count so inner solves run with neqOverride.
+      _impPoolModel = R_NilValue;
+      op_focei.innerNeq = 0;
+      if (model.containsElementNamed("thetaSens")) {
+        RObject _tsm = model["thetaSens"];
+        if (rxode2::rxIs(_tsm, "rxode2")) {
+          int _tsNeq = as<CharacterVector>(rxode2::rxModelVars_(_tsm)["state"]).size();
+          int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
+          if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
+        }
+      }
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
+      _impPoolModel = R_NilValue; // consumed by foceiSetup_
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
         if (model.containsElementNamed("predNoLhsLlik")) {
@@ -8297,6 +9001,44 @@ Environment foceiFitCpp_(Environment e){
         }
       } else {
         stop(_("focei cannot be run without 'predNoLhs'"));
+      }
+      // est="impmap": load the theta-sensitivity model (peer of rxInner/rxPred)
+      // and record its ODE state count + the lhs offset of the first
+      // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
+      op_focei.thetaSensOffset = -1;
+      op_focei.thetaSensNeq = 0;
+      if (op_focei.isImpmap && model.containsElementNamed("thetaSens")) {
+        RObject ts = model["thetaSens"];
+        if (rxode2::rxIs(ts, "rxode2")) {
+          List mvts = rxode2::rxModelVars_(ts);
+          rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
+          op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
+          rxThetaSens.neq = op_focei.thetaSensNeq;
+          // The model outputs rx__sens_rx_pred__BY_THETA_j___ (d(f)/d(theta)) and
+          // rx__sens_rx_r__BY_THETA_j___ (d(V)/d(theta)) for each estimated non-mu
+          // theta j (1-based), in two ascending, contiguous blocks.  Record the lhs
+          // offsets of the first of each (impThetaSensIdx[0] + 1).
+          CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+          op_focei.thetaSensPredOffset = -1;
+          op_focei.thetaSensROffset = -1;
+          if (op_focei.impThetaSensIdx.size() > 0) {
+            std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
+            std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
+            std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
+            for (int il = 0; il < tsLhs.size(); ++il) {
+              std::string nm = as<std::string>(tsLhs[il]);
+              if (nm == firstF) op_focei.thetaSensOffset = il;
+              else if (nm == firstV) op_focei.thetaSensDvOffset = il;
+              else if (nm == "rx_pred_") op_focei.thetaSensPredOffset = il;
+              else if (nm == "rx_r_") op_focei.thetaSensROffset = il;
+            }
+          }
+        }
+        // The pool is sized for the theta-sensitivity model (the largest); pin the
+        // inner solves to the inner state count via ind->neqOverride.
+        if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
+          impSetInnerNeqOverride();
+        }
       }
       // Now setup which ETAs need a finite difference
       if (model.containsElementNamed("eventEta")) {
@@ -8542,7 +9284,13 @@ Environment foceiFitCpp_(Environment e){
     op_focei.didEtaReset=0;
     op_focei.stickyRecalcN2=0;
     op_focei.stickyRecalcN1=0;
-    foceiOuter(e);
+    if (op_focei.isImpmap) {
+      // est="impmap": run the importance-sampling EM driver (src/imp.cpp) in
+      // place of the FOCEI outer optimizer.  Module M1 does a single MAP pass.
+      impOuter(e);
+    } else {
+      foceiOuter(e);
+    }
     if (op_focei.didHessianReset==1){
       warning(_("Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))"));
     }

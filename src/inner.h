@@ -23,6 +23,7 @@ struct rxSolveF {
 
 extern rxSolveF rxInner;
 extern rxSolveF rxPred;
+extern rxSolveF rxThetaSens;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
 extern rx_solve *rx;
