@@ -210,7 +210,12 @@
       rm(list="timeVaryingCovariates", envir=ui)
     }
   })
-  .model <- ui$saemModelList
+  # Building the saem model list does the symengine translation and rxode2
+  # compilation -- timed as "configure" (mapped to "setup") so it is not
+  # silently absorbed into the "other" bucket.
+  .model <- nlmixrWithTiming("configure", {
+    ui$saemModelList
+  })
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
   ## Delay differential equation models need a dense-output solver so delay()
