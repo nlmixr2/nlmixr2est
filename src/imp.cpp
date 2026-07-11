@@ -618,7 +618,11 @@ void impOuter(Environment e) {
   // Close the iteration print and stash the parameter-history walk (e$parHistData).
   impIterPrintGet(e);
 
-  // Finalize the fit at the converged estimates.
+  // Finalize the fit at the converged estimates.  Drop the objective stashed by
+  // the initial MAP pass first: the finalize path keeps an existing e$objective
+  // (re-adjusting it as if it were an unadjusted -2LL), which would publish the
+  // initial-parameter objective instead of the converged FOCEi evaluation.
+  if (e.exists("objective")) e.remove("objective");
   impSyncInitParToFullTheta();
   impMapPass(e);
 

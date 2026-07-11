@@ -1,5 +1,18 @@
 # nlmixr2est (development version)
 
+- New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
+  expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
+  E-step proposal centered at each subject's MAP mode (`impmap`) or at the
+  running conditional mean (`imp`, NONMEM `MAPITER=0`).  Options are set with
+  `impmapControl()` / `impControl()`, including the number of importance samples
+  (`isample`), maximum EM iterations (`nIter`), proposal scale adaptation
+  (`gamma`, `iscaleMin`, `iscaleMax`, `iaccept`), a NONMEM-style windowed
+  convergence test (`ctol`, `nConvWindow`), a reproducible thread-independent
+  sampling seed (`impSeed`), and an experimental Monte-Carlo covariance
+  (`impCov=TRUE`).  Mu-referenced models (including covariates), mixture models,
+  parameter bounds, and `fix()`ed thetas/omegas are supported; the reported
+  objective is a FOCEi evaluation at the EM estimates so fits are comparable
+  with the focei family.
 - The "initial ETAs were nudged" warning is now only raised when an ETA
   actually stayed at zero and a nudge was performed, not merely when the nudge
   check ran (which previously produced a spurious warning on well-behaved fits).
