@@ -12,6 +12,12 @@
   non-time-varying mu-referenced covariates (absorbed into the per-subject prior
   mean of the inner); models outside this envelope (e.g. time-varying
   covariates, mixtures) transparently run standard SAEM.
+- `saem` and `fsaem` now fit general log-likelihood endpoints (`ll(name) ~
+  <expr>`, e.g. Weibull/exponential time-to-event), in the style of `saemix`
+  likelihood models: the model returns the per-observation log-likelihood, the
+  simulation step uses it directly as the observation loss, and the population
+  parameters and between-subject variances are estimated by the standard SAEM
+  M-step (no separate residual error).
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the
