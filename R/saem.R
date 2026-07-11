@@ -175,41 +175,11 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
-  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
-  if (length(timeVaryingCovariates) > 0) {
-    # Drop time-varying covariates
-    # First get the time varying covariates
-    .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
-    # next find out the theta for the phi expression
-    .covPar <- .muRefCovariateDataFrame[.w, "theta"]
-    .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
-    if (length(.w2) > 0) {
-      # see if the expression is on a log scale
-      .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
-      if (length(.w3) > 0) {
-        .w2 <- .w2[.w3]
-        .texp <- ui$muRefCurEval$parameter[.w2]
-        # now get parameters
-        .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
-        ## warning(paste0("log-scale mu referenced time varying covariates (",
-        ##                paste(.pars, collapse=", "),
-        ##                ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
-        ##         call.=FALSE)
-      }
-
-    }
-    .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
-  }
-  assign("muRefFinal", .muRefCovariateDataFrame, ui)
-  assign("timeVaryingCovariates", timeVaryingCovariates, ui)
-  on.exit({
-    if (is.environment(ui) && exists("muRefFinal", envir=ui, inherits=FALSE)) {
-      rm(list="muRefFinal", envir=ui)
-    }
-    if (is.environment(ui) && exists("timeVaryingCovariates", envir=ui, inherits=FALSE)) {
-      rm(list="timeVaryingCovariates", envir=ui)
-    }
-  })
+  # Stage the time-varying/non-time-varying mu-ref covariate split so
+  # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
+  # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
+  .nlmixrSetMuRefTimeVarying(ui, timeVaryingCovariates)
+  on.exit(.nlmixrRmMuRefTimeVarying(ui))
   # Building the saem model list does the symengine translation and rxode2
   # compilation -- timed as "configure" (mapped to "setup") so it is not
   # silently absorbed into the "other" bucket.
