@@ -1102,8 +1102,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemEMLoopK1
-List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx, IntegerVector muIdx, int addSdIdx, int errType, NumericVector mu0, NumericVector omDiag0, double addSd0, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed);
-RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muIdxSEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP mu0SEXP, SEXP omDiag0SEXP, SEXP addSd0SEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP) {
+List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx, IntegerVector muIdx, int addSdIdx, int errType, NumericVector mu0, NumericVector omDiag0, double addSd0, IntegerVector resIdx, NumericVector resPar0, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muIdxSEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP mu0SEXP, SEXP omDiag0SEXP, SEXP addSd0SEXP, SEXP resIdxSEXP, SEXP resPar0SEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1116,13 +1116,15 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type mu0(mu0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type omDiag0(omDiag0SEXP);
     Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type resIdx(resIdxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type resPar0(resPar0SEXP);
     Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
     Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
     Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
     Rcpp::traits::input_parameter< int >::type nMH(nMHSEXP);
     Rcpp::traits::input_parameter< int >::type mhBurn(mhBurnSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, niter, nGauss, ncores, nMH, mhBurn, seed));
+    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, niter, nGauss, ncores, nMH, mhBurn, seed));
     return rcpp_result_gen;
 END_RCPP
 }

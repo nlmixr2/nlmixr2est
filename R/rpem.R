@@ -445,15 +445,23 @@
   # diagonal-omega, mu-referenced core (no covariates / structural / multi-endpoint /
   # censoring / mode-centered IS -- those keep the R loop).  The eta draw uses rxode2's
   # per-thread threefry engine (thread-safe + reproducible for any core count).
-  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L) && all(.cl$muRef) &&
+  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 2L, 3L, 4L) && all(.cl$muRef) &&
     length(.cl$covCoefNames) == 0L && !.structOn && !.multi && !.hasCens && !.modeIS
   if (.cLoop) {
+    .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
+    .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
+    # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
+    # combined / power / TBS have no closed form and re-optimize in the C++ M-step.
+    .resIdx <- c(.naI(.cl$propSdIdx), .naI(.cl$powIdx), .naI(.cl$lambdaIdx))
+    .resPar0 <- c(.naN(.cl$propSd0), .naN(.cl$pow0), .naN(.cl$lambda0))
     .r <- rpemEMLoopK1(.e, base, .cl$etaIdx, .cl$muIdx, .cl$addSdIdx, .cl$errType,
-                       .cl$mu0, diag(as.matrix(.cl$omega0)), .cl$addSd0,
+                       .cl$mu0, diag(as.matrix(.cl$omega0)), .cl$addSd0, .resIdx, .resPar0,
                        niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
                        control$seed)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
+    propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)
+    lamTr <- as.numeric(.r$lamTrace)
   } else
   for (.it in seq_len(niter)) {
     if (.useReg) {
