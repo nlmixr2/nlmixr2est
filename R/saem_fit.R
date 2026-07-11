@@ -145,10 +145,9 @@
   }
   rxControl <- do.call(rxode2::rxControl, rxControl)
   rxControl$envir <- .env
-  # R's RNG must be seeded here for the MCMC's arma::randn proposals to be
-  # deterministic (the rxWithSeed() wrapper in .saemFitModel additionally seeds
-  # and restores the rxode2 threefry engine used by the solve / f-SAEM kernel).
-  set.seed(seed)
+  # All of saem's RNG now draws from the rxode2 threefry engine (the do_mcmc
+  # proposals via setSeedEng1 streams, the phiM init via rxnorm), which the
+  # rxWithSeed() wrapper in .saemFitModel seeds and restores -- no set.seed needed.
   # "general" (=4) = general log-likelihood endpoint driven off the FOCEi inner
   # (fsaem only); the E-step/M-step take the inner path, not a normal residual.
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
@@ -459,7 +458,9 @@
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
 
-  .mat2 <- matrix(rnorm(phiM), dim(phiM))
+  # threefry-engine draw (seeded by the rxWithSeed wrapper), so saem's RNG no
+  # longer depends on R's set.seed -- all deviates come from the rxode2 engine
+  .mat2 <- matrix(rxode2::rxnorm(n = length(phiM)), dim(phiM))
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
