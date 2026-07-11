@@ -105,7 +105,19 @@
       v <- d[[nm]][d$ID == id]; length(unique(v)) == 1L
     }, logical(1))) && is.numeric(d[[nm]])
   }, logical(1))
+  # The VAE covariate search absorbs covariates as subject-level (time-invariant)
+  # effects, so a covariate that varies within a subject (time-varying) cannot be
+  # searched.  Unlike saem/mu-focei (whose covariates are declared in the model,
+  # detectable via .nlmixrTimeVaryingCovariates), the VAE search scans every
+  # numeric data column, so time-varying ones are those that are not
+  # subject-constant.  Drop them from the search and warn.
   .covNames <- .cand[.isSubjConst]
+  .numCand <- .cand[vapply(.cand, function(nm) is.numeric(d[[nm]]), logical(1))]
+  .tvExcl <- setdiff(.numCand, .covNames)
+  if (length(.tvExcl) > 0L) {
+    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
+            paste(.tvExcl, collapse = ", "), call. = FALSE)
+  }
   .covVal <- vapply(.covNames, function(nm) {
     vapply(.ids, function(id) d[[nm]][d$ID == id][1], numeric(1))
   }, numeric(N))
