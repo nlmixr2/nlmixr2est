@@ -54,6 +54,12 @@
   analytic covariance likewise reports the `linCmt()` fallback instead
   of failing silently.
 
+- Fixed a segfault in the analytic covariance step for models out of
+  analytic scope (e.g. models using `tad()`/`podo()`): building the
+  augmented sensitivity model frees the fit’s global solve, and the
+  finite-difference sandwich fallback then solved against freed memory.
+  The freed solve is now restored before the fallback runs.
+
 - Iteration printing now labels the estimation phase on the
   back-transformed (`X`) row: `est = "vae"` shows
   `Burn in`/`KL anneal`/`EM`/`Smooth` in the objective column (with a
