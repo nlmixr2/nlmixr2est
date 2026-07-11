@@ -7,9 +7,11 @@
   Metropolis simulation with an independent Metropolis-Hastings kernel whose
   Gaussian proposal is centered at each subject's conditional MAP (reusing the
   FOCEi inner likelihood), which reaches the MLE in fewer iterations; later
-  iterations degrade to the standard kernels.  Currently limited to continuous
-  single-endpoint models (additive, proportional or combined error) without
-  covariates; other models transparently run standard SAEM.
+  iterations degrade to the standard kernels.  Supports continuous
+  single-endpoint models (additive, proportional or combined error), including
+  non-time-varying mu-referenced covariates (absorbed into the per-subject prior
+  mean of the inner); models outside this envelope (e.g. time-varying
+  covariates, mixtures) transparently run standard SAEM.
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the
