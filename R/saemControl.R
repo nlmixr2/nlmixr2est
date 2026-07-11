@@ -332,6 +332,7 @@ saemControl <- function(seed = 99,
                         lbfgsFactr = NULL,
                         lbfgsPgtol = NULL,
                         lbfgsMaxIter = 20L,
+                        nRetry = 10L,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -446,6 +447,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(lbfgsFactr, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(lbfgsPgtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(lbfgsMaxIter, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(nRetry, lower=0, len=1, any.missing=FALSE)
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
@@ -534,7 +536,8 @@ saemControl <- function(seed = 99,
     lbfgsLmm=as.integer(lbfgsLmm),
     lbfgsFactr=lbfgsFactr,
     lbfgsPgtol=lbfgsPgtol,
-    lbfgsMaxIter=as.integer(lbfgsMaxIter)
+    lbfgsMaxIter=as.integer(lbfgsMaxIter),
+    nRetry=as.integer(nRetry)
   )
   class(.ret) <- "saemControl"
   .ret

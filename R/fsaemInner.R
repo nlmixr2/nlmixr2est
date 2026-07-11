@@ -141,6 +141,26 @@
 #' runs the independent Metropolis-Hastings kernel over the chains.
 #' @return `cfg` with `$fsaemStep` (closure) and `$fsaemInnerEnv` (keep-alive).
 #' @noRd
+#' Phi1 (random-effect) parameter bounds in inner-eta order, from the mu-ref
+#' theta iniDf bounds (the same bounds L-BFGS-B uses for phi0).  Used to keep the
+#' IMH proposals for a general log-likelihood inside plausible values.
+#' @return list(lower, upper, nbd) with L-BFGS-B nbd codes (0 none/1 lo/2 both/3 hi)
+#' @noRd
+.fsaemPhi1Bounds <- function(ui) {
+  .iniDf <- ui$iniDf
+  .etaRows <- .iniDf[which(.iniDf$neta1 == .iniDf$neta2), ]
+  .etaRows <- .etaRows[order(.etaRows$neta1), ]
+  .mr <- ui$muRefDataFrame
+  .th <- .mr$theta[match(.etaRows$name, .mr$eta)]
+  .lo <- .iniDf$lower[match(.th, .iniDf$name)]
+  .hi <- .iniDf$upper[match(.th, .iniDf$name)]
+  list(lower = ifelse(is.finite(.lo), .lo, 0),
+       upper = ifelse(is.finite(.hi), .hi, 0),
+       nbd = as.integer(ifelse(is.finite(.lo) & is.finite(.hi), 2L,
+                        ifelse(is.finite(.lo), 1L,
+                        ifelse(is.finite(.hi), 3L, 0L)))))
+}
+
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
     .minfo(paste0("f-SAEM (fast=TRUE) fast kernel not yet supported for this model ",
@@ -167,6 +187,13 @@
   if (identical(.fc$fastCov, "auto")) {
     .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
   }
+  # bound-respecting reproducible IMH proposals (threefry seeded by the SAEM seed).
+  # Boundary clamping is ONLY for general log-likelihood models: for normal
+  # (add/prop/combined) data the residual error optimizer does the clamping, so
+  # the IMH proposal stays unconstrained there.
+  .bounds <- if (.fsaemGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
+  .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
+  .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
@@ -178,10 +205,13 @@
     .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
     .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
     cfg$fsaemInnerEnv <- .setup$env
+    .setup$env$imhStreamCount <- 0
     cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, nsweep = 5L) {
       .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
       .map <- .fsaemInnerMap(.fc, .neta)
-      .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
+      .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
+                        mprior = mpriorMat, bounds = .bounds, seed = .seed,
+                        nRetry = .nRetry, streamEnv = .setup$env)
       .imh$eta
     }
     return(cfg)
@@ -190,6 +220,7 @@
   # population phi (mprior is the same for every subject).
   .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
   cfg$fsaemInnerEnv <- .env
+  .env$imhStreamCount <- 0
   # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
   # the current population phi (mprior row 1); residual positions take the
   # current additive (ares) / proportional (bres) estimate for their endpoint.
@@ -208,7 +239,9 @@
     }
     .fsaemInnerUpdate(.env, .theta, omega, matrix(0, .N, .neta))
     .map <- .fsaemInnerMap(.fc, .neta)
-    .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep))
+    .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
+                      mprior = mpriorMat, bounds = .bounds, seed = .seed,
+                      nRetry = .nRetry, streamEnv = .env)
     .imh$eta
   }
   cfg
@@ -224,7 +257,9 @@
 #' @return list with updated `eta` and per-subject acceptance count `nAcc`
 #'   (summed over sweeps and chains)
 #' @noRd
-.fsaemImh <- function(map, etaCur, nchain, nsweep = 1L, cores = 1L) {
+.fsaemImh <- function(map, etaCur, nchain, nsweep = 1L, cores = 1L,
+                      mprior = NULL, bounds = NULL, seed = 0L, nRetry = 10L,
+                      streamEnv = NULL) {
   .neta <- ncol(map$eta)
   .nsub <- nrow(map$eta)
   # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed)
@@ -233,10 +268,25 @@
     .L <- tryCatch(t(chol(.g)), error = function(e) matrix(NA_real_, .neta, .neta))
     as.numeric(.L)
   }, numeric(.neta*.neta)))
+  .mp <- if (is.null(mprior)) matrix(0, .nsub, .neta) else mprior
+  .lower <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$lower)
+  .upper <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$upper)
+  .nbd <- if (is.null(bounds)) integer(0) else as.integer(bounds$nbd)
   .nAcc <- integer(.nsub)
   .eta <- etaCur
+  # the kernel is serial but must size the threefry engine array for the full
+  # thread count so a later fit's parallel solves see a correctly-sized array
+  .cores <- as.integer(rxode2::getRxThreads())
+  if (is.na(.cores) || .cores < 1L) .cores <- 1L
   for (.s in seq_len(nsweep)) {
-    .r <- fsaemImhKernel_(.eta, map$eta, .cholGamma, as.integer(nchain), as.integer(cores))
+    # reproducible per-(call, chain, subject) threefry stream base: the counter
+    # (persisted in streamEnv) advances every sweep so successive iterations draw
+    # fresh samples, independent of thread count (like est="imp")
+    .cnt <- if (is.null(streamEnv)) 0 else streamEnv$imhStreamCount
+    .streamBase <- as.double(seed) + as.double(.cnt) * (as.double(nchain) * .nsub)
+    if (!is.null(streamEnv)) streamEnv$imhStreamCount <- .cnt + 1
+    .r <- fsaemImhKernel_(.eta, map$eta, .cholGamma, as.integer(nchain), .cores,
+                          .mp, .lower, .upper, .nbd, .streamBase, as.integer(nRetry))
     .eta <- .r$eta
     .nAcc <- .nAcc + .r$nAcc
   }

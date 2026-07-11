@@ -17,7 +17,18 @@
   likelihood models: the model returns the per-observation log-likelihood, the
   simulation step uses it directly as the observation loss, and the population
   parameters and between-subject variances are estimated by the standard SAEM
-  M-step (no separate residual error).
+  M-step (no separate residual error).  Fixed-effect-only parameters of such a
+  model are refined by a direct L-BFGS-B optimization of the observation
+  likelihood (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
+  `lbfgsMaxIter`, derived from `sigdig` like `foceiControl()`), respecting the
+  parameter bounds from the model.
+- The `fsaem` IMH kernel now draws its proposals from `rxode2`'s threefry engine
+  (seeded from the fit's `seed` plus the chain/subject index), so results are
+  reproducible regardless of the number of threads.  Proposals for a bounded
+  log-likelihood parameter are re-drawn up to `saemControl(nRetry = 10)` times
+  and then clamped to the violated boundary.  The whole `saem`/`fsaem` fit now
+  runs inside `rxode2::rxWithSeed()` so a session's first fit is seeded and fits
+  never contaminate each other's RNG state.
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the

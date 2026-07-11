@@ -54,7 +54,10 @@ nmTest({
     .eta <- do.call(rbind, lapply(seq_len(.nchain), function(k) .map$eta)) # start at MAP
     .samp <- vector("list", .N); .acc <- integer(.N)
     for (s in seq_len(.nsweep)) {
-      .r <- fsaemImhKernel_(.eta, .map$eta, .chol, .nchain, 1L)
+      .r <- fsaemImhKernel_(.eta, .map$eta, .chol, .nchain,
+                            as.integer(rxode2::getRxThreads()),
+                            matrix(0, .N, .neta), numeric(0), numeric(0), integer(0),
+                            as.double(s * .N * .nchain), 10L)
       .eta <- .r$eta; .acc <- .acc + .r$nAcc
       if (s > .burn) for (i in seq_len(.N)) {
         .samp[[i]] <- rbind(.samp[[i]], .eta[seq(i, by = .N, length.out = .nchain), , drop = FALSE])

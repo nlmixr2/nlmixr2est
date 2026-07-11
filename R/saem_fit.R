@@ -145,7 +145,8 @@
   }
   rxControl <- do.call(rxode2::rxControl, rxControl)
   rxControl$envir <- .env
-  set.seed(seed)
+  # Seeding is handled by the rxWithSeed() wrapper in .saemFitModel (it sets both
+  # R's RNG and the rxode2 engine seed and restores them afterward).
   # "general" (=4) = general log-likelihood endpoint driven off the FOCEi inner
   # (fsaem only); the E-step/M-step take the inner path, not a normal residual.
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)

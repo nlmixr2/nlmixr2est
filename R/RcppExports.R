@@ -180,8 +180,8 @@ fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }
 
-fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores) {
-    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores)
+fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
+    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
 }
 
 vaeInnerFree_ <- function() {

@@ -204,6 +204,13 @@
                             data=data,
                             attr(.model$saem_mod, "rx"),
                             rxControl=.rxControl)
+  .seed <- rxode2::rxGetControl(ui, "seed", 99)
+  # Run the whole fit -- the config-time R draws (rnorm) AND the C++ SAEM loop /
+  # f-SAEM IMH kernel, which both draw through rxode2's threefry engine -- inside
+  # rxWithSeed.  It sets BOTH R's RNG and the rxode2 engine seed and restores them
+  # afterward, so the first fit of a session is properly seeded and fits never
+  # contaminate each other's seed state (replaces set.seed + low-level seedEng()).
+  rxode2::rxWithSeed(.seed, rxseed = .seed, {
   .cfg <- nlmixrWithTiming("configure", {
     .cfg <- .configsaem(model=.model,
                         data=data,
@@ -299,6 +306,7 @@
   })
   nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
+  })
   })
 }
 #' Get the saem control statement and install it into the ui

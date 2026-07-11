@@ -9622,10 +9622,19 @@ List fsaemInnerMap_(int cores) {
 // cancel in the ratio, so only the quadratic forms enter.
 // Sign: likInner0 = -log p(y_i, eta_i) + C (the minimized inner objective), so
 // log alpha = (fCur - fProp) + (0.5||z||^2 - 0.5||L^-1(eta_cur - eta_hat)||^2).
+// Proposal draws use rxode2's threefry engine (setSeedEng1 + rxNormEng), seeded
+// per (call, chain, subject) via `streamBase` so the sequence is reproducible
+// regardless of thread count -- like est="imp"/"impmap" -- instead of R's global
+// RNG.  `mprior` (nsub x neta) is the per-subject prior mean, so the proposed
+// individual parameter is phi = mprior + eta; when a bounded parameter (nbd/
+// lower/upper on the phi scale, from the theta iniDf, matching the L-BFGS-B
+// bounds) is violated the normal draw is repeated up to `nRetry` times, then the
+// value is clamped to the boundary it last violated.
 //[[Rcpp::export]]
 List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
-                     NumericMatrix cholGamma, int nchain, int cores) {
-  (void)cores;
+                     NumericMatrix cholGamma, int nchain, int cores,
+                     NumericMatrix mprior, NumericVector lower, NumericVector upper,
+                     IntegerVector nbd, double streamBase, int nRetry) {
   const int neta = op_focei.neta;
   if (neta == 0) stop("fsaemImhKernel_ requires a model with random effects");
   const int nsub = etaHat.nrow();
@@ -9641,14 +9650,45 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
       if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
     }
   }
-  GetRNGstate();
+  const bool hasBounds = ((int)nbd.size() == neta);
+  const uint32_t base = (uint32_t)streamBase;
+  // Pin thread 0 (this kernel is serial) so setSeedEng1/rxNormEng use a fixed
+  // engine.  The engine array is already allocated + seeded by rxSetSeed() at the
+  // start of the fit (saem_fit.R), so we do NOT call seedEng here -- re-seeding it
+  // would disrupt the shared rxode2 engine other fits rely on.
+  (void)cores;
+  setRxThreadId(0);
   for (int c = 0; c < nchain; ++c) {
     for (int id = 0; id < nsub; ++id) {
       int row = c*nsub + id;
       if (!good[id]) continue; // no valid proposal -> keep current state
+      // reproducible per-(call, chain, subject) threefry stream
+      setSeedEng1(base + (uint32_t)(c*nsub + id));
       arma::vec ecur(neta), ehat(neta), z(neta);
-      for (int j = 0; j < neta; ++j) { ecur(j) = etaOut(row, j); ehat(j) = etaHat(id, j); z(j) = norm_rand(); }
-      arma::vec eprop = ehat + L[id]*z;
+      for (int j = 0; j < neta; ++j) { ecur(j) = etaOut(row, j); ehat(j) = etaHat(id, j); }
+      arma::vec eprop(neta);
+      // draw the Gaussian proposal, repeating on bound violation up to nRetry
+      bool inBounds = true;
+      for (int attempt = 0; attempt <= nRetry; ++attempt) {
+        for (int j = 0; j < neta; ++j) z(j) = rxNormEng(0.0, 1.0);
+        eprop = ehat + L[id]*z;
+        if (!hasBounds) break;
+        inBounds = true;
+        for (int j = 0; j < neta; ++j) {
+          double phi = mprior(id, j) + eprop(j);
+          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) inBounds = false;
+          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) inBounds = false;
+        }
+        if (inBounds) break;
+      }
+      if (hasBounds && !inBounds) {
+        // retries exhausted: clamp each violated component to its boundary
+        for (int j = 0; j < neta; ++j) {
+          double phi = mprior(id, j) + eprop(j);
+          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) eprop(j) = lower[j] - mprior(id, j);
+          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) eprop(j) = upper[j] - mprior(id, j);
+        }
+      }
       std::vector<double> ec(neta), ep(neta);
       for (int j = 0; j < neta; ++j) { ec[j] = ecur(j); ep[j] = eprop(j); }
       double fCur = likInner0(ec.data(), id);
@@ -9656,13 +9696,15 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
       if (!R_FINITE(fProp)) continue; // reject un-solvable candidate
       arma::vec dCur = Linv[id]*(ecur - ehat);
       double logAlpha = (fCur - fProp) + 0.5*(arma::dot(z, z) - arma::dot(dCur, dCur));
-      if (R_FINITE(fCur) ? (std::log(unif_rand()) < logAlpha) : true) {
+      // uniform(0,1) from the same threefry stream: PHI(standard normal)
+      double u = PHI(rxNormEng(0.0, 1.0));
+      if (R_FINITE(fCur) ? (std::log(u) < logAlpha) : true) {
         for (int j = 0; j < neta; ++j) etaOut(row, j) = eprop(j);
         nAcc[id]++;
       }
     }
   }
-  PutRNGstate();
+  setRxThreadId(-1);
   return List::create(_["eta"] = etaOut, _["nAcc"] = nAcc, _["nchain"] = nchain);
 }
 

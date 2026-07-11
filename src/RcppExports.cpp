@@ -686,8 +686,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // fsaemImhKernel_
-List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat, NumericMatrix cholGamma, int nchain, int cores);
-RcppExport SEXP _nlmixr2est_fsaemImhKernel_(SEXP etaCurSEXP, SEXP etaHatSEXP, SEXP cholGammaSEXP, SEXP nchainSEXP, SEXP coresSEXP) {
+List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat, NumericMatrix cholGamma, int nchain, int cores, NumericMatrix mprior, NumericVector lower, NumericVector upper, IntegerVector nbd, double streamBase, int nRetry);
+RcppExport SEXP _nlmixr2est_fsaemImhKernel_(SEXP etaCurSEXP, SEXP etaHatSEXP, SEXP cholGammaSEXP, SEXP nchainSEXP, SEXP coresSEXP, SEXP mpriorSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP nbdSEXP, SEXP streamBaseSEXP, SEXP nRetrySEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -696,7 +696,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type cholGamma(cholGammaSEXP);
     Rcpp::traits::input_parameter< int >::type nchain(nchainSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(fsaemImhKernel_(etaCur, etaHat, cholGamma, nchain, cores));
+    Rcpp::traits::input_parameter< NumericMatrix >::type mprior(mpriorSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upper(upperSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type nbd(nbdSEXP);
+    Rcpp::traits::input_parameter< double >::type streamBase(streamBaseSEXP);
+    Rcpp::traits::input_parameter< int >::type nRetry(nRetrySEXP);
+    rcpp_result_gen = Rcpp::wrap(fsaemImhKernel_(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry));
     return rcpp_result_gen;
 END_RCPP
 }
