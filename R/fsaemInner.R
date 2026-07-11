@@ -100,6 +100,25 @@
   list(eta = .r$eta, gamma = .gamma, hess = .hess, ok = .r$ok)
 }
 
+#' Is `ui` within the current f-SAEM fast-kernel support envelope?
+#'
+#' The C++ side reconstructs the inner's theta as [population phi (constant across
+#' subjects), single additive residual]; models outside that envelope would get a
+#' wrong parameterization, so they degrade to standard SAEM instead.
+#' @noRd
+.fsaemSupported <- function(ui) {
+  .pred <- ui$predDf
+  if (is.null(.pred) || length(.pred$cond) != 1L) return(FALSE) # single endpoint
+  if (!all(.pred$distribution == "norm")) return(FALSE)         # continuous normal (Hessian path TODO)
+  .err <- ui$iniDf$err
+  .err <- .err[!is.na(.err)]
+  if (!all(.err == "add")) return(FALSE)                        # additive residual only for now
+  .cov <- ui$muRefCovariateDataFrame                            # no mu-ref covariates (mprior would vary by subject)
+  if (!is.null(.cov) && nrow(.cov) > 0L) return(FALSE)
+  if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
+  TRUE
+}
+
 #' Build the f-SAEM fast-simulation step for a SAEM fit and attach it to `cfg`.
 #'
 #' Sets up the FOCEi inner once and returns a closure the C++ SAEM loop calls
@@ -110,6 +129,12 @@
 #' @return `cfg` with `$fsaemStep` (closure) and `$fsaemInnerEnv` (keep-alive).
 #' @noRd
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
+  if (!.fsaemSupported(ui)) {
+    .minfo(paste0("f-SAEM (fast=TRUE) fast kernel not yet supported for this model ",
+                  "(needs a single additive-error continuous endpoint, no covariates/mixtures); ",
+                  "running standard SAEM"))
+    return(cfg)
+  }
   .iniDf <- ui$iniDf
   .neta <- sum(.iniDf$neta1 == .iniDf$neta2, na.rm = TRUE)
   .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))

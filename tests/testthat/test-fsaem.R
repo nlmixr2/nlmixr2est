@@ -89,4 +89,26 @@ nmTest({
     }
     expect_lt(.short("fsaem", 20L), .short("saem", 20L))
   })
+
+  test_that("est='fsaem' degrades to standard SAEM for unsupported models", {
+    # proportional error is outside the current fast-kernel envelope, so fsaem
+    # must fall back to standard SAEM bit-for-bit (with a message).
+    prop <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        prop.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ prop(prop.sd)
+      })
+    }
+    .ctl <- saemControl(nBurn = 40, nEm = 30, nmc = 2, seed = 3, print = 0L, calcTables = FALSE)
+    expect_message(
+      .f <- nlmixr2(prop, nlmixr2data::theo_sd, est = "fsaem", control = .ctl),
+      "not yet supported")
+    .s <- suppressMessages(nlmixr2(prop, nlmixr2data::theo_sd, est = "saem", control = .ctl))
+    expect_equal(unname(fixef(.f)), unname(fixef(.s)))
+  })
 })
