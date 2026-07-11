@@ -247,6 +247,23 @@
                   .lower, .upper, .nbd, as.double(.seed), as.integer(.nRetry),
                   as.integer(kiter))
   }
+  # C++-native direct-call fields: the SAEM C++ loop calls fsaemStepCpp_ itself
+  # (no per-iteration Rcpp::Function round-trip), which is safe for dynamic
+  # iteration changes.  The closure above is retained for the covariate path.
+  cfg$fsaemNoCov      <- 1L
+  cfg$fsaemStructPos  <- as.integer(.structPos - 1L)
+  cfg$fsaemResidPos   <- as.integer(.residPos - 1L)
+  cfg$fsaemResidIsAdd <- as.integer(.residIsAdd)
+  cfg$fsaemResidEp    <- as.integer(.residEp - 1L)
+  cfg$fsaemNTheta     <- as.integer(.nTheta)
+  cfg$fsaemLower      <- .lower
+  cfg$fsaemUpper      <- .upper
+  cfg$fsaemNbd        <- .nbd
+  cfg$fsaemNsweep     <- 5L
+  cfg$fsaemNRetry     <- as.integer(.nRetry)
+  cfg$fsaemCores      <- {
+    .c <- as.integer(rxode2::getRxThreads()); if (is.na(.c) || .c < 1L) 1L else .c
+  }
   cfg
 }
 

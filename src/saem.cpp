@@ -561,6 +561,13 @@ uvec getObsIdx(umat m) {
 void setupRx(List &opt, SEXP evt, int nmc, int N);
 extern rx_solve* _rx;
 
+// C++-native f-SAEM step (inner.cpp): the whole per-iteration orchestration, so
+// the SAEM loop can drive the fast kernel without a per-iteration R closure.
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega,
+                            NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                            int nsweep, int cores, NumericVector lower, NumericVector upper,
+                            IntegerVector nbd, double seed, int nRetry, int kiter);
+
 // Trampolines for the L-BFGS-B phi0 direct optimization (the SAEM object is
 // passed through `ex`); defined after the class body.
 static double saemPhi0ObjTramp(int n, double *par, void *ex);
@@ -923,6 +930,23 @@ public:
         fsaemStepFn = x["fsaemStep"];
         fsaemSaemOpt = as<List>(x["opt"]);
         fsaemSaemEvt = x["evt"];
+      }
+      // C++-native direct-call fields (no-covariate path): the loop calls
+      // fsaemStepCpp_ itself, with no per-iteration Rcpp::Function round-trip.
+      fsaemNoCov = x.containsElementNamed("fsaemNoCov") ? as<int>(x["fsaemNoCov"]) : 0;
+      if (fsaemNoCov) {
+        fsaemInnerEnv   = x["fsaemInnerEnv"];
+        fsaemStructPos  = as<ivec>(x["fsaemStructPos"]);
+        fsaemResidPos   = as<ivec>(x["fsaemResidPos"]);
+        fsaemResidIsAdd = as<ivec>(x["fsaemResidIsAdd"]);
+        fsaemResidEp    = as<ivec>(x["fsaemResidEp"]);
+        fsaemNTheta     = as<int>(x["fsaemNTheta"]);
+        fsaemLower      = as<vec>(x["fsaemLower"]);
+        fsaemUpper      = as<vec>(x["fsaemUpper"]);
+        fsaemNbdVec     = as<ivec>(x["fsaemNbd"]);
+        fsaemNsweep     = as<int>(x["fsaemNsweep"]);
+        fsaemNRetry     = as<int>(x["fsaemNRetry"]);
+        fsaemCores      = as<int>(x["fsaemCores"]);
       }
     }
     niter = as<int>(x["niter"]);
@@ -3052,6 +3076,12 @@ private:
   RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
   List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
   RObject fsaemSaemEvt = R_NilValue;// x["evt"]
+  // C++-native direct-call state (no-covariate path)
+  int fsaemNoCov = 0;
+  RObject fsaemInnerEnv = R_NilValue;
+  ivec fsaemStructPos, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
+  vec fsaemLower, fsaemUpper;
+  int fsaemNTheta = 0, fsaemNsweep = 5, fsaemNRetry = 10, fsaemCores = 1;
 
   int ntotal, N, mlen;
   vec y, ys;    //ys is y sorted by endpnt
@@ -3246,17 +3276,37 @@ private:
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
     }
-    // Plambda holds the current structural fixed effects (in saemParamsToEstimate
-    // order); the covariate closure reads any time-varying covariate coefficient
-    // from it.  Not yet populated on the first iteration (stays at the inner's
-    // ini beta in that case).
-    Rcpp::Function stepFn(fsaemStepFn);
-    arma::mat acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
-                                         NumericVector(ares.begin(), ares.end()),
-                                         NumericVector(bres.begin(), bres.end()),
-                                         NumericVector(omega.begin(), omega.end()),
-                                         NumericVector(Plambda.begin(), Plambda.end()),
-                                         wrap(etaCur), nmc, kiter));
+    arma::mat acc;
+    if (fsaemNoCov) {
+      // No per-iteration R round-trip: build the inner THETA (structural
+      // positions <- population phi = mprior_phi1 row 0; residual positions <-
+      // ares/bres) and call the C++ orchestration directly.
+      NumericVector theta(fsaemNTheta);
+      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++) theta[fsaemStructPos(j)] = mprior_phi1(0, j);
+      for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
+        int ep = fsaemResidEp(j);
+        theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
+      }
+      Environment innerEnv(fsaemInnerEnv);
+      NumericMatrix accNM =
+        fsaemStepCpp_(innerEnv, theta, NumericVector(omega.begin(), omega.end()),
+                      wrap(mprior_phi1), wrap(etaCur), nmc, fsaemNsweep, fsaemCores,
+                      NumericVector(fsaemLower.begin(), fsaemLower.end()),
+                      NumericVector(fsaemUpper.begin(), fsaemUpper.end()),
+                      IntegerVector(fsaemNbdVec.begin(), fsaemNbdVec.end()),
+                      (double)saemSeed, fsaemNRetry, kiter);
+      acc = as<arma::mat>(accNM);
+    } else {
+      // Covariate path: still via the R closure (mprior-as-data inner).  Plambda
+      // carries the current structural fixed effects (time-varying cov betas).
+      Rcpp::Function stepFn(fsaemStepFn);
+      acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
+                                 NumericVector(ares.begin(), ares.end()),
+                                 NumericVector(bres.begin(), bres.end()),
+                                 NumericVector(omega.begin(), omega.end()),
+                                 NumericVector(Plambda.begin(), Plambda.end()),
+                                 wrap(etaCur), nmc, kiter));
+    }
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
