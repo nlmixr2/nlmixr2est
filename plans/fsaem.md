@@ -165,47 +165,39 @@ Per active SAEM iteration, in C++ segments:
 The first segment's solve buffers are gone after the swap (shared memory) --
 hence the copy-out. Memory-efficient and API-change-free.
 
-Empirical findings (scratch coexist.R, 2026-07-10) that fix the mechanism:
-- `likInner0` re-reads `rx = getRxSolve_()` each call, so the inner only works
-  when the inner model is the CURRENT global solve. An intervening unrelated
-  `rxSolve` makes the next inner call crash (`setIndParPtr i should be between
-  [0,0)`) -- the two cannot be "current" at once.
-- Re-running the inner setup (`vaeInnerSetup_`/`foceiSetup_`, which re-solves)
-  re-points the global back to the inner and reproduces bit-identical MAPs.
-  So switching TO the inner = re-run its setup (idempotent).
-- rxode2 caches up to 64 model solves, so the SAEM model's solve is NOT freed
-  when the inner becomes current. SAEM's `user_function` uses its captured `_rx`
-  pointer (not the global), so it keeps working while global == inner, PROVIDED
-  nothing in the SAEM M-step re-reads `getRxSolve_()` (to verify in P1-3).
+CORRECT mechanism (the focei precedent -- an earlier "cannot coexist" analysis
+was WRONG; it mis-set-up TWO separate allocations). focei runs two models on ONE
+shared allocation without any re-pointing:
+- `innerOde(id)` / `predOde(id)` (inner.cpp:59-60) both call `ind_solve(rx, ...)`
+  on the SAME `rx`, passing DIFFERENT model function pointers (`rxInner.dydt` vs
+  `rxPred.dydt`). The ODE integrator uses the pointers handed to it, not the
+  global.
+- The compiled functions' `_solveData = _getRxSolve_()` (codegen2.h:614) returns
+  the ONE shared `rx` for both models -- consistent, no clobber, because there is
+  a single allocation.
+- `IndNeqOverrideGuard` + `op_focei.predNeq` reconcile the different equation
+  counts (the pred model has fewer states than the sensitivity-augmented inner).
 
-HARD CONSTRAINT (rxode2 codegen2.h:614): every compiled model function begins
-`_solveData = _getRxSolve_()`, so the *compiled model code itself* reads the
-global current solve at run time. Therefore the SAEM model's `par_solve` and the
-inner's `likInner0` each require THEIR OWN model to be the current global solve;
-they cannot interleave without re-pointing the global (= re-running that model's
-setup/solve) on every switch. This is why the fast kernel and the SAEM M-step
-must be sequenced as explicit segments, re-pointing between them.
-
-Implementation approach (per-iteration re-point, reuses the SAEM M-step as-is):
-each `firstN` iteration -- (a) re-point to inner (re-run inner setup at the
-current SAEM theta/omega) -> `fsaemInnerMap_` + `fsaemImhKernel_` -> accepted
-etas copied out; (b) write etas into `phiM`; (c) re-point to SAEM (re-establish
-its solve) so the existing M-step / `user_function` run unchanged. Cost: two
-extra model solves per fast iteration (~firstN, ~20) -- acceptable. iter >= N or
-`fast=FALSE`: skip -> existing `do_mcmc` (degrade, bit-identical). The two-phase
-alternative (run all `firstN` iterations on the inner with an inner-native SA
-M-step, single A->B re-point) is more efficient but reimplements the M-step;
-deferred unless the per-iteration re-point proves too costly.
+So fsaem does NOT create a second solve or re-point. It sets up ONE allocation
+sized for the LARGER problem -- the inner (sensitivity-augmented) model over the
+SAEM design -- and runs both the fast kernel and the SAEM prediction on it via
+function-table selection + neq override, exactly like focei's inner/pred. The
+inner allocation is per physical subject (N); the nmc chains are handled by
+evaluating `likInner0(eta, id)` at each chain's eta on those N slots (the kernel
+already does this), so no allocation growth for chains.
 
 Concrete P1-3 integration (validated cores: `fsaemInnerMap_`, `fsaemImhKernel_`):
-pass the pre-built inner env into `saem_fit`. Each `firstN` iteration, in C++:
-(1) write the current SAEM estimate (Plambda->theta, Gamma2->omega) into the
-inner env and call `vaeInnerSetup_(innerEnv)` to make the inner current;
-(2) `fsaemInnerMap_` -> per-subject MAP + `Gamma_i`; `fsaemImhKernel_` -> accepted
+set up the FOCEi inner as the shared solve for the fsaem fit (the `.fsaemInner*`
+path, already built). Each `firstN` iteration, in C++: (1) refresh the inner at
+the current SAEM estimate (theta from Plambda, omega from Gamma2); (2)
+`fsaemInnerMap_` -> per-subject MAP + `Gamma_i`; `fsaemImhKernel_` -> accepted
 etas for the chains; (3) write etas into `phiM` (phi = mprior + eta, mu-ref/cov
-aware); the SAEM M-step then runs on its captured `_rx`. For iter >= N (and
-`fast=FALSE`) skip all of this and call the existing `do_mcmc` -- the degrade
-path, guarded bit-identical. Mirror into `do_mcmc_msaem` for mixtures.
+aware) and read the SAEM prediction for the M-step off the SAME shared solve via
+the SAEM function table (predNeq override). iter >= N (and `fast=FALSE`): the
+existing `do_mcmc` path -- degrade, guarded bit-identical. Mirror into
+`do_mcmc_msaem` for mixtures. Open detail to settle in code: whether SAEM's
+`user_function` (`par_solve` over all N*nmc) reads predictions off the shared
+inner solve or keeps the SAEM model's own function table on that allocation.
 
 ### 4.4 R plumbing
 
