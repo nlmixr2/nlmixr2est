@@ -72,6 +72,26 @@ nmTest({
     expect_true(is.finite(fixef(.f)[["cl.tv"]]))
   })
 
+  test_that(".saemDropMuRefFromModel(keepEtas=) absorbs covs but keeps etas", {
+    covm <- function() {
+      ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.wt<-0.5; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
+      model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.wt*WT); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covm))
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    # saem: mu-ref etas and covariates both dropped (phi model)
+    .saem <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = FALSE),
+                    function(e) paste(deparse(e), collapse = ""), character(1))
+    expect_true(any(grepl("cl <- exp\\(tcl\\)$", .saem)))
+    # fsaem inner: covariate absorbed, but eta kept (distinct from the plain
+    # focei inner where the covariate stays in the model)
+    .inner <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = TRUE),
+                     function(e) paste(deparse(e), collapse = ""), character(1))
+    expect_true(any(grepl("cl <- exp\\(tcl \\+ eta.cl\\)$", .inner)))
+    expect_false(any(grepl("cl.wt", .inner)))          # covariate absorbed
+  })
+
   test_that("mufocei recovers non-time-varying and time-varying covariate effects", {
     skip_if_not_installed("nlmixr2data")
     .fc <- foceiControl(print = 0L, calcTables = FALSE,

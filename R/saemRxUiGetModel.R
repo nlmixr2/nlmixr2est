@@ -37,7 +37,8 @@
 #' @return Remove mu-referenced etas and covariates
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE) {
+.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE,
+                                keepEtas=FALSE) {
   f <- function(x) {
     if (is.name(x) || is.atomic(x)) {
       return(x)
@@ -53,16 +54,21 @@
         if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs=noCovs)) {
           return(f(x[[2]]))
         }
-        if (length(x[[2]]) == 1) {
-          .char <- as.character(x[[2]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[3]]))
+        # keepEtas=TRUE (f-SAEM inner): absorb the non-time-varying covariates
+        # into phi like saem but KEEP the mu-referenced etas so the FOCEi inner
+        # can optimize them (saem drops them, collapsing theta+eta -> phi).
+        if (!keepEtas) {
+          if (length(x[[2]]) == 1) {
+            .char <- as.character(x[[2]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[3]]))
+            }
           }
-        }
-        if (length(x[[3]]) == 1) {
-          .char <- as.character(x[[3]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[2]]))
+          if (length(x[[3]]) == 1) {
+            .char <- as.character(x[[3]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[2]]))
+            }
           }
         }
       }
@@ -81,11 +87,11 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
+.saemDropMuRefFromModel <- function(ui, noCovs=FALSE, keepEtas=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
   lapply(ui$lstExpr, function(line){
-    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
+    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs, keepEtas=keepEtas)
   })
 }
 
