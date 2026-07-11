@@ -9697,7 +9697,7 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
       arma::vec dCur = Linv[id]*(ecur - ehat);
       double logAlpha = (fCur - fProp) + 0.5*(arma::dot(z, z) - arma::dot(dCur, dCur));
       // uniform(0,1) from the same threefry stream: PHI(standard normal)
-      double u = PHI(rxNormEng(0.0, 1.0));
+      double u = rxUnifEng(0.0, 1.0);
       if (R_FINITE(fCur) ? (std::log(u) < logAlpha) : true) {
         for (int j = 0; j < neta; ++j) etaOut(row, j) = eprop(j);
         nAcc[id]++;
