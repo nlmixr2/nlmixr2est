@@ -686,6 +686,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
                   IntegerVector muIdx, int addSdIdx, int errType,
                   NumericVector mu0, NumericVector omDiag0, double addSd0,
                   IntegerVector resIdx, NumericVector resPar0,
+                  IntegerVector structIdx, NumericVector struct0,
                   int niter, int nGauss, int ncores, int nMH, int mhBurn,
                   unsigned int seed) {
   RObject pred = e["predOnly"];
@@ -702,6 +703,10 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   bool doComb = (errType == 2), doPow = (errType == 4), doTbs = (errType == 3);
   int propSdIdx = resIdx[0], powIdx = resIdx[1], lambdaIdx = resIdx[2];
   double propSd = resPar0[0], power = resPar0[1], lambda = resPar0[2];
+  int nStruct = structIdx.size();          // non-mu-ref structural fixed effects (beta)
+  std::vector<int> structIdxBuf(nStruct);
+  std::vector<double> beta(nStruct);
+  for (int k = 0; k < nStruct; ++k) { structIdxBuf[k] = structIdx[k]; beta[k] = struct0[k]; }
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   if ((int)muIdx.size() != nEta || (int)mu0.size() != nEta || (int)omDiag0.size() != nEta)
     stop("muIdx / mu0 / omDiag0 must have nEta entries");
@@ -732,7 +737,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) { mu[a] = mu0[a]; omDiag[a] = omDiag0[a]; }
   double addSd = addSd0;
 
-  NumericMatrix muTr(niter, nEta), omTr(niter, nEta);
+  NumericMatrix muTr(niter, nEta), omTr(niter, nEta), betaTr(niter, nStruct);
   NumericVector sdTr(niter), propTr(niter, NA_REAL), powTr(niter, NA_REAL);
   NumericVector lamTr(niter, NA_REAL), llTr(niter);
   std::vector<double> row(rpemOp.ntheta);
@@ -747,6 +752,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
     if (doComb) baseBuf[propSdIdx] = propSd;
     if (doPow) baseBuf[powIdx] = power;
     if (doTbs) baseBuf[lambdaIdx] = lambda;
+    for (int k = 0; k < nStruct; ++k) baseBuf[structIdxBuf[k]] = beta[k];
     // re-establish the solve (the previous M-step's rxRmvn resets rxode2 solve state)
     rpemDoSetup(pred, rxControl, param, data);
 
@@ -794,6 +800,48 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       double s = 0.0;
       for (int j = 0; j < nGauss; ++j) s += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
       logn[id] = mx + log(s) - log((double)nGauss); lnL += logn[id];
+    }
+
+    // Numeric M-step for non-mu-referenced structural fixed effects (the paper's beta):
+    // one damped diagonal-Newton step maximizing the importance-weighted complete-data
+    // Q(beta) = sum_ij w_ij log p(Y_i | beta, eta_ij) -- re-solving per (i,j) with the
+    // held etas.  Runs while the E-step solve is loaded, before the MH clobbers it.
+    if (nStruct > 0) {
+      std::vector<double> wij((size_t)nsub * nGauss);
+      for (int i = 0; i < nsub; ++i) {
+        double mx = R_NegInf;
+        for (int j = 0; j < nGauss; ++j) { double v = rpemOp.logp[(size_t)i * nGauss + j]; if (v > mx) mx = v; }
+        double sw = 0.0;
+        for (int j = 0; j < nGauss; ++j) { double ee = exp(rpemOp.logp[(size_t)i * nGauss + j] - mx); wij[(size_t)i * nGauss + j] = ee; sw += ee; }
+        for (int j = 0; j < nGauss; ++j) wij[(size_t)i * nGauss + j] /= sw;
+      }
+      auto Qbeta = [&](const std::vector<double> &b) -> double {
+        double q = 0.0;
+        for (int i = 0; i < nsub; ++i)
+          for (int j = 0; j < nGauss; ++j) {
+            for (unsigned int tt = 0; tt < rpemOp.ntheta; ++tt) row[tt] = baseBuf[tt];
+            for (int k = 0; k < nStruct; ++k) row[structIdxBuf[k]] = b[k];
+            for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[((size_t)i * nGauss + j) * nEta + a];
+            q += wij[(size_t)i * nGauss + j] * (-rpemSolveSubject(row.data(), i));
+          }
+        return q;
+      };
+      const double hb = 1e-3;
+      double Q0 = Qbeta(beta);
+      std::vector<double> step(nStruct, 0.0);
+      for (int k = 0; k < nStruct; ++k) {
+        std::vector<double> bp = beta, bm = beta; bp[k] += hb; bm[k] -= hb;
+        double qp = Qbeta(bp), qm = Qbeta(bm);
+        double g = (qp - qm) / (2.0 * hb), hess = (qp - 2.0 * Q0 + qm) / (hb * hb);
+        step[k] = (hess < -1e-8) ? -g / hess : g;
+      }
+      double tstep = 1.0;
+      for (int ls = 0; ls < 30; ++ls) {
+        std::vector<double> bn = beta;
+        for (int k = 0; k < nStruct; ++k) bn[k] = beta[k] + tstep * step[k];
+        if (Qbeta(bn) > Q0) { beta = bn; break; }
+        tstep *= 0.5;
+      }
     }
 
     // M-step: conjugate MH over the joint (subject, sample) posterior (Eq 17).  The MH
@@ -927,6 +975,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       addSd = sqrt(sumSS / (double)sumNobs);
     }
     for (int a = 0; a < nEta; ++a) { muTr(it, a) = mu[a]; omTr(it, a) = omDiag[a]; }
+    for (int k = 0; k < nStruct; ++k) betaTr(it, k) = beta[k];
     sdTr[it] = addSd; llTr[it] = lnL;
     if (doComb) propTr[it] = propSd;
     if (doPow) powTr[it] = power;
@@ -935,7 +984,8 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   rpemFree();
   return List::create(_["muTrace"] = muTr, _["omegaTrace"] = omTr,
                       _["sdTrace"] = sdTr, _["propTrace"] = propTr,
-                      _["powTrace"] = powTr, _["lamTrace"] = lamTr, _["lnL"] = llTr);
+                      _["powTrace"] = powTr, _["lamTrace"] = lamTr,
+                      _["betaTrace"] = betaTr, _["lnL"] = llTr);
 }
 
 // Mixture M-step (mix(), split-ETA, single mixed eta).  The MH state is now

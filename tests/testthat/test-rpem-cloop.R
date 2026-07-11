@@ -97,3 +97,38 @@ test_that("est=rpem cLoop matches the R loop for combined / power / TBS residual
   expect_equal(tC$addSd, tR$addSd, tolerance = 0.1)
   expect_equal(tC$lambda, tR$lambda, tolerance = 0.15)
 })
+
+test_that("est=rpem cLoop estimates a non-mu-ref structural beta (matches R loop)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: structural re-solve M-step in C++
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(9); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); et0 <- rnorm(nsub, 0, sqrt(0.3))
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = et0[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; d$DV <- 0; o <- d$evid == 0
+    d$DV[o] <- s$cp + rnorm(nrow(s), 0, 0.1)
+    d
+  }))
+  # tcl is structural (no eta, not fixed); tv is fixed
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- 0.5; tv <- fix(3.45); add.sd <- 0.2; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxode2(mod)
+  ctlR <- rpemControl(nGauss = 200L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                      collect = 10L, seed = 42L, cores = 4L, cLoop = FALSE)
+  ctlC <- rpemControl(nGauss = 200L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                      collect = 10L, seed = 42L, cores = 4L, cLoop = TRUE)
+  rC <- .rpemFit(ui, dat, ctlC)
+  rR <- .rpemFit(ui, dat, ctlR)
+  # the structural beta (tcl) recovers the truth (1.0) and matches the R loop
+  expect_equal(unname(rC$struct["tcl"]), 1.0, tolerance = 0.06)
+  expect_equal(unname(rC$struct["tcl"]), unname(rR$struct["tcl"]), tolerance = 0.05)
+  # reproducible run-to-run
+  rC2 <- .rpemFit(ui, dat, ctlC)
+  expect_equal(rC$struct, rC2$struct)
+  expect_equal(rC$mu, rC2$mu)
+})

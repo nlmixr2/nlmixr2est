@@ -446,7 +446,7 @@
   # censoring / mode-centered IS -- those keep the R loop).  The eta draw uses rxode2's
   # per-thread threefry engine (thread-safe + reproducible for any core count).
   .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 2L, 3L, 4L) && all(.cl$muRef) &&
-    length(.cl$covCoefNames) == 0L && !.structOn && !.multi && !.hasCens && !.modeIS
+    length(.cl$covCoefNames) == 0L && !.multi && !.hasCens && !.modeIS
   if (.cLoop) {
     .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
     .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
@@ -456,12 +456,14 @@
     .resPar0 <- c(.naN(.cl$propSd0), .naN(.cl$pow0), .naN(.cl$lambda0))
     .r <- rpemEMLoopK1(.e, base, .cl$etaIdx, .cl$muIdx, .cl$addSdIdx, .cl$errType,
                        .cl$mu0, diag(as.matrix(.cl$omega0)), .cl$addSd0, .resIdx, .resPar0,
+                       as.integer(.cl$structIdx), as.numeric(.cl$struct0),
                        niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
                        control$seed)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
     propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)
     lamTr <- as.numeric(.r$lamTrace)
+    if (.structOn) betaMat <- .r$betaTrace
   } else
   for (.it in seq_len(niter)) {
     if (.useReg) {
