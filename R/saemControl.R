@@ -328,6 +328,10 @@ saemControl <- function(seed = 99,
                         fastCov = c("auto", "jacobian", "hessian"),
                         fastIter = 20L,
                         fastLik = c("focei", "foce", "focep"),
+                        lbfgsLmm = 5L,
+                        lbfgsFactr = NULL,
+                        lbfgsPgtol = NULL,
+                        lbfgsMaxIter = 20L,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -422,7 +426,26 @@ saemControl <- function(seed = 99,
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
+    # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
+    # derived from sigdig the same way foceiControl() does (factr = tol/eps)
+    if (is.null(lbfgsFactr)) {
+      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+    }
+    if (is.null(lbfgsPgtol)) {
+      lbfgsPgtol <- 10^(-sigdig - 1)
+    }
   }
+  # defaults when sigdig is not supplied (~4 significant digits)
+  if (is.null(lbfgsFactr)) {
+    lbfgsFactr <- 1e7
+  }
+  if (is.null(lbfgsPgtol)) {
+    lbfgsPgtol <- 0
+  }
+  checkmate::assertIntegerish(lbfgsLmm, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(lbfgsFactr, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(lbfgsPgtol, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(lbfgsMaxIter, lower=1, len=1, any.missing=FALSE)
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
@@ -507,7 +530,11 @@ saemControl <- function(seed = 99,
     fastKernel=fastKernel,
     fastCov=fastCov,
     fastIter=as.integer(fastIter),
-    fastLik=fastLik
+    fastLik=fastLik,
+    lbfgsLmm=as.integer(lbfgsLmm),
+    lbfgsFactr=lbfgsFactr,
+    lbfgsPgtol=lbfgsPgtol,
+    lbfgsMaxIter=as.integer(lbfgsMaxIter)
   )
   class(.ret) <- "saemControl"
   .ret

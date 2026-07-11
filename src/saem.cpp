@@ -37,6 +37,17 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
 			  int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
 			  int *iprint);
 
+// L-BFGS-B with C linkage (src/lbfgsR.c), used to directly optimize the
+// observation log-likelihood over fixed-effect-only (phi0) parameters for a
+// general-likelihood (distribution==4) model -- the saemix "ind.fix10" step.
+typedef double optimfn(int n, double *par, void *ex);
+typedef void optimgr(int n, double *par, double *gr, void *ex);
+extern "C" void lbfgsbRX(int n, int lmm, double *x, double *lower,
+                         double *upper, int *nbd, double *Fmin, optimfn fn,
+                         optimgr gr, int *fail, void *ex, double factr,
+                         double pgtol, int *fncount, int *grcount,
+                         int maxit, char *msg, int trace, int nREPORT);
+
 double *_saemYptr;
 double *_saemFptr;
 int _saemLen;
@@ -550,6 +561,11 @@ uvec getObsIdx(umat m) {
 void setupRx(List &opt, SEXP evt, int nmc, int N);
 extern rx_solve* _rx;
 
+// Trampolines for the L-BFGS-B phi0 direct optimization (the SAEM object is
+// passed through `ex`); defined after the class body.
+static double saemPhi0ObjTramp(int n, double *par, void *ex);
+static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex);
+
 // class def starts
 class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
@@ -561,6 +577,63 @@ public:
   }
 
   ~SAEM() {}
+
+  // Total observation -log-likelihood at candidate fixed-effect (phi0) values p,
+  // holding the current phi1 samples fixed (general-likelihood / distribution==4:
+  // the model prediction column is the per-observation log-likelihood).  Summed
+  // over all chains, which is the SAEM stochastic-approximation objective.
+  double phi0Objective(double *p) {
+    mat phiCand = phiM;
+    for (int c = 0; c < nphi0; c++) {
+      phiCand.col(i0(c)).fill(p[c]);
+    }
+    mat fMat = user_fn(phiCand, evt, optM);
+    return -accu(fMat.col(0));
+  }
+
+  // Central finite-difference gradient of phi0Objective (the model does not emit
+  // analytic d(ll)/d(phi0); FD is robust and low-dimensional here).
+  void phi0Gradient(double *p, double *gr) {
+    for (int c = 0; c < nphi0; c++) {
+      double p0 = p[c];
+      double h = 1e-4 * (std::fabs(p0) + 1e-4);
+      p[c] = p0 + h; double fp = phi0Objective(p);
+      p[c] = p0 - h; double fm = phi0Objective(p);
+      p[c] = p0;
+      gr[c] = (fp - fm) / (2.0 * h);
+    }
+  }
+
+  // saemix "ind.fix10" step: refine the fixed-effect-only (phi0) parameters of a
+  // general-likelihood model by a direct L-BFGS-B optimization of the observation
+  // log-likelihood (seeded at the current phi(theta) values), then apply a
+  // stochastic-approximation update and keep MCOV0 consistent so the next
+  // iteration's mprior_phi0 = COV0*MCOV0 reproduces it.  Only the intercept-only
+  // (no phi0 covariate) case is handled.
+  void refinePhi0Lik(unsigned int kiter, const vec &pas) {
+    if (nphi0 <= 0) return;
+    std::vector<double> x(nphi0), lower(nphi0, 0.0), upper(nphi0, 0.0);
+    std::vector<int> nbd(nphi0, 0);
+    for (int c = 0; c < nphi0; c++) {
+      x[c] = mprior_phi0(0, c);
+      if ((int)phi0Nbd.n_elem == nphi0) {
+        nbd[c] = phi0Nbd(c);
+        lower[c] = phi0Lower(c);
+        upper[c] = phi0Upper(c);
+      }
+    }
+    double Fmin; int fail = 0, fncount = 0, grcount = 0;
+    char msg[100];
+    lbfgsbRX(nphi0, lbfgsLmm, x.data(), lower.data(), upper.data(), nbd.data(),
+             &Fmin, saemPhi0ObjTramp, saemPhi0GrTramp, &fail, (void *)this,
+             lbfgsFactr, lbfgsPgtol, &fncount, &grcount, lbfgsMaxIter, msg, 0,
+             lbfgsMaxIter + 1);
+    for (int c = 0; c < nphi0; c++) {
+      double cur = mprior_phi0(0, c);
+      mprior_phi0.col(c).fill(cur + pas(kiter) * (x[c] - cur));
+    }
+    MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+  }
 
   void set_fn(user_funct f) {
     user_fn = f;
@@ -826,6 +899,18 @@ public:
     resKeep = find(resFixed==0);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
+    // L-BFGS-B tolerances for the general-likelihood phi0 direct optimization
+    lbfgsLmm = x.containsElementNamed("lbfgsLmm") ? as<int>(x["lbfgsLmm"]) : 5;
+    lbfgsFactr = x.containsElementNamed("lbfgsFactr") ? as<double>(x["lbfgsFactr"]) : 1e7;
+    lbfgsPgtol = x.containsElementNamed("lbfgsPgtol") ? as<double>(x["lbfgsPgtol"]) : 0.0;
+    lbfgsMaxIter = x.containsElementNamed("lbfgsMaxIter") ? as<int>(x["lbfgsMaxIter"]) : 20;
+    // Bounds for the phi0 direct optimization, in phi0 (i0) column order, taken
+    // from the theta iniDf bounds (L-BFGS-B nbd: 0 none, 1 lower, 2 both, 3 upper)
+    if (x.containsElementNamed("lbfgsPhi0Lower")) {
+      phi0Lower = as<vec>(x["lbfgsPhi0Lower"]);
+      phi0Upper = as<vec>(x["lbfgsPhi0Upper"]);
+      phi0Nbd = as<ivec>(x["lbfgsPhi0Nbd"]);
+    }
     nb_sa = as<int>(x["nb_sa"]);
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
     // (missing, e.g. a saved cfg from an older version) disables the tag.
@@ -1958,6 +2043,13 @@ public:
       }
       mprior_phi1=COV1*MCOV1;
       mprior_phi0=COV0*MCOV0;
+      // General log-likelihood: the sampled-mean update above only weakly informs
+      // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
+      // phase has begun, refine them by a direct L-BFGS-B optimization of the
+      // observation likelihood (saemix ind.fix10).
+      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+        refinePhi0Lik(kiter, pas);
+      }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
         phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
@@ -2879,6 +2971,13 @@ private:
   int nb_fixResid;
   int niter_phi0;
   double coef_phi0;
+  int lbfgsLmm;
+  double lbfgsFactr;
+  double lbfgsPgtol;
+  int lbfgsMaxIter;
+  vec phi0Lower;
+  vec phi0Upper;
+  ivec phi0Nbd;
   double rmcmc;
   double coef_sa;
   vec pas, pash;
@@ -3506,6 +3605,16 @@ private:
       }
   }
 };
+
+// L-BFGS-B trampolines for the phi0 direct optimization (ex is the SAEM object).
+static double saemPhi0ObjTramp(int n, double *par, void *ex) {
+  (void)n;
+  return ((SAEM *)ex)->phi0Objective(par);
+}
+static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex) {
+  (void)n;
+  ((SAEM *)ex)->phi0Gradient(par, gr);
+}
 
 
 // closing for #ifndef __SAEM_CLASS_RCPP_HPP__
