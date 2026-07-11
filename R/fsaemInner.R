@@ -205,13 +205,12 @@
     .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
     .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
     cfg$fsaemInnerEnv <- .setup$env
-    .setup$env$imhStreamCount <- 0
-    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, nsweep = 5L) {
+    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
       .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
       .map <- .fsaemInnerMap(.fc, .neta)
       .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
                         mprior = mpriorMat, bounds = .bounds, seed = .seed,
-                        nRetry = .nRetry, streamEnv = .setup$env)
+                        nRetry = .nRetry, kiter = as.integer(kiter))
       .imh$eta
     }
     return(cfg)
@@ -220,7 +219,6 @@
   # population phi (mprior is the same for every subject).
   .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
   cfg$fsaemInnerEnv <- .env
-  .env$imhStreamCount <- 0
   # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
   # the current population phi (mprior row 1); residual positions take the
   # current additive (ares) / proportional (bres) estimate for their endpoint.
@@ -231,7 +229,7 @@
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
-  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, nsweep = 5L) {
+  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
     .theta <- numeric(.nTheta)
     .theta[.structPos] <- mpriorMat[1, ]
     if (length(.residPos)) {
@@ -241,7 +239,7 @@
     .map <- .fsaemInnerMap(.fc, .neta)
     .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
                       mprior = mpriorMat, bounds = .bounds, seed = .seed,
-                      nRetry = .nRetry, streamEnv = .env)
+                      nRetry = .nRetry, kiter = as.integer(kiter))
     .imh$eta
   }
   cfg
@@ -259,7 +257,7 @@
 #' @noRd
 .fsaemImh <- function(map, etaCur, nchain, nsweep = 1L, cores = 1L,
                       mprior = NULL, bounds = NULL, seed = 0L, nRetry = 10L,
-                      streamEnv = NULL) {
+                      kiter = 0L) {
   .neta <- ncol(map$eta)
   .nsub <- nrow(map$eta)
   # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed)
@@ -279,12 +277,13 @@
   .cores <- as.integer(rxode2::getRxThreads())
   if (is.na(.cores) || .cores < 1L) .cores <- 1L
   for (.s in seq_len(nsweep)) {
-    # reproducible per-(call, chain, subject) threefry stream base: the counter
-    # (persisted in streamEnv) advances every sweep so successive iterations draw
-    # fresh samples, independent of thread count (like est="imp")
-    .cnt <- if (is.null(streamEnv)) 0 else streamEnv$imhStreamCount
-    .streamBase <- as.double(seed) + as.double(.cnt) * (as.double(nchain) * .nsub)
-    if (!is.null(streamEnv)) streamEnv$imhStreamCount <- .cnt + 1
+    # Iteration-indexed threefry stream base = f(kiter, sweep), mirroring
+    # est="imp" (seed0 + iter*nExp); the kernel adds c*nsub + id per chain/
+    # subject.  Being a pure function of (kiter, sweep, chain, subject) -- not a
+    # running counter -- makes every iteration independently reproducible, so the
+    # number of steps in a phase can be changed dynamically and still reproduced.
+    .streamBase <- as.double(seed) +
+      (as.double(kiter) * nsweep + (.s - 1)) * (as.double(nchain) * .nsub)
     .r <- fsaemImhKernel_(.eta, map$eta, .cholGamma, as.integer(nchain), .cores,
                           .mp, .lower, .upper, .nbd, .streamBase, as.integer(nRetry))
     .eta <- .r$eta

@@ -1858,7 +1858,7 @@ public:
         bool imhFired = (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn));
         bool imhReplacesRwm = (imhFired && distribution == 4);
         if (imhFired) {
-          fsaemImhStep(phiM);
+          fsaemImhStep(phiM, (int)kiter);
           if (imhReplacesRwm) {
             // refresh predictions + DYF/U_y to match the IMH-updated phiM so the
             // phi0 update and the M-step statistics stay consistent
@@ -3207,7 +3207,7 @@ private:
   // + proposal covariance, and runs the IMH kernel), and writes the accepted etas
   // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
   // now (guarded by the caller / closure arg length).
-  void fsaemImhStep(mat &phiM) {
+  void fsaemImhStep(mat &phiM, int kiter) {
     // Pass the full per-subject prior mean mprior_phi1 (N x nphi1).  For a
     // no-covariate model every row is the same population phi; for a covariate
     // model the time-invariant covariate effect is absorbed here per subject.
@@ -3229,7 +3229,7 @@ private:
                                          NumericVector(bres.begin(), bres.end()),
                                          NumericVector(omega.begin(), omega.end()),
                                          NumericVector(Plambda.begin(), Plambda.end()),
-                                         wrap(etaCur), nmc));
+                                         wrap(etaCur), nmc, kiter));
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
