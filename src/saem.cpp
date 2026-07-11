@@ -566,6 +566,33 @@ extern rx_solve* _rx;
 static double saemPhi0ObjTramp(int n, double *par, void *ex);
 static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex);
 
+// Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
+// stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
+// the engine, so these do not interfere with user_fn.
+static inline void _saemFillNormEng(arma::mat &m) {
+  for (arma::uword ii = 0; ii < m.n_elem; ++ii) m(ii) = rxNormEng(0.0, 1.0);
+}
+static inline void _saemFillNormEng(arma::vec &v) {
+  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxNormEng(0.0, 1.0);
+}
+static inline void _saemFillUnifEng(arma::vec &v) {
+  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxUnifEng(0.0, 1.0);
+}
+// Iteration-indexed threefry stream seed for a do_mcmc proposal block: a pure
+// mixing function of (baseSeed, kiter, method, u, k1) so every iteration's RNG
+// is independent of the total iteration count (dynamic phase extension) and
+// independent of thread scheduling.  Pins thread 0 (serial draw).
+static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1) {
+  setRxThreadId(0);
+  uint32_t s = baseSeed;
+  s = s * 2654435761u + 0x00006D0Cu;   // "do_mcmc" namespace tag
+  s = s * 2654435761u + (uint32_t)kiter;
+  s = s * 2654435761u + (uint32_t)method;
+  s = s * 2654435761u + (uint32_t)u;
+  s = s * 2654435761u + (uint32_t)k1;
+  setSeedEng1(s);
+}
+
 // class def starts
 class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
@@ -1305,19 +1332,19 @@ public:
         vec U_y = mixObsLoss(phiM, mx);
         if (nphi1 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi);
+          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
           mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi);
-          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi);
+          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
         }
         if (nphi0 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi);
+          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
           mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi);
-          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi);
+          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -1577,19 +1604,19 @@ public:
 
           if (nphi1 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
             mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
-            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
           }
           if (nphi0 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
             mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
-            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
           }
 
           // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
@@ -1874,19 +1901,19 @@ public:
         }
         if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
-          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
         if(nphi0>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
-          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -3251,10 +3278,12 @@ private:
                vec &U_phi,
                vec &cur_fsave,
                vec &cur_cens,
-               vec &cur_limit) {
+               vec &cur_limit,
+               int kiter) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
+    arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
 
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
@@ -3262,21 +3291,30 @@ private:
     for (int u=0; u<nu; u++)
       for (int k1=0; k1<mphi.nphi; k1++) {
         mat phiMc=phiM;
+        // iteration-indexed threefry stream: proposal noise + the acceptance
+        // uniform are drawn here (before the solve) from one seeded stream
+        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1);
         switch (method) {
-        case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
+        case 1: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          phiMc.cols(i)=noise*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
-        case 2:
+        }
+        case 2: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
           phiMc.cols(i)=phiM.cols(i) +
-            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
-          break;
-        case 3:
-          phiMc.col(i(k1))=phiM.col(i(k1))+
-            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
-          // Rcpp::print(Rcpp::wrap(phiM.cols(i(k1))));
+            noise*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
+        case 3: {
+          vec noise(mx.nM); _saemFillNormEng(noise);
+          phiMc.col(i(k1))=phiM.col(i(k1))+
+            noise*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        }
+        _saemFillUnifEng(accU);   // acceptance uniforms from the same stream
 
         fcMat = user_fn(phiMc, mx.evtM, mx.optM);
         cur_limit = fcMat.col(2);
@@ -3365,7 +3403,7 @@ private:
           deltu=Uc_y-U_y+Uc_phi-U_phi;
         }
 
-        ind=find( deltu < -log(randu<vec>(mx.nM)) );
+        ind=find( deltu < -log(accU) );
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -3377,6 +3415,7 @@ private:
           break;
         }
       }
+    setRxThreadId(-1);
   }
 
   // MSAEM (Lavielle & Mbogning 2014): mixture-weighted (log-sum-exp) observation loss for a
@@ -3587,29 +3626,41 @@ private:
                       const mcmcphi &mphi,
                       mat &phiM,
                       vec &U_y,
-                      vec &U_phi) {
+                      vec &U_phi,
+                      int kiter) {
     mat phiMc;
     vec Uc_y, Uc_phi, deltu;
     uvec ind;
     uvec i = mphi.i;
+    arma::vec accU(mx.nM);
 
     for (int u = 0; u < nu; u++)
       for (int k1 = 0; k1 < mphi.nphi; k1++) {
         phiMc = phiM;
+        // iteration-indexed threefry stream (msaem tag = method + 16 so it does
+        // not collide with the plain do_mcmc streams)
+        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method + 16, u, k1);
         switch (method) {
-        case 1:
-          phiMc.cols(i) = randn<mat>(mx.nM, mphi.nphi) * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
+        case 1: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          phiMc.cols(i) = noise * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
-        case 2:
+        }
+        case 2: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
           phiMc.cols(i) = phiM.cols(i) +
-            randn<mat>(mx.nM, mphi.nphi) * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
-          break;
-        case 3:
-          phiMc.col(i(k1)) = phiM.col(i(k1)) +
-            randn<vec>(mx.nM) * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+            noise * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
+        case 3: {
+          vec noise(mx.nM); _saemFillNormEng(noise);
+          phiMc.col(i(k1)) = phiM.col(i(k1)) +
+            noise * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        }
+        _saemFillUnifEng(accU);
 
         Uc_y = mixObsLoss(phiMc, mx);
 
@@ -3621,7 +3672,7 @@ private:
           deltu = Uc_y - U_y + Uc_phi - U_phi;
         }
 
-        ind = find(deltu < -log(randu<vec>(mx.nM)));
+        ind = find(deltu < -log(accU));
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {
@@ -3631,6 +3682,7 @@ private:
           break;
         }
       }
+    setRxThreadId(-1);
   }
 };
 
