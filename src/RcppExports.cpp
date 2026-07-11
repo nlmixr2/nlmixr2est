@@ -1131,8 +1131,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemEMLoopMix
-List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix muComp0, IntegerMatrix muCompIdx, IntegerMatrix etaForComp, NumericVector omDiag0, int addSdIdx, int errType, double addSd0, NumericVector w0, int K, int nParam, bool perComp, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed);
-RcppExport SEXP _nlmixr2est_rpemEMLoopMix(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muComp0SEXP, SEXP muCompIdxSEXP, SEXP etaForCompSEXP, SEXP omDiag0SEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP addSd0SEXP, SEXP w0SEXP, SEXP KSEXP, SEXP nParamSEXP, SEXP perCompSEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP) {
+List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix muComp0, IntegerMatrix muCompIdx, IntegerMatrix etaForComp, NumericVector omDiag0, int addSdIdx, int errType, double addSd0, IntegerVector resIdx, NumericVector resPar0, NumericVector w0, int K, int nParam, bool perComp, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemEMLoopMix(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muComp0SEXP, SEXP muCompIdxSEXP, SEXP etaForCompSEXP, SEXP omDiag0SEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP addSd0SEXP, SEXP resIdxSEXP, SEXP resPar0SEXP, SEXP w0SEXP, SEXP KSEXP, SEXP nParamSEXP, SEXP perCompSEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1146,6 +1146,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type addSdIdx(addSdIdxSEXP);
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
     Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type resIdx(resIdxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type resPar0(resPar0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type w0(w0SEXP);
     Rcpp::traits::input_parameter< int >::type K(KSEXP);
     Rcpp::traits::input_parameter< int >::type nParam(nParamSEXP);
@@ -1156,7 +1158,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type nMH(nMHSEXP);
     Rcpp::traits::input_parameter< int >::type mhBurn(mhBurnSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemEMLoopMix(e, base, etaIdx, muComp0, muCompIdx, etaForComp, omDiag0, addSdIdx, errType, addSd0, w0, K, nParam, perComp, niter, nGauss, ncores, nMH, mhBurn, seed));
+    rcpp_result_gen = Rcpp::wrap(rpemEMLoopMix(e, base, etaIdx, muComp0, muCompIdx, etaForComp, omDiag0, addSdIdx, errType, addSd0, resIdx, resPar0, w0, K, nParam, perComp, niter, nGauss, ncores, nMH, mhBurn, seed));
     return rcpp_result_gen;
 END_RCPP
 }

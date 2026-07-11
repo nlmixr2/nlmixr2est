@@ -178,3 +178,42 @@ test_that("est=rpem cLoop fits a mixture (matches R loop, reproducible)", {
   expect_equal(rC$mix$muK, rC2$mix$muK)
   expect_equal(rC$mix$w, rC2$mix$w)
 })
+
+test_that("est=rpem cLoop fits a mixture with a combined residual (matches R loop)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: mixture EM with the combined optimizer
+
+  sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(42); nsub <- 120L; obsT <- seq(0.5, 24, by = 2.5)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    k <- if (stats::runif(1) < 0.6) 1L else 2L
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(sim, params = c(tka = c(0, 1.4)[k], tcl = 1, tv = 3.45,
+                                         eka = stats::rnorm(1, 0, sqrt(0.3))),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + stats::rnorm(nrow(s), 0, sqrt(0.05^2 + (0.1 * s$cp)^2))
+    d
+  }))
+  mod <- function() {
+    ini({ tka1 <- 0.2; tka2 <- 1.2; tcl <- fix(1.0); tv <- fix(3.45)
+          p1 <- 0.5; add.sd <- 0.1; prop.sd <- 0.15; eta.ka ~ 0.3 })
+    model({ ka <- mix(exp(tka1 + eta.ka), p1, exp(tka2 + eta.ka))
+            cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) + prop(prop.sd) })
+  }
+  ui <- rxode2::rxode2(mod)
+  ctlR <- rpemControl(nGauss = 250L, nMH = 60000L, mhBurn = 6000L, niter = 20L,
+                      collect = 8L, seed = 7L, cores = 4L, cLoop = FALSE)
+  ctlC <- rpemControl(nGauss = 250L, nMH = 60000L, mhBurn = 6000L, niter = 20L,
+                      collect = 8L, seed = 7L, cores = 4L, cLoop = TRUE)
+  cR <- .rpemFit(ui, dat, ctlR)
+  cC <- .rpemFit(ui, dat, ctlC)
+  # both residual parameters match the R loop and recover (true add 0.05, prop 0.10)
+  expect_equal(cC$addSd, cR$addSd, tolerance = 0.1)
+  expect_equal(cC$propSd, cR$propSd, tolerance = 0.1)
+  expect_true(cC$addSd > 0.02 && cC$addSd < 0.09)
+  expect_true(cC$propSd > 0.06 && cC$propSd < 0.14)
+  # components separated
+  expect_lt(cC$mix$muK[1], 0.6)
+  expect_gt(cC$mix$muK[2], 1.0)
+})

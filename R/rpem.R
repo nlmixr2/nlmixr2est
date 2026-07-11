@@ -698,10 +698,14 @@
   # Opt-in full C++ E-M loop for additive/proportional/lognormal mixtures (combined /
   # power / TBS mixtures keep the R loop).  Threefry eta draw + threefry MH -> thread-safe
   # and reproducible for any core count.
-  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 6L)
+  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 6L)
   if (.cLoop) {
+    .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
+    .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
+    .resIdx <- c(.naI(.cl$propSdIdx), .naI(.cl$powIdx), .naI(.cl$lambdaIdx))
+    .resPar0 <- c(.naN(.cl$propSd0), .naN(.cl$pow0), .naN(.cl$lambda0))
     .r <- rpemEMLoopMix(.e, base, .cl$etaIdx, .mix$muComp0, .mix$muCompIdx, .mix$etaForComp,
-                        diag(.cl$omega0), .cl$addSdIdx, .cl$errType, .cl$addSd0,
+                        diag(.cl$omega0), .cl$addSdIdx, .cl$errType, .cl$addSd0, .resIdx, .resPar0,
                         .mix$w0, K, .P, isTRUE(.mix$perComp),
                         niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
                         control$seed)
@@ -709,6 +713,8 @@
     wMat <- matrix(.r$wTrace, niter, K, byrow = TRUE)
     omTr <- matrix(.r$omegaTrace, niter, .cl$nEta, byrow = TRUE)
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
+    propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)
+    lamTr <- as.numeric(.r$lamTrace)
   } else
   for (.it in seq_len(niter)) {
     base[.mix$muCompIdx + 1L] <- muK

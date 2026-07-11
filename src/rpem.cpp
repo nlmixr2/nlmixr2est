@@ -999,6 +999,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
 List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
                    NumericMatrix muComp0, IntegerMatrix muCompIdx, IntegerMatrix etaForComp,
                    NumericVector omDiag0, int addSdIdx, int errType, double addSd0,
+                   IntegerVector resIdx, NumericVector resPar0,
                    NumericVector w0, int K, int nParam, bool perComp,
                    int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed) {
   RObject pred = e["predOnly"]; List rxControl = as<List>(e["rxControl"]);
@@ -1006,6 +1007,11 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
   int nEta = etaIdx.size();
   if (rxNormEng == NULL || seedEng == NULL || setSeedEng1 == NULL)
     stop("rxode2 threefry engine not initialized");
+  // shared residual: additive/prop/lnorm (closed form) vs combined/power/TBS (re-optimize
+  // over the accepted (subject, sample, component) states with the mixture stride).
+  bool doComb = (errType == 2), doPow = (errType == 4), doTbs = (errType == 3);
+  int propSdIdx = resIdx[0], powIdx = resIdx[1], lambdaIdx = resIdx[2];
+  double propSd = resPar0[0], power = resPar0[1], lambda = resPar0[2];
 
   rpemDoSetup(pred, rxControl, param, data);
   int nsub = rpemOp.nsub, nAll = nsub * nGauss;
@@ -1038,8 +1044,9 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
   double addSd = addSd0;
 
   NumericVector muTr((size_t)niter * nParam * K), wTr((size_t)niter * K), omTr((size_t)niter * nEta);
-  NumericVector sdTr(niter), llTr(niter);
+  NumericVector sdTr(niter), propTr(niter, NA_REAL), powTr(niter, NA_REAL), lamTr(niter, NA_REAL), llTr(niter);
   std::vector<double> row(rpemOp.ntheta);
+  std::vector<long> counts3((doComb || doPow || doTbs) ? (size_t)nsub * nGauss * K : 0, 0);
   bool doPar = (ncores > 1);
   seedEng(ncores);
   uint32_t seed0 = (uint32_t)seed;
@@ -1047,6 +1054,9 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int it = 0; it < niter; ++it) {
     for (int p = 0; p < nParam; ++p) for (int k = 0; k < K; ++k) baseBuf[muCIdx[(size_t)p * K + k]] = muComp[(size_t)p * K + k];
     baseBuf[addSdIdx] = addSd;
+    if (doComb) baseBuf[propSdIdx] = propSd;
+    if (doPow) baseBuf[powIdx] = power;
+    if (doTbs) baseBuf[lambdaIdx] = lambda;
     rpemDoSetup(pred, rxControl, param, data);
 
     // threefry eta draw (per-eta omega); deterministic per-(iter, subject).
@@ -1138,6 +1148,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
           long ob = (rpemOp.sampObsOff[ci] + (long)cj * nobsi) * K + (long)ck * nobsi;
           for (int o = 0; o < nobsi; ++o) { double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o]; if (cp > 0.0 && dv > 0.0) { double lr = log(dv) - log(cp); sumSS += lr * lr; } }
         } else sumSS += (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
+        if (doComb || doPow || doTbs) counts3[((size_t)ci * nGauss + cj) * K + ck]++;
         sumNobs += nobsi; ++m;
       }
     }
@@ -1157,7 +1168,70 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
     double wFloor = 1e-3, wsum = 0.0;
     for (int k = 0; k < K; ++k) { if (w[k] < wFloor) w[k] = wFloor; wsum += w[k]; }
     for (int k = 0; k < K; ++k) w[k] /= wsum;
-    addSd = sqrt(sumSS / (double)sumNobs);
+    // residual: add/prop/lnorm closed form; combined/power/TBS re-optimize over the
+    // accepted (subject, sample, component) states (mixture stride).
+    if (doComb) {
+      const double eps = 1e-12;
+      auto over = [&](double aa, double bb, double &Q, double *ga, double *gb,
+                      double *Haa, double *Hab, double *Hbb) {
+        Q = 0.0; if (ga) { *ga = *gb = *Haa = *Hab = *Hbb = 0.0; }
+        for (int i = 0; i < nsub; ++i) { int nobsi = rpemOp.nobs[i];
+          for (int j = 0; j < nGauss; ++j) for (int k = 0; k < K; ++k) {
+            long c = counts3[((size_t)i * nGauss + j) * K + k]; if (!c) continue;
+            long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+            for (int o = 0; o < nobsi; ++o) {
+              double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp, wcp = cp * cp, r2 = rr * rr, V = aa + bb * wcp; if (V < eps) V = eps;
+              double invV = 1.0 / V; Q += (double)c * (-0.5 * log(V) - 0.5 * r2 * invV);
+              if (ga) { double g = -0.5 * invV + 0.5 * r2 * invV * invV, h = 0.5 * invV * invV - r2 * invV * invV * invV;
+                *ga += c * g; *gb += c * wcp * g; *Haa += c * h; *Hab += c * wcp * h; *Hbb += c * wcp * wcp * h; }
+            } } }
+      };
+      double a = addSd * addSd, bpar = propSd * propSd, Qcur; over(a, bpar, Qcur, 0,0,0,0,0);
+      for (int itn = 0; itn < 200; ++itn) {
+        double Qtmp, ga, gb, Haa, Hab, Hbb; over(a, bpar, Qtmp, &ga, &gb, &Haa, &Hab, &Hbb);
+        if (fabs(ga) + fabs(gb) < 1e-9) break;
+        double det = Haa * Hbb - Hab * Hab, da, db;
+        if (Haa < 0.0 && det > 0.0) { da = -(Hbb * ga - Hab * gb) / det; db = -(-Hab * ga + Haa * gb) / det; }
+        else { double sc = 1.0 / (fabs(Haa) + fabs(Hbb) + 1.0); da = sc * ga; db = sc * gb; }
+        double step = 1.0; bool ok = false;
+        for (int ls = 0; ls < 40; ++ls) { double an = a + step * da, bn = bpar + step * db;
+          if (an < eps) an = eps; if (bn < eps) bn = eps; double Qn; over(an, bn, Qn, 0,0,0,0,0);
+          if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; } step *= 0.5; }
+        if (!ok) break;
+      }
+      addSd = sqrt(a); propSd = sqrt(bpar);
+      std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doPow) {
+      auto stat = [&](double cc, double &SSc, double &SL) { SSc = 0.0; SL = 0.0;
+        for (int i = 0; i < nsub; ++i) { int nobsi = rpemOp.nobs[i];
+          for (int j = 0; j < nGauss; ++j) for (int k = 0; k < K; ++k) {
+            long c = counts3[((size_t)i * nGauss + j) * K + k]; if (!c) continue;
+            long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+            for (int o = 0; o < nobsi; ++o) { double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp, acp = fabs(cp) + 1e-300;
+              SSc += (double)c * rr * rr / pow(acp, 2.0 * cc); SL += (double)c * log(acp); } } } };
+      double N = (double)sumNobs;
+      auto f = [&](double cc) { double SSc, SL; stat(cc, SSc, SL); if (SSc < 1e-300) SSc = 1e-300; return -0.5 * (N * log(SSc / N) + 2.0 * cc * SL); };
+      power = rpemGolden(f, 0.0, 3.0, 100);
+      double SSc, SL; stat(power, SSc, SL); addSd = sqrt(SSc / N);
+      std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doTbs) {
+      auto ssJac = [&](double lam, double &SS, double &Jac) { SS = 0.0; Jac = 0.0;
+        for (int i = 0; i < nsub; ++i) { int nobsi = rpemOp.nobs[i]; long so0 = rpemOp.idS[i];
+          for (int j = 0; j < nGauss; ++j) for (int k = 0; k < K; ++k) {
+            long c = counts3[((size_t)i * nGauss + j) * K + k]; if (!c) continue;
+            long ob = (rpemOp.sampObsOff[i] + (long)j * nobsi) * K + (long)k * nobsi;
+            for (int o = 0; o < nobsi; ++o) { double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+              int yj = rpemOp.yjv[so0 + o]; double low = rpemOp.lowv[so0 + o], hi = rpemOp.hiv[so0 + o];
+              double d = _powerD(dv, lam, yj, low, hi) - _powerD(cp, lam, yj, low, hi);
+              SS += (double)c * d * d; Jac += (double)c * log(fabs(_powerDD(dv, lam, yj, low, hi)) + 1e-300); } } } };
+      double N = (double)sumNobs;
+      auto f = [&](double lam) { double SS, Jac; ssJac(lam, SS, Jac); if (SS < 1e-300) SS = 1e-300; return -0.5 * N * log(SS / N) + Jac; };
+      lambda = rpemGolden(f, -2.0, 3.0, 100);
+      double SS, Jac; ssJac(lambda, SS, Jac); addSd = sqrt(SS / N);
+      std::fill(counts3.begin(), counts3.end(), 0);
+    } else {
+      addSd = sqrt(sumSS / (double)sumNobs);
+    }
     // label-switching guard: shared-eta components are exchangeable -> order by the
     // first parameter's mu (ascending) each iteration; split-ETA components are tied to
     // distinct symbols, so they are left in place.
@@ -1172,10 +1246,14 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
     for (int k = 0; k < K; ++k) wTr[(size_t)it * K + k] = w[k];
     for (int a = 0; a < nEta; ++a) omTr[(size_t)it * nEta + a] = omDiag[a];
     sdTr[it] = addSd; llTr[it] = lnL;
+    if (doComb) propTr[it] = propSd;
+    if (doPow) powTr[it] = power;
+    if (doTbs) lamTr[it] = lambda;
   }
   rpemFree();
   return List::create(_["muTrace"] = muTr, _["wTrace"] = wTr, _["omegaTrace"] = omTr,
-                      _["sdTrace"] = sdTr, _["lnL"] = llTr);
+                      _["sdTrace"] = sdTr, _["propTrace"] = propTr, _["powTrace"] = powTr,
+                      _["lamTrace"] = lamTr, _["lnL"] = llTr);
 }
 
 // Mixture M-step (mix(), split-ETA, single mixed eta).  The MH state is now
