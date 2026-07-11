@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- The "initial ETAs were nudged" warning is now only raised when an ETA
+  actually stayed at zero and a nudge was performed, not merely when the nudge
+  check ran (which previously produced a spurious warning on well-behaved fits).
+- For a fully mu-referenced model (every eta mu-referenced, so the initial etas
+  are all zero) a user-specified non-default `foceiControl(mceta=)` now falls
+  back to the default (`mceta=-2`) with a warning, since the mceta
+  starting-point search has nothing to explore.
+- The reported fit timing (`fit$time`) again attributes the symengine model
+  build and rxode2 compilation to `setup` (focei family) / `configure` (saem)
+  instead of leaking it into the `other` bucket.
 - `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
   `fast=FALSE` up front with a message instead of re-attempting the symengine
   augmented-model build (and silently falling back to finite differences) on every
