@@ -322,3 +322,64 @@ Engineering hygiene
 - Interaction with the SA covariance phase (`nSaCov`) and MSAEM mixtures is out
   of phase-1 scope; keep the kernel dispatch guarded so those paths are
   unaffected when `fast=TRUE` is combined with them (or error clearly).
+
+## 9. General-likelihood engine hook (Weibull TTE and beyond)
+
+Phase-1 gate example 2 (Weibull TTE) is *not* reachable through SAEM's own
+kernel: `nmGetDistributionSaemLines` implements only `.norm`, and the C++
+E-step (`do_mcmc` + the `distribution==1/2/3` DYF blocks in `saem.cpp`) hard-code
+normal/poisson/binomial observation losses. But fsaem's IMH kernel evaluates the
+observation likelihood through the FOCEi inner (`likInner0`), which is fully
+general (TTE, ordinal, dpois/dbinom, custom `llik`). So a general likelihood can
+be estimated by fsaem (never plain saem) by driving the whole E-step off the
+inner and never calling `do_mcmc`.
+
+Key structural fact (verified in `saem.cpp` non-mixture M-step): the M-step
+splits into (a) phi sufficient statistics `Statphi11/12/01/02` -> mu-ref means +
+Omega, which are **likelihood-independent** (Gaussian phi hierarchy), and (b) the
+residual `statr`->`sigma`/`ares`/`bres` update, which is the **only**
+normal-specific M-step piece. For a general likelihood every population
+parameter lives in phi (a mu-ref fixed effect, with or without a random effect,
+phi1/phi0), so the M-step reduces to (a) alone -- no residual optimizer.
+
+### Design (determined by the math; no separate residual/error step)
+
+- New distribution code `distribution == 4` ("inner/general"): C++ skips the DYF
+  build and `do_mcmc`/`do_mcmc_msaem`, requires `fsaemStepFn` (error if fast is
+  off), and forces the IMH kernel every iteration.
+- fsaem forces `fastKernel="throughout"` for non-normal endpoints (a general
+  likelihood must take the inner path on every iteration -- user directive).
+- M-step: keep `Statphi11/12/01/02` (means + Omega) exactly as-is; skip `statr`,
+  `sigma`, and the `d1_logsigma2`/`nb_param-1` FIM residual contributions when
+  `distribution==4` (no residual parameter exists).
+- `fsave`/predictions are not needed for the phi-stat M-step; for `distribution==4`
+  skip the SAEM `user_fn` residual solve (the inner already produced the E-step).
+
+### Phases
+
+- **G1 (R model translation)**: let `nmGetDistributionSaemLines` accept the
+  general endpoint for fsaem -- emit a benign pred line so `saemModel` compiles;
+  mark the config `distribution=4`; set a "no residual" `res.mod`/`ares`/`bres`
+  structure (`nendpnt` residual bookkeeping must not assume add/prop). Detect
+  non-normal endpoint in `.fsaemSupported` -> allow only when fast; else error
+  with a clear "saem cannot fit this endpoint; use est=fsaem" message. Force
+  `fastKernel="throughout"`.
+- **G2 (C++ E-step bypass)**: in the non-mixture branch, gate the DYF blocks and
+  `do_mcmc` behind `distribution != 4`; for `distribution==4` run only
+  `fsaemImhStep(phiM)` (already the general E-step) + phi-stat accumulation.
+- **G3 (C++ M-step)**: skip residual accumulation / `sigma` update / residual FIM
+  rows for `distribution==4`; verify Plambda + Omega updates still converge.
+- **G4 (inner for TTE)**: ensure the fsaem inner is built on the TTE model so
+  `likInner0` returns the survival likelihood and `fsaemInnerMap_` uses the
+  Hessian proposal (`fastCov` auto -> hessian for non-normal). Reuse the existing
+  inner-setup path.
+- **G5 (validate)**: reproduce the paper Weibull TTE example; assert fsaem
+  recovers the scale/shape and that the kernel fires every iteration; plain saem
+  errors on the same model. Add a regression test.
+
+### Open question (pick default, revisit if wrong)
+
+Scope = the *general* FOCEi likelihood surface (any inner-supported endpoint) not
+TTE-only, since the inner handles them uniformly; Weibull TTE is the validation
+gate. Endpoints whose inner likelihood needs the Hessian proposal use
+`fastCov` auto -> hessian (already validated on continuous).
