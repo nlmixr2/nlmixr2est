@@ -8244,7 +8244,11 @@ void foceiFinalizeTables(Environment e){
   objDf.attr("class") = "data.frame";
   e["objDf"]=objDf;
   if (!e.exists("method")){
-    if (_aqn > 0) {
+    if (op_focei.isImpmap) {
+      // Importance-sampling EM; the objDf row stays "FOCEi" because the final
+      // objective is a FOCEi evaluation at the EM estimates.
+      e["method"] = op_focei.isImp ? "imp" : "impmap";
+    } else if (_aqn > 0) {
       e["method"] ="AGQ";
     } else if (op_focei.neta == 0){
       e["method"] = "Population Only";
@@ -8255,52 +8259,58 @@ void foceiFinalizeTables(Environment e){
     }
   }
   if (!e.exists("extra")){
-    if (op_focei.neta == 0){
+    if (op_focei.isImpmap) {
+      // The EM drives itself (no outer optimizer, no gradients, and the mu
+      // update is intrinsic to the M-step), so there is nothing to append.
       e["extra"] = "";
-      e["skipTable"] = NA_LOGICAL;
-    } else if (op_focei.fo == 1){
-      e["extra"] = "";
-      e["skipTable"] = LogicalVector::create(true);
-    } else if (op_focei.interaction || op_focei.needOptimHess){
-      if(op_focei.scale.useColor){
-        e["extra"] = "\033[31;1mi\033[0m";
+    } else {
+      if (op_focei.neta == 0){
+        e["extra"] = "";
+        e["skipTable"] = NA_LOGICAL;
+      } else if (op_focei.fo == 1){
+        e["extra"] = "";
+        e["skipTable"] = LogicalVector::create(true);
+      } else if (op_focei.interaction || op_focei.needOptimHess){
+        if(op_focei.scale.useColor){
+          e["extra"] = "\033[31;1mi\033[0m";
+        } else {
+          e["extra"] = "i";
+        }
       } else {
-        e["extra"] = "i";
+        e["extra"] = "";
       }
-    } else {
-      e["extra"] = "";
-    }
-    List ctl = e["control"];
-    // What the outer optimizer actually consumed: the analytic ("fast")
-    // gradient, the finite-difference gradient, or a mix (per-iteration solve
-    // fallbacks); plus the mu-referenced regression variant when active.
-    std::string _details = as<std::string>(ctl["outerOptTxt"]);
-    if (op_focei.fast && op_focei.maxOuterIterations > 0) {
-      if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
-        _details += "; grad: analytic";
-      } else if (op_focei.nAnalyticGrad > 0) {
-        _details += "; grad: analytic+fd";
-      } else if (op_focei.nG > 0 || op_focei.nFDGradFast > 0) {
-        _details += "; grad: fd";
+      List ctl = e["control"];
+      // What the outer optimizer actually consumed: the analytic ("fast")
+      // gradient, the finite-difference gradient, or a mix (per-iteration solve
+      // fallbacks); plus the mu-referenced regression variant when active.
+      std::string _details = as<std::string>(ctl["outerOptTxt"]);
+      if (op_focei.fast && op_focei.maxOuterIterations > 0) {
+        if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
+          _details += "; grad: analytic";
+        } else if (op_focei.nAnalyticGrad > 0) {
+          _details += "; grad: analytic+fd";
+        } else if (op_focei.nG > 0 || op_focei.nFDGradFast > 0) {
+          _details += "; grad: fd";
+        }
       }
-    }
-    if (op_focei.muModel == 1) {
-      _details += "; mu: lin";
-    } else if (op_focei.muModel == 2) {
-      _details += "; mu: irls";
-    }
-    if (_aqn == 0) {
-      e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + _details +
-        ")";
-    } else if (_aqn == 1) {
-      e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + _details +
-        "; Laplace)";
-    } else {
-      e["extra"] = as<std::string>(e["extra"]) +
-        " (outer: " + _details +
-        "; nAGQ=" + std::to_string(_nagq)  + ")";
+      if (op_focei.muModel == 1) {
+        _details += "; mu: lin";
+      } else if (op_focei.muModel == 2) {
+        _details += "; mu: irls";
+      }
+      if (_aqn == 0) {
+        e["extra"] = as<std::string>(e["extra"]) +
+          " (outer: " + _details +
+          ")";
+      } else if (_aqn == 1) {
+        e["extra"] = as<std::string>(e["extra"]) +
+          " (outer: " + _details +
+          "; Laplace)";
+      } else {
+        e["extra"] = as<std::string>(e["extra"]) +
+          " (outer: " + _details +
+          "; nAGQ=" + std::to_string(_nagq)  + ")";
+      }
     }
   }
   // rxode2::rxSolveFree();
@@ -8556,9 +8566,10 @@ void impGetOmegaFixedEta(std::vector<int>& idx) {
 // The main setup already populated op_focei.scale (column names, back-transform
 // codes, iterPrintControl cadence) for the FOCEI free parameters in fixedTrans
 // order -- the same order impGetEstPar() returns.  Reconfigure it for impmap's
-// natural-scale EM walk: identity scaling (scaleTypeMult with scaleTo=0) so the
-// fullTheta values ARE the "Unscaled" rows .parHistCalc() reads, while the
-// "Back-Transformed" rows still apply the per-theta transform.  Records every
+// EM walk, which is directly on the estimation scale: scaleTypeNone drops the
+// redundant "Unscaled" rows (identical to the iteration rows) while the
+// "Back-Transformed" rows still apply the per-theta transform.  The focei
+// gradient-legend keyExtra is replaced (the EM has no gradients).  Records every
 // iteration (save=1); prints at the control's cadence (scale.every, already set
 // from iterPrintControl -- 0 when print is off).
 static std::vector<double> _impScaleC;
@@ -8567,9 +8578,12 @@ void impIterPrintStart() {
   int np = (int)op_focei.npars;
   _impScaleC.assign(std::max(np, 1), 1.0);
   s->scaleC = _impScaleC.data();
-  s->scaleType = scaleTypeMult;
+  s->scaleType = scaleTypeNone;
   s->scaleTo = 0.0; s->scaleCmin = 0.0; s->scaleCmax = 0.0;
   s->save = 1; s->simple = 0; s->showOfv = 1;
+  s->keyExtra =
+    "Omegas=chol(solve(omega));\n"
+    "Diagonals are transformed, as specified by impmapControl(diagXform=)\n";
   s->vPar.clear(); s->niter.clear(); s->iterType.clear();
   s->vGrad.clear(); s->gradType.clear(); s->niterGrad.clear();
   s->cn = 0; s->printCount = 0;
