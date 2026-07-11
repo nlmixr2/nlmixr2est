@@ -271,7 +271,12 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
+                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
+                        fastKernel=rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
+                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres

@@ -125,7 +125,12 @@
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
-                       omegaShareSubpop = integer(0)) {
+                       omegaShareSubpop = integer(0),
+                       fast = FALSE,
+                       fastIter = 20L,
+                       fastKernel = "firstN",
+                       fastCov = "auto",
+                       fastLik = "focei") {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -599,7 +604,12 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed)
+    resFixed=resFixed,
+    fast=as.integer(isTRUE(fast)),
+    fastIter=as.integer(fastIter),
+    fastKernel=as.character(fastKernel),
+    fastCov=as.character(fastCov),
+    fastLik=as.character(fastLik))
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]

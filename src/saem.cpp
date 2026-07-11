@@ -800,6 +800,13 @@ public:
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
+    if (x.containsElementNamed("fast")) {
+      fsaemFast = as<int>(x["fast"]);
+      fsaemFastIter = as<int>(x["fastIter"]);
+      fsaemFastKernel = as<std::string>(x["fastKernel"]);
+      fsaemFastCov = as<std::string>(x["fastCov"]);
+      fsaemFastLik = as<std::string>(x["fastLik"]);
+    }
     niter = as<int>(x["niter"]);
     nb_correl = as<int>(x["nb_correl"]);
     nb_fixOmega = as<int>(x["nb_fixOmega"]);
@@ -1111,7 +1118,21 @@ public:
       }
     }
     if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    if (fsaemFast != 0 && DEBUG > 0) {
+      RSprintf("f-SAEM enabled: kernel=%s cov=%s lik=%s fastIter=%d\n",
+               fsaemFastKernel.c_str(), fsaemFastCov.c_str(), fsaemFastLik.c_str(), fsaemFastIter);
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
+      // f-SAEM: whether the fast IMH kernel is active on this iteration.  For now
+      // the live kernel is not yet wired, so this only selects the (identical)
+      // standard path -- it establishes the schedule/degrade branch point.
+      bool fsaemActive = false;
+      if (fsaemFast != 0) {
+        if (fsaemFastKernel == "firstN") fsaemActive = ((int)kiter < fsaemFastIter);
+        else if (fsaemFastKernel == "throughout") fsaemActive = (kiter < (unsigned int)niter);
+        else if (fsaemFastKernel == "additive") fsaemActive = (kiter < (unsigned int)niter);
+      }
+      (void)fsaemActive;
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
       if (nSaCov > 0 && kiter == (unsigned int)niter) {
@@ -2827,6 +2848,16 @@ private:
   vec minv;
   int nmc;
   int nM;
+
+  // f-SAEM (Karimi, Lavielle & Moulines 2020) fast simulation options.  When
+  // fsaemFast is set, the first fsaemFastIter iterations replace the random-walk
+  // simulation with the independent Metropolis-Hastings kernel; later iterations
+  // (and fsaemFast == 0) degrade to the standard do_mcmc kernels.
+  int fsaemFast = 0;
+  int fsaemFastIter = 0;
+  std::string fsaemFastKernel = "firstN";
+  std::string fsaemFastCov = "auto";
+  std::string fsaemFastLik = "focei";
 
   int ntotal, N, mlen;
   vec y, ys;    //ys is y sorted by endpnt
