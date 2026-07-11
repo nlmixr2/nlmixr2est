@@ -672,6 +672,161 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }
 
+// Full C++ EM loop for the additive / proportional, diagonal multi-eta, mu-referenced
+// core (design/rpem/12 M5): runs niter iterations of the E-step (threefry eta draw +
+// par_solve + log-sum-exp) and the conjugate MH M-step in one C++ call, avoiding the
+// per-iteration R round-trip.  The eta draw uses rxode2's per-thread threefry engine
+// with a deterministic per-(iteration, subject) seed -- setSeedEng1(seed0 + it*nsub + i)
+// after setRxThreadId() -- so it is thread-safe AND reproducible for any core count.
+// The ODE solve keeps par_solve (rxode2 owns the parallel solver; a manual OpenMP loop
+// over the solve is unsafe).  errType 0 additive, 1 proportional.  Returns per-iteration
+// mu / omega (diagonal) / add.sd / lnL traces.
+//[[Rcpp::export]]
+List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
+                  IntegerVector muIdx, int addSdIdx, int errType,
+                  NumericVector mu0, NumericVector omDiag0, double addSd0,
+                  int niter, int nGauss, int ncores, int nMH, int mhBurn,
+                  unsigned int seed) {
+  RObject pred = e["predOnly"];
+  List rxControl = as<List>(e["rxControl"]);
+  NumericVector param = as<NumericVector>(e["param"]);
+  RObject data = e["data"];
+  int nEta = etaIdx.size();
+  if (rxNormEng == NULL || seedEng == NULL || setSeedEng1 == NULL)
+    stop("rxode2 threefry engine not initialized");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  if ((int)muIdx.size() != nEta || (int)mu0.size() != nEta || (int)omDiag0.size() != nEta)
+    stop("muIdx / mu0 / omDiag0 must have nEta entries");
+
+  rpemDoSetup(pred, rxControl, param, data);
+  int nsub = rpemOp.nsub, nAll = nsub * nGauss;
+  rpemOp.nGauss = nGauss; rpemOp.nEta = nEta; rpemOp.nMix = 1;
+  rpemOp.logp.assign((size_t)nAll, 0.0);
+  rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
+  rpemOp.ssv.assign((size_t)nAll, 0.0);
+  rpemOp.wssv.assign((size_t)nAll, 0.0);
+  rpemOp.sampObsOff.assign((size_t)nsub, 0);
+  long acc = 0;
+  for (int id = 0; id < nsub; ++id) { rpemOp.sampObsOff[id] = acc; acc += (long)nGauss * rpemOp.nobs[id]; }
+  rpemOp.cpv.assign((size_t)acc, 0.0);
+  rpemOp.dvv.assign((size_t)acc, 0.0);
+  rpemOp.yjv.assign((size_t)rpemOp.nobsTot, 0);
+  rpemOp.lowv.assign((size_t)rpemOp.nobsTot, 0.0);
+  rpemOp.hiv.assign((size_t)rpemOp.nobsTot, 1.0);
+  rpemOp.censv.assign((size_t)rpemOp.nobsTot, 0);
+  rpemOp.limv.assign((size_t)rpemOp.nobsTot, R_NegInf);
+
+  std::vector<double> baseBuf(rpemOp.ntheta);
+  for (unsigned int i = 0; i < rpemOp.ntheta; ++i) baseBuf[i] = base[i];
+  std::vector<int> etaIdxBuf(nEta), muIdxBuf(nEta);
+  for (int a = 0; a < nEta; ++a) { etaIdxBuf[a] = etaIdx[a]; muIdxBuf[a] = muIdx[a]; }
+  std::vector<double> mu(nEta), omDiag(nEta);
+  for (int a = 0; a < nEta; ++a) { mu[a] = mu0[a]; omDiag[a] = omDiag0[a]; }
+  double addSd = addSd0;
+
+  NumericMatrix muTr(niter, nEta), omTr(niter, nEta);
+  NumericVector sdTr(niter), llTr(niter);
+  std::vector<double> row(rpemOp.ntheta);
+  bool doPar = (ncores > 1);
+  seedEng(ncores);
+  uint32_t seed0 = (uint32_t)seed;
+
+  for (int it = 0; it < niter; ++it) {
+    for (int a = 0; a < nEta; ++a) baseBuf[muIdxBuf[a]] = mu[a];
+    baseBuf[addSdIdx] = addSd;
+    // re-establish the solve (the previous M-step's rxRmvn resets rxode2 solve state)
+    rpemDoSetup(pred, rxControl, param, data);
+
+    // threefry eta draw: eta_ija = z * sqrt(omDiag[a]).  Deterministic per-(iter,subject)
+    // seed -> thread-safe and reproducible independent of core count.
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(ncores) if(doPar)
+#endif
+    for (int id = 0; id < nsub; ++id) {
+#ifdef _OPENMP
+      if (doPar) setRxThreadId(omp_get_thread_num());
+#endif
+      setSeedEng1(seed0 + (uint32_t)((size_t)it * nsub + id) + 1u);
+      for (int j = 0; j < nGauss; ++j)
+        for (int a = 0; a < nEta; ++a)
+          rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
+    }
+
+    // E-step: solve each MC sample's subjects in one par_solve, read the likelihood.
+    for (int j = 0; j < nGauss; ++j) {
+      for (int id = 0; id < nsub; ++id) {
+        for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+        for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+        rpemSetSubject(row.data(), id);
+        setIndSolve(getSolvingOptionsInd(rx, id), -1);
+      }
+      resetRxBadSolve(rx);
+      par_solve(rx);
+      for (int id = 0; id < nsub; ++id) {
+        size_t r = (size_t)id * nGauss + j;
+        double ssTmp = 0.0, wssTmp = 0.0;
+        long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
+        long so = rpemOp.idS[id];
+        double logLik = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
+                                         &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                         &rpemOp.censv[so], &rpemOp.limv[so]);
+        rpemOp.logp[r] = logLik; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+      }
+    }
+    // per-subject log n_i and lnL.
+    std::vector<double> logn(nsub); double lnL = 0.0;
+    for (int id = 0; id < nsub; ++id) {
+      double mx = R_NegInf;
+      for (int j = 0; j < nGauss; ++j) { double v = rpemOp.logp[(size_t)id * nGauss + j]; if (v > mx) mx = v; }
+      double s = 0.0;
+      for (int j = 0; j < nGauss; ++j) s += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
+      logn[id] = mx + log(s) - log((double)nGauss); lnL += logn[id];
+    }
+
+    // M-step: conjugate MH over the joint (subject, sample) posterior (Eq 17).  The MH
+    // uniforms come from the SAME threefry engine as the eta draw (serial chain on thread
+    // 0) with a per-iteration seed disjoint from the eta-draw seeds, so the whole loop is
+    // reproducible run-to-run (no dependence on rxode2's advancing global RNG state).
+    int total = nMH + mhBurn;
+    size_t nU = (size_t)3 * total;
+#ifdef _OPENMP
+    setRxThreadId(0);
+#endif
+    setSeedEng1(seed0 + (uint32_t)((size_t)niter * nsub) + (uint32_t)it + 1u);
+    std::vector<double> U(nU);
+    for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
+    int ci = 0, cj = 0; double clogp = rpemOp.logp[0];
+    std::vector<double> sumT(nEta, 0.0), sumTT((size_t)nEta * nEta, 0.0);
+    double sumSS = 0.0; long sumNobs = 0, m = 0;
+    for (int t = 0; t < total; ++t) {
+      double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
+      int pih = (int)(u1 * nsub); if (pih >= nsub) pih = nsub - 1;
+      int pjh = (int)(u2 * nGauss); if (pjh >= nGauss) pjh = nGauss - 1;
+      double plogp = rpemOp.logp[(size_t)pih * nGauss + pjh];
+      double logA = (plogp - clogp) + (logn[ci] - logn[pih]);
+      if (log(u3) < logA) { ci = pih; cj = pjh; clogp = plogp; }
+      if (t >= mhBurn) {
+        size_t off = ((size_t)ci * nGauss + cj) * nEta;
+        for (int a = 0; a < nEta; ++a) {
+          double tha = mu[a] + rpemOp.etaS[off + a];
+          sumT[a] += tha;
+          for (int b = 0; b < nEta; ++b) sumTT[(size_t)a * nEta + b] += tha * (mu[b] + rpemOp.etaS[off + b]);
+        }
+        sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
+        sumNobs += rpemOp.nobs[ci]; ++m;
+      }
+    }
+    for (int a = 0; a < nEta; ++a) mu[a] = sumT[a] / (double)m;
+    for (int a = 0; a < nEta; ++a) omDiag[a] = sumTT[(size_t)a * nEta + a] / (double)m - mu[a] * mu[a];
+    addSd = sqrt(sumSS / (double)sumNobs);
+    for (int a = 0; a < nEta; ++a) { muTr(it, a) = mu[a]; omTr(it, a) = omDiag[a]; }
+    sdTr[it] = addSd; llTr[it] = lnL;
+  }
+  rpemFree();
+  return List::create(_["muTrace"] = muTr, _["omegaTrace"] = omTr,
+                      _["sdTrace"] = sdTr, _["lnL"] = llTr);
+}
+
 // Mixture M-step (mix(), split-ETA, single mixed eta).  The MH state is now
 // (i, j, k) -- subject, Monte Carlo sample, and component -- with stationary
 // distribution proportional to w_k p(Y_i | k, eta_ij) / n_i (the joint posterior

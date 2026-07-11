@@ -441,6 +441,20 @@
   propMat <- if (.multi) matrix(NA_real_, niter, .cl$endpt$nEndpt) else NULL
   betaMat <- if (.structOn) matrix(0, niter, length(.cl$structIdx)) else NULL
   ebe <- matrix(0, .nsub, .cl$nEta)     # IS proposal center; updated each E-step when on
+  # Opt-in full C++ E-M loop (design/rpem/12 M5) for the additive/proportional,
+  # diagonal-omega, mu-referenced core (no covariates / structural / multi-endpoint /
+  # censoring / mode-centered IS -- those keep the R loop).  The eta draw uses rxode2's
+  # per-thread threefry engine (thread-safe + reproducible for any core count).
+  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L) && all(.cl$muRef) &&
+    length(.cl$covCoefNames) == 0L && !.structOn && !.multi && !.hasCens && !.modeIS
+  if (.cLoop) {
+    .r <- rpemEMLoopK1(.e, base, .cl$etaIdx, .cl$muIdx, .cl$addSdIdx, .cl$errType,
+                       .cl$mu0, diag(as.matrix(.cl$omega0)), .cl$addSd0,
+                       niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
+                       control$seed)
+    muTr <- .r$muTrace; omTr <- .r$omegaTrace
+    sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
+  } else
   for (.it in seq_len(niter)) {
     if (.useReg) {
       base[.cl$muIdx + 1L] <- coefs[1]
