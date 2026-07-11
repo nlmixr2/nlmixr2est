@@ -195,6 +195,11 @@
   .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
   .sigDirs <- if (.rsigA) intersect(dirsCov, paste0("THETA_", .erN, "_")) else character(0)
   .dirsF <- dirsCov[!(dirsCov %in% .sigDirs)]
+  # Flag BEFORE building the augmented model: .foceiAnalyticAugModelDirs loads a new
+  # compiled model, which calls rxSolveFree() on the fit's global solve.  If the build
+  # then declines (is.null(am)/ndir mismatch/no rx_r_), the C++ hook must still restore the
+  # freed solve before the FD fallback -- otherwise the FD sandwich solves against freed memory.
+  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   am <- .foceiAnalyticAugModelDirs(ui, if (.rsigA) .dirsF else dirsCov)
   if (is.null(am) || am$ndir != (ndirCov - length(.sigDirs)) || !isTRUE(am$hasRvar)) return(NULL)
   np <- ndirP + omd$nom; Oi <- solve(Om)
@@ -203,7 +208,6 @@
   .fp <- identical(as.integer(foceType), 1L)           # foce+ keeps the live conditional R
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
-  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   R <- matrix(0, np, np)
   if (.foce) {
     # FOCE cov: the per-subject eta=0 population solve + EBE re-solve + 3rd-order Shi FD3 stay
@@ -369,6 +373,11 @@
                                     dirs, dirTh, ndir, startedEnv = NULL, solveTol = 1e-10,
                                     iovDirScale = NULL, etaScale = NULL, interaction = 1L,
                                     foceType = 0L) {
+  # Flag BEFORE building the augmented model: .foceiAnalyticAugModelDirs loads a new
+  # compiled model, which calls rxSolveFree() on the fit's global solve.  If the build
+  # then declines (is.null(am)/ndir mismatch), the C++ hook must still restore the freed
+  # solve before the FD fallback -- otherwise the FD sandwich solves against freed memory.
+  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   am <- .foceiAnalyticAugModelDirs(ui, dirs)
   if (is.null(am) || am$ndir != ndir) return(NULL)
   np <- nth + nsg + omd$nom
@@ -386,7 +395,6 @@
   # the integer code so non-1..N IDs (e.g. 101,102,..) and permutations join right.
   .byId <- split(data, as.character(data$ID))         # pre-split once (avoid per-subject rescan)
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
-  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
   # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
   # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched) and
