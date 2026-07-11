@@ -100,13 +100,13 @@
 .configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
                        rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
-                       distribution = c("normal", "poisson", "binomial"),
+                       distribution = c("normal", "poisson", "binomial", "general"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
                        DEBUG = 0,
-                       tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
+                       tol = 1e-4, itmax = 100L, type = c("newuoa", "nelder-mead"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
                        maxOdeRecalc=5L,
@@ -125,7 +125,12 @@
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
-                       omegaShareSubpop = integer(0)) {
+                       omegaShareSubpop = integer(0),
+                       fast = FALSE,
+                       fastIter = 20L,
+                       fastKernel = "firstN",
+                       fastCov = "auto",
+                       fastLik = "focei") {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -140,8 +145,12 @@
   }
   rxControl <- do.call(rxode2::rxControl, rxControl)
   rxControl$envir <- .env
-  set.seed(seed)
-  distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
+  # All of saem's RNG now draws from the rxode2 threefry engine (the do_mcmc
+  # proposals via setSeedEng1 streams, the phiM init via rxnorm), which the
+  # rxWithSeed() wrapper in .saemFitModel seeds and restores -- no set.seed needed.
+  # "general" (=4) = general log-likelihood endpoint driven off the FOCEi inner
+  # (fsaem only); the E-step/M-step take the inner path, not a normal residual.
+  distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
   .data <- data
@@ -449,7 +458,9 @@
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
 
-  .mat2 <- matrix(rnorm(phiM), dim(phiM))
+  # threefry-engine draw (seeded by the rxWithSeed wrapper), so saem's RNG no
+  # longer depends on R's set.seed -- all deviates come from the rxode2 engine
+  .mat2 <- matrix(rxode2::rxnorm(n = length(phiM)), dim(phiM))
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
@@ -599,7 +610,12 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed)
+    resFixed=resFixed,
+    fast=as.integer(isTRUE(fast)),
+    fastIter=as.integer(fastIter),
+    fastKernel=as.character(fastKernel),
+    fastCov=as.character(fastCov),
+    fastLik=as.character(fastLik))
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]

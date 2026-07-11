@@ -275,7 +275,13 @@
   ## burn-in: encoder-only training with a tiny fixed KL weight
   for (it in seq_len(control$itersBurnIn)) {
     for (l in seq_len(Lg)) {
-      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
+      # Reparameterization noise from an iteration-indexed threefry stream: the
+      # seed is a pure function of (phase, it, l), so each step is reproducible
+      # regardless of the total iteration count -- the number of steps in a phase
+      # can be changed dynamically and still reproduced.  rxWithSeed seeds and
+      # restores the engine around the draw (like est=imp's per-iteration seeding).
+      .es <- as.integer(control$seed) + (it - 1L) * Lg + l
+      eps <- rxode2::rxWithSeed(.es, matrix(rxode2::rxnorm(n = N * zDim), N, zDim), rxseed = .es)
       st <- .vaeElboStepInner(params, prep, innerEnv, zPop, omega, a, 0.001, eps, control, nMix, mixProb)
       if (is.null(st)) stop("est=\"vae\" inner solve failed during burn-in", call. = FALSE)
       .t <- .t + 1L
@@ -308,7 +314,10 @@
     alphaKL <- if (it <= control$klWarmup) 0.01 + 0.99 * (it - 1) / max(1, control$klWarmup - 1) else 1
     elbos <- numeric(Lg)
     for (l in seq_len(Lg)) {
-      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
+      # iteration-indexed threefry reparameterization noise (main phase offset so
+      # its streams never collide with the burn-in phase)
+      .es <- as.integer(control$seed) + 1000003L + (it - 1L) * Lg + l
+      eps <- rxode2::rxWithSeed(.es, matrix(rxode2::rxnorm(n = N * zDim), N, zDim), rxseed = .es)
       st <- .vaeElboStepInner(params, prep, innerEnv, zPopArg, omega, a, alphaKL, eps, control, nMix, mixProb)
       if (is.null(st)) stop("est=\"vae\" inner solve failed during training", call. = FALSE)
       .t <- .t + 1L

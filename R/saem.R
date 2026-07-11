@@ -175,41 +175,11 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
-  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
-  if (length(timeVaryingCovariates) > 0) {
-    # Drop time-varying covariates
-    # First get the time varying covariates
-    .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
-    # next find out the theta for the phi expression
-    .covPar <- .muRefCovariateDataFrame[.w, "theta"]
-    .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
-    if (length(.w2) > 0) {
-      # see if the expression is on a log scale
-      .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
-      if (length(.w3) > 0) {
-        .w2 <- .w2[.w3]
-        .texp <- ui$muRefCurEval$parameter[.w2]
-        # now get parameters
-        .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
-        ## warning(paste0("log-scale mu referenced time varying covariates (",
-        ##                paste(.pars, collapse=", "),
-        ##                ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
-        ##         call.=FALSE)
-      }
-
-    }
-    .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
-  }
-  assign("muRefFinal", .muRefCovariateDataFrame, ui)
-  assign("timeVaryingCovariates", timeVaryingCovariates, ui)
-  on.exit({
-    if (is.environment(ui) && exists("muRefFinal", envir=ui, inherits=FALSE)) {
-      rm(list="muRefFinal", envir=ui)
-    }
-    if (is.environment(ui) && exists("timeVaryingCovariates", envir=ui, inherits=FALSE)) {
-      rm(list="timeVaryingCovariates", envir=ui)
-    }
-  })
+  # Stage the time-varying/non-time-varying mu-ref covariate split so
+  # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
+  # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
+  .nlmixrSetMuRefTimeVarying(ui, timeVaryingCovariates)
+  on.exit(.nlmixrRmMuRefTimeVarying(ui))
   # Building the saem model list does the symengine translation and rxode2
   # compilation -- timed as "configure" (mapped to "setup") so it is not
   # silently absorbed into the "other" bucket.
@@ -234,6 +204,13 @@
                             data=data,
                             attr(.model$saem_mod, "rx"),
                             rxControl=.rxControl)
+  .seed <- rxode2::rxGetControl(ui, "seed", 99)
+  # Run the whole fit -- the config-time R draws (rnorm) AND the C++ SAEM loop /
+  # f-SAEM IMH kernel, which both draw through rxode2's threefry engine -- inside
+  # rxWithSeed.  It sets BOTH R's RNG and the rxode2 engine seed and restores them
+  # afterward, so the first fit of a session is properly seeded and fits never
+  # contaminate each other's seed state (replaces set.seed + low-level seedEng()).
+  rxode2::rxWithSeed(.seed, rxseed = .seed, {
   .cfg <- nlmixrWithTiming("configure", {
     .cfg <- .configsaem(model=.model,
                         data=data,
@@ -242,7 +219,7 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution="normal",
+                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -255,7 +232,7 @@
                         DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                         tol=rxode2::rxGetControl(ui, "tol", 1e-6),
                         itmax=rxode2::rxGetControl(ui, "itmax", 30),
-                        type=rxode2::rxGetControl(ui, "type", "nelder-mead"),
+                        type=rxode2::rxGetControl(ui, "type", "newuoa"),
                         lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
                         powRange=rxode2::rxGetControl(ui, "powRange", 10),
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
@@ -268,7 +245,7 @@
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
-                        resFixed=ui$saemResFixed,
+                        resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
                         mixProb=ui$saemMixProb,
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
@@ -276,7 +253,15 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
+                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
+                        # a general log-likelihood endpoint has no normal do_mcmc
+                        # fallback, so the fast kernel must run every iteration
+                        fastKernel=if (.fsaemGeneralLik(ui)) "throughout"
+                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
+                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
@@ -284,7 +269,9 @@
     .cfg$hi <- ui$saemHi
     .cfg$propT <- ui$saemPropT
     .cfg$addProp <- ui$saemAddProp
-    .cfg$resValue <- ui$saemResValue
+    # a general log-likelihood endpoint has no residual params, so these are
+    # empty; coerce NULL to the typed empty the config checks expect
+    .cfg$resValue <- as.numeric(ui$saemResValue)
     # Iteration-print flows through the shared scaleApplyIterPrintControl
     # (src/scale.h); U auto-skips since Plambda has no optimizer scaling,
     # leaving # and X. xform (xPar/probitIdx/bounds) drives the X row's
@@ -293,11 +280,39 @@
     .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
+    # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization
+    .cfg$lbfgsLmm     <- as.integer(rxode2::rxGetControl(ui, "lbfgsLmm", 5L))
+    .cfg$lbfgsFactr   <- rxode2::rxGetControl(ui, "lbfgsFactr", 1e7)
+    .cfg$lbfgsPgtol   <- rxode2::rxGetControl(ui, "lbfgsPgtol", 0)
+    .cfg$lbfgsMaxIter <- as.integer(rxode2::rxGetControl(ui, "lbfgsMaxIter", 20L))
+    # phi0 (fixed-effect-only) parameter bounds, in phi0 (i0) column order, from
+    # the theta iniDf bounds so the direct optimization respects them
+    if (!is.null(.cfg$nphi0) && .cfg$nphi0 > 0L) {
+      .pars <- ui$saemParamsToEstimate
+      .phi0Names <- .pars[.cfg$i0]
+      .lo <- ui$iniDf$lower[match(.phi0Names, ui$iniDf$name)]
+      .hi <- ui$iniDf$upper[match(.phi0Names, ui$iniDf$name)]
+      .cfg$lbfgsPhi0Nbd <- as.integer(ifelse(is.finite(.lo) & is.finite(.hi), 2L,
+                                      ifelse(is.finite(.lo), 1L,
+                                      ifelse(is.finite(.hi), 3L, 0L))))
+      .cfg$lbfgsPhi0Lower <- ifelse(is.finite(.lo), .lo, 0)
+      .cfg$lbfgsPhi0Upper <- ifelse(is.finite(.hi), .hi, 0)
+    }
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })
-  nlmixrWithTiming("saem", {
+  .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
+  })
+  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
+  # down so it does not leak into a later fit's solve state (reproducibility).
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+    try(vaeInnerFree_(), silent = TRUE)
+  }
+  .saemRes
   })
 }
 #' Get the saem control statement and install it into the ui
@@ -1098,6 +1113,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  # Re-stage the mu-ref time-varying split for the post-processing: the theta
+  # table and parameter history are named from saemParamsToEstimate/
+  # saemParHistNames, which only put a time-varying covariate in the correct
+  # (Plambda) order while the split is staged (.saemFitModel stages it only for
+  # the fit itself, then unstages on exit).
+  .nlmixrSetMuRefTimeVarying(.ui, .tv)
+  on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
   .ret$ui <- .ui
   .saemCalcCov(.ret)
   .ret <- nlmixrWithTiming("postprocess", {
@@ -1162,7 +1184,12 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  # saem supports a general log-likelihood endpoint (ll() ~ expr) the same way
+  # saemix does (the model returns the per-obs loglik; the RWM kernels use -ll as
+  # the observation loss); only require normality for the ordinary case.
+  if (!.fsaemGeneralLik(.ui)) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)

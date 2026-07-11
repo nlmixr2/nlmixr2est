@@ -353,6 +353,69 @@
   names(.et)[-seq_len(6)]
 }
 
+#' Stage the mu-referenced covariate split (time-varying vs not) into the ui env
+#'
+#' Splits the mu-referenced covariates: non-time-varying ones stay in
+#' `muRefFinal` so they are absorbed into the phi term by the mu-ref drop
+#' (`.saemDropMuRefFromModel` -> `$saemModel0` collapses the model to `phi +
+#' timeVaryingCovariate*beta_cov`); time-varying ones are removed from
+#' `muRefFinal` so they remain in the model as `beta_cov` regressors.  Both
+#' `muRefFinal` and `timeVaryingCovariates` are assigned into the ui env and MUST
+#' be removed on exit with `.nlmixrRmMuRefTimeVarying()`.  Shared by saem, the
+#' mu-referenced focei family and vae so they all detect time-varying covariates
+#' the same way.  Only the time-varying *split* is shared here; the model
+#' expansion differs by method -- saem collapses lone etas into phi (theta forced
+#' to 0), while vae and mu-referenced focei keep the etas as the inner problem
+#' needs them.
+#'
+#' @param ui rxode2 ui (an environment) to stage the split into
+#' @param timeVaryingCovariates character vector from
+#'   `.nlmixrTimeVaryingCovariates()`
+#' @return `ui`, invisibly (called for the side-effect assignments)
+#' @noRd
+.nlmixrSetMuRefTimeVarying <- function(ui, timeVaryingCovariates) {
+  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
+  if (length(timeVaryingCovariates) > 0) {
+    # A log-scale (exp-transformed) time-varying mu covariate can fit better
+    # untransformed; the historical warning is left disabled but the detection
+    # is kept so the behavior is easy to restore.
+    .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
+    .covPar <- .muRefCovariateDataFrame[.w, "theta"]
+    .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
+    if (length(.w2) > 0) {
+      .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
+      if (length(.w3) > 0) {
+        .w2 <- .w2[.w3]
+        .texp <- ui$muRefCurEval$parameter[.w2]
+        .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
+        ## warning(paste0("log-scale mu referenced time varying covariates (",
+        ##                paste(.pars, collapse=", "), ") may have better results ...
+      }
+    }
+    # keep only non-time-varying covariates in the absorbed (mu-ref) set
+    .muRefCovariateDataFrame <-
+      .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
+  }
+  assign("muRefFinal", .muRefCovariateDataFrame, ui)
+  assign("timeVaryingCovariates", timeVaryingCovariates, ui)
+  invisible(ui)
+}
+
+#' Remove the staged mu-ref time-varying covariate info from the ui env
+#'
+#' Undoes `.nlmixrSetMuRefTimeVarying()`; call from the estimation method's
+#' `on.exit()` so the shared ui object is left unmodified after the fit.
+#' @noRd
+.nlmixrRmMuRefTimeVarying <- function(ui) {
+  if (is.environment(ui) && exists("muRefFinal", envir = ui, inherits = FALSE)) {
+    rm(list = "muRefFinal", envir = ui)
+  }
+  if (is.environment(ui) && exists("timeVaryingCovariates", envir = ui, inherits = FALSE)) {
+    rm(list = "timeVaryingCovariates", envir = ui)
+  }
+  invisible(ui)
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)

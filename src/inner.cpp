@@ -9573,6 +9573,216 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
 }
 
+// f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
+// subject, optimize the conditional MAP of the random effects and return that
+// MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the
+// proposal precision).  innerOpt1(id, 0) runs the n1qn1 inner optimizer and
+// finalizes with LikInner2, which -- with _finalObfCalc set -- stores H into
+// op_focei.gH.  H is the no-interaction Jacobian information (paper Eq 17) or
+// the interaction/Laplace Hessian (Eq 13), selected by the inner control the
+// caller set up.  The proposal lives in eta-space; the SAEM chain adds the
+// prior mean (phi = mprior + eta) so the covariance transfers unchanged.
+// Serial by design here (the SAEM solve is not the active rx during this call,
+// and the validation path wants determinism); id-parallelism is added later.
+//[[Rcpp::export]]
+List fsaemInnerMap_(int cores) {
+  (void)cores;
+  const int neta = op_focei.neta;
+  if (neta == 0) stop("fsaemInnerMap_ requires a model with random effects");
+  rx = getRxSolve_();
+  const int nsub = (int)getRxNsub(rx);
+  NumericMatrix etaHat(nsub, neta);
+  NumericMatrix hess(nsub, neta*neta); // row id = vectorized neta x neta H (col-major)
+  IntegerVector ok(nsub);
+  bool savedFinal = _finalObfCalc;
+  _finalObfCalc = true; // make LikInner2 stash H into op_focei.gH
+  for (int id = 0; id < nsub; ++id) {
+    ok[id] = innerOpt1(id, 0);
+    focei_ind *fInd = &(inds_focei[id]);
+    for (int j = 0; j < neta; ++j) etaHat(id, j) = fInd->eta[j];
+    if (ok[id]) {
+      double *Hid = op_focei.gH + (size_t)id*neta*neta;
+      for (int j = 0; j < neta*neta; ++j) hess(id, j) = Hid[j];
+    } else {
+      for (int j = 0; j < neta*neta; ++j) hess(id, j) = NA_REAL;
+    }
+  }
+  _finalObfCalc = savedFinal;
+  return List::create(_["eta"] = etaHat, _["hess"] = hess, _["ok"] = ok);
+}
+
+// f-SAEM independent Metropolis-Hastings kernel (paper Alg 2 / Eq 23).  Runs on
+// the FOCEi inner allocation: the Gaussian proposal N(eta_hat_i, Gamma_i) is
+// independent of the chain state, and the joint target p(y_i, eta_i) is the
+// FOCEi inner objective (exp(-likInner0)).  For each chain c and subject id a
+// candidate is drawn, accepted/rejected by the exact IMH ratio, and the updated
+// state returned.  `etaCur` is chain-major ((nchain*nsub) x neta, row = c*nsub +
+// id); `cholGamma` row id is the vectorized lower-triangular L (col-major) with
+// Gamma_i = L L'.  The proposal-density normalizers (log|L|, (p/2)log 2pi)
+// cancel in the ratio, so only the quadratic forms enter.
+// Sign: likInner0 = -log p(y_i, eta_i) + C (the minimized inner objective), so
+// log alpha = (fCur - fProp) + (0.5||z||^2 - 0.5||L^-1(eta_cur - eta_hat)||^2).
+// Proposal draws use rxode2's threefry engine (setSeedEng1 + rxNormEng), seeded
+// per (call, chain, subject) via `streamBase` so the sequence is reproducible
+// regardless of thread count -- like est="imp"/"impmap" -- instead of R's global
+// RNG.  `mprior` (nsub x neta) is the per-subject prior mean, so the proposed
+// individual parameter is phi = mprior + eta; when a bounded parameter (nbd/
+// lower/upper on the phi scale, from the theta iniDf, matching the L-BFGS-B
+// bounds) is violated the normal draw is repeated up to `nRetry` times, then the
+// value is clamped to the boundary it last violated.
+//[[Rcpp::export]]
+List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
+                     NumericMatrix cholGamma, int nchain, int cores,
+                     NumericMatrix mprior, NumericVector lower, NumericVector upper,
+                     IntegerVector nbd, double streamBase, int nRetry) {
+  const int neta = op_focei.neta;
+  if (neta == 0) stop("fsaemImhKernel_ requires a model with random effects");
+  const int nsub = etaHat.nrow();
+  NumericMatrix etaOut = clone(etaCur);
+  IntegerVector nAcc(nsub);
+  std::vector<arma::mat> L(nsub), Linv(nsub);
+  std::vector<bool> good(nsub, false);
+  for (int id = 0; id < nsub; ++id) {
+    arma::mat Lid(neta, neta);
+    for (int j = 0; j < neta*neta; ++j) Lid(j) = cholGamma(id, j);
+    if (Lid.is_finite()) {
+      arma::mat Li;
+      if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
+    }
+  }
+  const bool hasBounds = ((int)nbd.size() == neta);
+  const uint32_t base = (uint32_t)streamBase;
+  // Pin thread 0 (this kernel is serial) so setSeedEng1/rxNormEng use a fixed
+  // engine.  The engine array is already allocated + seeded by rxSetSeed() at the
+  // start of the fit (saem_fit.R), so we do NOT call seedEng here -- re-seeding it
+  // would disrupt the shared rxode2 engine other fits rely on.
+  (void)cores;
+  setRxThreadId(0);
+  for (int c = 0; c < nchain; ++c) {
+    for (int id = 0; id < nsub; ++id) {
+      int row = c*nsub + id;
+      if (!good[id]) continue; // no valid proposal -> keep current state
+      // reproducible per-(call, chain, subject) threefry stream
+      setSeedEng1(base + (uint32_t)(c*nsub + id));
+      arma::vec ecur(neta), ehat(neta), z(neta);
+      for (int j = 0; j < neta; ++j) { ecur(j) = etaOut(row, j); ehat(j) = etaHat(id, j); }
+      arma::vec eprop(neta);
+      // draw the Gaussian proposal, repeating on bound violation up to nRetry
+      bool inBounds = true;
+      for (int attempt = 0; attempt <= nRetry; ++attempt) {
+        for (int j = 0; j < neta; ++j) z(j) = rxNormEng(0.0, 1.0);
+        eprop = ehat + L[id]*z;
+        if (!hasBounds) break;
+        inBounds = true;
+        for (int j = 0; j < neta; ++j) {
+          double phi = mprior(id, j) + eprop(j);
+          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) inBounds = false;
+          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) inBounds = false;
+        }
+        if (inBounds) break;
+      }
+      if (hasBounds && !inBounds) {
+        // retries exhausted: clamp each violated component to its boundary
+        for (int j = 0; j < neta; ++j) {
+          double phi = mprior(id, j) + eprop(j);
+          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) eprop(j) = lower[j] - mprior(id, j);
+          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) eprop(j) = upper[j] - mprior(id, j);
+        }
+      }
+      std::vector<double> ec(neta), ep(neta);
+      for (int j = 0; j < neta; ++j) { ec[j] = ecur(j); ep[j] = eprop(j); }
+      double fCur = likInner0(ec.data(), id);
+      double fProp = likInner0(ep.data(), id);
+      if (!R_FINITE(fProp)) continue; // reject un-solvable candidate
+      arma::vec dCur = Linv[id]*(ecur - ehat);
+      double logAlpha = (fCur - fProp) + 0.5*(arma::dot(z, z) - arma::dot(dCur, dCur));
+      // uniform(0,1) from the same threefry stream: PHI(standard normal)
+      double u = rxUnifEng(0.0, 1.0);
+      if (R_FINITE(fCur) ? (std::log(u) < logAlpha) : true) {
+        for (int j = 0; j < neta; ++j) etaOut(row, j) = eprop(j);
+        nAcc[id]++;
+      }
+    }
+  }
+  setRxThreadId(-1);
+  return List::create(_["eta"] = etaOut, _["nAcc"] = nAcc, _["nchain"] = nchain);
+}
+
+// MAP + proposal covariance (Gamma_i = H_i^-1, lower Cholesky) + iteration-indexed
+// IMH sweeps, for an inner that is ALREADY re-parameterized.  Shared by the
+// no-covariate step (fsaemStepCpp_) and the covariate step (fsaemMapImhCpp_,
+// where R rebuilds the mprior-as-data inner first).
+static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                                 int nsweep, int cores, NumericVector lower, NumericVector upper,
+                                 IntegerVector nbd, double seed, int nRetry, int kiter) {
+  List mapL = fsaemInnerMap_(cores);
+  NumericMatrix etaHat = mapL["eta"];
+  NumericMatrix hess = mapL["hess"];
+  IntegerVector ok = mapL["ok"];
+  const int neta = op_focei.neta;
+  const int nsub = etaHat.nrow();
+  // cholGamma row id = vec(lower Cholesky of Gamma_i = H_i^-1); NA where the MAP
+  // failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
+  // symmatu() reproduces that input and "lower" == t(chol()).
+  NumericMatrix cholGamma(nsub, neta * neta);
+  for (int id = 0; id < nsub; ++id) {
+    bool bad = (ok[id] == 0);
+    arma::mat L(neta, neta, arma::fill::zeros);
+    if (!bad) {
+      arma::mat H(neta, neta);
+      for (int j = 0; j < neta * neta; ++j) H(j) = hess(id, j);
+      arma::mat G;
+      if (!arma::inv(G, H)) bad = true;
+      else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
+    }
+    for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
+  }
+  NumericMatrix eta = clone(etaCur);
+  for (int s = 0; s < nsweep; ++s) {
+    double streamBase = seed + ((double)kiter * nsweep + s) * ((double)nchain * nsub);
+    List r = fsaemImhKernel_(eta, etaHat, cholGamma, nchain, cores,
+                             mprior, lower, upper, nbd, streamBase, nRetry);
+    eta = as<NumericMatrix>(r["eta"]);
+  }
+  return eta;
+}
+
+// C++-native f-SAEM step: the whole no-covariate per-iteration orchestration that
+// was the R closure (.fsaemInnerUpdate + .fsaemInnerMap + .fsaemImh).  Keeping it
+// in C++ lets the SAEM loop drive it directly (no per-iteration R round-trip),
+// which is what makes it safe to change a phase's step count dynamically.
+//[[Rcpp::export]]
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega,
+                            NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                            int nsweep, int cores, NumericVector lower, NumericVector upper,
+                            IntegerVector nbd, double seed, int nRetry, int kiter) {
+  // ---- re-parameterize the inner (mirror .fsaemInnerUpdate) ----
+  int nth = theta.size();
+  NumericVector th = clone(theta);
+  CharacterVector thNames(nth);
+  for (int i = 0; i < nth; ++i) thNames[i] = "THETA[" + std::to_string(i + 1) + "]";
+  th.attr("names") = thNames;
+  env["thetaIni"] = th;
+  int no = omega.size();
+  NumericMatrix om(no, no);
+  for (int i = 0; i < no; ++i) om(i, i) = omega[i];
+  Environment rxns = Environment::namespace_env("rxode2");
+  Function symInvCreate = rxns["rxSymInvCholCreate"];
+  env["rxInv"] = symInvCreate(_["mat"] = om, _["diag.xform"] = "sqrt");
+  env["etaMat"] = NumericMatrix(mprior.nrow(), no);   // zeros
+  vaeInnerSetup_(env);
+  return fsaemMapImh(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter);
+}
+
+// Covariate path: R re-parameterizes the mprior-as-data inner (data rebuild +
+// full setup), then this does the C++ MAP + IMH.
+//[[Rcpp::export]]
+NumericMatrix fsaemMapImhCpp_(NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                              int nsweep, int cores, NumericVector lower, NumericVector upper,
+                              IntegerVector nbd, double seed, int nRetry, int kiter) {
+  return fsaemMapImh(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter);
+}
+
 //[[Rcpp::export]]
 RObject vaeInnerFree_() {
   rxOptionsFreeFocei();
