@@ -589,6 +589,7 @@
 .foceiAnalyticGradSetup <- function(ui, thVals, Om) {
   if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
   if (!.hasRxSens()) return(NULL)
+  if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
   # bounded parameter transforms are corrected on a different (natural) scale
   if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
   # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
@@ -684,8 +685,12 @@
       } else {
         am <- ui$foceiOuter
       }
-      if (!is.null(am) && inherits(am$augMod, "rxode2")) assign(".foceiGradAug", am, envir = e)
+      # cache a failed build too (FALSE sentinel) so an out-of-scope model does not
+      # re-attempt the symengine aug build on every gradient call
+      if (!(!is.null(am) && inherits(am$augMod, "rxode2"))) am <- FALSE
+      assign(".foceiGradAug", am, envir = e)
     }
+    if (isFALSE(am)) return(NULL)                    # stay on the FD gradient
     .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
                            st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
                            interaction = st$interaction, foceType = st$foceType,
@@ -699,6 +704,7 @@
 #' @noRd
 .foceiOuterDirs <- function(ui) {
   if (!.hasRxSens()) return(NULL)
+  if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
   if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)

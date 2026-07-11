@@ -411,8 +411,16 @@
   .data <- env$data
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .fit <- .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  nlmixrWithTiming("setup", {
+    .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  })
+  # fitModel builds the symengine/sensitivity model and runs the optimizer;
+  # time it as "optimize" so the work is not left in the "other" bucket (the
+  # nlm-family model build and iterative solve are intertwined -- the
+  # sensitivity model is the optimization model).
+  .fit <- nlmixrWithTiming("optimize", {
+    .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  })
   .ret[[method]] <- .fit[[1]]
   if (!is.null(postSetup)) {
     .ret <- postSetup(.ret, .ui, .fit)
@@ -442,7 +450,10 @@
   if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
-  .ret$model <- .ui$ebe
+  # building the EBE model is another symengine model build; time it as "setup"
+  .ret$model <- nlmixrWithTiming("setup", {
+    .ui$ebe
+  })
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame

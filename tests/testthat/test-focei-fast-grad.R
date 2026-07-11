@@ -308,7 +308,7 @@ test_that("mceta=-2 (Eq-48) is the default and all fast mceta modes agree", {
   expect_true(is.finite(f$objf))
 })
 
-test_that("out-of-scope model (linCmt) falls back to the finite-difference gradient", {
+test_that("out-of-scope model (linCmt) downgrades fast=TRUE to the plain focei gradient", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
   lin <- function() {
@@ -316,7 +316,13 @@ test_that("out-of-scope model (linCmt) falls back to the finite-difference gradi
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); linCmt() ~ add(add.sd) })
   }
   d <- nlmixr2data::theo_sd
-  fF <- suppressMessages(suppressWarnings(nlmixr2(lin, d, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE))))
-  expect_true(is.finite(fF$objf))                            # completes via FD fallback
+  .msgs <- character(0)
+  fF <- withCallingHandlers(
+    suppressWarnings(nlmixr2(lin, d, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE))),
+    message = function(m) { .msgs <<- c(.msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
+  # downgraded once, up front (not a per-iteration symengine rebuild + FD fallback)
+  expect_true(any(grepl("using fast = FALSE", .msgs)))
+  expect_false(isTRUE(fF$foceiControl$fast))
+  expect_true(is.finite(fF$objf))
 })

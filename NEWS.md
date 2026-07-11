@@ -1,8 +1,30 @@
 # nlmixr2est (development version)
 
+- The "initial ETAs were nudged" warning is now only raised when an ETA
+  actually stayed at zero and a nudge was performed, not merely when the nudge
+  check ran (which previously produced a spurious warning on well-behaved fits).
+- For a fully mu-referenced model (every eta mu-referenced, so the initial etas
+  are all zero) a user-specified non-default `foceiControl(mceta=)` now falls
+  back to the default (`mceta=-2`) with a warning, since the mceta
+  starting-point search has nothing to explore.
+- The reported fit timing (`fit$time`) again attributes the symengine model
+  build and rxode2 compilation to `setup` (focei family) / `configure` (saem)
+  instead of leaking it into the `other` bucket.  The nlm-family methods
+  (nlm/nlminb/bobyqa/newuoa/uobyqa/n1qn1/lbfgsb3c/optim/nls) now time their
+  preprocessing and EBE model build as `setup` and the model build + optimizer
+  as `optimize`, instead of leaving nearly all of it in `other`.
+- Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice, which made a
+  control round-trip (`do.call(nlmControl, ...)`) error with "formal argument
+  ... matched by multiple actual arguments".
+- `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
+  `fast=FALSE` up front with a message instead of re-attempting the symengine
+  augmented-model build (and silently falling back to finite differences) on every
+  outer-gradient call; the analytic covariance likewise reports the `linCmt()`
+  fallback instead of failing silently.
 - Iteration printing now labels the estimation phase on the back-transformed (`X`)
-  row: `est = "vae"` shows `Burn in` in the objective column during burn-in, and
-  `est = "saem"` tags the row `SA: X` / `EM: X` for the burn-in and EM phases.
+  row: `est = "vae"` shows `Burn in`/`KL anneal`/`EM`/`Smooth` in the objective
+  column (with a key legend in the header), and `est = "saem"` tags the row
+  `SA: X` / `EM: X` for the burn-in and EM phases.
 - Fixed `muModel = "lin"`/`"irls"` erroring with "undefined columns selected" when a
   model has two or more mu-referenced covariates that are expressions (e.g.
   `log(WT/70)`) rather than bare data columns (#711).
