@@ -71,6 +71,19 @@ for the IRLS variant.</p></dd>
     <p>mufoceiControl object</p>
     </div>
     <div class="section level2">
+    <h2 id="difference-from-focei-">Difference from `focei`<a class="anchor" aria-label="anchor" href="#difference-from-focei-"></a></h2>
+
+
+<p>The `mufocei`/`irlsfocei` (and related) methods apply the mu2+ covariate
+hooks, which expand algebraic mu-referenced covariate expressions (e.g.
+`cl.wt*log(WT/70)`) into estimable mu-referenced parameters and split
+covariates into non-time-varying (absorbed into the phi term) and
+time-varying (kept as `beta` regressors).  Calling `focei` directly does NOT
+apply these hooks, so these methods can estimate more mu-referenced models
+than plain `focei` – there is a genuine difference between calling e.g.
+`est="mufocei"` and `est="focei"`.</p>
+    </div>
+    <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
     <p>Matthew L. Fidler</p>
     </div>
@@ -265,7 +278,7 @@ for the IRLS variant.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$x &lt;- .ret$par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5602f9e4c6f0&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55f185c35ae8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>

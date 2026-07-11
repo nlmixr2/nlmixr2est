@@ -88,8 +88,8 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8984
-#> → compress phiM in nlmixr2 object, save 448192
+#> → compress parHistData in nlmixr2 object, save 8848
+#> → compress phiM in nlmixr2 object, save 443520
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -108,20 +108,20 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.08431005 2.5758e-05 0.01000484      0.062     0.206 1.877        0.39
+#> elapsed 0.09144048 3.0605e-05 0.01000501      0.074     0.249 2.938       0.499
 #>         table compress     other time2 time1
-#> elapsed 0.058    0.135 0.1136593 1.002 1.001
+#> elapsed 0.059     0.15 0.1375239 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.     SE     %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.444  0.194     43.6       1.56 (1.07, 2.28)    70.48
-#> tcl               1.12 0.0259     2.31       3.07 (2.92, 3.23)    29.54
-#> tv         log V  3.45 0.0452     1.31       31.4 (28.7, 34.3)    13.18
-#> add.sd           0.698   69.5 9.96e+03       0.698 (-136, 137)         
+#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
+#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)    69.68
+#> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)    28.02
+#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)    12.96
+#> add.sd           0.699 6.93e-310 9.91e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
-#> tka       -0.467% 
-#> tcl         8.37% 
+#> tka       -0.830% 
+#> tcl         3.23% 
 #> tv          12.2% 
 #> add.sd            
 #>  
@@ -135,9 +135,9 @@ print(fit)
 #> # A tibble: 132 × 18
 #>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.109 -0.580 -0.0762  320.
-#> 2 1      0.25  2.84  3.23 -0.388  3.83 -0.994 -1.42   0.109 -0.580 -0.0762  207.
-#> 3 1      0.57  6.57  5.72  0.846  6.72 -0.149 -0.214  0.109 -0.580 -0.0762  119.
+#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.118 -0.513 -0.0739  320.
+#> 2 1      0.25  2.84  3.22 -0.378  3.84 -1.00  -1.44   0.118 -0.513 -0.0739  206.
+#> 3 1      0.57  6.57  5.65  0.916  6.67 -0.101 -0.144  0.118 -0.513 -0.0739  117.
 #> # ℹ 129 more rows
 #> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
 #> #   dosenum <dbl>

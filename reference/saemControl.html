@@ -60,7 +60,7 @@
 <span>  addProp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"combined2"</span>, <span class="st">"combined1"</span><span class="op">)</span>,</span>
 <span>  tol <span class="op">=</span> <span class="fl">1e-06</span>,</span>
 <span>  itmax <span class="op">=</span> <span class="fl">30</span>,</span>
-<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nelder-mead"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
+<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"newuoa"</span>, <span class="st">"nelder-mead"</span><span class="op">)</span>,</span>
 <span>  powRange <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  lambdaRange <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  odeRecalcFactor <span class="op">=</span> <span class="fl">10</span><span class="op">^</span><span class="op">(</span><span class="fl">0.5</span><span class="op">)</span>,</span>
@@ -86,6 +86,16 @@
 <span>  mixProbPriorN <span class="op">=</span> <span class="fl">20</span>,</span>
 <span>  mixSampleMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"parallel"</span>, <span class="st">"msaem"</span><span class="op">)</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
+<span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  fastKernel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"firstN"</span>, <span class="st">"throughout"</span>, <span class="st">"additive"</span><span class="op">)</span>,</span>
+<span>  fastCov <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"jacobian"</span>, <span class="st">"hessian"</span><span class="op">)</span>,</span>
+<span>  fastIter <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  fastLik <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"foce"</span>, <span class="st">"focep"</span><span class="op">)</span>,</span>
+<span>  lbfgsLmm <span class="op">=</span> <span class="fl">5L</span>,</span>
+<span>  lbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  lbfgsPgtol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  lbfgsMaxIter <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  nRetry <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -463,6 +473,87 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 <code>saemControl</code>/<code>nlmControl</code> for a uniform interface but inert there –
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.</p></dd>
+
+
+<dt id="arg-fast">fast<a class="anchor" aria-label="anchor" href="#arg-fast"></a></dt>
+<dd><p>Boolean enabling the fast-SAEM (f-SAEM) simulation step
+(Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+simulation of the individual random effects uses an independent
+Metropolis-Hastings proposal centered at each subject's conditional
+MAP estimate with a Laplace/linearization covariance, which converges
+in far fewer SAEM iterations than the default random-walk Metropolis.
+The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+default this is `FALSE` (standard SAEM).  The `fast*` options below are
+only consulted when `fast=TRUE`.</p></dd>
+
+
+<dt id="arg-fastkernel">fastKernel<a class="anchor" aria-label="anchor" href="#arg-fastkernel"></a></dt>
+<dd><p>Schedule for the f-SAEM independent Metropolis-Hastings
+  (IMH) kernel:</p>
+<p>* `"firstN"` (default): use the IMH kernel for the first `fastIter`
+    iterations, then revert to the standard random-walk kernels.  This is
+    the recipe used in the f-SAEM paper – the early iterations only need
+    an approximate posterior, so the fast kernel accelerates the initial
+    convergence and the steady-state behavior is unchanged.</p>
+<p>* `"throughout"`: use the IMH kernel on every iteration for the whole
+    run.  Simpler, but recomputing the MAP/covariance every iteration is
+    costlier and unnecessary near convergence.</p>
+<p>* `"additive"`: append the IMH kernel alongside the standard random-walk
+    kernels on every iteration.  Most mixing, most cost.</p></dd>
+
+
+<dt id="arg-fastcov">fastCov<a class="anchor" aria-label="anchor" href="#arg-fastcov"></a></dt>
+<dd><p>Covariance used for the IMH Gaussian proposal:</p>
+<p>* `"auto"` (default): Jacobian linearization for continuous-data
+    endpoints, Hessian (Laplace) for non-continuous endpoints.</p>
+<p>* `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
+    structural-model Jacobian at the MAP (continuous data only).</p>
+<p>* `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
+    individual log-likelihood at the MAP (any data type).</p></dd>
+
+
+<dt id="arg-fastiter">fastIter<a class="anchor" aria-label="anchor" href="#arg-fastiter"></a></dt>
+<dd><p>Integer number of initial iterations to run the IMH kernel
+when `fastKernel="firstN"` (default 20).  Ignored by the other
+schedules.</p></dd>
+
+
+<dt id="arg-fastlik">fastLik<a class="anchor" aria-label="anchor" href="#arg-fastlik"></a></dt>
+<dd><p>Inner likelihood used for the Hessian proposal path, one of
+`"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
+individual likelihood is reused to build the proposal (and, when the
+Hessian path is active, reported by SAEM).</p></dd>
+
+
+<dt id="arg-lbfgslmm">lbfgsLmm<a class="anchor" aria-label="anchor" href="#arg-lbfgslmm"></a></dt>
+<dd><p>Integer number of BFGS corrections (the L-BFGS-B `lmm`
+memory) used when refining the fixed-effect-only parameters of a general
+log-likelihood model (`ll(name) ~ &lt;expr&gt;`) by direct L-BFGS-B
+optimization of the observation likelihood.  Default 5.</p></dd>
+
+
+<dt id="arg-lbfgsfactr">lbfgsFactr<a class="anchor" aria-label="anchor" href="#arg-lbfgsfactr"></a></dt>
+<dd><p>Convergence tolerance on the relative reduction in the
+objective for that L-BFGS-B refinement (the `factr` control, in units of
+machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
+same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).</p></dd>
+
+
+<dt id="arg-lbfgspgtol">lbfgsPgtol<a class="anchor" aria-label="anchor" href="#arg-lbfgspgtol"></a></dt>
+<dd><p>Convergence tolerance on the projected gradient for that
+L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
+derived from `sigdig` (`10^(-sigdig - 1)`).</p></dd>
+
+
+<dt id="arg-lbfgsmaxiter">lbfgsMaxIter<a class="anchor" aria-label="anchor" href="#arg-lbfgsmaxiter"></a></dt>
+<dd><p>Integer maximum number of iterations for that L-BFGS-B
+refinement.  Default 20.</p></dd>
+
+
+<dt id="arg-nretry">nRetry<a class="anchor" aria-label="anchor" href="#arg-nretry"></a></dt>
+<dd><p>Integer number of times a bounded log-likelihood parameter's
+f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+bounds before being clamped to the violated boundary.  Default 10.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

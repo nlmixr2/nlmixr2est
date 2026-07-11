@@ -5,7 +5,7 @@ Drop mu referenced etas and covariates
 ## Usage
 
 ``` r
-.saemDropMuRefFromModel(ui, noCovs = FALSE)
+.saemDropMuRefFromModel(ui, noCovs = FALSE, keepEtas = FALSE)
 ```
 
 ## Arguments
@@ -17,6 +17,10 @@ Drop mu referenced etas and covariates
 - noCovs:
 
   Do not look for covariates
+
+- keepEtas:
+
+  Keep the mu-referenced etas
 
 ## Value
 

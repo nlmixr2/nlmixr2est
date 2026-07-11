@@ -50,6 +50,9 @@ getValidNlmixrCtl(control)
 # S3 method for class 'foi'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'fsaem'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'imp'
 getValidNlmixrCtl(control)
 

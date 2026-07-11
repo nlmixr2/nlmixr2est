@@ -56,6 +56,9 @@ nlmixr2Est(env, ...)
 # S3 method for class 'foi'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'fsaem'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'imp'
 nlmixr2Est(env, ...)
 
