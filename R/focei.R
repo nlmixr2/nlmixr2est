@@ -2407,8 +2407,33 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ret
 }
 
+#' Reset a user-specified mceta to the default for fully mu-referenced models
+#'
+#' When every eta is mu-referenced the initial etas are all exactly zero, so the
+#' Monte-Carlo / jump mceta starting-point search has nothing to explore.  A
+#' non-default mceta is ignored (reset to the default -2) with a warning.
+#'
+#' @param ui model ui
+#' @param control focei control
+#' @return control, possibly with mceta reset to -2L
+#' @noRd
+.foceiMcetaMuRefFallback <- function(ui, control) {
+  .mceta <- control$mceta
+  if (is.null(.mceta) || identical(as.integer(.mceta), -2L)) return(control)
+  .allEta <- ui$eta
+  if (length(.allEta) == 0L) return(control)
+  .muEta <- ui$muRefDataFrame$eta
+  if (all(.allEta %in% .muEta)) {
+    warning("all etas are mu-referenced (initial etas are zero), so 'mceta=", .mceta,
+            "' has no effect; using the default 'mceta=-2'", call.=FALSE)
+    control$mceta <- -2L
+  }
+  control
+}
+
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .control <- ui$control
+  .control <- .foceiMcetaMuRefFallback(ui, .control)
   .control$est <- est
   ui$control <- .control
   # Building the optimization environment (`ui$foceiOptEnv`) is where the
