@@ -4,6 +4,7 @@
 #' FOCE+ (no interaction, live conditional residual variance R); it is
 #' `irlsfoce` with `foce = "foce+"` forced (see `foceiControl(foce=)`).
 #'
+#' @inheritSection mufoceiControl Difference from `focei`
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param interaction Interaction term for the model, in this case the

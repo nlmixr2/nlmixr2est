@@ -37,7 +37,8 @@
 #' @return Remove mu-referenced etas and covariates
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE) {
+.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE,
+                                keepEtas=FALSE) {
   f <- function(x) {
     if (is.name(x) || is.atomic(x)) {
       return(x)
@@ -53,16 +54,21 @@
         if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs=noCovs)) {
           return(f(x[[2]]))
         }
-        if (length(x[[2]]) == 1) {
-          .char <- as.character(x[[2]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[3]]))
+        # keepEtas=TRUE (f-SAEM inner): absorb the non-time-varying covariates
+        # into phi like saem but KEEP the mu-referenced etas so the FOCEi inner
+        # can optimize them (saem drops them, collapsing theta+eta -> phi).
+        if (!keepEtas) {
+          if (length(x[[2]]) == 1) {
+            .char <- as.character(x[[2]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[3]]))
+            }
           }
-        }
-        if (length(x[[3]]) == 1) {
-          .char <- as.character(x[[3]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[2]]))
+          if (length(x[[3]]) == 1) {
+            .char <- as.character(x[[3]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[2]]))
+            }
           }
         }
       }
@@ -77,15 +83,16 @@
 #'
 #' @param ui rxode2 ui
 #' @param noCovs Do not look for covariates
+#' @param keepEtas Keep the mu-referenced etas
 #' @return model line expression with mu referenced information dropped.
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
+.saemDropMuRefFromModel <- function(ui, noCovs=FALSE, keepEtas=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
   lapply(ui$lstExpr, function(line){
-    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
+    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs, keepEtas=keepEtas)
   })
 }
 
@@ -114,7 +121,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -141,10 +148,23 @@ nmGetDistributionSaemLines.norm <- function(line) {
   }
   return(list(bquote(rx_pred_ <- .(.var))))
 }
-
+#' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.t <- function(line) {
   stop("t isn't supported yet")
+}
+
+#' @rdname nmGetDistributionSaemLines
+#' @export
+nmGetDistributionSaemLines.LL <- function(line) {
+  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
+  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
+  # instead of a Gaussian mean.  Only fsaem (which drives the E-step off this
+  # general likelihood via the FOCEi inner) can fit such an endpoint; plain saem
+  # has no observation-loss kernel for it -- see .fsaemSupported / distribution=4.
+  .ui <- line[[1]]
+  .errNum <- line[[3]]
+  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
 }
 
 #' @export
@@ -379,8 +399,13 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
     .thetaValue <- c(.thetaValue, .nonMuThetas)
   }
   .thetaErrNames <- .iniDf[!is.na(.iniDf$ntheta) & !is.na(.iniDf$err), ]
-
-  .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  # a general log-likelihood endpoint has no residual error theta, so guard the
+  # empty case (else setNames() injects a spurious NA=THETA[] entry)
+  if (nrow(.thetaErrNames) == 0L) {
+    .thetaValueErr <- character(0L)
+  } else {
+    .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
   for (.e in seq_along(.etaTrans)) {
