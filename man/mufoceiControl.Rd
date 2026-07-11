@@ -26,6 +26,18 @@ mufoceiControl object
 Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
 FOCEI; see `foceiControl(muModel=)`.
 }
+\section{Difference from `focei`}{
+
+The `mufocei`/`irlsfocei` (and related) methods apply the mu2+ covariate
+hooks, which expand algebraic mu-referenced covariate expressions (e.g.
+`cl.wt*log(WT/70)`) into estimable mu-referenced parameters and split
+covariates into non-time-varying (absorbed into the phi term) and
+time-varying (kept as `beta` regressors).  Calling `focei` directly does NOT
+apply these hooks, so these methods can estimate more mu-referenced models
+than plain `focei` -- there is a genuine difference between calling e.g.
+`est="mufocei"` and `est="focei"`.
+}
+
 \examples{
 
 mufoceiControl()

@@ -99,7 +99,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
-  seedEng(cores);
+  // The engine array is allocated + seeded by rxWithSeed() at the fit start
+  // (impmap.R), so we don't call seedEng() here.
   uint32_t seed0 = getRxSeed1(cores);
   bool doPar = (cores > 1);
   // Parallelize over base subjects, iterating a subject's mixture components
@@ -301,8 +302,8 @@ void impComputeCov(Environment e) {
       }
     }
   }
-  // Draw one fixed sample set per subject (serial, deterministic seed).
-  seedEng(1);
+  // Draw one fixed sample set per subject (serial, deterministic seed).  The
+  // engine is already allocated + seeded by rxWithSeed() at the fit start.
   uint32_t seed0 = getRxSeed1(1);
   setRxThreadId(0);
   for (int id = 0; id < nsub; ++id) {

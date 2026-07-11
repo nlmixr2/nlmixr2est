@@ -26,7 +26,7 @@ saemControl(
   addProp = c("combined2", "combined1"),
   tol = 1e-06,
   itmax = 30,
-  type = c("nelder-mead", "newuoa"),
+  type = c("newuoa", "nelder-mead"),
   powRange = 10,
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
@@ -52,6 +52,16 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   censOption = c("gauss", "laplace"),
+  fast = FALSE,
+  fastKernel = c("firstN", "throughout", "additive"),
+  fastCov = c("auto", "jacobian", "hessian"),
+  fastIter = 20L,
+  fastLik = c("focei", "foce", "focep"),
+  lbfgsLmm = 5L,
+  lbfgsFactr = NULL,
+  lbfgsPgtol = NULL,
+  lbfgsMaxIter = 20L,
+  nRetry = 10L,
   ...
 )
 }
@@ -353,6 +363,73 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 \code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
+
+\item{fast}{Boolean enabling the fast-SAEM (f-SAEM) simulation step
+(Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+simulation of the individual random effects uses an independent
+Metropolis-Hastings proposal centered at each subject's conditional
+MAP estimate with a Laplace/linearization covariance, which converges
+in far fewer SAEM iterations than the default random-walk Metropolis.
+The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+default this is `FALSE` (standard SAEM).  The `fast*` options below are
+only consulted when `fast=TRUE`.}
+
+\item{fastKernel}{Schedule for the f-SAEM independent Metropolis-Hastings
+  (IMH) kernel:
+
+  * `"firstN"` (default): use the IMH kernel for the first `fastIter`
+    iterations, then revert to the standard random-walk kernels.  This is
+    the recipe used in the f-SAEM paper -- the early iterations only need
+    an approximate posterior, so the fast kernel accelerates the initial
+    convergence and the steady-state behavior is unchanged.
+
+  * `"throughout"`: use the IMH kernel on every iteration for the whole
+    run.  Simpler, but recomputing the MAP/covariance every iteration is
+    costlier and unnecessary near convergence.
+
+  * `"additive"`: append the IMH kernel alongside the standard random-walk
+    kernels on every iteration.  Most mixing, most cost.}
+
+\item{fastCov}{Covariance used for the IMH Gaussian proposal:
+
+  * `"auto"` (default): Jacobian linearization for continuous-data
+    endpoints, Hessian (Laplace) for non-continuous endpoints.
+
+  * `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
+    structural-model Jacobian at the MAP (continuous data only).
+
+  * `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
+    individual log-likelihood at the MAP (any data type).}
+
+\item{fastIter}{Integer number of initial iterations to run the IMH kernel
+when `fastKernel="firstN"` (default 20).  Ignored by the other
+schedules.}
+
+\item{fastLik}{Inner likelihood used for the Hessian proposal path, one of
+`"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
+individual likelihood is reused to build the proposal (and, when the
+Hessian path is active, reported by SAEM).}
+
+\item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
+memory) used when refining the fixed-effect-only parameters of a general
+log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
+optimization of the observation likelihood.  Default 5.}
+
+\item{lbfgsFactr}{Convergence tolerance on the relative reduction in the
+objective for that L-BFGS-B refinement (the `factr` control, in units of
+machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
+same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).}
+
+\item{lbfgsPgtol}{Convergence tolerance on the projected gradient for that
+L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
+derived from `sigdig` (`10^(-sigdig - 1)`).}
+
+\item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
+refinement.  Default 20.}
+
+\item{nRetry}{Integer number of times a bounded log-likelihood parameter's
+f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+bounds before being clamped to the violated boundary.  Default 10.}
 
 \item{...}{Other arguments to control SAEM.}
 }
