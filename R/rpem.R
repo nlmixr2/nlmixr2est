@@ -695,6 +695,21 @@
   muArr <- array(0, c(niter, .P, K)); wMat <- matrix(0, niter, K)
   omTr <- matrix(0, niter, .cl$nEta); sdTr <- numeric(niter); propTr <- numeric(niter)
   powTr <- numeric(niter); lamTr <- numeric(niter); llTr <- numeric(niter)
+  # Opt-in full C++ E-M loop for additive/proportional/lognormal mixtures (combined /
+  # power / TBS mixtures keep the R loop).  Threefry eta draw + threefry MH -> thread-safe
+  # and reproducible for any core count.
+  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 6L)
+  if (.cLoop) {
+    .r <- rpemEMLoopMix(.e, base, .cl$etaIdx, .mix$muComp0, .mix$muCompIdx, .mix$etaForComp,
+                        diag(.cl$omega0), .cl$addSdIdx, .cl$errType, .cl$addSd0,
+                        .mix$w0, K, .P, isTRUE(.mix$perComp),
+                        niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
+                        control$seed)
+    muArr <- aperm(array(.r$muTrace, dim = c(K, .P, niter)), c(3, 2, 1))  # [it, param, comp]
+    wMat <- matrix(.r$wTrace, niter, K, byrow = TRUE)
+    omTr <- matrix(.r$omegaTrace, niter, .cl$nEta, byrow = TRUE)
+    sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
+  } else
   for (.it in seq_len(niter)) {
     base[.mix$muCompIdx + 1L] <- muK
     base[.cl$addSdIdx + 1L] <- addSd            # power: addSd slot holds the scale

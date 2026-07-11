@@ -130,6 +130,7 @@ SEXP _nlmixr2est_rpemEstepK1(SEXP, SEXP);
 SEXP _nlmixr2est_rpemEstepK1Draw(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemEMLoopK1(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemEMLoopMix(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1Reg(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1Comb(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepK1TBS(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -212,6 +213,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rpemEstepK1Draw", (DL_FUNC) &_nlmixr2est_rpemEstepK1Draw, 9},
   {"_nlmixr2est_rpemMstepK1", (DL_FUNC) &_nlmixr2est_rpemMstepK1, 4},
   {"_nlmixr2est_rpemEMLoopK1", (DL_FUNC) &_nlmixr2est_rpemEMLoopK1, 19},
+  {"_nlmixr2est_rpemEMLoopMix", (DL_FUNC) &_nlmixr2est_rpemEMLoopMix, 20},
   {"_nlmixr2est_rpemMstepK1Reg", (DL_FUNC) &_nlmixr2est_rpemMstepK1Reg, 5},
   {"_nlmixr2est_rpemMstepK1Comb", (DL_FUNC) &_nlmixr2est_rpemMstepK1Comb, 6},
   {"_nlmixr2est_rpemMstepK1TBS", (DL_FUNC) &_nlmixr2est_rpemMstepK1TBS, 9},

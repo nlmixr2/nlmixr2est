@@ -132,3 +132,49 @@ test_that("est=rpem cLoop estimates a non-mu-ref structural beta (matches R loop
   expect_equal(rC$struct, rC2$struct)
   expect_equal(rC$mu, rC2$mu)
 })
+
+test_that("est=rpem cLoop fits a mixture (matches R loop, reproducible)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: several mixture EM fits
+
+  sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(52); nsub <- 120L; obsT <- seq(0.5, 24, by = 2)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    k <- if (stats::runif(1) < 0.5) 1L else 2L
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(sim, params = c(tka = c(0.1, 1.3)[k], tcl = 1, tv = 3.45,
+                                         eka = stats::rnorm(1, 0, sqrt(0.3))),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + stats::rnorm(nrow(s), 0, 0.1)
+    d
+  }))
+  mod <- function() {
+    ini({ tka1 <- 0.1; tka2 <- 1.3; tcl <- fix(1.0); tv <- fix(3.45)
+          p1 <- 0.5; add.sd <- 0.2; eta.ka ~ 0.3 })
+    model({ ka <- mix(exp(tka1 + eta.ka), p1, exp(tka2 + eta.ka))
+            cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxode2(mod)
+  ctlR <- rpemControl(nGauss = 400L, nMH = 80000L, mhBurn = 8000L, niter = 30L,
+                      collect = 10L, seed = 7L, cores = 4L, cLoop = FALSE)
+  ctlC <- rpemControl(nGauss = 400L, nMH = 80000L, mhBurn = 8000L, niter = 30L,
+                      collect = 10L, seed = 7L, cores = 4L, cLoop = TRUE)
+
+  # full mixture fit object builds via the C++ loop
+  fitC <- suppressMessages(nlmixr2(mod, dat, est = "rpem", control = ctlC))
+  expect_s3_class(fitC, "nlmixr2FitData")
+  expect_false(is.null(fitC$mixNum))
+
+  rC <- .rpemFit(ui, dat, ctlC)
+  rR <- .rpemFit(ui, dat, ctlR)
+  # components separated and close to the R loop
+  expect_lt(rC$mix$muK[1], 0.5)
+  expect_gt(rC$mix$muK[2], 1.0)
+  expect_equal(unname(rC$mix$muK[2]), unname(rR$mix$muK[2]), tolerance = 0.1)
+  expect_equal(rC$addSd, rR$addSd, tolerance = 0.08)
+  # reproducible run-to-run
+  rC2 <- .rpemFit(ui, dat, ctlC)
+  expect_equal(rC$mix$muK, rC2$mix$muK)
+  expect_equal(rC$mix$w, rC2$mix$w)
+})
