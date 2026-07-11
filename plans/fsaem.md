@@ -342,6 +342,24 @@ normal-specific M-step piece. For a general likelihood every population
 parameter lives in phi (a mu-ref fixed effect, with or without a random effect,
 phi1/phi0), so the M-step reduces to (a) alone -- no residual optimizer.
 
+### DONE (2026-07-11) -- implemented the saemix way, for BOTH saem and fsaem
+
+The first cut bypassed `do_mcmc` and drove the E-step off the inner only; that
+was too invasive and broke the saem core.  The correct design (from `~/src/saemix`
+`compute.LLy`) is far smaller: a `modeltype="likelihood"` model returns the
+per-observation log-likelihood as its prediction, the observation loss is just
+`DYF = -ll`, and the *standard RWM kernels run unchanged*.  So plain `saem` -- not
+only `fsaem` -- fits `ll()` endpoints; the f-SAEM inner kernel is an optional
+accelerator on top.  Implemented: `distribution==4` arm (`DYF/DYFm = -fk`) in the
+main-loop DYF block and both `do_mcmc` switches; residual M-step pieces
+(`statr`/`sigma`/residual FIM row/residual-param update) skipped for
+`distribution==4`; the phi sufficient-statistics M-step is untouched.  R: `ll()`
+endpoints route through the FOCEi line generator (`rx_pred_ ~ <ll>`), config
+`distribution=4`, zeroed residual bookkeeping, and a fix for a spurious
+`NA=THETA[]` line the saem model emitted when an endpoint had no residual theta.
+Validated: exponential and Weibull TTE recover the population parameters for saem
+and fsaem; `test-saem-loglik.R`.
+
 ### Design (determined by the math; no separate residual/error step)
 
 - New distribution code `distribution == 4` ("inner/general"): C++ skips the DYF
