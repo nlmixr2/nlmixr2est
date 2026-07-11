@@ -899,6 +899,7 @@ public:
       }
     }
     niter = as<int>(x["niter"]);
+    saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
     nb_fixOmega = as<int>(x["nb_fixOmega"]);
     nb_fixResid = as<int>(x["nb_fixResid"]);
@@ -1167,7 +1168,10 @@ public:
   }
 
   void saem_fit() {
-    //arma_rng::set_seed(99);
+    // Seed Armadillo's RNG (used by the MCMC randn proposals below) from the
+    // control seed so a fit is deterministic regardless of the global arma RNG
+    // state left by a previous fit -- needed for bit-identical runs.
+    arma_rng::set_seed((arma::uword)saemSeed);
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
@@ -2988,6 +2992,7 @@ private:
 
   uvec nu;
   int niter;
+  int saemSeed = 99;
   int nPhase1;
   int nb_sa;
   int nb_correl;

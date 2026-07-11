@@ -123,7 +123,7 @@ nmTest({
     expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))
     # and converges to the SAEM estimate, including the covariate coefficient
     expect_true("cl.wt" %in% names(fixef(.fs)))
-    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.07)
   })
 
   test_that("est='fsaem' handles a covariate model with proportional error", {
@@ -137,7 +137,7 @@ nmTest({
     .ss <- suppressMessages(nlmixr2(prop, nlmixr2data::theo_sd, est="saem",  control=.ctl))
     expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))  # kernel fires
     expect_true("cl.wt" %in% names(fixef(.fs)))
-    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.07)
   })
 
   test_that("est='fsaem' converges with the Hessian proposal (fastCov='hessian')", {

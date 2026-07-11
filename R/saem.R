@@ -304,9 +304,15 @@
     .saemCheckCfg(.cfg)
     .cfg
   })
-  nlmixrWithTiming("saem", {
+  .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
+  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
+  # down so it does not leak into a later fit's solve state (reproducibility).
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+    try(vaeInnerFree_(), silent = TRUE)
+  }
+  .saemRes
   })
 }
 #' Get the saem control statement and install it into the ui
