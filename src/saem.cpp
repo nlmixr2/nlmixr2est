@@ -1847,14 +1847,29 @@ public:
 
         // f-SAEM: on active iterations, precondition phiM's random-effect columns
         // with the independent Metropolis-Hastings kernel (via the R closure that
-        // reuses the FOCEi inner MAP + proposal).  The standard random-walk
-        // kernels below then run as usual (so U_y/fsave stay consistent) -- this
-        // is the additive form; the firstN/throughout schedules select when it
-        // fires (see fsaemActive).
-        if (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn)) {
+        // reuses the FOCEi inner MAP + proposal).  For NORMAL data this is the
+        // additive form -- the random-walk kernels below still run.  For a GENERAL
+        // likelihood (distribution==4) the IMH proposal is already the calibrated
+        // posterior kernel, so it REPLACES the phi1 random walk: running both
+        // stacks extra exploration and inflates the between-subject variance.
+        bool imhFired = (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn));
+        bool imhReplacesRwm = (imhFired && distribution == 4);
+        if (imhFired) {
           fsaemImhStep(phiM);
+          if (imhReplacesRwm) {
+            // refresh predictions + DYF/U_y to match the IMH-updated phiM so the
+            // phi0 update and the M-step statistics stay consistent
+            fsave = user_fn(phiM, evt, optM).col(0);
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fk = fsave.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * stride;
+              DYF(indio_k) = -fk;
+            }
+            U_y = sum(DYF, 0).t();
+          }
         }
-        if(nphi1>0) {
+        if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
