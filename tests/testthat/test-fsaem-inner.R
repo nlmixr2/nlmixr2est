@@ -71,4 +71,43 @@ nmTest({
       expect_true(all(eigen(.map$gamma[[i]], only.values = TRUE)$values > 0))
     }
   })
+
+  test_that("fsaemInnerUpdate bridge: re-parameterizing theta/omega moves the MAP", {
+    skip_if_not_installed("nlmixr2data")
+    # The SAEM loop feeds the inner its current estimate as theta = [structural
+    # fixed effects, residual] (THETA order) and omega = diag(Gamma2).  Verify
+    # that update path re-parameterizes the inner correctly: a tighter prior must
+    # shrink every subject's MAP toward 0.
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .data <- nlmixr2data::theo_sd
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(one.cmt))
+    .N <- length(unique(.data$ID))
+    .ctl <- list(rxControl = rxode2::rxControl(), fastCov = "jacobian", fastLik = "focei",
+                 fastInnerIt = 100L, sumProd = FALSE, optExpression = TRUE, literalFix = FALSE,
+                 addProp = "combined2", eventSens = "jump", indTolRelax = TRUE,
+                 maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5)
+    .env <- .fsaemInnerSetup(.ui, .data, matrix(0, .N, 3L), .ctl)
+    on.exit(.fsaemInnerFree(), add = TRUE)
+    # thetaIni layout is [tka, tcl, tv, add.sd]
+    expect_equal(unname(.env$thetaIni), c(0.45, 1, 3.45, 0.7))
+
+    .wide <- .fsaemInnerMap(.ctl, 3L)$eta
+    .fsaemInnerUpdate(.env, theta = c(0.45, 1, 3.45, 0.7), omega = c(0.02, 0.02, 0.02),
+                      matrix(0, .N, 3L))
+    .tight <- .fsaemInnerMap(.ctl, 3L)$eta
+    # tighter prior -> MAP shrinks toward 0 in aggregate (the update re-solved the
+    # inner at the new omega; individual components balance prior vs likelihood)
+    expect_lt(sum(abs(.tight)), sum(abs(.wide)))
+    expect_gt(mean(abs(.tight) <= abs(.wide) + 1e-8), 0.6)
+  })
 })
