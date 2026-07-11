@@ -401,15 +401,111 @@ fit2 <- nlmixr(mod, dsn, est="nlm")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#> Error in (function (typsize = NULL, fscale = 1, print.level = 0, ndigit = NULL,     gradtol = 1e-06, stepmax = NULL, steptol = 1e-06, iterlim = 10000,     check.analyticals = FALSE, returnNlm = FALSE, solveType = c("hessian",         "grad", "fun"), stickyRecalcN = 4, maxOdeRecalc = 5,     odeRecalcFactor = 10^(0.5), indTolRelax = TRUE, eventType = c("central",         "forward"), shiErr = (.Machine$double.eps)^(1/3), shi21maxFD = 20L,     optimHessType = c("central", "forward"), hessErr = (.Machine$double.eps)^(1/3),     shi21maxHess = 20L, censOption = c("gauss", "laplace"), eventSens = c("jump",         "fd"), sensMethod = c("default", "forward", "adjoint"),     useColor = NULL, printNcol = NULL, print = 1L, normType = c("rescale2",         "mean", "rescale", "std", "len", "constant"), scaleType = c("nlmixr2",         "norm", "mult", "multAdd"), scaleCmax = 1e+05, scaleCmin = 1e-05,     scaleC = NULL, scaleTo = 1, gradTo = 1, rxControl = NULL,     optExpression = TRUE, sumProd = FALSE, literalFix = TRUE,     literalFixRes = TRUE, addProp = c("combined2", "combined1"),     calcTables = TRUE, compress = FALSE, covMethod = c("r", "nlm",         ""), adjObf = TRUE, ci = 0.95, sigdig = 4, sigdigTable = NULL,     boundedTransform = TRUE, ...) {    checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE,         len = 1)    checkmate::assertNumeric(hessErr, lower = 0, any.missing = FALSE,         len = 1)    checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE,         len = 1)    checkmate::assertIntegerish(shi21maxHess, lower = 1, any.missing = FALSE,         len = 1)    checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)    checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)    checkmate::assertLogical(literalFixRes, len = 1, any.missing = FALSE)    checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)    checkmate::assertNumeric(stepmax, lower = 0, len = 1, null.ok = TRUE,         any.missing = FALSE)    checkmate::assertIntegerish(print.level, lower = 0, upper = 2,         any.missing = FALSE)    checkmate::assertNumeric(ndigit, lower = 0, len = 1, any.missing = FALSE,         null.ok = TRUE)    checkmate::assertNumeric(gradtol, lower = 0, len = 1, any.missing = FALSE)    checkmate::assertNumeric(steptol, lower = 0, len = 1, any.missing = FALSE)    checkmate::assertIntegerish(iterlim, lower = 1, len = 1,         any.missing = FALSE)    checkmate::assertLogical(check.analyticals, len = 1, any.missing = FALSE)    checkmate::assertLogical(returnNlm, len = 1, any.missing = FALSE)    checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)    checkmate::assertLogical(compress, len = 1, any.missing = TRUE)    checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)    checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)    .xtra <- list(...)    .bad <- names(.xtra)    .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]    if (length(.bad) > 0) {        stop("unused argument: ", paste(paste0("'", .bad, "'",             sep = ""), collapse = ", "), call. = FALSE)    }    checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE,         lower = 0, len = 1)    checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE,         len = 1)    checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1,         any.missing = FALSE)    checkmate::assertLogical(indTolRelax, any.missing = FALSE,         len = 1)    .genRxControl <- FALSE    if (!is.null(.xtra$genRxControl)) {        .genRxControl <- .xtra$genRxControl    }    if (is.null(ndigit)) {        ndigit <- sigdig    }    if (is.null(rxControl)) {        if (!is.null(sigdig)) {            rxControl <- rxode2::rxControl(sigdig = sigdig)        }        else {            rxControl <- rxode2::rxControl(atol = 1e-04, rtol = 1e-04)        }        .genRxControl <- TRUE    }    else if (inherits(rxControl, "rxControl")) {    }    else if (is.list(rxControl)) {        rxControl <- do.call(rxode2::rxControl, rxControl)    }    else {        stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'",             call = FALSE)    }    if (!is.null(sigdig)) {        checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE,             any.missing = TRUE, len = 1)        if (is.null(sigdigTable)) {            sigdigTable <- round(sigdig)        }    }    if (is.null(sigdigTable)) {        sigdigTable <- 3    }    checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1,         any.missing = FALSE)    .solveTypeIdx <- c(hessian = 3L, grad = 2L, fun = 1L)    if (checkmate::testIntegerish(solveType, len = 1, lower = 1,         upper = 6, any.missing = FALSE)) {        solveType <- as.integer(solveType)    }    else {        solveType <- setNames(.solveTypeIdx[match.arg(solveType)],             NULL)    }    if (missing(covMethod) && any(solveType == 2:3)) {        covMethod <- "nlm"    }    else {        covMethod <- match.arg(covMethod)    }    .eventTypeIdx <- c(central = 2L, forward = 1L)    if (checkmate::testIntegerish(eventType, len = 1, lower = 1,         upper = 6, any.missing = FALSE)) {        eventType <- as.integer(eventType)    }    else {        eventType <- setNames(.eventTypeIdx[match.arg(eventType)],             NULL)    }    .optimHessTypeIdx <- c(central = 2L, forward = 1L)    if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1,         upper = 6, any.missing = FALSE)) {        optimHessType <- as.integer(optimHessType)    }    else {        optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)],             NULL)    }    if (checkmate::testIntegerish(censOption, len = 1, lower = 0,         upper = 1, any.missing = FALSE)) {        censOption <- as.integer(censOption)    }    else {        censOption <- setNames(c(gauss = 0L, laplace = 1L)[match.arg(censOption)],             NULL)    }    eventSens <- match.arg(eventSens)    sensMethod <- match.arg(sensMethod)    eventSens <- match.arg(eventSens)    sensMethod <- match.arg(sensMethod)    .iterPrintControl <- .absorbIterPrintControl(print = print,         printNcol = printNcol, useColor = useColor, iterPrintControl = .xtra$iterPrintControl)    if (checkmate::testIntegerish(scaleType, len = 1, lower = 1,         upper = 4, any.missing = FALSE)) {        scaleType <- as.integer(scaleType)    }    else {        .scaleTypeIdx <- c(norm = 1L, nlmixr2 = 2L, mult = 3L,             multAdd = 4L)        scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)],             NULL)    }    .normTypeIdx <- c(rescale2 = 1L, rescale = 2L, mean = 3L,         std = 4L, len = 5L, constant = 6L)    if (checkmate::testIntegerish(normType, len = 1, lower = 1,         upper = 6, any.missing = FALSE)) {        normType <- as.integer(normType)    }    else {        normType <- setNames(.normTypeIdx[match.arg(normType)],             NULL)    }    checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE,         len = 1)    checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE,         len = 1)    if (!is.null(scaleC)) {        checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)    }    checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)    checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)    .ret <- list(covMethod = covMethod, typsize = typsize, fscale = fscale,         print.level = print.level, ndigit = ndigit, gradtol = gradtol,         stepmax = stepmax, steptol = steptol, iterlim = iterlim,         check.analyticals = check.analyticals, optExpression = optExpression,         literalFix = literalFix, literalFixRes = literalFixRes,         sumProd = sumProd, rxControl = rxControl, returnNlm = returnNlm,         stickyRecalcN = as.integer(stickyRecalcN), maxOdeRecalc = as.integer(maxOdeRecalc),         odeRecalcFactor = odeRecalcFactor, indTolRelax = indTolRelax,         eventType = eventType, shiErr = shiErr, shi21maxFD = as.integer(shi21maxFD),         optimHessType = optimHessType, hessErr = hessErr, shi21maxHess = as.integer(shi21maxHess),         censOption = censOption, eventSens = eventSens, sensMethod = sensMethod,         eventSens = eventSens, sensMethod = sensMethod, iterPrintControl = .iterPrintControl,         scaleType = scaleType, normType = normType, scaleCmax = scaleCmax,         scaleCmin = scaleCmin, scaleC = scaleC, scaleTo = scaleTo,         gradTo = gradTo, addProp = match.arg(addProp), calcTables = calcTables,         compress = compress, solveType = solveType, ci = ci,         sigdig = sigdig, sigdigTable = sigdigTable, genRxControl = .genRxControl,         boundedTransform = boundedTransform)    class(.ret) <- "nlmControl"    .ret})(covMethod = "nlm", typsize = NULL, fscale = 1, print.level = 0,     ndigit = 4, gradtol = 1e-06, stepmax = NULL, steptol = 1e-06,     iterlim = 10000, check.analyticals = FALSE, optExpression = TRUE,     literalFix = TRUE, literalFixRes = TRUE, sumProd = FALSE,     rxControl = structure(list(scale = NULL, method = c(liblsoda = 2L),         atol = 5e-07, rtol = 5e-07, maxsteps = 70000L, hmin = 0,         hmax = NA_real_, hini = 0, maxordn = 12L, maxords = 5L,         covsInterpolation = c(locf = 1L), addCov = TRUE, returnType = c(rxSolve = 0L),         sigma = NULL, sigmaDf = NULL, nCoresRV = 1L, sigmaIsChol = FALSE,         sigmaSeparation = "auto", sigmaXform = c(identity = 4L),         nDisplayProgress = 10000L, amountUnits = NA_character_,         timeUnits = "hours", addDosing = FALSE, stateTrim = Inf,         updateObject = FALSE, omega = NULL, omegaDf = NULL, omegaIsChol = FALSE,         omegaSeparation = "auto", omegaXform = c(variance = 6L),         nSub = 1L, thetaMat = NULL, thetaDf = NULL, thetaIsChol = FALSE,         nStud = 1L, dfSub = 0, dfObs = 0, seed = NULL, nsim = NULL,         minSS = 10L, maxSS = 10000L, strictSS = 1L, infSSstep = 12,         istateReset = TRUE, subsetNonmem = TRUE, hmaxSd = 0,         maxAtolRtolFactor = 0.1, from = NULL, to = NULL, by = NULL,         length.out = NULL, iCov = NULL, keep = NULL, keepF = character(0),         drop = NULL, warnDrop = TRUE, omegaLower = -Inf, omegaUpper = Inf,         sigmaLower = -Inf, sigmaUpper = Inf, thetaLower = -Inf,         thetaUpper = Inf, indLinPhiM = 0L, indLinPhiTol = 1e-07,         indLinMatExpType = c(expokit = 2L), indLinMatExpOrder = 6L,         idFactor = TRUE, mxhnil = 0L, hmxi = 0, warnIdSort = TRUE,         ssAtol = 5e-05, ssRtol = 5e-05, safeZero = 1L, sumType = c(pairwise = 1L),         prodType = c(`long double` = 1L), resample = NULL, resampleID = TRUE,         maxwhile = 100000L, cores = 0L, atolSens = 1.58113883008419e-06,         rtolSens = 1.58113883008419e-06, ssAtolSens = 0.000210848251714291,         ssRtolSens = 0.000210848251714291, simVariability = NA,         nLlikAlloc = NULL, useStdPow = 0L, naTimeHandle = c(ignore = 1L),         addlKeepsCov = FALSE, addlDropSs = TRUE, ssAtDoseTime = TRUE,         ss2cancelAllPending = FALSE, naInterpolation = c(locf = 1L),         keepInterpolation = c(na = 2L), safeLog = 1L, safePow = 1L,         ssSolved = TRUE, linCmtSensType = c(auto = 100L), linCmtSensH = 1e-04,         linCmtGillFtol = 0, linCmtGillK = 20L, linCmtGillStep = 4,         linCmtGillRtol = 1.49011611938477e-08, linCmtShiErr = 1.49011611938477e-08,         linCmtShiMax = 20L, linCmtScale = c(0, 0, 0, 0, 0, 0,         0), linCmtHcmt = 1L, linCmtHmeanI = c(geometric = 2L),         linCmtHmeanO = c(geometric = 2L), linCmtSuspect = 1e-06,         linCmtForwardMax = 2L, indOwnAlloc = -1L, maxExtra = 1000L,         tolFactor = NULL, serializeFile = NULL, dense = FALSE,         cvodeLinSolver = c(dense = 1L), stiff2 = 0L, autoSwitchMaxStiff = 10L,         autoSwitchMaxNonstiff = 3L, autoSwitchStiffFirst = 0L,         autoSwitchNonstifftol = 0.9, autoSwitchStifftol = 0.9,         autoSwitchDtfac = 2, autoSwitchSwitchMax = 5L, useLinCmt = TRUE,         file = NULL, chunkSize = NULL, parallel = 0L, .zeros = NULL), class = "rxControl"),     returnNlm = FALSE, stickyRecalcN = 4L, maxOdeRecalc = 5L,     odeRecalcFactor = 3.16227766016838, indTolRelax = TRUE, eventType = 2L,     shiErr = 6.05545445239334e-06, shi21maxFD = 20L, optimHessType = 2L,     hessErr = 6.05545445239334e-06, shi21maxHess = 20L, censOption = 0L,     eventSens = "jump", sensMethod = "default", eventSens = "jump",     sensMethod = "default", iterPrintControl = structure(list(        every = 1L, ncol = 4L, headerEvery = 10L, useColor = TRUE,         simple = FALSE), class = c("iterPrintControl", "list"    )), scaleType = 2L, normType = 1L, scaleCmax = 1e+05, scaleCmin = 1e-05,     scaleC = NULL, scaleTo = 1, gradTo = 1, addProp = "combined2",     calcTables = TRUE, compress = FALSE, solveType = 3L, ci = 0.95,     sigdig = 4, sigdigTable = 4, genRxControl = TRUE, boundedTransform = TRUE): formal argument "eventSens" matched by multiple actual arguments
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of population log-likelihood model...
+#> ✔ done
+#> → calculate ∂(f)/∂(θ)
+#> → finding duplicate expressions in nlm llik gradient...
+#> → optimizing duplicate expressions in nlm llik gradient...
+#> → finding duplicate expressions in nlm pred-only...
+#> → optimizing duplicate expressions in nlm pred-only...
+#>  
+#>  
+#>  
+#>  
+#> → calculating covariance
+#> ✔ done
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of full model...
+#> ✔ done
+#> → finding duplicate expressions in EBE model...
+#> → optimizing duplicate expressions in EBE model...
+#> → compiling EBE model...
+#>  
+#>  
+#> ✔ done
+#> → Calculating residuals/tables
+#> ✔ done
 
 print(fit2)
-#> Error: object 'fit2' not found
+#> ── nlmixr² log-likelihood nlm ──
+#> 
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -694.6078 1149.269 1163.993      -571.6346         1507332        182338.6
+#> 
+#> ── Time (sec $time): ──
+#> 
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.2798983 0.4900495   5.11e-06      0.043       0.015 0.025    0.001
+#>              other
+#> elapsed 0.08404712
+#> 
+#> ── ($parFixed or $parFixedDf): ──
+#> 
+#>        Est.    SE  %RSE Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.5944 5.871 987.6  -0.5944 (-12.1, 10.91)                    
+#> Em    6.666 150.7  2260     6.666 (-288.6, 302)                    
+#> E50   3.369 69.48  2063   3.369 (-132.8, 139.6)                    
+#> g         2 FIXED FIXED                       2                    
+#>  
+#>   Covariance Type ($covMethod): r (nlm)
+#>   Censoring ($censInformation): No censoring
+#>   Minimization message ($message):  
+#>     relative gradient is close to zero, current iterate is probably solution 
+#> 
+#> ── Fit Data (object is a modified tibble): ──
+#> # A tibble: 1,000 × 5
+#>   ID      TIME    DV  IPRED      v
+#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
+#> 1 1     0.0489     0 -0.440 -0.593
+#> 2 1     0.0679     0 -0.440 -0.592
+#> 3 1     0.0702     0 -0.441 -0.592
+#> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$nlm
-#> Error: object 'fit2' not found
+#> $minimum
+#> [1] 571.6346
+#> 
+#> $estimate
+#>         E0         Em        E50 
+#> -0.5944068  6.6657167  3.3686993 
+#> 
+#> $gradient
+#> [1]  4.765888e-07  5.031946e-07 -1.131376e-05
+#> 
+#> $hessian
+#>               E0           Em          E50
+#> E0   0.001743597  0.002165833 -0.005918827
+#> Em   0.002165833  0.006223164 -0.015061941
+#> E50 -0.005918827 -0.015061941  0.034580054
+#> 
+#> $code
+#> [1] 1
+#> 
+#> $iterations
+#> [1] 8
+#> 
+#> $scaleC
+#> [1] 0.002960831 0.038793625 0.034657450
+#> 
+#> $estimate.scaled
+#>         E0         Em        E50 
+#> -370.62819  157.93634   40.49221 
+#> 
+#> $cov.scaled
+#>          E0       Em     E50
+#> E0  3931226  7695046 3973195
+#> Em  7695046 15083052 7786074
+#> E50 3973195  7786074 4019544
+#> 
+#> $r
+#>                E0           Em          E50
+#> E0   0.0008717987  0.001082916 -0.002959414
+#> Em   0.0010829163  0.003111582 -0.007530971
+#> E50 -0.0029594137 -0.007530971  0.017290027
+#> 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters
