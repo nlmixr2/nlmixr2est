@@ -402,6 +402,31 @@ test_that("mu-referenced covariate coefficients reuse eta sensitivities (bare + 
   chk(mAlg, "cl.wt")
 })
 
+test_that("a mu-referenced parameter with a shared eta stays analytic (own direction)", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # eta.cl is shared across cl and v, so df/dtcl (cl only) != df/deta.cl (cl and v).  The mu-ref
+  # theta must NOT reuse eta.cl's sensitivity (that gave a wrong gradient/covariance for tcl);
+  # it gets its own direction instead, so the analytic gradient and covariance stay analytic and
+  # correct -- matching the finite-difference covariance.
+  mShared <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.1); tv <- log(8); eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + 0.7 * eta.cl)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) })
+  }
+  ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 4)
+  ctlFd <- foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 4)
+  fitA <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlA))
+  fitFd <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlFd))
+  expect_identical(fitA$covMethod, "analytic")           # stayed analytic (theta got its own direction)
+  seA <- sqrt(diag(fitA$cov)); seFd <- sqrt(diag(fitFd$cov))
+  nm <- intersect(names(seA), names(seFd))
+  expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
+  expect_equal(unname(seA[nm]), unname(seFd[nm]), tolerance = 0.05)  # matches the finite-difference cov
+})
+
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")

@@ -17,6 +17,13 @@
   (time-varying covariates, a shared/reused eta).  The analytic covariance also now
   restricts itself to Gaussian endpoints (`t`/`cauchy`/count/ordinal likelihoods and
   multiple estimated transform lambdas fall back to the finite-difference covariance).
+- Fixed the analytic (`fast=TRUE`) outer gradient and covariance being wrong for a
+  model where a mu-referenced parameter's random effect is shared across parameters
+  (e.g. `eta.cl` used in both `cl` and `v`).  The mu-referenced theta reused that eta's
+  state sensitivity, but `df/dtheta` (one parameter) differs from `df/deta` (all the
+  parameters the eta appears in), so the gradient/covariance for that theta was
+  incorrect.  Such a theta now gets its own true-sensitivity direction (the eta keeps
+  its own), so the gradient and covariance stay analytic and are correct.
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the

@@ -111,12 +111,44 @@
         as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
 }
 
+#' Literal occurrence count of each diagonal eta across the model RHS.
+#'
+#' The sensitivity direction-reuse identities -- a mu-ref theta reusing its eta's
+#' direction (`df/dtheta = df/deta`) and a mu-ref covariate coefficient scaling it
+#' (`df/db = cov*df/deta`) -- are exact only when the eta enters the model through a
+#' single additive position.  An eta shared across parameters (e.g. `eta.cl` in both
+#' `cl` and `v`) makes `df/dtheta` (one parameter) differ from `df/deta` (all of
+#' them), so the reuse would be wrong.  rxode2's mu-reference frames still map such an
+#' eta, so its multiplicity is counted here.  Named by the diagonal-eta names in
+#' `neta1` order; `2L` (conservative ">1") when `lstExpr` is unavailable.
+#' @noRd
+.foceiEtaOccurrence <- function(ui) {
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  .idf <- ui$iniDf
+  .etaRows <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
+  .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
+  .count <- function(.e, .nm) {
+    if (is.name(.e)) return(as.integer(identical(as.character(.e), .nm)))
+    if (is.call(.e)) return(sum(vapply(as.list(.e)[-1L], .count, integer(1), .nm)))
+    0L
+  }
+  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
+    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")))
+  stats::setNames(vapply(as.character(.etaRows$name), function(.n)
+    if (is.null(.lst)) 2L else sum(vapply(.lst, function(.ex)
+      if (.isAssign(.ex)) .count(.ex[[3]], .n) else 0L, integer(1))), integer(1)),
+    as.character(.etaRows$name))
+}
+
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
 #' eta (ETA_i_) plus one per non-mu-ref structural theta (THETA_j_); a mu-ref theta
 #' reuses its eta's direction (so a fully mu-ref model has ndir == neta).  Sigma and
-#' IOV SD thetas (`sgName`/`iovVars`) are not structural.  `NULL` if none remain.
+#' IOV SD thetas (`sgName`/`iovVars`) are not structural.  `sharedEta` is a logical
+#' flag per diagonal eta (in `neta1` order) marking an eta reused across parameters,
+#' for which the theta reuse is invalid.  `NULL` if none remain.
 #' @noRd
-.foceiAnalyticDirections <- function(ini, thetaForEta, sgName, neta, iovVars = character(0)) {
+.foceiAnalyticDirections <- function(ini, thetaForEta, sgName, neta, iovVars = character(0),
+                                     sharedEta = logical(0)) {
   thRows <- ini[!is.na(ini$ntheta), , drop = FALSE]
   thRows <- thRows[order(thRows$ntheta), , drop = FALSE]
   thStructRows <- thRows[!.iniIsFixed(ini, thRows$name) & !(thRows$name %in% sgName) &
@@ -131,7 +163,15 @@
     if (length(.mt) > 1L)                           # shared by >1 eta -> summing routes NYI, fall back to FD
       return(.foceiAnalyticFallback("a structural parameter mu-referenced by more than one random effect"))
     k <- if (length(.mt) == 1L) .mt else NA_integer_
-    if (!is.na(k)) {
+    # A mu-ref theta reuses its eta's state-sensitivity direction for free (df/dtheta = df/deta,
+    # since theta and eta enter the mu identically) -- but ONLY when the eta enters the model in a
+    # single additive position.  A shared eta (e.g. eta.cl in both cl and v) makes df/dtheta (this
+    # parameter only) differ from df/deta (all parameters the eta appears in), so the reuse is
+    # invalid; treat the theta as non-mu and give it its OWN true-sensitivity direction (the eta
+    # keeps its own, correct, direction).  Stays analytic -- just one extra direction for that
+    # theta, only in the rare shared-eta case.
+    .reuse <- !is.na(k) && !(k <= length(sharedEta) && isTRUE(sharedEta[k]))
+    if (.reuse) {
       dirTh[p] <- k                                 # reuse eta k's direction (free)
     } else {
       nonMuTheta <- c(nonMuTheta, paste0("THETA_", thStructRows$ntheta[p], "_"))
@@ -572,7 +612,8 @@
     # Uniform direction assembly (shared with the standalone oracle).  IOV variance
     # thetas are NOT structural (predictor) thetas: they never get a THETA_j_ direction
     # (the occasion-eta sensitivities already carry the w factor).
-    .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta, iovVars)
+    .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta, iovVars,
+                                     sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
     if (is.null(.dir)) return(NULL)
     thStruct <- .dir$thStruct
     dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
@@ -966,26 +1007,16 @@
     .grab(tryCatch(ui$muRefCovariateDataFrame, error = function(e) NULL), "covariate"),
     .grab(tryCatch(ui$mu2RefCovariateReplaceDataFrame, error = function(e) NULL), "covariate")))
   if (is.null(.cov) || nrow(.cov) == 0L) return(list())
-  # eta-occurrence guard: the only structure the rxode2 frames don't encode.  Count literal eta
-  # uses across all model RHS; an eta used more than once (shared across parameters) breaks the
-  # scaling.  If lstExpr is unavailable, be conservative (treat as reused -> no reuse).
-  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
-  .countSym <- function(.e, .nm) {
-    if (is.name(.e)) return(as.integer(identical(as.character(.e), .nm)))
-    if (is.call(.e)) return(sum(vapply(as.list(.e)[-1L], .countSym, integer(1), .nm)))
-    0L
-  }
-  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
-    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")))
-  .etaOcc <- function(.etN) if (is.null(.lst)) 2L else sum(vapply(.lst, function(.ex)
-    if (.isAssign(.ex)) .countSym(.ex[[3]], .etN) else 0L, integer(1)))
-  .etaOk <- new.env(); .res <- list(); .dup <- character(0)
+  # eta-occurrence guard: the only structure the rxode2 frames don't encode.  An eta used more
+  # than once (shared across parameters) breaks the scaling; `.foceiEtaOccurrence` counts literal
+  # uses (2L, i.e. ">1", when lstExpr is unavailable, so the guard is conservative).  The same
+  # helper gates the mu-ref *theta* reuse in `.foceiAnalyticDirections`.
+  .eo <- .foceiEtaOccurrence(ui)
+  .res <- list(); .dup <- character(0)
   for (.r in seq_len(nrow(.cov))) {
     .etN <- .theta2eta[[.cov$theta[.r]]]; if (is.null(.etN) || is.na(.etN)) next
     .ed <- .eta2Dir[[.etN]]; if (is.null(.ed) || !(.ed %in% fDirs)) next
-    .ok <- get0(.etN, envir = .etaOk, inherits = FALSE)          # cache the eta-occurrence check
-    if (is.null(.ok)) { .ok <- (.etaOcc(.etN) == 1L); assign(.etN, .ok, envir = .etaOk) }
-    if (!.ok) next                                                # eta reused elsewhere -> not exact
+    if (!identical(.eo[[.etN]], 1L)) next                        # eta shared/reused -> scaling not exact
     .nt <- .ini$ntheta[.ini$name == .cov$coef[.r]]; if (length(.nt) != 1L || is.na(.nt)) next
     .cd <- paste0("THETA_", .nt, "_"); if (!(.cd %in% fDirs) || .cd %in% .dup) next
     .new <- list(etaDir = .ed, scale = .cov$scale[.r])
@@ -2153,7 +2184,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   omd <- .omegaVarCovDeriv(Om, pairs)
 
   # Uniform direction assembly (shared with the production covType="analytic" hook).
-  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta)
+  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta,
+                                   sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
   if (is.null(.dir)) return(NULL)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh
   ndir <- .dir$ndir; nth <- .dir$nth

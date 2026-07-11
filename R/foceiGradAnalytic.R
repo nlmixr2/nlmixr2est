@@ -614,7 +614,8 @@
   ef$ev <- local({ v <- .valc; function(expr, f, y, f0 = f) eval(expr, c(list(f = f, y = y, f0 = f0), as.list(v))) })
   if (any(.iniIsFixed(ini, thetaForEta))) return(NULL)
   keep <- !.iniIsFixed(ini, ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]
-  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta)
+  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta,
+                                   sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
   if (is.null(.dir)) return(NULL)
   # multiple estimated lambdas (per-endpoint) need an endpoint->lambda DV mapping not yet
   # wired; keep those on FD.  A single estimated lambda is the ported case.
@@ -711,7 +712,8 @@
   .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
   if (neta == 0L) return(NULL)
   if (length(.uiIovEnv$iovVars) > 0L) return(NULL)
-  .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, ef$sgName, neta)
+  .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, ef$sgName, neta,
+                           sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
 }
 
 #' Build the augmented outer-gradient sensitivity model (compiled model + `dirs` +
