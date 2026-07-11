@@ -205,13 +205,17 @@
     .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
     .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
     cfg$fsaemInnerEnv <- .setup$env
+    .lo <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
+    .up <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
+    .nb <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
     cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
+      # R re-parameterizes the mprior-as-data inner (data rebuild + setup); the
+      # numeric MAP + IMH orchestration then runs in C++ (fsaemMapImhCpp_).
       .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
-      .map <- .fsaemInnerMap(.fc, .neta)
-      .imh <- .fsaemImh(.map, etaCur, as.integer(nchain), as.integer(nsweep),
-                        mprior = mpriorMat, bounds = .bounds, seed = .seed,
-                        nRetry = .nRetry, kiter = as.integer(kiter))
-      .imh$eta
+      .cores <- as.integer(rxode2::getRxThreads())
+      if (is.na(.cores) || .cores < 1L) .cores <- 1L
+      fsaemMapImhCpp_(mpriorMat, etaCur, as.integer(nchain), as.integer(nsweep), .cores,
+                      .lo, .up, .nb, as.double(.seed), as.integer(.nRetry), as.integer(kiter))
     }
     return(cfg)
   }
