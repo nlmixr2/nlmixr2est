@@ -398,16 +398,15 @@ test_that("M7: multiple endpoints with more structural thetas than etas (pool si
   .fi <- suppressWarnings(nlmixr2(mpkpd, .dat, "impmap",
                                   impmapControl(print = 0L, nIter = 20L, isample = 300L)))
   expect_true(inherits(.fi, "nlmixr2FitCore"))
-  # impOuter forces the pool-sizing E-step serial, so the WITHIN-fit thread race is
-  # gone.  A residual cross-fit leak remains, though: the prior PARALLEL FOCEI fit
-  # leaves thread-count-dependent solve-pool state that this fit inherits and that
-  # can non-deterministically reject a subject's samples (neff collapse).  Fully
-  # serial the sequence is deterministic and clean; under parallelism it is flaky.
-  # When it triggers, skip the numeric checks rather than assert against a poisoned
-  # fit (tracked as the deferred cross-fit state leak).
+  # This fit runs after a prior parallel FOCEI fit.  Two bugs used to degrade it
+  # non-deterministically: the within-fit pool-sizing thread race (fixed by forcing
+  # this path serial) and, underneath, rxode2 LSODA work memory left uninitialised
+  # (malloc) that the extreme-eta E-step solves read (fixed by zeroing it, calloc).
+  # With both fixed the fit is deterministic and every subject keeps a healthy
+  # effective sample size regardless of thread count.
   .neffFrac <- .fi$env$impNeff / .fi$env$impNsample
-  skip_if(anyNA(.neffFrac) || min(.neffFrac) < 0.9,
-          "impmap: cross-model-fit state leak (prior parallel fit) degraded this fit")
+  expect_false(anyNA(.neffFrac))
+  expect_true(min(.neffFrac) > 0.9)
   # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
   expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
                fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
