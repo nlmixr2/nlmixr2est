@@ -15,6 +15,7 @@ rpemControl(
   rtol = 1e-08,
   cores = 1L,
   impInflate = 0,
+  cLoop = FALSE,
   ...
 )
 }
@@ -45,6 +46,14 @@ iteration's posterior mean with that variance-inflation factor -- and
 importance-weights, improving posterior-tail coverage for high-variance random
 effects in multi-eta models (whose largest Omega prior sampling under-estimates).
 Experimental: a partial mitigation, not a full fix (see design/rpem/04).}
+
+\item{cLoop}{Run the whole E-M loop in C++ (`TRUE`) for the additive/proportional,
+diagonal-omega, mu-referenced core -- the eta draw uses rxode2's per-thread threefry
+engine with a deterministic per-(iteration, subject) seed, so it is thread-safe and
+reproducible for any core count, and the per-iteration R round-trip is avoided.
+`FALSE` (default) uses the R-driven loop, which also covers covariates, non-mu-ref /
+structural / mixture / multi-endpoint / censored / mode-centered cases the C++ loop
+does not yet handle (it silently falls back to the R loop for those).}
 
 \item{...}{Ignored (reserved for future options).}
 }
