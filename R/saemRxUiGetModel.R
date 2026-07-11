@@ -83,6 +83,7 @@
 #'
 #' @param ui rxode2 ui
 #' @param noCovs Do not look for covariates
+#' @param keepEtas Keep the mu-referenced etas
 #' @return model line expression with mu referenced information dropped.
 #' @author Matthew L. Fidler
 #' @keywords internal
@@ -147,12 +148,13 @@ nmGetDistributionSaemLines.norm <- function(line) {
   }
   return(list(bquote(rx_pred_ <- .(.var))))
 }
-
+#' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.t <- function(line) {
   stop("t isn't supported yet")
 }
 
+#' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.LL <- function(line) {
   # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's

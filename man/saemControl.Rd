@@ -26,7 +26,7 @@ saemControl(
   addProp = c("combined2", "combined1"),
   tol = 1e-06,
   itmax = 30,
-  type = c("nelder-mead", "newuoa"),
+  type = c("newuoa", "nelder-mead"),
   powRange = 10,
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
@@ -57,6 +57,11 @@ saemControl(
   fastCov = c("auto", "jacobian", "hessian"),
   fastIter = 20L,
   fastLik = c("focei", "foce", "focep"),
+  lbfgsLmm = 5L,
+  lbfgsFactr = NULL,
+  lbfgsPgtol = NULL,
+  lbfgsMaxIter = 20L,
+  nRetry = 10L,
   ...
 )
 }
@@ -404,6 +409,27 @@ schedules.}
 `"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
 individual likelihood is reused to build the proposal (and, when the
 Hessian path is active, reported by SAEM).}
+
+\item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
+memory) used when refining the fixed-effect-only parameters of a general
+log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
+optimization of the observation likelihood.  Default 5.}
+
+\item{lbfgsFactr}{Convergence tolerance on the relative reduction in the
+objective for that L-BFGS-B refinement (the `factr` control, in units of
+machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
+same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).}
+
+\item{lbfgsPgtol}{Convergence tolerance on the projected gradient for that
+L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
+derived from `sigdig` (`10^(-sigdig - 1)`).}
+
+\item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
+refinement.  Default 20.}
+
+\item{nRetry}{Integer number of times a bounded log-likelihood parameter's
+f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+bounds before being clamped to the violated boundary.  Default 10.}
 
 \item{...}{Other arguments to control SAEM.}
 }

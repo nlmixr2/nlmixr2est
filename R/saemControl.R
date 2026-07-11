@@ -259,6 +259,27 @@
 #'   individual likelihood is reused to build the proposal (and, when the
 #'   Hessian path is active, reported by SAEM).
 #'
+#' @param lbfgsLmm Integer number of BFGS corrections (the L-BFGS-B `lmm`
+#'   memory) used when refining the fixed-effect-only parameters of a general
+#'   log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
+#'   optimization of the observation likelihood.  Default 5.
+#'
+#' @param lbfgsFactr Convergence tolerance on the relative reduction in the
+#'   objective for that L-BFGS-B refinement (the `factr` control, in units of
+#'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
+#'   same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).
+#'
+#' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
+#'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
+#'   derived from `sigdig` (`10^(-sigdig - 1)`).
+#'
+#' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
+#'   refinement.  Default 20.
+#'
+#' @param nRetry Integer number of times a bounded log-likelihood parameter's
+#'   f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+#'   bounds before being clamped to the violated boundary.  Default 10.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
