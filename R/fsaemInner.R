@@ -109,15 +109,27 @@
 .fsaemSupported <- function(ui) {
   .pred <- ui$predDf
   if (is.null(.pred) || length(.pred$cond) != 1L) return(FALSE) # single endpoint
-  if (!all(.pred$distribution == "norm")) return(FALSE)         # continuous normal (Hessian path TODO)
+  if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
+  # General log-likelihood endpoint (ll() ~ expr, distribution=="LL"): the inner
+  # supplies the observation likelihood, so the fast kernel handles it even
+  # though plain saem cannot.  It must run throughout (distribution=4 path) --
+  # forced in .fsaemGeneralLik / the control.
+  if (.pred$distribution == "LL") return(TRUE)
+  if (!all(.pred$distribution == "norm")) return(FALSE)         # else continuous normal
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
   # mu-ref covariates are supported: non-time-varying ones are absorbed into the
   # per-subject mprior data, time-varying ones are kept as inner regressor betas
   # refreshed from the live Plambda each iteration.
-  if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
   TRUE
+}
+
+#' TRUE when the fit uses a general log-likelihood endpoint (distribution=4 path)
+#' @noRd
+.fsaemGeneralLik <- function(ui) {
+  .pred <- ui$predDf
+  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution == "LL"
 }
 
 #' Build the f-SAEM fast-simulation step for a SAEM fit and attach it to `cfg`.

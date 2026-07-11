@@ -100,7 +100,7 @@
 .configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
                        rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
-                       distribution = c("normal", "poisson", "binomial"),
+                       distribution = c("normal", "poisson", "binomial", "general"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
@@ -146,7 +146,9 @@
   rxControl <- do.call(rxode2::rxControl, rxControl)
   rxControl$envir <- .env
   set.seed(seed)
-  distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
+  # "general" (=4) = general log-likelihood endpoint driven off the FOCEi inner
+  # (fsaem only); the E-step/M-step take the inner path, not a normal residual.
+  distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
   .data <- data

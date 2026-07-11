@@ -373,6 +373,9 @@ rxUiGet.saemResMod <- function(x, ...) {
   .predDf <- .ui$predDf
   vapply(seq_along(.predDf$errType),
          function(i) {
+           # general log-likelihood endpoint (ll() ~ expr): no residual error
+           # parameter -- the inner supplies the likelihood (distribution=4 path)
+           if (.predDf$distribution[i] == "LL") return(0L)
            .errType <- as.integer(.predDf$errType[i])
            .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
                                                      "logit + yeoJohnson",
@@ -423,6 +426,7 @@ attr(rxUiGet.saemArCor, "rstudio") <- 0.0
 rxUiGet.saemModNumEst <- function(x, ...) {
   .resMod <- rxUiGet.saemResMod(x, ...)
   vapply(.resMod, function(i) {
+    if (i == 0L) return(0L) # general log-likelihood endpoint: no residual params
     switch(i,
            1L, # add = 1
            1L, # prop = 2

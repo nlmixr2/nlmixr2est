@@ -120,7 +120,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -151,6 +151,18 @@ nmGetDistributionSaemLines.norm <- function(line) {
 #' @export
 nmGetDistributionSaemLines.t <- function(line) {
   stop("t isn't supported yet")
+}
+
+#' @export
+nmGetDistributionSaemLines.LL <- function(line) {
+  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
+  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
+  # instead of a Gaussian mean.  Only fsaem (which drives the E-step off this
+  # general likelihood via the FOCEi inner) can fit such an endpoint; plain saem
+  # has no observation-loss kernel for it -- see .fsaemSupported / distribution=4.
+  .ui <- line[[1]]
+  .errNum <- line[[3]]
+  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
 }
 
 #' @export

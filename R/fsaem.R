@@ -58,7 +58,12 @@ getValidNlmixrCtl.fsaem <- function(control) {
 #' @export
 nlmixr2Est.fsaem <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fsaem'", .var.name=.ui$modelName)
+  # fsaem can fit a general log-likelihood endpoint (ll() ~ expr) via the FOCEi
+  # inner (the fast kernel supplies the observation likelihood); only require a
+  # (transformably) normal model for the ordinary continuous case.
+  if (!.fsaemGeneralLik(.ui)) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fsaem'", .var.name=.ui$modelName)
+  }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'fsaem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'fsaem'", .var.name=.ui$modelName)

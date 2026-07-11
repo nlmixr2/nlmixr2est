@@ -212,7 +212,7 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution="normal",
+                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -238,7 +238,7 @@
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
-                        resFixed=ui$saemResFixed,
+                        resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
                         mixProb=ui$saemMixProb,
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
@@ -249,7 +249,10 @@
                         omegaShareSubpop=ui$saemOmegaShareSubpop,
                         fast=rxode2::rxGetControl(ui, "fast", FALSE),
                         fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
-                        fastKernel=rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        # a general log-likelihood endpoint has no normal do_mcmc
+                        # fallback, so the fast kernel must run every iteration
+                        fastKernel=if (.fsaemGeneralLik(ui)) "throughout"
+                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
                         fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
                         fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$cres <- ui$saemCres
@@ -259,7 +262,9 @@
     .cfg$hi <- ui$saemHi
     .cfg$propT <- ui$saemPropT
     .cfg$addProp <- ui$saemAddProp
-    .cfg$resValue <- ui$saemResValue
+    # a general log-likelihood endpoint has no residual params, so these are
+    # empty; coerce NULL to the typed empty the config checks expect
+    .cfg$resValue <- as.numeric(ui$saemResValue)
     # Iteration-print flows through the shared scaleApplyIterPrintControl
     # (src/scale.h); U auto-skips since Plambda has no optimizer scaling,
     # leaving # and X. xform (xPar/probitIdx/bounds) drives the X row's
