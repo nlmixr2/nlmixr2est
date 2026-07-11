@@ -678,6 +678,11 @@ test_that("est=\"imp\": importance-sampling EM without the MAP search", {
   expect_equal(unname(fixef(.fi)["tcl"]), unname(fixef(.ff)["tcl"]), tolerance = 0.05)
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  # the published objective is the converged FOCEi evaluation, on the same scale
+  # as focei (a stale initial-MAP objective used to leak through the finalize and
+  # get the n*log(2*pi) adjustment applied twice)
+  expect_equal(.fi$objf, .ff$objf, tolerance = 0.01)
+  expect_equal(as.numeric(logLik(.fi)), as.numeric(logLik(.ff)), tolerance = 0.01)
 })
 
 test_that("Bounds and fixed parameters are respected (theta bounds, fix(theta), fix(omega))", {
