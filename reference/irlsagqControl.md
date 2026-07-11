@@ -258,7 +258,7 @@ irlsagqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55cb49d7b350>
+#> <bytecode: 0x55934656ad68>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
