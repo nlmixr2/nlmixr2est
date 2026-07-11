@@ -670,6 +670,7 @@ test_that("est=\"imp\": importance-sampling EM without the MAP search", {
                                   impControl(print = 0L, nIter = 40L, isample = 500L)))
   expect_true(inherits(.fi, "nlmixr2FitCore"))
   expect_equal(.fi$env$impmapControl$mapIter, 0L)   # imp == no MAP re-centering
+  expect_equal(.fi$env$method, "imp")               # print header labels the method
   expect_true(all(is.finite(fixef(.fi))))
   # the non-mu structural theta + residual sigma move off their initial values and
   # match FOCEI (this is the path that needs the theta-sensitivity model built)
@@ -677,6 +678,11 @@ test_that("est=\"imp\": importance-sampling EM without the MAP search", {
   expect_equal(unname(fixef(.fi)["tcl"]), unname(fixef(.ff)["tcl"]), tolerance = 0.05)
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  # the published objective is the converged FOCEi evaluation, on the same scale
+  # as focei (a stale initial-MAP objective used to leak through the finalize and
+  # get the n*log(2*pi) adjustment applied twice)
+  expect_equal(.fi$objf, .ff$objf, tolerance = 0.01)
+  expect_equal(as.numeric(logLik(.fi)), as.numeric(logLik(.ff)), tolerance = 0.01)
 })
 
 test_that("Bounds and fixed parameters are respected (theta bounds, fix(theta), fix(omega))", {
@@ -724,4 +730,11 @@ test_that("Parameter history is captured as the standard $parHist", {
   # the objective and the estimates are finite and moving toward convergence
   expect_true(all(is.finite(.ph$objf)))
   expect_true(.ph$objf[.n] < .ph$objf[1])
+  # the EM walk is unscaled, so no redundant "Unscaled" rows and no gradient rows
+  .types <- table(.fi$parHistData$type)
+  expect_equal(unname(.types[["Unscaled"]]), 0L)
+  expect_true(all(.types[grepl("Gradient|Difference|Sensitivity", names(.types))] == 0L))
+  # the print header identifies the method (not FOCEi's outer-optimizer label)
+  expect_equal(.fi$env$method, "impmap")
+  expect_equal(.fi$env$extra, "")
 })
