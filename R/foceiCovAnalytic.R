@@ -828,12 +828,12 @@
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
     addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"), error = function(e) "combined2")
   }
-  # The (f,R) FOCEI path reads R and dR/dsigma from the model's own rx_r_ via the solve,
-  # so ANY variance structure is in scope -- including combined1 (sa+sp*f)^2, which rx_r_
-  # carries directly ((add + pred*prop)^2, the weight squared).  FOCE still needs the
-  # symbolic add/prop error machinery below and only supports the combined2 sum-of-
-  # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
-  # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
+  # The general (f,R) path reads R and dR/dsigma from the model's own rx_r_ via the solve, so ANY
+  # conditional-Gaussian variance structure is in scope -- including combined1 (sa+sp*f)^2, which
+  # rx_r_ carries directly ((add + pred*prop)^2, the weight squared).  The symbolic add/prop path
+  # below is only the FAST route for the plain untransformed add/prop/combined2 case; everything
+  # else returns a minimal `ef` (foceiOnly=TRUE) and runs the general (f,R) assembler
+  # (.foceiAnalyticAssembleRFR), which handles BOTH FOCEI and FOCE (interaction 0/1).
   # a both-sides transform is never the plain-scale symbolic add/prop machinery: force the
   # general (f,R) path (rx_pred_/rx_r_ carry the transform; only the DV is retransformed).
   .isAddProp <- !.multiEndpoint && all(.trans == "untransformed") &&
@@ -2143,7 +2143,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   ui <- fit$finalUi
   if (!.hasRxSens())
     return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
-  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
+  # FO/FOI is out of scope (the analytic (f,R) path is a FOCEI/FOCE observed information).  The
+  # runtime `fo` flag is not persisted to fit$finalUi, so this standalone entry also keys on the
+  # persisted estimation method (ui$control$est) -- otherwise an FO fit would be silently assembled
+  # as FOCE and mislabelled "analytic".  (The live covType="analytic" hook reads the in-fit ui
+  # where `fo` is set, and FO forces covMethod=0, so the production path is already safe.)
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))) ||
+      isTRUE(rxode2::rxGetControl(ui, "est", "") %in% c("fo", "foi")))
     return(.foceiAnalyticFallback("the FO/FOI method"))
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt)))
@@ -2241,7 +2247,11 @@ foceiCovAnalytic <- function(fit) {
   if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
     return(get(".covAnalytic", envir = .env))
   }
-  .ret <- .foceiCovAnalyticCalc(fit)
+  # Match the live covType="analytic" hook (.foceiCalcRanalytic), which wraps the whole assembly
+  # in tryCatch and returns NULL on any error -> FD fallback.  A direct foceiCovAnalytic()/
+  # getVarCov() call must fall back just as gracefully (e.g. a pure-proportional FOCE fit whose
+  # near-zero-prediction branch can hit an NA), never throw.
+  .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
   if (!is.null(.ret) && is.matrix(.ret$cov)) {
     .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it

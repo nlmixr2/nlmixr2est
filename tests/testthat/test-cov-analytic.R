@@ -427,6 +427,23 @@ test_that("a mu-referenced parameter with a shared eta stays analytic (own direc
   expect_equal(unname(seA[nm]), unname(seFd[nm]), tolerance = 0.05)  # matches the finite-difference cov
 })
 
+test_that("the standalone analytic covariance declines gracefully out of scope (FO fit)", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # FO/FOI is out of the analytic (FOCEI/FOCE) scope.  The runtime `fo` flag is not persisted to
+  # fit$finalUi, so the standalone entry keys on the persisted estimation method -- otherwise an FO
+  # fit would be silently assembled as FOCE and mislabelled "analytic".  It must return NULL (FD).
+  m <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.1); tv <- log(8); eta.ka ~ 0.3; eta.cl ~ 0.2; eta.v ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) })
+  }
+  fitFo <- suppressMessages(nlmixr2(m, nlmixr2data::theo_sd, "fo", foceiControl(print = 0L, covMethod = "")))
+  expect_null(foceiCovAnalytic(fitFo))   # not a FOCE cov mislabelled "analytic"
+})
+
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
