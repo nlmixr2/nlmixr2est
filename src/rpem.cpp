@@ -714,6 +714,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   // closed-form residual, so the M-step accumulates per-(subject, sample) visit counts
   // and re-optimizes (same optimizers as the non-mixture combined/power/TBS M-steps).
   bool doComb = (errType == 2), doPow = (errType == 4), doTbs = (errType == 3);
+  bool doLik = (errType == 7);   // general log-likelihood endpoint: no residual parameter
   int propSdIdx = resIdx[0], powIdx = resIdx[1], lambdaIdx = resIdx[2];
   double propSd = resPar0[0], power = resPar0[1], lambda = resPar0[2];
   int nStruct = structIdx.size();          // non-mu-ref structural fixed effects (beta)
@@ -785,7 +786,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       for (int k = 0; k < (int)covIdxBuf.size(); ++k) baseBuf[covIdxBuf[k]] = coefs[k + 1];
     }
     for (int a = 0; a < nEta; ++a) baseBuf[muIdxBuf[a]] = mu[a];
-    baseBuf[addSdIdx] = addSd;
+    if (addSdIdx >= 0) baseBuf[addSdIdx] = addSd;   // LL (doLik): no residual parameter
     if (doComb) baseBuf[propSdIdx] = propSd;
     if (doPow) baseBuf[powIdx] = power;
     if (doTbs) baseBuf[lambdaIdx] = lambda;
@@ -1040,7 +1041,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       lambda = rpemGolden(f, -2.0, 3.0, 100);
       double SS, Jac; ssJac(lambda, SS, Jac); addSd = sqrt(SS / N);
       std::fill(counts3.begin(), counts3.end(), 0);
-    } else {
+    } else if (!doLik) {                 // LL: no residual sd to update
       addSd = sqrt(sumSS / (double)sumNobs);
     }
     for (int a = 0; a < nEta; ++a) { muTr(it, a) = mu[a]; omTr(it, a) = omDiag[a]; }

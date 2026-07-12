@@ -100,3 +100,32 @@ test_that("likLbfgs refines a bounded likelihood parameter and clamps to its dec
   # the unbounded re-solve overshoots past the declared bound
   expect_gt(unname(rfN$struct["shape"]), 3)
 })
+
+test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
+  skip_on_cran()
+  skip_on_ci()
+
+  ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
+  d <- .rpemMkTte(1L)
+  ctl <- function(cl) rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
+                                  collect = 12L, seed = 1L, cores = 4L, cLoop = cl)
+  rfR <- .rpemFit(ui, d, ctl(FALSE))
+  rfC <- .rpemFit(ui, d, ctl(TRUE))
+  # the C++ loop matches the R loop and recovers the mean; no residual sd
+  expect_equal(exp(unname(rfC$mu["tlam"])), 40, tolerance = 0.2)
+  expect_equal(unname(rfC$mu["tlam"]), unname(rfR$mu["tlam"]), tolerance = 0.02)
+  expect_true(is.na(rfC$addSd))
+
+  # dynamic-iteration stable: a longer C++ run shares the shorter run's per-iteration prefix
+  cl <- .rpemClassify(ui)
+  .nm <- c(paste0("THETA[", seq_len(cl$nTheta), "]"), paste0("ETA[", seq_len(cl$nEta), "]"))
+  e <- new.env(); e$predOnly <- ui$rpemRxModel$predOnly
+  e$rxControl <- rxode2::rxControl(atol = 1e-8, rtol = 1e-8, cores = 2L)
+  e$param <- stats::setNames(cl$base, .nm); e$data <- d
+  runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, -1L, 7L, cl$mu0,
+    diag(as.matrix(cl$omega0)), 0.0, c(-1L, -1L, -1L), c(0, 0, 0), integer(0), numeric(0),
+    ni, 300L, 2L, 40000L, 4000L, 7L, matrix(0, 0, 0), integer(0))
+  a <- runN(15L); b <- runN(25L)
+  expect_equal(a$muTrace[1:15, , drop = FALSE], b$muTrace[1:15, , drop = FALSE])
+  expect_equal(as.numeric(a$lnL)[1:15], as.numeric(b$lnL)[1:15])
+})
