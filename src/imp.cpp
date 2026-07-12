@@ -650,6 +650,9 @@ void impOuter(Environment e) {
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
+  e["impQr"]       = impQrEnabled();
+  e["impSir"]      = impSirEnabled();
+  e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;
   e["impIter"]     = iterRun;
   e["impConverged"] = converged;
