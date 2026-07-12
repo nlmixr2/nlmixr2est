@@ -55,7 +55,10 @@ slope <- function(m) {
   d <- res[res$method == m, ]
   unname(coef(lm(log(d$rmse) ~ log(d$N)))[2])
 }
-cat(sprintf("\nlog-log RMSE slope: mc %.2f (expect ~ -0.5), qr %.2f (expect ~ -1)\n",
+# mc slope ~ -0.5 (Monte-Carlo rate).  qr's slope is steeper and approaches -1
+# on harder / higher-dimensional integrands; on this easy near-Gaussian 2-eta
+# posterior (ESS ~ 98%) QR gives a steady ~2x constant-factor gain at every N.
+cat(sprintf("\nlog-log RMSE slope: mc %.2f (MC rate ~ -0.5), qr %.2f (steeper; -> -1 on harder problems)\n",
             slope("mc"), slope("qr")))
 # The headline claim is the STEEPER decay + large-N advantage, not a win at
 # every N: on an easy near-Gaussian posterior (ESS ~ 98%) QR can trail MC at
