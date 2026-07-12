@@ -134,6 +134,22 @@ extern "C" SEXP _nlmixr2est_getTestContrib(void) {
   return r;
 }
 
+// --- outer-problem NN training hook ------------------------------------------
+// A downstream package (nlmixr2nn) registers an R function that receives, once
+// per real outer objective evaluation, a matrix with one row per observation:
+// [id, time, dv, pred, r, <every solved state>].  The state columns carry the
+// NN-weight forward-sensitivity states (rx_sw), so the callback can assemble
+// d(LL)/d(w) and step the torch optimizer, then inject the updated weights (via
+// the rxode2 par-loader) for the next evaluation.  Called single-threaded from
+// foceiOfv0 with calcGrad == 0 (the real objective, not a finite-difference
+// perturbation), where the inner solve for every subject is current.
+static SEXP _nnOuterFn = NULL;
+extern "C" SEXP _nlmixr2est_setNnOuterFn(SEXP fn) {
+  if (_nnOuterFn != NULL) { R_ReleaseObject(_nnOuterFn); _nnOuterFn = NULL; }
+  if (fn != R_NilValue && TYPEOF(fn) == CLOSXP) { _nnOuterFn = fn; R_PreserveObject(_nnOuterFn); }
+  return R_NilValue;
+}
+
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
   iniLbfgsb3
@@ -1176,6 +1192,50 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   ret.col(0) = retF(span(0, fInd->nObs-1));
   ret.col(1) = retR(span(0, fInd->nObs-1));
   return ret;
+}
+
+// Assemble the outer-problem NN-training matrix: one row per observation across
+// all subjects, columns [id, time, dv, pred, r, s0..s(neq-1)] where s* are the
+// current (optimized-eta) solved states -- including the rx_sw forward-
+// sensitivity states.  Mirrors grabRFmatFromInner's per-subject calc_lhs walk.
+static Rcpp::NumericMatrix assembleNnOuterMatrix() {
+  rx_solving_options *op = getSolvingOptions(rx);
+  int neq = getOpNeq(op);
+  int nsub = (int) getRxNsubAndMix(rx);
+  // count observations (evid == 0)
+  int nobs = 0;
+  for (int id = 0; id < nsub; id++) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) == 0) nobs++;
+    }
+  }
+  const int ncFixed = 5; // id, time, dv, pred, r
+  Rcpp::NumericMatrix mat(nobs, ncFixed + neq);
+  int row = 0;
+  for (int id = 0; id < nsub; id++) {
+    int _rxId = getRxId(id);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+    iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      double curT = getTime(kk, ind);
+      double *lhs = getIndLhs(ind);
+      double *st = getOpIndSolve(op, ind, j);
+      rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
+      if (getIndEvid(ind, kk) != 0) continue;
+      mat(row, 0) = (double) id;
+      mat(row, 1) = curT;
+      mat(row, 2) = getIndDv(ind, kk);
+      mat(row, 3) = lhs[op_focei.predOffset];
+      mat(row, 4) = lhs[op_focei.predOffset + op_focei.neta + 1];
+      for (int s = 0; s < neq; ++s) mat(row, ncFixed + s) = st[s];
+      row++;
+    }
+  }
+  return mat;
 }
 
 // This is needed for shi21 h optimization
@@ -3460,6 +3520,15 @@ static inline double foceiOfv0(double *theta){
       op_focei.checkTheta=0;
     }
     op_focei.lastOfv = ret;
+  }
+  // outer-problem NN training: hand the current per-observation prediction +
+  // state matrix to the registered callback (nlmixr2nn) so it can step the
+  // network weights.  Only on real objective evaluations (not gradient FD) and
+  // when the solve is finite.
+  if (_nnOuterFn != NULL && !op_focei.calcGrad && std::isfinite(ret)) {
+    Rcpp::NumericMatrix _nnMat = assembleNnOuterMatrix();
+    Rcpp::Function _fn(_nnOuterFn);
+    _fn(_nnMat);
   }
   return ret;
 }
