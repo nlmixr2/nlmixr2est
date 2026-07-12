@@ -70,3 +70,15 @@ jobs:
         with:
           upload-snapshots: true
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+
+      # Diagnostic: if the runner is killed mid-suite (exit 143), R CMD check
+      # loses the test .Rout, so print the progress side-channel written by
+      # tests/testthat.R -- its last line is the test that was running.
+      # `always()` runs even when the job is cancelled.
+      - name: Show testthat progress log
+        if: always()
+        shell: bash
+        run: |
+          f="$RUNNER_TEMP/testthat-progress.log"
+          echo "===== testthat progress (last 60 lines of $f) ====="
+          if [ -f "$f" ]; then tail -60 "$f"; else echo "(no progress log found)"; fi

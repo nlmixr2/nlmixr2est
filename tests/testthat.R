@@ -83,4 +83,42 @@ if (nzchar(.batch)) {
 }
 # Locally (and on CRAN) .filter stays NULL -> run everything.
 
-test_check("nlmixr2est", stop_on_failure = FALSE, filter = .filter, perl = TRUE)
+# Progress side-channel (CI only): flush the name of each test file/test to a
+# file at a stable path ($RUNNER_TEMP) as it starts.  R CMD check buffers the
+# test .Rout and discards it when the runner is killed mid-suite (exit 143
+# "the runner has received a shutdown signal"), so that buffer never shows the
+# culprit.  An `always()` workflow step prints this file, whose last line is the
+# exact test that was running when the runner died.
+# Default reporter is the check reporter ("check"); on CI wrap it in a
+# MultiReporter alongside a tiny progress reporter that flushes to $RUNNER_TEMP.
+# If testthat's (unexported) CheckReporter is unavailable, fall back to the
+# plain default so the suite still runs.
+.reporter <- testthat::check_reporter()
+if (.onCI) {
+  .progLog <- file.path(Sys.getenv("RUNNER_TEMP", tempdir()),
+                        "testthat-progress.log")
+  try(cat(sprintf("[%s] progress log start\n",
+                  format(Sys.time(), "%H:%M:%OS2")),
+          file = .progLog), silent = TRUE)
+  .ProgReporter <- R6::R6Class(
+    "ProgReporter", inherit = testthat::Reporter,
+    public = list(
+      logmsg = function(msg) {
+        try(cat(sprintf("[%s] %s\n", format(Sys.time(), "%H:%M:%OS2"), msg),
+                file = .progLog, append = TRUE), silent = TRUE)
+      },
+      start_file = function(filename) self$logmsg(paste("FILE", filename)),
+      start_test = function(context, test) self$logmsg(paste("   test:", test))
+    )
+  )
+  .checkRep <- tryCatch(
+    getFromNamespace("CheckReporter", "testthat")$new(),
+    error = function(e) NULL)
+  if (!is.null(.checkRep)) {
+    .reporter <- testthat::MultiReporter$new(
+      reporters = list(.checkRep, .ProgReporter$new()))
+  }
+}
+
+test_check("nlmixr2est", stop_on_failure = FALSE, filter = .filter,
+           perl = TRUE, reporter = .reporter)
