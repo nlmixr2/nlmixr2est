@@ -485,14 +485,12 @@
   # Covariate models route through the C++ loop too, provided there is a single random
   # effect (the regression M-step is nEta==1); non-time-varying covariate coefficients
   # are estimated by the C++ weighted-regression M-step (design/rpem/12 M5).
-  # General log-likelihood (errType 7) also runs in the C++ loop, but only when no
-  # bounded likelihood parameter needs the box-constrained lbfgs refinement (the C++
-  # loop's structural M-step is the unbounded damped-Newton); bounded ll() params keep
-  # the R loop (which applies the box-constrained lbfgs).
+  # General log-likelihood (errType 7) also runs in the C++ loop: the C++ structural
+  # M-step applies the same box-constrained L-BFGS-B refinement during the terminal
+  # smoothing window, so bounded ll() parameters are handled in C++ too.
   .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
   .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
-  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L) ||
-    (.cl$errType == 7L && (!.likLbfgs || all(.cl$structNbd == 0L)))
+  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 7L)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
     !.multi && !.hasCens && !.modeIS &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
@@ -506,7 +504,12 @@
                        .cl$mu0, diag(as.matrix(.cl$omega0)), .naN(.cl$addSd0), .resIdx, .resPar0,
                        as.integer(.cl$structIdx), as.numeric(.cl$struct0),
                        niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
-                       control$seed, .designC, as.integer(.cl$covCoefIdx))
+                       control$seed, .designC, as.integer(.cl$covCoefIdx),
+                       as.numeric(.cl$structLower), as.numeric(.cl$structUpper),
+                       as.integer(.cl$structNbd),
+                       if (.likLbfgs) 1L else 0L, control$collect,
+                       control$lbfgsLmm, control$lbfgsFactr, control$lbfgsPgtol,
+                       control$lbfgsMaxIter)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
     propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)

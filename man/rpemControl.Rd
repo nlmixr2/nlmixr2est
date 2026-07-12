@@ -59,10 +59,11 @@ niter-independent per-(iteration, subject) seed, so it is thread-safe, reproduci
 any core count, and a longer run reproduces the exact per-iteration prefix of a shorter
 run at the same seed.  Covers the additive/proportional/combined/power/TBS residuals,
 single-random-effect covariate regression, structural fixed effects, general
-log-likelihood (`ll()`) endpoints, and mixtures.  `FALSE` (default) uses the R-driven
-loop, which additionally covers multi-endpoint, censored, mode-centered (`impInflate`)
-and bounded-`ll()`-parameter (`likLbfgs`) cases the C++ loop does not yet handle (it
-silently falls back to the R loop for those).}
+log-likelihood (`ll()`) endpoints (including the box-constrained `likLbfgs` refinement
+of bounded likelihood parameters), and mixtures.  `FALSE` (default) uses the R-driven
+loop, which additionally covers multi-endpoint, censored and mode-centered
+(`impInflate`) cases the C++ loop does not yet handle (it silently falls back to the R
+loop for those).}
 
 \item{likLbfgs}{For a general log-likelihood (`ll()`) endpoint, refine the
 fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B

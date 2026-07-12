@@ -35,6 +35,13 @@ extern "C" void lbfgsbRX(int n, int lmm, double *x, double *lower,
                          double pgtol, int *fncount, int *grcount,
                          int maxit, char *msg, int trace, int nREPORT);
 
+// Box-constrained L-BFGS-B refinement of the ll() structural (likelihood) params over the
+// current E-step samples (defined after the RpemLikOpt objective; used by the cLoop).
+void rpemLbfgsBeta(const std::vector<double> &baseBuf, const std::vector<int> &structIdxBuf,
+                   const std::vector<int> &etaIdxBuf, std::vector<double> &betaIO,
+                   const double *lower, const double *upper, const int *nbd,
+                   int lmm, double factr, double pgtol, int maxit);
+
 // Solve one subject with the bound rpem predOnly model (rxPred function ptrs).
 #define rpemPredOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
@@ -701,7 +708,10 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
                   IntegerVector resIdx, NumericVector resPar0,
                   IntegerVector structIdx, NumericVector struct0,
                   int niter, int nGauss, int ncores, int nMH, int mhBurn,
-                  unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx) {
+                  unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx,
+                  NumericVector structLower, NumericVector structUpper, IntegerVector structNbd,
+                  int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr,
+                  double lbfgsPgtol, int lbfgsMaxIter) {
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
@@ -844,7 +854,16 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
     // one damped diagonal-Newton step maximizing the importance-weighted complete-data
     // Q(beta) = sum_ij w_ij log p(Y_i | beta, eta_ij) -- re-solving per (i,j) with the
     // held etas.  Runs while the E-step solve is loaded, before the MH clobbers it.
-    if (nStruct > 0) {
+    // ll() likelihood-parameter refinement: during the terminal smoothing window, refine
+    // the structural (likelihood) params with the box-constrained L-BFGS-B (respecting
+    // their declared bounds), matching the R loop; exploration iterations use the cheaper
+    // damped-Newton below.
+    if (nStruct > 0 && doLik && likLbfgs && it >= niter - collect) {
+      bool hasBnd = ((int)structNbd.size() == nStruct);
+      rpemLbfgsBeta(baseBuf, structIdxBuf, etaIdxBuf, beta,
+                    hasBnd ? structLower.begin() : nullptr, hasBnd ? structUpper.begin() : nullptr,
+                    hasBnd ? structNbd.begin() : nullptr, lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter);
+    } else if (nStruct > 0) {
       std::vector<double> wij((size_t)nsub * nGauss);
       for (int i = 0; i < nsub; ++i) {
         double mx = R_NegInf;
@@ -2315,13 +2334,16 @@ static void rpemLikGrad(int n, double *par, double *gr, void *ex) {
   }
 }
 
-//[[Rcpp::export]]
-NumericVector rpemMstepBetaLik(NumericVector base, IntegerVector etaIdx,
-                               IntegerVector structIdx, NumericVector struct0,
-                               NumericVector lower, NumericVector upper, IntegerVector nbd,
-                               double gain, int lmm, double factr, double pgtol, int maxit) {
-  if (!rpemOp.loaded) stop("run rpemEstepK1Draw before rpemMstepBetaLik");
-  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta, nB = structIdx.size();
+// Shared core: box-constrained L-BFGS-B optimum of Q(beta) over the structural params,
+// using the importance weights from the CURRENT rpemOp E-step state.  betaIO seeds the
+// search and receives the box-constrained optimum (clamped to the box).  Used by both the
+// R-exported rpemMstepBetaLik and the C++ cLoop (rpemEMLoopK1) so ll() bounded-parameter
+// refinement is identical whether the loop runs in R or C++.
+void rpemLbfgsBeta(const std::vector<double> &baseBuf,
+                   const std::vector<int> &structIdxBuf, const std::vector<int> &etaIdxBuf,
+                   std::vector<double> &betaIO, const double *lower, const double *upper,
+                   const int *nbd, int lmm, double factr, double pgtol, int maxit) {
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nB = (int)structIdxBuf.size();
   RpemLikOpt o;
   o.w.assign((size_t)nsub * nG, 0.0);
   for (int i = 0; i < nsub; ++i) {
@@ -2331,29 +2353,46 @@ NumericVector rpemMstepBetaLik(NumericVector base, IntegerVector etaIdx,
     for (int j = 0; j < nG; ++j) { double e = exp(rpemOp.logp[(size_t)i * nG + j] - mx); o.w[(size_t)i * nG + j] = e; s += e; }
     for (int j = 0; j < nG; ++j) o.w[(size_t)i * nG + j] /= s;
   }
-  o.baseBuf.assign(rpemOp.ntheta, 0.0);
-  for (unsigned int t = 0; t < rpemOp.ntheta; ++t) o.baseBuf[t] = base[t];
+  o.baseBuf = baseBuf;
   o.row.assign(rpemOp.ntheta, 0.0);
-  o.structIdx = structIdx.begin(); o.nB = nB; o.etaIdx = etaIdx.begin(); o.nEta = nEta;
-  o.nsub = nsub; o.nG = nG; o.nfe = 0;
-
-  std::vector<double> x(nB), lo(nB, 0.0), up(nB, 0.0); std::vector<int> bnd(nB, 0);
-  for (int k = 0; k < nB; ++k) {
-    x[k] = struct0[k];
-    if ((int)nbd.size() == nB) { bnd[k] = nbd[k]; lo[k] = lower[k]; up[k] = upper[k]; }
-  }
+  o.structIdx = structIdxBuf.data(); o.nB = nB; o.etaIdx = etaIdxBuf.data();
+  o.nEta = (int)etaIdxBuf.size(); o.nsub = nsub; o.nG = nG; o.nfe = 0;
+  std::vector<double> x(betaIO), lo(nB, 0.0), up(nB, 0.0); std::vector<int> bnd(nB, 0);
+  for (int k = 0; k < nB; ++k) if (nbd) { bnd[k] = nbd[k]; lo[k] = lower[k]; up[k] = upper[k]; }
   double Fmin; int fail = 0, fncount = 0, grcount = 0; char msg[100];
   lbfgsbRX(nB, lmm, x.data(), lo.data(), up.data(), bnd.data(), &Fmin,
            rpemLikNegQ, rpemLikGrad, &fail, (void *)&o, factr, pgtol,
            &fncount, &grcount, maxit, msg, 0, maxit + 1);
-  // smoothing-gain damped update, re-clamped to the box (defensive; lbfgsbRX already
-  // keeps x within [lower, upper]).
+  for (int k = 0; k < nB; ++k) {
+    double v = x[k];
+    if (nbd) { if ((bnd[k] == 1 || bnd[k] == 2) && v < lo[k]) v = lo[k];
+               if ((bnd[k] == 2 || bnd[k] == 3) && v > up[k]) v = up[k]; }
+    betaIO[k] = v;
+  }
+}
+
+//[[Rcpp::export]]
+NumericVector rpemMstepBetaLik(NumericVector base, IntegerVector etaIdx,
+                               IntegerVector structIdx, NumericVector struct0,
+                               NumericVector lower, NumericVector upper, IntegerVector nbd,
+                               double gain, int lmm, double factr, double pgtol, int maxit) {
+  if (!rpemOp.loaded) stop("run rpemEstepK1Draw before rpemMstepBetaLik");
+  int nB = structIdx.size();
+  std::vector<double> baseBuf(rpemOp.ntheta);
+  for (unsigned int t = 0; t < rpemOp.ntheta; ++t) baseBuf[t] = base[t];
+  std::vector<int> sIdx(structIdx.begin(), structIdx.end()), eIdx(etaIdx.begin(), etaIdx.end());
+  std::vector<double> beta(struct0.begin(), struct0.end());
+  bool hasBnd = ((int)nbd.size() == nB);
+  rpemLbfgsBeta(baseBuf, sIdx, eIdx, beta,
+                hasBnd ? lower.begin() : nullptr, hasBnd ? upper.begin() : nullptr,
+                hasBnd ? nbd.begin() : nullptr, lmm, factr, pgtol, maxit);
+  // smoothing-gain damped update, re-clamped to the box.
   NumericVector out(nB);
   for (int k = 0; k < nB; ++k) {
-    double v = struct0[k] + gain * (x[k] - struct0[k]);
-    if ((int)nbd.size() == nB) {
-      if ((bnd[k] == 1 || bnd[k] == 2) && v < lo[k]) v = lo[k];
-      if ((bnd[k] == 2 || bnd[k] == 3) && v > up[k]) v = up[k];
+    double v = struct0[k] + gain * (beta[k] - struct0[k]);
+    if (hasBnd) {
+      if ((nbd[k] == 1 || nbd[k] == 2) && v < lower[k]) v = lower[k];
+      if ((nbd[k] == 2 || nbd[k] == 3) && v > upper[k]) v = upper[k];
     }
     out[k] = v;
   }

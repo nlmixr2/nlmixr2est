@@ -99,6 +99,13 @@ test_that("likLbfgs refines a bounded likelihood parameter and clamps to its dec
   expect_equal(unname(rfC$struct["shape"]), 3, tolerance = 1e-4)
   # the unbounded re-solve overshoots past the declared bound
   expect_gt(unname(rfN$struct["shape"]), 3)
+
+  # the C++ cLoop applies the same box-constrained refinement, so a bounded ll()
+  # parameter also clamps at its declared bound when the whole loop runs in C++
+  rfCpp <- .rpemFit(ui, d, rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L,
+                                       niter = 35L, collect = 12L, seed = 1L, cores = 4L,
+                                       cLoop = TRUE))
+  expect_equal(unname(rfCpp$struct["shape"]), 3, tolerance = 1e-4)
 })
 
 test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
@@ -124,7 +131,8 @@ test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
   e$param <- stats::setNames(cl$base, .nm); e$data <- d
   runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, -1L, 7L, cl$mu0,
     diag(as.matrix(cl$omega0)), 0.0, c(-1L, -1L, -1L), c(0, 0, 0), integer(0), numeric(0),
-    ni, 300L, 2L, 40000L, 4000L, 7L, matrix(0, 0, 0), integer(0))
+    ni, 300L, 2L, 40000L, 4000L, 7L, matrix(0, 0, 0), integer(0),
+    numeric(0), numeric(0), integer(0), 0L, 12L, 5L, 1e7, 0, 20L)
   a <- runN(15L); b <- runN(25L)
   expect_equal(a$muTrace[1:15, , drop = FALSE], b$muTrace[1:15, , drop = FALSE])
   expect_equal(as.numeric(a$lnL)[1:15], as.numeric(b$lnL)[1:15])

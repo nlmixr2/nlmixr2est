@@ -292,7 +292,7 @@ test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the pre
   runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, cl$addSdIdx, cl$errType,
     cl$mu0, diag(as.matrix(cl$omega0)), cl$addSd0, c(-1L, -1L, -1L), c(0, 0, 0),
     as.integer(cl$structIdx), as.numeric(cl$struct0), ni, 200L, 2L, 30000L, 3000L, 123L,
-    matrix(0, 0, 0), integer(0))
+    matrix(0, 0, 0), integer(0), numeric(0), numeric(0), integer(0), 0L, 8L, 5L, 1e7, 0, 20L)
   r20 <- runN(20L); r30 <- runN(30L)
   expect_equal(r20$muTrace[1:20, , drop = FALSE], r30$muTrace[1:20, , drop = FALSE])
   expect_equal(r20$omegaTrace[1:20, , drop = FALSE], r30$omegaTrace[1:20, , drop = FALSE])
