@@ -121,6 +121,32 @@ nmTest({
     expect_error(nlmixr2est:::impSirIndex_(numeric(0), 10L, 0.5))
   })
 
+  test_that("qrpemControl is impmapControl sugar with qr/sir on", {
+    .ctl <- qrpemControl()
+    expect_s3_class(.ctl, "impmapControl")
+    expect_true(.ctl$qr)
+    expect_true(.ctl$sir)
+    expect_true(.ctl$qrShift)
+    expect_true(.ctl$qrRefresh)
+    expect_identical(.ctl$isample, 300L)
+    expect_identical(.ctl$sirSample, 30L)
+    # explicit arguments win over the sugar defaults
+    .c2 <- qrpemControl(sir = FALSE, isample = 100L)
+    expect_false(.c2$sir)
+    expect_true(.c2$qr)
+    expect_identical(.c2$isample, 100L)
+    # est="qrpem" is registered and validates to a qr/sir control
+    expect_true("qrpem" %in% nlmixr2AllEst())
+    expect_true(is.function(getS3method("nlmixr2Est", "qrpem")))
+    .v <- getValidNlmixrCtl.qrpem(list(NULL))
+    expect_s3_class(.v, "impmapControl")
+    expect_true(.v$qr)
+    expect_true(.v$sir)
+    # an explicit impmapControl passes through with its own qr/sir choices
+    .vi <- getValidNlmixrCtl.qrpem(list(impmapControl()))
+    expect_false(.vi$qr)
+  })
+
   test_that("qr/sir names are stripped when down-converting to foceiControl", {
     .env <- new.env()
     .env$impmapControl <- impmapControl(qr=TRUE, sir=TRUE)

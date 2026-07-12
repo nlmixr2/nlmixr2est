@@ -440,8 +440,9 @@ struct focei_options {
   scaling scale;
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
-  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"); outer runs impOuter
+  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"/"qrpem"); outer runs impOuter
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
+  bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -4754,13 +4755,15 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
-    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem");
     op_focei.isImp = (estStr == "imp");
+    op_focei.isQrpem = (estStr == "qrpem");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
     op_focei.isImpmap = false;
     op_focei.isImp = false;
+    op_focei.isQrpem = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -8257,7 +8260,7 @@ void foceiFinalizeTables(Environment e){
     if (op_focei.isImpmap) {
       // Importance-sampling EM; the objDf row stays "FOCEi" because the final
       // objective is a FOCEi evaluation at the EM estimates.
-      e["method"] = op_focei.isImp ? "imp" : "impmap";
+      e["method"] = op_focei.isImp ? "imp" : (op_focei.isQrpem ? "qrpem" : "impmap");
     } else if (_aqn > 0) {
       e["method"] ="AGQ";
     } else if (op_focei.neta == 0){

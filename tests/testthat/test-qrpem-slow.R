@@ -196,6 +196,28 @@ nmTest({
     expect_equal(fixef(.fq)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
   })
 
+  test_that("Q7: est='qrpem' equals impmap(qr+sir) and matches FOCEI", {
+    .fq <- suppressWarnings(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, "qrpem",
+              qrpemControl(print = 0L, nIter = 30L, isample = 300L)))
+    expect_true(.fq$env$impQr)
+    expect_true(.fq$env$impSir)
+    expect_identical(.fq$env$method, "qrpem")
+    # the sugar is exactly impmap with qr=TRUE, sir=TRUE (same seed pinning)
+    .fi <- suppressWarnings(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
+              impmapControl(print = 0L, nIter = 30L, isample = 300L,
+                            qr = TRUE, sir = TRUE)))
+    expect_equal(fixef(.fq), fixef(.fi), tolerance = 1e-10)
+    expect_equal(.fq$env$impObj, .fi$env$impObj, tolerance = 1e-10)
+    # and it lands on the FOCEI estimates
+    .ff <- suppressWarnings(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(print = 0L, covMethod = "")))
+    expect_equal(fixef(.fq), fixef(.ff), tolerance = 0.05)
+    expect_equal(unname(diag(.fq$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
+  })
+
   test_that("Q1: default (qr/sir off) fit is unchanged vs the pre-QRPEM baseline", {
     .ref <- readRDS(test_path("fixtures", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
