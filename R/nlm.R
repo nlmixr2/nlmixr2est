@@ -537,7 +537,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .ddt,
     .lagDefs,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .prd,
     .fr$f_line,
     .fr$r_line,

@@ -606,8 +606,12 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
 
-\item{seed}{an object specifying if and how the random number
-generator should be initialized}
+\item{seed}{Integer seed (default `42`) used to make a FOCEi fit
+reproducible and self-contained.  The fit (including the `mceta`
+Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
+runs inside [rxode2::rxWithSeed()], so it neither depends on the ambient
+RNG state nor advances/leaks it -- repeated fits in the same session, and
+fits following other estimation methods, give identical results.}
 
 \item{resetThetaCheckPer}{represents objective function
 \% percentage below which resetThetaP is checked.}

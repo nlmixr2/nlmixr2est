@@ -222,17 +222,19 @@
   if (length(.w) == 1) {
     names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
-  # Format the formatted BSV (popDfSig) column to two decimal places for consistent display
+  # Re-derive the displayed BSV (popDfSig) column from the full-precision
+  # numeric column so the two stay consistent, formatting to `sigdig`
+  # significant figures like the rest of parFixed.
   .bsvNames <- c("BSV(CV% or SD)", "BSV(SD)", "BSV(CV%)")
   .bsvName <- intersect(.bsvNames, names(.ret$popDfSig))
   if (length(.bsvName) == 1) {
     nm <- .bsvName[1]
     .vals <- .ret$popDf[[nm]]
     .fmtVals <- vapply(seq_along(.vals), function(i) {
-      v <- .vals[i]
-      vNum <- suppressWarnings(as.numeric(v))
+      vNum <- suppressWarnings(as.numeric(.vals[i]))
       if (is.na(vNum)) return(.ret$popDfSig[[nm]][i])
-      sprintf("%.2f", round(vNum, 2))
+      formatC(signif(vNum, digits = .sigdig), digits = .sigdig,
+              format = "fg", flag = "#")
     }, character(1))
     .ret$popDfSig[[nm]] <- .fmtVals
   }

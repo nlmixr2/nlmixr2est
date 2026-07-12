@@ -7,6 +7,7 @@
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
+#include "nmMcmcRng.h"
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
@@ -588,8 +589,13 @@ static inline void _saemFillUnifEng(arma::vec &v) {
 // Iteration-indexed threefry stream seed for a do_mcmc proposal block: a pure
 // mixing function of (baseSeed, kiter, method, u, k1) so every iteration's RNG
 // is independent of the total iteration count (dynamic phase extension) and
-// independent of thread scheduling.  Pins thread 0 (serial draw).
-static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1) {
+// independent of thread scheduling.  Pins thread 0 (serial draw).  `mixIdx`
+// (0 for non-mixture / a 1-based component index for parallel per-component
+// chains) offsets the seed so each mixture component draws an independent
+// threefry stream instead of the identical proposals that collapse the mixture;
+// a bare add suffices since threefry streams for distinct seeds are independent.
+static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1,
+                                   int mixIdx = 0) {
   setRxThreadId(0);
   uint32_t s = baseSeed;
   s = s * 2654435761u + 0x00006D0Cu;   // "do_mcmc" namespace tag
@@ -597,7 +603,8 @@ static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int
   s = s * 2654435761u + (uint32_t)method;
   s = s * 2654435761u + (uint32_t)u;
   s = s * 2654435761u + (uint32_t)k1;
-  setSeedEng1(s);
+  s += (uint32_t)mixIdx;               // per-component stream offset
+  nmSetSeedEng1(s);
 }
 
 // class def starts
@@ -1628,19 +1635,19 @@ public:
 
           if (nphi1 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
-            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
           if (nphi0 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
-            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
 
           // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
@@ -3329,7 +3336,8 @@ private:
                vec &cur_fsave,
                vec &cur_cens,
                vec &cur_limit,
-               int kiter) {
+               int kiter,
+               int mixIdx = 0) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
@@ -3343,7 +3351,7 @@ private:
         mat phiMc=phiM;
         // iteration-indexed threefry stream: proposal noise + the acceptance
         // uniform are drawn here (before the solve) from one seeded stream
-        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1);
+        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1, mixIdx);
         switch (method) {
         case 1: {
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
@@ -3366,7 +3374,7 @@ private:
         }
         _saemFillUnifEng(accU);   // acceptance uniforms from the same stream
 
-        fcMat = user_fn(phiMc, mx.evtM, mx.optM);
+        fcMat = nmRngGuard([&]{ return user_fn(phiMc, mx.evtM, mx.optM); });
         cur_limit = fcMat.col(2);
         cur_cens = fcMat.col(1);
 
@@ -3478,7 +3486,7 @@ private:
     mat lossByM(mx.nM, nMix);
     for (int mHyp = 0; mHyp < nMix; mHyp++) {
       current_saem_state->_saemMixest = mHyp + 1;
-      mat fcMat = user_fn(phiC, mx.evtM, mx.optM);
+      mat fcMat = nmRngGuard([&]{ return user_fn(phiC, mx.evtM, mx.optM); });
       vec curLimit = fcMat.col(2);
       vec curCens = fcMat.col(1);
       vec fc = fcMat.col(0);
