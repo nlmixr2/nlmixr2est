@@ -15,6 +15,7 @@
 // conditional moments, then finalizes the fit at the converged estimates.
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
+#include <boost/random/sobol.hpp>
 #include "nmMcmcRng.h"
 #include "imp.h"
 #ifdef _OPENMP
@@ -22,6 +23,54 @@
 #endif
 
 using namespace Rcpp;
+
+// ---- quasi-random (QRPEM) sampling elements --------------------------------
+// Base Sobol point set on (0,1)^neta: isample rows, one point per row.  The
+// boost engine emits one coordinate per call, cycling through the dimensions
+// of consecutive points, and skips the trivial zero point; the top 53 bits are
+// scaled into (0,1) with a half-step offset so no coordinate is ever 0 or 1.
+static arma::mat impSobolU0(int isample, int neta) {
+  boost::random::sobol eng((std::size_t)neta);
+  arma::mat U0(isample, neta);
+  for (int k = 0; k < isample; ++k) {
+    for (int j = 0; j < neta; ++j) {
+      uint64_t v = (uint64_t)eng();
+      U0(k, j) = std::ldexp((double)(v >> 11) + 0.5, -53);
+    }
+  }
+  return U0;
+}
+
+// Uniform Sobol points -> N(0,1): optional Cranley-Patterson shift (mod 1),
+// clamp away from 0/1, then the inverse normal CDF per coordinate.
+static arma::mat impQrZ(const arma::mat& U0, const arma::vec* shift) {
+  arma::mat Z(U0.n_rows, U0.n_cols);
+  for (arma::uword j = 0; j < U0.n_cols; ++j) {
+    double s = (shift != nullptr) ? (*shift)[j] : 0.0;
+    for (arma::uword k = 0; k < U0.n_rows; ++k) {
+      double u = U0(k, j) + s;
+      u -= std::floor(u);
+      if (u < 1e-12) u = 1e-12;
+      else if (u > 1.0 - 1e-12) u = 1.0 - 1e-12;
+      Z(k, j) = R::qnorm(u, 0.0, 1.0, 1, 0);
+    }
+  }
+  return Z;
+}
+
+// Test hook: the (optionally shifted) quasi-random N(0,1) point set.
+//[[Rcpp::export]]
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift) {
+  if (isample < 1 || neta < 1) stop("'isample' and 'neta' must be positive");
+  arma::mat U0 = impSobolU0(isample, neta);
+  if (shift.isNotNull()) {
+    NumericVector s(shift);
+    if ((int)s.size() != neta) stop("'shift' must have length 'neta'");
+    arma::vec sv(s.begin(), neta);
+    return wrap(impQrZ(U0, &sv));
+  }
+  return wrap(impQrZ(U0, nullptr));
+}
 
 // One importance-sampling E-step at the current conditional modes: draw
 // proposal samples, form importance weights, and return each subject's

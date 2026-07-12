@@ -37,6 +37,50 @@ nmTest({
     expect_identical(.ic$mapIter, 0L)
   })
 
+  test_that("impQrPoints_ produces low-discrepancy N(0,1) points", {
+    .Z <- nlmixr2est:::impQrPoints_(256L, 2L, NULL)
+    expect_true(is.matrix(.Z) && all(dim(.Z) == c(256L, 2L)))
+    expect_true(all(is.finite(.Z)))
+    # deterministic: same call, same points
+    expect_identical(.Z, nlmixr2est:::impQrPoints_(256L, 2L, NULL))
+    # low-discrepancy signature: qnorm(sobol) column means are O(log N / N),
+    # far below the 1/sqrt(N) = 0.0625 pseudo-random scale
+    expect_true(max(abs(colMeans(.Z))) < 0.01)
+    # near-perfect stratification: the boost engine skips the zero point, so a
+    # 2^8 block is offset by one -- 16 equal bins hold 16 +/- 2 points each
+    # (a 256-point pseudo-random draw would routinely miss by 8+)
+    .U <- pnorm(.Z)
+    for (.j in 1:2) {
+      .cnt <- table(cut(.U[, .j], breaks = seq(0, 1, by = 1/16)))
+      expect_true(all(abs(.cnt - 16L) <= 2L))
+    }
+    # unit variance to QR accuracy
+    expect_equal(unname(apply(.Z, 2, sd)), c(1, 1), tolerance = 0.02)
+  })
+
+  test_that("impQrPoints_ Cranley-Patterson shift wraps and stays stratified", {
+    .Z0 <- nlmixr2est:::impQrPoints_(256L, 2L, NULL)
+    .sh <- c(0.371, 0.842)
+    .Z <- nlmixr2est:::impQrPoints_(256L, 2L, .sh)
+    expect_true(all(is.finite(.Z)))
+    expect_false(identical(.Z, .Z0))
+    # the shift acts mod 1 on the uniforms
+    .U0 <- pnorm(.Z0)
+    .U <- pnorm(.Z)
+    expect_equal(.U, (.U0 + rep(.sh, each = 256L)) %% 1, tolerance = 1e-8)
+    # shifted Sobol keeps near-perfect stratification (16 +/- 2 per 16 bins)
+    for (.j in 1:2) {
+      .cnt <- table(cut(.U[, .j], breaks = seq(0, 1, by = 1/16)))
+      expect_true(all(abs(.cnt - 16L) <= 2L))
+    }
+    # a shift near 1 wraps rather than escaping (0,1)
+    .Zw <- nlmixr2est:::impQrPoints_(64L, 2L, c(0.999999, 0.5))
+    expect_true(all(is.finite(.Zw)))
+    # bad input
+    expect_error(nlmixr2est:::impQrPoints_(256L, 2L, c(0.5)))
+    expect_error(nlmixr2est:::impQrPoints_(0L, 2L, NULL))
+  })
+
   test_that("qr/sir names are stripped when down-converting to foceiControl", {
     .env <- new.env()
     .env$impmapControl <- impmapControl(qr=TRUE, sir=TRUE)
