@@ -58,6 +58,44 @@ static arma::mat impQrZ(const arma::mat& U0, const arma::vec* shift) {
   return Z;
 }
 
+// ---- SIR (sampling-importance-resampling) element ---------------------------
+// Systematic (stratified) resampling: sirN indices drawn with copy counts
+// proportional to the normalized weights (each count is within 1 of
+// sirN * zk_norm[i], the systematic-resampling guarantee).  u0 in [0,1) is the
+// single stratified offset; no RNG inside.
+static arma::uvec impSirIndex(const arma::vec& zk, int sirN, double u0) {
+  arma::uvec idx(sirN);
+  arma::uword n = zk.n_elem;
+  double tot = arma::accu(zk);
+  if (!(tot > 0.0) || !R_finite(tot)) {
+    // degenerate weights: uniform strided coverage
+    for (int r = 0; r < sirN; ++r)
+      idx[r] = (arma::uword)((double)r * n / sirN) % n;
+    return idx;
+  }
+  arma::uword i = 0;
+  double c = zk[0] / tot;
+  for (int r = 0; r < sirN; ++r) {
+    double p = (u0 + r) / (double)sirN;
+    while (p > c && i + 1 < n) { ++i; c += zk[i] / tot; }
+    idx[r] = i;
+  }
+  return idx;
+}
+
+// Test hook: 1-based systematic-resampling indices.
+//[[Rcpp::export]]
+IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0) {
+  if (zk.size() < 1) stop("'zk' must be non-empty");
+  if (sirN < 1) stop("'sirN' must be positive");
+  if (u0 < 0.0 || u0 >= 1.0) stop("'u0' must be in [0, 1)");
+  arma::vec z(zk.begin(), zk.size());
+  arma::uvec idx = impSirIndex(z, sirN, u0);
+  IntegerVector out(sirN);
+  for (int r = 0; r < sirN; ++r) out[r] = (int)idx[r] + 1;
+  return out;
+}
+
 // Test hook: the (optionally shifted) quasi-random N(0,1) point set.
 //[[Rcpp::export]]
 NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift) {

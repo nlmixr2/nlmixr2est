@@ -81,6 +81,46 @@ nmTest({
     expect_error(nlmixr2est:::impQrPoints_(0L, 2L, NULL))
   })
 
+  test_that("impSirIndex_ systematic resampling matches the weights", {
+    # copy counts proportional to the normalized weights, each within 1 of
+    # sirN * zk_norm (the systematic-resampling guarantee)
+    .zk <- c(0.5, 0.25, 0.15, 0.10)
+    .idx <- nlmixr2est:::impSirIndex_(.zk, 100L, 0.37)
+    expect_length(.idx, 100L)
+    expect_true(all(.idx %in% 1:4))
+    .cnt <- tabulate(.idx, nbins = 4L)
+    expect_true(all(abs(.cnt - 100 * .zk) <= 1))
+    # unnormalized weights give the same resample
+    expect_identical(.idx, nlmixr2est:::impSirIndex_(7 * .zk, 100L, 0.37))
+    # deterministic in u0; different offset shifts the marginal picks only
+    expect_identical(.idx, nlmixr2est:::impSirIndex_(.zk, 100L, 0.37))
+
+    # an equal-weight resample of a weighted sample reproduces its weighted
+    # mean and covariance
+    set.seed(7)
+    .S <- matrix(rnorm(4000L * 2L), ncol = 2L)
+    .w <- exp(-.5 * rowSums((.S - 0.3)^2)); .w <- .w / sum(.w)
+    .mu <- colSums(.S * .w)
+    .Sc <- sweep(.S, 2, .mu)
+    .V <- t(.Sc * .w) %*% .Sc
+    .r <- nlmixr2est:::impSirIndex_(.w, 2000L, 0.5)
+    .Sr <- .S[.r, ]
+    expect_lt(max(abs(colMeans(.Sr) - .mu)), 0.02)
+    expect_lt(max(abs(cov(.Sr) - .V)), 0.05)
+
+    # degenerate: all weight on one point -> every index is that point
+    expect_true(all(nlmixr2est:::impSirIndex_(c(0, 0, 1, 0), 50L, 0.2) == 3L))
+    # uniform weights -> near-uniform coverage
+    .cu <- tabulate(nlmixr2est:::impSirIndex_(rep(1, 10), 100L, 0.9), nbins = 10L)
+    expect_true(all(abs(.cu - 10L) <= 1L))
+    # zero/non-finite weights fall back to strided coverage without error
+    expect_length(nlmixr2est:::impSirIndex_(rep(0, 5), 10L, 0.1), 10L)
+    # input validation
+    expect_error(nlmixr2est:::impSirIndex_(.zk, 0L, 0.5))
+    expect_error(nlmixr2est:::impSirIndex_(.zk, 10L, 1.0))
+    expect_error(nlmixr2est:::impSirIndex_(numeric(0), 10L, 0.5))
+  })
+
   test_that("qr/sir names are stripped when down-converting to foceiControl", {
     .env <- new.env()
     .env$impmapControl <- impmapControl(qr=TRUE, sir=TRUE)
