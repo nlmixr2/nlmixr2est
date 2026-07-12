@@ -24,7 +24,7 @@ rxUiGet.rpemModel0 <- function(x, ...) {
   .save <- .predDf
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
   assign(".predDfFocei", .predDf, envir=.ui)
-  on.exit(assign("predDf", .save, envir=.ui))
+on.exit(assign("predDf", .save, envir=.ui), add = TRUE)
   .ret <- rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
                                       prefixLines=.uiGetThetaEta(.ui),
                                       paramsLine=NA,
