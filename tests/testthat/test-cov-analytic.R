@@ -503,6 +503,37 @@ nmTest({
     expect_equal(unname(.se[["wt_cl"]]), unname(.sefd[["wt_cl"]]), tolerance = 0.05)
   })
 
+  test_that("covMethod='analytic' reuses the structural theta for a covariate on an eta-less parameter", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # v has a covariate (wt_v) but NO eta: the coefficient's sensitivities are the structural
+    # theta tv's scaled by the covariate (df/dwt_v = cov*df/dtv, since tv and wt_v enter the mu
+    # identically), so the analytic path REUSES tv's already-integrated direction instead of
+    # building wt_v its own sensitivity ODEs -- staying analytic (not an FD fallback) for both the
+    # covariance and the fast outer gradient, and matching the finite-difference covariance.
+    cvm <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5); wt_v <- 0.75
+            eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + wt_v * log(WT / 70))
+        d/dt(depot)  <- -ka * depot
+        d/dt(center) <-  ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    dat <- nlmixr2data::theo_sd
+    fitA <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
+                foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6))))
+    expect_identical(fitA$covMethod, "analytic")            # reused tv's direction, not an FD fallback
+    expect_true("wt_v" %in% rownames(fitA$cov))             # covariate theta present in the full cov
+    .seA <- sqrt(diag(fitA$cov))
+    expect_true(all(is.finite(.seA)) && all(.seA > 0))
+    # matches the finite-difference covariance over the same full parameter set
+    fitR <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
+                foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 6))))
+    .seR <- sqrt(diag(fitR$cov)); .nm <- intersect(names(.seA), names(.seR))
+    expect_equal(unname(.seA[.nm]), unname(.seR[.nm]), tolerance = 0.05)
+  })
+
   test_that("covMethod='analytic' handles a non-mu-referenced eta (orphan Omega variance)", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

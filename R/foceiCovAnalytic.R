@@ -111,6 +111,28 @@
         as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
 }
 
+#' Count literal occurrences of each of `.names` on the model-expression RHS.
+#'
+#' Shared by the eta-occurrence guard (a random effect reused across parameters breaks
+#' the covariate/theta direction reuse) and the structural-theta guard (a structural
+#' parameter appearing in more than one mu-expression breaks the eta-less covariate
+#' reuse -- `df/dtheta` would then gain a path `df/db` lacks).  Returns a named integer
+#' vector; `2L` (i.e. ">1", conservative -> no reuse) when `lstExpr` is unavailable.
+#' @noRd
+.foceiNameOccurrence <- function(ui, .names) {
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  .count <- function(.e, .nm) {
+    if (is.name(.e)) return(as.integer(identical(as.character(.e), .nm)))
+    if (is.call(.e)) return(sum(vapply(as.list(.e)[-1L], .count, integer(1), .nm)))
+    0L
+  }
+  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
+    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")))
+  stats::setNames(vapply(as.character(.names), function(.n)
+    if (is.null(.lst)) 2L else sum(vapply(.lst, function(.ex)
+      if (.isAssign(.ex)) .count(.ex[[3]], .n) else 0L, integer(1))), integer(1)),
+    as.character(.names))
+}
 #' Literal occurrence count of each diagonal eta across the model RHS.
 #'
 #' The sensitivity direction-reuse identities -- a mu-ref theta reusing its eta's
@@ -123,21 +145,10 @@
 #' `neta1` order; `2L` (conservative ">1") when `lstExpr` is unavailable.
 #' @noRd
 .foceiEtaOccurrence <- function(ui) {
-  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
   .idf <- ui$iniDf
   .etaRows <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
   .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
-  .count <- function(.e, .nm) {
-    if (is.name(.e)) return(as.integer(identical(as.character(.e), .nm)))
-    if (is.call(.e)) return(sum(vapply(as.list(.e)[-1L], .count, integer(1), .nm)))
-    0L
-  }
-  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
-    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")))
-  stats::setNames(vapply(as.character(.etaRows$name), function(.n)
-    if (is.null(.lst)) 2L else sum(vapply(.lst, function(.ex)
-      if (.isAssign(.ex)) .count(.ex[[3]], .n) else 0L, integer(1))), integer(1)),
-    as.character(.etaRows$name))
+  .foceiNameOccurrence(ui, as.character(.etaRows$name))
 }
 
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
@@ -985,17 +996,19 @@
 #' subject-constant gate.  Empty when the info is unavailable.
 #' @noRd
 .foceiAnalyticCovDirMap <- function(ui, fDirs) {
-  .mrd <- tryCatch(ui$muRefDataFrame, error = function(e) NULL)
-  if (is.null(.mrd) || !is.data.frame(.mrd) || nrow(.mrd) == 0L) return(list())
   .ini <- ui$iniDf
   # eta name -> ETA_k_ (k = order among diagonal etas, matching .foceiAnalyticDirections' etaDirs)
   .etaRows <- .ini[!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2, , drop = FALSE]
   .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
   .eta2Dir <- stats::setNames(paste0("ETA_", seq_len(nrow(.etaRows)), "_"), .etaRows$name)
-  # id-level theta -> eta (occasion/IOV etas excluded -- IOV is out of analytic scope anyway)
-  .idRef <- .mrd[is.na(.mrd$level) | .mrd$level == "id", , drop = FALSE]
-  .theta2eta <- stats::setNames(as.character(.idRef$eta), as.character(.idRef$theta))
-  if (length(.theta2eta) == 0L) return(list())
+  # id-level theta -> eta (occasion/IOV etas excluded -- IOV is out of analytic scope anyway).
+  # May be empty: a covariate can also scale an ETA-LESS structural parameter (handled below), so
+  # do NOT bail on an empty eta map -- only bail when there are no covariate coefficients at all.
+  .mrd <- tryCatch(ui$muRefDataFrame, error = function(e) NULL)
+  .theta2eta <- if (!is.null(.mrd) && is.data.frame(.mrd) && nrow(.mrd) > 0L) {
+    .idRef <- .mrd[is.na(.mrd$level) | .mrd$level == "id", , drop = FALSE]
+    stats::setNames(as.character(.idRef$eta), as.character(.idRef$theta))
+  } else character(0)
   # (theta, coefficient, scale) rows from BOTH rxode2 covariate frames (bare + algebraic)
   .grab <- function(df, scaleCol) {
     if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L ||
@@ -1007,18 +1020,33 @@
     .grab(tryCatch(ui$muRefCovariateDataFrame, error = function(e) NULL), "covariate"),
     .grab(tryCatch(ui$mu2RefCovariateReplaceDataFrame, error = function(e) NULL), "covariate")))
   if (is.null(.cov) || nrow(.cov) == 0L) return(list())
-  # eta-occurrence guard: the only structure the rxode2 frames don't encode.  An eta used more
-  # than once (shared across parameters) breaks the scaling; `.foceiEtaOccurrence` counts literal
-  # uses (2L, i.e. ">1", when lstExpr is unavailable, so the guard is conservative).  The same
-  # helper gates the mu-ref *theta* reuse in `.foceiAnalyticDirections`.
+  # A covariate coefficient's sensitivities are those of the parameter position it scales, times the
+  # covariate value.  That position is either a random effect (`cl = exp(tcl + eta.cl + b*cov)` ->
+  # df/db = cov*df/deta) or, for a covariate on an ETA-LESS parameter (`v = exp(tv + b*cov)`, no
+  # eta.v), the structural theta itself (df/db = cov*df/dtheta, since theta and b enter the mu
+  # identically -- tv's own direction is already integrated, so b reuses it for free).  Guard the
+  # ONE structural condition the rxode2 frames don't encode: the reused position must occur exactly
+  # once; a shared eta/theta gains a state path df/db lacks (counts are conservative -> `2L` when
+  # lstExpr is unavailable, so uncertain cases fall back to the full symbolic build).
   .eo <- .foceiEtaOccurrence(ui)
+  .to <- .foceiNameOccurrence(ui, unique(.cov$theta))
   .res <- list(); .dup <- character(0)
   for (.r in seq_len(nrow(.cov))) {
-    .etN <- .theta2eta[[.cov$theta[.r]]]; if (is.null(.etN) || is.na(.etN)) next
-    .ed <- .eta2Dir[[.etN]]; if (is.null(.ed) || !(.ed %in% fDirs)) next
-    if (!identical(.eo[[.etN]], 1L)) next                        # eta shared/reused -> scaling not exact
+    .thN <- .cov$theta[.r]
+    .etN <- if (.thN %in% names(.theta2eta)) .theta2eta[[.thN]] else NA_character_
+    if (!is.na(.etN)) {
+      .ed <- .eta2Dir[[.etN]]; if (is.null(.ed) || !(.ed %in% fDirs)) next
+      if (!identical(.eo[[.etN]], 1L)) next                      # eta shared/reused -> scaling not exact
+    } else {
+      # eta-less parameter: reuse the structural theta's own (already integrated) direction
+      .snt <- .ini$ntheta[.ini$name == .thN]; if (length(.snt) != 1L || is.na(.snt)) next
+      .ed <- paste0("THETA_", .snt, "_"); if (!(.ed %in% fDirs)) next
+      if (!identical(.to[[.thN]], 1L)) next                      # structural theta shared -> scaling not exact
+    }
     .nt <- .ini$ntheta[.ini$name == .cov$coef[.r]]; if (length(.nt) != 1L || is.na(.nt)) next
     .cd <- paste0("THETA_", .nt, "_"); if (!(.cd %in% fDirs) || .cd %in% .dup) next
+    # `etaDir` names the source direction to scale (an eta direction, or a structural-theta
+    # direction for an eta-less parameter); the downstream emitter treats both identically.
     .new <- list(etaDir = .ed, scale = .cov$scale[.r])
     if (!is.null(.res[[.cd]])) {
       # same coefficient re-listed identically (bare frame + algebraic frame overlap) -> no-op; a

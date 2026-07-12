@@ -17,6 +17,15 @@
   (time-varying covariates, a shared/reused eta).  The analytic covariance also now
   restricts itself to Gaussian endpoints (`t`/`cauchy`/count/ordinal likelihoods and
   multiple estimated transform lambdas fall back to the finite-difference covariance).
+- Extended that reuse to a covariate on an **eta-less** parameter (`v = exp(tv + b*cov)`
+  with no `eta.v`): the coefficient now reuses the structural theta's own sensitivity
+  direction (`df/db = cov*df/dtv`, since `tv` and `b` enter the mu identically) instead
+  of building its own state-sensitivity ODEs.  Previously such a model errored inside the
+  direction map and silently fell back to the finite-difference covariance; it now stays
+  analytic for both the covariance and the fast outer gradient (matching finite differences),
+  and holds the integrated-direction count fixed regardless of how many covariates sit on
+  eta-less parameters (~1.3x fewer for one, ~2.6x for three).  A structural-theta
+  occurrence guard (shared with the eta guard) keeps the reuse exact.
 - Fixed the analytic (`fast=TRUE`) outer gradient and covariance being wrong for a
   model where a mu-referenced parameter's random effect is shared across parameters
   (e.g. `eta.cl` used in both `cl` and `v`).  The mu-referenced theta reused that eta's
