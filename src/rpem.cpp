@@ -785,7 +785,11 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   NumericVector sdTr(niter), propTr(niter, NA_REAL), powTr(niter, NA_REAL);
   NumericVector lamTr(niter, NA_REAL), llTr(niter);
   std::vector<double> row(rpemOp.ntheta);
-  std::vector<long> counts3((doComb || doPow || doTbs) ? (size_t)nsub * nGauss : 0, 0);
+  // counts3: accepted-sample visit counts, needed by the residual re-optimizers
+  // (combined/power/TBS and, when the data have BLQ records, the censored additive/
+  // proportional M-step).  Censoring (doCens) is auto-detected from the E-step's censv.
+  std::vector<long> counts3((size_t)nsub * nGauss, 0);
+  bool doCens = false, censChecked = false;
   bool doPar = (ncores > 1);
   seedEng(ncores);
   uint32_t seed0 = (uint32_t)seed;
@@ -839,6 +843,13 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
                                          &rpemOp.censv[so], &rpemOp.limv[so]);
         rpemOp.logp[r] = logLik; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
+    }
+    // Detect BLQ censoring once from the populated censv (any non-zero cens code): the
+    // naive pooled SS is biased under censoring, so the additive/proportional residual is
+    // then estimated by maximizing the censored log-likelihood (as rpemMstepK1Cens does).
+    if (!censChecked) {
+      for (unsigned int k = 0; k < rpemOp.nobsTot; ++k) if (rpemOp.censv[k] != 0) { doCens = true; break; }
+      censChecked = true;
     }
     // per-subject log n_i and lnL.
     std::vector<double> logn(nsub); double lnL = 0.0;
@@ -954,7 +965,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
           }
         }
         sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
-        if (doComb || doPow || doTbs) counts3[(size_t)ci * nGauss + cj]++;
+        if (doComb || doPow || doTbs || doCens) counts3[(size_t)ci * nGauss + cj]++;
         sumNobs += rpemOp.nobs[ci]; ++m;
       }
     }
@@ -1059,6 +1070,33 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
         if (SS < 1e-300) SS = 1e-300; return -0.5 * N * log(SS / N) + Jac; };
       lambda = rpemGolden(f, -2.0, 3.0, 100);
       double SS, Jac; ssJac(lambda, SS, Jac); addSd = sqrt(SS / N);
+      std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doCens) {
+      // censored additive (errType 0) / proportional (errType 1) residual: maximize the
+      // censored log-likelihood over the accepted (subject, sample) states -- observed
+      // records contribute the Gaussian density, BLQ records the CENS probability
+      // (doCensNormal1) -- by golden-section over sd (as rpemMstepK1Cens).
+      auto Qc = [&](double sd) -> double {
+        double q = 0.0;
+        for (int i = 0; i < nsub; ++i) {
+          int nobsi = rpemOp.nobs[i]; long so0 = rpemOp.idS[i];
+          for (int j = 0; j < nGauss; ++j) {
+            long c = counts3[(size_t)i * nGauss + j]; if (!c) continue;
+            long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+            for (int o = 0; o < nobsi; ++o) {
+              long so = so0 + o;
+              double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+              double sdo = (errType == 1) ? sd * (fabs(cp) + 1e-300) : sd;
+              double rv = sdo * sdo;
+              double gauss = -M_LN_SQRT_2PI - log(sdo) - 0.5 * (dv - cp) * (dv - cp) / rv;
+              q += (double)c * doCensNormal1((double)rpemOp.censv[so], dv, rpemOp.limv[so],
+                                             gauss, cp, rv, 0);
+            }
+          }
+        }
+        return q;
+      };
+      addSd = rpemGolden(Qc, 1e-4, std::max(5.0 * addSd, 1.0), 120);
       std::fill(counts3.begin(), counts3.end(), 0);
     } else if (!doLik) {                 // LL: no residual sd to update
       addSd = sqrt(sumSS / (double)sumNobs);

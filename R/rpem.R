@@ -491,8 +491,12 @@
   .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
   .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
   .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 7L)
+  # BLQ censoring runs in the C++ loop for additive/proportional error (the loop
+  # auto-detects it and maximizes the censored log-likelihood); other censored error
+  # structures keep the R loop.
+  .cLoopCens <- !.hasCens || .cl$errType %in% c(0L, 1L)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
-    !.multi && !.hasCens && !.modeIS &&
+    !.multi && .cLoopCens && !.modeIS &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   if (.cLoop) {
     # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
