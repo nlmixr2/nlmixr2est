@@ -138,13 +138,14 @@ extern "C" SEXP _nlmixr2est_getTestContrib(void) {
 
 // --- outer-problem NN training hook ------------------------------------------
 // A downstream package (nlmixr2nn) registers an R function that receives, once
-// per real outer objective evaluation, a matrix with one row per observation:
-// [id, time, dv, pred, r, <every solved state>].  The state columns carry the
-// NN-weight forward-sensitivity states (rx_sw), so the callback can assemble
-// d(LL)/d(w) and step the torch optimizer, then inject the updated weights (via
-// the rxode2 par-loader) for the next evaluation.  Called single-threaded from
-// foceiOfv0 with calcGrad == 0 (the real objective, not a finite-difference
-// perturbation), where the inner solve for every subject is current.
+// per real outer objective evaluation, a method-agnostic matrix with one row per
+// observation: [f, <every solved state>] -- only the predicted value and the ODE
+// state vector (which carries the NN-weight forward-sensitivity states rx_sw).
+// The callback assembles d(f)/d(w) from the states, combines it with the
+// method's own d(LL)/d(f) cotangent, steps the torch optimizer and injects the
+// updated weights (via the rxode2 par-loader) for the next evaluation.  Called
+// single-threaded from foceiOfv0 with calcGrad == 0 (the real objective, not a
+// finite-difference perturbation), where every subject's inner solve is current.
 static SEXP _nnOuterFn = NULL;
 extern "C" SEXP _nlmixr2est_setNnOuterFn(SEXP fn) {
   if (_nnOuterFn != NULL) { R_ReleaseObject(_nnOuterFn); _nnOuterFn = NULL; }
@@ -1196,10 +1197,13 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   return ret;
 }
 
-// Assemble the outer-problem NN-training matrix: one row per observation across
-// all subjects, columns [id, time, dv, pred, r, s0..s(neq-1)] where s* are the
-// current (optimized-eta) solved states -- including the rx_sw forward-
-// sensitivity states.  Mirrors grabRFmatFromInner's per-subject calc_lhs walk.
+// Assemble the outer-problem NN matrix: one row per observation across all
+// subjects, columns [f, s0..s(neq-1)] -- ONLY the predicted value f and the ODE
+// state vector (which carries the rx_sw forward-sensitivity states).  These are
+// the two quantities every estimation method produces, so the NN interface is
+// method-agnostic; the method-specific likelihood cotangent d(LL)/d(f) is
+// supplied separately by each method's per-observation contribution hook.
+// Mirrors grabRFmatFromInner's per-subject calc_lhs walk.
 static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   rx_solving_options *op = getSolvingOptions(rx);
   int neq = getOpNeq(op);
@@ -1213,7 +1217,7 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
       if (getIndEvid(ind, kk) == 0) nobs++;
     }
   }
-  const int ncFixed = 5; // id, time, dv, pred, r
+  const int ncFixed = 1; // f (predicted value)
   Rcpp::NumericMatrix mat(nobs, ncFixed + neq);
   int row = 0;
   for (int id = 0; id < nsub; id++) {
@@ -1228,12 +1232,8 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
       double *st = getOpIndSolve(op, ind, j);
       rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
       if (getIndEvid(ind, kk) != 0) continue;
-      mat(row, 0) = (double) id;
-      mat(row, 1) = curT;
-      mat(row, 2) = getIndDv(ind, kk);
-      mat(row, 3) = lhs[op_focei.predOffset];
-      mat(row, 4) = lhs[op_focei.predOffset + op_focei.neta + 1];
-      for (int s = 0; s < neq; ++s) mat(row, ncFixed + s) = st[s];
+      mat(row, 0) = lhs[op_focei.predOffset];             // predicted f value
+      for (int s = 0; s < neq; ++s) mat(row, ncFixed + s) = st[s]; // ODE states
       row++;
     }
   }

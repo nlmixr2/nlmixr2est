@@ -1,10 +1,12 @@
-## Outer-problem NN-training hook: FOCEI hands a registered R callback a matrix
-## with one row per observation -- [id, time, dv, pred, r, <every solved state>]
-## -- on each real objective evaluation.  The state columns carry the NN-weight
-## forward-sensitivity states (rx_sw) when the model has them; here we validate
-## the mechanism (fires, correct shape, dv/pred sane) on a plain model.
+## Outer-problem NN-training hook: FOCEI hands a registered R callback a
+## method-agnostic matrix with one row per observation -- [f, <every solved
+## state>] -- on each real objective evaluation.  Only the predicted value and
+## the ODE states are sent (the state columns carry the NN-weight forward-
+## sensitivity states rx_sw when the model has them); the method-specific
+## d(LL)/d(f) comes from the contribution hook, not this matrix.  Here we
+## validate the mechanism (fires, correct shape, f column sane) on a plain model.
 
-test_that("FOCEI outer NN hook passes the per-observation prediction+state matrix", {
+test_that("FOCEI outer NN hook passes the method-agnostic prediction+state matrix", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
   .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
@@ -35,9 +37,9 @@ test_that("FOCEI outer NN hook passes the per-observation prediction+state matri
   .nObs <- sum(d$EVID == 0)
   expect_gt(cap$n, 0)                                   # hook fired on real objective evals
   expect_equal(cap$dim[1], .nObs)                       # one row per observation
-  expect_gt(cap$dim[2], 5)                              # 5 fixed cols + >=1 state
-  ## dv column (4th, 1-based) is the observed data
-  expect_equal(sort(cap$mat[, 3]), sort(d$DV[d$EVID == 0]), tolerance = 1e-6)
-  ## prediction column (5th) is finite and non-negative
-  expect_true(all(is.finite(cap$mat[, 4])) && all(cap$mat[, 4] >= 0))
+  expect_gt(cap$dim[2], 1)                              # f + >=1 ODE state column
+  ## column 1 is the predicted value f: finite, non-negative, and in a plausible
+  ## range for the observed data (method-agnostic -- no dv/r sent)
+  expect_true(all(is.finite(cap$mat[, 1])) && all(cap$mat[, 1] >= 0))
+  expect_lt(max(cap$mat[, 1]), 2 * max(d$DV[d$EVID == 0]))
 })
