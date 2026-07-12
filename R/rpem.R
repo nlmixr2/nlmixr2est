@@ -499,7 +499,10 @@
   # smoothing window, so bounded ll() parameters are handled in C++ too.
   .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
   .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
-  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 7L)
+  # multi-endpoint (errType 5) runs in the C++ loop when there are no covariates (the loop
+  # uses the scalar mu update + a per-endpoint residual M-step).
+  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 7L) ||
+    (.cl$errType == 5L && length(.cl$covCoefNames) == 0L)
   # BLQ censoring runs in the C++ loop for additive/proportional error (the loop
   # auto-detects it and maximizes the censored log-likelihood); other censored error
   # structures keep the R loop.
@@ -510,7 +513,7 @@
   .hasFixHold <- any(.cl$muFixFull) || .cl$addSdFix || .cl$propSdFix ||
     .cl$lambdaFix || .cl$powFix || any(.cl$etaFix)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
-    !.multi && .cLoopCens && !.hasFixHold &&
+    .cLoopCens && !.hasFixHold &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   if (.cLoop) {
     # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
@@ -530,7 +533,15 @@
       structUpper = as.numeric(.cl$structUpper), structNbd = as.integer(.cl$structNbd),
       likLbfgs = if (.likLbfgs) 1L else 0L, collect = control$collect,
       lbfgsLmm = control$lbfgsLmm, lbfgsFactr = control$lbfgsFactr,
-      lbfgsPgtol = control$lbfgsPgtol, lbfgsMaxIter = control$lbfgsMaxIter, cInflate = .cInf)
+      lbfgsPgtol = control$lbfgsPgtol, lbfgsMaxIter = control$lbfgsMaxIter, cInflate = .cInf,
+      # multi-endpoint (empty for single-endpoint models): per-obs endpoint index +
+      # per-endpoint residual thetas / types / inits.
+      endpt = if (.multi) as.integer(.endptIdx) else integer(0),
+      endErrType = if (.multi) as.integer(.cl$endpt$errType) else integer(0),
+      endSclIdx = if (.multi) as.integer(.cl$endpt$sclIdx) else integer(0),
+      endPropIdx = if (.multi) as.integer(ifelse(is.na(.cl$endpt$propIdx), -1L, .cl$endpt$propIdx)) else integer(0),
+      endScl0 = if (.multi) as.numeric(.cl$endpt$scl0) else numeric(0),
+      endProp0 = if (.multi) as.numeric(.cl$endpt$prop0) else numeric(0))
     .r <- rpemEMLoopK1(.e, .cfg)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
@@ -538,6 +549,7 @@
     lamTr <- as.numeric(.r$lamTrace)
     if (.structOn) betaMat <- .r$betaTrace
     if (.useReg && length(.cl$covCoefIdx)) coefTr <- .r$coefTrace
+    if (.multi) { sdMat <- .r$sdMat; propMat <- .r$propMat }
     if (.modeIS) ebe <- .r$ebe          # converged proposal center for the final E-step
   } else
   for (.it in seq_len(niter)) {

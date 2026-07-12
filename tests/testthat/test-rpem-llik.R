@@ -137,7 +137,9 @@ test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
     mhBurn = 4000L, seed = 7L, design = matrix(0, 0, 0), covCoefIdx = integer(0),
     structLower = numeric(0), structUpper = numeric(0), structNbd = integer(0),
     likLbfgs = 0L, collect = 12L, lbfgsLmm = 5L, lbfgsFactr = 1e7, lbfgsPgtol = 0,
-    lbfgsMaxIter = 20L, cInflate = 1.0))
+    lbfgsMaxIter = 20L, cInflate = 1.0,
+    endpt = integer(0), endErrType = integer(0), endSclIdx = integer(0),
+    endPropIdx = integer(0), endScl0 = numeric(0), endProp0 = numeric(0)))
   a <- runN(15L); b <- runN(25L)
   expect_equal(a$muTrace[1:15, , drop = FALSE], b$muTrace[1:15, , drop = FALSE])
   expect_equal(as.numeric(a$lnL)[1:15], as.numeric(b$lnL)[1:15])

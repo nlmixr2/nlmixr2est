@@ -31,10 +31,10 @@
 #'   single-random-effect covariate regression, structural fixed effects, general
 #'   log-likelihood (`ll()`) endpoints (including the box-constrained `likLbfgs` refinement
 #'   of bounded likelihood parameters), additive/proportional BLQ censoring (M2/M3/M4),
-#'   mode-centered importance sampling (`impInflate`), and mixtures.  `FALSE` (default) uses
-#'   the R-driven loop, which additionally covers multi-endpoint models and models with a
-#'   fix()ed typical value / residual / omega -- cases the C++ loop does not yet handle (it
-#'   silently falls back to the R loop for those).
+#'   mode-centered importance sampling (`impInflate`), multiple endpoints, and mixtures.
+#'   `FALSE` (default) uses the R-driven loop, which additionally covers multi-endpoint
+#'   models with covariates and models with a fix()ed typical value / residual / omega --
+#'   cases the C++ loop does not yet handle (it silently falls back to the R loop for those).
 #' @param likLbfgs For a general log-likelihood (`ll()`) endpoint, refine the
 #'   fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
 #'   optimization of the importance-weighted observation log-likelihood (mirrors the

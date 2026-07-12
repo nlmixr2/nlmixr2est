@@ -42,6 +42,16 @@ void rpemLbfgsBeta(const std::vector<double> &baseBuf, const std::vector<int> &s
                    const double *lower, const double *upper, const int *nbd,
                    int lmm, double factr, double pgtol, int maxit);
 
+// Per-endpoint residual optimizers (multi-endpoint / errType 5); defined later, used by the
+// cLoop's multi-endpoint M-step to re-optimize each endpoint's combined/power/TBS residual
+// over just that endpoint's observations.
+static void rpemGuardedComb(const std::vector<long> &counts, const int *endpt,
+                            int endB, double a0, double b0, double &aOut, double &bOut);
+static void rpemGuardedPow(const std::vector<long> &counts, const int *endpt,
+                           int endB, double &sclOut, double &powOut);
+static void rpemGuardedTBS(const std::vector<long> &counts, const int *endpt,
+                           int endB, double &addOut, double &lamOut);
+
 // Solve one subject with the bound rpem predOnly model (rxPred function ptrs).
 #define rpemPredOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
@@ -726,6 +736,13 @@ List rpemEMLoopK1(Environment e, List cfg) {
   double lbfgsFactr = cfg["lbfgsFactr"], lbfgsPgtol = cfg["lbfgsPgtol"];
   int lbfgsMaxIter = cfg["lbfgsMaxIter"];
   double cInflate = cfg["cInflate"];
+  // multi-endpoint (errType 5): per-obs endpoint index + per-endpoint residual thetas /
+  // types (empty for single-endpoint models).
+  IntegerVector endpt = cfg["endpt"], endErrType = cfg["endErrType"];
+  IntegerVector endSclIdx = cfg["endSclIdx"], endPropIdx = cfg["endPropIdx"];
+  NumericVector endScl0 = cfg["endScl0"], endProp0 = cfg["endProp0"];
+  bool doMulti = (errType == 5);
+  int nEndpt = endErrType.size();
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
@@ -798,6 +815,17 @@ List rpemEMLoopK1(Environment e, List cfg) {
   NumericMatrix coefTr(niter, doReg ? nCoef : 0);
   NumericVector sdTr(niter), propTr(niter, NA_REAL), powTr(niter, NA_REAL);
   NumericVector lamTr(niter, NA_REAL), llTr(niter);
+  // per-endpoint residual scale/second-param (multi-endpoint) + their per-iteration traces.
+  std::vector<double> sdVec(doMulti ? nEndpt : 0), propVec(doMulti ? nEndpt : 0);
+  std::vector<int> endSclBuf(doMulti ? nEndpt : 0), endPropBuf(doMulti ? nEndpt : 0);
+  std::vector<int> endErrBuf(doMulti ? nEndpt : 0);
+  NumericMatrix sdMat(doMulti ? niter : 0, doMulti ? nEndpt : 0);
+  NumericMatrix propMat(doMulti ? niter : 0, doMulti ? nEndpt : 0);
+  if (doMulti)
+    for (int b = 0; b < nEndpt; ++b) {
+      sdVec[b] = endScl0[b]; propVec[b] = R_IsNA(endProp0[b]) ? 0.0 : endProp0[b];
+      endSclBuf[b] = endSclIdx[b]; endPropBuf[b] = endPropIdx[b]; endErrBuf[b] = endErrType[b];
+    }
   std::vector<double> row(rpemOp.ntheta);
   // counts3: accepted-sample visit counts, needed by the residual re-optimizers
   // (combined/power/TBS and, when the data have BLQ records, the censored additive/
@@ -825,6 +853,12 @@ List rpemEMLoopK1(Environment e, List cfg) {
     if (doComb) baseBuf[propSdIdx] = propSd;
     if (doPow) baseBuf[powIdx] = power;
     if (doTbs) baseBuf[lambdaIdx] = lambda;
+    if (doMulti)
+      for (int b = 0; b < nEndpt; ++b) {
+        baseBuf[endSclBuf[b]] = sdVec[b];
+        if ((endErrBuf[b] == 2 || endErrBuf[b] == 3 || endErrBuf[b] == 4) && endPropBuf[b] >= 0)
+          baseBuf[endPropBuf[b]] = propVec[b];
+      }
     for (int k = 0; k < nStruct; ++k) baseBuf[structIdxBuf[k]] = beta[k];
     // re-establish the solve (the previous M-step's rxRmvn resets rxode2 solve state)
     rpemDoSetup(pred, rxControl, param, data);
@@ -1014,7 +1048,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
           }
         }
         sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
-        if (doComb || doPow || doTbs || doCens) counts3[(size_t)ci * nGauss + cj]++;
+        if (doComb || doPow || doTbs || doCens || doMulti) counts3[(size_t)ci * nGauss + cj]++;
         sumNobs += rpemOp.nobs[ci]; ++m;
       }
     }
@@ -1147,6 +1181,35 @@ List rpemEMLoopK1(Environment e, List cfg) {
       };
       addSd = rpemGolden(Qc, 1e-4, std::max(5.0 * addSd, 1.0), 120);
       std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doMulti) {
+      // multi-endpoint: additive/proportional/lognormal endpoints get a closed-form SS over
+      // their own observations; combined/power/TBS endpoints re-optimize over theirs (same
+      // per-endpoint logic as rpemMstepK1Multi).
+      std::vector<double> ssE(nEndpt, 0.0); std::vector<long> nE(nEndpt, 0);
+      const int *ep = &endpt[0];
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i]; long b0 = rpemOp.idS[i];
+        for (int j = 0; j < nGauss; ++j) {
+          long c = counts3[(size_t)i * nGauss + j]; if (!c) continue;
+          long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            int b = ep[b0 + o];
+            if (endErrBuf[b] == 2 || endErrBuf[b] == 3 || endErrBuf[b] == 4) continue;  // numeric below
+            double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o], rr = dv - cp, contrib;
+            if (endErrBuf[b] == 6) { double lr = (cp > 0.0 && dv > 0.0) ? (log(dv) - log(cp)) : 0.0; contrib = lr * lr; }
+            else if (endErrBuf[b] == 1) { contrib = (cp != 0.0) ? (rr / cp) * (rr / cp) : 0.0; }
+            else { contrib = rr * rr; }
+            ssE[b] += (double)c * contrib; nE[b] += c;
+          }
+        }
+      }
+      for (int b = 0; b < nEndpt; ++b) {
+        if (endErrBuf[b] == 2) { double aa, bp; rpemGuardedComb(counts3, ep, b, sdVec[b]*sdVec[b], propVec[b]*propVec[b], aa, bp); sdVec[b] = sqrt(aa); propVec[b] = sqrt(bp); }
+        else if (endErrBuf[b] == 4) { double scl, pw; rpemGuardedPow(counts3, ep, b, scl, pw); sdVec[b] = scl; propVec[b] = pw; }
+        else if (endErrBuf[b] == 3) { double add, lam; rpemGuardedTBS(counts3, ep, b, add, lam); sdVec[b] = add; propVec[b] = lam; }
+        else { sdVec[b] = (nE[b] > 0) ? sqrt(ssE[b] / (double)nE[b]) : sdVec[b]; }
+      }
+      std::fill(counts3.begin(), counts3.end(), 0);
     } else if (!doLik) {                 // LL: no residual sd to update
       addSd = sqrt(sumSS / (double)sumNobs);
     }
@@ -1157,6 +1220,11 @@ List rpemEMLoopK1(Environment e, List cfg) {
     if (doComb) propTr[it] = propSd;
     if (doPow) powTr[it] = power;
     if (doTbs) lamTr[it] = lambda;
+    if (doMulti) for (int b = 0; b < nEndpt; ++b) {
+      sdMat(it, b) = sdVec[b];
+      bool hasProp = (endErrBuf[b] == 2 || endErrBuf[b] == 3 || endErrBuf[b] == 4);
+      propMat(it, b) = hasProp ? propVec[b] : NA_REAL;   // NA for add/prop/lnorm endpoints
+    }
   }
   rpemFree();
   NumericMatrix ebeOut(nsub, nEta);   // converged proposal center (mode-centered IS)
@@ -1166,7 +1234,8 @@ List rpemEMLoopK1(Environment e, List cfg) {
                       _["sdTrace"] = sdTr, _["propTrace"] = propTr,
                       _["powTrace"] = powTr, _["lamTrace"] = lamTr,
                       _["betaTrace"] = betaTr, _["coefTrace"] = coefTr,
-                      _["ebe"] = ebeOut, _["lnL"] = llTr);
+                      _["ebe"] = ebeOut, _["sdMat"] = sdMat, _["propMat"] = propMat,
+                      _["lnL"] = llTr);
 }
 
 // Full C++ E-M loop for mixtures (design/rpem/12 M5): the whole mixture E-M in one C++

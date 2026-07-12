@@ -297,7 +297,9 @@ test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the pre
     nGauss = 200L, ncores = 2L, nMH = 30000L, mhBurn = 3000L, seed = 123L,
     design = matrix(0, 0, 0), covCoefIdx = integer(0), structLower = numeric(0),
     structUpper = numeric(0), structNbd = integer(0), likLbfgs = 0L, collect = 8L,
-    lbfgsLmm = 5L, lbfgsFactr = 1e7, lbfgsPgtol = 0, lbfgsMaxIter = 20L, cInflate = 1.0))
+    lbfgsLmm = 5L, lbfgsFactr = 1e7, lbfgsPgtol = 0, lbfgsMaxIter = 20L, cInflate = 1.0,
+    endpt = integer(0), endErrType = integer(0), endSclIdx = integer(0),
+    endPropIdx = integer(0), endScl0 = numeric(0), endProp0 = numeric(0)))
   r20 <- runN(20L); r30 <- runN(30L)
   expect_equal(r20$muTrace[1:20, , drop = FALSE], r30$muTrace[1:20, , drop = FALSE])
   expect_equal(r20$omegaTrace[1:20, , drop = FALSE], r30$omegaTrace[1:20, , drop = FALSE])
