@@ -17,12 +17,14 @@ extern "C" {
   typedef void (*nlmixrRegisterEmLik_t)(nlmixrEmLik_fn fn);
   typedef void (*nlmixrRemoveEmLik_t)(nlmixrEmLik_fn fn);
   typedef int  (*nlmixrHasLikContrib_t)(void);
+  typedef void (*nlmixrSetInnerWeightFn_t)(nlmixrInnerWeight_fn fn);
 
   extern nlmixrRegisterLikContrib_t nlmixrRegisterLikContribP;
   extern nlmixrRemoveLikContrib_t   nlmixrRemoveLikContribP;
   extern nlmixrRegisterEmLik_t      nlmixrRegisterEmLikP;
   extern nlmixrRemoveEmLik_t        nlmixrRemoveEmLikP;
   extern nlmixrHasLikContrib_t      nlmixrHasLikContribP;
+  extern nlmixrSetInnerWeightFn_t   nlmixrSetInnerWeightFnP;
 
   static inline SEXP iniNlmixr2estLikContrib0(SEXP p) {
     if (nlmixrRegisterLikContribP == NULL) {
@@ -31,6 +33,10 @@ extern "C" {
       nlmixrRegisterEmLikP      = (nlmixrRegisterEmLik_t)      R_ExternalPtrAddrFn(VECTOR_ELT(p, 2));
       nlmixrRemoveEmLikP        = (nlmixrRemoveEmLik_t)        R_ExternalPtrAddrFn(VECTOR_ELT(p, 3));
       nlmixrHasLikContribP      = (nlmixrHasLikContrib_t)      R_ExternalPtrAddrFn(VECTOR_ELT(p, 4));
+      // element 5 (setInnerWeightFn) may be absent when built against an older
+      // nlmixr2est; guard on the table length.
+      if (Rf_length(p) > 5)
+        nlmixrSetInnerWeightFnP = (nlmixrSetInnerWeightFn_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 5));
     }
     return R_NilValue;
   }
@@ -41,6 +47,7 @@ extern "C" {
   nlmixrRegisterEmLik_t      nlmixrRegisterEmLikP      = NULL;  \
   nlmixrRemoveEmLik_t        nlmixrRemoveEmLikP        = NULL;  \
   nlmixrHasLikContrib_t      nlmixrHasLikContribP      = NULL;  \
+  nlmixrSetInnerWeightFn_t   nlmixrSetInnerWeightFnP   = NULL;  \
   SEXP iniNlmixr2estLikContrib(SEXP p) { return iniNlmixr2estLikContrib0(p); }
 
 #ifdef __cplusplus

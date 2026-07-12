@@ -68,18 +68,25 @@ extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
 }
 extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
 
+// Per-subject NN weight-injection hook (inner individual-weight building block).
+// A single plugin callback; NULL when none.  Invoked after a subject's etas are
+// written to par_ptr and before its inner solve (see nnInnerWeightHook below).
+static nlmixrInnerWeight_fn _nlmixrInnerWeightFn = NULL;
+extern "C" void nlmixrSetInnerWeightFn(nlmixrInnerWeight_fn fn) { _nlmixrInnerWeightFn = fn; }
+
 // Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
 extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
-  const char *nm[5] = {"registerLikContrib", "removeLikContrib",
-                       "registerEmLik", "removeEmLik", "hasLikContrib"};
-  DL_FUNC fn[5] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
+  const char *nm[6] = {"registerLikContrib", "removeLikContrib",
+                       "registerEmLik", "removeEmLik", "hasLikContrib",
+                       "setInnerWeightFn"};
+  DL_FUNC fn[6] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
                    (DL_FUNC) &nlmixrRegisterEmLik, (DL_FUNC) &nlmixrRemoveEmLik,
-                   (DL_FUNC) &nlmixrHasLikContrib};
-  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 5));
-  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 5));
-  for (int i = 0; i < 5; ++i) {
+                   (DL_FUNC) &nlmixrHasLikContrib, (DL_FUNC) &nlmixrSetInnerWeightFn};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 6));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 6));
+  for (int i = 0; i < 6; ++i) {
     SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
     SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
   }
@@ -122,6 +129,32 @@ extern "C" SEXP _nlmixr2est_getTestContrib(void) {
   REAL(r)[0] = (double) _testNObs;   REAL(r)[1] = _testSumDLLdf;
   REAL(r)[2] = _testSumErr;          REAL(r)[3] = _testSumF;
   REAL(r)[4] = (double) _testNBegin; REAL(r)[5] = (double) _testNEnd;
+  UNPROTECT(1);
+  return r;
+}
+
+// test-only inner-weight injection hook (tests/testthat/test-nn-inner.R): counts
+// invocations and sums the eta vector, to confirm the hook fires per subject
+// eta-set with the current etas.
+static int _testInnerWtN;
+static double _testInnerWtEtaSum;
+static void _testInnerWt(int cid, const double *eta, int neta) {
+  (void) cid;
+  _testInnerWtN++;
+  for (int i = 0; i < neta; ++i) _testInnerWtEtaSum += eta[i];
+}
+extern "C" SEXP _nlmixr2est_registerTestInnerWt(void) {
+  _testInnerWtN = 0; _testInnerWtEtaSum = 0.0;
+  nlmixrSetInnerWeightFn(_testInnerWt);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_removeTestInnerWt(void) {
+  nlmixrSetInnerWeightFn(NULL);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_getTestInnerWt(void) {
+  SEXP r = PROTECT(Rf_allocVector(REALSXP, 2));
+  REAL(r)[0] = (double) _testInnerWtN; REAL(r)[1] = _testInnerWtEtaSum;
   UNPROTECT(1);
   return r;
 }
@@ -1063,6 +1096,9 @@ void updateEta(double *eta, int cid) {
   for (int i = op_focei.neta; i--;) {
     setIndParPtr(ind, op_focei.etaTrans[i], eta[i]);
   }
+  // inner individual-weight injection: overwrite this subject's par_ptr weight
+  // block from the just-set etas (before the solve).
+  if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(cid, eta, op_focei.neta);
 }
 
 // RAII guard: snapshots a per-individual ETA vector, restores it on
@@ -1413,6 +1449,10 @@ double likInner0(double *eta, int id) {
     for (j = op_focei.neta; j--;){
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
+    // inner individual-weight injection: set this subject's par_ptr weight block
+    // from the just-set etas before the inner solve (fires on FD perturbations
+    // too, so FOCEI's FD eta-sensitivity captures d(f)/d(etaW)).
+    if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(id, eta, op_focei.neta);
     // FOCE: capture eta=0 population R before the inner solve overwrites
     // ind->solve.  rPop is a function of theta only, so it is cached across inner
     // iterations and recomputed only when updateTheta() bumps the generation
