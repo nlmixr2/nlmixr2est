@@ -2,6 +2,8 @@
 
 Get control object from fit
 
+Retrieve the (focei eval) control stored on an RPEM fit.
+
 ## Usage
 
 ``` r
@@ -98,6 +100,9 @@ nmObjGetControl(x, ...)
 nmObjGetControl(x, ...)
 
 # S3 method for class 'posthoc'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'rpem'
 nmObjGetControl(x, ...)
 
 # S3 method for class 'uobyqa'

@@ -49,7 +49,7 @@
   : Control options for the fsaem (fast SAEM) estimation method
 - [`getValidNlmixrControl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   [`getValidNlmixrCtl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
-  : Get valid nlmixr control object
+  : Validate the RPEM control (est="rpem")
 - [`impControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impControl.md)
   : Control for the imp (importance-sampling EM without MAP search)
   method
@@ -171,6 +171,8 @@
   : Extract residuals from the FOCEI fit
 - [`rmEta()`](https://nlmixr2.github.io/nlmixr2est/reference/rmEta.md) :
   Remove an eta from the model
+- [`rpemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rpemControl.md)
+  : RPEM estimation control
 - [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
   : Control Options for SAEM
 - [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
