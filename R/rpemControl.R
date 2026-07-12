@@ -44,6 +44,13 @@
 #' @param lbfgsLmm,lbfgsFactr,lbfgsPgtol,lbfgsMaxIter L-BFGS-B tuning for the `likLbfgs`
 #'   likelihood-parameter refinement (number of corrections, convergence `factr`/`pgtol`,
 #'   and max iterations).
+#' @param print Iteration-print frequency: display the parameter walk (population estimates
+#'   + omega, with the back-transformed row) every `print` iterations (saem/focei/vae style).
+#'   `0` (default) captures the parameter history silently.  The walk is *always* saved to the
+#'   fit object's parameter history (`fit$parHist` / `fit$parHistStacked`) regardless.  May
+#'   also be an `iterPrintControl()` object.
+#' @param printNcol,useColor Iteration-print formatting (columns per row, ANSI color); passed
+#'   through to `iterPrintControl()`.
 #' @param ... Ignored (reserved for future options).
 #' @return A list of class `rpemControl`.
 #' @export
@@ -52,7 +59,10 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         atol = 1e-8, rtol = 1e-8, cores = 1L,
                         impInflate = 0, cLoop = FALSE,
                         likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
-                        lbfgsPgtol = 0, lbfgsMaxIter = 20L, ...) {
+                        lbfgsPgtol = 0, lbfgsMaxIter = 20L,
+                        print = 0L, printNcol = NULL, useColor = NULL, ...) {
+  .iterPrintControl <- .absorbIterPrintControl(print = print, printNcol = printNcol,
+                                               useColor = useColor)
   .ret <- list(nGauss = as.integer(nGauss), nMH = as.integer(nMH),
                mhBurn = as.integer(mhBurn), niter = as.integer(niter),
                collect = as.integer(collect), seed = as.integer(seed),
@@ -60,7 +70,8 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                impInflate = as.numeric(impInflate), cLoop = isTRUE(cLoop),
                likLbfgs = isTRUE(likLbfgs), lbfgsLmm = as.integer(lbfgsLmm),
                lbfgsFactr = as.numeric(lbfgsFactr), lbfgsPgtol = as.numeric(lbfgsPgtol),
-               lbfgsMaxIter = as.integer(lbfgsMaxIter))
+               lbfgsMaxIter = as.integer(lbfgsMaxIter),
+               print = print, iterPrintControl = .iterPrintControl)
   class(.ret) <- "rpemControl"
   .ret
 }

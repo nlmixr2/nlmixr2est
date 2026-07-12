@@ -1405,6 +1405,44 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemIterPrintStart_
+RObject rpemIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl, RObject xform);
+RcppExport SEXP _nlmixr2est_rpemIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemIterPrintStart_(initPar, names, iterPrintControl, xform));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemIterPrintRow_
+RObject rpemIterPrintRow_(NumericVector x, double f, std::string phase);
+RcppExport SEXP _nlmixr2est_rpemIterPrintRow_(SEXP xSEXP, SEXP fSEXP, SEXP phaseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< double >::type f(fSEXP);
+    Rcpp::traits::input_parameter< std::string >::type phase(phaseSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemIterPrintRow_(x, f, phase));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemIterPrintGet_
+RObject rpemIterPrintGet_(bool printLine);
+RcppExport SEXP _nlmixr2est_rpemIterPrintGet_(SEXP printLineSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

@@ -147,6 +147,9 @@ SEXP _nlmixr2est_rpemFisherReg(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemFisherDiag(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepBeta(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rpemMstepBetaLik(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemIterPrintStart_(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemIterPrintRow_(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemIterPrintGet_(SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlmWarnings(void);
@@ -235,6 +238,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rpemFisherDiag", (DL_FUNC) &_nlmixr2est_rpemFisherDiag, 4},
   {"_nlmixr2est_rpemMstepBeta", (DL_FUNC) &_nlmixr2est_rpemMstepBeta, 4},
   {"_nlmixr2est_rpemMstepBetaLik", (DL_FUNC) &_nlmixr2est_rpemMstepBetaLik, 12},
+  {"_nlmixr2est_rpemIterPrintStart_", (DL_FUNC) &_nlmixr2est_rpemIterPrintStart_, 4},
+  {"_nlmixr2est_rpemIterPrintRow_", (DL_FUNC) &_nlmixr2est_rpemIterPrintRow_, 3},
+  {"_nlmixr2est_rpemIterPrintGet_", (DL_FUNC) &_nlmixr2est_rpemIterPrintGet_, 1},
   {"_nlmixr2est_rpemFree", (DL_FUNC) &_nlmixr2est_rpemFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},

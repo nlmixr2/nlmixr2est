@@ -21,6 +21,9 @@ rpemControl(
   lbfgsFactr = 1e+07,
   lbfgsPgtol = 0,
   lbfgsMaxIter = 20L,
+  print = 0L,
+  printNcol = NULL,
+  useColor = NULL,
   ...
 )
 }
@@ -76,6 +79,15 @@ models; ignored for standard residual-error models.}
 \item{lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter}{L-BFGS-B tuning for the `likLbfgs`
 likelihood-parameter refinement (number of corrections, convergence `factr`/`pgtol`,
 and max iterations).}
+
+\item{print}{Iteration-print frequency: display the parameter walk (population estimates
++ omega, with the back-transformed row) every `print` iterations (saem/focei/vae style).
+`0` (default) captures the parameter history silently.  The walk is *always* saved to the
+fit object's parameter history (`fit$parHist` / `fit$parHistStacked`) regardless.  May
+also be an `iterPrintControl()` object.}
+
+\item{printNcol, useColor}{Iteration-print formatting (columns per row, ANSI color); passed
+through to `iterPrintControl()`.}
 
 \item{...}{Ignored (reserved for future options).}
 }

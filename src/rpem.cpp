@@ -24,6 +24,10 @@
 
 #define _(String) (String)
 
+#include "utilc.h"     // RSprintf, used by scale.h's iteration-print routines
+#include "scale.h"     // shared iteration-print + parameter-history machinery (after the
+                       // gettext-style _() macro so its warning(_(...)) calls resolve)
+
 // L-BFGS-B with C linkage (src/lbfgsR.c), shared with saem.cpp -- used to refine the
 // fixed-effect likelihood parameters of a general log-likelihood RPEM model by a direct
 // box-constrained optimization of the importance-weighted observation log-likelihood.
@@ -2767,4 +2771,55 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
   }
   return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
                       _["sd"] = sdAdd, _["propSd"] = sdProp, _["accept"] = accept);
+}
+
+// RPEM iteration printing + parameter-history capture.  Reuses the SHARED iteration-print
+// machinery in scale.h (scaleSetup / scalePrintHeader / scalePrintFun / scaleParHisDf) that
+// saem, focei, the nlm family and vae use, so RPEM prints the same iteration table and
+// produces parHistData in the standard format.  RPEM never scales its parameters
+// (scaleTypeNone drops the redundant "U" rows); the R-side `xform` list drives the "X"
+// back-transform row (e.g. exp() typical values), and `phase` labels the algorithm stage
+// (EM exploration vs the terminal smoothing/averaging window).
+static scaling _rpemScale;
+static std::vector<double> _rpemIpInit, _rpemIpScaleC;
+static std::vector<int> _rpemIpXPar;
+static std::string _rpemIpPhase;
+
+//[[Rcpp::export]]
+RObject rpemIterPrintStart_(NumericVector initPar, CharacterVector names,
+                            List iterPrintControl, RObject xform = R_NilValue) {
+  int np = initPar.size();
+  _rpemIpInit.assign(initPar.begin(), initPar.end());
+  _rpemIpScaleC.assign(np, 1.0);
+  scaleSetup(&_rpemScale, _rpemIpInit.data(), _rpemIpScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             normTypeConstant, scaleTypeNone, 0.0, 0.0, 0.0, np);
+  if (!Rf_isNull(xform)) scaleAttachXform(&_rpemScale, as<List>(xform));
+  if (_rpemScale.xPar == NULL) {
+    _rpemIpXPar.assign(np, 0);
+    _rpemScale.xPar = _rpemIpXPar.data();
+    _rpemScale.probitIdx = NULL;
+    _rpemScale.logitThetaLow = _rpemScale.logitThetaHi = NULL;
+    _rpemScale.probitThetaLow = _rpemScale.probitThetaHi = NULL;
+  }
+  _rpemScale.keyExtra = "EM: exploration; Smooth: terminal averaging (collect) window\n";
+  scaleApplyIterPrintControl(&_rpemScale, iterPrintControl);
+  if (_rpemScale.every > 0) scalePrintHeader(&_rpemScale);   // header only when displaying
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject rpemIterPrintRow_(NumericVector x, double f, std::string phase = "") {
+  _rpemIpPhase = phase;
+  _rpemScale.phaseLabel = _rpemIpPhase.empty() ? NULL : _rpemIpPhase.c_str();
+  scalePrintFun(&_rpemScale, &x[0], f);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject rpemIterPrintGet_(bool printLine = true) {
+  _rpemScale.save = 0;
+  _rpemScale.every = 0;
+  if (printLine) scalePrintLine(&_rpemScale, min2(_rpemScale.npars, _rpemScale.ncol));
+  return scaleParHisDf(&_rpemScale);
 }

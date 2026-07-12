@@ -406,6 +406,18 @@ rpemMstepK1Multi <- function(design, coefs, endpt, errTypes, add0, prop0, nTrial
     .Call(`_nlmixr2est_rpemMstepK1Multi`, design, coefs, endpt, errTypes, add0, prop0, nTrials, burn)
 }
 
+rpemIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
+    .Call(`_nlmixr2est_rpemIterPrintStart_`, initPar, names, iterPrintControl, xform)
+}
+
+rpemIterPrintRow_ <- function(x, f, phase = "") {
+    .Call(`_nlmixr2est_rpemIterPrintRow_`, x, f, phase)
+}
+
+rpemIterPrintGet_ <- function(printLine = TRUE) {
+    .Call(`_nlmixr2est_rpemIterPrintGet_`, printLine)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

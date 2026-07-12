@@ -639,6 +639,41 @@
     llTr[.it] <- .est$lnL
   }
 
+  # Parameter-history walk (shared scale.h iteration printing, like saem / focei / vae):
+  # reconstruct each iteration's full theta vector + omega from the traces (one code path
+  # for the cLoop and R loop), print the population estimates each iteration (with the
+  # back-transformed row) when control$print > 0, and always capture the walk into standard
+  # parHistData for the fit object.  `phase` labels the stage: exploration ("EM") vs the
+  # terminal averaging/smoothing window ("Smooth").
+  .parHist <- tryCatch({
+    .thetaMat <- matrix(rep(.cl$base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
+    if (length(.cl$muIdx)) .thetaMat[, .cl$muIdx + 1L] <- muTr[, .cl$muRef, drop = FALSE]
+    if (.useReg && length(.cl$covCoefIdx)) .thetaMat[, .cl$covCoefIdx + 1L] <- coefTr[, -1, drop = FALSE]
+    if (.structOn) .thetaMat[, .cl$structIdx + 1L] <- betaMat
+    if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
+    if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
+    if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
+    if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
+    if (.multi) {
+      .thetaMat[, .cl$endpt$sclIdx + 1L] <- sdMat
+      .cb <- .cl$endpt$errType %in% c(2L, 3L, 4L)
+      if (any(.cb)) .thetaMat[, .cl$endpt$propIdx[.cb] + 1L] <- propMat[, .cb, drop = FALSE]
+    }
+    .parMat <- cbind(.thetaMat, omTr)
+    .pNames <- c(.cl$thetaNames, paste0("o(", .cl$etaNames, ")"))
+    colnames(.parMat) <- .pNames
+    # back-transform codes: theta portion from the ui (exp / expit typical values),
+    # omega portion identity (variances shown on the natural scale).
+    .xf <- .iterPrintXParFromUi(ui, .cl$thetaNames)
+    .xf$xPar <- c(.xf$xPar, integer(.cl$nEta))
+    .xf$probitIdx <- c(.xf$probitIdx, integer(.cl$nEta))
+    rpemIterPrintStart_(.parMat[1, ], .pNames, control$iterPrintControl, .xf)
+    .smoothH <- niter - control$collect
+    for (.i in seq_len(niter))
+      rpemIterPrintRow_(.parMat[.i, ], llTr[.i], if (.i > .smoothH) "Smooth" else "EM")
+    rpemIterPrintGet_(isTRUE(control$iterPrintControl$every > 0))
+  }, error = function(e) NULL)
+
   # Final estimate = mean over the converged iterations.
   .k <- min(control$collect, niter)
   .w <- (niter - .k + 1L):niter
@@ -748,7 +783,7 @@
        endptSd = endptSdHat, endptProp = endptPropHat,
        struct = if (.structOn) stats::setNames(structHat, .cl$thetaNames[.cl$structIdx + 1L]) else NULL,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
-       ebe = ebe, fisher = .fisher,
+       ebe = ebe, fisher = .fisher, parHist = .parHist,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
 }
@@ -1095,6 +1130,12 @@ getValidNlmixrCtl.rpem <- function(control) {
   # back to the lightweight estimates object.
   if (!inherits(.out, "nlmixr2FitData")) {
     stop("rpem residual-table step incomplete")
+  }
+  # Install the RPEM parameter-history walk as standard parHistData on the fit env, so
+  # `fit$parHist` / `fit$parHistStacked` work exactly like saem / focei / vae.
+  if (!is.null(rfit$parHist)) {
+    .fenv <- if (rxode2::rxIs(.out, "nlmixr2FitData")) .out$env else .out
+    if (is.environment(.fenv)) assign("parHistData", rfit$parHist, envir = .fenv)
   }
   # Install the RPEM Fisher-score covariance AFTER the fit is built (so the eval-only
   # finalize does not clobber the estimates) and patch the parFixedDf SE/%RSE/CI from
