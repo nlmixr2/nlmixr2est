@@ -7,6 +7,7 @@
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
+#include "nmMcmcRng.h"
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
@@ -585,22 +586,6 @@ static inline void _saemFillNormEng(arma::vec &v) {
 static inline void _saemFillUnifEng(arma::vec &v) {
   for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxUnifEng(0.0, 1.0);
 }
-// The engine seed the current MCMC/IS block set -- recorded so the inner
-// likelihood solve (which re-seeds the engine per subject, setSeedEng1(
-// getRxSeed1()+id)) can be undone right after it, keeping the sampling stream
-// on its own seed.  See _saemRngGuard().
-static thread_local uint32_t _saemMcmcEngSeed = 0u;
-
-// Restore the sampling seed after an inner-likelihood call so the solve's
-// internal per-subject re-seed never leaks into the MCMC/IS draws.  Any inner
-// likelihood evaluated inside an MCMC region should go through this.
-template <class F>
-static inline auto _saemRngGuard(F&& fn) -> decltype(fn()) {
-  auto _r = fn();
-  setSeedEng1(_saemMcmcEngSeed);
-  return _r;
-}
-
 // Iteration-indexed threefry stream seed for a do_mcmc proposal block: a pure
 // mixing function of (baseSeed, kiter, method, u, k1) so every iteration's RNG
 // is independent of the total iteration count (dynamic phase extension) and
@@ -619,8 +604,7 @@ static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int
   s = s * 2654435761u + (uint32_t)u;
   s = s * 2654435761u + (uint32_t)k1;
   s += (uint32_t)mixIdx;               // per-component stream offset
-  _saemMcmcEngSeed = s;
-  setSeedEng1(s);
+  nmSetSeedEng1(s);
 }
 
 // class def starts
@@ -3390,7 +3374,7 @@ private:
         }
         _saemFillUnifEng(accU);   // acceptance uniforms from the same stream
 
-        fcMat = _saemRngGuard([&]{ return user_fn(phiMc, mx.evtM, mx.optM); });
+        fcMat = nmRngGuard([&]{ return user_fn(phiMc, mx.evtM, mx.optM); });
         cur_limit = fcMat.col(2);
         cur_cens = fcMat.col(1);
 
@@ -3502,7 +3486,7 @@ private:
     mat lossByM(mx.nM, nMix);
     for (int mHyp = 0; mHyp < nMix; mHyp++) {
       current_saem_state->_saemMixest = mHyp + 1;
-      mat fcMat = _saemRngGuard([&]{ return user_fn(phiC, mx.evtM, mx.optM); });
+      mat fcMat = nmRngGuard([&]{ return user_fn(phiC, mx.evtM, mx.optM); });
       vec curLimit = fcMat.col(2);
       vec curCens = fcMat.col(1);
       vec fc = fcMat.col(0);
