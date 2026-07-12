@@ -688,7 +688,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
                   IntegerVector resIdx, NumericVector resPar0,
                   IntegerVector structIdx, NumericVector struct0,
                   int niter, int nGauss, int ncores, int nMH, int mhBurn,
-                  unsigned int seed) {
+                  unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx) {
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
@@ -737,7 +737,27 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) { mu[a] = mu0[a]; omDiag[a] = omDiag0[a]; }
   double addSd = addSd0;
 
+  // mu2 covariate regression (D22): when covariate coefficients are present the mu
+  // M-step becomes a weighted linear regression of the accepted theta samples on the
+  // per-subject design (nEta==1).  coefs = [typical, covCoef...]; the covariate coefs
+  // are written to their theta slots each iteration and theta_ij = design_i.coefs + eta.
+  bool doReg = (covCoefIdx.size() > 0);
+  int nCoef = doReg ? design.ncol() : 1;
+  std::vector<int> covIdxBuf(doReg ? covCoefIdx.size() : 0);
+  std::vector<double> coefs(doReg ? nCoef : 0), dmat(doReg ? (size_t)nsub * nCoef : 0);
+  if (doReg) {
+    if (nEta != 1) stop("rpemEMLoopK1 covariate regression requires nEta==1");
+    if (design.nrow() != nsub) stop("design must have one row per subject");
+    if (nCoef != (int)covCoefIdx.size() + 1) stop("design columns must be 1 + covCoefIdx");
+    for (int k = 0; k < (int)covCoefIdx.size(); ++k) covIdxBuf[k] = covCoefIdx[k];
+    coefs[0] = mu[0];
+    for (int k = 0; k < (int)covCoefIdx.size(); ++k) coefs[k + 1] = baseBuf[covIdxBuf[k]];
+    for (int i = 0; i < nsub; ++i)
+      for (int k = 0; k < nCoef; ++k) dmat[(size_t)i * nCoef + k] = design(i, k);
+  }
+
   NumericMatrix muTr(niter, nEta), omTr(niter, nEta), betaTr(niter, nStruct);
+  NumericMatrix coefTr(niter, doReg ? nCoef : 0);
   NumericVector sdTr(niter), propTr(niter, NA_REAL), powTr(niter, NA_REAL);
   NumericVector lamTr(niter, NA_REAL), llTr(niter);
   std::vector<double> row(rpemOp.ntheta);
@@ -747,6 +767,10 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   uint32_t seed0 = (uint32_t)seed;
 
   for (int it = 0; it < niter; ++it) {
+    if (doReg) {
+      mu[0] = coefs[0];
+      for (int k = 0; k < (int)covIdxBuf.size(); ++k) baseBuf[covIdxBuf[k]] = coefs[k + 1];
+    }
     for (int a = 0; a < nEta; ++a) baseBuf[muIdxBuf[a]] = mu[a];
     baseBuf[addSdIdx] = addSd;
     if (doComb) baseBuf[propSdIdx] = propSd;
@@ -858,6 +882,16 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
     for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0; double clogp = rpemOp.logp[0];
     std::vector<double> sumT(nEta, 0.0), sumTT((size_t)nEta * nEta, 0.0);
+    // regression accumulators (doReg): per-subject linear predictor + normal equations
+    std::vector<double> muLin(doReg ? nsub : 0, 0.0);
+    std::vector<double> XtX(doReg ? (size_t)nCoef * nCoef : 0, 0.0), Xty(doReg ? nCoef : 0, 0.0);
+    double Stt = 0.0;
+    if (doReg)
+      for (int i = 0; i < nsub; ++i) {
+        double s = 0.0;
+        for (int k = 0; k < nCoef; ++k) s += dmat[(size_t)i * nCoef + k] * coefs[k];
+        muLin[i] = s;
+      }
     double sumSS = 0.0; long sumNobs = 0, m = 0;
     for (int t = 0; t < total; ++t) {
       double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
@@ -868,18 +902,37 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       if (log(u3) < logA) { ci = pih; cj = pjh; clogp = plogp; }
       if (t >= mhBurn) {
         size_t off = ((size_t)ci * nGauss + cj) * nEta;
-        for (int a = 0; a < nEta; ++a) {
-          double tha = mu[a] + rpemOp.etaS[off + a];
-          sumT[a] += tha;
-          for (int b = 0; b < nEta; ++b) sumTT[(size_t)a * nEta + b] += tha * (mu[b] + rpemOp.etaS[off + b]);
+        if (doReg) {
+          double theta = muLin[ci] + rpemOp.etaS[off];
+          const double *xi = &dmat[(size_t)ci * nCoef];
+          for (int a = 0; a < nCoef; ++a) {
+            Xty[a] += xi[a] * theta;
+            for (int b = 0; b < nCoef; ++b) XtX[(size_t)a * nCoef + b] += xi[a] * xi[b];
+          }
+          Stt += theta * theta;
+        } else {
+          for (int a = 0; a < nEta; ++a) {
+            double tha = mu[a] + rpemOp.etaS[off + a];
+            sumT[a] += tha;
+            for (int b = 0; b < nEta; ++b) sumTT[(size_t)a * nEta + b] += tha * (mu[b] + rpemOp.etaS[off + b]);
+          }
         }
         sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
         if (doComb || doPow || doTbs) counts3[(size_t)ci * nGauss + cj]++;
         sumNobs += rpemOp.nobs[ci]; ++m;
       }
     }
-    for (int a = 0; a < nEta; ++a) mu[a] = sumT[a] / (double)m;
-    for (int a = 0; a < nEta; ++a) omDiag[a] = sumTT[(size_t)a * nEta + a] / (double)m - mu[a] * mu[a];
+    if (doReg) {
+      arma::mat A(XtX.data(), nCoef, nCoef);   // symmetric -> row/col-major agree
+      arma::vec bvec(Xty.data(), nCoef);
+      arma::vec betaNew = arma::solve(A, bvec, arma::solve_opts::likely_sympd);
+      for (int k = 0; k < nCoef; ++k) coefs[k] = betaNew[k];
+      mu[0] = coefs[0];
+      omDiag[0] = (Stt - arma::dot(betaNew, bvec)) / (double)m;
+    } else {
+      for (int a = 0; a < nEta; ++a) mu[a] = sumT[a] / (double)m;
+      for (int a = 0; a < nEta; ++a) omDiag[a] = sumTT[(size_t)a * nEta + a] / (double)m - mu[a] * mu[a];
+    }
     // Residual: additive/proportional pooled SS; combined / power / TBS have no closed
     // form, so re-optimize over the accepted (subject, sample) states' stored cp/dv
     // (same optimizers as the non-mixture combined / power / TBS M-steps).
@@ -976,6 +1029,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
     }
     for (int a = 0; a < nEta; ++a) { muTr(it, a) = mu[a]; omTr(it, a) = omDiag[a]; }
     for (int k = 0; k < nStruct; ++k) betaTr(it, k) = beta[k];
+    if (doReg) for (int k = 0; k < nCoef; ++k) coefTr(it, k) = coefs[k];
     sdTr[it] = addSd; llTr[it] = lnL;
     if (doComb) propTr[it] = propSd;
     if (doPow) powTr[it] = power;
@@ -985,7 +1039,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   return List::create(_["muTrace"] = muTr, _["omegaTrace"] = omTr,
                       _["sdTrace"] = sdTr, _["propTrace"] = propTr,
                       _["powTrace"] = powTr, _["lamTrace"] = lamTr,
-                      _["betaTrace"] = betaTr, _["lnL"] = llTr);
+                      _["betaTrace"] = betaTr, _["coefTrace"] = coefTr, _["lnL"] = llTr);
 }
 
 // Full C++ E-M loop for mixtures (design/rpem/12 M5): the whole mixture E-M in one C++

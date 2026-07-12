@@ -217,3 +217,47 @@ test_that("est=rpem cLoop fits a mixture with a combined residual (matches R loo
   expect_lt(cC$mix$muK[1], 0.6)
   expect_gt(cC$mix$muK[2], 1.0)
 })
+
+# cLoop covariate regression M-step (design/rpem/12 M5): a non-time-varying mu2
+# covariate coefficient is estimated by the C++ weighted-regression M-step (nEta==1),
+# rather than falling back to the R loop.  Must match the R loop and be reproducible.
+
+test_that("est=rpem cLoop estimates a mu2 covariate via the C++ regression M-step", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: multiple RPEM fits
+
+  simMod <- rxode2::rxode2({ ka <- exp(0.45 + 0.35 * NTV + eka); cl <- exp(1)
+                             v <- exp(3.45); cp <- linCmt() })
+  set.seed(7); nsub <- 60L; obsT <- seq(0.5, 24, by = 1.5)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ntv <- rnorm(1, 0, 1); eka <- rnorm(1, 0, sqrt(0.12)); n <- length(obsT)
+    ev <- data.frame(id = i, time = c(0, obsT), evid = c(1, rep(0, n)), amt = c(100, rep(0, n)),
+                     cmt = 1, NTV = ntv, eka = eka)
+    s <- rxode2::rxSolve(simMod, ev, returnType = "data.frame", addDosing = FALSE)
+    ev$DV <- 0; o <- ev$evid == 0; ev$DV[o] <- s$cp + rnorm(sum(o), 0, 0.1); ev$eka <- NULL; ev
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); lv <- fix(3.45); b_ntv <- 0.1; add.sd <- 0.2; eta.ka ~ 0.3 })
+    model({ ka <- exp(tka + b_ntv * NTV + eta.ka); cl <- exp(tcl); v <- exp(lv)
+            cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxode2(mod)
+  ctlR <- rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                      collect = 10L, seed = 1L, cores = 4L, cLoop = FALSE)
+  ctlC <- rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                      collect = 10L, seed = 1L, cores = 4L, cLoop = TRUE)
+  rxode2::rxSetSeed(42); rfR <- .rpemFit(ui, dat, ctlR)
+  rfC <- .rpemFit(ui, dat, ctlC)
+
+  # the C++ regression M-step recovers the covariate coefficient (true 0.35) and
+  # matches the R loop closely
+  expect_true("b_ntv" %in% names(rfC$covCoef))
+  expect_equal(unname(rfC$covCoef["b_ntv"]), 0.35, tolerance = 0.15)
+  expect_equal(unname(rfC$covCoef["b_ntv"]), unname(rfR$covCoef["b_ntv"]), tolerance = 0.05)
+  expect_equal(rfC$addSd, rfR$addSd, tolerance = 0.06)
+
+  # reproducible run-to-run for a fixed core count
+  rfC2 <- .rpemFit(ui, dat, ctlC)
+  expect_equal(rfC$covCoef, rfC2$covCoef)
+  expect_equal(rfC$mu, rfC2$mu)
+})

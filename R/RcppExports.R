@@ -354,8 +354,8 @@ rpemMstepK1 <- function(muIn, addSd0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1`, muIn, addSd0, nTrials, burn)
 }
 
-rpemEMLoopK1 <- function(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed) {
-    .Call(`_nlmixr2est_rpemEMLoopK1`, e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed)
+rpemEMLoopK1 <- function(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed, design, covCoefIdx) {
+    .Call(`_nlmixr2est_rpemEMLoopK1`, e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed, design, covCoefIdx)
 }
 
 rpemEMLoopMix <- function(e, base, etaIdx, muComp0, muCompIdx, etaForComp, omDiag0, addSdIdx, errType, addSd0, resIdx, resPar0, w0, K, nParam, perComp, niter, nGauss, ncores, nMH, mhBurn, seed) {
