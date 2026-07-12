@@ -344,7 +344,16 @@
                        c(muIdx, covCoefIdx, as.integer(.resIdx), as.integer(.fixIdx),
                          as.integer(.mixIdx), .iovMagIdx))
   structIdx <- as.integer(structIdx)
+  # fixed-parameter holds: a fix()ed typical value (mu-ref theta) or residual theta must
+  # be held at its ini value -- the conjugate mu / residual M-steps would otherwise move
+  # it.  (Fixed structural no-eta thetas are already excluded from structIdx; fixed omega
+  # is held via .etaFix.)  .muFixFull is per-eta (FALSE for centered / non-mu-ref etas).
+  .muFixFull <- logical(nEta)
+  .muFixFull[.muRef] <- muIdx %in% .fixIdx
+  .isFix <- function(idx) length(idx) == 1L && !is.na(idx) && (idx %in% .fixIdx)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
+       muFixFull = .muFixFull, addSdFix = .isFix(addSdIdx), propSdFix = .isFix(propSdIdx),
+       lambdaFix = .isFix(lambdaIdx), powFix = .isFix(powIdx),
        muIdx = muIdx, mu0 = .mu0Full, muRef = .muRef, etaFix = .etaFix, omGroup = .omGroup,
        iovMagIdx = .iovMagIdx,
        addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
@@ -495,8 +504,13 @@
   # auto-detects it and maximizes the censored log-likelihood); other censored error
   # structures keep the R loop.
   .cLoopCens <- !.hasCens || .cl$errType %in% c(0L, 1L)
+  # fix()ed typical values / residual params / eta omegas are held only by the R loop's
+  # M-step; fall back to it when any are present (fixed structural no-eta thetas are handled
+  # by exclusion from structIdx and stay in the cLoop).
+  .hasFixHold <- any(.cl$muFixFull) || .cl$addSdFix || .cl$propSdFix ||
+    .cl$lambdaFix || .cl$powFix || any(.cl$etaFix)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
-    !.multi && .cLoopCens && !.modeIS &&
+    !.multi && .cLoopCens && !.modeIS && !.hasFixHold &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   if (.cLoop) {
     # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
@@ -592,6 +606,16 @@
       diag(omega) <- stats::ave(diag(omega), .cl$omGroup)
       muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
     }
+    # hold fix()ed typical values / residual params at their ini values (the conjugate
+    # M-step above moves them otherwise); re-record the affected traces.
+    if (any(.cl$muFixFull)) {
+      if (.useReg) { coefs[1] <- .cl$mu0[.cl$muRef][1]; coefTr[.it, 1] <- coefs[1]; muTr[.it, ] <- coefs[1] }
+      else { mu[.cl$muFixFull] <- .cl$mu0[.cl$muFixFull]; muTr[.it, ] <- mu }
+    }
+    if (.cl$addSdFix) addSd <- .cl$addSd0
+    if (.comb && .cl$propSdFix) propSd <- .cl$propSd0
+    if (.tbs && .cl$lambdaFix) lambda <- .cl$lambda0
+    if (.pow && .cl$powFix) power <- .cl$pow0
     sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
     lamTr[.it] <- if (.tbs) lambda else NA_real_
     powTr[.it] <- if (.pow) power else NA_real_
@@ -1134,6 +1158,11 @@ nlmixr2Est.rpem <- function(env, ...) {
 ## are materialized into synthetic per-occasion etas upstream, so RPEM sees a plain
 ## diagonal multi-eta model (which it already fits) and IOV models run end-to-end.
 attr(nlmixr2Est.rpem, "iov") <- TRUE
+## RPEM estimates on the unconstrained scale (mu on the transformed scale, etas sampled
+## unboundedly), like saem/fsaem, so the shared .preProcessBoundedTransform hook rewrites
+## bounded thetas to an unconstrained internal parameter (expit/exp) with a Jacobian-
+## corrected back-transform.  Bounded parameters therefore run end-to-end.
+attr(nlmixr2Est.rpem, "unbounded") <- TRUE
 
 #' @export
 print.nlmixr2rpem <- function(x, ...) {
