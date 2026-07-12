@@ -510,7 +510,7 @@
   .hasFixHold <- any(.cl$muFixFull) || .cl$addSdFix || .cl$propSdFix ||
     .cl$lambdaFix || .cl$powFix || any(.cl$etaFix)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
-    !.multi && .cLoopCens && !.modeIS && !.hasFixHold &&
+    !.multi && .cLoopCens && !.hasFixHold &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   if (.cLoop) {
     # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
@@ -527,13 +527,14 @@
                        as.integer(.cl$structNbd),
                        if (.likLbfgs) 1L else 0L, control$collect,
                        control$lbfgsLmm, control$lbfgsFactr, control$lbfgsPgtol,
-                       control$lbfgsMaxIter)
+                       control$lbfgsMaxIter, .cInf)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
     propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)
     lamTr <- as.numeric(.r$lamTrace)
     if (.structOn) betaMat <- .r$betaTrace
     if (.useReg && length(.cl$covCoefIdx)) coefTr <- .r$coefTrace
+    if (.modeIS) ebe <- .r$ebe          # converged proposal center for the final E-step
   } else
   for (.it in seq_len(niter)) {
     if (.useReg) {

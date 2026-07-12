@@ -1179,8 +1179,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemEMLoopK1
-List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx, IntegerVector muIdx, int addSdIdx, int errType, NumericVector mu0, NumericVector omDiag0, double addSd0, IntegerVector resIdx, NumericVector resPar0, IntegerVector structIdx, NumericVector struct0, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx, NumericVector structLower, NumericVector structUpper, IntegerVector structNbd, int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr, double lbfgsPgtol, int lbfgsMaxIter);
-RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muIdxSEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP mu0SEXP, SEXP omDiag0SEXP, SEXP addSd0SEXP, SEXP resIdxSEXP, SEXP resPar0SEXP, SEXP structIdxSEXP, SEXP struct0SEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP, SEXP designSEXP, SEXP covCoefIdxSEXP, SEXP structLowerSEXP, SEXP structUpperSEXP, SEXP structNbdSEXP, SEXP likLbfgsSEXP, SEXP collectSEXP, SEXP lbfgsLmmSEXP, SEXP lbfgsFactrSEXP, SEXP lbfgsPgtolSEXP, SEXP lbfgsMaxIterSEXP) {
+List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx, IntegerVector muIdx, int addSdIdx, int errType, NumericVector mu0, NumericVector omDiag0, double addSd0, IntegerVector resIdx, NumericVector resPar0, IntegerVector structIdx, NumericVector struct0, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx, NumericVector structLower, NumericVector structUpper, IntegerVector structNbd, int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr, double lbfgsPgtol, int lbfgsMaxIter, double cInflate);
+RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muIdxSEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP mu0SEXP, SEXP omDiag0SEXP, SEXP addSd0SEXP, SEXP resIdxSEXP, SEXP resPar0SEXP, SEXP structIdxSEXP, SEXP struct0SEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP, SEXP designSEXP, SEXP covCoefIdxSEXP, SEXP structLowerSEXP, SEXP structUpperSEXP, SEXP structNbdSEXP, SEXP likLbfgsSEXP, SEXP collectSEXP, SEXP lbfgsLmmSEXP, SEXP lbfgsFactrSEXP, SEXP lbfgsPgtolSEXP, SEXP lbfgsMaxIterSEXP, SEXP cInflateSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1214,7 +1214,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type lbfgsFactr(lbfgsFactrSEXP);
     Rcpp::traits::input_parameter< double >::type lbfgsPgtol(lbfgsPgtolSEXP);
     Rcpp::traits::input_parameter< int >::type lbfgsMaxIter(lbfgsMaxIterSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed, design, covCoefIdx, structLower, structUpper, structNbd, likLbfgs, collect, lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter));
+    Rcpp::traits::input_parameter< double >::type cInflate(cInflateSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed, design, covCoefIdx, structLower, structUpper, structNbd, likLbfgs, collect, lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter, cInflate));
     return rcpp_result_gen;
 END_RCPP
 }

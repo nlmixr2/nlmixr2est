@@ -711,7 +711,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
                   unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx,
                   NumericVector structLower, NumericVector structUpper, IntegerVector structNbd,
                   int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr,
-                  double lbfgsPgtol, int lbfgsMaxIter) {
+                  double lbfgsPgtol, int lbfgsMaxIter, double cInflate) {
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
@@ -790,6 +790,13 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
   // proportional M-step).  Censoring (doCens) is auto-detected from the E-step's censv.
   std::vector<long> counts3((size_t)nsub * nGauss, 0);
   bool doCens = false, censChecked = false;
+  // mode-centered importance sampling (impInflate / cInflate > 0): draw eta ~ N(EBE_i,
+  // cInflate*Omega) and importance-weight against the prior N(0,Omega); the per-subject EBE
+  // (posterior mean) is updated each iteration and kept entirely in C++.  cInflate == 1 with
+  // EBE == 0 (the default) reduces to prior sampling with logRatio == 0 (byte-identical).
+  bool doModeIS = (cInflate != 1.0);
+  std::vector<double> ebeBuf((size_t)nsub * nEta, 0.0);
+  double halfNetaLogC = 0.5 * nEta * log(cInflate);
   bool doPar = (ncores > 1);
   seedEng(ncores);
   uint32_t seed0 = (uint32_t)seed;
@@ -820,7 +827,8 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j)
         for (int a = 0; a < nEta; ++a)
-          rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
+          rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] =
+            ebeBuf[(size_t)id * nEta + a] + rxNormEng(0.0, 1.0) * sqrt(cInflate * omDiag[a]);
     }
 
     // E-step: solve each MC sample's subjects in one par_solve, read the likelihood.
@@ -841,7 +849,17 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
         double logLik = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
                                          &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
                                          &rpemOp.censv[so], &rpemOp.limv[so]);
-        rpemOp.logp[r] = logLik; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+        // importance weight of the mode-centered proposal vs the prior (0 when !doModeIS).
+        double lr = 0.0;
+        if (doModeIS) {
+          lr = halfNetaLogC;
+          for (int a = 0; a < nEta; ++a) {
+            double eta = rpemOp.etaS[r * nEta + a], om = omDiag[a];
+            double d = eta - ebeBuf[(size_t)id * nEta + a];
+            lr += -0.5 * eta * eta / om + 0.5 * d * d / (cInflate * om);
+          }
+        }
+        rpemOp.logp[r] = logLik + lr; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
     // Detect BLQ censoring once from the populated censv (any non-zero cens code): the
@@ -859,6 +877,23 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
       double s = 0.0;
       for (int j = 0; j < nGauss; ++j) s += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
       logn[id] = mx + log(s) - log((double)nGauss); lnL += logn[id];
+    }
+    // mode-centered IS: refresh each subject's EBE (posterior mean) = sum_j w_ij eta_ij with
+    // w_ij = softmax_j(logw), the next iteration's proposal center (kept in C++).
+    if (doModeIS) {
+      for (int id = 0; id < nsub; ++id) {
+        double mx = R_NegInf;
+        for (int j = 0; j < nGauss; ++j) { double v = rpemOp.logp[(size_t)id * nGauss + j]; if (v > mx) mx = v; }
+        double sw = 0.0;
+        for (int j = 0; j < nGauss; ++j) sw += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
+        for (int a = 0; a < nEta; ++a) {
+          double acc = 0.0;
+          for (int j = 0; j < nGauss; ++j)
+            acc += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx) / sw *
+                   rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+          ebeBuf[(size_t)id * nEta + a] = acc;
+        }
+      }
     }
 
     // Numeric M-step for non-mu-referenced structural fixed effects (the paper's beta):
@@ -1110,10 +1145,14 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
     if (doTbs) lamTr[it] = lambda;
   }
   rpemFree();
+  NumericMatrix ebeOut(nsub, nEta);   // converged proposal center (mode-centered IS)
+  for (int id = 0; id < nsub; ++id)
+    for (int a = 0; a < nEta; ++a) ebeOut(id, a) = ebeBuf[(size_t)id * nEta + a];
   return List::create(_["muTrace"] = muTr, _["omegaTrace"] = omTr,
                       _["sdTrace"] = sdTr, _["propTrace"] = propTr,
                       _["powTrace"] = powTr, _["lamTrace"] = lamTr,
-                      _["betaTrace"] = betaTr, _["coefTrace"] = coefTr, _["lnL"] = llTr);
+                      _["betaTrace"] = betaTr, _["coefTrace"] = coefTr,
+                      _["ebe"] = ebeOut, _["lnL"] = llTr);
 }
 
 // Full C++ E-M loop for mixtures (design/rpem/12 M5): the whole mixture E-M in one C++

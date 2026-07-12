@@ -292,10 +292,45 @@ test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the pre
   runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, cl$addSdIdx, cl$errType,
     cl$mu0, diag(as.matrix(cl$omega0)), cl$addSd0, c(-1L, -1L, -1L), c(0, 0, 0),
     as.integer(cl$structIdx), as.numeric(cl$struct0), ni, 200L, 2L, 30000L, 3000L, 123L,
-    matrix(0, 0, 0), integer(0), numeric(0), numeric(0), integer(0), 0L, 8L, 5L, 1e7, 0, 20L)
+    matrix(0, 0, 0), integer(0), numeric(0), numeric(0), integer(0), 0L, 8L, 5L, 1e7, 0, 20L, 1.0)
   r20 <- runN(20L); r30 <- runN(30L)
   expect_equal(r20$muTrace[1:20, , drop = FALSE], r30$muTrace[1:20, , drop = FALSE])
   expect_equal(r20$omegaTrace[1:20, , drop = FALSE], r30$omegaTrace[1:20, , drop = FALSE])
   expect_equal(as.numeric(r20$sdTrace)[1:20], as.numeric(r30$sdTrace)[1:20])
   expect_equal(as.numeric(r20$lnL)[1:20], as.numeric(r30$lnL)[1:20])
+})
+
+# Mode-centered importance sampling (impInflate) runs in the C++ cLoop too: the eta draw
+# is centered at each subject's EBE (kept in C++) and importance-weighted, matching the R
+# loop.  impInflate == 0 is byte-identical to prior sampling (logRatio == 0).
+
+test_that("est=rpem cLoop supports mode-centered IS (impInflate) and matches the R loop", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: several multi-eta RPEM fits
+
+  sim <- rxode2::rxode2({ ka <- exp(lka + eka); cl <- exp(lcl + ecl); v <- exp(lv + ev); cp <- linCmt() })
+  set.seed(42); nsub <- 50L; obsT <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    eka <- rnorm(1, 0, sqrt(0.3)); ecl <- rnorm(1, 0, sqrt(0.1)); ev <- rnorm(1, 0, sqrt(0.06))
+    ev0 <- rxode2::et(amt = 100, cmt = "depot"); ev0 <- rxode2::et(ev0, obsT)
+    s <- rxode2::rxSolve(sim, params = c(lka = 0.5, lcl = 1, lv = 3.45, eka = eka, ecl = ecl, ev = ev),
+                         events = ev0, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev0); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + rnorm(sum(o), 0, 0.1); d
+  }))
+  mod <- function() {
+    ini({ lka <- 0.5; lcl <- fix(1.0); lv <- fix(3.45); eta.ka ~ 0.3; eta.cl ~ 0.1; eta.v ~ 0.06; add.sd <- 0.15 })
+    model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv + eta.v)
+            cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
+  ctl <- function(ci, cl) rpemControl(nGauss = 300L, nMH = 50000L, mhBurn = 5000L, niter = 20L,
+                                      collect = 8L, seed = 1L, cores = 4L, impInflate = ci, cLoop = cl)
+  # impInflate=0: the C++ loop matches the R loop (prior sampling, logRatio 0)
+  r0R <- .rpemFit(ui, dat, ctl(0, FALSE)); r0C <- .rpemFit(ui, dat, ctl(0, TRUE))
+  expect_equal(r0C$omega[1], r0R$omega[1], tolerance = 0.02)
+  # impInflate=4: mode-centering lifts the under-covered omega, and the C++ loop matches R
+  r4R <- .rpemFit(ui, dat, ctl(4, FALSE)); r4C <- .rpemFit(ui, dat, ctl(4, TRUE))
+  expect_equal(r4C$omega[1], r4R$omega[1], tolerance = 0.02)
+  expect_gt(r4C$omega[1], r0C$omega[1])            # mode-centering raises om.ka in C++
 })
