@@ -7,16 +7,18 @@ library(nlmixr2est)
 #   * testthat workers: a SINGLE worker on CI or CRAN, so the suite does not
 #     oversubscribe a shared / core-limited runner; everywhere else testthat
 #     manages Config/testthat/parallel normally.
-#   * rxode2 (and data.table) within-solve threads: capped to 2 on CRAN, per
-#     CRAN's two-core policy; on CI and locally rxode2 manages its own threads.
+#   * rxode2 (and data.table) within-solve threads: capped to 2 on CI and CRAN.
+#     An uncapped thread pool oversubscribes the core-limited hosted runners --
+#     it multiplies both CPU contention and the per-thread solve-buffer memory,
+#     which produced exit-143 "runner has received a shutdown signal" kills
+#     mid-suite (seen consistently on the oldrel-1 leg).  2 matches CRAN's
+#     two-core policy.  Locally rxode2 manages its own threads.
 .onCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
 .onCI   <- isTRUE(as.logical(Sys.getenv("CI", "false")))
 
 if (.onCI || .onCran) {
   options(Ncpus = 1L)
   Sys.setenv(TESTTHAT_CPUS = "1")
-}
-if (.onCran) {
   setRxThreads(2L)
   setDTthreads(2L)
 }
