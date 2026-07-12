@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
+  al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
+  combined/power/TBS residuals, multiple endpoints, mu-referenced covariates
+  (time-varying and non-time-varying), IOV, finite mixtures (`mix()`), general
+  log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
+  refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters, and
+  Fisher-score standard errors.  Most models run their whole E-M loop in C++
+  (`rpemControl(cLoop = TRUE)`), which is thread-safe and reproducible, and the
+  iteration walk is printed and saved to `fit$parHist` like the other methods.
+
 - Added a fast-SAEM (f-SAEM, Karimi, Lavielle and Moulines 2020) simulation
   step: `saemControl()` gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik`
   options and a new `est = "fsaem"` method (sugar for `saemControl(fast =
