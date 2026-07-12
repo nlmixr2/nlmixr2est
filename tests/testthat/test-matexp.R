@@ -1,10 +1,4 @@
 nmTest({
-  # Pin the RNG: preceding batch files run focei fits whose mceta initial-eta
-  # draws advance the (unrestored) rxode2 threefry seed, which shifts these
-  # tight matExp-vs-ODE comparisons.  Reset so the fits are deterministic
-  # regardless of what ran earlier in the batch.
-  set.seed(42L); rxode2::rxSetSeed(42L)
-
   # matExp()/indLin() fits with default (compartment-1) dosing must match the
   # equivalent ODE model; source-first compartment order is the regression
 

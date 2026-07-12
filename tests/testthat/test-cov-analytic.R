@@ -3,12 +3,6 @@
 # with a finite-difference fallback out of scope).
 
 nmTest({
-  # Pin the RNG: preceding batch files run focei fits whose mceta initial-eta
-  # draws advance the (unrestored) rxode2 threefry seed, which shifts the
-  # analytic-covariance SEs enough to break the reference-value tolerances.
-  # Reset so the fits are deterministic regardless of batch order.
-  set.seed(42L); rxode2::rxSetSeed(42L)
-
   .cov_one_cmt <- function() {
     ini({
       tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)

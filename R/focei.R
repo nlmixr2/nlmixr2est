@@ -2548,12 +2548,20 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # driven entirely by the muModel/foceiMuGroup* control values wired in
   # rxUiGet.foceiOptEnv above -- .foceiFitInternal() is called exactly the
   # same way as every other FOCEI-family method, no separate engine.
-  if (getOption("nlmixr2.retryFocei", TRUE)) {
-    .ret0 <- try(.foceiFitInternal(.env))
-  } else {
-    .ret0 <- .foceiFitInternal(.env)
-  }
-  .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
+  # Run the fit (including the mceta Monte-Carlo initial-ETA draws, which pull
+  # from rxode2's threefry engine) inside rxWithSeed: the fit is seeded from
+  # foceiControl(seed=) and the ambient rxode2/R seed is restored afterward, so
+  # a fit is reproducible and never advances/leaks the global seed onto a
+  # following fit or estimation method.
+  .foceiSeed <- rxode2::rxGetControl(ui, "seed", 42L)
+  .ret0 <- rxode2::rxWithSeed(.foceiSeed, rxseed = .foceiSeed, {
+    .fit0 <- if (getOption("nlmixr2.retryFocei", TRUE)) {
+      try(.foceiFitInternal(.env))
+    } else {
+      .foceiFitInternal(.env)
+    }
+    .nlmixrFoceiRestartIfNeeded(.fit0, .env, .control)
+  })
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }

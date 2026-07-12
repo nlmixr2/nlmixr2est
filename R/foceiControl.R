@@ -562,6 +562,13 @@
 #'   etas sampled from omega are each evaluated and the best (by inner
 #'   objective) is used.
 #'
+#' @param seed Integer seed (default `42`) used to make a FOCEi fit
+#'   reproducible and self-contained.  The fit (including the `mceta`
+#'   Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
+#'   runs inside [rxode2::rxWithSeed()], so it neither depends on the ambient
+#'   RNG state nor advances/leaks it -- repeated fits in the same session, and
+#'   fits following other estimation methods, give identical results.
+#'
 #' @param warm Seeding of the n1qn1 inner-optimization Hessian:
 #'   `"calc"` (default) warm-starts each inner problem with the eta
 #'   Hessian calculated for the objective function at the same starting
