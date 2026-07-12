@@ -437,6 +437,11 @@
                   error = function(e) character(0))
   .cl <- .rpemClassify(ui, .tv)
   if (!is.null(.cl$mix)) return(.rpemFitMix(ui, data, .cl, control))
+  # Seed the whole fit -- the config draws AND the E-step eta / M-step MH threefry draws --
+  # inside rxWithSeed (same strategy as saem/fsaem): it sets BOTH R's RNG and the rxode2
+  # engine seed from control$seed and restores them afterward, so a session's first fit is
+  # seeded and fits never contaminate each other's seed state (independent of test order).
+  rxode2::rxWithSeed(control$seed, rxseed = control$seed, {
   .m <- ui$rpemRxModel$predOnly
   .nm <- c(paste0("THETA[", seq_len(.cl$nTheta), "]"),
            paste0("ETA[", seq_len(.cl$nEta), "]"))
@@ -799,6 +804,7 @@
        ebe = ebe, fisher = .fisher, parHist = .parHist,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
+  })
 }
 
 #' Fit a mix() split-ETA mixture with RPEM.
@@ -819,6 +825,9 @@
   .comb <- (.cl$errType == 2L); .pow <- (.cl$errType == 4L); .tbs <- (.cl$errType == 3L)
   if (length(.cl$structIdx) > 0L)
     stop("RPEM mixtures require non-mixture structural typical values to be fix()ed")
+  # Seed the whole mixture fit inside rxWithSeed (same strategy as saem/fsaem): sets both
+  # R's RNG and the rxode2 engine seed from control$seed and restores them afterward.
+  rxode2::rxWithSeed(control$seed, rxseed = control$seed, {
   .m <- ui$rpemRxModel$predOnly
   .nm <- c(paste0("THETA[", seq_len(.cl$nTheta), "]"),
            paste0("ETA[", seq_len(.cl$nEta), "]"))
@@ -974,6 +983,7 @@
        mix = list(K = K, nParam = .P, muK = muHat, paramMuNames = .mix$paramMuNames,
                   w = wHat, probNames = .mix$probNames, mixNum = mixNum, tau = .tau,
                   ebeStack = ebeStack))
+  })
 }
 
 #' Populate the mixture fit fields (mixList / mixNum / probabilities / iCov) on

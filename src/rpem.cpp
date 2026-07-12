@@ -19,6 +19,8 @@
 #include "inner.h"
 #include "rxomp.h"
 #include "censEst.h"   // doCensNormal1: reusable censored normal log-likelihood
+#include "nmMcmcRng.h" // nmSetSeedEng1 / nmRestoreMcmcSeed: undo a solve's per-subject
+                       // threefry re-seed so it never carries into the sampling draws
 #include <vector>
 #include <functional>
 
@@ -391,6 +393,11 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   };
 
   std::vector<double> row(rpemOp.ntheta), lp(nGauss);
+  // Record the sampling-block engine seed (the post-eta-draw state) so the per-subject
+  // re-seeding inside the E-step par_solve -- which under multiple threads leaves the engine
+  // in a thread-scheduling-dependent state -- can be undone before the R-side M-step's rxRmvn
+  // draws, keeping the M-step deterministic for any core count (nmMcmcRng guard).
+  nmSetSeedEng1(getRxSeed1(ncores > 1 ? ncores : 1));
   if (ncores > 1) {
     // Parallel E-step: for each Monte Carlo sample, set every subject's parameters
     // (population THETA + that subject's eta draw) and solve all subjects in one
@@ -454,6 +461,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
       lognV[id] = mx + log(s) - log((double)nGauss);
     }
   }
+  // Undo the solve's per-subject re-seed so the M-step's rxRmvn is deterministic.
+  nmRestoreMcmcSeed();
 
   // Build the R return objects serially, after the parallel region.
   NumericVector logn(nsub);
@@ -535,6 +544,10 @@ List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
   std::vector<double> row(rpemOp.ntheta);
 
+  // Record the sampling-block seed so the E-step solves' per-subject re-seed can be undone
+  // before the R-side mixture M-step's rxRmvn draws (nmMcmcRng guard; deterministic for any
+  // core count).
+  nmSetSeedEng1(getRxSeed1(ncores > 1 ? ncores : 1));
   // Solve each Monte Carlo sample once per component; the yj/cens per-obs buffers
   // are constant across components/samples so only the last write is kept.
   for (int kc = 0; kc < K; ++kc) {
@@ -578,6 +591,8 @@ List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
       }
     }
   }
+  // Undo the solve's per-subject re-seed so the mixture M-step's rxRmvn is deterministic.
+  nmRestoreMcmcSeed();
 
   // Per-component log n_ik and mixture log n_i = logsumexp_k (log w_k + log n_ik).
   NumericVector logn(nsub);
@@ -876,7 +891,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
+      nmSetSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j)
         for (int a = 0; a < nEta; ++a)
           rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] =
@@ -914,6 +929,9 @@ List rpemEMLoopK1(Environment e, List cfg) {
         rpemOp.logp[r] = logLik + lr; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
+    // The par_solve above re-seeds the threefry engine per subject; restore the sampling
+    // seed so that leak never carries into the structural / MH draws below (nmMcmcRng guard).
+    nmRestoreMcmcSeed();
     // Detect BLQ censoring once from the populated censv (any non-zero cens code): the
     // naive pooled SS is biased under censoring, so the additive/proportional residual is
     // then estimated by maximizing the censored log-likelihood (as rpemMstepK1Cens does).
@@ -1011,7 +1029,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
     // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
     // collide AND neither seed depends on the total niter -- extending niter reproduces the
     // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
-    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
+    nmSetSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0; double clogp = rpemOp.logp[0];
@@ -1321,7 +1339,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
+      nmSetSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j) for (int a = 0; a < nEta; ++a)
         rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
     }
@@ -1350,6 +1368,8 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
         }
       }
     }
+    // undo the par_solve's per-subject threefry re-seed before the MH draws (nmMcmcRng).
+    nmRestoreMcmcSeed();
 
     // per-subject mixture log n_i.
     std::vector<double> logw(K), logn(nsub); double lnL = 0.0;
@@ -1376,7 +1396,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
     // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
     // collide AND neither seed depends on the total niter -- extending niter reproduces the
     // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
-    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
+    nmSetSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t kk = 0; kk < nU; ++kk) U[kk] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0, ck = 0; double clogp = rpemOp.logp[0];
