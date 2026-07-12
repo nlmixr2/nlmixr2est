@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
+  al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
+  combined/power/TBS residuals, multiple endpoints, mu-referenced covariates
+  (time-varying and non-time-varying), IOV, finite mixtures (`mix()`), general
+  log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
+  refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters, and
+  Fisher-score standard errors.  Most models run their whole E-M loop in C++
+  (`rpemControl(cLoop = TRUE)`), which is thread-safe and reproducible, and the
+  iteration walk is printed and saved to `fit$parHist` like the other methods.
+
 - The analytic FOCEI/FOCE outer gradient and observed-information covariance
   (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now build a smaller
   augmented sensitivity model by reusing eta sensitivities for mu-referenced
