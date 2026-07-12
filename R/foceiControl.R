@@ -588,6 +588,13 @@
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 #'   uses the legacy finite-difference behavior.
 #'
+#' @param fdEta Character vector of ETA names whose inner d(f)/d(eta) should be
+#'   computed by finite differences instead of the analytic sensitivity, using
+#'   the same machinery as the dosing-parameter (event) etas.  Use this for an
+#'   ETA whose effect on the prediction is invisible to the symbolic model --
+#'   e.g. an externally injected parameter (neural-network weight) -- so that
+#'   its structurally-zero analytic gradient does not leave it unestimated.
+#'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities:
 #'   `"default"` (the default) defers to the global option
 #'   `getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
@@ -661,6 +668,7 @@ foceiControl <- function(sigdig = 4, #
                          censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
                          eventSens = c("jump", "fd"), #
+                         fdEta = NULL, #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -1365,6 +1373,7 @@ foceiControl <- function(sigdig = 4, #
     indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
     eventSens = eventSens,
+    fdEta = fdEta,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
     badSolveObjfAdj=badSolveObjfAdj,

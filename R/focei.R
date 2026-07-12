@@ -1181,6 +1181,22 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
       }
     }
   }
+  ## method-agnostic force-FD etas: any eta whose effect on the prediction is
+  ## invisible to the analytic sensitivity (e.g. externally injected NN weights,
+  ## where d(f)/d(eta) via the rx__sens states is structurally 0) can be routed
+  ## through the SAME finite-difference machinery as the event (dosing-parameter)
+  ## etas by naming it in foceiControl(fdEta=).  Its inner d(f)/d(eta) is then
+  ## differenced numerically (predOde) instead of taken from the zero rx__sens.
+  .fdEta <- rxode2::rxGetControl(ui, "fdEta", NULL)
+  if (length(.fdEta) > 0L && length(.eventEta) > 0L) {
+    .etaDf <- ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, , drop = FALSE]
+    for (.e in as.character(.fdEta)) {
+      .num <- .etaDf$neta1[.etaDf$name == .e]
+      if (length(.num) == 1L && !is.na(.num) && .num >= 1L && .num <= length(.eventEta)) {
+        .eventEta[.num] <- 1L
+      }
+    }
+  }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
