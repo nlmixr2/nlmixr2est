@@ -676,8 +676,10 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // core (design/rpem/12 M5): runs niter iterations of the E-step (threefry eta draw +
 // par_solve + log-sum-exp) and the conjugate MH M-step in one C++ call, avoiding the
 // per-iteration R round-trip.  The eta draw uses rxode2's per-thread threefry engine
-// with a deterministic per-(iteration, subject) seed -- setSeedEng1(seed0 + it*nsub + i)
-// after setRxThreadId() -- so it is thread-safe AND reproducible for any core count.
+// with a deterministic per-(iteration, subject) seed on the EVEN threefry stream --
+// setSeedEng1(seed0 + (it*nsub + i)*2) after setRxThreadId() -- so it is thread-safe,
+// reproducible for any core count, and niter-independent (extending niter shares the
+// exact prefix of a shorter run at the same seed; the MH uses the odd stream).
 // The ODE solve keeps par_solve (rxode2 owns the parallel solver; a manual OpenMP loop
 // over the solve is unsafe).  errType 0 additive, 1 proportional.  Returns per-iteration
 // mu / omega (diagonal) / add.sd / lnL traces.
@@ -789,7 +791,7 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)((size_t)it * nsub + id) + 1u);
+      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j)
         for (int a = 0; a < nEta; ++a)
           rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
@@ -877,7 +879,10 @@ List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
     setRxThreadId(0);
 #endif
-    setSeedEng1(seed0 + (uint32_t)((size_t)niter * nsub) + (uint32_t)it + 1u);
+    // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
+    // collide AND neither seed depends on the total niter -- extending niter reproduces the
+    // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
+    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0; double clogp = rpemOp.logp[0];
@@ -1121,7 +1126,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)((size_t)it * nsub + id) + 1u);
+      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j) for (int a = 0; a < nEta; ++a)
         rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
     }
@@ -1173,7 +1178,10 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
     setRxThreadId(0);
 #endif
-    setSeedEng1(seed0 + (uint32_t)((size_t)niter * nsub) + (uint32_t)it + 1u);
+    // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
+    // collide AND neither seed depends on the total niter -- extending niter reproduces the
+    // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
+    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t kk = 0; kk < nU; ++kk) U[kk] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0, ck = 0; double clogp = rpemOp.logp[0];

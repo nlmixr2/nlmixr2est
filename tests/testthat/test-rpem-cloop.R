@@ -261,3 +261,41 @@ test_that("est=rpem cLoop estimates a mu2 covariate via the C++ regression M-ste
   expect_equal(rfC$covCoef, rfC2$covCoef)
   expect_equal(rfC$mu, rfC2$mu)
 })
+
+# Dynamic-iteration seed stability (imp.cpp even/odd threefry streams): extending niter
+# reproduces the exact per-iteration prefix of a shorter run at the same seed, so a phase
+# of estimation can be lengthened without changing the shared iterations.
+
+test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the prefix)", {
+  skip_on_cran()
+  skip_on_ci()  # heavy: two C++ loops
+
+  struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
+  set.seed(8); nsub <- 30L; etas <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 2)
+  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
+    ev <- rxode2::et(amt = 100, cmt = "depot"); ev <- rxode2::et(ev, obsT)
+    s <- rxode2::rxSolve(struct, params = c(tka = 0.45, tcl = 1, tv = 3.45, eta = etas[i]),
+                         events = ev, returnType = "data.frame", addDosing = FALSE)
+    d <- as.data.frame(ev); d$id <- i; o <- d$evid == 0; d$DV <- 0
+    d$DV[o] <- s$cp + rnorm(nrow(s), 0, 0.1); d
+  }))
+  mod <- function() {
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.2; eta.ka ~ 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
+  }
+  ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
+  cl <- .rpemClassify(ui)
+  .nm <- c(paste0("THETA[", seq_len(cl$nTheta), "]"), paste0("ETA[", seq_len(cl$nEta), "]"))
+  e <- new.env(); e$predOnly <- ui$rpemRxModel$predOnly
+  e$rxControl <- rxode2::rxControl(atol = 1e-8, rtol = 1e-8, cores = 2L)
+  e$param <- stats::setNames(cl$base, .nm); e$data <- dat
+  runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, cl$addSdIdx, cl$errType,
+    cl$mu0, diag(as.matrix(cl$omega0)), cl$addSd0, c(-1L, -1L, -1L), c(0, 0, 0),
+    as.integer(cl$structIdx), as.numeric(cl$struct0), ni, 200L, 2L, 30000L, 3000L, 123L,
+    matrix(0, 0, 0), integer(0))
+  r20 <- runN(20L); r30 <- runN(30L)
+  expect_equal(r20$muTrace[1:20, , drop = FALSE], r30$muTrace[1:20, , drop = FALSE])
+  expect_equal(r20$omegaTrace[1:20, , drop = FALSE], r30$omegaTrace[1:20, , drop = FALSE])
+  expect_equal(as.numeric(r20$sdTrace)[1:20], as.numeric(r30$sdTrace)[1:20])
+  expect_equal(as.numeric(r20$lnL)[1:20], as.numeric(r30$lnL)[1:20])
+})
