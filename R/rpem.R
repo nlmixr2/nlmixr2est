@@ -270,8 +270,19 @@
     powIdx <- as.integer(match(.powRow$name, .thetas$name) - 1L)
     pow0 <- .powRow$est
     propSdIdx <- NA_integer_; propSd0 <- NA_real_
+  } else if (nrow(.res) == 0L && .nEndpt == 1L &&
+             identical(as.character(.pred$distribution[1]), "LL")) {
+    # general log-likelihood endpoint (ll(name) ~ <per-obs loglik>, like saem/fsaem
+    # distribution==4): the model emits the per-observation log-likelihood as rx_pred_,
+    # so the E-step uses it directly as the observation loss and there is NO residual
+    # error parameter (errType 7).  Fixed-effect parameters of the likelihood expression
+    # are estimated as structural betas (numeric re-solve M-step); mu/omega conjugate as
+    # usual.  The residual sd is not defined (add.sd = NA in the fit).
+    errType <- 7L; errName <- "ll"
+    addSdIdx <- NA_integer_; addSd0 <- NA_real_
+    propSdIdx <- NA_integer_; propSd0 <- NA_real_
   } else {
-    stop("RPEM currently supports additive, proportional, combined (add + prop), TBS (add + boxCox/yeoJohnson), or power residual error")
+    stop("RPEM currently supports additive, proportional, combined (add + prop), TBS (add + boxCox/yeoJohnson), power, or general log-likelihood (ll()) residual error")
   }
   if (errType != 3L) { lambdaIdx <- NA_integer_; lambda0 <- NA_real_
     .tbs <- list(yj = NA_integer_, low = NA_real_, hi = NA_real_) }
@@ -489,7 +500,7 @@
     } else {
       base[.cl$muIdx + 1L] <- mu[.cl$muRef]     # only mu-ref etas carry a theta
     }
-    if (!.multi) base[.cl$addSdIdx + 1L] <- addSd
+    if (!.multi && !is.na(.cl$addSdIdx)) base[.cl$addSdIdx + 1L] <- addSd  # LL: no residual
     if (.comb) base[.cl$propSdIdx + 1L] <- propSd
     if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
     if (.pow) base[.cl$powIdx + 1L] <- power
@@ -559,7 +570,7 @@
   .w <- (niter - .k + 1L):niter
   muHat <- colMeans(muTr[.w, , drop = FALSE])
   omHat <- colMeans(omTr[.w, , drop = FALSE])
-  sdHat <- mean(sdTr[.w])
+  sdHat <- if (is.na(.cl$addSdIdx)) NA_real_ else mean(sdTr[.w])  # LL: no residual sd
   propHat <- if (.comb) mean(propTr[.w]) else NA_real_
   lambdaHat <- if (.tbs) mean(lamTr[.w]) else NA_real_
   powerHat <- if (.pow) mean(powTr[.w]) else NA_real_
@@ -576,7 +587,7 @@
   base[.cl$muIdx + 1L] <- muHat[.cl$muRef]     # only mu-ref etas carry a theta
   if (.structOn) base[.cl$structIdx + 1L] <- structHat
   if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
-  if (!.multi) base[.cl$addSdIdx + 1L] <- sdHat
+  if (!.multi && !is.na(.cl$addSdIdx)) base[.cl$addSdIdx + 1L] <- sdHat
   if (.comb) base[.cl$propSdIdx + 1L] <- propHat
   if (.tbs) base[.cl$lambdaIdx + 1L] <- lambdaHat
   if (.pow) base[.cl$powIdx + 1L] <- powerHat
