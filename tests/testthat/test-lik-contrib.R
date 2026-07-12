@@ -38,7 +38,7 @@ test_that("likelihood-contribution hooks fire per observation and fold into the 
   f1 <- .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0L))
   res <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")
   names(res) <- c("nObs", "sumDLLdf", "sumErr", "sumF", "nBegin", "nEnd",
-                  "nlhs", "lhsHasF")
+                  "nlhs", "lhsHasF", "nstate")
 
   ## a constant c added per obs shifts the objective by exactly -2*c*nObs
   expect_equal(f1$objf - f0$objf, -2 * cc * .nObs, tolerance = 1e-3)
@@ -52,6 +52,9 @@ test_that("likelihood-contribution hooks fire per observation and fold into the 
   ## (the prediction f appears among the lhs entries at every observation)
   expect_gt(res[["nlhs"]], 0)
   expect_equal(res[["lhsHasF"]], res[["nObs"]])
+  ## the solved state row (rx_sw carrier for the inner individual-weight block) is
+  ## exposed to the obs hook (raw pointer into the solve, not materialized)
+  expect_gt(res[["nstate"]], 0)
 
   ## after removing the contributor, a fit does not invoke it
   .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
