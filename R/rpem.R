@@ -403,6 +403,33 @@
   list(cov = .cov)
 }
 
+#' Capture the RPEM parameter-history walk via the shared scale.h iteration printing.
+#'
+#' Given a per-iteration theta matrix (`thetaMat`, niter x nTheta), the omega-diagonal trace
+#' (`omTr`, niter x nEta) and the objective trace (`llTr`), prints the population estimates each
+#' iteration (with a back-transformed row + the algorithm-phase label, when control$print > 0)
+#' and returns standard parHistData.  Shared by the K=1 (`.rpemFit`) and mixture
+#' (`.rpemFitMix`) paths.  Returns NULL on any error (the walk is a diagnostic, never fatal).
+#' @noRd
+.rpemParHistCapture <- function(ui, cl, thetaMat, omTr, llTr, control) {
+  tryCatch({
+    niter <- nrow(thetaMat)
+    .parMat <- cbind(thetaMat, omTr)
+    .pNames <- c(cl$thetaNames, paste0("o(", cl$etaNames, ")"))
+    colnames(.parMat) <- .pNames
+    # back-transform codes: theta portion from the ui (exp / expit typical values), omega
+    # portion identity (variances on the natural scale).
+    .xf <- .iterPrintXParFromUi(ui, cl$thetaNames)
+    .xf$xPar <- c(.xf$xPar, integer(cl$nEta))
+    .xf$probitIdx <- c(.xf$probitIdx, integer(cl$nEta))
+    rpemIterPrintStart_(.parMat[1, ], .pNames, control$iterPrintControl, .xf)
+    .smoothH <- niter - control$collect
+    for (.i in seq_len(niter))
+      rpemIterPrintRow_(.parMat[.i, ], llTr[.i], if (.i > .smoothH) "Smooth" else "EM")
+    rpemIterPrintGet_(isTRUE(control$iterPrintControl$every > 0))
+  }, error = function(e) NULL)
+}
+
 .rpemFit <- function(ui, data, control = rpemControl()) {
   # time-varying covariates (shared detection) become structural beta regressors; the
   # non-time-varying ones stay in the mu2 regression -- classified accordingly.
@@ -645,34 +672,20 @@
   # back-transformed row) when control$print > 0, and always capture the walk into standard
   # parHistData for the fit object.  `phase` labels the stage: exploration ("EM") vs the
   # terminal averaging/smoothing window ("Smooth").
-  .parHist <- tryCatch({
-    .thetaMat <- matrix(rep(.cl$base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
-    if (length(.cl$muIdx)) .thetaMat[, .cl$muIdx + 1L] <- muTr[, .cl$muRef, drop = FALSE]
-    if (.useReg && length(.cl$covCoefIdx)) .thetaMat[, .cl$covCoefIdx + 1L] <- coefTr[, -1, drop = FALSE]
-    if (.structOn) .thetaMat[, .cl$structIdx + 1L] <- betaMat
-    if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
-    if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
-    if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
-    if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
-    if (.multi) {
-      .thetaMat[, .cl$endpt$sclIdx + 1L] <- sdMat
-      .cb <- .cl$endpt$errType %in% c(2L, 3L, 4L)
-      if (any(.cb)) .thetaMat[, .cl$endpt$propIdx[.cb] + 1L] <- propMat[, .cb, drop = FALSE]
-    }
-    .parMat <- cbind(.thetaMat, omTr)
-    .pNames <- c(.cl$thetaNames, paste0("o(", .cl$etaNames, ")"))
-    colnames(.parMat) <- .pNames
-    # back-transform codes: theta portion from the ui (exp / expit typical values),
-    # omega portion identity (variances shown on the natural scale).
-    .xf <- .iterPrintXParFromUi(ui, .cl$thetaNames)
-    .xf$xPar <- c(.xf$xPar, integer(.cl$nEta))
-    .xf$probitIdx <- c(.xf$probitIdx, integer(.cl$nEta))
-    rpemIterPrintStart_(.parMat[1, ], .pNames, control$iterPrintControl, .xf)
-    .smoothH <- niter - control$collect
-    for (.i in seq_len(niter))
-      rpemIterPrintRow_(.parMat[.i, ], llTr[.i], if (.i > .smoothH) "Smooth" else "EM")
-    rpemIterPrintGet_(isTRUE(control$iterPrintControl$every > 0))
-  }, error = function(e) NULL)
+  .thetaMat <- matrix(rep(.cl$base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
+  if (length(.cl$muIdx)) .thetaMat[, .cl$muIdx + 1L] <- muTr[, .cl$muRef, drop = FALSE]
+  if (.useReg && length(.cl$covCoefIdx)) .thetaMat[, .cl$covCoefIdx + 1L] <- coefTr[, -1, drop = FALSE]
+  if (.structOn) .thetaMat[, .cl$structIdx + 1L] <- betaMat
+  if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
+  if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
+  if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
+  if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
+  if (.multi) {
+    .thetaMat[, .cl$endpt$sclIdx + 1L] <- sdMat
+    .cb <- .cl$endpt$errType %in% c(2L, 3L, 4L)
+    if (any(.cb)) .thetaMat[, .cl$endpt$propIdx[.cb] + 1L] <- propMat[, .cb, drop = FALSE]
+  }
+  .parHist <- .rpemParHistCapture(ui, .cl, .thetaMat, omTr, llTr, control)
 
   # Final estimate = mean over the converged iterations.
   .k <- min(control$collect, niter)
@@ -881,6 +894,19 @@
     powTr[.it] <- if (.pow) power else NA_real_
     lamTr[.it] <- if (.tbs) lambda else NA_real_; llTr[.it] <- .est$lnL
   }
+  # Parameter-history walk (shared scale.h iteration printing): reconstruct each iteration's
+  # full theta vector -- per-component typical values (muArr), mixture weights (wMat, the free
+  # probabilities) and residuals -- plus omega, then capture it as standard parHistData.
+  .thetaMat <- matrix(rep(base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
+  .thetaMat[, .mix$muCompIdx + 1L] <- t(apply(muArr, 1, function(.m) as.vector(.m)))
+  if (length(.mix$probIdx))
+    .thetaMat[, .mix$probIdx + 1L] <- wMat[, seq_along(.mix$probIdx), drop = FALSE]
+  if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
+  if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
+  if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
+  if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
+  .parHist <- .rpemParHistCapture(ui, .cl, .thetaMat, omTr, llTr, control)
+
   .k <- min(control$collect, niter); .wi <- (niter - .k + 1L):niter
   muHat <- apply(muArr[.wi, , , drop = FALSE], c(2, 3), mean)   # nParam x K
   wHat <- colMeans(wMat[.wi, , drop = FALSE])
@@ -942,6 +968,7 @@
        lambda = if (.tbs) lambdaHat else NA_real_, power = if (.pow) powerHat else NA_real_,
        endptSd = NULL, endptProp = NULL, struct = NULL,
        covCoef = stats::setNames(numeric(0), character(0)), ebe = ebe,
+       parHist = .parHist,
        lnL = llTr, muTrace = muArr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl,
        mix = list(K = K, nParam = .P, muK = muHat, paramMuNames = .mix$paramMuNames,
