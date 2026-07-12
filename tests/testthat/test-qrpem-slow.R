@@ -135,6 +135,67 @@ nmTest({
     expect_equal(.se[seq_len(.nth)], unname(.fse), tolerance = 0.1)
   })
 
+  test_that("Q6: sirSample = isample reproduces the full weighted M-step exactly", {
+    # the SIR branch only engages when sirN < isample; at equality the fit is
+    # bit-identical to sir=FALSE (the SIR plumbing is a strict superset)
+    .run <- function(sir, sirSample = NULL) {
+      .ctl <- if (sir) {
+        impmapControl(print=0L, nIter=2L, isample=100L, sir=TRUE,
+                      sirSample=sirSample)
+      } else {
+        impmapControl(print=0L, nIter=2L, isample=100L)
+      }
+      suppressWarnings(nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap", .ctl))
+    }
+    .f0 <- .run(FALSE)
+    .fEq <- .run(TRUE, 100L)
+    expect_equal(fixef(.f0), fixef(.fEq), tolerance = 1e-10)
+    expect_equal(.f0$env$impObj, .fEq$env$impObj, tolerance = 1e-10)
+    # a genuine resample (half the samples) stays close after one M-step
+    .fH <- .run(TRUE, 50L)
+    expect_lt(max(abs(fixef(.fH) - fixef(.f0))), 0.05)
+  })
+
+  test_that("Q6: sir=TRUE converges to FOCEI (non-mu theta + sigma unfixed)", {
+    .mstr <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .ff <- suppressWarnings(nlmixr2(.mstr, .d, "focei",
+                                    foceiControl(print = 0L, covMethod = "")))
+    # SIR with the default resample size (30 of 300)
+    .fs <- suppressWarnings(nlmixr2(.mstr, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 30L,
+                                                  isample = 300L, sir = TRUE)))
+    expect_true(.fs$env$impSir)
+    expect_identical(.fs$env$impSirSample, 30L)
+    expect_equal(unname(fixef(.fs)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.05)
+    expect_equal(unname(fixef(.fs)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+    expect_equal(fixef(.fs)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
+    expect_equal(unname(diag(.fs$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
+    # qr + sir combined (the full QRPEM configuration)
+    .fq <- suppressWarnings(nlmixr2(.mstr, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 30L,
+                                                  isample = 300L, qr = TRUE,
+                                                  sir = TRUE)))
+    expect_equal(unname(fixef(.fq)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.05)
+    expect_equal(unname(fixef(.fq)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+    expect_equal(fixef(.fq)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
+  })
+
   test_that("Q1: default (qr/sir off) fit is unchanged vs the pre-QRPEM baseline", {
     .ref <- readRDS(test_path("fixtures", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(

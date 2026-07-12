@@ -609,6 +609,13 @@ void impOuter(Environment e) {
   if (impQrEnabled() && impQrShiftEnabled() && !impQrRefreshEnabled()) {
     qrPinSeed = getRxSeed1(1);
   }
+  // Fit-constant base seed for the SIR stratified offsets; only consumed when
+  // SIR can actually engage (sirN < isample) so every other path's draw
+  // stream -- including sir=TRUE with a full-size resample -- is unchanged.
+  bool sir = impSirEnabled() && impSirN() < isample;
+  int sirN = impSirN();
+  uint32_t sirSeed = 0;
+  if (sir) sirSeed = getRxSeed1(1);
 
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization
@@ -662,7 +669,27 @@ void impOuter(Environment e) {
       // component weight a_ij is already folded into sampZk, so this forms the
       // component-weighted score directly.
       for (int eid = 0; eid < nExp; ++eid) {
-        if (sampS[eid].n_rows > 0) impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
+        if (sampS[eid].n_rows == 0) continue;
+        if (sir && sirN < (int)sampS[eid].n_rows) {
+          // SIR acceleration: an equal-weight systematic resample stands in
+          // for the full weighted sample, cutting the theta-sens solves from
+          // isample to sirN per subject.  For a mixture, zk sums to the
+          // component responsibility a_ij (folded in by impEStep), so the
+          // equal weights carry a_ij/sirN to preserve the component mass.
+          double aij = arma::accu(sampZk[eid]);
+          if (!(aij > 0.0) || !R_finite(aij)) continue;
+          setRxThreadId(0);
+          nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
+          double u0 = rxUnifEng(0.0, 1.0);
+          setRxThreadId(-1);
+          arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
+          arma::mat Ssir = sampS[eid].rows(ridx);
+          arma::vec zkEq(sirN);
+          zkEq.fill(aij / (double)sirN);
+          impThetaScore(eid, Ssir, zkEq, g, H);
+        } else {
+          impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
+        }
       }
       g /= (double)nsub;
       H /= (double)nsub;
