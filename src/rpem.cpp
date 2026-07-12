@@ -24,6 +24,17 @@
 
 #define _(String) (String)
 
+// L-BFGS-B with C linkage (src/lbfgsR.c), shared with saem.cpp -- used to refine the
+// fixed-effect likelihood parameters of a general log-likelihood RPEM model by a direct
+// box-constrained optimization of the importance-weighted observation log-likelihood.
+typedef double rpemOptimfn(int n, double *par, void *ex);
+typedef void rpemOptimgr(int n, double *par, double *gr, void *ex);
+extern "C" void lbfgsbRX(int n, int lmm, double *x, double *lower,
+                         double *upper, int *nbd, double *Fmin, rpemOptimfn fn,
+                         rpemOptimgr gr, int *fail, void *ex, double factr,
+                         double pgtol, int *fncount, int *grcount,
+                         int maxit, char *msg, int trace, int nREPORT);
+
 // Solve one subject with the bound rpem predOnly model (rxPred function ptrs).
 #define rpemPredOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
@@ -2256,6 +2267,95 @@ NumericVector rpemMstepBeta(NumericVector base, IntegerVector etaIdx,
   (void)ok;
   NumericVector out(nB);
   for (int k = 0; k < nB; ++k) out[k] = beta[k];
+  return out;
+}
+
+// L-BFGS-B refinement of the fixed-effect likelihood parameters of a general log-
+// likelihood RPEM model (mirrors saem's refinePhi0Lik / saemix ind.fix10).  Instead of
+// rpemMstepBeta's single damped-Newton step, this box-constrained-optimizes the same
+// importance-weighted complete-data objective Q(beta) = sum_ij w_ij log p(Y_i|beta,eta_ij)
+// (etas held from the E-step) via L-BFGS-B, so bounded parameters are respected natively
+// (the box IS the clamping -- lbfgsbRX never leaves [lower, upper]).  A stochastic-
+// approximation smoothing gain damps the update: beta <- beta0 + gain*(x_opt - beta0),
+// re-clamped to the box.  Must be called while the E-step solve struct is loaded.
+struct RpemLikOpt {
+  std::vector<double> w;                 // importance weights (nsub*nG)
+  std::vector<double> baseBuf;           // full theta row template
+  const int *structIdx; int nB;
+  const int *etaIdx; int nEta;
+  int nsub, nG;
+  std::vector<double> row;               // scratch (ntheta)
+  long nfe;
+};
+
+static double rpemLikNegQ(int n, double *par, void *ex) {
+  RpemLikOpt *o = (RpemLikOpt *)ex;
+  double q = 0.0;
+  for (int i = 0; i < o->nsub; ++i)
+    for (int j = 0; j < o->nG; ++j) {
+      for (unsigned int t = 0; t < rpemOp.ntheta; ++t) o->row[t] = o->baseBuf[t];
+      for (int k = 0; k < n; ++k) o->row[o->structIdx[k]] = par[k];
+      for (int a = 0; a < o->nEta; ++a)
+        o->row[o->etaIdx[a]] = rpemOp.etaS[((size_t)i * o->nG + j) * o->nEta + a];
+      q += o->w[(size_t)i * o->nG + j] * (-rpemSolveSubject(o->row.data(), i));
+    }
+  o->nfe++;
+  if (!std::isfinite(q)) return 1e300;   // out-of-support candidate -> reject
+  return -q;                             // minimize -Q
+}
+
+static void rpemLikGrad(int n, double *par, double *gr, void *ex) {
+  for (int k = 0; k < n; ++k) {
+    double p0 = par[k], h = 1e-4 * (std::fabs(p0) + 1e-4);
+    par[k] = p0 + h; double fp = rpemLikNegQ(n, par, ex);
+    par[k] = p0 - h; double fm = rpemLikNegQ(n, par, ex);
+    par[k] = p0;
+    gr[k] = (fp - fm) / (2.0 * h);
+  }
+}
+
+//[[Rcpp::export]]
+NumericVector rpemMstepBetaLik(NumericVector base, IntegerVector etaIdx,
+                               IntegerVector structIdx, NumericVector struct0,
+                               NumericVector lower, NumericVector upper, IntegerVector nbd,
+                               double gain, int lmm, double factr, double pgtol, int maxit) {
+  if (!rpemOp.loaded) stop("run rpemEstepK1Draw before rpemMstepBetaLik");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta, nB = structIdx.size();
+  RpemLikOpt o;
+  o.w.assign((size_t)nsub * nG, 0.0);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double s = 0.0;
+    for (int j = 0; j < nG; ++j) { double e = exp(rpemOp.logp[(size_t)i * nG + j] - mx); o.w[(size_t)i * nG + j] = e; s += e; }
+    for (int j = 0; j < nG; ++j) o.w[(size_t)i * nG + j] /= s;
+  }
+  o.baseBuf.assign(rpemOp.ntheta, 0.0);
+  for (unsigned int t = 0; t < rpemOp.ntheta; ++t) o.baseBuf[t] = base[t];
+  o.row.assign(rpemOp.ntheta, 0.0);
+  o.structIdx = structIdx.begin(); o.nB = nB; o.etaIdx = etaIdx.begin(); o.nEta = nEta;
+  o.nsub = nsub; o.nG = nG; o.nfe = 0;
+
+  std::vector<double> x(nB), lo(nB, 0.0), up(nB, 0.0); std::vector<int> bnd(nB, 0);
+  for (int k = 0; k < nB; ++k) {
+    x[k] = struct0[k];
+    if ((int)nbd.size() == nB) { bnd[k] = nbd[k]; lo[k] = lower[k]; up[k] = upper[k]; }
+  }
+  double Fmin; int fail = 0, fncount = 0, grcount = 0; char msg[100];
+  lbfgsbRX(nB, lmm, x.data(), lo.data(), up.data(), bnd.data(), &Fmin,
+           rpemLikNegQ, rpemLikGrad, &fail, (void *)&o, factr, pgtol,
+           &fncount, &grcount, maxit, msg, 0, maxit + 1);
+  // smoothing-gain damped update, re-clamped to the box (defensive; lbfgsbRX already
+  // keeps x within [lower, upper]).
+  NumericVector out(nB);
+  for (int k = 0; k < nB; ++k) {
+    double v = struct0[k] + gain * (x[k] - struct0[k]);
+    if ((int)nbd.size() == nB) {
+      if ((bnd[k] == 1 || bnd[k] == 2) && v < lo[k]) v = lo[k];
+      if ((bnd[k] == 2 || bnd[k] == 3) && v > up[k]) v = up[k];
+    }
+    out[k] = v;
+  }
   return out;
 }
 

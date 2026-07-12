@@ -353,6 +353,15 @@
        tbsYj = .tbs$yj, tbsLow = .tbs$low, tbsHi = .tbs$hi,
        powIdx = powIdx, pow0 = pow0, endpt = .endpt,
        structIdx = structIdx, struct0 = .thetas$est[structIdx + 1L],
+       # box bounds for the structural (likelihood) params -> L-BFGS-B nbd encoding
+       # (0 none, 1 lower, 2 both, 3 upper); used by the lbfgsb3c likelihood refinement.
+       structLower = if (length(structIdx)) .thetas$lower[structIdx + 1L] else numeric(0),
+       structUpper = if (length(structIdx)) .thetas$upper[structIdx + 1L] else numeric(0),
+       structNbd = if (length(structIdx)) as.integer(
+         mapply(function(lo, hi) {
+           .l <- is.finite(lo); .h <- is.finite(hi)
+           if (.l && .h) 2L else if (.l) 1L else if (.h) 3L else 0L
+         }, .thetas$lower[structIdx + 1L], .thetas$upper[structIdx + 1L])) else integer(0),
        fixIdx = as.integer(.fixIdx), fixNames = .thetas$name[.thetas$fix],
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
@@ -454,6 +463,12 @@
     .combE <- .cl$endpt$errType %in% c(2L, 3L, 4L)  # endpoints with a 2nd residual param
   }
   .structOn <- length(.cl$structIdx) > 0L
+  # general log-likelihood models refine their fixed-effect likelihood parameters with a
+  # box-constrained L-BFGS-B optimization (saem ind.fix10) during the terminal smoothing
+  # window; exploration iterations use the cheaper damped-Newton re-solve.  The box gives
+  # bounded parameters native clamping.
+  .likLbfgs <- .cl$errType == 7L && isTRUE(control$likLbfgs) && .structOn
+  .smoothStart <- control$niter - control$collect
   niter <- control$niter
   coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
   muTr <- matrix(0, niter, .cl$nEta); omTr <- matrix(0, niter, .cl$nEta)
@@ -516,7 +531,12 @@
     # numeric M-step for non-mu-ref structural fixed effects, while the E-step
     # solve is still loaded (before the MH step's rxRmvn draw clobbers it).
     if (.structOn) {
-      .bt <- rpemMstepBeta(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L])
+      .bt <- if (.likLbfgs && .it > .smoothStart)
+        rpemMstepBetaLik(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L],
+                         .cl$structLower, .cl$structUpper, .cl$structNbd, 1.0,
+                         control$lbfgsLmm, control$lbfgsFactr, control$lbfgsPgtol,
+                         control$lbfgsMaxIter)
+      else rpemMstepBeta(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L])
       base[.cl$structIdx + 1L] <- .bt; betaMat[.it, ] <- .bt
     }
     if (.comb) {

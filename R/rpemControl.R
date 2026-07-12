@@ -29,18 +29,32 @@
 #'   `FALSE` (default) uses the R-driven loop, which also covers covariates, non-mu-ref /
 #'   structural / mixture / multi-endpoint / censored / mode-centered cases the C++ loop
 #'   does not yet handle (it silently falls back to the R loop for those).
+#' @param likLbfgs For a general log-likelihood (`ll()`) endpoint, refine the
+#'   fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
+#'   optimization of the importance-weighted observation log-likelihood (mirrors the
+#'   saem/saemix ind.fix10 step), respecting the parameter bounds from the model, rather
+#'   than the default single damped-Newton re-solve step.  `TRUE` (default) for `ll()`
+#'   models; ignored for standard residual-error models.
+#' @param lbfgsLmm,lbfgsFactr,lbfgsPgtol,lbfgsMaxIter L-BFGS-B tuning for the `likLbfgs`
+#'   likelihood-parameter refinement (number of corrections, convergence `factr`/`pgtol`,
+#'   and max iterations).
 #' @param ... Ignored (reserved for future options).
 #' @return A list of class `rpemControl`.
 #' @export
 rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         niter = 50L, collect = 15L, seed = 42L,
                         atol = 1e-8, rtol = 1e-8, cores = 1L,
-                        impInflate = 0, cLoop = FALSE, ...) {
+                        impInflate = 0, cLoop = FALSE,
+                        likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
+                        lbfgsPgtol = 0, lbfgsMaxIter = 20L, ...) {
   .ret <- list(nGauss = as.integer(nGauss), nMH = as.integer(nMH),
                mhBurn = as.integer(mhBurn), niter = as.integer(niter),
                collect = as.integer(collect), seed = as.integer(seed),
                atol = atol, rtol = rtol, cores = as.integer(cores),
-               impInflate = as.numeric(impInflate), cLoop = isTRUE(cLoop))
+               impInflate = as.numeric(impInflate), cLoop = isTRUE(cLoop),
+               likLbfgs = isTRUE(likLbfgs), lbfgsLmm = as.integer(lbfgsLmm),
+               lbfgsFactr = as.numeric(lbfgsFactr), lbfgsPgtol = as.numeric(lbfgsPgtol),
+               lbfgsMaxIter = as.integer(lbfgsMaxIter))
   class(.ret) <- "rpemControl"
   .ret
 }

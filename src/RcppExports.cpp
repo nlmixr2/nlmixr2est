@@ -1384,6 +1384,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemMstepBetaLik
+NumericVector rpemMstepBetaLik(NumericVector base, IntegerVector etaIdx, IntegerVector structIdx, NumericVector struct0, NumericVector lower, NumericVector upper, IntegerVector nbd, double gain, int lmm, double factr, double pgtol, int maxit);
+RcppExport SEXP _nlmixr2est_rpemMstepBetaLik(SEXP baseSEXP, SEXP etaIdxSEXP, SEXP structIdxSEXP, SEXP struct0SEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP nbdSEXP, SEXP gainSEXP, SEXP lmmSEXP, SEXP factrSEXP, SEXP pgtolSEXP, SEXP maxitSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type base(baseSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type etaIdx(etaIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type structIdx(structIdxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type struct0(struct0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upper(upperSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type nbd(nbdSEXP);
+    Rcpp::traits::input_parameter< double >::type gain(gainSEXP);
+    Rcpp::traits::input_parameter< int >::type lmm(lmmSEXP);
+    Rcpp::traits::input_parameter< double >::type factr(factrSEXP);
+    Rcpp::traits::input_parameter< double >::type pgtol(pgtolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepBetaLik(base, etaIdx, structIdx, struct0, lower, upper, nbd, gain, lmm, factr, pgtol, maxit));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpemMstepK1Multi
 List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt, IntegerVector errTypes, NumericVector add0, NumericVector prop0, int nTrials, int burn);
 RcppExport SEXP _nlmixr2est_rpemMstepK1Multi(SEXP designSEXP, SEXP coefsSEXP, SEXP endptSEXP, SEXP errTypesSEXP, SEXP add0SEXP, SEXP prop0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {

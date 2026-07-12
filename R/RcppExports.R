@@ -398,6 +398,10 @@ rpemMstepBeta <- function(base, etaIdx, structIdx, struct0) {
     .Call(`_nlmixr2est_rpemMstepBeta`, base, etaIdx, structIdx, struct0)
 }
 
+rpemMstepBetaLik <- function(base, etaIdx, structIdx, struct0, lower, upper, nbd, gain, lmm, factr, pgtol, maxit) {
+    .Call(`_nlmixr2est_rpemMstepBetaLik`, base, etaIdx, structIdx, struct0, lower, upper, nbd, gain, lmm, factr, pgtol, maxit)
+}
+
 rpemMstepK1Multi <- function(design, coefs, endpt, errTypes, add0, prop0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Multi`, design, coefs, endpt, errTypes, add0, prop0, nTrials, burn)
 }

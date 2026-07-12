@@ -16,6 +16,11 @@ rpemControl(
   cores = 1L,
   impInflate = 0,
   cLoop = FALSE,
+  likLbfgs = TRUE,
+  lbfgsLmm = 5L,
+  lbfgsFactr = 1e+07,
+  lbfgsPgtol = 0,
+  lbfgsMaxIter = 20L,
   ...
 )
 }
@@ -54,6 +59,17 @@ reproducible for any core count, and the per-iteration R round-trip is avoided.
 `FALSE` (default) uses the R-driven loop, which also covers covariates, non-mu-ref /
 structural / mixture / multi-endpoint / censored / mode-centered cases the C++ loop
 does not yet handle (it silently falls back to the R loop for those).}
+
+\item{likLbfgs}{For a general log-likelihood (`ll()`) endpoint, refine the
+fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
+optimization of the importance-weighted observation log-likelihood (mirrors the
+saem/saemix ind.fix10 step), respecting the parameter bounds from the model, rather
+than the default single damped-Newton re-solve step.  `TRUE` (default) for `ll()`
+models; ignored for standard residual-error models.}
+
+\item{lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter}{L-BFGS-B tuning for the `likLbfgs`
+likelihood-parameter refinement (number of corrections, convergence `factr`/`pgtol`,
+and max iterations).}
 
 \item{...}{Ignored (reserved for future options).}
 }
