@@ -116,6 +116,25 @@ nmTest({
     }
   })
 
+  test_that("Q4: impCov=TRUE with qr=TRUE gives an SPD covariance matching FOCEI |r|", {
+    .fi <- suppressWarnings(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
+              impmapControl(print=0L, nIter=40L, isample=500L, qr=TRUE,
+                            impCov=TRUE)))
+    .se <- as.numeric(.fi$env$impSe)
+    .nth <- .fi$env$impCovThetaN
+    expect_true(all(is.finite(.se) & .se > 0))
+    .cov <- .fi$env$impCov
+    expect_equal(.cov, t(.cov), tolerance = 1e-8)
+    expect_true(all(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+    .ff <- suppressWarnings(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(print = 0L, covMethod = "r")))
+    skip_if(is.null(.ff$cov), "FOCEI |r| covariance unavailable")
+    .fse <- sqrt(diag(.ff$cov))[seq_len(.nth)]
+    expect_equal(.se[seq_len(.nth)], unname(.fse), tolerance = 0.1)
+  })
+
   test_that("Q1: default (qr/sir off) fit is unchanged vs the pre-QRPEM baseline", {
     .ref <- readRDS(test_path("fixtures", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(

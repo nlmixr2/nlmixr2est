@@ -388,16 +388,39 @@ void impComputeCov(Environment e) {
   }
   // Draw one fixed sample set per subject (serial, deterministic seed).  The
   // engine is already allocated + seeded by rxWithSeed() at the fit start.
+  // With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
+  // when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
+  bool qr = impQrEnabled();
+  bool qrShift = impQrShiftEnabled();
+  arma::mat qrU0, qrZ0;
+  if (qr) {
+    qrU0 = impSobolU0(isample, neta);
+    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+  }
   uint32_t seed0 = getRxSeed1(1);
   setRxThreadId(0);
   for (int id = 0; id < nsub; ++id) {
     if (!ok[id]) continue;
     setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
     arma::mat S(isample, neta);
-    for (int k = 0; k < isample; ++k) {
-      arma::vec z(neta);
-      for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-      S.row(k) = (modes[id] + Ls[id] * z).t();
+    if (qr) {
+      arma::mat Z;
+      if (qrShift) {
+        arma::vec sh(neta);
+        for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
+        Z = impQrZ(qrU0, &sh);
+      } else {
+        Z = qrZ0;
+      }
+      for (int k = 0; k < isample; ++k) {
+        S.row(k) = (modes[id] + Ls[id] * Z.row(k).t()).t();
+      }
+    } else {
+      for (int k = 0; k < isample; ++k) {
+        arma::vec z(neta);
+        for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+        S.row(k) = (modes[id] + Ls[id] * z).t();
+      }
     }
     Ss[id] = S;
   }
