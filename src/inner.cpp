@@ -92,7 +92,7 @@ extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
 // values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
 // accumulators, so the test runs single-threaded.
 static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL;
-static int _testNObs, _testNBegin, _testNEnd, _testNlhs, _testLhsHasF, _testNstate;
+static int _testNObs, _testNBegin, _testNEnd;
 static void _testBegin(const nlmixrLikSubj *s) { (void)s; _testNBegin++; }
 static void _testEnd(const nlmixrLikSubj *s) { (void)s; _testNEnd++; }
 static void _testObs(nlmixrLikObs *o) {
@@ -100,14 +100,6 @@ static void _testObs(nlmixrLikObs *o) {
   _testSumDLLdf += o->dLL_df;
   _testSumErr += (o->f - o->dv);
   _testSumF += o->f;
-  // verify the solved LHS row is exposed and holds this obs's values: the
-  // prediction f must appear among the lhs entries.
-  if (o->lhs != NULL && o->nlhs > 0) {
-    _testNlhs = o->nlhs;
-    for (int i = 0; i < o->nlhs; ++i)
-      if (fabs(o->lhs[i] - o->f) < 1e-8) { _testLhsHasF++; break; }
-  }
-  if (o->state != NULL && o->nstate > 0) _testNstate = o->nstate;
   if (_testAddLL != 0.0) *o->llik += _testAddLL;   // constant LL shift per obs
 }
 extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
@@ -117,7 +109,7 @@ extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
 static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
 extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
   _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = 0.0;
-  _testNObs = _testNBegin = _testNEnd = _testNlhs = _testLhsHasF = _testNstate = 0;
+  _testNObs = _testNBegin = _testNEnd = 0;
   nlmixrRegisterLikContrib(&_testContribBundle);
   return R_NilValue;
 }
@@ -126,12 +118,10 @@ extern "C" SEXP _nlmixr2est_removeTestContrib(void) {
   return R_NilValue;
 }
 extern "C" SEXP _nlmixr2est_getTestContrib(void) {
-  SEXP r = PROTECT(Rf_allocVector(REALSXP, 9));
+  SEXP r = PROTECT(Rf_allocVector(REALSXP, 6));
   REAL(r)[0] = (double) _testNObs;   REAL(r)[1] = _testSumDLLdf;
   REAL(r)[2] = _testSumErr;          REAL(r)[3] = _testSumF;
   REAL(r)[4] = (double) _testNBegin; REAL(r)[5] = (double) _testNEnd;
-  REAL(r)[6] = (double) _testNlhs;   REAL(r)[7] = (double) _testLhsHasF;
-  REAL(r)[8] = (double) _testNstate;
   UNPROTECT(1);
   return r;
 }
@@ -1905,9 +1895,6 @@ double likInner0(double *eta, int id) {
             _o.id = id; _o.k = k; _o.neta = op_focei.neta;
             _o.f = f; _o.dv = dv; _o.r = r; _o.dLL_df = _dLLdf; _o.dLL_dr = _dLLdr;
             _o.df_deta = _dfp; _o.llik = &_llAdd; _o.dLL_deta = _cDeta.data();
-            _o.lhs = lhs; _o.nlhs = getRxNlhs(rx);   // solved LHS row for this obs
-            _o.state = getOpIndSolve(op, ind, j);    // solved states (rx_sw), no copy
-            _o.nstate = getOpNeq(op);
             for (int _ci = 0; _ci < _nContrib; ++_ci) _nlmixrContrib[_ci]->obs(&_o);
             fInd->llik += _llAdd;
             for (int _q = 0; _q < op_focei.neta; ++_q) lp(_q, 0) += _cDeta[_q];

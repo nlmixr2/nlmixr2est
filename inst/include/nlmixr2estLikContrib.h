@@ -39,19 +39,6 @@ extern "C" {
     const double *df_deta;  // [neta] base d(f)/d(eta) (NULL when neta == 0)
     double *llik;           // += optional extra LL at this observation
     double *dLL_deta;       // [neta] += optional extra d(LL)/d(eta)
-    // solved model outputs for this observation (read-only): the LHS row of the
-    // current record.  A contributor that added its own outputs to the model
-    // (e.g. NN-weight forward sensitivities d(f)/d(w) as extra lhs) can read them
-    // here by index -- the layout is discovered from rxModelVars(model)$lhs.
-    const double *lhs;      // [nlhs] current observation's solved LHS values
-    int nlhs;               // length of lhs
-    // Solved state vector for this observation (read-only, points into the
-    // inner solve -- not materialized).  Carries the NN-weight forward-
-    // sensitivity states (rx_sw) for the inner (individual-weight) building
-    // block, which turns them + df_deta (possibly finite-difference) into a
-    // contribution to dLL_deta (folded into lpInner).
-    const double *state;    // [nstate] current observation's solved states
-    int nstate;             // length of state
   } nlmixrLikObs;
 
   typedef struct {
