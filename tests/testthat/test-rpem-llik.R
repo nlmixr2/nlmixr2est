@@ -129,10 +129,15 @@ test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
   e <- new.env(); e$predOnly <- ui$rpemRxModel$predOnly
   e$rxControl <- rxode2::rxControl(atol = 1e-8, rtol = 1e-8, cores = 2L)
   e$param <- stats::setNames(cl$base, .nm); e$data <- d
-  runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, -1L, 7L, cl$mu0,
-    diag(as.matrix(cl$omega0)), 0.0, c(-1L, -1L, -1L), c(0, 0, 0), integer(0), numeric(0),
-    ni, 300L, 2L, 40000L, 4000L, 7L, matrix(0, 0, 0), integer(0),
-    numeric(0), numeric(0), integer(0), 0L, 12L, 5L, 1e7, 0, 20L, 1.0)
+  runN <- function(ni) rpemEMLoopK1(e, list(
+    base = cl$base, etaIdx = cl$etaIdx, muIdx = cl$muIdx, addSdIdx = -1L, errType = 7L,
+    mu0 = cl$mu0, omDiag0 = diag(as.matrix(cl$omega0)), addSd0 = 0.0,
+    resIdx = c(-1L, -1L, -1L), resPar0 = c(0, 0, 0), structIdx = integer(0),
+    struct0 = numeric(0), niter = ni, nGauss = 300L, ncores = 2L, nMH = 40000L,
+    mhBurn = 4000L, seed = 7L, design = matrix(0, 0, 0), covCoefIdx = integer(0),
+    structLower = numeric(0), structUpper = numeric(0), structNbd = integer(0),
+    likLbfgs = 0L, collect = 12L, lbfgsLmm = 5L, lbfgsFactr = 1e7, lbfgsPgtol = 0,
+    lbfgsMaxIter = 20L, cInflate = 1.0))
   a <- runN(15L); b <- runN(25L)
   expect_equal(a$muTrace[1:15, , drop = FALSE], b$muTrace[1:15, , drop = FALSE])
   expect_equal(as.numeric(a$lnL)[1:15], as.numeric(b$lnL)[1:15])

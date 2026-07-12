@@ -518,16 +518,20 @@
     .resIdx <- c(.naI(.cl$propSdIdx), .naI(.cl$powIdx), .naI(.cl$lambdaIdx))
     .resPar0 <- c(.naN(.cl$propSd0), .naN(.cl$pow0), .naN(.cl$lambda0))
     .designC <- if (.useReg) .design else matrix(0.0, 0L, 0L)
-    .r <- rpemEMLoopK1(.e, base, .cl$etaIdx, .cl$muIdx, .naI(.cl$addSdIdx), .cl$errType,
-                       .cl$mu0, diag(as.matrix(.cl$omega0)), .naN(.cl$addSd0), .resIdx, .resPar0,
-                       as.integer(.cl$structIdx), as.numeric(.cl$struct0),
-                       niter, control$nGauss, control$cores, control$nMH, control$mhBurn,
-                       control$seed, .designC, as.integer(.cl$covCoefIdx),
-                       as.numeric(.cl$structLower), as.numeric(.cl$structUpper),
-                       as.integer(.cl$structNbd),
-                       if (.likLbfgs) 1L else 0L, control$collect,
-                       control$lbfgsLmm, control$lbfgsFactr, control$lbfgsPgtol,
-                       control$lbfgsMaxIter, .cInf)
+    # config List for the C++ E-M loop (rpemEMLoopK1 takes one cfg, not a positional list)
+    .cfg <- list(
+      base = base, etaIdx = .cl$etaIdx, muIdx = .cl$muIdx, addSdIdx = .naI(.cl$addSdIdx),
+      errType = .cl$errType, mu0 = .cl$mu0, omDiag0 = diag(as.matrix(.cl$omega0)),
+      addSd0 = .naN(.cl$addSd0), resIdx = .resIdx, resPar0 = .resPar0,
+      structIdx = as.integer(.cl$structIdx), struct0 = as.numeric(.cl$struct0),
+      niter = niter, nGauss = control$nGauss, ncores = control$cores, nMH = control$nMH,
+      mhBurn = control$mhBurn, seed = control$seed, design = .designC,
+      covCoefIdx = as.integer(.cl$covCoefIdx), structLower = as.numeric(.cl$structLower),
+      structUpper = as.numeric(.cl$structUpper), structNbd = as.integer(.cl$structNbd),
+      likLbfgs = if (.likLbfgs) 1L else 0L, collect = control$collect,
+      lbfgsLmm = control$lbfgsLmm, lbfgsFactr = control$lbfgsFactr,
+      lbfgsPgtol = control$lbfgsPgtol, lbfgsMaxIter = control$lbfgsMaxIter, cInflate = .cInf)
+    .r <- rpemEMLoopK1(.e, .cfg)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
     propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)

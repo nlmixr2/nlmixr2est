@@ -289,10 +289,15 @@ test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the pre
   e <- new.env(); e$predOnly <- ui$rpemRxModel$predOnly
   e$rxControl <- rxode2::rxControl(atol = 1e-8, rtol = 1e-8, cores = 2L)
   e$param <- stats::setNames(cl$base, .nm); e$data <- dat
-  runN <- function(ni) rpemEMLoopK1(e, cl$base, cl$etaIdx, cl$muIdx, cl$addSdIdx, cl$errType,
-    cl$mu0, diag(as.matrix(cl$omega0)), cl$addSd0, c(-1L, -1L, -1L), c(0, 0, 0),
-    as.integer(cl$structIdx), as.numeric(cl$struct0), ni, 200L, 2L, 30000L, 3000L, 123L,
-    matrix(0, 0, 0), integer(0), numeric(0), numeric(0), integer(0), 0L, 8L, 5L, 1e7, 0, 20L, 1.0)
+  runN <- function(ni) rpemEMLoopK1(e, list(
+    base = cl$base, etaIdx = cl$etaIdx, muIdx = cl$muIdx, addSdIdx = cl$addSdIdx,
+    errType = cl$errType, mu0 = cl$mu0, omDiag0 = diag(as.matrix(cl$omega0)),
+    addSd0 = cl$addSd0, resIdx = c(-1L, -1L, -1L), resPar0 = c(0, 0, 0),
+    structIdx = as.integer(cl$structIdx), struct0 = as.numeric(cl$struct0), niter = ni,
+    nGauss = 200L, ncores = 2L, nMH = 30000L, mhBurn = 3000L, seed = 123L,
+    design = matrix(0, 0, 0), covCoefIdx = integer(0), structLower = numeric(0),
+    structUpper = numeric(0), structNbd = integer(0), likLbfgs = 0L, collect = 8L,
+    lbfgsLmm = 5L, lbfgsFactr = 1e7, lbfgsPgtol = 0, lbfgsMaxIter = 20L, cInflate = 1.0))
   r20 <- runN(20L); r30 <- runN(30L)
   expect_equal(r20$muTrace[1:20, , drop = FALSE], r30$muTrace[1:20, , drop = FALSE])
   expect_equal(r20$omegaTrace[1:20, , drop = FALSE], r30$omegaTrace[1:20, , drop = FALSE])

@@ -1179,43 +1179,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemEMLoopK1
-List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx, IntegerVector muIdx, int addSdIdx, int errType, NumericVector mu0, NumericVector omDiag0, double addSd0, IntegerVector resIdx, NumericVector resPar0, IntegerVector structIdx, NumericVector struct0, int niter, int nGauss, int ncores, int nMH, int mhBurn, unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx, NumericVector structLower, NumericVector structUpper, IntegerVector structNbd, int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr, double lbfgsPgtol, int lbfgsMaxIter, double cInflate);
-RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP muIdxSEXP, SEXP addSdIdxSEXP, SEXP errTypeSEXP, SEXP mu0SEXP, SEXP omDiag0SEXP, SEXP addSd0SEXP, SEXP resIdxSEXP, SEXP resPar0SEXP, SEXP structIdxSEXP, SEXP struct0SEXP, SEXP niterSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP, SEXP nMHSEXP, SEXP mhBurnSEXP, SEXP seedSEXP, SEXP designSEXP, SEXP covCoefIdxSEXP, SEXP structLowerSEXP, SEXP structUpperSEXP, SEXP structNbdSEXP, SEXP likLbfgsSEXP, SEXP collectSEXP, SEXP lbfgsLmmSEXP, SEXP lbfgsFactrSEXP, SEXP lbfgsPgtolSEXP, SEXP lbfgsMaxIterSEXP, SEXP cInflateSEXP) {
+List rpemEMLoopK1(Environment e, List cfg);
+RcppExport SEXP _nlmixr2est_rpemEMLoopK1(SEXP eSEXP, SEXP cfgSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type base(baseSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type etaIdx(etaIdxSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type muIdx(muIdxSEXP);
-    Rcpp::traits::input_parameter< int >::type addSdIdx(addSdIdxSEXP);
-    Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type mu0(mu0SEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omDiag0(omDiag0SEXP);
-    Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type resIdx(resIdxSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type resPar0(resPar0SEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type structIdx(structIdxSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type struct0(struct0SEXP);
-    Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
-    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
-    Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
-    Rcpp::traits::input_parameter< int >::type nMH(nMHSEXP);
-    Rcpp::traits::input_parameter< int >::type mhBurn(mhBurnSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
-    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type covCoefIdx(covCoefIdxSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type structLower(structLowerSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type structUpper(structUpperSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type structNbd(structNbdSEXP);
-    Rcpp::traits::input_parameter< int >::type likLbfgs(likLbfgsSEXP);
-    Rcpp::traits::input_parameter< int >::type collect(collectSEXP);
-    Rcpp::traits::input_parameter< int >::type lbfgsLmm(lbfgsLmmSEXP);
-    Rcpp::traits::input_parameter< double >::type lbfgsFactr(lbfgsFactrSEXP);
-    Rcpp::traits::input_parameter< double >::type lbfgsPgtol(lbfgsPgtolSEXP);
-    Rcpp::traits::input_parameter< int >::type lbfgsMaxIter(lbfgsMaxIterSEXP);
-    Rcpp::traits::input_parameter< double >::type cInflate(cInflateSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, base, etaIdx, muIdx, addSdIdx, errType, mu0, omDiag0, addSd0, resIdx, resPar0, structIdx, struct0, niter, nGauss, ncores, nMH, mhBurn, seed, design, covCoefIdx, structLower, structUpper, structNbd, likLbfgs, collect, lbfgsLmm, lbfgsFactr, lbfgsPgtol, lbfgsMaxIter, cInflate));
+    Rcpp::traits::input_parameter< List >::type cfg(cfgSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEMLoopK1(e, cfg));
     return rcpp_result_gen;
 END_RCPP
 }

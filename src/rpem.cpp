@@ -702,16 +702,30 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // over the solve is unsafe).  errType 0 additive, 1 proportional.  Returns per-iteration
 // mu / omega (diagonal) / add.sd / lnL traces.
 //[[Rcpp::export]]
-List rpemEMLoopK1(Environment e, NumericVector base, IntegerVector etaIdx,
-                  IntegerVector muIdx, int addSdIdx, int errType,
-                  NumericVector mu0, NumericVector omDiag0, double addSd0,
-                  IntegerVector resIdx, NumericVector resPar0,
-                  IntegerVector structIdx, NumericVector struct0,
-                  int niter, int nGauss, int ncores, int nMH, int mhBurn,
-                  unsigned int seed, NumericMatrix design, IntegerVector covCoefIdx,
-                  NumericVector structLower, NumericVector structUpper, IntegerVector structNbd,
-                  int likLbfgs, int collect, int lbfgsLmm, double lbfgsFactr,
-                  double lbfgsPgtol, int lbfgsMaxIter, double cInflate) {
+List rpemEMLoopK1(Environment e, List cfg) {
+  // The single-component C++ E-M loop takes one config List (built in R by .rpemFit) rather
+  // than a long positional argument list, so new estimation features can add config keys
+  // without a signature/registration/caller churn.
+  NumericVector base = cfg["base"];
+  IntegerVector etaIdx = cfg["etaIdx"], muIdx = cfg["muIdx"];
+  int addSdIdx = cfg["addSdIdx"], errType = cfg["errType"];
+  NumericVector mu0 = cfg["mu0"], omDiag0 = cfg["omDiag0"];
+  double addSd0 = cfg["addSd0"];
+  IntegerVector resIdx = cfg["resIdx"];
+  NumericVector resPar0 = cfg["resPar0"];
+  IntegerVector structIdx = cfg["structIdx"];
+  NumericVector struct0 = cfg["struct0"];
+  int niter = cfg["niter"], nGauss = cfg["nGauss"], ncores = cfg["ncores"];
+  int nMH = cfg["nMH"], mhBurn = cfg["mhBurn"];
+  unsigned int seed = (unsigned int)(int)cfg["seed"];
+  NumericMatrix design = cfg["design"];
+  IntegerVector covCoefIdx = cfg["covCoefIdx"];
+  NumericVector structLower = cfg["structLower"], structUpper = cfg["structUpper"];
+  IntegerVector structNbd = cfg["structNbd"];
+  int likLbfgs = cfg["likLbfgs"], collect = cfg["collect"], lbfgsLmm = cfg["lbfgsLmm"];
+  double lbfgsFactr = cfg["lbfgsFactr"], lbfgsPgtol = cfg["lbfgsPgtol"];
+  int lbfgsMaxIter = cfg["lbfgsMaxIter"];
+  double cInflate = cfg["cInflate"];
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
