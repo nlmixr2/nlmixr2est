@@ -83,7 +83,8 @@ Suggests:
     remotes,
     fastGHQuad,
     rmarkdown,
-    rlang
+    rlang,
+    numDeriv
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
@@ -100,5 +101,4 @@ Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
 LazyData: true
-VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0

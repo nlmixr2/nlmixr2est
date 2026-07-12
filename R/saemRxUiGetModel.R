@@ -356,7 +356,7 @@ rxUiGet.saemModel <- function(x, ...) {
     ## DDE non-constant delay() pre-history: base past(state,tau)<-expr.  SAEM is
     ## gradient-free and builds .s without sensitivities, so re-inject the history
     ## (which the symengine interception dropped) from the stored rx__pastRhs_.
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .prd,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
@@ -514,7 +514,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .ret <- paste(c(
     .ddt,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     #.yj,
     #.lambda,
     #.hi,

@@ -12,6 +12,10 @@
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
                            "covType",
+                           # subject-constant covariates stashed by .foceiFamilyReturn
+                           # for the analytic covariate-coefficient reuse; internal so
+                           # a built control round-trips (e.g. posthoc re-validation).
+                           "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
                            "outerOptDefault")
@@ -557,6 +561,13 @@
 #'   for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 #'   etas sampled from omega are each evaluated and the best (by inner
 #'   objective) is used.
+#'
+#' @param seed Integer seed (default `42`) used to make a FOCEi fit
+#'   reproducible and self-contained.  The fit (including the `mceta`
+#'   Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
+#'   runs inside [rxode2::rxWithSeed()], so it neither depends on the ambient
+#'   RNG state nor advances/leaks it -- repeated fits in the same session, and
+#'   fits following other estimation methods, give identical results.
 #'
 #' @param warm Seeding of the n1qn1 inner-optimization Hessian:
 #'   `"calc"` (default) warm-starts each inner problem with the eta

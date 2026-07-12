@@ -1083,7 +1083,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .preLhs,
     .ddt,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -1103,7 +1103,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .preLhs,
     .ddt,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -1366,11 +1366,18 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## fast fit (foceType too, since foce+ has no outer model).
   .fast <- isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))
   .foceType <- rxode2::rxGetControl(.ui, "foceType", 0L)
+  ## The augmented outer model (foceiModelList$outer) also depends on which covariates
+  ## are subject-constant (analytic covariate-coefficient reuse scales those out of the
+  ## symbolic sensitivity build) and on the sigma-skip toggle -- both change the outer model
+  ## text, so they must key the persisted (qs2) cache too, else two fits of the same model
+  ## whose datasets differ only in covariate-constancy would collide.
+  .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
                    .eventSens, .sensMethod, .rxMethod, .fast, .foceType,
+                   .constCovs, Sys.getenv("FOCEI_NO_SIGMA_SKIP"),
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
@@ -2444,6 +2451,29 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control <- .foceiMcetaMuRefFallback(ui, .control)
   .control$est <- est
   ui$control <- .control
+  # Analytic covariate-coefficient reuse (fast=TRUE): the eta-scaling of a mu-ref
+  # covariate coefficient is exact only for a covariate constant within each subject.
+  # The augmented outer model is built inside `ui$foceiOptEnv` (below) BEFORE
+  # .foceiPreProcessData() creates .env$dataSav, so the constant-covariate set must be
+  # on ui$control *now* to be seen by rxGetControl(ui, "foceiConstCovs") at build time
+  # (same stash-before-build pattern the mu-ref groups use in rxUiGet.foceiOptEnv).
+  # Computed from the raw dataset: etTrans only drops whole no-observation subjects and
+  # carries covariates forward, so raw-constant => dataSav-constant (safe/conservative:
+  # being wrong can only *drop* reuse, never wrongly enable it on a time-varying covariate).
+  local({
+    .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
+    if (!is.null(.rd)) {
+      colnames(.rd) <- .nmUpcaseNonCov(names(.rd), ui$covariates)
+      .cv <- tryCatch(ui$allCovs, error = function(e) character(0))
+      .cv <- .cv[.cv %in% names(.rd)]
+      if (length(.cv) > 0L && "ID" %in% names(.rd)) {
+        .const <- .cv[vapply(.cv, function(.c)
+          all(tapply(.rd[[.c]], .rd$ID,
+                     function(.v) length(unique(.v[!is.na(.v)])) <= 1L)), logical(1))]
+        rxode2::rxAssignControlValue(ui, "foceiConstCovs", .const)
+      }
+    }
+  })
   # Building the optimization environment (`ui$foceiOptEnv`) is where the
   # symengine translation, sensitivity generation, and rxode2 compilation
   # happen -- the bulk of setup cost.  It is timed as "setup" (matching the
@@ -2518,12 +2548,20 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # driven entirely by the muModel/foceiMuGroup* control values wired in
   # rxUiGet.foceiOptEnv above -- .foceiFitInternal() is called exactly the
   # same way as every other FOCEI-family method, no separate engine.
-  if (getOption("nlmixr2.retryFocei", TRUE)) {
-    .ret0 <- try(.foceiFitInternal(.env))
-  } else {
-    .ret0 <- .foceiFitInternal(.env)
-  }
-  .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
+  # Run the fit (including the mceta Monte-Carlo initial-ETA draws, which pull
+  # from rxode2's threefry engine) inside rxWithSeed: the fit is seeded from
+  # foceiControl(seed=) and the ambient rxode2/R seed is restored afterward, so
+  # a fit is reproducible and never advances/leaks the global seed onto a
+  # following fit or estimation method.
+  .foceiSeed <- rxode2::rxGetControl(ui, "seed", 42L)
+  .ret0 <- rxode2::rxWithSeed(.foceiSeed, rxseed = .foceiSeed, {
+    .fit0 <- if (getOption("nlmixr2.retryFocei", TRUE)) {
+      try(.foceiFitInternal(.env))
+    } else {
+      .foceiFitInternal(.env)
+    }
+    .nlmixrFoceiRestartIfNeeded(.fit0, .env, .control)
+  })
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }
