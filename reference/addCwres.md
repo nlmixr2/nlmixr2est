@@ -113,18 +113,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.6247203 3.0795e-05 0.01701129      0.072     0.807 1.85        1.16
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.6339213 2.9185e-05 0.01601012      0.077     0.794 1.608       1.141
 #>         table compress     other
-#> elapsed 0.137    0.141 0.5032376
+#> elapsed 0.126    0.135 0.4700394
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)    69.68
-#> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)    28.02
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)    12.96
-#> add.sd           0.699 6.93e-310 9.91e-308    0.699 (0.699, 0.699)         
+#>        Parameter  Est.       SE      %RSE Back-transformed(95%CI) BSV(CV%)
+#> tka              0.452    0.192      42.4       1.57 (1.08, 2.29)     69.7
+#> tcl               1.04   0.0242      2.33        2.83 (2.7, 2.97)     28.0
+#> tv         log V  3.45   0.0445      1.29       31.5 (28.9, 34.4)     13.0
+#> add.sd           0.699 6.9e-310 9.87e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 
@@ -187,18 +187,18 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.6247203 3.0795e-05 0.01701129      0.072     0.807 1.85        1.16
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.6339213 2.9185e-05 0.01601012      0.077     0.794 1.608       1.141
 #>         table compress     other
-#> elapsed 0.137    0.141 0.5032376
+#> elapsed 0.126    0.135 0.4700394
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)    69.68
-#> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)    28.02
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)    12.96
-#> add.sd           0.699 6.93e-310 9.91e-308    0.699 (0.699, 0.699)         
+#>        Parameter  Est.       SE      %RSE Back-transformed(95%CI) BSV(CV%)
+#> tka              0.452    0.192      42.4       1.57 (1.08, 2.29)     69.7
+#> tcl               1.04   0.0242      2.33        2.83 (2.7, 2.97)     28.0
+#> tv         log V  3.45   0.0445      1.29       31.5 (28.9, 34.4)     13.0
+#> add.sd           0.699 6.9e-310 9.87e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 

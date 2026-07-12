@@ -2,6 +2,51 @@
 
 ## nlmixr2est (development version)
 
+- The analytic FOCEI/FOCE outer gradient and observed-information
+  covariance (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now
+  build a smaller augmented sensitivity model by reusing eta
+  sensitivities for mu-referenced covariate coefficients. A covariate
+  coefficient `b` enters through an eta’s parameter
+  (`cl = exp(tcl + eta.cl + b*cov)`), so for a covariate that is
+  constant within each subject every sensitivity of `b` equals the
+  linked eta’s scaled by the covariate value (`df/db = cov*df/deta`).
+  Those covariate directions are therefore emitted as algebraic scaled
+  copies instead of integrating their own state-sensitivity ODEs,
+  shrinking the compiled model ~25-58% and cutting its (super-linear)
+  build time ~1.3x-4x on larger covariate models – the result is
+  bit-identical. Detection reuses rxode2’s own mu-reference
+  classification (`muRefCovariateDataFrame` +
+  `mu2RefCovariateReplaceDataFrame`), covers bare and algebraic
+  (`log(WT/70)`, `WT-70`) covariates, and falls back to the full
+  symbolic build for anything the eta-scaling identity does not cover
+  (time-varying covariates, a shared/reused eta). The analytic
+  covariance also now restricts itself to Gaussian endpoints
+  (`t`/`cauchy`/count/ordinal likelihoods and multiple estimated
+  transform lambdas fall back to the finite-difference covariance).
+
+- Extended that reuse to a covariate on an **eta-less** parameter
+  (`v = exp(tv + b*cov)` with no `eta.v`): the coefficient now reuses
+  the structural theta’s own sensitivity direction
+  (`df/db = cov*df/dtv`, since `tv` and `b` enter the mu identically)
+  instead of building its own state-sensitivity ODEs. Previously such a
+  model errored inside the direction map and silently fell back to the
+  finite-difference covariance; it now stays analytic for both the
+  covariance and the fast outer gradient (matching finite differences),
+  and holds the integrated-direction count fixed regardless of how many
+  covariates sit on eta-less parameters (~1.3x fewer for one, ~2.6x for
+  three). A structural-theta occurrence guard (shared with the eta
+  guard) keeps the reuse exact.
+
+- Fixed the analytic (`fast=TRUE`) outer gradient and covariance being
+  wrong for a model where a mu-referenced parameter’s random effect is
+  shared across parameters (e.g. `eta.cl` used in both `cl` and `v`).
+  The mu-referenced theta reused that eta’s state sensitivity, but
+  `df/dtheta` (one parameter) differs from `df/deta` (all the parameters
+  the eta appears in), so the gradient/covariance for that theta was
+  incorrect. Such a theta now gets its own true-sensitivity direction
+  (the eta keeps its own), so the gradient and covariance stay analytic
+  and are correct.
+
 - Added a fast-SAEM (f-SAEM, Karimi, Lavielle and Moulines 2020)
   simulation step:
   [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)

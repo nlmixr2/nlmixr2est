@@ -237,7 +237,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55f185c35ae8>
+#> <bytecode: 0x563f0979ca40>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -933,7 +933,7 @@ fit <- nlmixr(f, r, est="laplace")
 #> as a work-around try putting the mu-referenced expression on a simple line
 #> Warning: some etas defaulted to non-mu referenced, possible parsing error: eta1
 #> as a work-around try putting the mu-referenced expression on a simple line
-#> covType="analytic": a model with no residual error is out of analytic-covariance scope; using the finite-difference covariance instead
+#> covType="analytic": a non-normal likelihood endpoint (t/cauchy/count/ordinal); the analytic path is Gaussian-only is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 
@@ -970,7 +970,7 @@ fit <- nlmixr(f, p, est="laplace")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#> covType="analytic": a model with no residual error is out of analytic-covariance scope; using the finite-difference covariance instead
+#> covType="analytic": a non-normal likelihood endpoint (t/cauchy/count/ordinal); the analytic path is Gaussian-only is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 

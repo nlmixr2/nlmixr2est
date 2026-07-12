@@ -795,8 +795,12 @@ foceiControl(
 
 - seed:
 
-  an object specifying if and how the random number generator should be
-  initialized
+  Integer seed (default \`42\`) used to make a FOCEi fit reproducible
+  and self-contained. The fit (including the \`mceta\` Monte-Carlo
+  initial-ETA draws, which pull from rxode2's threefry engine) runs
+  inside \[rxode2::rxWithSeed()\], so it neither depends on the ambient
+  RNG state nor advances/leaks it – repeated fits in the same session,
+  and fits following other estimation methods, give identical results.
 
 - resetThetaCheckPer:
 
