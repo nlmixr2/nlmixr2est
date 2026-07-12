@@ -190,7 +190,13 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   outZk.assign(nExp, arma::vec());
   // The engine array is allocated + seeded by rxWithSeed() at the fit start
   // (impmap.R), so we don't call seedEng() here.
-  uint32_t seed0 = getRxSeed1(cores);
+  // Base the per-subject stream on the control's impSeed, NOT the ambient
+  // rxSeed: the FOCEI solve setup resets rxSeed to its default before the
+  // E-step runs, so getRxSeed1() would ignore impSeed entirely.  The base is
+  // salted per consumer (E-step / QR shift / SIR / covariance) and offset per
+  // (iteration, expanded-subject) so every step draws an independent but
+  // reproducible, thread-count-independent stream.
+  uint32_t seed0 = (uint32_t)impBaseSeed();
   bool doPar = (cores > 1);
   // QRPEM: one Sobol base point set per E-step (read-only in the parallel
   // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
@@ -435,7 +441,7 @@ void impComputeCov(Environment e) {
     qrU0 = impSobolU0(isample, neta);
     if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
   }
-  uint32_t seed0 = getRxSeed1(1);
+  uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
   for (int id = 0; id < nsub; ++id) {
     if (!ok[id]) continue;
@@ -605,17 +611,13 @@ void impOuter(Environment e) {
   // Fit-constant base seed for the pinned (qrRefresh=FALSE) Cranley-Patterson
   // shift streams; only consumed in that mode so every other path's draw
   // stream is unchanged.
-  uint32_t qrPinSeed = 0;
-  if (impQrEnabled() && impQrShiftEnabled() && !impQrRefreshEnabled()) {
-    qrPinSeed = getRxSeed1(1);
-  }
-  // Fit-constant base seed for the SIR stratified offsets; only consumed when
-  // SIR can actually engage (sirN < isample) so every other path's draw
-  // stream -- including sir=TRUE with a full-size resample -- is unchanged.
+  // Fit-constant salted base for the pinned (qrRefresh=FALSE) shift streams.
+  uint32_t qrPinSeed = (uint32_t)impBaseSeed() + 0x9E3779B1u;
+  // Salted base for the SIR stratified offsets; SIR only engages when it can
+  // shrink the sample (sirN < isample) so every other path is unchanged.
   bool sir = impSirEnabled() && impSirN() < isample;
   int sirN = impSirN();
-  uint32_t sirSeed = 0;
-  if (sir) sirSeed = getRxSeed1(1);
+  uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
 
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization

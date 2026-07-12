@@ -116,6 +116,21 @@ nmTest({
     }
   })
 
+  test_that("impSeed decorrelates the draws yet stays reproducible", {
+    .draw <- function(seed) {
+      suppressWarnings(
+        nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
+                impmapControl(print=0L, nIter=1L, isample=100L,
+                              impSeed=seed)))$env$impSamples[[1]]
+    }
+    # a fixed impSeed is bit-reproducible ...
+    expect_identical(.draw(1L), .draw(1L))
+    # ... and a different impSeed gives a genuinely different sample set
+    # (the pre-fix behavior ignored impSeed entirely -- samples were identical)
+    expect_false(identical(.draw(1L), .draw(999L)))
+    expect_gt(max(abs(.draw(1L) - .draw(999L))), 0.05)
+  })
+
   test_that("Q4: impCov=TRUE with qr=TRUE gives an SPD covariance matching FOCEI |r|", {
     .fi <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",

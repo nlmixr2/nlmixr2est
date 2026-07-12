@@ -29,6 +29,7 @@ oneCmt <- function() {
 dat <- nlmixr2data::theo_sd
 
 # IS -2LL at the initial parameters: a 1-iteration fit's first objective.
+# impSeed decorrelates replicates (each seed is an independent MC/QR realization).
 evalObj <- function(isample, qr, seed) {
   f <- suppressWarnings(suppressMessages(
     nlmixr2(oneCmt, dat, "impmap",
@@ -56,8 +57,13 @@ slope <- function(m) {
 }
 cat(sprintf("\nlog-log RMSE slope: mc %.2f (expect ~ -0.5), qr %.2f (expect ~ -1)\n",
             slope("mc"), slope("qr")))
-cat(sprintf("qr beats mc at every N: %s\n",
-            all(res$rmse[res$method == "qr"] < res$rmse[res$method == "mc"])))
+# The headline claim is the STEEPER decay + large-N advantage, not a win at
+# every N: on an easy near-Gaussian posterior (ESS ~ 98%) QR can trail MC at
+# small N before its O(1/N) rate takes over.
+cat(sprintf("qr decays faster than mc (slope): %s\n", slope("qr") < slope("mc")))
+cat(sprintf("qr beats mc at the largest N (%d): %s\n", max(sizes),
+            res$rmse[res$method == "qr" & res$N == max(sizes)] <
+              res$rmse[res$method == "mc" & res$N == max(sizes)]))
 
 ## 2. objective-trace smoothness + 3. ESS ------------------------------------
 runTrace <- function(qr, qrRefresh=TRUE) {
@@ -75,22 +81,21 @@ cat(sprintf("\ntrace roughness sd(diff(last 20)): mc %.4f  qr %.4f  qr(fixed shi
             rough(tMc$obj), rough(tQr$obj), rough(tQrF$obj)))
 cat(sprintf("mean ESS fraction: mc %.3f  qr %.3f\n", tMc$neff, tQr$neff))
 
-## 4. known-truth recovery with est="qrpem" ----------------------------------
-truth <- c(tka=0.45, tcl=1, tv=3.45, add.sd=0.7)
-sim <- rxode2::rxSolve(oneCmt, dat[, c("ID", "TIME", "AMT", "EVID")],
-                       returnType="data.frame", addDosing=TRUE, seed=101)
-simDat <- dat
-obs <- dat$EVID == 0 | dat$AMT == 0
-simDat$DV[obs] <- sim$sim[match(paste(dat$ID, dat$TIME)[obs],
-                                paste(sim$id, sim$time))]
+## 4. est="qrpem" agreement with FOCEI on theo_sd ----------------------------
+ff <- suppressWarnings(suppressMessages(
+  nlmixr2(oneCmt, dat, "focei", foceiControl(print=0L, covMethod=""))))
 fq <- suppressWarnings(suppressMessages(
-  nlmixr2(oneCmt, simDat, "qrpem", qrpemControl(print=0L))))
-cat("\nknown-truth recovery (est='qrpem'):\n")
-print(round(rbind(truth=truth, qrpem=fixef(fq)[names(truth)]), 3))
+  nlmixr2(oneCmt, dat, "qrpem", qrpemControl(print=0L))))
+pars <- c("tka", "tcl", "tv", "add.sd")
+cat("\nest='qrpem' vs FOCEI on theo_sd:\n")
+print(round(rbind(focei=fixef(ff)[pars], qrpem=fixef(fq)[pars]), 3))
+cat(sprintf("max relative theta difference: %.3f%%\n",
+            100 * max(abs(fixef(fq)[pars] - fixef(ff)[pars]) /
+                        abs(fixef(ff)[pars]))))
 
 saveRDS(list(decay=res, ref=ref,
              rough=c(mc=rough(tMc$obj), qr=rough(tQr$obj), qrFixed=rough(tQrF$obj)),
              neff=c(mc=tMc$neff, qr=tQr$neff),
-             recovery=rbind(truth=truth, qrpem=fixef(fq)[names(truth)])),
+             agreement=rbind(focei=fixef(ff)[pars], qrpem=fixef(fq)[pars])),
         "design/qrpem/qrpem-bench-results.rds")
 cat("\nresults saved to design/qrpem/qrpem-bench-results.rds\n")

@@ -457,6 +457,7 @@ struct focei_options {
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
   bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
   int impSirSample = 30;     // SIR resampled points per subject
+  int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
   std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
@@ -4781,6 +4782,7 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
     if (foceiO.containsElementNamed("sir")) op_focei.impSir = as<bool>(foceiO["sir"]);
     if (foceiO.containsElementNamed("sirSample")) op_focei.impSirSample = as<int>(foceiO["sirSample"]);
+    if (foceiO.containsElementNamed("impSeed")) op_focei.impSeed = as<int>(foceiO["impSeed"]);
     if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
       op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
     if (foceiO.containsElementNamed("impMuThetaIdx"))
@@ -8430,6 +8432,7 @@ bool impQrShiftEnabled() { return op_focei.impQrShift; }
 bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
 bool impSirEnabled() { return op_focei.impSir; }
 int impSirN() { return op_focei.impSirSample; }
+int impBaseSeed() { return op_focei.impSeed; }
 
 // ---- mixture (sub-population) support -------------------------------------
 // impmap computes its OWN importance-sampling mixture posterior + proportion
