@@ -61,8 +61,10 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
                         lbfgsPgtol = 0, lbfgsMaxIter = 20L,
                         print = 0L, printNcol = NULL, useColor = NULL, ...) {
+  .xtra <- list(...)
   .iterPrintControl <- .absorbIterPrintControl(print = print, printNcol = printNcol,
-                                               useColor = useColor)
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   .ret <- list(nGauss = as.integer(nGauss), nMH = as.integer(nMH),
                mhBurn = as.integer(mhBurn), niter = as.integer(niter),
                collect = as.integer(collect), seed = as.integer(seed),
@@ -71,7 +73,8 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                likLbfgs = isTRUE(likLbfgs), lbfgsLmm = as.integer(lbfgsLmm),
                lbfgsFactr = as.numeric(lbfgsFactr), lbfgsPgtol = as.numeric(lbfgsPgtol),
                lbfgsMaxIter = as.integer(lbfgsMaxIter),
-               print = print, iterPrintControl = .iterPrintControl)
+               print = .iterPrintControl$every,
+               iterPrintControl = .iterPrintControl)
   class(.ret) <- "rpemControl"
   .ret
 }

@@ -1022,7 +1022,6 @@
   invisible(NULL)
 }
 
-#' Validate the RPEM control (est="rpem")
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.rpem <- function(control) {
