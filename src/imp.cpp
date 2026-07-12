@@ -119,7 +119,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
     for (int j = 0; j < Nm; ++j) {
       int id = i + j * nsub;
       // fresh per-(iter, expanded-subject) stream, independent of thread count
-      setSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
+      uint32_t _impEngSeed = seed0 + (uint32_t)((iter * nExp + id) * 2);
+      setSeedEng1(_impEngSeed);
       cmExp.row(id) = modes[id].t();
       if (!haveL[id]) continue;
       arma::mat S(isample, neta);
@@ -143,6 +144,10 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
         // giving it -Inf log-weight (weight 0).
         if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
       }
+      // the inner solves above re-seed the engine per subject
+      // (setSeedEng1(getRxSeed1()+id)); restore this block's sampling seed so
+      // that leak never carries into a subsequent draw.
+      setSeedEng1(_impEngSeed);
       if (nGood == 0) continue;
       double qmax = q.max();
       arma::vec w = arma::exp(q - qmax);
