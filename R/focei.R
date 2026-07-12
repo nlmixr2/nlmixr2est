@@ -1083,7 +1083,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .preLhs,
     .ddt,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -1103,7 +1103,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .preLhs,
     .ddt,
     ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2:::.rxPastBaseLinesFromEnv(.s),
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,

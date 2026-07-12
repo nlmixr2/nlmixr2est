@@ -83,7 +83,8 @@ Suggests:
     remotes,
     fastGHQuad,
     rmarkdown,
-    rlang
+    rlang,
+    numDeriv
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
