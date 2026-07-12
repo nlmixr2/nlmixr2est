@@ -82,7 +82,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
-                     arma::mat& aMat, Environment* eStash) {
+                     arma::mat& aMat, Environment* eStash,
+                     uint32_t qrPinSeed) {
   double invGamma2 = 1.0 / (2.0 * gamma);
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
@@ -153,6 +154,16 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   // (impmap.R), so we don't call seedEng() here.
   uint32_t seed0 = getRxSeed1(cores);
   bool doPar = (cores > 1);
+  // QRPEM: one Sobol base point set per E-step (read-only in the parallel
+  // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
+  bool qr = impQrEnabled();
+  bool qrShift = impQrShiftEnabled();
+  bool qrRefresh = impQrRefreshEnabled();
+  arma::mat qrU0, qrZ0;
+  if (qr) {
+    qrU0 = impSobolU0(isample, neta);
+    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+  }
   // Parallelize over base subjects, iterating a subject's mixture components
   // serially within one thread.  A base subject's expanded pseudo-subjects (id =
   // i + j*nsub) share the same underlying rxode2 solve rows, so evaluating two of
@@ -173,10 +184,29 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       cmExp.row(id) = modes[id].t();
       if (!haveL[id]) continue;
       arma::mat S(isample, neta);
-      for (int k = 0; k < isample; ++k) {
-        arma::vec z(neta);
-        for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
-        S.row(k) = (modes[id] + cholL[id] * z).t();
+      if (qr) {
+        // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
+        // from this subject's seeded stream; qrRefresh=FALSE instead uses the
+        // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
+        // every E-step) so the whole fit reuses one shift per subject.
+        arma::mat Z;
+        if (qrShift) {
+          if (!qrRefresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
+          arma::vec sh(neta);
+          for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
+          Z = impQrZ(qrU0, &sh);
+        } else {
+          Z = qrZ0;
+        }
+        for (int k = 0; k < isample; ++k) {
+          S.row(k) = (modes[id] + cholL[id] * Z.row(k).t()).t();
+        }
+      } else {
+        for (int k = 0; k < isample; ++k) {
+          arma::vec z(neta);
+          for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
+          S.row(k) = (modes[id] + cholL[id] * z).t();
+        }
       }
       // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
       // density (minimized by the inner optimizer), so it enters with a minus;
@@ -511,6 +541,14 @@ void impOuter(Environment e) {
   // Initial MAP at the starting parameters.
   impMapPass(e);
 
+  // Fit-constant base seed for the pinned (qrRefresh=FALSE) Cranley-Patterson
+  // shift streams; only consumed in that mode so every other path's draw
+  // stream is unchanged.
+  uint32_t qrPinSeed = 0;
+  if (impQrEnabled() && impQrShiftEnabled() && !impQrRefreshEnabled()) {
+    qrPinSeed = getRxSeed1(1);
+  }
+
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization
   // keeps the same number of Omega thetas.
@@ -536,7 +574,7 @@ void impOuter(Environment e) {
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e);
+             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
