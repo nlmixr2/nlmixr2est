@@ -706,9 +706,10 @@ objective) is used.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
 `"calc"` (default) warm-starts each inner problem with the eta
-Hessian calculated for the objective function at the same starting
-eta, calculating it at the starting point when unavailable;
-`"save"` uses the classic self-initialized Hessian.}
+Hessian calculated at the starting eta and the current theta;
+since theta moves between outer evaluations it is always
+recalculated, never reused from an earlier round.  `"save"` uses
+the classic self-initialized Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
