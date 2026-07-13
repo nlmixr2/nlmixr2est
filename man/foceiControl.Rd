@@ -80,8 +80,9 @@ foceiControl(
   resetHessianAndEta = FALSE,
   muModel = c("none", "irls", "lin"),
   muRefCovAlg = TRUE,
-  muModelTol = 0.001,
-  muModelMaxCycles = 10L,
+  muModelTol = 1e-05,
+  muModelMaxCycles = 20L,
+  muModelClampRetries = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -468,10 +469,12 @@ option \code{resetEtaP}.}
     Only the outer gradients for non-mu-referenced parameters (including
     residual-error thetas and all omegas) are then calculated.
 
-    A mu-referenced theta with a finite bound or a user fix falls back
-    to ordinary outer-optimizer handling (with a warning when a bounded
-    population theta drops a covariate group; a bound on one covariate
-    coefficient excludes only that covariate).}
+    Bounded mu-referenced parameters (population thetas and covariate
+    coefficients) are regression-updated too: the update is clamped to
+    the bounds (box-constrained least squares, see
+    \code{muModelClampRetries}), and any parameter that was clamped is
+    reported once as a fit note. A user-fixed (\code{fix()}) mu
+    population theta is never regression-updated.}
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
@@ -487,6 +490,11 @@ or \code{muModelMaxCycles} is reached.}
 
 \item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
 cycles per outer iteration (see \code{muModel}, \code{muModelTol}).}
+
+\item{muModelClampRetries}{Maximum number of active-set re-solve passes
+per group per regression update when a bounded mu-referenced
+parameter must be clamped to its bound (see \code{muModel}); on
+hitting the cap the current clamped-feasible solution is used.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 

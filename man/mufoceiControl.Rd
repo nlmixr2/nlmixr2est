@@ -41,8 +41,9 @@ All mu-referenced population thetas -- with or without covariates -- are
 profiled out of the outer optimizer by the in-C++ regression
 (intercept-only for covariate-free pairs), so outer gradients are only
 calculated for the non-mu-referenced parameters (residual errors, omegas,
-non-mu thetas).  Bounded or fixed mu-referenced thetas stay
-outer-optimized.
+non-mu thetas).  Bounded mu-referenced parameters are regression-updated
+with the update clamped to the bounds (a clamp is reported once as a fit
+note); user-fixed (`fix()`) mu thetas stay out of the regression.
 }
 
 \examples{

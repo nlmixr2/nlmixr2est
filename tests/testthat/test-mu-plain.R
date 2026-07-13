@@ -205,10 +205,16 @@ nmTest({
     # bounded tcl group carries its clamp bounds; plain groups are infinite
     expect_equal(s$muGroupThetaLower, c(0, -Inf, -Inf))
     expect_equal(s$muGroupThetaUpper, c(5, Inf, Inf))
-    # both coefficients (bounded and not) are in the flattened arrays, aligned
-    expect_equal(thNames[s$muGroupCovTheta + 1L], c("allo.cl", "allo.cl2"))
-    expect_equal(s$muGroupCovLower, c(-1, -Inf))
-    expect_equal(s$muGroupCovUpper, c(2, Inf))
+    # both coefficients (bounded and not) are in the flattened arrays; the
+    # bounds stay aligned to their coefficient whatever the flattening order
+    .covNm <- thNames[s$muGroupCovTheta + 1L]
+    expect_setequal(.covNm, c("allo.cl", "allo.cl2"))
+    .w <- match("allo.cl", .covNm)
+    expect_equal(s$muGroupCovLower[.w], -1)
+    expect_equal(s$muGroupCovUpper[.w], 2)
+    .w2 <- match("allo.cl2", .covNm)
+    expect_equal(s$muGroupCovLower[.w2], -Inf)
+    expect_equal(s$muGroupCovUpper[.w2], Inf)
     expect_equal(s$muGroupCovCount, c(2L, 0L, 0L))
   })
 
