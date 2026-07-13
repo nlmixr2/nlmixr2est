@@ -660,6 +660,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeInnerUpdatePar_
+RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag);
+RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaDiagSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thFull(thFullSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omegaDiag(omegaDiagSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omegaDiag));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeInnerLik
 List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad, bool preds);
 RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP, SEXP predsSEXP) {

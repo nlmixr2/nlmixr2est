@@ -50,6 +50,13 @@
   .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
   .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
+  ## force a diagonal "sqrt"-xform rxInv (the training parameterization): the
+  ## per-step C++ fast path (vaeInnerUpdatePar_) maps eta variances onto the
+  ## omega block of the reduced par vector, which requires omegan == neta
+  .om <- .ui$omega
+  .om <- diag(diag(.om), nrow(.om))
+  dimnames(.om) <- dimnames(.ui$omega)
+  .env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
   vaeInnerSetup_(.env)
   .env
 }

@@ -9508,17 +9508,66 @@ RObject vaeInnerSetup_(Environment e) {
   return initPar;
 }
 
+// Re-parameterize the already-set-up VAE inner problem at new natural-scale
+// theta/omega values WITHOUT re-running foceiSetup_ -- the per-gradient-step
+// fast path.  Each non-fixed parameter goes through scalePar() into the
+// reduced par vector and updateTheta() rebuilds fullTheta, the per-id solve
+// parameters and the omega inverse (exactly what focei's outer objective does
+// per evaluation).  The omega block requires the setup's diagonal rxInv with
+// diag.xform="sqrt", whose parameter for a diagonal omega is omega_kk^(-1/4)
+// (the square root of the chol(Omega^-1) diagonal).
+static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omegaDiag) {
+  if ((int)_vaeInitPar.size() != (int)op_focei.npars)
+    stop("vaeInnerUpdatePar_ requires vaeInnerSetup_ to be run first");
+  if ((int)thFull.n_elem != (int)op_focei.ntheta)
+    stop("vaeInnerUpdatePar_: theta size %d != ntheta %d",
+         (int)thFull.n_elem, (int)op_focei.ntheta);
+  if ((int)omegaDiag.n_elem != (int)op_focei.omegan)
+    stop("vaeInnerUpdatePar_: omega size %d != omegan %d (setup needs a diagonal rxInv)",
+         (int)omegaDiag.n_elem, (int)op_focei.omegan);
+  // Reproduce vaeInnerSetup_'s tail EXACTLY without the full foceiSetup_:
+  // foceiSetupTheta_ sets op_focei.initPar[k] to the natural parameter value and
+  // then vaeInnerSetup_ calls updateTheta(initPar).  updateTheta()'s unscale is
+  // relative to op_focei.initPar, so initPar MUST be refreshed to the new values
+  // first (a stale initPar makes the unscaled fullTheta wrong).  Natural theta
+  // for the theta block, omega_kk^(-1/4) for the diagonal "sqrt"-xform omega
+  // block.  Fixed thetas are absent from fixedTrans and stay at their setup
+  // values (which is what the VAE wants for a held theta).
+  std::vector<double> par(op_focei.npars);
+  for (unsigned int k = 0; k < op_focei.npars; ++k) {
+    int j = op_focei.fixedTrans[k];
+    par[k] = (j < (int)op_focei.ntheta) ? thFull[j] :
+      pow(omegaDiag[j - op_focei.ntheta], -0.25);
+    op_focei.initPar[k] = par[k];
+  }
+  updateTheta(par.data());
+  // likInner0 short-circuits on an unchanged eta (fInd->oldEta), which is only
+  // safe while theta/omega are fixed -- force a re-solve (like impForceResolve)
+  rx = getRxSolve_();
+  for (int id = getRxNsubAndMix(rx); id--;) inds_focei[id].setup = 0;
+}
+
+//[[Rcpp::export]]
+RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag) {
+  arma::vec th(thFull.begin(), thFull.size());
+  arma::vec om(omegaDiag.begin(), omegaDiag.size());
+  vaeInnerUpdateParCore(th, om);
+  return R_NilValue;
+}
+
 // Per-id inner objective (and optional gradient) at the supplied etas, parallel
 // over ids. id in [0, nSub) are the physical subjects; for mixtures the caller
-// passes nSub*nMix rows (id = component*nSub + subject) and combines.
-//[[Rcpp::export]]
-List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
-  const int nid = etaMat.nrow();
-  const int neta = etaMat.ncol();
-  NumericVector obj(nid);
-  NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
-  // per-id predictions (F) gathered thread-locally, converted to an R list after
-  std::vector<std::vector<double> > pf(preds ? nid : 0);
+// passes nSub*nMix rows (id = component*nSub + subject) and combines.  The
+// arma-native core is shared with the C++ training loop (vaeTrainCpp_) so the
+// per-step evaluations allocate no R objects.
+static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool preds,
+                            arma::vec& obj, arma::mat& lp,
+                            std::vector<std::vector<double> >& pf) {
+  const int nid = (int)etaMat.n_rows;
+  const int neta = (int)etaMat.n_cols;
+  obj.set_size(nid);
+  if (grad) lp.set_size(nid, neta);
+  if (preds) { pf.clear(); pf.resize(nid); }
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   // rxode2 sizes every per-thread solve buffer by op->cores (1 for models it
@@ -9568,9 +9617,23 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
     _innerParallel.store(0, std::memory_order_release);
     sortIds(rx, 0);
   }
+}
+
+//[[Rcpp::export]]
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  arma::mat eta(etaMat.begin(), nid, neta, false, true);
+  arma::vec obj;
+  arma::mat lp;
+  std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(eta, cores, grad, preds, obj, lp, pf);
+  NumericVector objR(obj.begin(), obj.end());
+  NumericMatrix lpR(grad ? nid : 1, grad ? neta : 1);
+  if (grad) std::copy(lp.begin(), lp.end(), lpR.begin());
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
-  return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
+  return List::create(_["obj"] = objR, _["lp"] = lpR, _["f"] = fl);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical

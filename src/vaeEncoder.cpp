@@ -11,9 +11,12 @@
 // reparameterization (dz/dmu = I, dz/dL = eps^T), so no separate upstream is
 // needed for them.
 //
+// The arma-native core (vaeEncoderFwdBwdCore, declared in vaeEncoder.h) is
+// shared with the C++ training loop; vaeEncoderFwdBwd is its R export.
+//
 // Validated against the torch autograd oracle (tests/testthat/fixtures/vae/
 // encoder_golden.rds) and finite differences to ~1e-6.
-#include <RcppArmadillo.h>
+#include "vaeEncoder.h"
 // [[Rcpp::depends(RcppArmadillo)]]
 
 using namespace Rcpp;
@@ -22,21 +25,19 @@ static inline arma::vec vaeSigmoid(const arma::vec& x) {
   return 1.0 / (1.0 + arma::exp(-x));
 }
 
-// [[Rcpp::export]]
-List vaeEncoderFwdBwd(arma::cube dataIn,        // [N, Tmax, xDim] standardized inputs
-                      IntegerVector lengths,    // [N] valid steps per subject
-                      arma::mat covIn,          // [N, nCov] FC-head covariates
-                      arma::mat eps,            // [N, zDim] reparam noise
-                      arma::mat Wih,            // [4h, xDim]  (rows i,f,g,o)
-                      arma::mat Whh,            // [4h, h]
-                      arma::vec bih,            // [4h]
-                      arma::vec bhh,            // [4h]
-                      arma::mat fcW,            // [outDim, h + nCov]
-                      arma::vec fcB,            // [outDim]
-                      int zDim,
-                      arma::mat gZ,             // [N, zDim] dLoss/dz
-                      arma::mat gLogSigmaDirect // [N, zDim] direct dLoss/dlogSigma
-                      ) {
+void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
+                          const arma::mat& covIn, const arma::mat& eps,
+                          const arma::mat& Wih, const arma::mat& Whh,
+                          const arma::vec& bih, const arma::vec& bhh,
+                          const arma::mat& fcW, const arma::vec& fcB,
+                          int zDim,
+                          const arma::mat& gZ, const arma::mat& gLogSigmaDirect,
+                          bool backward,
+                          arma::mat& mu, arma::mat& logSigma,
+                          arma::cube& Lout, arma::mat& zOut,
+                          arma::mat& gWih, arma::mat& gWhh,
+                          arma::vec& gbih, arma::vec& gbhh,
+                          arma::mat& gFcW, arma::vec& gFcB) {
   const int N = dataIn.n_rows;
   const int h = Whh.n_cols;
   const int xDim = dataIn.n_slices;
@@ -52,16 +53,11 @@ List vaeEncoderFwdBwd(arma::cube dataIn,        // [N, Tmax, xDim] standardized 
       for (int c = 0; c < r; ++c) { offR[idx] = r; offC[idx] = c; ++idx; }
   }
 
-  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
-  arma::cube Lout(zDim, zDim, N, arma::fill::zeros);
-
-  // parameter gradient accumulators
-  arma::mat gWih(4 * h, xDim, arma::fill::zeros);
-  arma::mat gWhh(4 * h, h, arma::fill::zeros);
-  arma::vec gbih(4 * h, arma::fill::zeros);
-  arma::vec gbhh(4 * h, arma::fill::zeros);
-  arma::mat gFcW(outDim, h + nCov, arma::fill::zeros);
-  arma::vec gFcB(outDim, arma::fill::zeros);
+  Lout.zeros();
+  if (backward) {
+    gWih.zeros(); gWhh.zeros(); gbih.zeros(); gbhh.zeros();
+    gFcW.zeros(); gFcB.zeros();
+  }
 
   for (int i = 0; i < N; ++i) {
     const int Ti = lengths[i];
@@ -104,6 +100,8 @@ List vaeEncoderFwdBwd(arma::cube dataIn,        // [N, Tmax, xDim] standardized 
     logSigma.row(i) = lsI.t();
     Lout.slice(i) = Li;
     zOut.row(i) = zI.t();
+
+    if (!backward) continue;
 
     // ---- backward ----
     arma::vec gZi = gZ.row(i).t();
@@ -155,6 +153,44 @@ List vaeEncoderFwdBwd(arma::cube dataIn,        // [N, Tmax, xDim] standardized 
       dc = dcPrev;
     }
   }
+}
+
+// [[Rcpp::export]]
+List vaeEncoderFwdBwd(arma::cube dataIn,        // [N, Tmax, xDim] standardized inputs
+                      IntegerVector lengths,    // [N] valid steps per subject
+                      arma::mat covIn,          // [N, nCov] FC-head covariates
+                      arma::mat eps,            // [N, zDim] reparam noise
+                      arma::mat Wih,            // [4h, xDim]  (rows i,f,g,o)
+                      arma::mat Whh,            // [4h, h]
+                      arma::vec bih,            // [4h]
+                      arma::vec bhh,            // [4h]
+                      arma::mat fcW,            // [outDim, h + nCov]
+                      arma::vec fcB,            // [outDim]
+                      int zDim,
+                      arma::mat gZ,             // [N, zDim] dLoss/dz
+                      arma::mat gLogSigmaDirect // [N, zDim] direct dLoss/dlogSigma
+                      ) {
+  const int N = dataIn.n_rows;
+  const int h = Whh.n_cols;
+  const int xDim = dataIn.n_slices;
+  const int nCov = covIn.n_cols;
+  const int nOff = zDim * (zDim - 1) / 2;
+  const int outDim = 2 * zDim + nOff;
+
+  arma::ivec len(N);
+  for (int i = 0; i < N; ++i) len[i] = lengths[i];
+
+  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
+  arma::cube Lout(zDim, zDim, N);
+  arma::mat gWih(4 * h, xDim), gWhh(4 * h, h);
+  arma::vec gbih(4 * h), gbhh(4 * h);
+  arma::mat gFcW(outDim, h + nCov);
+  arma::vec gFcB(outDim);
+
+  vaeEncoderFwdBwdCore(dataIn, len, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB,
+                       zDim, gZ, gLogSigmaDirect, true,
+                       mu, logSigma, Lout, zOut,
+                       gWih, gWhh, gbih, gbhh, gFcW, gFcB);
 
   return List::create(_["mu"] = mu, _["logSigma"] = logSigma, _["L"] = Lout,
                       _["z"] = zOut,
