@@ -906,6 +906,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// adviOptimize_
+List adviOptimize_(List args);
+RcppExport SEXP _nlmixr2est_adviOptimize_(SEXP argsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type args(argsSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviOptimize_(args));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fsaemInnerMap_
 List fsaemInnerMap_(int cores);
 RcppExport SEXP _nlmixr2est_fsaemInnerMap_(SEXP coresSEXP) {

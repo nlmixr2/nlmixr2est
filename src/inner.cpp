@@ -10589,6 +10589,143 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
                       _["parHistData"] = parHistData);
 }
 
+// Format eta like R's paste0("srch ", signif(x, 3)) for the stage label.
+static std::string adviSignif3(double x) {
+  if (x == 0.0) return "0";
+  double m = std::pow(10.0, 2.0 - std::floor(std::log10(std::fabs(x))));
+  double r = std::round(x * m) / m;
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%g", r);
+  return std::string(buf);
+}
+
+// Whole-optimization driver (port of R's .adviOptimize core + .adviAdaptEta):
+// choose the step-size scale eta -- a resumed value, an adaptive search over the
+// candidates (paper Sec 2.6: short deterministic runs from the initial state,
+// best late-iteration mean ELBO, divergent candidates rejected), or the fixed
+// fallback -- then run the main loop; one .Call for the full ADVI optimization.
+// `args` carries the family flags, initial/resumed state, control values and the
+// iteration-print pieces; the search runs print as "srch <eta>" stages and the
+// main run as "SGA" in one continuous table.
+//[[Rcpp::export]]
+List adviOptimize_(List args) {
+  const bool pe = as<bool>(args["pointEstimate"]);
+  const int frInt = as<int>(args["fr"]);
+  NumericMatrix mu0 = as<NumericMatrix>(args["mu0"]);
+  NumericMatrix scale0 = as<NumericMatrix>(args["scale0"]);
+  NumericVector theta0 = as<NumericVector>(args["theta0"]);
+  NumericVector logPopOmega0 = as<NumericVector>(args["logPopOmega0"]);
+  IntegerVector muRefThetaIdx = as<IntegerVector>(args["muRefThetaIdx"]);
+  IntegerVector thetaMuRefEta = as<IntegerVector>(args["thetaMuRefEta"]);
+  LogicalVector thetaFix = as<LogicalVector>(args["thetaFix"]);
+  LogicalVector omegaFix = as<LogicalVector>(args["omegaFix"]);
+  NumericMatrix sMu0 = as<NumericMatrix>(args["sMu0"]);
+  NumericMatrix sScale0 = as<NumericMatrix>(args["sScale0"]);
+  const int iters = as<int>(args["iters"]);
+  const double seed = as<double>(args["seed"]);
+  const double tau = as<double>(args["tau"]);
+  const double alpha = as<double>(args["alpha"]);
+  const int nMc = as<int>(args["nMc"]);
+  const int it0 = as<int>(args["it0"]);
+  const int cores = as<int>(args["cores"]);
+  const bool adapt = as<bool>(args["adaptEta"]);
+  NumericVector cands = as<NumericVector>(args["etaCandidates"]);
+  const double etaResume = as<double>(args["etaScaleResume"]);
+  const int nAdapt = as<int>(args["nAdapt"]);
+  CharacterVector parNames = as<CharacterVector>(args["parNames"]);
+  RObject ipc = args["iterPrintControl"];
+  RObject xform = args["xform"];
+  // point-estimate state vs the full-Bayes population block
+  NumericVector sTheta0, sLpo0, mPop0, Lpop0, smPop0, sLpop0;
+  IntegerVector phiThetaIdx, phiOmIdx, phiMuRef;
+  if (pe) {
+    sTheta0 = as<NumericVector>(args["sTheta0"]);
+    sLpo0 = as<NumericVector>(args["sLpo0"]);
+  } else {
+    mPop0 = as<NumericVector>(args["mPop0"]);
+    Lpop0 = as<NumericVector>(args["Lpop0"]);
+    smPop0 = as<NumericVector>(args["smPop0"]);
+    sLpop0 = as<NumericVector>(args["sLpop0"]);
+    phiThetaIdx = as<IntegerVector>(args["phiThetaIdx"]);
+    phiOmIdx = as<IntegerVector>(args["phiOmIdx"]);
+    phiMuRef = as<IntegerVector>(args["phiMuRef"]);
+  }
+
+  bool ipStarted = false;
+  auto run1 = [&](double eta, int itersRun, int itRun0, int divergeStop,
+                  const std::string &phase, int ipEnd) -> List {
+    int ipStart = ipStarted ? 0 : 1;
+    ipStarted = true;
+    if (!pe) {
+      return adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, Lpop0,
+                         phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, frInt,
+                         itersRun, seed, eta, tau, alpha, nMc, itRun0,
+                         sMu0, sScale0, smPop0, sLpop0, cores, divergeStop,
+                         parNames, ipc, xform, phase, ipStart, ipEnd);
+    }
+    if (frInt) {
+      return adviLoopFR_(mu0, scale0, theta0, logPopOmega0, muRefThetaIdx,
+                         thetaMuRefEta, thetaFix, omegaFix,
+                         itersRun, seed, eta, tau, alpha, nMc, itRun0,
+                         sMu0, sScale0, sTheta0, sLpo0, cores, divergeStop,
+                         parNames, ipc, xform, phase, ipStart, ipEnd);
+    }
+    return adviLoop_(mu0, scale0, theta0, logPopOmega0, muRefThetaIdx,
+                     thetaMuRefEta, thetaFix, omegaFix,
+                     itersRun, seed, eta, tau, alpha, nMc, itRun0,
+                     sMu0, sScale0, sTheta0, sLpo0, cores, divergeStop,
+                     parNames, ipc, xform, phase, ipStart, ipEnd);
+  };
+
+  double eta;
+  if (R_finite(etaResume)) {
+    eta = etaResume;                          // resumed run keeps its step-size scale
+  } else if (adapt && cands.size() > 1) {
+    double best = R_NegInf, bestEta = cands[0];
+    for (int c = 0; c < cands.size(); ++c) {
+      double e = cands[c];
+      List r = run1(e, nAdapt, 0, 1, std::string("srch ") + adviSignif3(e), 0);
+      NumericVector el = r["elbo"];
+      NumericMatrix ph = r["parHist"];
+      // reject a candidate that diverges (non-finite, or the recorded population
+      // estimates blow up); an early-aborted run (itRun < requested) also diverged
+      bool div = as<int>(r["itRun"]) < nAdapt;
+      if (!div) {
+        for (int i = 0; i < (int)el.size(); ++i)
+          if (!R_finite(el[i])) { div = true; break; }
+      }
+      if (!div) {
+        for (int i = 0; i < (int)ph.size(); ++i) {
+          double v = ph[i];
+          if (!R_finite(v) || std::fabs(v) > 1e4) { div = true; break; }
+        }
+      }
+      double score;
+      if (div) {
+        score = R_NegInf;
+      } else {
+        // late-iteration mean ELBO, same window as the old R scorer
+        int len = (int)el.size();
+        int lo = len - nAdapt / 3;
+        if (lo < 1) lo = 1;
+        long double s = 0.0;
+        for (int i = lo - 1; i < len; ++i) s += el[i];
+        score = (double)(s / (len - lo + 1));
+      }
+      if (score > best) { best = score; bestEta = e; }
+    }
+    eta = bestEta;
+  } else if (cands.size() == 1) {
+    eta = cands[0];
+  } else {
+    eta = 0.1;
+  }
+
+  List res = run1(eta, iters, it0, 0, "SGA", 1);
+  res["etaScale"] = eta;
+  return res;
+}
+
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
 // subject, optimize the conditional MAP of the random effects and return that
 // MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the

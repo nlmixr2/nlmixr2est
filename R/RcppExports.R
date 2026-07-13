@@ -224,6 +224,10 @@ adviLoopFB_ <- function(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phi
     .Call(`_nlmixr2est_adviLoopFB_`, mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
 }
 
+adviOptimize_ <- function(args) {
+    .Call(`_nlmixr2est_adviOptimize_`, args)
+}
+
 fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }

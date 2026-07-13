@@ -78,35 +78,9 @@
   vaeInnerLik(as.matrix(etaMat), .cores, isTRUE(grad), isTRUE(preds))
 }
 
-#' Adaptively choose the step-size scale `eta` (paper Sec 2.6): run a short loop
-#' (from the initial state) for each candidate and pick the one with the best
-#' late-iteration mean ELBO.  Deterministic (same seed/init), so it does not
-#' break the prefix/resume reproducibility of the main run.
-#' @noRd
-#' @param runLoop function(eta, nAdapt) -> a loop result (list with $elbo,
-#'   $parHist), from the initial state; family-agnostic.
-#' @noRd
-.adviAdaptEta <- function(runLoop, cands, nAdapt) {
-  if (length(cands) == 1L) return(cands)
-  .best <- -Inf; .bestEta <- cands[1]
-  for (.e in cands) {
-    .r <- runLoop(.e, nAdapt)
-    .el <- .r$elbo
-    ## reject a candidate that diverges (non-finite, or the population estimates
-    ## in parHist blow up) even if its early ELBO looked good.  A run that the C++
-    ## loop aborted early ($itRun < requested) also diverged.
-    .diverged <- any(!is.finite(.el)) || any(!is.finite(.r$parHist)) ||
-      max(abs(.r$parHist)) > 1e4 ||
-      (!is.null(.r$itRun) && .r$itRun < nAdapt)
-    .score <- if (.diverged) -Inf
-      else mean(.el[max(1L, length(.el) - nAdapt %/% 3L):length(.el)])
-    if (.score > .best) { .best <- .score; .bestEta <- .e }
-  }
-  .bestEta
-}
-
 #' Run the ADVI optimization: prep, inner setup, initialize the variational +
-#' population state, and drive the 100%-C++ loop (adviLoop_).
+#' population state, and drive the whole optimization (the adaptive step-size
+#' search + the main loop) in one C++ call (adviOptimize_).
 #' @param ui bounded-transformed rxode2 ui
 #' @param data estimation data
 #' @param control adviControl
@@ -155,8 +129,6 @@
   ## "srch <eta>" phases; the main run is the "SGA" phase.
   .ipNames <- c(.prep$thetaRealNames, paste0("o(", .prep$etaNames, ")"))
   .ipXform <- .iterPrintXParFromUi(rxode2::rxUiDecompress(ui), .ipNames)
-  .ipc <- control$iterPrintControl
-  .ipStarted <- FALSE
 
   ## thread count for the parallel per-subject ELBO core (same knob as the inner
   ## eval driver: rxControl$cores, falling back to the rxode2 thread pool).  Kept
@@ -177,6 +149,25 @@
     .p <- .prep$muRefThetaIdx[.k]
     if (!is.na(.p)) .thetaMuRefEta[.p] <- .k - 1L
   }
+
+  ## everything the C++ whole-optimization driver needs (adaptEta search + main
+  ## run happen inside adviOptimize_; a resumed etaScale skips the search)
+  .args <- list(pointEstimate = isTRUE(control$pointEstimate), fr = as.integer(.fr),
+                mu0 = .mu0, scale0 = .scale0, theta0 = .theta0,
+                logPopOmega0 = .logPopOmega0, muRefThetaIdx = .muRefIdx,
+                thetaMuRefEta = as.integer(.thetaMuRefEta),
+                thetaFix = .thFix, omegaFix = .omFix,
+                iters = as.integer(control$iters), seed = as.numeric(.seed),
+                tau = as.numeric(control$tau), alpha = as.numeric(control$alpha),
+                nMc = as.integer(control$nMc), it0 = .it0,
+                sMu0 = .sMu, sScale0 = .sScale, sTheta0 = .sTheta, sLpo0 = .sLpo,
+                cores = .cores, adaptEta = isTRUE(control$adaptEta),
+                etaCandidates = as.numeric(control$etaCandidates),
+                etaScaleResume = if (!is.null(resume) && !is.null(resume$etaScale))
+                  as.numeric(resume$etaScale) else NA_real_,
+                nAdapt = as.integer(min(control$iters, 75L)),
+                parNames = .ipNames, iterPrintControl = control$iterPrintControl,
+                xform = .ipXform)
 
   ## ---- full-Bayes: variational posterior over the free population vector ----
   if (!isTRUE(control$pointEstimate)) {
@@ -202,31 +193,14 @@
       .mPop0 <- resume$mPop; .Lpop0 <- resume$Lpop
       .smPop <- resume$smPop; .sLpop <- resume$sLpop
     }
-    .runFB <- function(eta, iters, it0 = 0L, divergeStop = 0L,
-                       ipPhase = "", ipStart = FALSE, ipEnd = FALSE) {
-      adviLoopFB_(.mu0, .scale0, .theta0, .logPopOmega0, .mPop0, .Lpop0,
-                  as.integer(.phiThetaIdx), as.integer(.phiOmIdx), as.integer(.phiMuRef),
-                  .muRefIdx, as.integer(.fr),
-                  as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
-                  as.numeric(control$alpha), as.integer(control$nMc), it0,
-                  .sMu, .sScale, .smPop, .sLpop, .cores, as.integer(divergeStop),
-                  .ipNames, .ipc, .ipXform, ipPhase, as.integer(ipStart), as.integer(ipEnd))
-    }
-    .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
-      else if (isTRUE(control$adaptEta))
-        .adviAdaptEta(function(e, n) {
-          .r <- .runFB(e, n, divergeStop = 1L,
-                       ipPhase = paste0("srch ", signif(e, 3)), ipStart = !.ipStarted)
-          .ipStarted <<- TRUE
-          .r
-        }, control$etaCandidates,
-                      as.integer(min(control$iters, 75L)))
-      else if (length(control$etaCandidates) == 1L) control$etaCandidates else 0.1
-    .res <- .runFB(.etaScale, control$iters, it0 = .it0,
-                   ipPhase = "SGA", ipStart = !.ipStarted, ipEnd = TRUE)
+    .args <- c(.args, list(mPop0 = as.numeric(.mPop0), Lpop0 = as.numeric(.Lpop0),
+                           smPop0 = as.numeric(.smPop), sLpop0 = as.numeric(.sLpop),
+                           phiThetaIdx = as.integer(.phiThetaIdx),
+                           phiOmIdx = as.integer(.phiOmIdx),
+                           phiMuRef = as.integer(.phiMuRef)))
+    .res <- adviOptimize_(.args)
     .res$family <- control$adviFamily
     .res$pointEstimate <- FALSE
-    .res$etaScale <- .etaScale
     .res$prep <- .prep
     .res$etaNames <- .prep$etaNames
     .res$thetaNames <- names(.prep$th)
@@ -242,39 +216,13 @@
     return(.res)
   }
 
-  ## family-appropriate one-loop runner (from the initial state)
-  .runLoop <- function(eta, iters, it0 = 0L, scale = .scale0, mu = .mu0, theta = .theta0,
-                       lpo = .logPopOmega0, sMu = .sMu, sScale = .sScale,
-                       sTheta = .sTheta, sLpo = .sLpo, divergeStop = 0L,
-                       ipPhase = "", ipStart = FALSE, ipEnd = FALSE) {
-    .fn <- if (.fr) adviLoopFR_ else adviLoop_
-    .fn(mu, scale, theta, lpo, .muRefIdx, .thetaMuRefEta, .thFix, .omFix,
-        as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
-        as.numeric(control$alpha), as.integer(control$nMc), it0,
-        sMu, sScale, sTheta, sLpo, .cores, as.integer(divergeStop),
-        .ipNames, .ipc, .ipXform, ipPhase, as.integer(ipStart), as.integer(ipEnd))
-  }
-  ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
-  .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
-    else if (isTRUE(control$adaptEta))
-      .adviAdaptEta(function(e, n) {
-        .r <- .runLoop(e, n, divergeStop = 1L,
-                       ipPhase = paste0("srch ", signif(e, 3)), ipStart = !.ipStarted)
-        .ipStarted <<- TRUE
-        .r
-      }, control$etaCandidates,
-                    as.integer(min(control$iters, 75L)))
-    else if (length(control$etaCandidates) == 1L) control$etaCandidates
-    else 0.1
-
-  .res <- .runLoop(.etaScale, control$iters, it0 = .it0,
-                   ipPhase = "SGA", ipStart = !.ipStarted, ipEnd = TRUE)
-  ## normalize the per-subject scale field name (Lpack for full-rank, omega else)
-  .res$scale <- if (.fr) .res$Lpack else .res$omega
-  .res$sScale <- .res$sL; if (is.null(.res$sScale)) .res$sScale <- .res$sOmega
+  .res <- adviOptimize_(.args)
+  ## normalize the per-subject scale field name (Lpack for full-rank, omega else);
+  ## exact [[ ]] here: $sL would partial-match the mean-field result's sLpo
+  .res$scale <- if (.fr) .res[["Lpack"]] else .res[["omega"]]
+  .res$sScale <- if (.fr) .res[["sL"]] else .res[["sOmega"]]
   .res$family <- control$adviFamily
   .res$pointEstimate <- TRUE
-  .res$etaScale <- .etaScale
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
   .res$thetaNames <- names(.prep$th)

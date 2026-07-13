@@ -4,8 +4,9 @@
   (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
   gradient is obtained from the FOCEi forward sensitivities (the inner
   per-subject eta gradient and the outer theta-sensitivity score) rather than
-  automatic differentiation, and the whole stochastic-gradient-ascent loop runs
-  in C++.  It supports mean-field and block full-rank variational families
+  automatic differentiation, and the whole optimization (the adaptive
+  step-size-scale search plus the stochastic-gradient-ascent loop) runs in a
+  single C++ call.  It supports mean-field and block full-rank variational families
   (`adviFamily`), both a point-estimate (variational-EM, output comparable to
   FOCEi/SAEM) and a full-Bayes (`pointEstimate=FALSE`, with a full-rank
   variational posterior over the population parameters) mode,
