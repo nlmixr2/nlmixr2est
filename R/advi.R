@@ -78,9 +78,64 @@
   vaeInnerLik(as.matrix(etaMat), .cores, isTRUE(grad), isTRUE(preds))
 }
 
+#' Run the ADVI optimization: prep, inner setup, initialize the variational +
+#' population state, and drive the 100%-C++ loop (adviLoop_).
+#' @param ui bounded-transformed rxode2 ui
+#' @param data estimation data
+#' @param control adviControl
+#' @param resume optional list from a previous fit's `$adviState` for warm resume
+#' @return the raw ADVI result list (variational params, estimates, elbo, parHist)
+#' @noRd
+.adviOptimize <- function(ui, data, control, resume = NULL) {
+  .prep <- .adviDataPrep(ui, data)
+  N <- .prep$N; neta <- .prep$neta; ntheta <- .prep$ntheta
+
+  ## initial variational + population state (or resume from a prior fit)
+  if (is.null(resume)) {
+    .logPopOmega0 <- log(.prep$omega)
+    .mu0 <- matrix(0, N, neta)
+    ## start q at the prior scale: log-sd = 0.5 log(popOmega)
+    .omega0 <- matrix(rep(0.5 * .logPopOmega0, each = N), N, neta)
+    .theta0 <- .prep$theta
+    .it0 <- 0L
+    .sMu <- matrix(0, N, neta); .sOmega <- matrix(0, N, neta)
+    .sTheta <- numeric(ntheta); .sLpo <- numeric(neta)
+  } else {
+    .mu0 <- resume$mu; .omega0 <- resume$omega
+    .theta0 <- resume$theta; .logPopOmega0 <- resume$logPopOmega
+    .it0 <- as.integer(resume$it0)
+    .sMu <- resume$sMu; .sOmega <- resume$sOmega
+    .sTheta <- resume$sTheta; .sLpo <- resume$sLpo
+  }
+
+  .adviInnerSetup(ui, data, .mu0, control)
+  on.exit(.adviInnerFree(), add = TRUE)
+
+  ## step-size scale (fixed for now; adaptEta search is a later step)
+  .etaScale <- 0.1
+
+  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0,
+                    as.integer(.prep$muRefThetaIdx),
+                    as.logical(.prep$thetaFix), as.logical(.prep$omegaFix),
+                    as.integer(control$iters), as.numeric(control$seed), .etaScale,
+                    as.numeric(control$tau), as.numeric(control$alpha),
+                    as.integer(control$nMc), .it0,
+                    .sMu, .sOmega, .sTheta, .sLpo)
+  .res$prep <- .prep
+  .res$etaNames <- .prep$etaNames
+  .res$thetaNames <- names(.prep$th)
+  .res$popOmega <- exp(.res$logPopOmega)
+  class(.res) <- "nlmixr2advi"
+  .res
+}
+
 #' Fit an ADVI model: set up the inner/outer problems and run the C++ loop.
 #' @param env estimation environment (holds ui, data, adviControl)
 #' @noRd
 .adviFitModel <- function(env) {
-  stop("est=\"advi\" is not yet implemented", call. = FALSE)
+  .ui <- env$ui
+  .control <- env$adviControl
+  .res <- .adviOptimize(.ui, env$data, .control)
+  ## finalize into an nlmixr2 fit is a later step; for now return the raw object
+  .res
 }

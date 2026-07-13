@@ -9696,20 +9696,25 @@ List adviThetaSensInfo_() {
                       _["isImpmap"] = op_focei.isImpmap);
 }
 
-//[[Rcpp::export]]
-List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
-                   NumericVector logPopOmega, NumericMatrix eps,
-                   IntegerVector muRefThetaIdx) {
+// Core (mean-field, point-estimate) ELBO + gradient at a fixed eps draw.  Fills
+// the pre-allocated gMu/gOmega/gTheta/gPopLogOmega (zeroed here) and returns the
+// ELBO.  Shared by the R-facing adviElboGrad_ (FD test) and the C++ loop adviLoop_.
+static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
+                               NumericVector logPopOmega, NumericMatrix eps,
+                               IntegerVector muRefThetaIdx,
+                               NumericMatrix &gMu, NumericMatrix &gOmega,
+                               NumericVector &gTheta, NumericVector &gPopLogOmega) {
   const int N = mu.nrow();
   const int neta = mu.ncol();
   const int ntheta = (int)op_focei.ntheta;
   adviSetTheta(theta);
   adviSetPopOmega(logPopOmega);
   arma::mat omegaInv = op_focei.omegaInv;
-
+  std::fill(gMu.begin(), gMu.end(), 0.0);
+  std::fill(gOmega.begin(), gOmega.end(), 0.0);
+  std::fill(gTheta.begin(), gTheta.end(), 0.0);
+  std::fill(gPopLogOmega.begin(), gPopLogOmega.end(), 0.0);
   double elbo = 0.0;
-  NumericMatrix gMu(N, neta), gOmega(N, neta);
-  NumericVector gTheta(ntheta), gPopLogOmega(neta);
   const int nSens = op_focei.impThetaSensIdx.size();
 
   for (int i = 0; i < N; ++i) {
@@ -9768,9 +9773,110 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
   }
   // population prior logdet: -0.5 N sum_k logPopOmega_k
   for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
+  return elbo;
+}
 
+//[[Rcpp::export]]
+List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
+                   NumericVector logPopOmega, NumericMatrix eps,
+                   IntegerVector muRefThetaIdx) {
+  const int N = mu.nrow(), neta = mu.ncol(), ntheta = (int)op_focei.ntheta;
+  NumericMatrix gMu(N, neta), gOmega(N, neta);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  double elbo = adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
+                                 gMu, gOmega, gTheta, gPopLogOmega);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gOmega"] = gOmega,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
+}
+
+// ADVI stochastic-gradient-ascent loop (mean-field, point-estimate), 100% in
+// C++.  Each iteration draws eps from the counter-based threefry stream keyed by
+// (seed, global-iteration, mc-sample) -- so a shorter run is a bit-for-bit prefix
+// of a longer one and results are independent of thread count -- averages the
+// ELBO gradient over nMc samples, then updates every parameter (variational
+// mu/omega and the point-estimate theta/logPopOmega) with the paper's adaptive
+// step-size (Eqs 10-11): s = alpha g^2 + (1-alpha) s (s^(1)=g^2),
+// rho = etaScale * i^(-1/2+eps) / (tau + sqrt(s)).  Fixed thetas / omega diagonal
+// entries are held.  `it0` and the passed-in s-accumulators support warm resume
+// (continue a finished fit): global iteration index = it0 + local.
+//[[Rcpp::export]]
+List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
+               NumericVector logPopOmega0, IntegerVector muRefThetaIdx,
+               LogicalVector thetaFix, LogicalVector omegaFix,
+               int iters, double seed, double etaScale, double tau, double alpha,
+               int nMc, int it0,
+               NumericMatrix sMu0, NumericMatrix sOmega0,
+               NumericVector sTheta0, NumericVector sLpo0) {
+  const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
+  NumericMatrix mu = clone(mu0), omega = clone(omega0);
+  NumericVector theta = clone(theta0), logPopOmega = clone(logPopOmega0);
+  NumericMatrix sMu = clone(sMu0), sOmega = clone(sOmega0);
+  NumericVector sTheta = clone(sTheta0), sLpo = clone(sLpo0);
+  // gradient buffers reused each iteration
+  NumericMatrix gMu(N, neta), gOmega(N, neta);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  NumericMatrix gMuAcc(N, neta), gOmAcc(N, neta);
+  NumericVector gThAcc(ntheta), gLpoAcc(neta);
+  NumericMatrix eps(N, neta);
+  NumericVector elboTrace(iters);
+  NumericMatrix parHist(iters, ntheta + neta);   // theta ... , popOmega diag ...
+  const double eeps = 1e-16, invM = 1.0 / nMc;
+
+  for (int it = 0; it < iters; ++it) {
+    int gi = it0 + it;                            // global iteration index
+    std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
+    std::fill(gOmAcc.begin(), gOmAcc.end(), 0.0);
+    std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
+    std::fill(gLpoAcc.begin(), gLpoAcc.end(), 0.0);
+    double elboAcc = 0.0;
+    for (int m = 0; m < nMc; ++m) {
+      // counter-based standard-normal draw, stream keyed by (seed, gi, m)
+      setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
+      for (int i = 0; i < N; ++i)
+        for (int k = 0; k < neta; ++k) eps(i, k) = rxNormEng(0.0, 1.0);
+      elboAcc += adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
+                                  gMu, gOmega, gTheta, gPopLogOmega);
+      for (int j = 0; j < N * neta; ++j) { gMuAcc[j] += gMu[j]; gOmAcc[j] += gOmega[j]; }
+      for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
+      for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
+    }
+    elboAcc *= invM;
+    for (int j = 0; j < N * neta; ++j) { gMuAcc[j] *= invM; gOmAcc[j] *= invM; }
+    for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
+    for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
+    elboTrace[it] = elboAcc;
+
+    // paper adaptive step-size (Eq 10-11); global-iteration decay so resume keeps
+    // the same schedule as a fresh longer run.
+    double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
+    for (int j = 0; j < N * neta; ++j) {
+      double g = gMuAcc[j];
+      sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
+      mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+      g = gOmAcc[j];
+      sOmega[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sOmega[j];
+      omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
+    }
+    for (int p = 0; p < ntheta; ++p) {
+      if (thetaFix[p]) continue;
+      double g = gThAcc[p];
+      sTheta[p] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sTheta[p];
+      theta[p] += etaScale * idecay / (tau + std::sqrt(sTheta[p])) * g;
+    }
+    for (int k = 0; k < neta; ++k) {
+      if (omegaFix[k]) continue;
+      double g = gLpoAcc[k];
+      sLpo[k] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sLpo[k];
+      logPopOmega[k] += etaScale * idecay / (tau + std::sqrt(sLpo[k])) * g;
+    }
+    for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
+    for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+  }
+  return List::create(_["mu"] = mu, _["omega"] = omega, _["theta"] = theta,
+                      _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
+                      _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["sMu"] = sMu, _["sOmega"] = sOmega,
+                      _["sTheta"] = sTheta, _["sLpo"] = sLpo);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
