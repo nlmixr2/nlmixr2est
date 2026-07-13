@@ -61,7 +61,10 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
-    "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing")
+    "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
+  # batch 7 -- advi (variational inference) multi-iteration fits
+  c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
+    "advi-fullbayes")
 )
 .slowAll <- unlist(.slowBatches)
 
