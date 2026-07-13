@@ -50,6 +50,9 @@
   .env$table <- NULL
   .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
   .env$control$est <- "advi"
+  ## foceiSetup_ reads impThetaSensIdx from e$control (foceiO); make sure it is
+  ## present there (not only on the pre-build .fc) so op_focei wires the offsets.
+  .env$control$impThetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all - 1L)
   .env$control$printTop <- FALSE
   if (is.null(.env$control$nF)) .env$control$nF <- 0L
   .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))

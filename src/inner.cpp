@@ -442,6 +442,7 @@ struct focei_options {
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
   bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"); outer runs impOuter
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
+  bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -4751,11 +4752,13 @@ NumericVector foceiSetup_(const RObject &obj,
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
     op_focei.isImpmap = (estStr == "impmap" || estStr == "imp");
     op_focei.isImp = (estStr == "imp");
+    op_focei.isAdvi = (estStr == "advi");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
     op_focei.isImpmap = false;
     op_focei.isImp = false;
+    op_focei.isAdvi = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -4778,6 +4781,11 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
     if (foceiO.containsElementNamed("impOmegaFixedEta"))
       op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
+  }
+  // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
+  // population gradient, but is not isImpmap; load the index here too.
+  if (op_focei.isAdvi && foceiO.containsElementNamed("impThetaSensIdx")) {
+    op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
   }
 
   op_focei.zeroGrad = false;
@@ -9021,7 +9029,7 @@ Environment foceiFitCpp_(Environment e){
       // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
       op_focei.thetaSensOffset = -1;
       op_focei.thetaSensNeq = 0;
-      if (op_focei.isImpmap && model.containsElementNamed("thetaSens")) {
+      if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
         RObject ts = model["thetaSens"];
         if (rxode2::rxIs(ts, "rxode2")) {
           List mvts = rxode2::rxModelVars_(ts);
@@ -9483,8 +9491,22 @@ RObject vaeInnerSetup_(Environment e) {
   Nullable<NumericVector> _upper = as<Nullable<NumericVector>>(e["upper"]);
   Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
   Nullable<List> _control = as<Nullable<List>>(e["control"]);
+  // est="advi": if the theta-sensitivity model has more ODE states than the inner
+  // model, size the shared solve pool to it and record the inner state count so
+  // inner solves run with neqOverride (mirrors the impmap full-fit path).
+  _impPoolModel = R_NilValue;
+  op_focei.innerNeq = 0;
+  if (model.containsElementNamed("thetaSens")) {
+    RObject _tsm = model["thetaSens"];
+    if (rxode2::rxIs(_tsm, "rxode2")) {
+      int _tsNeq = as<CharacterVector>(rxode2::rxModelVars_(_tsm)["state"]).size();
+      int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
+      if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
+    }
+  }
   NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                                       _rxInv, _lower, _upper, _etaMat, _control);
+  _impPoolModel = R_NilValue; // consumed by foceiSetup_
   // predNoLhs -> finite-difference event sensitivities
   if (model.containsElementNamed("predNoLhs")) {
     RObject noLhs = model.containsElementNamed("predNoLhsLlik") ? model["predNoLhsLlik"] : model["predNoLhs"];
@@ -9501,6 +9523,39 @@ RObject vaeInnerSetup_(Environment e) {
   if (model.containsElementNamed("eventEta")) {
     IntegerVector eventEta = model["eventEta"];
     std::copy(eventEta.begin(), eventEta.end(), &op_focei.etaFD[0]);
+  }
+  // est="advi": wire the theta-sensitivity model offsets (rx_pred_, rx_r_, and
+  // the first d(f)/d(theta) / d(V)/d(theta) columns) so impThetaScore can supply
+  // the outer population gradient -- mirrors the impmap full-fit path (which sets
+  // these in foceiFitCpp_, a code path vaeInnerSetup_ does not go through).
+  op_focei.thetaSensOffset = -1;
+  op_focei.thetaSensNeq = 0;
+  if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
+    RObject ts = model["thetaSens"];
+    if (rxode2::rxIs(ts, "rxode2")) {
+      List mvts = rxode2::rxModelVars_(ts);
+      rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
+      op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
+      rxThetaSens.neq = op_focei.thetaSensNeq;
+      CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+      op_focei.thetaSensPredOffset = -1;
+      op_focei.thetaSensROffset = -1;
+      if (op_focei.impThetaSensIdx.size() > 0) {
+        std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
+        std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
+        std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
+        for (int il = 0; il < tsLhs.size(); ++il) {
+          std::string nm = as<std::string>(tsLhs[il]);
+          if (nm == firstF) op_focei.thetaSensOffset = il;
+          else if (nm == firstV) op_focei.thetaSensDvOffset = il;
+          else if (nm == "rx_pred_") op_focei.thetaSensPredOffset = il;
+          else if (nm == "rx_r_") op_focei.thetaSensROffset = il;
+        }
+      }
+    }
+    if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
+      impSetInnerNeqOverride();
+    }
   }
   // populate the omega inverse + theta-dependent state for the inner solve
   _vaeInitPar = clone(initPar);
@@ -9571,6 +9626,151 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
   return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
+}
+
+// ===========================================================================
+// ADVI (Kucukelbir et al. 2017) outer likelihood + gradient.
+//
+// The variational family lives in the unconstrained real coordinate space.  In
+// the (mean-field, point-estimate) case each subject i carries variational
+// params (mu_i, omega_i) with q(eta_i) = N(mu_i, diag(exp(2 omega_i))); the
+// reparameterization eta_i = mu_i + exp(omega_i) .* eps_i pushes the gradient
+// inside the expectation.  The per-subject log-joint and its eta-gradient are
+// reused verbatim from the FOCEi inner problem: likInner0 returns
+// -log p(y_i, eta_i) up to constants (the eta prior QUADRATIC is included via
+// op_focei.omegaInv, but NOT the -0.5 logdet(2*pi*Omega) normalization), and its
+// gradient d(likInner0)/d(eta) = fInd->lp.  So with L = likInner0, lp = fInd->lp:
+//   grad_mu_ik     = -lp_ik
+//   grad_omega_ik  = -lp_ik * exp(omega_ik) * eps_ik + 1        (entropy grad = 1)
+// The population theta gradient (the OUTER gradient) uses the mu-ref identity
+// d/dtheta = d/deta for mu-referenced thetas (data-term eta score
+// Omega^-1 eta - lp), and impThetaScore (theta forward sensitivities) for the
+// non-mu structural + residual-error thetas.  The population between-subject
+// log-variances get the closed-form ELBO gradient
+//   grad_logOmega_k = sum_i [0.5 (mu_ik^2 + var_ik)/w_k - 0.5]   (w_k = exp(logOmega_k))
+// where the reparam draw enters -obj through omegaInv, and the -0.5 N logdet term
+// supplies the -0.5.  All dropped additive terms are constant in every parameter,
+// so the returned ELBO and gradients are mutually consistent (FD-checkable).
+//
+// Sets op_focei.fullTheta (natural scale) + propagates to each subject, and sets
+// op_focei.omegaInv = diag(exp(-logPopOmega)) directly (diagonal population
+// Omega, as est="vae" also estimates only the diagonal).  Serial for now; the
+// optimization loop (adviLoop_) adds parallelism and the counter-based RNG.
+// ===========================================================================
+
+// Set the natural-scale population thetas into op_focei.fullTheta and propagate
+// to every subject's solve (mirrors updateTheta's propagation, but takes the
+// natural theta directly rather than the scaled free-parameter vector).
+static void adviSetTheta(NumericVector theta) {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  int ntheta = (int)op_focei.ntheta;
+  int nt = min2((int)theta.size(), ntheta);
+  for (int j = 0; j < nt; ++j) op_focei.fullTheta[j] = theta[j];
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (int j = 0; j < nt; ++j) setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
+  }
+}
+
+// Set the diagonal population Omega used by the inner prior term (likInner0 reads
+// op_focei.omegaInv only; the logdet normalization is added in the ELBO).
+static void adviSetPopOmega(NumericVector logPopOmega) {
+  int neta = (int)op_focei.neta;
+  arma::mat oi(neta, neta, arma::fill::zeros);
+  for (int k = 0; k < neta; ++k) oi(k, k) = std::exp(-logPopOmega[k]);
+  op_focei.omegaInv = oi;
+}
+
+// Diagnostic: report the wired theta-sensitivity offsets after setup.
+//[[Rcpp::export]]
+List adviThetaSensInfo_() {
+  return List::create(_["nSens"] = op_focei.impThetaSensIdx.size(),
+                      _["predOffset"] = op_focei.thetaSensPredOffset,
+                      _["rOffset"] = op_focei.thetaSensROffset,
+                      _["fOffset"] = op_focei.thetaSensOffset,
+                      _["dvOffset"] = op_focei.thetaSensDvOffset,
+                      _["neq"] = op_focei.thetaSensNeq,
+                      _["calcLhsNull"] = (rxThetaSens.calc_lhs == NULL),
+                      _["isAdvi"] = op_focei.isAdvi,
+                      _["isImpmap"] = op_focei.isImpmap);
+}
+
+//[[Rcpp::export]]
+List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
+                   NumericVector logPopOmega, NumericMatrix eps,
+                   IntegerVector muRefThetaIdx) {
+  const int N = mu.nrow();
+  const int neta = mu.ncol();
+  const int ntheta = (int)op_focei.ntheta;
+  adviSetTheta(theta);
+  adviSetPopOmega(logPopOmega);
+  arma::mat omegaInv = op_focei.omegaInv;
+
+  double elbo = 0.0;
+  NumericMatrix gMu(N, neta), gOmega(N, neta);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  const int nSens = op_focei.impThetaSensIdx.size();
+
+  for (int i = 0; i < N; ++i) {
+    // reparameterized draw eta_i = mu_i + exp(omega_i) .* eps_i
+    std::vector<double> eta(neta);
+    arma::vec etav(neta);
+    for (int k = 0; k < neta; ++k) {
+      eta[k] = mu(i, k) + std::exp(omega(i, k)) * eps(i, k);
+      etav[k] = eta[k];
+    }
+    // force a full inner recompute: likInner0 caches on unchanged eta, but theta
+    // and the population Omega also change between ELBO evaluations.
+    inds_focei[i].setup = 0;
+    double obj = likInner0(&eta[0], i);          // -log p(y_i, eta_i) + const
+    focei_ind *fInd = &(inds_focei[i]);
+    arma::vec lp(neta);
+    for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
+
+    // ELBO: data+prior term (-obj) + mean-field entropy (sum omega, + const)
+    elbo += -obj;
+    for (int k = 0; k < neta; ++k) elbo += omega(i, k);
+
+    // variational-parameter gradients
+    for (int k = 0; k < neta; ++k) {
+      gMu(i, k) = -lp[k];
+      gOmega(i, k) = -lp[k] * std::exp(omega(i, k)) * eps(i, k) + 1.0;
+    }
+
+    // population between-subject log-variance gradient (accumulated):
+    //   0.5 (eta_ik^2)/w_k - 0.5   with var absorbed via the reparam draw
+    for (int k = 0; k < neta; ++k) {
+      double wk = std::exp(logPopOmega[k]);
+      gPopLogOmega[k] += 0.5 * (eta[k] * eta[k]) / wk - 0.5;
+    }
+
+    // OUTER population theta gradient
+    // mu-referenced thetas: data-term eta score (Omega^-1 eta - lp)
+    arma::vec dataScore = omegaInv * etav - lp;
+    for (int k = 0; k < neta; ++k) {
+      int p = muRefThetaIdx[k];                  // 1-based ntheta, NA_INTEGER if free
+      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gTheta[p - 1] += dataScore[k];
+    }
+    // non-mu structural + residual-error thetas: theta forward-sensitivity score
+    if (nSens > 0) {
+      arma::mat S(1, neta);
+      for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
+      arma::vec zk(1); zk[0] = 1.0;
+      arma::vec g(nSens, arma::fill::zeros);
+      arma::mat H(nSens, nSens, arma::fill::zeros);
+      impThetaScore(i, S, zk, g, H);
+      for (int s = 0; s < nSens; ++s) {
+        int th = op_focei.impThetaSensIdx[s];    // 0-based
+        if (th >= 0 && th < ntheta) gTheta[th] += g[s];
+      }
+    }
+  }
+  // population prior logdet: -0.5 N sum_k logPopOmega_k
+  for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
+
+  return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gOmega"] = gOmega,
+                      _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical

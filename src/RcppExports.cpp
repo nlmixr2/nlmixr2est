@@ -674,6 +674,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// adviThetaSensInfo_
+List adviThetaSensInfo_();
+RcppExport SEXP _nlmixr2est_adviThetaSensInfo_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(adviThetaSensInfo_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviElboGrad_
+List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta, NumericVector logPopOmega, NumericMatrix eps, IntegerVector muRefThetaIdx);
+RcppExport SEXP _nlmixr2est_adviElboGrad_(SEXP muSEXP, SEXP omegaSEXP, SEXP thetaSEXP, SEXP logPopOmegaSEXP, SEXP epsSEXP, SEXP muRefThetaIdxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega(logPopOmegaSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviElboGrad_(mu, omega, theta, logPopOmega, eps, muRefThetaIdx));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fsaemInnerMap_
 List fsaemInnerMap_(int cores);
 RcppExport SEXP _nlmixr2est_fsaemInnerMap_(SEXP coresSEXP) {

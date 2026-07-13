@@ -176,6 +176,14 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+adviThetaSensInfo_ <- function() {
+    .Call(`_nlmixr2est_adviThetaSensInfo_`)
+}
+
+adviElboGrad_ <- function(mu, omega, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGrad_`, mu, omega, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
 fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }
