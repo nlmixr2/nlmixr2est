@@ -1101,6 +1101,30 @@ void updateEta(double *eta, int cid) {
   if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(cid, eta, op_focei.neta);
 }
 
+// test-only "invisible eta" injector (tests/testthat/test-focei-fdeta.R): writes
+// eta[_testInjSrc] into subject cid's par_ptr covariate slot _testInjDst, so the
+// prediction depends on that eta ONLY numerically (its analytic d(f)/d(eta) via
+// rx__sens is structurally 0, exactly like an externally injected NN weight).
+// Fires on every eta-set INCLUDING the FD perturbations, so it validates that
+// etaFD's finite-difference sensitivity is correct with no competing analytic one.
+static int _testInjSrc = -1, _testInjDst = -1;
+static void _testInjectEta(int cid, const double *eta, int neta) {
+  if (_testInjSrc < 0 || _testInjSrc >= neta || _testInjDst < 0) return;
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid));
+  setIndParPtr(ind, _testInjDst, eta[_testInjSrc]);
+}
+extern "C" SEXP _nlmixr2est_registerTestInjectEta(SEXP srcSEXP, SEXP dstSEXP) {
+  _testInjSrc = Rf_asInteger(srcSEXP);
+  _testInjDst = Rf_asInteger(dstSEXP);
+  nlmixrSetInnerWeightFn(_testInjectEta);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_removeTestInjectEta(void) {
+  nlmixrSetInnerWeightFn(NULL);
+  _testInjSrc = _testInjDst = -1;
+  return R_NilValue;
+}
+
 // RAII guard: snapshots a per-individual ETA vector, restores it on
 // destruction unless disarm() is called. Protects against ETA-leak when an
 // ODE solve throws/returns NA mid finite-difference perturbation, which
@@ -1276,6 +1300,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
   IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq); // switches this subject's neq to predNeq
+  setIndSolve(ind, -1); // reset the solve index before predOde (matches shi21ThetaGeneral)
   predOde(_rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1290,7 +1315,11 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
       continue;
     }
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-    ret(k) = lhs[w];
+    // rx_pred_ (w=0) / rx_r_ (w=1) may be preceded by other lhs outputs in the
+    // pred model (AR(1) lag defs, etc.), so index from predNoLhsOffset -- matching
+    // shi21ThetaGeneral.  Reading lhs[w] instead read a wrong column and produced a
+    // garbage FD eta-sensitivity whenever predNoLhsOffset != 0.
+    ret(k) = lhs[op_focei.predNoLhsOffset + w];
     k++;
     if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for

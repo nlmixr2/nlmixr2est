@@ -160,6 +160,8 @@ SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_registerTestInnerWt(void);
 SEXP _nlmixr2est_removeTestInnerWt(void);
 SEXP _nlmixr2est_getTestInnerWt(void);
+SEXP _nlmixr2est_registerTestInjectEta(SEXP, SEXP);
+SEXP _nlmixr2est_removeTestInjectEta(void);
 SEXP _nlmixr2est_likContribPtrs(void);
 
 static const R_CallMethodDef CallEntries[] = {
@@ -172,6 +174,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_registerTestInnerWt", (DL_FUNC) &_nlmixr2est_registerTestInnerWt, 0},
   {"_nlmixr2est_removeTestInnerWt", (DL_FUNC) &_nlmixr2est_removeTestInnerWt, 0},
   {"_nlmixr2est_getTestInnerWt", (DL_FUNC) &_nlmixr2est_getTestInnerWt, 0},
+  {"_nlmixr2est_registerTestInjectEta", (DL_FUNC) &_nlmixr2est_registerTestInjectEta, 2},
+  {"_nlmixr2est_removeTestInjectEta", (DL_FUNC) &_nlmixr2est_removeTestInjectEta, 0},
   {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},
   {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},
   {"_nlmixr2est_vaeEncoderFwdBwd", (DL_FUNC) &_nlmixr2est_vaeEncoderFwdBwd, 13},

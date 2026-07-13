@@ -578,6 +578,10 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  .etaFD <- rxUiGet.etaFDLinesStr(x, ...)
+  if (.etaFD != "") {
+    .cmt <-paste0(.cmt, "\n", .etaFD)
+  }
   list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
        eventTheta=.eventTheta)

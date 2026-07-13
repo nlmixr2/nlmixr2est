@@ -153,6 +153,10 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  .etaFD <- rxUiGet.etaFDLinesStr(x, ...)
+  if (.etaFD != "") {
+    .cmt <-paste0(.cmt, "\n", .etaFD)
+  }
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }

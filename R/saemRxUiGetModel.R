@@ -358,6 +358,10 @@ rxUiGet.saemModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  .etaFD <- rxUiGet.etaFDLinesStr(x, ...)
+  if (.etaFD != "") {
+    .cmt <-paste0(.cmt, "\n", .etaFD)
+  }
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
@@ -452,6 +456,37 @@ rxUiGet.interpLinesStr <- function(x, ...) {
 attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
 #' @export
+rxUiGet.etaFDLinesStr <- function(x, ...) {
+  ## Emit the etaFD() directive for a GENERATED model.  Unlike interp() (whose
+  ## covariate args keep their names in every sub-model), etaFD() targets etas,
+  ## which nlmixr2est renames to ETA[n] positionally in the focei/nlm/saem
+  ## models.  So translate the flagged eta labels (from the base modelVars$etaFD)
+  ## to ETA[n] form; ETA[n] is already a required solving parameter, so this adds
+  ## the flag without introducing an undefined parameter.
+  .ui <- x[[1]]
+  .etaFD <- rxode2::rxModelVars(.ui)$etaFD
+  if (is.null(.etaFD) || length(.etaFD) == 0L) {
+    return("")
+  }
+  .w <- which(.etaFD == 1L)
+  if (length(.w) == 0L) {
+    return("")
+  }
+  .iniDf <- .ui$iniDf
+  .etaDf <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, , drop = FALSE]
+  .eta <- vapply(names(.etaFD)[.w], function(.nm) {
+    .n <- .etaDf$neta1[.etaDf$name == .nm]
+    if (length(.n) == 1L && !is.na(.n)) paste0("ETA[", .n, "]") else NA_character_
+  }, character(1), USE.NAMES = FALSE)
+  .eta <- .eta[!is.na(.eta)]
+  if (length(.eta) == 0L) {
+    return("")
+  }
+  paste0("etaFD(", paste(.eta, collapse = ", "), ")")
+}
+attr(rxUiGet.etaFDLinesStr, "rstudio") <- ""
+
+#' @export
 rxUiGet.saemModelPred <- function(x, ...) {
   .ui0 <- x[[1]]
   .levels  <- .ui0$levels
@@ -540,9 +575,11 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ret2
   ), collapse = "\n")
   .interp <- rxUiGet.interpLinesStr(x, ...)
+  .etaFD <- rxUiGet.etaFDLinesStr(x, ...)
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
             .interp,
+            .etaFD,
             "rx_pred_=NA\nrx_r_=NA\n",
             paste(names(.replaceLst), "<-", .replaceLst),
             .ret,
