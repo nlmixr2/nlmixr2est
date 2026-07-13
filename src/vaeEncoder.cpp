@@ -55,8 +55,11 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
 
   Lout.zeros();
   if (backward) {
-    gWih.zeros(); gWhh.zeros(); gbih.zeros(); gbhh.zeros();
-    gFcW.zeros(); gFcB.zeros();
+    // size + zero the accumulators here so callers can pass empty (unsized)
+    // matrices (the R export pre-sizes them, the C++ loop does not)
+    gWih.zeros(4 * h, xDim); gWhh.zeros(4 * h, h);
+    gbih.zeros(4 * h); gbhh.zeros(4 * h);
+    gFcW.zeros(outDim, h + nCov); gFcB.zeros(outDim);
   }
 
   for (int i = 0; i < N; ++i) {

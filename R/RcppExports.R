@@ -212,6 +212,10 @@ vaeIterPrintGet_ <- function(printLine = TRUE) {
     .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
 }
 
+vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
+    .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
+}
+
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }
