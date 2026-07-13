@@ -1046,6 +1046,30 @@ nmTest({
     expect_true(!any(grepl("^(f|alag|lag|rate|dur)\\(", .lh) & endsWith(.lh, ")")))
   })
 
+  test_that("disguise/restore is whitespace-exact and idempotent", {
+    # rxNorm output is canonical ("x=y"), but the round-trip must be byte-exact for any spacing
+    # so a chunk boundary can never alter surrounding whitespace: leading indent, a gap before
+    # "=", tabs, spaces inside the LHS token/parens, and a trailing carriage return.
+    .lines <- c("depot(0)=W0",           # canonical
+                "  depot(0)=W0",         # leading spaces
+                "\tdepot(0)=W0",         # leading tab
+                "depot(0) = W0",         # spaces around "="
+                "depot (0)=W0",          # space inside the LHS token
+                "f(depot)=ff",           # canonical modifier
+                "f( depot )=ff",         # spaces inside the parens
+                "alag( central )=tlag",  # spaces inside the parens (alag)
+                "depot(0)=W0\r",         # trailing carriage return
+                "d/dt(depot)=-ka*depot", "ka=exp(tka)")  # non-targets, left alone
+    for (.l in .lines) {
+      expect_identical(.foceiRestoreCmt(.foceiDisguiseCmt(.l)), .l)
+    }
+    # whole block round-trips, and both directions are idempotent
+    .txt <- paste(.lines, collapse = "\n")
+    expect_identical(.foceiRestoreCmt(.foceiDisguiseCmt(.txt)), .txt)
+    expect_identical(.foceiDisguiseCmt(.foceiDisguiseCmt(.txt)), .foceiDisguiseCmt(.txt))
+    expect_identical(.foceiRestoreCmt(.foceiRestoreCmt(.txt)), .txt)
+  })
+
   test_that("a parameter-dependent-IC model gets chunked (not whole-model) and stays correct", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
