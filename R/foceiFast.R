@@ -63,72 +63,72 @@ attr(nlmixr2Est.focepf, "covPresent") <- TRUE
 attr(nlmixr2Est.focepf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focepf, "iov") <- TRUE
 
-## ---- mufoce / mufocep / mufocei (mu-referenced) ----------------------------
+## ---- mfoce / mfocep / mfocei (mu-referenced) ----------------------------
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mufoceif <- function(control) .foceiFastCtl(control, mufoceiControl)
+getValidNlmixrCtl.mfoceif <- function(control) .foceiFastCtl(control, mfoceiControl)
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.mufoceif <- function(env, ...) nlmixr2Est.mufocei(env, ...)
-attr(nlmixr2Est.mufoceif, "covPresent") <- TRUE
-attr(nlmixr2Est.mufoceif, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.mufoceif, "iov") <- TRUE
-attr(nlmixr2Est.mufoceif, "mu") <- .foceiFastMuAttr
+nlmixr2Est.mfoceif <- function(env, ...) nlmixr2Est.mfocei(env, ...)
+attr(nlmixr2Est.mfoceif, "covPresent") <- TRUE
+attr(nlmixr2Est.mfoceif, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.mfoceif, "iov") <- TRUE
+attr(nlmixr2Est.mfoceif, "mu") <- .foceiFastMuAttr
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mufocef <- function(control) .foceiFastCtl(control, mufoceControl)
+getValidNlmixrCtl.mfocef <- function(control) .foceiFastCtl(control, mfoceControl)
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.mufocef <- function(env, ...) nlmixr2Est.mufoce(env, ...)
-attr(nlmixr2Est.mufocef, "covPresent") <- TRUE
-attr(nlmixr2Est.mufocef, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.mufocef, "iov") <- TRUE
-attr(nlmixr2Est.mufocef, "mu") <- .foceiFastMuAttr
+nlmixr2Est.mfocef <- function(env, ...) nlmixr2Est.mfoce(env, ...)
+attr(nlmixr2Est.mfocef, "covPresent") <- TRUE
+attr(nlmixr2Est.mfocef, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.mfocef, "iov") <- TRUE
+attr(nlmixr2Est.mfocef, "mu") <- .foceiFastMuAttr
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mufocepf <- function(control) .foceiFastCtl(control, mufocepControl)
+getValidNlmixrCtl.mfocepf <- function(control) .foceiFastCtl(control, mfocepControl)
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.mufocepf <- function(env, ...) nlmixr2Est.mufocep(env, ...)
-attr(nlmixr2Est.mufocepf, "covPresent") <- TRUE
-attr(nlmixr2Est.mufocepf, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.mufocepf, "iov") <- TRUE
-attr(nlmixr2Est.mufocepf, "mu") <- .foceiFastMuAttr
+nlmixr2Est.mfocepf <- function(env, ...) nlmixr2Est.mfocep(env, ...)
+attr(nlmixr2Est.mfocepf, "covPresent") <- TRUE
+attr(nlmixr2Est.mfocepf, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.mfocepf, "iov") <- TRUE
+attr(nlmixr2Est.mfocepf, "mu") <- .foceiFastMuAttr
 
-## ---- irlsfoce / irlsfocep / irlsfocei (mu-referenced, irls) ----------------
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.irlsfoceif <- function(control) .foceiFastCtl(control, irlsfoceiControl)
-#' @rdname nlmixr2Est
-#' @export
-nlmixr2Est.irlsfoceif <- function(env, ...) nlmixr2Est.irlsfocei(env, ...)
-attr(nlmixr2Est.irlsfoceif, "covPresent") <- TRUE
-attr(nlmixr2Est.irlsfoceif, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.irlsfoceif, "iov") <- TRUE
-attr(nlmixr2Est.irlsfoceif, "mu") <- .foceiFastMuAttr
+## ---- ifoce / ifocep / ifocei (mu-referenced, irls) ----------------
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlsfocef <- function(control) .foceiFastCtl(control, irlsfoceControl)
+getValidNlmixrCtl.ifoceif <- function(control) .foceiFastCtl(control, ifoceiControl)
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.irlsfocef <- function(env, ...) nlmixr2Est.irlsfoce(env, ...)
-attr(nlmixr2Est.irlsfocef, "covPresent") <- TRUE
-attr(nlmixr2Est.irlsfocef, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.irlsfocef, "iov") <- TRUE
-attr(nlmixr2Est.irlsfocef, "mu") <- .foceiFastMuAttr
+nlmixr2Est.ifoceif <- function(env, ...) nlmixr2Est.ifocei(env, ...)
+attr(nlmixr2Est.ifoceif, "covPresent") <- TRUE
+attr(nlmixr2Est.ifoceif, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.ifoceif, "iov") <- TRUE
+attr(nlmixr2Est.ifoceif, "mu") <- .foceiFastMuAttr
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlsfocepf <- function(control) .foceiFastCtl(control, irlsfocepControl)
+getValidNlmixrCtl.ifocef <- function(control) .foceiFastCtl(control, ifoceControl)
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.irlsfocepf <- function(env, ...) nlmixr2Est.irlsfocep(env, ...)
-attr(nlmixr2Est.irlsfocepf, "covPresent") <- TRUE
-attr(nlmixr2Est.irlsfocepf, "unbounded") <- .foUnbounded
-attr(nlmixr2Est.irlsfocepf, "iov") <- TRUE
-attr(nlmixr2Est.irlsfocepf, "mu") <- .foceiFastMuAttr
+nlmixr2Est.ifocef <- function(env, ...) nlmixr2Est.ifoce(env, ...)
+attr(nlmixr2Est.ifocef, "covPresent") <- TRUE
+attr(nlmixr2Est.ifocef, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.ifocef, "iov") <- TRUE
+attr(nlmixr2Est.ifocef, "mu") <- .foceiFastMuAttr
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.ifocepf <- function(control) .foceiFastCtl(control, ifocepControl)
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.ifocepf <- function(env, ...) nlmixr2Est.ifocep(env, ...)
+attr(nlmixr2Est.ifocepf, "covPresent") <- TRUE
+attr(nlmixr2Est.ifocepf, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.ifocepf, "iov") <- TRUE
+attr(nlmixr2Est.ifocepf, "mu") <- .foceiFastMuAttr

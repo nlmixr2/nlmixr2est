@@ -63,6 +63,14 @@ foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, cen
     .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
+impSirIndex_ <- function(zk, sirN, u0) {
+    .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
+}
+
+impQrPoints_ <- function(isample, neta, shift) {
+    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
@@ -172,12 +180,12 @@ vaeInnerSetup_ <- function(e) {
     .Call(`_nlmixr2est_vaeInnerSetup_`, e)
 }
 
-vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
-    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
+vaeInnerUpdatePar_ <- function(thFull, omegaDiag) {
+    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omegaDiag)
 }
 
-vaeInnerFree_ <- function() {
-    .Call(`_nlmixr2est_vaeInnerFree_`)
+vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
+    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
 vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
@@ -190,6 +198,74 @@ vaeIterPrintRow_ <- function(x, f, phase = "") {
 
 vaeIterPrintGet_ <- function(printLine = TRUE) {
     .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
+}
+
+adviThetaSensInfo_ <- function() {
+    .Call(`_nlmixr2est_adviThetaSensInfo_`)
+}
+
+adviElboGrad_ <- function(mu, omega, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGrad_`, mu, omega, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
+adviLoop_ <- function(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoop_`, mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviElboGradFR_ <- function(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGradFR_`, mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
+adviLoopFR_ <- function(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoopFR_`, mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviLoopFB_ <- function(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoopFB_`, mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviOptimize_ <- function(args) {
+    .Call(`_nlmixr2est_adviOptimize_`, args)
+}
+
+fsaemInnerMap_ <- function(cores) {
+    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
+}
+
+fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
+    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
+}
+
+fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
+fsaemMapImhCpp_ <- function(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemMapImhCpp_`, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
+vaeInnerFree_ <- function() {
+    .Call(`_nlmixr2est_vaeInnerFree_`)
+}
+
+vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
+    .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
+}
+
+vaeDecoderPxz_ <- function(E, y) {
+    .Call(`_nlmixr2est_vaeDecoderPxz_`, E, y)
+}
+
+vaeDecoderSolveSubject_ <- function(solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderSolveSubject_`, solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
+vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
+vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
+    .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
@@ -308,6 +384,98 @@ nlmAdjustCov <- function(CovIn, theta) {
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
+}
+
+rpemFree <- function() {
+    .Call(`_nlmixr2est_rpemFree`)
+}
+
+rpemSetup <- function(e) {
+    .Call(`_nlmixr2est_rpemSetup`, e)
+}
+
+rpemSolvePop <- function(parMat) {
+    .Call(`_nlmixr2est_rpemSolvePop`, parMat)
+}
+
+rpemEstepK1 <- function(parBig, nGauss) {
+    .Call(`_nlmixr2est_rpemEstepK1`, parBig, nGauss)
+}
+
+rpemEstepK1Draw <- function(e, base, etaIdx, etaMat, nGauss, ncores, ebeCenter, omVec, cInflate) {
+    .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, etaMat, nGauss, ncores, ebeCenter, omVec, cInflate)
+}
+
+rpemEstepMixDraw <- function(e, base, etaIdx, etaMat, nGauss, ncores, K, w) {
+    .Call(`_nlmixr2est_rpemEstepMixDraw`, e, base, etaIdx, etaMat, nGauss, ncores, K, w)
+}
+
+rpemMstepK1 <- function(muIn, addSd0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1`, muIn, addSd0, nTrials, burn, seed)
+}
+
+rpemEMLoopK1 <- function(e, cfg) {
+    .Call(`_nlmixr2est_rpemEMLoopK1`, e, cfg)
+}
+
+rpemEMLoopMix <- function(e, base, etaIdx, muComp0, muCompIdx, etaForComp, omDiag0, addSdIdx, errType, addSd0, resIdx, resPar0, w0, K, nParam, perComp, niter, nGauss, ncores, nMH, mhBurn, seed) {
+    .Call(`_nlmixr2est_rpemEMLoopMix`, e, base, etaIdx, muComp0, muCompIdx, etaForComp, omDiag0, addSdIdx, errType, addSd0, resIdx, resPar0, w0, K, nParam, perComp, niter, nGauss, ncores, nMH, mhBurn, seed)
+}
+
+rpemMstepMix <- function(muK, w, etaForComp, errType, addSd0, propSd0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepMix`, muK, w, etaForComp, errType, addSd0, propSd0, nTrials, burn, seed)
+}
+
+rpemMstepK1Reg <- function(design, coefs, errType, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1Reg`, design, coefs, errType, nTrials, burn, seed)
+}
+
+rpemFisherReg <- function(design, coefs, omega, errType, resPar) {
+    .Call(`_nlmixr2est_rpemFisherReg`, design, coefs, omega, errType, resPar)
+}
+
+rpemFisherDiag <- function(muVec, omVec, errType, resPar) {
+    .Call(`_nlmixr2est_rpemFisherDiag`, muVec, omVec, errType, resPar)
+}
+
+rpemMstepK1Comb <- function(design, coefs, addSd0, propSd0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1Comb`, design, coefs, addSd0, propSd0, nTrials, burn, seed)
+}
+
+rpemMstepK1TBS <- function(design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1TBS`, design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn, seed)
+}
+
+rpemMstepK1Pow <- function(design, coefs, propSd0, power0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1Pow`, design, coefs, propSd0, power0, nTrials, burn, seed)
+}
+
+rpemMstepK1Cens <- function(design, coefs, errType, sd0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1Cens`, design, coefs, errType, sd0, nTrials, burn, seed)
+}
+
+rpemMstepBeta <- function(base, etaIdx, structIdx, struct0) {
+    .Call(`_nlmixr2est_rpemMstepBeta`, base, etaIdx, structIdx, struct0)
+}
+
+rpemMstepBetaLik <- function(base, etaIdx, structIdx, struct0, lower, upper, nbd, gain, lmm, factr, pgtol, maxit) {
+    .Call(`_nlmixr2est_rpemMstepBetaLik`, base, etaIdx, structIdx, struct0, lower, upper, nbd, gain, lmm, factr, pgtol, maxit)
+}
+
+rpemMstepK1Multi <- function(design, coefs, endpt, errTypes, add0, prop0, nTrials, burn, seed) {
+    .Call(`_nlmixr2est_rpemMstepK1Multi`, design, coefs, endpt, errTypes, add0, prop0, nTrials, burn, seed)
+}
+
+rpemIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
+    .Call(`_nlmixr2est_rpemIterPrintStart_`, initPar, names, iterPrintControl, xform)
+}
+
+rpemIterPrintRow_ <- function(x, f, phase = "") {
+    .Call(`_nlmixr2est_rpemIterPrintRow_`, x, f, phase)
+}
+
+rpemIterPrintGet_ <- function(printLine = TRUE) {
+    .Call(`_nlmixr2est_rpemIterPrintGet_`, printLine)
 }
 
 rxode2stateOde <- function(inp) {

@@ -1,5 +1,142 @@
 # nlmixr2est (development version)
 
+- Added an automatic differentiation variational inference method
+  (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
+  gradient is obtained from the FOCEi forward sensitivities (the inner
+  per-subject eta gradient and the outer theta-sensitivity score) rather than
+  automatic differentiation, and the whole optimization (the adaptive
+  step-size-scale search plus the stochastic-gradient-ascent loop) runs in a
+  single C++ call.  It supports mean-field and block full-rank variational families
+  (`adviFamily`), both a point-estimate (variational-EM, output comparable to
+  FOCEi/SAEM) and a full-Bayes (`pointEstimate=FALSE`, with a full-rank
+  variational posterior over the population parameters) mode,
+  mu-referenced and non-mu structural thetas plus residual error, multiple
+  endpoints and BLQ censoring (via the reused inner likelihood), the paper's
+  adaptive step-size with a step-size-scale search (`adaptEta`), and a warm-resume
+  API (`adviControl(resume=)`).  The reparameterization noise is drawn from a
+  counter-based stream keyed by the global iteration index, so a shorter run is a
+  bit-for-bit prefix of a longer one and results are independent of the thread
+  count.  The run prints the standard nlmixr2 iteration table (like `saem`/`vae`,
+  `adviControl(print=)`) with the step-size search and the main run shown as
+  labeled stages, and the walk is saved as standard `parHistData`
+  (`fit$parHist`).  The inner and theta-sensitivity models are set up once and
+  reused by the output step (no model re-build at finalize).
+  The per-subject ELBO and gradient are computed in parallel over subjects
+  (`rxControl(cores=)`); a serial id-ordered reduction keeps the result identical
+  for any thread count.
+
+- Added quasi-random (Sobol) importance sampling to the `imp`/`impmap`
+  estimation methods (QRPEM, Leary & Dunlavey PAGE 2012):
+  `impmapControl(qr = TRUE)` draws the E-step samples from a low-discrepancy
+  Sobol sequence mapped through the inverse normal CDF, so the E-step
+  integrals converge at O(1/N) instead of O(1/sqrt(N)) -- more accurate at the
+  same `isample` and a smoother objective trace.  `qrShift` controls the
+  Cranley-Patterson randomization of the point set and `qrRefresh` whether the
+  shift is redrawn each iteration (`FALSE` makes each EM iteration a
+  deterministic map).  The Monte-Carlo covariance (`impCov = TRUE`) uses the
+  quasi-random points too.  Results stay reproducible and thread-count
+  independent.
+
+- Added SIR (sampling-importance-resampling) acceleration for the
+  `imp`/`impmap` M-step: `impmapControl(sir = TRUE, sirSample = )` runs the
+  non-mu / residual-error Newton update on an equal-weight systematic resample
+  of the importance samples, cutting the theta-sensitivity solves from
+  `isample` to `sirSample` (default `max(25, ceiling(isample/10))`) per subject per
+  iteration.
+
+- Added `est = "qrpem"` with `qrpemControl()`, sugar for the impmap
+  importance-sampling EM with `qr = TRUE` and `sir = TRUE`.
+
+- Fixed `impmapControl(impSeed = )` being ignored: the FOCEI solve setup reset
+  the ambient seed before the importance-sampling E-step, so every `impSeed`
+  produced the identical draw.  The E-step / covariance / QR-shift / SIR
+  streams now derive from `impSeed` directly, so a different `impSeed` gives a
+  different (but reproducible and thread-count-independent) importance sample.
+
+- Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
+  al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
+  combined/power/TBS residuals, multiple endpoints, mu-referenced covariates
+  (time-varying and non-time-varying), IOV, finite mixtures (`mix()`), general
+  log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
+  refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters, and
+  Fisher-score standard errors.  The whole E-M loop runs in C++ (thread-safe and
+  reproducible for any core count), and the iteration walk is streamed live and
+  saved to `fit$parHist` like the other methods.  `rpemControl(cLoop=)` is
+  deprecated and ignored (the C++ loop is the only path); not-yet-ported
+  combinations (BLQ censoring on non-additive error, multiple endpoints with
+  covariates, and errType 5/7 mixtures) raise a clear error.
+
+- The `est = "vae"` training loop (variational-autoencoder NLME) now runs
+  entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM / smoothing
+  schedule, the LSTM encoder forward/backward, the FOCEi inner-likelihood
+  evaluation, the closed-form M-step (including BICc-ELBO covariate selection),
+  Adam, and the iteration/parameter-history walk.  Each gradient step now
+  re-parameterizes the inner problem in place (`updateTheta`) instead of
+  re-running the full FOCEi setup (`rxSymInvCholCreate` + `foceiSetup_`) it did
+  every step in R, so VAE fits are substantially faster.
+
+- The analytic FOCEI/FOCE outer gradient and observed-information covariance
+  (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now build a smaller
+  augmented sensitivity model by reusing eta sensitivities for mu-referenced
+  covariate coefficients.  A covariate coefficient `b` enters through an eta's
+  parameter (`cl = exp(tcl + eta.cl + b*cov)`), so for a covariate that is
+  constant within each subject every sensitivity of `b` equals the linked eta's
+  scaled by the covariate value (`df/db = cov*df/deta`).  Those covariate
+  directions are therefore emitted as algebraic scaled copies instead of
+  integrating their own state-sensitivity ODEs, shrinking the compiled model
+  ~25-58% and cutting its (super-linear) build time ~1.3x-4x on larger covariate
+  models -- the result is bit-identical.  Detection reuses rxode2's own mu-reference
+  classification (`muRefCovariateDataFrame` + `mu2RefCovariateReplaceDataFrame`),
+  covers bare and algebraic (`log(WT/70)`, `WT-70`) covariates, and falls back to
+  the full symbolic build for anything the eta-scaling identity does not cover
+  (time-varying covariates, a shared/reused eta).  The analytic covariance also now
+  restricts itself to Gaussian endpoints (`t`/`cauchy`/count/ordinal likelihoods and
+  multiple estimated transform lambdas fall back to the finite-difference covariance).
+- Extended that reuse to a covariate on an **eta-less** parameter (`v = exp(tv + b*cov)`
+  with no `eta.v`): the coefficient now reuses the structural theta's own sensitivity
+  direction (`df/db = cov*df/dtv`, since `tv` and `b` enter the mu identically) instead
+  of building its own state-sensitivity ODEs.  Previously such a model errored inside the
+  direction map and silently fell back to the finite-difference covariance; it now stays
+  analytic for both the covariance and the fast outer gradient (matching finite differences),
+  and holds the integrated-direction count fixed regardless of how many covariates sit on
+  eta-less parameters (~1.3x fewer for one, ~2.6x for three).  A structural-theta
+  occurrence guard (shared with the eta guard) keeps the reuse exact.
+- Fixed the analytic (`fast=TRUE`) outer gradient and covariance being wrong for a
+  model where a mu-referenced parameter's random effect is shared across parameters
+  (e.g. `eta.cl` used in both `cl` and `v`).  The mu-referenced theta reused that eta's
+  state sensitivity, but `df/dtheta` (one parameter) differs from `df/deta` (all the
+  parameters the eta appears in), so the gradient/covariance for that theta was
+  incorrect.  Such a theta now gets its own true-sensitivity direction (the eta keeps
+  its own), so the gradient and covariance stay analytic and are correct.
+- Added a fast-SAEM (f-SAEM, Karimi, Lavielle and Moulines 2020) simulation
+  step: `saemControl()` gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik`
+  options and a new `est = "fsaem"` method (sugar for `saemControl(fast =
+  TRUE)`).  When enabled, the early SAEM iterations replace the random-walk
+  Metropolis simulation with an independent Metropolis-Hastings kernel whose
+  Gaussian proposal is centered at each subject's conditional MAP (reusing the
+  FOCEi inner likelihood), which reaches the MLE in fewer iterations; later
+  iterations degrade to the standard kernels.  Supports continuous
+  single-endpoint models (additive, proportional or combined error), including
+  non-time-varying mu-referenced covariates (absorbed into the per-subject prior
+  mean of the inner); models outside this envelope (e.g. time-varying
+  covariates, mixtures) transparently run standard SAEM.
+- `saem` and `fsaem` now fit general log-likelihood endpoints (`ll(name) ~
+  <expr>`, e.g. Weibull/exponential time-to-event), in the style of `saemix`
+  likelihood models: the model returns the per-observation log-likelihood, the
+  simulation step uses it directly as the observation loss, and the population
+  parameters and between-subject variances are estimated by the standard SAEM
+  M-step (no separate residual error).  Fixed-effect-only parameters of such a
+  model are refined by a direct L-BFGS-B optimization of the observation
+  likelihood (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
+  `lbfgsMaxIter`, derived from `sigdig` like `foceiControl()`), respecting the
+  parameter bounds from the model.
+- The `fsaem` IMH kernel now draws its proposals from `rxode2`'s threefry engine
+  (seeded from the fit's `seed` plus the chain/subject index), so results are
+  reproducible regardless of the number of threads.  Proposals for a bounded
+  log-likelihood parameter are re-drawn up to `saemControl(nRetry = 10)` times
+  and then clamped to the violated boundary.  The whole `saem`/`fsaem` fit now
+  runs inside `rxode2::rxWithSeed()` so a session's first fit is seeded and fits
+  never contaminate each other's RNG state.
 - New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
   expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
   E-step proposal centered at each subject's MAP mode (`impmap`) or at the
@@ -55,10 +192,39 @@
   to finite differences.  The C++ hook now refreshes that state each gradient call;
   the cached augmented-model metadata (`foceiModel$outerMeta`) carries all fields the
   batched solve needs.
-- The mu-referenced families (`mufoceif`/`irlsfoceif`/...) now consume the analytic
+- The mu-referenced families (`mfoceif`/`ifoceif`/...) now consume the analytic
   gradient on the profiled (mu-reduced) parameter set; a gradient/parameter-set size
   mismatch stops (never a silent FD fallback) and FD is only used when the
   sensitivity system fails to solve (with a one-time warning).
+- The mu-referenced FOCEI families (`mfocei`/`ifocei`/...) now profile plain
+  (covariate-free) mu-referenced population thetas out of the outer optimizer via the
+  in-C++ regression as well (intercept-only groups), so outer gradients -- numeric or
+  analytic -- are only calculated for the non-mu-referenced parameters (residual
+  errors, omegas, non-mu thetas); user-fixed mu-referenced thetas remain
+  outer-optimized.  The regress/re-optimize cycle defaults were tightened
+  (`muModelTol` 1e-3 -> 1e-5, `muModelMaxCycles` 10 -> 20) so the profiled fits
+  converge to the same optimum as the base methods (usually faster, since the outer
+  optimizer sees a well-converged profiled objective).
+- Renamed the mu-referenced FOCEI-family estimation methods (all introduced in this
+  development version): the `irls*` methods are now `i*` (`ifocei`, `ifoce`, `ifocep`,
+  `iagq`, `ilaplace` and fast variants `ifoceif`/`ifocef`/`ifocepf`) and the `mu*`
+  methods are now `m*` (`mfocei`, `mfoce`, `mfocep`, `magq`, `mlaplace` and
+  `mfoceif`/`mfocef`/`mfocepf`), with matching control functions
+  (`ifoceiControl()`, `mfoceiControl()`, ...).  The old names are removed (they never
+  shipped in a release).
+- The analytic (`fast=TRUE`) outer gradient and `covMethod="analytic"` now handle
+  models whose residual-error parameters are all fixed.  Such a fit's outer problem is
+  omega-only (structural thetas mu-profiled, residuals fixed), and omegas do not enter
+  the ODE, so no model re-solve per parameter is needed; previously the analytic path
+  fell back to finite differences (re-solving the ODE for every omega step).  The
+  general (f,R) assembler now runs with no free residual direction, reading the (fixed)
+  variance from the solved `rx_r_`.
+- Bounded mu-referenced parameters (population thetas and covariate coefficients) are
+  now also profiled by the mu/irls regression, with the update clamped to the bounds
+  (box-constrained least squares, `foceiControl(muModelClampRetries=)`); parameters
+  that were clamped during the fit are reported once as a fit note.  Previously a
+  bounded population theta dropped its whole group (with a warning) and a bounded
+  covariate coefficient stayed outer-optimized.
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type
@@ -98,7 +264,7 @@
   finite-difference Hessian that already reflects censoring), so their censoring text stays
   plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
 
-- The mu-referenced FOCEI families (`mufocei`/`irlsfocei`/`mufoce`/`mufocep`/...) now
+- The mu-referenced FOCEI families (`mfocei`/`ifocei`/`mfoce`/`mfocep`/...) now
   compute their covariance on the full corresponding `focei`/`foce`/`focep` model, at the
   mu fit's converged theta and eta with the inner problem frozen (as if the full model had
   produced that point), instead of the mu->phi reduced model used during estimation.  This
@@ -163,7 +329,7 @@
   both-sides transform) reporting `covMethod="r"` instead of `"analytic"`.
 
 - Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
-  `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`, `irlsfocepf`, `irlsfoceif` --
+  `mfocef`, `mfocepf`, `mfoceif`, `ifocef`, `ifocepf`, `ifoceif` --
   each equivalent to its base method with `foceiControl(fast = TRUE)` as the
   default (the analytic outer gradient + Eq-48 warm-start).
 
@@ -233,8 +399,8 @@
   `fit$cov`, so repeated calls and `getVarCov()` reuse it instead of recomputing the
   augmented sensitivity solve every time.
 
-- Added the `focep`, `mufocep`, and `irlsfocep` estimation methods -- the `foce`,
-  `mufoce`, and `irlsfoce` methods with `foce = "foce+"` forced (the live conditional
+- Added the `focep`, `mfocep`, and `ifocep` estimation methods -- the `foce`,
+  `mfoce`, and `ifoce` methods with `foce = "foce+"` forced (the live conditional
   residual variance R).
 
 - Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE evaluates the
@@ -450,9 +616,9 @@
   unit steps in scaled space to negligible steps in unscaled space and
   effectively pinned such parameters at their initial value (e.g.
   `tvemax <- -40` with no transform).
-- Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
-  `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`
-  (adaptive Gauss-Hermite quadrature); `mulaplace`, `irlslaplace`
+- Added new mu-referenced FOCEI-family estimation methods: `mfocei`,
+  `ifocei` (FOCEI); `mfoce`, `ifoce` (FOCE); `magq`, `iagq`
+  (adaptive Gauss-Hermite quadrature); `mlaplace`, `ilaplace`
   (Laplace).  For any theta/eta that participates in a mu-ref covariate
   relationship (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
   covariate-coefficient theta(s) are excluded from the outer gradient
@@ -475,9 +641,9 @@
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
   `sigdig = 4`
 
-- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
-  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
-  `mulaplace`/`irlslaplace`, with new `foceiControl()` options
+- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
+  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`,
+  `mlaplace`/`ilaplace`, with new `foceiControl()` options
   `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
 
 - Errors during estimation are now collected and reported together
@@ -593,9 +759,9 @@
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
   `sigdig = 4`
 
-- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
-  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
-  `mulaplace`/`irlslaplace`, with new `foceiControl()` options
+- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
+  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`,
+  `mlaplace`/`ilaplace`, with new `foceiControl()` options
   `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
 
 - Errors during estimation are now collected and reported together
@@ -622,6 +788,11 @@
   `est="nlme"` and invalid initial probabilities, warnings for
   underflowing/collapsing mixture probabilities, and a fix for the
   SAEM omega-diagonal floor being raised outside mixture fits
+
+- Fixed `est = "rpem"` failing with `muIdx / mu0 / omDiag0 must have nEta
+  entries` for models with a centered (non-mu-referenced) random effect,
+  e.g. a bounded typical value like `tcl <- log(c(0, 2.7, 100))` with an
+  eta (the bounded transform demotes the eta to centered)
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session for pooled estimators

@@ -271,6 +271,15 @@ mu2env$expit <- rxode2::expit
   if (!.isMuMethod(est, control)) {
     return(NULL)
   }
+  # Common time-varying / non-time-varying mu-ref covariate split for every
+  # mu-referenced method (saem, mu-focei family, vae): non-time-varying
+  # covariates are absorbed into the phi term, time-varying ones stay as beta
+  # regressors.  Only the split is shared -- the model expansion still differs
+  # (saem drops lone etas into phi, mu-focei/vae keep them).  Removed in
+  # .uiFinalizeMu2hook / each method's on.exit.
+  .tv <- tryCatch(.nlmixrTimeVaryingCovariates(data, ui, control$rxControl),
+                  error = function(e) character(0))
+  .nlmixrSetMuRefTimeVarying(ui, .tv)
   if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
     .uiModifyForCovs(ui, data)
   } else {
@@ -319,6 +328,10 @@ mu2env$expit <- rxode2::expit
         class(ret) <- .cls
       }
     }
+  }
+  # remove the shared time-varying mu-ref split staged in .uiApplyMu2hook
+  if (!is.null(ret$env) && !is.null(ret$env$ui)) {
+    .nlmixrRmMuRefTimeVarying(ret$env$ui)
   }
   # Reset symengine environments
   .saemModelEnv$symengine <- NULL

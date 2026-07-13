@@ -103,6 +103,8 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
+  rxode2::.s3register("rxode2::rxUiGet", "foceiOuter")
+  rxode2::.s3register("rxode2::rxUiGet", "impmapThetaSens")
   .resetCacheIfNeeded()
   .Call(`_rxode2version4`, as.integer(utils::packageVersion("rxode2") >= "4.0.0"))
 }

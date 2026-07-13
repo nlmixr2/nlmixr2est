@@ -111,12 +111,55 @@
         as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
 }
 
+#' Count literal occurrences of each of `.names` on the model-expression RHS.
+#'
+#' Shared by the eta-occurrence guard (a random effect reused across parameters breaks
+#' the covariate/theta direction reuse) and the structural-theta guard (a structural
+#' parameter appearing in more than one mu-expression breaks the eta-less covariate
+#' reuse -- `df/dtheta` would then gain a path `df/db` lacks).  Returns a named integer
+#' vector; `2L` (i.e. ">1", conservative -> no reuse) when `lstExpr` is unavailable.
+#' @noRd
+.foceiNameOccurrence <- function(ui, .names) {
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  .count <- function(.e, .nm) {
+    if (is.name(.e)) return(as.integer(identical(as.character(.e), .nm)))
+    if (is.call(.e)) return(sum(vapply(as.list(.e)[-1L], .count, integer(1), .nm)))
+    0L
+  }
+  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
+    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")))
+  stats::setNames(vapply(as.character(.names), function(.n)
+    if (is.null(.lst)) 2L else sum(vapply(.lst, function(.ex)
+      if (.isAssign(.ex)) .count(.ex[[3]], .n) else 0L, integer(1))), integer(1)),
+    as.character(.names))
+}
+#' Literal occurrence count of each diagonal eta across the model RHS.
+#'
+#' The sensitivity direction-reuse identities -- a mu-ref theta reusing its eta's
+#' direction (`df/dtheta = df/deta`) and a mu-ref covariate coefficient scaling it
+#' (`df/db = cov*df/deta`) -- are exact only when the eta enters the model through a
+#' single additive position.  An eta shared across parameters (e.g. `eta.cl` in both
+#' `cl` and `v`) makes `df/dtheta` (one parameter) differ from `df/deta` (all of
+#' them), so the reuse would be wrong.  rxode2's mu-reference frames still map such an
+#' eta, so its multiplicity is counted here.  Named by the diagonal-eta names in
+#' `neta1` order; `2L` (conservative ">1") when `lstExpr` is unavailable.
+#' @noRd
+.foceiEtaOccurrence <- function(ui) {
+  .idf <- ui$iniDf
+  .etaRows <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
+  .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
+  .foceiNameOccurrence(ui, as.character(.etaRows$name))
+}
+
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
 #' eta (ETA_i_) plus one per non-mu-ref structural theta (THETA_j_); a mu-ref theta
 #' reuses its eta's direction (so a fully mu-ref model has ndir == neta).  Sigma and
-#' IOV SD thetas (`sgName`/`iovVars`) are not structural.  `NULL` if none remain.
+#' IOV SD thetas (`sgName`/`iovVars`) are not structural.  `sharedEta` is a logical
+#' flag per diagonal eta (in `neta1` order) marking an eta reused across parameters,
+#' for which the theta reuse is invalid.  `NULL` if none remain.
 #' @noRd
-.foceiAnalyticDirections <- function(ini, thetaForEta, sgName, neta, iovVars = character(0)) {
+.foceiAnalyticDirections <- function(ini, thetaForEta, sgName, neta, iovVars = character(0),
+                                     sharedEta = logical(0)) {
   thRows <- ini[!is.na(ini$ntheta), , drop = FALSE]
   thRows <- thRows[order(thRows$ntheta), , drop = FALSE]
   thStructRows <- thRows[!.iniIsFixed(ini, thRows$name) & !(thRows$name %in% sgName) &
@@ -131,7 +174,15 @@
     if (length(.mt) > 1L)                           # shared by >1 eta -> summing routes NYI, fall back to FD
       return(.foceiAnalyticFallback("a structural parameter mu-referenced by more than one random effect"))
     k <- if (length(.mt) == 1L) .mt else NA_integer_
-    if (!is.na(k)) {
+    # A mu-ref theta reuses its eta's state-sensitivity direction for free (df/dtheta = df/deta,
+    # since theta and eta enter the mu identically) -- but ONLY when the eta enters the model in a
+    # single additive position.  A shared eta (e.g. eta.cl in both cl and v) makes df/dtheta (this
+    # parameter only) differ from df/deta (all parameters the eta appears in), so the reuse is
+    # invalid; treat the theta as non-mu and give it its OWN true-sensitivity direction (the eta
+    # keeps its own, correct, direction).  Stays analytic -- just one extra direction for that
+    # theta, only in the rare shared-eta case.
+    .reuse <- !is.na(k) && !(k <= length(sharedEta) && isTRUE(sharedEta[k]))
+    if (.reuse) {
       dirTh[p] <- k                                 # reuse eta k's direction (free)
     } else {
       nonMuTheta <- c(nonMuTheta, paste0("THETA_", thStructRows$ntheta[p], "_"))
@@ -572,7 +623,8 @@
     # Uniform direction assembly (shared with the standalone oracle).  IOV variance
     # thetas are NOT structural (predictor) thetas: they never get a THETA_j_ direction
     # (the occasion-eta sensitivities already carry the w factor).
-    .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta, iovVars)
+    .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta, iovVars,
+                                     sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
     if (is.null(.dir)) return(NULL)
     thStruct <- .dir$thStruct
     dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
@@ -730,6 +782,20 @@
 #' propT/propF, a DV transform, combined1, or pure proportional) -> FD fallback.
 #' @noRd
 .foceiAnalyticErrFull <- function(ui) {
+  # Distribution guard (Gaussian-only).  The analytic gradient AND covariance assemble a
+  # conditional-GAUSSIAN observed information (rho = 0.5*((y-f)^2/R + log R)).  A non-normal
+  # endpoint (t, cauchy, poisson, binomial, ordinal, ...) is built on the SAME norm-form
+  # rx_pred_/rx_r_ as a Gaussian fit -- its real (heavier-tailed / discrete) density lives in a
+  # SEPARATE ..Llik model the augmented sensitivity model never touches.  Such an endpoint that
+  # still carries an add()/prop() location scale would slip past the err-based checks below and
+  # be assembled as Gaussian (silently wrong).  The gradient is already shielded upstream by the
+  # needOptimHess -> fast=FALSE downgrade (focei.R), but covType="analytic" has no such
+  # downgrade, so gate it here.  "norm" and its explicit-Gaussian spelling "dnorm" (used for the
+  # Gaussian endpoints of a mixed model) stay in scope; everything else falls back to FD.
+  .dist <- tryCatch(as.character(ui$predDfFocei$distribution), error = function(e) NULL)
+  if (!length(.dist)) .dist <- tryCatch(as.character(ui$predDf$distribution), error = function(e) character(0))
+  if (length(.dist) && !all(.dist %in% c("norm", "dnorm")))
+    return(.foceiAnalyticFallback("a non-normal likelihood endpoint (t/cauchy/count/ordinal); the analytic path is Gaussian-only"))
   # Multiple modeled endpoints: rx_pred_ and rx_r_ are single dvid-conditional
   # expressions that already select the right endpoint per observation when solved
   # against the dataset, so the (f,R) path handles them -- but the single-endpoint
@@ -750,10 +816,38 @@
   if (!all(.trans == "untransformed")) {
     .lamRows <- ini[!is.na(ini$err) & ini$err %in% c("boxCox", "yeoJohnson"), , drop = FALSE]
     .estLam <- any(!.lamRows$fix)
+    # Multiple estimated per-endpoint lambdas need an endpoint->lambda DV mapping that is not
+    # wired (the gradient gates this at foceiGradAnalytic.R; without the same gate the covariance
+    # would recycle one endpoint's dy'/dlambda chain across every lambda column -- silently
+    # wrong).  A single estimated lambda is the ported case; more than one falls back to FD.
+    if (sum(!.lamRows$fix) > 1L)
+      return(.foceiAnalyticFallback("multiple estimated boxCox/yeoJohnson lambdas (endpoint->lambda mapping not yet wired)"))
   }
   er <- ini[!is.na(ini$err), , drop = FALSE]
-  if (nrow(er) == 0L)
-    return(.foceiAnalyticFallback("a model with no residual error"))
+  if (nrow(er) == 0L) {
+    # All residual-error parameters are fixed: the fit's working iniDf drops
+    # them (they are baked into the compiled rx_r_ as constants), yet the model
+    # still HAS a residual (predDf carries its errType).  Rather than fall back
+    # to FD -- which re-solves the ODE per outer parameter (all omegas here,
+    # which do not even enter the ODE) -- run the general (f,R) path with NO
+    # free sigma direction (nsg = 0): rx_r_ is read from the solve, the omega
+    # gradient uses the precomputed Omega derivatives, and R's constancy needs
+    # no re-solve.  Only the plain conditional-Gaussian error types are ported;
+    # anything else stays on FD.
+    .et <- as.character(ui$predDf$errType)
+    .tok <- unique(trimws(unlist(strsplit(.et, "[^A-Za-z0-9]+"))))
+    .tok <- .tok[nzchar(.tok)]
+    .known <- c("add", "prop", "pow", "combined1", "combined2")
+    if (length(.tok) == 0L || !all(.tok %in% .known) ||
+          !all(.trans == "untransformed"))
+      return(.foceiAnalyticFallback("a model with no estimated residual error"))
+    .hasAddFloor <- any(.tok %in% c("add", "combined1", "combined2"))
+    return(list(sgVar = character(0), sgName = character(0), sc = NULL,
+                per = NULL, pair = NULL, foce = NULL, focePlus = NULL,
+                foceiOnly = TRUE, canVanish = !.hasAddFloor,
+                dependsF0 = !all(.tok == "add"), estLam = .estLam,
+                ev = function(e, f, y, f0 = f) NULL))
+  }
   sgNameAll <- er$name                               # ALL error params (excluded from directions)
   # pure proportional / power error (no additive floor) vanishes as f -> 0, making the
   # 1/R observed-information terms blow up near zero predictions; the assembly guards it.
@@ -767,12 +861,12 @@
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
     addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"), error = function(e) "combined2")
   }
-  # The (f,R) FOCEI path reads R and dR/dsigma from the model's own rx_r_ via the solve,
-  # so ANY variance structure is in scope -- including combined1 (sa+sp*f)^2, which rx_r_
-  # carries directly ((add + pred*prop)^2, the weight squared).  FOCE still needs the
-  # symbolic add/prop error machinery below and only supports the combined2 sum-of-
-  # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
-  # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
+  # The general (f,R) path reads R and dR/dsigma from the model's own rx_r_ via the solve, so ANY
+  # conditional-Gaussian variance structure is in scope -- including combined1 (sa+sp*f)^2, which
+  # rx_r_ carries directly ((add + pred*prop)^2, the weight squared).  The symbolic add/prop path
+  # below is only the FAST route for the plain untransformed add/prop/combined2 case; everything
+  # else returns a minimal `ef` (foceiOnly=TRUE) and runs the general (f,R) assembler
+  # (.foceiAnalyticAssembleRFR), which handles BOTH FOCEI and FOCE (interaction 0/1).
   # a both-sides transform is never the plain-scale symbolic add/prop machinery: force the
   # general (f,R) path (rx_pred_/rx_r_ carry the transform; only the DV is retransformed).
   .isAddProp <- !.multiEndpoint && all(.trans == "untransformed") &&
@@ -898,9 +992,100 @@
   }
   .et
 }
+#' Covariate-coefficient directions that can be reconstructed by eta-scaling.
+#'
+#' A mu-referenced covariate coefficient `b` enters linearly through an eta's parameter
+#' (`cl = exp(tcl + eta.cl + b*cov)`), so for a subject-constant covariate every sensitivity
+#' of `b` equals the linked eta's scaled by the covariate value: df/db = cov*df/deta,
+#' d2f/(db dx) = cov*d2f/(deta dx), d2f/db2 = cov^2*d2f/deta2 (verified exact).  We can therefore
+#' skip integrating `b`'s state-sensitivity ODEs and emit its f1/f2/rvar/rsig columns as scaled
+#' copies of the linked eta's columns.  Returns a named list `covDir -> list(etaDir, scale)`
+#' (scale = the covariate expression in rxode2 syntax) for such thetas present in `fDirs`.
+#'
+#' Detection reuses rxode2's OWN mu-reference classification rather than re-parsing the model --
+#' the same machinery the mu-referenced (muModel="lin"/"irls") family consumes (see #711/#712):
+#'   * ui$muRefDataFrame                  : the theta<->eta link.  A well-formed mu-reference has
+#'       the eta as a BARE `+eta` in the parameter; a scaled eta (`0.5*eta`) is simply absent, so
+#'       such coefficients are auto-excluded with no extra check.
+#'   * ui$muRefCovariateDataFrame         : BARE data-column covariate coefficients.
+#'   * ui$mu2RefCovariateReplaceDataFrame : ALGEBRAIC covariate-expression coefficients (allometric
+#'       `log(WT/70)`, centered `(WT-70)`, ...) -- exactly the set `muRefCovAlg` rewrites; its
+#'       `covariate` column is the (equivalent) covariate expression used as the scale.
+#' Both covariate frames carry (theta, covariateParameter, covariate); the theta is mapped to its
+#' eta via muRefDataFrame.  The ONE structural condition rxode2's frames do not encode is an eta
+#' REUSED in another parameter (then df/deta gains a path df/db lacks), so an eta-occurrence guard
+#' is applied.  The scale being covariate-and-constant only is enforced downstream by the caller's
+#' subject-constant gate.  Empty when the info is unavailable.
+#' @noRd
+.foceiAnalyticCovDirMap <- function(ui, fDirs) {
+  .ini <- ui$iniDf
+  # eta name -> ETA_k_ (k = order among diagonal etas, matching .foceiAnalyticDirections' etaDirs)
+  .etaRows <- .ini[!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2, , drop = FALSE]
+  .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
+  .eta2Dir <- stats::setNames(paste0("ETA_", seq_len(nrow(.etaRows)), "_"), .etaRows$name)
+  # id-level theta -> eta (occasion/IOV etas excluded -- IOV is out of analytic scope anyway).
+  # May be empty: a covariate can also scale an ETA-LESS structural parameter (handled below), so
+  # do NOT bail on an empty eta map -- only bail when there are no covariate coefficients at all.
+  .mrd <- tryCatch(ui$muRefDataFrame, error = function(e) NULL)
+  .theta2eta <- if (!is.null(.mrd) && is.data.frame(.mrd) && nrow(.mrd) > 0L) {
+    .idRef <- .mrd[is.na(.mrd$level) | .mrd$level == "id", , drop = FALSE]
+    stats::setNames(as.character(.idRef$eta), as.character(.idRef$theta))
+  } else character(0)
+  # (theta, coefficient, scale) rows from BOTH rxode2 covariate frames (bare + algebraic)
+  .grab <- function(df, scaleCol) {
+    if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L ||
+        !all(c("theta", "covariateParameter", scaleCol) %in% names(df))) return(NULL)
+    data.frame(theta = as.character(df$theta), coef = as.character(df$covariateParameter),
+               scale = as.character(df[[scaleCol]]), stringsAsFactors = FALSE)
+  }
+  .cov <- do.call(rbind, list(
+    .grab(tryCatch(ui$muRefCovariateDataFrame, error = function(e) NULL), "covariate"),
+    .grab(tryCatch(ui$mu2RefCovariateReplaceDataFrame, error = function(e) NULL), "covariate")))
+  if (is.null(.cov) || nrow(.cov) == 0L) return(list())
+  # A covariate coefficient's sensitivities are those of the parameter position it scales, times the
+  # covariate value.  That position is either a random effect (`cl = exp(tcl + eta.cl + b*cov)` ->
+  # df/db = cov*df/deta) or, for a covariate on an ETA-LESS parameter (`v = exp(tv + b*cov)`, no
+  # eta.v), the structural theta itself (df/db = cov*df/dtheta, since theta and b enter the mu
+  # identically -- tv's own direction is already integrated, so b reuses it for free).  Guard the
+  # ONE structural condition the rxode2 frames don't encode: the reused position must occur exactly
+  # once; a shared eta/theta gains a state path df/db lacks (counts are conservative -> `2L` when
+  # lstExpr is unavailable, so uncertain cases fall back to the full symbolic build).
+  .eo <- .foceiEtaOccurrence(ui)
+  .to <- .foceiNameOccurrence(ui, unique(.cov$theta))
+  .res <- list(); .dup <- character(0)
+  for (.r in seq_len(nrow(.cov))) {
+    .thN <- .cov$theta[.r]
+    .etN <- if (.thN %in% names(.theta2eta)) .theta2eta[[.thN]] else NA_character_
+    if (!is.na(.etN)) {
+      .ed <- .eta2Dir[[.etN]]; if (is.null(.ed) || !(.ed %in% fDirs)) next
+      if (!identical(.eo[[.etN]], 1L)) next                      # eta shared/reused -> scaling not exact
+    } else {
+      # eta-less parameter: reuse the structural theta's own (already integrated) direction
+      .snt <- .ini$ntheta[.ini$name == .thN]; if (length(.snt) != 1L || is.na(.snt)) next
+      .ed <- paste0("THETA_", .snt, "_"); if (!(.ed %in% fDirs)) next
+      if (!identical(.to[[.thN]], 1L)) next                      # structural theta shared -> scaling not exact
+    }
+    .nt <- .ini$ntheta[.ini$name == .cov$coef[.r]]; if (length(.nt) != 1L || is.na(.nt)) next
+    .cd <- paste0("THETA_", .nt, "_"); if (!(.cd %in% fDirs) || .cd %in% .dup) next
+    # `etaDir` names the source direction to scale (an eta direction, or a structural-theta
+    # direction for an eta-less parameter); the downstream emitter treats both identically.
+    .new <- list(etaDir = .ed, scale = .cov$scale[.r])
+    if (!is.null(.res[[.cd]])) {
+      # same coefficient re-listed identically (bare frame + algebraic frame overlap) -> no-op; a
+      # different (etaDir, scale) is a genuine ambiguity (b*cov1 + b*cov2) -> drop, fall back.
+      if (identical(.res[[.cd]], .new)) next
+      .res[[.cd]] <- NULL; .dup <- c(.dup, .cd); next
+    }
+    .res[[.cd]] <- .new
+  }
+  .res
+}
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
-                          "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP")),   # skip flag -> distinct cached model
+                          "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP"),     # skip flag -> distinct cached model
+                          # subject-constant covariate set -> which covariate directions get eta-scaling reuse
+                          "|cc", paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL),
+                                                     error = function(e) NULL)), collapse = ",")),
                    error = function(e) NULL)
   if (!is.null(.key)) { .hit <- get0(.key, envir = .foceiAnalyticAugCache, inherits = FALSE)
     if (!is.null(.hit)) return(.hit) }
@@ -928,12 +1113,32 @@
     .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
     .sigDirs <- if (!nzchar(Sys.getenv("FOCEI_NO_SIGMA_SKIP"))) intersect(dirs, paste0("THETA_", .erN, "_")) else character(0)
     .fDirs <- dirs[!(dirs %in% .sigDirs)]
-    rxode2::.rxJacobian(.s, c(.st, .fDirs))
+    # Covariate-coefficient reuse (always on; the subject-constant gate below keeps it exact): a
+    # mu-ref covariate direction's sensitivities are the linked eta's scaled by the covariate value,
+    # so we build state sensitivities over the model directions .mfDirs only (no covariate-direction
+    # ODEs) and emit the covariate columns algebraically below.  The covariate directions stay in the
+    # full direction set (.fDirs/dirs/.P2/.P2r/am$cols) so the assembly and FD3 are unchanged -- they
+    # read the algebraically-emitted covariate columns like any other.
+    .covMap <- .foceiAnalyticCovDirMap(ui, .fDirs)
+    # Subject-constant gate: the eta-scaling identity holds only for covariates that are constant
+    # within each subject (a time-varying covariate makes d(state)/db != cov*d(state)/deta).  The
+    # constant-covariate set is computed from the data and stashed on the control by the fit setup;
+    # reuse only a covariate whose scale expression uses exclusively constant covariates (and drop
+    # all reuse when the set is unavailable, e.g. standalone use -- the full build is always correct).
+    if (length(.covMap)) {
+      .constCovs <- tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)
+      .covMap <- .covMap[vapply(.covMap, function(.m) {
+        .v <- all.vars(parse(text = .m$scale)[[1]]); length(.v) > 0L && all(.v %in% .constCovs)
+      }, logical(1))]
+    }
+    .covDirs <- names(.covMap)
+    .mfDirs <- .fDirs[!(.fDirs %in% .covDirs)]      # directions that get integrated state sensitivities
+    rxode2::.rxJacobian(.s, c(.st, .mfDirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
-    .s1 <- rxode2::.rxSens(.s, .fDirs)
+    .s1 <- rxode2::.rxSens(.s, .mfDirs)
     if (length(.s1) == 0L) return(NULL)
-    .s2 <- rxode2::.rxSens(.s, .fDirs, .fDirs)      # 2nd order (f-directions only): the expensive expansion
+    .s2 <- rxode2::.rxSens(.s, .mfDirs, .mfDirs)    # 2nd order (model f-directions only): the expensive expansion
     .pred <- get("rx_pred_", .s)
     # residual variance rx_r_ (any structure) with its own 1st/2nd sensitivity chains,
     # exactly like the prediction -- so R and dR/ddir, d2R/ddir2 come from the SOLVE
@@ -943,22 +1148,41 @@
     .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
     .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
     .toRx <- function(.l) rxode2::rxFromSE(.l)
-    # state-sensitivity chains only for directions that have solved sensitivities (.fDirs);
-    # a sigma direction contributes only its direct partial (d(state)/dsigma=0).
+    # state-sensitivity chains only for model directions .mfDirs (a sigma or covariate-reuse
+    # direction contributes no integrated state chain -- sigma has d(state)/dsigma=0, and a
+    # covariate direction's columns are emitted by scaling below, not via .g1/.g2).
     .g1 <- function(.ex, .p) { .e <- .Dn(.ex, .p)
-      if (.p %in% .fDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
+      if (.p %in% .mfDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
     .g2 <- function(.ex, .p, .q) { .gq <- .g1(.ex, .q); .e <- .Dn(.gq, .p)
-      if (.p %in% .fDirs) for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
-      if (.p %in% .fDirs && .q %in% .fDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
+      if (.p %in% .mfDirs) for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
+      if (.p %in% .mfDirs && .q %in% .mfDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
+    # Covariate-direction reuse: map a direction to its model substitute (the linked eta for a
+    # covariate direction) + scale; emit a 1st/2nd-order line symbolically when it involves only
+    # model directions, else algebraically from the (eta-substituted, reordered) model column
+    # scaled by the covariate value(s).  `.emitScaled1` does the 1st-order (single-direction)
+    # columns; `.emitPair` the 2nd-order (pair) columns.
+    .covSub <- function(.d) { .m <- .covMap[[.d]]; if (is.null(.m)) list(d = .d, s = NULL) else list(d = .m$etaDir, s = .m$scale) }
+    .emitScaled1 <- function(.pre, .suf, .cd) paste0(.pre, .cd, .suf, "=(", .covMap[[.cd]]$scale, ")*", .pre, .covMap[[.cd]]$etaDir, .suf)
+    .emitPair <- function(.pre, .i, .j, .symFn, .ord) {
+      .si <- .covSub(.i); .sj <- .covSub(.j)
+      if (is.null(.si$s) && is.null(.sj$s)) return(paste0(.pre, .i, "_", .j, "=", .symFn(.i, .j)))
+      .a <- .si$d; .b <- .sj$d
+      if (match(.a, .ord) > match(.b, .ord)) { .t <- .a; .a <- .b; .b <- .t }
+      paste0(.pre, .i, "_", .j, "=", paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"), "*", .pre, .a, "_", .b)
+    }
     # f2_i_j == f2_j_i, so only the i<=j triangle is differentiated/compiled (~2x off
     # the dominant model-build cost); the reader mirrors A[,i,j]=A[,j,i].
     .P2 <- expand.grid(i = .fDirs, j = .fDirs, stringsAsFactors = FALSE)     # prediction f2: f-directions only
     .P2 <- .P2[match(.P2$i, .fDirs) <= match(.P2$j, .fDirs), , drop = FALSE]
     .P2r <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)        # variance rvar2: every direction
     .P2r <- .P2r[match(.P2r$i, dirs) <= match(.P2r$j, dirs), , drop = FALSE]
-    .fL1 <- vapply(.fDirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1))
-    .fL2 <- vapply(seq_len(nrow(.P2)), function(.r)
-      paste0("rx_f2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r]))), character(1))
+    # model directions first (they define the columns the covariate columns scale), covariate
+    # directions after -- rxode2 evaluates assignments in order.
+    .fL1 <- c(vapply(.mfDirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1)),
+              vapply(.covDirs, function(.cd) .emitScaled1("rx_f1_", "", .cd), character(1)))
+    .p2mod <- !(.P2$i %in% .covDirs) & !(.P2$j %in% .covDirs)
+    .fL2 <- c(vapply(which(.p2mod), function(.r) .emitPair("rx_f2_", .P2$i[.r], .P2$j[.r], function(.a, .b) .toRx(.g2(.pred, .a, .b)), .fDirs), character(1)),
+              vapply(which(!.p2mod), function(.r) .emitPair("rx_f2_", .P2$i[.r], .P2$j[.r], NULL, .fDirs), character(1)))
     # Variance rx_r_ and its 1st/2nd direction sensitivities.  The `rx_..._` naming
     # matters: rxode2 keeps a constant assignment to an `rx_<name>_` variable as a
     # real lhs output column (like the inner model's rx__sens_*), whereas a plainly
@@ -967,9 +1191,11 @@
     # comes back as a column of that constant -- no special-casing needed.
     .rvarL <- character(0)
     if (!is.null(.rvar)) {
-      .rL1 <- vapply(dirs, function(.p) paste0("rx_rvar1_", .p, "=", .toRx(.g1(.rvar, .p))), character(1))
-      .rL2 <- vapply(seq_len(nrow(.P2r)), function(.r)
-        paste0("rx_rvar2_", .P2r$i[.r], "_", .P2r$j[.r], "=", .toRx(.g2(.rvar, .P2r$i[.r], .P2r$j[.r]))), character(1))
+      .rL1 <- c(vapply(dirs[!(dirs %in% .covDirs)], function(.p) paste0("rx_rvar1_", .p, "=", .toRx(.g1(.rvar, .p))), character(1)),
+                vapply(.covDirs, function(.cd) .emitScaled1("rx_rvar1_", "", .cd), character(1)))
+      .pr2mod <- !(.P2r$i %in% .covDirs) & !(.P2r$j %in% .covDirs)
+      .rL2 <- c(vapply(which(.pr2mod), function(.r) .emitPair("rx_rvar2_", .P2r$i[.r], .P2r$j[.r], function(.a, .b) .toRx(.g2(.rvar, .a, .b)), dirs), character(1)),
+                vapply(which(!.pr2mod), function(.r) .emitPair("rx_rvar2_", .P2r$i[.r], .P2r$j[.r], NULL, dirs), character(1)))
       .rvarL <- c(paste0("rx_rvarf_=", .toRx(.rvar)), .rL1, .rL2)
     }
     # Residual-variance sigma sensitivities: for each error parameter the variance R
@@ -988,7 +1214,8 @@
       for (.n in .sigTh) {
         .sg <- paste0("THETA_", .n, "_"); .dRs <- .Dn(.rvar, .sg)
         .sigL <- c(.sigL, paste0("rx_rsig_", .n, "_=", .toRx(.dRs)),
-          vapply(dirs, function(.p) paste0("rx_rsig1_", .n, "_", .p, "=", .toRx(.g1(.dRs, .p))), character(1)),
+          vapply(dirs[!(dirs %in% .covDirs)], function(.p) paste0("rx_rsig1_", .n, "_", .p, "=", .toRx(.g1(.dRs, .p))), character(1)),
+          vapply(.covDirs, function(.cd) .emitScaled1(paste0("rx_rsig1_", .n, "_"), "", .cd), character(1)),
           vapply(.sigTh[.sigTh >= .n], function(.n2)
             paste0("rx_rsig2_", .n, "_", .n2, "=", .toRx(.Dn(.dRs, paste0("THETA_", .n2, "_")))), character(1)))
       }
@@ -1021,8 +1248,12 @@
       .ic <- tryCatch(get(paste0("rx_", .x, "_ini_0__"), .s), error = function(e) NULL)
       if (is.null(.ic)) next
       if (!(.x %in% .icDone)) .icL <- c(.icL, paste0(.x, "(0)=", .toRx(.ic)))  # base state IC
-      for (.p in dirs) .icL <- c(.icL, .emitIc(paste0("rx__sens_", .x, "_BY_", .p, "__"), .Dn(.ic, .p)))
-      for (.r in seq_len(nrow(.P2)))
+      # only model directions have sensitivity compartments (covariate directions are emitted by
+      # scaling, so their IC contribution is already in the scaled eta columns -- emitting a
+      # phantom rx__sens_..._BY_<covDir>_(0)= for a non-existent compartment would break the model).
+      for (.p in .mfDirs) .icL <- c(.icL, .emitIc(paste0("rx__sens_", .x, "_BY_", .p, "__"), .Dn(.ic, .p)))
+      .p2m <- which(!(.P2$i %in% .covDirs) & !(.P2$j %in% .covDirs))
+      for (.r in .p2m)
         .icL <- c(.icL, .emitIc(paste0("rx__sens_", .x, "_BY_", .P2$i[.r], "_BY_", .P2$j[.r], "__"),
                                 .Dn(.Dn(.ic, .P2$i[.r]), .P2$j[.r])))
     }
@@ -1061,7 +1292,20 @@
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
       .modTxt <- tryCatch({
         .ln <- strsplit(.modTxt, "\n", fixed = TRUE)[[1]]
-        .k <- max(1L, ceiling(length(.ln) / 40))
+        # The chunker optimizes contiguous 40-line pieces independently for build speed.
+        # rxOptExpr parses each chunk as a standalone model, so a chunk that holds a
+        # compartment-scoped construct -- a state initial condition (`W(0)=`) or a dosing
+        # modifier (`f(cmt)=` / `lag(cmt)=`->`alag(cmt)=` / `rate(cmt)=` / `dur(cmt)=`) --
+        # without the matching `d/dt(cmt)=` (which, for a parameter-dependent IC/modifier,
+        # sits many sensitivity-ODE lines away in an EARLIER chunk) raises e.g. "'W(0)'
+        # present, but d/dt(W) not defined".  These lines cannot simply be pulled out and
+        # re-appended: their RHS may read a model variable whose value the optimized body
+        # changes, so position is load-bearing.  When any such construct is present, drop to
+        # a single whole-model rxOptExpr call (the original, correct behavior -- slower to
+        # build but rare); keep the fast chunking for the common unconstrained models.
+        .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
+          any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
+        .k <- if (.special) 1L else max(1L, ceiling(length(.ln) / 40))
         if (.k <= 1L) {
           rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
         } else {
@@ -1962,7 +2206,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   ui <- fit$finalUi
   if (!.hasRxSens())
     return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
-  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
+  # FO/FOI is out of scope (the analytic (f,R) path is a FOCEI/FOCE observed information).  The
+  # runtime `fo` flag is not persisted to fit$finalUi, so this standalone entry also keys on the
+  # persisted estimation method (ui$control$est) -- otherwise an FO fit would be silently assembled
+  # as FOCE and mislabelled "analytic".  (The live covType="analytic" hook reads the in-fit ui
+  # where `fo` is set, and FO forces covMethod=0, so the production path is already safe.)
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))) ||
+      isTRUE(rxode2::rxGetControl(ui, "est", "") %in% c("fo", "foi")))
     return(.foceiAnalyticFallback("the FO/FOI method"))
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt)))
@@ -2003,7 +2253,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   omd <- .omegaVarCovDeriv(Om, pairs)
 
   # Uniform direction assembly (shared with the production covType="analytic" hook).
-  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta)
+  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta,
+                                   sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
   if (is.null(.dir)) return(NULL)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh
   ndir <- .dir$ndir; nth <- .dir$nth
@@ -2059,7 +2310,11 @@ foceiCovAnalytic <- function(fit) {
   if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
     return(get(".covAnalytic", envir = .env))
   }
-  .ret <- .foceiCovAnalyticCalc(fit)
+  # Match the live covType="analytic" hook (.foceiCalcRanalytic), which wraps the whole assembly
+  # in tryCatch and returns NULL on any error -> FD fallback.  A direct foceiCovAnalytic()/
+  # getVarCov() call must fall back just as gracefully (e.g. a pure-proportional FOCE fit whose
+  # near-zero-prediction branch can hit an NA), never throw.
+  .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
   if (!is.null(.ret) && is.matrix(.ret$cov)) {
     .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it

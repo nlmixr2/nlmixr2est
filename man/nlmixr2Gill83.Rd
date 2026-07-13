@@ -84,7 +84,7 @@ Get the optimal forward difference interval by Gill83 method
 }
 \examples{
 
-## These are taken from the numDeriv::grad examples to show how
+## These are taken from the numDeriv's grad examples to show how
 ## simple gradients are assessed with nlmixr2Gill83
 
 nlmixr2Gill83(sin, pi)

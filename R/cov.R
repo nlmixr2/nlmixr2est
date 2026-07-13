@@ -167,8 +167,10 @@
 #' @return invisibly TRUE if the covariance was recomputed and installed
 #' @noRd
 .foceiRecomputeMuCov <- function(fit, est) {
-  # only the mu-referenced (lin/irls) families (mufocei/irlsfocei/mufoce/mufocep/...)
-  if (!grepl("^(mu|irls)", est)) return(NULL)
+  # only the mu-referenced (lin/irls) families (mfocei/ifocei/mfoce/mfocep/...);
+  # anchored to the known method names so other i*/m* ests (imp, impmap, ...)
+  # never match
+  if (!grepl("^(m|i)(focei|foce|focep|agq|laplace)$", est)) return(NULL)
   .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
   if (is.null(.control)) return(NULL)
   .cm <- .control$covMethod
@@ -177,7 +179,7 @@
   .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
                   error = function(e) NULL)
   if (is.null(.ui)) return(NULL)
-  .baseEst <- sub("^(mu|irls)", "", est)     # mufocei->focei, mufoce->foce, mufocep->focep
+  .baseEst <- sub("^(m|i)", "", est)         # mfocei->focei, ifoce->foce, mfocep->focep
   .control$muModel <- "none"                 # recompute the foceiModel on the full model
   # drop the mu-group wiring so the recompute treats every structural theta as an
   # ordinary parameter (nothing excluded/re-profiled by the mu machinery); keep `fast`

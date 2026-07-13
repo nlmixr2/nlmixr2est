@@ -198,13 +198,14 @@ nmTest({
       .cmp(odeLin, matLin, .datLin, .est, .ctlFun)   # pure-linear matExp
       .cmp(odeMM,  matMM,  .datMM,  .est, .ctlFun)   # indLin() Michaelis-Menten
     }
-    # mu-referenced and IRLS families share the same augmented builder; the FOCE-based
-    # mu/irls variants converge the matExp and ODE forms to marginally different points
-    # (regression-updated mu-ref theta), so the analytic SEs are compared a bit looser.
-    for (.est in c("mufocei", "irlsfocei")) {
-      .cmp(odeMM, matMM, .datMM, .est, foceiControl)
+    # mu-referenced and IRLS families share the same augmented builder; the mu/irls
+    # variants converge the matExp and ODE forms to marginally different points
+    # (regression-updated mu-ref theta -- since plain mu-ref profiling, tka is
+    # regression-updated in all of them), so the analytic SEs are compared a bit looser.
+    for (.est in c("mfocei", "ifocei")) {
+      .cmp(odeMM, matMM, .datMM, .est, foceiControl, seTol = 3e-2)
     }
-    for (.est in c("mufoce", "irlsfoce")) {
+    for (.est in c("mfoce", "ifoce")) {
       .cmp(odeMM, matMM, .datMM, .est, foceControl, seTol = 3e-2)
     }
   })

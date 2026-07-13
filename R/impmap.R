@@ -11,6 +11,7 @@
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
+                           "qr", "qrShift", "qrRefresh", "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
@@ -57,6 +58,25 @@
 #'   covariance; the variance of a tightly-determined random effect (an Omega
 #'   diagonal) can still be over-estimated because the fixed samples barely span
 #'   its prior variation.
+#' @param qr When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
+#'   samples instead of pseudo-random Gaussian samples (QRPEM, Leary &
+#'   Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead of
+#'   O(1/sqrt(N)).
+#' @param qrShift Only used with `qr=TRUE`.  When `TRUE` each (iteration,
+#'   subject) applies a random Cranley-Patterson shift to the Sobol points
+#'   (seeded, thread-count independent); `FALSE` reuses one fixed Sobol point
+#'   set everywhere (fully deterministic E-step, no RNG in the draw).
+#' @param qrRefresh Only used with `qr=TRUE` and `qrShift=TRUE`.  When `TRUE`
+#'   the shift is redrawn each iteration so residual quasi-random error
+#'   averages out over the EM; `FALSE` draws one shift per subject at the fit
+#'   start, making each EM iteration a deterministic map (smoothest objective
+#'   trace).
+#' @param sir When `TRUE`, accelerate the non-mu / residual-error M-step by
+#'   SIR (sampling-importance-resampling): the theta-sensitivity Newton step
+#'   uses `sirSample` equal-weight resampled points per subject instead of all
+#'   `isample` weighted samples.
+#' @param sirSample Number of SIR resampled points per subject; `NULL` uses
+#'   `max(25, ceiling(isample/10))`.  Must be at most `isample`.
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -76,8 +96,31 @@ impmapControl <- function(sigdig=3,
                           nConvWindow=10L,
                           impSeed=42L,
                           impCov=FALSE,
+                          qr=FALSE,
+                          qrShift=TRUE,
+                          qrRefresh=TRUE,
+                          sir=FALSE,
+                          sirSample=NULL,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
+  checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
+  checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
+  checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
+  checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
+  checkmate::assertIntegerish(isample, any.missing=FALSE, len=1, lower=1, .var.name="isample")
+  checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
+  .isample <- as.integer(isample)
+  if (is.null(sirSample)) {
+    .sirSample <- max(25L, as.integer(ceiling(.isample / 10)))
+  } else {
+    checkmate::assertIntegerish(sirSample, any.missing=FALSE, len=1, lower=1,
+                                .var.name="sirSample")
+    .sirSample <- as.integer(sirSample)
+  }
+  if (.sirSample > .isample) {
+    stop("'sirSample' (", .sirSample, ") cannot exceed 'isample' (", .isample, ")",
+         call.=FALSE)
+  }
   .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
   .control$isample <- as.integer(isample)
   .control$nIter <- as.integer(nIter)
@@ -90,6 +133,11 @@ impmapControl <- function(sigdig=3,
   .control$nConvWindow <- as.integer(nConvWindow)
   .control$impSeed <- as.integer(impSeed)
   .control$impCov <- as.logical(impCov)
+  .control$qr <- qr
+  .control$qrShift <- qrShift
+  .control$qrRefresh <- qrRefresh
+  .control$sir <- sir
+  .control$sirSample <- .sirSample
   class(.control) <- "impmapControl"
   .control
 }
@@ -286,7 +334,7 @@ attr(nlmixr2Est.impmap, "covPresent") <- TRUE
 attr(nlmixr2Est.impmap, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.impmap, "iov") <- TRUE
 # Activates the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook, R/mu2.R),
-# gated on muModel/muRefCovAlg, exactly as the mufocei family does.
+# gated on muModel/muRefCovAlg, exactly as the mfocei family does.
 attr(nlmixr2Est.impmap, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }

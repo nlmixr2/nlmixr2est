@@ -43,19 +43,47 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
 # under an hour; the slow-tests workflow runs them one at a time.
 .slowBatches <- list(
   # batch 1
-  c("focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim"),
+  c("focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
+    "qrpem-slow"),
   # batch 2
   c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power"),
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429",
     "focei-wang2007-bounded"),
   # batch 4
-  c("impmap", "matexp", "mufocei", "focei-wang2007-yeojohnson",
+  c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
   # batch 5
   c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "posthoc", "ar-est",
-    "mu-family", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
-    "vae-errmodel", "table-cmt", "vae-covariate")
+    "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
+    "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
+  # batch 6 -- heaviest remaining files on the single-worker CI runner
+  # (VAE internals + a few slow structural tests), moved out of the essential
+  # push/PR subset to trim its wall time / reclamation exposure.
+  c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
+    "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
+  # batches 7-11 -- est="rpem".  The quick core-functionality files (the C++ E-step /
+  # M-step units, the LL-model build, the dispatch/control smoke, and a basic end-to-end
+  # fit: rpem-cpp-estep, rpem-cpp-mstep, rpem-llik-model, rpem-est, rpem-fit) stay in the
+  # essential push/PR subset; every other (multi-iteration, fit-based) rpem file runs
+  # weekly here.  Sized from measured single-worker times to balance the batches.
+  # batch 7
+  c("rpem-mix-pow", "rpem-cens", "rpem-pow", "rpem-comb"),
+  # batch 8
+  c("rpem-multi-pow", "rpem-covariate", "rpem-mix-multiparam", "rpem-impinflate",
+    "rpem-tbs", "rpem-parallel"),
+  # batch 9
+  c("rpem-fisher", "rpem-multi-comb", "rpem-mix-tbs", "rpem-llik", "rpem-boundfix",
+    "rpem-lnorm"),
+  # batch 10
+  c("rpem-multi", "rpem-mix", "rpem-mix-percomp", "rpem-iov", "rpem-multi-lnorm",
+    "rpem-parhist", "rpem-focei-agreement"),
+  # batch 11
+  c("rpem-mix-guards", "rpem-multi-tbs", "rpem-mix-comb", "rpem-jump", "rpem-struct",
+    "rpem-prop"),
+  # batch 12 -- advi (variational inference) multi-iteration fits
+  c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
+    "advi-fullbayes")
 )
 .slowAll <- unlist(.slowBatches)
 

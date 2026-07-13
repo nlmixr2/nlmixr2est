@@ -614,7 +614,8 @@
   ef$ev <- local({ v <- .valc; function(expr, f, y, f0 = f) eval(expr, c(list(f = f, y = y, f0 = f0), as.list(v))) })
   if (any(.iniIsFixed(ini, thetaForEta))) return(NULL)
   keep <- !.iniIsFixed(ini, ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]
-  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta)
+  .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta,
+                                   sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
   if (is.null(.dir)) return(NULL)
   # multiple estimated lambdas (per-endpoint) need an endpoint->lambda DV mapping not yet
   # wired; keep those on FD.  A single estimated lambda is the ported case.
@@ -711,17 +712,17 @@
   .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
   if (neta == 0L) return(NULL)
   if (length(.uiIovEnv$iovVars) > 0L) return(NULL)
-  .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, ef$sgName, neta)
+  .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, ef$sgName, neta,
+                           sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
 }
 
-#' Build the augmented outer-gradient sensitivity model (compiled model + `dirs` +
-#' `P2`) for a UI.  This is the persistent `..outer` sibling of the inner model:
-#' it depends only on the model + direction set (NOT theta/eta/omega), so it is
-#' built once during model setup (via `rxUiGet.foceiModel`/`foceModel`, which
-#' qs2-cache the whole model list) and reused across every outer-gradient call.
-#' Callable independently as `ui$foceiOuter`.  `NULL` when out of analytic scope
-#' (the gradient then falls back to finite differences).
-#' @export
+# Build the augmented outer-gradient sensitivity model (compiled model + `dirs` +
+# `P2`) for a UI.  This is the persistent `..outer` sibling of the inner model:
+# it depends only on the model + direction set (NOT theta/eta/omega), so it is
+# built once during model setup (via `rxUiGet.foceiModel`/`foceModel`, which
+# qs2-cache the whole model list) and reused across every outer-gradient call.
+# Callable independently as `ui$foceiOuter`.  `NULL` when out of analytic scope
+# (the gradient then falls back to finite differences).
 rxUiGet.foceiOuter <- function(x, ...) {
   .ui <- x[[1]]
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
@@ -757,8 +758,8 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 
 #' Theta names excluded from the outer optimizer's free-parameter set by the
 #' mu-referenced (lin/irls) regression -- mirrors inner.cpp isMuGroupSkip: the
-#' mu-group thetas plus the unbounded mu-group covariate coefficients (bounded
-#' ones stay outer-optimized).  Index arrays are 0-based (see
+#' mu-group thetas plus every mu-group covariate coefficient (bounded ones are
+#' regression-updated with clamping too).  Index arrays are 0-based (see
 #' `.muRefCppGroupSetup`).
 #' @noRd
 .foceiMuSkipThetaNames <- function(ui, thNames) {
@@ -767,8 +768,6 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
   }
   .g <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0)))
   .ct <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovTheta", integer(0)))
-  .cb <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovBounded", integer(0)))
-  if (length(.ct) > 0L && length(.cb) == length(.ct)) .ct <- .ct[.cb == 0L]
   thNames[c(.g, .ct) + 1L]
 }
 

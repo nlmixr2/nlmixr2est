@@ -15,12 +15,100 @@
 // conditional moments, then finalizes the fit at the converged estimates.
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
+#include <boost/random/sobol.hpp>
+#include "nmMcmcRng.h"
 #include "imp.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
 using namespace Rcpp;
+
+// ---- quasi-random (QRPEM) sampling elements --------------------------------
+// Base Sobol point set on (0,1)^neta: isample rows, one point per row.  The
+// boost engine emits one coordinate per call, cycling through the dimensions
+// of consecutive points, and skips the trivial zero point; the top 53 bits are
+// scaled into (0,1) with a half-step offset so no coordinate is ever 0 or 1.
+static arma::mat impSobolU0(int isample, int neta) {
+  boost::random::sobol eng((std::size_t)neta);
+  arma::mat U0(isample, neta);
+  for (int k = 0; k < isample; ++k) {
+    for (int j = 0; j < neta; ++j) {
+      uint64_t v = (uint64_t)eng();
+      U0(k, j) = std::ldexp((double)(v >> 11) + 0.5, -53);
+    }
+  }
+  return U0;
+}
+
+// Uniform Sobol points -> N(0,1): optional Cranley-Patterson shift (mod 1),
+// clamp away from 0/1, then the inverse normal CDF per coordinate.
+static arma::mat impQrZ(const arma::mat& U0, const arma::vec* shift) {
+  arma::mat Z(U0.n_rows, U0.n_cols);
+  for (arma::uword j = 0; j < U0.n_cols; ++j) {
+    double s = (shift != nullptr) ? (*shift)[j] : 0.0;
+    for (arma::uword k = 0; k < U0.n_rows; ++k) {
+      double u = U0(k, j) + s;
+      u -= std::floor(u);
+      if (u < 1e-12) u = 1e-12;
+      else if (u > 1.0 - 1e-12) u = 1.0 - 1e-12;
+      Z(k, j) = R::qnorm(u, 0.0, 1.0, 1, 0);
+    }
+  }
+  return Z;
+}
+
+// ---- SIR (sampling-importance-resampling) element ---------------------------
+// Systematic (stratified) resampling: sirN indices drawn with copy counts
+// proportional to the normalized weights (each count is within 1 of
+// sirN * zk_norm[i], the systematic-resampling guarantee).  u0 in [0,1) is the
+// single stratified offset; no RNG inside.
+static arma::uvec impSirIndex(const arma::vec& zk, int sirN, double u0) {
+  arma::uvec idx(sirN);
+  arma::uword n = zk.n_elem;
+  double tot = arma::accu(zk);
+  if (!(tot > 0.0) || !R_finite(tot)) {
+    // degenerate weights: uniform strided coverage
+    for (int r = 0; r < sirN; ++r)
+      idx[r] = (arma::uword)((double)r * n / sirN) % n;
+    return idx;
+  }
+  arma::uword i = 0;
+  double c = zk[0] / tot;
+  for (int r = 0; r < sirN; ++r) {
+    double p = (u0 + r) / (double)sirN;
+    while (p > c && i + 1 < n) { ++i; c += zk[i] / tot; }
+    idx[r] = i;
+  }
+  return idx;
+}
+
+// Test hook: 1-based systematic-resampling indices.
+//[[Rcpp::export]]
+IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0) {
+  if (zk.size() < 1) stop("'zk' must be non-empty");
+  if (sirN < 1) stop("'sirN' must be positive");
+  if (u0 < 0.0 || u0 >= 1.0) stop("'u0' must be in [0, 1)");
+  arma::vec z(zk.begin(), zk.size());
+  arma::uvec idx = impSirIndex(z, sirN, u0);
+  IntegerVector out(sirN);
+  for (int r = 0; r < sirN; ++r) out[r] = (int)idx[r] + 1;
+  return out;
+}
+
+// Test hook: the (optionally shifted) quasi-random N(0,1) point set.
+//[[Rcpp::export]]
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift) {
+  if (isample < 1 || neta < 1) stop("'isample' and 'neta' must be positive");
+  arma::mat U0 = impSobolU0(isample, neta);
+  if (shift.isNotNull()) {
+    NumericVector s(shift);
+    if ((int)s.size() != neta) stop("'shift' must have length 'neta'");
+    arma::vec sv(s.begin(), neta);
+    return wrap(impQrZ(U0, &sv));
+  }
+  return wrap(impQrZ(U0, nullptr));
+}
 
 // One importance-sampling E-step at the current conditional modes: draw
 // proposal samples, form importance weights, and return each subject's
@@ -32,7 +120,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
-                     arma::mat& aMat, Environment* eStash) {
+                     arma::mat& aMat, Environment* eStash,
+                     uint32_t qrPinSeed) {
   double invGamma2 = 1.0 / (2.0 * gamma);
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
@@ -99,9 +188,26 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
-  seedEng(cores);
-  uint32_t seed0 = getRxSeed1(cores);
+  // The engine array is allocated + seeded by rxWithSeed() at the fit start
+  // (impmap.R), so we don't call seedEng() here.
+  // Base the per-subject stream on the control's impSeed, NOT the ambient
+  // rxSeed: the FOCEI solve setup resets rxSeed to its default before the
+  // E-step runs, so getRxSeed1() would ignore impSeed entirely.  The base is
+  // salted per consumer (E-step / QR shift / SIR / covariance) and offset per
+  // (iteration, expanded-subject) so every step draws an independent but
+  // reproducible, thread-count-independent stream.
+  uint32_t seed0 = (uint32_t)impBaseSeed();
   bool doPar = (cores > 1);
+  // QRPEM: one Sobol base point set per E-step (read-only in the parallel
+  // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
+  bool qr = impQrEnabled();
+  bool qrShift = impQrShiftEnabled();
+  bool qrRefresh = impQrRefreshEnabled();
+  arma::mat qrU0, qrZ0;
+  if (qr) {
+    qrU0 = impSobolU0(isample, neta);
+    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+  }
   // Parallelize over base subjects, iterating a subject's mixture components
   // serially within one thread.  A base subject's expanded pseudo-subjects (id =
   // i + j*nsub) share the same underlying rxode2 solve rows, so evaluating two of
@@ -118,14 +224,33 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
     for (int j = 0; j < Nm; ++j) {
       int id = i + j * nsub;
       // fresh per-(iter, expanded-subject) stream, independent of thread count
-      setSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
+      nmSetSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
       cmExp.row(id) = modes[id].t();
       if (!haveL[id]) continue;
       arma::mat S(isample, neta);
-      for (int k = 0; k < isample; ++k) {
-        arma::vec z(neta);
-        for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
-        S.row(k) = (modes[id] + cholL[id] * z).t();
+      if (qr) {
+        // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
+        // from this subject's seeded stream; qrRefresh=FALSE instead uses the
+        // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
+        // every E-step) so the whole fit reuses one shift per subject.
+        arma::mat Z;
+        if (qrShift) {
+          if (!qrRefresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
+          arma::vec sh(neta);
+          for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
+          Z = impQrZ(qrU0, &sh);
+        } else {
+          Z = qrZ0;
+        }
+        for (int k = 0; k < isample; ++k) {
+          S.row(k) = (modes[id] + cholL[id] * Z.row(k).t()).t();
+        }
+      } else {
+        for (int k = 0; k < isample; ++k) {
+          arma::vec z(neta);
+          for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
+          S.row(k) = (modes[id] + cholL[id] * z).t();
+        }
       }
       // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
       // density (minimized by the inner optimizer), so it enters with a minus;
@@ -142,6 +267,10 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
         // giving it -Inf log-weight (weight 0).
         if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
       }
+      // the inner solves above re-seed the engine per subject
+      // (setSeedEng1(getRxSeed1()+id)); restore this block's sampling seed so
+      // that leak never carries into a subsequent draw.
+      nmRestoreMcmcSeed();
       if (nGood == 0) continue;
       double qmax = q.max();
       arma::vec w = arma::exp(q - qmax);
@@ -301,18 +430,41 @@ void impComputeCov(Environment e) {
       }
     }
   }
-  // Draw one fixed sample set per subject (serial, deterministic seed).
-  seedEng(1);
-  uint32_t seed0 = getRxSeed1(1);
+  // Draw one fixed sample set per subject (serial, deterministic seed).  The
+  // engine is already allocated + seeded by rxWithSeed() at the fit start.
+  // With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
+  // when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
+  bool qr = impQrEnabled();
+  bool qrShift = impQrShiftEnabled();
+  arma::mat qrU0, qrZ0;
+  if (qr) {
+    qrU0 = impSobolU0(isample, neta);
+    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+  }
+  uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
   for (int id = 0; id < nsub; ++id) {
     if (!ok[id]) continue;
     setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
     arma::mat S(isample, neta);
-    for (int k = 0; k < isample; ++k) {
-      arma::vec z(neta);
-      for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-      S.row(k) = (modes[id] + Ls[id] * z).t();
+    if (qr) {
+      arma::mat Z;
+      if (qrShift) {
+        arma::vec sh(neta);
+        for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
+        Z = impQrZ(qrU0, &sh);
+      } else {
+        Z = qrZ0;
+      }
+      for (int k = 0; k < isample; ++k) {
+        S.row(k) = (modes[id] + Ls[id] * Z.row(k).t()).t();
+      }
+    } else {
+      for (int k = 0; k < isample; ++k) {
+        arma::vec z(neta);
+        for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+        S.row(k) = (modes[id] + Ls[id] * z).t();
+      }
     }
     Ss[id] = S;
   }
@@ -456,6 +608,17 @@ void impOuter(Environment e) {
   // Initial MAP at the starting parameters.
   impMapPass(e);
 
+  // Fit-constant base seed for the pinned (qrRefresh=FALSE) Cranley-Patterson
+  // shift streams; only consumed in that mode so every other path's draw
+  // stream is unchanged.
+  // Fit-constant salted base for the pinned (qrRefresh=FALSE) shift streams.
+  uint32_t qrPinSeed = (uint32_t)impBaseSeed() + 0x9E3779B1u;
+  // Salted base for the SIR stratified offsets; SIR only engages when it can
+  // shrink the sample (sirN < isample) so every other path is unchanged.
+  bool sir = impSirEnabled() && impSirN() < isample;
+  int sirN = impSirN();
+  uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
+
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization
   // keeps the same number of Omega thetas.
@@ -481,7 +644,7 @@ void impOuter(Environment e) {
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e);
+             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -508,7 +671,27 @@ void impOuter(Environment e) {
       // component weight a_ij is already folded into sampZk, so this forms the
       // component-weighted score directly.
       for (int eid = 0; eid < nExp; ++eid) {
-        if (sampS[eid].n_rows > 0) impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
+        if (sampS[eid].n_rows == 0) continue;
+        if (sir && sirN < (int)sampS[eid].n_rows) {
+          // SIR acceleration: an equal-weight systematic resample stands in
+          // for the full weighted sample, cutting the theta-sens solves from
+          // isample to sirN per subject.  For a mixture, zk sums to the
+          // component responsibility a_ij (folded in by impEStep), so the
+          // equal weights carry a_ij/sirN to preserve the component mass.
+          double aij = arma::accu(sampZk[eid]);
+          if (!(aij > 0.0) || !R_finite(aij)) continue;
+          setRxThreadId(0);
+          nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
+          double u0 = rxUnifEng(0.0, 1.0);
+          setRxThreadId(-1);
+          arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
+          arma::mat Ssir = sampS[eid].rows(ridx);
+          arma::vec zkEq(sirN);
+          zkEq.fill(aij / (double)sirN);
+          impThetaScore(eid, Ssir, zkEq, g, H);
+        } else {
+          impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
+        }
       }
       g /= (double)nsub;
       H /= (double)nsub;
@@ -644,6 +827,9 @@ void impOuter(Environment e) {
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
+  e["impQr"]       = impQrEnabled();
+  e["impSir"]      = impSirEnabled();
+  e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;
   e["impIter"]     = iterRun;
   e["impConverged"] = converged;

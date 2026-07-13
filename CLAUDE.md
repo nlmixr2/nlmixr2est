@@ -95,6 +95,29 @@ shutdown signal"):
   falls back to serial when `reporter$capabilities$parallel_support` is FALSE
   (e.g. `LocationReporter`), which defeats the parallel config.
 
+### Test batching (quick-core vs weekly)
+
+Slow, multi-iteration/fit-based test files run WEEKLY, not on every push/PR. Push/PR
+CI runs the "essential" subset: every test file EXCEPT those listed in `.slowBatches`
+in `tests/testthat.R`. The weekly `slow-tests.yaml` workflow runs the batches one at a
+time via `NLMIXR2EST_TEST_BATCH=<n>` (its matrix must match the number of `.slowBatches`
+entries).
+
+When adding tests for an estimation method, split them by cost:
+
+- **Quickest core-functionality tests always run**: leave them OUT of `.slowBatches`
+  (they run in the essential push/PR subset). Keep this set small -- unit tests plus one
+  basic end-to-end fit. Example (rpem): `rpem-cpp-estep`, `rpem-cpp-mstep`,
+  `rpem-llik-model`, `rpem-est`, `rpem-fit`.
+- **Everything else goes into a weekly batch**: add the file's basename (no `test-`
+  prefix, no `.R`) to a `.slowBatches` batch, sized from measured single-worker times so
+  each batch stays well under an hour.
+- **Do NOT use `skip_on_ci()` in batched files.** The weekly runner also sets `CI=true`,
+  so `skip_on_ci()` would skip the test there too, defeating the batch. Batched files rely
+  on the `.slowBatches` filter (not `skip_on_ci`) to stay out of the essential run; keep
+  `skip_on_cran()` where CRAN must not run it. Likewise, an always-run core file must not
+  call `skip_on_ci()` or it will not actually run on push/PR.
+
 ## Key conventions
 
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM

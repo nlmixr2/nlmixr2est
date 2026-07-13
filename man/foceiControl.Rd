@@ -81,8 +81,9 @@ foceiControl(
   resetHessianAndEta = FALSE,
   muModel = c("none", "irls", "lin"),
   muRefCovAlg = TRUE,
-  muModelTol = 0.001,
-  muModelMaxCycles = 10L,
+  muModelTol = 1e-05,
+  muModelMaxCycles = 20L,
+  muModelClampRetries = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -462,22 +463,26 @@ individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
 
 \item{muModel}{Selects the mu-referenced-FOCEI-family regression variant
-    for theta/eta in a mu-ref covariate relationship (see
-    \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
-    \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
-    \code{mulaplace}: population theta and covariate coefficient(s) per
-    mu-ref-covariate group are excluded from the outer optimizer and
-    re-derived in C++ by closed-form OLS regression of each subject's
-    back-calculated value on the covariate(s), residual becomes that
-    subject's eta; repeats until convergence, see \code{muModelTol}/
-    \code{muModelMaxCycles}); or \code{"irls"}
-    (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+    for mu-referenced thetas/etas: \code{"none"} (default, ordinary
+    FOCEI); \code{"lin"} (\code{mfocei}/\code{mfoce}/\code{magq}/
+    \code{mlaplace}: mu-referenced population thetas -- and their
+    covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
+    excluded from the outer optimizer and re-derived in C++ by
+    closed-form OLS regression of each subject's back-calculated value
+    on the covariate(s) (intercept-only for a covariate-free pair),
+    residual becomes that subject's eta; repeats until convergence, see
+    \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
+    (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}:
     same mechanism, reweighted by inner-optimization curvature).
+    Only the outer gradients for non-mu-referenced parameters (including
+    residual-error thetas and all omegas) are then calculated.
 
-    A mu-ref-covariate theta with a finite bound falls back to ordinary
-    bounded outer-optimizer handling with a warning (a bound on the
-    group's population theta excludes the whole group; a bound on one
-    covariate coefficient excludes only that covariate).}
+    Bounded mu-referenced parameters (population thetas and covariate
+    coefficients) are regression-updated too: the update is clamped to
+    the bounds (box-constrained least squares, see
+    \code{muModelClampRetries}), and any parameter that was clamped is
+    reported once as a fit note. A user-fixed (\code{fix()}) mu
+    population theta is never regression-updated.}
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
@@ -493,6 +498,11 @@ or \code{muModelMaxCycles} is reached.}
 
 \item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
 cycles per outer iteration (see \code{muModel}, \code{muModelTol}).}
+
+\item{muModelClampRetries}{Maximum number of active-set re-solve passes
+per group per regression update when a bounded mu-referenced
+parameter must be clamped to its bound (see \code{muModel}); on
+hitting the cap the current clamped-feasible solution is used.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 
@@ -614,8 +624,12 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
 
-\item{seed}{an object specifying if and how the random number
-generator should be initialized}
+\item{seed}{Integer seed (default `42`) used to make a FOCEi fit
+reproducible and self-contained.  The fit (including the `mceta`
+Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
+runs inside [rxode2::rxWithSeed()], so it neither depends on the ambient
+RNG state nor advances/leaks it -- repeated fits in the same session, and
+fits following other estimation methods, give identical results.}
 
 \item{resetThetaCheckPer}{represents objective function
 \% percentage below which resetThetaP is checked.}

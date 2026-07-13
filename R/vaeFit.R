@@ -49,107 +49,23 @@
 #' @param withGrad compute the encoder backward (default TRUE)
 #' @noRd
 .vaeElboStep <- function(params, prep, am, zPop, omega, a, alphaKL, eps, withGrad = TRUE) {
-  N <- prep$N; zDim <- prep$zDim
-  ## zPop may be a shared vector (no covariates) or an N x zDim matrix of
-  ## subject-specific KL centers (covariate model). The decoder baseline
-  ## (THETA) is immaterial to f (only THETA+ETA=z matters), so use the intercept.
-  if (is.matrix(zPop)) { zPopMat <- zPop; baseline <- colMeans(zPop) }
-  else { zPopMat <- matrix(zPop, N, zDim, byrow = TRUE); baseline <- zPop }
+  ## The whole step (encoder fwd/bwd, per-subject decoder solve loop + p(x|z), KL)
+  ## runs in C++ (vaeDecoderElboStep_).  Only the augmented-model rxode2 solve stays
+  ## in R -- the C++ calls this per-subject closure, which builds the full theta
+  ## (baseline structural TVs + residual error) and solves subject i at its etas.
+  ## The decoder baseline (THETA) is immaterial to f (only THETA+ETA=z matters), so
+  ## use the intercept.
+  baseline <- if (is.matrix(zPop)) colMeans(zPop) else zPop
   th <- .vaeBuildTh(prep, baseline, a)
-  z0 <- matrix(0, N, zDim)
-  ## forward (grads ignored)
-  fw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
-                         params$Wih, params$Whh, params$bih, params$bhh,
-                         params$fcW, params$fcB, zDim, z0, z0)
-  mu <- fw$mu; logSigma <- fw$logSigma; L <- fw$L; z <- fw$z
-
-  ## decoder per subject -> p(x|z) and d(p_x_z)/dz
-  gZdec <- matrix(0, N, zDim)
-  pxz <- 0
-  preds <- vector("list", N)
-  for (i in seq_len(N)) {
-    s <- prep$subj[[i]]
-    eta <- z[i, ] - baseline
-    E <- .vaeDecoderSolveSubject(am, th, eta, s$ev, s$times)
-    if (is.null(E)) return(NULL)
-    px <- .vaeDecoderPxz(E, s$y)
-    pxz <- pxz + px$pxz
-    gZdec[i, ] <- px$gEta
-    preds[[i]] <- E$f
+  .etav <- am$dirs
+  .solve <- function(i0, e, t) {
+    s <- prep$subj[[i0 + 1L]]
+    .foceiAnalyticSolveFA(am, c(th, setNames(e, .etav)), s$ev, s$times, tol = t)
   }
-
-  ## KL: p_z - q_z, centered on the (possibly subject-specific) z_pop
-  ln2pi <- log(2 * pi)
-  pz <- 0; qz <- 0
-  for (i in seq_len(N)) {
-    pz <- pz + 0.5 * sum((z[i, ] - zPopMat[i, ])^2 / omega + log(omega) + ln2pi)
-    qz <- qz + 0.5 * sum(eps[i, ]^2 + ln2pi + 2 * logSigma[i, ])
-  }
-  DKL <- pz - qz
-  loss <- pxz + alphaKL * DKL
-
-  grads <- NULL
-  if (withGrad) {
-    gZ <- gZdec
-    for (i in seq_len(N)) gZ[i, ] <- gZ[i, ] + alphaKL * (z[i, ] - zPopMat[i, ]) / omega
-    gLS <- matrix(-alphaKL, N, zDim)
-    bw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
-                           params$Wih, params$Whh, params$bih, params$bhh,
-                           params$fcW, params$fcB, zDim, gZ, gLS)
-    grads <- list(Wih = bw$gWih, Whh = bw$gWhh, bih = bw$gbih, bhh = bw$gbhh,
-                  fcW = bw$gFcW, fcB = bw$gFcB)
-  }
-  list(loss = loss, pxz = pxz, DKL = DKL, grads = grads,
-       mu = mu, L = L, z = z, preds = preds)
-}
-
-#' Adam optimizer state (per encoder parameter block)
-#' @noRd
-.vaeAdamInit <- function(params) {
-  lapply(params, function(p) {
-    z <- p; z[] <- 0
-    list(m = z, v = z)
-  })
-}
-
-#' One Adam update over all encoder parameter blocks
-#' @noRd
-.vaeAdamStep <- function(params, grads, state, lr, t, b1 = 0.9, b2 = 0.999, eps = 1e-8) {
-  for (nm in names(params)) {
-    g <- grads[[nm]]
-    state[[nm]]$m <- b1 * state[[nm]]$m + (1 - b1) * g
-    state[[nm]]$v <- b2 * state[[nm]]$v + (1 - b2) * g^2
-    mhat <- state[[nm]]$m / (1 - b1^t)
-    vhat <- state[[nm]]$v / (1 - b2^t)
-    params[[nm]] <- params[[nm]] - lr * mhat / (sqrt(vhat) + eps)
-  }
-  list(params = params, state = state)
-}
-
-#' Closed-form M-step (no covariate selection): z_pop = mean posterior mean;
-#' omega_k = mean_i[(mu_ik - z_pop_k)^2 + (L_i L_i^T)_kk]; a = sqrt(SSR / Nobs).
-#' `gamma` is the EMA smoothing rate (1 = direct update).
-#' @noRd
-.vaeMStep <- function(mu, L, preds, prep, zPop, omega, a, gamma) {
-  N <- prep$N; zDim <- prep$zDim
-  zPopCur <- colMeans(mu)
-  omegaCur <- numeric(zDim)
-  for (k in seq_len(zDim)) {
-    v <- 0
-    for (i in seq_len(N)) v <- v + (mu[i, k] - zPopCur[k])^2 + sum(L[k, , i]^2)
-    omegaCur[k] <- v / N
-  }
-  aCur <- .vaeUpdateErr(preds, prep, a)
-  ## non-mu-referenced (free) etas center at 0 (theta forced to 0); fixed omega
-  ## entries are held at their current value (not estimated)
-  if (!is.null(prep$isFree)) zPopCur[prep$isFree] <- 0
-  if (!is.null(prep$omegaFix)) omegaCur[prep$omegaFix] <- omega[prep$omegaFix]
-  if (!all(is.finite(zPopCur))) zPopCur <- zPop
-  if (!all(is.finite(omegaCur))) omegaCur <- omega
-  zPopCur <- .vaeClamp(zPopCur, prep$zPopLower, prep$zPopUpper)
-  list(zPop = zPop + gamma * (zPopCur - zPop),
-       omega = omega + gamma * (omegaCur - omega),
-       a = a + gamma * (aCur - a))
+  .yList <- lapply(prep$subj, function(s) as.numeric(s$y))
+  vaeDecoderElboStep_(params, prep, zPop, as.numeric(omega), as.numeric(a),
+                      as.numeric(alphaKL), as.matrix(eps), .solve, .yList,
+                      isTRUE(withGrad), 1e-10, 5L, 10^(0.5), TRUE)
 }
 
 #' Closed-form error-parameter M-step for additive / proportional / combined
@@ -189,52 +105,6 @@
   .vaeClamp(aNew, prep$errLower, prep$errUpper)
 }
 
-#' Closed-form M-step WITH BICc-ELBO covariate selection. For each parameter k,
-#' enumerate the 2^nCov covariate subsets, fit OLS mu_ik ~ [1 | cov_S], and pick
-#' the subset minimizing RSS_S/omega_k + log(N)*|S| (the per-parameter reduction
-#' of the global BICc-ELBO L0 objective -- exact since the problem decouples by
-#' parameter). Returns intercept + beta matrix + selected mask + subject-specific
-#' z_pop matrix, and the residual-variance omega / a.
-#' @noRd
-.vaeMStepCov <- function(mu, L, preds, prep, omega, a, gamma) {
-  N <- prep$N; zDim <- prep$zDim; nCov <- ncol(prep$covMat)
-  X <- cbind(1, prep$covMat)                       # [N, 1 + nCov]
-  intercept <- numeric(zDim); beta <- matrix(0, zDim, nCov)
-  selected <- matrix(FALSE, zDim, nCov)
-  zPopMat <- matrix(0, N, zDim)
-  logN <- log(N)
-  for (k in seq_len(zDim)) {
-    ## a non-mu-referenced (free) eta is a theta=0-centered random effect: no
-    ## intercept, no covariates (its structure is carried elsewhere in the model)
-    if (!is.null(prep$isFree) && prep$isFree[k]) next
-    yk <- mu[, k]; best <- NULL; bestScore <- Inf
-    for (mask in 0:(2^nCov - 1L)) {
-      S <- which(bitwAnd(mask, bitwShiftL(1L, seq_len(nCov) - 1L)) != 0L)
-      cols <- c(1L, 1L + S)
-      Xs <- X[, cols, drop = FALSE]
-      fit <- stats::lm.fit(Xs, yk)
-      score <- sum(fit$residuals^2) / omega[k] + logN * length(S)
-      if (score < bestScore) { bestScore <- score; best <- list(S = S, coef = fit$coefficients, cols = cols) }
-    }
-    ## clamp the typical value (intercept) to its bounds
-    intercept[k] <- .vaeClamp(best$coef[1], prep$zPopLower[k], prep$zPopUpper[k])
-    best$coef[1] <- intercept[k]
-    if (length(best$S) > 0L) { beta[k, best$S] <- best$coef[-1]; selected[k, best$S] <- TRUE }
-    zPopMat[, k] <- X[, best$cols, drop = FALSE] %*% best$coef
-  }
-  omegaCur <- numeric(zDim)
-  for (k in seq_len(zDim)) {
-    v <- 0
-    for (i in seq_len(N)) v <- v + (mu[i, k] - zPopMat[i, k])^2 + sum(L[k, , i]^2)
-    omegaCur[k] <- v / N
-  }
-  aCur <- .vaeUpdateErr(preds, prep, a)
-  if (!is.null(prep$omegaFix)) omegaCur[prep$omegaFix] <- omega[prep$omegaFix]
-  if (!all(is.finite(omegaCur))) omegaCur <- omega
-  list(intercept = intercept, beta = beta, selected = selected, zPopMat = zPopMat,
-       omega = omega + gamma * (omegaCur - omega), a = a + gamma * (aCur - a))
-}
-
 #' Tracked population parameters (structural typical values, omega diagonal,
 #' residual error) as a single named vector -- one parameter-history row.
 #' @noRd
@@ -243,9 +113,22 @@
   c(.z, setNames(omega, parInfo$omegaNames), setNames(as.numeric(a), parInfo$aNames))
 }
 
+#' Encode the per-eta error type of each residual-error parameter for the C++
+#' training loop's closed-form error M-step: 0 = additive, 1 = proportional,
+#' 2 = other (kept at its current value). Order matches `prep$errType`.
+#' @noRd
+.vaeErrTypeCode <- function(errType) {
+  vapply(errType, function(t) if (identical(t, "add")) 0L else if (identical(t, "prop")) 1L else 2L,
+         integer(1), USE.NAMES = FALSE)
+}
+
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
-#' -> EMA smoothing. Returns the trained encoder + population estimates + traces,
-#' and the full parameter-history walk (`parHist`).
+#' -> EMA smoothing. The heavy loop runs entirely in C++ (`vaeTrainCpp_`); this
+#' function only prepares the inputs (encoder init, prep-derived buffers,
+#' iteration-print names/back-transform codes) and re-shapes the return. The
+#' inner FOCEi problem must already be set up (`.vaeInnerSetup`) -- the C++ loop
+#' drives it through the same likInner0/lpInner engine, per gradient step,
+#' without re-running foceiSetup_.
 #' @noRd
 .vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1,
                       parInfo = NULL) {
@@ -254,10 +137,6 @@
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
   params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
-  adam <- .vaeAdamInit(params)
-  zPop <- prep$zPop; omega <- prep$omega; a <- prep$a
-  Lg <- control$nGradStep
-  .t <- 0L; last <- NULL
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
   ## via the shared iteration-print machinery (scale.h), so the walk prints like
@@ -269,73 +148,37 @@
     parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
                     omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
   }
-  .row0 <- .vaeParRow(zPop, omega, a, parInfo)
-  vaeIterPrintStart_(.row0, names(.row0), control$iterPrintControl, parInfo$xform)
+  .row0 <- .vaeParRow(prep$zPop, prep$omega, prep$a, parInfo)
 
-  ## burn-in: encoder-only training with a tiny fixed KL weight
-  for (it in seq_len(control$itersBurnIn)) {
-    for (l in seq_len(Lg)) {
-      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-      st <- .vaeElboStepInner(params, prep, innerEnv, zPop, omega, a, 0.001, eps, control, nMix, mixProb)
-      if (is.null(st)) stop("est=\"vae\" inner solve failed during burn-in", call. = FALSE)
-      .t <- .t + 1L
-      .ad <- .vaeAdamStep(params, st$grads, adam, control$burnInLearningRate, .t)
-      params <- .ad$params; adam <- .ad$state
-      .ms <- .vaeMStep(st$mu, st$L, st$preds, prep, zPop, omega, a, 1)
-      zPop <- .ms$zPop; omega <- .ms$omega; a <- .ms$a
-      last <- st
-    }
-    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), last$pxz + last$DKL, "Burn in")
-  }
+  ## prep buffers the C++ loop needs, in the layout vaeTrainCpp_ unpacks: 0-based
+  ## theta indices (-1 for a free/mixture eta), error-type codes, per-subject
+  ## observed DV, and the plain-matrix covariate design.
+  prepC <- c(prep, list(
+    zPopThetaIdx0 = ifelse(is.na(prep$zPopThetaIdx), -1L, as.integer(prep$zPopThetaIdx) - 1L),
+    errThetaIdx0 = as.integer(prep$errThetaIdx) - 1L,
+    errTypeCode = .vaeErrTypeCode(prep$errType),
+    yList = lapply(prep$subj, function(s) as.numeric(s$y))))
 
-  ## main EM (optionally with BICc-ELBO covariate selection)
-  doCov <- isTRUE(control$covariateSelection) && ncol(prep$covMat) > 0L
-  intercept <- zPop; beta <- matrix(0, zDim, ncol(prep$covMat))
-  selected <- matrix(FALSE, zDim, ncol(prep$covMat))
-  zPopArg <- zPop
-  nMain <- control$iters
-  elboTrace <- numeric(nMain)
-  for (it in seq_len(nMain)) {
-    gamma <- if (it <= control$gammaIter) 1 else 1 / (1 + it - control$gammaIter)
-    if (doCov) {
-      .ms <- .vaeMStepCov(last$mu, last$L, last$preds, prep, omega, a, gamma)
-      intercept <- .ms$intercept; beta <- .ms$beta; selected <- .ms$selected
-      zPopArg <- .ms$zPopMat; zPop <- intercept; omega <- .ms$omega; a <- .ms$a
-    } else {
-      .ms <- .vaeMStep(last$mu, last$L, last$preds, prep, zPop, omega, a, gamma)
-      zPop <- .ms$zPop; zPopArg <- zPop; omega <- .ms$omega; a <- .ms$a
-    }
-    alphaKL <- if (it <= control$klWarmup) 0.01 + 0.99 * (it - 1) / max(1, control$klWarmup - 1) else 1
-    elbos <- numeric(Lg)
-    for (l in seq_len(Lg)) {
-      eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-      st <- .vaeElboStepInner(params, prep, innerEnv, zPopArg, omega, a, alphaKL, eps, control, nMix, mixProb)
-      if (is.null(st)) stop("est=\"vae\" inner solve failed during training", call. = FALSE)
-      .t <- .t + 1L
-      .ad <- .vaeAdamStep(params, st$grads, adam, control$learningRate, .t)
-      params <- .ad$params; adam <- .ad$state
-      elbos[l] <- st$pxz + st$DKL
-      last <- st
-    }
-    elboTrace[it] <- mean(elbos)
-    .phase <- if (it <= control$klWarmup) {
-      "KL anneal"
-    } else if (it <= control$gammaIter) {
-      "EM"
-    } else {
-      "Smooth"
-    }
-    vaeIterPrintRow_(.vaeParRow(zPop, omega, a, parInfo), elboTrace[it], .phase)
-  }
+  .cores <- tryCatch({
+    .c <- control$rxControl$cores
+    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+  }, error = function(e) 1L)
 
-  parHist <- vaeIterPrintGet_(isTRUE(control$print >= 1L))
+  ## the print level lives in iterPrintControl$every (absorbed by vaeControl);
+  ## surface it as control$print for the C++ loop's final parHist print gate
+  control$print <- as.integer(control$iterPrintControl$every)
 
-  zPopMat <- if (is.matrix(zPopArg)) zPopArg else matrix(zPopArg, N, zDim, byrow = TRUE)
-  list(params = params, zPop = zPop, omega = omega, a = a,
-       intercept = intercept, beta = beta, selected = selected,
-       covNames = prep$covNames, elboTrace = elboTrace, parHist = parHist,
-       mu = last$mu, zPopMat = zPopMat, prep = prep,
-       nMix = nMix, mixProb = mixProb, mixnum = last$mixnum)
+  .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),
+                       .cores, .row0, names(.row0), control$iterPrintControl,
+                       parInfo$xform, as.integer(parInfo$structIdx) - 1L)
+
+  .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
+       a = setNames(as.numeric(.fit$a), names(prep$a)),
+       intercept = as.numeric(.fit$intercept), beta = .fit$beta, selected = .selected,
+       covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
+       mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
+       nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 
 #' Fit entry: prepare data, set up the FOCEi inner problem once, train.

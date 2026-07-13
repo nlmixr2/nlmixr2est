@@ -57,7 +57,14 @@
     .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
     ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
   }
-  ui2
+  ## The incremental model()/ini() edits above leave the ui's cached `covariates`
+  ## stale: an injected covariate-coefficient theta (beta_<par>_<cov>) is added to
+  ## the iniDf as a theta but ALSO stays listed as a covariate.  The augmented
+  ## covariance solve then declares that beta_ both as its THETA[k] and as a
+  ## phantom data covariate, and fails ("required for solving: beta_...").
+  ## Re-parsing the accumulated model function yields a consistent theta/covariate
+  ## classification (verified: only the true data covariates remain).
+  rxode2::assertRxUi(ui2$fun)
 }
 
 #' Translate the vaeControl into the foceiControl that drives the output step:

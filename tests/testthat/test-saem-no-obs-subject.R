@@ -41,8 +41,15 @@ nmTest({
 
   test_that("FOCEI matches SAEM for a dosing subject with no observations (#687)", {
     d <- .noObsData()
+    # A few real outer evaluations instead of the degenerate eval.max=1
+    # foceiControlFast: the single-evaluation start tripped the outer
+    # optimizer's bound pre-check on some CI platforms, and this test only
+    # checks the structural re-insertion of the dropped subject, not
+    # convergence.
+    .ctlFocei <- foceiControl(print = 0, maxInnerIterations = 5,
+                              maxOuterIterations = 5, eval.max = 5)
     fitFocei <- suppressWarnings(suppressMessages(
-      .nlmixr(one.compartment, d, est = "focei", control = foceiControlFast)))
+      .nlmixr(one.compartment, d, est = "focei", control = .ctlFocei)))
     expect_true(inherits(fitFocei, "nlmixr2FitData"))
     expect_equal(
       sum(grepl("IDs without observations dropped: 3", fitFocei$runInfo, fixed = TRUE)),

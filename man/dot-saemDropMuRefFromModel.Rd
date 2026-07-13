@@ -4,12 +4,14 @@
 \alias{.saemDropMuRefFromModel}
 \title{Drop mu referenced etas and covariates}
 \usage{
-.saemDropMuRefFromModel(ui, noCovs = FALSE)
+.saemDropMuRefFromModel(ui, noCovs = FALSE, keepEtas = FALSE)
 }
 \arguments{
 \item{ui}{rxode2 ui}
 
 \item{noCovs}{Do not look for covariates}
+
+\item{keepEtas}{Keep the mu-referenced etas}
 }
 \value{
 model line expression with mu referenced information dropped.
