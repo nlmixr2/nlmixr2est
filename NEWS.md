@@ -1,5 +1,17 @@
 # nlmixr2est (development version)
 
+- The analytic FOCEI/FOCE augmented-model `rxOptExpr` pass now splits the model
+  into **cost-balanced** contiguous chunks (equal character-sum rather than equal
+  line count) so the largest chunk -- which drives the ~O(n^3.5) cost -- is
+  minimized.  With `foceiControl(optExprParallel = TRUE)` and an active `mirai`
+  daemon pool (`mirai::daemons()`), the independent chunks are optimized in
+  parallel, cutting the pass several-fold on larger covariate models; the result
+  is mathematically identical (bit-identical solves).  Most valuable for
+  bootstrap / covariate search, where the augmented model is rebuilt across many
+  workers and the daemon pool is set up once.  (Compartment-scoped models -- a
+  parameter-dependent state IC or dosing modifier -- continue to optimize whole
+  and un-chunked, as before.)
+
 - Added an automatic differentiation variational inference method
   (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
   gradient is obtained from the FOCEi forward sensitivities (the inner

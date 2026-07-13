@@ -177,6 +177,18 @@
 #' @param optExpression Optimize the rxode2 expression to speed up
 #'     calculation. By default this is turned on.
 #'
+#' @param optExprParallel For the analytic FOCEI/FOCE augmented sensitivity
+#'     model (`covType="analytic"` / `fast=TRUE`), optimize the model's common
+#'     subexpressions (`rxOptExpr`) in cost-balanced chunks dispatched in
+#'     parallel across an active `mirai` daemon pool.  The default `FALSE`
+#'     still uses the (always-on) cost-balanced chunking, just sequentially.
+#'     When `TRUE`, set up a pool once with `mirai::daemons()` before fitting
+#'     (ideal for bootstrap / covariate search, where the model is rebuilt in
+#'     many workers); with no active pool this option is a no-op.  Only applies
+#'     to models without a parameter-dependent state initial condition or
+#'     dosing modifier (those are optimized whole, un-chunked).  Requires the
+#'     `mirai` package.
+#'
 #' @param literalFix boolean, substitute fixed population values as
 #'   literals and re-adjust ui and parameter estimates after
 #'   optimization; Default is `TRUE`.
@@ -681,6 +693,7 @@ foceiControl <- function(sigdig = 4, #
                          iovXform = c("sd", "var", "logsd", "logvar"), #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
+                         optExprParallel = FALSE,#
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          ci = 0.95, #
@@ -932,6 +945,7 @@ foceiControl <- function(sigdig = 4, #
 
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
+  checkmate::assertLogical(optExprParallel, any.missing=FALSE, len=1)
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
   checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
 
@@ -1284,6 +1298,7 @@ foceiControl <- function(sigdig = 4, #
     iovXform = match.arg(iovXform),
     sumProd = sumProd,
     optExpression = optExpression,
+    optExprParallel = optExprParallel,
     literalFix=literalFix,
     literalFixRes=literalFixRes,
     outerOpt = as.integer(outerOpt),

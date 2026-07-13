@@ -45,6 +45,7 @@ foceiControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   sumProd = FALSE,
   optExpression = TRUE,
+  optExprParallel = FALSE,
   literalFix = TRUE,
   literalFixRes = TRUE,
   ci = 0.95,
@@ -333,6 +334,18 @@ this is \code{FALSE}.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
+
+\item{optExprParallel}{For the analytic FOCEI/FOCE augmented sensitivity
+model (\code{covType="analytic"} / \code{fast=TRUE}), optimize the model's
+common subexpressions (\code{rxOptExpr}) in cost-balanced chunks dispatched
+in parallel across an active \code{mirai} daemon pool.  The default
+\code{FALSE} still uses the (always-on) cost-balanced chunking, just
+sequentially.  When \code{TRUE}, set up a pool once with
+\code{mirai::daemons()} before fitting (ideal for bootstrap / covariate
+search, where the model is rebuilt in many workers); with no active pool
+this option is a no-op.  Only applies to models without a
+parameter-dependent state initial condition or dosing modifier (those are
+optimized whole, un-chunked).  Requires the \code{mirai} package.}
 
 \item{literalFix}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after

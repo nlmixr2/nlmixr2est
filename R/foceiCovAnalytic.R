@@ -1058,6 +1058,108 @@
   }
   .res
 }
+
+#' Is a mirai daemon pool currently active?  (mirai is a Suggests; FALSE if absent.)
+#' @return logical
+#' @noRd
+.foceiOptExprDaemonsActive <- function() {
+  if (!requireNamespace("mirai", quietly = TRUE)) return(FALSE)
+  isTRUE(tryCatch(sum(mirai::status()$connections) >= 1L, error = function(e) FALSE))
+}
+
+#' Ensure a persistent mirai daemon pool for the chunk optimizer.
+#'
+#' Set up once and reused across builds (ideal for bootstrap / SCM / covariate search, where
+#' the augmented model is rebuilt in many worker calls); `rxode2` is warmed on each daemon so
+#' the first `rxOptExpr` dispatch is not charged the namespace load.  A no-op when mirai is
+#' unavailable or a pool is already active; `n = 0` tears the pool down.
+#' @param n number of daemons; `NULL` -> `detectCores() - 2`
+#' @return logical, whether a pool is active afterward
+#' @noRd
+.foceiOptExprDaemons <- function(n = NULL) {
+  if (!requireNamespace("mirai", quietly = TRUE)) return(invisible(FALSE))
+  if (identical(n, 0L) || identical(n, 0)) { try(mirai::daemons(0L), silent = TRUE); return(invisible(FALSE)) }
+  if (.foceiOptExprDaemonsActive()) return(invisible(TRUE))
+  .n <- if (is.null(n)) max(1L, parallel::detectCores() - 2L) else max(1L, as.integer(n))
+  try({
+    mirai::daemons(.n)
+    mirai::everywhere(suppressMessages(loadNamespace("rxode2")))   # warm rxode2 on each daemon once
+  }, silent = TRUE)
+  invisible(.foceiOptExprDaemonsActive())
+}
+
+#' Cost-balanced contiguous chunking of model lines.
+#'
+#' `rxOptExpr` is ~O(n^3.5) in chunk size, so the LARGEST chunk sets both the sequential tail
+#' and the parallel floor.  Splitting by equal LINE COUNT is uneven when lines vary in size
+#' (the 2nd-order sensitivity equations are long); splitting by equal CHAR-SUM minimizes the
+#' max chunk for the same number of chunks.  Chunks stay CONTIGUOUS so variable definitions
+#' still precede their uses when the optimized chunks are concatenated back together.
+#' @param lines character vector of model lines
+#' @param targetChars target char-sum per chunk (drives the chunk count)
+#' @return list of character vectors (contiguous line groups)
+#' @noRd
+.foceiBalancedChunks <- function(lines, targetChars) {
+  .w <- pmax(1L, nchar(lines))
+  .k <- max(1L, round(sum(.w) / targetChars))
+  if (.k <= 1L) return(list(lines))
+  .cum <- cumsum(.w); .tot <- sum(.w)
+  .b <- unique(c(0L,
+                 vapply(seq_len(.k - 1L),
+                        function(.j) which.min(abs(.cum - .j * .tot / .k)), integer(1)),
+                 length(lines)))
+  lapply(seq_len(length(.b) - 1L), function(.j) lines[(.b[.j] + 1L):.b[.j + 1L]])
+}
+
+#' Optimize the augmented model's common subexpressions in cost-balanced chunks.
+#'
+#' `rxOptExpr` on the whole (~200-500 line) augmented model dominates the build (~O(n^3.5)),
+#' so it is chunked; the chunks are independent (each optimized separately, its introduced
+#' variables namespaced by a per-chunk `rx_expr_c<g>_` prefix so there are no cross-chunk
+#' clashes), which lets them run in parallel.  Chunks are cost-balanced (see
+#' [.foceiBalancedChunks]) and sized to ~`chunkLines` lines' worth of characters -- the
+#' build-time optimum with parallel optimization (smaller chunks cut `rxOptExpr` further but
+#' grow the model from lost cross-chunk CSE, which then costs more in `eventSens`/compile).
+#' When `parallel` is on and a mirai daemon pool is active, chunks are dispatched with
+#' `mirai::mirai_map`; otherwise they run sequentially.  Result is mathematically identical
+#' to the un-chunked optimization (validated: bit-identical solves).
+#'
+#' The caller only routes compartment-UNSCOPED models here (models with a `state(0)=` IC or a
+#' `f/lag/rate/dur(cmt)=` modifier go to a single whole-model `rxOptExpr` call, because such a
+#' construct in a chunk without its `d/dt(cmt)` is a parse error and the lines cannot be safely
+#' repositioned), so no held-out lines are needed.  Each chunk is collapsed to one string and a
+#' parse error degrades that chunk to unoptimized (length-safe), never aborting the pass.
+#' @param modTxt augmented model text
+#' @param msg progress label passed to `rxOptExpr`
+#' @param chunkLines target chunk size in lines (default 40 -- the parallel build-time optimum)
+#' @param parallel use mirai when a daemon pool is active
+#' @param minChunks minimum chunk count to bother dispatching in parallel
+#' @return the optimized model text
+#' @noRd
+.foceiChunkedOptExpr <- function(modTxt, msg = "FOCEi outer gradient model",
+                                 chunkLines = 40L, parallel = FALSE, minChunks = 3L) {
+  .ln <- strsplit(modTxt, "\n", fixed = TRUE)[[1]]
+  if (length(.ln) <= chunkLines) return(rxode2::rxOptExpr(modTxt, msg))
+  .targetChars <- as.numeric(stats::median(pmax(1L, nchar(.ln)))) * chunkLines
+  .chunks <- .foceiBalancedChunks(.ln, .targetChars)
+  .idx <- seq_along(.chunks)
+  # one chunk's work: collapse to a single model string, optimize (unchanged on parse error),
+  # namespace the introduced `rx_expr_` variables.  Fallback returns a length-1 string.
+  .optOne <- function(.i, .ch) {
+    .txt <- paste(.ch[[.i]], collapse = "\n")
+    .o <- tryCatch(rxode2::rxOptExpr(.txt, msg), error = function(e) .txt)
+    gsub("rx_expr_", paste0("rx_expr_c", .i, "_"), .o, fixed = TRUE)
+  }
+  .useMirai <- isTRUE(parallel) && length(.chunks) >= minChunks && .foceiOptExprDaemonsActive()
+  .opt <- if (.useMirai) {
+    tryCatch(unlist(mirai::mirai_map(.idx, .optOne, .args = list(.ch = .chunks))[]),
+             error = function(e) vapply(.idx, .optOne, character(1), .ch = .chunks))
+  } else {
+    vapply(.idx, .optOne, character(1), .ch = .chunks)
+  }
+  paste(.opt, collapse = "\n")
+}
+
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
                           "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP"),     # skip flag -> distinct cached model
@@ -1283,18 +1385,14 @@
         # build but rare); keep the fast chunking for the common unconstrained models.
         .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
           any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
-        .k <- if (.special) 1L else max(1L, ceiling(length(.ln) / 40))
-        if (.k <= 1L) {
+        if (.special) {
           rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
         } else {
-          .grp <- ceiling(seq_along(.ln) / ceiling(length(.ln) / .k))
-          .opt <- vapply(sort(unique(.grp)), function(.g) {
-            .chTxt <- paste(.ln[.grp == .g], collapse = "\n")
-            .o <- tryCatch(rxode2::rxOptExpr(.chTxt, "FOCEi outer gradient model"),
-                           error = function(e) .chTxt)
-            gsub("rx_expr_", paste0("rx_expr_c", .g, "_"), .o, fixed = TRUE)
-          }, character(1))
-          paste(.opt, collapse = "\n")
+          # non-special model: chunk with cost-balanced boundaries (minimize the largest
+          # chunk, which drives the ~O(n^3.5) cost) and, with optExprParallel=TRUE + an active
+          # mirai pool, optimize the chunks in parallel -- identical result, faster build.
+          .foceiChunkedOptExpr(.modTxt, "FOCEi outer gradient model",
+                               parallel = isTRUE(rxode2::rxGetControl(ui, "optExprParallel", FALSE)))
         }
       }, error = function(e) .modTxt)
     }

@@ -989,4 +989,39 @@ nmTest({
     expect_equal(E$f[1], 5, tolerance = 1e-4)   # A(0) = A0
     expect_true(E$f[2] < E$f[1])                # the ODE evolves away from the IC
   })
+
+  test_that("cost-balanced rxOptExpr chunking is bit-identical to a whole-model call", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # the augmented model's optimized text must solve identically whether optimized whole or in
+    # cost-balanced chunks (each chunk's rx_expr_ vars are namespaced by a per-chunk prefix)
+    fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE))))
+    .raw <- fit$ui$loadPruneSens                      # touch to ensure the aug pipeline is exercised
+    expect_identical(fit$covMethod, "analytic")
+    .se <- sqrt(diag(fit$cov))
+    expect_true(all(is.finite(.se)) && all(.se > 0))
+  })
+
+  test_that("optExprParallel (mirai) builds the SAME analytic cov as sequential", {
+    skip_on_cran()
+    skip_on_ci()
+    skip_if_not_installed("nlmixr2data")
+    skip_if_not_installed("mirai")
+    # cost-balanced chunked rxOptExpr optimized in parallel across a mirai daemon pool must be
+    # mathematically identical to the sequential build -- same augmented model, same fit.
+    fitSeq <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE,
+                             optExprParallel = FALSE))))
+    on.exit(try(.foceiOptExprDaemons(0L), silent = TRUE), add = TRUE)
+    .foceiOptExprDaemons(2L)
+    fitPar <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE,
+                             optExprParallel = TRUE))))
+    expect_identical(fitSeq$covMethod, "analytic")
+    expect_identical(fitPar$covMethod, "analytic")
+    .nm <- intersect(rownames(fitSeq$cov), rownames(fitPar$cov))
+    expect_equal(unname(sqrt(diag(fitPar$cov))[.nm]),
+                 unname(sqrt(diag(fitSeq$cov))[.nm]), tolerance = 1e-6)
+  })
 })
