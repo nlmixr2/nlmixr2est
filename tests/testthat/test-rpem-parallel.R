@@ -5,7 +5,6 @@
 
 test_that("RPEM parallel E-step (cores>1) agrees with serial", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two multi-iteration RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(3); nsub <- 30L; obsT <- seq(0.5, 24, by = 1.5)

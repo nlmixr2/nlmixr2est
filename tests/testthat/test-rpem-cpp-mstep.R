@@ -55,8 +55,7 @@ test_that("rpem C++ M-step MH matches importance-sampling conjugate update (K=1)
   omegaRef <- mean(vapply(seq_len(nid), function(i)
     sum(wList[[i]] * (thetaList[[i]] - muRef)^2), numeric(1)))
 
-  rxode2::rxSetSeed(22)
-  ms <- rpemMstepK1(muKa, 0.7, 400000L, 40000L)   # addSd0 = model add.sd
+  ms <- rpemMstepK1(muKa, 0.7, 400000L, 40000L, 22L)   # addSd0 = model add.sd; last arg = MH seed
 
   expect_gt(ms$accept, 0); expect_lt(ms$accept, 1)
   expect_equal(ms$mu[1], muRef, tolerance = 0.02)

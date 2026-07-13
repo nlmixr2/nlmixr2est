@@ -45,10 +45,11 @@
 #'   likelihood-parameter refinement (number of corrections, convergence `factr`/`pgtol`,
 #'   and max iterations).
 #' @param print Iteration-print frequency: display the parameter walk (population estimates
-#'   + omega, with the back-transformed row) every `print` iterations (saem/focei/vae style).
-#'   `0` (default) captures the parameter history silently.  The walk is *always* saved to the
-#'   fit object's parameter history (`fit$parHist` / `fit$parHistStacked`) regardless.  May
-#'   also be an `iterPrintControl()` object.
+#'   + omega, with the back-transformed row) every `print` iterations (saem/focei/vae style),
+#'   streamed live as the loop runs.  `1` (default) prints every iteration; `0` captures the
+#'   parameter history silently.  The walk is *always* saved to the fit object's parameter
+#'   history (`fit$parHist` / `fit$parHistStacked`) regardless.  May also be an
+#'   `iterPrintControl()` object.
 #' @param printNcol,useColor Iteration-print formatting (columns per row, ANSI color); passed
 #'   through to `iterPrintControl()`.
 #' @param ... Ignored (reserved for future options).
@@ -60,7 +61,7 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         impInflate = 0, cLoop = FALSE,
                         likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
                         lbfgsPgtol = 0, lbfgsMaxIter = 20L,
-                        print = 0L, printNcol = NULL, useColor = NULL, ...) {
+                        print = 1L, printNcol = NULL, useColor = NULL, ...) {
   .xtra <- list(...)
   .iterPrintControl <- .absorbIterPrintControl(print = print, printNcol = printNcol,
                                                useColor = useColor,

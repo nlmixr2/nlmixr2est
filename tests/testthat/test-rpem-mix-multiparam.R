@@ -36,7 +36,6 @@ test_that("mix() calls with mismatched probabilities are rejected", {
 
 test_that("RPEM recovers a two-parameter mixture (ka and cl)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration mixture EM
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl + ecl); v <- exp(tv); cp <- linCmt() })
   set.seed(42); nsub <- 150L; obsT <- seq(0.5, 24, by = 2)

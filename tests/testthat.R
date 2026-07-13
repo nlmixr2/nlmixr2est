@@ -60,7 +60,26 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
-    "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing")
+    "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
+  # batches 7-11 -- est="rpem".  The quick core-functionality files (the C++ E-step /
+  # M-step units, the LL-model build, the dispatch/control smoke, and a basic end-to-end
+  # fit: rpem-cpp-estep, rpem-cpp-mstep, rpem-llik-model, rpem-est, rpem-fit) stay in the
+  # essential push/PR subset; every other (multi-iteration, fit-based) rpem file runs
+  # weekly here.  Sized from measured single-worker times to balance the batches.
+  # batch 7
+  c("rpem-cloop", "rpem-mix-pow", "rpem-cens", "rpem-pow", "rpem-comb"),
+  # batch 8
+  c("rpem-multi-pow", "rpem-covariate", "rpem-mix-multiparam", "rpem-impinflate",
+    "rpem-tbs", "rpem-parallel"),
+  # batch 9
+  c("rpem-fisher", "rpem-multi-comb", "rpem-mix-tbs", "rpem-llik", "rpem-boundfix",
+    "rpem-lnorm"),
+  # batch 10
+  c("rpem-multi", "rpem-mix", "rpem-mix-percomp", "rpem-iov", "rpem-multi-lnorm",
+    "rpem-parhist", "rpem-focei-agreement"),
+  # batch 11
+  c("rpem-mix-guards", "rpem-multi-tbs", "rpem-mix-comb", "rpem-jump", "rpem-struct",
+    "rpem-prop")
 )
 .slowAll <- unlist(.slowBatches)
 

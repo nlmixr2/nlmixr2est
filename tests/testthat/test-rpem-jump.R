@@ -7,7 +7,6 @@
 
 test_that("RPEM handles a dose (bioavailability) parameter and its jump sensitivity", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM fits
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv)
                           f(depot) <- exp(tf); cp <- linCmt() })

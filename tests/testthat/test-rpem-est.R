@@ -3,7 +3,6 @@
 
 test_that("est='rpem' dispatch runs end-to-end (K=1)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka+eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(3)

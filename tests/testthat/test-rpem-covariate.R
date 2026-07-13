@@ -3,7 +3,6 @@
 
 test_that("RPEM estimates a mu2 covariate coefficient (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({
     ka <- exp(tka + kawt * WT + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt()
@@ -88,7 +87,6 @@ test_that("RPEM classifier routes time-varying covariates to the structural set"
 
 test_that("RPEM recovers time-varying (structural) and non-time-varying (mu) covariates", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
   simMod <- rxode2::rxode2({
     ka <- exp(0.45 + 0.3 * NTV + 0.25 * TV + eka); cl <- exp(1); v <- exp(3.45); cp <- linCmt()
   })
@@ -107,9 +105,6 @@ test_that("RPEM recovers time-varying (structural) and non-time-varying (mu) cov
     model({ ka <- exp(tka + b_ntv * NTV + b_tv * TV + eta.ka); cl <- exp(tcl); v <- exp(lv)
             cp <- linCmt(); cp ~ add(add.sd) })
   }
-  # reset the global threefry stream so the non-cLoop M-step MH is reproducible
-  # regardless of test order (it draws proposals from the global stream)
-  rxode2::rxSetSeed(42)
   rf <- .rpemFit(rxode2::rxode2(rmod),
                  dat, rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
                                   collect = 10L, seed = 1L))

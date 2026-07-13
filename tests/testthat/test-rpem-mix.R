@@ -6,7 +6,6 @@
 
 test_that("RPEM recovers a 2-component mix() model and reports the mixture", {
   skip_on_cran()
-  skip_on_ci()  # heavy: SAEM fit + multi-iteration mixture RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(42)

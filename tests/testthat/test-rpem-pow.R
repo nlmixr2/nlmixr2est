@@ -4,7 +4,6 @@
 
 test_that("RPEM supports power error with an estimated exponent (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(11); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); truePropSd <- 0.15; truePow <- 0.75

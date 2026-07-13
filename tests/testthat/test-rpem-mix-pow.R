@@ -17,7 +17,6 @@ test_that("RPEM classifies a mixture with power residual", {
 
 test_that("RPEM recovers a mixture with power residual", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration mixture EM with the power profile
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(42); nsub <- 150L; obsT <- seq(0.5, 24, by = 2); w1 <- 0.6; tkaTrue <- c(0.0, 1.4)

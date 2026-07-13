@@ -541,12 +541,32 @@
   .cLoopCens <- !.hasCens || .cl$errType %in% c(0L, 1L)
   # fix()ed typical values / residual params / eta omegas are held only by the R loop's
   # M-step; fall back to it when any are present (fixed structural no-eta thetas are handled
-  # by exclusion from structIdx and stay in the cLoop).
+  # by exclusion from structIdx and stay in the cLoop).  NOTE: rpemEMLoopK1 also has post-M-step
+  # clamps (centered eta / etaFix / omGroup / muFix / residual holds) staged for the in-progress
+  # move to a C++-only path; they stay dormant until this guard is relaxed and each case is
+  # validated against FOCEI/truth (the cLoop and R paths diverge on sensitive under-covered omegas).
   .hasFixHold <- any(.cl$muFixFull) || .cl$addSdFix || .cl$propSdFix ||
     .cl$lambdaFix || .cl$powFix || any(.cl$etaFix)
   .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
     .cLoopCens && !.hasFixHold &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
+  # Live iteration printing (design like saem/vae): set up the shared scale.h printer BEFORE
+  # the loop so both the C++ cLoop (which streams rows from inside rpemEMLoopK1) and the R
+  # loop (which streams each iteration below) emit the trace incrementally rather than all at
+  # once after the loop.  parHistData is always captured (printing is gated by control$print).
+  # A setup failure falls back to the post-loop batched capture, so the fit never breaks on a
+  # printing edge case.
+  .every <- control$iterPrintControl$every
+  .pNames <- c(.cl$thetaNames, paste0("o(", .cl$etaNames, ")"))
+  .streamOk <- tryCatch({
+    .xf <- .iterPrintXParFromUi(ui, .cl$thetaNames)
+    .xf$xPar <- c(.xf$xPar, integer(.cl$nEta))
+    .xf$probitIdx <- c(.xf$probitIdx, integer(.cl$nEta))
+    .row0 <- c(.cl$base[seq_len(.cl$nTheta)], diag(as.matrix(.cl$omega0)))
+    rpemIterPrintStart_(.row0, .pNames, control$iterPrintControl, .xf)
+    TRUE
+  }, error = function(e) FALSE)
+  .parHist <- NULL
   if (.cLoop) {
     # second residual parameter [prop.sd, power, lambda] (theta index / initial value);
     # combined / power / TBS have no closed form and re-optimize in the C++ M-step.
@@ -573,7 +593,16 @@
       endSclIdx = if (.multi) as.integer(.cl$endpt$sclIdx) else integer(0),
       endPropIdx = if (.multi) as.integer(ifelse(is.na(.cl$endpt$propIdx), -1L, .cl$endpt$propIdx)) else integer(0),
       endScl0 = if (.multi) as.numeric(.cl$endpt$scl0) else numeric(0),
-      endProp0 = if (.multi) as.numeric(.cl$endpt$prop0) else numeric(0))
+      endProp0 = if (.multi) as.numeric(.cl$endpt$prop0) else numeric(0),
+      # live per-iteration printing streamed from inside the C++ loop (see .streamOk above)
+      printLive = if (.streamOk) 1L else 0L, nThetaPrint = as.integer(.cl$nTheta),
+      # post-M-step holds/clamps so the C++ loop covers centered etas, held omega (etaFix),
+      # IOV omega pooling (omGroup), and fixed typical / residual params -- see rpemEMLoopK1.
+      muRef = as.integer(.cl$muRef), etaFix = as.integer(.cl$etaFix),
+      omGroup = as.integer(.cl$omGroup), muFix = as.integer(.cl$muFixFull),
+      addSdFix = as.integer(isTRUE(.cl$addSdFix)),
+      propSdFix = as.integer(isTRUE(.cl$propSdFix)), lambdaFix = as.integer(isTRUE(.cl$lambdaFix)),
+      powFix = as.integer(isTRUE(.cl$powFix)))
     .r <- rpemEMLoopK1(.e, .cfg)
     muTr <- .r$muTrace; omTr <- .r$omegaTrace
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
@@ -583,6 +612,8 @@
     if (.useReg && length(.cl$covCoefIdx)) coefTr <- .r$coefTrace
     if (.multi) { sdMat <- .r$sdMat; propMat <- .r$propMat }
     if (.modeIS) ebe <- .r$ebe          # converged proposal center for the final E-step
+    # (the C++ loop streamed each iteration's row into the scale.h printer; the shared
+    # post-loop block below closes the table and gathers parHistData for both loop paths.)
   } else
   for (.it in seq_len(niter)) {
     if (.useReg) {
@@ -600,6 +631,10 @@
       if (any(.combE)) base[.cl$endpt$propIdx[.combE] + 1L] <- propVec[.combE]
     }
     rxode2::rxSetSeed(control$seed + .it)
+    # per-iteration MH seed for the threefry-engine M-step draws; offset from the eta-draw
+    # seed (control$seed + .it) so the two streams never coincide, and niter-independent so a
+    # dynamically extended run reproduces the shared-prefix iterations.
+    .mhSeed <- as.integer(control$seed + .it + 1000000L)
     .etaMat <- .drawEtas(omega, ebe)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores,
                             ebe, diag(as.matrix(omega)), .cInf)
@@ -616,37 +651,37 @@
       base[.cl$structIdx + 1L] <- .bt; betaMat[.it, ] <- .bt
     }
     if (.comb) {
-      .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn)
+      .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn, .mhSeed)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
       addSd <- .ms$addSd; propSd <- .ms$propSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else if (.tbs) {
       .ms <- rpemMstepK1TBS(.design, coefs, addSd, lambda, .cl$tbsYj,
-                            .cl$tbsLow, .cl$tbsHi, control$nMH, control$mhBurn)
+                            .cl$tbsLow, .cl$tbsHi, control$nMH, control$mhBurn, .mhSeed)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
       addSd <- .ms$addSd; lambda <- .ms$lambda
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else if (.pow) {
-      .ms <- rpemMstepK1Pow(.design, coefs, addSd, power, control$nMH, control$mhBurn)
+      .ms <- rpemMstepK1Pow(.design, coefs, addSd, power, control$nMH, control$mhBurn, .mhSeed)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
       addSd <- .ms$propSd; power <- .ms$power
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else if (.multi) {
       .prop0 <- ifelse(is.na(propVec), 0.0, propVec)
       .ms <- rpemMstepK1Multi(.design, coefs, .endptIdx, .cl$endpt$errType,
-                              sdVec, .prop0, control$nMH, control$mhBurn)
+                              sdVec, .prop0, control$nMH, control$mhBurn, .mhSeed)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
       sdVec <- .ms$sd; propVec <- .ms$propSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
       sdMat[.it, ] <- sdVec; propMat[.it, ] <- propVec
     } else if (.useReg) {
       .ms <- if (.hasCens && .cl$errType %in% c(0L, 1L))
-        rpemMstepK1Cens(.design, coefs, .cl$errType, addSd, control$nMH, control$mhBurn)
-      else rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
+        rpemMstepK1Cens(.design, coefs, .cl$errType, addSd, control$nMH, control$mhBurn, .mhSeed)
+      else rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn, .mhSeed)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else {
-      .ms <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn)
+      .ms <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn, .mhSeed)
       mu <- .ms$mu; mu[!.cl$muRef] <- 0        # centered etas: typical value held at 0
       omega <- .ms$omega; addSd <- .ms$addSd
       if (any(.cl$etaFix)) diag(omega)[.cl$etaFix] <- diag(.cl$omega0)[.cl$etaFix]  # held omegas
@@ -669,28 +704,47 @@
     lamTr[.it] <- if (.tbs) lambda else NA_real_
     powTr[.it] <- if (.pow) power else NA_real_
     llTr[.it] <- .est$lnL
+    # Stream this iteration's row (like saem/vae): assemble the theta vector + omega diagonal
+    # from the traces just recorded for .it and emit it through the shared scale.h printer.
+    if (.streamOk) {
+      .rrow <- .cl$base[seq_len(.cl$nTheta)]
+      if (length(.cl$muIdx)) .rrow[.cl$muIdx + 1L] <- muTr[.it, .cl$muRef]
+      if (.useReg && length(.cl$covCoefIdx)) .rrow[.cl$covCoefIdx + 1L] <- coefTr[.it, -1]
+      if (.structOn) .rrow[.cl$structIdx + 1L] <- betaMat[.it, ]
+      if (!is.na(.cl$addSdIdx)) .rrow[.cl$addSdIdx + 1L] <- sdTr[.it]
+      if (.comb) .rrow[.cl$propSdIdx + 1L] <- propTr[.it]
+      if (.pow) .rrow[.cl$powIdx + 1L] <- powTr[.it]
+      if (.tbs) .rrow[.cl$lambdaIdx + 1L] <- lamTr[.it]
+      if (.multi) {
+        .rrow[.cl$endpt$sclIdx + 1L] <- sdMat[.it, ]
+        .cbE <- .cl$endpt$errType %in% c(2L, 3L, 4L)
+        if (any(.cbE)) .rrow[.cl$endpt$propIdx[.cbE] + 1L] <- propMat[.it, .cbE]
+      }
+      .phase <- if (.it > niter - control$collect) "Smooth" else "EM"
+      rpemIterPrintRow_(c(.rrow, omTr[.it, ]), llTr[.it], .phase)
+    }
   }
-
-  # Parameter-history walk (shared scale.h iteration printing, like saem / focei / vae):
-  # reconstruct each iteration's full theta vector + omega from the traces (one code path
-  # for the cLoop and R loop), print the population estimates each iteration (with the
-  # back-transformed row) when control$print > 0, and always capture the walk into standard
-  # parHistData for the fit object.  `phase` labels the stage: exploration ("EM") vs the
-  # terminal averaging/smoothing window ("Smooth").
-  .thetaMat <- matrix(rep(.cl$base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
-  if (length(.cl$muIdx)) .thetaMat[, .cl$muIdx + 1L] <- muTr[, .cl$muRef, drop = FALSE]
-  if (.useReg && length(.cl$covCoefIdx)) .thetaMat[, .cl$covCoefIdx + 1L] <- coefTr[, -1, drop = FALSE]
-  if (.structOn) .thetaMat[, .cl$structIdx + 1L] <- betaMat
-  if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
-  if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
-  if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
-  if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
-  if (.multi) {
-    .thetaMat[, .cl$endpt$sclIdx + 1L] <- sdMat
-    .cb <- .cl$endpt$errType %in% c(2L, 3L, 4L)
-    if (any(.cb)) .thetaMat[, .cl$endpt$propIdx[.cb] + 1L] <- propMat[, .cb, drop = FALSE]
+  if (.streamOk) {
+    # rows streamed live above; close the table + gather parHistData.
+    .parHist <- tryCatch(rpemIterPrintGet_(.every > 0), error = function(e) NULL)
+  } else {
+    # Fallback (print setup failed): reconstruct each iteration's full theta vector + omega
+    # from the traces and capture the walk into standard parHistData in one batched pass.
+    .thetaMat <- matrix(rep(.cl$base[seq_len(.cl$nTheta)], each = niter), niter, .cl$nTheta)
+    if (length(.cl$muIdx)) .thetaMat[, .cl$muIdx + 1L] <- muTr[, .cl$muRef, drop = FALSE]
+    if (.useReg && length(.cl$covCoefIdx)) .thetaMat[, .cl$covCoefIdx + 1L] <- coefTr[, -1, drop = FALSE]
+    if (.structOn) .thetaMat[, .cl$structIdx + 1L] <- betaMat
+    if (!is.na(.cl$addSdIdx)) .thetaMat[, .cl$addSdIdx + 1L] <- sdTr
+    if (.comb) .thetaMat[, .cl$propSdIdx + 1L] <- propTr
+    if (.pow) .thetaMat[, .cl$powIdx + 1L] <- powTr
+    if (.tbs) .thetaMat[, .cl$lambdaIdx + 1L] <- lamTr
+    if (.multi) {
+      .thetaMat[, .cl$endpt$sclIdx + 1L] <- sdMat
+      .cb <- .cl$endpt$errType %in% c(2L, 3L, 4L)
+      if (any(.cb)) .thetaMat[, .cl$endpt$propIdx[.cb] + 1L] <- propMat[, .cb, drop = FALSE]
+    }
+    .parHist <- .rpemParHistCapture(ui, .cl, .thetaMat, omTr, llTr, control)
   }
-  .parHist <- .rpemParHistCapture(ui, .cl, .thetaMat, omTr, llTr, control)
 
   # Final estimate = mean over the converged iterations.
   .k <- min(control$collect, niter)
@@ -882,10 +936,11 @@
     if (.pow) base[.cl$powIdx + 1L] <- power
     if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
     rxode2::rxSetSeed(control$seed + .it)
+    .mhSeed <- as.integer(control$seed + .it + 1000000L)
     .etaMat <- .drawEtas(omega)
     .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
     .ms <- rpemMstepMix(muK, w, .mix$etaForComp, .cl$errType, addSd,
-                        if (.comb) propSd else 0.0, control$nMH, control$mhBurn)
+                        if (.comb) propSd else 0.0, control$nMH, control$mhBurn, .mhSeed)
     muK <- .ms$muK; omega <- .ms$omega; w <- .ms$w; addSd <- .ms$addSd
     if (.comb) propSd <- .ms$propSd
     if (.pow) power <- .ms$power

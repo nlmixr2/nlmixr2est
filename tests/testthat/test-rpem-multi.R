@@ -4,7 +4,6 @@
 
 test_that("RPEM supports multiple endpoints with per-endpoint residuals (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(5); nsub <- 40L; obsT <- seq(0.5, 24, by = 2); trueAdd <- 0.1; trueEff <- 0.5; te0 <- 0.7
@@ -52,7 +51,6 @@ test_that("RPEM supports multiple endpoints with per-endpoint residuals (matches
 
 test_that("RPEM multi-endpoint runs in the C++ cLoop and matches the R loop", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two multi-endpoint RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 45L; obsT <- seq(1, 24, by = 3)

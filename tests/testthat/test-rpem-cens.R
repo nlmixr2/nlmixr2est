@@ -5,7 +5,6 @@
 
 test_that("RPEM supports M3 BLQ censoring (matches FOCEI) and reports the censoring type", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); addT <- 0.15; loq <- 0.5
@@ -45,7 +44,6 @@ test_that("RPEM supports M3 BLQ censoring (matches FOCEI) and reports the censor
 
 test_that("RPEM M3 censoring runs in the C++ cLoop and matches the R loop", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); addT <- 0.15; loq <- 0.5

@@ -28,7 +28,6 @@ test_that("RPEM classifies a general log-likelihood endpoint as errType 7 (no re
 
 test_that("RPEM fits a general log-likelihood (exponential TTE) endpoint", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
   rf <- .rpemFit(ui, .rpemMkTte(1L),
@@ -42,7 +41,6 @@ test_that("RPEM fits a general log-likelihood (exponential TTE) endpoint", {
 
 test_that("RPEM recovers a fixed-effect likelihood parameter (Weibull shape) as a structural beta", {
   skip_on_cran()
-  skip_on_ci()
 
   weiTte <- function() {
     ini({ tlam <- log(30); lk <- log(1.0); eta.lam ~ 0.2 })
@@ -68,7 +66,6 @@ test_that("RPEM recovers a fixed-effect likelihood parameter (Weibull shape) as 
 
 test_that("likLbfgs refines a bounded likelihood parameter and clamps to its declared bound", {
   skip_on_cran()
-  skip_on_ci()
 
   # true Weibull shape 4, but the model DECLARES an upper bound of 3: the box-constrained
   # L-BFGS-B refinement (likLbfgs, saem ind.fix10 style) must clamp at 3, whereas the
@@ -110,7 +107,6 @@ test_that("likLbfgs refines a bounded likelihood parameter and clamps to its dec
 
 test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
   skip_on_cran()
-  skip_on_ci()
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
   d <- .rpemMkTte(1L)

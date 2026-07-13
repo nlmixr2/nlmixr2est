@@ -5,7 +5,6 @@
 
 test_that("RPEM impInflate opt-in raises the largest omega toward FOCEI/SAEM", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two multi-iteration RPEM loops
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl + ecl); v <- exp(tv + ev); cp <- linCmt() })
   set.seed(11); nsub <- 80L; obsT <- seq(0.5, 24, by = 2)
@@ -33,9 +32,6 @@ test_that("RPEM impInflate opt-in raises the largest omega toward FOCEI/SAEM", {
 
   ctl <- function(ii) rpemControl(nGauss = 400L, nMH = 60000L, mhBurn = 6000L,
                                   niter = 30L, collect = 12L, seed = 77L, impInflate = ii)
-  # reset the global threefry stream so the R-loop impInflate M-step MH (which draws from
-  # it) is reproducible regardless of test order
-  rxode2::rxSetSeed(77)
   rf0 <- .rpemFit(ui, dat, ctl(0))
   rf4 <- .rpemFit(ui, dat, ctl(4))
 

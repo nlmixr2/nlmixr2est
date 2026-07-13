@@ -7,7 +7,6 @@
 
 test_that("RPEM estimates TBS (Box-Cox) on one endpoint, additive on another", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 2); te0 <- 0.7

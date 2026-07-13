@@ -6,7 +6,6 @@
 
 test_that("est=rpem cLoop recovers, matches the R loop, and is reproducible", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(8); nsub <- 40L; etas <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 1.5)
@@ -49,7 +48,6 @@ test_that("est=rpem cLoop recovers, matches the R loop, and is reproducible", {
 
 test_that("est=rpem cLoop matches the R loop for combined / power / TBS residuals", {
   skip_on_cran()
-  skip_on_ci()  # heavy: several RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   mkdat <- function(seed, errfun) {
@@ -100,7 +98,6 @@ test_that("est=rpem cLoop matches the R loop for combined / power / TBS residual
 
 test_that("est=rpem cLoop estimates a non-mu-ref structural beta (matches R loop)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: structural re-solve M-step in C++
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(9); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); et0 <- rnorm(nsub, 0, sqrt(0.3))
@@ -135,7 +132,6 @@ test_that("est=rpem cLoop estimates a non-mu-ref structural beta (matches R loop
 
 test_that("est=rpem cLoop fits a mixture (matches R loop, reproducible)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: several mixture EM fits
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(52); nsub <- 120L; obsT <- seq(0.5, 24, by = 2)
@@ -181,7 +177,6 @@ test_that("est=rpem cLoop fits a mixture (matches R loop, reproducible)", {
 
 test_that("est=rpem cLoop fits a mixture with a combined residual (matches R loop)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: mixture EM with the combined optimizer
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(42); nsub <- 120L; obsT <- seq(0.5, 24, by = 2.5)
@@ -224,7 +219,6 @@ test_that("est=rpem cLoop fits a mixture with a combined residual (matches R loo
 
 test_that("est=rpem cLoop estimates a mu2 covariate via the C++ regression M-step", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multiple RPEM fits
 
   simMod <- rxode2::rxode2({ ka <- exp(0.45 + 0.35 * NTV + eka); cl <- exp(1)
                              v <- exp(3.45); cp <- linCmt() })
@@ -246,7 +240,7 @@ test_that("est=rpem cLoop estimates a mu2 covariate via the C++ regression M-ste
                       collect = 10L, seed = 1L, cores = 4L, cLoop = FALSE)
   ctlC <- rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
                       collect = 10L, seed = 1L, cores = 4L, cLoop = TRUE)
-  rxode2::rxSetSeed(42); rfR <- .rpemFit(ui, dat, ctlR)
+  rfR <- .rpemFit(ui, dat, ctlR)
   rfC <- .rpemFit(ui, dat, ctlC)
 
   # the C++ regression M-step recovers the covariate coefficient (true 0.35) and
@@ -268,7 +262,6 @@ test_that("est=rpem cLoop estimates a mu2 covariate via the C++ regression M-ste
 
 test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the prefix)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two C++ loops
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(8); nsub <- 30L; etas <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 2)
@@ -313,7 +306,6 @@ test_that("est=rpem cLoop is dynamic-iteration stable (longer run shares the pre
 
 test_that("est=rpem cLoop supports mode-centered IS (impInflate) and matches the R loop", {
   skip_on_cran()
-  skip_on_ci()  # heavy: several multi-eta RPEM fits
 
   sim <- rxode2::rxode2({ ka <- exp(lka + eka); cl <- exp(lcl + ecl); v <- exp(lv + ev); cp <- linCmt() })
   set.seed(42); nsub <- 50L; obsT <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24)
