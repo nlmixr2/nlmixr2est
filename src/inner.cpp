@@ -9710,6 +9710,17 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   adviSetTheta(theta);
   adviSetPopOmega(logPopOmega);
   arma::mat omegaInv = op_focei.omegaInv;
+  // Make every ELBO evaluation a pure, deterministic function of its inputs: the
+  // FOCEi bad-solve tol relaxation otherwise persists per-subject (and in the
+  // global atomics) across evaluations, so a solve that loosened tolerance in an
+  // earlier iteration/call would make the result depend on history -- breaking
+  // bit-for-bit resume==fresh reproducibility.  Reset to base each call.
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  op_focei.reducedTol.store(0, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(0, std::memory_order_relaxed);
+  op_focei.stickyTol.store(0, std::memory_order_relaxed);
+  resetOpBadSolve(op);
   std::fill(gMu.begin(), gMu.end(), 0.0);
   std::fill(gOmega.begin(), gOmega.end(), 0.0);
   std::fill(gTheta.begin(), gTheta.end(), 0.0);
@@ -9726,8 +9737,13 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
       etav[k] = eta[k];
     }
     // force a full inner recompute: likInner0 caches on unchanged eta, but theta
-    // and the population Omega also change between ELBO evaluations.
+    // and the population Omega also change between ELBO evaluations.  Reset this
+    // subject's tolerance factor + solve state to base so the solve is history-
+    // independent (deterministic).
     inds_focei[i].setup = 0;
+    { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(i));
+      setIndTolFactor(indI, 1.0);
+      setIndSolve(indI, -1); }
     double obj = likInner0(&eta[0], i);          // -log p(y_i, eta_i) + const
     focei_ind *fInd = &(inds_focei[i]);
     arma::vec lp(neta);

@@ -78,6 +78,32 @@
   vaeInnerLik(as.matrix(etaMat), .cores, isTRUE(grad), isTRUE(preds))
 }
 
+#' Adaptively choose the step-size scale `eta` (paper Sec 2.6): run a short loop
+#' (from the initial state) for each candidate and pick the one with the best
+#' late-iteration mean ELBO.  Deterministic (same seed/init), so it does not
+#' break the prefix/resume reproducibility of the main run.
+#' @noRd
+.adviAdaptEta <- function(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaFix,
+                          omegaFix, control, seed) {
+  .cands <- control$etaCandidates
+  if (length(.cands) == 1L) return(.cands)
+  N <- nrow(mu0); neta <- ncol(mu0); ntheta <- length(theta0)
+  .nAdapt <- as.integer(min(control$iters, 30L))
+  .z <- function() matrix(0, N, neta)
+  .best <- -Inf; .bestEta <- .cands[1]
+  for (.e in .cands) {
+    .r <- adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaFix, omegaFix,
+                    .nAdapt, as.numeric(seed), .e, as.numeric(control$tau),
+                    as.numeric(control$alpha), as.integer(control$nMc), 0L,
+                    .z(), .z(), numeric(ntheta), numeric(neta))
+    .el <- .r$elbo
+    .score <- if (all(is.finite(.el)))
+      mean(.el[max(1L, length(.el) - .nAdapt %/% 3L):length(.el)]) else -Inf
+    if (.score > .best) { .best <- .score; .bestEta <- .e }
+  }
+  .bestEta
+}
+
 #' Run the ADVI optimization: prep, inner setup, initialize the variational +
 #' population state, and drive the 100%-C++ loop (adviLoop_).
 #' @param ui bounded-transformed rxode2 ui
@@ -111,19 +137,25 @@
   .adviInnerSetup(ui, data, .mu0, control)
   on.exit(.adviInnerFree(), add = TRUE)
 
-  ## step-size scale (fixed for now; adaptEta search is a later step)
-  .etaScale <- 0.1
   ## the counter-based RNG is keyed by the global iteration index, so resuming
   ## with the original seed continues the exact same stream (prefix property).
   .seed <- if (!is.null(resume) && !is.null(resume$seed)) resume$seed else control$seed
+  ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
+  .muRefIdx <- as.integer(.prep$muRefThetaIdx)
+  .thFix <- as.logical(.prep$thetaFix); .omFix <- as.logical(.prep$omegaFix)
+  .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
+    else if (isTRUE(control$adaptEta))
+      .adviAdaptEta(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thFix, .omFix,
+                    control, .seed)
+    else if (length(control$etaCandidates) == 1L) control$etaCandidates
+    else 0.1
 
-  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0,
-                    as.integer(.prep$muRefThetaIdx),
-                    as.logical(.prep$thetaFix), as.logical(.prep$omegaFix),
+  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thFix, .omFix,
                     as.integer(control$iters), as.numeric(.seed), .etaScale,
                     as.numeric(control$tau), as.numeric(control$alpha),
                     as.integer(control$nMc), .it0,
                     .sMu, .sOmega, .sTheta, .sLpo)
+  .res$etaScale <- .etaScale
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
   .res$thetaNames <- names(.prep$th)
@@ -209,7 +241,7 @@
   .e$adviState <- list(mu = res$mu, omega = res$omega, theta = res$theta,
                        logPopOmega = res$logPopOmega, it0 = res$it0,
                        sMu = res$sMu, sOmega = res$sOmega, sTheta = res$sTheta,
-                       sLpo = res$sLpo, seed = res$seed)
+                       sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale)
   .fit
 }
 
