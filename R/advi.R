@@ -113,11 +113,14 @@
 
   ## step-size scale (fixed for now; adaptEta search is a later step)
   .etaScale <- 0.1
+  ## the counter-based RNG is keyed by the global iteration index, so resuming
+  ## with the original seed continues the exact same stream (prefix property).
+  .seed <- if (!is.null(resume) && !is.null(resume$seed)) resume$seed else control$seed
 
   .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0,
                     as.integer(.prep$muRefThetaIdx),
                     as.logical(.prep$thetaFix), as.logical(.prep$omegaFix),
-                    as.integer(control$iters), as.numeric(control$seed), .etaScale,
+                    as.integer(control$iters), as.numeric(.seed), .etaScale,
                     as.numeric(control$tau), as.numeric(control$alpha),
                     as.integer(control$nMc), .it0,
                     .sMu, .sOmega, .sTheta, .sLpo)
@@ -125,6 +128,7 @@
   .res$etaNames <- .prep$etaNames
   .res$thetaNames <- names(.prep$th)
   .res$popOmega <- exp(.res$logPopOmega)
+  .res$seed <- .seed
   class(.res) <- "nlmixr2advi"
   .res
 }
@@ -205,7 +209,7 @@
   .e$adviState <- list(mu = res$mu, omega = res$omega, theta = res$theta,
                        logPopOmega = res$logPopOmega, it0 = res$it0,
                        sMu = res$sMu, sOmega = res$sOmega, sTheta = res$sTheta,
-                       sLpo = res$sLpo, seed = .control$seed)
+                       sLpo = res$sLpo, seed = res$seed)
   .fit
 }
 
@@ -215,7 +219,15 @@
 .adviFitModel <- function(env) {
   .ui <- env$ui
   .control <- env$adviControl
-  .res <- .adviOptimize(.ui, env$data, .control)
+  ## warm resume: accept a prior advi fit or its adviState
+  .resume <- .control$resume
+  if (!is.null(.resume)) {
+    if (rxode2::rxIs(.resume, "nlmixr2FitData")) .resume <- .resume$env$adviState
+    else if (is.environment(.resume) && exists("adviState", .resume)) .resume <- .resume$adviState
+    if (!is.list(.resume) || is.null(.resume$it0))
+      stop("est=\"advi\" 'resume' must be a prior advi fit or its $env$adviState", call. = FALSE)
+  }
+  .res <- .adviOptimize(.ui, env$data, .control, resume = .resume)
   if (isTRUE(.control$returnAdvi)) return(.res)
   .adviToFit(env, .res)
 }

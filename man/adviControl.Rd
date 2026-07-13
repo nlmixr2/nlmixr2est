@@ -18,6 +18,7 @@ adviControl(
   tol = 1e-04,
   likelihood = c("focei", "foce", "focep", "laplace"),
   returnAdvi = FALSE,
+  resume = NULL,
   print = 1L,
   useColor = NULL,
   printNcol = NULL,
@@ -95,6 +96,11 @@ gradient, run through the FOCEi inner interface: `"focei"` (default),
 
 \item{returnAdvi}{When `TRUE` return the raw ADVI optimization object instead
 of the nlmixr2 fit.}
+
+\item{resume}{Optional warm-resume state: a previous `est="advi"` fit (or its
+`$env$adviState`).  The optimization continues from that state for `iters`
+more iterations, bit-for-bit identical to a single fresh run of the combined
+length (the counter-based RNG is keyed by the global iteration index).}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built

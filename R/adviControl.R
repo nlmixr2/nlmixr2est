@@ -51,6 +51,10 @@
 #'   `"foce"`, `"focep"`, or `"laplace"`.
 #' @param returnAdvi When `TRUE` return the raw ADVI optimization object instead
 #'   of the nlmixr2 fit.
+#' @param resume Optional warm-resume state: a previous `est="advi"` fit (or its
+#'   `$env$adviState`).  The optimization continues from that state for `iters`
+#'   more iterations, bit-for-bit identical to a single fresh run of the combined
+#'   length (the counter-based RNG is keyed by the global iteration index).
 #'
 #' @return advi control structure (class `adviControl`)
 #' @export
@@ -68,6 +72,7 @@ adviControl <- function(seed = 42L,
                         tol = 1e-4,
                         likelihood = c("focei", "foce", "focep", "laplace"),
                         returnAdvi = FALSE,
+                        resume = NULL,
 
                         print = 1L,
                         useColor = NULL,
@@ -182,6 +187,7 @@ adviControl <- function(seed = 42L,
                tol = tol,
                likelihood = likelihood,
                returnAdvi = returnAdvi,
+               resume = resume,
                covMethod = covMethod,
                optExpression = optExpression,
                sumProd = sumProd,
@@ -209,6 +215,7 @@ adviControl <- function(seed = 42L,
 #' @export
 rxUiDeparse.adviControl <- function(object, var) {
   .default <- adviControl()
+  object$resume <- NULL                     # not deparsable (may be a whole fit)
   .w <- .deparseDifferent(.default, object, "genRxControl")
   .deparseFinal(.default, object, .w, var)
 }
