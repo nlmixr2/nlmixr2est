@@ -11340,6 +11340,179 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
                       _["preds"] = preds, _["mixnum"] = mixnum);
 }
 
+// ---------------------------------------------------------------------------
+// Analytic-DECODER ELBO path (an alternative to the FOCEi inner likelihood,
+// used as a reference/validation).  The augmented decoder model is built
+// symbolically in R (.vaeDecoderModel -> .foceiAnalyticAugModelDirs) and solved
+// in R (.foceiAnalyticSolveFA); the numeric orchestration -- the per-subject
+// tolerance-relaxation + finite-difference-fallback solve loop, the p(x|z) data
+// term and its eta-gradient, and the encoder fwd/bwd + KL around them -- is here.
+// The solve itself is passed in as an R callback (`solveFn`) invoked per attempt.
+
+// p(x|z) and d(pxz)/deta for one subject from f, R, df/deta (aMat), dR/deta (aRMat).
+static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
+                              const arma::mat& aMat, const arma::mat& aRMat,
+                              const arma::vec& y, double& pxz, arma::vec& gEta) {
+  const int no = (int)f.n_elem, neta = (int)aMat.n_cols;
+  const double ln2pi = std::log(2 * M_PI);
+  arma::vec rf(no), rR(no);
+  pxz = 0;
+  for (int o = 0; o < no; ++o) {
+    double res = y[o] - f[o], Ri = R[o];
+    rf[o] = -res / Ri;
+    rR[o] = 0.5 * (1.0 / Ri - res * res / (Ri * Ri));
+    pxz += 0.5 * res * res / Ri + 0.5 * std::log(Ri) + 0.5 * ln2pi;
+  }
+  gEta.set_size(neta);
+  for (int k = 0; k < neta; ++k) {
+    double s = 0;
+    for (int o = 0; o < no; ++o) s += rf[o] * aMat(o, k) + rR[o] * aRMat(o, k);
+    gEta[k] = s;
+  }
+}
+
+struct VaeDecSolve { bool ok; arma::vec f, R; arma::mat a, aR; };
+
+// One subject's decoder solve with tolerance relaxation + FD fallback.  `solve`
+// is any callable RObject(const arma::vec& eta, double tol) that returns the
+// solved list(f, a, R, aR) or R_NilValue.
+template <class SolveFn>
+static VaeDecSolve vaeDecoderSolveSubjectCore(SolveFn solve, const arma::vec& eta, double tol,
+                                              int maxRecalc, double recalcFactor, bool fdFallback) {
+  VaeDecSolve out; out.ok = false;
+  auto allFin = [](List E) {
+    return as<arma::vec>(E["f"]).is_finite() && as<arma::vec>(E["R"]).is_finite() &&
+           as<arma::mat>(E["a"]).is_finite() && as<arma::mat>(E["aR"]).is_finite();
+  };
+  double t = tol; List E; bool haveE = false;
+  for (int attempt = 0; attempt <= maxRecalc; ++attempt) {
+    RObject r = solve(eta, t);
+    if (!r.isNULL()) {
+      E = as<List>(r); haveE = true;
+      if (allFin(E)) { out.ok = true; out.f = as<arma::vec>(E["f"]); out.R = as<arma::vec>(E["R"]);
+        out.a = as<arma::mat>(E["a"]); out.aR = as<arma::mat>(E["aR"]); return out; }
+    }
+    t *= recalcFactor;
+  }
+  if (!haveE) return out;                                 // never solved
+  arma::vec f = as<arma::vec>(E["f"]), R = as<arma::vec>(E["R"]);
+  if (!f.is_finite() || !R.is_finite() || !fdFallback) return out;
+  // f/R finite but analytic eta-sensitivities blew up: central FD of f/R
+  const int neta = (int)eta.n_elem, no = (int)f.n_elem; const double h = 1e-4;
+  arma::mat a(no, neta, arma::fill::zeros), aR(no, neta, arma::fill::zeros);
+  for (int k = 0; k < neta; ++k) {
+    arma::vec ep = eta, em = eta; ep[k] += h; em[k] -= h;
+    RObject rp = solve(ep, t), rm = solve(em, t);
+    if (rp.isNULL() || rm.isNULL()) return out;
+    List Ep = as<List>(rp), Em = as<List>(rm);
+    arma::vec fp = as<arma::vec>(Ep["f"]), fm = as<arma::vec>(Em["f"]);
+    arma::vec Rp = as<arma::vec>(Ep["R"]), Rm = as<arma::vec>(Em["R"]);
+    if (!fp.is_finite() || !fm.is_finite()) return out;
+    a.col(k) = (fp - fm) / (2 * h);
+    aR.col(k) = (Rp - Rm) / (2 * h);
+  }
+  out.ok = true; out.f = f; out.R = R; out.a = a; out.aR = aR;
+  return out;
+}
+
+//[[Rcpp::export]]
+List vaeDecoderPxz_(List E, NumericVector y) {
+  arma::vec f = as<arma::vec>(E["f"]), R = as<arma::vec>(E["R"]);
+  arma::mat a = as<arma::mat>(E["a"]), aR = as<arma::mat>(E["aR"]);
+  arma::vec yv(y.begin(), y.size());
+  double pxz; arma::vec gEta;
+  vaeDecoderPxzCore(f, R, a, aR, yv, pxz, gEta);
+  return List::create(_["pxz"] = pxz, _["gEta"] = gEta);
+}
+
+//[[Rcpp::export]]
+RObject vaeDecoderSolveSubject_(Function solveFn, NumericVector eta, double tol,
+                                int maxRecalc, double recalcFactor, bool fdFallback) {
+  arma::vec e(eta.begin(), eta.size());
+  auto solve = [&](const arma::vec& ee, double t) -> RObject {
+    return solveFn(NumericVector(ee.begin(), ee.end()), t);
+  };
+  VaeDecSolve s = vaeDecoderSolveSubjectCore(solve, e, tol, maxRecalc, recalcFactor, fdFallback);
+  if (!s.ok) return R_NilValue;
+  return List::create(_["f"] = s.f, _["R"] = s.R, _["a"] = s.a, _["aR"] = s.aR);
+}
+
+// Full analytic-decoder ELBO step (port of R .vaeElboStep): encoder forward,
+// per-subject decoder solve + p(x|z), KL, encoder backward.  `solveFn(i, eta,
+// tol)` solves physical subject i (0-based) in R; `yList` is the per-subject DV.
+//[[Rcpp::export]]
+List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector omegaR,
+                         NumericVector aVecR, double alphaKL, NumericMatrix epsR,
+                         Function solveFn, List yListR, bool withGrad,
+                         double tol, int maxRecalc, double recalcFactor, bool fdFallback) {
+  arma::mat Wih = as<arma::mat>(params["Wih"]);
+  arma::mat Whh = as<arma::mat>(params["Whh"]);
+  arma::vec bih = as<arma::vec>(params["bih"]);
+  arma::vec bhh = as<arma::vec>(params["bhh"]);
+  arma::mat fcW = as<arma::mat>(params["fcW"]);
+  arma::vec fcB = as<arma::vec>(params["fcB"]);
+  const int N = as<int>(prep["N"]);
+  const int zDim = as<int>(prep["zDim"]);
+  arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
+  arma::ivec lengths = vaeToIvec(prep["lengths"]);
+  arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  arma::vec omega(omegaR.begin(), omegaR.size());
+  arma::mat eps(epsR.begin(), N, zDim, false, true);
+  arma::mat zPopMat(N, zDim); arma::vec baseline;
+  if (Rf_isMatrix(zPopR)) { zPopMat = as<arma::mat>(zPopR); baseline = arma::mean(zPopMat, 0).t(); }
+  else { arma::vec zp = as<arma::vec>(zPopR); zPopMat.each_row() = zp.t(); baseline = zp; }
+
+  // encoder forward (grads formed only after the decoder gives d(pxz)/dz)
+  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim); arma::cube Lout(zDim, zDim, N);
+  arma::mat dGz(N, zDim, arma::fill::zeros), dGls(N, zDim, arma::fill::zeros);
+  arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
+  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+                       dGz, dGls, false, mu, logSigma, Lout, zOut, gWih, gWhh, gbih, gbhh, gFcW, gFcB);
+  arma::mat eta = zOut; eta.each_row() -= baseline.t();
+
+  arma::mat gZdec(N, zDim, arma::fill::zeros);
+  double pxz = 0; List preds(N); bool failed = false;
+  for (int i = 0; i < N; ++i) {
+    arma::vec etai = eta.row(i).t();
+    auto solve = [&](const arma::vec& ee, double t) -> RObject {
+      return solveFn(i, NumericVector(ee.begin(), ee.end()), t);
+    };
+    VaeDecSolve s = vaeDecoderSolveSubjectCore(solve, etai, tol, maxRecalc, recalcFactor, fdFallback);
+    if (!s.ok) { failed = true; break; }
+    arma::vec yi = as<arma::vec>(yListR[i]);
+    double pxi; arma::vec gEta;
+    vaeDecoderPxzCore(s.f, s.R, s.a, s.aR, yi, pxi, gEta);
+    pxz += pxi; gZdec.row(i) = gEta.t();
+    preds[i] = NumericVector(s.f.begin(), s.f.end());
+  }
+  if (failed) return R_NilValue;
+
+  const double ln2pi = std::log(2 * M_PI);
+  double pz = 0, qz = 0;
+  for (int i = 0; i < N; ++i)
+    for (int k = 0; k < zDim; ++k) {
+      double d = zOut(i, k) - zPopMat(i, k);
+      pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
+    }
+  double DKL = pz - qz, loss = pxz + alphaKL * DKL;
+  RObject grads = R_NilValue;
+  if (withGrad) {
+    arma::mat gZ = gZdec;
+    for (int i = 0; i < N; ++i)
+      for (int k = 0; k < zDim; ++k) gZ(i, k) += alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+    arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
+    arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
+    arma::mat gWih2, gWhh2, gFcW2; arma::vec gbih2, gbhh2, gFcB2;
+    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+                         gZ, gLS, true, mu2, ls2, L2, z2, gWih2, gWhh2, gbih2, gbhh2, gFcW2, gFcB2);
+    grads = List::create(_["Wih"] = gWih2, _["Whh"] = gWhh2, _["bih"] = gbih2,
+                         _["bhh"] = gbhh2, _["fcW"] = gFcW2, _["fcB"] = gFcB2);
+  }
+  return List::create(_["loss"] = loss, _["pxz"] = pxz, _["DKL"] = DKL, _["grads"] = grads,
+                      _["mu"] = mu, _["L"] = Lout, _["z"] = zOut, _["preds"] = preds);
+}
+
 // One Adam update over a block (m,v are the block's moment estimates).
 static inline void vaeAdam(arma::mat& p, const arma::mat& g, VaeAdamBlk& st,
                            double lr, int t, double b1 = 0.9, double b2 = 0.999, double eps = 1e-8) {

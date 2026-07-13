@@ -252,6 +252,18 @@ vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }
 
+vaeDecoderPxz_ <- function(E, y) {
+    .Call(`_nlmixr2est_vaeDecoderPxz_`, E, y)
+}
+
+vaeDecoderSolveSubject_ <- function(solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderSolveSubject_`, solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
+vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }

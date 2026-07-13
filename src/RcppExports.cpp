@@ -1025,6 +1025,58 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeDecoderPxz_
+List vaeDecoderPxz_(List E, NumericVector y);
+RcppExport SEXP _nlmixr2est_vaeDecoderPxz_(SEXP ESEXP, SEXP ySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type E(ESEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeDecoderPxz_(E, y));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeDecoderSolveSubject_
+RObject vaeDecoderSolveSubject_(Function solveFn, NumericVector eta, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
+RcppExport SEXP _nlmixr2est_vaeDecoderSolveSubject_(SEXP solveFnSEXP, SEXP etaSEXP, SEXP tolSEXP, SEXP maxRecalcSEXP, SEXP recalcFactorSEXP, SEXP fdFallbackSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Function >::type solveFn(solveFnSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxRecalc(maxRecalcSEXP);
+    Rcpp::traits::input_parameter< double >::type recalcFactor(recalcFactorSEXP);
+    Rcpp::traits::input_parameter< bool >::type fdFallback(fdFallbackSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeDecoderSolveSubject_(solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeDecoderElboStep_
+List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aVecR, double alphaKL, NumericMatrix epsR, Function solveFn, List yListR, bool withGrad, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
+RcppExport SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aVecRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP solveFnSEXP, SEXP yListRSEXP, SEXP withGradSEXP, SEXP tolSEXP, SEXP maxRecalcSEXP, SEXP recalcFactorSEXP, SEXP fdFallbackSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
+    Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
+    Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type aVecR(aVecRSEXP);
+    Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);
+    Rcpp::traits::input_parameter< Function >::type solveFn(solveFnSEXP);
+    Rcpp::traits::input_parameter< List >::type yListR(yListRSEXP);
+    Rcpp::traits::input_parameter< bool >::type withGrad(withGradSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxRecalc(maxRecalcSEXP);
+    Rcpp::traits::input_parameter< double >::type recalcFactor(recalcFactorSEXP);
+    Rcpp::traits::input_parameter< bool >::type fdFallback(fdFallbackSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeDecoderElboStep_(params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeTrainCpp_
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR, int cores, NumericVector row0, CharacterVector parNames, List iterPrintControl, RObject xform, IntegerVector structIdx0);
 RcppExport SEXP _nlmixr2est_vaeTrainCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP controlSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP row0SEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP structIdx0SEXP) {

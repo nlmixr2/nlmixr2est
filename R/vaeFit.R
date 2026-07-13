@@ -49,58 +49,23 @@
 #' @param withGrad compute the encoder backward (default TRUE)
 #' @noRd
 .vaeElboStep <- function(params, prep, am, zPop, omega, a, alphaKL, eps, withGrad = TRUE) {
-  N <- prep$N; zDim <- prep$zDim
-  ## zPop may be a shared vector (no covariates) or an N x zDim matrix of
-  ## subject-specific KL centers (covariate model). The decoder baseline
-  ## (THETA) is immaterial to f (only THETA+ETA=z matters), so use the intercept.
-  if (is.matrix(zPop)) { zPopMat <- zPop; baseline <- colMeans(zPop) }
-  else { zPopMat <- matrix(zPop, N, zDim, byrow = TRUE); baseline <- zPop }
+  ## The whole step (encoder fwd/bwd, per-subject decoder solve loop + p(x|z), KL)
+  ## runs in C++ (vaeDecoderElboStep_).  Only the augmented-model rxode2 solve stays
+  ## in R -- the C++ calls this per-subject closure, which builds the full theta
+  ## (baseline structural TVs + residual error) and solves subject i at its etas.
+  ## The decoder baseline (THETA) is immaterial to f (only THETA+ETA=z matters), so
+  ## use the intercept.
+  baseline <- if (is.matrix(zPop)) colMeans(zPop) else zPop
   th <- .vaeBuildTh(prep, baseline, a)
-  z0 <- matrix(0, N, zDim)
-  ## forward (grads ignored)
-  fw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
-                         params$Wih, params$Whh, params$bih, params$bhh,
-                         params$fcW, params$fcB, zDim, z0, z0)
-  mu <- fw$mu; logSigma <- fw$logSigma; L <- fw$L; z <- fw$z
-
-  ## decoder per subject -> p(x|z) and d(p_x_z)/dz
-  gZdec <- matrix(0, N, zDim)
-  pxz <- 0
-  preds <- vector("list", N)
-  for (i in seq_len(N)) {
-    s <- prep$subj[[i]]
-    eta <- z[i, ] - baseline
-    E <- .vaeDecoderSolveSubject(am, th, eta, s$ev, s$times)
-    if (is.null(E)) return(NULL)
-    px <- .vaeDecoderPxz(E, s$y)
-    pxz <- pxz + px$pxz
-    gZdec[i, ] <- px$gEta
-    preds[[i]] <- E$f
+  .etav <- am$dirs
+  .solve <- function(i0, e, t) {
+    s <- prep$subj[[i0 + 1L]]
+    .foceiAnalyticSolveFA(am, c(th, setNames(e, .etav)), s$ev, s$times, tol = t)
   }
-
-  ## KL: p_z - q_z, centered on the (possibly subject-specific) z_pop
-  ln2pi <- log(2 * pi)
-  pz <- 0; qz <- 0
-  for (i in seq_len(N)) {
-    pz <- pz + 0.5 * sum((z[i, ] - zPopMat[i, ])^2 / omega + log(omega) + ln2pi)
-    qz <- qz + 0.5 * sum(eps[i, ]^2 + ln2pi + 2 * logSigma[i, ])
-  }
-  DKL <- pz - qz
-  loss <- pxz + alphaKL * DKL
-
-  grads <- NULL
-  if (withGrad) {
-    gZ <- gZdec
-    for (i in seq_len(N)) gZ[i, ] <- gZ[i, ] + alphaKL * (z[i, ] - zPopMat[i, ]) / omega
-    gLS <- matrix(-alphaKL, N, zDim)
-    bw <- vaeEncoderFwdBwd(prep$dataIn, prep$lengths, prep$covIn, eps,
-                           params$Wih, params$Whh, params$bih, params$bhh,
-                           params$fcW, params$fcB, zDim, gZ, gLS)
-    grads <- list(Wih = bw$gWih, Whh = bw$gWhh, bih = bw$gbih, bhh = bw$gbhh,
-                  fcW = bw$gFcW, fcB = bw$gFcB)
-  }
-  list(loss = loss, pxz = pxz, DKL = DKL, grads = grads,
-       mu = mu, L = L, z = z, preds = preds)
+  .yList <- lapply(prep$subj, function(s) as.numeric(s$y))
+  vaeDecoderElboStep_(params, prep, zPop, as.numeric(omega), as.numeric(a),
+                      as.numeric(alphaKL), as.matrix(eps), .solve, .yList,
+                      isTRUE(withGrad), 1e-10, 5L, 10^(0.5), TRUE)
 }
 
 #' Closed-form error-parameter M-step for additive / proportional / combined
