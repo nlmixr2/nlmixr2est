@@ -15,7 +15,6 @@ rpemControl(
   rtol = 1e-08,
   cores = 1L,
   impInflate = 0,
-  cLoop = TRUE,
   likLbfgs = TRUE,
   lbfgsLmm = 5L,
   lbfgsFactr = 1e+07,
@@ -54,13 +53,6 @@ iteration's posterior mean with that variance-inflation factor -- and
 importance-weights, improving posterior-tail coverage for high-variance random
 effects in multi-eta models (whose largest Omega prior sampling under-estimates).
 Experimental: a partial mitigation, not a full fix (see design/rpem/04).}
-
-\item{cLoop}{Deprecated and ignored: the whole E-M loop always runs in C++ now (the R
-loop has been removed).  Kept for backward compatibility so existing calls do not error.
-The eta draw uses rxode2's per-thread threefry engine with a deterministic,
-niter-independent per-(iteration, subject) seed, so it is thread-safe, reproducible for
-any core count, and a longer run reproduces the exact per-iteration prefix of a shorter
-run at the same seed.}
 
 \item{likLbfgs}{For a general log-likelihood (`ll()`) endpoint, refine the
 fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B

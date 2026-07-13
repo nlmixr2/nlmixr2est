@@ -22,12 +22,6 @@
 #'   importance-weights, improving posterior-tail coverage for high-variance random
 #'   effects in multi-eta models (whose largest Omega prior sampling under-estimates).
 #'   Experimental: a partial mitigation, not a full fix (see design/rpem/04).
-#' @param cLoop Deprecated and ignored: the whole E-M loop always runs in C++ now (the R
-#'   loop has been removed).  Kept for backward compatibility so existing calls do not error.
-#'   The eta draw uses rxode2's per-thread threefry engine with a deterministic,
-#'   niter-independent per-(iteration, subject) seed, so it is thread-safe, reproducible for
-#'   any core count, and a longer run reproduces the exact per-iteration prefix of a shorter
-#'   run at the same seed.
 #' @param likLbfgs For a general log-likelihood (`ll()`) endpoint, refine the
 #'   fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
 #'   optimization of the importance-weighted observation log-likelihood (mirrors the
@@ -51,7 +45,7 @@
 rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         niter = 50L, collect = 15L, seed = 42L,
                         atol = 1e-8, rtol = 1e-8, cores = 1L,
-                        impInflate = 0, cLoop = TRUE,
+                        impInflate = 0,
                         likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
                         lbfgsPgtol = 0, lbfgsMaxIter = 20L,
                         print = 1L, printNcol = NULL, useColor = NULL, ...) {
@@ -63,7 +57,7 @@ rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                mhBurn = as.integer(mhBurn), niter = as.integer(niter),
                collect = as.integer(collect), seed = as.integer(seed),
                atol = atol, rtol = rtol, cores = as.integer(cores),
-               impInflate = as.numeric(impInflate), cLoop = isTRUE(cLoop),
+               impInflate = as.numeric(impInflate),
                likLbfgs = isTRUE(likLbfgs), lbfgsLmm = as.integer(lbfgsLmm),
                lbfgsFactr = as.numeric(lbfgsFactr), lbfgsPgtol = as.numeric(lbfgsPgtol),
                lbfgsMaxIter = as.integer(lbfgsMaxIter),
