@@ -5,6 +5,9 @@ Get valid nlmixr control object
 ## Usage
 
 ``` r
+# S3 method for class 'advi'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'agq'
 getValidNlmixrCtl(control)
 

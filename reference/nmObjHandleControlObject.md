@@ -5,6 +5,9 @@ Handle the control object
 ## Usage
 
 ``` r
+# S3 method for class 'adviControl'
+nmObjHandleControlObject(control, env)
+
 # S3 method for class 'agqControl'
 nmObjHandleControlObject(control, env)
 

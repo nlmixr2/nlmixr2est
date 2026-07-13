@@ -2,6 +2,34 @@
 
 ## nlmixr2est (development version)
 
+- Added an automatic differentiation variational inference method
+  (`est = "advi"`, Kucukelbir et al. 2017) with
+  [`adviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/adviControl.md).
+  The variational gradient is obtained from the FOCEi forward
+  sensitivities (the inner per-subject eta gradient and the outer
+  theta-sensitivity score) rather than automatic differentiation, and
+  the whole optimization (the adaptive step-size-scale search plus the
+  stochastic-gradient-ascent loop) runs in a single C++ call. It
+  supports mean-field and block full-rank variational families
+  (`adviFamily`), both a point-estimate (variational-EM, output
+  comparable to FOCEi/SAEM) and a full-Bayes (`pointEstimate=FALSE`,
+  with a full-rank variational posterior over the population parameters)
+  mode, mu-referenced and non-mu structural thetas plus residual error,
+  multiple endpoints and BLQ censoring (via the reused inner
+  likelihood), the paper’s adaptive step-size with a step-size-scale
+  search (`adaptEta`), and a warm-resume API (`adviControl(resume=)`).
+  The reparameterization noise is drawn from a counter-based stream
+  keyed by the global iteration index, so a shorter run is a bit-for-bit
+  prefix of a longer one and results are independent of the thread
+  count. The run prints the standard nlmixr2 iteration table (like
+  `saem`/`vae`, `adviControl(print=)`) with the step-size search and the
+  main run shown as labeled stages, and the walk is saved as standard
+  `parHistData` (`fit$parHist`). The inner and theta-sensitivity models
+  are set up once and reused by the output step (no model re-build at
+  finalize). The per-subject ELBO and gradient are computed in parallel
+  over subjects (`rxControl(cores=)`); a serial id-ordered reduction
+  keeps the result identical for any thread count.
+
 - Added quasi-random (Sobol) importance sampling to the `imp`/`impmap`
   estimation methods (QRPEM, Leary & Dunlavey PAGE 2012):
   `impmapControl(qr = TRUE)` draws the E-step samples from a

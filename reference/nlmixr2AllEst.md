@@ -16,14 +16,14 @@ List of supported nlmixr2 estimation options (est=...)
 
 ``` r
 nlmixr2AllEst()
-#>  [1] "agq"         "bobyqa"      "fo"          "foce"        "focef"      
-#>  [6] "focei"       "foceif"      "focep"       "focepf"      "foi"        
-#> [11] "fsaem"       "imp"         "impmap"      "irlsagq"     "irlsfoce"   
-#> [16] "irlsfocef"   "irlsfocei"   "irlsfoceif"  "irlsfocep"   "irlsfocepf" 
-#> [21] "irlslaplace" "laplace"     "lbfgsb3c"    "muagq"       "mufoce"     
-#> [26] "mufocef"     "mufocei"     "mufoceif"    "mufocep"     "mufocepf"   
-#> [31] "mulaplace"   "n1qn1"       "newuoa"      "nlm"         "nlme"       
-#> [36] "nlminb"      "nls"         "optim"       "posthoc"     "predict"    
-#> [41] "qrpem"       "rpem"        "rxSolve"     "saem"        "simulate"   
-#> [46] "simulation"  "uobyqa"      "vae"        
+#>  [1] "advi"        "agq"         "bobyqa"      "fo"          "foce"       
+#>  [6] "focef"       "focei"       "foceif"      "focep"       "focepf"     
+#> [11] "foi"         "fsaem"       "imp"         "impmap"      "irlsagq"    
+#> [16] "irlsfoce"    "irlsfocef"   "irlsfocei"   "irlsfoceif"  "irlsfocep"  
+#> [21] "irlsfocepf"  "irlslaplace" "laplace"     "lbfgsb3c"    "muagq"      
+#> [26] "mufoce"      "mufocef"     "mufocei"     "mufoceif"    "mufocep"    
+#> [31] "mufocepf"    "mulaplace"   "n1qn1"       "newuoa"      "nlm"        
+#> [36] "nlme"        "nlminb"      "nls"         "optim"       "posthoc"    
+#> [41] "predict"     "qrpem"       "rpem"        "rxSolve"     "saem"       
+#> [46] "simulate"    "simulation"  "uobyqa"      "vae"        
 ```

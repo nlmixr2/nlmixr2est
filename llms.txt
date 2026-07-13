@@ -147,6 +147,9 @@ plot(fit)
   : Add CWRES
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
   : NPDE calculation for nlmixr2
+- [`adviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/adviControl.md)
+  : Control for advi (automatic differentiation variational inference)
+  in nlmixr2
 - [`agqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/agqControl.md)
   : Control options for the agq estimation method
 - [`assertNlmixrFit()`](https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.md)

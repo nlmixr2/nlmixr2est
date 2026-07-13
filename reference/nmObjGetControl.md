@@ -7,6 +7,9 @@ Retrieve the (focei eval) control stored on an RPEM fit.
 ## Usage
 
 ``` r
+# S3 method for class 'advi'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'agq'
 nmObjGetControl(x, ...)
 

@@ -257,7 +257,7 @@ mufocepControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55c2a811c4b0>
+#> <bytecode: 0x55a17f0a6eb8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
