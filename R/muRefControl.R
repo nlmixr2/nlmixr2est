@@ -13,6 +13,13 @@
 #' than plain `focei` -- there is a genuine difference between calling e.g.
 #' `est="mufocei"` and `est="focei"`.
 #'
+#' All mu-referenced population thetas -- with or without covariates -- are
+#' profiled out of the outer optimizer by the in-C++ regression
+#' (intercept-only for covariate-free pairs), so outer gradients are only
+#' calculated for the non-mu-referenced parameters (residual errors, omegas,
+#' non-mu thetas).  Bounded or fixed mu-referenced thetas stay
+#' outer-optimized.
+#'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param muModel Selects the regression variant; for `mufoceiControl()`

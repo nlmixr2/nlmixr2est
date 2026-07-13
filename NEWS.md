@@ -196,6 +196,12 @@
   gradient on the profiled (mu-reduced) parameter set; a gradient/parameter-set size
   mismatch stops (never a silent FD fallback) and FD is only used when the
   sensitivity system fails to solve (with a one-time warning).
+- The mu-referenced FOCEI families (`mufocei`/`irlsfocei`/...) now profile plain
+  (covariate-free) mu-referenced population thetas out of the outer optimizer via the
+  in-C++ regression as well (intercept-only groups), so outer gradients -- numeric or
+  analytic -- are only calculated for the non-mu-referenced parameters (residual
+  errors, omegas, non-mu thetas); bounded or fixed mu-referenced thetas remain
+  outer-optimized.
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type

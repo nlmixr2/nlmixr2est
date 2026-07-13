@@ -50,6 +50,13 @@ time-varying (kept as `beta` regressors).  Calling `focei` directly does NOT
 apply these hooks, so these methods can estimate more mu-referenced models
 than plain `focei` -- there is a genuine difference between calling e.g.
 `est="mufocei"` and `est="focei"`.
+
+All mu-referenced population thetas -- with or without covariates -- are
+profiled out of the outer optimizer by the in-C++ regression
+(intercept-only for covariate-free pairs), so outer gradients are only
+calculated for the non-mu-referenced parameters (residual errors, omegas,
+non-mu thetas).  Bounded or fixed mu-referenced thetas stay
+outer-optimized.
 }
 
 \examples{

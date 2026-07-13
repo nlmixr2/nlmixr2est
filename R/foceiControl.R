@@ -279,22 +279,24 @@
 #'     option \code{resetEtaP}.
 #'
 #' @param muModel Selects the mu-referenced-FOCEI-family regression variant
-#'     for theta/eta in a mu-ref covariate relationship (see
-#'     \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
-#'     \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
-#'     \code{mulaplace}: population theta and covariate coefficient(s) per
-#'     mu-ref-covariate group are excluded from the outer optimizer and
-#'     re-derived in C++ by closed-form OLS regression of each subject's
-#'     back-calculated value on the covariate(s), residual becomes that
-#'     subject's eta; repeats until convergence, see \code{muModelTol}/
-#'     \code{muModelMaxCycles}); or \code{"irls"}
+#'     for mu-referenced thetas/etas: \code{"none"} (default, ordinary
+#'     FOCEI); \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
+#'     \code{mulaplace}: mu-referenced population thetas -- and their
+#'     covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
+#'     excluded from the outer optimizer and re-derived in C++ by
+#'     closed-form OLS regression of each subject's back-calculated value
+#'     on the covariate(s) (intercept-only for a covariate-free pair),
+#'     residual becomes that subject's eta; repeats until convergence, see
+#'     \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
 #'     (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
 #'     same mechanism, reweighted by inner-optimization curvature).
+#'     Only the outer gradients for non-mu-referenced parameters (including
+#'     residual-error thetas and all omegas) are then calculated.
 #'
-#'     A mu-ref-covariate theta with a finite bound falls back to ordinary
-#'     bounded outer-optimizer handling with a warning (a bound on the
-#'     group's population theta excludes the whole group; a bound on one
-#'     covariate coefficient excludes only that covariate).
+#'     A mu-referenced theta with a finite bound or a user fix falls back
+#'     to ordinary outer-optimizer handling (with a warning when a bounded
+#'     population theta drops a covariate group; a bound on one covariate
+#'     coefficient excludes only that covariate).
 #'
 #' @param muRefCovAlg When `TRUE` (default), algebraic expressions that can
 #'     be mu-referenced are internally rewritten as mu-referenced
