@@ -28,7 +28,6 @@ test_that("RPEM classifies a general log-likelihood endpoint as errType 7 (no re
 
 test_that("RPEM fits a general log-likelihood (exponential TTE) endpoint", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
   rf <- .rpemFit(ui, .rpemMkTte(1L),
@@ -42,7 +41,6 @@ test_that("RPEM fits a general log-likelihood (exponential TTE) endpoint", {
 
 test_that("RPEM recovers a fixed-effect likelihood parameter (Weibull shape) as a structural beta", {
   skip_on_cran()
-  skip_on_ci()
 
   weiTte <- function() {
     ini({ tlam <- log(30); lk <- log(1.0); eta.lam ~ 0.2 })
@@ -68,7 +66,6 @@ test_that("RPEM recovers a fixed-effect likelihood parameter (Weibull shape) as 
 
 test_that("likLbfgs refines a bounded likelihood parameter and clamps to its declared bound", {
   skip_on_cran()
-  skip_on_ci()
 
   # true Weibull shape 4, but the model DECLARES an upper bound of 3: the box-constrained
   # L-BFGS-B refinement (likLbfgs, saem ind.fix10 style) must clamp at 3, whereas the
@@ -99,28 +96,17 @@ test_that("likLbfgs refines a bounded likelihood parameter and clamps to its dec
   expect_equal(unname(rfC$struct["shape"]), 3, tolerance = 1e-4)
   # the unbounded re-solve overshoots past the declared bound
   expect_gt(unname(rfN$struct["shape"]), 3)
-
-  # the C++ cLoop applies the same box-constrained refinement, so a bounded ll()
-  # parameter also clamps at its declared bound when the whole loop runs in C++
-  rfCpp <- .rpemFit(ui, d, rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L,
-                                       niter = 35L, collect = 12L, seed = 1L, cores = 4L,
-                                       cLoop = TRUE))
-  expect_equal(unname(rfCpp$struct["shape"]), 3, tolerance = 1e-4)
 })
 
 test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
   skip_on_cran()
-  skip_on_ci()
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
   d <- .rpemMkTte(1L)
-  ctl <- function(cl) rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
-                                  collect = 12L, seed = 1L, cores = 4L, cLoop = cl)
-  rfR <- .rpemFit(ui, d, ctl(FALSE))
-  rfC <- .rpemFit(ui, d, ctl(TRUE))
-  # the C++ loop matches the R loop and recovers the mean; no residual sd
+  rfC <- .rpemFit(ui, d, rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
+                                     collect = 12L, seed = 1L, cores = 4L))
+  # the C++ loop recovers the mean; no residual sd for a general log-likelihood endpoint
   expect_equal(exp(unname(rfC$mu["tlam"])), 40, tolerance = 0.2)
-  expect_equal(unname(rfC$mu["tlam"]), unname(rfR$mu["tlam"]), tolerance = 0.02)
   expect_true(is.na(rfC$addSd))
 
   # dynamic-iteration stable: a longer C++ run shares the shorter run's per-iteration prefix

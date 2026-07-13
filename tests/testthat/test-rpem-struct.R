@@ -4,7 +4,6 @@
 
 test_that("RPEM estimates a non-mu-ref structural parameter (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + re-solving numeric M-step
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(9); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); trueAdd <- 0.1

@@ -34,7 +34,6 @@ test_that("est=rpem declares IOV support and builds a shared-omega occasion bloc
 
 test_that("est=rpem recovers a shared IOV omega (SAEM parity)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: ODE solve + multi-iteration RPEM + FOCEI eval
 
   # simulate IOV: id-level eta.ka ~ N(0, 0.09), per-occasion deviation ~ N(0, 0.2)
   simu <- rxode2::rxode2({ ka <- exp(lka + eka + iovk); cl <- exp(lcl); v <- exp(lv); cp <- linCmt() })

@@ -4,7 +4,6 @@
 
 test_that("RPEM supports multiple endpoints with per-endpoint residuals (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(5); nsub <- 40L; obsT <- seq(0.5, 24, by = 2); trueAdd <- 0.1; trueEff <- 0.5; te0 <- 0.7
@@ -50,9 +49,8 @@ test_that("RPEM supports multiple endpoints with per-endpoint residuals (matches
   expect_equal(rf$endptSd[2], fEff, tolerance = 0.05)  # eff additive
 })
 
-test_that("RPEM multi-endpoint runs in the C++ cLoop and matches the R loop", {
+test_that("RPEM multi-endpoint per-endpoint residual M-step recovers each endpoint's error", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two multi-endpoint RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 45L; obsT <- seq(1, 24, by = 3)
@@ -79,17 +77,12 @@ test_that("RPEM multi-endpoint runs in the C++ cLoop and matches the R loop", {
   }
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(rmod))
   expect_equal(.rpemClassify(ui)$errType, 5L)
-  ctl <- function(cl) rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
-                                  collect = 10L, seed = 42L, cores = 4L, cLoop = cl)
-  rfR <- .rpemFit(ui, dat, ctl(FALSE))
-  rfC <- .rpemFit(ui, dat, ctl(TRUE))
-  # the per-endpoint residual M-step (combined ep1 + proportional ep2) matches the R loop
-  expect_equal(rfC$endptSd[1], rfR$endptSd[1], tolerance = 0.02)     # ep1 add.sd
-  expect_equal(rfC$endptProp[1], rfR$endptProp[1], tolerance = 0.02) # ep1 prop.sd
-  expect_equal(rfC$endptSd[2], rfR$endptSd[2], tolerance = 0.02)     # ep2 prop.sd
-  expect_equal(unname(rfC$mu["tka"]), unname(rfR$mu["tka"]), tolerance = 0.02)
-  # residuals recover in the right ballpark (wide bands: the add / prop split of a combined
-  # error is weakly identified, and the R-loop reference drifts a little with test order)
+  rfC <- .rpemFit(ui, dat, rpemControl(nGauss = 300L, nMH = 60000L, mhBurn = 6000L, niter = 25L,
+                                       collect = 10L, seed = 42L, cores = 4L))
+  # the per-endpoint residual M-step (combined ep1 + proportional ep2) recovers tka and each
+  # endpoint's residual in the right ballpark (wide bands: the add / prop split of a combined
+  # error is weakly identified)
+  expect_equal(unname(rfC$mu["tka"]), 0.45, tolerance = 0.12)
   expect_gt(rfC$endptSd[1], 0.01); expect_lt(rfC$endptSd[1], 0.09)     # ep1 add ~0.05
   expect_equal(rfC$endptProp[1], 0.10, tolerance = 0.3)               # ep1 prop ~0.10
   expect_equal(rfC$endptSd[2], 0.12, tolerance = 0.25)               # ep2 prop ~0.12

@@ -4,7 +4,6 @@
 
 test_that("RPEM supports single-endpoint lognormal error (matches FOCEI)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); lnTrue <- 0.15

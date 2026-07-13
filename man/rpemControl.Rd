@@ -15,13 +15,12 @@ rpemControl(
   rtol = 1e-08,
   cores = 1L,
   impInflate = 0,
-  cLoop = FALSE,
   likLbfgs = TRUE,
   lbfgsLmm = 5L,
   lbfgsFactr = 1e+07,
   lbfgsPgtol = 0,
   lbfgsMaxIter = 20L,
-  print = 0L,
+  print = 1L,
   printNcol = NULL,
   useColor = NULL,
   ...
@@ -55,20 +54,6 @@ importance-weights, improving posterior-tail coverage for high-variance random
 effects in multi-eta models (whose largest Omega prior sampling under-estimates).
 Experimental: a partial mitigation, not a full fix (see design/rpem/04).}
 
-\item{cLoop}{Run the whole E-M loop in C++ (`TRUE`), avoiding the per-iteration R
-round-trip -- so a phase of estimation can be extended (more iterations) without R
-overhead.  The eta draw uses rxode2's per-thread threefry engine with a deterministic,
-niter-independent per-(iteration, subject) seed, so it is thread-safe, reproducible for
-any core count, and a longer run reproduces the exact per-iteration prefix of a shorter
-run at the same seed.  Covers the additive/proportional/combined/power/TBS residuals,
-single-random-effect covariate regression, structural fixed effects, general
-log-likelihood (`ll()`) endpoints (including the box-constrained `likLbfgs` refinement
-of bounded likelihood parameters), additive/proportional BLQ censoring (M2/M3/M4),
-mode-centered importance sampling (`impInflate`), multiple endpoints, and mixtures.
-`FALSE` (default) uses the R-driven loop, which additionally covers multi-endpoint
-models with covariates and models with a fix()ed typical value / residual / omega --
-cases the C++ loop does not yet handle (it silently falls back to the R loop for those).}
-
 \item{likLbfgs}{For a general log-likelihood (`ll()`) endpoint, refine the
 fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
 optimization of the importance-weighted observation log-likelihood (mirrors the
@@ -81,10 +66,11 @@ likelihood-parameter refinement (number of corrections, convergence `factr`/`pgt
 and max iterations).}
 
 \item{print}{Iteration-print frequency: display the parameter walk (population estimates
-+ omega, with the back-transformed row) every `print` iterations (saem/focei/vae style).
-`0` (default) captures the parameter history silently.  The walk is *always* saved to the
-fit object's parameter history (`fit$parHist` / `fit$parHistStacked`) regardless.  May
-also be an `iterPrintControl()` object.}
++ omega, with the back-transformed row) every `print` iterations (saem/focei/vae style),
+streamed live as the loop runs.  `1` (default) prints every iteration; `0` captures the
+parameter history silently.  The walk is *always* saved to the fit object's parameter
+history (`fit$parHist` / `fit$parHistStacked`) regardless.  May also be an
+`iterPrintControl()` object.}
 
 \item{printNcol, useColor}{Iteration-print formatting (columns per row, ANSI color); passed
 through to `iterPrintControl()`.}

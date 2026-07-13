@@ -5,7 +5,6 @@
 
 test_that("RPEM supports M3 BLQ censoring (matches FOCEI) and reports the censoring type", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI fit + multi-iteration RPEM loop
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); addT <- 0.15; loq <- 0.5
@@ -43,9 +42,8 @@ test_that("RPEM supports M3 BLQ censoring (matches FOCEI) and reports the censor
   expect_match(as.character(rf$censInformation), "M3")
 })
 
-test_that("RPEM M3 censoring runs in the C++ cLoop and matches the R loop", {
+test_that("RPEM M3 censoring's C++ censored residual M-step de-biases add.sd", {
   skip_on_cran()
-  skip_on_ci()  # heavy: two RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 40L; obsT <- seq(0.5, 24, by = 1.5); addT <- 0.15; loq <- 0.5
@@ -63,12 +61,10 @@ test_that("RPEM M3 censoring runs in the C++ cLoop and matches the R loop", {
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
   }
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(rmod))
-  ctl <- function(cl) rpemControl(nGauss = 300L, nMH = 80000L, mhBurn = 8000L, niter = 30L,
-                                  collect = 12L, seed = 100L, cores = 4L, cLoop = cl)
-  rfR <- .rpemFit(ui, dat, ctl(FALSE))
-  rfC <- .rpemFit(ui, dat, ctl(TRUE))
-  # the C++ loop's censored residual M-step matches the R loop and de-biases add.sd
-  expect_equal(unname(rfC$mu["tka"]), unname(rfR$mu["tka"]), tolerance = 0.03)
-  expect_equal(rfC$addSd, rfR$addSd, tolerance = 0.02)
-  expect_equal(rfC$addSd, 0.15, tolerance = 0.03)   # censoring de-biases the residual sd
+  rf <- .rpemFit(ui, dat, rpemControl(nGauss = 300L, nMH = 80000L, mhBurn = 8000L, niter = 30L,
+                                      collect = 12L, seed = 100L, cores = 4L))
+  # the C++ loop's censored residual M-step de-biases add.sd toward the truth (0.15): the
+  # naive pooled SS is biased because the BLQ records are set to LOQ
+  expect_true(is.finite(rf$mu["tka"]))
+  expect_equal(rf$addSd, 0.15, tolerance = 0.03)
 })

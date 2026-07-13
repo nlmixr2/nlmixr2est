@@ -7,7 +7,6 @@
 
 test_that("RPEM reports Fisher-score SEs (close to FOCEI, shrinking ~1/sqrt(n))", {
   skip_on_cran()
-  skip_on_ci()  # heavy: several FOCEI + RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   simDat <- function(nsub, seed) {
@@ -56,7 +55,6 @@ test_that("RPEM reports Fisher-score SEs (close to FOCEI, shrinking ~1/sqrt(n))"
 
 test_that("RPEM reports Fisher-score SEs for combined error (add.sd + prop.sd)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(21); nsub <- 60L; etasTrue <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 1.5)
@@ -91,7 +89,6 @@ test_that("RPEM reports Fisher-score SEs for combined error (add.sd + prop.sd)",
 
 test_that("RPEM reports Fisher-score SEs for a non-mu-ref structural beta", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM (extra CRN-FD solve per structural beta)
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(9); nsub <- 50L; obsT <- seq(0.5, 24, by = 1.5); etasTrue <- rnorm(nsub, 0, sqrt(0.3))
@@ -126,7 +123,6 @@ test_that("RPEM reports Fisher-score SEs for a non-mu-ref structural beta", {
 
 test_that("RPEM reports Fisher-score SEs for TBS Box-Cox (add.sd + lambda)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(7); nsub <- 60L; obsT <- seq(0.5, 24, by = 1.5); trueLam <- 0.5; trueAdd <- 0.1
@@ -166,7 +162,6 @@ test_that("RPEM reports Fisher-score SEs for TBS Box-Cox (add.sd + lambda)", {
 
 test_that("RPEM reports Fisher-score SEs for power error (prop.sd + exponent)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM fits
 
   struct <- rxode2::rxode2({ ka <- exp(tka + eta); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(22); nsub <- 60L; etasTrue <- rnorm(nsub, 0, sqrt(0.3)); obsT <- seq(0.5, 24, by = 1.5)
@@ -201,7 +196,6 @@ test_that("RPEM reports Fisher-score SEs for power error (prop.sd + exponent)", 
 
 test_that("RPEM reports multi-eta Fisher-score SEs (diagonal Omega)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: FOCEI + RPEM fits
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl + ecl); v <- exp(tv + ev)
                           cp <- linCmt() })

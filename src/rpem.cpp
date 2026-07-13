@@ -19,6 +19,8 @@
 #include "inner.h"
 #include "rxomp.h"
 #include "censEst.h"   // doCensNormal1: reusable censored normal log-likelihood
+#include "nmMcmcRng.h" // nmSetSeedEng1 / nmRestoreMcmcSeed: undo a solve's per-subject
+                       // threefry re-seed so it never carries into the sampling draws
 #include <vector>
 #include <functional>
 
@@ -99,6 +101,10 @@ struct rpemOptions {
 };
 
 rpemOptions rpemOp;
+
+// Shared scale.h iteration-print state (setup in R via rpemIterPrintStart_); declared here
+// so the C++ E-M loops (rpemEMLoopK1 / rpemEMLoopMix) can stream rows live as they iterate.
+static scaling _rpemScale;
 
 // golden-section maximizer (defined below); used by the power-residual profile in the
 // mixture M-step as well as the non-mixture power / TBS M-steps.
@@ -391,6 +397,11 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   };
 
   std::vector<double> row(rpemOp.ntheta), lp(nGauss);
+  // Record the sampling-block engine seed (the post-eta-draw state) so the per-subject
+  // re-seeding inside the E-step par_solve -- which under multiple threads leaves the engine
+  // in a thread-scheduling-dependent state -- can be undone before the R-side M-step's rxRmvn
+  // draws, keeping the M-step deterministic for any core count (nmMcmcRng guard).
+  nmSetSeedEng1(getRxSeed1(ncores > 1 ? ncores : 1));
   if (ncores > 1) {
     // Parallel E-step: for each Monte Carlo sample, set every subject's parameters
     // (population THETA + that subject's eta draw) and solve all subjects in one
@@ -454,6 +465,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
       lognV[id] = mx + log(s) - log((double)nGauss);
     }
   }
+  // Undo the solve's per-subject re-seed so the M-step's rxRmvn is deterministic.
+  nmRestoreMcmcSeed();
 
   // Build the R return objects serially, after the parallel region.
   NumericVector logn(nsub);
@@ -535,6 +548,10 @@ List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
   std::vector<double> row(rpemOp.ntheta);
 
+  // Record the sampling-block seed so the E-step solves' per-subject re-seed can be undone
+  // before the R-side mixture M-step's rxRmvn draws (nmMcmcRng guard; deterministic for any
+  // core count).
+  nmSetSeedEng1(getRxSeed1(ncores > 1 ? ncores : 1));
   // Solve each Monte Carlo sample once per component; the yj/cens per-obs buffers
   // are constant across components/samples so only the last write is kept.
   for (int kc = 0; kc < K; ++kc) {
@@ -578,6 +595,8 @@ List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
       }
     }
   }
+  // Undo the solve's per-subject re-seed so the mixture M-step's rxRmvn is deterministic.
+  nmRestoreMcmcSeed();
 
   // Per-component log n_ik and mixture log n_i = logsumexp_k (log w_k + log n_ik).
   NumericVector logn(nsub);
@@ -631,9 +650,8 @@ List rpemEstepMixDraw(Environment e, NumericVector base, IntegerVector etaIdx,
 // log addSd0)); new addSd = sqrt(sum SS / sum nobs).  (General error structures
 // use numeric re-scoring instead -- deferred; see design/rpem/05.)
 //[[Rcpp::export]]
-List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
+List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
   if ((int)muIn.size() != nEta) stop("muIn must have nEta entries");
   (void)addSd0;
@@ -648,23 +666,15 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
     logn[i] = mx + log(s) - log((double)nG);
   }
 
-  // Pre-draw all MH uniforms: 3 per trial (proposal i', proposal j', accept).
+  // Pre-draw all MH uniforms: 3 per trial (proposal i', proposal j', accept).  Drawn
+  // directly from rxode2's threefry engine (rxUnifEng), seeded per iteration via
+  // nmSetSeedEng1 so the MH stream is reproducible AND independent of the E-step solve's
+  // per-subject re-seed (same idiom as saem's _saemFillUnifEng).
   int total = nTrials + burn;
   size_t nU = (size_t)3 * total;
-  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
-  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
-  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
-                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
-                                wrap(IntegerVector::create(1)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(NumericVector::create(0.4)),
-                                wrap(NumericVector::create(2.05)),
-                                wrap(NumericVector::create(1e-10)),
-                                wrap(IntegerVector::create(100)));
-  NumericMatrix zm(zr);
+  nmSetSeedEng1(seed);
   std::vector<double> U(nU);
-  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+  for (size_t k = 0; k < nU; ++k) U[k] = rxUnifEng(0.0, 1.0);
 
   int ci = 0, cj = 0;
   double clogp = rpemOp.logp[0];
@@ -740,6 +750,26 @@ List rpemEMLoopK1(Environment e, List cfg) {
   double lbfgsFactr = cfg["lbfgsFactr"], lbfgsPgtol = cfg["lbfgsPgtol"];
   int lbfgsMaxIter = cfg["lbfgsMaxIter"];
   double cInflate = cfg["cInflate"];
+  // live iteration printing (design like saem/vae): when printLive, emit each iteration's
+  // theta + omega row through the shared scale.h machinery (set up in R via
+  // rpemIterPrintStart_) as the loop runs, so the trace appears incrementally rather than
+  // all at once after the loop.  nThetaPrint is the number of leading theta columns.
+  int printLive = cfg.containsElementNamed("printLive") ? (int)cfg["printLive"] : 0;
+  int nThetaPrint = cfg.containsElementNamed("nThetaPrint") ? (int)cfg["nThetaPrint"] : 0;
+  // Post-M-step holds/clamps (mirror the R loop) so the cLoop covers every K=1 case:
+  //   muRefBuf[a]==0 -> centered eta (typical value pinned at 0)
+  //   etaFixBuf[a]==1 -> omega diagonal a held at its initial value omDiag0
+  //   omGroupBuf[a]   -> IOV pooling group; omega is averaged within a group
+  //   muFixBuf[a]==1  -> typical value a held at its initial value mu0
+  //   addSdFix/propSdFix/lambdaFix/powFix -> that residual parameter held at its initial value
+  IntegerVector muRefV  = cfg.containsElementNamed("muRef")  ? as<IntegerVector>(cfg["muRef"])  : IntegerVector(0);
+  IntegerVector etaFixV = cfg.containsElementNamed("etaFix") ? as<IntegerVector>(cfg["etaFix"]) : IntegerVector(0);
+  IntegerVector omGroupV= cfg.containsElementNamed("omGroup")? as<IntegerVector>(cfg["omGroup"]): IntegerVector(0);
+  IntegerVector muFixV  = cfg.containsElementNamed("muFix")  ? as<IntegerVector>(cfg["muFix"])  : IntegerVector(0);
+  int addSdFix  = cfg.containsElementNamed("addSdFix")  ? (int)cfg["addSdFix"]  : 0;
+  int propSdFix = cfg.containsElementNamed("propSdFix") ? (int)cfg["propSdFix"] : 0;
+  int lambdaFix = cfg.containsElementNamed("lambdaFix") ? (int)cfg["lambdaFix"] : 0;
+  int powFix    = cfg.containsElementNamed("powFix")    ? (int)cfg["powFix"]    : 0;
   // multi-endpoint (errType 5): per-obs endpoint index + per-endpoint residual thetas /
   // types (empty for single-endpoint models).
   IntegerVector endpt = cfg["endpt"], endErrType = cfg["endErrType"];
@@ -760,13 +790,13 @@ List rpemEMLoopK1(Environment e, List cfg) {
   // and re-optimizes (same optimizers as the non-mixture combined/power/TBS M-steps).
   bool doComb = (errType == 2), doPow = (errType == 4), doTbs = (errType == 3);
   bool doLik = (errType == 7);   // general log-likelihood endpoint: no residual parameter
+  bool doLnorm = (errType == 6); // lognormal: residual SD estimated on the log scale
   int propSdIdx = resIdx[0], powIdx = resIdx[1], lambdaIdx = resIdx[2];
   double propSd = resPar0[0], power = resPar0[1], lambda = resPar0[2];
   int nStruct = structIdx.size();          // non-mu-ref structural fixed effects (beta)
   std::vector<int> structIdxBuf(nStruct);
   std::vector<double> beta(nStruct);
   for (int k = 0; k < nStruct; ++k) { structIdxBuf[k] = structIdx[k]; beta[k] = struct0[k]; }
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   if ((int)muIdx.size() != nEta || (int)mu0.size() != nEta || (int)omDiag0.size() != nEta)
     stop("muIdx / mu0 / omDiag0 must have nEta entries");
 
@@ -876,7 +906,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
+      nmSetSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j)
         for (int a = 0; a < nEta; ++a)
           rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] =
@@ -914,6 +944,9 @@ List rpemEMLoopK1(Environment e, List cfg) {
         rpemOp.logp[r] = logLik + lr; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
+    // The par_solve above re-seeds the threefry engine per subject; restore the sampling
+    // seed so that leak never carries into the structural / MH draws below (nmMcmcRng guard).
+    nmRestoreMcmcSeed();
     // Detect BLQ censoring once from the populated censv (any non-zero cens code): the
     // naive pooled SS is biased under censoring, so the additive/proportional residual is
     // then estimated by maximizing the censored log-likelihood (as rpemMstepK1Cens does).
@@ -1011,7 +1044,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
     // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
     // collide AND neither seed depends on the total niter -- extending niter reproduces the
     // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
-    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
+    nmSetSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0; double clogp = rpemOp.logp[0];
@@ -1052,7 +1085,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
           }
         }
         sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
-        if (doComb || doPow || doTbs || doCens || doMulti) counts3[(size_t)ci * nGauss + cj]++;
+        if (doComb || doPow || doTbs || doCens || doMulti || doLnorm) counts3[(size_t)ci * nGauss + cj]++;
         sumNobs += rpemOp.nobs[ci]; ++m;
       }
     }
@@ -1214,9 +1247,55 @@ List rpemEMLoopK1(Environment e, List cfg) {
         else { sdVec[b] = (nE[b] > 0) ? sqrt(ssE[b] / (double)nE[b]) : sdVec[b]; }
       }
       std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doLnorm) {
+      // lognormal: residual SD on the LOG scale = sqrt(mean (log dv - log cp)^2) over the
+      // accepted (subject, sample) states (the pooled natural-scale SS is wrong here).
+      double ss = 0.0; long n = 0;
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i];
+        for (int j = 0; j < nGauss; ++j) {
+          long c = counts3[(size_t)i * nGauss + j]; if (!c) continue;
+          long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+            double lr = (cp > 0.0 && dv > 0.0) ? (log(dv) - log(cp)) : 0.0;
+            ss += (double)c * lr * lr; n += c;
+          }
+        }
+      }
+      if (n > 0) addSd = sqrt(ss / (double)n);
+      std::fill(counts3.begin(), counts3.end(), 0);
     } else if (!doLik) {                 // LL: no residual sd to update
       addSd = sqrt(sumSS / (double)sumNobs);
     }
+    // Post-M-step holds/clamps (mirror the R loop), applied before recording traces so the
+    // parameter history reflects them.  Centered etas / held omega / IOV pooling apply to the
+    // scalar (non-regression) mu update; fixed typical + residual params apply to both.
+    if (!doReg) {
+      for (int a = 0; a < nEta; ++a)
+        if (a < muRefV.size() && muRefV[a] == 0) mu[a] = 0.0;              // centered eta
+      for (int a = 0; a < nEta; ++a)
+        if (a < etaFixV.size() && etaFixV[a] != 0) omDiag[a] = omDiag0[a]; // held omega
+      if ((int)omGroupV.size() == nEta) {                                  // IOV omega pooling
+        std::vector<int> gid; std::vector<double> gsum, gn;
+        for (int a = 0; a < nEta; ++a) {
+          int g = omGroupV[a], gi = -1;
+          for (int q = 0; q < (int)gid.size(); ++q) if (gid[q] == g) { gi = q; break; }
+          if (gi < 0) { gid.push_back(g); gsum.push_back(0.0); gn.push_back(0.0); gi = (int)gid.size() - 1; }
+          gsum[gi] += omDiag[a]; gn[gi] += 1.0;
+        }
+        for (int a = 0; a < nEta; ++a)
+          for (int q = 0; q < (int)gid.size(); ++q) if (gid[q] == omGroupV[a]) { omDiag[a] = gsum[q] / gn[q]; break; }
+      }
+    }
+    if ((int)muFixV.size() == nEta) {                                      // held typical values
+      if (doReg) { if (muFixV[0] != 0) { coefs[0] = mu0[0]; mu[0] = coefs[0]; } }
+      else for (int a = 0; a < nEta; ++a) if (muFixV[a] != 0) mu[a] = mu0[a];
+    }
+    if (addSdFix && addSdIdx >= 0) addSd = addSd0;                         // held residual params
+    if (propSdFix && doComb) propSd = resPar0[0];
+    if (powFix && doPow) power = resPar0[1];
+    if (lambdaFix && doTbs) lambda = resPar0[2];
     for (int a = 0; a < nEta; ++a) { muTr(it, a) = mu[a]; omTr(it, a) = omDiag[a]; }
     for (int k = 0; k < nStruct; ++k) betaTr(it, k) = beta[k];
     if (doReg) for (int k = 0; k < nCoef; ++k) coefTr(it, k) = coefs[k];
@@ -1228,6 +1307,34 @@ List rpemEMLoopK1(Environment e, List cfg) {
       sdMat(it, b) = sdVec[b];
       bool hasProp = (endErrBuf[b] == 2 || endErrBuf[b] == 3 || endErrBuf[b] == 4);
       propMat(it, b) = hasProp ? propVec[b] : NA_REAL;   // NA for add/prop/lnorm endpoints
+    }
+    // Live iteration row: assemble the post-M-step theta vector (baseBuf's leading theta
+    // slots re-filled with this iteration's estimates) + the omega diagonal, and stream it
+    // through the shared scale.h printer.  phase = terminal averaging window (Smooth) vs
+    // exploration (EM), matching the R post-loop reconstruction.
+    if (printLive && nThetaPrint > 0) {
+      std::vector<double> prow((size_t)nThetaPrint + nEta);
+      for (int i = 0; i < nThetaPrint; ++i) prow[i] = baseBuf[i];
+      if (doReg) {
+        prow[muIdxBuf[0]] = coefs[0];
+        for (int k = 0; k < (int)covIdxBuf.size(); ++k) prow[covIdxBuf[k]] = coefs[k + 1];
+      } else {
+        for (int a = 0; a < nEta; ++a) prow[muIdxBuf[a]] = mu[a];
+      }
+      if (addSdIdx >= 0) prow[addSdIdx] = addSd;
+      if (doComb) prow[propSdIdx] = propSd;
+      if (doPow) prow[powIdx] = power;
+      if (doTbs) prow[lambdaIdx] = lambda;
+      if (doMulti)
+        for (int b = 0; b < nEndpt; ++b) {
+          prow[endSclBuf[b]] = sdVec[b];
+          if ((endErrBuf[b] == 2 || endErrBuf[b] == 3 || endErrBuf[b] == 4) && endPropBuf[b] >= 0)
+            prow[endPropBuf[b]] = propVec[b];
+        }
+      for (int k = 0; k < nStruct; ++k) prow[structIdxBuf[k]] = beta[k];
+      for (int a = 0; a < nEta; ++a) prow[(size_t)nThetaPrint + a] = omDiag[a];
+      _rpemScale.phaseLabel = ((it + 1) > (niter - collect)) ? "Smooth" : "EM";
+      scalePrintFun(&_rpemScale, prow.data(), llTr[it]);
     }
   }
   rpemFree();
@@ -1321,7 +1428,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
 #ifdef _OPENMP
       if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-      setSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
+      nmSetSeedEng1(seed0 + (uint32_t)(((size_t)it * nsub + id) * 2));
       for (int j = 0; j < nGauss; ++j) for (int a = 0; a < nEta; ++a)
         rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a] = rxNormEng(0.0, 1.0) * sqrt(omDiag[a]);
     }
@@ -1350,6 +1457,8 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
         }
       }
     }
+    // undo the par_solve's per-subject threefry re-seed before the MH draws (nmMcmcRng).
+    nmRestoreMcmcSeed();
 
     // per-subject mixture log n_i.
     std::vector<double> logw(K), logn(nsub); double lnL = 0.0;
@@ -1376,7 +1485,7 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
     // MH uses the ODD threefry stream (eta draw uses the EVEN stream), so the two never
     // collide AND neither seed depends on the total niter -- extending niter reproduces the
     // exact prefix of a shorter run at the same seed (dynamic-iteration stable, imp.cpp style).
-    setSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
+    nmSetSeedEng1(seed0 + (uint32_t)it * 2u + 1u);
     std::vector<double> U(nU);
     for (size_t kk = 0; kk < nU; ++kk) U[kk] = R::pnorm(rxNormEng(0.0, 1.0), 0.0, 1.0, 1, 0);
     int ci = 0, cj = 0, ck = 0; double clogp = rpemOp.logp[0];
@@ -1527,9 +1636,9 @@ List rpemEMLoopMix(Environment e, NumericVector base, IntegerVector etaIdx,
 // current mixture weights.  errType 0=additive, 1=proportional, 6=lognormal.
 //[[Rcpp::export]]
 List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
-                  int errType, double addSd0, double propSd0, int nTrials, int burn) {
+                  int errType, double addSd0, double propSd0, int nTrials, int burn,
+                  unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepMixDraw before rpemMstepMix");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, K = rpemOp.nMix, nEta = rpemOp.nEta;
   int nParam = muK.nrow();                       // one mix() call (mixed parameter) per row
   if (muK.ncol() != K || (int)w.size() != K) stop("muK/w must have K components");
@@ -1561,20 +1670,11 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
 
   int total = nTrials + burn;
   size_t nU = (size_t)4 * total;                 // proposal i', j', k', accept
-  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
-  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
-  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
-                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
-                                wrap(IntegerVector::create(1)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(NumericVector::create(0.4)),
-                                wrap(NumericVector::create(2.05)),
-                                wrap(NumericVector::create(1e-10)),
-                                wrap(IntegerVector::create(100)));
-  NumericMatrix zm(zr);
+  // MH uniforms drawn directly from the threefry engine (rxUnifEng), seeded per iteration
+  // via nmSetSeedEng1 -- reproducible and independent of the E-step solve's re-seed.
+  nmSetSeedEng1(seed);
   std::vector<double> U(nU);
-  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+  for (size_t k = 0; k < nU; ++k) U[k] = rxUnifEng(0.0, 1.0);
 
   int ci = 0, cj = 0, ck = 0;
   double clogp = rpemOp.logp[0];
@@ -1766,10 +1866,9 @@ List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp,
 // per-sample SS for additive or WSS for proportional: sqrt(sum acc / sum nobs).
 //[[Rcpp::export]]
 List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
-                    int nTrials, int burn) {
+                    int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Reg");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Reg currently supports nEta==1");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   int nCoef = design.ncol();
   if (design.nrow() != nsub) stop("design must have one row per subject");
@@ -1793,20 +1892,11 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
 
   int total = nTrials + burn;
   size_t nU = (size_t)3 * total;
-  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
-  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
-  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
-                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
-                                wrap(IntegerVector::create(1)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(NumericVector::create(0.4)),
-                                wrap(NumericVector::create(2.05)),
-                                wrap(NumericVector::create(1e-10)),
-                                wrap(IntegerVector::create(100)));
-  NumericMatrix zm(zr);
+  // MH uniforms drawn directly from the threefry engine (rxUnifEng), seeded per iteration
+  // via nmSetSeedEng1 -- reproducible and independent of the E-step solve's re-seed.
+  nmSetSeedEng1(seed);
   std::vector<double> U(nU);
-  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+  for (size_t k = 0; k < nU; ++k) U[k] = rxUnifEng(0.0, 1.0);
 
   int ci = 0, cj = 0;
   double clogp = rpemOp.logp[0];
@@ -2020,10 +2110,9 @@ NumericMatrix rpemFisherDiag(NumericVector muVec, NumericVector omVec,
 // per-obs cp^2 (rpemOp.cp2v) and r^2 (rpemOp.r2v).  addSd0/propSd0 seed the Newton.
 //[[Rcpp::export]]
 List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0,
-                     double propSd0, int nTrials, int burn) {
+                     double propSd0, int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Comb");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Comb currently supports nEta==1");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   int nCoef = design.ncol();
   if (design.nrow() != nsub) stop("design must have one row per subject");
@@ -2046,20 +2135,11 @@ List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0,
 
   int total = nTrials + burn;
   size_t nU = (size_t)3 * total;
-  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
-  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
-  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
-                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
-                                wrap(IntegerVector::create(1)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(NumericVector::create(0.4)),
-                                wrap(NumericVector::create(2.05)),
-                                wrap(NumericVector::create(1e-10)),
-                                wrap(IntegerVector::create(100)));
-  NumericMatrix zm(zr);
+  // MH uniforms drawn directly from the threefry engine (rxUnifEng), seeded per iteration
+  // via nmSetSeedEng1 -- reproducible and independent of the E-step solve's re-seed.
+  nmSetSeedEng1(seed);
   std::vector<double> U(nU);
-  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+  for (size_t k = 0; k < nU; ++k) U[k] = rxUnifEng(0.0, 1.0);
 
   int ci = 0, cj = 0;
   double clogp = rpemOp.logp[0];
@@ -2172,7 +2252,7 @@ List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0,
 // power): runs the joint Metropolis-Hastings over the stored E-step samples,
 // accumulates per-(i,j) visit counts, and returns the regression coefs / omega.
 static void rpemMHReg(NumericMatrix design, NumericVector coefs, int nTrials, int burn,
-                      std::vector<long> &counts, NumericVector &coefOut,
+                      unsigned int seed, std::vector<long> &counts, NumericVector &coefOut,
                       double &omegaOut, double &acceptOut, long &mOut) {
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   int nCoef = design.ncol();
@@ -2192,20 +2272,11 @@ static void rpemMHReg(NumericMatrix design, NumericVector coefs, int nTrials, in
   }
   int total = nTrials + burn;
   size_t nU = (size_t)3 * total;
-  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
-  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
-  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
-                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
-                                wrap(IntegerVector::create(1)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(LogicalVector::create(false)),
-                                wrap(NumericVector::create(0.4)),
-                                wrap(NumericVector::create(2.05)),
-                                wrap(NumericVector::create(1e-10)),
-                                wrap(IntegerVector::create(100)));
-  NumericMatrix zm(zr);
+  // MH uniforms drawn directly from the threefry engine (rxUnifEng), seeded per iteration
+  // via nmSetSeedEng1 -- reproducible and independent of the E-step solve's re-seed.
+  nmSetSeedEng1(seed);
   std::vector<double> U(nU);
-  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+  for (size_t k = 0; k < nU; ++k) U[k] = rxUnifEng(0.0, 1.0);
   int ci = 0, cj = 0;
   double clogp = rpemOp.logp[0];
   std::vector<double> XtX((size_t)nCoef * nCoef, 0.0), Xty(nCoef, 0.0);
@@ -2262,14 +2333,13 @@ static double rpemGolden(const std::function<double(double)> &f, double a, doubl
 //[[Rcpp::export]]
 List rpemMstepK1TBS(NumericMatrix design, NumericVector coefs, double addSd0,
                     double lambda0, int yj, double low, double high,
-                    int nTrials, int burn) {
+                    int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1TBS");
   if (rpemOp.nEta != 1) stop("rpemMstepK1TBS currently supports nEta==1");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   if (design.nrow() != nsub) stop("design must have one row per subject");
   std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
-  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+  rpemMHReg(design, coefs, nTrials, burn, seed, counts, coefOut, omegaNew, accept, m);
 
   long N = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -2307,14 +2377,13 @@ List rpemMstepK1TBS(NumericMatrix design, NumericVector coefs, double addSd0,
 //   f(c) = -0.5 [ N log(SSc/N) + 2 c sum log|cp| ]  over the exponent c.
 //[[Rcpp::export]]
 List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0,
-                    double power0, int nTrials, int burn) {
+                    double power0, int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Pow");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Pow currently supports nEta==1");
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   if (design.nrow() != nsub) stop("design must have one row per subject");
   std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
-  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+  rpemMHReg(design, coefs, nTrials, burn, seed, counts, coefOut, omegaNew, accept, m);
 
   long N = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -2355,12 +2424,12 @@ List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0,
 // errType 0 = additive (sd_obs = sd), 1 = proportional (sd_obs = sd*|cp|).
 //[[Rcpp::export]]
 List rpemMstepK1Cens(NumericMatrix design, NumericVector coefs, int errType,
-                     double sd0, int nTrials, int burn) {
+                     double sd0, int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Cens");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Cens currently supports nEta==1");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
-  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+  rpemMHReg(design, coefs, nTrials, burn, seed, counts, coefOut, omegaNew, accept, m);
 
   auto Q = [&](double sd) -> double {
     double q = 0.0;
@@ -2714,13 +2783,13 @@ static void rpemGuardedTBS(const std::vector<long> &counts, const int *endpt,
 //[[Rcpp::export]]
 List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt,
                       IntegerVector errTypes, NumericVector add0, NumericVector prop0,
-                      int nTrials, int burn) {
+                      int nTrials, int burn, unsigned int seed) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Multi");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Multi currently supports nEta==1");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
   int nEndpt = errTypes.size();
   std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
-  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+  rpemMHReg(design, coefs, nTrials, burn, seed, counts, coefOut, omegaNew, accept, m);
 
   // additive/proportional endpoints: closed form over their own observations.
   std::vector<double> sumSS((size_t)nEndpt, 0.0);
@@ -2780,7 +2849,7 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
 // (scaleTypeNone drops the redundant "U" rows); the R-side `xform` list drives the "X"
 // back-transform row (e.g. exp() typical values), and `phase` labels the algorithm stage
 // (EM exploration vs the terminal smoothing/averaging window).
-static scaling _rpemScale;
+// (_rpemScale is declared near the top of the file so the C++ E-M loops can stream rows.)
 static std::vector<double> _rpemIpInit, _rpemIpScaleC;
 static std::vector<int> _rpemIpXPar;
 static std::string _rpemIpPhase;

@@ -1464,8 +1464,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepK1
-List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP addSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP addSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1473,7 +1473,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, addSd0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, addSd0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1522,8 +1523,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepMix
-List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp, int errType, double addSd0, double propSd0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP etaForCompSEXP, SEXP errTypeSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepMix(NumericMatrix muK, NumericVector w, IntegerMatrix etaForComp, int errType, double addSd0, double propSd0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepMix(SEXP muKSEXP, SEXP wSEXP, SEXP etaForCompSEXP, SEXP errTypeSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1535,13 +1536,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type propSd0(propSd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepMix(muK, w, etaForComp, errType, addSd0, propSd0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepMix(muK, w, etaForComp, errType, addSd0, propSd0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
 // rpemMstepK1Reg
-List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1Reg(SEXP designSEXP, SEXP coefsSEXP, SEXP errTypeSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Reg(SEXP designSEXP, SEXP coefsSEXP, SEXP errTypeSEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1550,7 +1552,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Reg(design, coefs, errType, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Reg(design, coefs, errType, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1584,8 +1587,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepK1Comb
-List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0, double propSd0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1Comb(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0, double propSd0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Comb(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP propSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1595,13 +1598,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type propSd0(propSd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Comb(design, coefs, addSd0, propSd0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Comb(design, coefs, addSd0, propSd0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
 // rpemMstepK1TBS
-List rpemMstepK1TBS(NumericMatrix design, NumericVector coefs, double addSd0, double lambda0, int yj, double low, double high, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1TBS(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP lambda0SEXP, SEXP yjSEXP, SEXP lowSEXP, SEXP highSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1TBS(NumericMatrix design, NumericVector coefs, double addSd0, double lambda0, int yj, double low, double high, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1TBS(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP lambda0SEXP, SEXP yjSEXP, SEXP lowSEXP, SEXP highSEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1614,13 +1618,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type high(highSEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1TBS(design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1TBS(design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
 // rpemMstepK1Pow
-List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0, double power0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1Pow(SEXP designSEXP, SEXP coefsSEXP, SEXP propSd0SEXP, SEXP power0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0, double power0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Pow(SEXP designSEXP, SEXP coefsSEXP, SEXP propSd0SEXP, SEXP power0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1630,13 +1635,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type power0(power0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Pow(design, coefs, propSd0, power0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Pow(design, coefs, propSd0, power0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
 // rpemMstepK1Cens
-List rpemMstepK1Cens(NumericMatrix design, NumericVector coefs, int errType, double sd0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1Cens(SEXP designSEXP, SEXP coefsSEXP, SEXP errTypeSEXP, SEXP sd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1Cens(NumericMatrix design, NumericVector coefs, int errType, double sd0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Cens(SEXP designSEXP, SEXP coefsSEXP, SEXP errTypeSEXP, SEXP sd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1646,7 +1652,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type sd0(sd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Cens(design, coefs, errType, sd0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Cens(design, coefs, errType, sd0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1687,8 +1694,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepK1Multi
-List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt, IntegerVector errTypes, NumericVector add0, NumericVector prop0, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1Multi(SEXP designSEXP, SEXP coefsSEXP, SEXP endptSEXP, SEXP errTypesSEXP, SEXP add0SEXP, SEXP prop0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt, IntegerVector errTypes, NumericVector add0, NumericVector prop0, int nTrials, int burn, unsigned int seed);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Multi(SEXP designSEXP, SEXP coefsSEXP, SEXP endptSEXP, SEXP errTypesSEXP, SEXP add0SEXP, SEXP prop0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1700,7 +1707,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type prop0(prop0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Multi(design, coefs, endpt, errTypes, add0, prop0, nTrials, burn));
+    Rcpp::traits::input_parameter< unsigned int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Multi(design, coefs, endpt, errTypes, add0, prop0, nTrials, burn, seed));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -20,15 +20,15 @@
   model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
 }
 
-test_that("rpemControl builds an iterPrintControl and defaults print to 0 (silent capture)", {
+test_that("rpemControl builds an iterPrintControl and defaults print to 1 (live trace)", {
   ctl <- rpemControl()
-  expect_equal(ctl$print, 0L)
+  expect_equal(ctl$print, 1L)                    # saem/focei/vae-style live iteration trace
   expect_s3_class(ctl$iterPrintControl, "iterPrintControl")
+  expect_equal(rpemControl(print = 0L)$print, 0L)  # opt-in silent capture still available
 })
 
 test_that("RPEM captures the parameter-history walk (one row per iteration + a phase)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loop
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.phMod))
   rf <- .rpemFit(ui, .phData(), rpemControl(nGauss = 200L, nMH = 30000L, mhBurn = 3000L,
@@ -43,7 +43,6 @@ test_that("RPEM captures the parameter-history walk (one row per iteration + a p
 
 test_that("a full est=rpem fit exposes fit$parHist and fit$parHistStacked", {
   skip_on_cran()
-  skip_on_ci()
 
   f <- suppressMessages(suppressWarnings(nlmixr2est::nlmixr2(.phMod, .phData(), est = "rpem",
     control = rpemControl(nGauss = 200L, nMH = 30000L, mhBurn = 3000L, niter = 12L,
@@ -59,7 +58,6 @@ test_that("a full est=rpem fit exposes fit$parHist and fit$parHistStacked", {
 
 test_that("RPEM iteration printing (print > 0) runs and captures the walk", {
   skip_on_cran()
-  skip_on_ci()
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.phMod))
   # print = 2 displays the iteration table (C-level RSprintf) every 2 iterations; the walk
@@ -75,7 +73,6 @@ test_that("RPEM iteration printing (print > 0) runs and captures the walk", {
 
 test_that("RPEM mixture fits capture the per-component parameter history", {
   skip_on_cran()
-  skip_on_ci()  # heavy: mixture EM loop
 
   sim <- rxode2::rxode2({ ka <- exp(tka + eka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt() })
   set.seed(52); nsub <- 100L; obsT <- seq(0.5, 24, by = 2)

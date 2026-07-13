@@ -27,7 +27,6 @@ test_that("est=rpem declares the unbounded attribute (bounded-transform enabled)
 
 test_that("RPEM holds a fix()ed mu-referenced typical value and a fix()ed residual", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration RPEM loops
 
   dat <- .bfData()
   # fixed typical value (with an eta): tka must stay at 0.30, only its omega is estimated
@@ -59,7 +58,6 @@ test_that("RPEM holds a fix()ed mu-referenced typical value and a fix()ed residu
 
 test_that("RPEM fits a bounded structural (likelihood) parameter within its bounds", {
   skip_on_cran()
-  skip_on_ci()
 
   # Weibull TTE with a bounded shape via the full nlmixr2 path (bounded transform applies)
   mkWei <- function(seed = 1L, n = 200L, meanT = 40, k = 1.5) {

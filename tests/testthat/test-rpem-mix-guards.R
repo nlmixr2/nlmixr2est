@@ -24,7 +24,6 @@
 
 test_that("RPEM mixture recovers unequal component weights (0.75/0.25)", {
   skip_on_cran()
-  skip_on_ci()  # heavy: multi-iteration mixture EM
 
   dat <- .genMix(42, c(0.0, 1.4), 0.75, nsub = 120L)
   mod <- function() {
@@ -43,7 +42,6 @@ test_that("RPEM mixture recovers unequal component weights (0.75/0.25)", {
 
 test_that("RPEM mixture label-switching guard orders components (reversed init)", {
   skip_on_cran()
-  skip_on_ci()  # heavy
 
   dat <- .genMix(42, c(0.0, 1.4), 0.6, nsub = 100L)
   # start with the components in reversed order (tka1 > tka2); the ascending-mu guard
@@ -63,7 +61,6 @@ test_that("RPEM mixture label-switching guard orders components (reversed init)"
 
 test_that("RPEM mixture empty-component guard stays finite on a single population", {
   skip_on_cran()
-  skip_on_ci()  # heavy
 
   # data is a single population (both subjects drawn at tka = 0.7) but fit as K = 2;
   # the weight floor must keep every quantity finite (no logw = -Inf / NaN collapse)
