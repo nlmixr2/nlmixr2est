@@ -61,22 +61,6 @@
   different `impSeed` gives a different (but reproducible and
   thread-count-independent) importance sample.
 
-- Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`,
-  Chen et al. 2024) with
-  [`rpemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rpemControl.md).
-  Supports additive/proportional/lognormal/ combined/power/TBS
-  residuals, multiple endpoints, mu-referenced covariates (time-varying
-  and non-time-varying), IOV, finite mixtures (`mix()`), general
-  log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
-  refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters,
-  and Fisher-score standard errors. The whole E-M loop runs in C++
-  (thread-safe and reproducible for any core count), and the iteration
-  walk is streamed live and saved to `fit$parHist` like the other
-  methods. `rpemControl(cLoop=)` is deprecated and ignored (the C++ loop
-  is the only path); not-yet-ported combinations (BLQ censoring on
-  non-additive error, multiple endpoints with covariates, and errType
-  5/7 mixtures) raise a clear error.
-
 - The `est = "vae"` training loop (variational-autoencoder NLME) now
   runs entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM /
   smoothing schedule, the LSTM encoder forward/backward, the FOCEi
@@ -989,12 +973,6 @@
   `est="nlme"` and invalid initial probabilities, warnings for
   underflowing/collapsing mixture probabilities, and a fix for the SAEM
   omega-diagonal floor being raised outside mixture fits
-
-- Fixed `est = "rpem"` failing with
-  `muIdx / mu0 / omDiag0 must have nEta entries` for models with a
-  centered (non-mu-referenced) random effect, e.g. a bounded typical
-  value like `tcl <- log(c(0, 2.7, 100))` with an eta (the bounded
-  transform demotes the eta to centered)
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session for pooled estimators

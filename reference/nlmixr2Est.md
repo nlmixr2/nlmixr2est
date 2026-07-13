@@ -136,9 +136,6 @@ nlmixr2Est(env, ...)
 # S3 method for class 'qrpem'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'rpem'
-nlmixr2Est(env, ...)
-
 # S3 method for class 'rxSolve'
 nlmixr2Est(env, ...)
 

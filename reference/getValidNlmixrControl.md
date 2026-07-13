@@ -122,9 +122,6 @@ getValidNlmixrCtl(control)
 # S3 method for class 'qrpem'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'rpem'
-getValidNlmixrCtl(control)
-
 getValidNlmixrControl(control, est)
 
 getValidNlmixrCtl(control)

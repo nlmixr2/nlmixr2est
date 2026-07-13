@@ -106,7 +106,7 @@
 <p>Slow, multi-iteration/fit-based test files run WEEKLY, not on every push/PR. Push/PR CI runs the “essential” subset: every test file EXCEPT those listed in <code>.slowBatches</code> in <code>tests/testthat.R</code>. The weekly <code>slow-tests.yaml</code> workflow runs the batches one at a time via <code>NLMIXR2EST_TEST_BATCH=&lt;n&gt;</code> (its matrix must match the number of <code>.slowBatches</code> entries).</p>
 <p>When adding tests for an estimation method, split them by cost:</p>
 <ul><li>
-<strong>Quickest core-functionality tests always run</strong>: leave them OUT of <code>.slowBatches</code> (they run in the essential push/PR subset). Keep this set small – unit tests plus one basic end-to-end fit. Example (rpem): <code>rpem-cpp-estep</code>, <code>rpem-cpp-mstep</code>, <code>rpem-llik-model</code>, <code>rpem-est</code>, <code>rpem-fit</code>.</li>
+<strong>Quickest core-functionality tests always run</strong>: leave them OUT of <code>.slowBatches</code> (they run in the essential push/PR subset). Keep this set small – unit tests plus one basic end-to-end fit. Example (advi): <code>advi-control</code>, <code>advi-dataprep</code>, <code>advi-inner</code>, <code>advi-grad</code>, <code>advi-fit</code> stay essential; the multi-iteration fit files run weekly.</li>
 <li>
 <strong>Everything else goes into a weekly batch</strong>: add the file’s basename (no <code>test-</code> prefix, no <code>.R</code>) to a <code>.slowBatches</code> batch, sized from measured single-worker times so each batch stays well under an hour.</li>
 <li>
