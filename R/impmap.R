@@ -107,6 +107,8 @@ impmapControl <- function(sigdig=3,
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
+  checkmate::assertIntegerish(isample, any.missing=FALSE, len=1, lower=1, .var.name="isample")
+  checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
   .isample <- as.integer(isample)
   if (is.null(sirSample)) {
     .sirSample <- max(25L, as.integer(ceiling(.isample / 10)))
