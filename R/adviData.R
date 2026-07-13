@@ -84,6 +84,7 @@
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames, ids = .ids,
        th = .th, theta = as.numeric(.th), ntheta = length(.th), thetaFix = .thetaFix,
+       thetaRealNames = .thRows$name,   # actual parameter names in ntheta order
        muRefThetaIdx = .cls$muRefThetaIdx, isFree = is.na(.cls$muRefThetaIdx),
        structIdx = .cls$struct, sigmaIdx = .cls$sigma, thetaSensIdx = .cls$thetaSensIdx,
        omega = .omega, omegaFix = .omegaFix,

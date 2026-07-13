@@ -291,9 +291,11 @@
   .ret$ui <- .ui2
   .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
-  ## point-estimate SEs come from the FOCEi covariance step; covMethod="advi"
-  ## (the full-Bayes variational covariance) falls back to "r,s" here.
-  .covM <- if (identical(.control$covMethod, "advi")) "r,s" else .control$covMethod
+  ## covMethod="advi": for full-Bayes the SEs come from the population variational
+  ## covariance (installed below, so skip the FOCEi cov step); for point-estimate
+  ## there is no population variational block, so fall back to the FOCEi "r,s".
+  .covM <- if (identical(.control$covMethod, "advi"))
+    (if (isTRUE(res$pointEstimate)) "r,s" else "") else .control$covMethod
   .lik <- .control$likelihood
   .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
   .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
@@ -333,13 +335,34 @@
     .st$smPop <- res$smPop; .st$sLpop <- res$sLpop
     ## population variational covariance -> named phi-space cov on the fit env
     .cov <- res$adviCov
-    .nm <- c(res$thetaNames[res$phiThetaIdx[res$phiThetaIdx >= 0] + 1L],
-             paste0("omega.", res$etaNames[res$phiOmIdx[res$phiOmIdx >= 0] + 1L]))
+    .thNm <- res$prep$thetaRealNames[res$phiThetaIdx[res$phiThetaIdx >= 0] + 1L]
+    .nm <- c(.thNm, paste0("omega.", res$etaNames[res$phiOmIdx[res$phiOmIdx >= 0] + 1L]))
     if (nrow(.cov) == length(.nm)) dimnames(.cov) <- list(.nm, .nm)
     .e$adviCov <- .cov
+    ## install the population variational covariance as the fit's SE source (the
+    ## theta block maps directly to parFixedDf's population/residual parameters)
+    .adviInstallVarCov(.fit, res)
   }
   .e$adviState <- .st
   .fit
+}
+
+#' Install the ADVI population variational covariance (Lpop Lpop^T) as the fit's
+#' covariance + parFixedDf SEs -- the natural full-Bayes uncertainty.  The theta
+#' block of the phi-space covariance maps directly to the population / residual
+#' parameters (by name); the log-variance block is retained on $env$adviCov.
+#' Reuses the rpem Fisher-cov installer.
+#' @noRd
+.adviInstallVarCov <- function(fit, res) {
+  .thComp <- which(res$phiThetaIdx >= 0)
+  if (length(.thComp) == 0L) return(invisible())
+  .thNames <- res$prep$thetaRealNames[res$phiThetaIdx[.thComp] + 1L]
+  .thetaCov <- res$adviCov[.thComp, .thComp, drop = FALSE]
+  dimnames(.thetaCov) <- list(.thNames, .thNames)
+  .rpemInstallFisherCov(fit, .thetaCov)
+  .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
+  if (is.environment(.env)) .env$covMethod <- "advi"
+  invisible()
 }
 
 #' Fit an ADVI model: set up the inner/outer problems and run the C++ loop.

@@ -47,5 +47,9 @@ nmTest({
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
     expect_false(is.null(fit$env$adviCov))
+    ## the population variational covariance is the fit's SE source
+    expect_identical(fit$covMethod, "advi")
+    expect_true(all(is.finite(fit$parFixedDf$SE)))
+    expect_true(all(fit$parFixedDf$SE > 0))
   })
 })
