@@ -660,6 +660,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeInnerUpdatePar_
+RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag);
+RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaDiagSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thFull(thFullSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omegaDiag(omegaDiagSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omegaDiag));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeInnerLik
 List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad, bool preds);
 RcppExport SEXP _nlmixr2est_vaeInnerLik(SEXP etaMatSEXP, SEXP coresSEXP, SEXP gradSEXP, SEXP predsSEXP) {
@@ -928,6 +940,27 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
     rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeTrainCpp_
+List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR, int cores, NumericVector row0, CharacterVector parNames, List iterPrintControl, RObject xform, IntegerVector structIdx0);
+RcppExport SEXP _nlmixr2est_vaeTrainCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP controlSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP row0SEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP structIdx0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
+    Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
+    Rcpp::traits::input_parameter< List >::type control(controlSEXP);
+    Rcpp::traits::input_parameter< int >::type nMix(nMixSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixProbR(mixProbRSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type row0(row0SEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type parNames(parNamesSEXP);
+    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type structIdx0(structIdx0SEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeTrainCpp_(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0));
     return rcpp_result_gen;
 END_RCPP
 }

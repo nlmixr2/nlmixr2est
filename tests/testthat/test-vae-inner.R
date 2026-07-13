@@ -42,6 +42,50 @@ nmTest({
     expect_equal(fp$foceType, 1L)   # FOCE+
   })
 
+  test_that("vaeInnerUpdatePar_ fast path matches the full re-setup path", {
+    ## The per-gradient-step fast path (vaeInnerUpdatePar_: updateTheta on the
+    ## cached reduced par vector) replaces the full re-setup (.vaeInnerUpdate ->
+    ## rxSymInvCholCreate + foceiSetup_).  At the SETUP parameter values the two
+    ## agree to machine precision; away from them a tiny (<1e-2) discrepancy
+    ## remains because foceiSetup_ recomputes the internal scaling-normalization
+    ## reference (c1/c2/scaleTo, a function of initPar) each call whereas the fast
+    ## path holds the setup's -- a change of internal reparameterization only,
+    ## which does not affect the inner likelihood beyond that tolerance.
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(theo)
+    ctl <- vaeControl()
+    N <- length(unique(nlmixr2data::theo_sd$ID))
+    set.seed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    env <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    ## exact at the setup parameter values
+    vaeInnerUpdatePar_(as.numeric(prep$th), as.numeric(prep$omega))
+    rFast0 <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+    .vaeInnerUpdate(env, prep$th, prep$omega, etaMat)
+    rRef0 <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+    expect_equal(rFast0$obj, rRef0$obj, tolerance = 1e-10)
+    expect_equal(rFast0$lp, rRef0$lp, tolerance = 1e-10)
+    ## near the setup values, agreement to a small tolerance
+    for (i in 1:3) {
+      set.seed(i)
+      th <- prep$th * (1 + rnorm(length(prep$th), 0, 0.1))
+      om <- prep$omega * exp(rnorm(3, 0, 0.3))
+      vaeInnerUpdatePar_(as.numeric(th), as.numeric(om))
+      rFast <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+      .vaeInnerUpdate(env, th, om, etaMat)
+      rRef <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+      expect_lt(max(abs(rFast$obj - rRef$obj)), 1e-2)
+      expect_lt(max(abs(rFast$lp - rRef$lp)), 1e-2)
+    }
+  })
+
   test_that("vae inner driver selects mixture components per id", {
     mixmod <- function() {
       ini({ lka <- log(1.8); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32); p1 <- 0.6
