@@ -1,5 +1,20 @@
 # nlmixr2est (development version)
 
+- Added an automatic differentiation variational inference method
+  (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
+  gradient is obtained from the FOCEi forward sensitivities (the inner
+  per-subject eta gradient and the outer theta-sensitivity score) rather than
+  automatic differentiation, and the whole stochastic-gradient-ascent loop runs
+  in C++.  It supports a mean-field variational family, a control-selectable
+  point-estimate (variational-EM, output comparable to FOCEi/SAEM) mode,
+  mu-referenced and non-mu structural thetas plus residual error, multiple
+  endpoints and BLQ censoring (via the reused inner likelihood), the paper's
+  adaptive step-size with a step-size-scale search (`adaptEta`), and a warm-resume
+  API (`adviControl(resume=)`).  The reparameterization noise is drawn from a
+  counter-based stream keyed by the global iteration index, so a shorter run is a
+  bit-for-bit prefix of a longer one and results are independent of the thread
+  count; the iteration walk is saved to `fit$parHist` like the other methods.
+
 - Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
   al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
   combined/power/TBS residuals, multiple endpoints, mu-referenced covariates

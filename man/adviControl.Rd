@@ -12,7 +12,7 @@ adviControl(
   pointEstimate = TRUE,
   optim = c("advi", "adam"),
   adaptEta = TRUE,
-  etaCandidates = c(0.01, 0.1, 1, 10, 100),
+  etaCandidates = c(0.01, 0.025, 0.05, 0.1, 0.25),
   tau = 1,
   alpha = 0.1,
   tol = 1e-04,
