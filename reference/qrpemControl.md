@@ -1,66 +1,47 @@
-# Control options for the mufocep (mu-referenced FOCE+) estimation method
+# Control for the qrpem (quasi-random parametric EM) estimation method
 
-Mu-referenced-FOCEI-family closed-form-regression (\`"lin"\`) variant of
-FOCE+ (no interaction, live conditional residual variance R); it is
-\`mufoce\` with \`foce = "foce+"\` forced (see \`foceiControl(foce=)\`).
+A convenience wrapper around \[impmapControl()\] defaulting \`qr=TRUE\`
+(Sobol quasi-random importance samples) and \`sir=TRUE\`
+(SIR-accelerated non-mu / residual-error M-step); explicitly supplied
+arguments win. See \[impmapControl()\] for the full parameter list.
 
 ## Usage
 
 ``` r
-mufocepControl(
-  sigdig = 3,
-  ...,
-  interaction = FALSE,
-  muModel = c("lin", "irls", "none"),
-  foce = "foce+"
-)
+qrpemControl(..., qr = TRUE, sir = TRUE)
 ```
 
 ## Arguments
 
-- sigdig:
-
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
-  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
-  and boundary check tolerance (`5*10^(-sigdig+1)`).
-
 - ...:
 
-  Parameters used in the default \`foceiControl()\`
+  Parameters passed to \[impmapControl()\].
 
-- interaction:
+- qr:
 
-  Interaction term for the model, in this case the default is \`FALSE\`;
-  it cannot be changed, use \`mufocei\` instead
+  When \`TRUE\`, draw quasi-random (Sobol low-discrepancy) importance
+  samples instead of pseudo-random Gaussian samples (QRPEM, Leary &
+  Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead
+  of O(1/sqrt(N)).
 
-- muModel:
+- sir:
 
-  Selects the regression variant; for \`mufocepControl()\` this is
-  always \`"lin"\` and cannot be changed – use \`irlsfocepControl()\`
-  for the IRLS variant.
-
-- foce:
-
-  FOCE residual-variance mode; for \`mufocepControl()\` this is always
-  \`"foce+"\` and cannot be changed – use \`mufoceControl()\` for
-  \`"nonmem"\`
+  When \`TRUE\`, accelerate the non-mu / residual-error M-step by SIR
+  (sampling-importance-resampling): the theta-sensitivity Newton step
+  uses \`sirSample\` equal-weight resampled points per subject instead
+  of all \`isample\` weighted samples.
 
 ## Value
 
-mufocepControl object
+An \`impmapControl\` object with the QRPEM defaults.
 
-## Difference from \`focei\`
+## Details
 
-The \`mufocei\`/\`irlsfocei\` (and related) methods apply the mu2+
-covariate hooks, which expand algebraic mu-referenced covariate
-expressions (e.g. \`cl.wt\*log(WT/70)\`) into estimable mu-referenced
-parameters and split covariates into non-time-varying (absorbed into the
-phi term) and time-varying (kept as \`beta\` regressors). Calling
-\`focei\` directly does NOT apply these hooks, so these methods can
-estimate more mu-referenced models than plain \`focei\` – there is a
-genuine difference between calling e.g. \`est="mufocei"\` and
-\`est="focei"\`.
+Note this is not know to be the same as the QRPEM implementation in
+Phoenix NLME since the details of their method are not public. However,
+this matches the QRPEM method of using quasi-random parametric EM and
+SIR accelerated parameter convergence described in Leary & Dunlavey
+(2012) PAGE 2012, 19(1): 1-6.
 
 ## Author
 
@@ -70,7 +51,7 @@ Matthew L. Fidler
 
 ``` r
 
-mufocepControl()
+qrpemControl()
 #> $maxOuterIterations
 #> [1] 5000
 #> 
@@ -187,13 +168,13 @@ mufocepControl()
 #> [1] 1
 #> 
 #> $interaction
-#> [1] 0
+#> [1] 1
 #> 
 #> $foce
-#> [1] "foce+"
+#> [1] "nonmem"
 #> 
 #> $foceType
-#> [1] 1
+#> [1] 0
 #> 
 #> $cholSEtol
 #> [1] 6.055454e-06
@@ -912,6 +893,51 @@ mufocepControl()
 #> $boundedTransform
 #> [1] TRUE
 #> 
+#> $isample
+#> [1] 300
+#> 
+#> $nIter
+#> [1] 100
+#> 
+#> $mapIter
+#> [1] 1
+#> 
+#> $gamma
+#> [1] 1
+#> 
+#> $iscaleMin
+#> [1] 0.1
+#> 
+#> $iscaleMax
+#> [1] 10
+#> 
+#> $iaccept
+#> [1] 0.4
+#> 
+#> $nConvWindow
+#> [1] 10
+#> 
+#> $impSeed
+#> [1] 42
+#> 
+#> $impCov
+#> [1] FALSE
+#> 
+#> $qr
+#> [1] TRUE
+#> 
+#> $qrShift
+#> [1] TRUE
+#> 
+#> $qrRefresh
+#> [1] TRUE
+#> 
+#> $sir
+#> [1] TRUE
+#> 
+#> $sirSample
+#> [1] 30
+#> 
 #> attr(,"class")
-#> [1] "mufocepControl"
+#> [1] "impmapControl"
 ```

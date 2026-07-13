@@ -102,6 +102,9 @@ nmObjGetControl(x, ...)
 # S3 method for class 'posthoc'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'qrpem'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'rpem'
 nmObjGetControl(x, ...)
 

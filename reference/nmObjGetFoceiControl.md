@@ -64,6 +64,9 @@ nmObjGetFoceiControl(x, ...)
 # S3 method for class 'posthoc'
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'qrpem'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'saem'
 nmObjGetFoceiControl(x, ...)
 ```

@@ -239,7 +239,7 @@ irlslaplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x56330ba93d58>
+#> <bytecode: 0x556f8be6b0b8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

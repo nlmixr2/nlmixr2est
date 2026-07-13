@@ -217,7 +217,7 @@ impControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x56330ba93d58>
+#> <bytecode: 0x556f8be6b0b8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -901,6 +901,21 @@ impControl()
 #> 
 #> $impCov
 #> [1] FALSE
+#> 
+#> $qr
+#> [1] FALSE
+#> 
+#> $qrShift
+#> [1] TRUE
+#> 
+#> $qrRefresh
+#> [1] TRUE
+#> 
+#> $sir
+#> [1] FALSE
+#> 
+#> $sirSample
+#> [1] 30
 #> 
 #> attr(,"class")
 #> [1] "impmapControl"

@@ -1,6 +1,4 @@
-# Validate the RPEM control (est="rpem")
-
-Validate the RPEM control (est="rpem")
+# Get valid nlmixr control object
 
 Get valid nlmixr control object
 
@@ -116,6 +114,9 @@ getValidNlmixrCtl(control)
 getValidNlmixrCtl(control)
 
 # S3 method for class 'posthoc'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'qrpem'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'rpem'

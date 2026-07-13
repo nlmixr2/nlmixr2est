@@ -23,6 +23,11 @@ impmapControl(
   nConvWindow = 10L,
   impSeed = 42L,
   impCov = FALSE,
+  qr = FALSE,
+  qrShift = TRUE,
+  qrRefresh = TRUE,
+  sir = FALSE,
+  sirSample = NULL,
   muModel = c("lin", "none")
 )
 ```
@@ -99,6 +104,40 @@ impmapControl(
   tightly-determined random effect (an Omega diagonal) can still be
   over-estimated because the fixed samples barely span its prior
   variation.
+
+- qr:
+
+  When \`TRUE\`, draw quasi-random (Sobol low-discrepancy) importance
+  samples instead of pseudo-random Gaussian samples (QRPEM, Leary &
+  Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead
+  of O(1/sqrt(N)).
+
+- qrShift:
+
+  Only used with \`qr=TRUE\`. When \`TRUE\` each (iteration, subject)
+  applies a random Cranley-Patterson shift to the Sobol points (seeded,
+  thread-count independent); \`FALSE\` reuses one fixed Sobol point set
+  everywhere (fully deterministic E-step, no RNG in the draw).
+
+- qrRefresh:
+
+  Only used with \`qr=TRUE\` and \`qrShift=TRUE\`. When \`TRUE\` the
+  shift is redrawn each iteration so residual quasi-random error
+  averages out over the EM; \`FALSE\` draws one shift per subject at the
+  fit start, making each EM iteration a deterministic map (smoothest
+  objective trace).
+
+- sir:
+
+  When \`TRUE\`, accelerate the non-mu / residual-error M-step by SIR
+  (sampling-importance-resampling): the theta-sensitivity Newton step
+  uses \`sirSample\` equal-weight resampled points per subject instead
+  of all \`isample\` weighted samples.
+
+- sirSample:
+
+  Number of SIR resampled points per subject; \`NULL\` uses \`max(25,
+  ceiling(isample/10))\`. Must be at most \`isample\`.
 
 - muModel:
 
@@ -304,7 +343,7 @@ impmapControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x56330ba93d58>
+#> <bytecode: 0x556f8be6b0b8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -988,6 +1027,21 @@ impmapControl()
 #> 
 #> $impCov
 #> [1] FALSE
+#> 
+#> $qr
+#> [1] FALSE
+#> 
+#> $qrShift
+#> [1] TRUE
+#> 
+#> $qrRefresh
+#> [1] TRUE
+#> 
+#> $sir
+#> [1] FALSE
+#> 
+#> $sirSample
+#> [1] 30
 #> 
 #> attr(,"class")
 #> [1] "impmapControl"

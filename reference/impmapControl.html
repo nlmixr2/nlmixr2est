@@ -64,6 +64,11 @@ by finite differences.</p>
 <span>  nConvWindow <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  impSeed <span class="op">=</span> <span class="fl">42L</span>,</span>
 <span>  impCov <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  qr <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  qrShift <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  qrRefresh <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  sir <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  sirSample <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  muModel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lin"</span>, <span class="st">"none"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -140,6 +145,40 @@ Off by default.  The theta standard errors match the Hessian-based FOCEI
 covariance; the variance of a tightly-determined random effect (an Omega
 diagonal) can still be over-estimated because the fixed samples barely span
 its prior variation.</p></dd>
+
+
+<dt id="arg-qr">qr<a class="anchor" aria-label="anchor" href="#arg-qr"></a></dt>
+<dd><p>When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
+samples instead of pseudo-random Gaussian samples (QRPEM, Leary &amp;
+Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead of
+O(1/sqrt(N)).</p></dd>
+
+
+<dt id="arg-qrshift">qrShift<a class="anchor" aria-label="anchor" href="#arg-qrshift"></a></dt>
+<dd><p>Only used with `qr=TRUE`.  When `TRUE` each (iteration,
+subject) applies a random Cranley-Patterson shift to the Sobol points
+(seeded, thread-count independent); `FALSE` reuses one fixed Sobol point
+set everywhere (fully deterministic E-step, no RNG in the draw).</p></dd>
+
+
+<dt id="arg-qrrefresh">qrRefresh<a class="anchor" aria-label="anchor" href="#arg-qrrefresh"></a></dt>
+<dd><p>Only used with `qr=TRUE` and `qrShift=TRUE`.  When `TRUE`
+the shift is redrawn each iteration so residual quasi-random error
+averages out over the EM; `FALSE` draws one shift per subject at the fit
+start, making each EM iteration a deterministic map (smoothest objective
+trace).</p></dd>
+
+
+<dt id="arg-sir">sir<a class="anchor" aria-label="anchor" href="#arg-sir"></a></dt>
+<dd><p>When `TRUE`, accelerate the non-mu / residual-error M-step by
+SIR (sampling-importance-resampling): the theta-sensitivity Newton step
+uses `sirSample` equal-weight resampled points per subject instead of all
+`isample` weighted samples.</p></dd>
+
+
+<dt id="arg-sirsample">sirSample<a class="anchor" aria-label="anchor" href="#arg-sirsample"></a></dt>
+<dd><p>Number of SIR resampled points per subject; `NULL` uses
+`max(25, ceiling(isample/10))`.  Must be at most `isample`.</p></dd>
 
 
 <dt id="arg-mumodel">muModel<a class="anchor" aria-label="anchor" href="#arg-mumodel"></a></dt>
@@ -346,7 +385,7 @@ its prior variation.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$x &lt;- .ret$par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x56330ba93d58&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x556f8be6b0b8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1030,6 +1069,21 @@ its prior variation.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $impCov</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $qr</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $qrShift</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $qrRefresh</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $sir</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $sirSample</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 30</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "impmapControl"</span>

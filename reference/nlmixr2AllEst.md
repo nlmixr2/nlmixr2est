@@ -24,6 +24,6 @@ nlmixr2AllEst()
 #> [26] "mufocef"     "mufocei"     "mufoceif"    "mufocep"     "mufocepf"   
 #> [31] "mulaplace"   "n1qn1"       "newuoa"      "nlm"         "nlme"       
 #> [36] "nlminb"      "nls"         "optim"       "posthoc"     "predict"    
-#> [41] "rpem"        "rxSolve"     "saem"        "simulate"    "simulation" 
-#> [46] "uobyqa"      "vae"        
+#> [41] "qrpem"       "rpem"        "rxSolve"     "saem"        "simulate"   
+#> [46] "simulation"  "uobyqa"      "vae"        
 ```
