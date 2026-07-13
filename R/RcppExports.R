@@ -248,6 +248,10 @@ vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
 
+vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
+    .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
+}
+
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }

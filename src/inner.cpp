@@ -11195,7 +11195,8 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
                                  const arma::ivec& errThetaIdx0,
                                  const arma::mat& zPopMat, const arma::vec& baseline,
                                  const arma::vec& omega, const arma::vec& a, double alphaKL,
-                                 int nMix, const arma::vec& mixProb, int cores) {
+                                 int nMix, const arma::vec& mixProb, int cores,
+                                 bool withGrad = true) {
   VaeStepOut S; S.ok = true;
   const int N = dataIn.n_rows;
   // encoder forward (no backward yet -- need z to form gZ first)
@@ -11259,21 +11260,84 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     }
   }
   double DKL = pz - qz;
-  // encoder upstream: d(pxz)/dz = lp - eta/omega; KL adds alphaKL*(z-zPopMat)/omega
-  arma::mat gZ = lpBest;
-  for (int i = 0; i < N; ++i)
-    for (int k = 0; k < zDim; ++k) {
-      double g = gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
-      gZ(i, k) = R_FINITE(g) ? g : 0.0;
-    }
-  arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
-  arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
-  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
-                       gZ, gLS, true, mu2, ls2, L2, z2,
-                       S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB);
+  if (withGrad) {
+    // encoder upstream: d(pxz)/dz = lp - eta/omega; KL adds alphaKL*(z-zPopMat)/omega
+    arma::mat gZ = lpBest;
+    for (int i = 0; i < N; ++i)
+      for (int k = 0; k < zDim; ++k) {
+        double g = gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+        gZ(i, k) = R_FINITE(g) ? g : 0.0;
+      }
+    arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
+    arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
+    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+                         gZ, gLS, true, mu2, ls2, L2, z2,
+                         S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB);
+  }
   S.pxz = pxz; S.DKL = DKL; S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpBest;
   if (!R_FINITE(pxz)) S.ok = true; // a failed subject is zeroed in gZ, not fatal
   return S;
+}
+
+// R-facing wrapper for one ELBO step (the vaeTrainCpp_ loop calls vaeElboStepCpp
+// directly; this export lets R unit-test the same core).  The FOCEi inner problem
+// must ALREADY be set up (.vaeInnerSetup / vaeInnerSetup_) -- this reuses the
+// active op_focei allocation, exactly as the training loop does.  `prep` is the
+// .vaeDataPrep output; `zPop` is either a length-zDim vector (shared KL center) or
+// an N x zDim matrix (subject-specific covariate centers).  Returns the same list
+// the former R .vaeElboStepInner produced.
+//[[Rcpp::export]]
+List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR,
+                     NumericVector aR, double alphaKL, NumericMatrix epsR,
+                     int nMix, NumericVector mixProbR, int cores, bool withGrad = true) {
+  arma::mat Wih = as<arma::mat>(params["Wih"]);
+  arma::mat Whh = as<arma::mat>(params["Whh"]);
+  arma::vec bih = as<arma::vec>(params["bih"]);
+  arma::vec bhh = as<arma::vec>(params["bhh"]);
+  arma::mat fcW = as<arma::mat>(params["fcW"]);
+  arma::vec fcB = as<arma::vec>(params["fcB"]);
+  const int N = as<int>(prep["N"]);
+  const int zDim = as<int>(prep["zDim"]);
+  arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
+  arma::ivec lengths = vaeToIvec(prep["lengths"]);
+  arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  arma::vec th = as<arma::vec>(prep["th"]);
+  // .vaeDataPrep stores 1-based theta indices with NA for a free/mixture eta; map
+  // to the 0-based (-1 = free) form the core uses.
+  IntegerVector zpi = prep["zPopThetaIdx"];
+  arma::ivec zPopThetaIdx0(zpi.size());
+  for (int k = 0; k < zpi.size(); ++k)
+    zPopThetaIdx0[k] = IntegerVector::is_na(zpi[k]) ? -1 : (int)zpi[k] - 1;
+  IntegerVector eti = prep["errThetaIdx"];
+  arma::ivec errThetaIdx0(eti.size());
+  for (int e = 0; e < eti.size(); ++e) errThetaIdx0[e] = (int)eti[e] - 1;
+  arma::vec omega(omegaR.begin(), omegaR.size());
+  arma::vec a(aR.begin(), aR.size());
+  arma::mat eps(epsR.begin(), N, zDim, false, true);
+  arma::vec mixProb(mixProbR.begin(), mixProbR.size());
+  // zPop -> KL center matrix + inner-problem baseline (mirrors the R is.matrix branch)
+  arma::mat zPopMat(N, zDim); arma::vec baseline;
+  if (Rf_isMatrix(zPopR)) {
+    zPopMat = as<arma::mat>(zPopR);
+    baseline = arma::mean(zPopMat, 0).t();
+  } else {
+    arma::vec zp = as<arma::vec>(zPopR);
+    zPopMat.each_row() = zp.t();
+    baseline = zp;
+  }
+  VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+                                eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, baseline,
+                                omega, a, alphaKL, nMix, mixProb, cores, withGrad);
+  RObject grads = R_NilValue;
+  if (withGrad) grads = List::create(_["Wih"] = S.gWih, _["Whh"] = S.gWhh, _["bih"] = S.gbih,
+                                     _["bhh"] = S.gbhh, _["fcW"] = S.gFcW, _["fcB"] = S.gFcB);
+  List preds(N);
+  for (int i = 0; i < N; ++i) preds[i] = NumericVector(S.preds[i].begin(), S.preds[i].end());
+  IntegerVector mixnum(N);
+  for (int i = 0; i < N; ++i) mixnum[i] = S.mixnum[i];
+  return List::create(_["loss"] = S.pxz + alphaKL * S.DKL, _["pxz"] = S.pxz, _["DKL"] = S.DKL,
+                      _["grads"] = grads, _["mu"] = S.mu, _["L"] = S.L, _["z"] = S.z,
+                      _["preds"] = preds, _["mixnum"] = mixnum);
 }
 
 // One Adam update over a block (m,v are the block's moment estimates).

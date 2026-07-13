@@ -171,4 +171,48 @@ nmTest({
     agree <- mean(fit$mixnum == trueGrp)
     expect_gt(max(agree, 1 - agree), 0.9)
   })
+
+  test_that("vaeElboStepCpp_ ELBO step: shapes, and encoder gradient matches FD", {
+    ## The C++ ELBO core (vaeElboStepCpp_, the same one vaeTrainCpp_ drives) exposed
+    ## to R via .vaeElboStepInner.  Validate its structure and that the analytic
+    ## encoder-parameter gradient it returns matches a finite-difference gradient of
+    ## the ELBO loss.
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(theo)
+    ctl <- vaeControl()
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    N <- prep$N; zDim <- prep$zDim; hDim <- 12L
+    innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    set.seed(1)
+    params <- .vaeEncoderInitParams(zDim, hDim, 0L, prep$zPop, rep(0.1, zDim))
+    eps <- matrix(rnorm(N * zDim), N, zDim)
+    st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)
+
+    expect_true(is.finite(st$loss) && is.finite(st$pxz) && is.finite(st$DKL))
+    expect_equal(st$loss, st$pxz + st$DKL)              # alphaKL = 1
+    expect_equal(dim(st$mu), c(N, zDim))
+    expect_equal(dim(st$z), c(N, zDim))
+    expect_equal(dim(st$L), c(zDim, zDim, N))
+    expect_setequal(names(st$grads), c("Wih", "Whh", "bih", "bhh", "fcW", "fcB"))
+    expect_length(st$preds, N)
+    expect_true(all(st$mixnum == 1L))                  # single component
+
+    ## finite-difference check of dLoss/d(fcB) (a small, well-conditioned block)
+    Lf <- function(p) .vaeElboStepInner(p, prep, innerEnv, prep$zPop, prep$omega,
+                                        prep$a, 1, eps, ctl, withGrad = FALSE)$loss
+    h <- 1e-5
+    fd <- vapply(seq_along(params$fcB), function(j) {
+      pp <- params; pp$fcB[j] <- pp$fcB[j] + h
+      pm <- params; pm$fcB[j] <- pm$fcB[j] - h
+      (Lf(pp) - Lf(pm)) / (2 * h)
+    }, numeric(1))
+    expect_lt(max(abs(fd - st$grads$fcB)) / max(abs(st$grads$fcB)), 1e-3)
+  })
 })
