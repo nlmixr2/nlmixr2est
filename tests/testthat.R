@@ -43,7 +43,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
 # under an hour; the slow-tests workflow runs them one at a time.
 .slowBatches <- list(
   # batch 1
-  c("focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim"),
+  c("focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
+    "qrpem-slow"),
   # batch 2
   c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power"),
   # batch 3

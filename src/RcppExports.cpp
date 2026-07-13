@@ -401,6 +401,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// impSirIndex_
+IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0);
+RcppExport SEXP _nlmixr2est_impSirIndex_(SEXP zkSEXP, SEXP sirNSEXP, SEXP u0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type zk(zkSEXP);
+    Rcpp::traits::input_parameter< int >::type sirN(sirNSEXP);
+    Rcpp::traits::input_parameter< double >::type u0(u0SEXP);
+    rcpp_result_gen = Rcpp::wrap(impSirIndex_(zk, sirN, u0));
+    return rcpp_result_gen;
+END_RCPP
+}
+// impQrPoints_
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift);
+RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type isample(isampleSEXP);
+    Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type shift(shiftSEXP);
+    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift));
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {

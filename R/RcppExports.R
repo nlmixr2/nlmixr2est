@@ -63,6 +63,14 @@ foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, cen
     .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
+impSirIndex_ <- function(zk, sirN, u0) {
+    .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
+}
+
+impQrPoints_ <- function(isample, neta, shift) {
+    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }

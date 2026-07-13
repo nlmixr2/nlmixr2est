@@ -3,7 +3,7 @@
 %   R/foceiFast.R, R/focep.R, R/foi.R, R/fsaem.R, R/imp.R, R/impmap.R,
 %   R/irlsfocep.R, R/laplace.R, R/lbfgsb3c.R, R/muRefControl.R, R/mufocep.R,
 %   R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlminb.R, R/nls.R, R/optim.R,
-%   R/posthoc.R, R/rpem.R, R/sharedControl.R, R/uobyqa.R, R/vae.R
+%   R/posthoc.R, R/qrpem.R, R/rpem.R, R/sharedControl.R, R/uobyqa.R, R/vae.R
 \name{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.bobyqa}
@@ -42,6 +42,7 @@
 \alias{getValidNlmixrCtl.nls}
 \alias{getValidNlmixrCtl.optim}
 \alias{getValidNlmixrCtl.posthoc}
+\alias{getValidNlmixrCtl.qrpem}
 \alias{getValidNlmixrCtl.rpem}
 \alias{getValidNlmixrControl}
 \alias{getValidNlmixrCtl}
@@ -56,7 +57,7 @@
 \alias{getValidNlmixrCtl.default}
 \alias{getValidNlmixrCtl.uobyqa}
 \alias{getValidNlmixrCtl.vae}
-\title{Validate the RPEM control (est="rpem")}
+\title{Get valid nlmixr control object}
 \usage{
 \method{getValidNlmixrCtl}{agq}(control)
 
@@ -132,6 +133,8 @@
 
 \method{getValidNlmixrCtl}{posthoc}(control)
 
+\method{getValidNlmixrCtl}{qrpem}(control)
+
 \method{getValidNlmixrCtl}{rpem}(control)
 
 getValidNlmixrControl(control, est)
@@ -169,8 +172,6 @@ getValidNlmixrCtl(control)
 Valid control object based on estimation method run.
 }
 \description{
-Validate the RPEM control (est="rpem")
-
 Get valid nlmixr control object
 }
 \details{

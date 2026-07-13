@@ -95,6 +95,14 @@ void impSetMixThetas(const arma::vec& theta);      // install absolute $MIX thet
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas
 bool impCovEnabled();                              // whether impCov=TRUE was requested
+
+// ---- quasi-random (QRPEM) + SIR controls (from impmapControl) ----
+bool impQrEnabled();                               // qr=TRUE: Sobol importance samples
+bool impQrShiftEnabled();                          // Cranley-Patterson shift randomization
+bool impQrRefreshEnabled();                        // redraw the shift each iteration
+bool impSirEnabled();                              // sir=TRUE: SIR-accelerated theta M-step
+int impSirN();                                     // SIR resampled points per subject
+int impBaseSeed();                                 // base seed for the per-(iter,subject) streams
 void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the estimated thetas
 void impGetCovParList(std::vector<int>& idx);      // fullTheta index of every free param (fixedTrans order)
 double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
