@@ -55,8 +55,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
   # batch 5
   c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "posthoc", "ar-est",
-    "mu-family", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
-    "vae-errmodel", "table-cmt", "vae-covariate"),
+    "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
+    "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
   # batch 6 -- heaviest remaining files on the single-worker CI runner
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.

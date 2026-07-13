@@ -325,6 +325,16 @@ nmTest({
     # coefficient), and every blank row shows NA for it too
     expect_true(all(grepl("allo\\.cl:\\s*[-0-9]", muValueRows)))
     expect_true(all(grepl("allo\\.cl:\\s*NA", muNaRows)))
+    # plain (covariate-free) mu-ref thetas are profiled out too and appear
+    # in the same mu rows
+    expect_true(all(grepl("tka:\\s*[-0-9]", muValueRows)))
+    expect_true(all(grepl("tv:\\s*[-0-9]", muValueRows)))
+    expect_true(all(grepl("tka:\\s*NA", muNaRows)))
+    # ... and are gone from the scale table's own parameter columns
+    headerRows <- grep("^\\|    #\\|", out, value = TRUE)
+    expect_true(length(headerRows) > 0)
+    expect_false(any(grepl("\\btka\\b|\\btcl\\b|\\btv\\b", headerRows)))
+    expect_true(any(grepl("add\\.sd", headerRows)))
     # a standard (non-mu-group) theta still shows a real numeric gradient
     # on the same gradient-print events
     expect_true(length(gradRows) > 0)
