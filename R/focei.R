@@ -1937,7 +1937,9 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
                           muGroupCovStart = integer(0), muGroupCovCount = integer(0),
                           muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
-                          muGroupCovBounded = integer(0), muGroupCovNames = character(0))
+                          muGroupThetaLower = numeric(0), muGroupThetaUpper = numeric(0),
+                          muGroupCovLower = numeric(0), muGroupCovUpper = numeric(0),
+                          muGroupCovNames = character(0))
   }
   # Every group eta (covariate or plain) is managed by updateMuGroups() and
   # must be protected from the eta drift-reset mechanisms; union the plain
@@ -1953,12 +1955,13 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovCount", .muGroupSetup$muGroupCovCount)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovTheta", .muGroupSetup$muGroupCovTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovUserFixed", .muGroupSetup$muGroupCovUserFixed)
-  # Bounded covariate coefficients (Phase 8): excluded from the design
-  # matrix like a user-fixed one, but NOT excluded from the outer
-  # optimizer's free-parameter set (foceiSetupTheta_()'s
-  # isMuGroupSkip skips this array specifically) -- see
-  # .muRefGroups()'s docs (R/muRefClassify.R) for the full rationale.
-  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovBounded", .muGroupSetup$muGroupCovBounded)
+  # Bounds for the clamped (box-constrained) regression update: the
+  # regression solves unconstrained, then pins violators at their bound and
+  # re-solves (updateMuGroups(), src/inner.cpp). Infinite when unbounded.
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupThetaLower", .muGroupSetup$muGroupThetaLower)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupThetaUpper", .muGroupSetup$muGroupThetaUpper)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovLower", .muGroupSetup$muGroupCovLower)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovUpper", .muGroupSetup$muGroupCovUpper)
   # Reuse the existing, documented muModelTol/muModelMaxCycles foceiControl()
   # fields (originally written for the superseded R-level restart loop) to
   # bound the in-C++ inner regress/re-optimize cycle (updateMuGroups(),
@@ -1967,6 +1970,8 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
                                rxode2::rxGetControl(.x, "muModelTol", 1e-3))
   rxode2::rxAssignControlValue(.x, "foceiMuGroupMaxCycles",
                                rxode2::rxGetControl(.x, "muModelMaxCycles", 10L))
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupClampRetries",
+                               rxode2::rxGetControl(.x, "muModelClampRetries", 10L))
   # Stash the covariate names on the ui so .foceiFamilyReturn() can build
   # the values matrix once the dataset is available, without recomputing
   # .muRefCppGroupSetup() a second time.

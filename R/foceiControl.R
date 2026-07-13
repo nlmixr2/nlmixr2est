@@ -6,9 +6,10 @@
                            "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
                            "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
-                           "foceiMuGroupCovBounded",
+                           "foceiMuGroupThetaLower", "foceiMuGroupThetaUpper",
+                           "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
                            "foceiMuGroupCovData", "foceiMuGroupTol",
-                           "foceiMuGroupMaxCycles",
+                           "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
                            "covType",
@@ -293,10 +294,12 @@
 #'     Only the outer gradients for non-mu-referenced parameters (including
 #'     residual-error thetas and all omegas) are then calculated.
 #'
-#'     A mu-referenced theta with a finite bound or a user fix falls back
-#'     to ordinary outer-optimizer handling (with a warning when a bounded
-#'     population theta drops a covariate group; a bound on one covariate
-#'     coefficient excludes only that covariate).
+#'     Bounded mu-referenced parameters (population thetas and covariate
+#'     coefficients) are regression-updated too: the update is clamped to
+#'     the bounds (box-constrained least squares, see
+#'     \code{muModelClampRetries}), and any parameter that was clamped is
+#'     reported once as a fit note. A user-fixed (\code{fix()}) mu
+#'     population theta is never regression-updated.
 #'
 #' @param muRefCovAlg When `TRUE` (default), algebraic expressions that can
 #'     be mu-referenced are internally rewritten as mu-referenced
@@ -312,6 +315,11 @@
 #'
 #' @param muModelMaxCycles Maximum number of "re-optimize etas, regress"
 #'     cycles per outer iteration (see \code{muModel}, \code{muModelTol}).
+#'
+#' @param muModelClampRetries Maximum number of active-set re-solve passes
+#'     per group per regression update when a bounded mu-referenced
+#'     parameter must be clamped to its bound (see \code{muModel}); on
+#'     hitting the cap the current clamped-feasible solution is used.
 #'
 #' @param diagOmegaBoundUpper Upper bound of the diagonal omega matrix, as
 #'     \code{diag(omega)*diagOmegaBoundUpper}. `1` = no upper bound.
@@ -729,6 +737,7 @@ foceiControl <- function(sigdig = 4, #
                          muRefCovAlg = TRUE, #
                          muModelTol = 1e-5, #
                          muModelMaxCycles = 20L, #
+                         muModelClampRetries = 10L, #
                          stateTrim = Inf, #
                          shi21maxOuter = 0L,
                          shi21maxInner = 20L,
@@ -1225,6 +1234,8 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertNumeric(muModelTol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(muModelMaxCycles, lower=1, len=1, any.missing=FALSE)
   muModelMaxCycles <- as.integer(muModelMaxCycles)
+  checkmate::assertIntegerish(muModelClampRetries, lower=1, len=1, any.missing=FALSE)
+  muModelClampRetries <- as.integer(muModelClampRetries)
 
   checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
@@ -1335,6 +1346,7 @@ foceiControl <- function(sigdig = 4, #
     muRefCovAlg = muRefCovAlg,
     muModelTol = as.double(muModelTol),
     muModelMaxCycles = muModelMaxCycles,
+    muModelClampRetries = muModelClampRetries,
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),

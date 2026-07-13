@@ -332,12 +332,17 @@ struct focei_options {
   // updateMuGroups() uses this to hold user-fixed coefficients out of the
   // regression design matrix while merely-excluded ones are estimated normally.
   int *muGroupCovUserFixed = NULL; // [muGroupCovN]
-  // Flattened covariate-coefficient thetas with a finite bound
-  // (ini(...~c(lower,est,upper))). Handled like user-fixed for the regression
-  // (excluded from the design matrix, live gradient-updated offset subtracted)
-  // but NOT added to muGroupThetaSkip, since it must stay in fixedTrans/npars
-  // so the outer optimizer keeps optimizing it subject to its bound.
-  int *muGroupCovBounded = NULL; // [muGroupCovN]
+  // Bounds for the clamped (box-constrained) regression update, estimation
+  // scale, +-Inf when unbounded. muGroupThetaLower owns the double buffer.
+  double *muGroupThetaLower = NULL; // [muGroupN]
+  double *muGroupThetaUpper = NULL; // [muGroupN]
+  double *muGroupCovLower = NULL;   // [muGroupCovN]
+  double *muGroupCovUpper = NULL;   // [muGroupCovN]
+  // Accumulated clamp flags (1 = pinned at a bound in some updateMuGroups()
+  // solve during this fit): [muGroupN] pop thetas then [muGroupCovN]
+  // coefficients. Reported once by R at finalize, never per iteration.
+  int *muGroupClamped = NULL;       // [muGroupN + muGroupCovN]
+  int muGroupClampRetries = 10;
   // Display names for mu-group thetas, used only by printMuGroupThetaRow() to
   // label the extra print row; excluded from op_focei.scale's own column names.
   CharacterVector muGroupThetaNames;    // [muGroupN]
@@ -651,8 +656,10 @@ extern "C" void rxOptionsFreeFocei() {
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
   op_focei.muGroupCovStart = NULL; op_focei.muGroupCovCount = NULL;
   op_focei.muGroupCovTheta = NULL; op_focei.muGroupCovUserFixed = NULL;
-  op_focei.muGroupCovBounded = NULL;
-  op_focei.muGroupThetaSkip = NULL;
+  op_focei.muGroupThetaSkip = NULL; op_focei.muGroupClamped = NULL;
+  if (op_focei.muGroupThetaLower != NULL) R_Free(op_focei.muGroupThetaLower);
+  op_focei.muGroupThetaLower = NULL; op_focei.muGroupThetaUpper = NULL;
+  op_focei.muGroupCovLower = NULL; op_focei.muGroupCovUpper = NULL;
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei=NULL;
@@ -2895,6 +2902,9 @@ static inline void innerOptId(int id) {
 // + covariate_effect_i + eta_i, regress on the free covariates (OLS "lin" or
 // curvature-weighted "irls"), write new thetas into fullTheta and residuals
 // into each subject's eta via setIndParPtr() (like updateTheta(), no R round-trip).
+// Bounded parameters are clamped by an active-set loop: pin violators at their
+// bound, re-solve the rest, up to muGroupClampRetries passes; each pin sets the
+// parameter's muGroupClamped flag (reported once by R at finalize).
 // Returns the max absolute theta change, used by innerOpt() to decide whether
 // another {re-optimize etas, regress} cycle is needed (muGroupMaxCycles/Tol).
 static inline double updateMuGroups() {
@@ -2909,10 +2919,9 @@ static inline double updateMuGroups() {
     unsigned int covStart = (unsigned int)op_focei.muGroupCovStart[g];
     unsigned int covCount = (unsigned int)op_focei.muGroupCovCount[g];
 
-    // Split covariates into known-offset (user-fixed or bounded, not estimated
-    // here) vs free (estimated by the regression). Both read fullTheta[covTheta]
-    // fresh each call, so bounded ones automatically pick up the outer
-    // optimizer's latest value with no extra logic.
+    // Split covariates into known-offset (user-fixed, not estimated here) vs
+    // free (estimated by the clamped regression). The fixed offset reads
+    // fullTheta[covTheta] fresh each call.
     std::vector<unsigned int> freeCovCols;
     std::vector<int> freeCovTheta;
     arma::vec offset(nsubAll, arma::fill::zeros);
@@ -2921,9 +2930,7 @@ static inline double updateMuGroups() {
       int covTheta = op_focei.muGroupCovTheta[flatIdx];
       bool userFixed = op_focei.muGroupCovUserFixed != NULL &&
         op_focei.muGroupCovUserFixed[flatIdx] != 0;
-      bool bounded = op_focei.muGroupCovBounded != NULL &&
-        op_focei.muGroupCovBounded[flatIdx] != 0;
-      if (userFixed || bounded) {
+      if (userFixed) {
         double coefVal = op_focei.fullTheta[covTheta];
         for (int id = 0; id < nsubAll; id++) {
           int rid = getRxId(id);
@@ -2957,20 +2964,81 @@ static inline double updateMuGroups() {
       }
     }
 
-    arma::vec beta;
-    bool solveOk = true;
-    try {
-      if (op_focei.muModel == 2) {
-        arma::mat Wd = arma::diagmat(w);
-        beta = arma::solve(X.t() * Wd * X, X.t() * Wd * y);
-      } else {
-        beta = arma::solve(X, y);
-      }
-    } catch (...) {
-      solveOk = false;
+    // Per-column bounds (position 0 = intercept) and clamp-flag indices into
+    // muGroupClamped ([muGroupN] pop thetas, then [muGroupCovN] coefficients).
+    arma::vec bndLo(nFree + 1), bndHi(nFree + 1);
+    std::vector<unsigned int> clampIdx(nFree + 1);
+    bndLo(0) = (op_focei.muGroupThetaLower != NULL) ?
+      op_focei.muGroupThetaLower[g] : R_NegInf;
+    bndHi(0) = (op_focei.muGroupThetaUpper != NULL) ?
+      op_focei.muGroupThetaUpper[g] : R_PosInf;
+    clampIdx[0] = g;
+    for (int c = 0; c < nFree; c++) {
+      bndLo(c + 1) = (op_focei.muGroupCovLower != NULL) ?
+        op_focei.muGroupCovLower[freeCovCols[c]] : R_NegInf;
+      bndHi(c + 1) = (op_focei.muGroupCovUpper != NULL) ?
+        op_focei.muGroupCovUpper[freeCovCols[c]] : R_PosInf;
+      clampIdx[c + 1] = op_focei.muGroupN + freeCovCols[c];
     }
-    if (!solveOk || beta.n_elem != (unsigned int)(nFree + 1) ||
-        !beta.is_finite()) {
+
+    // Active-set clamped (weighted) least squares: solve on the unpinned
+    // columns, pin any bound violators, re-solve; at the retry cap project
+    // the remaining violators onto their bounds (clamped-feasible).
+    arma::vec beta(nFree + 1, arma::fill::zeros);
+    std::vector<bool> pinned(nFree + 1, false);
+    bool solveOk = true;
+    int passes = 0;
+    for (;;) {
+      std::vector<arma::uword> freePos;
+      for (int p = 0; p <= nFree; p++) {
+        if (!pinned[p]) freePos.push_back((arma::uword)p);
+      }
+      if (freePos.size() > 0) {
+        arma::vec yAdj = y;
+        for (int p = 0; p <= nFree; p++) {
+          if (pinned[p]) yAdj -= beta(p) * X.col(p);
+        }
+        arma::mat Xf = X.cols(arma::uvec(freePos));
+        arma::vec bf;
+        try {
+          if (op_focei.muModel == 2) {
+            arma::mat Wd = arma::diagmat(w);
+            bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
+          } else {
+            bf = arma::solve(Xf, yAdj);
+          }
+        } catch (...) {
+          solveOk = false;
+        }
+        if (!solveOk || bf.n_elem != freePos.size() || !bf.is_finite()) {
+          solveOk = false;
+          break;
+        }
+        for (size_t k = 0; k < freePos.size(); k++) beta(freePos[k]) = bf(k);
+      }
+      // pin every violator at its nearest bound; done when none violate
+      bool anyPin = false;
+      for (int p = 0; p <= nFree; p++) {
+        if (pinned[p]) continue;
+        if (beta(p) < bndLo(p)) {
+          beta(p) = bndLo(p);
+        } else if (beta(p) > bndHi(p)) {
+          beta(p) = bndHi(p);
+        } else {
+          continue;
+        }
+        pinned[p] = true;
+        anyPin = true;
+        if (op_focei.muGroupClamped != NULL) {
+          op_focei.muGroupClamped[clampIdx[p]] = 1;
+        }
+      }
+      if (!anyPin) break;
+      passes++;
+      // at the cap: beta is already projected onto the bounds (feasible)
+      if (passes >= op_focei.muGroupClampRetries) break;
+    }
+    if (!solveOk) {
       // Singular/ill-conditioned design matrix: leave this group's thetas/etas
       // untouched this iteration rather than propagating garbage.
       continue;
@@ -4891,12 +4959,15 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
   op_focei.muGroupCovStart = NULL; op_focei.muGroupCovCount = NULL;
   op_focei.muGroupCovTheta = NULL; op_focei.muGroupCovUserFixed = NULL;
-  op_focei.muGroupCovBounded = NULL;
-  op_focei.muGroupThetaSkip = NULL;
+  op_focei.muGroupThetaSkip = NULL; op_focei.muGroupClamped = NULL;
+  if (op_focei.muGroupThetaLower != NULL) R_Free(op_focei.muGroupThetaLower);
+  op_focei.muGroupThetaLower = NULL; op_focei.muGroupThetaUpper = NULL;
+  op_focei.muGroupCovLower = NULL; op_focei.muGroupCovUpper = NULL;
   op_focei.muModel = foceiO.containsElementNamed("foceiMuModel") ?
     as<int>(foceiO["foceiMuModel"]) : 0;
   IntegerVector muGroupTheta, muGroupEta, muGroupCovStart, muGroupCovCount,
-    muGroupCovTheta, muGroupCovUserFixed, muGroupCovBounded;
+    muGroupCovTheta, muGroupCovUserFixed;
+  NumericVector muGroupThetaLower, muGroupThetaUpper, muGroupCovLower, muGroupCovUpper;
   if (op_focei.muModel != 0 && foceiO.containsElementNamed("foceiMuGroupTheta")) {
     muGroupTheta = as<IntegerVector>(foceiO["foceiMuGroupTheta"]);
     muGroupEta = as<IntegerVector>(foceiO["foceiMuGroupEta"]);
@@ -4904,13 +4975,23 @@ NumericVector foceiSetup_(const RObject &obj,
     muGroupCovCount = as<IntegerVector>(foceiO["foceiMuGroupCovCount"]);
     muGroupCovTheta = as<IntegerVector>(foceiO["foceiMuGroupCovTheta"]);
     muGroupCovUserFixed = as<IntegerVector>(foceiO["foceiMuGroupCovUserFixed"]);
-    muGroupCovBounded = foceiO.containsElementNamed("foceiMuGroupCovBounded") ?
-      as<IntegerVector>(foceiO["foceiMuGroupCovBounded"]) : IntegerVector(muGroupCovTheta.size());
+    if (foceiO.containsElementNamed("foceiMuGroupThetaLower")) {
+      muGroupThetaLower = as<NumericVector>(foceiO["foceiMuGroupThetaLower"]);
+      muGroupThetaUpper = as<NumericVector>(foceiO["foceiMuGroupThetaUpper"]);
+      muGroupCovLower = as<NumericVector>(foceiO["foceiMuGroupCovLower"]);
+      muGroupCovUpper = as<NumericVector>(foceiO["foceiMuGroupCovUpper"]);
+    } else {
+      muGroupThetaLower = NumericVector(muGroupTheta.size(), R_NegInf);
+      muGroupThetaUpper = NumericVector(muGroupTheta.size(), R_PosInf);
+      muGroupCovLower = NumericVector(muGroupCovTheta.size(), R_NegInf);
+      muGroupCovUpper = NumericVector(muGroupCovTheta.size(), R_PosInf);
+    }
   }
   op_focei.muGroupN = (unsigned int)muGroupTheta.size();
   op_focei.muGroupCovN = (unsigned int)muGroupCovTheta.size();
   if (op_focei.muGroupN > 0) {
-    size_t totalInt = 4*(size_t)op_focei.muGroupN + 3*(size_t)op_focei.muGroupCovN +
+    // int block: the index arrays + skip flags + accumulated clamp flags
+    size_t totalInt = 5*(size_t)op_focei.muGroupN + 3*(size_t)op_focei.muGroupCovN +
       (size_t)op_focei.ntheta;
     int *buf = R_Calloc(totalInt, int);
     op_focei.muGroupTheta = buf;
@@ -4919,27 +5000,34 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.muGroupCovCount = op_focei.muGroupCovStart + op_focei.muGroupN;
     op_focei.muGroupCovTheta = op_focei.muGroupCovCount + op_focei.muGroupN;
     op_focei.muGroupCovUserFixed = op_focei.muGroupCovTheta + op_focei.muGroupCovN;
-    op_focei.muGroupCovBounded = op_focei.muGroupCovUserFixed + op_focei.muGroupCovN;
-    op_focei.muGroupThetaSkip = op_focei.muGroupCovBounded + op_focei.muGroupCovN;
+    op_focei.muGroupThetaSkip = op_focei.muGroupCovUserFixed + op_focei.muGroupCovN;
+    op_focei.muGroupClamped = op_focei.muGroupThetaSkip + op_focei.ntheta;
+    // double block: clamp bounds (muGroupThetaLower owns it)
+    size_t totalDouble = 2*(size_t)op_focei.muGroupN + 2*(size_t)op_focei.muGroupCovN;
+    double *dbuf = R_Calloc(totalDouble, double);
+    op_focei.muGroupThetaLower = dbuf;
+    op_focei.muGroupThetaUpper = dbuf + op_focei.muGroupN;
+    op_focei.muGroupCovLower = op_focei.muGroupThetaUpper + op_focei.muGroupN;
+    op_focei.muGroupCovUpper = op_focei.muGroupCovLower + op_focei.muGroupCovN;
     std::copy(muGroupTheta.begin(), muGroupTheta.end(), op_focei.muGroupTheta);
     std::copy(muGroupEta.begin(), muGroupEta.end(), op_focei.muGroupEta);
     std::copy(muGroupCovStart.begin(), muGroupCovStart.end(), op_focei.muGroupCovStart);
     std::copy(muGroupCovCount.begin(), muGroupCovCount.end(), op_focei.muGroupCovCount);
+    std::copy(muGroupThetaLower.begin(), muGroupThetaLower.end(), op_focei.muGroupThetaLower);
+    std::copy(muGroupThetaUpper.begin(), muGroupThetaUpper.end(), op_focei.muGroupThetaUpper);
     if (op_focei.muGroupCovN > 0) {
       std::copy(muGroupCovTheta.begin(), muGroupCovTheta.end(), op_focei.muGroupCovTheta);
       std::copy(muGroupCovUserFixed.begin(), muGroupCovUserFixed.end(), op_focei.muGroupCovUserFixed);
-      std::copy(muGroupCovBounded.begin(), muGroupCovBounded.end(), op_focei.muGroupCovBounded);
+      std::copy(muGroupCovLower.begin(), muGroupCovLower.end(), op_focei.muGroupCovLower);
+      std::copy(muGroupCovUpper.begin(), muGroupCovUpper.end(), op_focei.muGroupCovUpper);
     }
     for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
       op_focei.muGroupThetaSkip[op_focei.muGroupTheta[g]] = 1;
     }
     for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
-      // Bounded covariates stay OUT of muGroupThetaSkip: they remain ordinary
-      // outer-optimized free parameters (updateMuGroups() still excludes them
-      // from the regression design matrix).
-      if (op_focei.muGroupCovBounded[c] == 0) {
-        op_focei.muGroupThetaSkip[op_focei.muGroupCovTheta[c]] = 1;
-      }
+      // Every coefficient (bounded or not) is regression-updated (clamped to
+      // its bounds), so all leave the outer optimizer's free-parameter set.
+      op_focei.muGroupThetaSkip[op_focei.muGroupCovTheta[c]] = 1;
     }
     if (foceiO.containsElementNamed("foceiMuGroupCovData")) {
       NumericMatrix covData = as<NumericMatrix>(foceiO["foceiMuGroupCovData"]);
@@ -4953,6 +5041,8 @@ NumericVector foceiSetup_(const RObject &obj,
       as<double>(foceiO["foceiMuGroupTol"]) : 1e-3;
     op_focei.muGroupMaxCycles = foceiO.containsElementNamed("foceiMuGroupMaxCycles") ?
       as<int>(foceiO["foceiMuGroupMaxCycles"]) : 10;
+    op_focei.muGroupClampRetries = foceiO.containsElementNamed("foceiMuGroupClampRetries") ?
+      as<int>(foceiO["foceiMuGroupClampRetries"]) : 10;
   }
 
   if (op_focei.maxOuterIterations <= 0){
@@ -9479,6 +9569,46 @@ Environment foceiFitCpp_(Environment e){
   }
   if (op_focei.zeroGrad){
     warning(_("zero gradient replaced with small number (%f)"), sqrt(DBL_EPSILON));
+  }
+  // One finalize-time report of every mu-group parameter the clamped
+  // regression pinned at a bound at ANY point during the fit (accumulated in
+  // muGroupClamped, never warned per iteration); .collectWarn() turns it into
+  // a fit note. Parameters whose FINAL estimate sits at a bound are marked.
+  if (op_focei.muModel != 0 && op_focei.muGroupN > 0 &&
+      op_focei.muGroupClamped != NULL) {
+    std::string clamped = "";
+    CharacterVector clampedNames(0);
+    for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
+      if (op_focei.muGroupClamped[g] == 0) continue;
+      std::string nm = (g < (unsigned int)op_focei.muGroupThetaNames.size() &&
+                        op_focei.muGroupThetaNames[g] != NA_STRING) ?
+        as<std::string>(op_focei.muGroupThetaNames[g]) : "?";
+      double v = op_focei.fullTheta[op_focei.muGroupTheta[g]];
+      bool atBound = (op_focei.muGroupThetaLower != NULL &&
+                      (v == op_focei.muGroupThetaLower[g] ||
+                       v == op_focei.muGroupThetaUpper[g]));
+      if (clamped.size()) clamped += ", ";
+      clamped += "'" + nm + "'" + (atBound ? " (final estimate at bound)" : "");
+      clampedNames.push_back(nm);
+    }
+    for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
+      if (op_focei.muGroupClamped[op_focei.muGroupN + c] == 0) continue;
+      std::string nm = (c < (unsigned int)op_focei.muGroupCovThetaNames.size() &&
+                        op_focei.muGroupCovThetaNames[c] != NA_STRING) ?
+        as<std::string>(op_focei.muGroupCovThetaNames[c]) : "?";
+      double v = op_focei.fullTheta[op_focei.muGroupCovTheta[c]];
+      bool atBound = (op_focei.muGroupCovLower != NULL &&
+                      (v == op_focei.muGroupCovLower[c] ||
+                       v == op_focei.muGroupCovUpper[c]));
+      if (clamped.size()) clamped += ", ";
+      clamped += "'" + nm + "'" + (atBound ? " (final estimate at bound)" : "");
+      clampedNames.push_back(nm);
+    }
+    e["muClampedNames"] = clampedNames;
+    if (clamped.size()) {
+      warning(_("mu-referenced regression clamped %s to the parameter boundaries; see foceiControl(muModelClampRetries=)"),
+              clamped.c_str());
+    }
   }
   foceiFinalizeTables(e);
   // NumericVector scaleC(op_focei.ntheta+op_focei.omegan);
