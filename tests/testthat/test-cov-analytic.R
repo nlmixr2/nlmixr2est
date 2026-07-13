@@ -951,10 +951,10 @@ nmTest({
     # Regression guard for the analytic covariance/gradient ASSEMBLY on a model whose
     # prediction is driven by a parameter-dependent initial condition (A(0) <- A0 =
     # exp(lA0 + eta.A0)).  With five random effects the augmented sensitivity model is
-    # large enough to exercise the state-IC build path in .foceiAnalyticAugModelDirs
-    # (which keeps such models in a single rxOptExpr pass so a per-chunk optimization
-    # never sees `A(0)=` without its `d/dt(A)=`).  This unit-tests the assembly directly
-    # -- it builds and solves the augmented model, but never runs an estimation.
+    # large enough that rxode2's rxOptExpr() chunks it by default, so this exercises
+    # rxode2's compartment-scoped disguise (a chunk must never see `A(0)=` without its
+    # `d/dt(A)=`).  This unit-tests the assembly directly -- it builds and solves the
+    # augmented model, but never runs an estimation.
     skip_on_cran()
     .icMod <- function() {
       ini({
