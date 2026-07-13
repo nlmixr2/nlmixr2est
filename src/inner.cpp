@@ -4944,6 +4944,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("foceiMuGroupCovData")) {
       NumericMatrix covData = as<NumericMatrix>(foceiO["foceiMuGroupCovData"]);
       op_focei.muGroupCovData = as<arma::mat>(covData);
+    } else {
+      // plain-only groups (covCount==0 everywhere): clear any matrix left
+      // from a previous covariate-group fit in this session
+      op_focei.muGroupCovData.reset();
     }
     op_focei.muGroupTol = foceiO.containsElementNamed("foceiMuGroupTol") ?
       as<double>(foceiO["foceiMuGroupTol"]) : 1e-3;

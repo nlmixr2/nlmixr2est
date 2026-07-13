@@ -1781,6 +1781,8 @@ attr(rxUiGet.foceiMuRefVector, "rstudio") <- c(0L, -1L)
 # mu-ref-covariate-eligible (see .muRefClassify()) and therefore must be
 # protected from FOCEI's internal eta-drift reset mechanisms in src/inner.cpp
 # (they are only ever updated by the restart-loop's linear-model step).
+# rxUiGet.foceiOptEnv unions the plain (covariate-free) mu-group etas into
+# this vector before wiring it as foceiMuCovEta.
 
 #' @export
 rxUiGet.foceiMuCovEtaVector <- function(x, ...) {
@@ -1908,23 +1910,35 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
-  rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .x$foceiMuCovEtaVector)
   # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the theta/eta index
   # arrays are purely UI-derived (no dataset needed) and wired here exactly
-  # like foceiMuRef/foceiMuCovEta above; the covariate *values* matrix
+  # like foceiMuRef/foceiMuCovEta below; the covariate *values* matrix
   # needs the dataset and is wired separately in .foceiFamilyReturn() once
   # env$dataSav exists.
   .muModelStr <- rxode2::rxGetControl(.x, "muModel", "none")
   rxode2::rxAssignControlValue(.x, "foceiMuModel",
                                c(none = 0L, lin = 1L, irls = 2L)[[.muModelStr]])
   if (!identical(.muModelStr, "none")) {
-    .muGroupSetup <- .muRefCppGroupSetup(.x)
+    # The imp-family EM methods run with muModel="lin" but do their own
+    # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
+    # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
+    .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
+                    c("impmap", "imp", "qrpem", "advi"))
+    .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain)
   } else {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
                           muGroupCovStart = integer(0), muGroupCovCount = integer(0),
                           muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
                           muGroupCovBounded = integer(0), muGroupCovNames = character(0))
   }
+  # Every group eta (covariate or plain) is managed by updateMuGroups() and
+  # must be protected from the eta drift-reset mechanisms; union the plain
+  # groups' etas into the covariate vector (same neta1 diagonal ordering).
+  .muCovEta <- .x$foceiMuCovEtaVector
+  if (length(.muCovEta) > 0L && length(.muGroupSetup$muGroupEta) > 0L) {
+    .muCovEta[.muGroupSetup$muGroupEta + 1L] <- 1L
+  }
+  rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .muCovEta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupTheta", .muGroupSetup$muGroupTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupEta", .muGroupSetup$muGroupEta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovStart", .muGroupSetup$muGroupCovStart)
