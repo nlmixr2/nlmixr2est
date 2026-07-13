@@ -201,7 +201,10 @@
   in-C++ regression as well (intercept-only groups), so outer gradients -- numeric or
   analytic -- are only calculated for the non-mu-referenced parameters (residual
   errors, omegas, non-mu thetas); bounded or fixed mu-referenced thetas remain
-  outer-optimized.
+  outer-optimized.  The regress/re-optimize cycle defaults were tightened
+  (`muModelTol` 1e-3 -> 1e-5, `muModelMaxCycles` 10 -> 20) so the profiled fits
+  converge to the same optimum as the base methods (usually faster, since the outer
+  optimizer sees a well-converged profiled objective).
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type

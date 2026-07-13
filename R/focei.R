@@ -1922,8 +1922,16 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     # The imp-family EM methods run with muModel="lin" but do their own
     # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
     # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
+    # The control class is checked too: at .impmapFamilyFit's foceiOptEnv
+    # build the ui control (impmapControl/adviControl) does not carry est yet
+    # (env$est is set after .foceiFamilyControl in the est methods).
+    .ctlClass <- ""
+    if (exists("control", envir = .x, inherits = FALSE)) {
+      .ctlClass <- class(get("control", envir = .x))[1]
+    }
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
-                    c("impmap", "imp", "qrpem", "advi"))
+                    c("impmap", "imp", "qrpem", "advi")) &&
+      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
     .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain)
   } else {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
