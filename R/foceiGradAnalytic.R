@@ -758,8 +758,8 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 
 #' Theta names excluded from the outer optimizer's free-parameter set by the
 #' mu-referenced (lin/irls) regression -- mirrors inner.cpp isMuGroupSkip: the
-#' mu-group thetas plus the unbounded mu-group covariate coefficients (bounded
-#' ones stay outer-optimized).  Index arrays are 0-based (see
+#' mu-group thetas plus every mu-group covariate coefficient (bounded ones are
+#' regression-updated with clamping too).  Index arrays are 0-based (see
 #' `.muRefCppGroupSetup`).
 #' @noRd
 .foceiMuSkipThetaNames <- function(ui, thNames) {
@@ -768,8 +768,6 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
   }
   .g <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0)))
   .ct <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovTheta", integer(0)))
-  .cb <- as.integer(rxode2::rxGetControl(ui, "foceiMuGroupCovBounded", integer(0)))
-  if (length(.ct) > 0L && length(.cb) == length(.ct)) .ct <- .ct[.cb == 0L]
   thNames[c(.g, .ct) + 1L]
 }
 

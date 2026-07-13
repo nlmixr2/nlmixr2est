@@ -297,7 +297,8 @@ nlmixr2Est0 <- function(env, ...) {
   # focei/foce/focep model.
   if (inherits(.ret, "nlmixr2FitCore")) {
     .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
-    if (length(.estName) == 1L && grepl("^(mu|irls)", .estName)) {
+    if (length(.estName) == 1L &&
+          grepl("^(m|i)(focei|foce|focep|agq|laplace)$", .estName)) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
     }
   }

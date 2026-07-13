@@ -824,8 +824,30 @@
       return(.foceiAnalyticFallback("multiple estimated boxCox/yeoJohnson lambdas (endpoint->lambda mapping not yet wired)"))
   }
   er <- ini[!is.na(ini$err), , drop = FALSE]
-  if (nrow(er) == 0L)
-    return(.foceiAnalyticFallback("a model with no residual error"))
+  if (nrow(er) == 0L) {
+    # All residual-error parameters are fixed: the fit's working iniDf drops
+    # them (they are baked into the compiled rx_r_ as constants), yet the model
+    # still HAS a residual (predDf carries its errType).  Rather than fall back
+    # to FD -- which re-solves the ODE per outer parameter (all omegas here,
+    # which do not even enter the ODE) -- run the general (f,R) path with NO
+    # free sigma direction (nsg = 0): rx_r_ is read from the solve, the omega
+    # gradient uses the precomputed Omega derivatives, and R's constancy needs
+    # no re-solve.  Only the plain conditional-Gaussian error types are ported;
+    # anything else stays on FD.
+    .et <- as.character(ui$predDf$errType)
+    .tok <- unique(trimws(unlist(strsplit(.et, "[^A-Za-z0-9]+"))))
+    .tok <- .tok[nzchar(.tok)]
+    .known <- c("add", "prop", "pow", "combined1", "combined2")
+    if (length(.tok) == 0L || !all(.tok %in% .known) ||
+          !all(.trans == "untransformed"))
+      return(.foceiAnalyticFallback("a model with no estimated residual error"))
+    .hasAddFloor <- any(.tok %in% c("add", "combined1", "combined2"))
+    return(list(sgVar = character(0), sgName = character(0), sc = NULL,
+                per = NULL, pair = NULL, foce = NULL, focePlus = NULL,
+                foceiOnly = TRUE, canVanish = !.hasAddFloor,
+                dependsF0 = !all(.tok == "add"), estLam = .estLam,
+                ev = function(e, f, y, f0 = f) NULL))
+  }
   sgNameAll <- er$name                               # ALL error params (excluded from directions)
   # pure proportional / power error (no additive floor) vanishes as f -> 0, making the
   # 1/R observed-information terms blow up near zero predictions; the assembly guards it.

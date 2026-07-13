@@ -139,7 +139,7 @@ nmTest({
     expect_true(all(c("tka", "tcl", "tv", "cl.tv") %in% names(.f$parHist)))
   })
 
-  test_that("mufocei recovers non-time-varying and time-varying covariate effects", {
+  test_that("mfocei recovers non-time-varying and time-varying covariate effects", {
     skip_if_not_installed("nlmixr2data")
     .fc <- foceiControl(print = 0L, calcTables = FALSE,
                         maxInnerIterations = 30L, maxOuterIterations = 40L)
@@ -148,7 +148,7 @@ nmTest({
       ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.wt<-0.5; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.wt*log(WT/70)); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
-    .m1 <- suppressMessages(nlmixr2(covm, nlmixr2data::theo_sd, est = "mufocei", control = .fc))
+    .m1 <- suppressMessages(nlmixr2(covm, nlmixr2data::theo_sd, est = "mfocei", control = .fc))
     expect_true("cl.wt" %in% names(fixef(.m1)))
     expect_true(is.finite(fixef(.m1)[["cl.wt"]]))
 
@@ -158,7 +158,7 @@ nmTest({
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.tv*TVC); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
     .d <- nlmixr2data::theo_sd; .d$TVC <- as.numeric(scale(.d$TIME))
-    .m2 <- suppressMessages(nlmixr2(tvm, .d, est = "mufocei", control = .fc))
+    .m2 <- suppressMessages(nlmixr2(tvm, .d, est = "mfocei", control = .fc))
     expect_true("cl.tv" %in% names(fixef(.m2)))
     expect_true(is.finite(fixef(.m2)[["cl.tv"]]))
   })

@@ -4,7 +4,7 @@ nmTest({
     # are specifically about the mu-referenced FOCEI-family mechanism
     # itself, per the "WHEN TO KEEP LOCAL FITS" guidance in
     # helper-zzz-fits.R. Same theo_sd-based covariate-on-clearance model
-    # used by test-mufocei.R, reused here so all 8 family members and
+    # used by test-mfocei.R, reused here so all 8 family members and
     # their 4 plain counterparts are validated on identical model/data.
 
     theo_sd2 <- nlmixr2data::theo_sd
@@ -44,16 +44,16 @@ nmTest({
     fitLaplace <- .fitPlain("laplace", laplaceControl(print = 0))
 
     # one (plainFit, muFit, tolerance-on-allo.cl) triple per new method;
-    # the other theta/omega/objf tolerances match test-mufocei.R's
+    # the other theta/omega/objf tolerances match test-mfocei.R's
     # already-validated values
     .cases <- list(
-      irlsfocei = list(plain = fitFocei, ctl = irlsfoceiControl(print = 0)),
-      mufoce = list(plain = fitFoce, ctl = mufoceControl(print = 0)),
-      irlsfoce = list(plain = fitFoce, ctl = irlsfoceControl(print = 0)),
-      muagq = list(plain = fitAgq, ctl = muagqControl(print = 0, nAGQ = 2)),
-      irlsagq = list(plain = fitAgq, ctl = irlsagqControl(print = 0, nAGQ = 2)),
-      mulaplace = list(plain = fitLaplace, ctl = mulaplaceControl(print = 0)),
-      irlslaplace = list(plain = fitLaplace, ctl = irlslaplaceControl(print = 0))
+      ifocei = list(plain = fitFocei, ctl = ifoceiControl(print = 0)),
+      mfoce = list(plain = fitFoce, ctl = mfoceControl(print = 0)),
+      ifoce = list(plain = fitFoce, ctl = ifoceControl(print = 0)),
+      magq = list(plain = fitAgq, ctl = magqControl(print = 0, nAGQ = 2)),
+      iagq = list(plain = fitAgq, ctl = iagqControl(print = 0, nAGQ = 2)),
+      mlaplace = list(plain = fitLaplace, ctl = mlaplaceControl(print = 0)),
+      ilaplace = list(plain = fitLaplace, ctl = ilaplaceControl(print = 0))
     )
 
     for (.est in names(.cases)) {
@@ -168,7 +168,7 @@ nmTest({
     # well-identified, so both methods can legitimately land on the same
     # small-sample-biased estimate. Instead this checks against a plain
     # `focei` fit of the *same* simulated data as the reliable reference
-    # (already extensively validated above and in test-mufocei.R to find
+    # (already extensively validated above and in test-mfocei.R to find
     # the joint-likelihood optimum): "lin" and "irls" should both land
     # close to focei's own answer, i.e. irls's reweighting doesn't
     # destabilize the estimate relative to plain OLS when the per-subject
@@ -221,12 +221,12 @@ nmTest({
     )
     fitLin <- .getCachedFit(
       name = "mu-family-hetero-lin",
-      fitFn = function() .nlmixr(simMod, d, "mufocei", mufoceiControl(print = 0)),
+      fitFn = function() .nlmixr(simMod, d, "mfocei", mfoceiControl(print = 0)),
       cacheFile = "fit-mu-family-hetero-lin.rds"
     )
     fitIrls <- .getCachedFit(
       name = "mu-family-hetero-irls",
-      fitFn = function() .nlmixr(simMod, d, "irlsfocei", irlsfoceiControl(print = 0)),
+      fitFn = function() .nlmixr(simMod, d, "ifocei", ifoceiControl(print = 0)),
       cacheFile = "fit-mu-family-hetero-irls.rds"
     )
 

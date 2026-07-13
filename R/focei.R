@@ -1776,11 +1776,13 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 attr(rxUiGet.foceiMuRefVector, "rstudio") <- c(0L, -1L)
 
 # focei.mu.cov.eta
-# For the mu-referenced FOCEI family (mufocei/irlsfocei/...): a 0/1 flag per
+# For the mu-referenced FOCEI family (mfocei/ifocei/...): a 0/1 flag per
 # eta, same length/ordering as foceiMuRefVector, marking which etas are
 # mu-ref-covariate-eligible (see .muRefClassify()) and therefore must be
 # protected from FOCEI's internal eta-drift reset mechanisms in src/inner.cpp
 # (they are only ever updated by the restart-loop's linear-model step).
+# rxUiGet.foceiOptEnv unions the plain (covariate-free) mu-group etas into
+# this vector before wiring it as foceiMuCovEta.
 
 #' @export
 rxUiGet.foceiMuCovEtaVector <- function(x, ...) {
@@ -1908,35 +1910,58 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
-  rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .x$foceiMuCovEtaVector)
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the theta/eta index
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the theta/eta index
   # arrays are purely UI-derived (no dataset needed) and wired here exactly
-  # like foceiMuRef/foceiMuCovEta above; the covariate *values* matrix
+  # like foceiMuRef/foceiMuCovEta below; the covariate *values* matrix
   # needs the dataset and is wired separately in .foceiFamilyReturn() once
   # env$dataSav exists.
   .muModelStr <- rxode2::rxGetControl(.x, "muModel", "none")
   rxode2::rxAssignControlValue(.x, "foceiMuModel",
                                c(none = 0L, lin = 1L, irls = 2L)[[.muModelStr]])
   if (!identical(.muModelStr, "none")) {
-    .muGroupSetup <- .muRefCppGroupSetup(.x)
+    # The imp-family EM methods run with muModel="lin" but do their own
+    # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
+    # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
+    # The control class is checked too: at .impmapFamilyFit's foceiOptEnv
+    # build the ui control (impmapControl/adviControl) does not carry est yet
+    # (env$est is set after .foceiFamilyControl in the est methods).
+    .ctlClass <- ""
+    if (exists("control", envir = .x, inherits = FALSE)) {
+      .ctlClass <- class(get("control", envir = .x))[1]
+    }
+    .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
+                    c("impmap", "imp", "qrpem", "advi")) &&
+      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
+    .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain)
   } else {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
                           muGroupCovStart = integer(0), muGroupCovCount = integer(0),
                           muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
-                          muGroupCovBounded = integer(0), muGroupCovNames = character(0))
+                          muGroupThetaLower = numeric(0), muGroupThetaUpper = numeric(0),
+                          muGroupCovLower = numeric(0), muGroupCovUpper = numeric(0),
+                          muGroupCovNames = character(0))
   }
+  # Every group eta (covariate or plain) is managed by updateMuGroups() and
+  # must be protected from the eta drift-reset mechanisms; union the plain
+  # groups' etas into the covariate vector (same neta1 diagonal ordering).
+  .muCovEta <- .x$foceiMuCovEtaVector
+  if (length(.muCovEta) > 0L && length(.muGroupSetup$muGroupEta) > 0L) {
+    .muCovEta[.muGroupSetup$muGroupEta + 1L] <- 1L
+  }
+  rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .muCovEta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupTheta", .muGroupSetup$muGroupTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupEta", .muGroupSetup$muGroupEta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovStart", .muGroupSetup$muGroupCovStart)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovCount", .muGroupSetup$muGroupCovCount)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovTheta", .muGroupSetup$muGroupCovTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovUserFixed", .muGroupSetup$muGroupCovUserFixed)
-  # Bounded covariate coefficients (Phase 8): excluded from the design
-  # matrix like a user-fixed one, but NOT excluded from the outer
-  # optimizer's free-parameter set (foceiSetupTheta_()'s
-  # isMuGroupSkip skips this array specifically) -- see
-  # .muRefGroups()'s docs (R/muRefClassify.R) for the full rationale.
-  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovBounded", .muGroupSetup$muGroupCovBounded)
+  # Bounds for the clamped (box-constrained) regression update: the
+  # regression solves unconstrained, then pins violators at their bound and
+  # re-solves (updateMuGroups(), src/inner.cpp). Infinite when unbounded.
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupThetaLower", .muGroupSetup$muGroupThetaLower)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupThetaUpper", .muGroupSetup$muGroupThetaUpper)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovLower", .muGroupSetup$muGroupCovLower)
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovUpper", .muGroupSetup$muGroupCovUpper)
   # Reuse the existing, documented muModelTol/muModelMaxCycles foceiControl()
   # fields (originally written for the superseded R-level restart loop) to
   # bound the in-C++ inner regress/re-optimize cycle (updateMuGroups(),
@@ -1945,6 +1970,8 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
                                rxode2::rxGetControl(.x, "muModelTol", 1e-3))
   rxode2::rxAssignControlValue(.x, "foceiMuGroupMaxCycles",
                                rxode2::rxGetControl(.x, "muModelMaxCycles", 10L))
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupClampRetries",
+                               rxode2::rxGetControl(.x, "muModelClampRetries", 10L))
   # Stash the covariate names on the ui so .foceiFamilyReturn() can build
   # the values matrix once the dataset is available, without recomputing
   # .muRefCppGroupSetup() a second time.
@@ -2495,7 +2522,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   })
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the covariate
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the covariate
   # *values* matrix needs the dataset, which only exists after
   # .foceiPreProcessData() populates .env$dataSav -- the index arrays
   # (foceiMuGroupTheta/Eta/CovTheta/...) were already wired in
@@ -2546,7 +2573,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$aqLow <- -Inf
     .env$aqHi <- Inf
   }
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the regression
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the regression
   # update now runs natively in C++ (updateMuGroups(), src/inner.cpp),
   # driven entirely by the muModel/foceiMuGroup* control values wired in
   # rxUiGet.foceiOptEnv above -- .foceiFitInternal() is called exactly the

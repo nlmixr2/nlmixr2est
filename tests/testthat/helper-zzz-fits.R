@@ -26,7 +26,7 @@
 # src/ sources, so a `devtools::load_all()` picking up local code changes
 # (without a DESCRIPTION version bump, the common case while iterating on
 # a branch) automatically invalidates every cached fit instead of silently
-# reusing fits computed under the old code -- see the mufocei muModel/
+# reusing fits computed under the old code -- see the mfocei muModel/
 # muRefCovAlg regression this masked.
 .fitCacheSrcHash <- local({
   .pkgRoot <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
