@@ -9818,6 +9818,7 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
 //[[Rcpp::export]]
 List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
                NumericVector logPopOmega0, IntegerVector muRefThetaIdx,
+               IntegerVector thetaMuRefEta,
                LogicalVector thetaFix, LogicalVector omegaFix,
                int iters, double seed, double etaScale, double tau, double alpha,
                int nMc, int it0,
@@ -9874,16 +9875,44 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
     }
     for (int p = 0; p < ntheta; ++p) {
-      if (thetaFix[p]) continue;
+      // mu-referenced intercepts are not gradient-updated: theta and eta share a
+      // flat direction (data constrains only theta+eta), which makes joint SGA
+      // drift/diverge.  They are updated by the recentering M-step below instead.
+      if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
       double g = gThAcc[p];
       sTheta[p] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sTheta[p];
       theta[p] += etaScale * idecay / (tau + std::sqrt(sTheta[p])) * g;
     }
+    // Recentering M-step for mu-referenced intercepts: shift the mean of each
+    // mu-referenced eta's variational means into its typical-value theta
+    // (theta+eta is invariant, so the data fit is unchanged; centering the etas
+    // lowers the prior penalty -- an ELBO-ascent move -- and removes the flat
+    // direction that otherwise diverges).
+    for (int p = 0; p < ntheta; ++p) {
+      int k = thetaMuRefEta[p];
+      if (k < 0 || thetaFix[p]) continue;
+      double mbar = 0.0;
+      for (int i = 0; i < N; ++i) mbar += mu(i, k);
+      mbar /= N;
+      theta[p] += mbar;
+      for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
+    }
+    // Population between-subject variance M-step, EMA-DAMPED.  The undamped
+    // ELBO-maximizing value is w_k = mean_i(mu_ik^2 + var_ik) (var_ik =
+    // exp(2 omega_ik)) -- the vae/SAEM omega update -- but applying it every
+    // iteration makes the prior track the variational scale exactly, which
+    // cancels the restoring force on the variational log-sd (exp(2 omega)/w -> 1)
+    // and the posterior inflates without bound.  A lagging (damped) w stays
+    // tighter than the variational scale during transients, preserving the
+    // restoring force; it converges to the same fixed point once the E-step
+    // settles.  gamma anneals from a small value toward 1.
+    double gam = 1.0 / (10.0 + (double)gi);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
-      double g = gLpoAcc[k];
-      sLpo[k] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sLpo[k];
-      logPopOmega[k] += etaScale * idecay / (tau + std::sqrt(sLpo[k])) * g;
+      double s = 0.0;
+      for (int i = 0; i < N; ++i) s += mu(i, k) * mu(i, k) + std::exp(2.0 * omega(i, k));
+      double wTarget = s / N, wCur = std::exp(logPopOmega[k]);
+      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);

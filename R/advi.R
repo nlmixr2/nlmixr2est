@@ -83,22 +83,28 @@
 #' late-iteration mean ELBO.  Deterministic (same seed/init), so it does not
 #' break the prefix/resume reproducibility of the main run.
 #' @noRd
-.adviAdaptEta <- function(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaFix,
-                          omegaFix, control, seed) {
+.adviAdaptEta <- function(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaMuRefEta,
+                          thetaFix, omegaFix, control, seed) {
   .cands <- control$etaCandidates
   if (length(.cands) == 1L) return(.cands)
   N <- nrow(mu0); neta <- ncol(mu0); ntheta <- length(theta0)
-  .nAdapt <- as.integer(min(control$iters, 30L))
+  ## a long enough window that a too-large step's late divergence is visible
+  .nAdapt <- as.integer(min(control$iters, 75L))
   .z <- function() matrix(0, N, neta)
   .best <- -Inf; .bestEta <- .cands[1]
   for (.e in .cands) {
-    .r <- adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaFix, omegaFix,
+    .r <- adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaMuRefEta,
+                    thetaFix, omegaFix,
                     .nAdapt, as.numeric(seed), .e, as.numeric(control$tau),
                     as.numeric(control$alpha), as.integer(control$nMc), 0L,
                     .z(), .z(), numeric(ntheta), numeric(neta))
     .el <- .r$elbo
-    .score <- if (all(is.finite(.el)))
-      mean(.el[max(1L, length(.el) - .nAdapt %/% 3L):length(.el)]) else -Inf
+    ## reject a candidate that diverges (non-finite, or the population estimates
+    ## in parHist blow up) even if its early ELBO looked good
+    .diverged <- any(!is.finite(.el)) || any(!is.finite(.r$parHist)) ||
+      max(abs(.r$parHist)) > 1e4
+    .score <- if (.diverged) -Inf
+      else mean(.el[max(1L, length(.el) - .nAdapt %/% 3L):length(.el)])
     if (.score > .best) { .best <- .score; .bestEta <- .e }
   }
   .bestEta
@@ -143,14 +149,21 @@
   ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
   .muRefIdx <- as.integer(.prep$muRefThetaIdx)
   .thFix <- as.logical(.prep$thetaFix); .omFix <- as.logical(.prep$omegaFix)
+  ## per-theta recentering eta (0-based) for mu-referenced intercepts, else -1
+  .thetaMuRefEta <- rep(-1L, ntheta)
+  for (.k in seq_len(neta)) {
+    .p <- .prep$muRefThetaIdx[.k]
+    if (!is.na(.p)) .thetaMuRefEta[.p] <- .k - 1L
+  }
   .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
     else if (isTRUE(control$adaptEta))
-      .adviAdaptEta(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thFix, .omFix,
-                    control, .seed)
+      .adviAdaptEta(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thetaMuRefEta,
+                    .thFix, .omFix, control, .seed)
     else if (length(control$etaCandidates) == 1L) control$etaCandidates
     else 0.1
 
-  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thFix, .omFix,
+  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thetaMuRefEta,
+                    .thFix, .omFix,
                     as.integer(control$iters), as.numeric(.seed), .etaScale,
                     as.numeric(control$tau), as.numeric(control$alpha),
                     as.integer(control$nMc), .it0,
