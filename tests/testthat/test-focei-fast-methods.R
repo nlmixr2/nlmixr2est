@@ -56,7 +56,7 @@ nmTest({
       expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
                                   "Forward Difference", "Central Difference")), 0)
       expect_match(fF$extra, "grad: analytic", info = est)
-      expect_match(fF$extra, if (grepl("^irls", est)) "mu: irls" else "mu: lin", info = est)
+      expect_match(fF$extra, if (grepl("^i", est)) "mu: irls" else "mu: lin", info = est)
     }
   })
 
