@@ -1371,6 +1371,10 @@
     # it into contiguous chunks (gating compartment-scoped models to a whole-model call) and,
     # with optExprParallel=TRUE + an active mirai pool, optimizes them in parallel -- identical
     # result, faster build.  Any failure degrades to the unoptimized (correct) model.
+    # optExprParallel and the chunk balancing are deliberately NOT in rxUiGet.foceiModelDigest:
+    # they change only HOW the CSE is computed, not the resulting model (sequential, parallel and
+    # the old equal-count chunking all yield mathematically equivalent models), so the digest-keyed
+    # qs2/in-memory caches correctly reuse the equivalent build.
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
       .modTxt <- tryCatch(
         .foceiChunkedOptExpr(.modTxt, "FOCEi outer gradient model",
