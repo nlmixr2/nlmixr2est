@@ -809,6 +809,14 @@
 
 - Use OpenMP threading wile calculating NPDEs
 
+- Bounded the adaptive finite-difference step size (Shi et al. 2021) used for the
+  FOCEi eta gradient to a reasonable region.  When the finite differences carried
+  no detectable curvature the step-size search could grow the step without bound
+  and probe a parameter far outside the region where the local model holds,
+  producing a degenerate ODE solve that corrupted the shared solver state and
+  collapsed the eta finite-difference sensitivity on later inner iterations (the
+  eta could get stuck near 0).  The step is now clamped both above and below.
+
 # nlmixr2est 6.1.0
 
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
