@@ -6,9 +6,12 @@
   (time-varying and non-time-varying), IOV, finite mixtures (`mix()`), general
   log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
   refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters, and
-  Fisher-score standard errors.  Most models run their whole E-M loop in C++
-  (`rpemControl(cLoop = TRUE)`), which is thread-safe and reproducible, and the
-  iteration walk is printed and saved to `fit$parHist` like the other methods.
+  Fisher-score standard errors.  The whole E-M loop runs in C++ (thread-safe and
+  reproducible for any core count), and the iteration walk is streamed live and
+  saved to `fit$parHist` like the other methods.  `rpemControl(cLoop=)` is
+  deprecated and ignored (the C++ loop is the only path); not-yet-ported
+  combinations (BLQ censoring on non-additive error, multiple endpoints with
+  covariates, and errType 5/7 mixtures) raise a clear error.
 
 - The `est = "vae"` training loop (variational-autoencoder NLME) now runs
   entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM / smoothing

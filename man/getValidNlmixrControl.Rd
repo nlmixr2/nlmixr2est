@@ -56,7 +56,7 @@
 \alias{getValidNlmixrCtl.default}
 \alias{getValidNlmixrCtl.uobyqa}
 \alias{getValidNlmixrCtl.vae}
-\title{Validate the RPEM control (est="rpem")}
+\title{Get valid nlmixr control object}
 \usage{
 \method{getValidNlmixrCtl}{agq}(control)
 
@@ -169,8 +169,6 @@ getValidNlmixrCtl(control)
 Valid control object based on estimation method run.
 }
 \description{
-Validate the RPEM control (est="rpem")
-
 Get valid nlmixr control object
 }
 \details{
