@@ -93,9 +93,11 @@
     .r <- runLoop(.e, nAdapt)
     .el <- .r$elbo
     ## reject a candidate that diverges (non-finite, or the population estimates
-    ## in parHist blow up) even if its early ELBO looked good
+    ## in parHist blow up) even if its early ELBO looked good.  A run that the C++
+    ## loop aborted early ($itRun < requested) also diverged.
     .diverged <- any(!is.finite(.el)) || any(!is.finite(.r$parHist)) ||
-      max(abs(.r$parHist)) > 1e4
+      max(abs(.r$parHist)) > 1e4 ||
+      (!is.null(.r$itRun) && .r$itRun < nAdapt)
     .score <- if (.diverged) -Inf
       else mean(.el[max(1L, length(.el) - nAdapt %/% 3L):length(.el)])
     if (.score > .best) { .best <- .score; .bestEta <- .e }
@@ -147,6 +149,14 @@
   .adviInnerSetup(ui, data, .mu0, control)
   on.exit(.adviInnerFree(), add = TRUE)
 
+  ## thread count for the parallel per-subject ELBO core (same knob as the inner
+  ## eval driver: rxControl$cores, falling back to the rxode2 thread pool).  Kept
+  ## bit-for-bit invariant to the thread count by a serial id-ordered reduction.
+  .cores <- tryCatch({
+    .c <- control$rxControl$cores
+    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+  }, error = function(e) 1L)
+
   ## the counter-based RNG is keyed by the global iteration index, so resuming
   ## with the original seed continues the exact same stream (prefix property).
   .seed <- if (!is.null(resume) && !is.null(resume$seed)) resume$seed else control$seed
@@ -183,17 +193,17 @@
       .mPop0 <- resume$mPop; .Lpop0 <- resume$Lpop
       .smPop <- resume$smPop; .sLpop <- resume$sLpop
     }
-    .runFB <- function(eta, iters, it0 = 0L) {
+    .runFB <- function(eta, iters, it0 = 0L, divergeStop = 0L) {
       adviLoopFB_(.mu0, .scale0, .theta0, .logPopOmega0, .mPop0, .Lpop0,
                   as.integer(.phiThetaIdx), as.integer(.phiOmIdx), as.integer(.phiMuRef),
                   .muRefIdx, as.integer(.fr),
                   as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
                   as.numeric(control$alpha), as.integer(control$nMc), it0,
-                  .sMu, .sScale, .smPop, .sLpop)
+                  .sMu, .sScale, .smPop, .sLpop, .cores, as.integer(divergeStop))
     }
     .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
       else if (isTRUE(control$adaptEta))
-        .adviAdaptEta(function(e, n) .runFB(e, n), control$etaCandidates,
+        .adviAdaptEta(function(e, n) .runFB(e, n, divergeStop = 1L), control$etaCandidates,
                       as.integer(min(control$iters, 75L)))
       else if (length(control$etaCandidates) == 1L) control$etaCandidates else 0.1
     .res <- .runFB(.etaScale, control$iters, it0 = .it0)
@@ -217,17 +227,17 @@
   ## family-appropriate one-loop runner (from the initial state)
   .runLoop <- function(eta, iters, it0 = 0L, scale = .scale0, mu = .mu0, theta = .theta0,
                        lpo = .logPopOmega0, sMu = .sMu, sScale = .sScale,
-                       sTheta = .sTheta, sLpo = .sLpo) {
+                       sTheta = .sTheta, sLpo = .sLpo, divergeStop = 0L) {
     .fn <- if (.fr) adviLoopFR_ else adviLoop_
     .fn(mu, scale, theta, lpo, .muRefIdx, .thetaMuRefEta, .thFix, .omFix,
         as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
         as.numeric(control$alpha), as.integer(control$nMc), it0,
-        sMu, sScale, sTheta, sLpo)
+        sMu, sScale, sTheta, sLpo, .cores, as.integer(divergeStop))
   }
   ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
   .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
     else if (isTRUE(control$adaptEta))
-      .adviAdaptEta(function(e, n) .runLoop(e, n), control$etaCandidates,
+      .adviAdaptEta(function(e, n) .runLoop(e, n, divergeStop = 1L), control$etaCandidates,
                     as.integer(min(control$iters, 75L)))
     else if (length(control$etaCandidates) == 1L) control$etaCandidates
     else 0.1

@@ -16,6 +16,9 @@
   counter-based stream keyed by the global iteration index, so a shorter run is a
   bit-for-bit prefix of a longer one and results are independent of the thread
   count; the iteration walk is saved to `fit$parHist` like the other methods.
+  The per-subject ELBO and gradient are computed in parallel over subjects
+  (`rxControl(cores=)`); a serial id-ordered reduction keeps the result identical
+  for any thread count.
 
 - Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
   al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/

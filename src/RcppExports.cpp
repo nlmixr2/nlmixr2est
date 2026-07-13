@@ -713,8 +713,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // adviLoop_
-List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sOmega0, NumericVector sTheta0, NumericVector sLpo0);
-RcppExport SEXP _nlmixr2est_adviLoop_(SEXP mu0SEXP, SEXP omega0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sOmega0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP) {
+List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sOmega0, NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop);
+RcppExport SEXP _nlmixr2est_adviLoop_(SEXP mu0SEXP, SEXP omega0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sOmega0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -737,7 +737,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type sOmega0(sOmega0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type sTheta0(sTheta0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type sLpo0(sLpo0SEXP);
-    rcpp_result_gen = Rcpp::wrap(adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0));
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -758,8 +760,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // adviLoopFR_
-List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sL0, NumericVector sTheta0, NumericVector sLpo0);
-RcppExport SEXP _nlmixr2est_adviLoopFR_(SEXP mu0SEXP, SEXP Lpack0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sL0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP) {
+List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sL0, NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop);
+RcppExport SEXP _nlmixr2est_adviLoopFR_(SEXP mu0SEXP, SEXP Lpack0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sL0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -782,13 +784,15 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type sL0(sL0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type sTheta0(sTheta0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type sLpo0(sLpo0SEXP);
-    rcpp_result_gen = Rcpp::wrap(adviLoopFR_(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0));
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoopFR_(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop));
     return rcpp_result_gen;
 END_RCPP
 }
 // adviLoopFB_
-List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0, NumericVector logPopOmega0, NumericVector mPop0, NumericVector LpopPack0, IntegerVector phiThetaIdx, IntegerVector phiOmIdx, IntegerVector phiMuRef, IntegerVector muRefThetaIdx, int fr, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sScale0, NumericVector smPop0, NumericVector sLpop0);
-RcppExport SEXP _nlmixr2est_adviLoopFB_(SEXP mu0SEXP, SEXP scale0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP mPop0SEXP, SEXP LpopPack0SEXP, SEXP phiThetaIdxSEXP, SEXP phiOmIdxSEXP, SEXP phiMuRefSEXP, SEXP muRefThetaIdxSEXP, SEXP frSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sScale0SEXP, SEXP smPop0SEXP, SEXP sLpop0SEXP) {
+List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0, NumericVector logPopOmega0, NumericVector mPop0, NumericVector LpopPack0, IntegerVector phiThetaIdx, IntegerVector phiOmIdx, IntegerVector phiMuRef, IntegerVector muRefThetaIdx, int fr, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sScale0, NumericVector smPop0, NumericVector sLpop0, int cores, int divergeStop);
+RcppExport SEXP _nlmixr2est_adviLoopFB_(SEXP mu0SEXP, SEXP scale0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP mPop0SEXP, SEXP LpopPack0SEXP, SEXP phiThetaIdxSEXP, SEXP phiOmIdxSEXP, SEXP phiMuRefSEXP, SEXP muRefThetaIdxSEXP, SEXP frSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sScale0SEXP, SEXP smPop0SEXP, SEXP sLpop0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -814,7 +818,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type sScale0(sScale0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type smPop0(smPop0SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type sLpop0(sLpop0SEXP);
-    rcpp_result_gen = Rcpp::wrap(adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0));
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop));
     return rcpp_result_gen;
 END_RCPP
 }

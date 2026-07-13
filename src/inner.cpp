@@ -9760,6 +9760,19 @@ List adviThetaSensInfo_() {
                       _["isImpmap"] = op_focei.isImpmap);
 }
 
+// Divergence test for the adaptEta step-size search: a non-finite ELBO or any
+// recorded population parameter exceeding 1e4 in magnitude (same criterion the R
+// scorer .adviAdaptEta applies to the full trace).  `row` is the just-written
+// parHist iteration, `ncol` its width.
+static bool adviDiverged(double elbo, NumericMatrix &parHist, int row, int ncol) {
+  if (!R_finite(elbo)) return true;
+  for (int c = 0; c < ncol; ++c) {
+    double v = parHist(row, c);
+    if (!R_finite(v) || std::fabs(v) > 1e4) return true;
+  }
+  return false;
+}
+
 // Core (mean-field, point-estimate) ELBO + gradient at a fixed eps draw.  Fills
 // the pre-allocated gMu/gOmega/gTheta/gPopLogOmega (zeroed here) and returns the
 // ELBO.  Shared by the R-facing adviElboGrad_ (FD test) and the C++ loop adviLoop_.
@@ -9767,7 +9780,8 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
                                NumericVector logPopOmega, NumericMatrix eps,
                                IntegerVector muRefThetaIdx,
                                NumericMatrix &gMu, NumericMatrix &gOmega,
-                               NumericVector &gTheta, NumericVector &gPopLogOmega) {
+                               NumericVector &gTheta, NumericVector &gPopLogOmega,
+                               int cores) {
   const int N = mu.nrow();
   const int neta = mu.ncol();
   const int ntheta = (int)op_focei.ntheta;
@@ -9789,10 +9803,29 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   std::fill(gOmega.begin(), gOmega.end(), 0.0);
   std::fill(gTheta.begin(), gTheta.end(), 0.0);
   std::fill(gPopLogOmega.begin(), gPopLogOmega.end(), 0.0);
-  double elbo = 0.0;
   const int nSens = op_focei.impThetaSensIdx.size();
-
-  for (int i = 0; i < N; ++i) {
+  // Per-subject buffers reduced serially (in id order) after the parallel loop so
+  // the floating-point summation order -- hence the result -- is identical for any
+  // thread count and identical to the serial code.  gMu/gOmega rows are already
+  // per-subject, so they are written directly inside the loop.
+  std::vector<double> objBuf(N, 0.0);            // -obj + mean-field entropy
+  arma::mat gThetaBuf(N, ntheta, arma::fill::zeros);
+  arma::mat gLpoBuf(N, neta, arma::fill::zeros);
+  // rxode2 sizes every per-thread solve buffer by op->cores; more external threads
+  // than that index past the pools and corrupt the heap (see vaeInnerLikCore).
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  if (nsub != N) { nsub = N; cores = 1; }        // unexpected shape: serial
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int ii = 0; ii < nsub; ++ii) {
+    int i = doParallel ? (getOrdId(rx, ii) - 1) : ii;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
     // reparameterized draw eta_i = mu_i + exp(omega_i) .* eps_i
     std::vector<double> eta(neta);
     arma::vec etav(neta);
@@ -9814,8 +9847,9 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
 
     // ELBO: data+prior term (-obj) + mean-field entropy (sum omega, + const)
-    elbo += -obj;
-    for (int k = 0; k < neta; ++k) elbo += omega(i, k);
+    double e = -obj;
+    for (int k = 0; k < neta; ++k) e += omega(i, k);
+    objBuf[i] = e;
 
     // variational-parameter gradients
     for (int k = 0; k < neta; ++k) {
@@ -9823,11 +9857,11 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
       gOmega(i, k) = -lp[k] * std::exp(omega(i, k)) * eps(i, k) + 1.0;
     }
 
-    // population between-subject log-variance gradient (accumulated):
+    // population between-subject log-variance gradient (per-subject):
     //   0.5 (eta_ik^2)/w_k - 0.5   with var absorbed via the reparam draw
     for (int k = 0; k < neta; ++k) {
       double wk = std::exp(logPopOmega[k]);
-      gPopLogOmega[k] += 0.5 * (eta[k] * eta[k]) / wk - 0.5;
+      gLpoBuf(i, k) = 0.5 * (eta[k] * eta[k]) / wk - 0.5;
     }
 
     // OUTER population theta gradient
@@ -9835,7 +9869,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     arma::vec dataScore = omegaInv * etav - lp;
     for (int k = 0; k < neta; ++k) {
       int p = muRefThetaIdx[k];                  // 1-based ntheta, NA_INTEGER if free
-      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gTheta[p - 1] += dataScore[k];
+      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gThetaBuf(i, p - 1) += dataScore[k];
     }
     // non-mu structural + residual-error thetas: theta forward-sensitivity score
     if (nSens > 0) {
@@ -9847,9 +9881,20 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
       impThetaScore(i, S, zk, g, H);
       for (int s = 0; s < nSens; ++s) {
         int th = op_focei.impThetaSensIdx[s];    // 0-based
-        if (th >= 0 && th < ntheta) gTheta[th] += g[s];
+        if (th >= 0 && th < ntheta) gThetaBuf(i, th) += g[s];
       }
     }
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // serial reduction in id order (thread-count invariant, matches serial code)
+  double elbo = 0.0;
+  for (int i = 0; i < N; ++i) {
+    elbo += objBuf[i];
+    for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
+    for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
   }
   // population prior logdet: -0.5 N sum_k logPopOmega_k
   for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
@@ -9864,7 +9909,7 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
   NumericMatrix gMu(N, neta), gOmega(N, neta);
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
-                                 gMu, gOmega, gTheta, gPopLogOmega);
+                                 gMu, gOmega, gTheta, gPopLogOmega, 1);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gOmega"] = gOmega,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
@@ -9887,7 +9932,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
                int iters, double seed, double etaScale, double tau, double alpha,
                int nMc, int it0,
                NumericMatrix sMu0, NumericMatrix sOmega0,
-               NumericVector sTheta0, NumericVector sLpo0) {
+               NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   NumericMatrix mu = clone(mu0), omega = clone(omega0);
   NumericVector theta = clone(theta0), logPopOmega = clone(logPopOmega0);
@@ -9902,6 +9947,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
   NumericVector elboTrace(iters);
   NumericMatrix parHist(iters, ntheta + neta);   // theta ... , popOmega diag ...
   const double eeps = 1e-16, invM = 1.0 / nMc;
+  int itRun = iters;                              // may shrink if divergeStop fires
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;                            // global iteration index
@@ -9916,7 +9962,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       for (int i = 0; i < N; ++i)
         for (int k = 0; k < neta; ++k) eps(i, k) = rxNormEng(0.0, 1.0);
       elboAcc += adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
-                                  gMu, gOmega, gTheta, gPopLogOmega);
+                                  gMu, gOmega, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) { gMuAcc[j] += gMu[j]; gOmAcc[j] += gOmega[j]; }
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
       for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
@@ -9980,10 +10026,17 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+    // adaptEta candidates only (divergeStop != 0): stop paying for a run that has
+    // clearly blown up.  The offending iteration is recorded first, so the
+    // (zero-padded) trace still trips R's divergence test; the main run passes
+    // divergeStop == 0 and is bit-for-bit unchanged.
+    if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
+      itRun = it + 1; break;
+    }
   }
   return List::create(_["mu"] = mu, _["omega"] = omega, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
-                      _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["parHist"] = parHist, _["it0"] = it0 + itRun, _["itRun"] = itRun,
                       _["sMu"] = sMu, _["sOmega"] = sOmega,
                       _["sTheta"] = sTheta, _["sLpo"] = sLpo);
 }
@@ -10005,7 +10058,8 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
                                  NumericVector logPopOmega, NumericMatrix eps,
                                  IntegerVector muRefThetaIdx,
                                  NumericMatrix &gMu, NumericMatrix &gL,
-                                 NumericVector &gTheta, NumericVector &gPopLogOmega) {
+                                 NumericVector &gTheta, NumericVector &gPopLogOmega,
+                                 int cores) {
   const int N = mu.nrow();
   const int neta = mu.ncol();
   const int ntheta = (int)op_focei.ntheta;
@@ -10022,10 +10076,26 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
   std::fill(gL.begin(), gL.end(), 0.0);
   std::fill(gTheta.begin(), gTheta.end(), 0.0);
   std::fill(gPopLogOmega.begin(), gPopLogOmega.end(), 0.0);
-  double elbo = 0.0;
   const int nSens = op_focei.impThetaSensIdx.size();
-
-  for (int s = 0; s < N; ++s) {
+  // Per-subject buffers reduced serially (id order) after the parallel loop so the
+  // result is thread-count invariant and identical to the serial code (see the
+  // mean-field core).  gMu/gL rows are per-subject, written directly in the loop.
+  std::vector<double> objBuf(N, 0.0);
+  arma::mat gThetaBuf(N, ntheta, arma::fill::zeros);
+  arma::mat gLpoBuf(N, neta, arma::fill::zeros);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  if (nsub != N) { nsub = N; cores = 1; }        // unexpected shape: serial
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int ss = 0; ss < nsub; ++ss) {
+    int s = doParallel ? (getOrdId(rx, ss) - 1) : ss;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
     // eta_i = mu_i + L_i eps_i (L_i lower-tri, packed)
     std::vector<double> eta(neta);
     arma::vec etav(neta);
@@ -10042,9 +10112,10 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     arma::vec lp(neta);
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
 
-    elbo += -obj;
+    double e = -obj;
     for (int k = 0; k < neta; ++k)
-      elbo += std::log(std::fabs(Lpack(s, k * (k + 1) / 2 + k)));   // entropy: sum log|L_kk|
+      e += std::log(std::fabs(Lpack(s, k * (k + 1) / 2 + k)));   // entropy: sum log|L_kk|
+    objBuf[s] = e;
 
     for (int i = 0; i < neta; ++i) {
       gMu(s, i) = -lp[i];
@@ -10056,12 +10127,12 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     }
     for (int k = 0; k < neta; ++k) {
       double wk = std::exp(logPopOmega[k]);
-      gPopLogOmega[k] += 0.5 * (eta[k] * eta[k]) / wk - 0.5;
+      gLpoBuf(s, k) = 0.5 * (eta[k] * eta[k]) / wk - 0.5;
     }
     arma::vec dataScore = omegaInv * etav - lp;
     for (int k = 0; k < neta; ++k) {
       int p = muRefThetaIdx[k];
-      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gTheta[p - 1] += dataScore[k];
+      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gThetaBuf(s, p - 1) += dataScore[k];
     }
     if (nSens > 0) {
       arma::mat S(1, neta);
@@ -10072,9 +10143,19 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
       impThetaScore(s, S, zk, g, H);
       for (int t = 0; t < nSens; ++t) {
         int th = op_focei.impThetaSensIdx[t];
-        if (th >= 0 && th < ntheta) gTheta[th] += g[t];
+        if (th >= 0 && th < ntheta) gThetaBuf(s, th) += g[t];
       }
     }
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  double elbo = 0.0;
+  for (int i = 0; i < N; ++i) {
+    elbo += objBuf[i];
+    for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
+    for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
   }
   for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
   return elbo;
@@ -10089,7 +10170,7 @@ List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
   NumericMatrix gMu(N, neta), gL(N, nL);
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
-                                   gMu, gL, gTheta, gPopLogOmega);
+                                   gMu, gL, gTheta, gPopLogOmega, 1);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gL"] = gL,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
@@ -10102,7 +10183,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                  int iters, double seed, double etaScale, double tau, double alpha,
                  int nMc, int it0,
                  NumericMatrix sMu0, NumericMatrix sL0,
-                 NumericVector sTheta0, NumericVector sLpo0) {
+                 NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   const int nL = neta * (neta + 1) / 2;
   NumericMatrix mu = clone(mu0), Lpack = clone(Lpack0);
@@ -10117,6 +10198,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
   NumericVector elboTrace(iters);
   NumericMatrix parHist(iters, ntheta + neta);
   const double eeps = 1e-16, invM = 1.0 / nMc;
+  int itRun = iters;
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
@@ -10130,7 +10212,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       for (int i = 0; i < N; ++i)
         for (int k = 0; k < neta; ++k) eps(i, k) = rxNormEng(0.0, 1.0);
       elboAcc += adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
-                                    gMu, gL, gTheta, gPopLogOmega);
+                                    gMu, gL, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nL; ++j) gLAcc[j] += gL[j];
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
@@ -10185,10 +10267,13 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+    if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
+      itRun = it + 1; break;
+    }
   }
   return List::create(_["mu"] = mu, _["Lpack"] = Lpack, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
-                      _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["parHist"] = parHist, _["it0"] = it0 + itRun, _["itRun"] = itRun,
                       _["sMu"] = sMu, _["sL"] = sL,
                       _["sTheta"] = sTheta, _["sLpo"] = sLpo);
 }
@@ -10216,7 +10301,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
                  int iters, double seed, double etaScale, double tau, double alpha,
                  int nMc, int it0,
                  NumericMatrix sMu0, NumericMatrix sScale0,
-                 NumericVector smPop0, NumericVector sLpop0) {
+                 NumericVector smPop0, NumericVector sLpop0, int cores, int divergeStop) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   const int nScale = scale0.ncol();
   const int npop = mPop0.size(), nLpop = LpopPack0.size();
@@ -10239,6 +10324,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
   NumericVector elboTrace(iters);
   NumericMatrix parHist(iters, ntheta + neta);
   const double eeps = 1e-16, invM = 1.0 / nMc;
+  int itRun = iters;
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
@@ -10265,8 +10351,8 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
         else if (phiOmIdx[j] >= 0) logPopOmega[phiOmIdx[j]] = phi[j];
       }
       double e = fr
-        ? adviElboGradCoreFR(mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega)
-        : adviElboGradCore  (mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega);
+        ? adviElboGradCoreFR(mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega, cores)
+        : adviElboGradCore  (mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega, cores);
       // population entropy: sum log|Lpop_kk|
       for (int k = 0; k < npop; ++k) e += std::log(std::fabs(Lpop[k * (k + 1) / 2 + k]));
       elboAcc += e;
@@ -10328,6 +10414,9 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = thetaBar[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(lpoBar[k]);
+    if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
+      itRun = it + 1; break;
+    }
   }
   // final theta / logPopOmega at the population posterior mean
   for (int j = 0; j < npop; ++j) {
@@ -10336,7 +10425,8 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
   }
   return List::create(_["mu"] = mu, _["scale"] = scale, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["mPop"] = mPop, _["Lpop"] = Lpop,
-                      _["elbo"] = elboTrace, _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["elbo"] = elboTrace, _["parHist"] = parHist, _["it0"] = it0 + itRun,
+                      _["itRun"] = itRun,
                       _["sMu"] = sMu, _["sScale"] = sScale, _["smPop"] = smPop, _["sLpop"] = sLpop);
 }
 
