@@ -73,4 +73,39 @@ nmTest({
     expect_match(fF$extra, "outer: lbfgsb3c; grad: analytic")
     expect_match(fRef$extra, "outer: lbfgsb3c; grad: analytic")
   })
+
+  test_that("all-residual-fixed fast fits use the analytic gradient (omega-only outer)", {
+    skip_on_cran()
+    skip_on_ci()
+    skip_if_not_installed("nlmixr2data")
+    d <- nlmixr2data::theo_sd
+    # every residual-error parameter fixed: the mu families profile the
+    # structural thetas out too, so the outer problem is omega-only.  The
+    # analytic gradient must still engage (it previously fell back to FD, which
+    # re-solves the ODE per omega step); rx_r_ is read from the solve, nsg = 0.
+    addFix <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+            add.sd <- fix(0.7) })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    combFix <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+            add.sd <- fix(0.7); prop.sd <- fix(0.1) })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
+    }
+    for (.m in list(addFix, combFix)) {
+      for (.e in c("foceif", "ifoceif", "mfoceif")) {
+        .ctl <- switch(.e, foceif = foceiControl, ifoceif = ifoceiControl, mfoceif = mfoceiControl)
+        fF <- suppressWarnings(suppressMessages(nlmixr2(.m, d, .e, .ctl(print = 0L, covMethod = ""))))
+        f0 <- suppressWarnings(suppressMessages(nlmixr2(.m, d, sub("f$", "", .e),
+                                                        .ctl(print = 0L, covMethod = "", fast = FALSE))))
+        expect_match(fF$extra, "grad: analytic", info = .e)
+        expect_equal(fF$objf, f0$objf, tolerance = 0.2, info = .e)
+      }
+    }
+  })
 })

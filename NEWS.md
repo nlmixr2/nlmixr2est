@@ -212,6 +212,13 @@
   `mfoceif`/`mfocef`/`mfocepf`), with matching control functions
   (`ifoceiControl()`, `mfoceiControl()`, ...).  The old names are removed (they never
   shipped in a release).
+- The analytic (`fast=TRUE`) outer gradient and `covMethod="analytic"` now handle
+  models whose residual-error parameters are all fixed.  Such a fit's outer problem is
+  omega-only (structural thetas mu-profiled, residuals fixed), and omegas do not enter
+  the ODE, so no model re-solve per parameter is needed; previously the analytic path
+  fell back to finite differences (re-solving the ODE for every omega step).  The
+  general (f,R) assembler now runs with no free residual direction, reading the (fixed)
+  variance from the solved `rx_r_`.
 - Bounded mu-referenced parameters (population thetas and covariate coefficients) are
   now also profiled by the mu/irls regression, with the update clamped to the bounds
   (box-constrained least squares, `foceiControl(muModelClampRetries=)`); parameters
