@@ -773,7 +773,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 #' @author Matthew L Fidler
 #' @noRd
 .rxFinalizeInner <- function(.s, sum.prod = FALSE,
-                             optExpression = TRUE) {
+                             optExpression = TRUE, cores = 0L) {
   .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -880,11 +880,13 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .s$..inner <- rxode2::rxOptExpr(.s$..inner,
                                     ifelse(.getRxPredLlikOption(),
                                            "inner llik model",
-                                           "inner model"))
+                                           "inner model"),
+                                    parallel = cores)
     suppressMessages(.s$..innerOeta <- rxode2::rxOptExpr(.s$..innerOeta,
                                                          ifelse(.getRxPredLlikOption(),
                                                                 "inner llik model",
-                                                                "inner model")))
+                                                                "inner model"),
+                                                         parallel = cores))
   }
 }
 
@@ -945,8 +947,9 @@ rxUiGet.foceiEnv <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .foceiInnerAdjSens(x, .s)
-  .rxFinalizeInner(.s, .sumProd, .optExpression)
-  .rxFinalizePred(.s, .sumProd, .optExpression)
+  .cores <- .optExprCores(x[[1]])
+  .rxFinalizeInner(.s, .sumProd, .optExpression, .cores)
+  .rxFinalizePred(.s, .sumProd, .optExpression, .cores)
   .s$..outer <- NULL
   .s
 }
@@ -967,8 +970,9 @@ rxUiGet.foceEnv <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .foceiInnerAdjSens(x, .s)
-  .rxFinalizeInner(.s, .sumProd, .optExpression)
-  .rxFinalizePred(.s, .sumProd, .optExpression)
+  .cores <- .optExprCores(x[[1]])
+  .rxFinalizeInner(.s, .sumProd, .optExpression, .cores)
+  .rxFinalizePred(.s, .sumProd, .optExpression, .cores)
   .s$..outer <- NULL
   .s
 }
@@ -984,7 +988,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   .s$..outer <- NULL
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .rxFinalizePred(.s, .sumProd, .optExpression)
+  .rxFinalizePred(.s, .sumProd, .optExpression, .optExprCores(x[[1]]))
   .s
 }
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
@@ -1040,7 +1044,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
 
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE,
-                            optExpression = TRUE) {
+                            optExpression = TRUE, cores = 0L) {
   .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -1121,7 +1125,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   }
   if (optExpression) {
     .s$..pred <- rxode2::rxOptExpr(.s$..pred,
-                                   ifelse(.getRxPredLlikOption(),"Llik EBE model","EBE model"))
+                                   ifelse(.getRxPredLlikOption(),"Llik EBE model","EBE model"),
+                                   parallel = cores)
   }
 }
 
@@ -1197,7 +1202,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     }
     if (.optExpression) {
       s$..pred.nolhs <- rxode2::rxOptExpr(s$..pred.nolhs,
-                                          ifelse(.getRxPredLlikOption(),"Llik FD model","FD model"))
+                                          ifelse(.getRxPredLlikOption(),"Llik FD model","FD model"),
+                                          parallel = .optExprCores(ui))
     }
     s$..pred.nolhs <- paste(c(
       paste0("params(", paste(inner$params, collapse = ","), ")"),

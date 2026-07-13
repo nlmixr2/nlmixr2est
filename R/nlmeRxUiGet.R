@@ -145,7 +145,7 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "nlme model")
+    .ret <- rxode2::rxOptExpr(.ret, "nlme model", parallel = .optExprCores(x[[1]]))
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)

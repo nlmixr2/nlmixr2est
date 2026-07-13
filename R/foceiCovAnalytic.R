@@ -1290,9 +1290,7 @@
     # fit's rxControl(cores=) is passed through so the chunks are optimized in
     # parallel with the same thread setting the solves use (`.cores` also rides along
     # in the result so the batched solves run parallel).
-    .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
-                       error = function(e) 0L)
-    if (!length(.cores) || is.na(.cores)) .cores <- 0L
+    .cores <- .optExprCores(ui)
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
       .modTxt <- tryCatch(
         rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model", parallel = .cores),

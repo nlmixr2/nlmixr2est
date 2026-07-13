@@ -155,7 +155,8 @@ rxUiGet.rpemRxModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "RPEM log-likelihood model")
+    .ret <- rxode2::rxOptExpr(.ret, "RPEM log-likelihood model",
+                              parallel = .optExprCores(x[[1]]))
     .msuccess("done")
   }
   .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
