@@ -65,6 +65,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   } else {
     h = fabs(h);
   }
+  // Bound the FD step both ways -- see shi21Central; an unbounded step corrupts the
+  // shared solver state via a degenerate probe, and a vanishing step is roundoff.
+  const double hMax = 0.5, hMin = 1e-4;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
   gr.zeros(f0.n_elem); // avoid uninitialized read if no finite forward step is found
@@ -103,9 +106,13 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       break;
     }
     if (!R_finite(u)) {
+      if (h >= hMax) break;
       h = 4.0*h;
+      if (h > hMax) h = hMax;
     } else if (l == 0) {
+      if (h <= hMin) break;
       h = h/4.0;
+      if (h < hMin) h = hMin;
     } else {
       h = (l + u)/2.0;
     }
@@ -189,6 +196,14 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   } else {
     h = fabs(h);
   }
+  // Bound the finite-difference step to a reasonable region.  Too big: a flat
+  // objective makes the ratio test keep growing h until it probes the parameter
+  // far outside the region where the local model holds (e.g. an eta perturbed by
+  // several units), producing a degenerate/failed solve that corrupts the shared
+  // solver state for every later finite difference.  Too small: repeated shrinking
+  // drives h into the roundoff-dominated regime (central optimum ~ eps^(1/3)).
+  // Clamp both ends so the step stays sane.
+  const double hMax = 0.5, hMin = 1e-4;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   double hlast = h;
 
@@ -244,9 +259,13 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       break;
     }
     if (!R_finite(u)) {
+      if (h >= hMax) break; // already at the cap and still growing: stop here
       h = nu*h;
+      if (h > hMax) h = hMax; // clamp; probe once at hMax, then break if still growing
     } else if (l == 0) {
+      if (h <= hMin) break; // already at the floor and still shrinking: stop here
       h = h/nu;
+      if (h < hMin) h = hMin; // clamp; probe once at hMin, then break if still shrinking
     } else {
       h = (l + u)/2.0;
     }
