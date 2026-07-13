@@ -12,6 +12,7 @@
 #include "imp.h"
 #include "rxomp.h"
 #include "solveWarnHelper.h"
+#include "vaeEncoder.h"
 
 // scale.h uses `_("...")` for translatable strings; provide the trivial
 // passthrough macro before including it (matches saem.cpp's usage).
@@ -9508,17 +9509,66 @@ RObject vaeInnerSetup_(Environment e) {
   return initPar;
 }
 
+// Re-parameterize the already-set-up VAE inner problem at new natural-scale
+// theta/omega values WITHOUT re-running foceiSetup_ -- the per-gradient-step
+// fast path.  Each non-fixed parameter goes through scalePar() into the
+// reduced par vector and updateTheta() rebuilds fullTheta, the per-id solve
+// parameters and the omega inverse (exactly what focei's outer objective does
+// per evaluation).  The omega block requires the setup's diagonal rxInv with
+// diag.xform="sqrt", whose parameter for a diagonal omega is omega_kk^(-1/4)
+// (the square root of the chol(Omega^-1) diagonal).
+static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omegaDiag) {
+  if ((int)_vaeInitPar.size() != (int)op_focei.npars)
+    stop("vaeInnerUpdatePar_ requires vaeInnerSetup_ to be run first");
+  if ((int)thFull.n_elem != (int)op_focei.ntheta)
+    stop("vaeInnerUpdatePar_: theta size %d != ntheta %d",
+         (int)thFull.n_elem, (int)op_focei.ntheta);
+  if ((int)omegaDiag.n_elem != (int)op_focei.omegan)
+    stop("vaeInnerUpdatePar_: omega size %d != omegan %d (setup needs a diagonal rxInv)",
+         (int)omegaDiag.n_elem, (int)op_focei.omegan);
+  // Reproduce vaeInnerSetup_'s tail EXACTLY without the full foceiSetup_:
+  // foceiSetupTheta_ sets op_focei.initPar[k] to the natural parameter value and
+  // then vaeInnerSetup_ calls updateTheta(initPar).  updateTheta()'s unscale is
+  // relative to op_focei.initPar, so initPar MUST be refreshed to the new values
+  // first (a stale initPar makes the unscaled fullTheta wrong).  Natural theta
+  // for the theta block, omega_kk^(-1/4) for the diagonal "sqrt"-xform omega
+  // block.  Fixed thetas are absent from fixedTrans and stay at their setup
+  // values (which is what the VAE wants for a held theta).
+  std::vector<double> par(op_focei.npars);
+  for (unsigned int k = 0; k < op_focei.npars; ++k) {
+    int j = op_focei.fixedTrans[k];
+    par[k] = (j < (int)op_focei.ntheta) ? thFull[j] :
+      pow(omegaDiag[j - op_focei.ntheta], -0.25);
+    op_focei.initPar[k] = par[k];
+  }
+  updateTheta(par.data());
+  // likInner0 short-circuits on an unchanged eta (fInd->oldEta), which is only
+  // safe while theta/omega are fixed -- force a re-solve (like impForceResolve)
+  rx = getRxSolve_();
+  for (int id = getRxNsubAndMix(rx); id--;) inds_focei[id].setup = 0;
+}
+
+//[[Rcpp::export]]
+RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag) {
+  arma::vec th(thFull.begin(), thFull.size());
+  arma::vec om(omegaDiag.begin(), omegaDiag.size());
+  vaeInnerUpdateParCore(th, om);
+  return R_NilValue;
+}
+
 // Per-id inner objective (and optional gradient) at the supplied etas, parallel
 // over ids. id in [0, nSub) are the physical subjects; for mixtures the caller
-// passes nSub*nMix rows (id = component*nSub + subject) and combines.
-//[[Rcpp::export]]
-List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
-  const int nid = etaMat.nrow();
-  const int neta = etaMat.ncol();
-  NumericVector obj(nid);
-  NumericMatrix lp(grad ? nid : 1, grad ? neta : 1);
-  // per-id predictions (F) gathered thread-locally, converted to an R list after
-  std::vector<std::vector<double> > pf(preds ? nid : 0);
+// passes nSub*nMix rows (id = component*nSub + subject) and combines.  The
+// arma-native core is shared with the C++ training loop (vaeTrainCpp_) so the
+// per-step evaluations allocate no R objects.
+static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool preds,
+                            arma::vec& obj, arma::mat& lp,
+                            std::vector<std::vector<double> >& pf) {
+  const int nid = (int)etaMat.n_rows;
+  const int neta = (int)etaMat.n_cols;
+  obj.set_size(nid);
+  if (grad) lp.set_size(nid, neta);
+  if (preds) { pf.clear(); pf.resize(nid); }
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   // rxode2 sizes every per-thread solve buffer by op->cores (1 for models it
@@ -9568,9 +9618,23 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
     _innerParallel.store(0, std::memory_order_release);
     sortIds(rx, 0);
   }
+}
+
+//[[Rcpp::export]]
+List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds = false) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  arma::mat eta(etaMat.begin(), nid, neta, false, true);
+  arma::vec obj;
+  arma::mat lp;
+  std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(eta, cores, grad, preds, obj, lp, pf);
+  NumericVector objR(obj.begin(), obj.end());
+  NumericMatrix lpR(grad ? nid : 1, grad ? neta : 1);
+  if (grad) std::copy(lp.begin(), lp.end(), lpR.begin());
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
-  return List::create(_["obj"] = obj, _["lp"] = lp, _["f"] = fl);
+  return List::create(_["obj"] = objR, _["lp"] = lpR, _["f"] = fl);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
@@ -9848,6 +9912,459 @@ RObject vaeIterPrintGet_(bool printLine = true) {
   _vaeScale.every = 0;
   if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
   return scaleParHisDf(&_vaeScale);
+}
+
+// ---------------------------------------------------------------------------
+// VAE training loop (est="vae"), fully in C++.  This is a straight port of the
+// former R orchestration (.vaeTrain / .vaeElboStepInner / .vaeMStep* /
+// .vaeUpdateErr / .vaeAdamStep in R/vaeFit.R + R/vaeInner.R): burn-in
+// (encoder-only, tiny KL) -> main EM (KL anneal + closed-form M-step, optional
+// BICc-ELBO covariate selection) -> EMA smoothing.  The heavy pieces it calls
+// are already C++: the LSTM encoder fwd/bwd (vaeEncoderFwdBwdCore), the parallel
+// FOCEi inner likelihood (vaeInnerLikCore) and its per-step reparameterization
+// (vaeInnerUpdateParCore), and the shared iteration-print/parHist machinery
+// (vaeIterPrint*_).  Keeping the loop in C++ removes the per-gradient-step R
+// round-trip AND the per-step full inner re-setup that made est="vae" too slow.
+
+// Per-block Adam optimizer state for the 6 encoder parameter blocks.
+struct VaeAdamBlk { arma::mat m, v; };
+
+// R IntegerVector -> arma::ivec (arma sword is 64-bit; no direct memory ctor).
+static inline arma::ivec vaeToIvec(IntegerVector v) {
+  arma::ivec o(v.size());
+  for (int i = 0; i < v.size(); ++i) o[i] = v[i];
+  return o;
+}
+
+// One reparameterization-noise draw, matching R's matrix(rxnorm(N*zDim),N,zDim)
+// column-major fill.  Uses rxode2's threefry engine seeded per (phase,it,l) so a
+// step is reproducible regardless of the total iteration count (like the R
+// rxWithSeed(.es, ..., rxseed=.es) scheme, though the engine stream itself
+// differs from R's rxnorm -- the fit is validated against simulation truth).
+static inline void vaeDrawEps(arma::mat& eps, uint32_t es) {
+  setSeedEng1(es);
+  double *p = eps.memptr();
+  const arma::uword n = eps.n_elem;
+  for (arma::uword i = 0; i < n; ++i) p[i] = rxNormEng(0.0, 1.0);
+}
+
+static inline arma::vec vaeClampVec(arma::vec v, const arma::vec& lo, const arma::vec& hi) {
+  for (arma::uword k = 0; k < v.n_elem; ++k) {
+    if (R_FINITE(lo[k]) && v[k] < lo[k]) v[k] = lo[k];
+    if (R_FINITE(hi[k]) && v[k] > hi[k]) v[k] = hi[k];
+  }
+  return v;
+}
+
+// Assemble the full theta vector (ntheta order) from the current structural
+// population means (zPop, on the mu-referenced thetas) and residual-error a.
+// zPopThetaIdx0[k] is the 0-based theta index for eta k, or -1 (free eta:
+// theta forced to 0, structure carried elsewhere).  errThetaIdx0 likewise.
+static inline arma::vec vaeBuildTh(const arma::vec& th, const arma::ivec& zPopThetaIdx0,
+                                   const arma::vec& baseline, const arma::ivec& errThetaIdx0,
+                                   const arma::vec& a) {
+  arma::vec out = th;
+  for (arma::uword k = 0; k < zPopThetaIdx0.n_elem; ++k)
+    if (zPopThetaIdx0[k] >= 0) out[zPopThetaIdx0[k]] = baseline[k];
+  for (arma::uword e = 0; e < errThetaIdx0.n_elem; ++e)
+    out[errThetaIdx0[e]] = a[e];
+  return out;
+}
+
+// Closed-form error-parameter M-step (add/prop/combined), robust to non-finite
+// predictions.  errTypeCode: 0=add, 1=prop, 2=other (kept at current value).
+static arma::vec vaeUpdateErr(const std::vector<std::vector<double> >& preds,
+                              const std::vector<std::vector<double> >& yList,
+                              const arma::ivec& errTypeCode, const arma::vec& a,
+                              const arma::vec& errLower, const arma::vec& errUpper) {
+  if (a.n_elem == 0) return a;
+  std::vector<double> res, f;
+  for (size_t i = 0; i < preds.size(); ++i) {
+    const std::vector<double>& fi = preds[i];
+    const std::vector<double>& yi = yList[i];
+    size_t n = std::min(fi.size(), yi.size());
+    for (size_t o = 0; o < n; ++o) {
+      double r = yi[o] - fi[o], ff = fi[o];
+      if (R_FINITE(r) && R_FINITE(ff)) { res.push_back(r); f.push_back(ff); }
+    }
+  }
+  arma::vec aNew = a;
+  if (res.empty()) return a;
+  arma::uword nAdd = 0, nProp = 0; arma::uword iAdd = 0, iProp = 0;
+  for (arma::uword e = 0; e < errTypeCode.n_elem; ++e) {
+    if (errTypeCode[e] == 0 && nAdd == 0) { iAdd = e; nAdd = 1; }
+    if (errTypeCode[e] == 1 && nProp == 0) { iProp = e; nProp = 1; }
+  }
+  const size_t m = res.size();
+  if (nAdd && nProp) {
+    // combined: res^2 ~ a^2 + b^2 f^2 via 2-col least squares (normal equations)
+    double s0 = m, s1 = 0, s11 = 0, b0 = 0, b1 = 0;
+    for (size_t o = 0; o < m; ++o) {
+      double x1 = f[o] * f[o], y = res[o] * res[o];
+      s1 += x1; s11 += x1 * x1; b0 += y; b1 += x1 * y;
+    }
+    double det = s0 * s11 - s1 * s1;
+    if (std::fabs(det) > 0) {
+      double v0 = (s11 * b0 - s1 * b1) / det;
+      double v1 = (s0 * b1 - s1 * b0) / det;
+      v0 = std::max(v0, DBL_EPSILON); v1 = std::max(v1, DBL_EPSILON);
+      if (R_FINITE(v0)) aNew[iAdd] = std::sqrt(v0);
+      if (R_FINITE(v1)) aNew[iProp] = std::sqrt(v1);
+    }
+  } else if (nAdd) {
+    double ss = 0; for (double r : res) ss += r * r;
+    aNew[iAdd] = std::sqrt(ss / m);
+  } else if (nProp) {
+    double ss = 0; size_t nn = 0;
+    for (size_t o = 0; o < m; ++o) if (std::fabs(f[o]) > 1e-8) { double q = res[o] / f[o]; ss += q * q; nn++; }
+    if (nn) aNew[iProp] = std::sqrt(ss / nn);
+  }
+  for (arma::uword e = 0; e < aNew.n_elem; ++e) if (!R_FINITE(aNew[e])) aNew[e] = a[e];
+  return vaeClampVec(aNew, errLower, errUpper);
+}
+
+// Result of one ELBO evaluation.
+struct VaeStepOut {
+  bool ok;
+  double pxz, DKL;
+  arma::mat mu, z;      // [N, zDim]
+  arma::cube L;         // [zDim, zDim, N]
+  arma::mat lp;         // [N, zDim] decoder eta-gradient (best mixture component)
+  std::vector<std::vector<double> > preds;  // per-subject predictions f
+  arma::ivec mixnum;    // [N] selected mixture component (1-based)
+  // encoder parameter gradients
+  arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
+};
+
+// One ELBO evaluation using the FOCEi inner likelihood (port of
+// .vaeElboStepInner).  zPopMat [N,zDim] is the (possibly subject-specific) KL
+// center; baseline [zDim] is the inner-problem THETA baseline.
+static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
+                                 const arma::vec& bih, const arma::vec& bhh,
+                                 const arma::mat& fcW, const arma::vec& fcB,
+                                 const arma::cube& dataIn, const arma::ivec& lengths,
+                                 const arma::mat& covIn, const arma::mat& eps, int zDim,
+                                 const arma::vec& th, const arma::ivec& zPopThetaIdx0,
+                                 const arma::ivec& errThetaIdx0,
+                                 const arma::mat& zPopMat, const arma::vec& baseline,
+                                 const arma::vec& omega, const arma::vec& a, double alphaKL,
+                                 int nMix, const arma::vec& mixProb, int cores) {
+  VaeStepOut S; S.ok = true;
+  const int N = dataIn.n_rows;
+  // encoder forward (no backward yet -- need z to form gZ first)
+  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
+  arma::cube Lout(zDim, zDim, N);
+  arma::mat dummyGz(N, zDim, arma::fill::zeros), dummyGls(N, zDim, arma::fill::zeros);
+  arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
+  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+                       dummyGz, dummyGls, false, mu, logSigma, Lout, zOut,
+                       gWih, gWhh, gbih, gbhh, gFcW, gFcB);
+  arma::mat eta = zOut;
+  eta.each_row() -= baseline.t();                       // z - baseline
+  // inner-problem re-parameterization + evaluation
+  arma::vec thv = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
+  vaeInnerUpdateParCore(thv, omega);
+  arma::mat etaEval = eta;
+  if (nMix > 1) { etaEval.set_size(nMix * N, zDim); for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = eta; }
+  arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf);
+
+  const double ln2pi = std::log(2 * M_PI);
+  arma::vec pzI(N);
+  for (int i = 0; i < N; ++i) {
+    double s = 0; for (int k = 0; k < zDim; ++k) s += eta(i, k) * eta(i, k) / omega[k] + std::log(omega[k]) + ln2pi;
+    pzI[i] = 0.5 * s;
+  }
+  double jointTot;
+  arma::mat lpBest(N, zDim);
+  S.preds.resize(N);
+  S.mixnum.set_size(N); S.mixnum.fill(1);
+  if (nMix > 1) {
+    jointTot = 0;
+    for (int i = 0; i < N; ++i) {
+      double mmax = -std::numeric_limits<double>::infinity(); int best = 0;
+      arma::vec ll(nMix);
+      for (int m = 0; m < nMix; ++m) {
+        double v = std::log(mixProb[m]) - 0.5 * obj[m * N + i];
+        if (!R_FINITE(v)) v = -std::numeric_limits<double>::infinity();
+        ll[m] = v; if (v > mmax) { mmax = v; best = m; }
+      }
+      if (R_FINITE(mmax)) {
+        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
+        jointTot += -2 * (mmax + std::log(se));
+      }
+      lpBest.row(i) = lp.row(best * N + i);
+      S.preds[i] = pf[best * N + i];
+      S.mixnum[i] = best + 1;
+    }
+  } else {
+    jointTot = arma::accu(obj);
+    lpBest = lp;
+    for (int i = 0; i < N; ++i) S.preds[i] = pf[i];
+  }
+  double pxz = jointTot - arma::accu(pzI);
+  double pz = 0, qz = 0;
+  for (int i = 0; i < N; ++i) {
+    for (int k = 0; k < zDim; ++k) {
+      double d = zOut(i, k) - zPopMat(i, k);
+      pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
+    }
+  }
+  double DKL = pz - qz;
+  // encoder upstream: d(pxz)/dz = lp - eta/omega; KL adds alphaKL*(z-zPopMat)/omega
+  arma::mat gZ = lpBest;
+  for (int i = 0; i < N; ++i)
+    for (int k = 0; k < zDim; ++k) {
+      double g = gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+      gZ(i, k) = R_FINITE(g) ? g : 0.0;
+    }
+  arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
+  arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
+  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+                       gZ, gLS, true, mu2, ls2, L2, z2,
+                       S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB);
+  S.pxz = pxz; S.DKL = DKL; S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpBest;
+  if (!R_FINITE(pxz)) S.ok = true; // a failed subject is zeroed in gZ, not fatal
+  return S;
+}
+
+// One Adam update over a block (m,v are the block's moment estimates).
+static inline void vaeAdam(arma::mat& p, const arma::mat& g, VaeAdamBlk& st,
+                           double lr, int t, double b1 = 0.9, double b2 = 0.999, double eps = 1e-8) {
+  st.m = b1 * st.m + (1 - b1) * g;
+  st.v = b2 * st.v + (1 - b2) * (g % g);
+  arma::mat mhat = st.m / (1 - std::pow(b1, t));
+  arma::mat vhat = st.v / (1 - std::pow(b2, t));
+  p -= lr * (mhat / (arma::sqrt(vhat) + eps));
+}
+
+//[[Rcpp::export]]
+List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
+                  int cores, NumericVector row0, CharacterVector parNames,
+                  List iterPrintControl, RObject xform, IntegerVector structIdx0) {
+  // ---- unpack encoder parameters (mutated in place by Adam) ----
+  arma::mat Wih = as<arma::mat>(params["Wih"]);
+  arma::mat Whh = as<arma::mat>(params["Whh"]);
+  arma::vec bih = as<arma::vec>(params["bih"]);
+  arma::vec bhh = as<arma::vec>(params["bhh"]);
+  arma::mat fcW = as<arma::mat>(params["fcW"]);
+  arma::vec fcB = as<arma::vec>(params["fcB"]);
+  // ---- unpack prep ----
+  const int N = as<int>(prep["N"]);
+  const int zDim = as<int>(prep["zDim"]);
+  arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
+  arma::ivec lengths = vaeToIvec(prep["lengths"]);
+  arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  arma::mat covMat = as<arma::mat>(prep["covMat"]);
+  arma::vec th = as<arma::vec>(prep["th"]);
+  arma::ivec zPopThetaIdx0 = vaeToIvec(prep["zPopThetaIdx0"]);
+  arma::ivec errThetaIdx0 = vaeToIvec(prep["errThetaIdx0"]);
+  LogicalVector isFreeR = prep["isFree"];
+  LogicalVector omegaFixR = prep["omegaFix"];
+  arma::vec zPop = as<arma::vec>(prep["zPop"]);
+  arma::vec omega = as<arma::vec>(prep["omega"]);
+  arma::vec a = as<arma::vec>(prep["a"]);
+  arma::vec zPopLower = as<arma::vec>(prep["zPopLower"]);
+  arma::vec zPopUpper = as<arma::vec>(prep["zPopUpper"]);
+  arma::vec errLower = as<arma::vec>(prep["errLower"]);
+  arma::vec errUpper = as<arma::vec>(prep["errUpper"]);
+  arma::ivec errTypeCode = vaeToIvec(prep["errTypeCode"]);
+  List yListR = prep["yList"];
+  std::vector<std::vector<double> > yList(N);
+  for (int i = 0; i < N; ++i) { NumericVector yi = yListR[i]; yList[i].assign(yi.begin(), yi.end()); }
+  // ---- control ----
+  const int seed = as<int>(control["seed"]);
+  const int itersBurnIn = as<int>(control["itersBurnIn"]);
+  const int klWarmup = as<int>(control["klWarmup"]);
+  const int gammaIter = as<int>(control["gammaIter"]);
+  const int iters = as<int>(control["iters"]);
+  const int Lg = as<int>(control["nGradStep"]);
+  const double learningRate = as<double>(control["learningRate"]);
+  const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
+  const bool covariateSelection = as<bool>(control["covariateSelection"]);
+  const int printCtl = as<int>(control["print"]);
+  arma::vec mixProb(mixProbR.begin(), mixProbR.size());
+  const int nCov = covMat.n_cols;
+
+  // ---- Adam state (zeros, per block) ----
+  VaeAdamBlk aWih{arma::zeros(Wih.n_rows, Wih.n_cols), arma::zeros(Wih.n_rows, Wih.n_cols)};
+  VaeAdamBlk aWhh{arma::zeros(Whh.n_rows, Whh.n_cols), arma::zeros(Whh.n_rows, Whh.n_cols)};
+  VaeAdamBlk aBih{arma::zeros(bih.n_elem, 1), arma::zeros(bih.n_elem, 1)};
+  VaeAdamBlk aBhh{arma::zeros(bhh.n_elem, 1), arma::zeros(bhh.n_elem, 1)};
+  VaeAdamBlk aFcW{arma::zeros(fcW.n_rows, fcW.n_cols), arma::zeros(fcW.n_rows, fcW.n_cols)};
+  VaeAdamBlk aFcB{arma::zeros(fcB.n_elem, 1), arma::zeros(fcB.n_elem, 1)};
+  arma::mat bihM(bih), bhhM(bhh), fcBM(fcB); // matrix views for the vector Adam blocks
+
+  // ---- parameter-history row helper ----
+  arma::ivec structIdx = vaeToIvec(structIdx0);
+  auto parRow = [&](const arma::vec& zP, const arma::vec& om, const arma::vec& av) {
+    NumericVector r(structIdx.n_elem + zDim + av.n_elem);
+    int p = 0;
+    for (arma::uword s = 0; s < structIdx.n_elem; ++s) r[p++] = zP[structIdx[s]];
+    for (int k = 0; k < zDim; ++k) r[p++] = om[k];
+    for (arma::uword e = 0; e < av.n_elem; ++e) r[p++] = av[e];
+    return r;
+  };
+
+  vaeIterPrintStart_(row0, parNames, iterPrintControl, xform);
+
+  setRxThreadId(0);
+  int tstep = 0;
+  VaeStepOut last;
+
+  // ---- burn-in: encoder-only, tiny fixed KL weight ----
+  for (int it = 1; it <= itersBurnIn; ++it) {
+    for (int l = 1; l <= Lg; ++l) {
+      arma::mat eps(N, zDim);
+      vaeDrawEps(eps, (uint32_t)(seed + (it - 1) * Lg + l));
+      arma::mat zPopMat(N, zDim); zPopMat.each_row() = zPop.t();
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+                                     eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, zPop,
+                                     omega, a, 0.001, nMix, mixProb, cores);
+      tstep++;
+      bihM = bih; bhhM = bhh; fcBM = fcB;
+      vaeAdam(Wih, st.gWih, aWih, burnInLearningRate, tstep);
+      vaeAdam(Whh, st.gWhh, aWhh, burnInLearningRate, tstep);
+      vaeAdam(bihM, st.gbih, aBih, burnInLearningRate, tstep); bih = bihM.col(0);
+      vaeAdam(bhhM, st.gbhh, aBhh, burnInLearningRate, tstep); bhh = bhhM.col(0);
+      vaeAdam(fcW, st.gFcW, aFcW, burnInLearningRate, tstep);
+      vaeAdam(fcBM, st.gFcB, aFcB, burnInLearningRate, tstep); fcB = fcBM.col(0);
+      // M-step (gamma = 1)
+      arma::vec zPopCur = arma::mean(st.mu, 0).t();
+      arma::vec omegaCur(zDim);
+      for (int k = 0; k < zDim; ++k) {
+        double v = 0;
+        for (int i = 0; i < N; ++i) { double d = st.mu(i, k) - zPopCur[k]; v += d * d + arma::accu(arma::square(st.L.slice(i).row(k))); }
+        omegaCur[k] = v / N;
+      }
+      arma::vec aCur = vaeUpdateErr(st.preds, yList, errTypeCode, a, errLower, errUpper);
+      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
+      if (!zPopCur.is_finite()) zPopCur = zPop;
+      if (!omegaCur.is_finite()) omegaCur = omega;
+      zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
+      zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
+      last = st;
+    }
+    vaeIterPrintRow_(parRow(zPop, omega, a), last.pxz + last.DKL, "Burn in");
+    Rcpp::checkUserInterrupt();
+  }
+
+  // ---- main EM (optionally BICc-ELBO covariate selection) ----
+  const bool doCov = covariateSelection && nCov > 0;
+  arma::vec intercept = zPop;
+  arma::mat beta(zDim, nCov, arma::fill::zeros);
+  arma::umat selected(zDim, nCov, arma::fill::zeros);
+  arma::mat zPopArg(N, zDim); zPopArg.each_row() = zPop.t();
+  bool isCovStep = false;
+  arma::vec elboTrace(iters, arma::fill::zeros);
+  const double logN = std::log((double)N);
+
+  for (int it = 1; it <= iters; ++it) {
+    double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
+    arma::vec baseline;
+    if (doCov) {
+      // BICc-ELBO covariate M-step
+      arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
+      arma::mat zPopMat(N, zDim, arma::fill::zeros);
+      intercept.zeros(); beta.zeros(); selected.zeros();
+      for (int k = 0; k < zDim; ++k) {
+        if (isFreeR[k]) continue;
+        arma::vec yk = last.mu.col(k);
+        double bestScore = std::numeric_limits<double>::infinity();
+        arma::uvec bestCols; arma::vec bestCoef; arma::uvec bestS;
+        for (unsigned int mask = 0; mask < (1u << nCov); ++mask) {
+          std::vector<unsigned> Sset; for (int b = 0; b < nCov; ++b) if (mask & (1u << b)) Sset.push_back(b);
+          arma::uvec cols(1 + Sset.size()); cols[0] = 0; for (size_t s = 0; s < Sset.size(); ++s) cols[s + 1] = 1 + Sset[s];
+          arma::mat Xs = X.cols(cols);
+          arma::vec coef;
+          if (!arma::solve(coef, Xs, yk)) { if (!arma::solve(coef, Xs, yk, arma::solve_opts::force_approx)) continue; }
+          double rss = arma::accu(arma::square(yk - Xs * coef));
+          double score = rss / omega[k] + logN * (double)Sset.size();
+          if (score < bestScore) { bestScore = score; bestCols = cols; bestCoef = coef; bestS = arma::uvec(Sset.size()); for (size_t s = 0; s < Sset.size(); ++s) bestS[s] = Sset[s]; }
+        }
+        double ic = bestCoef[0];
+        if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
+        if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
+        intercept[k] = ic; bestCoef[0] = ic;
+        for (arma::uword s = 0; s < bestS.n_elem; ++s) { beta(k, bestS[s]) = bestCoef[s + 1]; selected(k, bestS[s]) = 1; }
+        zPopMat.col(k) = X.cols(bestCols) * bestCoef;
+      }
+      arma::vec omegaCur(zDim);
+      for (int k = 0; k < zDim; ++k) {
+        double v = 0;
+        for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopMat(i, k); v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
+        omegaCur[k] = v / N;
+      }
+      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
+      for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
+      if (!omegaCur.is_finite()) omegaCur = omega;
+      zPop = intercept;
+      zPopArg = zPopMat;
+      omega = omega + gamma * (omegaCur - omega);
+      a = a + gamma * (aCur - a);
+      isCovStep = true;
+      baseline = arma::mean(zPopMat, 0).t();
+    } else {
+      // plain closed-form M-step (EMA gamma)
+      arma::vec zPopCur = arma::mean(last.mu, 0).t();
+      arma::vec omegaCur(zDim);
+      for (int k = 0; k < zDim; ++k) {
+        double v = 0;
+        for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopCur[k]; v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
+        omegaCur[k] = v / N;
+      }
+      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
+      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
+      if (!zPopCur.is_finite()) zPopCur = zPop;
+      if (!omegaCur.is_finite()) omegaCur = omega;
+      zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
+      zPop = zPop + gamma * (zPopCur - zPop);
+      omega = omega + gamma * (omegaCur - omega);
+      a = a + gamma * (aCur - a);
+      zPopArg.each_row() = zPop.t();
+      isCovStep = false;
+      baseline = zPop;
+    }
+    double alphaKL = (it <= klWarmup) ? 0.01 + 0.99 * (it - 1) / std::max(1, klWarmup - 1) : 1.0;
+    double esum = 0;
+    for (int l = 1; l <= Lg; ++l) {
+      arma::mat eps(N, zDim);
+      vaeDrawEps(eps, (uint32_t)(seed + 1000003 + (it - 1) * Lg + l));
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+                                     eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopArg, baseline,
+                                     omega, a, alphaKL, nMix, mixProb, cores);
+      tstep++;
+      bihM = bih; bhhM = bhh; fcBM = fcB;
+      vaeAdam(Wih, st.gWih, aWih, learningRate, tstep);
+      vaeAdam(Whh, st.gWhh, aWhh, learningRate, tstep);
+      vaeAdam(bihM, st.gbih, aBih, learningRate, tstep); bih = bihM.col(0);
+      vaeAdam(bhhM, st.gbhh, aBhh, learningRate, tstep); bhh = bhhM.col(0);
+      vaeAdam(fcW, st.gFcW, aFcW, learningRate, tstep);
+      vaeAdam(fcBM, st.gFcB, aFcB, learningRate, tstep); fcB = fcBM.col(0);
+      esum += st.pxz + st.DKL;
+      last = st;
+    }
+    elboTrace[it - 1] = esum / Lg;
+    const char* phase = (it <= klWarmup) ? "KL anneal" : (it <= gammaIter) ? "EM" : "Smooth";
+    vaeIterPrintRow_(parRow(zPop, omega, a), elboTrace[it - 1], phase);
+    Rcpp::checkUserInterrupt();
+  }
+  setRxThreadId(-1);
+
+  RObject parHist = vaeIterPrintGet_(printCtl >= 1);
+  arma::mat zPopMatOut(N, zDim);
+  if (isCovStep) zPopMatOut = zPopArg; else zPopMatOut.each_row() = zPop.t();
+
+  List paramsOut = List::create(_["Wih"] = Wih, _["Whh"] = Whh, _["bih"] = bih,
+                                _["bhh"] = bhh, _["fcW"] = fcW, _["fcB"] = fcB);
+  IntegerVector mixnumOut(N);
+  for (int i = 0; i < N; ++i) mixnumOut[i] = last.mixnum[i];
+  return List::create(_["params"] = paramsOut, _["zPop"] = zPop, _["omega"] = omega,
+                      _["a"] = a, _["intercept"] = intercept, _["beta"] = beta,
+                      _["selected"] = selected, _["elboTrace"] = elboTrace,
+                      _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
+                      _["mixnum"] = mixnumOut);
 }
 
 //[[Rcpp::export]]

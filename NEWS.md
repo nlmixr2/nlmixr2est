@@ -10,6 +10,15 @@
   (`rpemControl(cLoop = TRUE)`), which is thread-safe and reproducible, and the
   iteration walk is printed and saved to `fit$parHist` like the other methods.
 
+- The `est = "vae"` training loop (variational-autoencoder NLME) now runs
+  entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM / smoothing
+  schedule, the LSTM encoder forward/backward, the FOCEi inner-likelihood
+  evaluation, the closed-form M-step (including BICc-ELBO covariate selection),
+  Adam, and the iteration/parameter-history walk.  Each gradient step now
+  re-parameterizes the inner problem in place (`updateTheta`) instead of
+  re-running the full FOCEi setup (`rxSymInvCholCreate` + `foceiSetup_`) it did
+  every step in R, so VAE fits are substantially faster.
+
 - The analytic FOCEI/FOCE outer gradient and observed-information covariance
   (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now build a smaller
   augmented sensitivity model by reusing eta sensitivities for mu-referenced
