@@ -10599,56 +10599,141 @@ static std::string adviSignif3(double x) {
   return std::string(buf);
 }
 
-// Whole-optimization driver (port of R's .adviOptimize core + .adviAdaptEta):
-// choose the step-size scale eta -- a resumed value, an adaptive search over the
-// candidates (paper Sec 2.6: short deterministic runs from the initial state,
-// best late-iteration mean ELBO, divergent candidates rejected), or the fixed
-// fallback -- then run the main loop; one .Call for the full ADVI optimization.
-// `args` carries the family flags, initial/resumed state, control values and the
-// iteration-print pieces; the search runs print as "srch <eta>" stages and the
-// main run as "SGA" in one continuous table.
+// Whole-optimization driver: the full port of R's .adviOptimize core.  Builds
+// the initial variational/population state (or unpacks a resumed one), the
+// mu-ref recentering map and the full-Bayes phi maps, chooses the step-size
+// scale eta -- a resumed value, an adaptive search over the candidates (paper
+// Sec 2.6: short deterministic runs from the initial state, best late-iteration
+// mean ELBO, divergent candidates rejected; the old .adviAdaptEta) or the fixed
+// fallback -- runs the main loop, and installs the derived result fields
+// (popOmega, normalized scale/sScale, the full-Bayes adviCov).  One .Call for
+// the whole ADVI optimization; the R wrapper keeps only data prep, the inner
+// setup, and print-name metadata.  The search runs print as "srch <eta>" stages
+// and the main run as "SGA" in one continuous table.
 //[[Rcpp::export]]
 List adviOptimize_(List args) {
   const bool pe = as<bool>(args["pointEstimate"]);
   const int frInt = as<int>(args["fr"]);
-  NumericMatrix mu0 = as<NumericMatrix>(args["mu0"]);
-  NumericMatrix scale0 = as<NumericMatrix>(args["scale0"]);
-  NumericVector theta0 = as<NumericVector>(args["theta0"]);
-  NumericVector logPopOmega0 = as<NumericVector>(args["logPopOmega0"]);
+  const int N = as<int>(args["N"]);
+  NumericVector thetaIni = as<NumericVector>(args["theta"]);
+  NumericVector omegaIni = as<NumericVector>(args["omega"]);
   IntegerVector muRefThetaIdx = as<IntegerVector>(args["muRefThetaIdx"]);
-  IntegerVector thetaMuRefEta = as<IntegerVector>(args["thetaMuRefEta"]);
   LogicalVector thetaFix = as<LogicalVector>(args["thetaFix"]);
   LogicalVector omegaFix = as<LogicalVector>(args["omegaFix"]);
-  NumericMatrix sMu0 = as<NumericMatrix>(args["sMu0"]);
-  NumericMatrix sScale0 = as<NumericMatrix>(args["sScale0"]);
   const int iters = as<int>(args["iters"]);
-  const double seed = as<double>(args["seed"]);
   const double tau = as<double>(args["tau"]);
   const double alpha = as<double>(args["alpha"]);
   const int nMc = as<int>(args["nMc"]);
-  const int it0 = as<int>(args["it0"]);
   const int cores = as<int>(args["cores"]);
   const bool adapt = as<bool>(args["adaptEta"]);
   NumericVector cands = as<NumericVector>(args["etaCandidates"]);
-  const double etaResume = as<double>(args["etaScaleResume"]);
   const int nAdapt = as<int>(args["nAdapt"]);
   CharacterVector parNames = as<CharacterVector>(args["parNames"]);
   RObject ipc = args["iterPrintControl"];
   RObject xform = args["xform"];
-  // point-estimate state vs the full-Bayes population block
-  NumericVector sTheta0, sLpo0, mPop0, Lpop0, smPop0, sLpop0;
-  IntegerVector phiThetaIdx, phiOmIdx, phiMuRef;
-  if (pe) {
-    sTheta0 = as<NumericVector>(args["sTheta0"]);
-    sLpo0 = as<NumericVector>(args["sLpo0"]);
+  RObject resumeR = args["resume"];
+  const bool hasResume = !Rf_isNull(resumeR);
+  List resume;
+  if (hasResume) resume = as<List>(resumeR);
+  const int ntheta = (int)thetaIni.size(), neta = (int)omegaIni.size();
+  const int nL = neta * (neta + 1) / 2;
+
+  // a resumed run continues its original counter-based stream and step-size scale
+  double seed = as<double>(args["seed"]);
+  double etaResume = NA_REAL;
+  if (hasResume) {
+    if (resume.containsElementNamed("seed") && !Rf_isNull(resume["seed"]))
+      seed = as<double>(resume["seed"]);
+    if (resume.containsElementNamed("etaScale") && !Rf_isNull(resume["etaScale"]))
+      etaResume = as<double>(resume["etaScale"]);
+  }
+
+  // ---- initial variational/population state (fresh) or resume unpack ----
+  NumericMatrix mu0, scale0, sMu0, sScale0;
+  NumericVector theta0, logPopOmega0, sTheta0, sLpo0;
+  int it0 = 0;
+  if (!hasResume) {
+    theta0 = clone(thetaIni);
+    logPopOmega0 = NumericVector(neta);
+    for (int k = 0; k < neta; ++k) logPopOmega0[k] = std::log(omegaIni[k]);
+    mu0 = NumericMatrix(N, neta);
+    sMu0 = NumericMatrix(N, neta);
+    sTheta0 = NumericVector(ntheta);
+    sLpo0 = NumericVector(neta);
+    if (frInt) {
+      // full-rank: L_i starts diagonal with L_kk = sqrt(popOmega_k) (packed)
+      scale0 = NumericMatrix(N, nL);
+      for (int k = 0; k < neta; ++k) {
+        double d = std::exp(0.5 * logPopOmega0[k]);
+        int col = (k + 1) * (k + 2) / 2 - 1;
+        for (int i = 0; i < N; ++i) scale0(i, col) = d;
+      }
+      sScale0 = NumericMatrix(N, nL);
+    } else {
+      // mean-field: log-sd starts at the prior scale
+      scale0 = NumericMatrix(N, neta);
+      for (int k = 0; k < neta; ++k)
+        for (int i = 0; i < N; ++i) scale0(i, k) = 0.5 * logPopOmega0[k];
+      sScale0 = NumericMatrix(N, neta);
+    }
   } else {
-    mPop0 = as<NumericVector>(args["mPop0"]);
-    Lpop0 = as<NumericVector>(args["Lpop0"]);
-    smPop0 = as<NumericVector>(args["smPop0"]);
-    sLpop0 = as<NumericVector>(args["sLpop0"]);
-    phiThetaIdx = as<IntegerVector>(args["phiThetaIdx"]);
-    phiOmIdx = as<IntegerVector>(args["phiOmIdx"]);
-    phiMuRef = as<IntegerVector>(args["phiMuRef"]);
+    mu0 = as<NumericMatrix>(resume["mu"]);
+    theta0 = as<NumericVector>(resume["theta"]);
+    logPopOmega0 = as<NumericVector>(resume["logPopOmega"]);
+    it0 = as<int>(resume["it0"]);
+    sMu0 = as<NumericMatrix>(resume["sMu"]);
+    // full-Bayes stores a generic $scale; point-estimate stores $Lpack/$omega
+    if (resume.containsElementNamed("scale") && !Rf_isNull(resume["scale"]))
+      scale0 = as<NumericMatrix>(resume["scale"]);
+    else if (frInt) scale0 = as<NumericMatrix>(resume["Lpack"]);
+    else scale0 = as<NumericMatrix>(resume["omega"]);
+    sScale0 = as<NumericMatrix>(resume["sScale"]);
+    if (pe) {
+      sTheta0 = as<NumericVector>(resume["sTheta"]);
+      sLpo0 = as<NumericVector>(resume["sLpo"]);
+    }
+  }
+
+  // per-theta recentering eta (0-based) for mu-referenced intercepts, else -1
+  IntegerVector thetaMuRefEta(ntheta, -1);
+  for (int k = 0; k < neta; ++k) {
+    int p = muRefThetaIdx[k];
+    if (p != NA_INTEGER) thetaMuRefEta[p - 1] = k;
+  }
+
+  // ---- full-Bayes: phi = c(theta[free], logPopOmega[free]) maps + state ----
+  NumericVector mPop0, Lpop0, smPop0, sLpop0;
+  IntegerVector phiThetaIdx, phiOmIdx, phiMuRef;
+  int npop = 0;
+  if (!pe) {
+    std::vector<int> thFree, omFree;
+    for (int p = 0; p < ntheta; ++p) if (!thetaFix[p]) thFree.push_back(p);
+    for (int k = 0; k < neta; ++k) if (!omegaFix[k]) omFree.push_back(k);
+    const int nth = (int)thFree.size();
+    npop = nth + (int)omFree.size();
+    phiThetaIdx = IntegerVector(npop, -1);
+    phiOmIdx = IntegerVector(npop, -1);
+    phiMuRef = IntegerVector(npop, -1);
+    for (int j = 0; j < nth; ++j) {
+      phiThetaIdx[j] = thFree[j];
+      phiMuRef[j] = thetaMuRefEta[thFree[j]];
+    }
+    for (int j = 0; j < (int)omFree.size(); ++j) phiOmIdx[nth + j] = omFree[j];
+    if (!hasResume) {
+      const int nLpop = npop * (npop + 1) / 2;
+      mPop0 = NumericVector(npop);
+      for (int j = 0; j < nth; ++j) mPop0[j] = theta0[thFree[j]];
+      for (int j = 0; j < (int)omFree.size(); ++j) mPop0[nth + j] = logPopOmega0[omFree[j]];
+      Lpop0 = NumericVector(nLpop);
+      for (int k = 1; k <= npop; ++k) Lpop0[k * (k + 1) / 2 - 1] = 0.1; // init pop posterior sd
+      smPop0 = NumericVector(npop);
+      sLpop0 = NumericVector(nLpop);
+    } else {
+      mPop0 = as<NumericVector>(resume["mPop"]);
+      Lpop0 = as<NumericVector>(resume["Lpop"]);
+      smPop0 = as<NumericVector>(resume["smPop"]);
+      sLpop0 = as<NumericVector>(resume["sLpop"]);
+    }
   }
 
   bool ipStarted = false;
@@ -10682,7 +10767,7 @@ List adviOptimize_(List args) {
     eta = etaResume;                          // resumed run keeps its step-size scale
   } else if (adapt && cands.size() > 1) {
     double best = R_NegInf, bestEta = cands[0];
-    for (int c = 0; c < cands.size(); ++c) {
+    for (int c = 0; c < (int)cands.size(); ++c) {
       double e = cands[c];
       List r = run1(e, nAdapt, 0, 1, std::string("srch ") + adviSignif3(e), 0);
       NumericVector el = r["elbo"];
@@ -10723,6 +10808,39 @@ List adviOptimize_(List args) {
 
   List res = run1(eta, iters, it0, 0, "SGA", 1);
   res["etaScale"] = eta;
+  res["seed"] = seed;
+  NumericVector lpo = res["logPopOmega"];
+  NumericVector popOmega((int)lpo.size());
+  for (int k = 0; k < (int)lpo.size(); ++k) popOmega[k] = std::exp(lpo[k]);
+  res["popOmega"] = popOmega;
+  if (pe) {
+    res["pointEstimate"] = true;
+    // normalize the per-subject scale field name (Lpack for full-rank, omega else)
+    if (frInt) {
+      res["scale"] = res["Lpack"];
+      res["sScale"] = res["sL"];
+    } else {
+      res["scale"] = res["omega"];
+      res["sScale"] = res["sOmega"];
+    }
+  } else {
+    res["pointEstimate"] = false;
+    res["phiThetaIdx"] = phiThetaIdx;
+    res["phiOmIdx"] = phiOmIdx;
+    // population variational covariance in phi space (Lpop Lpop^T)
+    NumericVector Lpop = res["Lpop"];
+    NumericMatrix cov(npop, npop);
+    for (int i = 0; i < npop; ++i) {
+      for (int j = 0; j < npop; ++j) {
+        int m = i < j ? i : j;
+        long double sAcc = 0.0;
+        for (int k = 0; k <= m; ++k)
+          sAcc += (long double)Lpop[i * (i + 1) / 2 + k] * (long double)Lpop[j * (j + 1) / 2 + k];
+        cov(i, j) = (double)sAcc;
+      }
+    }
+    res["adviCov"] = cov;
+  }
   return res;
 }
 

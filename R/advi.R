@@ -89,38 +89,15 @@
 #' @noRd
 .adviOptimize <- function(ui, data, control, resume = NULL) {
   .prep <- .adviDataPrep(ui, data)
-  N <- .prep$N; neta <- .prep$neta; ntheta <- .prep$ntheta
+  N <- .prep$N; neta <- .prep$neta
   ## a resumed run keeps its original family; otherwise use the control's
   .fr <- if (!is.null(resume) && !is.null(resume$family))
     identical(resume$family, "fullRank") else identical(control$adviFamily, "fullRank")
-  .nL <- neta * (neta + 1L) / 2L
 
-  ## common population/mean init (or resume)
-  if (is.null(resume)) {
-    .logPopOmega0 <- log(.prep$omega); .mu0 <- matrix(0, N, neta)
-    .theta0 <- .prep$theta; .it0 <- 0L
-    .sMu <- matrix(0, N, neta); .sTheta <- numeric(ntheta); .sLpo <- numeric(neta)
-    if (.fr) {
-      ## full-rank: L_i starts diagonal with L_kk = sqrt(popOmega_k) (packed)
-      .scale0 <- matrix(0, N, .nL)
-      for (.k in seq_len(neta)) .scale0[, .k * (.k + 1L) / 2L] <- exp(0.5 * .logPopOmega0[.k])
-      .sScale <- matrix(0, N, .nL)
-    } else {
-      ## mean-field: log-sd starts at the prior scale
-      .scale0 <- matrix(rep(0.5 * .logPopOmega0, each = N), N, neta)
-      .sScale <- matrix(0, N, neta)
-    }
-  } else {
-    .mu0 <- resume$mu; .theta0 <- resume$theta; .logPopOmega0 <- resume$logPopOmega
-    .it0 <- as.integer(resume$it0); .sMu <- resume$sMu
-    .sTheta <- resume$sTheta; .sLpo <- resume$sLpo
-    ## full-Bayes stores a generic $scale; point-estimate stores $Lpack/$omega
-    .scale0 <- if (!is.null(resume$scale)) resume$scale
-      else if (.fr) resume$Lpack else resume$omega
-    .sScale <- resume$sScale
-  }
-
-  .setup <- .adviInnerSetup(ui, data, .mu0, control)
+  ## the FOCEi inner setup starts at the variational means (resumed or 0); the
+  ## optimization state itself is initialized/resumed inside adviOptimize_
+  .etaMat0 <- if (is.null(resume)) matrix(0, N, neta) else resume$mu
+  .setup <- .adviInnerSetup(ui, data, .etaMat0, control)
   on.exit(.adviInnerFree(), add = TRUE)
 
   ## iteration printing: the shared scale.h table (like saem/vae).  Rows are
@@ -138,96 +115,27 @@
     if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
   }, error = function(e) 1L)
 
-  ## the counter-based RNG is keyed by the global iteration index, so resuming
-  ## with the original seed continues the exact same stream (prefix property).
-  .seed <- if (!is.null(resume) && !is.null(resume$seed)) resume$seed else control$seed
-  .muRefIdx <- as.integer(.prep$muRefThetaIdx)
-  .thFix <- as.logical(.prep$thetaFix); .omFix <- as.logical(.prep$omegaFix)
-  ## per-theta recentering eta (0-based) for mu-referenced intercepts, else -1
-  .thetaMuRefEta <- rep(-1L, ntheta)
-  for (.k in seq_len(neta)) {
-    .p <- .prep$muRefThetaIdx[.k]
-    if (!is.na(.p)) .thetaMuRefEta[.p] <- .k - 1L
-  }
-
-  ## everything the C++ whole-optimization driver needs (adaptEta search + main
-  ## run happen inside adviOptimize_; a resumed etaScale skips the search)
-  .args <- list(pointEstimate = isTRUE(control$pointEstimate), fr = as.integer(.fr),
-                mu0 = .mu0, scale0 = .scale0, theta0 = .theta0,
-                logPopOmega0 = .logPopOmega0, muRefThetaIdx = .muRefIdx,
-                thetaMuRefEta = as.integer(.thetaMuRefEta),
-                thetaFix = .thFix, omegaFix = .omFix,
-                iters = as.integer(control$iters), seed = as.numeric(.seed),
-                tau = as.numeric(control$tau), alpha = as.numeric(control$alpha),
-                nMc = as.integer(control$nMc), it0 = .it0,
-                sMu0 = .sMu, sScale0 = .sScale, sTheta0 = .sTheta, sLpo0 = .sLpo,
-                cores = .cores, adaptEta = isTRUE(control$adaptEta),
-                etaCandidates = as.numeric(control$etaCandidates),
-                etaScaleResume = if (!is.null(resume) && !is.null(resume$etaScale))
-                  as.numeric(resume$etaScale) else NA_real_,
-                nAdapt = as.integer(min(control$iters, 75L)),
-                parNames = .ipNames, iterPrintControl = control$iterPrintControl,
-                xform = .ipXform)
-
-  ## ---- full-Bayes: variational posterior over the free population vector ----
-  if (!isTRUE(control$pointEstimate)) {
-    .thetaFreeIdx <- which(!.thFix)               # 1-based ntheta (estimated thetas)
-    .omFreeIdx <- which(!.omFix)                   # 1-based eta (estimated variances)
-    .npop <- length(.thetaFreeIdx) + length(.omFreeIdx)
-    ## phi = c(theta[free], logPopOmega[free]); component -> (theta|omega) maps (0-based)
-    .phiThetaIdx <- c(.thetaFreeIdx - 1L, rep(-1L, length(.omFreeIdx)))
-    .phiOmIdx <- c(rep(-1L, length(.thetaFreeIdx)), .omFreeIdx - 1L)
-    ## phiMuRef[j] = 0-based eta recentered by phi j when it is a mu-ref theta, else -1
-    .phiMuRef <- rep(-1L, .npop)
-    for (.j in seq_along(.thetaFreeIdx)) {
-      .kk <- .thetaMuRefEta[.thetaFreeIdx[.j]]
-      if (.kk >= 0) .phiMuRef[.j] <- .kk
-    }
-    if (is.null(resume)) {
-      .mPop0 <- c(.theta0[.thetaFreeIdx], .logPopOmega0[.omFreeIdx])
-      .nLpop <- .npop * (.npop + 1L) / 2L
-      .Lpop0 <- numeric(.nLpop)
-      for (.k in seq_len(.npop)) .Lpop0[.k * (.k + 1L) / 2L] <- 0.1   # init pop posterior sd
-      .smPop <- numeric(.npop); .sLpop <- numeric(.nLpop)
-    } else {
-      .mPop0 <- resume$mPop; .Lpop0 <- resume$Lpop
-      .smPop <- resume$smPop; .sLpop <- resume$sLpop
-    }
-    .args <- c(.args, list(mPop0 = as.numeric(.mPop0), Lpop0 = as.numeric(.Lpop0),
-                           smPop0 = as.numeric(.smPop), sLpop0 = as.numeric(.sLpop),
-                           phiThetaIdx = as.integer(.phiThetaIdx),
-                           phiOmIdx = as.integer(.phiOmIdx),
-                           phiMuRef = as.integer(.phiMuRef)))
-    .res <- adviOptimize_(.args)
-    .res$family <- control$adviFamily
-    .res$pointEstimate <- FALSE
-    .res$prep <- .prep
-    .res$etaNames <- .prep$etaNames
-    .res$thetaNames <- names(.prep$th)
-    .res$popOmega <- exp(.res$logPopOmega)
-    .res$seed <- .seed
-    .res$model <- .setup$model
-    .res$phiThetaIdx <- .phiThetaIdx; .res$phiOmIdx <- .phiOmIdx
-    ## population variational covariance in phi space (Lpop Lpop^T)
-    .Lp <- matrix(0, .npop, .npop)
-    for (.i in seq_len(.npop)) for (.j in seq_len(.i)) .Lp[.i, .j] <- .res$Lpop[.i * (.i - 1L) / 2L + .j]
-    .res$adviCov <- .Lp %*% t(.Lp)
-    class(.res) <- "nlmixr2advi"
-    return(.res)
-  }
-
-  .res <- adviOptimize_(.args)
-  ## normalize the per-subject scale field name (Lpack for full-rank, omega else);
-  ## exact [[ ]] here: $sL would partial-match the mean-field result's sLpo
-  .res$scale <- if (.fr) .res[["Lpack"]] else .res[["omega"]]
-  .res$sScale <- if (.fr) .res[["sL"]] else .res[["sOmega"]]
+  ## everything else -- state init/resume, the mu-ref and full-Bayes phi maps,
+  ## the adaptEta search, the main loop, and the derived result fields -- runs
+  ## in one C++ call (a resumed seed/etaScale is picked up from `resume`)
+  .res <- adviOptimize_(list(
+    pointEstimate = isTRUE(control$pointEstimate), fr = as.integer(.fr),
+    N = as.integer(N),
+    theta = as.numeric(.prep$theta), omega = as.numeric(.prep$omega),
+    muRefThetaIdx = as.integer(.prep$muRefThetaIdx),
+    thetaFix = as.logical(.prep$thetaFix), omegaFix = as.logical(.prep$omegaFix),
+    iters = as.integer(control$iters), seed = as.numeric(control$seed),
+    tau = as.numeric(control$tau), alpha = as.numeric(control$alpha),
+    nMc = as.integer(control$nMc), cores = .cores,
+    adaptEta = isTRUE(control$adaptEta),
+    etaCandidates = as.numeric(control$etaCandidates),
+    nAdapt = as.integer(min(control$iters, 75L)),
+    parNames = .ipNames, iterPrintControl = control$iterPrintControl,
+    xform = .ipXform, resume = resume))
   .res$family <- control$adviFamily
-  .res$pointEstimate <- TRUE
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
   .res$thetaNames <- names(.prep$th)
-  .res$popOmega <- exp(.res$logPopOmega)
-  .res$seed <- .seed
   .res$model <- .setup$model
   class(.res) <- "nlmixr2advi"
   .res
