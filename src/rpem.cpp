@@ -882,7 +882,8 @@ List rpemEMLoopK1(Environment e, List cfg) {
       mu[0] = coefs[0];
       for (int k = 0; k < (int)covIdxBuf.size(); ++k) baseBuf[covIdxBuf[k]] = coefs[k + 1];
     }
-    for (int a = 0; a < nEta; ++a) baseBuf[muIdxBuf[a]] = mu[a];
+    // centered (non-mu-referenced) etas have muIdx -1: no theta carries their typical value
+    for (int a = 0; a < nEta; ++a) if (muIdxBuf[a] >= 0) baseBuf[muIdxBuf[a]] = mu[a];
     if (addSdIdx >= 0) baseBuf[addSdIdx] = addSd;   // LL (doLik): no residual parameter
     if (doComb) baseBuf[propSdIdx] = propSd;
     if (doPow) baseBuf[powIdx] = power;
@@ -1319,7 +1320,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
         prow[muIdxBuf[0]] = coefs[0];
         for (int k = 0; k < (int)covIdxBuf.size(); ++k) prow[covIdxBuf[k]] = coefs[k + 1];
       } else {
-        for (int a = 0; a < nEta; ++a) prow[muIdxBuf[a]] = mu[a];
+        for (int a = 0; a < nEta; ++a) if (muIdxBuf[a] >= 0) prow[muIdxBuf[a]] = mu[a];
       }
       if (addSdIdx >= 0) prow[addSdIdx] = addSd;
       if (doComb) prow[propSdIdx] = propSd;

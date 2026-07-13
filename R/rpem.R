@@ -569,9 +569,14 @@
     .resIdx <- c(.naI(.cl$propSdIdx), .naI(.cl$powIdx), .naI(.cl$lambdaIdx))
     .resPar0 <- c(.naN(.cl$propSd0), .naN(.cl$pow0), .naN(.cl$lambda0))
     .designC <- if (.useReg) .design else matrix(0.0, 0L, 0L)
+    # muIdx for the C++ loop is per-eta (nEta entries): -1 marks a centered
+    # (non-mu-referenced) eta, e.g. an IOV occasion eta or a bounded-transformed
+    # typical value whose theta moved into the structural set.
+    .muIdxC <- rep(-1L, .cl$nEta)
+    .muIdxC[.cl$muRef] <- .cl$muIdx
     # config List for the C++ E-M loop (rpemEMLoopK1 takes one cfg, not a positional list)
     .cfg <- list(
-      base = base, etaIdx = .cl$etaIdx, muIdx = .cl$muIdx, addSdIdx = .naI(.cl$addSdIdx),
+      base = base, etaIdx = .cl$etaIdx, muIdx = .muIdxC, addSdIdx = .naI(.cl$addSdIdx),
       errType = .cl$errType, mu0 = .cl$mu0, omDiag0 = diag(as.matrix(.cl$omega0)),
       addSd0 = .naN(.cl$addSd0), resIdx = .resIdx, resPar0 = .resPar0,
       structIdx = as.integer(.cl$structIdx), struct0 = as.numeric(.cl$struct0),
