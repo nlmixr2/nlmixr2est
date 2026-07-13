@@ -41,3 +41,39 @@ test_that("est='rpem' dispatch runs end-to-end (K=1)", {
   expect_true(is.finite(.pf["tka", "SE"]) && .pf["tka", "SE"] > 0)
   expect_true(is.finite(.pf["add.sd", "SE"]) && .pf["add.sd", "SE"] > 0)
 })
+
+test_that("est='rpem' runs with a bounded mu-referenced typical value (centered-eta demotion)", {
+  skip_on_cran()
+
+  # A bounded typical value with an eta (tcl <- log(c(0, 2.7, 100))) is rewritten by the
+  # bounded transform into a structural theta (rxBoundedTr.tcl) + model-computed tcl,
+  # demoting eta.cl to a centered (non-mu-referenced) eta.  The C++ loop takes a per-eta
+  # muIdx with -1 for centered etas; this used to fail with
+  # 'muIdx / mu0 / omDiag0 must have nEta entries'.
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(c(0, 2.7, 100))
+      tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  fit <- suppressMessages(suppressWarnings(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "rpem",
+    control = rpemControl(nGauss = 100L, nMH = 20000L, mhBurn = 2000L,
+                          niter = 10L, collect = 4L, seed = 42L, print = 0L))))
+  expect_s3_class(fit, "nlmixr2FitData")
+  .pf <- fit$parFixedDf
+  # tcl is reported back-transformed on the natural scale, inside its declared box
+  expect_gt(.pf["tcl", "Estimate"], log(1e-8)); expect_lt(.pf["tcl", "Estimate"], log(100))
+  # all three omegas (including the centered eta.cl) are estimated, finite and positive
+  .om <- diag(fit$omega)
+  expect_equal(length(.om), 3L)
+  expect_true(all(is.finite(.om) & .om > 0))
+})
