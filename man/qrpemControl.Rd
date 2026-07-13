@@ -28,6 +28,13 @@ quasi-random importance samples) and `sir=TRUE` (SIR-accelerated non-mu /
 residual-error M-step); explicitly supplied arguments win.  See
 [impmapControl()] for the full parameter list.
 }
+\details{
+Note this is not know to be the same as the QRPEM implementation in
+Phoenix NLME since the details of their method are not public.
+However, this matches the QRPEM method of using quasi-random
+parametric EM and SIR accelerated parameter convergence
+described in Leary & Dunlavey (2012) PAGE 2012, 19(1): 1-6.
+}
 \examples{
 
 qrpemControl()
