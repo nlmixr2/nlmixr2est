@@ -102,7 +102,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8848
+#> → compress parHistData in nlmixr2 object, save 8824
 #> → compress phiM in nlmixr2 object, save 443520
 
 print(f)
@@ -113,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.6007654 2.9325e-05 0.01400874      0.073     0.789 1.84       0.982
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.4901288 2.651e-05 0.01000761      0.056     0.646 1.638       0.804
 #>         table compress     other
-#> elapsed 0.317    0.134 0.4611966
+#> elapsed 0.326    0.108 0.3928371
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -124,7 +124,7 @@ print(f)
 #> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
 #> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
 #> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.91e-310 9.89e-308    0.699 (0.699, 0.699)         
+#> add.sd           0.699 6.92e-310 9.89e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 
@@ -187,10 +187,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.6007654 2.9325e-05 0.01400874      0.073     0.789 1.84       0.982
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.4901288 2.651e-05 0.01000761      0.056     0.646 1.638       0.804
 #>         table compress     other
-#> elapsed 0.317    0.134 0.4611966
+#> elapsed 0.326    0.108 0.3928371
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -198,7 +198,7 @@ if (!inherits(f, "try-error")) {
 #> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
 #> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
 #> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.91e-310 9.89e-308    0.699 (0.699, 0.699)         
+#> add.sd           0.699 6.92e-310 9.89e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 

@@ -421,20 +421,20 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8320
-#> → compress parHistData in nlmixr2 object, save 2736
+#> → compress parHistData in nlmixr2 object, save 2720
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -651.0124 1192.865 1207.588      -593.4323        559.1754        67.22779
+#> lPop -651.0124 1192.865 1207.588      -593.4323        559.1753        67.22777
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3348377 0.6135113    5.4e-06      0.046       0.014 0.026    0.012
-#>             other
-#> elapsed 0.1016456
+#> elapsed 0.2937536 0.4685365  4.396e-06      0.036       0.011  0.02    0.009
+#>              other
+#> elapsed 0.07770554
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -490,21 +490,21 @@ fit2$nlminb
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001454619  0.001671561 -0.003681016
-#> Em   0.001671561  0.004731911 -0.008448540
-#> E50 -0.003681016 -0.008448540  0.016658651
+#> E0   0.001454619  0.001671561 -0.003681015
+#> Em   0.001671561  0.004731910 -0.008448540
+#> E50 -0.003681015 -0.008448540  0.016658652
 #> 
 #> $cov.scaled
 #>           E0        Em      E50
-#> E0  7194.894  3142.102 3183.372
-#> Em  3142.102 10317.128 5926.698
-#> E50 3183.372  5926.698 3949.298
+#> E0  7194.892  3142.100 3183.371
+#> Em  3142.100 10317.127 5926.697
+#> E50 3183.371  5926.697 3949.297
 #> 
 #> $r
 #>                E0            Em          E50
 #> E0   0.0007273095  0.0008357803 -0.001840508
-#> Em   0.0008357803  0.0023659553 -0.004224270
-#> E50 -0.0018405078 -0.0042242698  0.008329326
+#> Em   0.0008357803  0.0023659552 -0.004224270
+#> E50 -0.0018405077 -0.0042242699  0.008329326
 #> 
 # }
 ```
