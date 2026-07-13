@@ -185,16 +185,10 @@ nmTest({
     expect_equal(unname(fitFixed$theta["allo.cl"]), 0.75, tolerance = 1e-6)
   })
 
-  test_that("mufocei excludes a bounded mu-ref covariate coefficient, warns, and still respects the bound", {
-    # The closed-form/IRLS regression cannot respect a box constraint on
-    # a covariate coefficient, so it is treated as if it were
-    # time-varying and carved out of the regression -- estimated as an
-    # ordinary bounded theta by the outer optimizer instead
-    # (.muRefGroups(), R/muRefClassify.R) -- with a warning explaining why,
-    # captured into the fit's runInfo the same way every other pre-fit
-    # warning is (R/nlmixr2Est.R's .collectWarn() wraps the whole
-    # nlmixr2Est() dispatch). The group's population theta still benefits
-    # from the mu-ref speed-up (only the bounded slope is excluded).
+  test_that("mufocei regression-updates a bounded mu-ref covariate coefficient with clamping", {
+    # A bounded covariate coefficient is regression-updated like any other
+    # (the update is clamped to the bounds by the active-set loop in
+    # updateMuGroups(), src/inner.cpp); no exclusion, no boundary warning.
     theo_sd2 <- nlmixr2data::theo_sd
     theo_sd2$logWT <- log(theo_sd2$WT / 70)
 
@@ -223,14 +217,19 @@ nmTest({
       cacheFile = "fit-mufocei-bounded-coef.rds"
     )
 
-    expect_true(any(grepl("allo\\.cl.*boundar", fitBounded$runInfo)))
-    # the bound is still respected (ordinary bounded-optimizer handling),
-    # not silently ignored
+    # no "cannot respect a boundary" carve-out warning anymore
+    expect_false(any(grepl("cannot respect a boundar", fitBounded$runInfo)))
+    # the bound is still respected (clamped regression), not silently ignored
     expect_true(unname(fitBounded$theta["allo.cl"]) >= 0)
     expect_true(unname(fitBounded$theta["allo.cl"]) <= 2)
+    # regression-updated (profiled out of the outer set)
+    expect_true("allo.cl" %in%
+                  nlmixr2est:::.foceiMuSkipThetaNames(
+                    fitBounded$ui,
+                    fitBounded$ui$iniDf$name[!is.na(fitBounded$ui$iniDf$ntheta)]))
   })
 
-  test_that("mufocei keeps mu-referencing a group's unbounded covariate/population theta when only a sibling covariate is bounded", {
+  test_that("mufocei mu-references a whole group when a sibling covariate is bounded", {
     theo_sd2 <- nlmixr2data::theo_sd
     theo_sd2$logWT <- log(theo_sd2$WT / 70)
     theo_sd2$sexf <- as.numeric(theo_sd2$ID) %% 2
@@ -261,16 +260,13 @@ nmTest({
       cacheFile = "fit-mufocei-mixed-bounded-coef.rds"
     )
 
-    expect_true(any(grepl("allo\\.cl2.*boundar", fitMixed$runInfo)))
+    expect_false(any(grepl("cannot respect a boundar", fitMixed$runInfo)))
     expect_true(unname(fitMixed$theta["allo.cl2"]) >= -1)
     expect_true(unname(fitMixed$theta["allo.cl2"]) <= 1)
-    # the unbounded covariate and the group's population theta still get
-    # a real (mu-ref-derived) standard error, unaffected by the sibling
-    # covariate's exclusion
+    # every group parameter gets a real (full-model recompute) standard error
     .pf <- fitMixed$parFixed
     expect_false(is.na(suppressWarnings(as.numeric(.pf["allo.cl", "SE"]))))
     expect_false(is.na(suppressWarnings(as.numeric(.pf["tcl", "SE"]))))
-    # the bounded covariate is an ordinary theta -- it gets a ordinary SE too
     expect_false(is.na(suppressWarnings(as.numeric(.pf["allo.cl2", "SE"]))))
   })
 

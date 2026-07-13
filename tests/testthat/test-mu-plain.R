@@ -51,6 +51,11 @@ nmTest({
     expect_equal(s$muGroupCovCount, c(0L, 0L, 0L))
     expect_equal(s$muGroupCovTheta, integer(0))
     expect_equal(s$muGroupCovNames, character(0))
+    # unbounded model: clamp bounds default to +-Inf
+    expect_equal(s$muGroupThetaLower, rep(-Inf, 3))
+    expect_equal(s$muGroupThetaUpper, rep(Inf, 3))
+    expect_equal(s$muGroupCovLower, numeric(0))
+    expect_equal(s$muGroupCovUpper, numeric(0))
   })
 
   test_that("a shared eta excludes its theta from the plain groups", {
@@ -81,7 +86,7 @@ nmTest({
     expect_false("tcl" %in% cls$muPlainThetas)
   })
 
-  test_that("bounded plain mu theta is excluded without a warning; fixed silently", {
+  test_that("bounded plain mu theta is grouped with clamp bounds; fixed excluded silently", {
     bnd <- function() {
       ini({
         tka <- c(-2, 0.45, 2)
@@ -104,7 +109,13 @@ nmTest({
     }
     ui <- rxode2::rxode2(bnd)
     expect_no_warning(g <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE)))
-    expect_equal(vapply(g, function(x) x$theta, character(1)), c("tcl", "tv"))
+    # bounded tka is regression-updated too (update clamped to [-2, 2])
+    expect_equal(vapply(g, function(x) x$theta, character(1)),
+                 c("tka", "tcl", "tv"))
+    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)
+    expect_equal(s$muGroupThetaLower, c(-2, -Inf, -Inf))
+    expect_equal(s$muGroupThetaUpper, c(2, Inf, Inf))
+    expect_null(s$muGroupCovBounded)
 
     fx <- function() {
       ini({
@@ -161,6 +172,50 @@ nmTest({
     expect_equal(s$muGroupCovStart, c(0L, 1L, 1L))
     expect_equal(thNames[s$muGroupCovTheta + 1L], "allo.cl")
     expect_equal(s$muGroupCovNames, "logWT")
+  })
+
+  test_that("bounds on a pop theta and a coefficient flatten aligned", {
+    mixedBnd <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- c(0, 1, 5)
+        tv <- 3.45
+        allo.cl <- c(-1, 0.75, 2)
+        allo.cl2 <- 0.1
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT + allo.cl2 * sexf)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxode2(mixedBnd)
+    expect_no_warning(s <- suppressMessages(
+      nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)))
+    thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
+    expect_equal(thNames[s$muGroupTheta + 1L], c("tcl", "tka", "tv"))
+    # bounded tcl group carries its clamp bounds; plain groups are infinite
+    expect_equal(s$muGroupThetaLower, c(0, -Inf, -Inf))
+    expect_equal(s$muGroupThetaUpper, c(5, Inf, Inf))
+    # both coefficients (bounded and not) are in the flattened arrays, aligned
+    expect_equal(thNames[s$muGroupCovTheta + 1L], c("allo.cl", "allo.cl2"))
+    expect_equal(s$muGroupCovLower, c(-1, -Inf))
+    expect_equal(s$muGroupCovUpper, c(2, Inf))
+    expect_equal(s$muGroupCovCount, c(2L, 0L, 0L))
+  })
+
+  test_that("muModelClampRetries is validated", {
+    expect_equal(foceiControl()$muModelClampRetries, 10L)
+    expect_error(foceiControl(muModelClampRetries = 0L))
+    expect_equal(irlsfoceiControl(muModelClampRetries = 3L)$muModelClampRetries, 3L)
   })
 
   test_that("plain groups are dropped when nothing would be left for the outer optimizer", {
