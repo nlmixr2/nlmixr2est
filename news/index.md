@@ -256,11 +256,50 @@
   the cached augmented-model metadata (`foceiModel$outerMeta`) carries
   all fields the batched solve needs.
 
-- The mu-referenced families (`mufoceif`/`irlsfoceif`/…) now consume the
+- The mu-referenced families (`mfoceif`/`ifoceif`/…) now consume the
   analytic gradient on the profiled (mu-reduced) parameter set; a
   gradient/parameter-set size mismatch stops (never a silent FD
   fallback) and FD is only used when the sensitivity system fails to
   solve (with a one-time warning).
+
+- The mu-referenced FOCEI families (`mfocei`/`ifocei`/…) now profile
+  plain (covariate-free) mu-referenced population thetas out of the
+  outer optimizer via the in-C++ regression as well (intercept-only
+  groups), so outer gradients – numeric or analytic – are only
+  calculated for the non-mu-referenced parameters (residual errors,
+  omegas, non-mu thetas); user-fixed mu-referenced thetas remain
+  outer-optimized. The regress/re-optimize cycle defaults were tightened
+  (`muModelTol` 1e-3 -\> 1e-5, `muModelMaxCycles` 10 -\> 20) so the
+  profiled fits converge to the same optimum as the base methods
+  (usually faster, since the outer optimizer sees a well-converged
+  profiled objective).
+
+- Renamed the mu-referenced FOCEI-family estimation methods (all
+  introduced in this development version): the `irls*` methods are now
+  `i*` (`ifocei`, `ifoce`, `ifocep`, `iagq`, `ilaplace` and fast
+  variants `ifoceif`/`ifocef`/`ifocepf`) and the `mu*` methods are now
+  `m*` (`mfocei`, `mfoce`, `mfocep`, `magq`, `mlaplace` and
+  `mfoceif`/`mfocef`/`mfocepf`), with matching control functions
+  ([`ifoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifoceiControl.md),
+  [`mfoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfoceiControl.md),
+  …). The old names are removed (they never shipped in a release).
+
+- The analytic (`fast=TRUE`) outer gradient and `covMethod="analytic"`
+  now handle models whose residual-error parameters are all fixed. Such
+  a fit’s outer problem is omega-only (structural thetas mu-profiled,
+  residuals fixed), and omegas do not enter the ODE, so no model
+  re-solve per parameter is needed; previously the analytic path fell
+  back to finite differences (re-solving the ODE for every omega step).
+  The general (f,R) assembler now runs with no free residual direction,
+  reading the (fixed) variance from the solved `rx_r_`.
+
+- Bounded mu-referenced parameters (population thetas and covariate
+  coefficients) are now also profiled by the mu/irls regression, with
+  the update clamped to the bounds (box-constrained least squares,
+  `foceiControl(muModelClampRetries=)`); parameters that were clamped
+  during the fit are reported once as a fit note. Previously a bounded
+  population theta dropped its whole group (with a warning) and a
+  bounded covariate coefficient stayed outer-optimized.
 
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods
   keep `nlminb`); an explicit `outerOpt` is honored.
@@ -319,14 +358,14 @@
   the treatment used (e.g. `"M3 censoring (gauss)"`).
 
 - The mu-referenced FOCEI families
-  (`mufocei`/`irlsfocei`/`mufoce`/`mufocep`/…) now compute their
-  covariance on the full corresponding `focei`/`foce`/`focep` model, at
-  the mu fit’s converged theta and eta with the inner problem frozen (as
-  if the full model had produced that point), instead of the mu-\>phi
-  reduced model used during estimation. This fixes incorrect standard
-  errors on the mu-referenced/covariate (“linear”) parameters (the
-  sandwich `covMethod="r,s"` was the most affected) and honors the
-  requested `covMethod`.
+  (`mfocei`/`ifocei`/`mfoce`/`mfocep`/…) now compute their covariance on
+  the full corresponding `focei`/`foce`/`focep` model, at the mu fit’s
+  converged theta and eta with the inner problem frozen (as if the full
+  model had produced that point), instead of the mu-\>phi reduced model
+  used during estimation. This fixes incorrect standard errors on the
+  mu-referenced/covariate (“linear”) parameters (the sandwich
+  `covMethod="r,s"` was the most affected) and honors the requested
+  `covMethod`.
 
 - `covMethod="analytic"` now falls back to the finite-difference
   sandwich (`"r,s"`) when the analytic covariance is unavailable for a
@@ -396,8 +435,8 @@
   `covMethod="r"` instead of `"analytic"`.
 
 - Added the `*f` convenience estimation methods – `focef`, `focepf`,
-  `foceif`, `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`,
-  `irlsfocepf`, `irlsfoceif` – each equivalent to its base method with
+  `foceif`, `mfocef`, `mfocepf`, `mfoceif`, `ifocef`, `ifocepf`,
+  `ifoceif` – each equivalent to its base method with
   `foceiControl(fast = TRUE)` as the default (the analytic outer
   gradient + Eq-48 warm-start).
 
@@ -483,9 +522,9 @@
   [`getVarCov()`](https://rdrr.io/pkg/nlme/man/getVarCov.html) reuse it
   instead of recomputing the augmented sensitivity solve every time.
 
-- Added the `focep`, `mufocep`, and `irlsfocep` estimation methods – the
-  `foce`, `mufoce`, and `irlsfoce` methods with `foce = "foce+"` forced
-  (the live conditional residual variance R).
+- Added the `focep`, `mfocep`, and `ifocep` estimation methods – the
+  `foce`, `mfoce`, and `ifoce` methods with `foce = "foce+"` forced (the
+  live conditional residual variance R).
 
 - Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE
   evaluates the residual variance R: `"nonmem"` (new default) freezes R
@@ -755,11 +794,11 @@
   pinned such parameters at their initial value (e.g. `tvemax <- -40`
   with no transform).
 
-- Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
-  `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`
-  (adaptive Gauss-Hermite quadrature); `mulaplace`, `irlslaplace`
-  (Laplace). For any theta/eta that participates in a mu-ref covariate
-  relationship (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
+- Added new mu-referenced FOCEI-family estimation methods: `mfocei`,
+  `ifocei` (FOCEI); `mfoce`, `ifoce` (FOCE); `magq`, `iagq` (adaptive
+  Gauss-Hermite quadrature); `mlaplace`, `ilaplace` (Laplace). For any
+  theta/eta that participates in a mu-ref covariate relationship
+  (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
   covariate-coefficient theta(s) are excluded from the outer gradient
   optimizer entirely and instead re-derived directly by a closed-form
   OLS (`mu*` methods) or curvature-reweighted IRLS (`irls*` methods)
@@ -782,9 +821,9 @@
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   now defaults to `outerOpt = "lbfgsb3c"` and `sigdig = 4`
 
-- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
-  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
-  `mulaplace`/`irlslaplace`, with new
+- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
+  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`, `mlaplace`/`ilaplace`, with
+  new
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   options `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
 
@@ -918,9 +957,9 @@
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   now defaults to `outerOpt = "lbfgsb3c"` and `sigdig = 4`
 
-- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
-  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
-  `mulaplace`/`irlslaplace`, with new
+- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
+  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`, `mlaplace`/`ilaplace`, with
+  new
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   options `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
 

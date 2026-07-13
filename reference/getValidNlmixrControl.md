@@ -29,22 +29,22 @@ getValidNlmixrCtl(control)
 # S3 method for class 'focepf'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufoceif'
+# S3 method for class 'mfoceif'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufocef'
+# S3 method for class 'mfocef'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufocepf'
+# S3 method for class 'mfocepf'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsfoceif'
+# S3 method for class 'ifoceif'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsfocef'
+# S3 method for class 'ifocef'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsfocepf'
+# S3 method for class 'ifocepf'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'focep'
@@ -56,13 +56,13 @@ getValidNlmixrCtl(control)
 # S3 method for class 'fsaem'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'ifocep'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'imp'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'impmap'
-getValidNlmixrCtl(control)
-
-# S3 method for class 'irlsfocep'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'laplace'
@@ -71,31 +71,31 @@ getValidNlmixrCtl(control)
 # S3 method for class 'lbfgsb3c'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufocei'
+# S3 method for class 'mfocep'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsfocei'
+# S3 method for class 'mfocei'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufoce'
+# S3 method for class 'ifocei'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsfoce'
+# S3 method for class 'mfoce'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'muagq'
+# S3 method for class 'ifoce'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlsagq'
+# S3 method for class 'magq'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mulaplace'
+# S3 method for class 'iagq'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'irlslaplace'
+# S3 method for class 'mlaplace'
 getValidNlmixrCtl(control)
 
-# S3 method for class 'mufocep'
+# S3 method for class 'ilaplace'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'n1qn1'

@@ -114,8 +114,9 @@
 <span>  resetHessianAndEta <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  muModel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"irls"</span>, <span class="st">"lin"</span><span class="op">)</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  muModelTol <span class="op">=</span> <span class="fl">0.001</span>,</span>
-<span>  muModelMaxCycles <span class="op">=</span> <span class="fl">10L</span>,</span>
+<span>  muModelTol <span class="op">=</span> <span class="fl">1e-05</span>,</span>
+<span>  muModelMaxCycles <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  muModelClampRetries <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  stateTrim <span class="op">=</span> <span class="cn">Inf</span>,</span>
 <span>  shi21maxOuter <span class="op">=</span> <span class="fl">0L</span>,</span>
 <span>  shi21maxInner <span class="op">=</span> <span class="fl">20L</span>,</span>
@@ -632,21 +633,25 @@ option <code>resetEtaP</code>.</p></dd>
 
 <dt id="arg-mumodel">muModel<a class="anchor" aria-label="anchor" href="#arg-mumodel"></a></dt>
 <dd><p>Selects the mu-referenced-FOCEI-family regression variant
-    for theta/eta in a mu-ref covariate relationship (see
-    <code>muRefCovAlg</code>): <code>"none"</code> (default, ordinary FOCEI);
-    <code>"lin"</code> (<code>mufocei</code>/<code>mufoce</code>/<code>muagq</code>/
-    <code>mulaplace</code>: population theta and covariate coefficient(s) per
-    mu-ref-covariate group are excluded from the outer optimizer and
-    re-derived in C++ by closed-form OLS regression of each subject's
-    back-calculated value on the covariate(s), residual becomes that
-    subject's eta; repeats until convergence, see <code>muModelTol</code>/
-    <code>muModelMaxCycles</code>); or <code>"irls"</code>
-    (<code>irlsfocei</code>/<code>irlsfoce</code>/<code>irlsagq</code>/<code>irlslaplace</code>:
-    same mechanism, reweighted by inner-optimization curvature).</p>
-<p>A mu-ref-covariate theta with a finite bound falls back to ordinary
-    bounded outer-optimizer handling with a warning (a bound on the
-    group's population theta excludes the whole group; a bound on one
-    covariate coefficient excludes only that covariate).</p></dd>
+    for mu-referenced thetas/etas: <code>"none"</code> (default, ordinary
+    FOCEI); <code>"lin"</code> (<code>mfocei</code>/<code>mfoce</code>/<code>magq</code>/
+    <code>mlaplace</code>: mu-referenced population thetas – and their
+    covariate coefficient(s), if any (see <code>muRefCovAlg</code>) – are
+    excluded from the outer optimizer and re-derived in C++ by
+    closed-form OLS regression of each subject's back-calculated value
+    on the covariate(s) (intercept-only for a covariate-free pair),
+    residual becomes that subject's eta; repeats until convergence, see
+    <code>muModelTol</code>/<code>muModelMaxCycles</code>); or <code>"irls"</code>
+    (<code>ifocei</code>/<code>ifoce</code>/<code>iagq</code>/<code>ilaplace</code>:
+    same mechanism, reweighted by inner-optimization curvature).
+    Only the outer gradients for non-mu-referenced parameters (including
+    residual-error thetas and all omegas) are then calculated.</p>
+<p>Bounded mu-referenced parameters (population thetas and covariate
+    coefficients) are regression-updated too: the update is clamped to
+    the bounds (box-constrained least squares, see
+    <code>muModelClampRetries</code>), and any parameter that was clamped is
+    reported once as a fit note. A user-fixed (<code><a href="https://rdrr.io/r/utils/fix.html" class="external-link">fix()</a></code>) mu
+    population theta is never regression-updated.</p></dd>
 
 
 <dt id="arg-murefcovalg">muRefCovAlg<a class="anchor" aria-label="anchor" href="#arg-murefcovalg"></a></dt>
@@ -668,6 +673,13 @@ or <code>muModelMaxCycles</code> is reached.</p></dd>
 <dt id="arg-mumodelmaxcycles">muModelMaxCycles<a class="anchor" aria-label="anchor" href="#arg-mumodelmaxcycles"></a></dt>
 <dd><p>Maximum number of "re-optimize etas, regress"
 cycles per outer iteration (see <code>muModel</code>, <code>muModelTol</code>).</p></dd>
+
+
+<dt id="arg-mumodelclampretries">muModelClampRetries<a class="anchor" aria-label="anchor" href="#arg-mumodelclampretries"></a></dt>
+<dd><p>Maximum number of active-set re-solve passes
+per group per regression update when a bounded mu-referenced
+parameter must be clamped to its bound (see <code>muModel</code>); on
+hitting the cap the current clamped-feasible solution is used.</p></dd>
 
 
 <dt id="arg-statetrim">stateTrim<a class="anchor" aria-label="anchor" href="#arg-statetrim"></a></dt>

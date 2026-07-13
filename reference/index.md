@@ -53,39 +53,39 @@
 - [`getValidNlmixrControl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   [`getValidNlmixrCtl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   : Get valid nlmixr control object
+- [`iagqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/iagqControl.md)
+  : Control options for the iagq estimation method
+- [`ifoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifoceControl.md)
+  : Control options for the ifoce estimation method
+- [`ifoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifoceiControl.md)
+  : Control options for the ifocei estimation method
+- [`ifocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifocepControl.md)
+  : Control options for the ifocep (IRLS FOCE+) estimation method
+- [`ilaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ilaplaceControl.md)
+  : Control options for the ilaplace estimation method
 - [`impControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impControl.md)
   : Control for the imp (importance-sampling EM without MAP search)
   method
 - [`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md)
   : Control options for the impmap (importance-sampling EM) estimation
   method
-- [`irlsagqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsagqControl.md)
-  : Control options for the irlsagq estimation method
-- [`irlsfoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceControl.md)
-  : Control options for the irlsfoce estimation method
-- [`irlsfoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceiControl.md)
-  : Control options for the irlsfocei estimation method
-- [`irlsfocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsfocepControl.md)
-  : Control options for the irlsfocep (IRLS FOCE+) estimation method
-- [`irlslaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlslaplaceControl.md)
-  : Control options for the irlslaplace estimation method
 - [`iterPrintControl()`](https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.md)
   : Control iteration-time print formatting
 - [`laplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/laplaceControl.md)
   : Control options for the Laplace estimation method
 - [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md)
   : Control for lbfgsb3c estimation method in nlmixr2
-- [`muagqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/muagqControl.md)
-  : Control options for the muagq estimation method
-- [`mufoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mufoceControl.md)
-  : Control options for the mufoce estimation method
-- [`mufoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mufoceiControl.md)
-  : Control options for the mufocei estimation method
-- [`mufocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mufocepControl.md)
-  : Control options for the mufocep (mu-referenced FOCE+) estimation
+- [`magqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/magqControl.md)
+  : Control options for the magq estimation method
+- [`mfoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfoceControl.md)
+  : Control options for the mfoce estimation method
+- [`mfoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfoceiControl.md)
+  : Control options for the mfocei estimation method
+- [`mfocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfocepControl.md)
+  : Control options for the mfocep (mu-referenced FOCE+) estimation
   method
-- [`mulaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mulaplaceControl.md)
-  : Control options for the mulaplace estimation method
+- [`mlaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mlaplaceControl.md)
+  : Control options for the mlaplace estimation method
 - [`n1qn1Control()`](https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.md)
   : Control for n1qn1 estimation method in nlmixr2
 - [`newuoaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.md)

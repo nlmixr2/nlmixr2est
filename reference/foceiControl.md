@@ -81,8 +81,9 @@ foceiControl(
   resetHessianAndEta = FALSE,
   muModel = c("none", "irls", "lin"),
   muRefCovAlg = TRUE,
-  muModelTol = 0.001,
-  muModelMaxCycles = 10L,
+  muModelTol = 1e-05,
+  muModelMaxCycles = 20L,
+  muModelClampRetries = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -581,21 +582,25 @@ foceiControl(
 - muModel:
 
   Selects the mu-referenced-FOCEI-family regression variant for
-  theta/eta in a mu-ref covariate relationship (see `muRefCovAlg`):
-  `"none"` (default, ordinary FOCEI); `"lin"`
-  (`mufocei`/`mufoce`/`muagq`/ `mulaplace`: population theta and
-  covariate coefficient(s) per mu-ref-covariate group are excluded from
-  the outer optimizer and re-derived in C++ by closed-form OLS
-  regression of each subject's back-calculated value on the
-  covariate(s), residual becomes that subject's eta; repeats until
-  convergence, see `muModelTol`/ `muModelMaxCycles`); or `"irls"`
-  (`irlsfocei`/`irlsfoce`/`irlsagq`/`irlslaplace`: same mechanism,
-  reweighted by inner-optimization curvature).
+  mu-referenced thetas/etas: `"none"` (default, ordinary FOCEI); `"lin"`
+  (`mfocei`/`mfoce`/`magq`/ `mlaplace`: mu-referenced population thetas
+  – and their covariate coefficient(s), if any (see `muRefCovAlg`) – are
+  excluded from the outer optimizer and re-derived in C++ by closed-form
+  OLS regression of each subject's back-calculated value on the
+  covariate(s) (intercept-only for a covariate-free pair), residual
+  becomes that subject's eta; repeats until convergence, see
+  `muModelTol`/`muModelMaxCycles`); or `"irls"`
+  (`ifocei`/`ifoce`/`iagq`/`ilaplace`: same mechanism, reweighted by
+  inner-optimization curvature). Only the outer gradients for
+  non-mu-referenced parameters (including residual-error thetas and all
+  omegas) are then calculated.
 
-  A mu-ref-covariate theta with a finite bound falls back to ordinary
-  bounded outer-optimizer handling with a warning (a bound on the
-  group's population theta excludes the whole group; a bound on one
-  covariate coefficient excludes only that covariate).
+  Bounded mu-referenced parameters (population thetas and covariate
+  coefficients) are regression-updated too: the update is clamped to the
+  bounds (box-constrained least squares, see `muModelClampRetries`), and
+  any parameter that was clamped is reported once as a fit note. A
+  user-fixed ([`fix()`](https://rdrr.io/r/utils/fix.html)) mu population
+  theta is never regression-updated.
 
 - muRefCovAlg:
 
@@ -616,6 +621,13 @@ foceiControl(
 
   Maximum number of "re-optimize etas, regress" cycles per outer
   iteration (see `muModel`, `muModelTol`).
+
+- muModelClampRetries:
+
+  Maximum number of active-set re-solve passes per group per regression
+  update when a bounded mu-referenced parameter must be clamped to its
+  bound (see `muModel`); on hitting the cap the current clamped-feasible
+  solution is used.
 
 - stateTrim:
 

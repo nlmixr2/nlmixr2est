@@ -217,7 +217,7 @@ impControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55cd297ea750>
+#> <bytecode: 0x55f6a2aa0030>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -263,9 +263,12 @@ impControl()
 #> [1] TRUE
 #> 
 #> $muModelTol
-#> [1] 0.001
+#> [1] 1e-05
 #> 
 #> $muModelMaxCycles
+#> [1] 20
+#> 
+#> $muModelClampRetries
 #> [1] 10
 #> 
 #> $stateTrim

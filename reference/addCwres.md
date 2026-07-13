@@ -102,7 +102,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8848
+#> → compress parHistData in nlmixr2 object, save 8824
 #> → compress phiM in nlmixr2 object, save 443520
 
 print(f)
@@ -114,22 +114,17 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.693426 3.1439e-05 0.01301097      0.079     1.064 1.624       1.044
+#> elapsed 0.527823 2.6557e-05 0.01300881      0.061     0.678 1.674       1.016
 #>         table compress     other
-#> elapsed 0.337    0.134 0.4045316
+#> elapsed 0.122    0.127 0.4081416
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
-#> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.91e-310 9.88e-308    0.699 (0.699, 0.699)         
-#>        Shrink(SD)%
-#> tka       -0.830% 
-#> tcl         3.23% 
-#> tv          12.2% 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7    -0.830% 
+#> tcl               1.04 0.0242 2.33        2.83 (2.7, 2.97)     28.0      3.23% 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0      12.2% 
+#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -188,22 +183,17 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.693426 3.1439e-05 0.01301097      0.079     1.064 1.624       1.044
+#> elapsed 0.527823 2.6557e-05 0.01300881      0.061     0.678 1.674       1.016
 #>         table compress     other
-#> elapsed 0.337    0.134 0.4045316
+#> elapsed 0.122    0.127 0.4081416
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
-#> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.91e-310 9.88e-308    0.699 (0.699, 0.699)         
-#>        Shrink(SD)%
-#> tka       -0.830% 
-#> tcl         3.23% 
-#> tv          12.2% 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7    -0.830% 
+#> tcl               1.04 0.0242 2.33        2.83 (2.7, 2.97)     28.0      3.23% 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0      12.2% 
+#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix

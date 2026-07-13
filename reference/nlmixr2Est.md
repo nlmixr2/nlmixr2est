@@ -35,22 +35,22 @@ nlmixr2Est(env, ...)
 # S3 method for class 'focepf'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufoceif'
+# S3 method for class 'mfoceif'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufocef'
+# S3 method for class 'mfocef'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufocepf'
+# S3 method for class 'mfocepf'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'irlsfoceif'
+# S3 method for class 'ifoceif'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'irlsfocef'
+# S3 method for class 'ifocef'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'irlsfocepf'
+# S3 method for class 'ifocepf'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'focep'
@@ -62,25 +62,25 @@ nlmixr2Est(env, ...)
 # S3 method for class 'fsaem'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'iagq'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'ifoce'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'ifocei'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'ifocep'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'ilaplace'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'imp'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'impmap'
-nlmixr2Est(env, ...)
-
-# S3 method for class 'irlsagq'
-nlmixr2Est(env, ...)
-
-# S3 method for class 'irlsfoce'
-nlmixr2Est(env, ...)
-
-# S3 method for class 'irlsfocei'
-nlmixr2Est(env, ...)
-
-# S3 method for class 'irlsfocep'
-nlmixr2Est(env, ...)
-
-# S3 method for class 'irlslaplace'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'laplace'
@@ -89,19 +89,19 @@ nlmixr2Est(env, ...)
 # S3 method for class 'lbfgsb3c'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'muagq'
+# S3 method for class 'magq'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufoce'
+# S3 method for class 'mfoce'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufocei'
+# S3 method for class 'mfocei'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mufocep'
+# S3 method for class 'mfocep'
 nlmixr2Est(env, ...)
 
-# S3 method for class 'mulaplace'
+# S3 method for class 'mlaplace'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'n1qn1'

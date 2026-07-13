@@ -29,10 +29,10 @@ nmObjHandleControlObject(control, env)
 # S3 method for class 'fsaemControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'impmapControl'
+# S3 method for class 'ifocepControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'irlsfocepControl'
+# S3 method for class 'impmapControl'
 nmObjHandleControlObject(control, env)
 
 # S3 method for class 'laplaceControl'
@@ -41,31 +41,31 @@ nmObjHandleControlObject(control, env)
 # S3 method for class 'lbfgsb3cControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'mufoceiControl'
+# S3 method for class 'mfocepControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'irlsfoceiControl'
+# S3 method for class 'mfoceiControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'mufoceControl'
+# S3 method for class 'ifoceiControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'irlsfoceControl'
+# S3 method for class 'mfoceControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'muagqControl'
+# S3 method for class 'ifoceControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'irlsagqControl'
+# S3 method for class 'magqControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'mulaplaceControl'
+# S3 method for class 'iagqControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'irlslaplaceControl'
+# S3 method for class 'mlaplaceControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'mufocepControl'
+# S3 method for class 'ilaplaceControl'
 nmObjHandleControlObject(control, env)
 
 # S3 method for class 'n1qn1Control'
