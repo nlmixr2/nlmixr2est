@@ -43,11 +43,13 @@ test_that("est='advi' population posterior agrees with rstan::vb()", {
   }"
   sm <- rstan::stan_model(model_code = stanCode)
   sdat <- list(N = nrow(dat), J = nsub, id = dat$ID, y = dat$DV)
-  vb <- rstan::vb(sm, data = sdat, algorithm = "meanfield", seed = 1, output_samples = 2000)
+  ## (vb() may emit a Pareto-k importance-resampling diagnostic warning; benign)
+  vb <- suppressWarnings(
+    rstan::vb(sm, data = sdat, algorithm = "meanfield", seed = 1, output_samples = 2000))
   post <- rstan::extract(vb)
 
-  ## population posterior means agree (theta, residual sd)
-  expect_equal(fA$theta[1], mean(post$theta), tolerance = 0.15)
-  expect_equal(fA$theta[2], mean(post$sigma), tolerance = 0.2)   # add.sd
-  expect_equal(sqrt(fA$popOmega[1]), mean(post$omega), tolerance = 0.25)
+  ## population posterior means agree (theta, residual sd, between-subject sd)
+  expect_equal(unname(fA$theta[1]), mean(post$theta), tolerance = 0.15)
+  expect_equal(unname(fA$theta[2]), mean(post$sigma), tolerance = 0.2)   # add.sd
+  expect_equal(unname(sqrt(fA$popOmega[1])), mean(post$omega), tolerance = 0.25)
 })
