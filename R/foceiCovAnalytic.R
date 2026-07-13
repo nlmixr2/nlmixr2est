@@ -1127,8 +1127,11 @@
 .foceiDisguiseCmt <- function(modTxt) {
   .ln  <- strsplit(modTxt, "\n", fixed = TRUE)[[1]]
   .eq  <- regexpr("=", .ln, fixed = TRUE)
-  .lhs <- ifelse(.eq > 0L, trimws(substr(.ln, 1L, .eq - 1L)), "")
-  .rhs <- ifelse(.eq > 0L, substr(.ln, .eq + 1L, nchar(.ln)), "")
+  .raw <- ifelse(.eq > 0L, substr(.ln, 1L, .eq - 1L), "")     # LHS incl. any surrounding whitespace
+  .lhs <- trimws(.raw)                                        # bare LHS token
+  .lead  <- sub("^([ \t]*).*$", "\\1", .raw)                  # leading whitespace, preserved verbatim
+  .trail <- substr(.raw, nchar(.lead) + nchar(.lhs) + 1L, nchar(.raw))  # gap before "=", preserved
+  .rhs <- ifelse(.eq > 0L, substr(.ln, .eq, nchar(.ln)), "")  # "=..." kept verbatim
   .isIc  <- .eq > 0L & endsWith(.lhs, "(0)")
   .isMod <- .eq > 0L & grepl("^(f|alag|lag|rate|dur)\\(", .lhs) & endsWith(.lhs, ")")
   .new <- .lhs
@@ -1136,7 +1139,7 @@
   .mm <- regmatches(.lhs[.isMod], regexec("^([a-z]+)\\((.*)\\)$", .lhs[.isMod]))
   .new[.isMod] <- vapply(.mm, function(.m) paste0("rx__disg_mod__", .m[2L], "__", .m[3L], "__"),
                          character(1))
-  paste(ifelse(.eq > 0L & (.isIc | .isMod), paste0(.new, "=", .rhs), .ln), collapse = "\n")
+  paste(ifelse(.eq > 0L & (.isIc | .isMod), paste0(.lead, .new, .trail, .rhs), .ln), collapse = "\n")
 }
 
 #' Reverse [.foceiDisguiseCmt]: restore the original compartment-scoped LHS.
@@ -1147,14 +1150,17 @@
 #' @noRd
 .foceiRestoreCmt <- function(txt) {
   .ln <- strsplit(txt, "\n", fixed = TRUE)[[1]]
-  .disg <- startsWith(.ln, "rx__disg_ic__") | startsWith(.ln, "rx__disg_mod__")
+  .disg <- grepl("^[ \t]*rx__disg_(ic|mod)__", .ln)           # tolerate leading whitespace
   if (any(.disg)) {
-    .eq  <- regexpr("=", .ln[.disg], fixed = TRUE)
-    .lhs <- substr(.ln[.disg], 1L, .eq - 1L)
+    .eq   <- regexpr("=", .ln[.disg], fixed = TRUE)
+    .raw  <- substr(.ln[.disg], 1L, .eq - 1L)                 # disguised LHS incl. whitespace
     .rest <- substr(.ln[.disg], .eq, nchar(.ln[.disg]))       # keep the "=..." RHS verbatim
-    .lhs <- sub("^rx__disg_ic__(.*)__$", "\\1(0)", .lhs)       # rx__disg_ic__X__  -> X(0)
-    .lhs <- sub("^rx__disg_mod__([a-z]+)__(.*)__$", "\\1(\\2)", .lhs)  # rx__disg_mod__f__X__ -> f(X)
-    .ln[.disg] <- paste0(.lhs, .rest)
+    .lead  <- sub("^([ \t]*).*$", "\\1", .raw)                # restore the exact leading/trailing
+    .tok   <- trimws(.raw)                                    # whitespace the disguise preserved
+    .trail <- substr(.raw, nchar(.lead) + nchar(.tok) + 1L, nchar(.raw))
+    .tok <- sub("^rx__disg_ic__(.*)__$", "\\1(0)", .tok)       # rx__disg_ic__X__  -> X(0)
+    .tok <- sub("^rx__disg_mod__([a-z]+)__(.*)__$", "\\1(\\2)", .tok)  # rx__disg_mod__f__X__ -> f(X)
+    .ln[.disg] <- paste0(.lead, .tok, .trail, .rest)
   }
   paste(.ln, collapse = "\n")
 }
