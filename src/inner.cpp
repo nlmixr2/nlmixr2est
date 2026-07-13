@@ -441,9 +441,10 @@ struct focei_options {
   scaling scale;
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
-  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"); outer runs impOuter
+  bool isImpmap = false; // importance-sampling EM (est="impmap"/"imp"/"qrpem"); outer runs impOuter
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
+  bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -453,6 +454,12 @@ struct focei_options {
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
   int impNconvWindow = 10;   // trailing-iteration window for the convergence check
   bool impCov = false;       // experimental: compute the MC observed-information theta covariance
+  bool impQr = false;        // quasi-random (Sobol) importance samples (QRPEM)
+  bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
+  bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
+  bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
+  int impSirSample = 30;     // SIR resampled points per subject
+  int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
   std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
@@ -4751,15 +4758,17 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
-    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem");
     op_focei.isImp = (estStr == "imp");
     op_focei.isAdvi = (estStr == "advi");
+    op_focei.isQrpem = (estStr == "qrpem");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
     op_focei.isImpmap = false;
     op_focei.isImp = false;
     op_focei.isAdvi = false;
+    op_focei.isQrpem = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -4772,6 +4781,12 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impCtol = as<double>(foceiO["ctol"]);
     if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
     if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
+    if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
+    if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
+    if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
+    if (foceiO.containsElementNamed("sir")) op_focei.impSir = as<bool>(foceiO["sir"]);
+    if (foceiO.containsElementNamed("sirSample")) op_focei.impSirSample = as<int>(foceiO["sirSample"]);
+    if (foceiO.containsElementNamed("impSeed")) op_focei.impSeed = as<int>(foceiO["impSeed"]);
     if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
       op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
     if (foceiO.containsElementNamed("impMuThetaIdx"))
@@ -8256,7 +8271,7 @@ void foceiFinalizeTables(Environment e){
     if (op_focei.isImpmap) {
       // Importance-sampling EM; the objDf row stays "FOCEi" because the final
       // objective is a FOCEi evaluation at the EM estimates.
-      e["method"] = op_focei.isImp ? "imp" : "impmap";
+      e["method"] = op_focei.isImp ? "imp" : (op_focei.isQrpem ? "qrpem" : "impmap");
     } else if (_aqn > 0) {
       e["method"] ="AGQ";
     } else if (op_focei.neta == 0){
@@ -8419,6 +8434,14 @@ int impMuGroupN() {
 int impNtheta() { return (int)op_focei.ntheta; }
 
 bool impCovEnabled() { return op_focei.impCov; }
+
+// ---- quasi-random (QRPEM) + SIR controls -----------------------------------
+bool impQrEnabled() { return op_focei.impQr; }
+bool impQrShiftEnabled() { return op_focei.impQrShift; }
+bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
+bool impSirEnabled() { return op_focei.impSir; }
+int impSirN() { return op_focei.impSirSample; }
+int impBaseSeed() { return op_focei.impSeed; }
 
 // ---- mixture (sub-population) support -------------------------------------
 // impmap computes its OWN importance-sampling mixture posterior + proportion

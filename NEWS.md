@@ -20,6 +20,34 @@
   (`rxControl(cores=)`); a serial id-ordered reduction keeps the result identical
   for any thread count.
 
+- Added quasi-random (Sobol) importance sampling to the `imp`/`impmap`
+  estimation methods (QRPEM, Leary & Dunlavey PAGE 2012):
+  `impmapControl(qr = TRUE)` draws the E-step samples from a low-discrepancy
+  Sobol sequence mapped through the inverse normal CDF, so the E-step
+  integrals converge at O(1/N) instead of O(1/sqrt(N)) -- more accurate at the
+  same `isample` and a smoother objective trace.  `qrShift` controls the
+  Cranley-Patterson randomization of the point set and `qrRefresh` whether the
+  shift is redrawn each iteration (`FALSE` makes each EM iteration a
+  deterministic map).  The Monte-Carlo covariance (`impCov = TRUE`) uses the
+  quasi-random points too.  Results stay reproducible and thread-count
+  independent.
+
+- Added SIR (sampling-importance-resampling) acceleration for the
+  `imp`/`impmap` M-step: `impmapControl(sir = TRUE, sirSample = )` runs the
+  non-mu / residual-error Newton update on an equal-weight systematic resample
+  of the importance samples, cutting the theta-sensitivity solves from
+  `isample` to `sirSample` (default `max(25, ceiling(isample/10))`) per subject per
+  iteration.
+
+- Added `est = "qrpem"` with `qrpemControl()`, sugar for the impmap
+  importance-sampling EM with `qr = TRUE` and `sir = TRUE`.
+
+- Fixed `impmapControl(impSeed = )` being ignored: the FOCEI solve setup reset
+  the ambient seed before the importance-sampling E-step, so every `impSeed`
+  produced the identical draw.  The E-step / covariance / QR-shift / SIR
+  streams now derive from `impSeed` directly, so a different `impSeed` gives a
+  different (but reproducible and thread-count-independent) importance sample.
+
 - Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
   al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
   combined/power/TBS residuals, multiple endpoints, mu-referenced covariates

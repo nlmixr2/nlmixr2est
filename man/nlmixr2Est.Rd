@@ -5,7 +5,7 @@
 %   R/irlslaplace.R, R/laplace.R, R/lbfgsb3c.R, R/muagq.R, R/mufoce.R,
 %   R/mufocei.R, R/mufocep.R, R/mulaplace.R, R/n1qn1.R, R/newuoa.R, R/nlm.R,
 %   R/nlme.R, R/nlminb.R, R/nlmixr2Est.R, R/nls.R, R/optim.R, R/posthoc.R,
-%   R/rpem.R, R/rxsolve.R, R/saem.R, R/uobyqa.R, R/vae.R
+%   R/qrpem.R, R/rpem.R, R/rxsolve.R, R/saem.R, R/uobyqa.R, R/vae.R
 \name{nlmixr2Est.advi}
 \alias{nlmixr2Est.advi}
 \alias{nlmixr2Est.agq}
@@ -50,6 +50,7 @@
 \alias{nlmixr2Est.nls}
 \alias{nlmixr2Est.optim}
 \alias{nlmixr2Est.posthoc}
+\alias{nlmixr2Est.qrpem}
 \alias{nlmixr2Est.rpem}
 \alias{nlmixr2Est.rxSolve}
 \alias{nlmixr2Est.simulate}
@@ -145,6 +146,8 @@ nlmixr2Est(env, ...)
 \method{nlmixr2Est}{optim}(env, ...)
 
 \method{nlmixr2Est}{posthoc}(env, ...)
+
+\method{nlmixr2Est}{qrpem}(env, ...)
 
 \method{nlmixr2Est}{rpem}(env, ...)
 

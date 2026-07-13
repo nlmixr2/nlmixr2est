@@ -1270,7 +1270,20 @@
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
       .modTxt <- tryCatch({
         .ln <- strsplit(.modTxt, "\n", fixed = TRUE)[[1]]
-        .k <- max(1L, ceiling(length(.ln) / 40))
+        # The chunker optimizes contiguous 40-line pieces independently for build speed.
+        # rxOptExpr parses each chunk as a standalone model, so a chunk that holds a
+        # compartment-scoped construct -- a state initial condition (`W(0)=`) or a dosing
+        # modifier (`f(cmt)=` / `lag(cmt)=`->`alag(cmt)=` / `rate(cmt)=` / `dur(cmt)=`) --
+        # without the matching `d/dt(cmt)=` (which, for a parameter-dependent IC/modifier,
+        # sits many sensitivity-ODE lines away in an EARLIER chunk) raises e.g. "'W(0)'
+        # present, but d/dt(W) not defined".  These lines cannot simply be pulled out and
+        # re-appended: their RHS may read a model variable whose value the optimized body
+        # changes, so position is load-bearing.  When any such construct is present, drop to
+        # a single whole-model rxOptExpr call (the original, correct behavior -- slower to
+        # build but rare); keep the fast chunking for the common unconstrained models.
+        .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
+          any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
+        .k <- if (.special) 1L else max(1L, ceiling(length(.ln) / 40))
         if (.k <= 1L) {
           rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
         } else {

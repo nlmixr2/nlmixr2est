@@ -3,7 +3,7 @@
 %   R/foce.R, R/focep.R, R/foi.R, R/imp.R, R/impmap.R, R/irlsfocep.R,
 %   R/laplace.R, R/lbfgsb3c.R, R/muRefControl.R, R/mufocep.R, R/n1qn1.R,
 %   R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R, R/nls.R, R/nmObjHandle.R,
-%   R/optim.R, R/posthoc.R, R/rpem.R, R/uobyqa.R, R/vae.R
+%   R/optim.R, R/posthoc.R, R/qrpem.R, R/rpem.R, R/uobyqa.R, R/vae.R
 \name{nmObjGetControl.advi}
 \alias{nmObjGetControl.advi}
 \alias{nmObjGetControl.agq}
@@ -38,6 +38,7 @@
 \alias{nmObjGetControl.default}
 \alias{nmObjGetControl.optim}
 \alias{nmObjGetControl.posthoc}
+\alias{nmObjGetControl.qrpem}
 \alias{nmObjGetControl.rpem}
 \alias{nmObjGetControl.uobyqa}
 \alias{nmObjGetControl.vae}
@@ -108,6 +109,8 @@ nmObjGetControl(x, ...)
 \method{nmObjGetControl}{optim}(x, ...)
 
 \method{nmObjGetControl}{posthoc}(x, ...)
+
+\method{nmObjGetControl}{qrpem}(x, ...)
 
 \method{nmObjGetControl}{rpem}(x, ...)
 
