@@ -200,11 +200,17 @@
   (covariate-free) mu-referenced population thetas out of the outer optimizer via the
   in-C++ regression as well (intercept-only groups), so outer gradients -- numeric or
   analytic -- are only calculated for the non-mu-referenced parameters (residual
-  errors, omegas, non-mu thetas); bounded or fixed mu-referenced thetas remain
+  errors, omegas, non-mu thetas); user-fixed mu-referenced thetas remain
   outer-optimized.  The regress/re-optimize cycle defaults were tightened
   (`muModelTol` 1e-3 -> 1e-5, `muModelMaxCycles` 10 -> 20) so the profiled fits
   converge to the same optimum as the base methods (usually faster, since the outer
   optimizer sees a well-converged profiled objective).
+- Bounded mu-referenced parameters (population thetas and covariate coefficients) are
+  now also profiled by the mu/irls regression, with the update clamped to the bounds
+  (box-constrained least squares, `foceiControl(muModelClampRetries=)`); parameters
+  that were clamped during the fit are reported once as a fit note.  Previously a
+  bounded population theta dropped its whole group (with a warning) and a bounded
+  covariate coefficient stayed outer-optimized.
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type
