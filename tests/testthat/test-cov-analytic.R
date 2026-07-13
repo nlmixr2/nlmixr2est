@@ -946,4 +946,47 @@ nmTest({
     .se <- sqrt(diag(fit$cov))
     expect_true(all(is.finite(.se)) && all(.se > 0))
   })
+
+  test_that("analytic augmented model honors a parameter-dependent state initial condition", {
+    # Regression guard for the analytic covariance/gradient ASSEMBLY on a model whose
+    # prediction is driven by a parameter-dependent initial condition (A(0) <- A0 =
+    # exp(lA0 + eta.A0)).  With five random effects the augmented sensitivity model is
+    # large enough to exercise the state-IC build path in .foceiAnalyticAugModelDirs
+    # (which keeps such models in a single rxOptExpr pass so a per-chunk optimization
+    # never sees `A(0)=` without its `d/dt(A)=`).  This unit-tests the assembly directly
+    # -- it builds and solves the augmented model, but never runs an estimation.
+    skip_on_cran()
+    .icMod <- function() {
+      ini({
+        lA0 <- log(5); lk <- log(0.3); lkin <- log(1); ltl <- log(2); lc <- log(0.5)
+        eta.A0 ~ 0.09; eta.k ~ 0.09; eta.kin ~ 0.09; eta.tl ~ 0.09; eta.c ~ 0.09
+        add.sd <- 0.5
+      })
+      model({
+        A0 <- exp(lA0 + eta.A0); k <- exp(lk + eta.k); kin <- exp(lkin + eta.kin)
+        tl <- exp(ltl + eta.tl); cc <- exp(lc + eta.c)
+        d/dt(A) <- kin * expit(t - tl) - k * A + cc
+        A(0) <- A0
+        ao <- A
+        ao ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.icMod))
+    neta <- 5L
+    am <- .foceiAnalyticAugModelDirs(ui, paste0("ETA_", seq_len(neta), "_"))
+    expect_false(is.null(am))
+    expect_false(is.null(am$augMod))
+    # solve at t = 0 with eta = 0: the prediction MUST equal the IC A0 = exp(lA0) = 5.
+    # A dropped IC would start the state at 0; a mis-placed IC (e.g. re-appended after the
+    # optimized body) would read wrong variable values -- both change f(0) away from 5.
+    .thr <- ui$iniDf[!is.na(ui$iniDf$ntheta), ]
+    .thr <- .thr[order(.thr$ntheta), ]
+    .params <- c(stats::setNames(.thr$est, paste0("THETA_", .thr$ntheta, "_")),
+                 stats::setNames(rep(0, neta), paste0("ETA_", seq_len(neta), "_")))
+    .ev <- data.frame(ID = 1L, TIME = c(0, 0.5, 1), EVID = 0L, AMT = 0, DV = 0)
+    E <- .foceiAnalyticSolveFA(am, .params, .ev, times = c(0, 0.5, 1))
+    expect_false(is.null(E))
+    expect_equal(E$f[1], 5, tolerance = 1e-4)   # A(0) = A0
+    expect_true(E$f[2] < E$f[1])                # the ODE evolves away from the IC
+  })
 })
