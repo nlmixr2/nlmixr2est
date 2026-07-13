@@ -539,10 +539,12 @@
   # auto-detects it and maximizes the censored log-likelihood); other censored error
   # structures keep the R loop.
   .cLoopCens <- !.hasCens || .cl$errType %in% c(0L, 1L)
-  # Centered etas, held omega (etaFix), IOV omega pooling (omGroup), and fixed typical /
-  # residual params are applied by rpemEMLoopK1's post-M-step clamps, so they run in C++.
-  .cLoop <- isTRUE(control$cLoop) && .cLoopErr &&
-    .cLoopCens &&
+  # The whole E-M loop runs in C++ (rpemEMLoopK1).  The remaining guards are feature-support
+  # checks, not a speed switch: a model that fails them is a not-yet-ported combination and
+  # errors below rather than falling back to a (removed) R loop.  centered etas / held omega
+  # (etaFix) / IOV pooling (omGroup) / fixed typical + residual params are applied by the C++
+  # loop's post-M-step clamps.
+  .cLoop <- .cLoopErr && .cLoopCens &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   # Live iteration printing (design like saem/vae): set up the shared scale.h printer BEFORE
   # the loop so both the C++ cLoop (which streams rows from inside rpemEMLoopK1) and the R
@@ -608,115 +610,17 @@
     if (.modeIS) ebe <- .r$ebe          # converged proposal center for the final E-step
     # (the C++ loop streamed each iteration's row into the scale.h printer; the shared
     # post-loop block below closes the table and gathers parHistData for both loop paths.)
-  } else
-  for (.it in seq_len(niter)) {
-    if (.useReg) {
-      base[.cl$muIdx + 1L] <- coefs[1]
-      if (length(.cl$covCoefIdx)) base[.cl$covCoefIdx + 1L] <- coefs[-1]
-    } else {
-      base[.cl$muIdx + 1L] <- mu[.cl$muRef]     # only mu-ref etas carry a theta
-    }
-    if (!.multi && !is.na(.cl$addSdIdx)) base[.cl$addSdIdx + 1L] <- addSd  # LL: no residual
-    if (.comb) base[.cl$propSdIdx + 1L] <- propSd
-    if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
-    if (.pow) base[.cl$powIdx + 1L] <- power
-    if (.multi) {
-      base[.cl$endpt$sclIdx + 1L] <- sdVec
-      if (any(.combE)) base[.cl$endpt$propIdx[.combE] + 1L] <- propVec[.combE]
-    }
-    rxode2::rxSetSeed(control$seed + .it)
-    # per-iteration MH seed for the threefry-engine M-step draws; offset from the eta-draw
-    # seed (control$seed + .it) so the two streams never coincide, and niter-independent so a
-    # dynamically extended run reproduces the shared-prefix iterations.
-    .mhSeed <- as.integer(control$seed + .it + 1000000L)
-    .etaMat <- .drawEtas(omega, ebe)
-    .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores,
-                            ebe, diag(as.matrix(omega)), .cInf)
-    if (.modeIS) ebe <- .est$ebe        # posterior mean -> next proposal center
-    # numeric M-step for non-mu-ref structural fixed effects, while the E-step
-    # solve is still loaded (before the MH step's rxRmvn draw clobbers it).
-    if (.structOn) {
-      .bt <- if (.likLbfgs && .it > .smoothStart)
-        rpemMstepBetaLik(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L],
-                         .cl$structLower, .cl$structUpper, .cl$structNbd, 1.0,
-                         control$lbfgsLmm, control$lbfgsFactr, control$lbfgsPgtol,
-                         control$lbfgsMaxIter)
-      else rpemMstepBeta(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L])
-      base[.cl$structIdx + 1L] <- .bt; betaMat[.it, ] <- .bt
-    }
-    if (.comb) {
-      .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn, .mhSeed)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
-      addSd <- .ms$addSd; propSd <- .ms$propSd
-      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-    } else if (.tbs) {
-      .ms <- rpemMstepK1TBS(.design, coefs, addSd, lambda, .cl$tbsYj,
-                            .cl$tbsLow, .cl$tbsHi, control$nMH, control$mhBurn, .mhSeed)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
-      addSd <- .ms$addSd; lambda <- .ms$lambda
-      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-    } else if (.pow) {
-      .ms <- rpemMstepK1Pow(.design, coefs, addSd, power, control$nMH, control$mhBurn, .mhSeed)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
-      addSd <- .ms$propSd; power <- .ms$power
-      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-    } else if (.multi) {
-      .prop0 <- ifelse(is.na(propVec), 0.0, propVec)
-      .ms <- rpemMstepK1Multi(.design, coefs, .endptIdx, .cl$endpt$errType,
-                              sdVec, .prop0, control$nMH, control$mhBurn, .mhSeed)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
-      sdVec <- .ms$sd; propVec <- .ms$propSd
-      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-      sdMat[.it, ] <- sdVec; propMat[.it, ] <- propVec
-    } else if (.useReg) {
-      .ms <- if (.hasCens && .cl$errType %in% c(0L, 1L))
-        rpemMstepK1Cens(.design, coefs, .cl$errType, addSd, control$nMH, control$mhBurn, .mhSeed)
-      else rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn, .mhSeed)
-      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
-      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
-    } else {
-      .ms <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn, .mhSeed)
-      mu <- .ms$mu; mu[!.cl$muRef] <- 0        # centered etas: typical value held at 0
-      omega <- .ms$omega; addSd <- .ms$addSd
-      if (any(.cl$etaFix)) diag(omega)[.cl$etaFix] <- diag(.cl$omega0)[.cl$etaFix]  # held omegas
-      # shared-omega occasion blocks (IOV): equalize omega within each block (singletons
-      # unchanged), so a parameter's occasion etas estimate one pooled variance
-      diag(omega) <- stats::ave(diag(omega), .cl$omGroup)
-      muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
-    }
-    # hold fix()ed typical values / residual params at their ini values (the conjugate
-    # M-step above moves them otherwise); re-record the affected traces.
-    if (any(.cl$muFixFull)) {
-      if (.useReg) { coefs[1] <- .cl$mu0[.cl$muRef][1]; coefTr[.it, 1] <- coefs[1]; muTr[.it, ] <- coefs[1] }
-      else { mu[.cl$muFixFull] <- .cl$mu0[.cl$muFixFull]; muTr[.it, ] <- mu }
-    }
-    if (.cl$addSdFix) addSd <- .cl$addSd0
-    if (.comb && .cl$propSdFix) propSd <- .cl$propSd0
-    if (.tbs && .cl$lambdaFix) lambda <- .cl$lambda0
-    if (.pow && .cl$powFix) power <- .cl$pow0
-    sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
-    lamTr[.it] <- if (.tbs) lambda else NA_real_
-    powTr[.it] <- if (.pow) power else NA_real_
-    llTr[.it] <- .est$lnL
-    # Stream this iteration's row (like saem/vae): assemble the theta vector + omega diagonal
-    # from the traces just recorded for .it and emit it through the shared scale.h printer.
-    if (.streamOk) {
-      .rrow <- .cl$base[seq_len(.cl$nTheta)]
-      if (length(.cl$muIdx)) .rrow[.cl$muIdx + 1L] <- muTr[.it, .cl$muRef]
-      if (.useReg && length(.cl$covCoefIdx)) .rrow[.cl$covCoefIdx + 1L] <- coefTr[.it, -1]
-      if (.structOn) .rrow[.cl$structIdx + 1L] <- betaMat[.it, ]
-      if (!is.na(.cl$addSdIdx)) .rrow[.cl$addSdIdx + 1L] <- sdTr[.it]
-      if (.comb) .rrow[.cl$propSdIdx + 1L] <- propTr[.it]
-      if (.pow) .rrow[.cl$powIdx + 1L] <- powTr[.it]
-      if (.tbs) .rrow[.cl$lambdaIdx + 1L] <- lamTr[.it]
-      if (.multi) {
-        .rrow[.cl$endpt$sclIdx + 1L] <- sdMat[.it, ]
-        .cbE <- .cl$endpt$errType %in% c(2L, 3L, 4L)
-        if (any(.cbE)) .rrow[.cl$endpt$propIdx[.cbE] + 1L] <- propMat[.it, .cbE]
-      }
-      .phase <- if (.it > niter - control$collect) "Smooth" else "EM"
-      rpemIterPrintRow_(c(.rrow, omTr[.it, ]), llTr[.it], .phase)
-    }
+  } else {
+    # Every case any test exercises with the default control runs in the C++ loop above;
+    # the guards route only the not-yet-ported niche combinations here, which now error
+    # clearly instead of falling back to a (removed) slow R loop.
+    stop("est=\"rpem\": this model is not yet supported by the C++ engine (",
+         if (.hasCens && !(.cl$errType %in% c(0L, 1L)))
+           "BLQ censoring is implemented only for additive/proportional error"
+         else if (.cl$errType == 5L && length(.cl$covCoefNames) > 0L)
+           "multiple endpoints combined with covariates"
+         else "this error-model / covariate combination",
+         "); adjust the model or use est=\"saem\"/\"focei\".", call. = FALSE)
   }
   if (.streamOk) {
     # rows streamed live above; close the table + gather parHistData.
@@ -905,7 +809,7 @@
   # Opt-in full C++ E-M loop for additive/proportional/lognormal mixtures (combined /
   # power / TBS mixtures keep the R loop).  Threefry eta draw + threefry MH -> thread-safe
   # and reproducible for any core count.
-  .cLoop <- isTRUE(control$cLoop) && .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 6L)
+  .cLoop <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 6L)
   if (.cLoop) {
     .naI <- function(x) if (length(x) == 0L || is.na(x)) -1L else as.integer(x)
     .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
@@ -922,35 +826,10 @@
     sdTr <- as.numeric(.r$sdTrace); llTr <- as.numeric(.r$lnL)
     propTr <- as.numeric(.r$propTrace); powTr <- as.numeric(.r$powTrace)
     lamTr <- as.numeric(.r$lamTrace)
-  } else
-  for (.it in seq_len(niter)) {
-    base[.mix$muCompIdx + 1L] <- muK
-    base[.cl$addSdIdx + 1L] <- addSd            # power: addSd slot holds the scale
-    if (.comb) base[.cl$propSdIdx + 1L] <- propSd
-    if (.pow) base[.cl$powIdx + 1L] <- power
-    if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
-    rxode2::rxSetSeed(control$seed + .it)
-    .mhSeed <- as.integer(control$seed + .it + 1000000L)
-    .etaMat <- .drawEtas(omega)
-    .est <- rpemEstepMixDraw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores, K, w)
-    .ms <- rpemMstepMix(muK, w, .mix$etaForComp, .cl$errType, addSd,
-                        if (.comb) propSd else 0.0, control$nMH, control$mhBurn, .mhSeed)
-    muK <- .ms$muK; omega <- .ms$omega; w <- .ms$w; addSd <- .ms$addSd
-    if (.comb) propSd <- .ms$propSd
-    if (.pow) power <- .ms$power
-    if (.tbs) lambda <- .ms$lambda
-    # Label-switching guard (design/rpem/07): shared-eta components are exchangeable in
-    # the likelihood, so the MH labels can swap between iterations and corrupt the
-    # collected trace -- enforce a canonical order (ascending first-parameter mu) each
-    # iteration.  With split-ETA per-component etas the components are tied to distinct
-    # eta/theta symbols (not exchangeable), so no reorder is applied there.
-    if (!.mix$perComp) {
-      .ord <- order(muK[1, ]); muK <- muK[, .ord, drop = FALSE]; w <- w[.ord]
-    }
-    muArr[.it, , ] <- muK; wMat[.it, ] <- w; omTr[.it, ] <- omega
-    sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
-    powTr[.it] <- if (.pow) power else NA_real_
-    lamTr[.it] <- if (.tbs) lambda else NA_real_; llTr[.it] <- .est$lnL
+  } else {
+    stop("est=\"rpem\": mixtures with this error type are not yet supported by the C++ ",
+         "engine (supported: additive/proportional/lognormal/combined/power/TBS mixtures); ",
+         "use est=\"saem\" or a single-component model.", call. = FALSE)
   }
   # Parameter-history walk (shared scale.h iteration printing): reconstruct each iteration's
   # full theta vector -- per-component typical values (muArr), mixture weights (wMat, the free

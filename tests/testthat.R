@@ -67,7 +67,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # essential push/PR subset; every other (multi-iteration, fit-based) rpem file runs
   # weekly here.  Sized from measured single-worker times to balance the batches.
   # batch 7
-  c("rpem-cloop", "rpem-mix-pow", "rpem-cens", "rpem-pow", "rpem-comb"),
+  c("rpem-mix-pow", "rpem-cens", "rpem-pow", "rpem-comb"),
   # batch 8
   c("rpem-multi-pow", "rpem-covariate", "rpem-mix-multiparam", "rpem-impinflate",
     "rpem-tbs", "rpem-parallel"),

@@ -110,13 +110,10 @@ test_that("a general log-likelihood endpoint runs entirely in the C++ cLoop", {
 
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(.rpemExpTte))
   d <- .rpemMkTte(1L)
-  ctl <- function(cl) rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
-                                  collect = 12L, seed = 1L, cores = 4L, cLoop = cl)
-  rfR <- .rpemFit(ui, d, ctl(FALSE))
-  rfC <- .rpemFit(ui, d, ctl(TRUE))
-  # the C++ loop matches the R loop and recovers the mean; no residual sd
+  rfC <- .rpemFit(ui, d, rpemControl(nGauss = 400L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
+                                     collect = 12L, seed = 1L, cores = 4L))
+  # the C++ loop recovers the mean; no residual sd for a general log-likelihood endpoint
   expect_equal(exp(unname(rfC$mu["tlam"])), 40, tolerance = 0.2)
-  expect_equal(unname(rfC$mu["tlam"]), unname(rfR$mu["tlam"]), tolerance = 0.02)
   expect_true(is.na(rfC$addSd))
 
   # dynamic-iteration stable: a longer C++ run shares the shorter run's per-iteration prefix
