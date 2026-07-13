@@ -176,6 +176,7 @@
 <li><p>Fix <code>fit$mixList</code> returning only the first mixture component</p></li>
 <li><p><code>parHistData</code> Back-Transformed rows now show mixture probability parameters on the natural probability scale</p></li>
 <li><p>Hardened mixture-model (<code>mix()</code>) estimation: clearer errors for <code>est="nlme"</code> and invalid initial probabilities, warnings for underflowing/collapsing mixture probabilities, and a fix for the SAEM omega-diagonal floor being raised outside mixture fits</p></li>
+<li><p>Fixed <code>est = "rpem"</code> failing with <code>muIdx / mu0 / omDiag0 must have nEta entries</code> for models with a centered (non-mu-referenced) random effect, e.g. a bounded typical value like <code>tcl &lt;- log(c(0, 2.7, 100))</code> with an eta (the bounded transform demotes the eta to centered)</p></li>
 <li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session for pooled estimators</p></li>
 <li><p>Fix heap-buffer overflow and wrong back-transform in SAEM lambda (Box-Cox) residual-error models</p></li>
 <li><p>Fix heap-buffer overflow and wrong back-transform in SAEM lambda (Box-Cox) residual-error models</p></li>

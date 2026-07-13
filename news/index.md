@@ -951,6 +951,12 @@
   underflowing/collapsing mixture probabilities, and a fix for the SAEM
   omega-diagonal floor being raised outside mixture fits
 
+- Fixed `est = "rpem"` failing with
+  `muIdx / mu0 / omDiag0 must have nEta entries` for models with a
+  centered (non-mu-referenced) random effect, e.g. a bounded typical
+  value like `tcl <- log(c(0, 2.7, 100))` with an eta (the bounded
+  transform demotes the eta to centered)
+
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session for pooled estimators
 
