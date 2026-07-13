@@ -129,6 +129,86 @@
   .res
 }
 
+#' Assemble the standard nlmixr2FitData from an ADVI result: seed the ui iniDf
+#' with the ADVI estimates (population thetas + between-subject omega diagonal),
+#' supply the variational posterior means as the FOCEi inner EBE start (etaMat),
+#' and run the eval-only FOCEi finalize (maxOuterIterations=0) which reuses
+#' inner.cpp for the objective, EBEs, residual tables, and the covariance step.
+#' No outer optimizer is run; the ADVI estimates are final.  Mirrors .vaeToFit /
+#' .rpemBuildFit.
+#' @noRd
+.adviToFit <- function(env, res) {
+  .ui <- env$ui
+  .control <- env$adviControl
+  .prep <- res$prep
+  .rxControl <- .control$rxControl
+
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
+  .foceiPreProcessData(env$data, .ret, .ui, .rxControl)
+
+  ## seed the ui iniDf with the ADVI estimates so the eval reports them
+  .uiD <- rxode2::rxUiDecompress(.ui)
+  .idf <- .uiD$iniDf
+  .thRow <- !is.na(.idf$ntheta)
+  .idf$est[.thRow] <- res$theta[.idf$ntheta[.thRow]]
+  .popOm <- stats::setNames(res$popOmega, .prep$etaNames)
+  .etaRow <- !is.na(.idf$neta1) & .idf$neta1 == .idf$neta2
+  .idf$est[.etaRow] <- .popOm[.idf$name[.etaRow]]
+  assign("iniDf", .idf, envir = .uiD)
+  .ui2 <- rxode2::rxUiCompress(.uiD)
+
+  ## variational posterior means as the FOCEi inner EBE start [nsub, neta]
+  .eb <- res$mu
+  colnames(.eb) <- .prep$etaNames
+  .ret$.etaMat <- .eb
+  .ret$.etaMatBase <- .eb
+  .ret$etaObf <- data.frame(ID = seq_len(nrow(.eb)),
+                            stats::setNames(as.data.frame(.eb), .prep$etaNames),
+                            OBJI = NA)
+  .om <- diag(res$popOmega, .prep$neta)
+  dimnames(.om) <- list(.prep$etaNames, .prep$etaNames)
+  .ret$omega <- .om
+  .ret$ui <- .ui2
+  .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
+
+  ## point-estimate SEs come from the FOCEi covariance step; covMethod="advi"
+  ## (the full-Bayes variational covariance) falls back to "r,s" here.
+  .covM <- if (identical(.control$covMethod, "advi")) "r,s" else .control$covMethod
+  .lik <- .control$likelihood
+  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
+  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
+  .fc <- foceiControl(rxControl = .rxControl, maxOuterIterations = 0L,
+                      maxInnerIterations = 0L, covMethod = .covM, etaMat = .eb,
+                      scaleTo = 0, interaction = .interaction, foce = .foce,
+                      sumProd = .control$sumProd, optExpression = .control$optExpression,
+                      literalFix = .control$literalFix, literalFixRes = .control$literalFixRes,
+                      addProp = .control$addProp, calcTables = .control$calcTables,
+                      compress = .control$compress, ci = .control$ci,
+                      sigdigTable = .control$sigdigTable, stickyRecalcN = .control$stickyRecalcN,
+                      maxOdeRecalc = .control$maxOdeRecalc, odeRecalcFactor = .control$odeRecalcFactor,
+                      indTolRelax = .control$indTolRelax, eventSens = .control$eventSens,
+                      fast = FALSE, print = 0L)
+  .ret$control <- .fc
+  .ret$method <- "advi"
+  .ret$extra <- ""
+  .ret$est <- "advi"
+  .ret$ofvType <- "advi"
+  .ret$adjObf <- .control$adjObf
+  nmObjHandleControlObject(.control, .ret)   # store adviControl for nmObjGetControl.advi
+  .ret$foceiModel <- .ui2$focei
+  .fit <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData, control = .fc,
+                                    table = .ret$table, env = .ret, est = "advi")
+  ## ADVI artifacts + warm-resume state on the fit env
+  .e <- .fit$env
+  .e$adviElbo <- res$elbo
+  .e$adviState <- list(mu = res$mu, omega = res$omega, theta = res$theta,
+                       logPopOmega = res$logPopOmega, it0 = res$it0,
+                       sMu = res$sMu, sOmega = res$sOmega, sTheta = res$sTheta,
+                       sLpo = res$sLpo, seed = .control$seed)
+  .fit
+}
+
 #' Fit an ADVI model: set up the inner/outer problems and run the C++ loop.
 #' @param env estimation environment (holds ui, data, adviControl)
 #' @noRd
@@ -136,6 +216,6 @@
   .ui <- env$ui
   .control <- env$adviControl
   .res <- .adviOptimize(.ui, env$data, .control)
-  ## finalize into an nlmixr2 fit is a later step; for now return the raw object
-  .res
+  if (isTRUE(.control$returnAdvi)) return(.res)
+  .adviToFit(env, .res)
 }
