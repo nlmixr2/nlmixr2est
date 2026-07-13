@@ -55,13 +55,12 @@ estimation method (Chen et al. 2024).  This is the K=1 minimal core; see
 <span>  rtol <span class="op">=</span> <span class="fl">1e-08</span>,</span>
 <span>  cores <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  impInflate <span class="op">=</span> <span class="fl">0</span>,</span>
-<span>  cLoop <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  likLbfgs <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  lbfgsLmm <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  lbfgsFactr <span class="op">=</span> <span class="fl">1e+07</span>,</span>
 <span>  lbfgsPgtol <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  lbfgsMaxIter <span class="op">=</span> <span class="fl">20L</span>,</span>
-<span>  print <span class="op">=</span> <span class="fl">0L</span>,</span>
+<span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
@@ -117,22 +116,6 @@ effects in multi-eta models (whose largest Omega prior sampling under-estimates)
 Experimental: a partial mitigation, not a full fix (see design/rpem/04).</p></dd>
 
 
-<dt id="arg-cloop">cLoop<a class="anchor" aria-label="anchor" href="#arg-cloop"></a></dt>
-<dd><p>Run the whole E-M loop in C++ (`TRUE`), avoiding the per-iteration R
-round-trip – so a phase of estimation can be extended (more iterations) without R
-overhead.  The eta draw uses rxode2's per-thread threefry engine with a deterministic,
-niter-independent per-(iteration, subject) seed, so it is thread-safe, reproducible for
-any core count, and a longer run reproduces the exact per-iteration prefix of a shorter
-run at the same seed.  Covers the additive/proportional/combined/power/TBS residuals,
-single-random-effect covariate regression, structural fixed effects, general
-log-likelihood (`ll()`) endpoints (including the box-constrained `likLbfgs` refinement
-of bounded likelihood parameters), additive/proportional BLQ censoring (M2/M3/M4),
-mode-centered importance sampling (`impInflate`), multiple endpoints, and mixtures.
-`FALSE` (default) uses the R-driven loop, which additionally covers multi-endpoint
-models with covariates and models with a fix()ed typical value / residual / omega –
-cases the C++ loop does not yet handle (it silently falls back to the R loop for those).</p></dd>
-
-
 <dt id="arg-liklbfgs">likLbfgs<a class="anchor" aria-label="anchor" href="#arg-liklbfgs"></a></dt>
 <dd><p>For a general log-likelihood (`ll()`) endpoint, refine the
 fixed-effect likelihood parameters each iteration by a box-constrained L-BFGS-B
@@ -150,10 +133,11 @@ and max iterations).</p></dd>
 
 <dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
 <dd><p>Iteration-print frequency: display the parameter walk (population estimates
-+ omega, with the back-transformed row) every `print` iterations (saem/focei/vae style).
-`0` (default) captures the parameter history silently.  The walk is *always* saved to the
-fit object's parameter history (`fit$parHist` / `fit$parHistStacked`) regardless.  May
-also be an `iterPrintControl()` object.</p></dd>
++ omega, with the back-transformed row) every `print` iterations (saem/focei/vae style),
+streamed live as the loop runs.  `1` (default) prints every iteration; `0` captures the
+parameter history silently.  The walk is *always* saved to the fit object's parameter
+history (`fit$parHist` / `fit$parHistStacked`) regardless.  May also be an
+`iterPrintControl()` object.</p></dd>
 
 
 <dt id="arg-printncol-usecolor">printNcol, useColor<a class="anchor" aria-label="anchor" href="#arg-printncol-usecolor"></a></dt>

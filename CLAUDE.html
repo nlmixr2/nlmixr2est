@@ -101,6 +101,17 @@
 <li>
 <strong>Do not pass a non-parallel reporter</strong> to <code>test_check()</code> – testthat silently falls back to serial when <code>reporter$capabilities$parallel_support</code> is FALSE (e.g. <code>LocationReporter</code>), which defeats the parallel config.</li>
 </ul></div>
+<div class="section level3">
+<h3 id="test-batching-quick-core-vs-weekly">Test batching (quick-core vs weekly)<a class="anchor" aria-label="anchor" href="#test-batching-quick-core-vs-weekly"></a></h3>
+<p>Slow, multi-iteration/fit-based test files run WEEKLY, not on every push/PR. Push/PR CI runs the “essential” subset: every test file EXCEPT those listed in <code>.slowBatches</code> in <code>tests/testthat.R</code>. The weekly <code>slow-tests.yaml</code> workflow runs the batches one at a time via <code>NLMIXR2EST_TEST_BATCH=&lt;n&gt;</code> (its matrix must match the number of <code>.slowBatches</code> entries).</p>
+<p>When adding tests for an estimation method, split them by cost:</p>
+<ul><li>
+<strong>Quickest core-functionality tests always run</strong>: leave them OUT of <code>.slowBatches</code> (they run in the essential push/PR subset). Keep this set small – unit tests plus one basic end-to-end fit. Example (rpem): <code>rpem-cpp-estep</code>, <code>rpem-cpp-mstep</code>, <code>rpem-llik-model</code>, <code>rpem-est</code>, <code>rpem-fit</code>.</li>
+<li>
+<strong>Everything else goes into a weekly batch</strong>: add the file’s basename (no <code>test-</code> prefix, no <code>.R</code>) to a <code>.slowBatches</code> batch, sized from measured single-worker times so each batch stays well under an hour.</li>
+<li>
+<strong>Do NOT use <code>skip_on_ci()</code> in batched files.</strong> The weekly runner also sets <code>CI=true</code>, so <code>skip_on_ci()</code> would skip the test there too, defeating the batch. Batched files rely on the <code>.slowBatches</code> filter (not <code>skip_on_ci</code>) to stay out of the essential run; keep <code>skip_on_cran()</code> where CRAN must not run it. Likewise, an always-run core file must not call <code>skip_on_ci()</code> or it will not actually run on push/PR.</li>
+</ul></div>
 </div>
 <div class="section level2">
 <h2 id="key-conventions">Key conventions<a class="anchor" aria-label="anchor" href="#key-conventions"></a></h2>

@@ -18,13 +18,12 @@ rpemControl(
   rtol = 1e-08,
   cores = 1L,
   impInflate = 0,
-  cLoop = FALSE,
   likLbfgs = TRUE,
   lbfgsLmm = 5L,
   lbfgsFactr = 1e+07,
   lbfgsPgtol = 0,
   lbfgsMaxIter = 20L,
-  print = 0L,
+  print = 1L,
   printNcol = NULL,
   useColor = NULL,
   ...
@@ -79,27 +78,6 @@ rpemControl(
   Experimental: a partial mitigation, not a full fix (see
   design/rpem/04).
 
-- cLoop:
-
-  Run the whole E-M loop in C++ (\`TRUE\`), avoiding the per-iteration R
-  round-trip – so a phase of estimation can be extended (more
-  iterations) without R overhead. The eta draw uses rxode2's per-thread
-  threefry engine with a deterministic, niter-independent
-  per-(iteration, subject) seed, so it is thread-safe, reproducible for
-  any core count, and a longer run reproduces the exact per-iteration
-  prefix of a shorter run at the same seed. Covers the
-  additive/proportional/combined/power/TBS residuals,
-  single-random-effect covariate regression, structural fixed effects,
-  general log-likelihood (\`ll()\`) endpoints (including the
-  box-constrained \`likLbfgs\` refinement of bounded likelihood
-  parameters), additive/proportional BLQ censoring (M2/M3/M4),
-  mode-centered importance sampling (\`impInflate\`), multiple
-  endpoints, and mixtures. \`FALSE\` (default) uses the R-driven loop,
-  which additionally covers multi-endpoint models with covariates and
-  models with a fix()ed typical value / residual / omega – cases the C++
-  loop does not yet handle (it silently falls back to the R loop for
-  those).
-
 - likLbfgs:
 
   For a general log-likelihood (\`ll()\`) endpoint, refine the
@@ -120,11 +98,11 @@ rpemControl(
 
   Iteration-print frequency: display the parameter walk (population
   estimates + omega, with the back-transformed row) every \`print\`
-  iterations (saem/focei/vae style). \`0\` (default) captures the
-  parameter history silently. The walk is \*always\* saved to the fit
-  object's parameter history (\`fit\$parHist\` /
-  \`fit\$parHistStacked\`) regardless. May also be an
-  \`iterPrintControl()\` object.
+  iterations (saem/focei/vae style), streamed live as the loop runs.
+  \`1\` (default) prints every iteration; \`0\` captures the parameter
+  history silently. The walk is \*always\* saved to the fit object's
+  parameter history (\`fit\$parHist\` / \`fit\$parHistStacked\`)
+  regardless. May also be an \`iterPrintControl()\` object.
 
 - printNcol, useColor:
 
