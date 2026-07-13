@@ -465,8 +465,11 @@
   materializes the implied `d/dt()` for these models instead of erroring
 - Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
   warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
-  in the inner problem (including `ll()`/`dnorm()` models with
-  finite-difference Hessians), `"save"` keeps the prior behavior
+  at the starting eta and the current theta (including `ll()`/`dnorm()` models
+  with finite-difference Hessians); the Hessian is always recalculated rather
+  than reused from an earlier outer evaluation, since theta moves between
+  evaluations and a saved Hessian would be stale.  `"save"` keeps the prior
+  behavior
 - Computing NPDE for a fit with a degenerate simulated covariance (e.g. a
   residual SD estimated near zero) no longer aborts the R session; the affected
   subject's NPDE is set to `NA` instead
