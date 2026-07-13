@@ -533,22 +533,16 @@
   .naN <- function(x) if (length(x) == 0L || is.na(x)) 0.0 else as.numeric(x)
   # multi-endpoint (errType 5) runs in the C++ loop when there are no covariates (the loop
   # uses the scalar mu update + a per-endpoint residual M-step).
-  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 7L) ||
+  .cLoopErr <- .cl$errType %in% c(0L, 1L, 2L, 3L, 4L, 6L, 7L) ||
     (.cl$errType == 5L && length(.cl$covCoefNames) == 0L)
   # BLQ censoring runs in the C++ loop for additive/proportional error (the loop
   # auto-detects it and maximizes the censored log-likelihood); other censored error
   # structures keep the R loop.
   .cLoopCens <- !.hasCens || .cl$errType %in% c(0L, 1L)
-  # fix()ed typical values / residual params / eta omegas are held only by the R loop's
-  # M-step; fall back to it when any are present (fixed structural no-eta thetas are handled
-  # by exclusion from structIdx and stay in the cLoop).  NOTE: rpemEMLoopK1 also has post-M-step
-  # clamps (centered eta / etaFix / omGroup / muFix / residual holds) staged for the in-progress
-  # move to a C++-only path; they stay dormant until this guard is relaxed and each case is
-  # validated against FOCEI/truth (the cLoop and R paths diverge on sensitive under-covered omegas).
-  .hasFixHold <- any(.cl$muFixFull) || .cl$addSdFix || .cl$propSdFix ||
-    .cl$lambdaFix || .cl$powFix || any(.cl$etaFix)
-  .cLoop <- isTRUE(control$cLoop) && .cLoopErr && all(.cl$muRef) &&
-    .cLoopCens && !.hasFixHold &&
+  # Centered etas, held omega (etaFix), IOV omega pooling (omGroup), and fixed typical /
+  # residual params are applied by rpemEMLoopK1's post-M-step clamps, so they run in C++.
+  .cLoop <- isTRUE(control$cLoop) && .cLoopErr &&
+    .cLoopCens &&
     (length(.cl$covCoefNames) == 0L || .cl$nEta == 1L)
   # Live iteration printing (design like saem/vae): set up the shared scale.h printer BEFORE
   # the loop so both the C++ cLoop (which streams rows from inside rpemEMLoopK1) and the R

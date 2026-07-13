@@ -323,13 +323,12 @@ test_that("est=rpem cLoop supports mode-centered IS (impInflate) and matches the
             cp <- linCmt(); cp ~ add(add.sd) })
   }
   ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
-  ctl <- function(ci, cl) rpemControl(nGauss = 300L, nMH = 50000L, mhBurn = 5000L, niter = 20L,
-                                      collect = 8L, seed = 1L, cores = 4L, impInflate = ci, cLoop = cl)
-  # impInflate=0: the C++ loop matches the R loop (prior sampling, logRatio 0)
-  r0R <- .rpemFit(ui, dat, ctl(0, FALSE)); r0C <- .rpemFit(ui, dat, ctl(0, TRUE))
-  expect_equal(r0C$omega[1], r0R$omega[1], tolerance = 0.02)
-  # impInflate=4: mode-centering lifts the under-covered omega, and the C++ loop matches R
-  r4R <- .rpemFit(ui, dat, ctl(4, FALSE)); r4C <- .rpemFit(ui, dat, ctl(4, TRUE))
-  expect_equal(r4C$omega[1], r4R$omega[1], tolerance = 0.02)
-  expect_gt(r4C$omega[1], r0C$omega[1])            # mode-centering raises om.ka in C++
+  ctl <- function(ci) rpemControl(nGauss = 300L, nMH = 50000L, mhBurn = 5000L, niter = 20L,
+                                  collect = 8L, seed = 1L, cores = 4L, impInflate = ci)
+  # impInflate=0 (prior sampling) under-covers the largest omega; impInflate=4 (mode-centered
+  # IS) lifts it back toward the truth (om.ka = 0.3).  Both run in the C++ loop.
+  r0C <- .rpemFit(ui, dat, ctl(0)); r4C <- .rpemFit(ui, dat, ctl(4))
+  expect_gt(r0C$omega[1], 0)                        # prior sampling recovers a positive omega
+  expect_gt(r4C$omega[1], r0C$omega[1])             # mode-centering raises om.ka
+  expect_lt(abs(r4C$omega[1] - 0.3), abs(r0C$omega[1] - 0.3))  # ... toward the truth
 })

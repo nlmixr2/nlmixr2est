@@ -58,7 +58,7 @@
 rpemControl <- function(nGauss = 1000L, nMH = 50000L, mhBurn = 5000L,
                         niter = 50L, collect = 15L, seed = 42L,
                         atol = 1e-8, rtol = 1e-8, cores = 1L,
-                        impInflate = 0, cLoop = FALSE,
+                        impInflate = 0, cLoop = TRUE,
                         likLbfgs = TRUE, lbfgsLmm = 5L, lbfgsFactr = 1e7,
                         lbfgsPgtol = 0, lbfgsMaxIter = 20L,
                         print = 1L, printNcol = NULL, useColor = NULL, ...) {

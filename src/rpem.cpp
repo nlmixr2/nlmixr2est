@@ -790,6 +790,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
   // and re-optimizes (same optimizers as the non-mixture combined/power/TBS M-steps).
   bool doComb = (errType == 2), doPow = (errType == 4), doTbs = (errType == 3);
   bool doLik = (errType == 7);   // general log-likelihood endpoint: no residual parameter
+  bool doLnorm = (errType == 6); // lognormal: residual SD estimated on the log scale
   int propSdIdx = resIdx[0], powIdx = resIdx[1], lambdaIdx = resIdx[2];
   double propSd = resPar0[0], power = resPar0[1], lambda = resPar0[2];
   int nStruct = structIdx.size();          // non-mu-ref structural fixed effects (beta)
@@ -1084,7 +1085,7 @@ List rpemEMLoopK1(Environment e, List cfg) {
           }
         }
         sumSS += (errType == 1) ? rpemOp.wssv[(size_t)ci * nGauss + cj] : rpemOp.ssv[(size_t)ci * nGauss + cj];
-        if (doComb || doPow || doTbs || doCens || doMulti) counts3[(size_t)ci * nGauss + cj]++;
+        if (doComb || doPow || doTbs || doCens || doMulti || doLnorm) counts3[(size_t)ci * nGauss + cj]++;
         sumNobs += rpemOp.nobs[ci]; ++m;
       }
     }
@@ -1245,6 +1246,24 @@ List rpemEMLoopK1(Environment e, List cfg) {
         else if (endErrBuf[b] == 3) { double add, lam; rpemGuardedTBS(counts3, ep, b, add, lam); sdVec[b] = add; propVec[b] = lam; }
         else { sdVec[b] = (nE[b] > 0) ? sqrt(ssE[b] / (double)nE[b]) : sdVec[b]; }
       }
+      std::fill(counts3.begin(), counts3.end(), 0);
+    } else if (doLnorm) {
+      // lognormal: residual SD on the LOG scale = sqrt(mean (log dv - log cp)^2) over the
+      // accepted (subject, sample) states (the pooled natural-scale SS is wrong here).
+      double ss = 0.0; long n = 0;
+      for (int i = 0; i < nsub; ++i) {
+        int nobsi = rpemOp.nobs[i];
+        for (int j = 0; j < nGauss; ++j) {
+          long c = counts3[(size_t)i * nGauss + j]; if (!c) continue;
+          long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+          for (int o = 0; o < nobsi; ++o) {
+            double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+            double lr = (cp > 0.0 && dv > 0.0) ? (log(dv) - log(cp)) : 0.0;
+            ss += (double)c * lr * lr; n += c;
+          }
+        }
+      }
+      if (n > 0) addSd = sqrt(ss / (double)n);
       std::fill(counts3.begin(), counts3.end(), 0);
     } else if (!doLik) {                 // LL: no residual sd to update
       addSd = sqrt(sumSS / (double)sumNobs);
