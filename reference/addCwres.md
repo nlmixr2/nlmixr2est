@@ -113,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6969228 3.3289e-05 0.01301407      0.071     1.106 1.845       1.024
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.6582066 2.7882e-05 0.01301366      0.071     1.009 1.68       0.982
 #>         table compress     other
-#> elapsed 0.381    0.142 0.4140298
+#> elapsed 0.302    0.133 0.3957519
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -124,7 +124,7 @@ print(f)
 #> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
 #> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
 #> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.95e-310 9.94e-308    0.699 (0.699, 0.699)         
+#> add.sd           0.699 6.93e-310 9.91e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 
@@ -187,10 +187,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6969228 3.3289e-05 0.01301407      0.071     1.106 1.845       1.024
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.6582066 2.7882e-05 0.01301366      0.071     1.009 1.68       0.982
 #>         table compress     other
-#> elapsed 0.381    0.142 0.4140298
+#> elapsed 0.302    0.133 0.3957519
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -198,7 +198,7 @@ if (!inherits(f, "try-error")) {
 #> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
 #> tcl               1.04    0.0242      2.33        2.83 (2.7, 2.97)     28.0
 #> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 6.95e-310 9.94e-308    0.699 (0.699, 0.699)         
+#> add.sd           0.699 6.93e-310 9.91e-308    0.699 (0.699, 0.699)         
 #>        Shrink(SD)%
 #> tka       -0.830% 
 #> tcl         3.23% 
