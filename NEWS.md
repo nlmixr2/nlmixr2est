@@ -16,7 +16,7 @@
   `imp`/`impmap` M-step: `impmapControl(sir = TRUE, sirSample = )` runs the
   non-mu / residual-error Newton update on an equal-weight systematic resample
   of the importance samples, cutting the theta-sensitivity solves from
-  `isample` to `sirSample` (default `max(25, isample/10)`) per subject per
+  `isample` to `sirSample` (default `max(25, ceiling(isample/10))`) per subject per
   iteration.
 
 - Added `est = "qrpem"` with `qrpemControl()`, sugar for the impmap
