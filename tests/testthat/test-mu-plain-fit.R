@@ -32,12 +32,12 @@ nmTest({
     cacheFile = "fit-mu-plain-focei.rds"
   )
 
-  test_that("irlsfocei profiles plain mu thetas out of the outer optimizer", {
+  test_that("ifocei profiles plain mu thetas out of the outer optimizer", {
     fit <- .getCachedFit(
-      name = "mu-plain-irlsfocei",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "irlsfocei",
-                                 irlsfoceiControl(print = 0)),
-      cacheFile = "fit-mu-plain-irlsfocei.rds"
+      name = "mu-plain-ifocei",
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei",
+                                 ifoceiControl(print = 0)),
+      cacheFile = "fit-mu-plain-ifocei.rds"
     )
     # same optimum as plain focei (different path)
     expect_equal(unname(fit$theta), unname(fitFocei$theta), tolerance = 0.05)
@@ -54,23 +54,23 @@ nmTest({
       c("tka", "tcl", "tv"))
   })
 
-  test_that("mufocei profiles plain mu thetas out of the outer optimizer", {
+  test_that("mfocei profiles plain mu thetas out of the outer optimizer", {
     fit <- .getCachedFit(
-      name = "mu-plain-mufocei",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "mufocei",
-                                 mufoceiControl(print = 0)),
-      cacheFile = "fit-mu-plain-mufocei.rds"
+      name = "mu-plain-mfocei",
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "mfocei",
+                                 mfoceiControl(print = 0)),
+      cacheFile = "fit-mu-plain-mfocei.rds"
     )
     expect_equal(unname(fit$theta), unname(fitFocei$theta), tolerance = 0.05)
     expect_equal(fit$objf, fitFocei$objf, tolerance = 0.5)
   })
 
-  test_that("irlsfoceif consumes the analytic gradient on the plain-profiled set", {
+  test_that("ifoceif consumes the analytic gradient on the plain-profiled set", {
     fit <- .getCachedFit(
-      name = "mu-plain-irlsfoceif",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "irlsfoceif",
-                                 irlsfoceiControl(print = 1)),
-      cacheFile = "fit-mu-plain-irlsfoceif.rds"
+      name = "mu-plain-ifoceif",
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifoceif",
+                                 ifoceiControl(print = 1)),
+      cacheFile = "fit-mu-plain-ifoceif.rds"
     )
     expect_equal(unname(fit$theta), unname(fitFocei$theta), tolerance = 0.05)
     expect_equal(fit$objf, fitFocei$objf, tolerance = 0.5)
@@ -79,8 +79,8 @@ nmTest({
 
   test_that("iteration print shows plain mu thetas only in the mu rows", {
     out <- capture.output({
-      nlmixr2est::nlmixr(.ocmt, theo_sd, "irlsfocei",
-                         irlsfoceiControl(print = 1, maxOuterIterations = 2,
+      nlmixr2est::nlmixr(.ocmt, theo_sd, "ifocei",
+                         ifoceiControl(print = 1, maxOuterIterations = 2,
                                           covMethod = "", calcTables = FALSE))
     })
     muValueRows <- grep("^\\|   mu\\|.*tcl:\\s*[-0-9]", out, value = TRUE)
@@ -137,15 +137,15 @@ nmTest({
   test_that("a bounded mu theta is profiled (clamped regression), inactive bound matches unbounded", {
     fit <- .getCachedFit(
       name = "mu-plain-irls-bounded",
-      fitFn = function() .nlmixr(.ocmtBnd, theo_sd, "irlsfocei",
-                                 irlsfoceiControl(print = 0, covMethod = "",
+      fitFn = function() .nlmixr(.ocmtBnd, theo_sd, "ifocei",
+                                 ifoceiControl(print = 0, covMethod = "",
                                                   calcTables = FALSE)),
       cacheFile = "fit-mu-plain-irls-bounded.rds"
     )
     fitFree <- .getCachedFit(
       name = "mu-plain-irls-free",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "irlsfocei",
-                                 irlsfoceiControl(print = 0, covMethod = "",
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei",
+                                 ifoceiControl(print = 0, covMethod = "",
                                                   calcTables = FALSE)),
       cacheFile = "fit-mu-plain-irls-free.rds"
     )
@@ -161,8 +161,8 @@ nmTest({
   test_that("an active bound clamps the regression update and is reported once", {
     fit <- .getCachedFit(
       name = "mu-plain-irls-clamped",
-      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "irlsfocei",
-                                 irlsfoceiControl(print = 0, covMethod = "",
+      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "ifocei",
+                                 ifoceiControl(print = 0, covMethod = "",
                                                   calcTables = FALSE)),
       cacheFile = "fit-mu-plain-irls-clamped.rds"
     )
@@ -186,8 +186,8 @@ nmTest({
     # a single-pass clamp cap still yields a feasible (in-bounds) fit
     fit1 <- .getCachedFit(
       name = "mu-plain-irls-clamp1",
-      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "irlsfocei",
-                                 irlsfoceiControl(print = 0, covMethod = "",
+      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "ifocei",
+                                 ifoceiControl(print = 0, covMethod = "",
                                                   calcTables = FALSE,
                                                   muModelClampRetries = 1L)),
       cacheFile = "fit-mu-plain-irls-clamp1.rds"

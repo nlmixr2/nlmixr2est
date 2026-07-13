@@ -122,8 +122,8 @@
 #' update is clamped to the bounds (box-constrained least squares,
 #' `updateMuGroups()`), and each group carries `thetaLower`/`thetaUpper` plus
 #' per-covariate `lower`/`upper` columns for the clamp. Only affects this
-#' family (`mufocei`/`irlsfocei`/`mufoce`/`irlsfoce`/`muagq`/`irlsagq`/
-#' `mulaplace`/`irlslaplace`).
+#' family (`mfocei`/`ifocei`/`mfoce`/`ifoce`/`magq`/`iagq`/
+#' `mlaplace`/`ilaplace`).
 #'
 #' With `plain=TRUE`, plain (covariate-free) mu-ref pairs
 #' (`muPlainThetas`, see `.muRefClassify`) are appended as intercept-only

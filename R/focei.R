@@ -1776,7 +1776,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 attr(rxUiGet.foceiMuRefVector, "rstudio") <- c(0L, -1L)
 
 # focei.mu.cov.eta
-# For the mu-referenced FOCEI family (mufocei/irlsfocei/...): a 0/1 flag per
+# For the mu-referenced FOCEI family (mfocei/ifocei/...): a 0/1 flag per
 # eta, same length/ordering as foceiMuRefVector, marking which etas are
 # mu-ref-covariate-eligible (see .muRefClassify()) and therefore must be
 # protected from FOCEI's internal eta-drift reset mechanisms in src/inner.cpp
@@ -1910,7 +1910,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the theta/eta index
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the theta/eta index
   # arrays are purely UI-derived (no dataset needed) and wired here exactly
   # like foceiMuRef/foceiMuCovEta below; the covariate *values* matrix
   # needs the dataset and is wired separately in .foceiFamilyReturn() once
@@ -2522,7 +2522,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   })
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the covariate
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the covariate
   # *values* matrix needs the dataset, which only exists after
   # .foceiPreProcessData() populates .env$dataSav -- the index arrays
   # (foceiMuGroupTheta/Eta/CovTheta/...) were already wired in
@@ -2573,7 +2573,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$aqLow <- -Inf
     .env$aqHi <- Inf
   }
-  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the regression
+  # Mu-referenced-FOCEI-family (mfocei/ifocei/...): the regression
   # update now runs natively in C++ (updateMuGroups(), src/inner.cpp),
   # driven entirely by the muModel/foceiMuGroup* control values wired in
   # rxUiGet.foceiOptEnv above -- .foceiFitInternal() is called exactly the

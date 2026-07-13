@@ -281,15 +281,15 @@
 #'
 #' @param muModel Selects the mu-referenced-FOCEI-family regression variant
 #'     for mu-referenced thetas/etas: \code{"none"} (default, ordinary
-#'     FOCEI); \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
-#'     \code{mulaplace}: mu-referenced population thetas -- and their
+#'     FOCEI); \code{"lin"} (\code{mfocei}/\code{mfoce}/\code{magq}/
+#'     \code{mlaplace}: mu-referenced population thetas -- and their
 #'     covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
 #'     excluded from the outer optimizer and re-derived in C++ by
 #'     closed-form OLS regression of each subject's back-calculated value
 #'     on the covariate(s) (intercept-only for a covariate-free pair),
 #'     residual becomes that subject's eta; repeats until convergence, see
 #'     \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
-#'     (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+#'     (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}:
 #'     same mechanism, reweighted by inner-optimization curvature).
 #'     Only the outer gradients for non-mu-referenced parameters (including
 #'     residual-error thetas and all omegas) are then calculated.

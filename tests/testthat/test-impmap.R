@@ -49,7 +49,7 @@ nmTest({
   test_that("impmap dispatch is registered and discoverable", {
     expect_true("impmap" %in% nlmixr2AllEst())
     expect_true(is.function(getS3method("nlmixr2Est", "impmap")))
-    # mu-hook activation gate is a control-dependent predicate (mufocei-style)
+    # mu-hook activation gate is a control-dependent predicate (mfocei-style)
     expect_true(is.function(attr(nlmixr2Est.impmap, "mu")))
   })
 

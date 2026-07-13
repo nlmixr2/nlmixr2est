@@ -17,8 +17,8 @@ nmTest({
   }
 
   test_that("all nine *f methods are registered and default to fast=TRUE", {
-    .fm <- c("focef", "focepf", "foceif", "mufocef", "mufocepf", "mufoceif",
-             "irlsfocef", "irlsfocepf", "irlsfoceif")
+    .fm <- c("focef", "focepf", "foceif", "mfocef", "mfocepf", "mfoceif",
+             "ifocef", "ifocepf", "ifoceif")
     expect_true(all(.fm %in% nlmixr2AllEst()))
     # each *f control forces fast=TRUE, even from an empty control
     for (m in .fm) {
@@ -46,7 +46,7 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) })
     }
-    for (est in c("mufocei", "irlsfocei", "mufoce")) {
+    for (est in c("mfocei", "ifocei", "mfoce")) {
       f0 <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = FALSE))))
       fF <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = TRUE))))
       expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)

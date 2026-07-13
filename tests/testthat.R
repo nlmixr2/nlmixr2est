@@ -51,7 +51,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429",
     "focei-wang2007-bounded"),
   # batch 4
-  c("impmap", "matexp", "mufocei", "focei-wang2007-yeojohnson",
+  c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
   # batch 5
   c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "posthoc", "ar-est",

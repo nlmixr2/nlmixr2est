@@ -311,7 +311,7 @@ struct focei_options {
   // Per-eta opt-out (indexed like muRef) from eta-drift zero-reset and mu-ref
   // theta soft-shift; NULL (default) protects no etas.
   int *muRefEtaCovSkipReset = NULL;
-  // mufocei/irlsfocei group structure: one group per mu-ref-covariate
+  // mfocei/ifocei group structure: one group per mu-ref-covariate
   // population theta with an eta. Arrays NULL/0 when muModel="none".
   // muModel: 0=none, 1=lin (OLS), 2=irls (reweighted).
   int muModel = 0;
@@ -487,7 +487,7 @@ static inline int getRxId(int id) {
 }
 
 // Is eta j excluded from the eta-drift zero-reset / mu-ref theta soft-shift
-// because it's driven by the mufocei/irlsfocei restart-loop's linear-model
+// because it's driven by the mfocei/ifocei restart-loop's linear-model
 // step instead? False when NULL/unset (muModel="none").
 static inline bool isMuRefCovProtected(unsigned int j) {
   return op_focei.muRefEtaCovSkipReset != NULL && j < op_focei.muRefN &&
@@ -2692,7 +2692,7 @@ static inline bool thetaReset0(bool forceReset = false) {
       ij = op_focei.muRef[ii];
       if (isFixedTheta(ij) || isMuRefCovProtected(ii)) {
         // mu-ref-covariate thetas are only ever updated by the
-        // mufocei/irlsfocei-family restart-loop's linear-model step, never
+        // mfocei/ifocei-family restart-loop's linear-model step, never
         // by this soft mu-shift.
         adjustEta[ii] = false;
       }  else {
@@ -2897,7 +2897,7 @@ static inline void innerOptId(int id) {
 
 
 
-// mufocei/irlsfocei regression update, called once per outer iteration after
+// mfocei/ifocei regression update, called once per outer iteration after
 // every subject's eta is finalized. Per group: build phi_i = fullTheta[popIdx]
 // + covariate_effect_i + eta_i, regress on the free covariates (OLS "lin" or
 // curvature-weighted "irls"), write new thetas into fullTheta and residuals

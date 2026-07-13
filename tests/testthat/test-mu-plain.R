@@ -221,7 +221,7 @@ nmTest({
   test_that("muModelClampRetries is validated", {
     expect_equal(foceiControl()$muModelClampRetries, 10L)
     expect_error(foceiControl(muModelClampRetries = 0L))
-    expect_equal(irlsfoceiControl(muModelClampRetries = 3L)$muModelClampRetries, 3L)
+    expect_equal(ifoceiControl(muModelClampRetries = 3L)$muModelClampRetries, 3L)
   })
 
   test_that("plain groups are dropped when nothing would be left for the outer optimizer", {

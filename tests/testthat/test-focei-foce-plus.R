@@ -44,11 +44,11 @@ nmTest({
     expect_equal(fn$objective, fp$objective, tolerance = 1e-4)
   })
 
-  test_that("focep/mufocep/irlsfocep equal foce with foce=\"foce+\"", {
+  test_that("focep/mfocep/ifocep equal foce with foce=\"foce+\"", {
     ref <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "foce",
              foceiControl(print = 0L, calcTables = FALSE, covMethod = "", foce = "foce+"))))
-    for (est in c("focep", "mufocep", "irlsfocep")) {
+    for (est in c("focep", "mfocep", "ifocep")) {
       fit <- suppressWarnings(suppressMessages(
         nlmixr(one.cmt, d, est,
                foceiControl(print = 0L, calcTables = FALSE, covMethod = ""))))
