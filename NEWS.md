@@ -5,8 +5,10 @@
   gradient is obtained from the FOCEi forward sensitivities (the inner
   per-subject eta gradient and the outer theta-sensitivity score) rather than
   automatic differentiation, and the whole stochastic-gradient-ascent loop runs
-  in C++.  It supports a mean-field variational family, a control-selectable
-  point-estimate (variational-EM, output comparable to FOCEi/SAEM) mode,
+  in C++.  It supports mean-field and block full-rank variational families
+  (`adviFamily`), both a point-estimate (variational-EM, output comparable to
+  FOCEi/SAEM) and a full-Bayes (`pointEstimate=FALSE`, with a full-rank
+  variational posterior over the population parameters) mode,
   mu-referenced and non-mu structural thetas plus residual error, multiple
   endpoints and BLQ censoring (via the reused inner likelihood), the paper's
   adaptive step-size with a step-size-scale search (`adaptEta`), and a warm-resume

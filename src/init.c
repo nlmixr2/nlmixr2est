@@ -40,6 +40,7 @@ extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoopFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_adviLoopFB_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_fsaemInnerMap_(SEXP);
 extern SEXP _nlmixr2est_fsaemImhKernel_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_fsaemStepCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -196,6 +197,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 19},
   {"_nlmixr2est_adviElboGradFR_", (DL_FUNC) &_nlmixr2est_adviElboGradFR_, 6},
   {"_nlmixr2est_adviLoopFR_", (DL_FUNC) &_nlmixr2est_adviLoopFR_, 19},
+  {"_nlmixr2est_adviLoopFB_", (DL_FUNC) &_nlmixr2est_adviLoopFB_, 22},
   {"_nlmixr2est_fsaemInnerMap_", (DL_FUNC) &_nlmixr2est_fsaemInnerMap_, 1},
   {"_nlmixr2est_fsaemImhKernel_", (DL_FUNC) &_nlmixr2est_fsaemImhKernel_, 11},
   {"_nlmixr2est_fsaemStepCpp_", (DL_FUNC) &_nlmixr2est_fsaemStepCpp_, 14},

@@ -10129,6 +10129,153 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                       _["sTheta"] = sTheta, _["sLpo"] = sLpo);
 }
 
+// ===========================================================================
+// FULL-BAYES ADVI: the population parameters phi = (free thetas, free population
+// log-variances) get their OWN full-rank variational Gaussian q(phi)=N(mPop,
+// Lpop Lpop^T) (flat priors), on top of the per-subject q(eta_i) (mean-field or
+// block full-rank).  Each iteration draws phi = mPop + Lpop eps_pop, maps it into
+// the theta / logPopOmega vectors, and evaluates the SAME per-subject ELBO core
+// -- whose gTheta / gPopLogOmega are exactly d(ELBO)/d(phi) at the drawn phi.
+// The population block is then a standard reparameterization update:
+//   grad_mPop = grad_phi,  grad_Lpop(i,j) = grad_phi_i eps_pop_j + [i==j]/Lpop_ii.
+// The mu-referenced flat direction is handled the same way as point-estimate: the
+// per-subject eta means are recentered into the corresponding phi (theta) means.
+// phiThetaIdx[j] / phiOmIdx[j] map phi component j to a 0-based theta / eta index
+// (the other is -1); phiMuRef[j] is the 0-based eta a mu-ref-theta phi recenters.
+// ===========================================================================
+
+//[[Rcpp::export]]
+List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
+                 NumericVector logPopOmega0, NumericVector mPop0, NumericVector LpopPack0,
+                 IntegerVector phiThetaIdx, IntegerVector phiOmIdx, IntegerVector phiMuRef,
+                 IntegerVector muRefThetaIdx, int fr,
+                 int iters, double seed, double etaScale, double tau, double alpha,
+                 int nMc, int it0,
+                 NumericMatrix sMu0, NumericMatrix sScale0,
+                 NumericVector smPop0, NumericVector sLpop0) {
+  const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
+  const int nScale = scale0.ncol();
+  const int npop = mPop0.size(), nLpop = LpopPack0.size();
+  NumericMatrix mu = clone(mu0), scale = clone(scale0);
+  NumericVector mPop = clone(mPop0), Lpop = clone(LpopPack0);
+  NumericVector theta = clone(theta0), logPopOmega = clone(logPopOmega0);
+  NumericMatrix sMu = clone(sMu0), sScale = clone(sScale0);
+  NumericVector smPop = clone(smPop0), sLpop = clone(sLpop0);
+  // buffers from the per-subject core
+  NumericMatrix gMu(N, neta), gScale(N, nScale);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  // accumulators
+  NumericMatrix gMuAcc(N, neta), gScaleAcc(N, nScale);
+  NumericVector gmPopAcc(npop), gLpopAcc(nLpop), epsPop(npop);
+  NumericMatrix eps(N, neta);
+  // The mu-referenced theta data score (sum_i Omega^-1 eta - lp) IS needed here:
+  // it provides the curvature that pins the population posterior VARIANCE of the
+  // mu-referenced thetas (the recentering below only fixes their posterior mean).
+  // So pass the real muRefThetaIdx to the core, not an all-NA vector.
+  NumericVector elboTrace(iters);
+  NumericMatrix parHist(iters, ntheta + neta);
+  const double eeps = 1e-16, invM = 1.0 / nMc;
+
+  for (int it = 0; it < iters; ++it) {
+    int gi = it0 + it;
+    std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
+    std::fill(gScaleAcc.begin(), gScaleAcc.end(), 0.0);
+    std::fill(gmPopAcc.begin(), gmPopAcc.end(), 0.0);
+    std::fill(gLpopAcc.begin(), gLpopAcc.end(), 0.0);
+    double elboAcc = 0.0;
+    for (int m = 0; m < nMc; ++m) {
+      setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
+      // population draw first, then the per-subject eta noise (one stream)
+      for (int j = 0; j < npop; ++j) epsPop[j] = rxNormEng(0.0, 1.0);
+      for (int i = 0; i < N; ++i)
+        for (int k = 0; k < neta; ++k) eps(i, k) = rxNormEng(0.0, 1.0);
+      // phi = mPop + Lpop eps_pop  -> map into theta / logPopOmega
+      NumericVector phi(npop);
+      for (int i = 0; i < npop; ++i) {
+        double v = mPop[i];
+        for (int j = 0; j <= i; ++j) v += Lpop[i * (i + 1) / 2 + j] * epsPop[j];
+        phi[i] = v;
+      }
+      for (int j = 0; j < npop; ++j) {
+        if (phiThetaIdx[j] >= 0) theta[phiThetaIdx[j]] = phi[j];
+        else if (phiOmIdx[j] >= 0) logPopOmega[phiOmIdx[j]] = phi[j];
+      }
+      double e = fr
+        ? adviElboGradCoreFR(mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega)
+        : adviElboGradCore  (mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega);
+      // population entropy: sum log|Lpop_kk|
+      for (int k = 0; k < npop; ++k) e += std::log(std::fabs(Lpop[k * (k + 1) / 2 + k]));
+      elboAcc += e;
+      for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
+      for (int j = 0; j < N * nScale; ++j) gScaleAcc[j] += gScale[j];
+      // grad_phi (component j) = gTheta[.] or gPopLogOmega[.]
+      NumericVector gPhi(npop);
+      for (int j = 0; j < npop; ++j)
+        gPhi[j] = (phiThetaIdx[j] >= 0) ? gTheta[phiThetaIdx[j]] : gPopLogOmega[phiOmIdx[j]];
+      for (int j = 0; j < npop; ++j) gmPopAcc[j] += gPhi[j];
+      for (int i = 0; i < npop; ++i)
+        for (int j = 0; j <= i; ++j) gLpopAcc[i * (i + 1) / 2 + j] += gPhi[i] * epsPop[j];
+    }
+    elboAcc *= invM;
+    for (int j = 0; j < N * neta; ++j) gMuAcc[j] *= invM;
+    for (int j = 0; j < N * nScale; ++j) gScaleAcc[j] *= invM;
+    for (int j = 0; j < npop; ++j) gmPopAcc[j] *= invM;
+    for (int j = 0; j < nLpop; ++j) gLpopAcc[j] *= invM;
+    // population entropy gradient: +1/Lpop_kk on the diagonal
+    for (int k = 0; k < npop; ++k) gLpopAcc[k * (k + 1) / 2 + k] += 1.0 / Lpop[k * (k + 1) / 2 + k];
+    elboTrace[it] = elboAcc;
+
+    double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
+    for (int j = 0; j < N * neta; ++j) {
+      double g = gMuAcc[j];
+      sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
+      mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+    }
+    for (int j = 0; j < N * nScale; ++j) {
+      double g = gScaleAcc[j];
+      sScale[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sScale[j];
+      scale[j] += etaScale * idecay / (tau + std::sqrt(sScale[j])) * g;
+    }
+    for (int j = 0; j < npop; ++j) {
+      double g = gmPopAcc[j];
+      smPop[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * smPop[j];
+      mPop[j] += etaScale * idecay / (tau + std::sqrt(smPop[j])) * g;
+    }
+    for (int j = 0; j < nLpop; ++j) {
+      double g = gLpopAcc[j];
+      sLpop[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sLpop[j];
+      Lpop[j] += etaScale * idecay / (tau + std::sqrt(sLpop[j])) * g;
+    }
+    // recenter mu-referenced etas into their phi (theta) posterior means
+    for (int j = 0; j < npop; ++j) {
+      int k = phiMuRef[j];
+      if (k < 0) continue;
+      double mbar = 0.0;
+      for (int i = 0; i < N; ++i) mbar += mu(i, k);
+      mbar /= N;
+      mPop[j] += mbar;
+      for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
+    }
+    // record theta / popOmega at the population posterior mean mPop
+    NumericVector thetaBar = clone(theta), lpoBar = clone(logPopOmega);
+    for (int j = 0; j < npop; ++j) {
+      if (phiThetaIdx[j] >= 0) thetaBar[phiThetaIdx[j]] = mPop[j];
+      else if (phiOmIdx[j] >= 0) lpoBar[phiOmIdx[j]] = mPop[j];
+    }
+    for (int p = 0; p < ntheta; ++p) parHist(it, p) = thetaBar[p];
+    for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(lpoBar[k]);
+  }
+  // final theta / logPopOmega at the population posterior mean
+  for (int j = 0; j < npop; ++j) {
+    if (phiThetaIdx[j] >= 0) theta[phiThetaIdx[j]] = mPop[j];
+    else if (phiOmIdx[j] >= 0) logPopOmega[phiOmIdx[j]] = mPop[j];
+  }
+  return List::create(_["mu"] = mu, _["scale"] = scale, _["theta"] = theta,
+                      _["logPopOmega"] = logPopOmega, _["mPop"] = mPop, _["Lpop"] = Lpop,
+                      _["elbo"] = elboTrace, _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["sMu"] = sMu, _["sScale"] = sScale, _["smPop"] = smPop, _["sLpop"] = sLpop);
+}
+
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
 // subject, optimize the conditional MAP of the random effects and return that
 // MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the

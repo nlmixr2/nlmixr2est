@@ -138,7 +138,9 @@
     .mu0 <- resume$mu; .theta0 <- resume$theta; .logPopOmega0 <- resume$logPopOmega
     .it0 <- as.integer(resume$it0); .sMu <- resume$sMu
     .sTheta <- resume$sTheta; .sLpo <- resume$sLpo
-    .scale0 <- if (.fr) resume$Lpack else resume$omega
+    ## full-Bayes stores a generic $scale; point-estimate stores $Lpack/$omega
+    .scale0 <- if (!is.null(resume$scale)) resume$scale
+      else if (.fr) resume$Lpack else resume$omega
     .sScale <- resume$sScale
   }
 
@@ -156,6 +158,62 @@
     .p <- .prep$muRefThetaIdx[.k]
     if (!is.na(.p)) .thetaMuRefEta[.p] <- .k - 1L
   }
+
+  ## ---- full-Bayes: variational posterior over the free population vector ----
+  if (!isTRUE(control$pointEstimate)) {
+    .thetaFreeIdx <- which(!.thFix)               # 1-based ntheta (estimated thetas)
+    .omFreeIdx <- which(!.omFix)                   # 1-based eta (estimated variances)
+    .npop <- length(.thetaFreeIdx) + length(.omFreeIdx)
+    ## phi = c(theta[free], logPopOmega[free]); component -> (theta|omega) maps (0-based)
+    .phiThetaIdx <- c(.thetaFreeIdx - 1L, rep(-1L, length(.omFreeIdx)))
+    .phiOmIdx <- c(rep(-1L, length(.thetaFreeIdx)), .omFreeIdx - 1L)
+    ## phiMuRef[j] = 0-based eta recentered by phi j when it is a mu-ref theta, else -1
+    .phiMuRef <- rep(-1L, .npop)
+    for (.j in seq_along(.thetaFreeIdx)) {
+      .kk <- .thetaMuRefEta[.thetaFreeIdx[.j]]
+      if (.kk >= 0) .phiMuRef[.j] <- .kk
+    }
+    if (is.null(resume)) {
+      .mPop0 <- c(.theta0[.thetaFreeIdx], .logPopOmega0[.omFreeIdx])
+      .nLpop <- .npop * (.npop + 1L) / 2L
+      .Lpop0 <- numeric(.nLpop)
+      for (.k in seq_len(.npop)) .Lpop0[.k * (.k + 1L) / 2L] <- 0.1   # init pop posterior sd
+      .smPop <- numeric(.npop); .sLpop <- numeric(.nLpop)
+    } else {
+      .mPop0 <- resume$mPop; .Lpop0 <- resume$Lpop
+      .smPop <- resume$smPop; .sLpop <- resume$sLpop
+    }
+    .runFB <- function(eta, iters, it0 = 0L) {
+      adviLoopFB_(.mu0, .scale0, .theta0, .logPopOmega0, .mPop0, .Lpop0,
+                  as.integer(.phiThetaIdx), as.integer(.phiOmIdx), as.integer(.phiMuRef),
+                  .muRefIdx, as.integer(.fr),
+                  as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
+                  as.numeric(control$alpha), as.integer(control$nMc), it0,
+                  .sMu, .sScale, .smPop, .sLpop)
+    }
+    .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
+      else if (isTRUE(control$adaptEta))
+        .adviAdaptEta(function(e, n) .runFB(e, n), control$etaCandidates,
+                      as.integer(min(control$iters, 75L)))
+      else if (length(control$etaCandidates) == 1L) control$etaCandidates else 0.1
+    .res <- .runFB(.etaScale, control$iters, it0 = .it0)
+    .res$family <- control$adviFamily
+    .res$pointEstimate <- FALSE
+    .res$etaScale <- .etaScale
+    .res$prep <- .prep
+    .res$etaNames <- .prep$etaNames
+    .res$thetaNames <- names(.prep$th)
+    .res$popOmega <- exp(.res$logPopOmega)
+    .res$seed <- .seed
+    .res$phiThetaIdx <- .phiThetaIdx; .res$phiOmIdx <- .phiOmIdx
+    ## population variational covariance in phi space (Lpop Lpop^T)
+    .Lp <- matrix(0, .npop, .npop)
+    for (.i in seq_len(.npop)) for (.j in seq_len(.i)) .Lp[.i, .j] <- .res$Lpop[.i * (.i - 1L) / 2L + .j]
+    .res$adviCov <- .Lp %*% t(.Lp)
+    class(.res) <- "nlmixr2advi"
+    return(.res)
+  }
+
   ## family-appropriate one-loop runner (from the initial state)
   .runLoop <- function(eta, iters, it0 = 0L, scale = .scale0, mu = .mu0, theta = .theta0,
                        lpo = .logPopOmega0, sMu = .sMu, sScale = .sScale,
@@ -179,6 +237,7 @@
   .res$scale <- if (.fr) .res$Lpack else .res$omega
   .res$sScale <- .res$sL; if (is.null(.res$sScale)) .res$sScale <- .res$sOmega
   .res$family <- control$adviFamily
+  .res$pointEstimate <- TRUE
   .res$etaScale <- .etaScale
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
@@ -265,8 +324,20 @@
   .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
               it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
               sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale,
-              family = res$family)
-  if (identical(res$family, "fullRank")) .st$Lpack <- res$scale else .st$omega <- res$scale
+              family = res$family, pointEstimate = res$pointEstimate)
+  if (isTRUE(res$pointEstimate)) {
+    if (identical(res$family, "fullRank")) .st$Lpack <- res$scale else .st$omega <- res$scale
+  } else {
+    ## full-Bayes: per-subject scale is generic; also persist the population block
+    .st$scale <- res$scale; .st$mPop <- res$mPop; .st$Lpop <- res$Lpop
+    .st$smPop <- res$smPop; .st$sLpop <- res$sLpop
+    ## population variational covariance -> named phi-space cov on the fit env
+    .cov <- res$adviCov
+    .nm <- c(res$thetaNames[res$phiThetaIdx[res$phiThetaIdx >= 0] + 1L],
+             paste0("omega.", res$etaNames[res$phiOmIdx[res$phiOmIdx >= 0] + 1L]))
+    if (nrow(.cov) == length(.nm)) dimnames(.cov) <- list(.nm, .nm)
+    .e$adviCov <- .cov
+  }
   .e$adviState <- .st
   .fit
 }
@@ -277,10 +348,6 @@
 .adviFitModel <- function(env) {
   .ui <- env$ui
   .control <- env$adviControl
-  if (!isTRUE(.control$pointEstimate)) {
-    stop("est=\"advi\" full-Bayes mode (pointEstimate=FALSE) is not yet implemented; ",
-         "use pointEstimate=TRUE (variational EM)", call. = FALSE)
-  }
   ## warm resume: accept a prior advi fit or its adviState
   .resume <- .control$resume
   if (!is.null(.resume)) {
