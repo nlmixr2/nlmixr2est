@@ -1015,6 +1015,9 @@ nmTest({
                              optExprParallel = FALSE))))
     on.exit(try(.foceiOptExprDaemons(0L), silent = TRUE), add = TRUE)
     .foceiOptExprDaemons(2L)
+    # the aug-model cache key does not include optExprParallel, so clear it to force fitPar to
+    # actually rebuild (and exercise the mirai-parallel chunker) rather than reuse fitSeq's model
+    rm(list = ls(.foceiAnalyticAugCache, all.names = TRUE), envir = .foceiAnalyticAugCache)
     fitPar <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                 foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE,
                              optExprParallel = TRUE))))

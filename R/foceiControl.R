@@ -184,10 +184,11 @@
 #'     still uses the (always-on) cost-balanced chunking, just sequentially.
 #'     When `TRUE`, set up a pool once with `mirai::daemons()` before fitting
 #'     (ideal for bootstrap / covariate search, where the model is rebuilt in
-#'     many workers); with no active pool this option is a no-op.  Only applies
-#'     to models without a parameter-dependent state initial condition or
-#'     dosing modifier (those are optimized whole, un-chunked).  Requires the
-#'     `mirai` package.
+#'     many workers), and tear it down with `mirai::daemons(0)` when done; with
+#'     no active pool this option is a no-op, and an already-running pool is
+#'     borrowed (not created or destroyed) by the fit.  Only applies to models
+#'     without a parameter-dependent state initial condition or dosing modifier
+#'     (those are optimized whole, un-chunked).  Requires the `mirai` package.
 #'
 #' @param literalFix boolean, substitute fixed population values as
 #'   literals and re-adjust ui and parameter estimates after

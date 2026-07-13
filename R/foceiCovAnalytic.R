@@ -1072,15 +1072,17 @@
 #' Set up once and reused across builds (ideal for bootstrap / SCM / covariate search, where
 #' the augmented model is rebuilt in many worker calls); `rxode2` is warmed on each daemon so
 #' the first `rxOptExpr` dispatch is not charged the namespace load.  A no-op when mirai is
-#' unavailable or a pool is already active; `n = 0` tears the pool down.
-#' @param n number of daemons; `NULL` -> `detectCores() - 2`
+#' unavailable or a pool is already active; `n = 0` tears the pool down.  The pool persists
+#' until torn down (`.foceiOptExprDaemons(0L)` / `mirai::daemons(0)`) -- the fit path only reads
+#' an existing pool, it never creates or destroys one.
+#' @param n number of daemons; `NULL` -> `rxode2::rxCores()` (the package thread budget)
 #' @return logical, whether a pool is active afterward
 #' @noRd
 .foceiOptExprDaemons <- function(n = NULL) {
   if (!requireNamespace("mirai", quietly = TRUE)) return(invisible(FALSE))
   if (identical(n, 0L) || identical(n, 0)) { try(mirai::daemons(0L), silent = TRUE); return(invisible(FALSE)) }
   if (.foceiOptExprDaemonsActive()) return(invisible(TRUE))
-  .n <- if (is.null(n)) max(1L, parallel::detectCores() - 2L) else max(1L, as.integer(n))
+  .n <- if (is.null(n)) max(1L, as.integer(rxode2::rxCores())) else max(1L, as.integer(n))
   try({
     mirai::daemons(.n)
     mirai::everywhere(suppressMessages(loadNamespace("rxode2")))   # warm rxode2 on each daemon once
@@ -1101,14 +1103,12 @@
 #' @noRd
 .foceiBalancedChunks <- function(lines, targetChars) {
   .w <- pmax(1L, nchar(lines))
-  .k <- max(1L, round(sum(.w) / targetChars))
+  .k <- if (is.finite(targetChars) && targetChars >= 1) max(1L, round(sum(.w) / targetChars)) else 1L
   if (.k <= 1L) return(list(lines))
-  .cum <- cumsum(.w); .tot <- sum(.w)
-  .b <- unique(c(0L,
-                 vapply(seq_len(.k - 1L),
-                        function(.j) which.min(abs(.cum - .j * .tot / .k)), integer(1)),
-                 length(lines)))
-  lapply(seq_len(length(.b) - 1L), function(.j) lines[(.b[.j] + 1L):.b[.j + 1L]])
+  # assign each line to one of .k bins by its running char-sum relative to .k-1 equal-char
+  # breakpoints: split() on a non-decreasing key yields contiguous groups (so definitions still
+  # precede their uses on concatenation) and naturally drops empty bins.
+  unname(split(lines, findInterval(cumsum(.w), seq_len(.k - 1L) * sum(.w) / .k)))
 }
 
 #' Optimize the augmented model's common subexpressions in cost-balanced chunks.
@@ -1124,11 +1124,12 @@
 #' `mirai::mirai_map`; otherwise they run sequentially.  Result is mathematically identical
 #' to the un-chunked optimization (validated: bit-identical solves).
 #'
-#' The caller only routes compartment-UNSCOPED models here (models with a `state(0)=` IC or a
-#' `f/lag/rate/dur(cmt)=` modifier go to a single whole-model `rxOptExpr` call, because such a
-#' construct in a chunk without its `d/dt(cmt)` is a parse error and the lines cannot be safely
-#' repositioned), so no held-out lines are needed.  Each chunk is collapsed to one string and a
-#' parse error degrades that chunk to unoptimized (length-safe), never aborting the pass.
+#' Compartment-scoped models (a `state(0)=` IC or a `f/lag/rate/dur(cmt)=` dosing modifier)
+#' optimize whole, un-chunked: such a construct in a chunk without its `d/dt(cmt)` is a parse
+#' error and the lines cannot be safely repositioned (their RHS may read a model variable whose
+#' value the optimized body reassigns, so position is load-bearing).  Small models likewise
+#' optimize whole.  Each chunk is collapsed to one string and a parse error degrades that chunk
+#' to unoptimized (length-safe); on a worker-side error the whole pass re-runs sequentially.
 #' @param modTxt augmented model text
 #' @param msg progress label passed to `rxOptExpr`
 #' @param chunkLines target chunk size in lines (default 40 -- the parallel build-time optimum)
@@ -1139,8 +1140,10 @@
 .foceiChunkedOptExpr <- function(modTxt, msg = "FOCEi outer gradient model",
                                  chunkLines = 40L, parallel = FALSE, minChunks = 3L) {
   .ln <- strsplit(modTxt, "\n", fixed = TRUE)[[1]]
-  if (length(.ln) <= chunkLines) return(rxode2::rxOptExpr(modTxt, msg))
-  .targetChars <- as.numeric(stats::median(pmax(1L, nchar(.ln)))) * chunkLines
+  .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
+    any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
+  if (.special || length(.ln) <= chunkLines) return(rxode2::rxOptExpr(modTxt, msg))
+  .targetChars <- as.numeric(mean(pmax(1L, nchar(.ln)))) * chunkLines   # -> ~ length/chunkLines chunks
   .chunks <- .foceiBalancedChunks(.ln, .targetChars)
   .idx <- seq_along(.chunks)
   # one chunk's work: collapse to a single model string, optimize (unchanged on parse error),
@@ -1152,7 +1155,9 @@
   }
   .useMirai <- isTRUE(parallel) && length(.chunks) >= minChunks && .foceiOptExprDaemonsActive()
   .opt <- if (.useMirai) {
-    tryCatch(unlist(mirai::mirai_map(.idx, .optOne, .args = list(.ch = .chunks))[]),
+    # `[mirai::.stop]` makes a worker-side chunk error THROW (a bare `[]` returns an errorValue
+    # that would corrupt the model); the tryCatch then re-runs all chunks sequentially (rare).
+    tryCatch(unlist(mirai::mirai_map(.idx, .optOne, .args = list(.ch = .chunks))[mirai::.stop]),
              error = function(e) vapply(.idx, .optOne, character(1), .ch = .chunks))
   } else {
     vapply(.idx, .optOne, character(1), .ch = .chunks)
@@ -1359,42 +1364,18 @@
     if (is.null(.pastLines)) .pastLines <- character(0)
     .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .icL, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
-    # Optimize common subexpressions (as the inner model does): the augmented model
-    # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
-    # prediction chains, so rxOptExpr materially shrinks the per-solve work.
-    # rxOptExpr is ~O(n^3.5) in model size, so optimizing the whole (~200-350 line)
-    # augmented model in one call dominates the build (~25s+).  Split into contiguous
-    # line-chunks and optimize each separately: k chunks of size n/k cost ~n^3/k^2 -- an
-    # ~8-13x speedup -- losing only cross-chunk CSE (the optimized text grows ~15-20%,
-    # negligible since the aug model is solved only hundreds of times per fit).  rxOptExpr
-    # restarts its introduced-variable counter at rx_expr_0 each call, so give each chunk a
-    # unique rx_expr_ prefix before concatenating (the aug model never uses that prefix).
+    # Optimize common subexpressions (as the inner model does): the augmented model has heavy
+    # shared subexpressions across the sensitivity ODEs and the f1/f2 prediction chains, so
+    # rxOptExpr materially shrinks the per-solve work.  rxOptExpr is ~O(n^3.5), so the whole
+    # (~200-500 line) model in one call dominates the build; `.foceiChunkedOptExpr` cost-balances
+    # it into contiguous chunks (gating compartment-scoped models to a whole-model call) and,
+    # with optExprParallel=TRUE + an active mirai pool, optimizes them in parallel -- identical
+    # result, faster build.  Any failure degrades to the unoptimized (correct) model.
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
-      .modTxt <- tryCatch({
-        .ln <- strsplit(.modTxt, "\n", fixed = TRUE)[[1]]
-        # The chunker optimizes contiguous 40-line pieces independently for build speed.
-        # rxOptExpr parses each chunk as a standalone model, so a chunk that holds a
-        # compartment-scoped construct -- a state initial condition (`W(0)=`) or a dosing
-        # modifier (`f(cmt)=` / `lag(cmt)=`->`alag(cmt)=` / `rate(cmt)=` / `dur(cmt)=`) --
-        # without the matching `d/dt(cmt)=` (which, for a parameter-dependent IC/modifier,
-        # sits many sensitivity-ODE lines away in an EARLIER chunk) raises e.g. "'W(0)'
-        # present, but d/dt(W) not defined".  These lines cannot simply be pulled out and
-        # re-appended: their RHS may read a model variable whose value the optimized body
-        # changes, so position is load-bearing.  When any such construct is present, drop to
-        # a single whole-model rxOptExpr call (the original, correct behavior -- slower to
-        # build but rare); keep the fast chunking for the common unconstrained models.
-        .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
-          any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
-        if (.special) {
-          rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
-        } else {
-          # non-special model: chunk with cost-balanced boundaries (minimize the largest
-          # chunk, which drives the ~O(n^3.5) cost) and, with optExprParallel=TRUE + an active
-          # mirai pool, optimize the chunks in parallel -- identical result, faster build.
-          .foceiChunkedOptExpr(.modTxt, "FOCEi outer gradient model",
-                               parallel = isTRUE(rxode2::rxGetControl(ui, "optExprParallel", FALSE)))
-        }
-      }, error = function(e) .modTxt)
+      .modTxt <- tryCatch(
+        .foceiChunkedOptExpr(.modTxt, "FOCEi outer gradient model",
+                             parallel = isTRUE(rxode2::rxGetControl(ui, "optExprParallel", FALSE))),
+        error = function(e) .modTxt)
     }
     # Declare the theta/eta inputs AND the model covariates up front (param()) so the
     # solve parameter order is fixed and positional.  Reuse .uiGetThetaEtaParams -- the
