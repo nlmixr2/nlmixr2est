@@ -712,6 +712,211 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeIterPrintStart_
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl, RObject xform);
+RcppExport SEXP _nlmixr2est_vaeIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintStart_(initPar, names, iterPrintControl, xform));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintRow_
+RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase);
+RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP, SEXP phaseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< double >::type f(fSEXP);
+    Rcpp::traits::input_parameter< std::string >::type phase(phaseSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f, phase));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeIterPrintGet_
+RObject vaeIterPrintGet_(bool printLine);
+RcppExport SEXP _nlmixr2est_vaeIterPrintGet_(SEXP printLineSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviThetaSensInfo_
+List adviThetaSensInfo_();
+RcppExport SEXP _nlmixr2est_adviThetaSensInfo_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(adviThetaSensInfo_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviElboGrad_
+List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta, NumericVector logPopOmega, NumericMatrix eps, IntegerVector muRefThetaIdx);
+RcppExport SEXP _nlmixr2est_adviElboGrad_(SEXP muSEXP, SEXP omegaSEXP, SEXP thetaSEXP, SEXP logPopOmegaSEXP, SEXP epsSEXP, SEXP muRefThetaIdxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega(logPopOmegaSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviElboGrad_(mu, omega, theta, logPopOmega, eps, muRefThetaIdx));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviLoop_
+List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sOmega0, NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop, CharacterVector parNames, RObject iterPrintControl, RObject xform, std::string ipPhase, int ipStart, int ipEnd);
+RcppExport SEXP _nlmixr2est_adviLoop_(SEXP mu0SEXP, SEXP omega0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sOmega0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP ipPhaseSEXP, SEXP ipStartSEXP, SEXP ipEndSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu0(mu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type omega0(omega0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta0(theta0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega0(logPopOmega0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type thetaMuRefEta(thetaMuRefEtaSEXP);
+    Rcpp::traits::input_parameter< LogicalVector >::type thetaFix(thetaFixSEXP);
+    Rcpp::traits::input_parameter< LogicalVector >::type omegaFix(omegaFixSEXP);
+    Rcpp::traits::input_parameter< int >::type iters(itersSEXP);
+    Rcpp::traits::input_parameter< double >::type seed(seedSEXP);
+    Rcpp::traits::input_parameter< double >::type etaScale(etaScaleSEXP);
+    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< int >::type nMc(nMcSEXP);
+    Rcpp::traits::input_parameter< int >::type it0(it0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sMu0(sMu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sOmega0(sOmega0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sTheta0(sTheta0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sLpo0(sLpo0SEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type parNames(parNamesSEXP);
+    Rcpp::traits::input_parameter< RObject >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    Rcpp::traits::input_parameter< std::string >::type ipPhase(ipPhaseSEXP);
+    Rcpp::traits::input_parameter< int >::type ipStart(ipStartSEXP);
+    Rcpp::traits::input_parameter< int >::type ipEnd(ipEndSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviElboGradFR_
+List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta, NumericVector logPopOmega, NumericMatrix eps, IntegerVector muRefThetaIdx);
+RcppExport SEXP _nlmixr2est_adviElboGradFR_(SEXP muSEXP, SEXP LpackSEXP, SEXP thetaSEXP, SEXP logPopOmegaSEXP, SEXP epsSEXP, SEXP muRefThetaIdxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Lpack(LpackSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega(logPopOmegaSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviElboGradFR_(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviLoopFR_
+List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0, NumericVector logPopOmega0, IntegerVector muRefThetaIdx, IntegerVector thetaMuRefEta, LogicalVector thetaFix, LogicalVector omegaFix, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sL0, NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop, CharacterVector parNames, RObject iterPrintControl, RObject xform, std::string ipPhase, int ipStart, int ipEnd);
+RcppExport SEXP _nlmixr2est_adviLoopFR_(SEXP mu0SEXP, SEXP Lpack0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP muRefThetaIdxSEXP, SEXP thetaMuRefEtaSEXP, SEXP thetaFixSEXP, SEXP omegaFixSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sL0SEXP, SEXP sTheta0SEXP, SEXP sLpo0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP ipPhaseSEXP, SEXP ipStartSEXP, SEXP ipEndSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu0(mu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Lpack0(Lpack0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta0(theta0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega0(logPopOmega0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type thetaMuRefEta(thetaMuRefEtaSEXP);
+    Rcpp::traits::input_parameter< LogicalVector >::type thetaFix(thetaFixSEXP);
+    Rcpp::traits::input_parameter< LogicalVector >::type omegaFix(omegaFixSEXP);
+    Rcpp::traits::input_parameter< int >::type iters(itersSEXP);
+    Rcpp::traits::input_parameter< double >::type seed(seedSEXP);
+    Rcpp::traits::input_parameter< double >::type etaScale(etaScaleSEXP);
+    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< int >::type nMc(nMcSEXP);
+    Rcpp::traits::input_parameter< int >::type it0(it0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sMu0(sMu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sL0(sL0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sTheta0(sTheta0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sLpo0(sLpo0SEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type parNames(parNamesSEXP);
+    Rcpp::traits::input_parameter< RObject >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    Rcpp::traits::input_parameter< std::string >::type ipPhase(ipPhaseSEXP);
+    Rcpp::traits::input_parameter< int >::type ipStart(ipStartSEXP);
+    Rcpp::traits::input_parameter< int >::type ipEnd(ipEndSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoopFR_(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviLoopFB_
+List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0, NumericVector logPopOmega0, NumericVector mPop0, NumericVector LpopPack0, IntegerVector phiThetaIdx, IntegerVector phiOmIdx, IntegerVector phiMuRef, IntegerVector muRefThetaIdx, int fr, int iters, double seed, double etaScale, double tau, double alpha, int nMc, int it0, NumericMatrix sMu0, NumericMatrix sScale0, NumericVector smPop0, NumericVector sLpop0, int cores, int divergeStop, CharacterVector parNames, RObject iterPrintControl, RObject xform, std::string ipPhase, int ipStart, int ipEnd);
+RcppExport SEXP _nlmixr2est_adviLoopFB_(SEXP mu0SEXP, SEXP scale0SEXP, SEXP theta0SEXP, SEXP logPopOmega0SEXP, SEXP mPop0SEXP, SEXP LpopPack0SEXP, SEXP phiThetaIdxSEXP, SEXP phiOmIdxSEXP, SEXP phiMuRefSEXP, SEXP muRefThetaIdxSEXP, SEXP frSEXP, SEXP itersSEXP, SEXP seedSEXP, SEXP etaScaleSEXP, SEXP tauSEXP, SEXP alphaSEXP, SEXP nMcSEXP, SEXP it0SEXP, SEXP sMu0SEXP, SEXP sScale0SEXP, SEXP smPop0SEXP, SEXP sLpop0SEXP, SEXP coresSEXP, SEXP divergeStopSEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP ipPhaseSEXP, SEXP ipStartSEXP, SEXP ipEndSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type mu0(mu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type scale0(scale0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta0(theta0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logPopOmega0(logPopOmega0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mPop0(mPop0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type LpopPack0(LpopPack0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type phiThetaIdx(phiThetaIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type phiOmIdx(phiOmIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type phiMuRef(phiMuRefSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type muRefThetaIdx(muRefThetaIdxSEXP);
+    Rcpp::traits::input_parameter< int >::type fr(frSEXP);
+    Rcpp::traits::input_parameter< int >::type iters(itersSEXP);
+    Rcpp::traits::input_parameter< double >::type seed(seedSEXP);
+    Rcpp::traits::input_parameter< double >::type etaScale(etaScaleSEXP);
+    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< int >::type nMc(nMcSEXP);
+    Rcpp::traits::input_parameter< int >::type it0(it0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sMu0(sMu0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type sScale0(sScale0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type smPop0(smPop0SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type sLpop0(sLpop0SEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type divergeStop(divergeStopSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type parNames(parNamesSEXP);
+    Rcpp::traits::input_parameter< RObject >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    Rcpp::traits::input_parameter< std::string >::type ipPhase(ipPhaseSEXP);
+    Rcpp::traits::input_parameter< int >::type ipStart(ipStartSEXP);
+    Rcpp::traits::input_parameter< int >::type ipEnd(ipEndSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adviOptimize_
+List adviOptimize_(List args);
+RcppExport SEXP _nlmixr2est_adviOptimize_(SEXP argsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type args(argsSEXP);
+    rcpp_result_gen = Rcpp::wrap(adviOptimize_(args));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fsaemInnerMap_
 List fsaemInnerMap_(int cores);
 RcppExport SEXP _nlmixr2est_fsaemInnerMap_(SEXP coresSEXP) {
@@ -796,44 +1001,6 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(vaeInnerFree_());
-    return rcpp_result_gen;
-END_RCPP
-}
-// vaeIterPrintStart_
-RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl, RObject xform);
-RcppExport SEXP _nlmixr2est_vaeIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
-    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
-    Rcpp::traits::input_parameter< List >::type iterPrintControl(iterPrintControlSEXP);
-    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeIterPrintStart_(initPar, names, iterPrintControl, xform));
-    return rcpp_result_gen;
-END_RCPP
-}
-// vaeIterPrintRow_
-RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase);
-RcppExport SEXP _nlmixr2est_vaeIterPrintRow_(SEXP xSEXP, SEXP fSEXP, SEXP phaseSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< double >::type f(fSEXP);
-    Rcpp::traits::input_parameter< std::string >::type phase(phaseSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeIterPrintRow_(x, f, phase));
-    return rcpp_result_gen;
-END_RCPP
-}
-// vaeIterPrintGet_
-RObject vaeIterPrintGet_(bool printLine);
-RcppExport SEXP _nlmixr2est_vaeIterPrintGet_(SEXP printLineSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
     return rcpp_result_gen;
 END_RCPP
 }

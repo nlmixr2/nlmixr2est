@@ -80,7 +80,10 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "rpem-parhist", "rpem-focei-agreement"),
   # batch 11
   c("rpem-mix-guards", "rpem-multi-tbs", "rpem-mix-comb", "rpem-jump", "rpem-struct",
-    "rpem-prop")
+    "rpem-prop"),
+  # batch 12 -- advi (variational inference) multi-iteration fits
+  c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
+    "advi-fullbayes")
 )
 .slowAll <- unlist(.slowBatches)
 
