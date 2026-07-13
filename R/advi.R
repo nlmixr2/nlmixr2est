@@ -146,8 +146,7 @@
 #' supply the variational posterior means as the FOCEi inner EBE start (etaMat),
 #' and run the eval-only FOCEi finalize (maxOuterIterations=0) which reuses
 #' inner.cpp for the objective, EBEs, residual tables, and the covariance step.
-#' No outer optimizer is run; the ADVI estimates are final.  Mirrors .vaeToFit /
-#' .rpemBuildFit.
+#' No outer optimizer is run; the ADVI estimates are final.  Mirrors .vaeToFit.
 #' @noRd
 .adviToFit <- function(env, res) {
   .ui <- env$ui
@@ -250,11 +249,38 @@
   .fit
 }
 
+#' Install a named theta-block covariance as the fit's covariance and update
+#' the parFixedDf SEs / RSEs / CIs accordingly.
+#' @noRd
+.adviInstallThetaCov <- function(fit, cov) {
+  .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
+  if (!is.environment(.env) || is.null(cov)) return(invisible())
+  .env$cov <- cov
+  if (!exists("parFixedDf", envir = .env, inherits = FALSE)) return(invisible())
+  .pf <- .env$parFixedDf
+  .se <- sqrt(diag(cov))
+  .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)), error = function(e) 0.95)
+  .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+  for (.n in rownames(.pf)) {
+    if (.n %in% names(.se) && "SE" %in% names(.pf)) {
+      .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
+      .pf[.n, "SE"] <- .s
+      if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
+      if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
+            isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
+        .pf[.n, "CI Lower"] <- .e - .qn * .s
+        .pf[.n, "CI Upper"] <- .e + .qn * .s
+      }
+    }
+  }
+  .env$parFixedDf <- .pf
+  invisible()
+}
+
 #' Install the ADVI population variational covariance (Lpop Lpop^T) as the fit's
 #' covariance + parFixedDf SEs -- the natural full-Bayes uncertainty.  The theta
 #' block of the phi-space covariance maps directly to the population / residual
 #' parameters (by name); the log-variance block is retained on $env$adviCov.
-#' Reuses the rpem Fisher-cov installer.
 #' @noRd
 .adviInstallVarCov <- function(fit, res) {
   .thComp <- which(res$phiThetaIdx >= 0)
@@ -262,7 +288,7 @@
   .thNames <- res$prep$thetaRealNames[res$phiThetaIdx[.thComp] + 1L]
   .thetaCov <- res$adviCov[.thComp, .thComp, drop = FALSE]
   dimnames(.thetaCov) <- list(.thNames, .thNames)
-  .rpemInstallFisherCov(fit, .thetaCov)
+  .adviInstallThetaCov(fit, .thetaCov)
   .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
   if (is.environment(.env)) .env$covMethod <- "advi"
   invisible()

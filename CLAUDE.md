@@ -107,8 +107,8 @@ When adding tests for an estimation method, split them by cost:
 
 - **Quickest core-functionality tests always run**: leave them OUT of `.slowBatches`
   (they run in the essential push/PR subset). Keep this set small -- unit tests plus one
-  basic end-to-end fit. Example (rpem): `rpem-cpp-estep`, `rpem-cpp-mstep`,
-  `rpem-llik-model`, `rpem-est`, `rpem-fit`.
+  basic end-to-end fit. Example (advi): `advi-control`, `advi-dataprep`, `advi-inner`,
+  `advi-grad`, `advi-fit` stay essential; the multi-iteration fit files run weekly.
 - **Everything else goes into a weekly batch**: add the file's basename (no `test-`
   prefix, no `.R`) to a `.slowBatches` batch, sized from measured single-worker times so
   each batch stays well under an hour.
