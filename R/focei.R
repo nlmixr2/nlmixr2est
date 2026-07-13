@@ -1763,7 +1763,10 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
       .w <- which(.iniDf$name == .name)
       if (length(.w) != 1) return(-1L)
       if (.iniDf$fix[.w]) return(-1L)
-      .iniDf$ntheta[.w] - 1L
+      # `ntheta` is normally an integer column, but a programmatically rebuilt model
+      # (e.g. the VAE injecting covariate-coefficient thetas via ini()) can leave it a
+      # double; coerce so the vapply(..., integer(1)) contract holds.
+      as.integer(.iniDf$ntheta[.w]) - 1L
     }, integer(1))
   } else {
     integer(0)
