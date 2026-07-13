@@ -1027,4 +1027,42 @@ nmTest({
     expect_equal(unname(sqrt(diag(fitPar$cov))[.nm]),
                  unname(sqrt(diag(fitSeq$cov))[.nm]), tolerance = 1e-6)
   })
+
+  test_that("compartment-scoped disguise/restore round-trips (so those models can be chunked)", {
+    # a state IC and every dosing modifier must survive disguise -> restore unchanged, while
+    # d/dt() and plain assignments are left alone.  This is what lets a chunk hold an IC/modifier
+    # (as a plain assignment) without its d/dt and still reassemble to the exact model.
+    .lines <- c("rx__sens_center_BY_ETA_1___(0)=exp(ETA_1_+THETA_1_)",
+                "center(0)=exp(a+b)", "depot(0)=0",
+                "f(depot)=exp(THETA_2_)", "rate(central)=THETA_3_",
+                "alag(depot)=THETA_4_", "lag(depot)=THETA_5_", "dur(central)=THETA_6_",
+                "d/dt(rx__sens_center_BY_ETA_1___)=-x*y", "cp=center/v")
+    .txt <- paste(.lines, collapse = "\n")
+    expect_identical(.foceiRestoreCmt(.foceiDisguiseCmt(.txt)), .txt)
+    # the disguised text has NO compartment-scoped LHS left (so no chunk can orphan one)
+    .dl <- strsplit(.foceiDisguiseCmt(.txt), "\n", fixed = TRUE)[[1]]
+    .lh <- trimws(sub("=.*$", "", .dl))
+    expect_true(!any(endsWith(.lh, "(0)")))
+    expect_true(!any(grepl("^(f|alag|lag|rate|dur)\\(", .lh) & endsWith(.lh, ")")))
+  })
+
+  test_that("a parameter-dependent-IC model gets chunked (not whole-model) and stays correct", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # baseline (an IC on `depot`) whose analytic augmented model is compartment-scoped; the
+    # disguise lets it chunk.  Must install the analytic covariance and give finite SEs.
+    icm <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5); tb <- log(2)
+            eta.ka ~ 0.3; eta.cl ~ 0.2; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              depot(0) <- exp(tb)            # parameter-dependent state initial condition
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    fit <- suppressWarnings(suppressMessages(nlmixr(icm, nlmixr2data::theo_sd, "focei",
+                foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE))))
+    expect_identical(fit$covMethod, "analytic")
+    .se <- sqrt(diag(fit$cov))
+    expect_true(all(is.finite(.se)) && all(.se > 0))
+  })
 })

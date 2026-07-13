@@ -345,9 +345,7 @@ sequentially.  When \code{TRUE}, set up a pool once with
 search, where the model is rebuilt in many workers), and tear it down with
 \code{mirai::daemons(0)} when done; with no active pool this option is a
 no-op, and an already-running pool is borrowed (not created or destroyed) by
-the fit.  Only applies to models without a parameter-dependent state initial
-condition or dosing modifier (those are optimized whole, un-chunked).
-Requires the \code{mirai} package.}
+the fit.  Requires the \code{mirai} package.}
 
 \item{literalFix}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after

@@ -1111,6 +1111,54 @@
   unname(split(lines, findInterval(cumsum(.w), seq_len(.k - 1L) * sum(.w) / .k)))
 }
 
+#' Disguise compartment-scoped assignments as plain LHS so they can be chunked.
+#'
+#' `rxOptExpr` parses each chunk as a standalone model, so a state initial condition
+#' (`state(0)=`) or a dosing modifier (`f/alag/lag/rate/dur(cmt)=`) in a chunk that lacks its
+#' `d/dt(cmt)` raises "'W(0)' present, but d/dt(W) not defined".  Rather than *move* such a line
+#' (its RHS may read a model variable a later line reassigns, so its position is load-bearing),
+#' rewrite ONLY its left-hand side to a unique plain name **in place** for the optimization pass;
+#' [.foceiRestoreCmt] reverses it afterward.  The line never changes position, so semantics are
+#' preserved (validated bit-identical vs the whole-model optimization).  `d/dt(cmt)=` is left
+#' alone -- it is valid in a chunk on its own (default IC).
+#' @param modTxt model text
+#' @return model text with compartment-scoped LHS disguised as `rx__disg_ic__*` / `rx__disg_mod__*`
+#' @noRd
+.foceiDisguiseCmt <- function(modTxt) {
+  .ln  <- strsplit(modTxt, "\n", fixed = TRUE)[[1]]
+  .eq  <- regexpr("=", .ln, fixed = TRUE)
+  .lhs <- ifelse(.eq > 0L, trimws(substr(.ln, 1L, .eq - 1L)), "")
+  .rhs <- ifelse(.eq > 0L, substr(.ln, .eq + 1L, nchar(.ln)), "")
+  .isIc  <- .eq > 0L & endsWith(.lhs, "(0)")
+  .isMod <- .eq > 0L & grepl("^(f|alag|lag|rate|dur)\\(", .lhs) & endsWith(.lhs, ")")
+  .new <- .lhs
+  .new[.isIc] <- paste0("rx__disg_ic__", sub("\\(0\\)$", "", .lhs[.isIc]), "__")
+  .mm <- regmatches(.lhs[.isMod], regexec("^([a-z]+)\\((.*)\\)$", .lhs[.isMod]))
+  .new[.isMod] <- vapply(.mm, function(.m) paste0("rx__disg_mod__", .m[2L], "__", .m[3L], "__"),
+                         character(1))
+  paste(ifelse(.eq > 0L & (.isIc | .isMod), paste0(.new, "=", .rhs), .ln), collapse = "\n")
+}
+
+#' Reverse [.foceiDisguiseCmt]: restore the original compartment-scoped LHS.
+#'
+#' Operates on the LHS only (split at the first `=`), so an optimized RHS is untouched.
+#' @param txt optimized model text containing disguised LHS
+#' @return model text with `state(0)=` / `f(cmt)=` LHS restored
+#' @noRd
+.foceiRestoreCmt <- function(txt) {
+  .ln <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+  .disg <- startsWith(.ln, "rx__disg_ic__") | startsWith(.ln, "rx__disg_mod__")
+  if (any(.disg)) {
+    .eq  <- regexpr("=", .ln[.disg], fixed = TRUE)
+    .lhs <- substr(.ln[.disg], 1L, .eq - 1L)
+    .rest <- substr(.ln[.disg], .eq, nchar(.ln[.disg]))       # keep the "=..." RHS verbatim
+    .lhs <- sub("^rx__disg_ic__(.*)__$", "\\1(0)", .lhs)       # rx__disg_ic__X__  -> X(0)
+    .lhs <- sub("^rx__disg_mod__([a-z]+)__(.*)__$", "\\1(\\2)", .lhs)  # rx__disg_mod__f__X__ -> f(X)
+    .ln[.disg] <- paste0(.lhs, .rest)
+  }
+  paste(.ln, collapse = "\n")
+}
+
 #' Optimize the augmented model's common subexpressions in cost-balanced chunks.
 #'
 #' `rxOptExpr` on the whole (~200-500 line) augmented model dominates the build (~O(n^3.5)),
@@ -1124,12 +1172,13 @@
 #' `mirai::mirai_map`; otherwise they run sequentially.  Result is mathematically identical
 #' to the un-chunked optimization (validated: bit-identical solves).
 #'
-#' Compartment-scoped models (a `state(0)=` IC or a `f/lag/rate/dur(cmt)=` dosing modifier)
-#' optimize whole, un-chunked: such a construct in a chunk without its `d/dt(cmt)` is a parse
-#' error and the lines cannot be safely repositioned (their RHS may read a model variable whose
-#' value the optimized body reassigns, so position is load-bearing).  Small models likewise
-#' optimize whole.  Each chunk is collapsed to one string and a parse error degrades that chunk
-#' to unoptimized (length-safe); on a worker-side error the whole pass re-runs sequentially.
+#' Compartment-scoped models (a `state(0)=` IC or a `f/lag/rate/dur(cmt)=` dosing modifier) are
+#' handled by disguising those lines as plain assignments in place ([.foceiDisguiseCmt]) before
+#' chunking and restoring them after ([.foceiRestoreCmt]) -- so they chunk (and parallelize)
+#' like any other model, without the parse error a chunk-orphaned construct would raise and
+#' without moving any line.  Small models optimize whole.  Each chunk is collapsed to one string
+#' and a parse error degrades that chunk to unoptimized (length-safe); on a worker-side error
+#' the whole pass re-runs sequentially.
 #' @param modTxt augmented model text
 #' @param msg progress label passed to `rxOptExpr`
 #' @param chunkLines target chunk size in lines (default 40 -- the parallel build-time optimum)
@@ -1140,9 +1189,9 @@
 .foceiChunkedOptExpr <- function(modTxt, msg = "FOCEi outer gradient model",
                                  chunkLines = 40L, parallel = FALSE, minChunks = 3L) {
   .ln <- strsplit(modTxt, "\n", fixed = TRUE)[[1]]
-  .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
-    any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
-  if (.special || length(.ln) <= chunkLines) return(rxode2::rxOptExpr(modTxt, msg))
+  if (length(.ln) <= chunkLines) return(rxode2::rxOptExpr(modTxt, msg))   # small model: whole
+  # disguise compartment-scoped LHS so every chunk parses standalone; restored at the end
+  .ln <- strsplit(.foceiDisguiseCmt(modTxt), "\n", fixed = TRUE)[[1]]
   .targetChars <- as.numeric(mean(pmax(1L, nchar(.ln)))) * chunkLines   # -> ~ length/chunkLines chunks
   .chunks <- .foceiBalancedChunks(.ln, .targetChars)
   .idx <- seq_along(.chunks)
@@ -1162,7 +1211,7 @@
   } else {
     vapply(.idx, .optOne, character(1), .ch = .chunks)
   }
-  paste(.opt, collapse = "\n")
+  .foceiRestoreCmt(paste(.opt, collapse = "\n"))          # undo the compartment-scoped disguise
 }
 
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
