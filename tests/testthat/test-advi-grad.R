@@ -75,4 +75,51 @@ nmTest({
       expect_true(relOk(a$gPopLogOmega[k], gfd))
     }
   })
+
+  test_that("adviElboGradFR_ full-rank gradient matches finite differences", {
+    ## two correlated etas so the off-diagonal L entries are exercised
+    mod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.err <- 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mod)
+    ctl <- adviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    dat <- nlmixr2data::theo_sd
+    prep <- .adviDataPrep(ui, dat)
+    N <- prep$N; neta <- 2L; nL <- neta * (neta + 1L) / 2L
+    muRefIdx <- as.integer(prep$muRefThetaIdx); ntheta <- prep$ntheta
+
+    set.seed(2)
+    mu <- matrix(rnorm(N * neta, 0, 0.2), N, neta)
+    Lp <- matrix(rnorm(N * nL, 0, 0.05), N, nL)
+    for (k in seq_len(neta)) Lp[, k * (k + 1L) / 2L] <- 0.4   # positive diagonal
+    theta <- prep$theta; logPopOmega <- log(prep$omega); eps <- matrix(rnorm(N * neta), N, neta)
+
+    .adviInnerSetup(ui, dat, mu, ctl)
+    on.exit(.adviInnerFree(), add = TRUE)
+    elbo <- function(mu, Lp, theta, lpo)
+      adviElboGradFR_(mu, Lp, theta, lpo, eps, muRefIdx)$elbo
+    a <- adviElboGradFR_(mu, Lp, theta, logPopOmega, eps, muRefIdx)
+    h <- 1e-4; relOk <- function(x, fd) abs(x - fd) < 2e-3 * (1 + abs(x))
+
+    ## gL : diagonal + off-diagonal entries for a couple of subjects
+    for (s in c(1L, 5L, 9L)) for (j in seq_len(nL)) {
+      gfd <- (elbo(mu, `[<-`(Lp, s, j, Lp[s, j] + h), theta, logPopOmega) -
+              elbo(mu, `[<-`(Lp, s, j, Lp[s, j] - h), theta, logPopOmega)) / (2 * h)
+      expect_true(relOk(a$gL[s, j], gfd))
+    }
+    ## gMu / gTheta / gPopLogOmega
+    for (s in c(1L, 5L)) {
+      gfd <- (elbo(`[<-`(mu, s, 1, mu[s, 1] + h), Lp, theta, logPopOmega) -
+              elbo(`[<-`(mu, s, 1, mu[s, 1] - h), Lp, theta, logPopOmega)) / (2 * h)
+      expect_true(relOk(a$gMu[s, 1], gfd))
+    }
+    for (p in seq_len(ntheta)) {
+      gfd <- (elbo(mu, Lp, `[<-`(theta, p, theta[p] + h), logPopOmega) -
+              elbo(mu, Lp, `[<-`(theta, p, theta[p] - h), logPopOmega)) / (2 * h)
+      expect_true(relOk(a$gTheta[p], gfd))
+    }
+  })
 })

@@ -62,7 +62,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
   # batch 7 -- advi (variational inference) multi-iteration fits
-  c("advi-repro", "advi-focei-agreement", "advi-neonatal")
+  c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank")
 )
 .slowAll <- unlist(.slowBatches)
 

@@ -9924,6 +9924,211 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
                       _["sTheta"] = sTheta, _["sLpo"] = sLpo);
 }
 
+// ===========================================================================
+// Block full-rank ADVI: q(eta_i) = N(mu_i, L_i L_i^T) with L_i lower-triangular
+// (neta x neta), stored packed row-major lower-tri (index (i,j), i>=j, at
+// i*(i+1)/2 + j).  The reparameterization is eta_i = mu_i + L_i eps_i.  The
+// entropy is 0.5 log det(L_i L_i^T) = sum_k log|L_i(k,k)| -- it depends ONLY on
+// the diagonal, so the entropy gradient is 1/L_kk on the diagonal and 0 off it
+// (no matrix inverse needed).  The data+prior gradient is
+//   grad_L(i,j) = E[(d/deta log p)_i eps_j] = E[(-lp)_i eps_j]   (i >= j),
+// giving grad_L(i,j) = (-lp)_i eps_j + [i==j] / L_ii.  Everything else (theta
+// gradient, population omega M-step) matches the mean-field path with the
+// per-subject variance var_ik = (L_i L_i^T)_kk = sum_{j<=k} L_i(k,j)^2.
+// ===========================================================================
+
+static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
+                                 NumericVector logPopOmega, NumericMatrix eps,
+                                 IntegerVector muRefThetaIdx,
+                                 NumericMatrix &gMu, NumericMatrix &gL,
+                                 NumericVector &gTheta, NumericVector &gPopLogOmega) {
+  const int N = mu.nrow();
+  const int neta = mu.ncol();
+  const int ntheta = (int)op_focei.ntheta;
+  adviSetTheta(theta);
+  adviSetPopOmega(logPopOmega);
+  arma::mat omegaInv = op_focei.omegaInv;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  op_focei.reducedTol.store(0, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(0, std::memory_order_relaxed);
+  op_focei.stickyTol.store(0, std::memory_order_relaxed);
+  resetOpBadSolve(op);
+  std::fill(gMu.begin(), gMu.end(), 0.0);
+  std::fill(gL.begin(), gL.end(), 0.0);
+  std::fill(gTheta.begin(), gTheta.end(), 0.0);
+  std::fill(gPopLogOmega.begin(), gPopLogOmega.end(), 0.0);
+  double elbo = 0.0;
+  const int nSens = op_focei.impThetaSensIdx.size();
+
+  for (int s = 0; s < N; ++s) {
+    // eta_i = mu_i + L_i eps_i (L_i lower-tri, packed)
+    std::vector<double> eta(neta);
+    arma::vec etav(neta);
+    for (int i = 0; i < neta; ++i) {
+      double e = mu(s, i);
+      for (int j = 0; j <= i; ++j) e += Lpack(s, i * (i + 1) / 2 + j) * eps(s, j);
+      eta[i] = e; etav[i] = e;
+    }
+    inds_focei[s].setup = 0;
+    { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(s));
+      setIndTolFactor(indI, 1.0); setIndSolve(indI, -1); }
+    double obj = likInner0(&eta[0], s);
+    focei_ind *fInd = &(inds_focei[s]);
+    arma::vec lp(neta);
+    for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
+
+    elbo += -obj;
+    for (int k = 0; k < neta; ++k)
+      elbo += std::log(std::fabs(Lpack(s, k * (k + 1) / 2 + k)));   // entropy: sum log|L_kk|
+
+    for (int i = 0; i < neta; ++i) {
+      gMu(s, i) = -lp[i];
+      for (int j = 0; j <= i; ++j) {
+        double g = -lp[i] * eps(s, j);
+        if (i == j) g += 1.0 / Lpack(s, i * (i + 1) / 2 + i);   // diagonal entropy grad
+        gL(s, i * (i + 1) / 2 + j) = g;
+      }
+    }
+    for (int k = 0; k < neta; ++k) {
+      double wk = std::exp(logPopOmega[k]);
+      gPopLogOmega[k] += 0.5 * (eta[k] * eta[k]) / wk - 0.5;
+    }
+    arma::vec dataScore = omegaInv * etav - lp;
+    for (int k = 0; k < neta; ++k) {
+      int p = muRefThetaIdx[k];
+      if (p != NA_INTEGER && p >= 1 && p <= ntheta) gTheta[p - 1] += dataScore[k];
+    }
+    if (nSens > 0) {
+      arma::mat S(1, neta);
+      for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
+      arma::vec zk(1); zk[0] = 1.0;
+      arma::vec g(nSens, arma::fill::zeros);
+      arma::mat H(nSens, nSens, arma::fill::zeros);
+      impThetaScore(s, S, zk, g, H);
+      for (int t = 0; t < nSens; ++t) {
+        int th = op_focei.impThetaSensIdx[t];
+        if (th >= 0 && th < ntheta) gTheta[th] += g[t];
+      }
+    }
+  }
+  for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
+  return elbo;
+}
+
+//[[Rcpp::export]]
+List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
+                     NumericVector logPopOmega, NumericMatrix eps,
+                     IntegerVector muRefThetaIdx) {
+  const int N = mu.nrow(), neta = mu.ncol(), ntheta = (int)op_focei.ntheta;
+  const int nL = neta * (neta + 1) / 2;
+  NumericMatrix gMu(N, neta), gL(N, nL);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  double elbo = adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
+                                   gMu, gL, gTheta, gPopLogOmega);
+  return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gL"] = gL,
+                      _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
+}
+
+//[[Rcpp::export]]
+List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
+                 NumericVector logPopOmega0, IntegerVector muRefThetaIdx,
+                 IntegerVector thetaMuRefEta,
+                 LogicalVector thetaFix, LogicalVector omegaFix,
+                 int iters, double seed, double etaScale, double tau, double alpha,
+                 int nMc, int it0,
+                 NumericMatrix sMu0, NumericMatrix sL0,
+                 NumericVector sTheta0, NumericVector sLpo0) {
+  const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
+  const int nL = neta * (neta + 1) / 2;
+  NumericMatrix mu = clone(mu0), Lpack = clone(Lpack0);
+  NumericVector theta = clone(theta0), logPopOmega = clone(logPopOmega0);
+  NumericMatrix sMu = clone(sMu0), sL = clone(sL0);
+  NumericVector sTheta = clone(sTheta0), sLpo = clone(sLpo0);
+  NumericMatrix gMu(N, neta), gL(N, nL);
+  NumericVector gTheta(ntheta), gPopLogOmega(neta);
+  NumericMatrix gMuAcc(N, neta), gLAcc(N, nL);
+  NumericVector gThAcc(ntheta), gLpoAcc(neta);
+  NumericMatrix eps(N, neta);
+  NumericVector elboTrace(iters);
+  NumericMatrix parHist(iters, ntheta + neta);
+  const double eeps = 1e-16, invM = 1.0 / nMc;
+
+  for (int it = 0; it < iters; ++it) {
+    int gi = it0 + it;
+    std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
+    std::fill(gLAcc.begin(), gLAcc.end(), 0.0);
+    std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
+    std::fill(gLpoAcc.begin(), gLpoAcc.end(), 0.0);
+    double elboAcc = 0.0;
+    for (int m = 0; m < nMc; ++m) {
+      setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
+      for (int i = 0; i < N; ++i)
+        for (int k = 0; k < neta; ++k) eps(i, k) = rxNormEng(0.0, 1.0);
+      elboAcc += adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
+                                    gMu, gL, gTheta, gPopLogOmega);
+      for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
+      for (int j = 0; j < N * nL; ++j) gLAcc[j] += gL[j];
+      for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
+      for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
+    }
+    elboAcc *= invM;
+    for (int j = 0; j < N * neta; ++j) gMuAcc[j] *= invM;
+    for (int j = 0; j < N * nL; ++j) gLAcc[j] *= invM;
+    for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
+    for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
+    elboTrace[it] = elboAcc;
+
+    double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
+    for (int j = 0; j < N * neta; ++j) {
+      double g = gMuAcc[j];
+      sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
+      mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+    }
+    for (int j = 0; j < N * nL; ++j) {
+      double g = gLAcc[j];
+      sL[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sL[j];
+      Lpack[j] += etaScale * idecay / (tau + std::sqrt(sL[j])) * g;
+    }
+    for (int p = 0; p < ntheta; ++p) {
+      if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
+      double g = gThAcc[p];
+      sTheta[p] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sTheta[p];
+      theta[p] += etaScale * idecay / (tau + std::sqrt(sTheta[p])) * g;
+    }
+    // recenter mu-referenced intercepts (same as mean-field)
+    for (int p = 0; p < ntheta; ++p) {
+      int k = thetaMuRefEta[p];
+      if (k < 0 || thetaFix[p]) continue;
+      double mbar = 0.0;
+      for (int i = 0; i < N; ++i) mbar += mu(i, k);
+      mbar /= N;
+      theta[p] += mbar;
+      for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
+    }
+    // damped population variance M-step; var_ik = (L_i L_i^T)_kk = sum_{j<=k} L(k,j)^2
+    double gam = 1.0 / (10.0 + (double)gi);
+    for (int k = 0; k < neta; ++k) {
+      if (omegaFix[k]) continue;
+      double sAcc = 0.0;
+      for (int i = 0; i < N; ++i) {
+        double var = 0.0;
+        for (int j = 0; j <= k; ++j) { double l = Lpack(i, k * (k + 1) / 2 + j); var += l * l; }
+        sAcc += mu(i, k) * mu(i, k) + var;
+      }
+      double wTarget = sAcc / N, wCur = std::exp(logPopOmega[k]);
+      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
+    }
+    for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
+    for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+  }
+  return List::create(_["mu"] = mu, _["Lpack"] = Lpack, _["theta"] = theta,
+                      _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
+                      _["parHist"] = parHist, _["it0"] = it0 + iters,
+                      _["sMu"] = sMu, _["sL"] = sL,
+                      _["sTheta"] = sTheta, _["sLpo"] = sLpo);
+}
+
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
 // subject, optimize the conditional MAP of the random effects and return that
 // MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the

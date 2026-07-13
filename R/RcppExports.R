@@ -188,6 +188,14 @@ adviLoop_ <- function(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuR
     .Call(`_nlmixr2est_adviLoop_`, mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0)
 }
 
+adviElboGradFR_ <- function(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGradFR_`, mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
+adviLoopFR_ <- function(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0) {
+    .Call(`_nlmixr2est_adviLoopFR_`, mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0)
+}
+
 fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }

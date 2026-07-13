@@ -83,28 +83,21 @@
 #' late-iteration mean ELBO.  Deterministic (same seed/init), so it does not
 #' break the prefix/resume reproducibility of the main run.
 #' @noRd
-.adviAdaptEta <- function(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaMuRefEta,
-                          thetaFix, omegaFix, control, seed) {
-  .cands <- control$etaCandidates
-  if (length(.cands) == 1L) return(.cands)
-  N <- nrow(mu0); neta <- ncol(mu0); ntheta <- length(theta0)
-  ## a long enough window that a too-large step's late divergence is visible
-  .nAdapt <- as.integer(min(control$iters, 75L))
-  .z <- function() matrix(0, N, neta)
-  .best <- -Inf; .bestEta <- .cands[1]
-  for (.e in .cands) {
-    .r <- adviLoop_(mu0, omega0, theta0, logPopOmega0, muRefIdx, thetaMuRefEta,
-                    thetaFix, omegaFix,
-                    .nAdapt, as.numeric(seed), .e, as.numeric(control$tau),
-                    as.numeric(control$alpha), as.integer(control$nMc), 0L,
-                    .z(), .z(), numeric(ntheta), numeric(neta))
+#' @param runLoop function(eta, nAdapt) -> a loop result (list with $elbo,
+#'   $parHist), from the initial state; family-agnostic.
+#' @noRd
+.adviAdaptEta <- function(runLoop, cands, nAdapt) {
+  if (length(cands) == 1L) return(cands)
+  .best <- -Inf; .bestEta <- cands[1]
+  for (.e in cands) {
+    .r <- runLoop(.e, nAdapt)
     .el <- .r$elbo
     ## reject a candidate that diverges (non-finite, or the population estimates
     ## in parHist blow up) even if its early ELBO looked good
     .diverged <- any(!is.finite(.el)) || any(!is.finite(.r$parHist)) ||
       max(abs(.r$parHist)) > 1e4
     .score <- if (.diverged) -Inf
-      else mean(.el[max(1L, length(.el) - .nAdapt %/% 3L):length(.el)])
+      else mean(.el[max(1L, length(.el) - nAdapt %/% 3L):length(.el)])
     if (.score > .best) { .best <- .score; .bestEta <- .e }
   }
   .bestEta
@@ -121,23 +114,32 @@
 .adviOptimize <- function(ui, data, control, resume = NULL) {
   .prep <- .adviDataPrep(ui, data)
   N <- .prep$N; neta <- .prep$neta; ntheta <- .prep$ntheta
+  ## a resumed run keeps its original family; otherwise use the control's
+  .fr <- if (!is.null(resume) && !is.null(resume$family))
+    identical(resume$family, "fullRank") else identical(control$adviFamily, "fullRank")
+  .nL <- neta * (neta + 1L) / 2L
 
-  ## initial variational + population state (or resume from a prior fit)
+  ## common population/mean init (or resume)
   if (is.null(resume)) {
-    .logPopOmega0 <- log(.prep$omega)
-    .mu0 <- matrix(0, N, neta)
-    ## start q at the prior scale: log-sd = 0.5 log(popOmega)
-    .omega0 <- matrix(rep(0.5 * .logPopOmega0, each = N), N, neta)
-    .theta0 <- .prep$theta
-    .it0 <- 0L
-    .sMu <- matrix(0, N, neta); .sOmega <- matrix(0, N, neta)
-    .sTheta <- numeric(ntheta); .sLpo <- numeric(neta)
+    .logPopOmega0 <- log(.prep$omega); .mu0 <- matrix(0, N, neta)
+    .theta0 <- .prep$theta; .it0 <- 0L
+    .sMu <- matrix(0, N, neta); .sTheta <- numeric(ntheta); .sLpo <- numeric(neta)
+    if (.fr) {
+      ## full-rank: L_i starts diagonal with L_kk = sqrt(popOmega_k) (packed)
+      .scale0 <- matrix(0, N, .nL)
+      for (.k in seq_len(neta)) .scale0[, .k * (.k + 1L) / 2L] <- exp(0.5 * .logPopOmega0[.k])
+      .sScale <- matrix(0, N, .nL)
+    } else {
+      ## mean-field: log-sd starts at the prior scale
+      .scale0 <- matrix(rep(0.5 * .logPopOmega0, each = N), N, neta)
+      .sScale <- matrix(0, N, neta)
+    }
   } else {
-    .mu0 <- resume$mu; .omega0 <- resume$omega
-    .theta0 <- resume$theta; .logPopOmega0 <- resume$logPopOmega
-    .it0 <- as.integer(resume$it0)
-    .sMu <- resume$sMu; .sOmega <- resume$sOmega
+    .mu0 <- resume$mu; .theta0 <- resume$theta; .logPopOmega0 <- resume$logPopOmega
+    .it0 <- as.integer(resume$it0); .sMu <- resume$sMu
     .sTheta <- resume$sTheta; .sLpo <- resume$sLpo
+    .scale0 <- if (.fr) resume$Lpack else resume$omega
+    .sScale <- resume$sScale
   }
 
   .adviInnerSetup(ui, data, .mu0, control)
@@ -146,7 +148,6 @@
   ## the counter-based RNG is keyed by the global iteration index, so resuming
   ## with the original seed continues the exact same stream (prefix property).
   .seed <- if (!is.null(resume) && !is.null(resume$seed)) resume$seed else control$seed
-  ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
   .muRefIdx <- as.integer(.prep$muRefThetaIdx)
   .thFix <- as.logical(.prep$thetaFix); .omFix <- as.logical(.prep$omegaFix)
   ## per-theta recentering eta (0-based) for mu-referenced intercepts, else -1
@@ -155,19 +156,29 @@
     .p <- .prep$muRefThetaIdx[.k]
     if (!is.na(.p)) .thetaMuRefEta[.p] <- .k - 1L
   }
+  ## family-appropriate one-loop runner (from the initial state)
+  .runLoop <- function(eta, iters, it0 = 0L, scale = .scale0, mu = .mu0, theta = .theta0,
+                       lpo = .logPopOmega0, sMu = .sMu, sScale = .sScale,
+                       sTheta = .sTheta, sLpo = .sLpo) {
+    .fn <- if (.fr) adviLoopFR_ else adviLoop_
+    .fn(mu, scale, theta, lpo, .muRefIdx, .thetaMuRefEta, .thFix, .omFix,
+        as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
+        as.numeric(control$alpha), as.integer(control$nMc), it0,
+        sMu, sScale, sTheta, sLpo)
+  }
+  ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
   .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
     else if (isTRUE(control$adaptEta))
-      .adviAdaptEta(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thetaMuRefEta,
-                    .thFix, .omFix, control, .seed)
+      .adviAdaptEta(function(e, n) .runLoop(e, n), control$etaCandidates,
+                    as.integer(min(control$iters, 75L)))
     else if (length(control$etaCandidates) == 1L) control$etaCandidates
     else 0.1
 
-  .res <- adviLoop_(.mu0, .omega0, .theta0, .logPopOmega0, .muRefIdx, .thetaMuRefEta,
-                    .thFix, .omFix,
-                    as.integer(control$iters), as.numeric(.seed), .etaScale,
-                    as.numeric(control$tau), as.numeric(control$alpha),
-                    as.integer(control$nMc), .it0,
-                    .sMu, .sOmega, .sTheta, .sLpo)
+  .res <- .runLoop(.etaScale, control$iters, it0 = .it0)
+  ## normalize the per-subject scale field name (Lpack for full-rank, omega else)
+  .res$scale <- if (.fr) .res$Lpack else .res$omega
+  .res$sScale <- .res$sL; if (is.null(.res$sScale)) .res$sScale <- .res$sOmega
+  .res$family <- control$adviFamily
   .res$etaScale <- .etaScale
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
@@ -251,10 +262,12 @@
   ## ADVI artifacts + warm-resume state on the fit env
   .e <- .fit$env
   .e$adviElbo <- res$elbo
-  .e$adviState <- list(mu = res$mu, omega = res$omega, theta = res$theta,
-                       logPopOmega = res$logPopOmega, it0 = res$it0,
-                       sMu = res$sMu, sOmega = res$sOmega, sTheta = res$sTheta,
-                       sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale)
+  .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
+              it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
+              sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale,
+              family = res$family)
+  if (identical(res$family, "fullRank")) .st$Lpack <- res$scale else .st$omega <- res$scale
+  .e$adviState <- .st
   .fit
 }
 
@@ -264,6 +277,10 @@
 .adviFitModel <- function(env) {
   .ui <- env$ui
   .control <- env$adviControl
+  if (!isTRUE(.control$pointEstimate)) {
+    stop("est=\"advi\" full-Bayes mode (pointEstimate=FALSE) is not yet implemented; ",
+         "use pointEstimate=TRUE (variational EM)", call. = FALSE)
+  }
   ## warm resume: accept a prior advi fit or its adviState
   .resume <- .control$resume
   if (!is.null(.resume)) {
