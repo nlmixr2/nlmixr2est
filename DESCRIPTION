@@ -84,7 +84,8 @@ Suggests:
     fastGHQuad,
     rmarkdown,
     rlang,
-    numDeriv
+    numDeriv,
+    rstan
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),

@@ -83,3 +83,45 @@ test_that("RPEM fits a bounded structural (likelihood) parameter within its boun
   # recovers in the right ballpark (true 1.5) within its declared bounds.
   expect_gt(.shape, 0.9); expect_lt(.shape, 2.3)
 })
+test_that("RPEM recovers a bounded mu-referenced typical value (centered-eta demotion)", {
+  skip_on_cran()
+
+  # The bounded transform rewrites tcl (bounded, mu-referenced by eta.cl) into a
+  # structural theta rxBoundedTr.tcl + a model-computed tcl, so eta.cl becomes a
+  # centered eta whose omega is still estimated by the conjugate M-step.
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(c(0, 2.7, 100))
+      tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # classification after the transform: eta.cl is centered, its theta is structural
+  ui <- rxode2::rxUiDecompress(rxode2::rxode2(one.cmt))
+  res <- .preProcessBoundedTransform(ui, "rpem", nlmixr2data::theo_sd, rpemControl())
+  cl <- .rpemClassify(res$ui)
+  expect_equal(cl$muRef, c(TRUE, FALSE, TRUE))
+  expect_true("rxBoundedTr.tcl" %in% cl$thetaNames[cl$structIdx + 1L])
+
+  f <- suppressMessages(suppressWarnings(nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd,
+    est = "rpem",
+    control = rpemControl(nGauss = 300L, nMH = 50000L, mhBurn = 5000L, niter = 30L,
+                          collect = 12L, seed = 7L, cores = 4L))))
+  expect_s3_class(f, "nlmixr2FitData")
+  .pf <- f$parFixedDf
+  # tcl reported back-transformed inside its declared box; theo_sd reference ~ 1.01
+  expect_lte(.pf["tcl", "Estimate"], log(100))
+  expect_equal(unname(.pf["tcl", "Estimate"]), 1.01, tolerance = 0.15)
+  expect_equal(unname(.pf["tka", "Estimate"]), 0.45, tolerance = 0.35)
+  expect_equal(unname(.pf["tv", "Estimate"]), 3.45, tolerance = 0.1)
+  .om <- diag(f$omega)
+  expect_true(all(is.finite(.om) & .om > 0))       # centered eta.cl omega estimated
+})
