@@ -21,6 +21,8 @@ extern void nelder_fn(S_fp func, int n, double *start, double *step,
 extern SEXP neldermead_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 /* extern SEXP n1qn1_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP); */
 extern SEXP _nlmixr2est_llik_binomial_c(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_impQrPoints_(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_impSirIndex_(SEXP, SEXP, SEXP);
 
 extern SEXP _nlmixr2est_llik_poisson(SEXP, SEXP);
 extern SEXP _nlmixr2est_llik_normal(SEXP, SEXP);
@@ -35,6 +37,7 @@ extern SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEX
 extern SEXP _nlmixr2est_vaeInnerSetup_(SEXP);
 extern SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeTrainCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_vaeElboStepCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerLik(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerFree_(void);
 extern SEXP _nlmixr2est_fsaemInnerMap_(SEXP);
@@ -182,12 +185,15 @@ SEXP _nlmixr2est_rxode2stateOde(SEXP);
 SEXP _rxode2rxFixRes(SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 3},
+  {"_nlmixr2est_impSirIndex_", (DL_FUNC) &_nlmixr2est_impSirIndex_, 3},
   {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},
   {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},
   {"_nlmixr2est_vaeEncoderFwdBwd", (DL_FUNC) &_nlmixr2est_vaeEncoderFwdBwd, 13},
   {"_nlmixr2est_vaeInnerSetup_", (DL_FUNC) &_nlmixr2est_vaeInnerSetup_, 1},
   {"_nlmixr2est_vaeInnerUpdatePar_", (DL_FUNC) &_nlmixr2est_vaeInnerUpdatePar_, 2},
   {"_nlmixr2est_vaeTrainCpp_", (DL_FUNC) &_nlmixr2est_vaeTrainCpp_, 11},
+  {"_nlmixr2est_vaeElboStepCpp_", (DL_FUNC) &_nlmixr2est_vaeElboStepCpp_, 11},
   {"_nlmixr2est_vaeInnerLik", (DL_FUNC) &_nlmixr2est_vaeInnerLik, 4},
   {"_nlmixr2est_vaeInnerFree_", (DL_FUNC) &_nlmixr2est_vaeInnerFree_, 0},
   {"_nlmixr2est_fsaemInnerMap_", (DL_FUNC) &_nlmixr2est_fsaemInnerMap_, 1},

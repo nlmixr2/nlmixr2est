@@ -401,6 +401,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// impSirIndex_
+IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0);
+RcppExport SEXP _nlmixr2est_impSirIndex_(SEXP zkSEXP, SEXP sirNSEXP, SEXP u0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type zk(zkSEXP);
+    Rcpp::traits::input_parameter< int >::type sirN(sirNSEXP);
+    Rcpp::traits::input_parameter< double >::type u0(u0SEXP);
+    rcpp_result_gen = Rcpp::wrap(impSirIndex_(zk, sirN, u0));
+    return rcpp_result_gen;
+END_RCPP
+}
+// impQrPoints_
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift);
+RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type isample(isampleSEXP);
+    Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type shift(shiftSEXP);
+    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift));
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {
@@ -808,6 +834,27 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< bool >::type printLine(printLineSEXP);
     rcpp_result_gen = Rcpp::wrap(vaeIterPrintGet_(printLine));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vaeElboStepCpp_
+List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
+RcppExport SEXP _nlmixr2est_vaeElboStepCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP withGradSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
+    Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
+    Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type aR(aRSEXP);
+    Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);
+    Rcpp::traits::input_parameter< int >::type nMix(nMixSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixProbR(mixProbRSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< bool >::type withGrad(withGradSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeElboStepCpp_(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad));
     return rcpp_result_gen;
 END_RCPP
 }
