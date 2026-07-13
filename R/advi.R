@@ -146,8 +146,17 @@
     .sScale <- resume$sScale
   }
 
-  .adviInnerSetup(ui, data, .mu0, control)
+  .setup <- .adviInnerSetup(ui, data, .mu0, control)
   on.exit(.adviInnerFree(), add = TRUE)
+
+  ## iteration printing: the shared scale.h table (like saem/vae).  Rows are
+  ## always captured (-> standard parHistData); iterPrintControl$every gates the
+  ## console output.  The step-size search runs join the same table as labeled
+  ## "srch <eta>" phases; the main run is the "SGA" phase.
+  .ipNames <- c(.prep$thetaRealNames, paste0("o(", .prep$etaNames, ")"))
+  .ipXform <- .iterPrintXParFromUi(rxode2::rxUiDecompress(ui), .ipNames)
+  .ipc <- control$iterPrintControl
+  .ipStarted <- FALSE
 
   ## thread count for the parallel per-subject ELBO core (same knob as the inner
   ## eval driver: rxControl$cores, falling back to the rxode2 thread pool).  Kept
@@ -193,20 +202,28 @@
       .mPop0 <- resume$mPop; .Lpop0 <- resume$Lpop
       .smPop <- resume$smPop; .sLpop <- resume$sLpop
     }
-    .runFB <- function(eta, iters, it0 = 0L, divergeStop = 0L) {
+    .runFB <- function(eta, iters, it0 = 0L, divergeStop = 0L,
+                       ipPhase = "", ipStart = FALSE, ipEnd = FALSE) {
       adviLoopFB_(.mu0, .scale0, .theta0, .logPopOmega0, .mPop0, .Lpop0,
                   as.integer(.phiThetaIdx), as.integer(.phiOmIdx), as.integer(.phiMuRef),
                   .muRefIdx, as.integer(.fr),
                   as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
                   as.numeric(control$alpha), as.integer(control$nMc), it0,
-                  .sMu, .sScale, .smPop, .sLpop, .cores, as.integer(divergeStop))
+                  .sMu, .sScale, .smPop, .sLpop, .cores, as.integer(divergeStop),
+                  .ipNames, .ipc, .ipXform, ipPhase, as.integer(ipStart), as.integer(ipEnd))
     }
     .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
       else if (isTRUE(control$adaptEta))
-        .adviAdaptEta(function(e, n) .runFB(e, n, divergeStop = 1L), control$etaCandidates,
+        .adviAdaptEta(function(e, n) {
+          .r <- .runFB(e, n, divergeStop = 1L,
+                       ipPhase = paste0("srch ", signif(e, 3)), ipStart = !.ipStarted)
+          .ipStarted <<- TRUE
+          .r
+        }, control$etaCandidates,
                       as.integer(min(control$iters, 75L)))
       else if (length(control$etaCandidates) == 1L) control$etaCandidates else 0.1
-    .res <- .runFB(.etaScale, control$iters, it0 = .it0)
+    .res <- .runFB(.etaScale, control$iters, it0 = .it0,
+                   ipPhase = "SGA", ipStart = !.ipStarted, ipEnd = TRUE)
     .res$family <- control$adviFamily
     .res$pointEstimate <- FALSE
     .res$etaScale <- .etaScale
@@ -215,6 +232,7 @@
     .res$thetaNames <- names(.prep$th)
     .res$popOmega <- exp(.res$logPopOmega)
     .res$seed <- .seed
+    .res$model <- .setup$model
     .res$phiThetaIdx <- .phiThetaIdx; .res$phiOmIdx <- .phiOmIdx
     ## population variational covariance in phi space (Lpop Lpop^T)
     .Lp <- matrix(0, .npop, .npop)
@@ -227,22 +245,30 @@
   ## family-appropriate one-loop runner (from the initial state)
   .runLoop <- function(eta, iters, it0 = 0L, scale = .scale0, mu = .mu0, theta = .theta0,
                        lpo = .logPopOmega0, sMu = .sMu, sScale = .sScale,
-                       sTheta = .sTheta, sLpo = .sLpo, divergeStop = 0L) {
+                       sTheta = .sTheta, sLpo = .sLpo, divergeStop = 0L,
+                       ipPhase = "", ipStart = FALSE, ipEnd = FALSE) {
     .fn <- if (.fr) adviLoopFR_ else adviLoop_
     .fn(mu, scale, theta, lpo, .muRefIdx, .thetaMuRefEta, .thFix, .omFix,
         as.integer(iters), as.numeric(.seed), eta, as.numeric(control$tau),
         as.numeric(control$alpha), as.integer(control$nMc), it0,
-        sMu, sScale, sTheta, sLpo, .cores, as.integer(divergeStop))
+        sMu, sScale, sTheta, sLpo, .cores, as.integer(divergeStop),
+        .ipNames, .ipc, .ipXform, ipPhase, as.integer(ipStart), as.integer(ipEnd))
   }
   ## step-size scale: reuse the resumed run's, else adaptively search, else fixed.
   .etaScale <- if (!is.null(resume) && !is.null(resume$etaScale)) resume$etaScale
     else if (isTRUE(control$adaptEta))
-      .adviAdaptEta(function(e, n) .runLoop(e, n, divergeStop = 1L), control$etaCandidates,
+      .adviAdaptEta(function(e, n) {
+        .r <- .runLoop(e, n, divergeStop = 1L,
+                       ipPhase = paste0("srch ", signif(e, 3)), ipStart = !.ipStarted)
+        .ipStarted <<- TRUE
+        .r
+      }, control$etaCandidates,
                     as.integer(min(control$iters, 75L)))
     else if (length(control$etaCandidates) == 1L) control$etaCandidates
     else 0.1
 
-  .res <- .runLoop(.etaScale, control$iters, it0 = .it0)
+  .res <- .runLoop(.etaScale, control$iters, it0 = .it0,
+                   ipPhase = "SGA", ipStart = !.ipStarted, ipEnd = TRUE)
   ## normalize the per-subject scale field name (Lpack for full-rank, omega else)
   .res$scale <- if (.fr) .res$Lpack else .res$omega
   .res$sScale <- .res$sL; if (is.null(.res$sScale)) .res$sScale <- .res$sOmega
@@ -254,6 +280,7 @@
   .res$thetaNames <- names(.prep$th)
   .res$popOmega <- exp(.res$logPopOmega)
   .res$seed <- .seed
+  .res$model <- .setup$model
   class(.res) <- "nlmixr2advi"
   .res
 }
@@ -326,8 +353,18 @@
   .ret$est <- "advi"
   .ret$ofvType <- "advi"
   .ret$adjObf <- .control$adjObf
+  ## the ADVI optimization walk (standard parHistData -> $parHist accessor)
+  if (!is.null(res$parHistData)) .ret$parHistData <- res$parHistData
   nmObjHandleControlObject(.control, .ret)   # store adviControl for nmObjGetControl.advi
-  .ret$foceiModel <- .ui2$focei
+  ## reuse the models compiled for the ADVI loop (inner/EBE/pred + thetaSens):
+  ## with $model present the eval-only finalize skips its own symengine rebuild
+  ## (the finalize reads only the foce-prefix columns of the inner model, so the
+  ## interaction-model column layout is compatible)
+  if (!is.null(res$model)) {
+    .ret$model <- res$model
+  } else {
+    .ret$foceiModel <- .ui2$focei
+  }
   .fit <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData, control = .fc,
                                     table = .ret$table, env = .ret, est = "advi")
   ## ADVI artifacts + warm-resume state on the fit env

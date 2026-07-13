@@ -41,5 +41,12 @@ nmTest({
     ## ADVI artifacts carried on the fit env
     expect_false(is.null(fit$env$adviElbo))
     expect_false(is.null(fit$env$adviState))
+    ## the optimization walk is standard parHistData (captured even with print=0)
+    .ph <- fit$parHist
+    expect_true(is.data.frame(.ph))
+    expect_true(all(c("iter", "tka", "add.sd", "o(eta.ka)") %in% names(.ph)))
+    expect_gte(max(.ph$iter), 120L)
+    ## the finalize reuses the loop's compiled models (no symengine rebuild)
+    expect_false(is.null(fit$env$foceiModel))
   })
 })

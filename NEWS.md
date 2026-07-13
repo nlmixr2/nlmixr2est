@@ -15,7 +15,11 @@
   API (`adviControl(resume=)`).  The reparameterization noise is drawn from a
   counter-based stream keyed by the global iteration index, so a shorter run is a
   bit-for-bit prefix of a longer one and results are independent of the thread
-  count; the iteration walk is saved to `fit$parHist` like the other methods.
+  count.  The run prints the standard nlmixr2 iteration table (like `saem`/`vae`,
+  `adviControl(print=)`) with the step-size search and the main run shown as
+  labeled stages, and the walk is saved as standard `parHistData`
+  (`fit$parHist`).  The inner and theta-sensitivity models are set up once and
+  reused by the output step (no model re-build at finalize).
   The per-subject ELBO and gradient are computed in parallel over subjects
   (`rxControl(cores=)`); a serial id-ordered reduction keeps the result identical
   for any thread count.

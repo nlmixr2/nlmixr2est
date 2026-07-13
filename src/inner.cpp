@@ -9745,6 +9745,106 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 // optimization loop (adviLoop_) adds parallelism and the counter-based RNG.
 // ===========================================================================
 
+// VAE optimization printing + parameter-history capture. Reuses the SHARED
+// iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
+// scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
+// VAE prints the exact same iteration table and produces parHistData in the
+// standard format -- no duplicated formatting. The VAE never scales its
+// parameters, so scaleTypeNone drops the redundant "U" (Unscaled) rows; the
+// R-side `xform` list (.iterPrintXParFromUi) drives the "X" back-transform row
+// (e.g. exp() thetas), like focei/saem.
+static scaling _vaeScale;
+static std::vector<double> _vaeIpInit;
+static std::vector<double> _vaeIpScaleC;
+static std::vector<int> _vaeIpXPar;
+static std::string _vaeIpPhase;
+
+//[[Rcpp::export]]
+RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
+                           List iterPrintControl, RObject xform = R_NilValue) {
+  int np = initPar.size();
+  _vaeIpInit.assign(initPar.begin(), initPar.end());
+  _vaeIpScaleC.assign(np, 1.0);
+  scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(&_vaeScale, as<List>(xform));
+  }
+  if (_vaeScale.xPar == NULL) {
+    // zero xform: natural-scale values, no back-transform. xPar must be
+    // non-NULL because scalePrintFun indexes it unconditionally.
+    _vaeIpXPar.assign(np, 0);
+    _vaeScale.xPar = _vaeIpXPar.data();
+    _vaeScale.probitIdx = NULL;
+    _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+    _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  }
+  // phase legend for the labels shown in the Function-Val cell
+  _vaeScale.keyExtra =
+    "Burn in: encoder-only burn-in; KL anneal: KL-weight ramp;\n"
+    "EM: main EM phase; Smooth: EMA-smoothing phase\n";
+  scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
+  scalePrintHeader(&_vaeScale);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
+  _vaeIpPhase = phase;
+  _vaeScale.phaseLabel = _vaeIpPhase.empty() ? NULL : _vaeIpPhase.c_str();
+  scalePrintFun(&_vaeScale, &x[0], f);
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject vaeIterPrintGet_(bool printLine = true) {
+  _vaeScale.save = 0;
+  _vaeScale.every = 0;
+  if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
+  return scaleParHisDf(&_vaeScale);
+}
+
+// ADVI iteration printing: same shared scale.h machinery/state as the vae
+// helpers above (one loop runs at a time).  Rows are always captured into
+// standard parHistData; iterPrintControl$every gates the console output.
+// `it0` keeps a resumed run's iteration numbering global.
+static void adviIterPrintStart(NumericVector initPar, CharacterVector names,
+                               List iterPrintControl, RObject xform, int it0) {
+  int np = initPar.size();
+  _vaeIpInit.assign(initPar.begin(), initPar.end());
+  _vaeIpScaleC.assign(np, 1.0);
+  scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(&_vaeScale, as<List>(xform));
+  }
+  if (_vaeScale.xPar == NULL) {
+    _vaeIpXPar.assign(np, 0);
+    _vaeScale.xPar = _vaeIpXPar.data();
+    _vaeScale.probitIdx = NULL;
+    _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
+    _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
+  }
+  _vaeScale.keyExtra =
+    "Function-Val: negative Monte-Carlo ELBO (lower is better)\n"
+    "srch <eta>: step-size-scale search run; SGA: main run\n";
+  scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
+  _vaeScale.cn = it0;
+  scalePrintHeader(&_vaeScale);
+}
+
+// Print/record one ADVI iteration: the just-written parHist row + -ELBO.
+static void adviIterPrintRow(NumericMatrix &parHist, int it, int np, double elbo,
+                             const std::string &phase) {
+  NumericVector r(np);
+  for (int c = 0; c < np; ++c) r[c] = parHist(it, c);
+  vaeIterPrintRow_(r, -elbo, phase);
+}
+
 // Set the natural-scale population thetas into op_focei.fullTheta and propagate
 // to every subject's solve (mirrors updateTheta's propagation, but takes the
 // natural theta directly rather than the scaled free-parameter vector).
@@ -9955,7 +10055,9 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
                int iters, double seed, double etaScale, double tau, double alpha,
                int nMc, int it0,
                NumericMatrix sMu0, NumericMatrix sOmega0,
-               NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop) {
+               NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop,
+               CharacterVector parNames, RObject iterPrintControl, RObject xform,
+               std::string ipPhase, int ipStart, int ipEnd) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   NumericMatrix mu = clone(mu0), omega = clone(omega0);
   NumericVector theta = clone(theta0), logPopOmega = clone(logPopOmega0);
@@ -9971,6 +10073,13 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
   NumericMatrix parHist(iters, ntheta + neta);   // theta ... , popOmega diag ...
   const double eeps = 1e-16, invM = 1.0 / nMc;
   int itRun = iters;                              // may shrink if divergeStop fires
+  const bool doIp = !Rf_isNull(iterPrintControl);
+  if (doIp && ipStart) {
+    NumericVector row0(ntheta + neta);
+    for (int p = 0; p < ntheta; ++p) row0[p] = theta[p];
+    for (int k = 0; k < neta; ++k) row0[ntheta + k] = std::exp(logPopOmega[k]);
+    adviIterPrintStart(row0, parNames, as<List>(iterPrintControl), xform, it0);
+  }
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;                            // global iteration index
@@ -10049,6 +10158,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+    if (doIp) adviIterPrintRow(parHist, it, ntheta + neta, elboAcc, ipPhase);
     // adaptEta candidates only (divergeStop != 0): stop paying for a run that has
     // clearly blown up.  The offending iteration is recorded first, so the
     // (zero-padded) trace still trips R's divergence test; the main run passes
@@ -10057,11 +10167,13 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       itRun = it + 1; break;
     }
   }
+  RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
   return List::create(_["mu"] = mu, _["omega"] = omega, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
                       _["parHist"] = parHist, _["it0"] = it0 + itRun, _["itRun"] = itRun,
                       _["sMu"] = sMu, _["sOmega"] = sOmega,
-                      _["sTheta"] = sTheta, _["sLpo"] = sLpo);
+                      _["sTheta"] = sTheta, _["sLpo"] = sLpo,
+                      _["parHistData"] = parHistData);
 }
 
 // ===========================================================================
@@ -10206,7 +10318,9 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                  int iters, double seed, double etaScale, double tau, double alpha,
                  int nMc, int it0,
                  NumericMatrix sMu0, NumericMatrix sL0,
-                 NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop) {
+                 NumericVector sTheta0, NumericVector sLpo0, int cores, int divergeStop,
+                 CharacterVector parNames, RObject iterPrintControl, RObject xform,
+                 std::string ipPhase, int ipStart, int ipEnd) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   const int nL = neta * (neta + 1) / 2;
   NumericMatrix mu = clone(mu0), Lpack = clone(Lpack0);
@@ -10222,6 +10336,13 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
   NumericMatrix parHist(iters, ntheta + neta);
   const double eeps = 1e-16, invM = 1.0 / nMc;
   int itRun = iters;
+  const bool doIp = !Rf_isNull(iterPrintControl);
+  if (doIp && ipStart) {
+    NumericVector row0(ntheta + neta);
+    for (int p = 0; p < ntheta; ++p) row0[p] = theta[p];
+    for (int k = 0; k < neta; ++k) row0[ntheta + k] = std::exp(logPopOmega[k]);
+    adviIterPrintStart(row0, parNames, as<List>(iterPrintControl), xform, it0);
+  }
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
@@ -10290,15 +10411,18 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
+    if (doIp) adviIterPrintRow(parHist, it, ntheta + neta, elboAcc, ipPhase);
     if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
       itRun = it + 1; break;
     }
   }
+  RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
   return List::create(_["mu"] = mu, _["Lpack"] = Lpack, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["elbo"] = elboTrace,
                       _["parHist"] = parHist, _["it0"] = it0 + itRun, _["itRun"] = itRun,
                       _["sMu"] = sMu, _["sL"] = sL,
-                      _["sTheta"] = sTheta, _["sLpo"] = sLpo);
+                      _["sTheta"] = sTheta, _["sLpo"] = sLpo,
+                      _["parHistData"] = parHistData);
 }
 
 // ===========================================================================
@@ -10324,7 +10448,9 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
                  int iters, double seed, double etaScale, double tau, double alpha,
                  int nMc, int it0,
                  NumericMatrix sMu0, NumericMatrix sScale0,
-                 NumericVector smPop0, NumericVector sLpop0, int cores, int divergeStop) {
+                 NumericVector smPop0, NumericVector sLpop0, int cores, int divergeStop,
+                 CharacterVector parNames, RObject iterPrintControl, RObject xform,
+                 std::string ipPhase, int ipStart, int ipEnd) {
   const int N = mu0.nrow(), neta = mu0.ncol(), ntheta = theta0.size();
   const int nScale = scale0.ncol();
   const int npop = mPop0.size(), nLpop = LpopPack0.size();
@@ -10348,6 +10474,13 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
   NumericMatrix parHist(iters, ntheta + neta);
   const double eeps = 1e-16, invM = 1.0 / nMc;
   int itRun = iters;
+  const bool doIp = !Rf_isNull(iterPrintControl);
+  if (doIp && ipStart) {
+    NumericVector row0(ntheta + neta);
+    for (int p = 0; p < ntheta; ++p) row0[p] = theta[p];
+    for (int k = 0; k < neta; ++k) row0[ntheta + k] = std::exp(logPopOmega[k]);
+    adviIterPrintStart(row0, parNames, as<List>(iterPrintControl), xform, it0);
+  }
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
@@ -10437,6 +10570,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = thetaBar[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(lpoBar[k]);
+    if (doIp) adviIterPrintRow(parHist, it, ntheta + neta, elboAcc, ipPhase);
     if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
       itRun = it + 1; break;
     }
@@ -10446,11 +10580,13 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     if (phiThetaIdx[j] >= 0) theta[phiThetaIdx[j]] = mPop[j];
     else if (phiOmIdx[j] >= 0) logPopOmega[phiOmIdx[j]] = mPop[j];
   }
+  RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
   return List::create(_["mu"] = mu, _["scale"] = scale, _["theta"] = theta,
                       _["logPopOmega"] = logPopOmega, _["mPop"] = mPop, _["Lpop"] = Lpop,
                       _["elbo"] = elboTrace, _["parHist"] = parHist, _["it0"] = it0 + itRun,
                       _["itRun"] = itRun,
-                      _["sMu"] = sMu, _["sScale"] = sScale, _["smPop"] = smPop, _["sLpop"] = sLpop);
+                      _["sMu"] = sMu, _["sScale"] = sScale, _["smPop"] = smPop, _["sLpop"] = sLpop,
+                      _["parHistData"] = parHistData);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
@@ -10669,66 +10805,6 @@ RObject vaeInnerFree_() {
   return R_NilValue;
 }
 
-// VAE optimization printing + parameter-history capture. Reuses the SHARED
-// iteration-print machinery in scale.h (scaleSetup / scalePrintHeader /
-// scalePrintFun / scaleParHisDf) that saem, focei and the nlm family use, so the
-// VAE prints the exact same iteration table and produces parHistData in the
-// standard format -- no duplicated formatting. The VAE never scales its
-// parameters, so scaleTypeNone drops the redundant "U" (Unscaled) rows; the
-// R-side `xform` list (.iterPrintXParFromUi) drives the "X" back-transform row
-// (e.g. exp() thetas), like focei/saem.
-static scaling _vaeScale;
-static std::vector<double> _vaeIpInit;
-static std::vector<double> _vaeIpScaleC;
-static std::vector<int> _vaeIpXPar;
-static std::string _vaeIpPhase;
-
-//[[Rcpp::export]]
-RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
-                           List iterPrintControl, RObject xform = R_NilValue) {
-  int np = initPar.size();
-  _vaeIpInit.assign(initPar.begin(), initPar.end());
-  _vaeIpScaleC.assign(np, 1.0);
-  scaleSetup(&_vaeScale, _vaeIpInit.data(), _vaeIpScaleC.data(), names,
-             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
-             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
-             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
-  if (!Rf_isNull(xform)) {
-    scaleAttachXform(&_vaeScale, as<List>(xform));
-  }
-  if (_vaeScale.xPar == NULL) {
-    // zero xform: natural-scale values, no back-transform. xPar must be
-    // non-NULL because scalePrintFun indexes it unconditionally.
-    _vaeIpXPar.assign(np, 0);
-    _vaeScale.xPar = _vaeIpXPar.data();
-    _vaeScale.probitIdx = NULL;
-    _vaeScale.logitThetaLow = _vaeScale.logitThetaHi = NULL;
-    _vaeScale.probitThetaLow = _vaeScale.probitThetaHi = NULL;
-  }
-  // phase legend for the labels shown in the Function-Val cell
-  _vaeScale.keyExtra =
-    "Burn in: encoder-only burn-in; KL anneal: KL-weight ramp;\n"
-    "EM: main EM phase; Smooth: EMA-smoothing phase\n";
-  scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
-  scalePrintHeader(&_vaeScale);
-  return R_NilValue;
-}
-
-//[[Rcpp::export]]
-RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
-  _vaeIpPhase = phase;
-  _vaeScale.phaseLabel = _vaeIpPhase.empty() ? NULL : _vaeIpPhase.c_str();
-  scalePrintFun(&_vaeScale, &x[0], f);
-  return R_NilValue;
-}
-
-//[[Rcpp::export]]
-RObject vaeIterPrintGet_(bool printLine = true) {
-  _vaeScale.save = 0;
-  _vaeScale.every = 0;
-  if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
-  return scaleParHisDf(&_vaeScale);
-}
 
 // ---------------------------------------------------------------------------
 // VAE training loop (est="vae"), fully in C++.  This is a straight port of the
