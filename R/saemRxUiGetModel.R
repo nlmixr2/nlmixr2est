@@ -370,7 +370,7 @@ rxUiGet.saemModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "saem model")
+    .ret <- rxode2::rxOptExpr(.ret, "saem model", parallel = .optExprCores(x[[1]]))
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
@@ -544,8 +544,10 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret0 <- gsub("rx_expr_", "rx_expr", rxode2::rxOptExpr(.ret0, "saem predOnly model 0"))
-    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1")
+    .optCores <- .optExprCores(x[[1]])
+    .ret0 <- gsub("rx_expr_", "rx_expr",
+                  rxode2::rxOptExpr(.ret0, "saem predOnly model 0", parallel = .optCores))
+    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1", parallel = .optCores)
     ## .ret2 is the residual + lhs (+ tad/dosenum) fragment.  When a delay()
     ## appears in an intermediate lhs (e.g. `ceff <- delay(cen, tau)`) that lhs is
     ## in .ret2 but the delayed state's d/dt is in .ret, so optimizing .ret2 alone
@@ -555,7 +557,8 @@ rxUiGet.saemModelPred <- function(x, ...) {
     if (any(grepl("delay(", .ret2, fixed = TRUE))) {
       .msuccess("done")
     } else {
-      .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2"))
+      .ret2 <- gsub("rx_expr_", "rx_expr__",
+                    rxode2::rxOptExpr(.ret2, "saem predOnly model 2", parallel = .optCores))
       .msuccess("done")
     }
   }

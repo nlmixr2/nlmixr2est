@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+
+- The analytic-covariance augmented model now relies on `rxode2::rxOptExpr()`'s
+  own chunked (and `rxControl(cores=)`-parallel) optimization instead of a
+  hand-rolled line chunker.  Every `rxOptExpr()` call site (focei, nlm, nls,
+  saem, nlme, rpem and the analytic covariance) now passes the fit's
+  `rxControl(cores=)` through as `parallel=`, so the chunks are optimized with
+  the same thread setting the solves use.  Requires an rxode2 with chunked
+  `rxOptExpr()` (current rxode2 main).
+
 - Added `vaeCovariates()`, which returns the subject-level covariates that
   `est = "vae"` would explore during automated covariate selection (name, type
   and centering value), using the same discovery rules as the fit; `warn=FALSE`

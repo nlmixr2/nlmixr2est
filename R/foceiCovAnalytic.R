@@ -1282,43 +1282,19 @@
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
     # prediction chains, so rxOptExpr materially shrinks the per-solve work.
-    # rxOptExpr is ~O(n^3.5) in model size, so optimizing the whole (~200-350 line)
-    # augmented model in one call dominates the build (~25s+).  Split into contiguous
-    # line-chunks and optimize each separately: k chunks of size n/k cost ~n^3/k^2 -- an
-    # ~8-13x speedup -- losing only cross-chunk CSE (the optimized text grows ~15-20%,
-    # negligible since the aug model is solved only hundreds of times per fit).  rxOptExpr
-    # restarts its introduced-variable counter at rx_expr_0 each call, so give each chunk a
-    # unique rx_expr_ prefix before concatenating (the aug model never uses that prefix).
+    # rxode2's rxOptExpr() itself optimizes a large model in cost-balanced chunks by
+    # default (it disguises the compartment-scoped constructs -- state ICs and
+    # f/alag/lag/rate/dur dosing modifiers -- a chunk would otherwise orphan, and
+    # falls back to a single whole-model pass if a chunk cannot be optimized), so the
+    # ~200-350 line augmented model no longer needs hand-rolled chunking here.  The
+    # fit's rxControl(cores=) is passed through so the chunks are optimized in
+    # parallel with the same thread setting the solves use (`.cores` also rides along
+    # in the result so the batched solves run parallel).
+    .cores <- .optExprCores(ui)
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
-      .modTxt <- tryCatch({
-        .ln <- strsplit(.modTxt, "\n", fixed = TRUE)[[1]]
-        # The chunker optimizes contiguous 40-line pieces independently for build speed.
-        # rxOptExpr parses each chunk as a standalone model, so a chunk that holds a
-        # compartment-scoped construct -- a state initial condition (`W(0)=`) or a dosing
-        # modifier (`f(cmt)=` / `lag(cmt)=`->`alag(cmt)=` / `rate(cmt)=` / `dur(cmt)=`) --
-        # without the matching `d/dt(cmt)=` (which, for a parameter-dependent IC/modifier,
-        # sits many sensitivity-ODE lines away in an EARLIER chunk) raises e.g. "'W(0)'
-        # present, but d/dt(W) not defined".  These lines cannot simply be pulled out and
-        # re-appended: their RHS may read a model variable whose value the optimized body
-        # changes, so position is load-bearing.  When any such construct is present, drop to
-        # a single whole-model rxOptExpr call (the original, correct behavior -- slower to
-        # build but rare); keep the fast chunking for the common unconstrained models.
-        .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
-          any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
-        .k <- if (.special) 1L else max(1L, ceiling(length(.ln) / 40))
-        if (.k <= 1L) {
-          rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
-        } else {
-          .grp <- ceiling(seq_along(.ln) / ceiling(length(.ln) / .k))
-          .opt <- vapply(sort(unique(.grp)), function(.g) {
-            .chTxt <- paste(.ln[.grp == .g], collapse = "\n")
-            .o <- tryCatch(rxode2::rxOptExpr(.chTxt, "FOCEi outer gradient model"),
-                           error = function(e) .chTxt)
-            gsub("rx_expr_", paste0("rx_expr_c", .g, "_"), .o, fixed = TRUE)
-          }, character(1))
-          paste(.opt, collapse = "\n")
-        }
-      }, error = function(e) .modTxt)
+      .modTxt <- tryCatch(
+        rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model", parallel = .cores),
+        error = function(e) .modTxt)
     }
     # Declare the theta/eta inputs AND the model covariates up front (param()) so the
     # solve parameter order is fixed and positional.  Reuse .uiGetThetaEtaParams -- the
@@ -1332,11 +1308,9 @@
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
     # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
-    .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
-                       error = function(e) 0L)
     list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
          st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
-         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = if (length(.cores)) .cores else 0L, key = .key)
+         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .cores, key = .key)
   }, error = function(e) NULL)
   if (!is.null(.key) && !is.null(.res)) {
     if (length(ls(.foceiAnalyticAugCache, all.names = TRUE)) >= 64L)    # bound retained compiled models
