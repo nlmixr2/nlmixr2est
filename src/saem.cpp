@@ -1306,14 +1306,14 @@ public:
         _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
         if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
       }
+      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
       gamma2_phi1=Gamma2_phi1.diag();
-      IGamma2_phi1=inv_sympd(Gamma2_phi1);
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
       CGamma21=COV21%D2Gamma21;
 
+      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "Gamma2_phi0 (Omega)");
       gamma2_phi0=Gamma2_phi0.diag();
-      IGamma2_phi0=inv_sympd(Gamma2_phi0);
       D1Gamma20=LCOV0*IGamma2_phi0;
       D2Gamma20=D1Gamma20*LCOV0.t();
       CGamma20=COV20%D2Gamma20;
@@ -3240,6 +3240,28 @@ private:
     }
     fsb = fsM(fsb_idx);
     ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+  }
+
+  // Invert a symmetric covariance (omega) matrix.  If it is not positive
+  // definite, project it to the nearest positive-definite matrix (in place, so
+  // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
+  // once, and return the inverse of the corrected matrix.
+  bool _nearPdWarned = false;
+  mat invSympdNearPd(mat &G, const char *what) {
+    mat out;
+    if (inv_sympd(out, G)) return out;
+    mat pd;
+    if (nmNearPD(pd, G)) {
+      G = pd;
+      if (!_nearPdWarned) {
+        Rcpp::warning(std::string("SAEM: ") + what +
+                      " was not positive definite; projected to the nearest positive-definite matrix (results may be affected)");
+        _nearPdWarned = true;
+      }
+      if (inv_sympd(out, G)) return out;
+    }
+    // last resort: general inverse of the symmetrized matrix
+    return inv(0.5 * (G + G.t()));
   }
 
   void set_mcmcphi(mcmcphi &mphi1,
