@@ -6,7 +6,7 @@
 # every encoder parameter so the native C++ forward/backward can be validated.
 #
 # Run:  Rscript tools/vaeGenEncoderFixtures.R
-# Out:  tests/testthat/fixtures/vae/encoder_golden.rds
+# Out:  tests/testthat/baselines/vae-encoder-golden.rds
 
 library(torch)
 torch_manual_seed(20260709L)
@@ -109,9 +109,9 @@ golden <- list(
                fc_weight = grad(linear$weight),     fc_bias   = grad(linear$bias))
 )
 
-outDir <- "tests/testthat/fixtures/vae"
+outDir <- "tests/testthat/baselines"
 dir.create(outDir, recursive = TRUE, showWarnings = FALSE)
-saveRDS(golden, file.path(outDir, "encoder_golden.rds"))
-cat("wrote", file.path(outDir, "encoder_golden.rds"), "\n")
+saveRDS(golden, file.path(outDir, "vae-encoder-golden.rds"))
+cat("wrote", file.path(outDir, "vae-encoder-golden.rds"), "\n")
 cat("loss =", golden$forward$loss, "\n")
 str(golden$forward)
