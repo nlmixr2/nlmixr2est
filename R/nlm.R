@@ -473,11 +473,19 @@ rxUiGet.nlmParams <- function(x, ...) {
   .w <- which(!.iniDf$fix)
   .env <- new.env(parent=emptyenv())
   .env$t <- 0
+  ## Declare the model covariates (ui$allCovs) explicitly after DV.  Referenced
+  ## covariates land here anyway (auto-detected after the thetas), so this only
+  ## pins the order -- but it also keeps covariates whose only reference is dropped
+  ## by log-likelihood pruning (e.g. a plugin's externally-loaded parameter block,
+  ## read by a compiled function at a fixed par_ptr index rather than by name) in
+  ## the solve parameter layout so they retain a stable par_ptr slot.
+  .covs <- .ui$allCovs
+  if (is.null(.covs)) .covs <- character(0)
   paste0("params(",
          paste(c(vapply(.w, function(i) {
            .env$t <- .env$t + 1
            paste0("THETA[", .env$t, "]")
-         }, character(1), USE.NAMES = FALSE), "DV"),
+         }, character(1), USE.NAMES = FALSE), "DV", .covs),
          collapse=","), ")")
 }
 attr(rxUiGet.nlmParams, "rstudio") <- "params()"
