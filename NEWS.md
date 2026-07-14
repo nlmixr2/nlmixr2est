@@ -5,7 +5,7 @@
   `combined1`, `pow()`, `add()+pow()`).  The `(f,R)` determinant chain rule
   aliased `d(dfr)/df` onto `pffR = d(dff)/dR`.  Those coincide only when the
   determinant coefficients are second partials of a potential, which holds for
-  the exact censored Laplace determinant but *not* for the Gauss-Newton expected
+  the exact censored Laplace determinant but not for the Gauss-Newton expected
   information used on a normal observation: there `(dff,dfr,drr) = (1/R, 0,
   0.5/R^2)`, so `d(dfr)/df = 0` while `d(dff)/dR = -1/R^2`.  The aliasing injected
   a spurious `-a(s)/R^2 * (a_l*aR_m + aR_l*a_m)` term into `dHt/ddir`.  It is
