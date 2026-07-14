@@ -95,11 +95,9 @@
 <h3 id="test-thread-policy">Test thread policy<a class="anchor" aria-label="anchor" href="#test-thread-policy"></a></h3>
 <p><code>tests/testthat.R</code> keeps CI and CRAN from oversubscribing core-limited runners (which historically caused 6h timeouts / exit-143 “the runner has received a shutdown signal”):</p>
 <ul><li>
-<strong>testthat workers</strong>: a single worker on CI (<code>CI=true</code>) or CRAN; everywhere else testthat manages <code>Config/testthat/parallel</code> (<code>parallel: true</code>, <code>edition: 3</code> in <code>DESCRIPTION</code>) normally.</li>
+<strong>testthat workers</strong>: SERIAL (<code>TESTTHAT_PARALLEL=FALSE</code>) on CI (<code>CI=true</code>) or CRAN; everywhere else testthat manages <code>Config/testthat/parallel</code> (<code>parallel: true</code>, <code>edition: 3</code> in <code>DESCRIPTION</code>) normally. Serial is deliberate, not just “one worker”: parallel mode’s worker-&gt;orchestrator message pipe base64-serializes every non-success test event, so an ERRORING test whose backtrace inlines a fit/data object (any <code>do.call(f, list(&lt;big&gt;))</code> frame) ships that object at ~18x its size into the orchestrator and can kill the whole run at R’s 2GB string cap (“result string is too long”) – this is what the windows/devel runner-OOM failures were. Do not re-enable parallel on CI without solving that.</li>
 <li>
 <strong>rxode2 / data.table within-solve threads</strong>: capped to 2 on CRAN only; on CI and locally rxode2 manages its own threads.</li>
-<li>
-<strong>Do not pass a non-parallel reporter</strong> to <code>test_check()</code> – testthat silently falls back to serial when <code>reporter$capabilities$parallel_support</code> is FALSE (e.g. <code>LocationReporter</code>), which defeats the parallel config.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="test-batching-quick-core-vs-weekly">Test batching (quick-core vs weekly)<a class="anchor" aria-label="anchor" href="#test-batching-quick-core-vs-weekly"></a></h3>

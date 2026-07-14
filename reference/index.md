@@ -194,5 +194,7 @@
 - [`vaeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeControl.md)
   : Control for vae (variational autoencoder) estimation method in
   nlmixr2
+- [`vaeCovariates()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeCovariates.md)
+  : Covariates explored by the VAE covariate search
 - [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
   : VPC simulation
