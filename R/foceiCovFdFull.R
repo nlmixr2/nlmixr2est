@@ -16,6 +16,11 @@
 #' @noRd
 .foceiFdFullParams <- function(e) {
   ui <- get("ui", e)
+  # bounded-parameter transforms put the structural thetas on an internal (unbounded) scale,
+  # so the FD-full Hessian would be internal-scale; the theta-sized Jacobian hook
+  # (.postEstimationBoundedTransformJacobian) cannot correct a full theta+Omega cov.  Bow out
+  # (as the analytic path does) and keep the native theta-only cov, which that hook corrects.
+  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
   ini <- ui$iniDf
   isFix <- if (is.null(ini$fix)) rep(FALSE, nrow(ini)) else ini$fix
   isFix[is.na(isFix)] <- FALSE
