@@ -1131,10 +1131,6 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
-  .etaFD <- ui$etaFDLinesStr
-  if (.etaFD != "") {
-    .cmt <-paste0(.cmt, "\n", .etaFD)
-  }
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
            .cmt, "\n")
@@ -1182,28 +1178,6 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
           .num <- as.numeric(sub(.reg, "\\1", .v2))
           .eventTheta[.num] <- 1L
         }
-      }
-    }
-  }
-  ## method-agnostic force-FD etas: any eta whose effect on the prediction is
-  ## invisible to the analytic sensitivity (e.g. externally injected NN weights,
-  ## where d(f)/d(eta) via the rx__sens states is structurally 0) can be routed
-  ## through the SAME finite-difference machinery as the event (dosing-parameter)
-  ## etas.  Two equivalent sources: the foceiControl(fdEta=) control and the
-  ## `etaFD(...)` model-block directive (baked into modelVars$etaFD by rxode2, so
-  ## it survives every model-building step).  Its inner d(f)/d(eta) is then
-  ## differenced numerically (predOde) instead of taken from the zero rx__sens.
-  .fdEta <- as.character(rxode2::rxGetControl(ui, "fdEta", NULL))
-  .mvEtaFD <- ui$mv0$etaFD
-  if (length(.mvEtaFD) > 0L) {
-    .fdEta <- unique(c(.fdEta, names(.mvEtaFD)[.mvEtaFD == 1L]))
-  }
-  if (length(.fdEta) > 0L && length(.eventEta) > 0L) {
-    .etaDf <- ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, , drop = FALSE]
-    for (.e in as.character(.fdEta)) {
-      .num <- .etaDf$neta1[.etaDf$name == .e]
-      if (length(.num) == 1L && !is.na(.num) && .num >= 1L && .num <= length(.eventEta)) {
-        .eventEta[.num] <- 1L
       }
     }
   }

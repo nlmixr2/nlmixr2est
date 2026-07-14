@@ -51,20 +51,6 @@ extern "C" {
   typedef struct { int id; int neta; int nobs; const double *eta; } nlmixrEmSubj;
   typedef double (*nlmixrEmLik_fn)(const nlmixrEmSubj *s);
 
-  // Per-subject NN weight-injection hook: called right after a subject's etas
-  // are written to par_ptr and before its inner solve, so a plugin can overwrite
-  // that subject's par_ptr weight block with individual weights W_i computed from
-  // the eta vector (e.g. W_i = lW * exp(etaW)).  It fires on EVERY eta-set,
-  // including finite-difference perturbations, so FOCEI's FD eta-sensitivity
-  // captures d(f)/d(etaW) through the injected weights with no analytic
-  // gradient -- the inner (individual-weight) building block.  Thread-safe: it
-  // may run in the parallel per-subject region, so it must touch only subject
-  // cid's par_ptr.  `ind` is subject cid's rx_solving_options_ind* (passed as
-  // void* to avoid a struct dependency in this header) -- the contributor casts
-  // it and writes ind->par_ptr directly, so it needs no rx lookup (the FOCEI
-  // inner FD path does not set rxode2's global getRxSolve_()).
-  typedef void (*nlmixrInnerWeight_fn)(int cid, const double *eta, int neta, void *ind);
-
   // registry (exposed to contributor packages via R_GetCCallable-free means;
   // see nlmixr2est init).  Register/remove is idempotent per pointer.
   void nlmixrRegisterLikContrib(const nlmixrLikContrib *c);
@@ -72,7 +58,6 @@ extern "C" {
   void nlmixrRegisterEmLik(nlmixrEmLik_fn fn);
   void nlmixrRemoveEmLik(nlmixrEmLik_fn fn);
   int  nlmixrHasLikContrib(void);   // fast check to skip hook overhead
-  void nlmixrSetInnerWeightFn(nlmixrInnerWeight_fn fn);  // NULL to clear
 
 #ifdef __cplusplus
 }
