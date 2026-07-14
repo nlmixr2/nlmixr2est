@@ -2,6 +2,15 @@
 
 ## nlmixr2est (development version)
 
+- In the mu-referenced estimation family (`mfocei`/`ifocei`,
+  `mfoce`/`ifoce`, `mfocep`/`ifocep`, `magq`/`iagq`,
+  `mlaplace`/`ilaplace`), the regression-updated mu thetas (population
+  and covariate coefficients) now appear as standard columns, in natural
+  theta order, in the live iteration print and in
+  `fit$parHist`/`parHistData`; gradient rows record `NaN` for them
+  (shown as blank console cells) and the previous appended `| mu|` row
+  was removed.
+
 - SAEM no longer errors when the between-subject-variability covariance
   (`Omega`) collapses to a non-positive-definite matrix mid-run. It is
   now projected to the nearest positive-definite matrix (with a one-time
@@ -322,12 +331,22 @@
   reading the (fixed) variance from the solved `rx_r_`.
 
 - Bounded mu-referenced parameters (population thetas and covariate
-  coefficients) are now also profiled by the mu/irls regression, with
-  the update clamped to the bounds (box-constrained least squares,
-  `foceiControl(muModelClampRetries=)`); parameters that were clamped
-  during the fit are reported once as a fit note. Previously a bounded
-  population theta dropped its whole group (with a warning) and a
-  bounded covariate coefficient stayed outer-optimized.
+  coefficients) are now also profiled by the mu/irls regression in the
+  clamped `m*`/`i*` family (`mfocei`/`ifocei` and variants,
+  `muModel != "none"`), with the update clamped to the bounds
+  (box-constrained least squares, `foceiControl(muModelClampRetries=)`);
+  parameters that were clamped during the fit are reported once as a fit
+  note. Every other (non-clamped) method keeps the previous style: a
+  bounded population theta rejects its whole mu group (with a warning)
+  and a bounded covariate coefficient stays an ordinary outer-optimized
+  parameter.
+
+- Fixed the mu-family regression’s handling of a user-fixed covariate
+  coefficient: its (fixed) contribution was added into the regression
+  target but never taken back out, so each regression pass shifted the
+  group’s linear predictor by the fixed term (biasing the population
+  theta and inflating the eta variance). The fixed contribution is now
+  left out of the regression entirely.
 
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods
   keep `nlminb`); an explicit `outerOpt` is honored.
