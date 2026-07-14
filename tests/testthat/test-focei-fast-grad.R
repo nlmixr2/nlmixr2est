@@ -327,4 +327,60 @@ nmTest({
     expect_false(isTRUE(fF$foceiControl$fast))
     expect_true(is.finite(fF$objf))
   })
+
+  test_that("FOCEI + prop(): analytic gradient matches FD NEAR THE OPTIMUM (det-term regression)", {
+    skip_on_cran()
+    skip_on_ci()
+    # Regression for the d(dfr)/df aliasing in the (f,R) FOCEI determinant chain
+    # (foceiGradSubjectFR_): the normal-obs determinant coeffs are the Gauss-Newton
+    # EXPECTED information (dff,dfr,drr) = (1/R, 0, 0.5/R^2), which is NOT the Hessian
+    # of a potential, so d(dfr)/df = 0 != d(dff)/dR = -1/R^2.  Reusing pffR for both
+    # injected a spurious -a(s)/R^2 * (a_l*aR_m + aR_l*a_m) term into dHt/ddir.  It is
+    # proportional to aR = dR/ddir, so it cancels for additive error and for FOCE
+    # (frozen variance) and ONLY bites FOCEI with a prediction-dependent variance.
+    #
+    # The existing covariate test above already runs FOCEI + prop(), but it evaluates
+    # FAR from the optimum where the data-fit gradient (~5e4) swamps the corrupted
+    # log|Ht| determinant term -- it passed at 0.5% error with the bug present.  This
+    # test evaluates NEAR the optimum, with three etas, where the determinant term is
+    # a first-order contributor: the bug shows up as a >100% gradient error.
+    obsT <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24)
+    m <- function() {
+      ini({ tka <- log(1); tcl <- log(4); tv <- log(60)
+            eta.ka ~ 0.09; eta.cl ~ 0.09; eta.v ~ 0.09
+            prop.sd <- 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - (cl / v) * center
+              cp <- center / v
+              cp ~ prop(prop.sd) })
+    }
+    set.seed(7001)
+    d <- do.call(rbind, lapply(1:40, function(i)
+      rbind(data.frame(ID = i, TIME = 0, AMT = 100, DV = 0, EVID = 101),
+            data.frame(ID = i, TIME = obsT, AMT = 0, DV = 0, EVID = 0))))
+    d$DV <- rxode2::rxSolve(rxode2::rxode2(m), d, addDosing = TRUE)$sim
+    d$DV[d$EVID != 0] <- 0
+    # data simulated AT the initial estimates -> evaluating there is near the optimum
+    ph <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei",
+          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                       maxOuterIterations = 0L, maxInnerIterations = 500L))))
+    g <- .foceiGradAnalyticCalc(ph)
+    expect_false(is.null(g))
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                     maxInnerIterations = 500L))))$objf
+    }
+    # per-parameter step: a flat h=1e-3 is a 1% perturbation of prop.sd=0.1 and makes
+    # the central difference itself carry ~10% error, which would mask the signal
+    fd <- vapply(names(base), function(nm) {
+      h <- 1e-3 * max(abs(base[[nm]]), 0.05)
+      (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
+    }, numeric(1))
+    # with the bug present this is off by >100% (prop.sd ratio ~10x); fixed it is exact
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
 })

@@ -26,12 +26,22 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
                                  int censOpt, int nobs,
                                  arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
                                  arma::vec& dff, arma::vec& dfr, arma::vec& drr,
-                                 arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR) {
+                                 arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR,
+                                 arma::vec& pfrf) {
   const bool hasCens = ((int)censv.n_elem == nobs);
   // normal defaults for the determinant coeffs
   dff = 1.0 / Rv;  dfr = arma::zeros<arma::vec>(nobs);  drr = 0.5 / square(Rv);
   pfff = arma::zeros<arma::vec>(nobs);  pffR = -1.0 / square(Rv);
   pfRR = arma::zeros<arma::vec>(nobs);  pRRR = -1.0 / pow(Rv, 3);
+  // pfrf = d(dfr)/df, which is NOT the same as pffR = d(dff)/dR for a NORMAL obs.
+  // The normal determinant coeffs are the Gauss-Newton EXPECTED information
+  // (dff,dfr,drr) = (1/R, 0, 0.5/R^2).  That triple is NOT the Hessian of any
+  // potential -- if it were, symmetry of mixed partials would force
+  // d(dff)/dR == d(dfr)/df, i.e. -1/R^2 == 0.  It does not.  dfr is identically
+  // zero in BOTH f and R, so d(dfr)/df = 0.  (For the exact censored Laplace
+  // determinant below the coeffs ARE genuine 2nd derivatives of the censored
+  // log-density, so there the potential is integrable and pfrf == pffR == cp[6].)
+  pfrf = arma::zeros<arma::vec>(nobs);
   if (!hasCens) return;
   for (int o = 0; o < nobs; o++) {
     double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
@@ -44,6 +54,7 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
     if (censOpt == 1) {   // laplace: exact censored determinant
       dff[o] = cp[2];  dfr[o] = cp[3];  drr[o] = cp[4];
       pfff[o] = cp[5]; pffR[o] = cp[6]; pfRR[o] = cp[7]; pRRR[o] = cp[8];
+      pfrf[o] = cp[6];   // exact censored determinant IS integrable -> d(dfr)/df == P_ffR
     }
   }
 }
@@ -258,9 +269,9 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
   // determinant coefficients dff/dfr/drr (+ 3rd-order coeff partials pfff/pffR/pfRR/pRRR);
   // normal = Gauss-Newton expected info, censored+laplace = exact censored 2nd derivative.
-  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR;
+  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf;
   censGradCoefs(censv, limv, fv, yv, Rv, censOpt, nobs,
-                rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR);
+                rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf);
   // exact inner Hessian H (eta x eta), N (eta x dir), determinant Ht
   mat H = Oi, Ht = Oi, N(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
@@ -302,10 +313,19 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
         for (int o = 0; o < nobs; o++) {
-          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pffR*a(s) + pfRR*aR(s);
+          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pfrf*a(s) + pfRR*aR(s);
           // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s)
+          //
+          // pfrf (= d(dfr)/df) is a SEPARATE coefficient from pffR (= d(dff)/dR).  They
+          // coincide only when the determinant coeffs are second partials of a potential
+          // (the exact censored Laplace case).  For a NORMAL obs the determinant uses the
+          // Gauss-Newton expected information (dff,dfr,drr) = (1/R, 0, 0.5/R^2), which is
+          // NOT integrable: dfr is identically 0 so d(dfr)/df = 0, while d(dff)/dR = -1/R^2.
+          // Using pffR here injected a spurious -a(s)/R^2 * (a_l*aR_m + aR_l*a_m) term into
+          // dHt/ddir.  It cancels whenever aR == 0 (additive error; FOCE frozen variance),
+          // which is why only FOCEI with prop()/add()+prop() was wrong.
           double ddff = pfff[o] * a(o, s) + pffR[o] * aR(o, s);
-          double ddfr = pffR[o] * a(o, s) + pfRR[o] * aR(o, s);
+          double ddfr = pfrf[o] * a(o, s) + pfRR[o] * aR(o, s);
           double ddrr = pfRR[o] * a(o, s) + pRRR[o] * aR(o, s);
           v += ddff * a(o, l) * a(o, m) + dff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
             ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
