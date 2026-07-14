@@ -5715,52 +5715,14 @@ static inline void foceiPrintLine(int ncol){
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   double ret = foceiOfv0(x);
   niter.push_back(op_focei.nF2+(++op_focei.nF));
-  // Scaled
-  vPar.push_back(ret);
-  iterType.push_back(5);
-  int finalize = 0, i = 0;
-  for (i = 0; i < n; i++){
-    vPar.push_back(x[i]);
-  }
-  // Unscaled
-  iterType.push_back(6);
-  niter.push_back(niter.back());
-  if (op_focei.scaleObjective){
-    vPar.push_back(op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-  } else {
-    vPar.push_back(ret);
-  }
-  for (i = 0; i < n; i++){
-    vPar.push_back(unscalePar(x, i));
-  }
-  // Back-transformed (7)
-  iterType.push_back(7);
-  niter.push_back(niter.back());
-  if (op_focei.scaleObjective){
-    vPar.push_back(op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-  } else {
-    vPar.push_back(ret);
-  }
-  for (i = 0; i < n; i++){
-    // op_focei.probitIdxArr (not scale.probitIdx) -- the scale pointer is in
-    // print-map order for the mu family, this loop runs over optimizer indices
-    int probitCode = (op_focei.probitIdxArr != NULL) ? op_focei.probitIdxArr[i] : 0;
-    vPar.push_back(scaleBackTransform(unscalePar(x, i),
-                                      op_focei.xPar[i], probitCode,
-                                      op_focei.scale.logitThetaLow,
-                                      op_focei.scale.logitThetaHi,
-                                      op_focei.scale.probitThetaLow,
-                                      op_focei.scale.probitThetaHi));
-  }
-  // Emit the per-iteration #/U/X rows via scale.h; when scaleObjective is on,
-  // rescale back to the unscaled OFV so all rows show the number the user expects.
-  double displayedOfv = op_focei.scaleObjective
-    ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
-    : ret;
-  // The mu-family prints nparsPrint columns: optimizer values interleaved
-  // with the current regression-updated mu thetas (raw estimation scale).
+  // The mu-family records/prints nparsPrint columns: optimizer values
+  // interleaved with the current regression-updated mu thetas (raw estimation
+  // scale, fresh from the foceiOfv0 inner/updateMuGroups cycle above);
+  // identity over the optimizer set when muModel is off.
   double *xp = x;
+  int np = n;
   if (muPrintActive()) {
+    np = (int)op_focei.nparsPrint;
     _printX.resize(op_focei.nparsPrint);
     for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
       int ko = _printOptIdx[p];
@@ -5775,6 +5737,58 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     }
     xp = _printX.data();
   }
+  // Scaled
+  vPar.push_back(ret);
+  iterType.push_back(5);
+  int finalize = 0, i = 0;
+  for (i = 0; i < np; i++){
+    vPar.push_back(xp[i]);
+  }
+  // Unscaled
+  iterType.push_back(6);
+  niter.push_back(niter.back());
+  if (op_focei.scaleObjective){
+    vPar.push_back(op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
+  } else {
+    vPar.push_back(ret);
+  }
+  for (i = 0; i < np; i++){
+    int ko = muPrintActive() ? _printOptIdx[i] : i;
+    vPar.push_back(ko >= 0 ? unscalePar(x, ko) : xp[i]);
+  }
+  // Back-transformed (7)
+  iterType.push_back(7);
+  niter.push_back(niter.back());
+  if (op_focei.scaleObjective){
+    vPar.push_back(op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
+  } else {
+    vPar.push_back(ret);
+  }
+  for (i = 0; i < np; i++){
+    int ko = muPrintActive() ? _printOptIdx[i] : i;
+    double u; int xc, pc;
+    if (ko >= 0) {
+      u = unscalePar(x, ko);
+      xc = op_focei.xPar[ko];
+      // op_focei.probitIdxArr (not scale.probitIdx) -- the scale pointer is
+      // in print-map order for the mu family, ko is an optimizer index
+      pc = (op_focei.probitIdxArr != NULL) ? op_focei.probitIdxArr[ko] : 0;
+    } else {
+      u = xp[i];
+      xc = _printXPar[i];
+      pc = _printProbitIdx[i];
+    }
+    vPar.push_back(scaleBackTransform(u, xc, pc,
+                                      op_focei.scale.logitThetaLow,
+                                      op_focei.scale.logitThetaHi,
+                                      op_focei.scale.probitThetaLow,
+                                      op_focei.scale.probitThetaHi));
+  }
+  // Emit the per-iteration #/U/X rows via scale.h; when scaleObjective is on,
+  // rescale back to the unscaled OFV so all rows show the number the user expects.
+  double displayedOfv = op_focei.scaleObjective
+    ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
+    : ret;
   scalePrintFun(&op_focei.scale, xp, displayedOfv);
   // One summary line per printed iteration for any ODE-solve warnings (e.g.
   // intdy window-misses) accumulated since the last flush; without this a
@@ -5822,7 +5836,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
     grp = _printGr.data();
   }
   scalePrintGrad(&op_focei.scale, grp, gradType.back());
-  vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
       if (op_focei.nF+op_focei.nF2 == 1) {
@@ -5849,7 +5862,19 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
         }
       }
     }
-    vGrad.push_back(gr[i]);
+  }
+  // Record after the zero-gradient fix-ups so the history holds the values the
+  // optimizer sees; mu columns record NaN (regression-updated, no gradient).
+  vGrad.push_back(NA_REAL); // Gradient doesn't record objf
+  if (muPrintActive()) {
+    for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
+      int ko = _printOptIdx[p];
+      vGrad.push_back(ko >= 0 ? gr[ko] : R_NaN);
+    }
+  } else {
+    for (i = 0; i < n; i++){
+      vGrad.push_back(gr[i]);
+    }
   }
 }
 
@@ -7846,7 +7871,7 @@ void parHistData(Environment e, bool focei){
     CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
     CharacterVector dfNames;
     if (focei){
-      CharacterVector dfNames2(3+op_focei.npars);
+      CharacterVector dfNames2(3+op_focei.nparsPrint);
       dfNames = dfNames2;
     } else {
       CharacterVector dfNames2(3+thetaNames.size());
@@ -7857,8 +7882,10 @@ void parHistData(Environment e, bool focei){
     dfNames[2] = "objf";
     int i, j, k=1;
     if (focei){
-      for (i = 0; i < op_focei.npars; i++){
-        j=op_focei.fixedTrans[i];
+      // print-map order: optimizer columns plus regression-updated mu thetas
+      // at their natural positions (identity over fixedTrans when muModel off)
+      for (i = 0; i < (int)op_focei.nparsPrint; i++){
+        j=_printFullIdx[i];
         if (j < thetaNames.size()){
           dfNames[i+3] = thetaNames[j];
         } else {
@@ -7873,7 +7900,7 @@ void parHistData(Environment e, bool focei){
     // iter type parameters
     List ret;
     if (focei){
-      ret = List(3+op_focei.npars);
+      ret = List(3+op_focei.nparsPrint);
     } else {
       ret = List(3+thetaNames.size());
     }
@@ -7910,7 +7937,7 @@ void parHistData(Environment e, bool focei){
       vals = cPar;
     }
     if (focei){
-      for (i = 0; i < min2(op_focei.npars+1, vals.n_cols); i++){
+      for (i = 0; i < min2(op_focei.nparsPrint+1, vals.n_cols); i++){
         ret[i+2]= vals.col(i);
       }
     } else {
