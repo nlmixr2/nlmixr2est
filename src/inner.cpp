@@ -233,8 +233,6 @@ struct focei_options {
   bool mGthetaGrad = false;
   // n1qn1 specific vectors
   double *gZm = NULL;
-  double *gZmH = NULL;
-  double *gZmEta = NULL;
   double *gG = NULL;
   double *gVar = NULL;
   double *gX = NULL;
@@ -650,10 +648,6 @@ struct focei_ind {
 
   int mode; // 1 = dont use zm, 2 = use zm.
   double *zm;
-  // warm="calc": packed lower-triangle eta Hessian + the eta it was computed at
-  double *zmH;
-  double *zmEta;
-  int zmValid;
   double *var;
   double *x;
   unsigned int uzm;
@@ -2199,13 +2193,6 @@ double LikInner2(double *eta, int likId, int id) {
       std::copy(H.begin(), H.end(),
                 op_focei.gH + id*op_focei.neta*op_focei.neta);
     }
-    if (op_focei.warm == 1 && fInd->zmH != NULL) {
-      // Save the calculated Hessian to warm-start the next n1qn1 inner problem
-      vec hPack = H.elem(lowerTri(H, true));
-      std::copy(hPack.begin(), hPack.end(), fInd->zmH);
-      std::copy(&eta[0], &eta[0] + op_focei.neta, fInd->zmEta);
-      fInd->zmValid = 1;
-    }
     // - sum(log(H.diag()));
     double logH0diag = 0.0;
     for (unsigned int j = H0.n_rows; j--;){
@@ -2287,47 +2274,30 @@ double LikInner2(double *eta, int likId, int id) {
 }
 
 // warm="calc": seed n1qn1's zm with the eta Hessian calculated at the starting
-// eta; when no Hessian was calculated at this eta, calculate it here.
+// eta.  Always recalculated: theta moves between outer evaluations, so a
+// Hessian saved from an earlier round is stale even at an identical eta.
+// For FD Hessians (needOptimHess) this optimizes the shi21 step (etahh) at
+// the starting eta (e.g. eta=0) instead of the EBE mode, shifting downstream
+// Hessians by FD error; the warm-start speedup is worth that small shift.
 void warmZm(focei_ind *fInd, int id) {
   std::fill(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm, 0.0);
   int neta = op_focei.neta;
-  bool etaMatch = fInd->zmValid == 1;
-  if (etaMatch) {
-    for (int j = neta; j--;) {
-      if (fInd->zmEta[j] != fInd->eta[j]) {
-        etaMatch = false;
-        break;
-      }
+  bool haveH = false;
+  double f = likInner0(fInd->eta, id);
+  if (!ISNA(f)) {
+    rx = getRxSolve_();
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    mat H(neta, neta, fill::zeros);
+    mat H0(neta, neta, fill::zeros);
+    if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0)) {
+      // n1qn1 mode=2 reads the packed lower-triangle Hessian from zm
+      vec hPack = H.elem(lowerTri(H, true));
+      std::copy(hPack.begin(), hPack.end(), &fInd->zm[0]);
+      haveH = true;
     }
   }
-  // For FD Hessians (needOptimHess) this optimizes the shi21 step (etahh) at
-  // the starting eta (e.g. eta=0) instead of the EBE mode, shifting downstream
-  // Hessians by FD error; the warm-start speedup is worth that small shift.
-  if (!etaMatch) {
-    double f = likInner0(fInd->eta, id);
-    if (!ISNA(f)) {
-      rx = getRxSolve_();
-      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-      mat H(neta, neta, fill::zeros);
-      mat H0(neta, neta, fill::zeros);
-      if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0)) {
-        vec hPack = H.elem(lowerTri(H, true));
-        std::copy(hPack.begin(), hPack.end(), fInd->zmH);
-        std::copy(&fInd->eta[0], &fInd->eta[0] + neta, fInd->zmEta);
-        fInd->zmValid = 1;
-        etaMatch = true;
-      }
-    }
-  }
-  if (etaMatch) {
-    // n1qn1 mode=2 reads the packed lower-triangle Hessian from zm
-    std::copy(&fInd->zmH[0], &fInd->zmH[0] + neta*(neta+1)/2, &fInd->zm[0]);
-    fInd->mode = 2;
-    fInd->uzm = 1;
-  } else {
-    fInd->mode = 1;
-    fInd->uzm = 1;
-  }
+  fInd->mode = haveH ? 2 : 1;
+  fInd->uzm = 1;
 }
 
 extern "C" double innerOptimF(int n, double *x, void *ex){
@@ -4726,9 +4696,6 @@ static inline void foceiSetupNoEta_(){
     fInd->c = NULL;
     fInd->B = NULL;
     fInd->zm = NULL;
-    fInd->zmH = NULL;
-    fInd->zmEta = NULL;
-    fInd->zmValid = 0;
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
     jj+= op_focei.npars;
     fInd->mode = 1;
@@ -4789,8 +4756,6 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       op_focei.neta * 6 +
       2 * op_focei.neta * op_focei.neta * nsub_mix +
       nall_mix +
-      // gZmH (packed lower-tri Hessian) + gZmEta per subject for warm="calc"
-      nsub_mix * ((size_t)op_focei.neta * (op_focei.neta + 1) / 2 + op_focei.neta) +
       // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
       3 * nall_mix,
       double);
@@ -4815,9 +4780,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gH       = op_focei.gB + getRxNallAndMix(rx); //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
   op_focei.llikObsFull = op_focei.gH + op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); // [getRxNall(rx)]
   op_focei.gVid     = op_focei.llikObsFull + getRxNallAndMix(rx);
-  op_focei.gZmH     = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[neta*(neta+1)/2 * nsub]
-  op_focei.gZmEta   = op_focei.gZmH + (size_t)(op_focei.neta*(op_focei.neta+1)/2)*getRxNsubAndMix(rx); //[neta*nsub]
-  op_focei.gcHff    = op_focei.gZmEta + (size_t)op_focei.neta*getRxNsubAndMix(rx); //[nall_mix]
+  op_focei.gcHff    = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.
@@ -4916,10 +4879,6 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->zm = &op_focei.gZm[ii];
     ii+= (op_focei.neta+1) * (op_focei.neta + 2) / 2 +
       6*(op_focei.neta + 1)+1;
-
-    fInd->zmH = op_focei.gZmH + (size_t)i*(op_focei.neta*(op_focei.neta+1)/2);
-    fInd->zmEta = op_focei.gZmEta + (size_t)i*op_focei.neta;
-    fInd->zmValid = 0;
 
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
     jj+= op_focei.npars;
