@@ -11,6 +11,12 @@
   back to the finite-difference sandwich, which previously stayed theta-only.
   `covFull=FALSE` keeps the historical theta-only `fit$cov` shape.
 
+- SAEM no longer errors when the between-subject-variability covariance
+  (`Omega`) collapses to a non-positive-definite matrix mid-run.  It is now
+  projected to the nearest positive-definite matrix (with a one-time user-visible
+  warning recorded in `fit$runInfo`) instead of stopping with `inv_sympd():
+  matrix is singular or not positive definite`.
+
 - Fixed the `foceiControl(fast=TRUE)` analytic outer gradient for FOCEI models
   whose residual variance depends on the prediction (`prop()`, `add()+prop()`,
   `combined1`, `pow()`, `add()+pow()`).  The `(f,R)` determinant chain rule

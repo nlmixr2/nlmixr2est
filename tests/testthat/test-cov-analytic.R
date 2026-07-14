@@ -814,15 +814,19 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # additive error: R does not depend on eta, so the FOCEI interaction term (dR/deta) is
     # identically 0 and the FOCE (interaction=0) analytic covariance coincides with FOCEI.
-    fF <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-            foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, interaction = FALSE)))
     fI <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
             foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE)))
+    # evaluate the FOCE covariance at the SAME estimates (maxOuterIterations=0) so this
+    # compares the covariance formulas, not two independently converged fits (which
+    # differ by ~1-2% in the SEs from optimizer wobble)
+    fF <- suppressWarnings(suppressMessages(nlmixr(fI$finalUi, nlmixr2data::theo_sd, "focei",
+            foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE,
+                         interaction = FALSE, maxOuterIterations = 0L))))
     expect_true(any(grepl("^om\\.", rownames(fF$cov))))          # analytic ran (not silent FD)
     .th <- c("tka", "tcl", "tv")
     seF <- sqrt(diag(fF$cov))[.th]; seI <- sqrt(diag(fI$cov))[.th]
     expect_true(all(is.finite(seF)) && all(seF > 0))
-    expect_equal(unname(seF), unname(seI), tolerance = 0.01)
+    expect_equal(unname(seF), unname(seI), tolerance = 1e-4)
   })
 
   test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-FOCE gold FD", {
@@ -899,8 +903,10 @@ nmTest({
     # tiny entries carry only central-FD roundoff).
     big <- abs(H) > 0.01 * max(abs(H))
     expect_lt(max(abs(Ran[big] - H[big]) / abs(H[big])), 3e-4)
-    # and the whole matrix agrees to central-FD accuracy
-    expect_lt(max(abs(Ran - H) / (abs(H) + 1e-6)), 3e-3)
+    # and the whole matrix agrees at central-FD accuracy on the matrix-norm scale (an
+    # entrywise relative bound blows up on entries ~1e-9 of the norm, which are pure
+    # FD roundoff)
+    expect_lt(max(abs(Ran - H)), 1e-5 * max(abs(H)))
     # finite SEs (the identified directions) match the gold FD
     seA <- suppressWarnings(sqrt(diag(solve(Ran)))); seG <- suppressWarnings(sqrt(diag(solve(H))))
     fin <- is.finite(seA) & is.finite(seG)
@@ -976,7 +982,9 @@ nmTest({
     # finite SEs (the identified directions) match the gold FD
     seA <- suppressWarnings(sqrt(diag(solve(Ran)))); seG <- suppressWarnings(sqrt(diag(solve(H))))
     fin <- is.finite(seA) & is.finite(seG)
-    expect_gt(sum(fin), 4L)                              # most directions are identified
+    # the foce+ information is indefinite on this fixture: exactly half the directions
+    # can be identified (in BOTH the analytic and the gold FD), so >= not >
+    expect_gte(sum(fin), 4L)
     expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
   })
 
