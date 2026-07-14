@@ -61,19 +61,6 @@
   streams now derive from `impSeed` directly, so a different `impSeed` gives a
   different (but reproducible and thread-count-independent) importance sample.
 
-- Added a Monte-Carlo parametric EM estimation method (`est = "rpem"`, Chen et
-  al. 2024) with `rpemControl()`.  Supports additive/proportional/lognormal/
-  combined/power/TBS residuals, multiple endpoints, mu-referenced covariates
-  (time-varying and non-time-varying), IOV, finite mixtures (`mix()`), general
-  log-likelihood (`ll()`) endpoints with a bounded-parameter L-BFGS-B
-  refinement, BLQ censoring (M2/M3/M4), bounded and fixed parameters, and
-  Fisher-score standard errors.  The whole E-M loop runs in C++ (thread-safe and
-  reproducible for any core count), and the iteration walk is streamed live and
-  saved to `fit$parHist` like the other methods.  `rpemControl(cLoop=)` is
-  deprecated and ignored (the C++ loop is the only path); not-yet-ported
-  combinations (BLQ censoring on non-additive error, multiple endpoints with
-  covariates, and errType 5/7 mixtures) raise a clear error.
-
 - The `est = "vae"` training loop (variational-autoencoder NLME) now runs
   entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM / smoothing
   schedule, the LSTM encoder forward/backward, the FOCEi inner-likelihood
@@ -486,8 +473,11 @@
   materializes the implied `d/dt()` for these models instead of erroring
 - Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
   warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
-  in the inner problem (including `ll()`/`dnorm()` models with
-  finite-difference Hessians), `"save"` keeps the prior behavior
+  at the starting eta and the current theta (including `ll()`/`dnorm()` models
+  with finite-difference Hessians); the Hessian is always recalculated rather
+  than reused from an earlier outer evaluation, since theta moves between
+  evaluations and a saved Hessian would be stale.  `"save"` keeps the prior
+  behavior
 - Computing NPDE for a fit with a degenerate simulated covariance (e.g. a
   residual SD estimated near zero) no longer aborts the R session; the affected
   subject's NPDE is set to `NA` instead
@@ -797,11 +787,6 @@
   underflowing/collapsing mixture probabilities, and a fix for the
   SAEM omega-diagonal floor being raised outside mixture fits
 
-- Fixed `est = "rpem"` failing with `muIdx / mu0 / omDiag0 must have nEta
-  entries` for models with a centered (non-mu-referenced) random effect,
-  e.g. a bounded typical value like `tcl <- log(c(0, 2.7, 100))` with an
-  eta (the bounded transform demotes the eta to centered)
-
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session for pooled estimators
 
@@ -816,6 +801,14 @@
 - Use OpenMP threading for S matrix calculation
 
 - Use OpenMP threading wile calculating NPDEs
+
+- Bounded the adaptive finite-difference step size (Shi et al. 2021) used for the
+  FOCEi eta gradient to a reasonable region.  When the finite differences carried
+  no detectable curvature the step-size search could grow the step without bound
+  and probe a parameter far outside the region where the local model holds,
+  producing a degenerate ODE solve that corrupted the shared solver state and
+  collapsed the eta finite-difference sensitivity on later inner iterations (the
+  eta could get stuck near 0).  The step is now clamped both above and below.
 
 # nlmixr2est 6.1.0
 
