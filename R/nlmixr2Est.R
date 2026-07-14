@@ -51,6 +51,11 @@ nlmixr2Est <- function(env, ...) {
     stop("need 'table' object", call.=FALSE)
   } else if (is.null(get("table", envir=env))) {
   }
+  ## a registered interceptor may claim the estimation (e.g. nlmixr2nn trains an
+  ## embedded nn() network transparently under a standard est); if it returns
+  ## non-NULL that is the fit.
+  .intercepted <- .nlmixr2RunEstInterceptors(env)
+  if (!is.null(.intercepted)) return(.intercepted)
   UseMethod("nlmixr2Est")
 }
 
