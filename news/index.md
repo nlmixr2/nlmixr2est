@@ -2,6 +2,26 @@
 
 ## nlmixr2est (development version)
 
+- Fixed the `foceiControl(fast=TRUE)` analytic outer gradient for FOCEI
+  models whose residual variance depends on the prediction (`prop()`,
+  `add()+prop()`, `combined1`, `pow()`, `add()+pow()`). The `(f,R)`
+  determinant chain rule aliased `d(dfr)/df` onto `pffR = d(dff)/dR`.
+  Those coincide only when the determinant coefficients are second
+  partials of a potential, which holds for the exact censored Laplace
+  determinant but not for the Gauss-Newton expected information used on
+  a normal observation: there `(dff,dfr,drr) = (1/R, 0, 0.5/R^2)`, so
+  `d(dfr)/df = 0` while `d(dff)/dR = -1/R^2`. The aliasing injected a
+  spurious `-a(s)/R^2 * (a_l*aR_m + aR_l*a_m)` term into `dHt/ddir`. It
+  is proportional to `aR = dR/ddir`, so additive error, `lnorm`,
+  transforms on an additive endpoint, and every FOCE variant (frozen
+  variance) were unaffected – only FOCEI with a prediction-dependent
+  variance was wrong, by 20% to 600% depending on the error model. The
+  bad gradient made `foceif`/`mufoceif` stall with
+  `false convergence (8)` short of the `focei` optimum. Verified exact
+  against Richardson-extrapolated central differences across `add`,
+  `prop`, `add+prop`, `combined1`, `pow`, `add+pow`, `lnorm`, `boxCox`
+  and `yeoJohnson`.
+
 - The analytic-covariance augmented model now relies on
   [`rxode2::rxOptExpr()`](https://nlmixr2.github.io/rxode2/reference/rxOptExpr.html)’s
   own chunked (and `rxControl(cores=)`-parallel) optimization instead of
