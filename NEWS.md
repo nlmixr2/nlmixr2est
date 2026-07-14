@@ -1,5 +1,16 @@
 # nlmixr2est (development version)
 
+- With `foceiControl(covFull=TRUE)` (now the consistent default) the
+  finite-difference covariance methods report the full theta + residual sigma +
+  Omega covariance, with Omega on the variance-covariance scale (`om.<eta>` /
+  `cov.<eta>.<eta>`).  `covMethod="r,s"` is now a true full sandwich
+  `solve(Rfull) %*% Sfull %*% solve(Rfull)` (previously the full shape was only the
+  Hessian inverse `solve(Rfull)`), `"s"` is `solve(Sfull)`, and `"r"` is
+  `solve(Rfull)`; `fit$covR`, `fit$covS` and `fit$covRS` carry the matching full
+  shape.  This also applies when `covMethod="analytic"` is out of scope and falls
+  back to the finite-difference sandwich, which previously stayed theta-only.
+  `covFull=FALSE` keeps the historical theta-only `fit$cov` shape.
+
 - Fixed the `foceiControl(fast=TRUE)` analytic outer gradient for FOCEI models
   whose residual variance depends on the prediction (`prop()`, `add()+prop()`,
   `combined1`, `pow()`, `add()+pow()`).  The `(f,R)` determinant chain rule
