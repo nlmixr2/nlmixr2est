@@ -234,7 +234,7 @@ nmTest({
   })
 
   test_that("Q1: default (qr/sir off) fit is unchanged vs the pre-QRPEM baseline", {
-    .ref <- readRDS(test_path("fixtures", "qrpem-baseline-ref.rds"))
+    .ref <- readRDS(test_path("baselines", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
               impmapControl(print=0L, nIter=5L, isample=100L)))

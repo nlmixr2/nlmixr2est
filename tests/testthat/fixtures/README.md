@@ -35,10 +35,15 @@ See `helper-zzz-fits.R` for the complete list of cached fits. Common ones includ
 
 ## Git Ignore
 
-This directory is excluded from version control via `.gitignore` because:
+Top-level `.rds` files here are excluded from version control via `.gitignore`
+because:
 - Fit objects can be large (MB range)
 - They are automatically regenerated on first test run
 - Different R versions/platforms may produce slightly different results
+
+They are also deleted by `.nlmixr2estbuild()` during `devtools::document()`.
+Static, checked-in reference data that must survive cache clearing belongs in
+`../baselines/` instead (see its README).
 
 ## Manual Cache Management
 
