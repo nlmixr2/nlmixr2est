@@ -1,5 +1,11 @@
 # nlmixr2est (development version)
 
+- Added `vaeCovariates()`, which returns the subject-level covariates that
+  `est = "vae"` would explore during automated covariate selection (name, type
+  and centering value), using the same discovery rules as the fit; `warn=FALSE`
+  silences the time-varying-covariate exclusion warning.  Exported so other
+  packages can inspect the search space without running an estimation.
+
 - Added an automatic differentiation variational inference method
   (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
   gradient is obtained from the FOCEi forward sensitivities (the inner
