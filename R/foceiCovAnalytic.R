@@ -11,10 +11,10 @@
 
 #' Install the stashed analytic covariance as `fit$cov` (the native path fills
 #' only the theta block).  No-op on the FD fallback (which foceiCalcR already
-#' warned about).  `covFull=FALSE` (default) installs the structural-theta submatrix
-#' (NONMEM-matched theta cov, backwards-compatible shape); `covFull=TRUE` installs
-#' the full theta+sigma+Omega matrix (identical theta SEs) -- the assembly is always
-#' full.
+#' warned about).  `covFull=TRUE` (default) installs the full theta+sigma+Omega
+#' matrix (identical theta SEs); `covFull=FALSE` installs the structural-theta
+#' submatrix (NONMEM-matched theta cov, backwards-compatible shape) -- the assembly
+#' is always full.
 #' @param .ret focei fit environment
 #' @noRd
 .foceiInstallAnalyticCov <- function(.ret) {
@@ -24,7 +24,7 @@
   if (!exists(".analyticCov", envir = .ret, inherits = FALSE)) return(invisible())
   .cov <- get(".analyticCov", envir = .ret)
   if (!is.matrix(.cov) || !all(is.finite(.cov))) return(invisible())
-  .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", FALSE))
+  .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", TRUE))
   if (!.full && exists(".analyticThetaNames", envir = .ret, inherits = FALSE)) {
     .th <- get(".analyticThetaNames", envir = .ret)          # structural cov-theta block only
     .th <- .th[.th %in% rownames(.cov)]
@@ -42,15 +42,7 @@
   .ret$covMethod <- "analytic"           # report the analytic observed information (not "r")
   # covFull=TRUE swaps in a larger matrix than C++ foceiFinalizeTables saw, so its
   # condition numbers (computed from the theta-only native cov) are stale -- recompute.
-  if (.full && exists("objDf", envir = .ret, inherits = FALSE)) {
-    .od <- get("objDf", envir = .ret)
-    if ("Condition#(Cov)" %in% names(.od)) .od[["Condition#(Cov)"]] <- max(.ev) / min(.ev)
-    if ("Condition#(Cor)" %in% names(.od)) {
-      .evc <- suppressWarnings(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
-      .od[["Condition#(Cor)"]] <- max(.evc) / min(.evc)
-    }
-    assign("objDf", .od, envir = .ret)
-  }
+  if (.full) .foceiCovCondition(.ret, .cov, .ev)
   invisible()
 }
 
