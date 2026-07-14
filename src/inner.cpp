@@ -169,6 +169,9 @@ struct focei_options {
   unsigned int neta;
   unsigned int ntheta;
   unsigned int npars;
+  // Printed/history column count: npars plus the regression-updated mu-group
+  // thetas (== npars when muModel is off); see _printOptIdx/_printFullIdx.
+  unsigned int nparsPrint;
   unsigned int thetan;
   unsigned int omegan;
 
@@ -615,6 +618,18 @@ std::vector<double> vPar;
 std::vector<double> vGrad;
 std::vector<int> niterGrad;
 std::vector<int> gradType;
+
+// Printed-column layout for the mu-referenced focei family: printed column p
+// maps to optimizer index _printOptIdx[p] (-1 for regression-updated mu
+// columns, which have no optimizer slot) and fullTheta index _printFullIdx[p];
+// identity over fixedTrans when muModel is off. Rebuilt by foceiSetupTheta_.
+static std::vector<int> _printOptIdx, _printFullIdx, _printNoGrad;
+static std::vector<double> _printX, _printGr, _printInitPar, _printScaleC;
+static std::vector<int> _printXPar, _printProbitIdx;
+
+static inline bool muPrintActive() {
+  return op_focei.muModel != 0 && op_focei.muGroupN > 0;
+}
 
 static void releaseCovSolveArgs_(); // defined with covSolveArgs_ below; teardown backstop
 
@@ -4448,6 +4463,25 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
+  // Printed-column map: optimizer columns in fixedTrans order interleaved with
+  // the regression-updated mu thetas at their natural fullTheta positions
+  // (user-fixed thetas get no column either way, matching plain focei).
+  _printOptIdx.clear(); _printFullIdx.clear(); _printNoGrad.clear();
+  int k2 = 0;
+  for (j = 0; j < thetan+omegan; j++){
+    if (isMuGroupSkip(j)) {
+      if (!(j < thetaFixed2.size() && thetaFixed2[j])) {
+        _printOptIdx.push_back(-1);
+        _printFullIdx.push_back(j);
+        _printNoGrad.push_back(1);
+      }
+    } else if (k2 < npars && op_focei.fixedTrans[k2] == j) {
+      _printOptIdx.push_back(k2++);
+      _printFullIdx.push_back(j);
+      _printNoGrad.push_back(0);
+    }
+  }
+  op_focei.nparsPrint = (unsigned int)_printOptIdx.size();
   op_focei.npars  = (unsigned int)npars;
 }
 
