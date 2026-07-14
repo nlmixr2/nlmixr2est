@@ -1,5 +1,13 @@
 # nlmixr2est (development version)
 
+- In the mu-referenced estimation family (`mfocei`/`ifocei`, `mfoce`/`ifoce`,
+  `mfocep`/`ifocep`, `magq`/`iagq`, `mlaplace`/`ilaplace`), the
+  regression-updated mu thetas (population and covariate coefficients) now
+  appear as standard columns, in natural theta order, in the live iteration
+  print and in `fit$parHist`/`parHistData`; gradient rows record `NaN` for them
+  (shown as blank console cells) and the previous appended `|   mu|` row was
+  removed.
+
 - Fixed the `foceiControl(fast=TRUE)` analytic outer gradient for FOCEI models
   whose residual variance depends on the prediction (`prop()`, `add()+prop()`,
   `combined1`, `pow()`, `add()+pow()`).  The `(f,R)` determinant chain rule

@@ -151,6 +151,16 @@ nmTest({
     # objective function values should be in the same ballpark (not an
     # exact match -- different optimization paths)
     expect_equal(fitMu$objf, fitFocei$objf, tolerance = 0.1)
+
+    # mu thetas are recorded in the parameter history like plain focei
+    expect_identical(names(fitMu$parHist), names(fitFocei$parHist))
+    .u <- fitMu$parHistData[fitMu$parHistData$type == "Unscaled", ]
+    expect_true(nrow(.u) > 0)
+    expect_true(all(is.finite(.u$tcl)))
+    expect_true(all(is.finite(.u$allo.cl)))
+    expect_equal(unname(.u$tcl[nrow(.u)]), unname(.thMu["tcl"]), tolerance = 0.05)
+    expect_equal(unname(.u$allo.cl[nrow(.u)]), unname(.thMu["allo.cl"]),
+                 tolerance = 0.05)
   })
 
   test_that("mfocei respects a user-fixed covariate coefficient", {
