@@ -15,23 +15,31 @@
 using namespace arma;
 
 // Fill the per-observation determinant coefficients dff/dfr/drr (2nd order) and their
-// (f,R) partials p_fff/p_ffR/p_fRR/p_RRR (3rd order), plus override the score/realized-H
+// (f,R) partials p_fff/p_ffR/p_frf/p_fRR/p_RRR (3rd order), plus override the score/realized-H
 // partials rf/rR/rff/rfR/rRR for censored observations.  Normal obs keep the Gaussian
 // expected-info determinant (dff=1/R, dfr=0, drr=0.5/R^2; p_ffR=-1/R^2, p_RRR=-1/R^3,
 // rest 0).  Censored obs always get the censored realized 2nd derivs (rf..rRR); the
 // determinant coeffs follow only under censOption "laplace" (1) -- "gauss" (0) keeps the
 // Gaussian determinant.  censv[o]!=0 or a finite limv[o] marks a censored (M2/M3/M4) obs.
+//
+// p_frf = d(dfr)/df is carried separately from p_ffR = d(dff)/dR.  The two agree only when
+// (dff,dfr,drr) are second partials of a potential, which the censored laplace determinant is
+// (cp[2..4] are exact 2nd derivs of the censored log-density, cp[5..8] their 3rd derivs) and
+// the Gauss-Newton expected-info determinant is not: there dfr is identically zero in f and R,
+// so d(dfr)/df = 0 while d(dff)/dR = -1/R^2.
 static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
                                  const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                                  int censOpt, int nobs,
                                  arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
                                  arma::vec& dff, arma::vec& dfr, arma::vec& drr,
-                                 arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR) {
+                                 arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR,
+                                 arma::vec& pfrf) {
   const bool hasCens = ((int)censv.n_elem == nobs);
   // normal defaults for the determinant coeffs
   dff = 1.0 / Rv;  dfr = arma::zeros<arma::vec>(nobs);  drr = 0.5 / square(Rv);
   pfff = arma::zeros<arma::vec>(nobs);  pffR = -1.0 / square(Rv);
   pfRR = arma::zeros<arma::vec>(nobs);  pRRR = -1.0 / pow(Rv, 3);
+  pfrf = arma::zeros<arma::vec>(nobs);   // dfr == 0 in f and R, so d(dfr)/df = 0 (not p_ffR)
   if (!hasCens) return;
   for (int o = 0; o < nobs; o++) {
     double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
@@ -44,6 +52,7 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
     if (censOpt == 1) {   // laplace: exact censored determinant
       dff[o] = cp[2];  dfr[o] = cp[3];  drr[o] = cp[4];
       pfff[o] = cp[5]; pffR[o] = cp[6]; pfRR[o] = cp[7]; pRRR[o] = cp[8];
+      pfrf[o] = cp[6];   // censored determinant is integrable, so d(dfr)/df = p_ffR
     }
   }
 }
@@ -258,9 +267,9 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
   // determinant coefficients dff/dfr/drr (+ 3rd-order coeff partials pfff/pffR/pfRR/pRRR);
   // normal = Gauss-Newton expected info, censored+laplace = exact censored 2nd derivative.
-  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR;
+  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf;
   censGradCoefs(censv, limv, fv, yv, Rv, censOpt, nobs,
-                rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR);
+                rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf);
   // exact inner Hessian H (eta x eta), N (eta x dir), determinant Ht
   mat H = Oi, Ht = Oi, N(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
@@ -302,10 +311,12 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
         for (int o = 0; o < nobs; o++) {
-          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pffR*a(s) + pfRR*aR(s);
-          // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s)
+          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pfrf*a(s) + pfRR*aR(s);
+          // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s).
+          // The f-partial of dfr is pfrf, not pffR -- they differ for the Gauss-Newton
+          // determinant, where dfr is identically zero (see censGradCoefs).
           double ddff = pfff[o] * a(o, s) + pffR[o] * aR(o, s);
-          double ddfr = pffR[o] * a(o, s) + pfRR[o] * aR(o, s);
+          double ddfr = pfrf[o] * a(o, s) + pfRR[o] * aR(o, s);
           double ddrr = pfRR[o] * a(o, s) + pRRR[o] * aR(o, s);
           v += ddff * a(o, l) * a(o, m) + dff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
             ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
