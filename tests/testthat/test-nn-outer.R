@@ -1,10 +1,11 @@
 ## Outer-problem NN-training hook: FOCEI hands a registered R callback a
-## method-agnostic matrix with one row per observation -- [f, <every solved
-## state>] -- on each real objective evaluation.  Only the predicted value and
-## the ODE states are sent (the state columns carry the NN-weight forward-
-## sensitivity states rx_sw when the model has them); the method-specific
-## d(LL)/d(f) comes from the contribution hook, not this matrix.  Here we
-## validate the mechanism (fires, correct shape, f column sane) on a plain model.
+## method-agnostic per-observation snapshot -- [rx_pred_, <ODE states>, <full
+## calc_lhs row>] -- on each real objective evaluation.  The state columns carry
+## the NN-weight forward-sensitivity states rx_sw when the model has them; the
+## lhs columns carry the NN output g, output transforms, rx_drdg, error pieces
+## and any covariates emitted as rx_<cov>_.  The method-specific d(LL)/d(f) comes
+## from the contribution hook, not this matrix.  Here we validate the mechanism
+## (fires, correct shape incl. the lhs block, f column sane) on a plain model.
 
 test_that("FOCEI outer NN hook passes the method-agnostic prediction+state matrix", {
   skip_on_cran()
@@ -37,7 +38,13 @@ test_that("FOCEI outer NN hook passes the method-agnostic prediction+state matri
   .nObs <- sum(d$EVID == 0)
   expect_gt(cap$n, 0)                                   # hook fired on real objective evals
   expect_equal(cap$dim[1], .nObs)                       # one row per observation
-  expect_gt(cap$dim[2], 1)                              # f + >=1 ODE state column
+  ## now [rx_pred_, states, lhs_vars]: f + >=2 states + the appended calc_lhs row
+  expect_gt(cap$dim[2], 3)
+  ## rx_pred_ (col 1) is also present within the appended lhs block
+  .matchesF <- which(vapply(seq_len(ncol(cap$mat)),
+    function(j) isTRUE(all.equal(cap$mat[, j], cap$mat[, 1], tolerance = 1e-8)),
+    logical(1)))
+  expect_gt(length(.matchesF), 1)
   ## column 1 is the predicted value f: finite, non-negative, and in a plausible
   ## range for the observed data (method-agnostic -- no dv/r sent)
   expect_true(all(is.finite(cap$mat[, 1])) && all(cap$mat[, 1] >= 0))

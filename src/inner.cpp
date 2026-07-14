@@ -1204,9 +1204,23 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
 // method-agnostic; the method-specific likelihood cotangent d(LL)/d(f) is
 // supplied separately by each method's per-observation contribution hook.
 // Mirrors grabRFmatFromInner's per-subject calc_lhs walk.
+// Per-observation snapshot handed to the NN weight step (setNnOuterFn), one row
+// per observation (evid==0), in canonical subject/record order:
+//   col 0                      : rx_pred_ (the inner predicted value f)
+//   cols 1 .. neq              : ODE states (incl. the rx_sw forward-sensitivity
+//                                states of the augmented model)
+//   cols neq+1 .. neq+nlhs     : the full calc_lhs row (lhs_vars) -- the NN
+//                                output g, output transforms, rx_drdg, error
+//                                pieces, AND any covariates the augmented model
+//                                chooses to emit as rx_<cov>_ lhs outputs (so a
+//                                covariate-NN term's inputs appear here without
+//                                fragile per-record covariate plumbing in C).
+// Method-agnostic: every estimator produces a prediction + states + lhs; the
+// method-specific dLL/d(rx_pred_) comes from the per-obs contribution hook.
 static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   rx_solving_options *op = getSolvingOptions(rx);
   int neq = getOpNeq(op);
+  int nlhs = getRxNlhs(rx);
   int nsub = (int) getRxNsubAndMix(rx);
   // count observations (evid == 0)
   int nobs = 0;
@@ -1218,7 +1232,7 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
     }
   }
   const int ncFixed = 1; // f (predicted value)
-  Rcpp::NumericMatrix mat(nobs, ncFixed + neq);
+  Rcpp::NumericMatrix mat(nobs, ncFixed + neq + nlhs);
   int row = 0;
   for (int id = 0; id < nsub; id++) {
     int _rxId = getRxId(id);
@@ -1232,8 +1246,9 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
       double *st = getOpIndSolve(op, ind, j);
       rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
       if (getIndEvid(ind, kk) != 0) continue;
-      mat(row, 0) = lhs[op_focei.predOffset];             // predicted f value
+      mat(row, 0) = lhs[op_focei.predOffset];             // rx_pred_ (predicted f)
       for (int s = 0; s < neq; ++s) mat(row, ncFixed + s) = st[s]; // ODE states
+      for (int l = 0; l < nlhs; ++l) mat(row, ncFixed + neq + l) = lhs[l]; // lhs_vars
       row++;
     }
   }
