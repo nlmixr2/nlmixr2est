@@ -139,8 +139,8 @@ extern "C" SEXP _nlmixr2est_getTestContrib(void) {
 // eta-set with the current etas.
 static int _testInnerWtN;
 static double _testInnerWtEtaSum;
-static void _testInnerWt(int cid, const double *eta, int neta) {
-  (void) cid;
+static void _testInnerWt(int cid, const double *eta, int neta, void *ind) {
+  (void) cid; (void) ind;
   _testInnerWtN++;
   for (int i = 0; i < neta; ++i) _testInnerWtEtaSum += eta[i];
 }
@@ -1113,8 +1113,9 @@ void updateEta(double *eta, int cid) {
     setIndParPtr(ind, op_focei.etaTrans[i], eta[i]);
   }
   // inner individual-weight injection: overwrite this subject's par_ptr weight
-  // block from the just-set etas (before the solve).
-  if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(cid, eta, op_focei.neta);
+  // block from the just-set etas (before the solve).  Pass ind so the hook writes
+  // par_ptr directly (the FD path does not set rxode2's global rx).
+  if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(cid, eta, op_focei.neta, (void*)ind);
 }
 
 // test-only "invisible eta" injector (tests/testthat/test-focei-fdeta.R): writes
@@ -1124,10 +1125,10 @@ void updateEta(double *eta, int cid) {
 // Fires on every eta-set INCLUDING the FD perturbations, so it validates that
 // etaFD's finite-difference sensitivity is correct with no competing analytic one.
 static int _testInjSrc = -1, _testInjDst = -1;
-static void _testInjectEta(int cid, const double *eta, int neta) {
-  if (_testInjSrc < 0 || _testInjSrc >= neta || _testInjDst < 0) return;
-  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid));
-  setIndParPtr(ind, _testInjDst, eta[_testInjSrc]);
+static void _testInjectEta(int cid, const double *eta, int neta, void *ind) {
+  (void) cid;
+  if (_testInjSrc < 0 || _testInjSrc >= neta || _testInjDst < 0 || ind == NULL) return;
+  setIndParPtr((rx_solving_options_ind*)ind, _testInjDst, eta[_testInjSrc]);
 }
 extern "C" SEXP _nlmixr2est_registerTestInjectEta(SEXP srcSEXP, SEXP dstSEXP) {
   _testInjSrc = Rf_asInteger(srcSEXP);
@@ -1497,7 +1498,7 @@ double likInner0(double *eta, int id) {
     // inner individual-weight injection: set this subject's par_ptr weight block
     // from the just-set etas before the inner solve (fires on FD perturbations
     // too, so FOCEI's FD eta-sensitivity captures d(f)/d(etaW)).
-    if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(id, eta, op_focei.neta);
+    if (_nlmixrInnerWeightFn != NULL) _nlmixrInnerWeightFn(id, eta, op_focei.neta, (void*)ind);
     // FOCE: capture eta=0 population R before the inner solve overwrites
     // ind->solve.  rPop is a function of theta only, so it is cached across inner
     // iterations and recomputed only when updateTheta() bumps the generation

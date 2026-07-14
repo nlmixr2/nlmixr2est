@@ -59,8 +59,11 @@ extern "C" {
   // captures d(f)/d(etaW) through the injected weights with no analytic
   // gradient -- the inner (individual-weight) building block.  Thread-safe: it
   // may run in the parallel per-subject region, so it must touch only subject
-  // cid's par_ptr.
-  typedef void (*nlmixrInnerWeight_fn)(int cid, const double *eta, int neta);
+  // cid's par_ptr.  `ind` is subject cid's rx_solving_options_ind* (passed as
+  // void* to avoid a struct dependency in this header) -- the contributor casts
+  // it and writes ind->par_ptr directly, so it needs no rx lookup (the FOCEI
+  // inner FD path does not set rxode2's global getRxSolve_()).
+  typedef void (*nlmixrInnerWeight_fn)(int cid, const double *eta, int neta, void *ind);
 
   // registry (exposed to contributor packages via R_GetCCallable-free means;
   // see nlmixr2est init).  Register/remove is idempotent per pointer.
