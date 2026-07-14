@@ -488,7 +488,11 @@ saemControl <- function(seed = 99,
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
 
-  if (checkmate::testIntegerish(covMethod, lower=0, len=1, any.missing=FALSE)) {
+  if (identical(covMethod, "")) {
+    ## "" requests no covariance; match.arg() cannot select it because
+    ## pmatch("") matches nothing, so handle it explicitly.
+    .covMethod <- ""
+  } else if (checkmate::testIntegerish(covMethod, lower=0, len=1, any.missing=FALSE)) {
     .covMethod <- covMethod
   } else {
     .covMethod <- match.arg(covMethod)
