@@ -4,6 +4,94 @@
 #  - eta<->theta (z_pop) mapping and initial z_pop / omega / a from ini()
 # Encoder-input standardization follows the reference (time/max, (DV-mean)/sd).
 
+# Data columns never treated as covariate candidates by the VAE search
+.vaeReservedCols <- c("ID", "TIME", "DV", "EVID", "AMT", "CMT", "MDV", "SS", "II",
+                      "ADDL", "RATE", "DUR", "DVID", "CENS", "LIMIT", "OCC")
+
+#' Discover + encode subject-level covariates for the VAE search
+#' @param d normalized data.frame (upper-case column names)
+#' @param ids unique subject ids in estimation order
+#' @return list(covNames, covMat, covType, covPop, tvExcl)
+#' @noRd
+.vaeCovariateSearch <- function(d, ids) {
+  N <- length(ids)
+  ## auto-discover subject-level covariate candidates (constant within ID),
+  ## excluding reserved data columns. Paper encoding: continuous -> log(v/mean),
+  ## categorical (<=2 levels) -> centered.
+  .cand <- setdiff(names(d), .vaeReservedCols)
+  .isSubjConst <- vapply(.cand, function(nm) {
+    all(vapply(ids, function(id) {
+      v <- d[[nm]][d$ID == id]; length(unique(v)) == 1L
+    }, logical(1))) && is.numeric(d[[nm]])
+  }, logical(1))
+  # The VAE covariate search absorbs covariates as subject-level (time-invariant)
+  # effects, so a covariate that varies within a subject (time-varying) cannot be
+  # searched.  Unlike saem/mu-focei (whose covariates are declared in the model,
+  # detectable via .nlmixrTimeVaryingCovariates), the VAE search scans every
+  # numeric data column, so time-varying ones are those that are not
+  # subject-constant.  They are reported back (tvExcl) so callers can warn.
+  .covNames <- .cand[.isSubjConst]
+  .numCand <- .cand[vapply(.cand, function(nm) is.numeric(d[[nm]]), logical(1))]
+  .tvExcl <- setdiff(.numCand, .covNames)
+  .covVal <- vapply(.covNames, function(nm) {
+    vapply(ids, function(id) d[[nm]][d$ID == id][1], numeric(1))
+  }, numeric(N))
+  if (length(.covNames) == 1L) .covVal <- matrix(.covVal, N, 1L, dimnames = list(NULL, .covNames))
+  .covType <- character(length(.covNames)); .covPop <- numeric(length(.covNames))
+  .covMat <- matrix(0, N, length(.covNames), dimnames = list(NULL, .covNames))
+  for (j in seq_along(.covNames)) {
+    v <- .covVal[, j]
+    if (length(unique(v)) > 2L && all(v > 0)) {
+      .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
+    } else {
+      .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
+    }
+  }
+  list(covNames = .covNames, covMat = .covMat, covType = .covType,
+       covPop = .covPop, tvExcl = .tvExcl)
+}
+
+#' Covariates explored by the VAE covariate search
+#'
+#' Returns the subject-level covariates that `nlmixr2(..., est = "vae")` would
+#' explore during automated covariate selection, using the same discovery rules
+#' as the fit: every non-reserved numeric data column that is constant within
+#' each subject is a candidate; a candidate with more than two unique values
+#' (all positive) is treated as continuous (encoded `log(value/mean)`),
+#' anything else as categorical (mean-centered).  Time-varying numeric columns
+#' cannot be searched and are excluded with a warning.
+#'
+#' @param data estimation dataset containing at least an `ID` column; column
+#'   names are matched case-insensitively, as in the VAE fit
+#' @param warn when `TRUE` (default) warn about time-varying numeric columns
+#'   excluded from the search; when `FALSE` exclude them silently
+#' @return a data frame with one row per explored covariate and columns
+#'   `covariate` (upper-cased column name), `type` (`"continuous"` or
+#'   `"categorical"`) and `center` (the population value the covariate is
+#'   centered at); zero rows when no covariates qualify
+#' @export
+#' @author Matthew L. Fidler
+#' @examples
+#' d <- data.frame(id = rep(1:3, each = 2), time = rep(0:1, 3), dv = rnorm(6),
+#'                 wt = rep(c(70, 80, 60), each = 2),
+#'                 sex = rep(c(0, 1, 0), each = 2))
+#' vaeCovariates(d)
+vaeCovariates <- function(data, warn = TRUE) {
+  checkmate::assertLogical(warn, len = 1, any.missing = FALSE)
+  d <- as.data.frame(data)
+  names(d) <- toupper(names(d))
+  if (is.null(d$ID)) {
+    stop("'data' must contain an ID column", call. = FALSE)
+  }
+  .cov <- .vaeCovariateSearch(d, unique(d$ID))
+  if (warn && length(.cov$tvExcl) > 0L) {
+    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
+            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
+  }
+  data.frame(covariate = .cov$covNames, type = .cov$covType,
+             center = .cov$covPop, row.names = NULL)
+}
+
 #' Prepare VAE inputs from a ui + data
 #' @param ui rxode2 ui object
 #' @param data estimation data (ID/TIME/DV/EVID/... columns)
@@ -94,43 +182,11 @@
   }
   covIn <- matrix(0, N, 0L)                     # encoder-head covariates (unused for now)
 
-  ## auto-discover subject-level covariate candidates (constant within ID),
-  ## excluding reserved data columns. Paper encoding: continuous -> log(v/mean),
-  ## categorical (<=2 levels) -> centered.
-  .reserved <- c("ID", "TIME", "DV", "EVID", "AMT", "CMT", "MDV", "SS", "II",
-                 "ADDL", "RATE", "DUR", "DVID", "CENS", "LIMIT", "OCC")
-  .cand <- setdiff(names(d), .reserved)
-  .isSubjConst <- vapply(.cand, function(nm) {
-    all(vapply(.ids, function(id) {
-      v <- d[[nm]][d$ID == id]; length(unique(v)) == 1L
-    }, logical(1))) && is.numeric(d[[nm]])
-  }, logical(1))
-  # The VAE covariate search absorbs covariates as subject-level (time-invariant)
-  # effects, so a covariate that varies within a subject (time-varying) cannot be
-  # searched.  Unlike saem/mu-focei (whose covariates are declared in the model,
-  # detectable via .nlmixrTimeVaryingCovariates), the VAE search scans every
-  # numeric data column, so time-varying ones are those that are not
-  # subject-constant.  Drop them from the search and warn.
-  .covNames <- .cand[.isSubjConst]
-  .numCand <- .cand[vapply(.cand, function(nm) is.numeric(d[[nm]]), logical(1))]
-  .tvExcl <- setdiff(.numCand, .covNames)
-  if (length(.tvExcl) > 0L) {
+  ## subject-level covariate discovery + encoding (shared with vaeCovariates())
+  .cov <- .vaeCovariateSearch(d, .ids)
+  if (length(.cov$tvExcl) > 0L) {
     warning("time-varying covariate(s) were excluded from automatic covariate search: ",
-            paste(.tvExcl, collapse = ", "), call. = FALSE)
-  }
-  .covVal <- vapply(.covNames, function(nm) {
-    vapply(.ids, function(id) d[[nm]][d$ID == id][1], numeric(1))
-  }, numeric(N))
-  if (length(.covNames) == 1L) .covVal <- matrix(.covVal, N, 1L, dimnames = list(NULL, .covNames))
-  .covType <- character(length(.covNames)); .covPop <- numeric(length(.covNames))
-  .covMat <- matrix(0, N, length(.covNames), dimnames = list(NULL, .covNames))
-  for (j in seq_along(.covNames)) {
-    v <- .covVal[, j]
-    if (length(unique(v)) > 2L && all(v > 0)) {
-      .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
-    } else {
-      .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
-    }
+            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
   }
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
@@ -140,6 +196,7 @@
        errLower = .errLower, errUpper = .errUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
-       covNames = .covNames, covMat = .covMat, covType = .covType, covPop = .covPop,
+       covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
+       covPop = .cov$covPop,
        tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
 }

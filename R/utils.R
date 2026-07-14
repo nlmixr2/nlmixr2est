@@ -418,3 +418,12 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
 .sampleOmega <- function(omega) {
   rxode2::rxRmvn(1, sigma=omega)
 }
+
+# The fit's rxControl(cores=) for rxOptExpr(parallel=): chunked expression
+# optimization then parallelizes with the same thread setting the solves use
+# (0 keeps rxControl(cores=)'s meaning, the rxode2 thread setting).
+.optExprCores <- function(ui) {
+  .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
+                     error = function(e) 0L)
+  if (!length(.cores) || is.na(.cores)) 0L else .cores
+}
