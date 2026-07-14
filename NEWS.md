@@ -238,11 +238,18 @@
   general (f,R) assembler now runs with no free residual direction, reading the (fixed)
   variance from the solved `rx_r_`.
 - Bounded mu-referenced parameters (population thetas and covariate coefficients) are
-  now also profiled by the mu/irls regression, with the update clamped to the bounds
-  (box-constrained least squares, `foceiControl(muModelClampRetries=)`); parameters
-  that were clamped during the fit are reported once as a fit note.  Previously a
-  bounded population theta dropped its whole group (with a warning) and a bounded
-  covariate coefficient stayed outer-optimized.
+  now also profiled by the mu/irls regression in the clamped `m*`/`i*` family
+  (`mfocei`/`ifocei` and variants, `muModel != "none"`), with the update clamped to
+  the bounds (box-constrained least squares, `foceiControl(muModelClampRetries=)`);
+  parameters that were clamped during the fit are reported once as a fit note.  Every
+  other (non-clamped) method keeps the previous style: a bounded population theta
+  rejects its whole mu group (with a warning) and a bounded covariate coefficient
+  stays an ordinary outer-optimized parameter.
+- Fixed the mu-family regression's handling of a user-fixed covariate coefficient:
+  its (fixed) contribution was added into the regression target but never taken back
+  out, so each regression pass shifted the group's linear predictor by the fixed
+  term (biasing the population theta and inflating the eta variance).  The fixed
+  contribution is now left out of the regression entirely.
 - `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
   `nlminb`); an explicit `outerOpt` is honored.
 - The iteration print and `$parHistData` track analytic gradients as their own type

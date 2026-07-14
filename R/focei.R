@@ -1938,7 +1938,9 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
                     c("impmap", "imp", "qrpem", "advi")) &&
       !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
-    .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain)
+    # muModel != "none" is the clamped family: bounded mu parameters stay
+    # grouped and updateMuGroups() clamps their regression update
+    .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain, clamp = TRUE)
   } else {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
                           muGroupCovStart = integer(0), muGroupCovCount = integer(0),

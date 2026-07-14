@@ -2903,24 +2903,18 @@ static inline double updateMuGroups() {
     unsigned int covStart = (unsigned int)op_focei.muGroupCovStart[g];
     unsigned int covCount = (unsigned int)op_focei.muGroupCovCount[g];
 
-    // Split covariates into known-offset (user-fixed, not estimated here) vs
-    // free (estimated by the clamped regression). The fixed offset reads
-    // fullTheta[covTheta] fresh each call.
+    // A user-fixed coefficient is not estimated here; its contribution is
+    // left out of the regression target y and the design matrix entirely
+    // (the model itself still applies it), so the regression re-partitions
+    // only the free part: y = pop + free-cov terms + eta.
     std::vector<unsigned int> freeCovCols;
     std::vector<int> freeCovTheta;
-    arma::vec offset(nsubAll, arma::fill::zeros);
     for (unsigned int c = 0; c < covCount; c++) {
       unsigned int flatIdx = covStart + c;
       int covTheta = op_focei.muGroupCovTheta[flatIdx];
       bool userFixed = op_focei.muGroupCovUserFixed != NULL &&
         op_focei.muGroupCovUserFixed[flatIdx] != 0;
-      if (userFixed) {
-        double coefVal = op_focei.fullTheta[covTheta];
-        for (int id = 0; id < nsubAll; id++) {
-          int rid = getRxId(id);
-          offset(id) += coefVal * op_focei.muGroupCovData(rid, flatIdx);
-        }
-      } else {
+      if (!userFixed) {
         freeCovCols.push_back(flatIdx);
         freeCovTheta.push_back(covTheta);
       }
@@ -2933,7 +2927,7 @@ static inline double updateMuGroups() {
     for (int id = 0; id < nsubAll; id++) {
       focei_ind *fInd = &(inds_focei[id]);
       int rid = getRxId(id);
-      double phi = op_focei.fullTheta[popIdx] + offset(id) + fInd->eta[etaIdx];
+      double phi = op_focei.fullTheta[popIdx] + fInd->eta[etaIdx];
       for (int c = 0; c < nFree; c++) {
         double covVal = op_focei.muGroupCovData(rid, freeCovCols[c]);
         phi += covVal * op_focei.fullTheta[freeCovTheta[c]];
