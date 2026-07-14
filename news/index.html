@@ -186,6 +186,7 @@
 <li><p>Use OpenMP threading for S matrix calculation</p></li>
 <li><p>Use OpenMP threading wile calculating NPDEs</p></li>
 <li><p>Bounded the adaptive finite-difference step size (Shi et al. 2021) used for the FOCEi eta gradient to a reasonable region. When the finite differences carried no detectable curvature the step-size search could grow the step without bound and probe a parameter far outside the region where the local model holds, producing a degenerate ODE solve that corrupted the shared solver state and collapsed the eta finite-difference sensitivity on later inner iterations (the eta could get stuck near 0). The step is now clamped both above and below.</p></li>
+<li><p><code>saemControl(covMethod = "")</code> no longer errors. <code>""</code> is a documented choice that skips the covariance step, but <code><a href="../reference/saemControl.html">saemControl()</a></code> rejected it because <code><a href="https://rdrr.io/r/base/match.arg.html" class="external-link">match.arg()</a></code> selects choices with <code><a href="https://rdrr.io/r/base/pmatch.html" class="external-link">pmatch()</a></code>, and <code>pmatch("")</code> matches nothing; it is now handled explicitly.</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.1.0" id="nlmixr2est-610">nlmixr2est 6.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-610"></a></h2>

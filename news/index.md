@@ -1001,6 +1001,14 @@
   finite-difference sensitivity on later inner iterations (the eta could
   get stuck near 0). The step is now clamped both above and below.
 
+- `saemControl(covMethod = "")` no longer errors. `""` is a documented
+  choice that skips the covariance step, but
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
+  rejected it because
+  [`match.arg()`](https://rdrr.io/r/base/match.arg.html) selects choices
+  with [`pmatch()`](https://rdrr.io/r/base/pmatch.html), and
+  `pmatch("")` matches nothing; it is now handled explicitly.
+
 ## nlmixr2est 6.1.0
 
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
