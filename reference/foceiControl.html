@@ -993,9 +993,10 @@ objective) is used.</p></dd>
 <dt id="arg-warm">warm<a class="anchor" aria-label="anchor" href="#arg-warm"></a></dt>
 <dd><p>Seeding of the n1qn1 inner-optimization Hessian:
 `"calc"` (default) warm-starts each inner problem with the eta
-Hessian calculated for the objective function at the same starting
-eta, calculating it at the starting point when unavailable;
-`"save"` uses the classic self-initialized Hessian.</p></dd>
+Hessian calculated at the starting eta and the current theta;
+since theta moves between outer evaluations it is always
+recalculated, never reused from an earlier round.  `"save"` uses
+the classic self-initialized Hessian.</p></dd>
 
 
 <dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>

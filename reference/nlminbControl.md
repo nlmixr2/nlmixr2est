@@ -421,20 +421,20 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8320
-#> → compress parHistData in nlmixr2 object, save 2736
+#> → compress parHistData in nlmixr2 object, save 2656
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -651.0124 1192.865 1207.588      -593.4323        559.1754        67.22779
+#> lPop -651.0124 1192.865 1207.588      -593.4323        559.1765        67.22791
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3276466 0.6000154   5.75e-06      0.046       0.014 0.024    0.011
-#>              other
-#> elapsed 0.08933233
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.355942 0.6251831  6.362e-06      0.049       0.014 0.026    0.011
+#>             other
+#> elapsed 0.1058686
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -463,7 +463,7 @@ print(fit2)
 fit2$nlminb
 #> $par
 #>         E0         Em        E50 
-#> -0.6560457  5.4341092  3.5129495 
+#> -0.6560457  5.4341098  3.5129498 
 #> 
 #> $objective
 #> [1] 593.4323
@@ -486,25 +486,25 @@ fit2$nlminb
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#> -436.74931  182.08756   57.89114 
+#> -436.74930  182.08758   57.89115 
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001454619  0.001671561 -0.003681016
-#> Em   0.001671561  0.004731911 -0.008448540
-#> E50 -0.003681016 -0.008448540  0.016658651
+#> E0   0.001454619  0.001671560 -0.003681015
+#> Em   0.001671560  0.004731909 -0.008448538
+#> E50 -0.003681015 -0.008448538  0.016658647
 #> 
 #> $cov.scaled
 #>           E0        Em      E50
-#> E0  7194.894  3142.102 3183.372
-#> Em  3142.102 10317.128 5926.698
-#> E50 3183.372  5926.698 3949.298
+#> E0  7194.897  3142.109 3183.377
+#> Em  3142.109 10317.149 5926.710
+#> E50 3183.377  5926.710 3949.306
 #> 
 #> $r
 #>                E0            Em          E50
-#> E0   0.0007273095  0.0008357803 -0.001840508
-#> Em   0.0008357803  0.0023659553 -0.004224270
-#> E50 -0.0018405078 -0.0042242698  0.008329326
+#> E0   0.0007273094  0.0008357802 -0.001840508
+#> Em   0.0008357802  0.0023659544 -0.004224269
+#> E50 -0.0018405075 -0.0042242689  0.008329324
 #> 
 # }
 ```

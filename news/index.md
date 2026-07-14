@@ -605,9 +605,12 @@
 
 - Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
   warm-starts each `n1qn1` inner optimization from the eta Hessian
-  calculated in the inner problem (including
+  calculated at the starting eta and the current theta (including
   `ll()`/[`dnorm()`](https://rdrr.io/r/stats/Normal.html) models with
-  finite-difference Hessians), `"save"` keeps the prior behavior
+  finite-difference Hessians); the Hessian is always recalculated rather
+  than reused from an earlier outer evaluation, since theta moves
+  between evaluations and a saved Hessian would be stale. `"save"` keeps
+  the prior behavior
 
 - Computing NPDE for a fit with a degenerate simulated covariance
   (e.g. a residual SD estimated near zero) no longer aborts the R
@@ -988,6 +991,15 @@
 - Use OpenMP threading for S matrix calculation
 
 - Use OpenMP threading wile calculating NPDEs
+
+- Bounded the adaptive finite-difference step size (Shi et al. 2021)
+  used for the FOCEi eta gradient to a reasonable region. When the
+  finite differences carried no detectable curvature the step-size
+  search could grow the step without bound and probe a parameter far
+  outside the region where the local model holds, producing a degenerate
+  ODE solve that corrupted the shared solver state and collapsed the eta
+  finite-difference sensitivity on later inner iterations (the eta could
+  get stuck near 0). The step is now clamped both above and below.
 
 ## nlmixr2est 6.1.0
 

@@ -468,20 +468,20 @@ If not specified, then it matches the significant digits in the
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 8320</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2736</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2656</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">nlminb</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -651.0124 1192.865 1207.588      -593.4323        559.1754        67.22779</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -651.0124 1192.865 1207.588      -593.4323        559.1765        67.22791</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3276466 0.6000154   5.75e-06      0.046       0.014 0.024    0.011</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08933233</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.355942 0.6251831  6.362e-06      0.049       0.014 0.026    0.011</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1058686</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -510,7 +510,7 @@ If not specified, then it matches the significant digits in the
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nlminb</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         E0         Em        E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -0.6560457  5.4341092  3.5129495 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -0.6560457  5.4341098  3.5129498 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $objective</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 593.4323</span>
@@ -533,25 +533,25 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         E0         Em        E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -436.74931  182.08756   57.89114 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -436.74930  182.08758   57.89115 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $hessian</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>               E0           Em          E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001454619  0.001671561 -0.003681016</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.001671561  0.004731911 -0.008448540</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.003681016 -0.008448540  0.016658651</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001454619  0.001671560 -0.003681015</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.001671560  0.004731909 -0.008448538</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.003681015 -0.008448538  0.016658647</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           E0        Em      E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  7194.894  3142.102 3183.372</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  3142.102 10317.128 5926.698</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 3183.372  5926.698 3949.298</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  7194.897  3142.109 3183.377</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  3142.109 10317.149 5926.710</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 3183.377  5926.710 3949.306</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $r</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                E0            Em          E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.0007273095  0.0008357803 -0.001840508</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.0008357803  0.0023659553 -0.004224270</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.0018405078 -0.0042242698  0.008329326</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.0007273094  0.0008357802 -0.001840508</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.0008357802  0.0023659544 -0.004224269</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.0018405075 -0.0042242689  0.008329324</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
