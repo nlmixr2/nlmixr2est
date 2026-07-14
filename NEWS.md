@@ -1,5 +1,6 @@
 # nlmixr2est (development version)
 
+
 - The analytic-covariance augmented model now relies on `rxode2::rxOptExpr()`'s
   own chunked (and `rxControl(cores=)`-parallel) optimization instead of a
   hand-rolled line chunker.  Every `rxOptExpr()` call site (focei, nlm, nls,
@@ -7,6 +8,12 @@
   `rxControl(cores=)` through as `parallel=`, so the chunks are optimized with
   the same thread setting the solves use.  Requires an rxode2 with chunked
   `rxOptExpr()` (current rxode2 main).
+
+- Added `vaeCovariates()`, which returns the subject-level covariates that
+  `est = "vae"` would explore during automated covariate selection (name, type
+  and centering value), using the same discovery rules as the fit; `warn=FALSE`
+  silences the time-varying-covariate exclusion warning.  Exported so other
+  packages can inspect the search space without running an estimation.
 
 - Added an automatic differentiation variational inference method
   (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
@@ -809,6 +816,11 @@
   producing a degenerate ODE solve that corrupted the shared solver state and
   collapsed the eta finite-difference sensitivity on later inner iterations (the
   eta could get stuck near 0).  The step is now clamped both above and below.
+
+- `saemControl(covMethod = "")` no longer errors.  `""` is a documented choice
+  that skips the covariance step, but `saemControl()` rejected it because
+  `match.arg()` selects choices with `pmatch()`, and `pmatch("")` matches
+  nothing; it is now handled explicitly.
 
 # nlmixr2est 6.1.0
 
