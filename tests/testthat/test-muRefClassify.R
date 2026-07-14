@@ -236,6 +236,75 @@ nmTest({
     expect_true(.cv$bounded[.cv$covariateParameter == "allo.cl2"])
   })
 
+  test_that(".muRefGroups with clamp=TRUE accepts bounded parameters and carries their bounds", {
+    # the clamped mu-family (mfocei/ifocei/...) style: bounded population
+    # thetas and coefficients stay grouped; the regression update is clamped
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- c(0, 1, 5) # bounded population theta
+        tv <- 3.45
+        allo.cl <- c(-1, 0.75, 2) # bounded covariate coefficient
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxode2(mod)
+    expect_warning(.groups <- .muRefGroups(ui, clamp = TRUE), NA)
+    expect_length(.groups, 1L)
+    expect_equal(.groups[[1]]$theta, "tcl")
+    expect_equal(.groups[[1]]$thetaLower, 0)
+    expect_equal(.groups[[1]]$thetaUpper, 5)
+    .cv <- .groups[[1]]$covariates
+    expect_false(any(.cv$bounded))
+    expect_equal(.cv$lower[.cv$covariateParameter == "allo.cl"], -1)
+    expect_equal(.cv$upper[.cv$covariateParameter == "allo.cl"], 2)
+    # the flattened setup keeps the bounded coefficient in the arrays
+    .s <- .muRefCppGroupSetup(ui, clamp = TRUE)
+    .thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
+    expect_equal(.thNames[.s$muGroupCovTheta + 1L], "allo.cl")
+    expect_equal(.s$muGroupCovLower, -1)
+    expect_equal(.s$muGroupCovUpper, 2)
+  })
+
+  test_that(".muRefCppGroupSetup with clamp=FALSE keeps a carved-out bounded coefficient out of the arrays", {
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        allo.cl <- 0.75 # unbounded
+        allo.cl2 <- c(0, 0.1, 1) # bounded
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT + allo.cl2 * sexf)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxode2(mod)
+    suppressWarnings(.s <- .muRefCppGroupSetup(ui))
+    .thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
+    # allo.cl2 stays an ordinary bounded outer parameter: not flattened,
+    # so the C++ regression neither skips nor updates it
+    expect_equal(.thNames[.s$muGroupCovTheta + 1L], "allo.cl")
+    expect_equal(.s$muGroupCovNames, "logWT")
+    expect_equal(.s$muGroupCovCount, 1L)
+  })
+
   test_that(".muRefCppCovData evaluates covariate expressions that are not data columns (#711)", {
     dataSav <- data.frame(
       ID = c(2L, 2L, 1L, 1L),

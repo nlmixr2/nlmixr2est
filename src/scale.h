@@ -65,6 +65,12 @@ struct scaling {
   int *probitIdx;
   double *probitThetaLow;
   double *probitThetaHi;
+  // Optional per-column mask (NULL = no mask): a masked column's value is
+  // regression/externally updated rather than optimizer-owned -- unscaling is
+  // skipped (the value passes through as-is in the #/U rows), the X row still
+  // back-transforms, the gradient cell prints blank, and NaN is recorded for
+  // its gradient when save is on.
+  int *noGrad = NULL;
   // Backing storage for the six transform pointers, populated by
   // scaleAttachXform(); estimators owning their own buffers (e.g. focei)
   // leave these empty and assign raw pointers directly.
@@ -126,6 +132,7 @@ static inline void scaleSetup(scaling *scale,
   scale->probitIdx = NULL;
   scale->probitThetaLow = NULL;
   scale->probitThetaHi = NULL;
+  scale->noGrad = NULL;
   scale->thetaNames = thetaNames;
 
   scale->useColor = useColor;
@@ -616,6 +623,10 @@ static inline double scaleBackTransform(double est, int xParCode, int probitCode
   return est;
 }
 
+static inline int scaleNoGrad(scaling *scale, int i) {
+  return scale->noGrad != NULL && scale->noGrad[i];
+}
+
 static inline void scalePrintFun(scaling *scale, double *x, double f) {
   // Scaled
   int finalize = 0, i = 0;
@@ -644,7 +655,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       scale->niter.push_back(scale->niter.back());
       scale->vPar.push_back(f);
       for (i = 0; i < scale->npars; i++){
-        scale->vPar.push_back(scaleUnscalePar(scale, x, i));
+        scale->vPar.push_back(scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i));
       }
     }
     if (!scale->simple && !skipX) {
@@ -654,7 +665,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       scale->vPar.push_back(f);
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
-        scale->vPar.push_back(scaleBackTransform(scaleUnscalePar(scale, x, i),
+        scale->vPar.push_back(scaleBackTransform(scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i),
                                                  scale->xPar[i], probitCode,
                                                  scale->logitThetaLow, scale->logitThetaHi,
                                                  scale->probitThetaLow, scale->probitThetaHi));
@@ -710,7 +721,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       if (scale->showOfv) RSprintf("|    U|               |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
-        RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
+        RSprintf("%#10.4g |", scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i));
         if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
           if (scale->useColor && scale->ncol + i  > scale->npars){
             RSprintf("%s", scaleWrapMarker(scale, 1));
@@ -759,7 +770,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
         RSprintf("%#10.4g |",
-                 scaleBackTransform(scaleUnscalePar(scale, x, i),
+                 scaleBackTransform(scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i),
                                     scale->xPar[i], probitCode,
                                     scale->logitThetaLow, scale->logitThetaHi,
                                     scale->probitThetaLow, scale->probitThetaHi));
@@ -835,7 +846,8 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
-      RSprintf("%#10.4g ", gr[i]);
+      if (scaleNoGrad(scale, i)) RSprintf("%10s ", "");
+      else RSprintf("%#10.4g ", gr[i]);
       if (scale->useColor && gradNcol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
@@ -869,7 +881,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   if (scale->save) {
     scale->vGrad.push_back(NA_REAL); // Gradient doesn't record objf
     for (i = 0; i < scale->npars; i++){
-      scale->vGrad.push_back(gr[i]);
+      scale->vGrad.push_back(scaleNoGrad(scale, i) ? R_NaN : gr[i]);
     }
   }
 }

@@ -151,6 +151,16 @@ nmTest({
     # objective function values should be in the same ballpark (not an
     # exact match -- different optimization paths)
     expect_equal(fitMu$objf, fitFocei$objf, tolerance = 0.1)
+
+    # mu thetas are recorded in the parameter history like plain focei
+    expect_identical(names(fitMu$parHist), names(fitFocei$parHist))
+    .u <- fitMu$parHistData[fitMu$parHistData$type == "Unscaled", ]
+    expect_true(nrow(.u) > 0)
+    expect_true(all(is.finite(.u$tcl)))
+    expect_true(all(is.finite(.u$allo.cl)))
+    expect_equal(unname(.u$tcl[nrow(.u)]), unname(.thMu["tcl"]), tolerance = 0.05)
+    expect_equal(unname(.u$allo.cl[nrow(.u)]), unname(.thMu["allo.cl"]),
+                 tolerance = 0.05)
   })
 
   test_that("mfocei respects a user-fixed covariate coefficient", {
@@ -270,20 +280,15 @@ nmTest({
     expect_false(is.na(suppressWarnings(as.numeric(.pf["allo.cl2", "SE"]))))
   })
 
-  test_that("mfocei's live iteration print shows mu-group theta values, blank on gradient rows", {
-    # Phase 5: the mu-group population/covariate thetas are excluded from
-    # the outer optimizer's own parameter vector, so the shared
-    # scale.h-based per-iteration table never shows them. printMuGroupThetaRow()
-    # (src/inner.cpp) adds one extra "|   mu|..." row after each real
-    # parameter print (current regression-updated value) and after each
-    # gradient print (blank/NA, since these thetas are never part of the
-    # gradient finite-difference -- there is no restart-loop involved,
-    # the value comes from updateMuGroups() running inside innerOpt()).
+  test_that("mfocei's live iteration print shows mu-group thetas as standard columns", {
+    # The mu-group population/covariate thetas are regression-updated (no
+    # outer-optimizer slot) but print as normal scale.h columns at their
+    # natural theta positions; gradient rows show blank cells for them.
     #
     # capture.output() must wrap the *un-suppressed* nlmixr() call directly
     # (not the .nlmixr()/suppressMessages() test helper) -- this console
-    # output is otherwise swallowed by suppressMessages() in this R
-    # session, unrelated to whether printMuGroupThetaRow() itself ran.
+    # output is otherwise swallowed by suppressMessages() in this R session.
+    # width=200 keeps all 8 columns on one print row (no wrap).
     theo_sd2 <- nlmixr2data::theo_sd
     theo_sd2$logWT <- log(theo_sd2$WT / 70)
 
@@ -306,34 +311,32 @@ nmTest({
       })
     }
 
-    out <- capture.output({
+    out <- withr::with_options(list(width = 200), capture.output({
       nlmixr2est::nlmixr(mod, theo_sd2, "mfocei",
                           mfoceiControl(print = 1, maxOuterIterations = 2))
-    })
+    }))
 
-    muValueRows <- grep("^\\|   mu\\|.*tcl:\\s*[-0-9]", out, value = TRUE)
-    muNaRows <- grep("^\\|   mu\\|.*tcl:\\s*NA", out, value = TRUE)
-    gradRows <- grep("^\\|    [GFCMS]\\|", out, value = TRUE)
-
-    expect_true(length(muValueRows) > 0)
-    expect_true(length(muNaRows) > 0)
-    # every mu-group value row also shows allo.cl (the covariate
-    # coefficient), and every blank row shows NA for it too
-    expect_true(all(grepl("allo\\.cl:\\s*[-0-9]", muValueRows)))
-    expect_true(all(grepl("allo\\.cl:\\s*NA", muNaRows)))
-    # plain (covariate-free) mu-ref thetas are profiled out too and appear
-    # in the same mu rows
-    expect_true(all(grepl("tka:\\s*[-0-9]", muValueRows)))
-    expect_true(all(grepl("tv:\\s*[-0-9]", muValueRows)))
-    expect_true(all(grepl("tka:\\s*NA", muNaRows)))
-    # ... and are gone from the scale table's own parameter columns
-    headerRows <- grep("^\\|    #\\|", out, value = TRUE)
-    expect_true(length(headerRows) > 0)
-    expect_false(any(grepl("\\btka\\b|\\btcl\\b|\\btv\\b", headerRows)))
-    expect_true(any(grepl("add\\.sd", headerRows)))
-    # a standard (non-mu-group) theta still shows a real numeric gradient
-    # on the same gradient-print events
+    # the old bolt-on "|   mu|" row is gone
+    expect_false(any(grepl("^\\|   mu\\|", out)))
+    # Key legend notes the regression-updated thetas
+    expect_true(any(grepl("mu-referenced thetas are regression-updated", out)))
+    # mu-group thetas (pop + covariate coefficient) are header columns at
+    # their natural positions among the other parameters
+    hdr <- grep("^\\|    #\\|", out, value = TRUE)[1]
+    expect_false(is.na(hdr))
+    .pos <- vapply(c("tka", "tcl", "tv", "allo\\.cl", "add\\.sd"),
+                   function(nm) as.numeric(regexpr(paste0("\\b", nm, "\\b"), hdr)),
+                   numeric(1))
+    expect_true(all(.pos > 0))
+    expect_true(all(diff(.pos) > 0))
+    # gradient rows: one blank cell per regression-updated theta
+    # (tka/tcl/tv/allo.cl), real numbers for the optimizer-owned columns
+    gradRows <- grep("^\\|    [GFCMSA]\\|", out, value = TRUE)
     expect_true(length(gradRows) > 0)
+    .blanks <- vapply(gradRows,
+                      function(r) sum(gregexpr(" {11}\\|", r)[[1]] > 0),
+                      numeric(1))
+    expect_true(all(.blanks == 4))
     expect_true(any(grepl("[-0-9]\\.[0-9]", gradRows)))
   })
 })

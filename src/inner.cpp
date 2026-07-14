@@ -169,6 +169,9 @@ struct focei_options {
   unsigned int neta;
   unsigned int ntheta;
   unsigned int npars;
+  // Printed/history column count: npars plus the regression-updated mu-group
+  // thetas (== npars when muModel is off); see _printOptIdx/_printFullIdx.
+  unsigned int nparsPrint;
   unsigned int thetan;
   unsigned int omegan;
 
@@ -341,8 +344,7 @@ struct focei_options {
   // coefficients. Reported once by R at finalize, never per iteration.
   int *muGroupClamped = NULL;       // [muGroupN + muGroupCovN]
   int muGroupClampRetries = 10;
-  // Display names for mu-group thetas, used only by printMuGroupThetaRow() to
-  // label the extra print row; excluded from op_focei.scale's own column names.
+  // Display names for mu-group thetas, used by the finalize-time clamp report.
   CharacterVector muGroupThetaNames;    // [muGroupN]
   CharacterVector muGroupCovThetaNames; // [muGroupCovN]
   // A single updateMuGroups() step per outer iteration isn't always enough:
@@ -615,6 +617,18 @@ std::vector<double> vPar;
 std::vector<double> vGrad;
 std::vector<int> niterGrad;
 std::vector<int> gradType;
+
+// Printed-column layout for the mu-referenced focei family: printed column p
+// maps to optimizer index _printOptIdx[p] (-1 for regression-updated mu
+// columns, which have no optimizer slot) and fullTheta index _printFullIdx[p];
+// identity over fixedTrans when muModel is off. Rebuilt by foceiSetupTheta_.
+static std::vector<int> _printOptIdx, _printFullIdx, _printNoGrad;
+static std::vector<double> _printX, _printGr, _printInitPar, _printScaleC;
+static std::vector<int> _printXPar, _printProbitIdx;
+
+static inline bool muPrintActive() {
+  return op_focei.muModel != 0 && op_focei.muGroupN > 0;
+}
 
 static void releaseCovSolveArgs_(); // defined with covSolveArgs_ below; teardown backstop
 
@@ -2889,24 +2903,18 @@ static inline double updateMuGroups() {
     unsigned int covStart = (unsigned int)op_focei.muGroupCovStart[g];
     unsigned int covCount = (unsigned int)op_focei.muGroupCovCount[g];
 
-    // Split covariates into known-offset (user-fixed, not estimated here) vs
-    // free (estimated by the clamped regression). The fixed offset reads
-    // fullTheta[covTheta] fresh each call.
+    // A user-fixed coefficient is not estimated here; its contribution is
+    // left out of the regression target y and the design matrix entirely
+    // (the model itself still applies it), so the regression re-partitions
+    // only the free part: y = pop + free-cov terms + eta.
     std::vector<unsigned int> freeCovCols;
     std::vector<int> freeCovTheta;
-    arma::vec offset(nsubAll, arma::fill::zeros);
     for (unsigned int c = 0; c < covCount; c++) {
       unsigned int flatIdx = covStart + c;
       int covTheta = op_focei.muGroupCovTheta[flatIdx];
       bool userFixed = op_focei.muGroupCovUserFixed != NULL &&
         op_focei.muGroupCovUserFixed[flatIdx] != 0;
-      if (userFixed) {
-        double coefVal = op_focei.fullTheta[covTheta];
-        for (int id = 0; id < nsubAll; id++) {
-          int rid = getRxId(id);
-          offset(id) += coefVal * op_focei.muGroupCovData(rid, flatIdx);
-        }
-      } else {
+      if (!userFixed) {
         freeCovCols.push_back(flatIdx);
         freeCovTheta.push_back(covTheta);
       }
@@ -2919,7 +2927,7 @@ static inline double updateMuGroups() {
     for (int id = 0; id < nsubAll; id++) {
       focei_ind *fInd = &(inds_focei[id]);
       int rid = getRxId(id);
-      double phi = op_focei.fullTheta[popIdx] + offset(id) + fInd->eta[etaIdx];
+      double phi = op_focei.fullTheta[popIdx] + fInd->eta[etaIdx];
       for (int c = 0; c < nFree; c++) {
         double covVal = op_focei.muGroupCovData(rid, freeCovCols[c]);
         phi += covVal * op_focei.fullTheta[freeCovTheta[c]];
@@ -4448,6 +4456,25 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
+  // Printed-column map: optimizer columns in fixedTrans order interleaved with
+  // the regression-updated mu thetas at their natural fullTheta positions
+  // (user-fixed thetas get no column either way, matching plain focei).
+  _printOptIdx.clear(); _printFullIdx.clear(); _printNoGrad.clear();
+  int k2 = 0;
+  for (j = 0; j < thetan+omegan; j++){
+    if (isMuGroupSkip(j)) {
+      if (!(j < thetaFixed2.size() && thetaFixed2[j])) {
+        _printOptIdx.push_back(-1);
+        _printFullIdx.push_back(j);
+        _printNoGrad.push_back(1);
+      }
+    } else if (k2 < npars && op_focei.fixedTrans[k2] == j) {
+      _printOptIdx.push_back(k2++);
+      _printFullIdx.push_back(j);
+      _printNoGrad.push_back(0);
+    }
+  }
+  op_focei.nparsPrint = (unsigned int)_printOptIdx.size();
   op_focei.npars  = (unsigned int)npars;
 }
 
@@ -5677,52 +5704,39 @@ static inline void foceiPrintLine(int ncol){
   RSprintf("\n");
 }
 
-// Mu-group thetas are excluded from op_focei.scale's parameter vector, so
-// scalePrintFun/scalePrintGrad's table never shows them; this adds one extra
-// self-labeled row after each call (current regression value, or NA for the
-// gradient print since these thetas have no FD gradient). Kept out of the
-// shared scale.h to avoid touching its column layout; uses the same
-// scale->every/cn throttle so it no-ops when printing is off or muModel="none".
-static inline void printMuGroupThetaRow(bool isGrad) {
-  if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return;
-  scaling *scale = &op_focei.scale;
-  if (scale->every == 0 || scale->cn % scale->every != 0) return;
-  RSprintf(isGrad ? "|   mu|   (no gradient - regression update)  |" :
-                     "|   mu|                                     |");
-  for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
-    std::string nm = (g < (unsigned int)op_focei.muGroupThetaNames.size() &&
-                       op_focei.muGroupThetaNames[g] != NA_STRING) ?
-      as<std::string>(op_focei.muGroupThetaNames[g]) : "?";
-    if (isGrad) {
-      RSprintf(" %8s:         NA |", nm.c_str());
-    } else {
-      RSprintf(" %8s: %#10.4g |", nm.c_str(), op_focei.fullTheta[op_focei.muGroupTheta[g]]);
-    }
-  }
-  for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
-    std::string nm = (c < (unsigned int)op_focei.muGroupCovThetaNames.size() &&
-                       op_focei.muGroupCovThetaNames[c] != NA_STRING) ?
-      as<std::string>(op_focei.muGroupCovThetaNames[c]) : "?";
-    if (isGrad) {
-      RSprintf(" %8s:         NA |", nm.c_str());
-    } else {
-      RSprintf(" %8s: %#10.4g |", nm.c_str(), op_focei.fullTheta[op_focei.muGroupCovTheta[c]]);
-    }
-  }
-  RSprintf("\n");
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Outer l-BFGS-b from R
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   double ret = foceiOfv0(x);
   niter.push_back(op_focei.nF2+(++op_focei.nF));
+  // The mu-family records/prints nparsPrint columns: optimizer values
+  // interleaved with the current regression-updated mu thetas (raw estimation
+  // scale, fresh from the foceiOfv0 inner/updateMuGroups cycle above);
+  // identity over the optimizer set when muModel is off.
+  double *xp = x;
+  int np = n;
+  if (muPrintActive()) {
+    np = (int)op_focei.nparsPrint;
+    _printX.resize(op_focei.nparsPrint);
+    for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
+      int ko = _printOptIdx[p];
+      if (ko >= 0) {
+        _printX[p] = x[ko];
+        getScaleC(ko); // resolve any lazily-cached scaleC before copying
+        _printScaleC[p]  = op_focei.scaleC[ko];
+        _printInitPar[p] = op_focei.initPar[ko];
+      } else {
+        _printX[p] = op_focei.fullTheta[_printFullIdx[p]];
+      }
+    }
+    xp = _printX.data();
+  }
   // Scaled
   vPar.push_back(ret);
   iterType.push_back(5);
   int finalize = 0, i = 0;
-  for (i = 0; i < n; i++){
-    vPar.push_back(x[i]);
+  for (i = 0; i < np; i++){
+    vPar.push_back(xp[i]);
   }
   // Unscaled
   iterType.push_back(6);
@@ -5732,8 +5746,9 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   } else {
     vPar.push_back(ret);
   }
-  for (i = 0; i < n; i++){
-    vPar.push_back(unscalePar(x, i));
+  for (i = 0; i < np; i++){
+    int ko = muPrintActive() ? _printOptIdx[i] : i;
+    vPar.push_back(ko >= 0 ? unscalePar(x, ko) : xp[i]);
   }
   // Back-transformed (7)
   iterType.push_back(7);
@@ -5743,10 +5758,21 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   } else {
     vPar.push_back(ret);
   }
-  for (i = 0; i < n; i++){
-    int probitCode = (op_focei.scale.probitIdx != NULL) ? op_focei.scale.probitIdx[i] : 0;
-    vPar.push_back(scaleBackTransform(unscalePar(x, i),
-                                      op_focei.xPar[i], probitCode,
+  for (i = 0; i < np; i++){
+    int ko = muPrintActive() ? _printOptIdx[i] : i;
+    double u; int xc, pc;
+    if (ko >= 0) {
+      u = unscalePar(x, ko);
+      xc = op_focei.xPar[ko];
+      // op_focei.probitIdxArr (not scale.probitIdx) -- the scale pointer is
+      // in print-map order for the mu family, ko is an optimizer index
+      pc = (op_focei.probitIdxArr != NULL) ? op_focei.probitIdxArr[ko] : 0;
+    } else {
+      u = xp[i];
+      xc = _printXPar[i];
+      pc = _printProbitIdx[i];
+    }
+    vPar.push_back(scaleBackTransform(u, xc, pc,
                                       op_focei.scale.logitThetaLow,
                                       op_focei.scale.logitThetaHi,
                                       op_focei.scale.probitThetaLow,
@@ -5757,8 +5783,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   double displayedOfv = op_focei.scaleObjective
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
-  scalePrintFun(&op_focei.scale, x, displayedOfv);
-  printMuGroupThetaRow(false);
+  scalePrintFun(&op_focei.scale, xp, displayedOfv);
   // One summary line per printed iteration for any ODE-solve warnings (e.g.
   // intdy window-misses) accumulated since the last flush; without this a
   // difficult model floods the console with identical lines each iteration.
@@ -5795,9 +5820,16 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   }
   // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21,
   // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
-  scalePrintGrad(&op_focei.scale, gr, gradType.back());
-  printMuGroupThetaRow(true);
-  vGrad.push_back(NA_REAL); // Gradient doesn't record objf
+  double *grp = gr;
+  if (muPrintActive()) {
+    _printGr.resize(op_focei.nparsPrint);
+    for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
+      int ko = _printOptIdx[p];
+      _printGr[p] = (ko >= 0) ? gr[ko] : R_NaN;
+    }
+    grp = _printGr.data();
+  }
+  scalePrintGrad(&op_focei.scale, grp, gradType.back());
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
       if (op_focei.nF+op_focei.nF2 == 1) {
@@ -5824,7 +5856,19 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
         }
       }
     }
-    vGrad.push_back(gr[i]);
+  }
+  // Record after the zero-gradient fix-ups so the history holds the values the
+  // optimizer sees; mu columns record NaN (regression-updated, no gradient).
+  vGrad.push_back(NA_REAL); // Gradient doesn't record objf
+  if (muPrintActive()) {
+    for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
+      int ko = _printOptIdx[p];
+      vGrad.push_back(ko >= 0 ? gr[ko] : R_NaN);
+    }
+  } else {
+    for (i = 0; i < n; i++){
+      vGrad.push_back(gr[i]);
+    }
   }
 }
 
@@ -7821,7 +7865,7 @@ void parHistData(Environment e, bool focei){
     CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
     CharacterVector dfNames;
     if (focei){
-      CharacterVector dfNames2(3+op_focei.npars);
+      CharacterVector dfNames2(3+op_focei.nparsPrint);
       dfNames = dfNames2;
     } else {
       CharacterVector dfNames2(3+thetaNames.size());
@@ -7832,8 +7876,10 @@ void parHistData(Environment e, bool focei){
     dfNames[2] = "objf";
     int i, j, k=1;
     if (focei){
-      for (i = 0; i < op_focei.npars; i++){
-        j=op_focei.fixedTrans[i];
+      // print-map order: optimizer columns plus regression-updated mu thetas
+      // at their natural positions (identity over fixedTrans when muModel off)
+      for (i = 0; i < (int)op_focei.nparsPrint; i++){
+        j=_printFullIdx[i];
         if (j < thetaNames.size()){
           dfNames[i+3] = thetaNames[j];
         } else {
@@ -7848,7 +7894,7 @@ void parHistData(Environment e, bool focei){
     // iter type parameters
     List ret;
     if (focei){
-      ret = List(3+op_focei.npars);
+      ret = List(3+op_focei.nparsPrint);
     } else {
       ret = List(3+thetaNames.size());
     }
@@ -7885,7 +7931,7 @@ void parHistData(Environment e, bool focei){
       vals = cPar;
     }
     if (focei){
-      for (i = 0; i < min2(op_focei.npars+1, vals.n_cols); i++){
+      for (i = 0; i < min2(op_focei.nparsPrint+1, vals.n_cols); i++){
         ret[i+2]= vals.col(i);
       }
     } else {
@@ -9255,8 +9301,7 @@ Environment foceiFitCpp_(Environment e){
   wallT0 = focei_wall_clock::now();
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   // Capture mu-group theta display names here while the full thetaNames is
-  // available (op_focei.scale's own is npars-sized and excludes them); used
-  // only by printMuGroupThetaRow() below.
+  // available; used by the finalize-time clamp report.
   if (op_focei.muModel != 0 && op_focei.muGroupN > 0) {
     CharacterVector muThetaNm(op_focei.muGroupN);
     for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
@@ -9315,24 +9360,55 @@ Environment foceiFitCpp_(Environment e){
   // since focei keeps its own iteration history in module-level globals.
   {
     // Build a CharacterVector with the printed column names in the same
-    // order scalePrintFun emits them (fixedTrans-indexed).
-    CharacterVector scaleNames(op_focei.npars);
+    // order scalePrintFun emits them (print-map order; identity over
+    // fixedTrans when muModel is off).
+    CharacterVector scaleNames(op_focei.nparsPrint);
     int k = 1;
-    for (unsigned int i = 0; i < op_focei.npars; i++) {
-      int jj = op_focei.fixedTrans[i];
+    for (unsigned int i = 0; i < op_focei.nparsPrint; i++) {
+      int jj = _printFullIdx[i];
       if (jj < thetaNames.size()) {
         scaleNames[i] = thetaNames[jj];
       } else {
         scaleNames[i] = "o" + std::to_string(k++);
       }
     }
-    op_focei.scale.npars         = op_focei.npars;
-    op_focei.scale.initPar       = op_focei.initPar;
-    op_focei.scale.scaleC        = op_focei.scaleC;
-    op_focei.scale.xPar          = op_focei.xPar;
+    if (muPrintActive()) {
+      // Padded per-column buffers: optimizer columns copy the live values;
+      // regression-updated mu columns get identity scaling (their noGrad mask
+      // skips the unscale) plus the model's own back-transform codes so the
+      // X row shows them like any other theta.
+      unsigned int npp = op_focei.nparsPrint;
+      _printXPar.resize(npp); _printProbitIdx.resize(npp);
+      _printInitPar.resize(npp); _printScaleC.resize(npp);
+      for (unsigned int p = 0; p < npp; p++) {
+        int ko = _printOptIdx[p], jj = _printFullIdx[p];
+        if (ko >= 0) {
+          _printXPar[p]      = op_focei.xPar[ko];
+          _printProbitIdx[p] = op_focei.probitIdxArr[ko];
+          _printInitPar[p]   = op_focei.initPar[ko];
+          _printScaleC[p]    = op_focei.scaleC[ko];
+        } else {
+          _printXPar[p]      = (jj < thetaXPar.size()) ? thetaXPar[jj] : 0;
+          _printProbitIdx[p] = (jj < thetaProbitIdx.size()) ? thetaProbitIdx[jj] : 0;
+          _printInitPar[p]   = op_focei.fullTheta[jj];
+          _printScaleC[p]    = 1.0;
+        }
+      }
+      op_focei.scale.npars   = (int)npp;
+      op_focei.scale.initPar = _printInitPar.data();
+      op_focei.scale.scaleC  = _printScaleC.data();
+      op_focei.scale.xPar    = _printXPar.data();
+      op_focei.scale.noGrad  = _printNoGrad.data();
+    } else {
+      op_focei.scale.npars   = op_focei.npars;
+      op_focei.scale.initPar = op_focei.initPar;
+      op_focei.scale.scaleC  = op_focei.scaleC;
+      op_focei.scale.xPar    = op_focei.xPar;
+      op_focei.scale.noGrad  = NULL; // op_focei.scale persists across fits
+    }
     op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
     op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
-    op_focei.scale.probitIdx       = op_focei.probitIdxArr;
+    op_focei.scale.probitIdx       = muPrintActive() ? _printProbitIdx.data() : op_focei.probitIdxArr;
     op_focei.scale.probitThetaLow  = op_focei.probitThetaLow.size() ? &op_focei.probitThetaLow[0] : NULL;
     op_focei.scale.probitThetaHi   = op_focei.probitThetaHi.size()  ? &op_focei.probitThetaHi[0]  : NULL;
     op_focei.scale.thetaNames    = scaleNames;
@@ -9354,7 +9430,15 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.showOfv       = 1;
     // focei's richer Key suffix — gradient-method legend and omega note.
     // Appended after "X: Back-transformed parameters; " by scalePrintHeader.
-    op_focei.scale.keyExtra =
+    op_focei.scale.keyExtra = muPrintActive() ?
+      "G: Gill difference gradient approximation\n"
+      "F: Forward difference gradient approximation\n"
+      "C: Central difference gradient approximation\n"
+      "M: Mixed forward and central difference gradient approximation\n"
+      "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
+      "Unscaled parameters for Omegas=chol(solve(omega));\n"
+      "Diagonals are transformed, as specified by foceiControl(diagXform=)\n"
+      "mu-referenced thetas are regression-updated each iteration (blank gradient)\n" :
       "G: Gill difference gradient approximation\n"
       "F: Forward difference gradient approximation\n"
       "C: Central difference gradient approximation\n"
