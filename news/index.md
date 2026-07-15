@@ -2,6 +2,22 @@
 
 ## nlmixr2est (development version)
 
+- Fix the covariance matrix (`$cov`) of a bounded-parameter fit run with
+  an unbounded method (e.g. `saem`): the internal `rxBoundedTr.<name>`
+  name leaked into `$cov` and the back-transform Jacobian was not
+  applied to it, so the reported standard errors were on the internal
+  (transformed) scale. `$cov` (and the stashed full theta+Omega
+  covariance) are now renamed to the original parameter names and
+  Jacobian-corrected; Omega and residual terms are untransformed so they
+  pass through unchanged.
+
+- Fix `covMethod="analytic"` (the FOCEI default) silently dropping the
+  Omega block when it falls back to the finite-difference covariance:
+  with `covFull=TRUE` (the default) the full theta+sigma+Omega
+  finite-difference covariance is now installed on the fallback,
+  matching the shape the analytic covariance would have produced instead
+  of a theta-only matrix.
+
 - New function
   [`formatMinWidth()`](https://nlmixr2.github.io/nlmixr2est/reference/formatMinWidth.md)
   for shorter, more often non-scientific `$parFixed` display;
@@ -9,6 +25,12 @@
   environment side-effects
   ([\#346](https://github.com/nlmixr2/nlmixr2est/issues/346),
   [\#516](https://github.com/nlmixr2/nlmixr2est/issues/516))
+
+- Restored the `$parFixed` shrinkage coloring (green/red by magnitude)
+  in the printed fit; the `$parFixed` refactor changed the shrinkage
+  marker from `<value>%<` to `<value><`, which the print coloring no
+  longer matched (so the raw `<`/`>` markers leaked and high shrinkage
+  was not flagged red)
 
 - Fix `$parFixed` ignoring a user-specified `sigdig`/`ci` for fits with
   literally-fixed parameters

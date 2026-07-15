@@ -113,17 +113,17 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.7102148 3.0587e-05 0.01400873      0.081     1.106 1.706        0.97
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.6662123 2.616e-05 0.01300737      0.073     1.003 1.646       0.929
 #>         table compress     other
-#> elapsed  0.34    0.137 0.4717459
+#> elapsed 0.315    0.134 0.4567542
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830>
-#> tcl               1.04 0.0242 2.33       2.83 (2.70, 2.97)     28.0       3.23<
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2<
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
+#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
 #> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
@@ -178,21 +178,21 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 117.0711 373.6709 393.8505      -179.8354        64.21327        1.427592
+#> FOCEi 117.0711 373.6709 393.8505      -179.8354        19.29371        1.427592
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.7102148 3.0587e-05 0.01400873      0.081     1.106 1.706        0.97
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.6662123 2.616e-05 0.01300737      0.073     1.003 1.646       0.929
 #>         table compress     other
-#> elapsed  0.34    0.137 0.4717459
+#> elapsed 0.315    0.134 0.4567542
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830>
-#> tcl               1.04 0.0242 2.33       2.83 (2.70, 2.97)     28.0       3.23<
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2<
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
+#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
 #> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
