@@ -1,10 +1,12 @@
 nmTest({
   test_that("mu-ref-covariate etas are protected from the eta-drift zero-reset", {
-    # Phase 2 of the mu-referenced FOCEI family: mu-ref-covariate etas
-    # (theta+eta+covariate, e.g. cl below) must be protected from FOCEI's internal
-    # eta-drift reset when muModel != "none" (they are only ever updated by the
-    # regression step), while plain etas (theta+eta, no covariate, e.g. ka below)
-    # reset exactly as today regardless of muModel.
+    # Phase 2 of the mu-referenced FOCEI family: mu-group etas must be protected
+    # from FOCEI's internal eta-drift reset when muModel != "none" (they are only
+    # ever updated by the regression step).  The flag VECTOR marks only the
+    # mu-ref-covariate etas (e.g. cl below); at setup the plain (covariate-free)
+    # mu-group etas (e.g. ka below) are unioned in, since plain-mu profiling made
+    # them regression-managed too.  muModel="none" (every non-mu method) resets
+    # every eta exactly as before.
 
     theo_sd2 <- nlmixr2data::theo_sd
     theo_sd2$logWT <- log(theo_sd2$WT / 70)
@@ -49,6 +51,10 @@ nmTest({
     etaMatDrift[, "eta.v"] <- 0.01
     rownames(etaMatDrift) <- NULL
 
+    # warm="save" (self-init inner Hessian) is pinned so the single inner step
+    # barely moves the etas: the default warm="calc" seeds a full Newton step
+    # that converges each eta from ANY start, erasing the retention signal the
+    # assertions below measure.
     runOne <- function(muModel) {
       fit <- .nlmixr(
         f0,
@@ -56,7 +62,7 @@ nmTest({
         control = foceiControl(
           maxOuterIterations = 0L, maxInnerIterations = 1L,
           etaMat = etaMatDrift, resetEtaP = 0.999,
-          muModel = muModel, print = 0
+          muModel = muModel, warm = "save", print = 0
         )
       )
       fit$eta
@@ -70,13 +76,13 @@ nmTest({
     expect_true(mean(abs(etaNone$eta.cl)) < 1)
     expect_true(mean(abs(etaNone$eta.ka)) < 1)
 
-    # muModel="lin": the mu-ref-covariate eta (eta.cl) is protected from the zero-reset,
-    # so it retains proportionally MORE of its drift than the unprotected plain eta (ka)
-    # does -- both measured against the muModel="none" baseline (the inner step converges
-    # both toward the individual optimum, so the protection shows as a residual, not a
-    # large absolute gap).
+    # muModel="lin": since plain-mu profiling, EVERY mu-group eta (the covariate
+    # eta.cl AND the plain eta.ka -- both regression-managed) is protected from the
+    # zero-reset, so each retains clearly more of its drift than the same eta under
+    # the muModel="none" baseline, where the reset fires.
     .retainCl <- mean(abs(etaLin$eta.cl)) / mean(abs(etaNone$eta.cl))
     .retainKa <- mean(abs(etaLin$eta.ka)) / mean(abs(etaNone$eta.ka))
-    expect_true(.retainCl > .retainKa + 0.1)
+    expect_true(.retainCl > 2)
+    expect_true(.retainKa > 2)
   })
 })
