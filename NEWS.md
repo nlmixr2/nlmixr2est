@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): added the conditional-likelihood primitive
+  (`npEvalCondLik`) and the parallel Psi-matrix builder (`npBuildPsi`), reusing
+  the FOCEi inner solve so residual-error models, transform-both-sides and
+  censoring carry over unchanged.
+
 - Scaffolding for two native nonparametric estimation engines, `est="npag"`
   (nonparametric adaptive grid) and `est="npb"` (nonparametric Bayes), plus their
   mu-referenced sugar variants `mnpag`/`inpag` and `mnpb`/`inpb` (OLS and IRLS

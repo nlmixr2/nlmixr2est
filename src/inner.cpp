@@ -9915,6 +9915,101 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 }
 
 // ===========================================================================
+// Nonparametric (npag / npb) support: the conditional-likelihood primitive and
+// the Psi matrix builder.  A support point is an eta vector (each mu-referenced
+// eta maps to one population parameter).  For a support point we need the
+// CONDITIONAL data likelihood p(y_i | support point) WITHOUT the Omega prior:
+// likInner0 populates fInd->llikObs[kk] with the per-observation conditional
+// log-density (no prior; the Omega quadratic is only folded into fInd->llik), so
+// the conditional log-likelihood is the sum of llikObs over the observation rows.
+// Reuses the FOCEi inner solve set up by vaeInnerSetup_ -- so it inherits the ODE
+// solve, residual-error models, transform-both-sides and censoring unchanged.
+
+// Conditional log-likelihood log p(y_i | eta) for subject id (no Omega prior).
+// Returns -Inf if any observation had a non-finite density (e.g. a bad solve).
+double npEvalCondLik(double *eta, int id) {
+  likInner0(eta, id);
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  focei_ind *fInd = &(inds_focei[id]);
+  double s = 0.0;
+  int n = getIndNallTimes(ind);
+  for (int j = 0; j < n; ++j) {
+    int kk = getIndIx(ind, j);
+    if (isDose(getIndEvid(ind, kk))) continue;  // dose rows carry NA in llikObs
+    if (getIndEvid(ind, kk) != 0) continue;     // count observations only
+    double v = fInd->llikObs[kk];
+    if (ISNAN(v) || !std::isfinite(v)) return R_NegInf;
+    s += v;
+  }
+  return s;
+}
+
+// Build Psi (nSub x nPoint) with psi(i,k) = p(y_i | support point k), where
+// etaPoints is nPoint x neta.  Parallel over base subjects for each support
+// point, reusing the vaeInnerLikCore parallel discipline (per-thread rxode2
+// solve slot, no R API in the loop).  Requires vaeInnerSetup_ already run.
+static void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  psi.set_size(nsub, nPoint);
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) {
+    sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+  }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      double ll = npEvalCondLik(&eta[0], base);
+      psi(base, k) = std::exp(ll);
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) {
+    _innerParallel.store(0, std::memory_order_release);
+    sortIds(rx, 0);
+  }
+}
+
+//' Build the nonparametric Psi (conditional-likelihood) matrix
+//'
+//' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
+//' \code{psi[i, k] = p(y_i | support point k)} for each subject \code{i} (rows)
+//' and support point \code{k} (columns), where each support point is an eta
+//' vector.  Exposed for testing the conditional-likelihood primitive.
+//'
+//' @param etaPoints Numeric matrix of support points, one per row (columns are
+//'   etas).
+//' @param cores Number of OpenMP threads.
+//' @return Numeric matrix psi (subjects in rows, support points in columns).
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores) {
+  arma::mat pts(etaPoints.begin(), etaPoints.nrow(), etaPoints.ncol(), false, true);
+  arma::mat psi;
+  npBuildPsiCore(pts, cores, psi);
+  NumericMatrix out(psi.n_rows, psi.n_cols);
+  std::copy(psi.begin(), psi.end(), out.begin());
+  return out;
+}
+
+// ===========================================================================
 // ADVI (Kucukelbir et al. 2017) outer likelihood + gradient.
 //
 // The variational family lives in the unconstrained real coordinate space.  In

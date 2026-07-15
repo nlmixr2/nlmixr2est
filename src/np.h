@@ -8,6 +8,13 @@
 
 // ---- implemented in inner.cpp (shared with the imp interface) ----
 
+// Conditional data log-likelihood log p(y_i | eta) for subject id, WITHOUT the
+// Omega prior (the sum of the per-observation conditional log-densities from
+// likInner0).  Returns -Inf on a non-finite (bad-solve) observation.  This is
+// the single new numeric primitive the nonparametric engines need; a support
+// point k evaluated for subject i gives psi(i,k) = exp(npEvalCondLik(eta_k, i)).
+double npEvalCondLik(double *eta, int id);
+
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).
 void npagOuter(Rcpp::Environment e);

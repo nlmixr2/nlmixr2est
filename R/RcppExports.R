@@ -188,6 +188,23 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+#' Build the nonparametric Psi (conditional-likelihood) matrix
+#'
+#' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
+#' \code{psi[i, k] = p(y_i | support point k)} for each subject \code{i} (rows)
+#' and support point \code{k} (columns), where each support point is an eta
+#' vector.  Exposed for testing the conditional-likelihood primitive.
+#'
+#' @param etaPoints Numeric matrix of support points, one per row (columns are
+#'   etas).
+#' @param cores Number of OpenMP threads.
+#' @return Numeric matrix psi (subjects in rows, support points in columns).
+#' @keywords internal
+#' @export
+npBuildPsi <- function(etaPoints, cores) {
+    .Call(`_nlmixr2est_npBuildPsi`, etaPoints, cores)
+}
+
 vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
     .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
 }

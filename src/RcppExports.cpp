@@ -712,6 +712,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npBuildPsi
+NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores);
+RcppExport SEXP _nlmixr2est_npBuildPsi(SEXP etaPointsSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaPoints(etaPointsSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(npBuildPsi(etaPoints, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeIterPrintStart_
 RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names, List iterPrintControl, RObject xform);
 RcppExport SEXP _nlmixr2est_vaeIterPrintStart_(SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {

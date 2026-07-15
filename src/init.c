@@ -170,6 +170,7 @@ SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
 SEXP _nlmixr2est_npIpmBurke(SEXP);
+SEXP _nlmixr2est_npBuildPsi(SEXP, SEXP);
 SEXP _rxode2rxFixRes(SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
@@ -286,6 +287,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2est_nlmixrExpandFdParNlme_, 2},
   {"_nlmixr2est_nmNearPD_", (DL_FUNC) &_nlmixr2est_nmNearPD_, 10},
   {"_nlmixr2est_npIpmBurke", (DL_FUNC) &_nlmixr2est_npIpmBurke, 1},
+  {"_nlmixr2est_npBuildPsi", (DL_FUNC) &_nlmixr2est_npBuildPsi, 2},
   {NULL, NULL, 0}
 };
 
