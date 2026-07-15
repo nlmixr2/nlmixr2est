@@ -21,9 +21,15 @@
 #' or to Pmetrics NPAG.
 #'
 #' @inheritParams impmapControl
-#' @param points Initial Sobol grid size (support points).
-#' @param cycles Maximum cycles.
-#' @param gammaOptimize Optimize the residual-error magnitude (gamma).
+#' @param points Stick-breaking truncation level K (number of support points).
+#' @param alpha Dirichlet-process concentration parameter.
+#' @param burnin Number of burn-in Gibbs sweeps.
+#' @param nsamp Number of post-burn-in Gibbs samples collected.
+#' @param propSd Standard deviation of the Gaussian random-walk MH proposal for
+#'   the support-point locations (eta space).
+#' @param seed Random seed for the sampler.
+#' @param cycles Unused for npb (kept for control compatibility).
+#' @param gammaOptimize Unused for npb (kept for control compatibility).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npb engine.
 #' @export
@@ -31,12 +37,19 @@
 #' @examples
 #'
 #' npbControl()
-npbControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...) {
+npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
+                       propSd = 0.2, seed = 42L, cycles = 100L,
+                       gammaOptimize = FALSE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
+  .ctl$alpha <- as.numeric(alpha)
+  .ctl$burnin <- as.integer(burnin)
+  .ctl$nsamp <- as.integer(nsamp)
+  .ctl$propSd <- as.numeric(propSd)
+  .ctl$seed <- as.integer(seed)
   .ctl
 }
 

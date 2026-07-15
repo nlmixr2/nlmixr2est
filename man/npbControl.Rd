@@ -4,14 +4,35 @@
 \alias{npbControl}
 \title{Control for the npb (nonparametric Bayes) method}
 \usage{
-npbControl(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...)
+npbControl(
+  points = 50L,
+  alpha = 1,
+  burnin = 500L,
+  nsamp = 500L,
+  propSd = 0.2,
+  seed = 42L,
+  cycles = 100L,
+  gammaOptimize = FALSE,
+  ...
+)
 }
 \arguments{
-\item{points}{Initial Sobol grid size (support points).}
+\item{points}{Stick-breaking truncation level K (number of support points).}
 
-\item{cycles}{Maximum cycles.}
+\item{alpha}{Dirichlet-process concentration parameter.}
 
-\item{gammaOptimize}{Optimize the residual-error magnitude (gamma).}
+\item{burnin}{Number of burn-in Gibbs sweeps.}
+
+\item{nsamp}{Number of post-burn-in Gibbs samples collected.}
+
+\item{propSd}{Standard deviation of the Gaussian random-walk MH proposal for
+the support-point locations (eta space).}
+
+\item{seed}{Random seed for the sampler.}
+
+\item{cycles}{Unused for npb (kept for control compatibility).}
+
+\item{gammaOptimize}{Unused for npb (kept for control compatibility).}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

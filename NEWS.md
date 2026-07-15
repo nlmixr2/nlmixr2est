@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- `est="npb"` (nonparametric Bayes) is now a usable engine: a truncated
+  stick-breaking Dirichlet-process mixture sampled by a blocked
+  Metropolis-within-Gibbs sampler (cluster assignments, stick weights, MH support
+  locations).  It reuses the same conditional-likelihood primitive as npag and
+  returns a `nlmixr2FitData` with the posterior mixing distribution
+  (`$env$npbSupport`/`npbWeights`), per-subject posterior-mean etas, and posterior
+  draws of the population mean (`npbMeanDraws`) for Bayesian credible intervals.
+  `npbControl()` exposes `points` (truncation K), `alpha`, `burnin`, `nsamp`,
+  `propSd`, and `seed`.  (Gelman-Rubin multi-chain convergence is a follow-up.)
+
 - `est="npag"` is now a usable engine: it returns a standard `nlmixr2FitData`
   object with the nonparametric population summary (mean + variance mapped to the
   reported `theta`/`Omega`), per-subject posterior-mean etas, and the discrete

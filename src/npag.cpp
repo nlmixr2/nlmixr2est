@@ -170,32 +170,7 @@ void npagOuter(Environment e) {
       : arma::rowvec(nspp, arma::fill::value(1.0 / (double)nspp));
     postEta.row(i) = w * r.theta;   // (1 x nspp)(nspp x neta)
   }
-  // population summary: weighted mean + covariance of the support points
-  arma::rowvec meanEta = r.lambda.t() * r.theta;   // 1 x neta
-  arma::mat Omega(neta, neta, arma::fill::zeros);
-  for (int k = 0; k < nspp; ++k) {
-    arma::rowvec d = r.theta.row(k) - meanEta;
-    Omega += r.lambda[k] * (d.t() * d);
-  }
-  // push the population mean into the mu-referenced thetas (mean-shift), then
-  // re-center the per-subject etas around it so individual params are unchanged.
-  for (int i = 0; i < nsub; ++i) { arma::vec ev = postEta.row(i).t(); impSetEta(i, ev); }
-  impMuInterceptStep();      // shifts each simple mu theta by the mean eta
-  impUpdateMuThetas();       // covariate mu-groups (no-op without covariates)
-  for (int i = 0; i < nsub; ++i) {
-    arma::vec ev = (postEta.row(i) - meanEta).t();
-    impSetEta(i, ev);
-  }
-  // Install only the diagonal (variances): the model's Omega parameterization is
-  // typically diagonal, and passing a full covariance would create off-diagonal
-  // free parameters that do not exist in the model (parameter-count mismatch).
-  // The full support-point covariance is still reported as e$npagOmega.
-  impSetOmega(arma::diagmat(Omega.diag()), impDiagXform());
-  impSyncInitParToFullTheta();
-  impMapPass(e);             // posthoc pass -> predictions/tables in e
-
-  // the reported objective is the nonparametric -2LL, not the FOCEi posthoc OFV
-  e["objective"] = -2.0 * r.objf;
+  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf);
   // nonparametric outputs (support-point distribution + trace)
   e["npagSupport"] = wrap(r.theta);        // nspp x neta (eta space)
   e["npagWeights"] = wrap(r.lambda);
@@ -206,6 +181,38 @@ void npagOuter(Environment e) {
   e["npagCycles"] = r.cycle;
   e["npagConverged"] = r.converged;
   e["npagLogLik"] = r.objf;
+}
+
+// Shared finalization (see np.h): summarize the discrete mixing distribution into
+// the population theta shift + Omega, push into the FOCEi state, build the fit
+// env, and set the nonparametric objective.  Returns the full support covariance.
+arma::mat npFinalizeFit(Environment e, const arma::mat& support,
+                        const arma::vec& weights, const arma::mat& postEta, double objf) {
+  int nsub = impNsub();
+  int neta = impNeta();
+  arma::rowvec meanEta = weights.t() * support;               // 1 x neta
+  arma::mat Omega(neta, neta, arma::fill::zeros);
+  for (int k = 0; k < (int)support.n_rows; ++k) {
+    arma::rowvec d = support.row(k) - meanEta;
+    Omega += weights[k] * (d.t() * d);
+  }
+  // push the population mean into the mu-referenced thetas (mean-shift), then
+  // re-center the per-subject etas around it so individual params are unchanged.
+  for (int i = 0; i < nsub; ++i) { arma::vec ev = postEta.row(i).t(); impSetEta(i, ev); }
+  impMuInterceptStep();
+  impUpdateMuThetas();
+  for (int i = 0; i < nsub; ++i) {
+    arma::vec ev = (postEta.row(i) - meanEta).t();
+    impSetEta(i, ev);
+  }
+  // Diagonal only: the model's Omega parameterization is typically diagonal;
+  // a full covariance would create off-diagonal free parameters that do not
+  // exist in the model.  The full covariance is returned for reporting.
+  impSetOmega(arma::diagmat(Omega.diag()), impDiagXform());
+  impSyncInitParToFullTheta();
+  impMapPass(e);
+  e["objective"] = -2.0 * objf;
+  return Omega;
 }
 
 //' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
