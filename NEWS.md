@@ -1,5 +1,12 @@
 # nlmixr2est (development version)
 
+- New function `formatMinWidth()` for shorter, more often non-scientific
+  `$parFixed` display; `$parFixed` is now built with data.frame operations
+  instead of environment side-effects (#346, #516)
+
+- Fix `$parFixed` ignoring a user-specified `sigdig`/`ci` for fits with
+  literally-fixed parameters
+
 - In the mu-referenced estimation family (`mfocei`/`ifocei`, `mfoce`/`ifoce`,
   `mfocep`/`ifocep`, `magq`/`iagq`, `mlaplace`/`ilaplace`), the
   regression-updated mu thetas (population and covariate coefficients) now
