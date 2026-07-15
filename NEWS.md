@@ -4,6 +4,11 @@
   `$parFixed` display; `$parFixed` is now built with data.frame operations
   instead of environment side-effects (#346, #516)
 
+- Restored the `$parFixed` shrinkage coloring (green/red by magnitude) in the
+  printed fit; the `$parFixed` refactor changed the shrinkage marker from
+  `<value>%<` to `<value><`, which the print coloring no longer matched (so the
+  raw `<`/`>` markers leaked and high shrinkage was not flagged red)
+
 - Fix `$parFixed` ignoring a user-specified `sigdig`/`ci` for fits with
   literally-fixed parameters
 
