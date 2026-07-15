@@ -1,5 +1,12 @@
 # nlmixr2est (development version)
 
+- Scaffolding for two native nonparametric estimation engines, `est="npag"`
+  (nonparametric adaptive grid) and `est="npb"` (nonparametric Bayes), plus their
+  mu-referenced sugar variants `mnpag`/`inpag` and `mnpb`/`inpb` (OLS and IRLS
+  covariate M-step).  Both reuse the FOCEI inner likelihood machinery; the
+  estimation loop runs in C++.  The algorithm itself is added in subsequent
+  releases (the drivers currently report that estimation is not yet implemented).
+
 - Fix the covariance matrix (`$cov`) of a bounded-parameter fit run with an
   unbounded method (e.g. `saem`): the internal `rxBoundedTr.<name>` name leaked
   into `$cov` and the back-transform Jacobian was not applied to it, so the

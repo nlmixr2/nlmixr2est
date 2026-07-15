@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "inner.h"
 #include "imp.h"
+#include "np.h"
 #include "rxomp.h"
 #include "solveWarnHelper.h"
 #include "vaeEncoder.h"
@@ -450,6 +451,8 @@ struct focei_options {
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
+  bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
+  bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -4816,6 +4819,10 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = (estStr == "imp");
     op_focei.isAdvi = (estStr == "advi");
     op_focei.isQrpem = (estStr == "qrpem");
+    // npag + its mu-referenced sugar (mnpag = OLS "lin", inpag = IRLS) share the
+    // npagOuter driver; likewise npb + mnpb/inpb.
+    op_focei.isNpag = (estStr == "npag" || estStr == "mnpag" || estStr == "inpag");
+    op_focei.isNpb = (estStr == "npb" || estStr == "mnpb" || estStr == "inpb");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
@@ -4823,6 +4830,8 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = false;
     op_focei.isAdvi = false;
     op_focei.isQrpem = false;
+    op_focei.isNpag = false;
+    op_focei.isNpb = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -9471,6 +9480,12 @@ Environment foceiFitCpp_(Environment e){
       // est="impmap": run the importance-sampling EM driver (src/imp.cpp) in
       // place of the FOCEI outer optimizer.  Module M1 does a single MAP pass.
       impOuter(e);
+    } else if (op_focei.isNpag) {
+      // est="npag": nonparametric adaptive grid (src/npag.cpp).
+      npagOuter(e);
+    } else if (op_focei.isNpb) {
+      // est="npb": nonparametric Bayes stick-breaking DP (src/npb.cpp).
+      npbOuter(e);
     } else {
       foceiOuter(e);
     }

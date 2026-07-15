@@ -1880,7 +1880,8 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # impmap: add the dedicated theta-sensitivity model (d(f)/d(theta)) used by the
   # importance-sampling EM to update the non-mu structural thetas.  Built here,
   # after the inner model, in the symengine pipeline context.
-  if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") &&
+  if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi",
+                                                 "npag", "npb", "mnpag", "inpag", "mnpb", "inpb") &&
         is.null(env$model$thetaSens)) {
     env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
                                     error = function(e) NULL)
@@ -1936,7 +1937,8 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
       .ctlClass <- class(get("control", envir = .x))[1]
     }
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
-                    c("impmap", "imp", "qrpem", "advi")) &&
+                    c("impmap", "imp", "qrpem", "advi",
+                      "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) &&
       !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
     # muModel != "none" is the clamped family: bounded mu parameters stay
     # grouped and updateMuGroups() clamps their regression update
