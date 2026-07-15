@@ -83,6 +83,10 @@ getBaseSimModelFit.foce <- getBaseSimModelFit.focei
 
 #' @rdname getBaseSimModelFit
 #' @export
+getBaseSimModelFit.focep <- getBaseSimModelFit.focei
+
+#' @rdname getBaseSimModelFit
+#' @export
 getBaseSimModelFit.fo <- getBaseSimModelFit.focei
 #' @rdname getBaseSimModelFit
 #' @export

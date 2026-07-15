@@ -373,6 +373,9 @@ rxUiGet.saemResMod <- function(x, ...) {
   .predDf <- .ui$predDf
   vapply(seq_along(.predDf$errType),
          function(i) {
+           # general log-likelihood endpoint (ll() ~ expr): no residual error
+           # parameter -- the inner supplies the likelihood (distribution=4 path)
+           if (.predDf$distribution[i] == "LL") return(0L)
            .errType <- as.integer(.predDf$errType[i])
            .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
                                                      "logit + yeoJohnson",
@@ -390,9 +393,40 @@ rxUiGet.saemResMod <- function(x, ...) {
 attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
 
 #' @export
+rxUiGet.saemArActive <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .iniDf <- .ui$iniDf
+  vapply(seq_along(.predDf$cond), function(i) {
+    if (!is.na(.predDf$ar[i])) return(1L)
+    if (isTRUE(any(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i]))) return(1L)
+    0L
+  }, integer(1), USE.NAMES=FALSE)
+}
+attr(rxUiGet.saemArActive, "rstudio") <- 0L
+
+#' @export
+rxUiGet.saemArCor <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .iniDf <- .ui$iniDf
+  vapply(seq_along(.predDf$cond), function(i) {
+    if (!is.na(.predDf$ar[i])) {
+      .v <- suppressWarnings(as.numeric(.predDf$ar[i]))
+      if (!is.na(.v)) return(.v)
+    }
+    .w <- which(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i])
+    if (length(.w) == 1L) return(.iniDf$est[.w])
+    0.0
+  }, numeric(1), USE.NAMES=FALSE)
+}
+attr(rxUiGet.saemArCor, "rstudio") <- 0.0
+
+#' @export
 rxUiGet.saemModNumEst <- function(x, ...) {
   .resMod <- rxUiGet.saemResMod(x, ...)
   vapply(.resMod, function(i) {
+    if (i == 0L) return(0L) # general log-likelihood endpoint: no residual params
     switch(i,
            1L, # add = 1
            1L, # prop = 2
@@ -584,13 +618,43 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
 attr(rxUiGet.saemParHistEtaNames, "rstudio") <- "V(ka)"
 
+#' Off-diagonal Omega covariances recorded in the SAEM iteration history
+#'
+#' Returns the estimated (non-fixed) off-diagonal Omega elements, mapped to the eta
+#' order used by `Gamma2_phi1` (0-indexed row/col pairs for the C++ layer), and their
+#' `cov.<eta>.<eta>` names (matching the covariance-matrix naming).
+#' @return list(pairs = integer matrix (row, col), names = character)
+#' @noRd
+#' @export
+rxUiGet.saemParHistOmegaOffInfo <- function(x, ...) {
+  .ui <- x[[1]]
+  .idf <- .ui$iniDf
+  .etaN <- rxUiGet.saemEtaNames(x, ...)                 # phi1 / Gamma2_phi1 order
+  .diag <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
+  .num2name <- stats::setNames(.diag$name, .diag$neta1)
+  .off <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2 & !.idf$fix, , drop = FALSE]
+  if (nrow(.off) == 0L) {
+    return(list(pairs = matrix(integer(0), ncol = 2L), names = character(0)))
+  }
+  .pi <- match(.num2name[as.character(.off$neta1)], .etaN)
+  .pj <- match(.num2name[as.character(.off$neta2)], .etaN)
+  .hi <- pmax(.pi, .pj); .lo <- pmin(.pi, .pj)
+  .ord <- order(.hi, .lo)
+  .hi <- .hi[.ord]; .lo <- .lo[.ord]
+  list(pairs = cbind(.hi - 1L, .lo - 1L),
+       names = paste0("cov.", .etaN[.hi], ".", .etaN[.lo]))
+}
+attr(rxUiGet.saemParHistOmegaOffInfo, "rstudio") <- "off-diagonal omega history"
+
 #' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
   .ui <- x[[1]]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
+  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...),
+    rxUiGet.saemParHistOmegaOffInfo(x, ...)$names,
+    rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
 }
 attr(rxUiGet.saemParHistNames, "rstudio") <- c("ka", "add.sd")
 
@@ -742,6 +806,8 @@ rxUiGet.saemModelList <- function(x, ...) {
     .mod$covars <- .covars
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
+  .mod$arActive <- rxUiGet.saemArActive(x, ...)
+  .mod$arCor <- rxUiGet.saemArCor(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
   .mod$ares    <- rxUiGet.saemAres(x, ...)
   .mod$bres    <- rxUiGet.saemBres(x, ...)

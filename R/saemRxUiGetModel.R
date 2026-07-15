@@ -37,7 +37,8 @@
 #' @return Remove mu-referenced etas and covariates
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE) {
+.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE,
+                                keepEtas=FALSE) {
   f <- function(x) {
     if (is.name(x) || is.atomic(x)) {
       return(x)
@@ -53,16 +54,21 @@
         if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs=noCovs)) {
           return(f(x[[2]]))
         }
-        if (length(x[[2]]) == 1) {
-          .char <- as.character(x[[2]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[3]]))
+        # keepEtas=TRUE (f-SAEM inner): absorb the non-time-varying covariates
+        # into phi like saem but KEEP the mu-referenced etas so the FOCEi inner
+        # can optimize them (saem drops them, collapsing theta+eta -> phi).
+        if (!keepEtas) {
+          if (length(x[[2]]) == 1) {
+            .char <- as.character(x[[2]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[3]]))
+            }
           }
-        }
-        if (length(x[[3]]) == 1) {
-          .char <- as.character(x[[3]])
-          if (.char %in% muRefDataFrame$eta) {
-            return(f(x[[2]]))
+          if (length(x[[3]]) == 1) {
+            .char <- as.character(x[[3]])
+            if (.char %in% muRefDataFrame$eta) {
+              return(f(x[[2]]))
+            }
           }
         }
       }
@@ -77,15 +83,16 @@
 #'
 #' @param ui rxode2 ui
 #' @param noCovs Do not look for covariates
+#' @param keepEtas Keep the mu-referenced etas
 #' @return model line expression with mu referenced information dropped.
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
+.saemDropMuRefFromModel <- function(ui, noCovs=FALSE, keepEtas=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
   lapply(ui$lstExpr, function(line){
-    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
+    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs, keepEtas=keepEtas)
   })
 }
 
@@ -114,7 +121,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -141,10 +148,23 @@ nmGetDistributionSaemLines.norm <- function(line) {
   }
   return(list(bquote(rx_pred_ <- .(.var))))
 }
-
+#' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.t <- function(line) {
   stop("t isn't supported yet")
+}
+
+#' @rdname nmGetDistributionSaemLines
+#' @export
+nmGetDistributionSaemLines.LL <- function(line) {
+  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
+  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
+  # instead of a Gaussian mean.  Only fsaem (which drives the E-step off this
+  # general likelihood via the FOCEi inner) can fit such an endpoint; plain saem
+  # has no observation-loss kernel for it -- see .fsaemSupported / distribution=4.
+  .ui <- line[[1]]
+  .errNum <- line[[3]]
+  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
 }
 
 #' @export
@@ -312,16 +332,31 @@ attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
 rxUiGet.saemModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaem(x, ...)
 
+  # matExp() has no d/dt(): materialize it from the k_from_to constants and
+  # emit the defining LHS first, suppressed ('~') so it adds no output column
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .preLhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+    .preLhs <- sub("^([^=]+)=", "\\1~", .lhs)
+  }
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .preLhs,
     .ddt,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr.  SAEM is
+    ## gradient-free and builds .s without sensitivities, so re-inject the history
+    ## (which the symengine interception dropped) from the stored rx__pastRhs_.
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     .prd,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
@@ -335,7 +370,7 @@ rxUiGet.saemModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "saem model")
+    .ret <- rxode2::rxOptExpr(.ret, "saem model", parallel = .optExprCores(x[[1]]))
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
@@ -364,8 +399,13 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
     .thetaValue <- c(.thetaValue, .nonMuThetas)
   }
   .thetaErrNames <- .iniDf[!is.na(.iniDf$ntheta) & !is.na(.iniDf$err), ]
-
-  .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  # a general log-likelihood endpoint has no residual error theta, so guard the
+  # empty case (else setNames() injects a spurious NA=THETA[] entry)
+  if (nrow(.thetaErrNames) == 0L) {
+    .thetaValueErr <- character(0L)
+  } else {
+    .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
   for (.e in seq_along(.etaTrans)) {
@@ -473,6 +513,8 @@ rxUiGet.saemModelPred <- function(x, ...) {
 
   .ret <- paste(c(
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2::.rxPastBaseLinesFromEnv(.s),
     #.yj,
     #.lambda,
     #.hi,
@@ -502,10 +544,23 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret0 <- gsub("rx_expr_", "rx_expr", rxode2::rxOptExpr(.ret0, "saem predOnly model 0"))
-    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1")
-    .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2"))
-    .msuccess("done")
+    .optCores <- .optExprCores(x[[1]])
+    .ret0 <- gsub("rx_expr_", "rx_expr",
+                  rxode2::rxOptExpr(.ret0, "saem predOnly model 0", parallel = .optCores))
+    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1", parallel = .optCores)
+    ## .ret2 is the residual + lhs (+ tad/dosenum) fragment.  When a delay()
+    ## appears in an intermediate lhs (e.g. `ceff <- delay(cen, tau)`) that lhs is
+    ## in .ret2 but the delayed state's d/dt is in .ret, so optimizing .ret2 alone
+    ## builds an rxode2 model with an orphaned delay() and errors.  The final
+    ## combined model (.ret0 + .ret + .ret2) is valid, so just skip the (cosmetic)
+    ## common-subexpression optimization of this fragment for delay models.
+    if (any(grepl("delay(", .ret2, fixed = TRUE))) {
+      .msuccess("done")
+    } else {
+      .ret2 <- gsub("rx_expr_", "rx_expr__",
+                    rxode2::rxOptExpr(.ret2, "saem predOnly model 2", parallel = .optCores))
+      .msuccess("done")
+    }
   }
   .ret <- paste(c(
     .ret0,

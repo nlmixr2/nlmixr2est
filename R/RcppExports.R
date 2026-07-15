@@ -23,6 +23,54 @@ rxode2hasLlik <- function() {
     .Call(`_nlmixr2est_rxode2hasLlik`)
 }
 
+censNormalPartials_ <- function(cens, dv, lim, fv, rv, order) {
+    .Call(`_nlmixr2est_censNormalPartials_`, cens, dv, lim, fv, rv, order)
+}
+
+foceiSubjectGradFocei_ <- function(a, A, r1, r2, p, p1, perRf, perPs, perRs, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh) {
+    .Call(`_nlmixr2est_foceiSubjectGradFocei_`, a, A, r1, r2, p, p1, perRf, perPs, perRs, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh)
+}
+
+foceiSubjectGradFR_ <- function(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol) {
+    .Call(`_nlmixr2est_foceiSubjectGradFR_`, a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol)
+}
+
+foceiGradAllFR_ <- function(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllFR_`, a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores)
+}
+
+foceiSubjectGradFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp) {
+    .Call(`_nlmixr2est_foceiSubjectGradFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp)
+}
+
+foceiGradAllFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores)
+}
+
+foceiSubjectRFR_ <- function(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
+    .Call(`_nlmixr2est_foceiSubjectRFR_`, a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
+}
+
+foceiRAllFR_ <- function(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores) {
+    .Call(`_nlmixr2est_foceiRAllFR_`, a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
+}
+
+foceiSubjectRfoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
+    .Call(`_nlmixr2est_foceiSubjectRfoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
+}
+
+foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores) {
+    .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
+}
+
+impSirIndex_ <- function(zk, sirN, u0) {
+    .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
+}
+
+impQrPoints_ <- function(isample, neta, shift) {
+    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
@@ -95,6 +143,10 @@ nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
     .Call(`_nlmixr2est_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
 }
 
+shi21CentralWrap <- function(f, t, f0, idx, ef) {
+    .Call(`_nlmixr2est_shi21CentralWrap`, f, t, f0, idx, ef)
+}
+
 #' Return the square root of general square matrix A
 #'
 #' @param m Matrix to take the square root of.
@@ -122,6 +174,98 @@ foceiCalcCov <- function(e) {
 #' @export
 foceiFitCpp_ <- function(e) {
     .Call(`_nlmixr2est_foceiFitCpp_`, e)
+}
+
+vaeInnerSetup_ <- function(e) {
+    .Call(`_nlmixr2est_vaeInnerSetup_`, e)
+}
+
+vaeInnerUpdatePar_ <- function(thFull, omegaDiag) {
+    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omegaDiag)
+}
+
+vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
+    .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
+}
+
+vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
+    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
+}
+
+vaeIterPrintRow_ <- function(x, f, phase = "") {
+    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f, phase)
+}
+
+vaeIterPrintGet_ <- function(printLine = TRUE) {
+    .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
+}
+
+adviThetaSensInfo_ <- function() {
+    .Call(`_nlmixr2est_adviThetaSensInfo_`)
+}
+
+adviElboGrad_ <- function(mu, omega, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGrad_`, mu, omega, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
+adviLoop_ <- function(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoop_`, mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviElboGradFR_ <- function(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx) {
+    .Call(`_nlmixr2est_adviElboGradFR_`, mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx)
+}
+
+adviLoopFR_ <- function(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoopFR_`, mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviLoopFB_ <- function(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
+    .Call(`_nlmixr2est_adviLoopFB_`, mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
+}
+
+adviOptimize_ <- function(args) {
+    .Call(`_nlmixr2est_adviOptimize_`, args)
+}
+
+fsaemInnerMap_ <- function(cores) {
+    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
+}
+
+fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
+    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
+}
+
+fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
+fsaemMapImhCpp_ <- function(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemMapImhCpp_`, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
+vaeInnerFree_ <- function() {
+    .Call(`_nlmixr2est_vaeInnerFree_`)
+}
+
+vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
+    .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
+}
+
+vaeDecoderPxz_ <- function(E, y) {
+    .Call(`_nlmixr2est_vaeDecoderPxz_`, E, y)
+}
+
+vaeDecoderSolveSubject_ <- function(solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderSolveSubject_`, solveFn, eta, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
+vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback) {
+    .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
+}
+
+vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
+    .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
@@ -256,6 +400,10 @@ saem_fit <- function(xSEXP) {
 
 nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
+}
+
+vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect) {
+    .Call(`_nlmixr2est_vaeEncoderFwdBwd`, dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect)
 }
 
 # Register entry points for exported C++ functions

@@ -39,8 +39,13 @@
 
     # Skip fixed params
     if (.thetaDf$fix[i]) next
-    # Skip residual error params (have non-NA err column)
-    if (!is.na(.thetaDf$err[i])) next
+    # Skip residual error params (have non-NA err column), EXCEPT the
+    # autoregressive correlation ar() when the OUTER optimizer estimates it
+    # (nlm/focei): it has finite [0,1) bounds and needs the expit transform to
+    # stay in range.  saem estimates ar() in the M-step (not the outer
+    # optimizer), so leave it untransformed there.
+    if (!is.na(.thetaDf$err[i]) &&
+          !(identical(.thetaDf$err[i], "ar") && !(est %in% c("saem", "fsaem")))) next
     # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
     # path is handled in R/iov.R and should not be rewrapped here.
     if (!is.na(.thetaDf$backTransform[i]) &&

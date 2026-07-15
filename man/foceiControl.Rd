@@ -25,12 +25,17 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("r,s", "r", "s", ""),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covSolveTol = NULL,
+  covFull = TRUE,
+  fast = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
+  censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
+  eventSens = c("jump", "fd"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
   lbfgsPgtol = 0,
@@ -48,6 +53,7 @@ foceiControl(
   calcTables = TRUE,
   noAbort = TRUE,
   interaction = TRUE,
+  foce = c("nonmem", "foce+"),
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
@@ -59,8 +65,8 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin", "uobyqa", "newuoa"),
+  outerOpt = c("nlminb", "lbfgsb3c", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+    "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -74,8 +80,9 @@ foceiControl(
   resetHessianAndEta = FALSE,
   muModel = c("none", "irls", "lin"),
   muRefCovAlg = TRUE,
-  muModelTol = 0.001,
-  muModelMaxCycles = 10L,
+  muModelTol = 1e-05,
+  muModelMaxCycles = 20L,
+  muModelClampRetries = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -125,11 +132,12 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L,
+  mceta = -2L,
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
-  eventSens = c("jump", "fd"),
+  sensMethod = c("default", "forward", "adjoint"),
   boundedTransform = TRUE
 )
 }
@@ -217,12 +225,49 @@ differences.}
 derivatives while calculating the covariance components
 (Hessian and S).}
 
-\item{covMethod}{Method for calculating covariance, where R is the
-Hessian and S the sum of individual gradient cross-products (at the
-empirical Bayes estimates): \code{"r,s"} sandwich
+\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
-(\code{2\%*\%solve(R)}), \code{"s"} cross-product-based
-(\code{4\%*\%solve(S)}), or \code{""} to skip the covariance step.}
+(\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+\code{""} to skip the covariance step.}
+
+\item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
+the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+derives a tight tolerance from \code{sigdig}; supply a number to override it.}
+
+\item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
+installs only the structural-theta block (the NONMEM-matched theta
+covariance, matching the historical finite-difference \code{fit$cov} shape
+for backwards compatibility); \code{TRUE} installs the full theta + residual
+sigma + Omega covariance -- assembled analytically for
+\code{covMethod="analytic"}, or by central finite differences of the objective
+over the same parameter set for the finite-difference methods (perturbing Omega
+on the variance-covariance scale, with the per-parameter Gill (1983) step and the
+5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
+errors are identical either way.}
+
+\item{fast}{When \code{TRUE}, compute the outer (population) gradient
+analytically from Almquist (2015) sensitivity equations instead of by
+finite differences, and use the Eq-48 random-effect extrapolation for the
+next inner-problem starting values.  Requires an analytic-scope model
+(single additive/proportional Gaussian endpoint); out-of-scope models fall
+back to the finite-difference gradient with a message (linCmt() and
+log-likelihood models downgrade to \code{fast=FALSE} up front).  When unspecified,
+the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+\code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+\code{foceif}) default this to \code{TRUE}.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -240,8 +285,22 @@ R's `optimHess()`, default) or "forward" (faster).}
 Hessians used for the covariance step/final likelihood: "central"
 (more accurate, used here) or "forward".}
 
+\item{censOption}{Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+\code{"laplace"} uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+\code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.}
+
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
+
+\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.}
 
 \item{centralDerivEps}{Central difference tolerances (relative,
 absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.}
@@ -300,6 +359,31 @@ evaluation if it runs into troubles.  (default TRUE)}
 
 \item{interaction}{Boolean indicate FOCEi should be used (TRUE)
 instead of FOCE (FALSE)}
+
+\item{foce}{Controls how FOCE (\code{interaction = FALSE}) evaluates the
+    residual variance R in the inner objective; ignored for FOCEi.  Either
+    \code{"nonmem"} (default) or \code{"foce+"}:
+
+    \itemize{
+
+    \item \code{"nonmem"} freezes R at the \code{eta = 0} population
+    prediction and holds it constant across the inner optimization, matching
+    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+    errors, and an ODE model agrees with its closed-form (\code{linCmt})
+    equivalent.  Disadvantage: R ignores the individual (conditional)
+    heteroscedasticity, so it can be slightly less accurate than
+    \code{"foce+"} for proportional/combined error.
+
+    \item \code{"foce+"} evaluates R at the current conditional
+    \code{eta} (the live variance), keeping the truncated FOCE
+    inner gradient.  Advantage: uses the conditional variance and
+    is a bit more accurate than NONMEM's FOCE in some cases.
+    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+    use the gradient of \code{eta} like the full \code{focei}
+    method, so it is not as accurate as \code{focei}.
+
+    }}
 
 \item{cholSEtol}{tolerance for Generalized Cholesky
 Decomposition.  Defaults to suggested (.Machine$double.eps)^(1/3)}
@@ -371,22 +455,26 @@ individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
 
 \item{muModel}{Selects the mu-referenced-FOCEI-family regression variant
-    for theta/eta in a mu-ref covariate relationship (see
-    \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
-    \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
-    \code{mulaplace}: population theta and covariate coefficient(s) per
-    mu-ref-covariate group are excluded from the outer optimizer and
-    re-derived in C++ by closed-form OLS regression of each subject's
-    back-calculated value on the covariate(s), residual becomes that
-    subject's eta; repeats until convergence, see \code{muModelTol}/
-    \code{muModelMaxCycles}); or \code{"irls"}
-    (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+    for mu-referenced thetas/etas: \code{"none"} (default, ordinary
+    FOCEI); \code{"lin"} (\code{mfocei}/\code{mfoce}/\code{magq}/
+    \code{mlaplace}: mu-referenced population thetas -- and their
+    covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
+    excluded from the outer optimizer and re-derived in C++ by
+    closed-form OLS regression of each subject's back-calculated value
+    on the covariate(s) (intercept-only for a covariate-free pair),
+    residual becomes that subject's eta; repeats until convergence, see
+    \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
+    (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}:
     same mechanism, reweighted by inner-optimization curvature).
+    Only the outer gradients for non-mu-referenced parameters (including
+    residual-error thetas and all omegas) are then calculated.
 
-    A mu-ref-covariate theta with a finite bound falls back to ordinary
-    bounded outer-optimizer handling with a warning (a bound on the
-    group's population theta excludes the whole group; a bound on one
-    covariate coefficient excludes only that covariate).}
+    Bounded mu-referenced parameters (population thetas and covariate
+    coefficients) are regression-updated too: the update is clamped to
+    the bounds (box-constrained least squares, see
+    \code{muModelClampRetries}), and any parameter that was clamped is
+    reported once as a fit note. A user-fixed (\code{fix()}) mu
+    population theta is never regression-updated.}
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
@@ -402,6 +490,11 @@ or \code{muModelMaxCycles} is reached.}
 
 \item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
 cycles per outer iteration (see \code{muModel}, \code{muModelTol}).}
+
+\item{muModelClampRetries}{Maximum number of active-set re-solve passes
+per group per regression update when a bounded mu-referenced
+parameter must be clamped to its bound (see \code{muModel}); on
+hitting the cap the current clamped-feasible solution is used.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 
@@ -523,8 +616,12 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
 
-\item{seed}{an object specifying if and how the random number
-generator should be initialized}
+\item{seed}{Integer seed (default `42`) used to make a FOCEi fit
+reproducible and self-contained.  The fit (including the `mceta`
+Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
+runs inside [rxode2::rxWithSeed()], so it neither depends on the ambient
+RNG state nor advances/leaks it -- repeated fits in the same session, and
+fits following other estimation methods, give identical results.}
 
 \item{resetThetaCheckPer}{represents objective function
 \% percentage below which resetThetaP is checked.}
@@ -595,10 +692,24 @@ switches to the gradient-free bobyqa method; `NA` only does so for the
 first zero gradient.}
 
 \item{mceta}{Monte Carlo sampling for the best initial ETA estimate
-(based on `omega`): `-1` (default) uses the last eta; `0` uses eta=0
+(based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+accepting the extrapolated eta only when it is within the standardized-eta
+reset bound (else keeping the last eta, or resetting to 0 when that is also
+out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+the better; both `-2` and `-1` fall back to keeping the last eta when no
+analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
 for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
+
+\item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
+`"calc"` (default) warm-starts each inner problem with the eta
+Hessian calculated at the starting eta and the current theta;
+since theta moves between outer evaluations it is always
+recalculated, never reused from an earlier round.  `"save"` uses
+the classic self-initialized Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -613,10 +724,12 @@ gnlmm it was -700.}
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
 
-\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
-`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
-`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
+`"default"` (the default) defers to the global option
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

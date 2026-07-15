@@ -1,73 +1,91 @@
-#' Control options for the mufocei estimation method
+#' Control options for the mfocei estimation method
 #'
 #' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
 #' FOCEI; see `foceiControl(muModel=)`.
 #'
+#' @section Difference from `focei`:
+#' The `mfocei`/`ifocei` (and related) methods apply the mu2+ covariate
+#' hooks, which expand algebraic mu-referenced covariate expressions (e.g.
+#' `cl.wt*log(WT/70)`) into estimable mu-referenced parameters and split
+#' covariates into non-time-varying (absorbed into the phi term) and
+#' time-varying (kept as `beta` regressors).  Calling `focei` directly does NOT
+#' apply these hooks, so these methods can estimate more mu-referenced models
+#' than plain `focei` -- there is a genuine difference between calling e.g.
+#' `est="mfocei"` and `est="focei"`.
+#'
+#' All mu-referenced population thetas -- with or without covariates -- are
+#' profiled out of the outer optimizer by the in-C++ regression
+#' (intercept-only for covariate-free pairs), so outer gradients are only
+#' calculated for the non-mu-referenced parameters (residual errors, omegas,
+#' non-mu thetas).  Bounded mu-referenced parameters are regression-updated
+#' with the update clamped to the bounds (a clamp is reported once as a fit
+#' note); user-fixed (`fix()`) mu thetas stay out of the regression.
+#'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param muModel Selects the regression variant; for `mufoceiControl()`
-#'   this is always `"lin"` and cannot be changed -- use `irlsfoceiControl()`
+#' @param muModel Selects the regression variant; for `mfoceiControl()`
+#'   this is always `"lin"` and cannot be changed -- use `ifoceiControl()`
 #'   for the IRLS variant.
-#' @return mufoceiControl object
+#' @return mfoceiControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' mufoceiControl()
-mufoceiControl <- function(sigdig=3,
+#' mfoceiControl()
+mfoceiControl <- function(sigdig=3,
                            ...,
                            muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
-  class(.control) <- "mufoceiControl"
+  class(.control) <- "mfoceiControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mufoceiControl <- function(control, env) {
-  assign("mufoceiControl", control, envir=env)
+nmObjHandleControlObject.mfoceiControl <- function(control, env) {
+  assign("mfoceiControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mufocei <- function(control) {
+getValidNlmixrCtl.mfocei <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- mufoceiControl()
+  if (is.null(.ctl)) .ctl <- mfoceiControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("mufoceiControl", .ctl)
+    .ctl <- do.call("mfoceiControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mufoceiControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to mfoceiControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(mufoceiControl, .ctl)
-  } else if (!inherits(.ctl, "mufoceiControl")) {
+    .ctl <- do.call(mfoceiControl, .ctl)
+  } else if (!inherits(.ctl, "mfoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mufoceiControl()
+    .ctl <- mfoceiControl()
   } else {
-    .ctl <- do.call(mufoceiControl, .ctl)
+    .ctl <- do.call(mfoceiControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mufocei <- function(x, ...) {
+nmObjGetControl.mfocei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mufoceiControl", .env)) {
-    .control <- get("mufoceiControl", .env)
-    if (inherits(.control, "mufoceiControl")) return(.control)
+  if (exists("mfoceiControl", .env)) {
+    .control <- get("mfoceiControl", .env)
+    if (inherits(.control, "mfoceiControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "mufoceiControl")) return(.control)
+    if (inherits(.control, "mfoceiControl")) return(.control)
   }
-  stop("cannot find mufocei related control object", call.=FALSE)
+  stop("cannot find mfocei related control object", call.=FALSE)
 }
 
-.mufoceiControlToFoceiControl <- function(env, assign=TRUE) {
-  .mufoceiControl <- env$mufoceiControl
-  .n <- names(.mufoceiControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .mufoceiControl[[n]]), .n)
+.mfoceiControlToFoceiControl <- function(env, assign=TRUE) {
+  .mfoceiControl <- env$mfoceiControl
+  .n <- names(.mfoceiControl)
+  .foceiControl <- setNames(lapply(.n, function(n) .mfoceiControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
   .foceiControl
@@ -75,81 +93,82 @@ nmObjGetControl.mufocei <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.mufocei <- function(x, ...) {
+nmObjGetFoceiControl.mfocei <- function(x, ...) {
   .env <- x[[1]]
-  .mufoceiControlToFoceiControl(.env, assign=FALSE)
+  .mfoceiControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the irlsfocei estimation method
+#' Control options for the ifocei estimation method
 #'
 #' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
 #' FOCEI; see `foceiControl(muModel=)`.
 #'
+#' @inheritSection mfoceiControl Difference from `focei`
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param muModel Selects the regression variant; for `irlsfoceiControl()`
-#'   this is always `"irls"` and cannot be changed -- use `mufoceiControl()`
+#' @param muModel Selects the regression variant; for `ifoceiControl()`
+#'   this is always `"irls"` and cannot be changed -- use `mfoceiControl()`
 #'   for the closed-form OLS variant.
-#' @return irlsfoceiControl object
+#' @return ifoceiControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' irlsfoceiControl()
-irlsfoceiControl <- function(sigdig=3,
+#' ifoceiControl()
+ifoceiControl <- function(sigdig=3,
                              ...,
                              muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., muModel="irls")
-  class(.control) <- "irlsfoceiControl"
+  class(.control) <- "ifoceiControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.irlsfoceiControl <- function(control, env) {
-  assign("irlsfoceiControl", control, envir=env)
+nmObjHandleControlObject.ifoceiControl <- function(control, env) {
+  assign("ifoceiControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlsfocei <- function(control) {
+getValidNlmixrCtl.ifocei <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- irlsfoceiControl()
+  if (is.null(.ctl)) .ctl <- ifoceiControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("irlsfoceiControl", .ctl)
+    .ctl <- do.call("ifoceiControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to irlsfoceiControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to ifoceiControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(irlsfoceiControl, .ctl)
-  } else if (!inherits(.ctl, "irlsfoceiControl")) {
+    .ctl <- do.call(ifoceiControl, .ctl)
+  } else if (!inherits(.ctl, "ifoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- irlsfoceiControl()
+    .ctl <- ifoceiControl()
   } else {
-    .ctl <- do.call(irlsfoceiControl, .ctl)
+    .ctl <- do.call(ifoceiControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.irlsfocei <- function(x, ...) {
+nmObjGetControl.ifocei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("irlsfoceiControl", .env)) {
-    .control <- get("irlsfoceiControl", .env)
-    if (inherits(.control, "irlsfoceiControl")) return(.control)
+  if (exists("ifoceiControl", .env)) {
+    .control <- get("ifoceiControl", .env)
+    if (inherits(.control, "ifoceiControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "irlsfoceiControl")) return(.control)
+    if (inherits(.control, "ifoceiControl")) return(.control)
   }
-  stop("cannot find irlsfocei related control object", call.=FALSE)
+  stop("cannot find ifocei related control object", call.=FALSE)
 }
 
-.irlsfoceiControlToFoceiControl <- function(env, assign=TRUE) {
-  .irlsfoceiControl <- env$irlsfoceiControl
-  .n <- names(.irlsfoceiControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .irlsfoceiControl[[n]]), .n)
+.ifoceiControlToFoceiControl <- function(env, assign=TRUE) {
+  .ifoceiControl <- env$ifoceiControl
+  .n <- names(.ifoceiControl)
+  .foceiControl <- setNames(lapply(.n, function(n) .ifoceiControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
   .foceiControl
@@ -157,89 +176,90 @@ nmObjGetControl.irlsfocei <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.irlsfocei <- function(x, ...) {
+nmObjGetFoceiControl.ifocei <- function(x, ...) {
   .env <- x[[1]]
-  .irlsfoceiControlToFoceiControl(.env, assign=FALSE)
+  .ifoceiControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the mufoce estimation method
+#' Control options for the mfoce estimation method
 #'
 #' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
 #' FOCE (no interaction); see `foceiControl(muModel=)`.
 #'
+#' @inheritSection mfoceiControl Difference from `focei`
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param interaction Interaction term for the model, in this case the
-#'   default is `FALSE`; it cannot be changed, use `mufocei` instead
-#' @param muModel Selects the regression variant; for `mufoceControl()`
-#'   this is always `"lin"` and cannot be changed -- use `irlsfoceControl()`
+#'   default is `FALSE`; it cannot be changed, use `mfocei` instead
+#' @param muModel Selects the regression variant; for `mfoceControl()`
+#'   this is always `"lin"` and cannot be changed -- use `ifoceControl()`
 #'   for the IRLS variant.
-#' @return mufoceControl object
+#' @return mfoceControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' mufoceControl()
-mufoceControl <- function(sigdig=3,
+#' mfoceControl()
+mfoceControl <- function(sigdig=3,
                           ...,
                           interaction=FALSE,
                           muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., interaction=FALSE, muModel="lin")
-  class(.control) <- "mufoceControl"
+  class(.control) <- "mfoceControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mufoceControl <- function(control, env) {
-  assign("mufoceControl", control, envir=env)
+nmObjHandleControlObject.mfoceControl <- function(control, env) {
+  assign("mfoceControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mufoce <- function(control) {
+getValidNlmixrCtl.mfoce <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- mufoceControl()
+  if (is.null(.ctl)) .ctl <- mfoceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("mufoceControl", .ctl)
+    .ctl <- do.call("mfoceControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mufoceControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to mfoceControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(mufoceControl, .ctl)
-  } else if (!inherits(.ctl, "mufoceControl")) {
+    .ctl <- do.call(mfoceControl, .ctl)
+  } else if (!inherits(.ctl, "mfoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mufoceControl()
+    .ctl <- mfoceControl()
   } else {
-    .ctl <- do.call(mufoceControl, .ctl)
+    .ctl <- do.call(mfoceControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mufoce <- function(x, ...) {
+nmObjGetControl.mfoce <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mufoceControl", .env)) {
-    .control <- get("mufoceControl", .env)
-    if (inherits(.control, "mufoceControl")) return(.control)
+  if (exists("mfoceControl", .env)) {
+    .control <- get("mfoceControl", .env)
+    if (inherits(.control, "mfoceControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "mufoceControl")) return(.control)
+    if (inherits(.control, "mfoceControl")) return(.control)
   }
-  stop("cannot find mufoce related control object", call.=FALSE)
+  stop("cannot find mfoce related control object", call.=FALSE)
 }
 
-.mufoceControlToFoceiControl <- function(env, assign=TRUE) {
-  .mufoceControl <- env$mufoceControl
-  .n <- names(.mufoceControl)
+.mfoceControlToFoceiControl <- function(env, assign=TRUE) {
+  .mfoceControl <- env$mfoceControl
+  .n <- names(.mfoceControl)
   .foceiControl <- setNames(lapply(.n,
                                    function(n) {
                                      if (n == "interaction") {
-                                       return(.mufoceControl$interaction)
+                                       return(.mfoceControl$interaction)
                                      }
-                                     .mufoceControl[[n]]
+                                     .mfoceControl[[n]]
                                    }), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
@@ -248,89 +268,90 @@ nmObjGetControl.mufoce <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.mufoce <- function(x, ...) {
+nmObjGetFoceiControl.mfoce <- function(x, ...) {
   .env <- x[[1]]
-  .mufoceControlToFoceiControl(.env, assign=FALSE)
+  .mfoceControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the irlsfoce estimation method
+#' Control options for the ifoce estimation method
 #'
 #' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
 #' FOCE (no interaction); see `foceiControl(muModel=)`.
 #'
+#' @inheritSection mfoceiControl Difference from `focei`
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param interaction Interaction term for the model, in this case the
-#'   default is `FALSE`; it cannot be changed, use `irlsfocei` instead
-#' @param muModel Selects the regression variant; for `irlsfoceControl()`
-#'   this is always `"irls"` and cannot be changed -- use `mufoceControl()`
+#'   default is `FALSE`; it cannot be changed, use `ifocei` instead
+#' @param muModel Selects the regression variant; for `ifoceControl()`
+#'   this is always `"irls"` and cannot be changed -- use `mfoceControl()`
 #'   for the closed-form OLS variant.
-#' @return irlsfoceControl object
+#' @return ifoceControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' irlsfoceControl()
-irlsfoceControl <- function(sigdig=3,
+#' ifoceControl()
+ifoceControl <- function(sigdig=3,
                             ...,
                             interaction=FALSE,
                             muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., interaction=FALSE, muModel="irls")
-  class(.control) <- "irlsfoceControl"
+  class(.control) <- "ifoceControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.irlsfoceControl <- function(control, env) {
-  assign("irlsfoceControl", control, envir=env)
+nmObjHandleControlObject.ifoceControl <- function(control, env) {
+  assign("ifoceControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlsfoce <- function(control) {
+getValidNlmixrCtl.ifoce <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- irlsfoceControl()
+  if (is.null(.ctl)) .ctl <- ifoceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("irlsfoceControl", .ctl)
+    .ctl <- do.call("ifoceControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to irlsfoceControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to ifoceControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(irlsfoceControl, .ctl)
-  } else if (!inherits(.ctl, "irlsfoceControl")) {
+    .ctl <- do.call(ifoceControl, .ctl)
+  } else if (!inherits(.ctl, "ifoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- irlsfoceControl()
+    .ctl <- ifoceControl()
   } else {
-    .ctl <- do.call(irlsfoceControl, .ctl)
+    .ctl <- do.call(ifoceControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.irlsfoce <- function(x, ...) {
+nmObjGetControl.ifoce <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("irlsfoceControl", .env)) {
-    .control <- get("irlsfoceControl", .env)
-    if (inherits(.control, "irlsfoceControl")) return(.control)
+  if (exists("ifoceControl", .env)) {
+    .control <- get("ifoceControl", .env)
+    if (inherits(.control, "ifoceControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "irlsfoceControl")) return(.control)
+    if (inherits(.control, "ifoceControl")) return(.control)
   }
-  stop("cannot find irlsfoce related control object", call.=FALSE)
+  stop("cannot find ifoce related control object", call.=FALSE)
 }
 
-.irlsfoceControlToFoceiControl <- function(env, assign=TRUE) {
-  .irlsfoceControl <- env$irlsfoceControl
-  .n <- names(.irlsfoceControl)
+.ifoceControlToFoceiControl <- function(env, assign=TRUE) {
+  .ifoceControl <- env$ifoceControl
+  .n <- names(.ifoceControl)
   .foceiControl <- setNames(lapply(.n,
                                    function(n) {
                                      if (n == "interaction") {
-                                       return(.irlsfoceControl$interaction)
+                                       return(.ifoceControl$interaction)
                                      }
-                                     .irlsfoceControl[[n]]
+                                     .ifoceControl[[n]]
                                    }), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
@@ -339,88 +360,88 @@ nmObjGetControl.irlsfoce <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.irlsfoce <- function(x, ...) {
+nmObjGetFoceiControl.ifoce <- function(x, ...) {
   .env <- x[[1]]
-  .irlsfoceControlToFoceiControl(.env, assign=FALSE)
+  .ifoceControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the muagq estimation method
+#' Control options for the magq estimation method
 #'
 #' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
 #' adaptive Gauss-Hermite quadrature; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams agqControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param muModel Selects the regression variant; for `muagqControl()`
-#'   this is always `"lin"` and cannot be changed -- use `irlsagqControl()`
+#' @param muModel Selects the regression variant; for `magqControl()`
+#'   this is always `"lin"` and cannot be changed -- use `iagqControl()`
 #'   for the IRLS variant.
-#' @return muagqControl object
+#' @return magqControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' muagqControl()
-muagqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+#' magqControl()
+magqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
                          agqLow=-Inf, agqHi=Inf,
                          muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ...,
                            nAGQ=nAGQ, interaction=interaction,
                            agqLow=agqLow, agqHi=agqHi, muModel="lin")
-  class(.control) <- "muagqControl"
+  class(.control) <- "magqControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.muagqControl <- function(control, env) {
-  assign("muagqControl", control, envir=env)
+nmObjHandleControlObject.magqControl <- function(control, env) {
+  assign("magqControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.muagq <- function(control) {
+getValidNlmixrCtl.magq <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- muagqControl()
+  if (is.null(.ctl)) .ctl <- magqControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("muagqControl", .ctl)
+    .ctl <- do.call("magqControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to muagqControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to magqControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(muagqControl, .ctl)
-  } else if (!inherits(.ctl, "muagqControl")) {
+    .ctl <- do.call(magqControl, .ctl)
+  } else if (!inherits(.ctl, "magqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- muagqControl()
+    .ctl <- magqControl()
   } else {
-    .ctl <- do.call(muagqControl, .ctl)
+    .ctl <- do.call(magqControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.muagq <- function(x, ...) {
+nmObjGetControl.magq <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("muagqControl", .env)) {
-    .control <- get("muagqControl", .env)
-    if (inherits(.control, "muagqControl")) return(.control)
+  if (exists("magqControl", .env)) {
+    .control <- get("magqControl", .env)
+    if (inherits(.control, "magqControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "muagqControl")) return(.control)
+    if (inherits(.control, "magqControl")) return(.control)
   }
-  stop("cannot find muagq related control object", call.=FALSE)
+  stop("cannot find magq related control object", call.=FALSE)
 }
 
-.muagqControlToFoceiControl <- function(env, assign=TRUE) {
-  .muagqControl <- env$muagqControl
-  .n <- names(.muagqControl)
+.magqControlToFoceiControl <- function(env, assign=TRUE) {
+  .magqControl <- env$magqControl
+  .n <- names(.magqControl)
   .foceiControl <- setNames(lapply(.n,
                                    function(n) {
                                      if (n == "interaction") {
-                                       return(.muagqControl$interaction)
+                                       return(.magqControl$interaction)
                                      }
-                                     .muagqControl[[n]]
+                                     .magqControl[[n]]
                                    }), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
@@ -429,88 +450,88 @@ nmObjGetControl.muagq <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.muagq <- function(x, ...) {
+nmObjGetFoceiControl.magq <- function(x, ...) {
   .env <- x[[1]]
-  .muagqControlToFoceiControl(.env, assign=FALSE)
+  .magqControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the irlsagq estimation method
+#' Control options for the iagq estimation method
 #'
 #' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
 #' adaptive Gauss-Hermite quadrature; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams agqControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param muModel Selects the regression variant; for `irlsagqControl()`
-#'   this is always `"irls"` and cannot be changed -- use `muagqControl()`
+#' @param muModel Selects the regression variant; for `iagqControl()`
+#'   this is always `"irls"` and cannot be changed -- use `magqControl()`
 #'   for the closed-form OLS variant.
-#' @return irlsagqControl object
+#' @return iagqControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' irlsagqControl()
-irlsagqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+#' iagqControl()
+iagqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
                            agqLow=-Inf, agqHi=Inf,
                            muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ...,
                            nAGQ=nAGQ, interaction=interaction,
                            agqLow=agqLow, agqHi=agqHi, muModel="irls")
-  class(.control) <- "irlsagqControl"
+  class(.control) <- "iagqControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.irlsagqControl <- function(control, env) {
-  assign("irlsagqControl", control, envir=env)
+nmObjHandleControlObject.iagqControl <- function(control, env) {
+  assign("iagqControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlsagq <- function(control) {
+getValidNlmixrCtl.iagq <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- irlsagqControl()
+  if (is.null(.ctl)) .ctl <- iagqControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("irlsagqControl", .ctl)
+    .ctl <- do.call("iagqControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to irlsagqControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to iagqControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(irlsagqControl, .ctl)
-  } else if (!inherits(.ctl, "irlsagqControl")) {
+    .ctl <- do.call(iagqControl, .ctl)
+  } else if (!inherits(.ctl, "iagqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- irlsagqControl()
+    .ctl <- iagqControl()
   } else {
-    .ctl <- do.call(irlsagqControl, .ctl)
+    .ctl <- do.call(iagqControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.irlsagq <- function(x, ...) {
+nmObjGetControl.iagq <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("irlsagqControl", .env)) {
-    .control <- get("irlsagqControl", .env)
-    if (inherits(.control, "irlsagqControl")) return(.control)
+  if (exists("iagqControl", .env)) {
+    .control <- get("iagqControl", .env)
+    if (inherits(.control, "iagqControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "irlsagqControl")) return(.control)
+    if (inherits(.control, "iagqControl")) return(.control)
   }
-  stop("cannot find irlsagq related control object", call.=FALSE)
+  stop("cannot find iagq related control object", call.=FALSE)
 }
 
-.irlsagqControlToFoceiControl <- function(env, assign=TRUE) {
-  .irlsagqControl <- env$irlsagqControl
-  .n <- names(.irlsagqControl)
+.iagqControlToFoceiControl <- function(env, assign=TRUE) {
+  .iagqControl <- env$iagqControl
+  .n <- names(.iagqControl)
   .foceiControl <- setNames(lapply(.n,
                                    function(n) {
                                      if (n == "interaction") {
-                                       return(.irlsagqControl$interaction)
+                                       return(.iagqControl$interaction)
                                      }
-                                     .irlsagqControl[[n]]
+                                     .iagqControl[[n]]
                                    }), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
@@ -519,80 +540,80 @@ nmObjGetControl.irlsagq <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.irlsagq <- function(x, ...) {
+nmObjGetFoceiControl.iagq <- function(x, ...) {
   .env <- x[[1]]
-  .irlsagqControlToFoceiControl(.env, assign=FALSE)
+  .iagqControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the mulaplace estimation method
+#' Control options for the mlaplace estimation method
 #'
 #' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
 #' the Laplace method (`nAGQ=1`); see `foceiControl(muModel=)`.
 #'
 #' @inheritParams laplaceControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param muModel Selects the regression variant; for `mulaplaceControl()`
+#' @param muModel Selects the regression variant; for `mlaplaceControl()`
 #'   this is always `"lin"` and cannot be changed -- use
-#'   `irlslaplaceControl()` for the IRLS variant.
-#' @return mulaplaceControl object
+#'   `ilaplaceControl()` for the IRLS variant.
+#' @return mlaplaceControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' mulaplaceControl()
-mulaplaceControl <- function(sigdig=3, ..., nAGQ=1,
+#' mlaplaceControl()
+mlaplaceControl <- function(sigdig=3, ..., nAGQ=1,
                              muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., nAGQ=nAGQ, muModel="lin")
-  class(.control) <- "mulaplaceControl"
+  class(.control) <- "mlaplaceControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mulaplaceControl <- function(control, env) {
-  assign("mulaplaceControl", control, envir=env)
+nmObjHandleControlObject.mlaplaceControl <- function(control, env) {
+  assign("mlaplaceControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mulaplace <- function(control) {
+getValidNlmixrCtl.mlaplace <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- mulaplaceControl()
+  if (is.null(.ctl)) .ctl <- mlaplaceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("mulaplaceControl", .ctl)
+    .ctl <- do.call("mlaplaceControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mulaplaceControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to mlaplaceControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(mulaplaceControl, .ctl)
-  } else if (!inherits(.ctl, "mulaplaceControl")) {
+    .ctl <- do.call(mlaplaceControl, .ctl)
+  } else if (!inherits(.ctl, "mlaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mulaplaceControl()
+    .ctl <- mlaplaceControl()
   } else {
-    .ctl <- do.call(mulaplaceControl, .ctl)
+    .ctl <- do.call(mlaplaceControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mulaplace <- function(x, ...) {
+nmObjGetControl.mlaplace <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mulaplaceControl", .env)) {
-    .control <- get("mulaplaceControl", .env)
-    if (inherits(.control, "mulaplaceControl")) return(.control)
+  if (exists("mlaplaceControl", .env)) {
+    .control <- get("mlaplaceControl", .env)
+    if (inherits(.control, "mlaplaceControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "mulaplaceControl")) return(.control)
+    if (inherits(.control, "mlaplaceControl")) return(.control)
   }
-  stop("cannot find mulaplace related control object", call.=FALSE)
+  stop("cannot find mlaplace related control object", call.=FALSE)
 }
 
-.mulaplaceControlToFoceiControl <- function(env, assign=TRUE) {
-  .mulaplaceControl <- env$mulaplaceControl
-  .n <- names(.mulaplaceControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .mulaplaceControl[[n]]), .n)
+.mlaplaceControlToFoceiControl <- function(env, assign=TRUE) {
+  .mlaplaceControl <- env$mlaplaceControl
+  .n <- names(.mlaplaceControl)
+  .foceiControl <- setNames(lapply(.n, function(n) .mlaplaceControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
   .foceiControl
@@ -600,12 +621,12 @@ nmObjGetControl.mulaplace <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.mulaplace <- function(x, ...) {
+nmObjGetFoceiControl.mlaplace <- function(x, ...) {
   .env <- x[[1]]
-  .mulaplaceControlToFoceiControl(.env, assign=FALSE)
+  .mlaplaceControlToFoceiControl(.env, assign=FALSE)
 }
 
-#' Control options for the irlslaplace estimation method
+#' Control options for the ilaplace estimation method
 #'
 #' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
 #' the Laplace method (`nAGQ=1`); see `foceiControl(muModel=)`.
@@ -613,67 +634,67 @@ nmObjGetFoceiControl.mulaplace <- function(x, ...) {
 #' @inheritParams laplaceControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param muModel Selects the regression variant; for
-#'   `irlslaplaceControl()` this is always `"irls"` and cannot be changed
-#'   -- use `mulaplaceControl()` for the closed-form OLS variant.
-#' @return irlslaplaceControl object
+#'   `ilaplaceControl()` this is always `"irls"` and cannot be changed
+#'   -- use `mlaplaceControl()` for the closed-form OLS variant.
+#' @return ilaplaceControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' irlslaplaceControl()
-irlslaplaceControl <- function(sigdig=3, ..., nAGQ=1,
+#' ilaplaceControl()
+ilaplaceControl <- function(sigdig=3, ..., nAGQ=1,
                                muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., nAGQ=nAGQ, muModel="irls")
-  class(.control) <- "irlslaplaceControl"
+  class(.control) <- "ilaplaceControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.irlslaplaceControl <- function(control, env) {
-  assign("irlslaplaceControl", control, envir=env)
+nmObjHandleControlObject.ilaplaceControl <- function(control, env) {
+  assign("ilaplaceControl", control, envir=env)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.irlslaplace <- function(control) {
+getValidNlmixrCtl.ilaplace <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- irlslaplaceControl()
+  if (is.null(.ctl)) .ctl <- ilaplaceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("irlslaplaceControl", .ctl)
+    .ctl <- do.call("ilaplaceControl", .ctl)
   if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to irlslaplaceControl"))
+    .minfo(paste0("converting ", class(.ctl)[1], " to ilaplaceControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(irlslaplaceControl, .ctl)
-  } else if (!inherits(.ctl, "irlslaplaceControl")) {
+    .ctl <- do.call(ilaplaceControl, .ctl)
+  } else if (!inherits(.ctl, "ilaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- irlslaplaceControl()
+    .ctl <- ilaplaceControl()
   } else {
-    .ctl <- do.call(irlslaplaceControl, .ctl)
+    .ctl <- do.call(ilaplaceControl, .ctl)
   }
   .ctl
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.irlslaplace <- function(x, ...) {
+nmObjGetControl.ilaplace <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("irlslaplaceControl", .env)) {
-    .control <- get("irlslaplaceControl", .env)
-    if (inherits(.control, "irlslaplaceControl")) return(.control)
+  if (exists("ilaplaceControl", .env)) {
+    .control <- get("ilaplaceControl", .env)
+    if (inherits(.control, "ilaplaceControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "irlslaplaceControl")) return(.control)
+    if (inherits(.control, "ilaplaceControl")) return(.control)
   }
-  stop("cannot find irlslaplace related control object", call.=FALSE)
+  stop("cannot find ilaplace related control object", call.=FALSE)
 }
 
-.irlslaplaceControlToFoceiControl <- function(env, assign=TRUE) {
-  .irlslaplaceControl <- env$irlslaplaceControl
-  .n <- names(.irlslaplaceControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .irlslaplaceControl[[n]]), .n)
+.ilaplaceControlToFoceiControl <- function(env, assign=TRUE) {
+  .ilaplaceControl <- env$ilaplaceControl
+  .n <- names(.ilaplaceControl)
+  .foceiControl <- setNames(lapply(.n, function(n) .ilaplaceControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
   .foceiControl
@@ -681,7 +702,7 @@ nmObjGetControl.irlslaplace <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.irlslaplace <- function(x, ...) {
+nmObjGetFoceiControl.ilaplace <- function(x, ...) {
   .env <- x[[1]]
-  .irlslaplaceControlToFoceiControl(.env, assign=FALSE)
+  .ilaplaceControlToFoceiControl(.env, assign=FALSE)
 }

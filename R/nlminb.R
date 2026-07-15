@@ -115,6 +115,7 @@ nlminbControl <- function(eval.max=200,
 
                           addProp = c("combined2", "combined1"),
                           eventSens = c("jump", "fd"),
+                          sensMethod = c("default", "forward", "adjoint"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
@@ -288,6 +289,7 @@ nlminbControl <- function(eval.max=200,
                returnNlminb=returnNlminb,
                addProp=match.arg(addProp),
                eventSens=match.arg(eventSens),
+               sensMethod=match.arg(sensMethod),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -474,7 +476,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 ci=.nlminbControl$ci,
                                 sigdigTable=.nlminbControl$sigdigTable,
                                 indTolRelax=.nlminbControl$indTolRelax,
-                                eventSens=.nlminbControl$eventSens)
+                                eventSens=.nlminbControl$eventSens,
+                                sensMethod=.nlminbControl$sensMethod)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

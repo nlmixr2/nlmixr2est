@@ -134,19 +134,42 @@ nsis <- function() { ## build installer...
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
-#' @param lst When \code{TRUE} return \code{list(object, warning = ws,
-#'   error = es)} instead of issuing the warnings.
-#' @param collectErr When \code{TRUE}, also record errors raised during
-#'   evaluation instead of letting them propagate; used by
-#'   \code{nlmixr2Est0()} so all errors from a failed run are reported
-#'   together rather than only the last one.
-#' @return The value of the expression, or when \code{lst = TRUE} a list
-#'   \code{list(object, warning = ws, error = es)} of unique warning/error
-#'   messages (\code{es} is \code{NULL} unless \code{collectErr = TRUE}
-#'   and an error escaped).
+#'
+#' @param lst When \code{TRUE} return a list with
+#'     list(object,warnings) instead of issuing the warnings.
+#'     Otherwise, when \code{FALSE} issue the warnings and return the
+#'     object.
+#'
+#' @param collectErr When \code{TRUE}, errors raised during evaluation
+#'     of \code{expr} are recorded in addition to warnings.  A calling
+#'     handler captures every error message as it is signalled, then
+#'     lets the condition continue to propagate so that inner
+#'     \code{try()}/\code{tryCatch()} blocks in \code{expr} keep
+#'     working as usual.  An outer \code{tryCatch()} catches errors
+#'     that escape all inner handling, so the call always returns
+#'     instead of stopping.  If \code{expr} evaluated to a result
+#'     (i.e. no error escaped), the recorded errors were caught by
+#'     inner handlers and are discarded.  If an error did escape,
+#'     every message observed along the error chain (including
+#'     follow-up errors raised by \code{on.exit} handlers, see issue
+#'     607) is returned in the \code{error} element of the result list
+#'     (when \code{lst = TRUE}) or re-raised joined by newlines (when
+#'     \code{lst = FALSE}).  When \code{FALSE} (the default) errors
+#'     propagate normally and \code{es} is always \code{NULL}.  This
+#'     is used by \code{nlmixr2Est0()} so that all errors from a
+#'     failed estimation run are reported together rather than only
+#'     the last one.
+#'
+#' @return The value of the expression, or when \code{lst = TRUE} a
+#'     list of the form \code{list(object, warning = ws, error = es)}
+#'     where \code{ws} and \code{es} are character vectors of unique
+#'     warning and error messages (\code{es} is always \code{NULL}
+#'     when \code{collectErr = FALSE}, and is also \code{NULL} when
+#'     the expression evaluated successfully under \code{collectErr =
+#'     TRUE}).
+#'
 #' @author Matthew L. Fidler
-#' @export
-#' @keywords internal
+#' @noRd
 .collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
   ws <- NULL
   es <- NULL
@@ -394,4 +417,13 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
 
 .sampleOmega <- function(omega) {
   rxode2::rxRmvn(1, sigma=omega)
+}
+
+# The fit's rxControl(cores=) for rxOptExpr(parallel=): chunked expression
+# optimization then parallelizes with the same thread setting the solves use
+# (0 keeps rxControl(cores=)'s meaning, the rxode2 thread setting).
+.optExprCores <- function(ui) {
+  .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
+                     error = function(e) 0L)
+  if (!length(.cores) || is.na(.cores)) 0L else .cores
 }

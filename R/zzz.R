@@ -103,6 +103,8 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
+  rxode2::.s3register("rxode2::rxUiGet", "foceiOuter")
+  rxode2::.s3register("rxode2::rxUiGet", "impmapThetaSens")
   .resetCacheIfNeeded()
   .Call(`_rxode2version4`, as.integer(utils::packageVersion("rxode2") >= "4.0.0"))
 }
@@ -112,6 +114,12 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
+  ## Global default policy for the ODE parameter sensitivity method, used by the
+  ## nlm-family and focei/foce when a control's `sensMethod` is not set directly
+  ## (i.e. left at "default").  Either "forward" (the default) or "adjoint".
+  if (is.null(getOption("nlmixr2est.adjoint"))) {
+    options(nlmixr2est.adjoint = "forward")
+  }
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
@@ -124,4 +132,3 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   .iniS3()
   ## nocov end
 }
-

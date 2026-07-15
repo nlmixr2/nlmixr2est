@@ -580,7 +580,7 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "nls model")
+    .ret <- rxode2::rxOptExpr(.ret, "nls model", parallel = .optExprCores(x[[1]]))
     .msuccess("done")
   }
 
@@ -660,7 +660,7 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
 #' @author Matthew L Fidler
 #' @noRd
 .rxFinalizeNls <- function(.s, sum.prod = FALSE,
-                           optExpression = TRUE) {
+                           optExpression = TRUE, cores = 0L) {
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -716,8 +716,8 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
     .msuccess("done")
   }
   if (optExpression) {
-    .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient")
-    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only")
+    .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient", parallel = cores)
+    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only", parallel = cores)
   }
 }
 
@@ -727,7 +727,7 @@ rxUiGet.nlsEnv <- function(x, ...) {
   .s$params <- rxUiGet.nlsParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .rxFinalizeNls(.s, .sumProd, .optExpression)
+  .rxFinalizeNls(.s, .sumProd, .optExpression, .optExprCores(x[[1]]))
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)
@@ -1041,6 +1041,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
 #' @export
 nlmixr2Est.nls <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'nls', try 'focei'",
+                                     .var.name=.ui$modelName)
   rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nls', try 'focei'",
                                    .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nls'",

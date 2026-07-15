@@ -72,8 +72,30 @@
   if (any(names(.f) == "thetaGrad")) {
     .env$predOnly <- .f$predOnly
     nlmixr2global$nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+    ## sensMethod="adjoint": the thetaGrad model carries the rx__adjFX_* sweep
+    ## lhs, so it must be solved with the matching in-engine discrete-adjoint
+    ## (s) method.  nlm.cpp calls rxSolve_ directly (bypassing rxSolve's method
+    ## auto-upgrade), so set the s-method on rxControl here for every nlm-family
+    ## method that consumes thetaGrad.
+    .adj <- .nlmAdjointResolve(ui)
+    if (isTRUE(.adj$useAdjoint)) {
+      .env$rxControl$method <- .adj$sMethodInt
+    }
   } else {
     nlmixr2global$nlmEnv$model <- .env$predOnly <- .f$predOnly
+  }
+  ## Delay differential equation models need a dense-output solver so delay()
+  ## history is recorded and interpolated (also by the forward-sensitivity /
+  ## jump-sensitivity states).  nlm.cpp calls rxSolve_ directly, bypassing
+  ## rxSolve()'s hasDelay enforcement, so replicate it here: dense dop853 (which
+  ## needs no analytic Jacobian) unless a discrete-adjoint method (>=200) is
+  ## already selected -- those record their own dense history.
+  if (isTRUE(rxode2::rxModelVars(nlmixr2global$nlmEnv$model)$flags[["hasDelay"]] == 1L)) {
+    .env$rxControl$dense <- TRUE
+    if (is.null(.env$rxControl$method) || .env$rxControl$method < 200L) {
+      .env$rxControl$method <- 0L
+      .env$rxControl$stiff2 <- 0L
+    }
   }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
@@ -331,6 +353,69 @@
   names(.et)[-seq_len(6)]
 }
 
+#' Stage the mu-referenced covariate split (time-varying vs not) into the ui env
+#'
+#' Splits the mu-referenced covariates: non-time-varying ones stay in
+#' `muRefFinal` so they are absorbed into the phi term by the mu-ref drop
+#' (`.saemDropMuRefFromModel` -> `$saemModel0` collapses the model to `phi +
+#' timeVaryingCovariate*beta_cov`); time-varying ones are removed from
+#' `muRefFinal` so they remain in the model as `beta_cov` regressors.  Both
+#' `muRefFinal` and `timeVaryingCovariates` are assigned into the ui env and MUST
+#' be removed on exit with `.nlmixrRmMuRefTimeVarying()`.  Shared by saem, the
+#' mu-referenced focei family and vae so they all detect time-varying covariates
+#' the same way.  Only the time-varying *split* is shared here; the model
+#' expansion differs by method -- saem collapses lone etas into phi (theta forced
+#' to 0), while vae and mu-referenced focei keep the etas as the inner problem
+#' needs them.
+#'
+#' @param ui rxode2 ui (an environment) to stage the split into
+#' @param timeVaryingCovariates character vector from
+#'   `.nlmixrTimeVaryingCovariates()`
+#' @return `ui`, invisibly (called for the side-effect assignments)
+#' @noRd
+.nlmixrSetMuRefTimeVarying <- function(ui, timeVaryingCovariates) {
+  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
+  if (length(timeVaryingCovariates) > 0) {
+    # A log-scale (exp-transformed) time-varying mu covariate can fit better
+    # untransformed; the historical warning is left disabled but the detection
+    # is kept so the behavior is easy to restore.
+    .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
+    .covPar <- .muRefCovariateDataFrame[.w, "theta"]
+    .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
+    if (length(.w2) > 0) {
+      .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
+      if (length(.w3) > 0) {
+        .w2 <- .w2[.w3]
+        .texp <- ui$muRefCurEval$parameter[.w2]
+        .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
+        ## warning(paste0("log-scale mu referenced time varying covariates (",
+        ##                paste(.pars, collapse=", "), ") may have better results ...
+      }
+    }
+    # keep only non-time-varying covariates in the absorbed (mu-ref) set
+    .muRefCovariateDataFrame <-
+      .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
+  }
+  assign("muRefFinal", .muRefCovariateDataFrame, ui)
+  assign("timeVaryingCovariates", timeVaryingCovariates, ui)
+  invisible(ui)
+}
+
+#' Remove the staged mu-ref time-varying covariate info from the ui env
+#'
+#' Undoes `.nlmixrSetMuRefTimeVarying()`; call from the estimation method's
+#' `on.exit()` so the shared ui object is left unmodified after the fit.
+#' @noRd
+.nlmixrRmMuRefTimeVarying <- function(ui) {
+  if (is.environment(ui) && exists("muRefFinal", envir = ui, inherits = FALSE)) {
+    rm(list = "muRefFinal", envir = ui)
+  }
+  if (is.environment(ui) && exists("timeVaryingCovariates", envir = ui, inherits = FALSE)) {
+    rm(list = "timeVaryingCovariates", envir = ui)
+  }
+  invisible(ui)
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)
@@ -389,8 +474,16 @@
   .data <- env$data
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .fit <- .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  nlmixrWithTiming("setup", {
+    .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  })
+  # fitModel builds the symengine/sensitivity model and runs the optimizer;
+  # time it as "optimize" so the work is not left in the "other" bucket (the
+  # nlm-family model build and iterative solve are intertwined -- the
+  # sensitivity model is the optimization model).
+  .fit <- nlmixrWithTiming("optimize", {
+    .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  })
   .ret[[method]] <- .fit[[1]]
   if (!is.null(postSetup)) {
     .ret <- postSetup(.ret, .ui, .fit)
@@ -420,7 +513,10 @@
   if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
-  .ret$model <- .ui$ebe
+  # building the EBE model is another symengine model build; time it as "setup"
+  .ret$model <- nlmixrWithTiming("setup", {
+    .ui$ebe
+  })
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame

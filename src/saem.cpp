@@ -7,10 +7,12 @@
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
+#include "nmMcmcRng.h"
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "solveWarnHelper.h"
 
 #define _(String) (String)
 
@@ -35,6 +37,17 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
 			  int itmax, double ftol_rel, double rcoef, double ecoef, double ccoef,
 			  int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
 			  int *iprint);
+
+// L-BFGS-B with C linkage (src/lbfgsR.c), used to directly optimize the
+// observation log-likelihood over fixed-effect-only (phi0) parameters for a
+// general-likelihood (distribution==4) model -- the saemix "ind.fix10" step.
+typedef double optimfn(int n, double *par, void *ex);
+typedef void optimgr(int n, double *par, double *gr, void *ex);
+extern "C" void lbfgsbRX(int n, int lmm, double *x, double *lower,
+                         double *upper, int *nbd, double *Fmin, optimfn fn,
+                         optimgr gr, int *fail, void *ex, double factr,
+                         double pgtol, int *fncount, int *grcount,
+                         int maxit, char *msg, int trace, int nREPORT);
 
 double *_saemYptr;
 double *_saemFptr;
@@ -544,6 +557,56 @@ uvec getObsIdx(umat m) {
 }
 
 
+// f-SAEM: forward declarations so the SAEM loop can restore the SAEM model as the
+// current global solve after the fast R closure re-points it to the FOCEi inner.
+void setupRx(List &opt, SEXP evt, int nmc, int N);
+extern rx_solve* _rx;
+
+// C++-native f-SAEM step (inner.cpp): the whole per-iteration orchestration, so
+// the SAEM loop can drive the fast kernel without a per-iteration R closure.
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega,
+                            NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                            int nsweep, int cores, NumericVector lower, NumericVector upper,
+                            IntegerVector nbd, double seed, int nRetry, int kiter);
+
+// Trampolines for the L-BFGS-B phi0 direct optimization (the SAEM object is
+// passed through `ex`); defined after the class body.
+static double saemPhi0ObjTramp(int n, double *par, void *ex);
+static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex);
+
+// Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
+// stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
+// the engine, so these do not interfere with user_fn.
+static inline void _saemFillNormEng(arma::mat &m) {
+  for (arma::uword ii = 0; ii < m.n_elem; ++ii) m(ii) = rxNormEng(0.0, 1.0);
+}
+static inline void _saemFillNormEng(arma::vec &v) {
+  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxNormEng(0.0, 1.0);
+}
+static inline void _saemFillUnifEng(arma::vec &v) {
+  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxUnifEng(0.0, 1.0);
+}
+// Iteration-indexed threefry stream seed for a do_mcmc proposal block: a pure
+// mixing function of (baseSeed, kiter, method, u, k1) so every iteration's RNG
+// is independent of the total iteration count (dynamic phase extension) and
+// independent of thread scheduling.  Pins thread 0 (serial draw).  `mixIdx`
+// (0 for non-mixture / a 1-based component index for parallel per-component
+// chains) offsets the seed so each mixture component draws an independent
+// threefry stream instead of the identical proposals that collapse the mixture;
+// a bare add suffices since threefry streams for distinct seeds are independent.
+static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1,
+                                   int mixIdx = 0) {
+  setRxThreadId(0);
+  uint32_t s = baseSeed;
+  s = s * 2654435761u + 0x00006D0Cu;   // "do_mcmc" namespace tag
+  s = s * 2654435761u + (uint32_t)kiter;
+  s = s * 2654435761u + (uint32_t)method;
+  s = s * 2654435761u + (uint32_t)u;
+  s = s * 2654435761u + (uint32_t)k1;
+  s += (uint32_t)mixIdx;               // per-component stream offset
+  nmSetSeedEng1(s);
+}
+
 // class def starts
 class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
@@ -556,8 +619,212 @@ public:
 
   ~SAEM() {}
 
+  // Total observation -log-likelihood at candidate fixed-effect (phi0) values p,
+  // holding the current phi1 samples fixed (general-likelihood / distribution==4:
+  // the model prediction column is the per-observation log-likelihood).  Summed
+  // over all chains, which is the SAEM stochastic-approximation objective.
+  double phi0Objective(double *p) {
+    mat phiCand = phiM;
+    for (int c = 0; c < nphi0; c++) {
+      phiCand.col(i0(c)).fill(p[c]);
+    }
+    mat fMat = user_fn(phiCand, evt, optM);
+    double v = -accu(fMat.col(0));
+    if (!std::isfinite(v)) return 1e300;
+    return v;
+  }
+
+  // Central finite-difference gradient of phi0Objective (the model does not emit
+  // analytic d(ll)/d(phi0); FD is robust and low-dimensional here).
+  void phi0Gradient(double *p, double *gr) {
+    for (int c = 0; c < nphi0; c++) {
+      double p0 = p[c];
+      double h = 1e-4 * (std::fabs(p0) + 1e-4);
+      p[c] = p0 + h; double fp = phi0Objective(p);
+      p[c] = p0 - h; double fm = phi0Objective(p);
+      p[c] = p0;
+      gr[c] = (fp - fm) / (2.0 * h);
+    }
+  }
+
+  // saemix "ind.fix10" step: refine the fixed-effect-only (phi0) parameters of a
+  // general-likelihood model by a direct L-BFGS-B optimization of the observation
+  // log-likelihood (seeded at the current phi(theta) values), then apply a
+  // stochastic-approximation update and keep MCOV0 consistent so the next
+  // iteration's mprior_phi0 = COV0*MCOV0 reproduces it.  Only the intercept-only
+  // (no phi0 covariate) case is handled.
+  void refinePhi0Lik(unsigned int kiter, const vec &pas) {
+    if (nphi0 <= 0) return;
+    // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
+    // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
+    if (!Rf_isNull(fsaemStepFn)) {
+      setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+      _rx = getRxSolve_();
+    }
+    std::vector<double> x(nphi0), lower(nphi0, 0.0), upper(nphi0, 0.0);
+    std::vector<int> nbd(nphi0, 0);
+    for (int c = 0; c < nphi0; c++) {
+      x[c] = mprior_phi0(0, c);
+      if ((int)phi0Nbd.n_elem == nphi0) {
+        nbd[c] = phi0Nbd(c);
+        lower[c] = phi0Lower(c);
+        upper[c] = phi0Upper(c);
+      }
+    }
+    double Fmin; int fail = 0, fncount = 0, grcount = 0;
+    char msg[100];
+    lbfgsbRX(nphi0, lbfgsLmm, x.data(), lower.data(), upper.data(), nbd.data(),
+             &Fmin, saemPhi0ObjTramp, saemPhi0GrTramp, &fail, (void *)this,
+             lbfgsFactr, lbfgsPgtol, &fncount, &grcount, lbfgsMaxIter, msg, 0,
+             lbfgsMaxIter + 1);
+    for (int c = 0; c < nphi0; c++) {
+      double cur = mprior_phi0(0, c);
+      mprior_phi0.col(c).fill(cur + pas(kiter) * (x[c] - cur));
+    }
+    MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+  }
+
   void set_fn(user_funct f) {
     user_fn = f;
+  }
+
+  // Continuous-time AR(1) whitening of a residual/SD pair, in place.  e and g are
+  // indexed in the original 1-chain observation order (length ntotal).  For each
+  // AR endpoint obs with a previous same-subject-same-endpoint record:
+  //   phi_i = cor^dt_i, eps_i = e_i - phi_i*e_{prev}, gstar_i = g_i*sqrt(1-phi_i^2).
+  // The first record of each subject/endpoint (arPrev<0) is left marginal.  The
+  // previous residual is the RAW (pre-whitening) residual, so snapshot e first.
+  void arWhiten(vec &e, vec &g) {
+    if (!hasAr) return;
+    vec e0 = e;
+    for (arma::uword i = 0; i < e.n_elem; ++i) {
+      int b = (int)ix_endpnt(i);
+      if (!arActive(b)) continue;
+      arma::sword p = arPrev(i);
+      if (p < 0) continue;
+      double phi = std::pow(arCor(b), arDt(i));
+      double om = 1.0 - phi*phi;
+      if (om < 1e-8) om = 1e-8;
+      e(i) = e0(i) - phi*e0((arma::uword)p);
+      g(i) *= std::sqrt(om);
+    }
+  }
+
+  // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
+    vec e = yt - ft;
+    vec gg = g;
+    arWhiten(e, gg);
+    return 0.5*(e/gg)%(e/gg) + log(gg);
+  }
+
+  // Final per-endpoint estimated AR(1) correlation (0 for non-AR endpoints).
+  vec get_arCor() { return arCor; }
+
+  // Reset the AR(1) M-step accumulators (called with the statr reset each iter).
+  void arResetMstep() {
+    for (int b = 0; b < nendpnt; ++b) {
+      arPairR[b].clear(); arPairP[b].clear();
+      arPairDt[b].clear(); arPairW[b].clear();
+      arFirstSSR[b] = 0.0; arNobs[b] = 0;
+    }
+  }
+
+  // AR(1) correlation M-step for endpoint b: grid-search the profiled negative
+  // log-likelihood g(cor) = n*log(WSSR(cor)) + sum w*log(1-phi^2) over cor in
+  // [0, ~1), then take a stochastic-approximation step toward the maximizer.
+  // WSSR(cor) = firstSSR + sum w*eps(cor)^2/(1-phi^2), eps = r_i - cor^dt*r_prev.
+  void arUpdateCor(int b, int kiter, const vec &pas) {
+    const double double_xmin = 1.0e-200;
+    size_t np = arPairR[b].size();
+    if (np == 0 || arNobs[b] == 0) return;
+    double best = std::numeric_limits<double>::infinity();
+    double corHat = arCor(b);
+    for (int gi = 0; gi <= 99; ++gi) {
+      double c = gi*0.0099;
+      double wssr = arFirstSSR[b];
+      double logdet = 0.0;
+      for (size_t j = 0; j < np; ++j) {
+        double phi = std::pow(c, arPairDt[b][j]);
+        double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+        double eps = arPairR[b][j] - phi*arPairP[b][j];
+        wssr += arPairW[b][j]*eps*eps/om;
+        logdet += arPairW[b][j]*std::log(om);
+      }
+      if (wssr < double_xmin) wssr = double_xmin;
+      double g = arNobs[b]*std::log(wssr) + logdet;
+      if (g < best) { best = g; corHat = c; }
+    }
+    arCor(b) = arCor(b) + pas(kiter)*(corHat - arCor(b));
+    if (arCor(b) < 0.0) arCor(b) = 0.0;
+    if (arCor(b) > 0.999) arCor(b) = 0.999;
+  }
+
+  // One endpoint's residual SSR contribution for one MCMC chain / mixture
+  // component (weightCol into mixWeights).  Independent path = original sum of
+  // standardized r^2.  AR path accumulates the whitened SSR (eps^2/(1-phi^2))
+  // and stores the (r, r_prev, dt, w) pairs + first-obs SSR for arUpdateCor.
+  double arResk(int b, const vec &f_cur, const vec &y_cur, int weightCol) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    double resk = 0.0;
+    if (arActive(b)) {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        _arRorig(idx_orig) = r_ji;
+      }
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
+        double r_ji = _arRorig(idx_orig);
+        arma::sword p = arPrev(idx_orig);
+        double contrib;
+        if (p < 0) {
+          contrib = r_ji*r_ji;
+          arFirstSSR[b] += w*contrib;
+        } else {
+          double phi = std::pow(arCor(b), arDt(idx_orig));
+          double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+          double rp = _arRorig((arma::uword)p);
+          double eps = r_ji - phi*rp;
+          contrib = eps*eps/om;
+          arPairR[b].push_back(r_ji); arPairP[b].push_back(rp);
+          arPairDt[b].push_back(arDt(idx_orig)); arPairW[b].push_back(w);
+        }
+        arNobs[b] += 1;
+        if (contrib > xmax) contrib = xmax;
+        else if (contrib < double_xmin) contrib = double_xmin;
+        resk += w * contrib;
+      }
+    } else {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        double r_ji_sq = r_ji * r_ji;
+        if (r_ji_sq > xmax) r_ji_sq = xmax;
+        else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
+        resk += w * r_ji_sq;
+      }
+    }
+    return resk;
   }
 
   mat get_resMat() {
@@ -624,6 +891,9 @@ public:
   mat get_par_hist() {
     return par_hist;
   }
+  mat get_HaSa() {
+    return HaSa;
+  }
 
   vec get_mixProb() {
     return mixProb;
@@ -657,7 +927,37 @@ public:
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
+    if (x.containsElementNamed("fast")) {
+      fsaemFast = as<int>(x["fast"]);
+      fsaemFastIter = as<int>(x["fastIter"]);
+      fsaemFastKernel = as<std::string>(x["fastKernel"]);
+      fsaemFastCov = as<std::string>(x["fastCov"]);
+      fsaemFastLik = as<std::string>(x["fastLik"]);
+      if (x.containsElementNamed("fsaemStep")) {
+        fsaemStepFn = x["fsaemStep"];
+        fsaemSaemOpt = as<List>(x["opt"]);
+        fsaemSaemEvt = x["evt"];
+      }
+      // C++-native direct-call fields (no-covariate path): the loop calls
+      // fsaemStepCpp_ itself, with no per-iteration Rcpp::Function round-trip.
+      fsaemNoCov = x.containsElementNamed("fsaemNoCov") ? as<int>(x["fsaemNoCov"]) : 0;
+      if (fsaemNoCov) {
+        fsaemInnerEnv   = x["fsaemInnerEnv"];
+        fsaemStructPos  = as<ivec>(x["fsaemStructPos"]);
+        fsaemResidPos   = as<ivec>(x["fsaemResidPos"]);
+        fsaemResidIsAdd = as<ivec>(x["fsaemResidIsAdd"]);
+        fsaemResidEp    = as<ivec>(x["fsaemResidEp"]);
+        fsaemNTheta     = as<int>(x["fsaemNTheta"]);
+        fsaemLower      = as<vec>(x["fsaemLower"]);
+        fsaemUpper      = as<vec>(x["fsaemUpper"]);
+        fsaemNbdVec     = as<ivec>(x["fsaemNbd"]);
+        fsaemNsweep     = as<int>(x["fsaemNsweep"]);
+        fsaemNRetry     = as<int>(x["fsaemNRetry"]);
+        fsaemCores      = as<int>(x["fsaemCores"]);
+      }
+    }
     niter = as<int>(x["niter"]);
+    saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
     nb_fixOmega = as<int>(x["nb_fixOmega"]);
     nb_fixResid = as<int>(x["nb_fixResid"]);
@@ -666,11 +966,38 @@ public:
     resKeep = find(resFixed==0);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
+    // L-BFGS-B tolerances for the general-likelihood phi0 direct optimization
+    lbfgsLmm = x.containsElementNamed("lbfgsLmm") ? as<int>(x["lbfgsLmm"]) : 5;
+    lbfgsFactr = x.containsElementNamed("lbfgsFactr") ? as<double>(x["lbfgsFactr"]) : 1e7;
+    lbfgsPgtol = x.containsElementNamed("lbfgsPgtol") ? as<double>(x["lbfgsPgtol"]) : 0.0;
+    lbfgsMaxIter = x.containsElementNamed("lbfgsMaxIter") ? as<int>(x["lbfgsMaxIter"]) : 20;
+    // Bounds for the phi0 direct optimization, in phi0 (i0) column order, taken
+    // from the theta iniDf bounds (L-BFGS-B nbd: 0 none, 1 lower, 2 both, 3 upper)
+    if (x.containsElementNamed("lbfgsPhi0Lower")) {
+      phi0Lower = as<vec>(x["lbfgsPhi0Lower"]);
+      phi0Upper = as<vec>(x["lbfgsPhi0Upper"]);
+      phi0Nbd = as<ivec>(x["lbfgsPhi0Nbd"]);
+    }
     nb_sa = as<int>(x["nb_sa"]);
+    // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
+    // (missing, e.g. a saved cfg from an older version) disables the tag.
+    nPhase1 = x.containsElementNamed("nPhase1") ? as<int>(x["nPhase1"]) : -1;
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
+    // SA (stochastic-approximation) covariance phase: after the niter estimation
+    // iterations, run nSaCov extra iterations with the gain frozen at zero so the
+    // parameters stay at the converged estimate (theta_hat).  Only the MCMC E-step
+    // resimulates phi ~ p(phi|y,theta_hat); the per-iteration Louis observed-information
+    // integrand (DDa) is Monte-Carlo averaged into HaSa, giving a converged Fisher
+    // information decoupled from the cooling schedule (cf. Monolix "stochastic
+    // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
+    nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
+    if (nSaCov > 0) {
+      pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
+      pash = join_cols(pash, zeros<vec>(nSaCov));
+    }
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -779,6 +1106,11 @@ public:
     ix_idM=as<umat>(x["ix_idM"]);
     res_offset=as<uvec>(x["res_offset"]);
     addProp=as<uvec>(x["addProp"]);
+    arCor=as<vec>(x["arCor"]);
+    arActive=as<uvec>(x["arActive"]);
+    arPrev=as<arma::ivec>(x["arPrev"]);
+    arDt=as<vec>(x["arDt"]);
+    hasAr = (int)accu(arActive);
     hasFixedObsTransform = true;
     for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
       if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
@@ -812,6 +1144,7 @@ public:
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
+    _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
       if (res_mod(b) == rmAdd) {
@@ -828,6 +1161,10 @@ public:
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+    // off-diagonal Omega covariances recorded in the iteration history: 0-indexed
+    // (row, col) pairs into Gamma2_phi1, appended after the diagonal variances
+    parHistOmegaOffPairs = x.containsElementNamed("parHistOmegaOffPairs") ?
+      as<umat>(x["parHistOmegaOffPairs"]) : umat(0, 2);
 
     obs_subject.set_size(ntotal);
     for (int i = 0; i < N; i++) {
@@ -841,7 +1178,9 @@ public:
     // Set up the shared scale.h iteration-print struct (scaleTypeNone; xform
     // sub-list wired via scaleAttachXform, same path as other estimators).
     scaleNames = as<CharacterVector>(x["parHistNames"]);
-    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
+    // Off-diagonal Omega covariances add parHistOmegaOffPairs.n_rows rows;
+    // mixture models add (nMix - 1) mixture-weight rows.
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + parHistOmegaOffPairs.n_rows + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
     scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleSetup(&scale,
@@ -859,6 +1198,9 @@ public:
     // Val column entirely so users don't see "nan" in every iteration row.
     scale.showOfv = 0;
     scale.save = 0; // par_hist already records the iteration history
+    if (nPhase1 >= 0) {
+      scale.keyExtra = "SA: Stochastic-approximation (burn-in) phase; EM: EM phase\n";
+    }
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -884,7 +1226,9 @@ public:
   }
 
   void saem_fit() {
-    //arma_rng::set_seed(99);
+    // (arma_rng::set_seed removed -- arma::randn uses R's RNG under
+    // RcppArmadillo, seeded by set.seed(seed); the explicit arma seed was a
+    // no-op that is under test as a determinism-cycle suspect.)
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
@@ -937,15 +1281,39 @@ public:
         }
       }
     }
-    for (unsigned int kiter=0; kiter<(unsigned int)(niter); kiter++) {
+    if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    if (fsaemFast != 0 && DEBUG > 0) {
+      RSprintf("f-SAEM enabled: kernel=%s cov=%s lik=%s fastIter=%d\n",
+               fsaemFastKernel.c_str(), fsaemFastCov.c_str(), fsaemFastLik.c_str(), fsaemFastIter);
+    }
+    for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
+      // f-SAEM: whether the fast IMH kernel is active on this iteration.  For now
+      // the live kernel is not yet wired, so this only selects the (identical)
+      // standard path -- it establishes the schedule/degrade branch point.
+      bool fsaemActive = false;
+      if (fsaemFast != 0) {
+        if (fsaemFastKernel == "firstN") fsaemActive = ((int)kiter < fsaemFastIter);
+        else if (fsaemFastKernel == "throughout") fsaemActive = (kiter < (unsigned int)niter);
+        else if (fsaemFastKernel == "additive") fsaemActive = (kiter < (unsigned int)niter);
+      }
+      (void)fsaemActive;
+      // entering the SA covariance phase: snapshot the converged estimate so it can be
+      // restored afterward (the cov-phase iterations fluctuate the parameters).
+      if (nSaCov > 0 && kiter == (unsigned int)niter) {
+        _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
+        _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
+        _savMprior_phi0 = mprior_phi0; _savAres = ares; _savBres = bres; _savCres = cres;
+        _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
+        if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
+      }
+      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
       gamma2_phi1=Gamma2_phi1.diag();
-      IGamma2_phi1=inv_sympd(Gamma2_phi1);
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
       CGamma21=COV21%D2Gamma21;
 
+      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "Gamma2_phi0 (Omega)");
       gamma2_phi0=Gamma2_phi0.diag();
-      IGamma2_phi0=inv_sympd(Gamma2_phi0);
       D1Gamma20=LCOV0*IGamma2_phi0;
       D2Gamma20=D1Gamma20*LCOV0.t();
       CGamma20=COV20%D2Gamma20;
@@ -979,6 +1347,7 @@ public:
       for (int b = 0; b < nendpnt; b++) {
         statr[b] = 0.0;
       }
+      arResetMstep();
       double resk = 0.0;
       vec D1 = zeros<vec>(nb_param);
       mat D11 = zeros<mat>(nb_param, nb_param);
@@ -994,22 +1363,22 @@ public:
         vec U_y = mixObsLoss(phiM, mx);
         if (nphi1 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi);
+          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
           mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi);
-          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi);
+          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
         }
         if (nphi0 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi);
+          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
           mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi);
-          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi);
+          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
@@ -1050,7 +1419,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1164,22 +1533,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, mHyp) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1257,7 +1611,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              cur_DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1281,19 +1635,19 @@ public:
 
           if (nphi1 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
-            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
           if (nphi0 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
-            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
 
           // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
@@ -1376,7 +1730,7 @@ public:
             phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
           }
         }
-        phiFile << phiM_weighted;
+        if (kiter < (unsigned int)niter) phiFile << phiM_weighted;
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
         }
@@ -1440,22 +1794,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, jMix) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1530,7 +1869,7 @@ public:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = indio + (arma::uword)k * stride;
-            DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                      DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1548,6 +1887,17 @@ public:
             uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
             DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
           }
+        } else if (distribution == 4) {
+          // General log-likelihood endpoint: the model returns the per-observation
+          // log-likelihood as its prediction (rx_pred_ ~ <ll>, saemix modeltype
+          // "likelihood"), so the observation loss is simply -ll.  The standard
+          // RWM kernels (do_mcmc) then run unchanged, so plain saem (not just
+          // fsaem) supports it.
+          for (int k = 0; k < nmc; k++) {
+            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -fk;
+          }
         }
         else {
           RSprintf("unknown distribution (id=%d)\n", distribution);
@@ -1556,24 +1906,48 @@ public:
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
 
-        if(nphi1>0) {
+        // f-SAEM: on active iterations, precondition phiM's random-effect columns
+        // with the independent Metropolis-Hastings kernel (via the R closure that
+        // reuses the FOCEi inner MAP + proposal).  For NORMAL data this is the
+        // additive form -- the random-walk kernels below still run.  For a GENERAL
+        // likelihood (distribution==4) the IMH proposal is already the calibrated
+        // posterior kernel, so it REPLACES the phi1 random walk: running both
+        // stacks extra exploration and inflates the between-subject variance.
+        bool imhFired = (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn));
+        bool imhReplacesRwm = (imhFired && distribution == 4);
+        if (imhFired) {
+          fsaemImhStep(phiM, (int)kiter);
+          if (imhReplacesRwm) {
+            // refresh predictions + DYF/U_y to match the IMH-updated phiM so the
+            // phi0 update and the M-step statistics stay consistent
+            fsave = user_fn(phiM, evt, optM).col(0);
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fk = fsave.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * stride;
+              DYF(indio_k) = -fk;
+            }
+            U_y = sum(DYF, 0).t();
+          }
+        }
+        if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
-          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
         if(nphi0>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
-          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -1594,6 +1968,10 @@ public:
           vec gk, y_cur, f_cur;
           double ft, fa;
           //loop thru endpoints here
+          // general log-likelihood (distribution==4) has no residual error, so
+          // skip the residual SSR accumulation entirely (fsM above is kept for
+          // downstream predictions)
+          if (distribution != 4)
           for(int b=0; b<nendpnt; ++b) {
             if (hasFixedObsTransform) {
               y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
@@ -1618,7 +1996,10 @@ public:
               }
             }
 
-            if (res_mod(b) <= rmProp) {
+            if (arActive(b)) {
+              // AR(1): whitened SSR + accumulate residual pairs for arUpdateCor
+              resk = arResk(b, f_cur, y_cur, -1);
+            } else if (res_mod(b) <= rmProp) {
               resk = dot(resid, resid);
               if (resk > xmax) {
                 resk = xmax;
@@ -1644,7 +2025,8 @@ public:
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
           vec d1_logsigma2(1);
-          d1_logsigma2[0] =  0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          // general log-likelihood: no residual param, so its FIM row is 0
+          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -1659,7 +2041,7 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
+          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
           D2=D2+d2logk;
         }
       }//k
@@ -1745,6 +2127,14 @@ public:
       }
       mprior_phi1=COV1*MCOV1;
       mprior_phi0=COV0*MCOV0;
+      // General log-likelihood: the sampled-mean update above only weakly informs
+      // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
+      // phase has begun, refine them by a direct L-BFGS-B optimization of the
+      // observation likelihood (saemix ind.fix10).  refinePhi0Lik restores the
+      // SAEM solve first, so it is safe under the f-SAEM fast kernel too.
+      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+        refinePhi0Lik(kiter, pas);
+      }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
         phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
@@ -1883,7 +2273,13 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
+      // general log-likelihood (distribution==4): no residual error params to update
+      if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
+        // AR(1): update the correlation from this iteration's residual pairs
+        // (grid-search profile likelihood + stochastic approximation).  statrese
+        // already holds the whitened SSR, so sig2 below is the marginal variance.
+        if (arActive(b)) arUpdateCor(b, kiter, pas);
         double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
         int offsetR = res_offset[b];
         _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
@@ -2500,9 +2896,29 @@ public:
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
       DDb=-D11/nmc-D2/nmc;
+      // d2logk omits the deterministic mu-block complete Hessian (-M'Omega^{-1}M), leaving
+      // DDa's fixed-effect block equal to -Var[score] (indefinite -> solve(Ha) yields NaN
+      // SEs for covMethod="fim").  Add that block (= CGamma2, the mu Fisher information the
+      // M-step forms) so DDa = -E[Hessian] - Var[score] is the true observed information.
+      {
+        unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
+        if (nl1 > 0) DDa.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
+        if (nl0 > 0) DDa.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
+      }
       L=L+pash(kiter)*(D1/nmc-L);
       Ha=Ha+pash(kiter)*(DDa- Ha);
       Hb=Hb+pash(kiter)*(DDb- Hb);
+      // SA covariance phase (covMethod="sa"): theta is frozen (pas==pash==0 above), so the
+      // now-corrected DDa is a Monte-Carlo draw of the observed information at theta_hat.
+      // Monte-Carlo average it (after a short burn-in) into HaSa; the covariance is
+      // solve(HaSa).
+      if (nSaCov > 0 && kiter >= (unsigned int)niter) {
+        unsigned int cc = kiter - (unsigned int)niter;
+        if (cc >= (unsigned int)(0.1 * nSaCov)) {
+          covCount++;
+          HaSa += (DDa - HaSa) / (double)covCount;
+        }
+      }
       cube phi2 = phi%phi;
       mat sphi1 = sum(phi ,2);
       mat sphi2 = sum(phi2,2);
@@ -2584,17 +3000,45 @@ public:
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
+      if (parHistOmegaOffPairs.n_rows > 0) {                    // off-diagonal Omega covariances
+        vec offv(parHistOmegaOffPairs.n_rows);
+        for (unsigned int p = 0; p < parHistOmegaOffPairs.n_rows; ++p) {
+          offv(p) = Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 1));
+        }
+        pl = join_cols(pl, offv);
+      }
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       if (nMix > 1) {
         vec mixP = mixProb.head(nMix - 1);
         pl = join_cols(pl, mixP);
       }
-      par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function (scale.showOfv=0, so `f` is ignored here);
-      // scalePrintFun gates printing, checks for user interrupt, and flushes solve warnings.
-      scalePrintFun(&scale, pl.memptr(), NA_REAL);
+      if (kiter < (unsigned int)niter) {
+        par_hist.row(kiter) = pl.t();
+        // saem has no per-iteration objective function; scale.showOfv=0 so the
+        // `f` argument is ignored here.  scalePrintFun gates printing on
+        // (cn % every == 0) and runs the user-interrupt check internally.
+        // The X row's tag carries the phase: "SA: X" (burn) / "EM: X".
+        if (nPhase1 >= 0) {
+          scale.phaseLabel = (kiter < (unsigned int)nPhase1) ? "SA" : "EM";
+        }
+        scalePrintFun(&scale, pl.memptr(), NA_REAL);
+        // One summary line per printed iteration for any ODE-solve warnings
+        // accumulated since the last flush (see inner.cpp foceiOfvOptim).
+        nmFlushRxSolveWarn(5);
+      }
+      // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
+      // above; nothing is recorded to par_hist and no printing happens.
     }//kiter
+    // restore the converged estimate after the SA covariance phase (the reported fit
+    // must be the converged value, not a cov-phase iterate)
+    if (nSaCov > 0) {
+      Plambda = _savPlambda; Gamma2_phi1 = _savGamma2_phi1; Gamma2_phi0 = _savGamma2_phi0;
+      Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
+      mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
+      lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
+    }
     phiFile.close();
   }
 
@@ -2605,18 +3049,46 @@ private:
 
   uvec nu;
   int niter;
+  int saemSeed = 99;
+  int nPhase1;
   int nb_sa;
   int nb_correl;
   int nb_fixOmega;
   int nb_fixResid;
   int niter_phi0;
   double coef_phi0;
+  int lbfgsLmm;
+  double lbfgsFactr;
+  double lbfgsPgtol;
+  int lbfgsMaxIter;
+  vec phi0Lower;
+  vec phi0Upper;
+  ivec phi0Nbd;
   double rmcmc;
   double coef_sa;
   vec pas, pash;
   vec minv;
   int nmc;
   int nM;
+
+  // f-SAEM (Karimi, Lavielle & Moulines 2020) fast simulation options.  When
+  // fsaemFast is set, the first fsaemFastIter iterations replace the random-walk
+  // simulation with the independent Metropolis-Hastings kernel; later iterations
+  // (and fsaemFast == 0) degrade to the standard do_mcmc kernels.
+  int fsaemFast = 0;
+  int fsaemFastIter = 0;
+  std::string fsaemFastKernel = "firstN";
+  std::string fsaemFastCov = "auto";
+  std::string fsaemFastLik = "focei";
+  RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
+  List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
+  RObject fsaemSaemEvt = R_NilValue;// x["evt"]
+  // C++-native direct-call state (no-covariate path)
+  int fsaemNoCov = 0;
+  RObject fsaemInnerEnv = R_NilValue;
+  ivec fsaemStructPos, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
+  vec fsaemLower, fsaemUpper;
+  int fsaemNTheta = 0, fsaemNsweep = 5, fsaemNRetry = 10, fsaemCores = 1;
 
   int ntotal, N, mlen;
   vec y, ys;    //ys is y sorted by endpnt
@@ -2684,6 +3156,15 @@ private:
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
+  umat parHistOmegaOffPairs;
+
+  // SA (stochastic-approximation) covariance phase
+  int nSaCov;
+  mat HaSa;                      // converged Louis FIM (nb_param x nb_param) at theta_hat
+  int covCount;                  // averaged cov-phase iterations
+  // saved converged state, restored after the cov phase so the fit is unperturbed
+  vec _savPlambda, _savAres, _savBres, _savCres, _savLres, _savVcsig2, _savMixProb;
+  mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
 
@@ -2726,6 +3207,24 @@ private:
 
   uvec obs_subject;
 
+  // AR(1) autocorrelated residuals (continuous-time; phi = cor^dt).  arActive[b]
+  // flags an endpoint with ar(); arCor[b] is its correlation (stochastic-approx
+  // updated in the M-step).  Per-observation (ORIGINAL order, one chain) arPrev
+  // is the previous same-subject-same-endpoint observation index in time order
+  // (-1 = first of its subject/endpoint) and arDt the time gap to it.
+  vec arCor;
+  uvec arActive;
+  arma::ivec arPrev;
+  vec arDt;
+  int hasAr;
+  // M-step scratch: residual indexed by original obs (_arRorig), and per-endpoint
+  // (r_i, r_prev, dt, weight) pairs + first-obs SSR accumulated over MCMC chains,
+  // used by the AR(1) correlation grid-search M-step (arUpdateCor).
+  vec _arRorig;
+  std::vector<double> arPairR[MAXENDPNT], arPairP[MAXENDPNT], arPairDt[MAXENDPNT], arPairW[MAXENDPNT];
+  double arFirstSSR[MAXENDPNT];
+  int arNobs[MAXENDPNT];
+
   int DEBUG;
   std::vector< std::string > phiMFile;
 
@@ -2741,6 +3240,28 @@ private:
     }
     fsb = fsM(fsb_idx);
     ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+  }
+
+  // Invert a symmetric covariance (omega) matrix.  If it is not positive
+  // definite, project it to the nearest positive-definite matrix (in place, so
+  // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
+  // once, and return the inverse of the corrected matrix.
+  bool _nearPdWarned = false;
+  mat invSympdNearPd(mat &G, const char *what) {
+    mat out;
+    if (inv_sympd(out, G)) return out;
+    mat pd;
+    if (nmNearPD(pd, G)) {
+      G = pd;
+      if (!_nearPdWarned) {
+        Rcpp::warning(std::string("SAEM: ") + what +
+                      " was not positive definite; projected to the nearest positive-definite matrix (results may be affected)");
+        _nearPdWarned = true;
+      }
+      if (inv_sympd(out, G)) return out;
+    }
+    // last resort: general inverse of the symmetrized matrix
+    return inv(0.5 * (G + G.t()));
   }
 
   void set_mcmcphi(mcmcphi &mphi1,
@@ -2764,6 +3285,68 @@ private:
     }
   }
 
+  // f-SAEM independent Metropolis-Hastings preconditioning of phiM's mu-referenced
+  // random-effect columns.  Reconstructs the inner's current parameterization from
+  // the live SAEM estimate (theta = [population phi (mprior row 0), additive
+  // residual]; omega = Gamma2_phi1 diagonal), hands the current etas to the R
+  // closure (which re-parameterizes the FOCEi inner, optimizes the per-subject MAP
+  // + proposal covariance, and runs the IMH kernel), and writes the accepted etas
+  // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
+  // now (guarded by the caller / closure arg length).
+  void fsaemImhStep(mat &phiM, int kiter) {
+    // Pass the full per-subject prior mean mprior_phi1 (N x nphi1).  For a
+    // no-covariate model every row is the same population phi; for a covariate
+    // model the time-invariant covariate effect is absorbed here per subject.
+    // The R closure decides how to use it (constant intercept vs mprior-as-data
+    // inner) and returns the accepted etas.
+    arma::vec omega = Gamma2_phi1.diag();
+    arma::mat etaCur(phiM.n_rows, nphi1);
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
+    }
+    arma::mat acc;
+    if (fsaemNoCov) {
+      // No per-iteration R round-trip: build the inner THETA (structural
+      // positions <- population phi = mprior_phi1 row 0; residual positions <-
+      // ares/bres) and call the C++ orchestration directly.
+      NumericVector theta(fsaemNTheta);
+      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++) theta[fsaemStructPos(j)] = mprior_phi1(0, j);
+      for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
+        int ep = fsaemResidEp(j);
+        theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
+      }
+      Environment innerEnv(fsaemInnerEnv);
+      NumericMatrix accNM =
+        fsaemStepCpp_(innerEnv, theta, NumericVector(omega.begin(), omega.end()),
+                      wrap(mprior_phi1), wrap(etaCur), nmc, fsaemNsweep, fsaemCores,
+                      NumericVector(fsaemLower.begin(), fsaemLower.end()),
+                      NumericVector(fsaemUpper.begin(), fsaemUpper.end()),
+                      IntegerVector(fsaemNbdVec.begin(), fsaemNbdVec.end()),
+                      (double)saemSeed, fsaemNRetry, kiter);
+      acc = as<arma::mat>(accNM);
+    } else {
+      // Covariate path: still via the R closure (mprior-as-data inner).  Plambda
+      // carries the current structural fixed effects (time-varying cov betas).
+      Rcpp::Function stepFn(fsaemStepFn);
+      acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
+                                 NumericVector(ares.begin(), ares.end()),
+                                 NumericVector(bres.begin(), bres.end()),
+                                 NumericVector(omega.begin(), omega.end()),
+                                 NumericVector(Plambda.begin(), Plambda.end()),
+                                 wrap(etaCur), nmc, kiter));
+    }
+    if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) phiM(r, i1(j)) = acc(r, j) + mprior_phi1(subj, j);
+    }
+    // the R closure re-pointed the global solve to the FOCEi inner (N subjects);
+    // restore the SAEM model's (N*nmc) solve as current before the M-step reads it.
+    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    _rx = getRxSolve_();
+  }
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -2774,10 +3357,13 @@ private:
                vec &U_phi,
                vec &cur_fsave,
                vec &cur_cens,
-               vec &cur_limit) {
+               vec &cur_limit,
+               int kiter,
+               int mixIdx = 0) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
+    arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
 
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
@@ -2785,23 +3371,32 @@ private:
     for (int u=0; u<nu; u++)
       for (int k1=0; k1<mphi.nphi; k1++) {
         mat phiMc=phiM;
+        // iteration-indexed threefry stream: proposal noise + the acceptance
+        // uniform are drawn here (before the solve) from one seeded stream
+        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1, mixIdx);
         switch (method) {
-        case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
+        case 1: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          phiMc.cols(i)=noise*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
-        case 2:
+        }
+        case 2: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
           phiMc.cols(i)=phiM.cols(i) +
-            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
-          break;
-        case 3:
-          phiMc.col(i(k1))=phiM.col(i(k1))+
-            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
-          // Rcpp::print(Rcpp::wrap(phiM.cols(i(k1))));
+            noise*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
+        case 3: {
+          vec noise(mx.nM); _saemFillNormEng(noise);
+          phiMc.col(i(k1))=phiM.col(i(k1))+
+            noise*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        }
+        _saemFillUnifEng(accU);   // acceptance uniforms from the same stream
 
-        fcMat = user_fn(phiMc, mx.evtM, mx.optM);
+        fcMat = nmRngGuard([&]{ return user_fn(phiMc, mx.evtM, mx.optM); });
         cur_limit = fcMat.col(2);
         cur_cens = fcMat.col(1);
 
@@ -2837,7 +3432,7 @@ private:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
-              DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                        DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -2865,6 +3460,17 @@ private:
             }
           }
           break;
+        case 4:
+          {
+            // general log-likelihood: model prediction is the per-obs loglik
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -fck;
+            }
+          }
+          break;
         }
 
         Uc_y=sum(DYF,0).t();
@@ -2877,7 +3483,7 @@ private:
           deltu=Uc_y-U_y+Uc_phi-U_phi;
         }
 
-        ind=find( deltu < -log(randu<vec>(mx.nM)) );
+        ind=find( deltu < -log(accU) );
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -2889,6 +3495,7 @@ private:
           break;
         }
       }
+    setRxThreadId(-1);
   }
 
   // MSAEM (Lavielle & Mbogning 2014): mixture-weighted (log-sum-exp) observation loss for a
@@ -2901,7 +3508,7 @@ private:
     mat lossByM(mx.nM, nMix);
     for (int mHyp = 0; mHyp < nMix; mHyp++) {
       current_saem_state->_saemMixest = mHyp + 1;
-      mat fcMat = user_fn(phiC, mx.evtM, mx.optM);
+      mat fcMat = nmRngGuard([&]{ return user_fn(phiC, mx.evtM, mx.optM); });
       vec curLimit = fcMat.col(2);
       vec curCens = fcMat.col(1);
       vec fc = fcMat.col(0);
@@ -2936,7 +3543,7 @@ private:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
-            DYFm(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                      DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -2961,6 +3568,17 @@ private:
             vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
             DYFm(_scratch_indio) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+          }
+        }
+        break;
+      case 4:
+        {
+          // general log-likelihood: model prediction is the per-obs loglik
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            _scratch_indio = mx.indio + (arma::uword)k * stride;
+            DYFm(_scratch_indio) = -fck;
           }
         }
         break;
@@ -3038,7 +3656,7 @@ private:
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
-          DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+          DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
           for (int j = ntotal; j--;) {
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                    DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -3088,29 +3706,41 @@ private:
                       const mcmcphi &mphi,
                       mat &phiM,
                       vec &U_y,
-                      vec &U_phi) {
+                      vec &U_phi,
+                      int kiter) {
     mat phiMc;
     vec Uc_y, Uc_phi, deltu;
     uvec ind;
     uvec i = mphi.i;
+    arma::vec accU(mx.nM);
 
     for (int u = 0; u < nu; u++)
       for (int k1 = 0; k1 < mphi.nphi; k1++) {
         phiMc = phiM;
+        // iteration-indexed threefry stream (msaem tag = method + 16 so it does
+        // not collide with the plain do_mcmc streams)
+        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method + 16, u, k1);
         switch (method) {
-        case 1:
-          phiMc.cols(i) = randn<mat>(mx.nM, mphi.nphi) * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
+        case 1: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          phiMc.cols(i) = noise * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
-        case 2:
+        }
+        case 2: {
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
           phiMc.cols(i) = phiM.cols(i) +
-            randn<mat>(mx.nM, mphi.nphi) * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
-          break;
-        case 3:
-          phiMc.col(i(k1)) = phiM.col(i(k1)) +
-            randn<vec>(mx.nM) * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+            noise * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
+        case 3: {
+          vec noise(mx.nM); _saemFillNormEng(noise);
+          phiMc.col(i(k1)) = phiM.col(i(k1)) +
+            noise * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        }
+        _saemFillUnifEng(accU);
 
         Uc_y = mixObsLoss(phiMc, mx);
 
@@ -3122,7 +3752,7 @@ private:
           deltu = Uc_y - U_y + Uc_phi - U_phi;
         }
 
-        ind = find(deltu < -log(randu<vec>(mx.nM)));
+        ind = find(deltu < -log(accU));
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {
@@ -3132,8 +3762,19 @@ private:
           break;
         }
       }
+    setRxThreadId(-1);
   }
 };
+
+// L-BFGS-B trampolines for the phi0 direct optimization (ex is the SAEM object).
+static double saemPhi0ObjTramp(int n, double *par, void *ex) {
+  (void)n;
+  return ((SAEM *)ex)->phi0Objective(par);
+}
+static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex) {
+  (void)n;
+  ((SAEM *)ex)->phi0Gradient(par, gr);
+}
 
 
 // closing for #ifndef __SAEM_CLASS_RCPP_HPP__
@@ -3372,6 +4013,7 @@ SEXP saem_fit(SEXP xSEXP) {
   }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
+    Named("arCor") = saem.get_arCor(),
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
@@ -3382,6 +4024,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = wrap(saem.get_mixProb()),

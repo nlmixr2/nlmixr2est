@@ -105,6 +105,7 @@ nmObjGetControl.fo <- function(x, ...) {
 #'@export
 nlmixr2Est.fo <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
@@ -114,6 +115,10 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
+  ## FO linearizes at eta=0 and does not run the conditional inner sensitivity
+  ## problem, so it always uses forward sensitivities (the adjoint inner path
+  ## does not apply).
+  rxode2::rxAssignControlValue(.ui, "sensMethod", "forward")
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
   rxode2::rxAssignControlValue(.ui, "compress", 0L)
   on.exit({
@@ -134,6 +139,7 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "covMethod", .control$covMethod)
   rxode2::rxAssignControlValue(.ui, "fo", FALSE)
+  rxode2::rxAssignControlValue(.ui, "sensMethod", "forward")
   rxode2::rxAssignControlValue(.ui, "boundTol", .control$boundTol)
   rxode2::rxAssignControlValue(.ui, "compress", .control$compress)
   if (.control$posthoc) {

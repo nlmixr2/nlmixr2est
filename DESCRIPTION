@@ -1,7 +1,7 @@
 Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation Routines
-Version: 6.1.0
+Version: 6.2.0
 Authors@R: c(
     person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-8538-6691")),
     person("Wenping", "Wang", , "wwang8198@gmail.com", role = "aut"),
@@ -13,6 +13,7 @@ Authors@R: c(
     person("Emmanuelle", "Comets", , "emmanuelle.comets@inserm.fr", role = "ctb"),
     person("Hadley", "Wickham", role = "ctb"),
     person("Hajar", "Besbassi", , "", role="ctb"),
+    person("Hidde", "van de Beek", , "hiddevdbeek@icloud.com", role = "ctb"),
     person("Johannes", "Pfeifer", role = "ctb"),
     person("Justin", "Wilkins", , "justin.wilkins@occams.com", role = "aut", comment = c(ORCID = "0000-0002-7099-9396")),
     person("Katharine", "Mullen", role = "cph"),
@@ -26,7 +27,8 @@ Authors@R: c(
     person("Robert", "Leary", role = "ctb"),
     person("Teun", "Post", , "t.post@lapp.nl", role = "ctb"),
     person("Vipul", "Mann", , "vm2583@columbia.edu", role = "aut"),
-    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut")
+    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut"),
+    person("Hidde", "van de Beek", , "hiddevdbeek@icloud.com", role = "ctb")
   )
 Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
 Description: Fit and compare nonlinear mixed-effects models in
@@ -81,7 +83,9 @@ Suggests:
     remotes,
     fastGHQuad,
     rmarkdown,
-    rlang
+    rlang,
+    numDeriv,
+    rstan
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
@@ -93,9 +97,9 @@ LinkingTo:
     rxode2 (>= 5.1.3)
 Biarch: true
 Config/testthat/edition: 3
+Config/testthat/parallel: true
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
 LazyData: true
-VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
