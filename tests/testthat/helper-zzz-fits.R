@@ -52,6 +52,15 @@ if (!dir.exists(.fitCacheDir)) {
   dir.create(.fitCacheDir, recursive = TRUE)
 }
 
+# On CRAN every consumer of these fixtures skips (they are all wrapped in
+# nmTest(), i.e. nlmixr2Validate, which returns early unless NOT_CRAN=="true"),
+# AND the shipped .rds cache never matches on CRAN anyway: the cache key hashes
+# R/ + src/ sources, but an installed package under R CMD check has no src/*.cpp,
+# so the hash is empty and every fit would be recomputed for nothing.  Skip
+# computing them on CRAN entirely -- keyed on the exact same condition nmTest
+# uses, so fixtures and their consuming tests skip in lockstep.
+.fitOnCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
+
 #' Helper function to load or create cached fit
 #'
 #' @param name Human-readable name for the fit (for logging)
@@ -59,6 +68,11 @@ if (!dir.exists(.fitCacheDir)) {
 #' @param cacheFile Name of the cache file (e.g., "fit-one-compartment-saem.rds")
 #' @return The fit object (either from cache or freshly computed)
 .getCachedFit <- function(name, fitFn, cacheFile) {
+  # CRAN: consumers skip (nmTest) and the cache never matches, so do not fit.
+  if (.fitOnCran) {
+    message(sprintf("[skip] CRAN: not computing fixture fit: %s", name))
+    return(NULL)
+  }
   cachePath <- file.path(.fitCacheDir, cacheFile)
 
   # Try to load from cache
