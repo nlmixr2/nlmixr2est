@@ -222,6 +222,7 @@
   .extras <- list()
   for (.n in c("covR", "covS", "covRS", "Rinv", "Sinv", "R", "S", "covLvl", "skipCov",
                "eigenCov", "eigenVecCov", "conditionNumberCov", "covList",
+               "fullCor", "eigenCor", "eigenVecCor", "conditionNumberCor",
                "popDf", "popDfSig", "parFixedDf", "parFixed", "se")) {
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
@@ -241,6 +242,16 @@
   assign("cov", .r$cov, envir = .env)
   assign("covMethod", .r$covMethod, envir = .env)
   for (.n in names(.r$extras)) assign(.n, .r$extras[[.n]], envir = .env)
+  # the mu fit's objDf was rendered before any cov existed, so it lacks the
+  # Condition#(Cov)/Condition#(Cor) columns; add them from the re-fit
+  if (exists("objDf", envir = .env, inherits = FALSE)) {
+    .od <- get("objDf", envir = .env)
+    .cn <- .r$extras$conditionNumberCov
+    .cnr <- .r$extras$conditionNumberCor
+    if (length(.cn) == 1L) .od[["Condition#(Cov)"]] <- .cn
+    if (length(.cnr) == 1L) .od[["Condition#(Cor)"]] <- .cnr
+    assign("objDf", .od, envir = .env)
+  }
   invisible(TRUE)
 }
 

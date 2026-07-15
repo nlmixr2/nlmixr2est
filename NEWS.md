@@ -145,6 +145,11 @@
   augmented build freed the fit's solve before the finite-difference fallback
   ran), and the sign of the M2 upper-tail term in the censored inner gradient.
 
+- The mu-referenced/irls FOCEI-family fits (`mfocei`/`ifocei`/...) now report
+  `Condition#(Cov)`/`Condition#(Cor)` in `$objDf`; the post-fit covariance
+  install skipped them because the fit tables were rendered before the
+  full-model covariance was recomputed.
+
 - SAEM `covMethod = "fim"` adds the mu-block Hessian (was indefinite / NaN SEs),
   and `"fim"`/`"sa"` report off-diagonal Omega and combined residual SEs.
   Fixed `covMethod = "linFim"` and the SAEM covariance erroring for a single
