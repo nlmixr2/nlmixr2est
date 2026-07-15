@@ -151,8 +151,8 @@ test_that("formatMinWidth in parFixed", {
       list(
         # focei defaults to sigdigTable = 4 (see foceiControlFast)
         Est. = formatMinWidth(fitFixed$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:3], digits = 4), ""),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:3], digits = 4), ""),
+        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:4], digits = 4)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:4], digits = 4)),
         `Back-transformed(95%CI)` = c(
           formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1], digits = 4),
           sprintf(
@@ -160,8 +160,7 @@ test_that("formatMinWidth in parFixed", {
             formatMinWidth(fitFixed$parFixedDf$`Back-transformed`, digits = 4),
             formatMinWidth(fitFixed$parFixedDf$`CI Lower`, digits = 4),
             formatMinWidth(fitFixed$parFixedDf$`CI Upper`, digits = 4)
-          )[2:3],
-          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[4], digits = 4)
+          )[2:4]
         ),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -198,8 +197,8 @@ test_that("formatMinWidth in parFixed", {
         Parameter = c("ka", "clearance", "", ""),
         # focei defaults to sigdigTable = 4 (control = list(print = 0))
         Est. = formatMinWidth(fitFixedLabel$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:3], digits = 4), ""),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:3], digits = 4), ""),
+        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:4], digits = 4)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:4], digits = 4)),
         `Back-transformed(95%CI)` = c(
           formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[1], digits = 4),
           sprintf(
@@ -207,8 +206,7 @@ test_that("formatMinWidth in parFixed", {
             formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`, digits = 4),
             formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`, digits = 4),
             formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`, digits = 4)
-          )[2:3],
-          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[4], digits = 4)
+          )[2:4]
         ),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -226,8 +224,8 @@ test_that("formatMinWidth in parFixed", {
       list(
         Parameter = c("ka", "clearance", "", ""),
         Est. = formatMinWidth(fitFixedLabelCI$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:3], digits = 4), ""),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:3], digits = 4), ""),
+        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:4], digits = 4)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:4], digits = 4)),
         `Back-transformed(90%CI)` =
           c(
             formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[1], digits = 4),
@@ -236,8 +234,7 @@ test_that("formatMinWidth in parFixed", {
               formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = 4),
               formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = 4),
               formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = 4)
-            )[2:3],
-            formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[4], digits = 4)),
+            )[2:4]),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
       ),
