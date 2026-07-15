@@ -1,5 +1,11 @@
 # nlmixr2est (development version)
 
+- Validation: a bimodal-recovery test confirms `est="npag"` recovers a
+  two-subpopulation (fast/slow absorption) parameter distribution -- both modes
+  carry substantial weight and the recovered cluster means land near the
+  simulated truth -- the defining nonparametric capability a single-mode
+  parametric random-effect model cannot reproduce.
+
 - `est="npb"` (nonparametric Bayes) is now a usable engine: a truncated
   stick-breaking Dirichlet-process mixture sampled by a blocked
   Metropolis-within-Gibbs sampler (cluster assignments, stick weights, MH support
