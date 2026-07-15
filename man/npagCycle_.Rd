@@ -4,7 +4,14 @@
 \alias{npagCycle_}
 \title{Run the NPAG adaptive-grid cycle on a set-up inner problem}
 \usage{
-npagCycle_(lower, upper, points = 2028L, cycles = 100L, cores = 1L)
+npagCycle_(
+  lower,
+  upper,
+  points = 2028L,
+  cycles = 100L,
+  cores = 1L,
+  gammaOptimize = FALSE
+)
 }
 \arguments{
 \item{lower, upper}{Numeric vectors, the per-eta support-point box.}
@@ -14,11 +21,14 @@ npagCycle_(lower, upper, points = 2028L, cycles = 100L, cores = 1L)
 \item{cycles}{Maximum cycles.}
 
 \item{cores}{OpenMP threads.}
+
+\item{gammaOptimize}{Optimize the residual-error magnitude (gamma) each cycle
+(only valid for uncensored normal endpoints).}
 }
 \value{
 A list with \code{support} (support points, eta space; one per row),
-  \code{weights}, \code{objf} (log-likelihood), \code{cycles}, and
-  \code{converged}.
+  \code{weights}, \code{objf} (log-likelihood), \code{gamma}, \code{cycles},
+  and \code{converged}.
 }
 \description{
 Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs

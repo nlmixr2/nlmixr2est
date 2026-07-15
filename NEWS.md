@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): added the residual-error magnitude (gamma)
+  optimization inside the NPAG cycle (per-cycle up/down search).  Gamma scales the
+  residual variance inside the FOCEi inner likelihood, so censoring (BLQ/ALQ via
+  the M3 CDF/survival likelihood) and transform-both-sides are handled correctly
+  at the scaled error.  The objective uses a log-sum-exp row normalization for
+  numerical stability.  Generalized (non-normal) likelihoods are not supported and
+  are rejected with an error.  Note: the npag/npb objective is the nonparametric
+  marginal log-likelihood and is NOT comparable to NONMEM/FOCEI -2LL.
+
 - Nonparametric engines (cont.): assembled the NPAG adaptive-grid cycle (Yamada
   Alg 1) -- Sobol grid, Psi, Burke IPM, weight/QR condensation, adaptive-grid
   expansion (`npExpandGrid`), and the eps/F convergence controller.  Runs

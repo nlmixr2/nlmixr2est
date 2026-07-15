@@ -22,16 +22,27 @@ struct npagCtl {
   double thetaG = 1e-4; // objf-change tolerance that halves eps
   double thetaF = 1e-2; // successive-F tolerance for the exit test
   double thetaD = 1e-4; // minimum scaled distance for daughter points
+  bool gammaOptimize = false; // optimize the residual-error magnitude (gamma)
+  double gammaInit = 1.0;     // initial gamma multiplier
+  double gammaDelta = 0.1;    // initial gamma step fraction
 };
 
 // The NPAG adaptive-grid cycle (Yamada Alg 1).  Requires the FOCEi inner solve
 // already set up (vaeInnerSetup_ / foceiSetup_), so npBuildPsiCore can fill Psi.
 // Returns the final support points (eta space), their weights, the log-
 // likelihood, cycle count, and a converged flag.
+//
+// objf is the nonparametric marginal log-likelihood
+//   sum_i log(sum_k lambda_k p(y_i | support point k))
+// using the inner conditional-density constant convention (and, in the gamma
+// path, a per-subject log-sum-exp offset).  This is NOT the NONMEM/FOCEI OFV
+// convention, so the resulting -2LL is not directly comparable to nlmixr2's
+// FOCEI/SAEM/FOCE -2LL -- compare NPAG to NPAG (or to Pmetrics NPAG) instead.
 struct npagResult {
   arma::mat theta;   // nspp x neta support points (eta space)
   arma::vec lambda;  // nspp weights (sum 1)
   double objf;       // maximized log-likelihood
+  double gamma;      // final residual-error multiplier (1 if not optimized)
   int cycle;
   bool converged;
 };
@@ -40,30 +51,62 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
                                const npagCtl& ctl) {
   arma::mat theta = npSobolGrid(ctl.points, lower, upper);
   double eps = ctl.epsInit, f0 = -1e30, f1 = 0.0, lastObj = -1e30, objf = R_NegInf;
+  double gamma = ctl.gammaInit, gDelta = ctl.gammaDelta;
   int cycle = 0;
   bool converged = false;
   arma::vec lam;
+  arma::mat psi;
   for (;;) {
     cycle++;
     if (cycle > 1) {
       theta = npExpandGrid(theta, eps, lower, upper, ctl.thetaD);
     }
-    // estimation: Psi then Burke weights
-    arma::mat psi;
-    npBuildPsiCore(theta, ctl.cores, psi);
-    double obj0 = 0.0;
+    // estimation: Psi at the current gamma, then Burke weights.  The gamma path
+    // builds Psi through likInner0 (npBuildPsiCoreScaled) so censoring and
+    // transform-both-sides are handled at the scaled residual error.
+    double obj0 = 0.0, offset = 0.0;
+    if (ctl.gammaOptimize) {
+      npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset);
+    } else {
+      npBuildPsiCore(theta, ctl.cores, psi);
+    }
     lam = npBurke(psi, &obj0);
-    // condensation: weight threshold, then QR rank-revealing, then re-solve
+    // condensation: weight threshold, then QR rank-revealing
     arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
     theta = theta.rows(wk); psi = psi.cols(wk);
     arma::uvec qk = npCondenseQR(psi, ctl.qrTol);
     theta = theta.rows(qk); psi = psi.cols(qk);
-    lam = npBurke(psi, &objf);
-    // evaluation (Yamada Alg 1 convergence controller)
+    // re-solve the weights on the condensed grid
+    if (ctl.gammaOptimize) {
+      npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset);
+      double bObj = 0.0; lam = npBurke(psi, &bObj); objf = bObj + offset;
+    } else {
+      lam = npBurke(psi, &objf);
+    }
+    // optimizations: residual-error magnitude (gamma) up/down search on the
+    // condensed grid.  Objectives are offset-corrected (true log-likelihood).
+    if (ctl.gammaOptimize) {
+      double gUp = gamma * (1.0 + gDelta);
+      double gDn = gamma / (1.0 + gDelta);
+      arma::mat psiU, psiD;
+      double offU = 0.0, offD = 0.0, bU = 0.0, bD = 0.0;
+      npBuildPsiCoreScaled(theta, ctl.cores, gUp, psiU, &offU);
+      arma::vec lamU = npBurke(psiU, &bU); double objU = bU + offU;
+      npBuildPsiCoreScaled(theta, ctl.cores, gDn, psiD, &offD);
+      arma::vec lamD = npBurke(psiD, &bD); double objD = bD + offD;
+      if (objU > objf) { gamma = gUp; objf = objU; lam = lamU; psi = psiU; gDelta *= 4.0; }
+      if (objD > objf) { gamma = gDn; objf = objD; lam = lamD; psi = psiD; gDelta *= 4.0; }
+      gDelta *= 0.5;
+      if (gDelta <= 0.01) gDelta = 0.1;
+      if (gDelta > 1.0) gDelta = 1.0;         // cap the step so gamma cannot jump wildly
+      gamma = std::min(std::max(gamma, 1e-3), 1e3);  // keep gamma in a sane range
+    }
+    // evaluation (Yamada Alg 1 convergence controller); objf is the true
+    // (offset-corrected) log-likelihood in both paths.
     if (std::fabs(lastObj - objf) <= ctl.thetaG && eps > ctl.thetaE) {
       eps /= 2.0;
       if (eps <= ctl.thetaE) {
-        f1 = accu(log(psi * lam));
+        f1 = objf;
         if (std::fabs(f1 - f0) <= ctl.thetaF) { converged = true; break; }
         f0 = f1; eps = ctl.epsInit;
       }
@@ -72,8 +115,8 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     lastObj = objf;
   }
   npagResult r;
-  r.theta = theta; r.lambda = lam; r.objf = objf; r.cycle = cycle;
-  r.converged = converged;
+  r.theta = theta; r.lambda = lam; r.objf = objf; r.gamma = gamma;
+  r.cycle = cycle; r.converged = converged;
   return r;
 }
 
@@ -83,6 +126,21 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
 void npagOuter(Environment e) {
   stop("NPAG estimation ('est=\"npag\"') is not yet wired to the fit object "
        "(the adaptive-grid cycle is available via npagCycle_)");
+}
+
+//' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
+//' @param etaPoints support points, one per row
+//' @param cores threads
+//' @param gamma residual-error multiplier
+//' @return offset-corrected marginal log-likelihood
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma) {
+  arma::mat psi; double offset = 0.0;
+  npBuildPsiCoreScaled(etaPoints, cores, gamma, psi, &offset);
+  double b = 0.0; arma::vec lam = npBurke(psi, &b);
+  return b + offset;
 }
 
 //' Run the NPAG adaptive-grid cycle on a set-up inner problem
@@ -96,16 +154,19 @@ void npagOuter(Environment e) {
 //' @param points Initial Sobol grid size.
 //' @param cycles Maximum cycles.
 //' @param cores OpenMP threads.
+//' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
+//'   (only valid for uncensored normal endpoints).
 //' @return A list with \code{support} (support points, eta space; one per row),
-//'   \code{weights}, \code{objf} (log-likelihood), \code{cycles}, and
-//'   \code{converged}.
+//'   \code{weights}, \code{objf} (log-likelihood), \code{gamma}, \code{cycles},
+//'   and \code{converged}.
 //' @keywords internal
 //' @export
 // [[Rcpp::export]]
 Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points = 2028,
-                      int cycles = 100, int cores = 1) {
+                      int cycles = 100, int cores = 1, bool gammaOptimize = false) {
   npagCtl ctl;
   ctl.points = points; ctl.cycles = cycles; ctl.cores = cores;
+  ctl.gammaOptimize = gammaOptimize;
   npagResult r = npagRunCycle(lower, upper, ctl);
   Rcpp::NumericMatrix support(r.theta.n_rows, r.theta.n_cols);
   std::copy(r.theta.begin(), r.theta.end(), support.begin());
@@ -114,6 +175,7 @@ Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points = 2028,
     Rcpp::Named("support") = support,
     Rcpp::Named("weights") = weights,
     Rcpp::Named("objf") = r.objf,
+    Rcpp::Named("gamma") = r.gamma,
     Rcpp::Named("cycles") = r.cycle,
     Rcpp::Named("converged") = r.converged);
 }

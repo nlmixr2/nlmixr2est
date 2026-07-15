@@ -35,3 +35,16 @@ test_that("mu sugar methods are flagged as mu-referenced", {
                 info = paste0(.est, " is mu-referenced"))
   }
 })
+
+test_that("npag/npb reject generalized (non-normal) likelihoods", {
+  pois <- function() {
+    ini({ tlam <- log(2); eta.lam ~ 0.1 })
+    model({ lam <- exp(tlam + eta.lam); y ~ pois(lam) })
+  }
+  norm <- function() {
+    ini({ tv <- log(32); add.sd <- 0.7; eta.v ~ 0.1 })
+    model({ v <- exp(tv + eta.v); cp <- v; cp ~ add(add.sd) })
+  }
+  expect_error(.npAssertNormal(rxode2::assertRxUi(pois), "npag"), "generalized")
+  expect_error(.npAssertNormal(rxode2::assertRxUi(norm), "npag"), NA)  # normal ok
+})

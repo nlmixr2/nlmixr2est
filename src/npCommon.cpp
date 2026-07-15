@@ -51,7 +51,19 @@ arma::vec npBurke(const arma::mat& psiIn, double* obj) {
   double gap = std::fabs(sumLogW + sumLogPlam) / (1.0 + std::fabs(sumLogPlam));
   double mu = dot(lam, y) / (double)nPoint;
 
+  // Safety cap: the reference implementation has no iteration limit and relies on
+  // a well-conditioned psi.  A near-rank-deficient or extreme-dynamic-range psi
+  // (e.g. a runaway residual-error multiplier) can stall the Newton iteration, so
+  // bail out with the current iterate rather than loop forever.
+  const int maxIter = 10000;
+  int iter = 0;
   while (mu > eps || normR > eps || gap > eps) {
+    if (++iter > maxIter) {
+      Rcpp::warning("npBurke: interior-point solver hit the iteration cap (%d) "
+                    "without converging (mu=%.2e, normR=%.2e, gap=%.2e); using the "
+                    "current iterate", maxIter, mu, normR, gap);
+      break;
+    }
     double smu = sig * mu;
     vec inner = lam / y;              // n_point
     vec wPlam = plam / w;            // n_sub

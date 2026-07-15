@@ -1378,9 +1378,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npObjAtGamma_
+double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma);
+RcppExport SEXP _nlmixr2est_npObjAtGamma_(SEXP etaPointsSEXP, SEXP coresSEXP, SEXP gammaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type etaPoints(etaPointsSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    rcpp_result_gen = Rcpp::wrap(npObjAtGamma_(etaPoints, cores, gamma));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npagCycle_
-Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points, int cycles, int cores);
-RcppExport SEXP _nlmixr2est_npagCycle_(SEXP lowerSEXP, SEXP upperSEXP, SEXP pointsSEXP, SEXP cyclesSEXP, SEXP coresSEXP) {
+Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points, int cycles, int cores, bool gammaOptimize);
+RcppExport SEXP _nlmixr2est_npagCycle_(SEXP lowerSEXP, SEXP upperSEXP, SEXP pointsSEXP, SEXP cyclesSEXP, SEXP coresSEXP, SEXP gammaOptimizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1389,7 +1402,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type points(pointsSEXP);
     Rcpp::traits::input_parameter< int >::type cycles(cyclesSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(npagCycle_(lower, upper, points, cycles, cores));
+    Rcpp::traits::input_parameter< bool >::type gammaOptimize(gammaOptimizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(npagCycle_(lower, upper, points, cycles, cores, gammaOptimize));
     return rcpp_result_gen;
 END_RCPP
 }

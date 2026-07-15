@@ -20,6 +20,11 @@
 #' plumbing for the nonparametric adaptive grid engine.  The nonparametric
 #' support-point knobs are added in a later milestone.
 #'
+#' Note: the npag objective is the nonparametric marginal log-likelihood and uses
+#' a different constant convention than NONMEM/FOCEI, so its `-2LL` is NOT
+#' comparable to nlmixr2's FOCEI/SAEM/FOCE `-2LL`.  Compare npag runs to each
+#' other or to Pmetrics NPAG.
+#'
 #' @inheritParams impmapControl
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.

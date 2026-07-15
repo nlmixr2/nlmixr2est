@@ -399,6 +399,17 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+#' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
+#' @param etaPoints support points, one per row
+#' @param cores threads
+#' @param gamma residual-error multiplier
+#' @return offset-corrected marginal log-likelihood
+#' @keywords internal
+#' @export
+npObjAtGamma_ <- function(etaPoints, cores, gamma) {
+    .Call(`_nlmixr2est_npObjAtGamma_`, etaPoints, cores, gamma)
+}
+
 #' Run the NPAG adaptive-grid cycle on a set-up inner problem
 #'
 #' Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs
@@ -410,13 +421,15 @@ nlmAdjustCov <- function(CovIn, theta) {
 #' @param points Initial Sobol grid size.
 #' @param cycles Maximum cycles.
 #' @param cores OpenMP threads.
+#' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
+#'   (only valid for uncensored normal endpoints).
 #' @return A list with \code{support} (support points, eta space; one per row),
-#'   \code{weights}, \code{objf} (log-likelihood), \code{cycles}, and
-#'   \code{converged}.
+#'   \code{weights}, \code{objf} (log-likelihood), \code{gamma}, \code{cycles},
+#'   and \code{converged}.
 #' @keywords internal
 #' @export
-npagCycle_ <- function(lower, upper, points = 2028L, cycles = 100L, cores = 1L) {
-    .Call(`_nlmixr2est_npagCycle_`, lower, upper, points, cycles, cores)
+npagCycle_ <- function(lower, upper, points = 2028L, cycles = 100L, cores = 1L, gammaOptimize = FALSE) {
+    .Call(`_nlmixr2est_npagCycle_`, lower, upper, points, cycles, cores, gammaOptimize)
 }
 
 #' Burke interior-point weight solver (nonparametric maximum likelihood)

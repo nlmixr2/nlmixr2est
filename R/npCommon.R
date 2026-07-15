@@ -9,10 +9,31 @@
 # lin-vs-irls covariate M-step itself is implemented in a later milestone; here
 # the sugar records the intent and selects the same driver.
 
+#' Reject generalized (non-normal) likelihoods for the nonparametric engines.
+#' The npag/npb Psi is the conditional density from the FOCEi inner problem; the
+#' residual-error (gamma) handling and the -2LL only make sense for normally-
+#' distributed endpoints.  Censoring (BLQ/ALQ) and transform-both-sides stay
+#' "norm" and are allowed; discrete / user-`ll()` endpoints are not.
+#' @noRd
+.npAssertNormal <- function(ui, est) {
+  .dist <- tryCatch(ui$predDfFocei$distribution, error = function(e) NULL)
+  if (is.null(.dist)) {
+    .dist <- tryCatch(ui$predDf$distribution, error = function(e) NULL)
+  }
+  if (!is.null(.dist) && length(.dist) > 0L && any(as.character(.dist) != "norm")) {
+    stop("the '", est, "' estimation routine does not support generalized ",
+         "(non-normal) likelihoods; only normally-distributed endpoints -- ",
+         "optionally with censoring (BLQ/ALQ) or transform-both-sides -- are ",
+         "supported", call. = FALSE)
+  }
+  invisible()
+}
+
 #' @noRd
 .npEstCore <- function(env, est, muModel = NULL, ...) {
   .ui <- env$ui
   .what <- paste0(" for the estimation routine '", est, "'")
+  .npAssertNormal(.ui, est)
   if (!rxode2hasLlik()) {
     rxode2::assertRxUiTransformNormal(.ui, .what, .var.name = .ui$modelName)
   }

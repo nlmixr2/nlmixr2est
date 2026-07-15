@@ -453,6 +453,11 @@ struct focei_options {
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
   bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
   bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
+  double npResidScale = 1.0; // npag/npb residual-error magnitude multiplier (gamma):
+                             // likInner0 scales the residual variance r by this^2,
+                             // so the conditional likelihood (incl. censoring via
+                             // doCensNormal1 and transform-both-sides) is evaluated
+                             // at the scaled error.  1.0 (no-op) for every other method.
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -1594,6 +1599,12 @@ double likInner0(double *eta, int id) {
                 op_focei.foceType == 0) {
               r = rPopVec(k);
             }
+            // npag/npb residual-error magnitude (gamma): scale the variance so the
+            // downstream density AND doCensNormal1 (censoring) see the scaled error.
+            // npResidScale is 1.0 for every other method (bit-identical).
+            if (op_focei.npResidScale != 1.0) {
+              r *= op_focei.npResidScale * op_focei.npResidScale;
+            }
             if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
               r = 1.0;
             }
@@ -1637,7 +1648,10 @@ double likInner0(double *eta, int id) {
               if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
                 lnr = _safe_log(r);
               } else {
-                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1]);
+                // npResidScale (npag/npb gamma) scales the log-variance to match
+                // the scaled r used in the err^2/r term; 1.0 for every other method.
+                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1] *
+                                op_focei.npResidScale * op_focei.npResidScale);
               }
             }
             else lnr = 0;
@@ -9983,6 +9997,54 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
   if (doParallel) {
     _innerParallel.store(0, std::memory_order_release);
     sortIds(rx, 0);
+  }
+}
+
+// Build Psi at a residual-error multiplier gamma (op_focei.npResidScale), reusing
+// likInner0's FULL conditional likelihood -- so censoring (doCensNormal1) and
+// transform-both-sides are evaluated correctly at the scaled error, not just the
+// plain Gaussian case.  Row-normalized by the per-subject max (log-sum-exp) so
+// exp() never underflows a whole subject row to zero (which would break Burke's
+// Cholesky); Burke's weights are invariant to per-row scaling, and the removed
+// row maxima are returned in *offset so the true log-likelihood is
+// burke_objf + offset.
+void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
+                          arma::mat& psi, double* offset) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  arma::mat lp(nsub, nPoint);
+  double savedScale = op_focei.npResidScale;
+  op_focei.npResidScale = gamma;   // likInner0 scales r by gamma^2 (incl. cens/tbs)
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      lp(base, k) = npEvalCondLik(&eta[0], base);
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  op_focei.npResidScale = savedScale;
+  arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
+  if (offset != nullptr) *offset = arma::accu(m);
+  psi.set_size(nsub, nPoint);
+  for (int k = 0; k < nPoint; ++k) {
+    for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
   }
 }
 
