@@ -77,20 +77,21 @@ nmTest({
     expect_true("Analytic Gradient" %in% fit$parHistData$type)
   })
 
-  test_that("iteration print shows plain mu thetas only in the mu rows", {
-    out <- capture.output({
+  test_that("iteration print shows plain mu thetas as standard columns (no mu rows)", {
+    # mu thetas are regression-updated but print as standard scale.h columns in
+    # natural theta order; the bolt-on `|   mu|` row was removed (the full
+    # layout/parHist checks live in test-mu-parhist.R)
+    out <- withr::with_options(list(width = 200), capture.output({
       nlmixr2est::nlmixr(.ocmt, theo_sd, "ifocei",
                          ifoceiControl(print = 1, maxOuterIterations = 2,
                                           covMethod = "", calcTables = FALSE))
-    })
-    muValueRows <- grep("^\\|   mu\\|.*tcl:\\s*[-0-9]", out, value = TRUE)
-    expect_true(length(muValueRows) > 0)
-    expect_true(all(grepl("tka:\\s*[-0-9]", muValueRows)))
-    expect_true(all(grepl("tv:\\s*[-0-9]", muValueRows)))
+    }))
+    expect_false(any(grepl("^\\|   mu\\|", out)))
     headerRows <- grep("^\\|    #\\|", out, value = TRUE)
     expect_true(length(headerRows) > 0)
-    expect_false(any(grepl("\\btka\\b|\\btcl\\b|\\btv\\b", headerRows)))
-    expect_true(any(grepl("add\\.sd", headerRows)))
+    for (.p in c("\\btka\\b", "\\btcl\\b", "\\btv\\b", "add\\.sd")) {
+      expect_true(any(grepl(.p, headerRows)))
+    }
   })
 
   .ocmtBnd <- function() {

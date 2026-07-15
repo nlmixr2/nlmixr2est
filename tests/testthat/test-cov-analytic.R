@@ -325,10 +325,16 @@ nmTest({
     }
   })
 
-  test_that("estimated boxCox lambda: analytic cov (FOCEI/FOCE/foce+) matches the s estimator", {
+  test_that("estimated boxCox lambda: analytic cov (FOCEI/FOCE/foce+) matches the r estimator", {
     skip_on_cran()
     skip_on_ci()
     skip_if_not_installed("nlmixr2data")
+    # compare against covMethod="r" (the FD observed information, the same estimand as the
+    # analytic R).  covMethod="s" was used historically only because the full-cov install
+    # mislabeled it: it always installed the Hessian inverse.  Now that "s" is the true full
+    # OPG solve(Sfull), it legitimately disagrees with observed information on 12 subjects
+    # (see test-cov-focei.R), so it is not a validation target here.  sigdig=6 keeps the FD
+    # R positive-definite enough to match within FD tolerance.
     mBox <- function() {
       ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.05
             add.sd <- 0.7; lambda <- c(-2, 0.9, 3) })
@@ -338,12 +344,12 @@ nmTest({
     }
     d <- nlmixr2data::theo_sd
     chk <- function(est, ctlExtra = list()) {
-      ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE), ctlExtra))
-      ctlS <- do.call(foceiControl, c(list(print = 0L, covMethod = "s", covFull = TRUE, fast = TRUE), ctlExtra))
+      ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
+      ctlR <- do.call(foceiControl, c(list(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       fitA <- suppressMessages(nlmixr2(mBox, d, est, ctlA))
-      fitS <- suppressMessages(nlmixr2(mBox, d, est, ctlS))
+      fitR <- suppressWarnings(suppressMessages(nlmixr2(mBox, d, est, ctlR)))
       expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
-      seA <- sqrt(diag(fitA$cov)); seS <- sqrt(diag(fitS$cov))
+      seA <- sqrt(diag(fitA$cov)); seS <- sqrt(diag(fitR$cov))
       nm <- c("tka", "tcl", "tv", "add.sd", "lambda")     # theta/sigma/lambda block (DV-affected)
       expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
       expect_equal(unname(seA[nm]), unname(seS[nm]), tolerance = 0.05)
