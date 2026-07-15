@@ -4,9 +4,17 @@
 \alias{npagControl}
 \title{Control for the npag (nonparametric adaptive grid) method}
 \usage{
-npagControl(...)
+npagControl(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...)
 }
 \arguments{
+\item{points}{Initial Sobol grid size (support points).}
+
+\item{cycles}{Maximum adaptive-grid cycles.}
+
+\item{gammaOptimize}{Optimize the residual-error magnitude (gamma) each cycle
+(only valid for normal endpoints; censoring and transform-both-sides are
+supported).}
+
 \item{...}{Parameters passed to [impmapControl()].}
 }
 \value{

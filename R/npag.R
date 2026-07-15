@@ -26,6 +26,11 @@
 #' other or to Pmetrics NPAG.
 #'
 #' @inheritParams impmapControl
+#' @param points Initial Sobol grid size (support points).
+#' @param cycles Maximum adaptive-grid cycles.
+#' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
+#'   (only valid for normal endpoints; censoring and transform-both-sides are
+#'   supported).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -33,17 +38,19 @@
 #' @examples
 #'
 #' npagControl()
-npagControl <- function(...) {
+npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
+  .ctl$points <- as.integer(points)
+  .ctl$cycles <- as.integer(cycles)
+  .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.npag <- function(control) {
-  .ctl <- getValidNlmixrCtl.impmap(control)
-  .ctl$est <- "npag"
+  .ctl <- .npValidCtl(control, "npag")
   .ctl
 }
 

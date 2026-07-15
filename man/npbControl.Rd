@@ -4,9 +4,15 @@
 \alias{npbControl}
 \title{Control for the npb (nonparametric Bayes) method}
 \usage{
-npbControl(...)
+npbControl(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...)
 }
 \arguments{
+\item{points}{Initial Sobol grid size (support points).}
+
+\item{cycles}{Maximum cycles.}
+
+\item{gammaOptimize}{Optimize the residual-error magnitude (gamma).}
+
 \item{...}{Parameters passed to [impmapControl()].}
 }
 \value{

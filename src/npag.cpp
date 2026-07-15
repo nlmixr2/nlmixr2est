@@ -6,6 +6,7 @@
 #include <RcppArmadillo.h>
 #include "np.h"
 #include "npCommon.h"
+#include "imp.h"   // M-step helpers (impSetEta/impSetOmega/impMapPass/...) reused for finalization
 
 using namespace Rcpp;
 
@@ -41,6 +42,7 @@ struct npagCtl {
 struct npagResult {
   arma::mat theta;   // nspp x neta support points (eta space)
   arma::vec lambda;  // nspp weights (sum 1)
+  arma::mat psi;     // nsub x nspp final conditional-likelihood matrix
   double objf;       // maximized log-likelihood
   double gamma;      // final residual-error multiplier (1 if not optimized)
   int cycle;
@@ -115,17 +117,95 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     lastObj = objf;
   }
   npagResult r;
-  r.theta = theta; r.lambda = lam; r.objf = objf; r.gamma = gamma;
+  r.theta = theta; r.lambda = lam; r.psi = psi; r.objf = objf; r.gamma = gamma;
   r.cycle = cycle; r.converged = converged;
   return r;
 }
 
-// M4: the driver is exercised in isolation through npagCycle_ (below).  Wiring it
-// into the full nlmixr2 fit object (nlmixr2EnvSetup, tables, covariance) is a
-// later milestone; until then est="npag" reports that.
+// est="npag" driver.  Runs the adaptive-grid cycle, summarizes the discrete
+// mixing distribution into a population mean (mu-referenced theta shift) +
+// covariance (Omega) and per-subject posterior-mean etas, pushes them into the
+// FOCEi state via the shared imp M-step helpers, builds the fit environment
+// (impMapPass -> foceiOuterFinal), then overrides the objective with the
+// nonparametric -2LL and attaches the support-point distribution.  Called from
+// foceiFitCpp_ in place of foceiOuter.
 void npagOuter(Environment e) {
-  stop("NPAG estimation ('est=\"npag\"') is not yet wired to the fit object "
-       "(the adaptive-grid cycle is available via npagCycle_)");
+  List control = e["control"];
+  arma::vec lower = as<arma::vec>(control["npBoxLower"]);
+  arma::vec upper = as<arma::vec>(control["npBoxUpper"]);
+  npagCtl ctl;
+  ctl.points = as<int>(control["npPoints"]);
+  ctl.cycles = as<int>(control["npCycles"]);
+  ctl.cores = impCores();
+  ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
+  // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0
+  // path; likInner0 still evaluates the Omega-prior term (omegaInv * eta), so
+  // rebuild the inverse from the initial Omega before the cycle calls likInner0.
+  // (npag ignores the prior -- it sums llikObs -- but likInner0 always forms it.)
+  {
+    arma::mat Om0;
+    impGetOmega(Om0);
+    if ((int)Om0.n_rows == impNeta() && Om0.n_rows > 0) {
+      impSetOmega(Om0, impDiagXform());
+    }
+  }
+  npagResult r;
+  try {
+    r = npagRunCycle(lower, upper, ctl);
+  } catch (const std::exception& ex) {
+    Rcpp::stop(std::string("npag cycle failed: ") + ex.what());
+  }
+
+  int nsub = impNsub();
+  int neta = impNeta();
+  int nspp = (int)r.theta.n_rows;
+
+  // per-subject posterior-mean eta: eta_i = sum_k w_ik phi_k,
+  // w_ik = lambda_k psi(i,k) / sum_j lambda_j psi(i,j)  (row scaling of psi cancels)
+  arma::mat postEta(nsub, neta, arma::fill::zeros);
+  for (int i = 0; i < nsub; ++i) {
+    arma::rowvec num = r.lambda.t() % r.psi.row(i);
+    double den = arma::accu(num);
+    arma::rowvec w = (den > 0.0) ? (num / den)
+      : arma::rowvec(nspp, arma::fill::value(1.0 / (double)nspp));
+    postEta.row(i) = w * r.theta;   // (1 x nspp)(nspp x neta)
+  }
+  // population summary: weighted mean + covariance of the support points
+  arma::rowvec meanEta = r.lambda.t() * r.theta;   // 1 x neta
+  arma::mat Omega(neta, neta, arma::fill::zeros);
+  for (int k = 0; k < nspp; ++k) {
+    arma::rowvec d = r.theta.row(k) - meanEta;
+    Omega += r.lambda[k] * (d.t() * d);
+  }
+  // push the population mean into the mu-referenced thetas (mean-shift), then
+  // re-center the per-subject etas around it so individual params are unchanged.
+  for (int i = 0; i < nsub; ++i) { arma::vec ev = postEta.row(i).t(); impSetEta(i, ev); }
+  impMuInterceptStep();      // shifts each simple mu theta by the mean eta
+  impUpdateMuThetas();       // covariate mu-groups (no-op without covariates)
+  for (int i = 0; i < nsub; ++i) {
+    arma::vec ev = (postEta.row(i) - meanEta).t();
+    impSetEta(i, ev);
+  }
+  // Install only the diagonal (variances): the model's Omega parameterization is
+  // typically diagonal, and passing a full covariance would create off-diagonal
+  // free parameters that do not exist in the model (parameter-count mismatch).
+  // The full support-point covariance is still reported as e$npagOmega.
+  impSetOmega(arma::diagmat(Omega.diag()), impDiagXform());
+  impSyncInitParToFullTheta();
+  impMapPass(e);             // posthoc pass -> predictions/tables in e
+
+  // the reported objective is the nonparametric -2LL, not the FOCEi posthoc OFV
+  e["objective"] = -2.0 * r.objf;
+  // nonparametric outputs (support-point distribution + trace)
+  e["npagSupport"] = wrap(r.theta);        // nspp x neta (eta space)
+  e["npagWeights"] = wrap(r.lambda);
+  e["npagPosteriorEta"] = wrap(postEta);   // nsub x neta
+  e["npagOmega"] = wrap(Omega);
+  e["npagGamma"] = r.gamma;
+  e["npagNspp"] = nspp;
+  e["npagCycles"] = r.cycle;
+  e["npagConverged"] = r.converged;
+  e["npagLogLik"] = r.objf;
 }
 
 //' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma

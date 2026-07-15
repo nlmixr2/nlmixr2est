@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- `est="npag"` is now a usable engine: it returns a standard `nlmixr2FitData`
+  object with the nonparametric population summary (mean + variance mapped to the
+  reported `theta`/`Omega`), per-subject posterior-mean etas, and the discrete
+  support-point distribution attached to the fit (`$env$npagSupport`,
+  `npagWeights`, `npagPosteriorEta`, `npagGamma`, `npagNspp`).  `npagControl()`
+  exposes `points`, `cycles`, and `gammaOptimize`.  (The reported `Omega` uses the
+  support-point variances; correlated-Omega models and the global-optimality
+  certificate are follow-ups.)
+
 - Nonparametric engines (cont.): added the residual-error magnitude (gamma)
   optimization inside the NPAG cycle (per-cycle up/down search).  Gamma scales the
   residual variance inside the FOCEi inner likelihood, so censoring (BLQ/ALQ via
