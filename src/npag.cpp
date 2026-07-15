@@ -28,6 +28,8 @@ struct npagCtl {
   double gammaDelta = 0.1;    // initial gamma step fraction
   bool trace = false;         // record the per-cycle parameter history (scale.h)
   arma::mat omModel;          // model Omega sparsity (for the trace push mask)
+  std::vector<int> residOptIdx; // fullTheta indices of transform/ar residual
+                                // params optimized by per-cycle coordinate search
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
@@ -80,6 +82,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   bool converged = false;
   arma::vec lam;
   arma::mat psi;
+  std::vector<double> residStep(ctl.residOptIdx.size(), 0.25); // per-param coord step
   for (;;) {
     cycle++;
     if (cycle > 1) {
@@ -145,6 +148,34 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
       if (gDelta > 1.0) gDelta = 1.0;         // cap the step so gamma cannot jump wildly
       gamma = std::min(std::max(gamma, 1e-3), 1e3);  // keep gamma in a sane range
     }
+    // residual transform/autocorrelation parameters (boxCox/yeoJohnson lambda, ar
+    // correlation) are not variance scales, so gamma cannot represent them.
+    // Estimate each with a per-cycle coordinate search on its theta value:
+    // perturb, rebuild Psi through likInner0 (so the transform/AR structure is
+    // re-evaluated), re-solve the weights, and keep the step if the objective
+    // improves.  The optimized theta persists in fullTheta into finalization.
+    if (ctl.gammaOptimize && !ctl.residOptIdx.empty()) {
+      for (size_t s = 0; s < ctl.residOptIdx.size(); ++s) {
+        int idx = ctl.residOptIdx[s];
+        double base = impGetFullThetaVal(idx);
+        double step = residStep[s];
+        bool improved = false;
+        for (int dir = 0; dir < 2 && !improved; ++dir) {
+          double cand = base + (dir == 0 ? step : -step);
+          impSetThetaAll(idx, cand);
+          arma::mat psiC; arma::vec lamC; double bC = 0.0, offC = 0.0;
+          npBuildPsiCoreScaled(theta, ctl.cores, gamma, psiC, &offC);
+          lamC = npBurke(psiC, &bC);
+          double objC = bC + offC;
+          if (std::isfinite(objC) && objC > objf) {
+            objf = objC; psi = psiC; lam = lamC; base = cand; improved = true;
+            residStep[s] = std::min(step * 1.5, 1.0);
+          }
+        }
+        if (!improved) residStep[s] = std::max(step * 0.5, 1e-4);
+        impSetThetaAll(idx, base);   // leave fullTheta at the best value found
+      }
+    }
     // per-cycle parameter-history row (shared scale.h printer).  Pushing Omega to
     // op_focei is safe here -- npag sums llikObs, which does not use omegaInv --
     // so impGetEstPar reflects the current support-point variance while the
@@ -199,6 +230,10 @@ void npagOuter(Environment e) {
   if (control.containsElementNamed("npResidScaleIdx")) {
     IntegerVector ri = control["npResidScaleIdx"];
     residScaleIdx.assign(ri.begin(), ri.end());
+  }
+  if (control.containsElementNamed("npResidOptIdx")) {
+    IntegerVector ro = control["npResidOptIdx"];
+    ctl.residOptIdx.assign(ro.begin(), ro.end());
   }
   // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0
   // path; likInner0 still evaluates the Omega-prior term (omegaInv * eta), so

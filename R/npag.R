@@ -28,9 +28,12 @@
 #' @inheritParams impmapControl
 #' @param points Initial Sobol grid size (support points).
 #' @param cycles Maximum adaptive-grid cycles.
-#' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
-#'   (only valid for normal endpoints; censoring and transform-both-sides are
-#'   supported).
+#' @param gammaOptimize Optimize the residual-error model each cycle: the overall
+#'   magnitude via the assay-error multiplier (gamma, folded back into the
+#'   variance-scale coefficients such as `add`/`prop`), plus any transform
+#'   (`boxCox`/`yeoJohnson` lambda) or autocorrelation (`ar`) parameters via a
+#'   derivative-free coordinate search.  Fixed residual parameters are held.  Only
+#'   valid for normal endpoints; censoring and transform-both-sides are supported.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export

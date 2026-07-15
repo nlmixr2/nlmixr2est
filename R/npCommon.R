@@ -117,6 +117,13 @@
   .errScale <- !is.na(.thOrd$err) &
     !(as.character(.thOrd$err) %in% c("boxCox", "yeoJohnson", "ar", "pw"))
   .control$npResidScaleIdx <- as.integer(which(.errScale) - 1L)
+  # transform / autocorrelation residual params (boxCox/yeoJohnson lambda, ar
+  # correlation): gamma cannot represent these, so npag optimizes them directly
+  # with a per-cycle coordinate search on the theta value.  Fixed ones are held.
+  .errOpt <- !is.na(.thOrd$err) &
+    (as.character(.thOrd$err) %in% c("boxCox", "yeoJohnson", "ar")) &
+    !(!is.na(.thOrd$fix) & .thOrd$fix)
+  .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
   assign("control", .control, envir = ui)
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
   .foceiFamilyReturn(env, ui, ..., est = .est)

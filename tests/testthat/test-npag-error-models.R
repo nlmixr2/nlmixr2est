@@ -68,6 +68,38 @@ nmTest({
     expect_true(is.finite(as.numeric(f$objf)))
   })
 
+  test_that("est='npag' estimates the boxCox transform lambda", {
+    ## gamma cannot represent a transform shape parameter, so npag optimizes lambda
+    ## directly.  Start lambda deliberately high (1.5); it should move well away
+    ## toward the data-supported value (FOCEI ~ 0.44 on theo).
+    .m <- function() {
+      ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.7; lambda<-1.5
+        eta.ka~0.3; eta.ke~0.1 })
+      model({ ka<-exp(tka+eta.ka); v<-exp(tv); ke<-exp(tke+eta.ke)
+        d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
+        cp<-center/v; cp~add(add.sd)+boxCox(lambda) })
+    }
+    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
+                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE))
+    expect_true(f$parFixedDf["lambda", "Estimate"] < 0.9)   # moved far from ini 1.5
+    expect_equal(unname(f$parFixedDf["lambda", "Estimate"]), 0.44, tolerance = 0.2)
+  })
+
+  test_that("est='npag' estimates the AR(1) correlation", {
+    ## theo has essentially no residual autocorrelation; started at 0.7 the AR
+    ## coordinate search should drive ar1.cor back toward 0.
+    .m <- function() {
+      ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.7; ar1.cor<-0.7
+        eta.ka~0.3; eta.ke~0.1 })
+      model({ ka<-exp(tka+eta.ka); v<-exp(tv); ke<-exp(tke+eta.ke)
+        d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
+        cp<-center/v; cp~add(add.sd)+ar(ar1.cor) })
+    }
+    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
+                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE))
+    expect_true(f$parFixedDf["ar1.cor", "Estimate"] < 0.2)  # moved from ini 0.7 -> ~0
+  })
+
   test_that("est='npag' fits a boxCox transform-both-sides model (Jacobian)", {
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.7; lambda<-0.5

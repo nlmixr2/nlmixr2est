@@ -1,5 +1,13 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): with `gammaOptimize=TRUE`, `npag` now also
+  estimates residual parameters that the variance multiplier (gamma) cannot
+  represent -- the transform shape (`boxCox`/`yeoJohnson` lambda) and the
+  autocorrelation (`ar`) -- with a per-cycle derivative-free coordinate search on
+  the parameter value.  On simulated AR(1) data (true `ar1.cor` = 0.6) npag
+  recovers ~0.54 from a 0 start, where gradient FOCEI stalls at the `ar1.cor` = 0
+  saddle; boxCox lambda recovers to ~0.46 (FOCEI ~0.44 on theo).
+
 - Nonparametric engines (cont.): with `gammaOptimize=TRUE` the fitted `npag`
   assay-error multiplier (gamma) is now folded back into the variance-scale
   residual parameters (add/prop/lnorm/...), so the reported residual (e.g.
