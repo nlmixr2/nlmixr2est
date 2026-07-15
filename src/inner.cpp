@@ -9480,16 +9480,12 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.c1            = op_focei.c1;
     op_focei.scale.c2            = op_focei.c2;
     op_focei.scale.simple        = 0;
-    // focei has a meaningful per-iteration objective function, so show the
-    // "Function Val." column.  op_focei is a zero-initialized global and
-    // focei configures its scaling struct by hand here (it does not call
-    // scaleSetup(), which is where showOfv would otherwise default to 1),
-    // so this must be set explicitly — otherwise the column, its header,
-    // and the gradient-row label that lives in the same slot are dropped
-    // for every outer optimizer (e.g. outerOpt="bobyqa").
+    // focei configures its scaling struct by hand (no scaleSetup()), so set
+    // showOfv explicitly or the "Function Val." column and gradient-row label
+    // are dropped for every outer optimizer.
     op_focei.scale.showOfv       = 1;
-    // focei's richer Key suffix — gradient-method legend and omega note.
-    // Appended after "X: Back-transformed parameters; " by scalePrintHeader.
+    // focei's richer Key suffix (gradient-method legend and omega note),
+    // appended after "X: Back-transformed parameters; " by scalePrintHeader.
     op_focei.scale.keyExtra = muPrintActive() ?
       "G: Gill difference gradient approximation\n"
       "F: Forward difference gradient approximation\n"
