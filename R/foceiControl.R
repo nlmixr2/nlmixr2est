@@ -78,19 +78,14 @@
 #'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
 #'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
 #'
-#' @param covFull controls the shape of \code{fit$cov}.  \code{TRUE} (default)
-#'     installs the full theta + residual sigma + Omega covariance -- assembled
-#'     analytically for \code{covMethod="analytic"}, or by central finite differences
-#'     of the objective over the same parameter set for the finite-difference methods
-#'     (perturbing Omega on the variance-covariance scale, with the per-parameter
-#'     Gill (1983) step and the 5-point/4-point stencils that \code{foceiCalcR} uses).
-#'     For the finite-difference methods the full covariance follows \code{covMethod}:
-#'     \code{"r,s"} is the true full sandwich \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)},
-#'     \code{"s"} is \code{solve(Sfull)}, and \code{"r"} is \code{solve(Rfull)}.
-#'     \code{FALSE} installs only the structural-theta block (the NONMEM-matched theta
-#'     covariance, matching the historical finite-difference \code{fit$cov} shape for
-#'     backwards compatibility).  The theta covariance is close either way, but the full
-#'     sandwich's theta block is not identical to the Omega-fixed theta-only sandwich.
+#' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
+#'     full theta + residual sigma + Omega covariance (assembled analytically for
+#'     \code{covMethod="analytic"}, or by central finite differences over the same
+#'     parameter set otherwise).  For the finite-difference methods it follows
+#'     \code{covMethod}: \code{"r,s"} is the full sandwich
+#'     \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)}, \code{"s"} is
+#'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
+#'     installs only the structural-theta block (the historical shape).
 #'
 #' @param fast When \code{TRUE}, compute the outer (population) gradient
 #'     analytically from Almquist (2015) sensitivity equations instead of by
@@ -282,27 +277,17 @@
 #'     individual Hessian is reset when ETAs are reset using the
 #'     option \code{resetEtaP}.
 #'
-#' @param muModel Selects the mu-referenced-FOCEI-family regression variant
-#'     for mu-referenced thetas/etas: \code{"none"} (default, ordinary
-#'     FOCEI); \code{"lin"} (\code{mfocei}/\code{mfoce}/\code{magq}/
-#'     \code{mlaplace}: mu-referenced population thetas -- and their
-#'     covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
-#'     excluded from the outer optimizer and re-derived in C++ by
-#'     closed-form OLS regression of each subject's back-calculated value
-#'     on the covariate(s) (intercept-only for a covariate-free pair),
-#'     residual becomes that subject's eta; repeats until convergence, see
-#'     \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
-#'     (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}:
-#'     same mechanism, reweighted by inner-optimization curvature).
-#'     Only the outer gradients for non-mu-referenced parameters (including
-#'     residual-error thetas and all omegas) are then calculated.
-#'
-#'     Bounded mu-referenced parameters (population thetas and covariate
-#'     coefficients) are regression-updated too: the update is clamped to
-#'     the bounds (box-constrained least squares, see
-#'     \code{muModelClampRetries}), and any parameter that was clamped is
-#'     reported once as a fit note. A user-fixed (\code{fix()}) mu
-#'     population theta is never regression-updated.
+#' @param muModel Mu-referenced-FOCEI-family regression variant: \code{"none"}
+#'     (default, ordinary FOCEI); \code{"lin"}
+#'     (\code{mfocei}/\code{mfoce}/\code{magq}/\code{mlaplace}) profiles
+#'     mu-referenced population thetas and covariate coefficients out of the
+#'     outer optimizer via closed-form OLS regression of each subject's
+#'     back-calculated value on the covariates (\code{muModelTol}/
+#'     \code{muModelMaxCycles}); \code{"irls"}
+#'     (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}) reweights that
+#'     by inner-optimization curvature.  Bounded mu parameters are
+#'     regression-updated with a clamped step (\code{muModelClampRetries});
+#'     a user-fixed (\code{fix()}) mu theta is never updated.
 #'
 #' @param muRefCovAlg When `TRUE` (default), algebraic expressions that can
 #'     be mu-referenced are internally rewritten as mu-referenced
