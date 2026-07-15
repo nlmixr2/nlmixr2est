@@ -34,7 +34,8 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 // set e$objective = -2*objf.  Returns the (full) support-point covariance Omega
 // so the caller can attach it.  Implemented in npag.cpp.
 arma::mat npFinalizeFit(Rcpp::Environment e, const arma::mat& support,
-                        const arma::vec& weights, const arma::mat& postEta, double objf);
+                        const arma::vec& weights, const arma::mat& postEta,
+                        double objf, const arma::mat& omModel);
 
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).

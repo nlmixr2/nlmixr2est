@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): `est="npag"` now reports the global-optimality
+  certificate D(F) (`$env$npagDF`; ~0 certifies the nonparametric maximum
+  likelihood), records a per-cycle parameter-history trace through the shared
+  scale.h printer (`$parHistData`), and installs the reported `Omega` masked by
+  the model's sparsity so correlated-eta models keep their off-diagonal terms.
+  AR(1) and other transform-both-sides / structured residual models are supported
+  (the residual enters as `f + sqrt(r)*eps`, so any structure carried in `r` flows
+  through the conditional likelihood).
+
 - Validation: a bimodal-recovery test confirms `est="npag"` recovers a
   two-subpopulation (fast/slow absorption) parameter distribution -- both modes
   carry substantial weight and the recovered cluster means land near the

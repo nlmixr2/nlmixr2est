@@ -26,7 +26,21 @@ struct npagCtl {
   bool gammaOptimize = false; // optimize the residual-error magnitude (gamma)
   double gammaInit = 1.0;     // initial gamma multiplier
   double gammaDelta = 0.1;    // initial gamma step fraction
+  bool trace = false;         // record the per-cycle parameter history (scale.h)
+  arma::mat omModel;          // model Omega sparsity (for the trace push mask)
 };
+
+// Support covariance installed into op_focei, masked by the model's Omega
+// sparsity (diagonal always + modeled off-diagonals).
+static arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel) {
+  int neta = (int)Omega.n_rows;
+  arma::mat out(neta, neta, arma::fill::zeros);
+  bool haveModel = ((int)omModel.n_rows == neta && (int)omModel.n_cols == neta);
+  for (int i = 0; i < neta; ++i)
+    for (int j = 0; j < neta; ++j)
+      if (i == j || (haveModel && omModel(i, j) != 0.0)) out(i, j) = Omega(i, j);
+  return out;
+}
 
 // The NPAG adaptive-grid cycle (Yamada Alg 1).  Requires the FOCEi inner solve
 // already set up (vaeInnerSetup_ / foceiSetup_), so npBuildPsiCore can fill Psi.
@@ -103,6 +117,20 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
       if (gDelta > 1.0) gDelta = 1.0;         // cap the step so gamma cannot jump wildly
       gamma = std::min(std::max(gamma, 1e-3), 1e3);  // keep gamma in a sane range
     }
+    // per-cycle parameter-history row (shared scale.h printer).  Pushing Omega to
+    // op_focei is safe here -- npag sums llikObs, which does not use omegaInv --
+    // so impGetEstPar reflects the current support-point variance while the
+    // objective is the nonparametric -2LL.
+    if (ctl.trace) {
+      arma::rowvec meanEta = lam.t() * theta;
+      arma::mat Om(theta.n_cols, theta.n_cols, arma::fill::zeros);
+      for (int k = 0; k < (int)theta.n_rows; ++k) {
+        arma::rowvec d = theta.row(k) - meanEta; Om += lam[k] * (d.t() * d);
+      }
+      impSetOmega(npMaskedOmega(Om, ctl.omModel), impDiagXform());
+      arma::vec par; impGetEstPar(par);
+      impIterPrintRow(par, -2.0 * objf);
+    }
     // evaluation (Yamada Alg 1 convergence controller); objf is the true
     // (offset-corrected) log-likelihood in both paths.
     if (std::fabs(lastObj - objf) <= ctl.thetaG && eps > ctl.thetaE) {
@@ -138,17 +166,18 @@ void npagOuter(Environment e) {
   ctl.cycles = as<int>(control["npCycles"]);
   ctl.cores = impCores();
   ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
+  ctl.trace = true;
   // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0
   // path; likInner0 still evaluates the Omega-prior term (omegaInv * eta), so
   // rebuild the inverse from the initial Omega before the cycle calls likInner0.
   // (npag ignores the prior -- it sums llikObs -- but likInner0 always forms it.)
-  {
-    arma::mat Om0;
-    impGetOmega(Om0);
-    if ((int)Om0.n_rows == impNeta() && Om0.n_rows > 0) {
-      impSetOmega(Om0, impDiagXform());
-    }
+  arma::mat omModel;            // model's initial Omega (for the sparsity mask)
+  impGetOmega(omModel);
+  if ((int)omModel.n_rows == impNeta() && omModel.n_rows > 0) {
+    impSetOmega(omModel, impDiagXform());
   }
+  ctl.omModel = omModel;
+  impIterPrintStart();          // shared scale.h iteration printer + parHist
   npagResult r;
   try {
     r = npagRunCycle(lower, upper, ctl);
@@ -170,7 +199,36 @@ void npagOuter(Environment e) {
       : arma::rowvec(nspp, arma::fill::value(1.0 / (double)nspp));
     postEta.row(i) = w * r.theta;   // (1 x nspp)(nspp x neta)
   }
-  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf);
+  // global-optimality certificate (Yamada Sec 2.9): D(F) = max_theta D(theta,F),
+  // D(theta,F) = sum_i p(y_i|theta)/p(y_i|F) - N.  Evaluated at gamma=1 over a
+  // fresh Sobol scan of the box; at the NPML max D(theta,F) ~ 0 (a large positive
+  // value means the grid missed a mode -- not the global optimum).
+  double npagDF = NA_REAL;
+  {
+    arma::mat psiSup;
+    npBuildPsiCore(r.theta, ctl.cores, psiSup);        // nsub x nspp (unnormalized)
+    arma::vec pyf = psiSup * r.lambda;                 // p(y_i|F)
+    pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
+    int nScan = std::max(2048, 4 * ctl.points);
+    arma::mat scan = npSobolGrid(nScan, lower, upper);
+    arma::mat psiScan;
+    npBuildPsiCore(scan, ctl.cores, psiScan);          // nsub x nScan
+    double dmax = -arma::datum::inf;
+    for (int k = 0; k < nScan; ++k) {
+      double d = arma::accu(psiScan.col(k) / pyf) - (double)nsub;
+      if (d > dmax) dmax = d;
+    }
+    // the support points themselves should give ~0; include them for the bound
+    for (int k = 0; k < (int)psiSup.n_cols; ++k) {
+      double d = arma::accu(psiSup.col(k) / pyf) - (double)nsub;
+      if (d > dmax) dmax = d;
+    }
+    npagDF = dmax;
+  }
+
+  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf, omModel);
+  impIterPrintGet(e);          // closing rule + stash e$parHistData
+  e["npagDF"] = npagDF;        // global-optimality certificate
   // nonparametric outputs (support-point distribution + trace)
   e["npagSupport"] = wrap(r.theta);        // nspp x neta (eta space)
   e["npagWeights"] = wrap(r.lambda);
@@ -187,7 +245,8 @@ void npagOuter(Environment e) {
 // the population theta shift + Omega, push into the FOCEi state, build the fit
 // env, and set the nonparametric objective.  Returns the full support covariance.
 arma::mat npFinalizeFit(Environment e, const arma::mat& support,
-                        const arma::vec& weights, const arma::mat& postEta, double objf) {
+                        const arma::vec& weights, const arma::mat& postEta,
+                        double objf, const arma::mat& omModel) {
   int nsub = impNsub();
   int neta = impNeta();
   arma::rowvec meanEta = weights.t() * support;               // 1 x neta
@@ -205,10 +264,11 @@ arma::mat npFinalizeFit(Environment e, const arma::mat& support,
     arma::vec ev = (postEta.row(i) - meanEta).t();
     impSetEta(i, ev);
   }
-  // Diagonal only: the model's Omega parameterization is typically diagonal;
-  // a full covariance would create off-diagonal free parameters that do not
-  // exist in the model.  The full covariance is returned for reporting.
-  impSetOmega(arma::diagmat(Omega.diag()), impDiagXform());
+  // Install the support-point covariance masked by the MODEL's Omega sparsity:
+  // the diagonal always, plus off-diagonals only where the model has correlated
+  // etas (a full covariance on a diagonal model would create free parameters that
+  // do not exist).  The full covariance is returned for reporting.
+  impSetOmega(npMaskedOmega(Omega, omModel), impDiagXform());
   impSyncInitParToFullTheta();
   impMapPass(e);
   e["objective"] = -2.0 * objf;

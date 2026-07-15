@@ -25,6 +25,8 @@
 #' @param alpha Dirichlet-process concentration parameter.
 #' @param burnin Number of burn-in Gibbs sweeps.
 #' @param nsamp Number of post-burn-in Gibbs samples collected.
+#' @param nchains Number of independent chains (Gelman-Rubin R-hat convergence is
+#'   reported when \code{nchains > 1}).
 #' @param propSd Standard deviation of the Gaussian random-walk MH proposal for
 #'   the support-point locations (eta space).
 #' @param seed Random seed for the sampler.
@@ -38,7 +40,7 @@
 #'
 #' npbControl()
 npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
-                       propSd = 0.2, seed = 42L, cycles = 100L,
+                       nchains = 1L, propSd = 0.2, seed = 42L, cycles = 100L,
                        gammaOptimize = FALSE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
@@ -48,6 +50,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
   .ctl$alpha <- as.numeric(alpha)
   .ctl$burnin <- as.integer(burnin)
   .ctl$nsamp <- as.integer(nsamp)
+  .ctl$nchains <- as.integer(nchains)
   .ctl$propSd <- as.numeric(propSd)
   .ctl$seed <- as.integer(seed)
   .ctl

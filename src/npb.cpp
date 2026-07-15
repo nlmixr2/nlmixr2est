@@ -39,13 +39,11 @@ void npbOuter(Environment e) {
   // likInner0 forms the Omega-prior term; rebuild omegaInv from the initial Omega
   // (see npagOuter) and use its diagonal as the base measure G_0 variance.
   arma::vec g0var(neta, arma::fill::ones);
-  {
-    arma::mat Om0;
-    impGetOmega(Om0);
-    if ((int)Om0.n_rows == neta && neta > 0) {
-      impSetOmega(Om0, impDiagXform());
-      g0var = arma::clamp(arma::vec(Om0.diag()), 1e-6, arma::datum::inf);
-    }
+  arma::mat omModel;
+  impGetOmega(omModel);
+  if ((int)omModel.n_rows == neta && neta > 0) {
+    impSetOmega(omModel, impDiagXform());
+    g0var = arma::clamp(arma::vec(omModel.diag()), 1e-6, arma::datum::inf);
   }
   arma::vec g0sd = arma::sqrt(g0var);
 
@@ -148,7 +146,7 @@ void npbOuter(Environment e) {
     objf += std::log(std::max(1e-300, s));
   }
 
-  arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf);
+  arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf, omModel);
 
   e["npbSupport"] = wrap(support);          // pooled posterior support (E[F])
   e["npbWeights"] = wrap(weights);

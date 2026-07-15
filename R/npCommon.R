@@ -122,7 +122,8 @@
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
   .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
-              alpha = 1.0, burnin = 500L, nsamp = 500L, propSd = 0.2, seed = 42L)
+              alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
+              propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
   if (is.list(.in)) {
     for (.n in c(names(.np), "est")) .in[[.n]] <- NULL   # strip npag/npb-only fields
@@ -135,6 +136,7 @@
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)
+  .ctl$nchains <- as.integer(.np$nchains)
   .ctl$propSd <- as.numeric(.np$propSd)
   .ctl$seed <- as.integer(.np$seed)
   .ctl

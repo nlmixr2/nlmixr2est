@@ -31,6 +31,10 @@ nmTest({
     expect_equal(nrow(f$env$npagPosteriorEta),
                  length(unique(nlmixr2data::theo_sd$ID)))
     expect_equal(f$env$npagNspp, nspp)
+    # global-optimality certificate D(F) ~ 0 at the NPML, and a parameter-history
+    # trace is recorded via the shared scale.h printer
+    expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 1e-3)
+    expect_false(is.null(f$env$parHistData))
   })
 
   test_that("est='npag' with gamma optimization improves the objective", {

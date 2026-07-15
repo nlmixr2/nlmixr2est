@@ -9,6 +9,7 @@ npbControl(
   alpha = 1,
   burnin = 500L,
   nsamp = 500L,
+  nchains = 1L,
   propSd = 0.2,
   seed = 42L,
   cycles = 100L,
@@ -24,6 +25,9 @@ npbControl(
 \item{burnin}{Number of burn-in Gibbs sweeps.}
 
 \item{nsamp}{Number of post-burn-in Gibbs samples collected.}
+
+\item{nchains}{Number of independent chains (Gelman-Rubin R-hat convergence is
+reported when \code{nchains > 1}).}
 
 \item{propSd}{Standard deviation of the Gaussian random-walk MH proposal for
 the support-point locations (eta space).}
