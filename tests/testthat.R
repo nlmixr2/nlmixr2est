@@ -57,7 +57,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "qrpem-slow", "focei-foce-plus"),
   # batch 2
   c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
-    "fsaem"),
+    "fsaem", "cov-condition"),
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd"),

@@ -9,6 +9,7 @@
     .foceiControl$calcTables <- FALSE
     .foceiControl$covMethod <- 0L
     .foceiControl$compress <- FALSE
+    .foceiControl$nAGQ <- 0L # focei/foce/fo objectives, not the fit's quadrature
     if (.type == "focei") {
       .foceiControl$interaction <- TRUE
       .rn <- "FOCEi"

@@ -8399,6 +8399,18 @@ void foceiFinalizeTables(Environment e){
   } else if (op_focei.fo == 1){
     objDf.attr("row.names") = CharacterVector::create("FO");
     e["ofvType"] = "fo";
+  } else if (_nagq > 0)  {
+    // quadrature label wins over interaction so laplace/agq fits (whose controls
+    // default interaction=TRUE) do not print as "FOCEi"; ofvType is the
+    // lowercased row label so broom/setOfv row matching works
+    if (_nagq == 1) {
+      objDf.attr("row.names") = CharacterVector::create("Laplace");
+      e["ofvType"] = "laplace";
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
+      e["ofvType"] = "agq" + std::to_string(_nagq);
+    }
+    addLlikObs(e);
   } else if (op_focei.interaction){
     objDf.attr("row.names") = CharacterVector::create("FOCEi");
     addLlikObs(e);
@@ -8407,14 +8419,6 @@ void foceiFinalizeTables(Environment e){
     std::string ofvType = as<std::string>(e["ofvType"]);
     objDf.attr("row.names") = ofvType;
     e["ofvType"]= ofvType;
-  } else if (_nagq > 0)  {
-    if (_nagq == 1) {
-      objDf.attr("row.names") = CharacterVector::create("Laplace");
-    } else {
-      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
-    }
-    addLlikObs(e);
-    e["ofvType"] = "agq";
   } else {
     if (op_focei.needOptimHess) {
       objDf.attr("row.names") = CharacterVector::create("lFOCEi");

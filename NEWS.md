@@ -150,6 +150,11 @@
   install skipped them because the fit tables were rendered before the
   full-model covariance was recomputed.
 
+- Converting a fit to a different covariance (`setCov()`, `getVarCov()`)
+  now refreshes `Condition#(Cov)`/`Condition#(Cor)` and the eigen
+  diagnostics from the newly installed covariance instead of leaving the
+  previous method's values in place.
+
 - SAEM `covMethod = "fim"` adds the mu-block Hessian (was indefinite / NaN SEs),
   and `"fim"`/`"sa"` report off-diagonal Omega and combined residual SEs.
   Fixed `covMethod = "linFim"` and the SAEM covariance erroring for a single
@@ -200,6 +205,13 @@
   aborting.
 
 ### Output, tables, and printing
+
+- `laplace`/`agq` family fits label their `$objDf` row `Laplace`/`AGQ<n>`
+  (matching `$ofvType`) instead of `FOCEi`; previously the default
+  `interaction=TRUE` made the interaction label win over the quadrature one.
+  The quadrature objective stays the active one after CWRES; `setOfv(fit,
+  "focei")` (and `addCwres()`) now evaluate the true focei objective on a
+  quadrature fit instead of re-labeling its quadrature value.
 
 - Restored the `Function Val.` objective column and the `$parFixed` shrinkage
   coloring; periodic headers now repeat only the column labels.
