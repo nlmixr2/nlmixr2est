@@ -414,6 +414,60 @@
     env$thetaNames <- .thetaNames
   }
 }
+#' Bounded-transform Jacobian derivative at a natural-scale value
+#'
+#' @param tr transform specification (named list from .getBoundedParams)
+#' @param natVal natural-scale (back-transformed) estimate
+#' @return the derivative d(natural)/d(internal), or 1 when `natVal` is not finite
+#' @noRd
+#' @author Matthew L. Fidler
+.boundedTransformDeriv <- function(tr, natVal) {
+  # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
+  # For lower_exp: d(lo + exp(x))/dx = natVal - lo
+  # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
+  if (is.null(natVal) || !is.finite(natVal)) return(1.0)
+  switch(tr$type,
+         "logit" = (natVal - tr$lower) * (tr$upper - natVal) / (tr$upper - tr$lower),
+         "lower_exp" = natVal - tr$lower,
+         "upper_exp" = -(tr$upper - natVal),
+         1.0)
+}
+
+#' Apply a full bounded-transform Jacobian to a named covariance matrix
+#'
+#' Builds a full diagonal Jacobian sized to `cov`: the back-transform derivative
+#' (evaluated at the natural-scale estimate) for every column whose internal
+#' (`rxBoundedTr.<name>`) name is present, and 1 for every other column
+#' (untransformed structural thetas, Omega variances/covariances, and residual
+#' error terms -- none of which are transformed).  Returns
+#' \code{J \%*\% cov \%*\% t(J)} with the transformed columns renamed to their
+#' original parameter names, so off-diagonal covariances with untransformed
+#' parameters are corrected too.  A no-op when `cov` lacks dimnames (the focei
+#' native cov, which is corrected positionally instead).
+#'
+#' @param cov covariance matrix
+#' @param transforms list of transform specifications
+#' @param natVals natural-scale estimates keyed by original parameter name
+#' @return the Jacobian-corrected, renamed covariance matrix
+#' @noRd
+#' @author Matthew L. Fidler
+.boundedTransformCovJacobian <- function(cov, transforms, natVals) {
+  if (is.null(cov) || !is.matrix(cov)) return(cov)
+  .rn <- rownames(cov)
+  if (is.null(.rn)) return(cov)
+  .jdiag <- rep(1.0, nrow(cov))
+  for (.tr in transforms) {
+    .w <- which(.rn == .tr$internalName)
+    if (length(.w) != 1L) next
+    .jdiag[.w] <- .boundedTransformDeriv(.tr, natVals[[.tr$name]])
+    .rn[.w] <- .tr$name
+  }
+  .J <- diag(.jdiag, nrow = length(.jdiag))
+  cov <- .J %*% cov %*% t(.J)
+  dimnames(cov) <- list(.rn, .rn)
+  cov
+}
+
 #' Back transform cov matrix with Jacobian
 #'
 #' @param env environment for back-transform
@@ -422,42 +476,48 @@
 #' @author Matthew L. Fidler
 .postEstimationBoundedTransformJacobian <- function(env, transforms) {
   # --- Jacobian correction on covariance matrix ---
+  if (!(exists("cov", envir = env) && !is.null(env$cov) && is.matrix(env$cov))) {
+    return(invisible())
+  }
   .thetaDf <- env$theta
-  if (exists("cov", envir = env) && !is.null(env$cov) && is.matrix(env$cov)) {
-    # Compute Jacobian diagonal from natural-scale values
-    # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
-    # For lower_exp: d(lo + exp(x))/dx = natVal - lo
-    # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
-    .jdiag <- rep(1.0, nrow(.thetaDf))
-    for (.tr in transforms) {
-      .w <- which(env$thetaNames == .tr$name)
-      if (length(.w) != 1L) next
-      .natVal <- .thetaDf$theta[.w]
-      .jdiag[.w] <- switch(.tr$type,
-                           "logit" = (.natVal - .tr$lower) * (.tr$upper - .natVal) / (.tr$upper - .tr$lower),
-                           "lower_exp" = .natVal - .tr$lower,
-                           "upper_exp" = -(.tr$upper - .natVal),
-                           1.0
-                           )
+  # theta was already back-transformed and renamed, so these are natural-scale
+  # estimates keyed by the original parameter name.
+  .natVals <- stats::setNames(.thetaDf$theta, env$thetaNames)
+  .rn <- rownames(env$cov)
+  # Preferred path: the cov carries its own dimnames (saem's structural-theta and
+  # full theta+Omega covariances).  Apply the full Jacobian by name -- robust to
+  # the residual/Omega rows the positional skipCov map does not line up with, and
+  # it renames the internal rxBoundedTr.* dimnames back to the original names.
+  if (!is.null(.rn) &&
+        any(vapply(transforms, function(.tr) .tr$internalName %in% .rn, logical(1)))) {
+    env$cov <- .boundedTransformCovJacobian(env$cov, transforms, .natVals)
+    return(invisible())
+  }
+  # Positional fallback: the focei native cov has no dimnames, but skipCov lines
+  # up its rows with the theta vector (fixed params are excluded via skipCov).
+  .jdiag <- rep(1.0, nrow(.thetaDf))
+  for (.tr in transforms) {
+    .w <- which(env$thetaNames == .tr$name)
+    if (length(.w) != 1L) next
+    .jdiag[.w] <- .boundedTransformDeriv(.tr, .thetaDf$theta[.w])
+  }
+  # Apply Jacobian: Cov_natural = J * Cov_internal * J'
+  .nCov <- nrow(env$cov)
+  .nTheta <- length(.jdiag)
+  if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
+    .skipCov <- env$skipCov
+    .jCov <- numeric(0)
+    for (k in seq_along(.jdiag)) {
+      if (k <= length(.skipCov) && !.skipCov[k]) {
+        .jCov <- c(.jCov, .jdiag[k])
+      }
     }
-    # Apply Jacobian: Cov_natural = J * Cov_internal * J'
-    # cov may be smaller than theta (fixed params are excluded via skipCov)
-    .nCov <- nrow(env$cov)
-    .nTheta <- length(.jdiag)
-    if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
-      .skipCov <- env$skipCov
-      .jCov <- numeric(0)
-      for (k in seq_along(.jdiag)) {
-        if (k <= length(.skipCov) && !.skipCov[k]) {
-          .jCov <- c(.jCov, .jdiag[k])
-        }
-      }
-      if (length(.jCov) == .nCov) {
-        .J <- diag(.jCov)
-        env$cov <- .J %*% env$cov %*% t(.J)
-      }
+    if (length(.jCov) == .nCov) {
+      .J <- diag(.jCov)
+      env$cov <- .J %*% env$cov %*% t(.J)
     }
   }
+  invisible()
 }
 #' Post-Estimation transform the UI back to the original
 #'
@@ -556,6 +616,22 @@
   .postEstimationBoundedTransformThetaDf(env, .transforms)
 
   .postEstimationBoundedTransformJacobian(env, .transforms)
+
+  # saem stashes the full theta+residual+Omega covariance in `.saemFullCov` and
+  # installs it as `$cov` AFTER the fit is built (.saemInstallFullCov), by which
+  # point the transforms have been stripped from the ui.  It carries the internal
+  # (rxBoundedTr.*) names and an internal-scale structural-theta block, so
+  # correct + rename it here (Omega/residual rows are untransformed -> Jacobian 1)
+  # while the transforms are still available.
+  if (exists(".saemFullCov", envir = env, inherits = FALSE)) {
+    .full <- get(".saemFullCov", envir = env)
+    if (is.matrix(.full)) {
+      .natVals <- stats::setNames(env$theta$theta, env$thetaNames)
+      assign(".saemFullCov",
+             .boundedTransformCovJacobian(.full, .transforms, .natVals),
+             envir = env)
+    }
+  }
 
   if (exists("parHistData", envir = env) && !is.null(env$parHistData)) {
     env$parHistData <- .backTransformParHist(env$parHistData, .transforms)

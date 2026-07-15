@@ -468,6 +468,29 @@ nmTest({
       "covType=\"analytic\".*finite-difference")
   })
 
+  test_that("covMethod='analytic' fallback keeps the full theta+Omega covariance (covFull)", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # linCmt() is out of analytic-covariance scope, so covType="analytic" (the
+    # default) falls back to the finite-difference covariance.  With covFull=TRUE
+    # (the default) that fallback must still install the full theta+sigma+Omega
+    # covariance rather than silently dropping the Omega block to a theta-only
+    # matrix (the reduced covariance the fallback produced before this fix).
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- log(c(0, 2.7, 100)); tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v); linCmt() ~ add(add.sd) })
+    }
+    fit <- suppressWarnings(suppressMessages(
+      nlmixr(m, nlmixr2data::theo_sd, "focei", foceiControl(print = 0L))))
+    expect_true(is.matrix(fit$cov))
+    # the Omega variance rows are present (dropped before the FD-full fallback fix)
+    expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v") %in% rownames(fit$cov)))
+    # the structural + residual theta block is still there
+    expect_true(all(c("tka", "tcl", "tv", "add.sd") %in% rownames(fit$cov)))
+  })
+
   test_that("covMethod='analytic' handles a non-mu-referenced covariate coefficient", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

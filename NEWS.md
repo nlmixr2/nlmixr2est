@@ -1,5 +1,19 @@
 # nlmixr2est (development version)
 
+- Fix the covariance matrix (`$cov`) of a bounded-parameter fit run with an
+  unbounded method (e.g. `saem`): the internal `rxBoundedTr.<name>` name leaked
+  into `$cov` and the back-transform Jacobian was not applied to it, so the
+  reported standard errors were on the internal (transformed) scale.  `$cov`
+  (and the stashed full theta+Omega covariance) are now renamed to the original
+  parameter names and Jacobian-corrected; Omega and residual terms are
+  untransformed so they pass through unchanged.
+
+- Fix `covMethod="analytic"` (the FOCEI default) silently dropping the Omega
+  block when it falls back to the finite-difference covariance: with
+  `covFull=TRUE` (the default) the full theta+sigma+Omega finite-difference
+  covariance is now installed on the fallback, matching the shape the analytic
+  covariance would have produced instead of a theta-only matrix.
+
 - New function `formatMinWidth()` for shorter, more often non-scientific
   `$parFixed` display; `$parFixed` is now built with data.frame operations
   instead of environment side-effects (#346, #516)

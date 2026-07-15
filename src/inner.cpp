@@ -9542,12 +9542,19 @@ Environment foceiFitCpp_(Environment e){
     CovSolveTolGuard _covTolGuard(e);
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed
-    // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way.
+    // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way --
+    // BUT only when the analytic covariance actually succeeded (it stashes .analyticCov).
+    // When covType="analytic" is out of scope it falls back to the finite-difference
+    // covariance, and without this the full-cov step would be skipped, silently dropping
+    // the Omega block and leaving a theta-only cov.  So also run the FD full-cov step on
+    // that fallback (analytic requested but .analyticCov absent), keeping the requested
+    // theta+sigma+Omega shape.
     if (op_focei.covFull && op_focei.covMethod != 0 && e.exists("control")) {
       List _ctlF = as<List>(e["control"]);
       std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
         as<std::string>(_ctlF["covType"]) : "fd";
-      if (_covTypeF != "analytic") {
+      bool _analyticInstalled = e.exists(".analyticCov");
+      if (_covTypeF != "analytic" || !_analyticInstalled) {
         try { foceiCalcRFdFull(e); }
         catch (Rcpp::internal::InterruptedException&) { throw; }
         catch (Rcpp::LongjumpException&) { throw; }
