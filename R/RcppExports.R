@@ -382,6 +382,24 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+#' Burke interior-point weight solver (nonparametric maximum likelihood)
+#'
+#' Solves the convex nonparametric-maximum-likelihood weight problem for a fixed
+#' set of support points: given the likelihood matrix \code{psi} (subjects in
+#' rows, support points in columns) it returns the maximum-likelihood mixing
+#' weights and the objective (log-likelihood).  Exposed for testing the C++
+#' interior-point routine against golden fixtures.
+#'
+#' @param psi Numeric matrix, \code{psi[i, k] = p(y_i | support point k)}, with
+#'   subjects in rows and support points in columns.
+#' @return A list with \code{weights} (length \code{ncol(psi)}, non-negative,
+#'   summing to 1) and \code{objective} (the maximized log-likelihood).
+#' @keywords internal
+#' @export
+npIpmBurke <- function(psi) {
+    .Call(`_nlmixr2est_npIpmBurke`, psi)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

@@ -1366,6 +1366,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npIpmBurke
+Rcpp::List npIpmBurke(arma::mat psi);
+RcppExport SEXP _nlmixr2est_npIpmBurke(SEXP psiSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type psi(psiSEXP);
+    rcpp_result_gen = Rcpp::wrap(npIpmBurke(psi));
+    return rcpp_result_gen;
+END_RCPP
+}
 // augPredTrans
 RObject augPredTrans(NumericVector& pred, NumericVector& ipred, NumericVector& lambda, RObject& yjIn, NumericVector& low, NumericVector& hi);
 RcppExport SEXP _nlmixr2est_augPredTrans(SEXP predSEXP, SEXP ipredSEXP, SEXP lambdaSEXP, SEXP yjInSEXP, SEXP lowSEXP, SEXP hiSEXP) {

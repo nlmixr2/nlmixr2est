@@ -1,0 +1,12 @@
+[package]
+name = "burke_golden"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+faer = "0.24.0"
+rayon = "1"
+anyhow = "1"
+
+[profile.release]
+opt-level = 2
