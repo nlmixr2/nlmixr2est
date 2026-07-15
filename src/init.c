@@ -173,6 +173,7 @@ SEXP _nlmixr2est_npIpmBurke(SEXP);
 SEXP _nlmixr2est_npBuildPsi(SEXP, SEXP);
 SEXP _nlmixr2est_npSobolGrid_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_npCondense_(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_npagCycle_(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _rxode2rxFixRes(SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
@@ -292,6 +293,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_npBuildPsi", (DL_FUNC) &_nlmixr2est_npBuildPsi, 2},
   {"_nlmixr2est_npSobolGrid_", (DL_FUNC) &_nlmixr2est_npSobolGrid_, 3},
   {"_nlmixr2est_npCondense_", (DL_FUNC) &_nlmixr2est_npCondense_, 4},
+  {"_nlmixr2est_npagCycle_", (DL_FUNC) &_nlmixr2est_npagCycle_, 5},
   {NULL, NULL, 0}
 };
 

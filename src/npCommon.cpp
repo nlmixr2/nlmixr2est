@@ -174,3 +174,39 @@ arma::uvec npCondenseQR(const arma::mat& psi, double tol) {
   std::sort(keep.begin(), keep.end());
   return arma::uvec(keep);
 }
+
+arma::mat npExpandGrid(const arma::mat& theta, double eps, const arma::vec& lower,
+                       const arma::vec& upper, double minDist) {
+  const int K = (int)theta.n_rows;
+  const int d = (int)theta.n_cols;
+  if (K == 0 || d == 0) return theta;
+  arma::vec range = upper - lower;
+  std::vector<arma::rowvec> cands;
+  for (int k = 0; k < K; ++k) {
+    for (int j = 0; j < d; ++j) {
+      double l = eps * range[j];
+      if (theta(k, j) + l < upper[j]) {
+        arma::rowvec c = theta.row(k); c[j] += l; cands.push_back(c);
+      }
+      if (theta(k, j) - l > lower[j]) {
+        arma::rowvec c = theta.row(k); c[j] -= l; cands.push_back(c);
+      }
+    }
+  }
+  // keep candidates at least minDist (scaled L1) from every original point
+  std::vector<arma::rowvec> keep;
+  for (size_t ci = 0; ci < cands.size(); ++ci) {
+    const arma::rowvec& c = cands[ci];
+    double mind = std::numeric_limits<double>::infinity();
+    for (int k = 0; k < K; ++k) {
+      double dd = 0.0;
+      for (int j = 0; j < d; ++j) dd += std::fabs(c[j] - theta(k, j)) / range[j];
+      mind = std::min(mind, dd);
+    }
+    if (mind >= minDist) keep.push_back(c);
+  }
+  arma::mat out(K + (int)keep.size(), d);
+  out.rows(0, K - 1) = theta;
+  for (size_t i = 0; i < keep.size(); ++i) out.row(K + (int)i) = keep[i];
+  return out;
+}

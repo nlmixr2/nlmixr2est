@@ -9,10 +9,113 @@
 
 using namespace Rcpp;
 
-// Module M0: scaffold only.  Later milestones assemble the adaptive-grid cycle
-// (Psi -> Burke IPM -> condense -> gamma optimization -> expand -> converge).
+// NPAG tuning constants (Yamada 2021): eps convergence floor / objf tolerance /
+// F-candidate tolerance / minimum scaled support-point distance.
+struct npagCtl {
+  int points = 2028;    // initial Sobol grid size
+  int cycles = 100;     // maximum cycles
+  int cores = 1;
+  double ratio = 1e-3;  // weight-threshold condensation (max*ratio)
+  double qrTol = 1e-8;  // QR rank-revealing tolerance
+  double epsInit = 0.2; // initial adaptive-grid fraction
+  double thetaE = 1e-4; // eps floor
+  double thetaG = 1e-4; // objf-change tolerance that halves eps
+  double thetaF = 1e-2; // successive-F tolerance for the exit test
+  double thetaD = 1e-4; // minimum scaled distance for daughter points
+};
+
+// The NPAG adaptive-grid cycle (Yamada Alg 1).  Requires the FOCEi inner solve
+// already set up (vaeInnerSetup_ / foceiSetup_), so npBuildPsiCore can fill Psi.
+// Returns the final support points (eta space), their weights, the log-
+// likelihood, cycle count, and a converged flag.
+struct npagResult {
+  arma::mat theta;   // nspp x neta support points (eta space)
+  arma::vec lambda;  // nspp weights (sum 1)
+  double objf;       // maximized log-likelihood
+  int cycle;
+  bool converged;
+};
+
+static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
+                               const npagCtl& ctl) {
+  arma::mat theta = npSobolGrid(ctl.points, lower, upper);
+  double eps = ctl.epsInit, f0 = -1e30, f1 = 0.0, lastObj = -1e30, objf = R_NegInf;
+  int cycle = 0;
+  bool converged = false;
+  arma::vec lam;
+  for (;;) {
+    cycle++;
+    if (cycle > 1) {
+      theta = npExpandGrid(theta, eps, lower, upper, ctl.thetaD);
+    }
+    // estimation: Psi then Burke weights
+    arma::mat psi;
+    npBuildPsiCore(theta, ctl.cores, psi);
+    double obj0 = 0.0;
+    lam = npBurke(psi, &obj0);
+    // condensation: weight threshold, then QR rank-revealing, then re-solve
+    arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
+    theta = theta.rows(wk); psi = psi.cols(wk);
+    arma::uvec qk = npCondenseQR(psi, ctl.qrTol);
+    theta = theta.rows(qk); psi = psi.cols(qk);
+    lam = npBurke(psi, &objf);
+    // evaluation (Yamada Alg 1 convergence controller)
+    if (std::fabs(lastObj - objf) <= ctl.thetaG && eps > ctl.thetaE) {
+      eps /= 2.0;
+      if (eps <= ctl.thetaE) {
+        f1 = accu(log(psi * lam));
+        if (std::fabs(f1 - f0) <= ctl.thetaF) { converged = true; break; }
+        f0 = f1; eps = ctl.epsInit;
+      }
+    }
+    if (cycle >= ctl.cycles) break;
+    lastObj = objf;
+  }
+  npagResult r;
+  r.theta = theta; r.lambda = lam; r.objf = objf; r.cycle = cycle;
+  r.converged = converged;
+  return r;
+}
+
+// M4: the driver is exercised in isolation through npagCycle_ (below).  Wiring it
+// into the full nlmixr2 fit object (nlmixr2EnvSetup, tables, covariance) is a
+// later milestone; until then est="npag" reports that.
 void npagOuter(Environment e) {
-  stop("NPAG estimation ('est=\"npag\"') is not yet implemented");
+  stop("NPAG estimation ('est=\"npag\"') is not yet wired to the fit object "
+       "(the adaptive-grid cycle is available via npagCycle_)");
+}
+
+//' Run the NPAG adaptive-grid cycle on a set-up inner problem
+//'
+//' Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs
+//' the full Yamada adaptive-grid cycle (Sobol grid -> Psi -> Burke IPM ->
+//' condensation -> expansion -> convergence) and returns the discrete mixing
+//' distribution.  Exposed for testing ahead of the full fit-object wiring.
+//'
+//' @param lower,upper Numeric vectors, the per-eta support-point box.
+//' @param points Initial Sobol grid size.
+//' @param cycles Maximum cycles.
+//' @param cores OpenMP threads.
+//' @return A list with \code{support} (support points, eta space; one per row),
+//'   \code{weights}, \code{objf} (log-likelihood), \code{cycles}, and
+//'   \code{converged}.
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points = 2028,
+                      int cycles = 100, int cores = 1) {
+  npagCtl ctl;
+  ctl.points = points; ctl.cycles = cycles; ctl.cores = cores;
+  npagResult r = npagRunCycle(lower, upper, ctl);
+  Rcpp::NumericMatrix support(r.theta.n_rows, r.theta.n_cols);
+  std::copy(r.theta.begin(), r.theta.end(), support.begin());
+  Rcpp::NumericVector weights(r.lambda.begin(), r.lambda.end());
+  return Rcpp::List::create(
+    Rcpp::Named("support") = support,
+    Rcpp::Named("weights") = weights,
+    Rcpp::Named("objf") = r.objf,
+    Rcpp::Named("cycles") = r.cycle,
+    Rcpp::Named("converged") = r.converged);
 }
 
 //' Burke interior-point weight solver (nonparametric maximum likelihood)

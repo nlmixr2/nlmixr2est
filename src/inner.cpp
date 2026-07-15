@@ -9949,7 +9949,7 @@ double npEvalCondLik(double *eta, int id) {
 // etaPoints is nPoint x neta.  Parallel over base subjects for each support
 // point, reusing the vaeInnerLikCore parallel discipline (per-thread rxode2
 // solve slot, no R API in the loop).  Requires vaeInnerSetup_ already run.
-static void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
+void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   cores = min2(cores, getOpCores(op));

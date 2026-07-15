@@ -38,4 +38,11 @@ arma::uvec npCondenseWeights(const arma::vec& lambda, double ratio);
 // condensation keep-rule.
 arma::uvec npCondenseQR(const arma::mat& psi, double tol);
 
+// Adaptive-grid expansion (Yamada Alg 2): for each support point (row of theta)
+// add up to 2*d daughters at +/- eps*(upper-lower) per dimension; discard
+// daughters outside the box or closer than minDist (scaled L1) to any original
+// point.  Returns the original points followed by the accepted daughters.
+arma::mat npExpandGrid(const arma::mat& theta, double eps, const arma::vec& lower,
+                       const arma::vec& upper, double minDist);
+
 #endif // nlmixr2est_npCommon_h

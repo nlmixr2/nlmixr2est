@@ -15,6 +15,11 @@
 // point k evaluated for subject i gives psi(i,k) = exp(npEvalCondLik(eta_k, i)).
 double npEvalCondLik(double *eta, int id);
 
+// Build the Psi matrix (nSub x nPoint) on the already set-up FOCEi inner solve:
+// psi(i,k) = p(y_i | support point k) where etaPoints is nPoint x neta.  Parallel
+// over base subjects.  Requires vaeInnerSetup_ (or foceiSetup_) already run.
+void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi);
+
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).
 void npagOuter(Rcpp::Environment e);

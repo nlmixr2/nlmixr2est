@@ -1378,6 +1378,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npagCycle_
+Rcpp::List npagCycle_(arma::vec lower, arma::vec upper, int points, int cycles, int cores);
+RcppExport SEXP _nlmixr2est_npagCycle_(SEXP lowerSEXP, SEXP upperSEXP, SEXP pointsSEXP, SEXP cyclesSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type upper(upperSEXP);
+    Rcpp::traits::input_parameter< int >::type points(pointsSEXP);
+    Rcpp::traits::input_parameter< int >::type cycles(cyclesSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(npagCycle_(lower, upper, points, cycles, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npIpmBurke
 Rcpp::List npIpmBurke(arma::mat psi);
 RcppExport SEXP _nlmixr2est_npIpmBurke(SEXP psiSEXP) {

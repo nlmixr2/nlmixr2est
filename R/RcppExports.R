@@ -399,6 +399,26 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+#' Run the NPAG adaptive-grid cycle on a set-up inner problem
+#'
+#' Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs
+#' the full Yamada adaptive-grid cycle (Sobol grid -> Psi -> Burke IPM ->
+#' condensation -> expansion -> convergence) and returns the discrete mixing
+#' distribution.  Exposed for testing ahead of the full fit-object wiring.
+#'
+#' @param lower,upper Numeric vectors, the per-eta support-point box.
+#' @param points Initial Sobol grid size.
+#' @param cycles Maximum cycles.
+#' @param cores OpenMP threads.
+#' @return A list with \code{support} (support points, eta space; one per row),
+#'   \code{weights}, \code{objf} (log-likelihood), \code{cycles}, and
+#'   \code{converged}.
+#' @keywords internal
+#' @export
+npagCycle_ <- function(lower, upper, points = 2028L, cycles = 100L, cores = 1L) {
+    .Call(`_nlmixr2est_npagCycle_`, lower, upper, points, cycles, cores)
+}
+
 #' Burke interior-point weight solver (nonparametric maximum likelihood)
 #'
 #' Solves the convex nonparametric-maximum-likelihood weight problem for a fixed

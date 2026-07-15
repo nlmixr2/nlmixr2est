@@ -1,5 +1,11 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): assembled the NPAG adaptive-grid cycle (Yamada
+  Alg 1) -- Sobol grid, Psi, Burke IPM, weight/QR condensation, adaptive-grid
+  expansion (`npExpandGrid`), and the eps/F convergence controller.  Runs
+  end-to-end on Theophylline (exposed as `npagCycle_` ahead of the full
+  fit-object wiring).
+
 - Nonparametric engines (cont.): added the Sobol initial grid (`npSobolGrid`),
   weight-threshold and QR rank-revealing condensation (`npCondenseWeights` /
   `npCondenseQR`), and the eta-space support-point box (`.npEtaBox`,
