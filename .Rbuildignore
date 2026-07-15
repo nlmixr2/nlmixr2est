@@ -1,3 +1,6 @@
+^build$
+^nlmixr2est/man-roxygen$
+^nlmixr2est/tests/testthat/_snaps$
 ^design$
 ^plans$
 ^tools$
