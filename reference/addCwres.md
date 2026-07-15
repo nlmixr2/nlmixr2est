@@ -113,17 +113,17 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6320488 2.695e-05 0.01500914      0.073     0.798 1.648       1.114
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.7102148 3.0587e-05 0.01400873      0.081     1.106 1.706        0.97
 #>         table compress     other
-#> elapsed 0.126    0.134 0.4579151
+#> elapsed  0.34    0.137 0.4717459
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7    -0.830% 
-#> tcl               1.04 0.0242 2.33        2.83 (2.7, 2.97)     28.0      3.23% 
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0      12.2% 
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830>
+#> tcl               1.04 0.0242 2.33       2.83 (2.70, 2.97)     28.0       3.23<
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2<
 #> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
@@ -182,17 +182,17 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6320488 2.695e-05 0.01500914      0.073     0.798 1.648       1.114
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.7102148 3.0587e-05 0.01400873      0.081     1.106 1.706        0.97
 #>         table compress     other
-#> elapsed 0.126    0.134 0.4579151
+#> elapsed  0.34    0.137 0.4717459
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7    -0.830% 
-#> tcl               1.04 0.0242 2.33        2.83 (2.7, 2.97)     28.0      3.23% 
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0      12.2% 
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830>
+#> tcl               1.04 0.0242 2.33       2.83 (2.70, 2.97)     28.0       3.23<
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2<
 #> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
