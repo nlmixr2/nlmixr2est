@@ -130,7 +130,7 @@ callback** (R is not thread-safe).  This is how `nlmixr2nn` feeds a network's
 objective cotangents into a running FOCEi fit.
 
 `nlmixr2est` exposes a registry of C callables via a function-pointer table
-(`nlmixr2est:::.nlmixr2estLikContribPtrs()`), consumed downstream through the header
+(`nlmixr2est::.nlmixr2estLikContribPtrs()`), consumed downstream through the header
 `inst/include/nlmixr2estLikContrib.h`.  A contributor supplies plain-C entry points
 (a per-subject begin/obs/end bundle and/or an EM per-subject log-likelihood) that
 read the per-observation prediction `f`, residual variance `R`, and `dv`, and add

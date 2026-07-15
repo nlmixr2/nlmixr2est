@@ -130,9 +130,10 @@ extern "C" SEXP _nlmixr2est_getTestContrib(void) {
 // --- outer-problem NN training hook ------------------------------------------
 // A downstream package (nlmixr2nn) registers an R function that receives, once
 // per real outer objective evaluation, a method-agnostic matrix with one row per
-// observation: [f, <every solved state>] -- only the predicted value and the ODE
-// state vector (which carries the NN-weight forward-sensitivity states rx_sw).
-// The callback assembles d(f)/d(w) from the states, combines it with the
+// observation: [f, <every solved state>, <every calc_lhs value>] -- the predicted
+// value, the full ODE state vector (which carries the NN-weight forward-
+// sensitivity states rx_sw), and the full per-observation lhs row.  The callback
+// assembles d(f)/d(w) from the states, combines it with the
 // method's own d(LL)/d(f) cotangent, steps the torch optimizer and injects the
 // updated weights (via the rxode2 par-loader) for the next evaluation.  Called
 // single-threaded from foceiOfv0 with calcGrad == 0 (the real objective, not a
@@ -1912,8 +1913,14 @@ double likInner0(double *eta, int id) {
             double _dLLdf, _dLLdr;
             if (dist == rxDistributionNorm) {
               double _rz = _safe_zero(r);
-              _dLLdf = -err / _rz;
-              _dLLdr = 0.5 * err * err / (_rz * _rz) - 0.5 / _rz;
+              // honor censoring exactly as the base objective does: dCensNormal1
+              // chains the uncensored score dll through (df/dtheta, dr/dtheta), so
+              // (df=1, dr=0) yields d(LL)/df and (df=0, dr=1) yields d(LL)/dr.  For
+              // an uncensored record it returns the uncensored slope unchanged; M2
+              // adds the censored adjustment, M3/M4 replace it.
+              _dLLdf = dCensNormal1((double) cens, dv, limit, -err / _rz, f, r, 1.0, 0.0);
+              _dLLdr = dCensNormal1((double) cens, dv, limit,
+                                    0.5 * err * err / (_rz * _rz) - 0.5 / _rz, f, r, 0.0, 1.0);
             } else { _dLLdf = 1.0; _dLLdr = 0.0; }
             const double *_dfp = NULL;
             if (op_focei.neta > 0) {
