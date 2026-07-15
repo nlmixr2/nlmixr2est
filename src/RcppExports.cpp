@@ -1389,6 +1389,33 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npSobolGrid_
+Rcpp::NumericMatrix npSobolGrid_(int n, arma::vec lower, arma::vec upper);
+RcppExport SEXP _nlmixr2est_npSobolGrid_(SEXP nSEXP, SEXP lowerSEXP, SEXP upperSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type upper(upperSEXP);
+    rcpp_result_gen = Rcpp::wrap(npSobolGrid_(n, lower, upper));
+    return rcpp_result_gen;
+END_RCPP
+}
+// npCondense_
+Rcpp::List npCondense_(arma::vec lambda, arma::mat psi, double ratio, double tol);
+RcppExport SEXP _nlmixr2est_npCondense_(SEXP lambdaSEXP, SEXP psiSEXP, SEXP ratioSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type psi(psiSEXP);
+    Rcpp::traits::input_parameter< double >::type ratio(ratioSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(npCondense_(lambda, psi, ratio, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // augPredTrans
 RObject augPredTrans(NumericVector& pred, NumericVector& ipred, NumericVector& lambda, RObject& yjIn, NumericVector& low, NumericVector& hi);
 RcppExport SEXP _nlmixr2est_augPredTrans(SEXP predSEXP, SEXP ipredSEXP, SEXP lambdaSEXP, SEXP yjInSEXP, SEXP lowSEXP, SEXP hiSEXP) {

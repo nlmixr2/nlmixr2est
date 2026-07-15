@@ -37,3 +37,41 @@ Rcpp::List npIpmBurke(arma::mat psi) {
   return Rcpp::List::create(Rcpp::Named("weights") = weights,
                             Rcpp::Named("objective") = obj);
 }
+
+//' Sobol initial grid over a box (nonparametric engines)
+//'
+//' @param n Number of support points.
+//' @param lower,upper Numeric vectors giving the per-dimension box bounds.
+//' @return Numeric matrix, one support point per row.
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::NumericMatrix npSobolGrid_(int n, arma::vec lower, arma::vec upper) {
+  arma::mat g = npSobolGrid(n, lower, upper);
+  Rcpp::NumericMatrix out(g.n_rows, g.n_cols);
+  std::copy(g.begin(), g.end(), out.begin());
+  return out;
+}
+
+//' Condense support points (nonparametric engines)
+//'
+//' @param lambda Support-point weights.
+//' @param psi Conditional-likelihood matrix (subjects x support points).
+//' @param ratio Weight-threshold ratio (keep weight > max*ratio).
+//' @param tol QR rank-revealing tolerance.
+//' @return List with 1-based kept indices from the weight threshold
+//'   (\code{weightKeep}) and from the subsequent QR pass (\code{qrKeep}).
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::List npCondense_(arma::vec lambda, arma::mat psi, double ratio = 1e-3,
+                       double tol = 1e-8) {
+  arma::uvec wk = npCondenseWeights(lambda, ratio);
+  // apply the weight keep to psi columns, then QR-condense the survivors
+  arma::mat psiW = psi.cols(wk);
+  arma::uvec qk = npCondenseQR(psiW, tol);
+  arma::uvec qkOrig = wk.elem(qk);   // map QR keep back to original indices
+  return Rcpp::List::create(
+    Rcpp::Named("weightKeep") = Rcpp::IntegerVector(wk.begin(), wk.end()) + 1,
+    Rcpp::Named("qrKeep") = Rcpp::IntegerVector(qkOrig.begin(), qkOrig.end()) + 1);
+}

@@ -417,6 +417,31 @@ npIpmBurke <- function(psi) {
     .Call(`_nlmixr2est_npIpmBurke`, psi)
 }
 
+#' Sobol initial grid over a box (nonparametric engines)
+#'
+#' @param n Number of support points.
+#' @param lower,upper Numeric vectors giving the per-dimension box bounds.
+#' @return Numeric matrix, one support point per row.
+#' @keywords internal
+#' @export
+npSobolGrid_ <- function(n, lower, upper) {
+    .Call(`_nlmixr2est_npSobolGrid_`, n, lower, upper)
+}
+
+#' Condense support points (nonparametric engines)
+#'
+#' @param lambda Support-point weights.
+#' @param psi Conditional-likelihood matrix (subjects x support points).
+#' @param ratio Weight-threshold ratio (keep weight > max*ratio).
+#' @param tol QR rank-revealing tolerance.
+#' @return List with 1-based kept indices from the weight threshold
+#'   (\code{weightKeep}) and from the subsequent QR pass (\code{qrKeep}).
+#' @keywords internal
+#' @export
+npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
+    .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

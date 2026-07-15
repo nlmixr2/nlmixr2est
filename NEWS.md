@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): added the Sobol initial grid (`npSobolGrid`),
+  weight-threshold and QR rank-revealing condensation (`npCondenseWeights` /
+  `npCondenseQR`), and the eta-space support-point box (`.npEtaBox`,
+  control-selectable via `gridBounds`/`gridWidth`).
+
 - Nonparametric engines (cont.): added the conditional-likelihood primitive
   (`npEvalCondLik`) and the parallel Psi-matrix builder (`npBuildPsi`), reusing
   the FOCEi inner solve so residual-error models, transform-both-sides and

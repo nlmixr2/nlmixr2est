@@ -22,4 +22,20 @@
 // system is not positive definite.
 arma::vec npBurke(const arma::mat& psi, double* obj);
 
+// Sobol low-discrepancy initial grid: n support points over the box
+// [lower, upper] (one row per point, ncol = length(lower) = neta).  Uses the
+// same Boost Sobol engine + half-step scaling as the importance sampler.
+arma::mat npSobolGrid(int n, const arma::vec& lower, const arma::vec& upper);
+
+// Weight-threshold condensation (Yamada Alg 3): 0-based indices of the support
+// points whose weight exceeds max(lambda) * ratio (ratio defaults to 1e-3).
+arma::uvec npCondenseWeights(const arma::vec& lambda, double ratio);
+
+// QR rank-revealing condensation: 0-based indices of a maximal set of
+// linearly-independent support points (columns of psi), found by a
+// column-pivoted QR of the row-normalized psi (drop columns whose relative
+// R-diagonal is below tol, default 1e-8).  Mirrors pmcore qr.rs + the npag
+// condensation keep-rule.
+arma::uvec npCondenseQR(const arma::mat& psi, double tol);
+
 #endif // nlmixr2est_npCommon_h

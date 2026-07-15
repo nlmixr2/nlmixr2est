@@ -5,6 +5,8 @@
 // 0.25.2), which itself follows Yamada 2021 Appendix A.  Kept close to the
 // reference so the golden-fixture tests can compare element-wise.
 #include <RcppArmadillo.h>
+#include <RcppEigen.h>
+#include <boost/random/sobol.hpp>
 #include "npCommon.h"
 
 using namespace arma;
@@ -116,4 +118,59 @@ arma::vec npBurke(const arma::mat& psiIn, double* obj) {
   }
   lam /= accu(lam);   // normalize to a probability vector
   return lam;
+}
+
+arma::mat npSobolGrid(int n, const arma::vec& lower, const arma::vec& upper) {
+  int d = (int)lower.n_elem;
+  arma::mat grid(n, d);
+  if (n <= 0 || d <= 0) { grid.set_size(std::max(n, 0), std::max(d, 0)); return grid; }
+  boost::random::sobol eng((std::size_t)d);
+  for (int k = 0; k < n; ++k) {
+    for (int j = 0; j < d; ++j) {
+      uint64_t v = (uint64_t)eng();
+      double u = std::ldexp((double)(v >> 11) + 0.5, -53);  // in (0,1)
+      grid(k, j) = lower[j] + u * (upper[j] - lower[j]);
+    }
+  }
+  return grid;
+}
+
+arma::uvec npCondenseWeights(const arma::vec& lambda, double ratio) {
+  double thr = lambda.max() * ratio;
+  std::vector<arma::uword> keep;
+  keep.reserve(lambda.n_elem);
+  for (arma::uword k = 0; k < lambda.n_elem; ++k) {
+    if (lambda[k] > thr) keep.push_back(k);
+  }
+  return arma::uvec(keep);
+}
+
+arma::uvec npCondenseQR(const arma::mat& psi, double tol) {
+  const int nsub = (int)psi.n_rows;
+  const int npoint = (int)psi.n_cols;
+  if (nsub == 0 || npoint == 0) return arma::uvec();
+  // Row-normalize psi (each subject sums to 1); a zero-sum row is an error.
+  Eigen::MatrixXd m(nsub, npoint);
+  for (int i = 0; i < nsub; ++i) {
+    double s = 0.0;
+    for (int j = 0; j < npoint; ++j) s += psi(i, j);
+    if (s == 0.0) Rcpp::stop("npCondenseQR: psi row %d sums to zero", i + 1);
+    for (int j = 0; j < npoint; ++j) m(i, j) = psi(i, j) / s;
+  }
+  // Column-pivoted (rank-revealing) QR: columns ordered by decreasing pivot.
+  Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(m);
+  Eigen::MatrixXd R = qr.matrixR().triangularView<Eigen::Upper>();
+  Eigen::VectorXi perm = qr.colsPermutation().indices();
+  int keepN = std::min(nsub, npoint);
+  std::vector<arma::uword> keep;
+  keep.reserve(keepN);
+  for (int i = 0; i < keepN; ++i) {
+    double colNorm = R.col(i).norm();
+    double diag = R(i, i);
+    if (colNorm > 0.0 && std::fabs(diag / colNorm) >= tol) {
+      keep.push_back((arma::uword)perm[i]);
+    }
+  }
+  std::sort(keep.begin(), keep.end());
+  return arma::uvec(keep);
 }
