@@ -80,7 +80,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
   # in the push/PR subset) and run weekly only.
-  c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed")
+  c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
+    "npag-error-models")
 )
 .slowAll <- unlist(.slowBatches)
 

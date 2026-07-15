@@ -1523,6 +1523,7 @@ double likInner0(double *eta, int id) {
       fInd->nObs = 0;
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
+      double tbsJac = 0.0;   // per-obs transform-both-sides Jacobian (npag/npb only)
       int cens = 0;
       if (predSolve) {
         iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1585,7 +1586,8 @@ double likInner0(double *eta, int id) {
           }
           cens = 0;
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
-          fInd->tbsLik+=tbsL(dv0);
+          tbsJac = tbsL(dv0);
+          fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
           if (ISNA(lhs[op_focei.predOffset + op_focei.neta + 1])){
             return NA_REAL;
@@ -1711,7 +1713,10 @@ double likInner0(double *eta, int id) {
                if (dist == rxDistributionNorm) {
                  double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
                  ll = doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
-                 llikObs[kk] = ll;
+                 // npag/npb sum llikObs directly as the conditional density, so the
+                 // transform-both-sides Jacobian (added to fInd->tbsLik -> the FOCEI
+                 // marginal lik) must be folded in per observation here.
+                 llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
@@ -1739,7 +1744,7 @@ double likInner0(double *eta, int id) {
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
                 ll =doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
-                llikObs[kk] = ll;
+                llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
@@ -9998,6 +10003,20 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
     _innerParallel.store(0, std::memory_order_release);
     sortIds(rx, 0);
   }
+}
+
+// Build the UNNORMALIZED Psi at a residual-error multiplier gamma.  Same as
+// npBuildPsiCore but with op_focei.npResidScale = gamma held over the solve, so
+// the returned p(y_i | point) are on a single absolute scale (no per-row
+// log-sum-exp offset).  Used by the global-optimality certificate D(F), which
+// forms cross-matrix ratios p(y_i|theta)/p(y_i|F) that a per-row normalization
+// would corrupt.
+void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
+                         arma::mat& psi) {
+  double savedScale = op_focei.npResidScale;
+  op_focei.npResidScale = gamma;
+  npBuildPsiCore(etaPoints, cores, psi);
+  op_focei.npResidScale = savedScale;
 }
 
 // Build Psi at a residual-error multiplier gamma (op_focei.npResidScale), reusing

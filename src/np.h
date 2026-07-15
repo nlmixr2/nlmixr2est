@@ -20,6 +20,11 @@ double npEvalCondLik(double *eta, int id);
 // over base subjects.  Requires vaeInnerSetup_ (or foceiSetup_) already run.
 void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi);
 
+// Unnormalized Psi at a residual-error multiplier gamma (single absolute scale,
+// no per-row offset).  For the D(F) certificate's cross-matrix likelihood ratios.
+void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
+                         arma::mat& psi);
+
 // Build Psi at a residual-error multiplier gamma, reusing likInner0's full
 // conditional likelihood so censoring and transform-both-sides are handled at the
 // scaled error.  Row-normalized (log-sum-exp) for numerical stability; the true

@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): the `npag`/`npb` conditional likelihood now
+  folds in the transform-both-sides (dTBS) per-observation Jacobian, so `lnorm`,
+  `boxCox`, and `yeoJohnson` residual models are handled correctly and lambda-type
+  transform parameters are estimable.  Proportional and combined additive +
+  proportional error are supported, and the global-optimality certificate D(F) is
+  now evaluated at the fitted gamma (so it reaches ~0 for proportional/combined
+  models with gamma optimization on).  A model whose transform link sees a
+  non-positive prediction (e.g. `lnorm` at an observation where the prediction is
+  0) now raises a clear error instead of an Armadillo empty-matrix crash.
+
 - Nonparametric engines (cont.): the `npag`/`npb` engines now support fixed
   parameters.  Fixed population `theta`s (including fixed residual parameters such
   as `add.sd <- fix(0.7)`) are held at their ini value.  Fixed-`Omega` etas -- for

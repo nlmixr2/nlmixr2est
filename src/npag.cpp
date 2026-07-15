@@ -94,6 +94,26 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     } else {
       npBuildPsiCore(theta, ctl.cores, psi);
     }
+    // a subject whose conditional density is 0 at EVERY support point makes the
+    // Burke IPM (and condensation) degenerate to an empty problem -- report it
+    // clearly instead of letting Armadillo throw "Mat::max(): object has no
+    // elements".  The usual cause is a transform-both-sides link evaluated where
+    // the structural prediction is non-positive (e.g. lnorm/log at an observation
+    // whose model prediction is 0).
+    if (cycle == 1) {
+      arma::vec rowSum = arma::sum(psi, 1);
+      arma::uvec bad = arma::find_nonfinite(rowSum);
+      if (bad.is_empty()) bad = arma::find(rowSum <= 0.0);
+      if (!bad.is_empty()) {
+        throw std::runtime_error(
+          "npag/npb: " + std::to_string(bad.n_elem) + " subject(s) (first at index " +
+          std::to_string((int)bad[0] + 1) + ") have zero conditional density at every "
+          "support point.  This usually means a transform-both-sides error model was "
+          "evaluated where the model prediction is non-positive (e.g. an 'lnorm' or log "
+          "link at an observation whose prediction is 0).  Check the residual error "
+          "model and the observations near a zero prediction.");
+      }
+    }
     lam = npBurke(psi, &obj0);
     // condensation: weight threshold, then QR rank-revealing
     arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
@@ -208,19 +228,20 @@ void npagOuter(Environment e) {
     postEta.row(i) = w * r.theta;   // (1 x nspp)(nspp x neta)
   }
   // global-optimality certificate (Yamada Sec 2.9): D(F) = max_theta D(theta,F),
-  // D(theta,F) = sum_i p(y_i|theta)/p(y_i|F) - N.  Evaluated at gamma=1 over a
-  // fresh Sobol scan of the box; at the NPML max D(theta,F) ~ 0 (a large positive
-  // value means the grid missed a mode -- not the global optimum).
+  // D(theta,F) = sum_i p(y_i|theta)/p(y_i|F) - N.  Evaluated at the FINAL gamma
+  // (so p(y_i|theta) and p(y_i|F) share the fitted residual scale) over a fresh
+  // Sobol scan of the box; at the NPML max D(theta,F) ~ 0 (a large positive value
+  // means the grid missed a mode -- not the global optimum).
   double npagDF = NA_REAL;
   {
     arma::mat psiSup;
-    npBuildPsiCore(r.theta, ctl.cores, psiSup);        // nsub x nspp (unnormalized)
+    npBuildPsiCoreGamma(r.theta, ctl.cores, r.gamma, psiSup);  // nsub x nspp (unnormalized)
     arma::vec pyf = psiSup * r.lambda;                 // p(y_i|F)
     pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
     int nScan = std::max(2048, 4 * ctl.points);
     arma::mat scan = npSobolGrid(nScan, lower, upper);
     arma::mat psiScan;
-    npBuildPsiCore(scan, ctl.cores, psiScan);          // nsub x nScan
+    npBuildPsiCoreGamma(scan, ctl.cores, r.gamma, psiScan);    // nsub x nScan
     double dmax = -arma::datum::inf;
     for (int k = 0; k < nScan; ++k) {
       double d = arma::accu(psiScan.col(k) / pyf) - (double)nsub;
