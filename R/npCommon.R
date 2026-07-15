@@ -98,7 +98,12 @@
   .muThetaIdx <- as.integer(match(.mr$theta, .thNames) - 1L)
   .muEtaIdx <- as.integer(match(.mr$eta, .etaNames) - 1L)
   .covGroupTheta <- rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0))
-  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) & !(.muThetaIdx %in% .covGroupTheta)
+  # fixed thetas are held constant: exclude them from the mean-shift (they keep
+  # their ini value instead of being moved to the support-point mean).
+  .thOrd <- .th[order(.th$ntheta), , drop = FALSE]
+  .thFixed <- which(!is.na(.thOrd$fix) & .thOrd$fix) - 1L   # 0-based fixed theta idx
+  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) &
+    !(.muThetaIdx %in% .covGroupTheta) & !(.muThetaIdx %in% .thFixed)
   .control$impMuThetaIdx <- .muThetaIdx[.keep]
   .control$impMuEtaIdx <- .muEtaIdx[.keep]
   .control$impThetaSensIdx <- integer(0)   # no sensitivity model for npag/npb

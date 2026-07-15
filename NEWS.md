@@ -1,5 +1,12 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): the `npag`/`npb` engines now support fixed
+  parameters.  Fixed population `theta`s (including fixed residual parameters such
+  as `add.sd <- fix(0.7)`) are held at their ini value.  Fixed-`Omega` etas -- for
+  example a fixed inter-occasion variance `iov.ka ~ fix(0.05) | occ` -- remain
+  support-point dimensions but keep their variance held at the fixed value instead
+  of being estimated, so IOV models fit.
+
 - Nonparametric engines (cont.): `est="npag"` now reports the global-optimality
   certificate D(F) (`$env$npagDF`; ~0 certifies the nonparametric maximum
   likelihood), records a per-cycle parameter-history trace through the shared

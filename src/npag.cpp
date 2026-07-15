@@ -31,7 +31,9 @@ struct npagCtl {
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
-// sparsity (diagonal always + modeled off-diagonals).
+// sparsity (diagonal always + modeled off-diagonals), with fixed-Omega diagonals
+// restored to the model (fixed) value -- those etas are pinned to 0 in the grid
+// so their support-point variance is 0.
 static arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel) {
   int neta = (int)Omega.n_rows;
   arma::mat out(neta, neta, arma::fill::zeros);
@@ -39,6 +41,12 @@ static arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel)
   for (int i = 0; i < neta; ++i)
     for (int j = 0; j < neta; ++j)
       if (i == j || (haveModel && omModel(i, j) != 0.0)) out(i, j) = Omega(i, j);
+  std::vector<int> fixedEta;
+  impGetOmegaFixedEta(fixedEta);
+  for (size_t f = 0; f < fixedEta.size(); ++f) {
+    int fi = fixedEta[f];
+    if (fi >= 0 && fi < neta && haveModel) out(fi, fi) = omModel(fi, fi);
+  }
   return out;
 }
 
@@ -268,7 +276,17 @@ arma::mat npFinalizeFit(Environment e, const arma::mat& support,
   // the diagonal always, plus off-diagonals only where the model has correlated
   // etas (a full covariance on a diagonal model would create free parameters that
   // do not exist).  The full covariance is returned for reporting.
-  impSetOmega(npMaskedOmega(Omega, omModel), impDiagXform());
+  // npMaskedOmega restores fixed-Omega diagonals to the model value; mirror that
+  // in the reported covariance too.
+  arma::mat omInstall = npMaskedOmega(Omega, omModel);
+  std::vector<int> fixedEta;
+  impGetOmegaFixedEta(fixedEta);
+  bool haveModel = ((int)omModel.n_rows == neta && (int)omModel.n_cols == neta);
+  for (size_t f = 0; f < fixedEta.size(); ++f) {
+    int fi = fixedEta[f];
+    if (fi >= 0 && fi < neta && haveModel) Omega(fi, fi) = omModel(fi, fi);
+  }
+  impSetOmega(omInstall, impDiagXform());
   impSyncInitParToFullTheta();
   impMapPass(e);
   e["objective"] = -2.0 * objf;

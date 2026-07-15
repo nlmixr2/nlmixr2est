@@ -42,5 +42,6 @@
       }
     }
   }
-  list(lower = .lower, upper = .upper, names = .eta$name)
+  list(lower = .lower, upper = .upper, names = .eta$name,
+       fixed = !is.na(.eta$fix) & .eta$fix)
 }
