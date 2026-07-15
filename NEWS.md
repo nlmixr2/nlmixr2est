@@ -8,11 +8,16 @@
   parameter names and Jacobian-corrected; Omega and residual terms are
   untransformed so they pass through unchanged.
 
-- Fix `covMethod="analytic"` (the FOCEI default) silently dropping the Omega
-  block when it falls back to the finite-difference covariance: with
-  `covFull=TRUE` (the default) the full theta+sigma+Omega finite-difference
-  covariance is now installed on the fallback, matching the shape the analytic
-  covariance would have produced instead of a theta-only matrix.
+- With `foceiControl(covFull=TRUE)` (now the consistent default) the
+  finite-difference covariance methods report the full theta + residual sigma +
+  Omega covariance, with Omega on the variance-covariance scale (`om.<eta>` /
+  `cov.<eta>.<eta>`).  `covMethod="r,s"` is now a true full sandwich
+  `solve(Rfull) %*% Sfull %*% solve(Rfull)` (previously the full shape was only the
+  Hessian inverse `solve(Rfull)`), `"s"` is `solve(Sfull)`, and `"r"` is
+  `solve(Rfull)`; `fit$covR`, `fit$covS` and `fit$covRS` carry the matching full
+  shape.  This also applies when `covMethod="analytic"` is out of scope and falls
+  back to the finite-difference sandwich, which previously stayed theta-only.
+  `covFull=FALSE` keeps the historical theta-only `fit$cov` shape.
 
 - New function `formatMinWidth()` for shorter, more often non-scientific
   `$parFixed` display; `$parFixed` is now built with data.frame operations

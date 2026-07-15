@@ -246,16 +246,19 @@ the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
 perturbed solves behind the finite-difference methods.  \code{NULL} (default)
 derives a tight tolerance from \code{sigdig}; supply a number to override it.}
 
-\item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
-installs only the structural-theta block (the NONMEM-matched theta
-covariance, matching the historical finite-difference \code{fit$cov} shape
-for backwards compatibility); \code{TRUE} installs the full theta + residual
-sigma + Omega covariance -- assembled analytically for
-\code{covMethod="analytic"}, or by central finite differences of the objective
-over the same parameter set for the finite-difference methods (perturbing Omega
-on the variance-covariance scale, with the per-parameter Gill (1983) step and the
-5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
-errors are identical either way.}
+\item{covFull}{controls the shape of \code{fit$cov}.  \code{TRUE} (default)
+installs the full theta + residual sigma + Omega covariance -- assembled
+analytically for \code{covMethod="analytic"}, or by central finite differences
+of the objective over the same parameter set for the finite-difference methods
+(perturbing Omega on the variance-covariance scale, with the per-parameter
+Gill (1983) step and the 5-point/4-point stencils that \code{foceiCalcR} uses).
+For the finite-difference methods the full covariance follows \code{covMethod}:
+\code{"r,s"} is the true full sandwich \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)},
+\code{"s"} is \code{solve(Sfull)}, and \code{"r"} is \code{solve(Rfull)}.
+\code{FALSE} installs only the structural-theta block (the NONMEM-matched theta
+covariance, matching the historical finite-difference \code{fit$cov} shape for
+backwards compatibility).  The theta covariance is close either way, but the full
+sandwich's theta block is not identical to the Omega-fixed theta-only sandwich.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by

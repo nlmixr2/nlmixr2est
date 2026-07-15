@@ -110,23 +110,46 @@ nmTest({
     expect_true(all(is.finite(.se)) && all(.se > 0))
   })
 
-  test_that("finite-difference covMethod='r,s' covFull=TRUE installs the full FD covariance matching analytic", {
+  test_that("finite-difference covMethod='r,s' covFull=TRUE installs the true full FD sandwich", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # the finite-difference covariance over the SAME full parameter set as the analytic
-    # engine: structural + residual thetas plus the Omega variance-covariance elements
-    # (Gill-style adaptive step; Omega perturbed on the variance scale, no Jacobian).
+    # the full theta+sigma+Omega covariance over the SAME parameter set as the analytic engine
+    # (structural + residual thetas plus the Omega variance-covariance elements; Omega perturbed
+    # on the variance scale, no Jacobian), assembled as a TRUE sandwich solve(Rfull) %*% Sfull
+    # %*% solve(Rfull) -- not merely the Hessian inverse.
     fa <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                   foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE)))
     ff <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                   foceiControl(print = 0L, covMethod = "r,s", covFull = TRUE)))
-    # full theta+sigma+Omega cov, same parameter set as analytic
-    expect_setequal(rownames(ff$cov),
-                    c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v"))
-    .seF <- sqrt(diag(ff$cov)); .seA <- sqrt(diag(fa$cov))[rownames(ff$cov)]
+    .nm <- c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v")
+    # full theta+sigma+Omega cov, and covR/covS/covRS carry the same full shape
+    expect_setequal(rownames(ff$cov), .nm)
+    expect_setequal(rownames(ff$covRS), .nm)
+    expect_setequal(rownames(ff$covR), .nm)
+    expect_setequal(rownames(ff$covS), .nm)
+    .seF <- sqrt(diag(ff$cov))
     expect_true(all(is.finite(.seF)) && all(.seF > 0))
-    # FD full SEs match the analytic full SEs (finite-difference tolerance)
-    expect_equal(unname(.seF), unname(.seA), tolerance = 0.05)
+    # it is the sandwich Rinv %*% S %*% Rinv, not the Hessian inverse .fdFullCov
+    .Rinv <- get(".fdFullCov", ff$env); .S <- get(".fdFullS", ff$env)
+    expect_equal(unname(unclass(ff$cov)), unname(.Rinv %*% .S %*% .Rinv), tolerance = 1e-6)
+    expect_false(isTRUE(all.equal(unclass(ff$cov), unclass(.Rinv), check.attributes = FALSE)))
+    # the structural theta SEs stay in the analytic ballpark (sandwich != observed information,
+    # so not identical, but the same order of magnitude on this model)
+    .thF <- sqrt(diag(ff$cov))[c("tka", "tcl", "tv")]
+    .thA <- sqrt(diag(fa$cov))[c("tka", "tcl", "tv")]
+    expect_equal(unname(.thF), unname(.thA), tolerance = 0.25)
+  })
+
+  test_that("finite-difference covMethod='s' covFull=TRUE installs solve(Sfull)", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                                   foceiControl(print = 0L, covMethod = "s", covFull = TRUE)))
+    expect_setequal(rownames(fit$cov),
+                    c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v"))
+    .S <- get(".fdFullS", fit$env)
+    expect_equal(unname(unclass(fit$cov)), unname(solve(.S)), tolerance = 1e-6)
+    expect_true(all(is.finite(sqrt(diag(fit$cov)))) && all(diag(fit$cov) > 0))
   })
 
   test_that("finite-difference covMethod='r,s' covFull=FALSE keeps the finite-difference theta covariance", {
@@ -162,7 +185,10 @@ nmTest({
     fit <- suppressWarnings(suppressMessages(nlmixr(cm, d, "focei",
                                                     foceiControl(print = 0L, covMethod = "analytic", censOption = "laplace"))))
     expect_true(is.matrix(fit$cov))
-    expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
+    # analytic bowed out (laplace determinant is out of scope) -> the finite-difference
+    # sandwich; with covFull=TRUE (default) that fallback now carries the full cov (om. rows)
+    expect_false(identical(fit$covMethod, "analytic"))
+    expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
   test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI and FOCE (gauss); laplace uses FD", {
@@ -214,10 +240,12 @@ nmTest({
                                                                  interaction = FALSE, foceType = "foce+"))))
     expect_identical(fFp$covMethod, "analytic")
     expect_true(any(grepl("^om\\.", rownames(fFp$cov))))
-    # only the laplace censored determinant stays on the FD cov (theta-only)
+    # the laplace censored determinant is out of analytic scope -> the finite-difference
+    # sandwich; with covFull=TRUE (default) that fallback carries the full cov (om. rows)
     fL <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                    foceiControl(print = 0L, covMethod = "analytic", censOption = "laplace"))))
-    expect_false(any(grepl("^om\\.", rownames(fL$cov))))
+    expect_false(identical(fL$covMethod, "analytic"))
+    expect_true(any(grepl("^om\\.", rownames(fL$cov))))
   })
 
   test_that("covMethod='analytic' with pure proportional error near a zero prediction falls back to FD", {
@@ -238,7 +266,10 @@ nmTest({
     fit <- suppressWarnings(suppressMessages(nlmixr(pm, nlmixr2data::theo_sd, "focei",
                                                     foceiControl(print = 0L, covMethod = "analytic"))))
     expect_true(is.matrix(fit$cov))
-    expect_false(any(grepl("^om\\.", rownames(fit$cov))))
+    # the near-zero-prediction guard drops to the finite-difference fallback; covFull=TRUE
+    # (default) makes it the full theta+sigma+Omega cov
+    expect_false(identical(fit$covMethod, "analytic"))
+    expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
   test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same theta", {
