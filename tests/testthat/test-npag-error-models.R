@@ -22,6 +22,38 @@ nmTest({
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 1e-2)
   })
 
+  test_that("est='npag' estimates the residual: gamma is folded into add.sd", {
+    ## start add.sd deliberately too large; with gamma optimization the fitted
+    ## assay-error multiplier is folded back into add.sd, so the REPORTED add.sd
+    ## recovers the true residual magnitude (near the FOCEI estimate ~0.78)
+    .m <- function() {
+      ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-2.0
+        eta.ka~0.3; eta.ke~0.1 })
+      model({ ka<-exp(tka+eta.ka); v<-exp(tv); ke<-exp(tke+eta.ke)
+        d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
+        cp<-center/v; cp~add(add.sd) })
+    }
+    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
+                 control=npagControl(points=500L, cycles=40L, gammaOptimize=TRUE))
+    expect_s3_class(f, "nlmixr2FitData")
+    ## recovered residual is far from the (wrong) ini 2.0 and near the truth
+    expect_true(f$parFixedDf["add.sd", "Estimate"] < 1.2)
+    expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 0.78, tolerance = 0.15)
+  })
+
+  test_that("est='npag' with gammaOptimize=FALSE leaves the residual at ini", {
+    .m <- function() {
+      ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-2.0
+        eta.ka~0.3; eta.ke~0.1 })
+      model({ ka<-exp(tka+eta.ka); v<-exp(tv); ke<-exp(tke+eta.ke)
+        d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
+        cp<-center/v; cp~add(add.sd) })
+    }
+    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
+                 control=npagControl(points=300L, cycles=10L, gammaOptimize=FALSE))
+    expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 2.0, tolerance = 1e-8)
+  })
+
   test_that("est='npag' fits combined additive+proportional error", {
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.3; prop.sd<-0.1

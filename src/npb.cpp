@@ -146,7 +146,10 @@ void npbOuter(Environment e) {
     objf += std::log(std::max(1e-300, s));
   }
 
-  arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf, omModel);
+  // npb does not optimize the assay-error multiplier, so there is no gamma to
+  // fold into the residual thetas (gamma = 1 makes the fold a no-op).
+  arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf, omModel,
+                                  1.0, std::vector<int>());
 
   e["npbSupport"] = wrap(support);          // pooled posterior support (E[F])
   e["npbWeights"] = wrap(weights);

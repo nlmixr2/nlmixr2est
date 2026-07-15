@@ -195,6 +195,11 @@ void npagOuter(Environment e) {
   ctl.cores = impCores();
   ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
   ctl.trace = true;
+  std::vector<int> residScaleIdx;
+  if (control.containsElementNamed("npResidScaleIdx")) {
+    IntegerVector ri = control["npResidScaleIdx"];
+    residScaleIdx.assign(ri.begin(), ri.end());
+  }
   // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0
   // path; likInner0 still evaluates the Omega-prior term (omegaInv * eta), so
   // rebuild the inverse from the initial Omega before the cycle calls likInner0.
@@ -255,7 +260,8 @@ void npagOuter(Environment e) {
     npagDF = dmax;
   }
 
-  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf, omModel);
+  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf, omModel,
+                                  r.gamma, residScaleIdx);
   impIterPrintGet(e);          // closing rule + stash e$parHistData
   e["npagDF"] = npagDF;        // global-optimality certificate
   // nonparametric outputs (support-point distribution + trace)
@@ -275,7 +281,8 @@ void npagOuter(Environment e) {
 // env, and set the nonparametric objective.  Returns the full support covariance.
 arma::mat npFinalizeFit(Environment e, const arma::mat& support,
                         const arma::vec& weights, const arma::mat& postEta,
-                        double objf, const arma::mat& omModel) {
+                        double objf, const arma::mat& omModel,
+                        double gamma, const std::vector<int>& residScaleIdx) {
   int nsub = impNsub();
   int neta = impNeta();
   arma::rowvec meanEta = weights.t() * support;               // 1 x neta
@@ -308,6 +315,17 @@ arma::mat npFinalizeFit(Environment e, const arma::mat& support,
     if (fi >= 0 && fi < neta && haveModel) Omega(fi, fi) = omModel(fi, fi);
   }
   impSetOmega(omInstall, impDiagXform());
+  // fold the fitted assay-error multiplier (gamma) into the variance-scale
+  // residual coefficients: r was fit as gamma^2 * r(theta), which equals
+  // r(gamma*theta) because r is homogeneous degree 2 in those coefficients.  The
+  // post-cycle npResidScale is already back to 1, so scaling the thetas makes the
+  // reported residual, the tables, and the objective all consistent.
+  if (gamma != 1.0) {
+    for (size_t s = 0; s < residScaleIdx.size(); ++s) {
+      int idx = residScaleIdx[s];
+      impSetThetaAll(idx, impGetFullThetaVal(idx) * gamma);
+    }
+  }
   impSyncInitParToFullTheta();
   impMapPass(e);
   e["objective"] = -2.0 * objf;

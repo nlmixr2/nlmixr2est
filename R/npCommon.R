@@ -109,6 +109,14 @@
   .control$impThetaSensIdx <- integer(0)   # no sensitivity model for npag/npb
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
   .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
+  # 0-based theta indices of the variance-scale residual parameters (add/prop/
+  # lnorm/...).  The npag/npb assay-error multiplier (gamma) scales the residual
+  # variance r; at finalization gamma is folded into these coefficients so the
+  # reported parameter reflects the estimate.  Transform (boxCox/yeoJohnson) and
+  # autocorrelation (ar) params are NOT variance scales and must not be folded.
+  .errScale <- !is.na(.thOrd$err) &
+    !(as.character(.thOrd$err) %in% c("boxCox", "yeoJohnson", "ar", "pw"))
+  .control$npResidScaleIdx <- as.integer(which(.errScale) - 1L)
   assign("control", .control, envir = ui)
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
   .foceiFamilyReturn(env, ui, ..., est = .est)

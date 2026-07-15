@@ -1,5 +1,13 @@
 # nlmixr2est (development version)
 
+- Nonparametric engines (cont.): with `gammaOptimize=TRUE` the fitted `npag`
+  assay-error multiplier (gamma) is now folded back into the variance-scale
+  residual parameters (add/prop/lnorm/...), so the reported residual (e.g.
+  `add.sd`) reflects the estimate rather than staying at its initial value.
+  Transform (`boxCox`/`yeoJohnson`) and autocorrelation (`ar`) parameters are not
+  variance scales and are left unchanged.  A residual parameter started away from
+  the truth now converges in the reported output.
+
 - Nonparametric engines (cont.): the `npag`/`npb` conditional likelihood now
   folds in the transform-both-sides (dTBS) per-observation Jacobian, so `lnorm`,
   `boxCox`, and `yeoJohnson` residual models are handled correctly and lambda-type

@@ -38,9 +38,13 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 // into the FOCEi state (imp M-step helpers), build the fit env (impMapPass), and
 // set e$objective = -2*objf.  Returns the (full) support-point covariance Omega
 // so the caller can attach it.  Implemented in npag.cpp.
+// gamma (the fitted assay-error multiplier, 1 if not optimized) is folded into
+// the variance-scale residual thetas named by residScaleIdx (0-based fullTheta
+// indices) so the reported residual reflects the estimate.
 arma::mat npFinalizeFit(Rcpp::Environment e, const arma::mat& support,
                         const arma::vec& weights, const arma::mat& postEta,
-                        double objf, const arma::mat& omModel);
+                        double objf, const arma::mat& omModel,
+                        double gamma, const std::vector<int>& residScaleIdx);
 
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).
