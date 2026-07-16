@@ -2,6 +2,13 @@
 
 ## New features
 
+- `saemControl(mixProbMethod="regress")` fixes per-subject mixture membership:
+  each subject is hard-classified to its best component once, held fixed, and
+  the soft-EM responsibility step is skipped.  On a 2-component clearance mixture
+  this recovered the component clearances and mixing proportion more accurately
+  than the soft-EM default (which can let a component collapse), while reusing
+  the existing responsibility-weighted machinery via a 0/1 `mixWeights`.
+
 - SAEM warm-starts its residual-error parameters from the observed per-endpoint
   moments at the initial predictions (additive SD from `sqrt(mean(err^2))`,
   proportional SD from `sqrt(mean((err/f)^2))`), the same moment estimate
@@ -10,7 +17,9 @@
   proportional moment excludes near-zero predictions (where between-subject
   variability dominates) and the warm-started value is clamped to a sane multiple
   of the `ini` value.  Set `residWarmStart=FALSE` to start from the `ini`
-  residual values.
+  residual values.  For mixture models the warm-start is disabled (the poor
+  population initial fit would inflate the residual and stop the components from
+  separating).
 
 - The proportional residual moment used to warm-start `est="npag"`/`est="npb"`
   (and now SAEM) guards against a near-zero prediction: the ratio is
@@ -27,7 +36,9 @@
   thetas (`ka`, `V`, a Hill power) this recovered them far more accurately than the old
   handling (e.g. the absorption theta RMSE dropped ~16x), at some extra runtime (the
   objective re-solves the ODE).  The previous behavior is available with
-  `saemControl(nonMuTheta="eta")`.
+  `saemControl(nonMuTheta="eta")`.  For mixture models this falls back to the
+  stochastic `phi0` block (the direct optimizer cannot partition a per-component
+  structural theta by subject membership).
 
 - `est="npag"`/`est="npb"` now ESTIMATE a mixture (`mix()`) model's component structural
   parameters (e.g. a per-subpopulation clearance) instead of holding them at their
