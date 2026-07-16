@@ -1211,13 +1211,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // nlmerSolveGrad
-RObject nlmerSolveGrad(arma::mat& thetaMat);
-RcppExport SEXP _nlmixr2est_nlmerSolveGrad(SEXP thetaMatSEXP) {
+RObject nlmerSolveGrad(arma::mat& thetaMat, bool record);
+RcppExport SEXP _nlmixr2est_nlmerSolveGrad(SEXP thetaMatSEXP, SEXP recordSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat& >::type thetaMat(thetaMatSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmerSolveGrad(thetaMat));
+    Rcpp::traits::input_parameter< bool >::type record(recordSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmerSolveGrad(thetaMat, record));
     return rcpp_result_gen;
 END_RCPP
 }

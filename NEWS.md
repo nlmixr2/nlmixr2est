@@ -10,12 +10,13 @@
   becomes grid-estimable, then recovers it as a FIXED effect at finalization: the
   injected eta's support-weighted mean is folded into its theta (so the reported
   estimate reflects it -- e.g. recovering theo's ke from a deliberately-wrong start)
-  and the injected random effect is collapsed (no BSV).  Set `muExpand=FALSE` to hold
-  such parameters at their ini value instead (reported in the fit `$runInfo`).  Not
-  applied to mixture models yet (a pre-existing npag+mixture multi-eta limitation).
-  (A non-mu-referenced ETA -- an eta with no paired theta -- needs no expansion: the
-  npag box already covers every eta, so it is a grid dimension estimated as a pure
-  random effect.)
+  and the injected random effect is collapsed (no BSV).  The injected eta carries a
+  FIXED omega (excluded from the free omega objective, like IOV), so it also works in
+  mixture models -- the mixture proportions are left out of the injection and move
+  via the in-cycle EM.  Set `muExpand=FALSE` to hold such parameters at their ini
+  value instead (reported in the fit `$runInfo`).  (A non-mu-referenced ETA -- an eta
+  with no paired theta -- needs no expansion: the npag box already covers every eta,
+  so it is a grid dimension estimated as a pure random effect.)
 
 - `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
   The nonparametric objective sums the inner per-observation llikObs, which for a
@@ -187,6 +188,15 @@
   (and the stashed full theta+Omega covariance) are now renamed to the original
   parameter names and Jacobian-corrected; Omega and residual terms are
   untransformed so they pass through unchanged.
+- The nlm parameter-history machinery can now be driven by an external
+  optimizer.  `nlmerSolveGrad()` gains a `record` argument that logs the
+  evaluation's population parameter estimate (the per-subject mean of the
+  `phi` columns) into the resident scale, and `nlmGetParHist()` is now
+  exported so an externally-optimized engine (e.g. `babelmixr2`'s nlmer,
+  driven by `lme4::nlmer`) can recover the accumulated parameter history
+  before `.nlmFreeEnv()`.  A new optional `showOfv` field in the nlm solve
+  control hides the objective column for these engines (they record
+  parameters only).
 
 ### New estimation methods
 

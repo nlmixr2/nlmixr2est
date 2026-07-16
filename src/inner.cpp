@@ -8887,7 +8887,14 @@ void impReMap() {
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   Environment rxode2ns = Environment::namespace_env("rxode2");
   Function f = rxode2ns["rxSymInvCholCreate"];
-  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Omega),
+  // positive-definite guard: a support-point covariance can be numerically
+  // non-PD (a collapsed/degenerate dimension -- e.g. a small BSV on well-separated
+  // mixture clusters, or a mu-expanded fixed-effect eta), which makes
+  // rxSymInvCholCreate error "initial 'omega' matrix inverse is non-positive
+  // definite".  Symmetrize and floor the diagonal so the inverse is well-defined.
+  arma::mat Om = 0.5 * (Omega + Omega.t());
+  for (unsigned int d = 0; d < Om.n_rows; ++d) if (Om(d, d) < 1e-6) Om(d, d) = 1e-6;
+  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Om),
                       Rcpp::Named("diag.xform") = diagXform));
   if (op_focei.fo == 1) {
     op_focei.omega = getOmegaMat();

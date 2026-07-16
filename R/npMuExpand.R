@@ -30,17 +30,6 @@
 #' @noRd
 .npMuExpand <- function(ui, initVar = 0.25) {
   nlmixr2global$npMuExpandPairs <- NULL   # clear any stale pairs from a prior fit
-  # Mixture models are skipped for now -- NOT because the mixture proportions need
-  # protecting (they are estimated by the in-cycle proportion EM and move during the
-  # fit; mu-expansion targets structural thetas and would leave the proportions
-  # alone anyway), but because npag's mixture setup hits a PRE-EXISTING limitation:
-  # with more than one eta it errors "initial 'omega' matrix inverse is non-positive
-  # definite" (rxode2's rxSymInvCholEnvCalculate for the mixture omega).  A
-  # hand-mu-referenced 2-eta mixture fails the same way while FOCEI fits it -- so it
-  # is an npag+mixture omega bug, not a mu-expansion bug; injecting etas would trip
-  # it.  Followup: fix the npag mixture multi-eta omega setup, then drop this skip
-  # (the mixture proportions, ui$mixProbs, must still be left out of the injection).
-  if (length(ui$mixProbs) > 0L) return(ui)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
   .mr <- ui$muRefDataFrame
@@ -72,7 +61,14 @@
       }
     }
     if (.used) {
-      ui <- eval(bquote(rxode2::ini(ui, .(as.name(.etaN)) ~ .(initVar))))
+      # inject the pseudo-eta with a FIXED omega: it represents a fixed effect
+      # (eta -> 0), so it must NOT be a free parameter in the omega objective -- it is
+      # only a support (grid) dimension for locating the theta.  Excluding it from the
+      # free omega parameterization also sidesteps the npag+mixture multi-free-eta
+      # omega setup limitation (same pattern IOV uses).  initVar sets the grid box
+      # half-width (gridWidth * sqrt(initVar)); finalization folds its support-mean
+      # into the theta and collapses its reported BSV to ~0.
+      ui <- eval(bquote(rxode2::ini(ui, .(as.name(.etaN)) ~ fix(.(initVar)))))
       .injEta <- c(.injEta, .etaN); .injTh <- c(.injTh, .tn)
     }
   }

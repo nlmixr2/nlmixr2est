@@ -524,6 +524,15 @@ arma::mat npFinalizeFit(Environment e, arma::mat& support,
   // diagonal so the inverse is well-defined; the tiny variance still reads as "no
   // BSV" for that parameter.
   for (int d = 0; d < neta; ++d) if (omInstall(d, d) < 1e-6) omInstall(d, d) = 1e-6;
+  // mu-expanded etas carry a FIXED omega only so they are excluded from the free
+  // omega objective (and, in mixtures, do not trip the multi-free-eta omega setup).
+  // At finalization they are collapsed to a fixed effect: their support-mean is
+  // already folded into the theta, so force their installed AND reported BSV to ~0,
+  // overriding the fixed-Omega restore above.
+  for (size_t x = 0; x < injEtaIdx.size(); ++x) {
+    int j = injEtaIdx[x];
+    if (j >= 0 && j < neta) { omInstall(j, j) = 1e-6; Omega(j, j) = 0.0; }
+  }
   impSetOmega(omInstall, impDiagXform());
   // fold the fitted assay-error multiplier (gamma) into the variance-scale
   // residual coefficients: r was fit as gamma^2 * r(theta), which equals

@@ -29,7 +29,7 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    .ctl <- npagControl(points = 32L, cycles = 3L, seed = 1L, gammaOptimize = FALSE)
+    .ctl <- npagControl(points = 32L, cycles = 3L, seed = 1L, gammaOptimize = FALSE, muExpand = FALSE)
     f5 <- nlmixr2(.mix5, nlmixr2data::theo_sd, est = "npag", control = .ctl)
     f9 <- nlmixr2(.mix9, nlmixr2data::theo_sd, est = "npag", control = .ctl)
     expect_s3_class(f5, "nlmixr2FitData")
@@ -86,12 +86,43 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
+    # muExpand=FALSE: this test validates the proportion EM with a fixed structural
+    # model (tka/tcl held); mu-expanding them adds free parameters that weaken the
+    # proportion identification.  Mixture + mu-expansion is covered separately.
     f <- nlmixr2(mixMod, dat, est = "npag",
                  control = npagControl(points = 64L, cycles = 20L, seed = 1L,
-                                       gammaOptimize = FALSE))
+                                       gammaOptimize = FALSE, muExpand = FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     # the slow-clearance proportion (p1) recovers the simulated fraction (0.70)
     # from a deliberately-wrong 0.50 start -- the EM update moved it.
     expect_equal(as.numeric(f$theta[["p1"]]), mean(comp == 0), tolerance = 0.1)
+  })
+
+  test_that("est='npag' mu-expands a mixture model's structural thetas (multi-eta)", {
+    # a mixture model with non-mu structural thetas (tka, and the component values
+    # tcl1/tcl2) -- with muExpand each gets a fixed-omega pseudo-eta.  This exercises
+    # >1 eta in a mixture, which previously errored "initial 'omega' matrix inverse
+    # is non-positive definite"; the impSetOmega PD guard fixes it.  The mixture
+    # proportion (p1) is NOT injected -- it is estimated by the in-cycle EM.
+    .m <- function() {
+      ini({ tka <- log(1.5); tv <- log(32); tcl1 <- log(2); tcl2 <- log(0.5)
+        eta.v ~ 0.1; p1 <- 0.5; add.sd <- 0.7 })
+      model({ ka <- exp(tka); v <- exp(tv + eta.v)
+        cl <- mix(exp(tcl1), p1, exp(tcl2)); ke <- cl / v
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v; cp ~ add(add.sd) })
+    }
+    f <- nlmixr2(.m, nlmixr2data::theo_sd, est = "npag",
+                 control = npagControl(points = 32L, cycles = 3L, seed = 1L,
+                                       gammaOptimize = FALSE, calcTables = FALSE,
+                                       muExpand = TRUE))
+    expect_true(is.finite(as.numeric(f$objf)))
+    # tka and the component clearances gained injected (collapsed) etas ...
+    expect_true(all(c("eta.tka", "eta.tcl1", "eta.tcl2") %in% rownames(f$omega)))
+    expect_lt(f$omega["eta.tka", "eta.tka"], 1e-4)         # collapsed to a fixed effect
+    # ... while the proportion is not injected and is a valid probability
+    expect_false("eta.p1" %in% rownames(f$omega))
+    expect_true(as.numeric(f$theta[["p1"]]) > 0 && as.numeric(f$theta[["p1"]]) < 1)
   })
 })
