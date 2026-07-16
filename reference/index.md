@@ -8,6 +8,8 @@
   : Add CWRES
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
   : NPDE calculation for nlmixr2
+- [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
+  : Add table information to nlmixr2 fit object without tables
 - [`adviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/adviControl.md)
   : Control for advi (automatic differentiation variational inference)
   in nlmixr2

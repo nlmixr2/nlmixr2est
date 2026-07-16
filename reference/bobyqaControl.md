@@ -323,21 +323,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -714.4946 1129.382 1144.106      -561.6912        203.1204         52.1171
+#> lPop -720.4741 1123.403 1138.126      -558.7015        4044.675        210.6639
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8311788 0.8281097  9.558e-06      0.062        0.01 0.033    0.002
-#>            other
-#> elapsed 0.114702
+#> elapsed 0.8519159 0.8701174  7.462e-06      0.053        0.01 0.031    0.001
+#>              other
+#> elapsed 0.09595922
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.7919 0.2718 34.33 -0.7919 (-1.325, -0.2591)                    
-#> Em    4.822  1.611 33.42      4.822 (1.664, 7.980)                    
-#> E50   2.282 0.9253 40.55     2.282 (0.4681, 4.095)                    
+#> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)                    
+#> Em    8.773  8.361 95.31     8.773 (-7.615, 25.16)                    
+#> E50   4.054  2.863 70.62     4.054 (-1.558, 9.666)                    
 #> g     2.000  FIXED FIXED                     2.000                    
 #>  
 #>   Covariance Type ($covMethod): r
@@ -347,16 +347,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0564     0 -0.375 -0.789
-#> 2 1     0.0595     1 -1.16  -0.789
-#> 3 1     0.0650     0 -0.375 -0.788
+#> 1 1     0.0564     0 -0.447 -0.574
+#> 2 1     0.0595     1 -1.02  -0.574
+#> 3 1     0.0650     1 -1.02  -0.574
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.79192990090358, 4.82215060488291, 2.28158116706737 
-#> objective: 561.691220766955 
-#> number of function evaluations: 201 
+#> parameter estimates: -0.576142209690813, 8.77266419276703, 4.05415635008737 
+#> objective: 558.701494344943 
+#> number of function evaluations: 375 
 # }
 ```

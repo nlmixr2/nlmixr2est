@@ -420,28 +420,28 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 8320
+#> → compress origData in nlmixr2 object, save 8344
 #> → compress parHistData in nlmixr2 object, save 2656
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -651.0124 1192.865 1207.588      -593.4323        559.1765        67.22791
+#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -703.1969 1140.68 1155.403      -567.3401        505.7936        91.23111
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3498734  0.63764  6.342e-06      0.052       0.008 0.026    0.012
-#>             other
-#> elapsed 0.1094803
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.320984 0.5955593   6.54e-06      0.048       0.008 0.024    0.011
+#>              other
+#> elapsed 0.09745011
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.6560 0.2250 34.30 -0.6560 (-1.097, -0.2150)                    
-#> Em    5.434  2.737 50.37    5.434 (0.06901, 10.80)                    
-#> E50   3.513  1.671 47.57     3.513 (0.2374, 6.789)                    
+#> E0  -0.6327 0.2691 42.53 -0.6327 (-1.160, -0.1053)                    
+#> Em    5.311  2.632 49.57     5.311 (0.1512, 10.47)                    
+#> E50   2.769  1.449 52.34   2.769 (-0.07144, 5.610)                    
 #> g     2.000  FIXED FIXED                     2.000                    
 #>  
 #>   Covariance Type ($covMethod): r (nlminb)
@@ -453,9 +453,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0404     1 -1.07  -0.655
-#> 2 1     0.0592     0 -0.419 -0.655
-#> 3 1     0.0614     0 -0.419 -0.654
+#> 1 1     0.0404     0 -0.426 -0.632
+#> 2 1     0.0592     0 -0.427 -0.630
+#> 3 1     0.0614     0 -0.427 -0.630
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlminb
@@ -463,10 +463,10 @@ print(fit2)
 fit2$nlminb
 #> $par
 #>         E0         Em        E50 
-#> -0.6560457  5.4341098  3.5129498 
+#> -0.6326759  5.3106495  2.7693343 
 #> 
 #> $objective
-#> [1] 593.4323
+#> [1] 567.3401
 #> 
 #> $convergence
 #> [1] 0
@@ -482,29 +482,29 @@ fit2$nlminb
 #> [1] "relative convergence (4)"
 #> 
 #> $scaleC
-#> [1] 0.002653006 0.026949452 0.026593764
+#> [1] 0.003030948 0.038389222 0.035240556
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#> -436.74930  182.08758   57.89115 
+#> -374.70357  124.31250   22.83094 
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001454619  0.001671560 -0.003681015
-#> Em   0.001671560  0.004731909 -0.008448538
-#> E50 -0.003681015 -0.008448538  0.016658647
+#> E0   0.001802657  0.003140015 -0.007632299
+#> Em   0.003140015  0.012313804 -0.023972951
+#> E50 -0.007632299 -0.023972951  0.051339540
 #> 
 #> $cov.scaled
-#>           E0        Em      E50
-#> E0  7194.897  3142.109 3183.377
-#> Em  3142.109 10317.149 5926.710
-#> E50 3183.377  5926.710 3949.306
+#>           E0       Em      E50
+#> E0  7881.106 2983.632 2564.835
+#> Em  2983.632 4702.071 2639.184
+#> E50 2564.835 2639.184 1691.574
 #> 
 #> $r
-#>                E0            Em          E50
-#> E0   0.0007273094  0.0008357802 -0.001840508
-#> Em   0.0008357802  0.0023659544 -0.004224269
-#> E50 -0.0018405075 -0.0042242689  0.008329324
+#>                E0           Em          E50
+#> E0   0.0009013287  0.001570008 -0.003816149
+#> Em   0.0015700075  0.006156902 -0.011986476
+#> E50 -0.0038161494 -0.011986476  0.025669770
 #> 
 # }
 ```
