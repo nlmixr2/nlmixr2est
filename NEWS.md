@@ -5,10 +5,12 @@
 - Nonparametric engines: `est="npag"`/`est="npb"` now support mixture
   (sub-population) `mix()` models.  Each subject is split into per-component
   pseudo-subjects and the conditional likelihood is marginalized over the
-  components using the mixture proportions from the `mix()` model
-  (`p(y_i | phi) = sum_m mixProb_m * p(y_i | phi, component m)`).  npag/npb run
-  no outer optimizer, so the proportions are recomputed from the current
-  mixture-proportion thetas at setup.
+  components using the mixture proportions
+  (`p(y_i | phi) = sum_m mixProb_m * p(y_i | phi, component m)`).  For `est="npag"`
+  an estimated proportion is updated each cycle by an EM step (support points and
+  weights held fixed), recovering the sub-population fractions; a `fix()`ed
+  proportion is held at its ini value.  npag/npb run no outer optimizer, so the
+  proportions are recomputed from the current mixture-proportion thetas at setup.
 
 - `est="npb"` now supports multiple independent chains (`npbControl(nchains=)`):
   the stick-breaking Gibbs sampler runs once per chain (seed offset per chain),

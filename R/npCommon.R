@@ -146,6 +146,15 @@
   .control$npResidOptLower <- .lo
   .control$npResidOptUpper <- .hi
   if (is.null(.control$npResidMode)) .control$npResidMode <- 1L
+  # mixture (mix()) proportions: estimate them via the in-cycle EM update unless
+  # every mixture-proportion parameter is fixed (then hold the ini proportions).
+  .mixNames <- ui$mixProbs
+  .npMixOptimize <- FALSE
+  if (length(.mixNames) > 0) {
+    .mixRows <- .thOrd[.thOrd$name %in% .mixNames, , drop = FALSE]
+    .npMixOptimize <- any(!(!is.na(.mixRows$fix) & .mixRows$fix))
+  }
+  .control$npMixOptimize <- isTRUE(.npMixOptimize)
   assign("control", .control, envir = ui)
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
   .foceiFamilyReturn(env, ui, ..., est = .est)

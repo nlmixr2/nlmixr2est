@@ -122,6 +122,7 @@ struct npagCtl {
   std::vector<double> residOptLower; // ini-block lower bounds (bobyqa)
   std::vector<double> residOptUpper; // ini-block upper bounds (bobyqa)
   std::vector<int> residScaleIdx; // variance-scale subset (gamma warm-start fold)
+  bool mixOptimize = false;   // estimate mix() proportions via the in-cycle EM update
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
@@ -267,6 +268,20 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
     }
+    // mixture-proportion EM update (support points + weights fixed): reweights the
+    // components, then rebuild the marginalized Psi + Burke weights so the objf
+    // reflects the new proportions -- block-coordinate ascent with the resid step.
+    if (ctl.mixOptimize && impNmix() > 1) {
+      npMixEMUpdate(theta, lam, ctl.cores);
+      if (ctl.gammaOptimize) {
+        double off = 0.0, b = 0.0;
+        npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
+        lam = npBurke(psi, &b); objf = b + off;
+      } else {
+        npBuildPsiCore(theta, ctl.cores, psi);
+        lam = npBurke(psi, &objf);
+      }
+    }
     // per-cycle parameter-history row (shared scale.h printer).  Pushing Omega to
     // op_focei is safe here -- npag sums llikObs, which does not use omegaInv --
     // so impGetEstPar reflects the current support-point variance while the
@@ -338,6 +353,8 @@ void npagOuter(Environment e) {
   }
   if (control.containsElementNamed("npResidMode"))
     ctl.residMode = as<int>(control["npResidMode"]);
+  if (control.containsElementNamed("npMixOptimize"))
+    ctl.mixOptimize = as<bool>(control["npMixOptimize"]);
   if (control.containsElementNamed("npResidOptLower")) {
     NumericVector rl = control["npResidOptLower"];
     ctl.residOptLower.assign(rl.begin(), rl.end());

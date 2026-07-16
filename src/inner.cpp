@@ -8675,9 +8675,9 @@ void impUpdateMixProbs() {
   std::copy(mixProbs.begin(), mixProbs.end(), &op_focei.mixProb[0]);
 }
 
-// Install absolute $MIX thetas (the multinomial-logit of the target proportions)
-// and recompute the population proportions / Jacobian -- used for the stable
-// mean-posterior EM update (mirrors the Omega-theta path in updateTheta()).
+// Install absolute mixture-proportion thetas (the multinomial-logit of the target
+// proportions) and recompute the population proportions / Jacobian -- used for the
+// EM update of the mixture weights (mirrors the Omega-theta path in updateTheta()).
 void impSetMixThetas(const arma::vec& theta) {
   for (int m = 0; m < (int)op_focei.mixIdxN; ++m)
     op_focei.fullTheta[op_focei.mixIdx[m] - 1] = theta[m];
@@ -10073,6 +10073,86 @@ double npMixCondLik(double *eta, int base, int nsub, int nMix) {
   double se = 0.0;
   for (int m = 0; m < nMix; ++m) se += std::exp(lp[m] - mx);
   return mx + std::log(se);
+}
+
+// EM update of the mixture proportions (op_focei.mixProb) with the support points
+// (etaPoints, nPoint x neta) and their weights (lam) held FIXED.  For each subject
+// i and component m the component marginal is q_im = sum_k lam_k p(y_i | eta_k, m);
+// the responsibility gamma_im = mixProb_m q_im / sum_m' mixProb_m' q_im'; and the
+// new proportion is the mean responsibility over subjects.  Installs the result via
+// impSetMixThetas (mlogit of the new proportions).  No-op for a non-mixture model.
+// Component m of physical subject `base` is the pseudo-subject base + m*nsub.
+void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) {
+  int nMix = impNmix();
+  if (nMix <= 1 || op_focei.mixIdxN == 0) return;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  // running log-sum-exp of log(lam_k) + condLik over the support points, per (i,m)
+  arma::mat runMax(nsub, nMix); runMax.fill(R_NegInf);
+  arma::mat runSum(nsub, nMix, arma::fill::zeros);
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+    double logLam = std::log(std::max(1e-300, lam[k]));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      for (int m = 0; m < nMix; ++m) {
+        double cl = npEvalCondLik(&eta[0], base + m * nsub);
+        if (!std::isfinite(cl)) continue;
+        double val = logLam + cl;
+        double rMax = runMax(base, m);
+        if (val > rMax) {
+          runSum(base, m) = std::isfinite(rMax) ? runSum(base, m) * std::exp(rMax - val) + 1.0 : 1.0;
+          runMax(base, m) = val;
+        } else {
+          runSum(base, m) += std::exp(val - rMax);
+        }
+      }
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // responsibilities -> mean over subjects -> new proportions
+  arma::vec newProb(nMix, arma::fill::zeros);
+  for (int i = 0; i < nsub; ++i) {
+    arma::vec g(nMix); double gmax = R_NegInf;
+    for (int m = 0; m < nMix; ++m) {
+      double rMax = runMax(i, m);
+      double logq = std::isfinite(rMax) ? rMax + std::log(runSum(i, m)) : R_NegInf;
+      g[m] = std::log(std::max(1e-300, impMixProb(m))) + logq;
+      if (std::isfinite(g[m]) && g[m] > gmax) gmax = g[m];
+    }
+    if (!std::isfinite(gmax)) { newProb += 1.0 / nMix; continue; }  // no density: uniform
+    double gsum = 0.0;
+    for (int m = 0; m < nMix; ++m) { g[m] = std::exp(g[m] - gmax); gsum += g[m]; }
+    for (int m = 0; m < nMix; ++m) newProb[m] += g[m] / gsum;
+  }
+  newProb /= (double)nsub;
+  // keep every component alive (avoid a collapsed 0 proportion) and renormalize
+  for (int m = 0; m < nMix; ++m) newProb[m] = std::max(1e-4, newProb[m]);
+  newProb /= arma::accu(newProb);
+  Environment rxode2 = Environment::namespace_env("rxode2");
+  Function mlogit = as<Function>(rxode2["mlogit"]);
+  NumericVector pin(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) pin[m] = newProb[m];
+  NumericVector th = mlogit(pin);
+  arma::vec thv(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) thv[m] = th[m];
+  impSetMixThetas(thv);
 }
 
 // Build Psi (nSub x nPoint) with psi(i,k) = p(y_i | support point k), where
