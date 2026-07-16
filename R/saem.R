@@ -270,6 +270,8 @@
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
     # for normal models too, not just general-likelihood.
     .cfg$nonMuThetaRegress <- as.integer(identical(.cfg$nonMuTheta, "regress"))
+    # warm-start residual params from observed per-endpoint moments (npag-style)
+    .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres

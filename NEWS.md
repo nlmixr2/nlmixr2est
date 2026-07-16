@@ -2,6 +2,21 @@
 
 ## New features
 
+- SAEM warm-starts its residual-error parameters from the observed per-endpoint
+  moments at the initial predictions (additive SD from `sqrt(mean(err^2))`,
+  proportional SD from `sqrt(mean((err/f)^2))`), the same moment estimate
+  `est="npag"`/`est="npb"` use -- `saemControl(residWarmStart=TRUE)`, the default.
+  Because SAEM forms this at the unconverged population prediction, the
+  proportional moment excludes near-zero predictions (where between-subject
+  variability dominates) and the warm-started value is clamped to a sane multiple
+  of the `ini` value.  Set `residWarmStart=FALSE` to start from the `ini`
+  residual values.
+
+- The proportional residual moment used to warm-start `est="npag"`/`est="npb"`
+  (and now SAEM) guards against a near-zero prediction: the ratio is
+  `err / (abs(f) <= 1e-6 ? 1 : f)`, so an `f` at (or near) zero no longer blows
+  up the proportional moment.
+
 - SAEM now estimates population `theta` parameters that have no associated random
   effect (the SAEM `phi0` fixed effects) by a bounded direct optimization of the
   observation likelihood each iteration -- `saemControl(nonMuTheta="regress")`, now the

@@ -10158,7 +10158,11 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       if (!std::isfinite(cl) || !std::isfinite(f)) continue;
       double err = f - dv;
       mom(e, 0) += err * err;
-      if (f != 0.0 && std::isfinite(err / f)) mom(e, 1) += (err / f) * (err / f);
+      // proportional guard for f==0: denominator 1 when |f| is tiny so a
+      // near-zero prediction does not blow up the proportional moment.
+      double denom = (std::fabs(f) <= 1e-6) ? 1.0 : f;
+      double ratio = err / denom;
+      if (std::isfinite(ratio)) mom(e, 1) += ratio * ratio;
       mom(e, 2) += 1.0;
     }
   }
