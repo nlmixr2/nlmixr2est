@@ -1,20 +1,31 @@
 # nlmixr2est (development version)
 
-- Nonparametric engines (cont.): with `gammaOptimize=TRUE`, `npag` now also
-  estimates residual parameters that the variance multiplier (gamma) cannot
-  represent -- the transform shape (`boxCox`/`yeoJohnson` lambda) and the
-  autocorrelation (`ar`) -- with a per-cycle derivative-free coordinate search on
-  the parameter value.  On simulated AR(1) data (true `ar1.cor` = 0.6) npag
-  recovers ~0.54 from a 0 start, where gradient FOCEI stalls at the `ar1.cor` = 0
-  saddle; boxCox lambda recovers to ~0.46 (FOCEI ~0.44 on theo).
+- Nonparametric engines (cont.): the `npag` residual-parameter optimization now
+  freezes the ODE states -- the inner likelihood solves each (support point,
+  subject) once and re-evaluates only the output `f`/`r` for each candidate
+  residual theta, skipping the (costly) re-integration.  Results are identical to
+  the full re-solve; on a combined-error theo fit it is ~35% faster, and much more
+  for models with expensive ODEs.  Exposed as a general `freezeOde` option on the
+  inner likelihood (off by default, so all other engines are bit-identical).
 
-- Nonparametric engines (cont.): with `gammaOptimize=TRUE` the fitted `npag`
-  assay-error multiplier (gamma) is now folded back into the variance-scale
-  residual parameters (add/prop/lnorm/...), so the reported residual (e.g.
-  `add.sd`) reflects the estimate rather than staying at its initial value.
-  Transform (`boxCox`/`yeoJohnson`) and autocorrelation (`ar`) parameters are not
-  variance scales and are left unchanged.  A residual parameter started away from
-  the truth now converges in the reported output.
+- Nonparametric engines (cont.): `est="npag"` now estimates the residual-error
+  parameters generally.  A single variance-scale parameter (pure additive or
+  proportional) is handled by the fast gamma up/down search folded into that
+  theta; anything else -- combined additive+proportional (the add/prop ratio a
+  single gamma cannot recover), multiple endpoints (each `add.sd`/`prop.sd`), and
+  transform (`boxCox`/`yeoJohnson` lambda) or autocorrelation (`ar`) parameters --
+  is optimized against the nonparametric objective with the support points and
+  weights held fixed, using the same optimizers as SAEM (`residType`: `"newuoa"`
+  default, or `"nelder-mead"`), with gamma as a warm start.  The `residOptimize`
+  control selects `"alternate"` (default, every cycle), `"final"` (once at the
+  converged support), or `"none"` (hold at ini).  On a simulated two-endpoint
+  model npag recovers `add.sd1`=0.20 and `add.sd2`=1.47 (truth 0.20 / 1.50),
+  matching FOCEI, where a single global gamma had forced them equal; on simulated
+  AR(1) data (true `ar1.cor`=0.6) it recovers ~0.54 from a 0 start where gradient
+  FOCEI stalls at the `ar1.cor`=0 saddle.  The reported residual reflects the
+  estimate.  Note: because the support distribution is flexible it can absorb
+  additive residual scatter, so the additive term of a combined error model may be
+  smaller than a parametric fit (documented in `?npagControl`).
 
 - Nonparametric engines (cont.): the `npag`/`npb` conditional likelihood now
   folds in the transform-both-sides (dTBS) per-observation Jacobian, so `lnorm`,

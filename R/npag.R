@@ -25,15 +25,38 @@
 #' comparable to nlmixr2's FOCEI/SAEM/FOCE `-2LL`.  Compare npag runs to each
 #' other or to Pmetrics NPAG.
 #'
+#' Note on residual error with a flexible support distribution: the residual
+#' parameters are estimated against the nonparametric objective (see
+#' \code{residOptimize}) with the support-point distribution held fixed.  Because
+#' that distribution is flexible, it can absorb variability a parametric model
+#' (FOCEI/SAEM) would attribute to residual error -- especially the additive term
+#' of a combined additive+proportional model at low concentrations.  As a result
+#' the additive coefficient of a combined error model may be estimated smaller
+#' (sometimes toward zero) than the corresponding parametric fit, while the
+#' proportional term and per-endpoint magnitudes are recovered well.  This is an
+#' expected property of nonparametric estimation, not a convergence failure; use
+#' \code{residOptimize = "none"} to hold the residual parameters at their initial
+#' values if a fixed error model is desired.
+#'
 #' @inheritParams impmapControl
 #' @param points Initial Sobol grid size (support points).
 #' @param cycles Maximum adaptive-grid cycles.
-#' @param gammaOptimize Optimize the residual-error model each cycle: the overall
-#'   magnitude via the assay-error multiplier (gamma, folded back into the
-#'   variance-scale coefficients such as `add`/`prop`), plus any transform
-#'   (`boxCox`/`yeoJohnson` lambda) or autocorrelation (`ar`) parameters via a
-#'   derivative-free coordinate search.  Fixed residual parameters are held.  Only
-#'   valid for normal endpoints; censoring and transform-both-sides are supported.
+#' @param gammaOptimize Use a global assay-error multiplier (gamma) as a per-cycle
+#'   warm start for the overall residual magnitude, folded into the variance-scale
+#'   coefficients (`add`/`prop`/`lnorm`).  The per-endpoint values, the add/prop
+#'   ratio, and the transform/autocorrelation parameters come from
+#'   \code{residOptimize}.  Only valid for normal endpoints; censoring and
+#'   transform-both-sides are supported.
+#' @param residOptimize How to estimate the residual-error thetas (every endpoint's
+#'   `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support
+#'   points and weights held fixed, using Nelder-Mead on the nonparametric -2LL.
+#'   \code{"alternate"} (default) optimizes them every cycle (block-coordinate
+#'   ascent); \code{"final"} optimizes once at the converged support; \code{"none"}
+#'   holds them at their initial values (only the gamma warm-start adjusts the
+#'   overall magnitude).  Fixed residual parameters are always held.
+#' @param residType Optimizer for the residual-theta step, matching the residual
+#'   optimizers used by SAEM: \code{"newuoa"} (default, minqa trust-region) or
+#'   \code{"nelder-mead"}.  \code{"newuoa"} falls back to Nelder-Mead if it fails.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -41,12 +64,16 @@
 #' @examples
 #'
 #' npagControl()
-npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...) {
+npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
+                        residOptimize = c("alternate", "final", "none"),
+                        residType = c("newuoa", "nelder-mead"), ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
+  .ctl$residOptimize <- match.arg(residOptimize)
+  .ctl$residType <- match.arg(residType)
   .ctl
 }
 

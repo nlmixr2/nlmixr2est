@@ -37,9 +37,12 @@ nmTest({
     expect_false(is.null(f$env$parHistData))
   })
 
-  test_that("est='npag' with gamma optimization improves the objective", {
+  test_that("est='npag' residual optimization improves the objective", {
+    # baseline: residual held at ini (no gamma, no residual optimization)
     f0 <- nlmixr2(.npFitMod, nlmixr2data::theo_sd, est = "npag",
-                  control = npagControl(points = 256L, cycles = 15L, gammaOptimize = FALSE))
+                  control = npagControl(points = 256L, cycles = 15L,
+                                        gammaOptimize = FALSE, residOptimize = "none"))
+    # gamma optimizes the (single) additive residual
     fg <- nlmixr2(.npFitMod, nlmixr2data::theo_sd, est = "npag",
                   control = npagControl(points = 256L, cycles = 15L, gammaOptimize = TRUE))
     expect_true(is.finite(fg$env$npagGamma) && fg$env$npagGamma > 0)

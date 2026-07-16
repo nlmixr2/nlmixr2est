@@ -10,6 +10,103 @@
 
 using namespace Rcpp;
 
+// SAEM's Nelder-Mead (src/neldermead.cpp): func(p, fval) writes the objective at
+// p into *fval.  Reused to optimize the residual-error thetas.
+typedef void (*np_fn_ptr)(double *, double *);
+extern "C" void nelder_fn(np_fn_ptr func, int n, double *start, double *step,
+                          int itmax, double ftol_rel, double rcoef, double ecoef,
+                          double ccoef, int *iconv, int *it, int *nfcall,
+                          double *ynewlo, double *xmin, int *iprint);
+
+// ---------------------------------------------------------------------------
+// Residual-error theta optimization (per user: gamma is only a warm start).
+// With the support points and weights FIXED, optimize the residual thetas
+// (add/prop/lnorm/lambda/ar -- every endpoint) against the nonparametric -2LL
+// with the same Nelder-Mead SAEM uses for its residuals.  This recovers what a
+// single global gamma cannot: the add/prop ratio and per-endpoint magnitudes.
+// Context is passed to the C-callback through file-static pointers (as saem does).
+namespace {
+  const arma::mat* gNpSupport = nullptr;   // fixed support grid (nspp x neta)
+  const arma::vec* gNpWeights = nullptr;   // fixed weights (nspp)
+  std::vector<int> gNpOptIdx;              // fullTheta indices being optimized
+  std::vector<int> gNpOptKind;            // 0 = free, 1 = positive (SD), 2 = corr
+  int gNpCores = 1;
+
+  // map an unconstrained Nelder-Mead coordinate to the parameter's valid range
+  double npResidVal(double v, int kind) {
+    if (kind == 1) return std::fabs(v);                                 // SD > 0
+    if (kind == 2) return std::max(-0.999, std::min(0.999, v));         // corr in (-1,1)
+    return v;                                                           // lambda etc.
+  }
+
+  // Core objective: install the candidate residual thetas, rebuild Psi on the
+  // fixed support, and return -2 * sum_i log(sum_k lambda_k Psi_ik).  Uses the
+  // per-row log-sum-exp normalized builder (offset carries the removed row maxima)
+  // so a small residual variance cannot underflow a whole subject row to zero.
+  double npResidObjVal(const double *p) {
+    for (size_t j = 0; j < gNpOptIdx.size(); ++j)
+      impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
+    // frozen Psi: the support/structural solve is cached (npFreezeBuild), so this
+    // only recomputes f/r for the candidate residual thetas -- no re-integration.
+    arma::mat psi; double offset = 0.0;
+    npFreezePsiScaled(*gNpSupport, gNpCores, psi, &offset);
+    arma::vec pyf = psi * (*gNpWeights);
+    pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
+    return -2.0 * (arma::accu(arma::log(pyf)) + offset);
+  }
+  // Nelder-Mead (C, src/neldermead.cpp) callback signature.
+  void npResidObjFn(double *p, double *fval) { *fval = npResidObjVal(p); }
+  // newuoa (minqa via R .newuoa) callback: R-callable through Rcpp::InternalFunction.
+  double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
+}
+
+// Optimize the residual thetas in idx (kinds in kind) with support/weights fixed.
+// type: 0 = Nelder-Mead (C), 1 = newuoa (minqa via R .newuoa; falls back to
+// Nelder-Mead if it fails).  Leaves fullTheta at the optimum, returns the -2LL.
+static double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
+                              const std::vector<int>& idx,
+                              const std::vector<int>& kind, int cores, int type) {
+  int n = (int)idx.size();
+  if (n == 0) return R_NegInf;
+  gNpSupport = &support; gNpWeights = &weights;
+  gNpOptIdx = idx; gNpOptKind = kind; gNpCores = cores;
+  // solve + cache the ODE states once; every objective evaluation below reuses
+  // them and only recomputes f/r for the candidate residual thetas.
+  npFreezeBuild(support, cores);
+  std::vector<double> start(n), step(n), xmin(n);
+  for (int j = 0; j < n; ++j) {
+    double v = impGetFullThetaVal(idx[j]);
+    if (kind[j] == 1) v = std::fabs(v);
+    start[j] = v;
+    step[j] = std::max(0.1 * std::fabs(v), 0.05);
+  }
+  if (type == 1) {
+    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+    Rcpp::Function newuoa = nlmixr2[".newuoa"];
+    Rcpp::InternalFunction fn(&npResidObjR);
+    Rcpp::NumericVector par0(n);
+    for (int j = 0; j < n; ++j) par0[j] = start[j];
+    Rcpp::List ret = newuoa(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
+                            Rcpp::_["control"] = Rcpp::List::create(
+                              Rcpp::_["rhobeg"] = 0.2, Rcpp::_["rhoend"] = 1e-5,
+                              Rcpp::_["maxfun"] = 200 * n * n));
+    double f = as<double>(ret["value"]);
+    if (!ISNA(f)) {
+      Rcpp::NumericVector x = ret["x"];
+      for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
+      npFreezeClear();
+      return f;
+    }
+    // newuoa failed -> fall through to Nelder-Mead
+  }
+  int iconv = 0, it = 0, nfcall = 0, iprint = -1; double ynewlo = 0.0;
+  nelder_fn(npResidObjFn, n, start.data(), step.data(), 300, 1e-6, 1.0, 2.0, 0.5,
+            &iconv, &it, &nfcall, &ynewlo, xmin.data(), &iprint);
+  for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(xmin[j], kind[j]));
+  npFreezeClear();
+  return ynewlo;
+}
+
 // NPAG tuning constants (Yamada 2021): eps convergence floor / objf tolerance /
 // F-candidate tolerance / minimum scaled support-point distance.
 struct npagCtl {
@@ -28,8 +125,11 @@ struct npagCtl {
   double gammaDelta = 0.1;    // initial gamma step fraction
   bool trace = false;         // record the per-cycle parameter history (scale.h)
   arma::mat omModel;          // model Omega sparsity (for the trace push mask)
-  std::vector<int> residOptIdx; // fullTheta indices of transform/ar residual
-                                // params optimized by per-cycle coordinate search
+  int residMode = 1;          // residual theta opt: 0 none, 1 alternate, 2 final
+  int residType = 1;          // optimizer: 0 Nelder-Mead, 1 newuoa (default)
+  std::vector<int> residOptIdx;  // fullTheta indices of ALL non-fixed residual thetas
+  std::vector<int> residOptKind; // per-idx: 0 free (lambda), 1 SD (>0), 2 corr
+  std::vector<int> residScaleIdx; // variance-scale subset (gamma warm-start fold)
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
@@ -77,12 +177,21 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
                                const npagCtl& ctl) {
   arma::mat theta = npSobolGrid(ctl.points, lower, upper);
   double eps = ctl.epsInit, f0 = -1e30, f1 = 0.0, lastObj = -1e30, objf = R_NegInf;
-  double gamma = ctl.gammaInit, gDelta = ctl.gammaDelta;
+  // gamma is held at 1: the per-cycle warm-start folds its multiplier straight
+  // into the variance-scale thetas, so the main/condensation Psi builds and the
+  // finalization all see gamma == 1.
+  double gamma = 1.0, gDelta = ctl.gammaDelta;
   int cycle = 0;
   bool converged = false;
   arma::vec lam;
   arma::mat psi;
-  std::vector<double> residStep(ctl.residOptIdx.size(), 0.25); // per-param coord step
+  // A single variance-scale residual parameter (e.g. pure additive or pure
+  // proportional error) is exactly what the gamma up/down search estimates -- it
+  // folds gamma into that one theta -- so skip the (redundant) Nelder-Mead/newuoa
+  // step there.  The residual optimizer is only needed for >= 2 residual params
+  // (combined error, multiple endpoints) or a lone transform/correlation param.
+  bool singleScale = (ctl.residOptIdx.size() == 1 && ctl.residScaleIdx.size() == 1);
+  bool useResidOpt = !ctl.residOptIdx.empty() && !(singleScale && ctl.gammaOptimize);
   for (;;) {
     cycle++;
     if (cycle > 1) {
@@ -130,51 +239,41 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     } else {
       lam = npBurke(psi, &objf);
     }
-    // optimizations: residual-error magnitude (gamma) up/down search on the
-    // condensed grid.  Objectives are offset-corrected (true log-likelihood).
+    // residual-error magnitude warm-start (gamma): a fast global up/down search
+    // from 1 on the condensed grid, then FOLD the winning multiplier into the
+    // variance-scale thetas so the thetas carry the estimate (finalization needs
+    // no fold; gamma stays effectively 1).  This only warm-starts the overall
+    // magnitude -- the per-endpoint values and add/prop ratio come from the
+    // Nelder-Mead step below.
     if (ctl.gammaOptimize) {
-      double gUp = gamma * (1.0 + gDelta);
-      double gDn = gamma / (1.0 + gDelta);
+      double gUp = 1.0 * (1.0 + gDelta), gDn = 1.0 / (1.0 + gDelta);
       arma::mat psiU, psiD;
       double offU = 0.0, offD = 0.0, bU = 0.0, bD = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, gUp, psiU, &offU);
       arma::vec lamU = npBurke(psiU, &bU); double objU = bU + offU;
       npBuildPsiCoreScaled(theta, ctl.cores, gDn, psiD, &offD);
       arma::vec lamD = npBurke(psiD, &bD); double objD = bD + offD;
-      if (objU > objf) { gamma = gUp; objf = objU; lam = lamU; psi = psiU; gDelta *= 4.0; }
-      if (objD > objf) { gamma = gDn; objf = objD; lam = lamD; psi = psiD; gDelta *= 4.0; }
+      double gsel = 1.0;
+      if (objU > objf) { gsel = gUp; objf = objU; lam = lamU; psi = psiU; gDelta *= 4.0; }
+      if (objD > objf) { gsel = gDn; objf = objD; lam = lamD; psi = psiD; gDelta *= 4.0; }
       gDelta *= 0.5;
       if (gDelta <= 0.01) gDelta = 0.1;
-      if (gDelta > 1.0) gDelta = 1.0;         // cap the step so gamma cannot jump wildly
-      gamma = std::min(std::max(gamma, 1e-3), 1e3);  // keep gamma in a sane range
-    }
-    // residual transform/autocorrelation parameters (boxCox/yeoJohnson lambda, ar
-    // correlation) are not variance scales, so gamma cannot represent them.
-    // Estimate each with a per-cycle coordinate search on its theta value:
-    // perturb, rebuild Psi through likInner0 (so the transform/AR structure is
-    // re-evaluated), re-solve the weights, and keep the step if the objective
-    // improves.  The optimized theta persists in fullTheta into finalization.
-    if (ctl.gammaOptimize && !ctl.residOptIdx.empty()) {
-      for (size_t s = 0; s < ctl.residOptIdx.size(); ++s) {
-        int idx = ctl.residOptIdx[s];
-        double base = impGetFullThetaVal(idx);
-        double step = residStep[s];
-        bool improved = false;
-        for (int dir = 0; dir < 2 && !improved; ++dir) {
-          double cand = base + (dir == 0 ? step : -step);
-          impSetThetaAll(idx, cand);
-          arma::mat psiC; arma::vec lamC; double bC = 0.0, offC = 0.0;
-          npBuildPsiCoreScaled(theta, ctl.cores, gamma, psiC, &offC);
-          lamC = npBurke(psiC, &bC);
-          double objC = bC + offC;
-          if (std::isfinite(objC) && objC > objf) {
-            objf = objC; psi = psiC; lam = lamC; base = cand; improved = true;
-            residStep[s] = std::min(step * 1.5, 1.0);
-          }
-        }
-        if (!improved) residStep[s] = std::max(step * 0.5, 1e-4);
-        impSetThetaAll(idx, base);   // leave fullTheta at the best value found
+      if (gDelta > 1.0) gDelta = 1.0;
+      for (size_t s = 0; s < ctl.residScaleIdx.size(); ++s) {
+        int idx = ctl.residScaleIdx[s];
+        impSetThetaAll(idx, impGetFullThetaVal(idx) * gsel);
       }
+    }
+    // residual theta optimization (per user: gamma is only a warm start).  With
+    // the support points and weights FIXED, optimize ALL non-fixed residual thetas
+    // (add/prop/lnorm/lambda/ar, every endpoint) with Nelder-Mead, then re-solve
+    // the weights at the new thetas -- block-coordinate ascent.  "alternate" runs
+    // this every cycle; "final" (residMode 2) runs it once after the loop.
+    if (ctl.residMode == 1 && useResidOpt) {
+      npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residType);
+      double off = 0.0, b = 0.0;
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
+      lam = npBurke(psi, &b); objf = b + off;
     }
     // per-cycle parameter-history row (shared scale.h printer).  Pushing Omega to
     // op_focei is safe here -- npag sums llikObs, which does not use omegaInv --
@@ -203,6 +302,13 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     if (cycle >= ctl.cycles) break;
     lastObj = objf;
   }
+  // "final" mode: optimize the residual thetas once at the converged support.
+  if (ctl.residMode == 2 && useResidOpt) {
+    npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residType);
+    double off = 0.0, b = 0.0;
+    npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
+    lam = npBurke(psi, &b); objf = b + off;
+  }
   npagResult r;
   r.theta = theta; r.lambda = lam; r.psi = psi; r.objf = objf; r.gamma = gamma;
   r.cycle = cycle; r.converged = converged;
@@ -226,15 +332,23 @@ void npagOuter(Environment e) {
   ctl.cores = impCores();
   ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
   ctl.trace = true;
-  std::vector<int> residScaleIdx;
   if (control.containsElementNamed("npResidScaleIdx")) {
     IntegerVector ri = control["npResidScaleIdx"];
-    residScaleIdx.assign(ri.begin(), ri.end());
+    ctl.residScaleIdx.assign(ri.begin(), ri.end());
   }
   if (control.containsElementNamed("npResidOptIdx")) {
     IntegerVector ro = control["npResidOptIdx"];
     ctl.residOptIdx.assign(ro.begin(), ro.end());
   }
+  if (control.containsElementNamed("npResidOptKind")) {
+    IntegerVector rk = control["npResidOptKind"];
+    ctl.residOptKind.assign(rk.begin(), rk.end());
+  }
+  if (control.containsElementNamed("npResidMode"))
+    ctl.residMode = as<int>(control["npResidMode"]);
+  if (control.containsElementNamed("npResidType"))
+    ctl.residType = as<int>(control["npResidType"]);
+  std::vector<int> residScaleIdx = ctl.residScaleIdx;  // for the finalization fold (no-op at gamma=1)
   // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0
   // path; likInner0 still evaluates the Omega-prior term (omegaInv * eta), so
   // rebuild the inverse from the initial Omega before the cycle calls likInner0.

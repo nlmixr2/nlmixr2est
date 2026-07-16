@@ -57,6 +57,12 @@
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
   .ctl$npGammaOptimize <-
     isTRUE(if (is.null(.ctl$gammaOptimize)) TRUE else .ctl$gammaOptimize)
+  .ctl$npResidMode <- as.integer(
+    if (is.null(.ctl$residOptimize)) 1L
+    else switch(.ctl$residOptimize, none = 0L, alternate = 1L, final = 2L, 1L))
+  .ctl$npResidType <- as.integer(
+    if (is.null(.ctl$residType)) 1L
+    else switch(.ctl$residType, "nelder-mead" = 0L, newuoa = 1L, 1L))
   # npb (stick-breaking Gibbs) knobs; npPoints doubles as the truncation level K
   .ctl$npAlpha <- as.numeric(if (is.null(.ctl$alpha)) 1.0 else .ctl$alpha)
   .ctl$npBurnin <- as.integer(if (is.null(.ctl$burnin)) 500L else .ctl$burnin)
@@ -114,16 +120,25 @@
   # variance r; at finalization gamma is folded into these coefficients so the
   # reported parameter reflects the estimate.  Transform (boxCox/yeoJohnson) and
   # autocorrelation (ar) params are NOT variance scales and must not be folded.
+  .errType <- as.character(.thOrd$err)
+  .isFix <- !is.na(.thOrd$fix) & .thOrd$fix
+  # variance-scale residual params (add/prop/lnorm/...) -- the ones the gamma
+  # warm-start folds into.  Transform (boxCox/yeoJohnson), autocorrelation (ar)
+  # and the power exponent (pw) are not variance scales.  Fixed ones are held.
   .errScale <- !is.na(.thOrd$err) &
-    !(as.character(.thOrd$err) %in% c("boxCox", "yeoJohnson", "ar", "pw"))
+    !(.errType %in% c("boxCox", "yeoJohnson", "ar", "pw")) & !.isFix
   .control$npResidScaleIdx <- as.integer(which(.errScale) - 1L)
-  # transform / autocorrelation residual params (boxCox/yeoJohnson lambda, ar
-  # correlation): gamma cannot represent these, so npag optimizes them directly
-  # with a per-cycle coordinate search on the theta value.  Fixed ones are held.
-  .errOpt <- !is.na(.thOrd$err) &
-    (as.character(.thOrd$err) %in% c("boxCox", "yeoJohnson", "ar")) &
-    !(!is.na(.thOrd$fix) & .thOrd$fix)
+  # ALL non-fixed residual params are optimized by the Nelder-Mead residual step
+  # (support points + weights held fixed).  kind selects the coordinate mapping:
+  # 1 = positive (SD), 2 = correlation in (-1,1) (ar), 0 = free (lambda/exponent).
+  .errOpt <- !is.na(.thOrd$err) & !.isFix
   .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
+  .optType <- .errType[.errOpt]
+  .kind <- rep(1L, length(.optType))
+  .kind[.optType %in% c("ar")] <- 2L
+  .kind[.optType %in% c("boxCox", "yeoJohnson", "pw")] <- 0L
+  .control$npResidOptKind <- as.integer(.kind)
+  if (is.null(.control$npResidMode)) .control$npResidMode <- 1L
   assign("control", .control, envir = ui)
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
   .foceiFamilyReturn(env, ui, ..., est = .est)
@@ -142,6 +157,7 @@
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
   .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
+              residOptimize = "alternate", residType = "newuoa",
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -153,6 +169,8 @@
   .ctl$points <- as.integer(.np$points)
   .ctl$cycles <- as.integer(.np$cycles)
   .ctl$gammaOptimize <- isTRUE(.np$gammaOptimize)
+  .ctl$residOptimize <- as.character(.np$residOptimize)
+  .ctl$residType <- as.character(.np$residType)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)

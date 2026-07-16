@@ -41,7 +41,8 @@ nmTest({
     expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 0.78, tolerance = 0.15)
   })
 
-  test_that("est='npag' with gammaOptimize=FALSE leaves the residual at ini", {
+  test_that("est='npag' with residOptimize='none' holds the residual at ini", {
+    ## residOptimize='none' (and no gamma warm-start) holds residual params fixed
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-2.0
         eta.ka~0.3; eta.ke~0.1 })
@@ -50,7 +51,8 @@ nmTest({
         cp<-center/v; cp~add(add.sd) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=10L, gammaOptimize=FALSE))
+                 control=npagControl(points=300L, cycles=10L,
+                                     gammaOptimize=FALSE, residOptimize="none"))
     expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 2.0, tolerance = 1e-8)
   })
 
