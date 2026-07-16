@@ -47,7 +47,7 @@ Requires <code><a href="dot-nlmSetupEnv.html">.nlmSetupEnv()</a></code> to alrea
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">nlmerSolveGrad</span><span class="op">(</span><span class="va">thetaMat</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">nlmerSolveGrad</span><span class="op">(</span><span class="va">thetaMat</span>, record <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -58,6 +58,18 @@ Requires <code><a href="dot-nlmSetupEnv.html">.nlmSetupEnv()</a></code> to alrea
 <dd><p>A <code>nsub x ntheta</code> matrix of per-subject
 parameter values.  Row <code>id</code> is solved against subject
 <code>id</code> (in the loaded <code>etTrans</code> order).</p></dd>
+
+
+<dt id="arg-record">record<a class="anchor" aria-label="anchor" href="#arg-record"></a></dt>
+<dd><p>When <code>TRUE</code>, record this evaluation's population
+parameter estimate – the per-subject mean of <code>thetaMat</code>'s columns
+(<code>phi = beta + b</code> averaged over subjects, which equals the fixed
+effect exactly for parameters without a random effect) – into the
+resident nlm parameter history via the shared scale machinery.  This is
+how an external optimizer (e.g. <code>lme4::nlmer</code>) populates the
+iteration print and the history recovered by <code><a href="nlmGetParHist.html">nlmGetParHist()</a></code>.  No
+objective value is recorded (the scale's <code>showOfv</code> is expected to be
+0 for these engines).  Defaults to <code>FALSE</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">

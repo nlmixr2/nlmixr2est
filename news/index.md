@@ -4,6 +4,20 @@
 
 ### New features
 
+- The nlm parameter-history machinery can now be driven by an external
+  optimizer.
+  [`nlmerSolveGrad()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmerSolveGrad.md)
+  gains a `record` argument that logs the evaluation’s population
+  parameter estimate (the per-subject mean of the `phi` columns) into
+  the resident scale, and
+  [`nlmGetParHist()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmGetParHist.md)
+  is now exported so an externally-optimized engine (e.g. `babelmixr2`’s
+  nlmer, driven by `lme4::nlmer`) can recover the accumulated parameter
+  history before
+  [`.nlmFreeEnv()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.md).
+  A new optional `showOfv` field in the nlm solve control hides the
+  objective column for these engines (they record parameters only).
+
 #### New estimation methods
 
 - `est = "advi"`
