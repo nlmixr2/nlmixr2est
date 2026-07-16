@@ -49,10 +49,12 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 // gamma (the fitted assay-error multiplier, 1 if not optimized) is folded into
 // the variance-scale residual thetas named by residScaleIdx (0-based fullTheta
 // indices) so the reported residual reflects the estimate.
-arma::mat npFinalizeFit(Rcpp::Environment e, const arma::mat& support,
-                        const arma::vec& weights, const arma::mat& postEta,
+arma::mat npFinalizeFit(Rcpp::Environment e, arma::mat& support,
+                        const arma::vec& weights, arma::mat postEta,
                         double objf, const arma::mat& omModel,
-                        double gamma, const std::vector<int>& residScaleIdx);
+                        double gamma, const std::vector<int>& residScaleIdx,
+                        const std::vector<int>& injEtaIdx,
+                        const std::vector<int>& injThetaIdx);
 
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).

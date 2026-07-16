@@ -20,14 +20,17 @@ nmTest({
     npagControl(points = 128L, cycles = 30L, gammaOptimize = FALSE, seed = 1L,
                 calcTables = FALSE, muExpand = muExpand)
 
-  test_that("est='npag' mu-expansion makes a non-mu structural theta estimable", {
+  test_that("est='npag' mu-expansion recovers a non-mu structural theta as a fixed effect", {
     f <- nlmixr2(.mod, nlmixr2data::theo_sd, est = "npag", control = .ctl(TRUE))
     expect_true("eta.tke" %in% rownames(f$omega))
-    # effective estimate = reference theta + support-point mean (npag convention)
-    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights
-    .j <- ncol(.sp)                                   # eta.tke is the last eta
-    .keEff <- exp(as.numeric(f$theta[["tke"]]) + sum(.wt * .sp[, .j]))
-    expect_true(.keEff > 0.05 && .keEff < 0.15)        # recovers theo ke from a 0.30 start
+    # the injected eta's support-mean is folded into the theta and the random effect
+    # is collapsed, so the REPORTED theta is the estimate (recovers theo ke from the
+    # deliberately-wrong 0.30 start) and there is no BSV on the fixed effect.
+    expect_true(exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
+                exp(as.numeric(f$theta[["tke"]])) < 0.15)
+    expect_lt(f$omega["eta.tke", "eta.tke"], 1e-4)     # collapsed: fixed effect, no BSV
+    .sp <- f$env$npagSupport
+    expect_true(all(abs(.sp[, ncol(.sp)]) < 1e-8))     # injected eta support zeroed
   })
 
   test_that("est='npag' muExpand=FALSE leaves the non-mu structural theta held", {

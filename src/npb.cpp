@@ -190,8 +190,10 @@ void npbOuter(Environment e) {
 
   // npb does not optimize the assay-error multiplier, so there is no gamma to
   // fold into the residual thetas (gamma = 1 makes the fold a no-op).
+  // npb does not mu-expand (guarded in R), so no injected etas to collapse.
   arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf, omModel,
-                                  1.0, std::vector<int>());
+                                  1.0, std::vector<int>(),
+                                  std::vector<int>(), std::vector<int>());
 
   e["npbSupport"] = wrap(support);          // pooled posterior support (E[F])
   e["npbWeights"] = wrap(weights);

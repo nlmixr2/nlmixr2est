@@ -133,6 +133,8 @@ struct npagCtl {
   std::vector<int> residScaleIdx; // variance-scale subset (gamma warm-start fold)
   bool mixOptimize = false;   // estimate mix() proportions via the in-cycle EM update
   bool residFreeze = true;    // freeze the ODE during resid opt (safe: err params only)
+  std::vector<int> muExpandEtaIdx;   // 0-based eta indices of mu-expanded (injected) etas
+  std::vector<int> muExpandThetaIdx; // paired 0-based theta (fullTheta) indices
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
@@ -367,6 +369,14 @@ void npagOuter(Environment e) {
     ctl.mixOptimize = as<bool>(control["npMixOptimize"]);
   if (control.containsElementNamed("npResidFreeze"))
     ctl.residFreeze = as<bool>(control["npResidFreeze"]);
+  if (control.containsElementNamed("npMuExpandEtaIdx")) {
+    IntegerVector me = control["npMuExpandEtaIdx"];
+    ctl.muExpandEtaIdx.assign(me.begin(), me.end());
+  }
+  if (control.containsElementNamed("npMuExpandThetaIdx")) {
+    IntegerVector mt = control["npMuExpandThetaIdx"];
+    ctl.muExpandThetaIdx.assign(mt.begin(), mt.end());
+  }
   if (control.containsElementNamed("npResidOptLower")) {
     NumericVector rl = control["npResidOptLower"];
     ctl.residOptLower.assign(rl.begin(), rl.end());
@@ -437,12 +447,14 @@ void npagOuter(Environment e) {
     npagDF = dmax;
   }
 
-  arma::mat Omega = npFinalizeFit(e, r.theta, r.lambda, postEta, r.objf, omModel,
-                                  r.gamma, residScaleIdx);
+  arma::mat finalSupport = r.theta;   // collapsed in-place for mu-expanded etas
+  arma::mat Omega = npFinalizeFit(e, finalSupport, r.lambda, postEta, r.objf, omModel,
+                                  r.gamma, residScaleIdx,
+                                  ctl.muExpandEtaIdx, ctl.muExpandThetaIdx);
   impIterPrintGet(e);          // closing rule + stash e$parHistData
   e["npagDF"] = npagDF;        // global-optimality certificate
   // nonparametric outputs (support-point distribution + trace)
-  e["npagSupport"] = wrap(r.theta);        // nspp x neta (eta space)
+  e["npagSupport"] = wrap(finalSupport);   // nspp x neta (eta space)
   e["npagWeights"] = wrap(r.lambda);
   e["npagPosteriorEta"] = wrap(postEta);   // nsub x neta
   e["npagOmega"] = wrap(Omega);
@@ -456,13 +468,28 @@ void npagOuter(Environment e) {
 // Shared finalization (see np.h): summarize the discrete mixing distribution into
 // the population theta shift + Omega, push into the FOCEi state, build the fit
 // env, and set the nonparametric objective.  Returns the full support covariance.
-arma::mat npFinalizeFit(Environment e, const arma::mat& support,
-                        const arma::vec& weights, const arma::mat& postEta,
+arma::mat npFinalizeFit(Environment e, arma::mat& support,
+                        const arma::vec& weights, arma::mat postEta,
                         double objf, const arma::mat& omModel,
-                        double gamma, const std::vector<int>& residScaleIdx) {
+                        double gamma, const std::vector<int>& residScaleIdx,
+                        const std::vector<int>& injEtaIdx,
+                        const std::vector<int>& injThetaIdx) {
   int nsub = impNsub();
   int neta = impNeta();
   arma::rowvec meanEta = weights.t() * support;               // 1 x neta
+  // mu-expanded (injected) etas -> recover the parameter as a FIXED effect: fold
+  // the injected eta's support-weighted mean into its paired theta, then collapse
+  // that eta's random effect (zero its support column + per-subject eta, so it
+  // contributes no BSV).  This is the saem "fix eta to 0 (with the mean in theta)".
+  for (size_t x = 0; x < injEtaIdx.size(); ++x) {
+    int j = injEtaIdx[x];
+    int t = (x < injThetaIdx.size()) ? injThetaIdx[x] : -1;
+    if (j < 0 || j >= neta || t < 0) continue;
+    impSetThetaAll(t, impGetFullThetaVal(t) + meanEta[j]);
+    support.col(j).zeros();
+    postEta.col(j).zeros();
+    meanEta[j] = 0.0;
+  }
   arma::mat Omega(neta, neta, arma::fill::zeros);
   for (int k = 0; k < (int)support.n_rows; ++k) {
     arma::rowvec d = support.row(k) - meanEta;

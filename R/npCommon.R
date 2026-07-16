@@ -192,8 +192,22 @@
     warning("est=\"", .est, "\": structural fixed-effect parameter(s) ",
             paste(.heldStruct, collapse = ", "), " are not mu-referenced and are ",
             "held at their initial values (npag estimates only mu-referenced and ",
-            "residual/likelihood parameters); mu-reference or fix() them to be ",
-            "explicit", call. = FALSE)
+            "residual/likelihood parameters); mu-reference, fix() them, or set ",
+            "muExpand=TRUE to estimate them", call. = FALSE)
+  }
+  # mu-expanded (injected) etas: finalization recovers each as a FIXED effect by
+  # folding its support-mean into the paired theta and collapsing its random effect.
+  # Pass the 0-based eta index (etaNames order) and theta index (thetaTrans/ntheta
+  # order) of each injected pair to the C++ finalizer.
+  .pairs <- nlmixr2global$npMuExpandPairs
+  .injEta <- if (is.null(.pairs)) character(0) else .pairs$eta
+  .injTh <- if (is.null(.pairs)) character(0) else .pairs$theta
+  if (length(.injEta) > 0L) {
+    .ei <- match(.injEta, .etaNames) - 1L
+    .ti <- match(.injTh, .thNames) - 1L
+    .ok <- !is.na(.ei) & !is.na(.ti)
+    .control$npMuExpandEtaIdx <- as.integer(.ei[.ok])
+    .control$npMuExpandThetaIdx <- as.integer(.ti[.ok])
   }
   assign("control", .control, envir = ui)
   .foceiFamilyReturn(env, ui, ..., est = .est)

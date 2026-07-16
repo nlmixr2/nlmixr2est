@@ -29,6 +29,7 @@
 #'   gridWidth * sqrt(initVar) on the transformed scale)
 #' @noRd
 .npMuExpand <- function(ui, initVar = 0.25) {
+  nlmixr2global$npMuExpandPairs <- NULL   # clear any stale pairs from a prior fit
   # mixture models have their own estimation machinery (component marginalization +
   # proportion EM); injecting pseudo-etas into their structural parameters mixes
   # poorly with the pseudo-subject/omega setup, so skip mu-expansion there.
@@ -49,8 +50,9 @@
   .isInMix <- .th$name %in% .mixVars
   .cand <- .th$name[!.isFix & !.isMu & !.isMix & !.isErr & !.isInMix]
   if (length(.cand) == 0L) return(ui)
-  .etaNames <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
   .allNames <- .iniDf$name
+  .injEta <- character(0)   # injected pseudo-eta names
+  .injTh <- character(0)    # the theta each pairs to
   for (.tn in .cand) {
     # a unique pseudo-eta name for this theta
     .etaN <- paste0("eta.", .tn)
@@ -69,8 +71,15 @@
     }
     if (.used) {
       ui <- eval(bquote(rxode2::ini(ui, .(as.name(.etaN)) ~ .(initVar))))
+      .injEta <- c(.injEta, .etaN); .injTh <- c(.injTh, .tn)
     }
   }
+  # record the injected (eta, theta) pairs so finalization can recover each theta as
+  # a fixed effect: fold the injected eta's support-mean into its theta and collapse
+  # that eta's random effect (the "fix eta to 0" step).  A per-fit package-global
+  # survives the control rebuild between here (a preprocessing hook) and .npFamilyFit
+  # (control-stored values do not).
+  nlmixr2global$npMuExpandPairs <- list(eta = .injEta, theta = .injTh)
   ui
 }
 
@@ -88,6 +97,9 @@
 #' @author Matthew L. Fidler
 .nlmixr0preProcessNpMuExpand <- function(ui, est, data, control) {
   if (is.null(est) || !(est %in% .npEstFamily)) return(NULL)
+  # always clear the injected-pair record so a prior muExpand fit cannot leak into a
+  # muExpand=FALSE fit (which returns before .npMuExpand clears it itself).
+  nlmixr2global$npMuExpandPairs <- NULL
   if (!is.null(control) && isFALSE(control$muExpand)) return(NULL)
   .ui2 <- .npMuExpand(ui)
   if (identical(.ui2, ui)) return(NULL)
