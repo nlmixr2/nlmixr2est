@@ -76,9 +76,23 @@ arma::vec npBurke(const arma::mat& psiIn, double* obj) {
 
     mat L;
     if (!chol(L, H, "lower")) {
-      Rcpp::stop("npBurke: Cholesky decomposition failed (Newton matrix not "
-                 "positive definite); usually model misspecification or numerical "
-                 "issues");
+      // Near-singular Newton matrix -- an ill-conditioned interior-point step, e.g.
+      // a high-dimensional grid with many near-degenerate support points (their
+      // conditional density is ~0 for every subject).  Add a small ridge to the
+      // diagonal and retry rather than aborting the cycle; condensation then drops
+      // the degenerate points on the following pass.
+      double ridge = 1e-10 * (H.diag().max() + 1.0);
+      bool ok = false;
+      for (int r = 0; r < 10 && !ok; ++r) {
+        mat Hr = H; Hr.diag() += ridge;
+        ok = chol(L, Hr, "lower");
+        ridge *= 10.0;
+      }
+      if (!ok) {
+        Rcpp::stop("npBurke: Cholesky decomposition failed (Newton matrix not "
+                   "positive definite even after ridging); usually model "
+                   "misspecification or numerical issues");
+      }
     }
 
     vec smuyinv = smu * (ecol / y);              // n_point

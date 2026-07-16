@@ -193,6 +193,7 @@ nmObjGetControl.impmap <- function(x, ...) {
   # them so a downstream do.call(foceiControl, .) (e.g. .setOfvFo, general-likelihood
   # tables) does not error with "unused argument".
   .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "muExpand",
+                "gridWidth", "gridBounds",
                 "alpha", "burnin", "nsamp", "nchains", "propSd", "est")
   .n <- .n[!grepl("^np[A-Z]", .n) & !(.n %in% .npKnobs)]
   .foceiControl <- setNames(lapply(.n, function(n) .impmapControl[[n]]), .n)

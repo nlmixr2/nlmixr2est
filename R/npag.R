@@ -69,6 +69,15 @@
 #'   finalization (support-mean folded into the theta, injected random effect
 #'   collapsed).  The regressor default usually identifies these parameters more
 #'   sharply than the grid.
+#' @param gridWidth support-point box half-width, in initial-eta SDs, for the
+#'   `gridBounds="auto"` grid (default 4).  A narrower box focuses the initial Sobol
+#'   grid on the plausible region -- useful for high-dimensional models where a wide
+#'   box wastes points on near-zero-density support (which can collapse the fit).
+#' @param gridBounds how to set the initial support-point box: `"auto"` (default)
+#'   uses `+/- gridWidth * initial eta SD`; `"ini"` uses each mu-referenced
+#'   parameter's ini-block lower/upper bounds where finite (else auto); `"both"`
+#'   uses the ini bounds when present and auto otherwise.  For a high-dimensional
+#'   model, bounded ini estimates + `"ini"` keep the grid in range.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -78,7 +87,8 @@
 #' npagControl()
 npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
-                        muExpand = FALSE, ...) {
+                        muExpand = FALSE, gridWidth = 4,
+                        gridBounds = c("auto", "ini", "both"), ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   .ctl$points <- as.integer(points)
@@ -86,6 +96,8 @@ npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)
+  .ctl$gridWidth <- as.numeric(gridWidth)
+  .ctl$gridBounds <- match.arg(gridBounds)
   .ctl
 }
 

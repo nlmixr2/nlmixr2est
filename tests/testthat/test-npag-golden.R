@@ -46,4 +46,57 @@ nmTest({
     # nonparametric support of comparable size (oracle nspp = 12)
     expect_true(nrow(.sp) >= 5L && nrow(.sp) <= 25L)
   })
+
+  test_that("est='npag' matches the Pmetrics NPAG population means on Warfarin PK/PD", {
+    skip_if_not_installed("rxode2")
+    skip_if_not_installed("nlmixr2data")
+    .ref <- utils::read.csv(
+      testthat::test_path("fixtures", "npag", "pmetrics_reference.csv"),
+      comment.char = "#")
+    .ref <- .ref[.ref$model == "warfarin", ]
+    .m <- setNames(.ref$pmetrics_mean, .ref$param)
+
+    # transit-absorption PK + Emax turnover PD (2 endpoints: cp, pca).  Bounded ini
+    # estimates (matching the Pmetrics ab() ranges) + gridBounds="ini" keep the 8-eta
+    # grid in range -- an unbounded box collapses this high-dimensional support.
+    warf <- function() {
+      ini({ tktr <- log(c(0.5, 1.0, 3.0)); tka <- log(c(0.3, 1.0, 2.0))
+        tv <- log(c(4, 8, 15)); tcl <- log(c(0.05, 0.15, 0.4))
+        temax <- logit(c(0.8, 0.9, 0.99)); tec50 <- log(c(0.3, 1.0, 3.0))
+        tkout <- log(c(0.02, 0.05, 0.15)); te0 <- log(c(70, 100, 130))
+        eta.ktr ~ 0.5; eta.ka ~ 0.5; eta.v ~ 0.5; eta.cl ~ 0.5
+        eta.emax ~ 0.5; eta.ec50 ~ 0.5; eta.kout ~ 0.5; eta.e0 ~ 0.5
+        prop.sd <- 0.1; add.sd <- 2.0 })
+      model({ ktr <- exp(tktr + eta.ktr); ka <- exp(tka + eta.ka)
+        v <- exp(tv + eta.v); cl <- exp(tcl + eta.cl)
+        emax <- expit(temax + eta.emax); ec50 <- exp(tec50 + eta.ec50)
+        kout <- exp(tkout + eta.kout); e0 <- exp(te0 + eta.e0)
+        d/dt(depot) <- -ktr * depot
+        d/dt(gut) <- ktr * depot - ka * gut
+        d/dt(center) <- ka * gut - cl / v * center
+        DCP <- center / v
+        d/dt(effect) <- -e0 * kout * (emax * DCP / (ec50 + DCP)) - kout * effect
+        cp <- center / v; pca <- effect + e0
+        cp ~ prop(prop.sd); pca ~ add(add.sd) })
+    }
+    f <- nlmixr2(warf, nlmixr2data::warfarin, est = "npag",
+                 control = npagControl(points = 400L, cycles = 8L, seed = 1L,
+                                       gammaOptimize = FALSE, gridBounds = "ini",
+                                       calcTables = FALSE))
+    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights; .th <- f$theta
+    .tn <- c(ktr="tktr", ka="tka", v="tv", cl="tcl", emax="temax",
+             ec50="tec50", kout="tkout", e0="te0")
+    .pm <- vapply(seq_along(.tn), function(j) {
+      .tr <- if (names(.tn)[j] == "emax") plogis else exp   # emax is on the logit scale
+      sum(.wt * .tr(as.numeric(.th[[.tn[j]]]) + .sp[, j]))
+    }, numeric(1))
+    names(.pm) <- names(.tn)
+    # a real 8-parameter nonparametric PK/PD fit is not degenerate ...
+    expect_true(nrow(.sp) >= 8L)
+    # ... and its population means track the Pmetrics oracle (within 20%, looser than
+    # theo -- more parameters, an Emax PD, and a different grid/engine).
+    for (.p in names(.m)) {
+      expect_lt(abs(.pm[[.p]] - .m[[.p]]) / .m[[.p]], 0.20)
+    }
+  })
 })

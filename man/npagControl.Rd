@@ -10,6 +10,8 @@ npagControl(
   gammaOptimize = TRUE,
   residOptimize = c("alternate", "final", "none"),
   muExpand = FALSE,
+  gridWidth = 4,
+  gridBounds = c("auto", "ini", "both"),
   ...
 )
 }
@@ -48,6 +50,17 @@ instead uses the saem-style mu-expansion: inject a pseudo-eta
 finalization (support-mean folded into the theta, injected random effect
 collapsed).  The regressor default usually identifies these parameters more
 sharply than the grid.}
+
+\item{gridWidth}{support-point box half-width, in initial-eta SDs, for the
+`gridBounds="auto"` grid (default 4).  A narrower box focuses the initial Sobol
+grid on the plausible region -- useful for high-dimensional models where a wide
+box wastes points on near-zero-density support (which can collapse the fit).}
+
+\item{gridBounds}{how to set the initial support-point box: `"auto"` (default)
+uses `+/- gridWidth * initial eta SD`; `"ini"` uses each mu-referenced
+parameter's ini-block lower/upper bounds where finite (else auto); `"both"`
+uses the ini bounds when present and auto otherwise.  For a high-dimensional
+model, bounded ini estimates + `"ini"` keep the grid in range.}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

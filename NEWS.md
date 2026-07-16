@@ -2,6 +2,18 @@
 
 ## New features
 
+- `est="npag"` is more robust on high-dimensional models (many etas), validated by a
+  golden comparison against Pmetrics NPAG on the Warfarin PK/PD model (transit
+  absorption + Emax turnover, 8 parameters): the per-cycle Psi build is now per-row
+  log-sum-exp normalized on the non-gamma path too, so a hard subject's conditional
+  density cannot underflow a whole row to zero (which aborted condensation); the
+  Burke interior-point solve ridges the Newton matrix and retries instead of aborting
+  when it is ill-conditioned; and `npagControl()` exposes `gridWidth` and
+  `gridBounds` (`"auto"`/`"ini"`/`"both"`) so a bounded, high-dimensional grid can be
+  focused on the plausible region (an unbounded box collapses the support).  These
+  are numerically transparent for well-conditioned fits (the normalization restores
+  the exact objective; Burke weights are scale-invariant).
+
 - `est="npag"`/`est="npb"` now estimate non-mu structural fixed-effect parameters
   (a theta with no eta, e.g. `ke <- exp(tke)`, which npag's grid otherwise does not
   cover -- it covers only mu-referenced and residual/likelihood parameters).  By

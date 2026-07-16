@@ -209,16 +209,24 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     if (ctl.gammaOptimize) {
       npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset);
     } else {
-      npBuildPsiCore(theta, ctl.cores, psi);
+      // per-row log-sum-exp normalized (the removed maxima are returned in offset)
+      // so a hard subject's conditional density cannot underflow a whole Psi row to
+      // zero -- which would abort condensation (npCondenseQR).  Burke's weights are
+      // invariant to per-row scaling; the objective adds offset back.
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &offset);
     }
     // a subject whose conditional density is 0 at EVERY support point makes the
-    // Burke IPM (and condensation) degenerate to an empty problem -- report it
-    // clearly instead of letting Armadillo throw "Mat::max(): object has no
-    // elements".  The usual cause is a transform-both-sides link evaluated where
-    // the structural prediction is non-positive (e.g. lnorm/log at an observation
-    // whose model prediction is 0).
+    // Burke IPM (and condensation) degenerate -- report it clearly.  The usual cause
+    // is a transform-both-sides link evaluated where the structural prediction is
+    // non-positive (e.g. lnorm/log at an observation whose model prediction is 0).
+    // Check on the RAW (unnormalized) build: the per-row log-sum-exp normalization of
+    // the working psi masks a zero row (exp(-Inf) becomes a NaN the offset absorbs),
+    // so a raw exp(condLik) is what reliably exposes the degeneracy.  One extra Psi
+    // build, only at cycle 1.
     if (cycle == 1) {
-      arma::vec rowSum = arma::sum(psi, 1);
+      arma::mat psiRaw;
+      npBuildPsiCore(theta, ctl.cores, psiRaw);
+      arma::vec rowSum = arma::sum(psiRaw, 1);
       arma::uvec bad = arma::find_nonfinite(rowSum);
       if (bad.is_empty()) bad = arma::find(rowSum <= 0.0);
       if (!bad.is_empty()) {
@@ -242,7 +250,8 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
       npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset);
       double bObj = 0.0; lam = npBurke(psi, &bObj); objf = bObj + offset;
     } else {
-      lam = npBurke(psi, &objf);
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &offset);
+      double bObj = 0.0; lam = npBurke(psi, &bObj); objf = bObj + offset;
     }
     // residual-error magnitude warm-start (gamma): a fast global up/down search
     // from 1 on the condensed grid, then FOLD the winning multiplier into the
