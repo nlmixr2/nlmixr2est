@@ -127,23 +127,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.100771 2.8554e-05 0.01200502      0.085     0.237 1.673       0.458
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09060166 2.8643e-05 0.01101154      0.082     0.229 1.826       0.427
 #>         compress     other
-#> elapsed    0.138 0.1491954
+#> elapsed    0.149 0.1373582
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
-#> tcl               1.04    0.0864      8.30       2.83 (2.39, 3.36)     28.0
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 2.12e-311 3.03e-309    0.699 (0.699, 0.699)         
-#>        Shrink(SD)%
-#> tka        -0.830 
-#> tcl          3.23 
-#> tv           12.2 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
+#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
+#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -165,23 +160,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.100771 2.8554e-05 0.01200502      0.085     0.237 1.673       0.458
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09060166 2.8643e-05 0.01101154      0.082     0.229 1.826       0.427
 #>         compress     other
-#> elapsed    0.138 0.1491954
+#> elapsed    0.149 0.1373582
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.452     0.192      42.4       1.57 (1.08, 2.29)     69.7
-#> tcl               1.04    0.0864      8.30       2.83 (2.39, 3.36)     28.0
-#> tv         log V  3.45    0.0445      1.29       31.5 (28.9, 34.4)     13.0
-#> add.sd           0.699 2.12e-311 3.03e-309    0.699 (0.699, 0.699)         
-#>        Shrink(SD)%
-#> tka        -0.830 
-#> tcl          3.23 
-#> tv           12.2 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
+#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
+#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
+#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix

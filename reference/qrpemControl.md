@@ -238,7 +238,7 @@ qrpemControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x561105216a98>
+#> <bytecode: 0x559ba3538f98>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
