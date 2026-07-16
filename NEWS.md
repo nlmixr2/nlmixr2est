@@ -6,8 +6,10 @@
   LEAST SQUARES at the individual predictions instead of the marginal likelihood.  The
   marginal likelihood over a flexible nonparametric support rewards a vanishing residual
   (each support point can then fit its subjects arbitrarily well), so the residual could
-  drift toward zero.  The residual step now minimizes `sum_obs((f-dv)^2/r + log(r))` at
-  the posterior-mean etas -- the `log(r)` term penalizes `r -> 0`, giving the saem/focei
+  drift toward zero.  The residual step now minimizes the exact conditional normal
+  negative log-likelihood `sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi))` at the
+  posterior-mean etas (equivalently extended least squares -- same minimizer) -- the
+  `0.5*log(r)` term penalizes `r -> 0`, giving the saem/focei
   residual (e.g. theophylline add.sd ~ 0.73, prop.sd ~ 0.15) rather than a collapsed one.
   Each variance-scale parameter is warm-started (and, for a single scale per endpoint,
   set) from the saem-style per-endpoint moment: an additive SD from `sqrt(mean(err^2))`, a

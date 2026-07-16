@@ -10060,23 +10060,26 @@ double npEvalCondLik(double *eta, int id) {
   return s;
 }
 
-// Extended-least-squares residual objective at fixed per-subject etas (postEta,
-// nsub x neta -- the posterior-mean support eta of each subject).  For each subject
-// solve at eta_i, then read the per-observation prediction f and variance r from the
-// inner model (grabRFmatFromInner) and the transform-both-sides observation dv; the
-// contribution is (f-dv)^2/r + log(r).  The log(r) term penalizes r -> 0, so -- unlike
-// the marginal likelihood on a flexible support, which rewards a vanishing residual --
-// the residual scale settles at the spread of the data around the individual fits, as
-// in saem/focei.  r is the model's own per-observation variance, so a combined error
-// model and multiple endpoints are handled with no endpoint bookkeeping here (each
-// endpoint's residual thetas drive only their observations' r).  npEvalCondLik
+// Conditional residual objective at fixed per-subject etas (postEta, nsub x neta --
+// the posterior-mean support eta of each subject).  For each subject solve at eta_i,
+// then read the per-observation prediction f and variance r from the inner model
+// (grabRFmatFromInner) and the transform-both-sides observation dv; the contribution
+// is the EXACT normal negative log-likelihood 0.5*(f-dv)^2/r + 0.5*log(r) +
+// 0.5*log(2*pi) (r is the model's variance).  The 0.5*log(r) term penalizes r -> 0, so
+// -- unlike the marginal likelihood on a flexible support, which rewards a vanishing
+// residual -- the residual scale settles at the spread of the data around the
+// individual fits, as in saem/focei.  (This differs from -2*log-lik only by the
+// positive factor and additive constant, so the residual minimizer is identical to the
+// extended-least-squares form; the exact -LL is used for an interpretable objective.)
+// r is the model's own per-observation variance, so a combined error model and
+// multiple endpoints are handled with no endpoint bookkeeping here.  npEvalCondLik
 // re-solves, so a structural regressor that moved the ODE is reflected in f.  Returns
 // R_PosInf on a bad solve (so bobyqa rejects the candidate).
 double npResidELS(const arma::mat& postEta) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  double els = 0.0;
+  double nll = 0.0;
   std::vector<double> eta(neta);
   for (int i = 0; i < nsub; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
@@ -10095,10 +10098,10 @@ double npResidELS(const arma::mat& postEta) {
       ko++;
       if (!std::isfinite(r) || r <= 0.0) r = 1.0;
       double e = f - dv;
-      els += e * e / r + std::log(r);
+      nll += 0.5 * e * e / r + 0.5 * std::log(r) + M_LN_SQRT_2PI;
     }
   }
-  return els;
+  return nll;
 }
 
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
