@@ -568,6 +568,11 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
 class SAEM;
 static SAEM* gPhi0Self = nullptr;
 static double gPhi0ObjR(Rcpp::NumericVector p);
+// Coordinate-descent state for the normal-model phi0 direct optimization:
+// gPhi0Work is the full phi0 vector, gPhi0Coord the coordinate optimize() varies.
+static arma::vec gPhi0Work;
+static int gPhi0Coord = 0;
+static double gPhi0Obj1DR(double x);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -624,8 +629,50 @@ public:
       phiCand.col(i0(c)).fill(p[c]);
     }
     mat fMat = user_fn(phiCand, evt, optM);
-    double v = -accu(fMat.col(0));
+    double v;
+    if (distribution == 4) {
+      // general log-likelihood: the prediction column IS the per-obs loglik
+      v = -accu(fMat.col(0));
+    } else {
+      // normal models (nonMuTheta="regress"): residual objective from f
+      v = phi0NormalSSR(fMat.col(0));
+    }
     if (!std::isfinite(v)) return 1e300;
+    return v;
+  }
+
+  // Side-effect-free observation -log-likelihood objective for the normal-model
+  // phi0 direct optimization (nonMuTheta="regress").  This is the SAME
+  // per-observation Gaussian -loglik the MCMC acceptance uses (arDYF /
+  // independent branch): 0.5*((yt-ft)/g)^2 + log(g), with residual SD
+  // g = ares(b) + bres(b)*|ft| (saem.cpp:1457) and TBS transform ft via
+  // _powerD.  Properly normalized across error models and endpoints (unlike a
+  // raw SSR), summed over MCMC chains.  Does NOT touch the AR accumulators /
+  // M-step state (unlike arResk), so it is safe to call inside the optimizer.
+  // The TBS data jacobian is omitted: it is constant in phi0, so it does not
+  // change the argmin.  AR correlation is left to the M-step.
+  double phi0NormalSSR(const vec &fall) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    double v = 0.0;
+    for (int k = 0; k < nmc; k++) {
+      vec fk = fall.subvec(k * ntotal, (k + 1) * ntotal - 1);
+      fk = fk(ix_sorting);
+      for (int b = 0; b < nendpnt; b++) {
+        int nb = (int)(y_offset(b + 1) - y_offset(b));
+        for (int i = 0; i < nb; i++) {
+          double fi = fk(y_offset(b) + i);
+          double ft = _powerD(fi, lambda(b), yj(b), low(b), hi(b));
+          double yt = hasFixedObsTransform ? ysTrans(y_offset(b) + i)
+            : _powerD(ys(y_offset(b) + i), lambda(b), yj(b), low(b), hi(b));
+          double g = ares(b) + bres(b) * std::fabs(ft);
+          if (g == 0.0) g = 1.0;
+          else if (g < double_xmin) g = double_xmin;
+          else if (g > xmax) g = xmax;
+          double e = yt - ft;
+          v += 0.5 * (e / g) * (e / g) + std::log(g);
+        }
+      }
+    }
     return v;
   }
 
@@ -649,27 +696,78 @@ public:
       setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
       _rx = getRxSolve_();
     }
-    // establish the ODE states at the current phi (unfrozen), then freeze
+    // General-likelihood phi0 params (e.g. a likelihood SD) do NOT enter the
+    // ODE, so the states are solved once and frozen while phi0 is optimized.
+    // For nonMuTheta="regress" on a NORMAL model the phi0 thetas DO drive the
+    // ODE (ka, V, ...), so freezing would make the objective blind to them --
+    // keep the ODE live so each objective evaluation re-solves.
+    bool doFreeze = (distribution == 4);
     _saemFreezeOde = false;
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
-    _saemFreezeOde = true;
+    _saemFreezeOde = doFreeze;
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
     // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
     // nelder-mead) could push a phi0 like a likelihood SD into an invalid region.
     gPhi0Self = this;
     Rcpp::NumericVector par0(nphi0), lo(nphi0), hi(nphi0);
+    // Normal-model phi0 thetas (nonMuTheta="regress") drive the ODE, so the
+    // observation objective has huge NaN plateaus far from the current value;
+    // an unbounded bobyqa span breaks there.  Constrain each step to a LOCAL
+    // trust region around the current value (intersected with any ini bounds)
+    // so the SA iteration refines it gradually, like a clamped regression step.
+    // General-likelihood phi0 (distribution==4) keeps the original wide bounds.
+    bool localTrust = (distribution != 4) && nonMuThetaRegress;
     for (int c = 0; c < nphi0; c++) {
       par0[c] = mprior_phi0(0, c);
-      lo[c] = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
-      hi[c] = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+      double userLo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
+      double userHi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+      if (localTrust) {
+        // ABSOLUTE trust radius (not relative to par0): a relative radius lets a
+        // param that starts to drift grow its own step and run away.
+        double trust = 0.75;
+        double tl = par0[c] - trust, th = par0[c] + trust;
+        lo[c] = std::isfinite(userLo) ? std::max(userLo, tl) : tl;
+        hi[c] = std::isfinite(userHi) ? std::min(userHi, th) : th;
+      } else {
+        lo[c] = userLo;
+        hi[c] = userHi;
+      }
     }
-    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-    Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-    Rcpp::InternalFunction fn(&gPhi0ObjR);
-    Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                                Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi);
+    Rcpp::NumericVector xmin(nphi0);
+    if (localTrust) {
+      // Normal-model phi0 objective is extremely ill-conditioned (a tiny
+      // proportional-error SD makes it change by orders of magnitude over a
+      // small phi0 step), which breaks bobyqa's quadratic model.  Use robust
+      // coordinate descent with R's golden-section optimize() (no quadratic
+      // model), a few sweeps, within the local trust bounds.
+      gPhi0Self = this;
+      gPhi0Work.set_size(nphi0);
+      for (int c = 0; c < nphi0; c++) gPhi0Work[c] = par0[c];
+      Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+      Rcpp::Function optimize = stats["optimize"];
+      Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
+      for (int sweep = 0; sweep < 2; sweep++) {
+        for (int c = 0; c < nphi0; c++) {
+          if (!(hi[c] > lo[c])) continue;
+          gPhi0Coord = c;
+          Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
+                                  Rcpp::_["lower"] = lo[c],
+                                  Rcpp::_["upper"] = hi[c]);
+          double xm = Rcpp::as<double>(o["minimum"]);
+          gPhi0Work[c] = xm;
+        }
+      }
+      for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
+    } else {
+      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+      Rcpp::InternalFunction fn(&gPhi0ObjR);
+      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
+                                  Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi);
+      Rcpp::NumericVector rx = ret["x"];
+      for (int c = 0; c < nphi0; c++) xmin[c] = rx[c];
+    }
     _saemFreezeOde = false;
-    Rcpp::NumericVector xmin = ret["x"];
     for (int c = 0; c < nphi0; c++) {
       double cur = mprior_phi0(0, c);
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
@@ -1206,6 +1304,8 @@ public:
     mx.optM   = optM;
 
     distribution=as<int>(x["distribution"]);
+    nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
+      as<int>(x["nonMuThetaRegress"]) : 0;
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
@@ -2113,14 +2213,25 @@ public:
         MCOV0(jcov0)=Plambda0;
       }
       mprior_phi1=COV1*MCOV1;
-      mprior_phi0=COV0*MCOV0;
-      // General log-likelihood: the sampled-mean update above only weakly informs
-      // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
-      // phase has begun, refine them by a direct derivative-free optimization of
-      // the observation likelihood (saemix ind.fix10) with the ODE states frozen.
-      // refinePhi0Lik restores the SAEM solve first, so it is safe under the
-      // f-SAEM fast kernel too.
-      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+      // nonMuTheta="regress": once the direct phi0 optimizer owns phi0
+      // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
+      // sampled-mean update -- that fights the optimizer and lets phi0 drift.
+      // The optimizer result from the previous iteration persists as the seed.
+      bool skipStochPhi0 = nonMuThetaRegress && (distribution != 4) &&
+        (kiter >= (unsigned int)niter_phi0);
+      if (!skipStochPhi0) {
+        mprior_phi0=COV0*MCOV0;
+      }
+      // The sampled-mean update above only weakly informs fixed-effect-only
+      // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
+      // refine them by a direct bounded optimization with the ODE states frozen
+      // (saemix ind.fix10).  Enabled for general log-likelihood models
+      // (distribution==4) and, via nonMuTheta="regress", for normal models --
+      // keeping non-mu thetas as directly-optimized, bound-respecting regressors
+      // instead of stochastic phi0 draws.  refinePhi0Lik restores the SAEM solve
+      // first, so it is safe under the f-SAEM fast kernel too.
+      if ((distribution == 4 || nonMuThetaRegress) &&
+          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
@@ -3150,6 +3261,12 @@ private:
   mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
+  // nonMuTheta="regress": estimate the fixed-effect-only (phi0) parameters by
+  // the bounded direct optimizer (refinePhi0Lik) for NORMAL models too, instead
+  // of only the stochastic phi0 block.  Keeps such thetas as plain regressors
+  // with directly-optimized, bound-respecting values (no shrinking phi0
+  // variance).  0 = classic phi0, 1 = direct-optimize.
+  int nonMuThetaRegress;
 
   int nendpnt;
   uvec ix_endpnt;
@@ -3765,6 +3882,11 @@ private:
 // phi0 objective trampoline for the general-likelihood direct optimization.
 static double gPhi0ObjR(Rcpp::NumericVector p) {
   return gPhi0Self->phi0Objective(p.begin());
+}
+
+static double gPhi0Obj1DR(double x) {
+  gPhi0Work[gPhi0Coord] = x;
+  return gPhi0Self->phi0Objective(gPhi0Work.memptr());
 }
 
 
