@@ -16,15 +16,39 @@ using namespace Rcpp;
 // (add/prop/lnorm/lambda/ar -- every endpoint) against the nonparametric -2LL
 // with the bounded bobyqa optimizer.  This recovers what a single global gamma
 // cannot: the add/prop ratio and per-endpoint magnitudes.
-// Context is passed to the R-callable objective through file-static pointers.
+// Posterior-mean support eta of each subject given the current mixing distribution
+// (support nspp x neta, weights nspp): E[eta | y_i] = sum_k w_k psi_ik phi_k /
+// sum_k w_k psi_ik -- the individual random-effect estimate the residual step uses.
+static arma::mat npPosteriorEta(const arma::mat& support, const arma::vec& weights,
+                                int cores) {
+  arma::mat psi;
+  npBuildPsiCore(support, cores, psi);          // nsub x nspp
+  arma::mat wpsi = psi;
+  wpsi.each_row() %= weights.t();               // w_k psi_ik
+  arma::vec denom = arma::sum(wpsi, 1);
+  denom = arma::clamp(denom, 1e-300, arma::datum::inf);
+  arma::mat num = wpsi * support;               // nsub x neta
+  num.each_col() /= denom;
+  return num;
+}
+
+// Context is passed to the R-callable objective through file-static pointers.  The
+// residual (err) thetas and any structural "regressor" theta are optimized together
+// against ONE extended-least-squares objective sum_obs((f-dv)^2/r + log(r)) at the
+// posterior-mean etas.  The log(r) term keeps the residual scale from drifting to zero
+// on a flexible support (the marginal likelihood rewards a vanishing residual because
+// each support point can then fit its subjects arbitrarily well).  When the set
+// includes a regressor (which shifts the ODE predictions), gNpReDerive re-derives the
+// posterior-mean etas at each candidate so the eta grid cannot stale-absorb the
+// structural shift -- that is what identifies the regressor.
 namespace {
-  const arma::mat* gNpSupport = nullptr;   // fixed support grid (nspp x neta)
-  const arma::vec* gNpWeights = nullptr;   // fixed weights (nspp)
   std::vector<int> gNpOptIdx;              // fullTheta indices being optimized
   std::vector<int> gNpOptKind;            // 0 = free, 1 = positive (SD), 2 = corr
+  arma::mat gNpPostEta;                    // per-subject etas for the ELS objective
+  const arma::mat* gNpSupport = nullptr;   // support grid (for re-deriving the etas)
+  const arma::vec* gNpWeights = nullptr;   // weights (for re-deriving the etas)
   int gNpCores = 1;
-  bool gNpFreeze = true;                   // reuse cached ODE states (safe iff the
-                                           // optimized thetas feed only f/r, not d/dt)
+  bool gNpReDerive = false;                // re-derive the etas each candidate (regressor)
 
   // clamp a candidate to the parameter's natural range (belt-and-suspenders with
   // the bobyqa bounds): SD >= 0, continuous-AR correlation in (0,1).
@@ -34,50 +58,70 @@ namespace {
     return v;                                                           // lambda etc.
   }
 
-  // Core objective: install the candidate residual thetas, rebuild Psi on the
-  // fixed support, and return -2 * sum_i log(sum_k lambda_k Psi_ik).  Uses the
-  // per-row log-sum-exp normalized builder (offset carries the removed row maxima)
-  // so a small residual variance cannot underflow a whole subject row to zero.
   double npResidObjVal(const double *p) {
     for (size_t j = 0; j < gNpOptIdx.size(); ++j)
       impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
-    // frozen Psi: the support/structural solve is cached (npFreezeBuild), so this
-    // only recomputes f/r for the candidate residual thetas -- no re-integration.
-    // When freezing is unsafe (an optimized theta feeds the ODE) re-solve instead.
-    arma::mat psi; double offset = 0.0;
-    if (gNpFreeze) {
-      npFreezePsiScaled(*gNpSupport, gNpCores, psi, &offset);
-    } else {
-      npBuildPsiCoreScaled(*gNpSupport, gNpCores, 1.0, psi, &offset);
-    }
-    arma::vec pyf = psi * (*gNpWeights);
-    pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
-    return -2.0 * (arma::accu(arma::log(pyf)) + offset);
+    if (gNpReDerive)
+      gNpPostEta = npPosteriorEta(*gNpSupport, *gNpWeights, gNpCores);
+    return npResidELS(gNpPostEta);
   }
-  // bobyqa (minqa via R .bobyqa) objective: R-callable through Rcpp::InternalFunction.
   double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
 }
 
-// Optimize the residual thetas in idx (kinds in kind) with support/weights fixed,
-// using bobyqa BOUNDED by the ini-block lower/upper.  Unbounded methods
-// (newuoa / Nelder-Mead) are deliberately NOT used here: the residual objective
-// is flat/degenerate outside the valid region (e.g. a negative SD), and an
-// unbounded optimizer can wander there.  Leaves fullTheta at the optimum,
-// returns the -2LL (R_NegInf if bobyqa fails, with the thetas left at start).
+// Optimize the residual thetas in idx (kinds in kind) at the posterior-mean etas
+// given (support, weights), using bobyqa BOUNDED by the ini-block lower/upper on the
+// extended-least-squares objective.  Warm-starts every variance-scale theta from the
+// saem-style per-endpoint moment (additive: sqrt(mean err^2); proportional:
+// sqrt(mean (err/f)^2)); when the optimized set is exactly one such scale per
+// endpoint, the moment IS the ELS optimum, so it is used directly (no bobyqa).
+// optEnd[j]/optProp[j] describe idx[j]: optEnd 0-based endpoint (or -1 if not a
+// variance scale), optProp 1 for proportional else 0.  obsEndpoint gives each
+// observation's endpoint (subject-major getIndIx order) for the moment estimate.
+// `freeze` is now vestigial (ELS always re-solves).  Leaves fullTheta at the
+// optimum; returns the ELS value (R_PosInf if bobyqa failed, thetas left at start).
 double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                        const std::vector<int>& idx,
                        const std::vector<int>& kind, int cores,
                        const std::vector<double>& lower,
                        const std::vector<double>& upper,
-                       bool freeze) {
+                       bool freeze,
+                       const arma::ivec& obsEndpoint,
+                       const std::vector<int>& optEnd,
+                       const std::vector<int>& optProp,
+                       bool reDerive) {
+  (void) freeze;
   int n = (int)idx.size();
-  if (n == 0) return R_NegInf;
-  gNpSupport = &support; gNpWeights = &weights;
-  gNpOptIdx = idx; gNpOptKind = kind; gNpCores = cores; gNpFreeze = freeze;
-  // solve + cache the ODE states once; every objective evaluation below reuses
-  // them and only recomputes f/r for the candidate residual thetas.  Skip the
-  // cache when freezing is unsafe -- the objective then re-solves each candidate.
-  if (freeze) npFreezeBuild(support, cores);
+  if (n == 0) return R_PosInf;
+  gNpOptIdx = idx; gNpOptKind = kind;
+  gNpSupport = &support; gNpWeights = &weights; gNpCores = cores;
+  gNpReDerive = reDerive;
+  gNpPostEta = npPosteriorEta(support, weights, cores);
+
+  // saem-style moment warm start: per-endpoint additive / proportional SD at the
+  // individual predictions.  Set each variance-scale theta to its moment.
+  bool haveWarm = !optEnd.empty() && (int)optEnd.size() == n;
+  bool allSimpleScale = haveWarm && !reDerive;   // a lone scale per endpoint, no regressor
+  if (haveWarm) {
+    int nEnd = 0;
+    for (int j = 0; j < n; ++j) nEnd = std::max(nEnd, optEnd[j] + 1);
+    for (int j = 0; j < (int)obsEndpoint.n_elem; ++j) nEnd = std::max(nEnd, (int)obsEndpoint[j] + 1);
+    arma::mat mom = npResidMoments(gNpPostEta, obsEndpoint, nEnd);
+    std::vector<int> endCount(std::max(nEnd, 1), 0);
+    for (int j = 0; j < n; ++j) if (optEnd[j] >= 0) endCount[optEnd[j]]++;
+    for (int j = 0; j < n; ++j) {
+      int e = optEnd[j];
+      if (e < 0 || kind[j] != 1 || endCount[e] > 1) { allSimpleScale = false; continue; }
+      double nn = mom(e, 2);
+      if (nn <= 0.0) { allSimpleScale = false; continue; }
+      double v = std::sqrt(mom(e, (optProp[j] == 1) ? 1 : 0) / nn);
+      if (j < (int)lower.size() && std::isfinite(lower[j])) v = std::max(v, lower[j]);
+      if (j < (int)upper.size() && std::isfinite(upper[j])) v = std::min(v, upper[j]);
+      if (std::isfinite(v) && v > 0.0) impSetThetaAll(idx[j], v);
+    }
+    // simple path (one scale per endpoint, no regressor): the moment IS the estimate.
+    if (allSimpleScale) return npResidELS(gNpPostEta);
+  }
+
   std::vector<double> start(n);
   Rcpp::NumericVector par0(n), lo(n), hi(n);
   for (int j = 0; j < n; ++j) {
@@ -86,6 +130,13 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
     start[j] = v; par0[j] = v;
     lo[j] = (j < (int)lower.size()) ? lower[j] : R_NegInf;
     hi[j] = (j < (int)upper.size()) ? upper[j] : R_PosInf;
+    // an unbounded regressor (kind 0, no ini bound) must not let bobyqa wander to an
+    // extreme value where the profiled fit is spuriously flat; bracket it generously
+    // around the start (in the parameter's own -- often log -- scale).
+    if (kind[j] == 0) {
+      if (!std::isfinite(lo[j])) lo[j] = v - 6.0;
+      if (!std::isfinite(hi[j])) hi[j] = v + 6.0;
+    }
   }
   // .boundedResidOpt: bobyqa (>=2 params) / bounded optimize (1 param), honoring
   // the ini-block bounds so the optimizer stays in the valid region.
@@ -96,15 +147,14 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                               Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
                               Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n));
   double f = as<double>(ret["value"]);
+  gNpReDerive = false;
   if (!ISNA(f)) {
     Rcpp::NumericVector x = ret["x"];
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
-    if (freeze) npFreezeClear();
     return f;
   }
   for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
-  if (freeze) npFreezeClear();
-  return R_NegInf;
+  return R_PosInf;
 }
 
 // NPAG tuning constants (Yamada 2021): eps convergence floor / objf tolerance /
@@ -126,11 +176,17 @@ struct npagCtl {
   bool trace = false;         // record the per-cycle parameter history (scale.h)
   arma::mat omModel;          // model Omega sparsity (for the trace push mask)
   int residMode = 1;          // residual theta opt: 0 none, 1 alternate, 2 final
-  std::vector<int> residOptIdx;  // fullTheta indices of ALL non-fixed residual thetas
+  std::vector<int> residOptIdx;  // fullTheta indices of the non-fixed residual (err) thetas
   std::vector<int> residOptKind; // per-idx: 0 free (lambda), 1 SD (>0), 2 corr
   std::vector<double> residOptLower; // ini-block lower bounds (bobyqa)
   std::vector<double> residOptUpper; // ini-block upper bounds (bobyqa)
   std::vector<int> residScaleIdx; // variance-scale subset (gamma warm-start fold)
+  std::vector<int> residOptEnd;   // per-idx 0-based endpoint (-1 if not a variance scale)
+  std::vector<int> residOptProp;  // per-idx 1 if proportional, else 0 (moment warm start)
+  arma::ivec obsEndpoint;         // per-observation endpoint (subject-major getIndIx order)
+  std::vector<int> regressIdx;    // fullTheta indices of structural regressor thetas
+  std::vector<double> regressLower;
+  std::vector<double> regressUpper;
   bool mixOptimize = false;   // estimate mix() proportions via the in-cycle EM update
   bool residFreeze = true;    // freeze the ODE during resid opt (safe: err params only)
   std::vector<int> muExpandEtaIdx;   // 0-based eta indices of mu-expanded (injected) etas
@@ -190,13 +246,25 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   bool converged = false;
   arma::vec lam;
   arma::mat psi;
-  // A single variance-scale residual parameter (e.g. pure additive or pure
-  // proportional error) is exactly what the gamma up/down search estimates -- it
-  // folds gamma into that one theta -- so skip the (redundant) Nelder-Mead/newuoa
-  // step there.  The residual optimizer is only needed for >= 2 residual params
-  // (combined error, multiple endpoints) or a lone transform/correlation param.
-  bool singleScale = (ctl.residOptIdx.size() == 1 && ctl.residScaleIdx.size() == 1);
-  bool useResidOpt = !ctl.residOptIdx.empty() && !(singleScale && ctl.gammaOptimize);
+  // The residual step uses extended least squares (which does not collapse) at the
+  // posterior-mean etas.  A structural regressor is appended to the SAME step (kind 0,
+  // no endpoint) and identified by re-deriving those etas per candidate so the eta
+  // grid cannot stale-absorb the structural shift.
+  bool useResidOpt = !ctl.residOptIdx.empty();
+  bool useRegress = !ctl.regressIdx.empty();
+  bool doResidOpt = useResidOpt || useRegress;
+  // combined optimized set: residual (err) thetas, then the regressor thetas.
+  std::vector<int> optIdx = ctl.residOptIdx, optKind = ctl.residOptKind;
+  std::vector<int> optEnd = ctl.residOptEnd, optProp = ctl.residOptProp;
+  std::vector<double> optLo = ctl.residOptLower, optHi = ctl.residOptUpper;
+  for (size_t g = 0; g < ctl.regressIdx.size(); ++g) {
+    optIdx.push_back(ctl.regressIdx[g]);
+    optKind.push_back(0);                       // free
+    optEnd.push_back(-1);                       // not a variance scale
+    optProp.push_back(0);
+    optLo.push_back(g < ctl.regressLower.size() ? ctl.regressLower[g] : R_NegInf);
+    optHi.push_back(g < ctl.regressUpper.size() ? ctl.regressUpper[g] : R_PosInf);
+  }
   for (;;) {
     cycle++;
     if (cycle > 1) {
@@ -278,13 +346,13 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
         impSetThetaAll(idx, impGetFullThetaVal(idx) * gsel);
       }
     }
-    // residual theta optimization (per user: gamma is only a warm start).  With
-    // the support points and weights FIXED, optimize ALL non-fixed residual thetas
-    // (add/prop/lnorm/lambda/ar, every endpoint) with Nelder-Mead, then re-solve
-    // the weights at the new thetas -- block-coordinate ascent.  "alternate" runs
-    // this every cycle; "final" (residMode 2) runs it once after the loop.
-    if (ctl.residMode == 1 && useResidOpt) {
-      npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper, ctl.residFreeze);
+    // residual + regressor optimization (extended least squares at the posterior-mean
+    // etas; the etas are re-derived per candidate when a regressor is present so the
+    // structural shift is identified).  "alternate" runs it every cycle (block-
+    // coordinate ascent), then re-solves the weights at the new thetas.
+    if (ctl.residMode == 1 && doResidOpt) {
+      npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
+                      ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress);
       double off = 0.0, b = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
@@ -330,12 +398,43 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     if (cycle >= ctl.cycles) break;
     lastObj = objf;
   }
-  // "final" mode: optimize the residual thetas once at the converged support.
-  if (ctl.residMode == 2 && useResidOpt) {
-    npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper, ctl.residFreeze);
+  // "final" mode: optimize the residual + regressor thetas once at the converged support.
+  if (ctl.residMode == 2 && doResidOpt) {
+    npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
+                    ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress);
     double off = 0.0, b = 0.0;
     npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
     lam = npBurke(psi, &b); objf = b + off;
+  }
+  // final support refinement: with the residual + regressor thetas now held CONSTANT,
+  // re-optimize the support (adaptive grid + Burke) against the marginal likelihood.
+  // The saem-style ELS residual is larger than the marginal-likelihood-optimal residual,
+  // which leaves the (sparse) support marginal-LL-suboptimal -- refining it at the fixed
+  // residual restores the nonparametric MLE of the mixing distribution and the D(F)
+  // certificate (~0) without changing the reported residual or any structural parameter.
+  if (doResidOpt) {
+    double eps2 = ctl.epsInit, g0 = -1e30, g1 = 0.0, last2 = -1e30;
+    for (int rc = 0; rc < ctl.cycles; ++rc) {
+      theta = npExpandGrid(theta, eps2, lower, upper, ctl.thetaD);
+      double off = 0.0;
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
+      double b0 = 0.0; lam = npBurke(psi, &b0);
+      arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
+      theta = theta.rows(wk); psi = psi.cols(wk);
+      arma::uvec qk = npCondenseQR(psi, ctl.qrTol);
+      theta = theta.rows(qk); psi = psi.cols(qk);
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
+      double b = 0.0; lam = npBurke(psi, &b); objf = b + off;
+      if (std::fabs(last2 - objf) <= ctl.thetaG && eps2 > ctl.thetaE) {
+        eps2 /= 2.0;
+        if (eps2 <= ctl.thetaE) {
+          g1 = objf;
+          if (std::fabs(g1 - g0) <= ctl.thetaF) break;
+          g0 = g1; eps2 = ctl.epsInit;
+        }
+      }
+      last2 = objf;
+    }
   }
   npagResult r;
   r.theta = theta; r.lambda = lam; r.psi = psi; r.objf = objf; r.gamma = gamma;
@@ -393,6 +492,31 @@ void npagOuter(Environment e) {
   if (control.containsElementNamed("npResidOptUpper")) {
     NumericVector ru = control["npResidOptUpper"];
     ctl.residOptUpper.assign(ru.begin(), ru.end());
+  }
+  if (control.containsElementNamed("npResidOptEnd")) {
+    IntegerVector re = control["npResidOptEnd"];
+    ctl.residOptEnd.assign(re.begin(), re.end());
+  }
+  if (control.containsElementNamed("npResidOptProp")) {
+    IntegerVector rp = control["npResidOptProp"];
+    ctl.residOptProp.assign(rp.begin(), rp.end());
+  }
+  if (control.containsElementNamed("npObsEndpoint")) {
+    IntegerVector oe = control["npObsEndpoint"];
+    ctl.obsEndpoint.set_size(oe.size());
+    for (int j = 0; j < oe.size(); ++j) ctl.obsEndpoint[j] = oe[j];
+  }
+  if (control.containsElementNamed("npRegressIdx")) {
+    IntegerVector gi = control["npRegressIdx"];
+    ctl.regressIdx.assign(gi.begin(), gi.end());
+  }
+  if (control.containsElementNamed("npRegressLower")) {
+    NumericVector gl = control["npRegressLower"];
+    ctl.regressLower.assign(gl.begin(), gl.end());
+  }
+  if (control.containsElementNamed("npRegressUpper")) {
+    NumericVector gu = control["npRegressUpper"];
+    ctl.regressUpper.assign(gu.begin(), gu.end());
   }
   std::vector<int> residScaleIdx = ctl.residScaleIdx;  // for the finalization fold (no-op at gamma=1)
   // foceiSetup_ defers building op_focei.omegaInv on the maxOuterIterations=0

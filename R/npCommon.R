@@ -142,9 +142,10 @@
   .errScale <- !is.na(.thOrd$err) &
     !(.errType %in% c("boxCox", "yeoJohnson", "ar", "pw")) & !.isFix
   .control$npResidScaleIdx <- as.integer(which(.errScale) - 1L)
-  # ALL non-fixed residual params are optimized by the Nelder-Mead residual step
-  # (support points + weights held fixed).  kind selects the coordinate mapping:
-  # 1 = positive (SD), 2 = correlation in (-1,1) (ar), 0 = free (lambda/exponent).
+  # ALL non-fixed residual (err-tagged) params are optimized by the residual step
+  # (mixing distribution held fixed) against the extended-least-squares objective at
+  # the posterior-mean etas.  kind selects the coordinate mapping: 1 = positive (SD),
+  # 2 = correlation in (-1,1) (ar), 0 = free (lambda/exponent).
   .errOpt <- !is.na(.thOrd$err) & !.isFix
   .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
   .optType <- .errType[.errOpt]
@@ -152,6 +153,16 @@
   .kind[.optType %in% c("ar")] <- 2L
   .kind[.optType %in% c("boxCox", "yeoJohnson", "pw")] <- 0L
   .control$npResidOptKind <- as.integer(.kind)
+  # per-residual-param endpoint (0-based, predDf row order) and proportional flag,
+  # for the saem-style moment warm start.  The err row's `condition` names its
+  # endpoint variable; a proportional term uses (err/f), everything else (additive,
+  # lognormal, box-cox -- all additive on the transform-both-sides scale) uses err.
+  .endVar <- tryCatch(as.character(ui$predDf$cond), error = function(e) character(0))
+  .errCond <- as.character(.thOrd$condition[.errOpt])
+  .errEnd <- match(.errCond, .endVar) - 1L
+  .errEnd[is.na(.errEnd)] <- 0L
+  .control$npResidOptEnd <- as.integer(.errEnd)
+  .control$npResidOptProp <- as.integer(startsWith(.optType, "prop"))
   # ini-block bounds of the residual-opt params (for the bounded bobyqa step),
   # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and the
   # continuous-AR correlation (kind 2) is in (0, 1).
@@ -175,31 +186,35 @@
     .npMixOptimize <- any(!(!is.na(.mixRows$fix) & .mixRows$fix))
   }
   .control$npMixOptimize <- isTRUE(.npMixOptimize)
-  # freeze-safety: the frozen-ODE residual step recomputes only f/r via calc_lhs and
-  # never re-integrates the states, so it is valid ONLY when every theta it OPTIMIZES
-  # feeds the residual/likelihood alone.  The optimized set (npResidOptIdx) is built
-  # from iniDf$err (residual/likelihood parameters), which never enter the ODE
-  # right-hand sides -- so freezing is safe.  If a non-err theta is ever added to the
-  # optimized set it must clear this flag (forcing a re-solve per candidate).
-  .optErr <- !is.na(.thOrd$err[.errOpt])
-  .control$npResidFreeze <- length(.optErr) == 0L || all(.optErr)
+  # freeze flag is now vestigial (the residual step re-solves at the posterior-mean
+  # etas); kept for the C++ signature.  The err-tagged residual params feed only f/r.
+  .control$npResidFreeze <- TRUE
   # A non-mu, non-fixed structural fixed-effect theta (err==NA, no eta) is neither a
   # grid dimension nor a residual/likelihood parameter.  With muExpand=TRUE it has
   # been injected as a pseudo-eta (so it is now mu-referenced and not seen here);
-  # otherwise, optimize it directly as a "regressor" in the residual step (bobyqa,
-  # kind 0 = free, ini-block bounds).  A regressor feeds the ODE, so the step must
-  # RE-SOLVE (clear npResidFreeze) rather than reuse the frozen states.
+  # otherwise, optimize it as a "regressor" against the MARGINAL likelihood over the
+  # whole support (a structural shift is not identified by the residual ELS step at
+  # fixed etas), re-solving the ODE per candidate.  Kept SEPARATE from the residual
+  # (ELS) set -- mixing the two objectives mis-identifies both.
   .isMuRef <- .thOrd$name %in% .mr$theta
   .isMixP <- .thOrd$name %in% .mixNames
-  .regress <- which(is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP)
+  # The residual/regressor optimization (extended least squares over the base solve)
+  # is not mixture-aware, so a mix() model's structural component parameters must not
+  # be driven by it -- they are handled by the mixture marginalization + proportion
+  # update, and are held at their initial values here.  Regressors are therefore only
+  # optimized for non-mixture models.
+  .isMix <- length(.mixNames) > 0L
+  .regress <- if (.isMix) integer(0) else which(is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP)
   if (length(.regress) > 0L) {
-    .control$npResidOptIdx <- c(.control$npResidOptIdx, as.integer(.regress - 1L))
-    .control$npResidOptKind <- c(.control$npResidOptKind, rep(0L, length(.regress)))
-    .control$npResidOptLower <- c(.control$npResidOptLower, as.numeric(.thOrd$lower[.regress]))
-    .control$npResidOptUpper <- c(.control$npResidOptUpper, as.numeric(.thOrd$upper[.regress]))
-    .control$npResidFreeze <- FALSE
+    .control$npRegressIdx <- as.integer(.regress - 1L)
+    .control$npRegressLower <- as.numeric(.thOrd$lower[.regress])
+    .control$npRegressUpper <- as.numeric(.thOrd$upper[.regress])
     # residOptimize="none" (npResidMode 0) holds everything, regressors included --
     # do not override it here.
+  } else {
+    .control$npRegressIdx <- integer(0)
+    .control$npRegressLower <- numeric(0)
+    .control$npRegressUpper <- numeric(0)
   }
   # mu-expanded (injected) etas: finalization recovers each as a FIXED effect by
   # folding its support-mean into the paired theta and collapsing its random effect.

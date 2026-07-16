@@ -10060,6 +10060,90 @@ double npEvalCondLik(double *eta, int id) {
   return s;
 }
 
+// Extended-least-squares residual objective at fixed per-subject etas (postEta,
+// nsub x neta -- the posterior-mean support eta of each subject).  For each subject
+// solve at eta_i, then read the per-observation prediction f and variance r from the
+// inner model (grabRFmatFromInner) and the transform-both-sides observation dv; the
+// contribution is (f-dv)^2/r + log(r).  The log(r) term penalizes r -> 0, so -- unlike
+// the marginal likelihood on a flexible support, which rewards a vanishing residual --
+// the residual scale settles at the spread of the data around the individual fits, as
+// in saem/focei.  r is the model's own per-observation variance, so a combined error
+// model and multiple endpoints are handled with no endpoint bookkeeping here (each
+// endpoint's residual thetas drive only their observations' r).  npEvalCondLik
+// re-solves, so a structural regressor that moved the ODE is reflected in f.  Returns
+// R_PosInf on a bad solve (so bobyqa rejects the candidate).
+double npResidELS(const arma::mat& postEta) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  double els = 0.0;
+  std::vector<double> eta(neta);
+  for (int i = 0; i < nsub; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    double cl = npEvalCondLik(&eta[0], i);
+    if (!std::isfinite(cl)) return R_PosInf;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    arma::mat fr = grabRFmatFromInner(i, false);   // nObs x 2 (f, r), transformed scale
+    int ko = 0;
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;      // observations only
+      double dv = tbs(getIndDv(ind, kk));
+      double f = fr(ko, 0), r = fr(ko, 1);
+      ko++;
+      if (!std::isfinite(r) || r <= 0.0) r = 1.0;
+      double e = f - dv;
+      els += e * e / r + std::log(r);
+    }
+  }
+  return els;
+}
+
+// Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
+// obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
+// order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
+// each endpoint we accumulate, on the transform-both-sides scale, the additive moment
+// sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
+// the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
+// sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
+// single scale per endpoint, to set) the residual optimization.  Returns an
+// nEnd x 3 matrix [sumAdd, sumProp, n].
+arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  std::vector<double> eta(neta);
+  int obsIdx = 0;
+  for (int i = 0; i < nsub; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    double cl = npEvalCondLik(&eta[0], i);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    arma::mat fr = grabRFmatFromInner(i, false);
+    int ko = 0;
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = tbs(getIndDv(ind, kk));
+      double f = fr(ko, 0);
+      ko++;
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      obsIdx++;
+      if (e < 0 || e >= nEnd) continue;
+      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+      double err = f - dv;
+      mom(e, 0) += err * err;
+      if (f != 0.0 && std::isfinite(err / f)) mom(e, 1) += (err / f) * (err / f);
+      mom(e, 2) += 1.0;
+    }
+  }
+  return mom;
+}
+
 // Mixture-marginalized conditional log-likelihood for physical subject `base` at
 // eta: log( sum_m mixProb(m) * p(y_base | eta, component m) ).  Mixture components
 // are the pseudo-subjects base + m*nsub (likInner0 pins the component from the id,

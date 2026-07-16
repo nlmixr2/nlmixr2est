@@ -2,6 +2,28 @@
 
 ## New features
 
+- `est="npag"`/`est="npb"` now estimate the residual-error parameters with EXTENDED
+  LEAST SQUARES at the individual predictions instead of the marginal likelihood.  The
+  marginal likelihood over a flexible nonparametric support rewards a vanishing residual
+  (each support point can then fit its subjects arbitrarily well), so the residual could
+  drift toward zero.  The residual step now minimizes `sum_obs((f-dv)^2/r + log(r))` at
+  the posterior-mean etas -- the `log(r)` term penalizes `r -> 0`, giving the saem/focei
+  residual (e.g. theophylline add.sd ~ 0.73, prop.sd ~ 0.15) rather than a collapsed one.
+  Each variance-scale parameter is warm-started (and, for a single scale per endpoint,
+  set) from the saem-style per-endpoint moment: an additive SD from `sqrt(mean(err^2))`, a
+  proportional SD from `sqrt(mean((err/f)^2))`, both on the transform-both-sides scale (so
+  lognormal / box-cox are handled on the transformed residual).  A non-mu structural
+  "regressor" is optimized in the same step, with the posterior-mean etas re-derived per
+  candidate so the eta grid cannot stale-absorb the structural shift (this identifies it,
+  e.g. recovering theophylline's clearance from a deliberately-wrong start).  After the
+  residual + regressor thetas converge, a final adaptive-grid pass re-optimizes the
+  support with those thetas held CONSTANT, so the support is the nonparametric MLE of the
+  mixing distribution for the fitted residual and the D(F) global-optimality certificate
+  is restored (~0).  npb runs the same residual/regressor step inside its sampler.  (A
+  mix() model's structural component parameters are held at their initial values -- the
+  ELS step is not mixture-aware; the components are handled by the mixture marginalization
+  and proportion update.)
+
 - `est="npag"` now picks the initial grid size automatically from the model's
   dimensionality when `npagControl(points=)` is not supplied: `max(2028, 512 * n_eta)`
   (2028 is the Pmetrics NPAG default, which covers a low-dimensional model but grows

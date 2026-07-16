@@ -110,8 +110,11 @@ void npbOuter(Environment e) {
   // the sampling phase so every collected draw shares the converged residuals),
   // 2 final (fit once at the converged draw).
   int residMode = control.containsElementNamed("npResidMode") ? as<int>(control["npResidMode"]) : 0;
-  std::vector<int> residOptIdx, residOptKind;
+  std::vector<int> residOptIdx, residOptKind, residOptEnd, residOptProp;
   std::vector<double> residOptLower, residOptUpper;
+  std::vector<int> regressIdx;
+  std::vector<double> regressLower, regressUpper;
+  arma::ivec obsEndpoint;
   bool residFreeze = true;
   if (control.containsElementNamed("npResidOptIdx")) {
     IntegerVector ro = control["npResidOptIdx"];
@@ -129,9 +132,48 @@ void npbOuter(Environment e) {
     NumericVector ru = control["npResidOptUpper"];
     residOptUpper.assign(ru.begin(), ru.end());
   }
+  if (control.containsElementNamed("npResidOptEnd")) {
+    IntegerVector re = control["npResidOptEnd"];
+    residOptEnd.assign(re.begin(), re.end());
+  }
+  if (control.containsElementNamed("npResidOptProp")) {
+    IntegerVector rp = control["npResidOptProp"];
+    residOptProp.assign(rp.begin(), rp.end());
+  }
+  if (control.containsElementNamed("npObsEndpoint")) {
+    IntegerVector oe = control["npObsEndpoint"];
+    obsEndpoint.set_size(oe.size());
+    for (int j = 0; j < oe.size(); ++j) obsEndpoint[j] = oe[j];
+  }
+  if (control.containsElementNamed("npRegressIdx")) {
+    IntegerVector gi = control["npRegressIdx"];
+    regressIdx.assign(gi.begin(), gi.end());
+  }
+  if (control.containsElementNamed("npRegressLower")) {
+    NumericVector gl = control["npRegressLower"];
+    regressLower.assign(gl.begin(), gl.end());
+  }
+  if (control.containsElementNamed("npRegressUpper")) {
+    NumericVector gu = control["npRegressUpper"];
+    regressUpper.assign(gu.begin(), gu.end());
+  }
   if (control.containsElementNamed("npResidFreeze"))
     residFreeze = as<bool>(control["npResidFreeze"]);
-  bool hasResidOpt = residMode != 0 && !residOptIdx.empty();
+  bool hasResidOpt = residMode != 0 && (!residOptIdx.empty() || !regressIdx.empty());
+  bool useRegress = !regressIdx.empty();
+  // combined optimized set: residual (err) thetas, then the regressor thetas (kind 0,
+  // no endpoint).  A regressor triggers re-derivation of the posterior-mean etas.
+  std::vector<int> optIdx = residOptIdx, optKind = residOptKind;
+  std::vector<int> optEnd = residOptEnd, optProp = residOptProp;
+  std::vector<double> optLo = residOptLower, optHi = residOptUpper;
+  for (size_t g = 0; g < regressIdx.size(); ++g) {
+    optIdx.push_back(regressIdx[g]);
+    optKind.push_back(0);
+    optEnd.push_back(-1);
+    optProp.push_back(0);
+    optLo.push_back(g < regressLower.size() ? regressLower[g] : R_NegInf);
+    optHi.push_back(g < regressUpper.size() ? regressUpper[g] : R_PosInf);
+  }
   // bound the in-burn-in optimization rounds (each is a bounded bobyqa with a Psi
   // rebuild) so a long burn-in does not multiply the cost.
   int residEvery = std::max(1, nBurn / 10);
@@ -228,8 +270,8 @@ void npbOuter(Environment e) {
       arma::mat rsup; arma::vec rwt;
       npbCompactSupport(phi, w, rsup, rwt);
       PutRNGstate();
-      npOptimizeResid(rsup, rwt, residOptIdx, residOptKind, cores,
-                      residOptLower, residOptUpper, residFreeze);
+      npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
+                      obsEndpoint, optEnd, optProp, useRegress);
       GetRNGstate();
     }
     // (d) accumulate post-burn-in draws
@@ -257,8 +299,8 @@ void npbOuter(Environment e) {
   if (hasResidOpt && residMode == 2) {
     arma::mat rsup; arma::vec rwt;
     npbCompactSupport(phiLast, wLast, rsup, rwt);
-    npOptimizeResid(rsup, rwt, residOptIdx, residOptKind, cores,
-                    residOptLower, residOptUpper, residFreeze);
+    npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
+                    obsEndpoint, optEnd, optProp, useRegress);
   }
 
   arma::vec rhat = npbGelmanRubin(chainMeanDraws);

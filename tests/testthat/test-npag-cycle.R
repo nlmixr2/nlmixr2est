@@ -76,10 +76,11 @@ nmTest({
 
     expect_true(is.finite(rg$gamma) && rg$gamma > 0)
     expect_equal(sum(rg$weights), 1, tolerance = 1e-6)
-    # optimizing gamma cannot do worse than holding it at 1
-    expect_gte(rg$objf, r0$objf - 1e-6)
-    # add.sd = 1.4 is inflated for theo, so the optimum gamma multiplier < 1
-    expect_lt(rg$gamma, 1)
+    # the gamma multiplier is folded straight into the variance-scale thetas each
+    # cycle (r.gamma stays 1 by design), so its effect shows up in the objective:
+    # add.sd = 1.4 is inflated for theo, so optimizing the residual magnitude
+    # STRICTLY improves the nonparametric objf over holding it at ini.
+    expect_gt(rg$objf, r0$objf)
     # the objf(gamma) landscape has an interior peak at the optimized gamma, i.e.
     # the log-variance penalty scales with gamma -- guards the "larger gamma always
     # wins" regression.  Checked in the found gamma's own neighborhood since the

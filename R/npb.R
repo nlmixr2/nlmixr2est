@@ -33,14 +33,15 @@
 #' @param residOptimize How to estimate the residual-error thetas (every endpoint's
 #'   `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) and any non-mu
 #'   structural "regressor" theta, with the sampled mixing distribution held fixed,
-#'   using the bounded `bobyqa` on the nonparametric -2LL.  \code{"alternate"}
-#'   (default) re-fits them during burn-in and then holds them fixed for the sampling
-#'   phase (so every collected draw shares the converged residual scale);
-#'   \code{"final"} holds them at their initial values through sampling and fits once
-#'   at the converged draw; \code{"none"} holds them at their initial values
-#'   throughout.  Fixed residual parameters are always held.  Unlike npag, npb does
-#'   not optimize the assay-error multiplier (gamma); the residual thetas are fit
-#'   directly.
+#'   using the bounded `bobyqa` on the EXTENDED LEAST SQUARES objective (see
+#'   [npagControl()]; the `log(r)` term keeps the residual from collapsing to zero and
+#'   the moment warm-start gives the saem-style SD).  \code{"alternate"} (default)
+#'   re-fits them during burn-in and then holds them fixed for the sampling phase (so
+#'   every collected draw shares the converged residual scale); \code{"final"} holds
+#'   them at their initial values through sampling and fits once at the converged draw;
+#'   \code{"none"} holds them at their initial values throughout.  Fixed residual
+#'   parameters are always held.  Unlike npag, npb does not optimize the assay-error
+#'   multiplier (gamma); the residual thetas are fit directly.
 #' @param cycles Unused for npb (kept for control compatibility).
 #' @param gammaOptimize Unused for npb (kept for control compatibility).
 #' @param ... Parameters passed to [impmapControl()].

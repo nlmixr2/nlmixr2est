@@ -37,16 +37,22 @@ nmTest({
     expect_false(is.null(f$env$parHistData))
   })
 
-  test_that("est='npag' residual optimization improves the objective", {
+  test_that("est='npag' residual optimization moves the residual and certifies D(F)", {
     # baseline: residual held at ini (no gamma, no residual optimization)
     f0 <- nlmixr2(.npFitMod, nlmixr2data::theo_sd, est = "npag",
                   control = npagControl(points = 256L, cycles = 15L,
                                         gammaOptimize = FALSE, residOptimize = "none"))
-    # gamma optimizes the (single) additive residual
+    # the residual step optimizes EXTENDED LEAST SQUARES at the individual predictions
+    # (a saem-style residual that does not collapse on a flexible support), NOT the
+    # marginal -2LL -- so it need not lower the -2LL; instead the residual moves off ini
+    # and, after the final support refinement (residual held constant), the support is
+    # the marginal-likelihood optimum, certified by D(F) ~ 0.
     fg <- nlmixr2(.npFitMod, nlmixr2data::theo_sd, est = "npag",
                   control = npagControl(points = 256L, cycles = 15L, gammaOptimize = TRUE))
     expect_true(is.finite(fg$env$npagGamma) && fg$env$npagGamma > 0)
-    expect_lte(as.numeric(fg$objf), as.numeric(f0$objf) + 1e-6)  # -2LL not worse
+    expect_false(isTRUE(all.equal(as.numeric(fg$theta[["add.sd"]]),
+                                  as.numeric(f0$theta[["add.sd"]]))))  # residual moved
+    expect_true(is.finite(fg$env$npagDF) && abs(fg$env$npagDF) < 1e-2) # support certified
   })
 
   test_that("mu-referenced sugar est='mnpag' fits", {

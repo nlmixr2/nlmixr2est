@@ -33,23 +33,28 @@ ratio, and the transform/autocorrelation parameters come from
 transform-both-sides are supported.}
 
 \item{residOptimize}{How to estimate the residual-error thetas (every endpoint's
-`add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support
-points and weights held fixed, using Nelder-Mead on the nonparametric -2LL.
-\code{"alternate"} (default) optimizes them every cycle (block-coordinate
-ascent); \code{"final"} optimizes once at the converged support; \code{"none"}
-holds them at their initial values (only the gamma warm-start adjusts the
-overall magnitude).  Fixed residual parameters are always held.  The
-optimization uses the bounded \code{minqa::bobyqa}, honoring the ini-block
-lower/upper bounds of the residual parameters (e.g. keeping an additive SD
-non-negative); an unbounded optimizer could wander into an invalid region.}
+`add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support points
+and weights held fixed, using bounded \code{minqa::bobyqa} on the EXTENDED LEAST
+SQUARES objective `sum_obs((f-dv)^2/r + log(r))` at the posterior-mean etas.  The
+`log(r)` term keeps the residual from drifting to zero on a flexible support (which
+the marginal likelihood would reward), giving the saem/focei residual; each
+variance scale is warm-started from the per-endpoint moment (additive SD from
+`sqrt(mean(err^2))`, proportional from `sqrt(mean((err/f)^2))`, on the transform-
+both-sides scale).  \code{"alternate"} (default) optimizes every cycle (block-
+coordinate ascent); \code{"final"} optimizes once at the converged support;
+\code{"none"} holds them at their initial values.  Fixed residual parameters are
+always held.  After the residual thetas converge, a final adaptive-grid pass
+re-optimizes the support with them held constant so the support remains the
+nonparametric MLE (D(F) ~ 0) for the fitted residual.}
 
 \item{muExpand}{how to estimate non-mu structural fixed-effect parameters (a
 theta with no eta, e.g. `ke <- exp(tke)`; npag's grid otherwise covers only
 mu-referenced and residual/likelihood parameters).  `FALSE` (default) optimizes
-them directly as "regressors" in the residual step -- the bounded `bobyqa` moves
-them alongside the residual parameters, re-solving the ODE each candidate (they
-feed the states, so the ODE freeze is turned off) -- which identifies them well
-(e.g. recovering a clearance and a mixture proportion from poor starts).  `TRUE`
+them directly as "regressors" in the residual step -- `bobyqa` moves them alongside
+the residual parameters, re-deriving the posterior-mean etas each candidate (so the
+eta grid cannot stale-absorb the structural shift) -- which identifies them well
+(e.g. recovering a clearance from a poor start).  Not available for mix() models
+(the ELS step is not mixture-aware; component parameters are held).  `TRUE`
 instead uses the saem-style mu-expansion: inject a pseudo-eta
 (`ke <- exp(tke + eta.tke)`), grid-estimate, and recover it as a fixed effect at
 finalization (support-mean folded into the theta, injected random effect

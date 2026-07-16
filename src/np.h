@@ -15,6 +15,19 @@
 // point k evaluated for subject i gives psi(i,k) = exp(npEvalCondLik(eta_k, i)).
 double npEvalCondLik(double *eta, int id);
 
+// Extended-least-squares residual objective at fixed per-subject etas (postEta,
+// nsub x neta): sum over observations of (f-dv)^2/r + log(r), on the transform-both-
+// sides scale, re-solving each subject at its eta.  The log(r) term keeps the residual
+// scale from drifting to zero on a flexible support.  R_PosInf on a bad solve.
+double npResidELS(const arma::mat& postEta);
+
+// Per-endpoint moment residual sums at fixed per-subject etas: for each 0-based
+// endpoint (obsEndpoint gives the endpoint of each observation in subject-major
+// getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), and the
+// observation count (nEnd x 3).  The saem-style estimate for warm-starting the
+// residual optimization.
+arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd);
+
 // Build the Psi matrix (nSub x nPoint) on the already set-up FOCEi inner solve:
 // psi(i,k) = p(y_i | support point k) where etaPoints is nPoint x neta.  Parallel
 // over base subjects.  Requires vaeInnerSetup_ (or foceiSetup_) already run.
@@ -56,17 +69,22 @@ arma::mat npFinalizeFit(Rcpp::Environment e, arma::mat& support,
                         const std::vector<int>& injEtaIdx,
                         const std::vector<int>& injThetaIdx);
 
-// Residual/regressor theta optimization with the support points + weights FIXED:
-// bounded bobyqa over the fullTheta indices in idx (kinds in kind) against the
-// nonparametric -2LL on the given (support, weights).  freeze reuses the cached
-// ODE states (valid iff every optimized theta feeds only the post-solve f/r); a
-// regressor that feeds the ODE must pass freeze=false so each candidate re-solves.
-// Leaves fullTheta at the optimum; returns the -2LL (R_NegInf on failure, thetas
-// restored).  Implemented in npag.cpp, shared with npb.cpp.
+// Residual/regressor theta optimization at the posterior-mean etas given the mixing
+// distribution (support, weights): bounded bobyqa over the fullTheta indices in idx
+// (kinds in kind) on the extended-least-squares objective sum((f-dv)^2/r + log(r)),
+// warm-started from the saem-style per-endpoint moment.  optEnd[j]/optProp[j] tag
+// idx[j] (0-based endpoint or -1; 1 if proportional); obsEndpoint gives each
+// observation's endpoint in subject-major getIndIx order.  `freeze` is vestigial
+// (ELS re-solves).  Leaves fullTheta at the optimum; returns the ELS value (R_PosInf
+// on failure, thetas restored).  Implemented in npag.cpp, shared with npb.cpp.
 double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                        const std::vector<int>& idx, const std::vector<int>& kind,
                        int cores, const std::vector<double>& lower,
-                       const std::vector<double>& upper, bool freeze);
+                       const std::vector<double>& upper, bool freeze,
+                       const arma::ivec& obsEndpoint = arma::ivec(),
+                       const std::vector<int>& optEnd = std::vector<int>(),
+                       const std::vector<int>& optProp = std::vector<int>(),
+                       bool reDerive = false);
 
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).
