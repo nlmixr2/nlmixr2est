@@ -53,6 +53,7 @@ saemControl(
   mixSampleMethod = c("parallel", "msaem"),
   sharedInner = c("classic", "shared"),
   nonMuTheta = c("regress", "eta"),
+  residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
   fast = FALSE,
   fastKernel = c("firstN", "throughout", "additive"),
@@ -395,6 +396,13 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
 
   * `"eta"`: the historic SAEM treatment (the parameter is carried through
     the stochastic `phi0` block).}
+
+\item{residWarmStart}{Boolean (default `TRUE`); warm-start the residual-error
+parameters from the observed per-endpoint moments at the initial predictions
+(additive SD from `sqrt(mean(err^2))`, proportional SD from
+`sqrt(mean((err/f)^2))`), the same moment estimate `est="npag"` uses.  Gives
+the stochastic step a better starting residual scale.  Set `FALSE` to start
+from the `ini`-block residual values instead.}
 
 \item{censOption}{Treatment of the second derivative for censored
 (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)

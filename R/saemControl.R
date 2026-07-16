@@ -252,6 +252,13 @@
 #'   * `"eta"`: the historic SAEM treatment (the parameter is carried through
 #'     the stochastic `phi0` block).
 #'
+#' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
+#'   parameters from the observed per-endpoint moments at the initial predictions
+#'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
+#'   `sqrt(mean((err/f)^2))`), the same moment estimate `est="npag"` uses.  Gives
+#'   the stochastic step a better starting residual scale.  Set `FALSE` to start
+#'   from the `ini`-block residual values instead.
+#'
 #' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
 #'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
 #'   simulation of the individual random effects uses an independent
@@ -384,6 +391,7 @@ saemControl <- function(seed = 99,
                         mixSampleMethod = c("parallel", "msaem"),
                         sharedInner = c("classic", "shared"),
                         nonMuTheta = c("regress", "eta"),
+                        residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
                         fast = FALSE,
                         fastKernel = c("firstN", "throughout", "additive"),
@@ -462,6 +470,7 @@ saemControl <- function(seed = 99,
   mixSampleMethod <- match.arg(mixSampleMethod)
   sharedInner <- match.arg(sharedInner)
   nonMuTheta <- match.arg(nonMuTheta)
+  checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(fast, any.missing=FALSE, len=1)
   fastKernel <- match.arg(fastKernel)
@@ -598,6 +607,7 @@ saemControl <- function(seed = 99,
     mixSampleMethod=mixSampleMethod,
     sharedInner=sharedInner,
     nonMuTheta=nonMuTheta,
+    residWarmStart=residWarmStart,
     fast=fast,
     fastKernel=fastKernel,
     fastCov=fastCov,

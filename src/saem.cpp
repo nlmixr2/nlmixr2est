@@ -1337,10 +1337,76 @@ public:
     distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
+    residWarmStart = x.containsElementNamed("residWarmStart") ?
+      as<int>(x["residWarmStart"]) : 1;
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
 
+  }
+
+  // Warm-start the residual-error parameters (ares/bres) from the observed
+  // per-endpoint moments at the initial predictions, like npag's npResidMoments:
+  // additive SD = sqrt(mean(err^2)), proportional SD = sqrt(mean((err/f)^2)),
+  // on the transform-both-sides scale.  Only seeds the scale(s) an endpoint's
+  // error model actually uses; a combined (add+prop) endpoint splits the
+  // variance half/half as a warm start.  fsaveFull is chain-major f (>= ntotal).
+  void warmStartResid(const vec &fsaveFull) {
+    if (!residWarmStart || distribution == 4) return;
+    if ((int)fsaveFull.n_elem < ntotal) return;
+    vec fk = fsaveFull.subvec(0, ntotal - 1);
+    fk = fk(ix_sorting);
+    for (int b = 0; b < nendpnt; b++) {
+      int rm = (int)res_mod(b);
+      bool hasAdd = (rm==rmAdd || rm==rmAddProp || rm==rmAddPow ||
+                     rm==rmAddLam || rm==rmAddPropLam || rm==rmAddPowLam);
+      bool hasProp = (rm==rmProp || rm==rmAddProp || rm==rmPropLam || rm==rmAddPropLam);
+      // Max |ft| in this endpoint.  SAEM computes this at the population (eta=0)
+      // prediction, so at small |ft| the residual is dominated by between-subject
+      // variability, not residual noise -- exclude those (< 5% of max) from the
+      // proportional moment so BSV does not inflate the warm-started prop SD.
+      double fmax = 0.0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double aft = std::fabs(_powerD(fk(i), lambda(b), yj(b), low(b), hi(b)));
+        if (std::isfinite(aft) && aft > fmax) fmax = aft;
+      }
+      double fthr = 0.05 * fmax;
+      double sAdd = 0.0, sProp = 0.0; int n = 0, nProp = 0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double ft = _powerD(fk(i), lambda(b), yj(b), low(b), hi(b));
+        double yt = hasFixedObsTransform ? ysTrans(i)
+          : _powerD(ys(i), lambda(b), yj(b), low(b), hi(b));
+        double err = ft - yt;
+        if (!std::isfinite(err)) continue;
+        sAdd += err * err; n++;
+        if (std::fabs(ft) <= fthr) continue;
+        // proportional guard for f==0: denominator 1 when |f| is tiny so a
+        // near-zero prediction does not blow up the proportional moment.
+        double denom = (std::fabs(ft) <= 1e-6) ? 1.0 : ft;
+        double ratio = err / denom;
+        if (std::isfinite(ratio)) { sProp += ratio * ratio; nProp++; }
+      }
+      if (n == 0) continue;
+      if (nProp == 0) nProp = 1;
+      double split = (hasAdd && hasProp) ? std::sqrt(0.5) : 1.0;
+      double mAdd = std::sqrt(sAdd / n) * split;
+      double mProp = std::sqrt(sProp / nProp) * split;
+      // SAEM computes this moment at the UNCONVERGED initial phi (npag/npb use
+      // converged posterior etas), so it is contaminated by structural misfit
+      // and can be far too large -- clamp the warm-started value to [0.2x, 5x]
+      // the user's ini value so a poor initial fit cannot push the residual into
+      // a runaway basin (an over-large residual flattens the S-step likelihood,
+      // which then keeps the residual large).  The f==0 guard above is the
+      // shared fix; this clamp is SAEM-specific.
+      if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0 && ares(b) > 0.0)
+        ares(b) = std::min(std::max(mAdd, 0.2*ares(b)), 5.0*ares(b));
+      if (hasProp && std::isfinite(mProp) && mProp > 0.0 && bres(b) > 0.0)
+        bres(b) = std::min(std::max(mProp, 0.2*bres(b)), 5.0*bres(b));
+    }
+    // keep the per-observation SD vectors (used in the S-step g = vecares +
+    // vecbres*|ft|) consistent with the warm-started scalars.
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
   }
 
   void saem_fit() {
@@ -1381,6 +1447,7 @@ public:
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
     }
+    warmStartResid(nMix > 1 ? fsave_mix(0) : fsave);
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
       // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
       // best-fitting hypothesis (mixNaiveClassify) so iteration 0 isn't symmetric.
@@ -3302,6 +3369,8 @@ private:
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
   int _phi0OdeSensitive = -1;
+  // Warm-start residual params from observed per-endpoint moments (npag-style).
+  int residWarmStart;
 
   int nendpnt;
   uvec ix_endpnt;
