@@ -586,7 +586,7 @@
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
 #' @noRd
-.foceiAnalyticGradSetup <- function(ui, thVals, Om) {
+.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL) {
   if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
@@ -620,7 +620,7 @@
   # multiple estimated lambdas (per-endpoint) need an endpoint->lambda DV mapping not yet
   # wired; keep those on FD.  A single estimated lambda is the ported case.
   if (length(.dir$lamNames) > 1L) return(NULL)
-  .oe <- .foceiEstOmegaDeriv(ui, Om); if (is.null(.oe)) return(NULL)
+  .oe <- .foceiEstOmegaDeriv(ui, Om, e); if (is.null(.oe)) return(NULL)
   list(ef = ef, dir = .dir, dOiEst = .oe$dOi, tr28 = .oe$tr28, omNames = .oe$names,
        neta = neta, etaNames = etaNames, interaction = interaction, foceType = foceType)
 }
@@ -667,7 +667,7 @@
       get("theta", e)$theta
     }
     names(thVals) <- thNames
-    st <- .foceiAnalyticGradSetup(ui, thVals, Om)
+    st <- .foceiAnalyticGradSetup(ui, thVals, Om, e)
     if (is.null(st)) return(NULL)
     th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     etaObf <- get("etaObf", e)
@@ -739,13 +739,29 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 #' tr.28).  Returns `list(dOi = list(dOmega^{-1}/d theta_omega_k), tr28 = 0.5 *
 #' tr(dOmega^{-1}_k Omega), names = <omega parameter names>)`, or `NULL`.
 #' @noRd
-.foceiEstOmegaDeriv <- function(ui, Om) {
+.foceiEstOmegaDeriv <- function(ui, Om, e = NULL) {
   tryCatch({
     # Build the rxSymInvChol env from the current Omega with the SAME diagonal
     # transform the optimizer uses, so the Cholesky parameter order/scale matches
     # op_focei's Omega slots (rxUiGet.focei builds env$rxInv the same way).
     .diagXform <- rxode2::rxGetControl(ui, "diagXform", "sqrt")
-    .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform)
+    # A fresh env pays ~60ms of one-time symbolic setup on its first `$d.omegaInv` (a
+    # repeat read is free), which made this ~40% of each analytic gradient.  Reuse the
+    # fit's persistent `env$rxInv` (C++ keeps it current via setOmegaTheta) -- but only
+    # when it is already at this Omega, so a stale env falls back instead of silently
+    # returning derivatives at the wrong one.
+    .rxInv <- NULL
+    if (!is.null(e)) {
+      .cand <- tryCatch(get("rxInv", e), error = function(.) NULL)
+      if (!is.null(.cand) && rxode2::rxIs(.cand, "rxSymInvCholEnv")) {
+        .omChk <- tryCatch(as.matrix(.cand$omega), error = function(.) NULL)
+        if (!is.null(.omChk) && identical(dim(.omChk), dim(as.matrix(Om))) &&
+              isTRUE(all.equal(unname(.omChk), unname(as.matrix(Om)), tolerance = 1e-10))) {
+          .rxInv <- .cand
+        }
+      }
+    }
+    if (is.null(.rxInv)) .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform)
     # `$.rxSymInvCholEnv` dispatches to the C rxSymInvCholEnvCalculate; d.omegaInv
     # is the list of dOmega^-1/d(chol theta_k), tr.28 = 0.5*tr(dOmega^-1_k Omega).
     .dOi <- .rxInv$d.omegaInv

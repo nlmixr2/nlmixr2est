@@ -169,7 +169,8 @@ nsis <- function() { ## build installer...
 #'     TRUE}).
 #'
 #' @author Matthew L. Fidler
-#' @noRd
+#' @keywords internal
+#' @export
 .collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
   ws <- NULL
   es <- NULL
