@@ -2,6 +2,19 @@
 
 ## New features
 
+- `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
+  The nonparametric objective sums the inner per-observation llikObs, which for a
+  non-normal endpoint is exactly the user's log-likelihood, so the objective is
+  already correct; the residual/likelihood parameters (e.g. a Student-t's degrees
+  of freedom, `iniDf$err` non-NA) are estimated with the same frozen-ODE bounded
+  step as the residual parameters.  Freezing the ODE during that step is valid only
+  when every optimized parameter feeds the post-solve f/r alone (err-tagged) -- if a
+  non-err parameter ever enters the optimized set the step re-solves instead.  gamma
+  is forced off (a non-normal endpoint has r == 1).  A non-mu-referenced structural
+  fixed-effect parameter cannot be placed on the grid and is held at its initial
+  value, reported in the fit's `$runInfo`.  `est="npb"` still rejects non-normal
+  endpoints.
+
 - `est="npag"` now supports mixture (sub-population) `mix()` models.  Each subject
   is split into per-component pseudo-subjects and the conditional likelihood is
   marginalized over the components using the mixture proportions

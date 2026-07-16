@@ -9,22 +9,29 @@
 # lin-vs-irls covariate M-step itself is implemented in a later milestone; here
 # the sugar records the intent and selects the same driver.
 
-#' Reject generalized (non-normal) likelihoods for the nonparametric engines.
-#' The npag/npb Psi is the conditional density from the FOCEi inner problem; the
-#' residual-error (gamma) handling and the -2LL only make sense for normally-
-#' distributed endpoints.  Censoring (BLQ/ALQ) and transform-both-sides stay
-#' "norm" and are allowed; discrete / user-`ll()` endpoints are not.
+# TRUE when the model carries a generalized (non-normal) / user-`ll()` endpoint.
+# The npag Psi sums the inner per-observation llikObs, which for a non-normal
+# endpoint is exactly the user's log-likelihood -- so the nonparametric objective
+# is already correct; the residual-error (gamma) scaling is a no-op (r == 1).
 #' @noRd
-.npAssertNormal <- function(ui, est) {
+.npIsGeneralLik <- function(ui) {
   .dist <- tryCatch(ui$predDfFocei$distribution, error = function(e) NULL)
   if (is.null(.dist)) {
     .dist <- tryCatch(ui$predDf$distribution, error = function(e) NULL)
   }
-  if (!is.null(.dist) && length(.dist) > 0L && any(as.character(.dist) != "norm")) {
+  !is.null(.dist) && length(.dist) > 0L && any(as.character(.dist) != "norm")
+}
+
+#' Reject generalized (non-normal) likelihoods for the npb (Bayesian) engine.
+#' npag supports them (the objective is the summed llikObs); npb's stick-breaking
+#' Gibbs sampler is not yet validated on non-normal endpoints, so it errors.
+#' @noRd
+.npAssertNormal <- function(ui, est) {
+  if (grepl("npb", est, fixed = TRUE) && .npIsGeneralLik(ui)) {
     stop("the '", est, "' estimation routine does not support generalized ",
          "(non-normal) likelihoods; only normally-distributed endpoints -- ",
          "optionally with censoring (BLQ/ALQ) or transform-both-sides -- are ",
-         "supported", call. = FALSE)
+         "supported (use est=\"npag\")", call. = FALSE)
   }
   invisible()
 }
@@ -55,7 +62,10 @@
   .ctl$npEtaNames <- .box$names
   .ctl$npPoints <- as.integer(if (is.null(.ctl$points)) 2028L else .ctl$points)
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
-  .ctl$npGammaOptimize <-
+  # gamma scales the residual variance r; a generalized (non-normal) endpoint has
+  # r == 1, so the gamma warm-start is a no-op -- force it off there.
+  .isGenLik <- .npIsGeneralLik(.ui)
+  .ctl$npGammaOptimize <- !.isGenLik &&
     isTRUE(if (is.null(.ctl$gammaOptimize)) TRUE else .ctl$gammaOptimize)
   .ctl$npResidMode <- as.integer(
     if (is.null(.ctl$residOptimize)) 1L
@@ -162,6 +172,29 @@
     .npMixOptimize <- any(!(!is.na(.mixRows$fix) & .mixRows$fix))
   }
   .control$npMixOptimize <- isTRUE(.npMixOptimize)
+  # freeze-safety: the frozen-ODE residual step recomputes only f/r via calc_lhs and
+  # never re-integrates the states, so it is valid ONLY when every theta it OPTIMIZES
+  # feeds the residual/likelihood alone.  The optimized set (npResidOptIdx) is built
+  # from iniDf$err (residual/likelihood parameters), which never enter the ODE
+  # right-hand sides -- so freezing is safe.  If a non-err theta is ever added to the
+  # optimized set it must clear this flag (forcing a re-solve per candidate).
+  .optErr <- !is.na(.thOrd$err[.errOpt])
+  .control$npResidFreeze <- length(.optErr) == 0L || all(.optErr)
+  # npag estimates only the mu-referenced (grid) parameters and the residual/
+  # likelihood (err-tagged) parameters.  A non-mu, non-fixed structural fixed-effect
+  # theta (err==NA, no eta) cannot be placed on the grid and is HELD at its initial
+  # value -- warn so this is not silent.  The mu-expansion that saem uses (theta+eta
+  # with the eta variance -> 0) would let npag estimate these; that is a followup.
+  .isMuRef <- .thOrd$name %in% .mr$theta
+  .isMixP <- .thOrd$name %in% .mixNames
+  .heldStruct <- .thOrd$name[is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP]
+  if (length(.heldStruct) > 0L) {
+    warning("est=\"", .est, "\": structural fixed-effect parameter(s) ",
+            paste(.heldStruct, collapse = ", "), " are not mu-referenced and are ",
+            "held at their initial values (npag estimates only mu-referenced and ",
+            "residual/likelihood parameters); mu-reference or fix() them to be ",
+            "explicit", call. = FALSE)
+  }
   assign("control", .control, envir = ui)
   .foceiFamilyReturn(env, ui, ..., est = .est)
 }

@@ -81,7 +81,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
   # in the push/PR subset) and run weekly only.
   c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
-    "npag-error-models", "npag-mixture")
+    "npag-error-models", "npag-mixture", "npag-general-lik")
 )
 .slowAll <- unlist(.slowBatches)
 

@@ -187,6 +187,14 @@ nmObjGetControl.impmap <- function(x, ...) {
 .impmapControlToFoceiControl <- function(env, assign=TRUE) {
   .impmapControl <- env$impmapControl
   .n <- setdiff(names(.impmapControl), .impmapIsControlNames)
+  # np* internals (npBoxLower/npPoints/npResidFreeze ...) and the npag/npb user
+  # knobs (points/cycles/gammaOptimize/... -- but NOT seed, a real foceiControl arg)
+  # are nonparametric-engine control fields that foceiControl does not accept; drop
+  # them so a downstream do.call(foceiControl, .) (e.g. .setOfvFo, general-likelihood
+  # tables) does not error with "unused argument".
+  .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "alpha",
+                "burnin", "nsamp", "nchains", "propSd", "est")
+  .n <- .n[!grepl("^np[A-Z]", .n) & !(.n %in% .npKnobs)]
   .foceiControl <- setNames(lapply(.n, function(n) .impmapControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl

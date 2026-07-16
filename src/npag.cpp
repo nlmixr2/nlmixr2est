@@ -23,6 +23,8 @@ namespace {
   std::vector<int> gNpOptIdx;              // fullTheta indices being optimized
   std::vector<int> gNpOptKind;            // 0 = free, 1 = positive (SD), 2 = corr
   int gNpCores = 1;
+  bool gNpFreeze = true;                   // reuse cached ODE states (safe iff the
+                                           // optimized thetas feed only f/r, not d/dt)
 
   // clamp a candidate to the parameter's natural range (belt-and-suspenders with
   // the bobyqa bounds): SD >= 0, continuous-AR correlation in (0,1).
@@ -41,8 +43,13 @@ namespace {
       impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
     // frozen Psi: the support/structural solve is cached (npFreezeBuild), so this
     // only recomputes f/r for the candidate residual thetas -- no re-integration.
+    // When freezing is unsafe (an optimized theta feeds the ODE) re-solve instead.
     arma::mat psi; double offset = 0.0;
-    npFreezePsiScaled(*gNpSupport, gNpCores, psi, &offset);
+    if (gNpFreeze) {
+      npFreezePsiScaled(*gNpSupport, gNpCores, psi, &offset);
+    } else {
+      npBuildPsiCoreScaled(*gNpSupport, gNpCores, 1.0, psi, &offset);
+    }
     arma::vec pyf = psi * (*gNpWeights);
     pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
     return -2.0 * (arma::accu(arma::log(pyf)) + offset);
@@ -61,14 +68,16 @@ static double npOptimizeResid(const arma::mat& support, const arma::vec& weights
                               const std::vector<int>& idx,
                               const std::vector<int>& kind, int cores,
                               const std::vector<double>& lower,
-                              const std::vector<double>& upper) {
+                              const std::vector<double>& upper,
+                              bool freeze) {
   int n = (int)idx.size();
   if (n == 0) return R_NegInf;
   gNpSupport = &support; gNpWeights = &weights;
-  gNpOptIdx = idx; gNpOptKind = kind; gNpCores = cores;
+  gNpOptIdx = idx; gNpOptKind = kind; gNpCores = cores; gNpFreeze = freeze;
   // solve + cache the ODE states once; every objective evaluation below reuses
-  // them and only recomputes f/r for the candidate residual thetas.
-  npFreezeBuild(support, cores);
+  // them and only recomputes f/r for the candidate residual thetas.  Skip the
+  // cache when freezing is unsafe -- the objective then re-solves each candidate.
+  if (freeze) npFreezeBuild(support, cores);
   std::vector<double> start(n);
   Rcpp::NumericVector par0(n), lo(n), hi(n);
   for (int j = 0; j < n; ++j) {
@@ -90,11 +99,11 @@ static double npOptimizeResid(const arma::mat& support, const arma::vec& weights
   if (!ISNA(f)) {
     Rcpp::NumericVector x = ret["x"];
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
-    npFreezeClear();
+    if (freeze) npFreezeClear();
     return f;
   }
   for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
-  npFreezeClear();
+  if (freeze) npFreezeClear();
   return R_NegInf;
 }
 
@@ -123,6 +132,7 @@ struct npagCtl {
   std::vector<double> residOptUpper; // ini-block upper bounds (bobyqa)
   std::vector<int> residScaleIdx; // variance-scale subset (gamma warm-start fold)
   bool mixOptimize = false;   // estimate mix() proportions via the in-cycle EM update
+  bool residFreeze = true;    // freeze the ODE during resid opt (safe: err params only)
 };
 
 // Support covariance installed into op_focei, masked by the model's Omega
@@ -263,7 +273,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     // the weights at the new thetas -- block-coordinate ascent.  "alternate" runs
     // this every cycle; "final" (residMode 2) runs it once after the loop.
     if (ctl.residMode == 1 && useResidOpt) {
-      npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper);
+      npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper, ctl.residFreeze);
       double off = 0.0, b = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
@@ -311,7 +321,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   }
   // "final" mode: optimize the residual thetas once at the converged support.
   if (ctl.residMode == 2 && useResidOpt) {
-    npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper);
+    npOptimizeResid(theta, lam, ctl.residOptIdx, ctl.residOptKind, ctl.cores, ctl.residOptLower, ctl.residOptUpper, ctl.residFreeze);
     double off = 0.0, b = 0.0;
     npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
     lam = npBurke(psi, &b); objf = b + off;
@@ -355,6 +365,8 @@ void npagOuter(Environment e) {
     ctl.residMode = as<int>(control["npResidMode"]);
   if (control.containsElementNamed("npMixOptimize"))
     ctl.mixOptimize = as<bool>(control["npMixOptimize"]);
+  if (control.containsElementNamed("npResidFreeze"))
+    ctl.residFreeze = as<bool>(control["npResidFreeze"]);
   if (control.containsElementNamed("npResidOptLower")) {
     NumericVector rl = control["npResidOptLower"];
     ctl.residOptLower.assign(rl.begin(), rl.end());
