@@ -38,6 +38,22 @@ nmTest({
     expect_false(isTRUE(all.equal(as.numeric(f5$objf), as.numeric(f9$objf))))
   })
 
+  test_that("est='npb' errors on a mix() model (not supported yet)", {
+    .mixMod <- function() {
+      ini({ tka <- log(1.5); tv <- log(32); tcl1 <- log(2); tcl2 <- log(0.5)
+        eta.ka ~ 0.3; eta.v ~ 0.1; p1 <- 0.5; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); v <- exp(tv + eta.v)
+        cl <- mix(exp(tcl1), p1, exp(tcl2)); ke <- cl / v
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v; cp ~ add(add.sd) })
+    }
+    expect_error(
+      nlmixr2(.mixMod, nlmixr2data::theo_sd, est = "npb",
+              control = npbControl(points = 10L, burnin = 5L, nsamp = 5L)),
+      "does not support mixture")
+  })
+
   test_that("est='npag' estimates the mix() proportion via the in-cycle EM update", {
     skip_if_not_installed("rxode2")
     set.seed(7)

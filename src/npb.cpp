@@ -76,7 +76,7 @@ void npbOuter(Environment e) {
   }
   arma::vec g0sd = arma::sqrt(g0var);
 
-  impUpdateMixProbs();          // populate mixProb from the mix() proportion thetas (npb skips updateTheta)
+  // npb does not support mix() models (guarded in R); no mixture-proportion setup.
   Function setSeed("set.seed");
 
   // pooled across chains
