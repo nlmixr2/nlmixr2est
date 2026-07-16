@@ -60,9 +60,6 @@
   .ctl$npResidMode <- as.integer(
     if (is.null(.ctl$residOptimize)) 1L
     else switch(.ctl$residOptimize, none = 0L, alternate = 1L, final = 2L, 1L))
-  .ctl$npResidType <- as.integer(
-    if (is.null(.ctl$residType)) 1L
-    else switch(.ctl$residType, "nelder-mead" = 0L, newuoa = 1L, 1L))
   # npb (stick-breaking Gibbs) knobs; npPoints doubles as the truncation level K
   .ctl$npAlpha <- as.numeric(if (is.null(.ctl$alpha)) 1.0 else .ctl$alpha)
   .ctl$npBurnin <- as.integer(if (is.null(.ctl$burnin)) 500L else .ctl$burnin)
@@ -138,6 +135,16 @@
   .kind[.optType %in% c("ar")] <- 2L
   .kind[.optType %in% c("boxCox", "yeoJohnson", "pw")] <- 0L
   .control$npResidOptKind <- as.integer(.kind)
+  # ini-block bounds of the residual-opt params (for the bounded bobyqa step),
+  # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and a
+  # correlation (kind 2) is in (-1, 1).
+  .lo <- as.numeric(.thOrd$lower[.errOpt])
+  .hi <- as.numeric(.thOrd$upper[.errOpt])
+  .lo[.kind == 1L] <- pmax(.lo[.kind == 1L], 0)
+  .lo[.kind == 2L] <- pmax(.lo[.kind == 2L], -0.999)
+  .hi[.kind == 2L] <- pmin(.hi[.kind == 2L], 0.999)
+  .control$npResidOptLower <- .lo
+  .control$npResidOptUpper <- .hi
   if (is.null(.control$npResidMode)) .control$npResidMode <- 1L
   assign("control", .control, envir = ui)
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
@@ -157,7 +164,7 @@
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
   .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
-              residOptimize = "alternate", residType = "newuoa",
+              residOptimize = "alternate",
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -170,7 +177,6 @@
   .ctl$cycles <- as.integer(.np$cycles)
   .ctl$gammaOptimize <- isTRUE(.np$gammaOptimize)
   .ctl$residOptimize <- as.character(.np$residOptimize)
-  .ctl$residType <- as.character(.np$residType)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)

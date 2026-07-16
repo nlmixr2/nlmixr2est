@@ -72,6 +72,33 @@ is.latex <- function() {
   .ret
 }
 
+#' Bounded derivative-free optimization of a residual/likelihood objective,
+#' honoring the ini-block lower/upper bounds.  Uses bobyqa for >= 2 parameters
+#' and stats::optimize (also bounded) for a single parameter, which bobyqa cannot
+#' handle.  Infinite bounds are widened to a finite box around the start.  Used by
+#' the npag residual step and the saem general-likelihood phi0 step so an unbounded
+#' optimizer never wanders into an invalid region (e.g. a negative SD).
+#' @return list(x, value, convergence)
+#' @noRd
+.boundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
+  .n <- length(par)
+  .lo <- rep_len(as.numeric(lower), .n)
+  .hi <- rep_len(as.numeric(upper), .n)
+  .span <- pmax(abs(par), 1) * 1e3
+  .lo[!is.finite(.lo)] <- (par - .span)[!is.finite(.lo)]
+  .hi[!is.finite(.hi)] <- (par + .span)[!is.finite(.hi)]
+  .par <- pmin(pmax(par, .lo + 1e-8 * (.hi - .lo)), .hi - 1e-8 * (.hi - .lo))
+  if (.n == 1L) {
+    .o <- try(stats::optimize(function(x) fn(x), lower = .lo, upper = .hi),
+              silent = TRUE)
+    if (inherits(.o, "try-error")) {
+      return(list(x = par, value = NA_real_, convergence = -42L))
+    }
+    return(list(x = .o$minimum, value = .o$objective, convergence = 0L))
+  }
+  .bobyqa(.par, fn, lower = .lo, upper = .hi, control = control)
+}
+
 #' Get the maxit control
 #'
 #' @param control control to update based on foceiControl()
