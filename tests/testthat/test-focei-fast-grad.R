@@ -375,4 +375,25 @@ nmTest({
     }, numeric(1))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
+  test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .ui <- rxode2::rxUiDecompress(nlmixr2(.fast_one_cmt))
+    rxode2::rxAssignControlValue(.ui, "fast", TRUE)
+    .om <- lotri::lotri(eta.ka ~ 0.6, eta.cl ~ 0.3, eta.v ~ 0.1)
+    .ref <- .foceiEstOmegaDeriv(.ui, .om)                       # fresh env (no `e`)
+    expect_false(is.null(.ref))
+    # an env whose rxInv is already at this Omega: reused, and EXACTLY equal
+    .e <- new.env()
+    .e$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .e), .ref, tolerance = 0)
+    # a STALE env (different Omega) must fall back, not return the wrong derivatives
+    .s <- new.env()
+    .s$rxInv <- rxode2::rxSymInvCholCreate(mat = .om * 1.5, diag.xform = "sqrt")
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .s), .ref, tolerance = 0)
+    # a junk / absent rxInv falls back too
+    .j <- new.env(); .j$rxInv <- "not an rxSymInvCholEnv"
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .j), .ref, tolerance = 0)
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, new.env()), .ref, tolerance = 0)
+  })
 })
