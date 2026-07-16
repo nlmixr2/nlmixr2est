@@ -16,7 +16,7 @@ nmTest({
         cp<-center/v; cp~prop(prop.sd) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=500L, cycles=30L, gammaOptimize=TRUE))
+                 control=npagControl(points=500L, cycles=30L, gammaOptimize=TRUE, muExpand=FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     ## with the gamma-consistent certificate the NPML is reached (D(F) ~ 0)
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 1e-2)
@@ -34,7 +34,7 @@ nmTest({
         cp<-center/v; cp~add(add.sd) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=500L, cycles=40L, gammaOptimize=TRUE))
+                 control=npagControl(points=500L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     ## recovered residual is far from the (wrong) ini 2.0 and near the truth
     expect_true(f$parFixedDf["add.sd", "Estimate"] < 1.2)
@@ -52,7 +52,7 @@ nmTest({
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
                  control=npagControl(points=300L, cycles=10L,
-                                     gammaOptimize=FALSE, residOptimize="none"))
+                                     gammaOptimize=FALSE, residOptimize="none", muExpand=FALSE))
     expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 2.0, tolerance = 1e-8)
   })
 
@@ -65,7 +65,7 @@ nmTest({
         cp<-center/v; cp~add(add.sd)+prop(prop.sd) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE))
+                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE, muExpand=FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
   })
@@ -82,7 +82,7 @@ nmTest({
         cp<-center/v; cp~add(add.sd)+boxCox(lambda) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE))
+                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
     expect_true(f$parFixedDf["lambda", "Estimate"] < 0.9)   # moved far from ini 1.5
     expect_equal(unname(f$parFixedDf["lambda", "Estimate"]), 0.44, tolerance = 0.2)
   })
@@ -98,7 +98,7 @@ nmTest({
         cp<-center/v; cp~add(add.sd)+ar(ar1.cor) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE))
+                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
     expect_true(f$parFixedDf["ar1.cor", "Estimate"] < 0.2)  # moved from ini 0.7 -> ~0
   })
 
@@ -111,7 +111,7 @@ nmTest({
         cp<-center/v; cp~add(add.sd)+boxCox(lambda) })
     }
     f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE))
+                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE, muExpand=FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
   })
@@ -129,7 +129,7 @@ nmTest({
         cp<-center/v; cp~lnorm(add.sd) })
     }
     f <- nlmixr2(.m, .d, est="npag",
-                 control=npagControl(points=300L, cycles=15L, gammaOptimize=FALSE))
+                 control=npagControl(points=300L, cycles=15L, gammaOptimize=FALSE, muExpand=FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 5e-2)
   })
@@ -145,7 +145,7 @@ nmTest({
     ## theo_sd keeps the t=0 observation where cp is structurally 0 -> lnorm(0)
     expect_error(
       nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-              control=npagControl(points=100L, cycles=3L, gammaOptimize=FALSE)),
+              control=npagControl(points=100L, cycles=3L, gammaOptimize=FALSE, muExpand=FALSE)),
       "zero conditional density at every support point")
   })
 

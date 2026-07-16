@@ -2,20 +2,20 @@
 
 ## New features
 
-- `est="npag"`/`est="npb"` gain an opt-in saem-style mu-expansion
-  (`npagControl(muExpand=TRUE)`, default `FALSE`).  npag estimates only
+- `est="npag"`/`est="npb"` now mu-expand non-mu structural parameters by default
+  (saem-style; `npagControl(muExpand=TRUE)`).  npag natively estimates only
   mu-referenced (grid) and residual/likelihood parameters, so a non-mu structural
-  fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) is otherwise held at its ini
-  value (now reported in the fit `$runInfo` instead of silently).  With muExpand a
-  pseudo-eta is injected (`ke <- exp(tke + eta.tke)`) so the parameter becomes a
-  grid dimension.  At finalization the parameter is recovered as a FIXED effect:
-  the injected eta's support-weighted mean is folded into its theta (so the reported
+  fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) was held at its ini value.
+  mu-expansion injects a pseudo-eta (`ke <- exp(tke + eta.tke)`) so the parameter
+  becomes grid-estimable, then recovers it as a FIXED effect at finalization: the
+  injected eta's support-weighted mean is folded into its theta (so the reported
   estimate reflects it -- e.g. recovering theo's ke from a deliberately-wrong start)
-  and the injected random effect is collapsed (no BSV).  Off by default because it
-  still changes the model (a previously-held parameter becomes estimated); it is not
-  applied to mixture models.  (A non-mu-referenced ETA -- an eta with no paired theta
-  -- needs no expansion: the npag box already covers every eta, so it is a grid
-  dimension estimated as a pure random effect.)
+  and the injected random effect is collapsed (no BSV).  Set `muExpand=FALSE` to hold
+  such parameters at their ini value instead (reported in the fit `$runInfo`).  Not
+  applied to mixture models yet (a pre-existing npag+mixture multi-eta limitation).
+  (A non-mu-referenced ETA -- an eta with no paired theta -- needs no expansion: the
+  npag box already covers every eta, so it is a grid dimension estimated as a pure
+  random effect.)
 
 - `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
   The nonparametric objective sums the inner per-observation llikObs, which for a

@@ -30,25 +30,27 @@
 #' @noRd
 .npMuExpand <- function(ui, initVar = 0.25) {
   nlmixr2global$npMuExpandPairs <- NULL   # clear any stale pairs from a prior fit
-  # mixture models have their own estimation machinery (component marginalization +
-  # proportion EM); injecting pseudo-etas into their structural parameters mixes
-  # poorly with the pseudo-subject/omega setup, so skip mu-expansion there.
+  # Mixture models are skipped for now -- NOT because the mixture proportions need
+  # protecting (they are estimated by the in-cycle proportion EM and move during the
+  # fit; mu-expansion targets structural thetas and would leave the proportions
+  # alone anyway), but because npag's mixture setup hits a PRE-EXISTING limitation:
+  # with more than one eta it errors "initial 'omega' matrix inverse is non-positive
+  # definite" (rxode2's rxSymInvCholEnvCalculate for the mixture omega).  A
+  # hand-mu-referenced 2-eta mixture fails the same way while FOCEI fits it -- so it
+  # is an npag+mixture omega bug, not a mu-expansion bug; injecting etas would trip
+  # it.  Followup: fix the npag mixture multi-eta omega setup, then drop this skip
+  # (the mixture proportions, ui$mixProbs, must still be left out of the injection).
   if (length(ui$mixProbs) > 0L) return(ui)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
   .mr <- ui$muRefDataFrame
-  .mixNames <- ui$mixProbs
   .isFix <- !is.na(.th$fix) & .th$fix
   .isMu <- .th$name %in% .mr$theta
-  .isMix <- .th$name %in% .mixNames
   .isErr <- !is.na(.th$err)
-  # parameters that appear inside a mix() call are mixture-component structure, not
-  # simple structural fixed effects -- injecting an eta there would change the
-  # mixture model, so exclude them (their estimation rides the mixture machinery).
-  .mixVars <- unique(unlist(lapply(ui$lstExpr, function(e)
-    unlist(lapply(.findMixCalls(e), all.vars)))))
-  .isInMix <- .th$name %in% .mixVars
-  .cand <- .th$name[!.isFix & !.isMu & !.isMix & !.isErr & !.isInMix]
+  # a mixture proportion (ui$mixProbs) is not a candidate: it is estimated by the
+  # proportion EM, not the grid, and must not be injected/collapsed.
+  .isMix <- .th$name %in% ui$mixProbs
+  .cand <- .th$name[!.isFix & !.isMu & !.isMix & !.isErr]
   if (length(.cand) == 0L) return(ui)
   .allNames <- .iniDf$name
   .injEta <- character(0)   # injected pseudo-eta names

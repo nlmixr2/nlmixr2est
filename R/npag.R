@@ -57,14 +57,16 @@
 #'   optimization uses the bounded \code{minqa::bobyqa}, honoring the ini-block
 #'   lower/upper bounds of the residual parameters (e.g. keeping an additive SD
 #'   non-negative); an unbounded optimizer could wander into an invalid region.
-#' @param muExpand saem-style mu-expansion of non-mu structural parameters.  npag
-#'   estimates only mu-referenced (grid) and residual/likelihood parameters; a
-#'   non-mu structural fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) is
-#'   otherwise held at its initial value.  When `TRUE`, such a parameter is made
-#'   grid-estimable by injecting a pseudo-eta (`ke <- exp(tke + eta.tke)`).  Default
-#'   `FALSE` (opt-in): it changes the model (the parameter gains a support
-#'   distribution / small BSV) and is not applied to mixture models.  A held
-#'   parameter is reported in the fit's `$runInfo`.
+#' @param muExpand saem-style mu-expansion of non-mu structural parameters
+#'   (default `TRUE`).  npag natively estimates only mu-referenced (grid) and
+#'   residual/likelihood parameters; a non-mu structural fixed-effect theta (no eta,
+#'   e.g. `ke <- exp(tke)`) is otherwise held at its initial value.  mu-expansion
+#'   injects a pseudo-eta (`ke <- exp(tke + eta.tke)`) so the parameter becomes
+#'   grid-estimable, then recovers it as a FIXED effect at finalization: its
+#'   support-mean is folded into the theta (the reported estimate) and the injected
+#'   random effect is collapsed (no BSV).  Set `FALSE` to instead hold such a
+#'   parameter at its initial value (reported in the fit's `$runInfo`).  Not applied
+#'   to mixture models (a pre-existing npag+mixture multi-eta limitation).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -74,7 +76,7 @@
 #' npagControl()
 npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
-                        muExpand = FALSE, ...) {
+                        muExpand = TRUE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   .ctl$points <- as.integer(points)

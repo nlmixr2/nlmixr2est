@@ -41,7 +41,7 @@
 #' npbControl()
 npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        nchains = 1L, propSd = 0.2, seed = 42L, cycles = 100L,
-                       gammaOptimize = FALSE, muExpand = FALSE, ...) {
+                       gammaOptimize = FALSE, muExpand = TRUE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   .ctl$points <- as.integer(points)
