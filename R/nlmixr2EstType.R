@@ -13,6 +13,7 @@
   "Stochastic EM",
   "Nonparametric",
   "Machine learning",
+  "Model Based Meta Analysis",
   "Optimizer (NLM family)"
 )
 
