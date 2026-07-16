@@ -688,6 +688,27 @@ public:
   // recomputes the log-likelihood.  The model emits no analytic d(ll)/d(phi0), so
   // the optimization is derivative-free (nelder-mead / newuoa), reusing the shared
   // _saemOpt driver selected by the `type` control (_saemType).
+  // Detect (once) whether any phi0 param changes the structural prediction f.
+  // Perturb each phi0 column and re-solve; if f never moves, phi0 touches only
+  // the residual/likelihood and the ODE can be frozen during its optimization.
+  bool phi0AffectsOde() {
+    bool savedFreeze = _saemFreezeOde;
+    _saemFreezeOde = false;
+    vec f0 = user_fn(phiM, evt, optM).col(0);
+    double maxd = 0.0;
+    for (int c = 0; c < nphi0; c++) {
+      mat pp = phiM;
+      pp.col(i0(c)) += 0.1;
+      vec f1 = user_fn(pp, evt, optM).col(0);
+      double d = arma::abs(f1 - f0).max();
+      if (std::isfinite(d) && d > maxd) maxd = d;
+    }
+    // restore states at the true phiM
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }
+    _saemFreezeOde = savedFreeze;
+    return maxd > 1e-8;
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
     // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
@@ -696,14 +717,24 @@ public:
       setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
       _rx = getRxSolve_();
     }
-    // General-likelihood phi0 params (e.g. a likelihood SD) do NOT enter the
-    // ODE, so the states are solved once and frozen while phi0 is optimized.
-    // For nonMuTheta="regress" on a NORMAL model the phi0 thetas DO drive the
-    // ODE (ka, V, ...), so freezing would make the objective blind to them --
-    // keep the ODE live so each objective evaluation re-solves.
-    bool doFreeze = (distribution == 4);
+    // Decide whether to freeze the ODE during the phi0 optimization.  General-
+    // likelihood phi0 params (a likelihood SD) never enter the ODE.  For a
+    // normal model under nonMuTheta="regress", phi0 thetas that drive the ODE
+    // (ka, V, ...) need a LIVE re-solve each evaluation, but phi0 params that
+    // touch only the residual/likelihood (not f) should be frozen -- solve once,
+    // recompute only the objective, exactly like npag's ELS residual step.  The
+    // f-sensitivity is detected once (perturb each phi0, see if f moves).
     _saemFreezeOde = false;
-    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
+    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
+    bool doFreeze;
+    if (distribution == 4) {
+      doFreeze = true;
+    } else if (nonMuThetaRegress) {
+      if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
+      doFreeze = (_phi0OdeSensitive == 0);
+    } else {
+      doFreeze = false;
+    }
     _saemFreezeOde = doFreeze;
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
     // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
@@ -3267,6 +3298,10 @@ private:
   // with directly-optimized, bound-respecting values (no shrinking phi0
   // variance).  0 = classic phi0, 1 = direct-optimize.
   int nonMuThetaRegress;
+  // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
+  // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
+  // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
+  int _phi0OdeSensitive = -1;
 
   int nendpnt;
   uvec ix_endpnt;
