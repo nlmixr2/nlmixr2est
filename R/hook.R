@@ -315,5 +315,10 @@ preProcessHooks <- function(name=NULL) {
     .est
   }, lst=TRUE)
   nlmixr2global$preProcessHookWarnings <- .ret[[2]]
+  # Keep per-call copies of the original-model restore info; nested nlmixr2()
+  # calls during estimation (setOfv/addCwres/...) reset the globals before the
+  # post-estimation restore in .nlmixrEstUpdatesOrigModel() runs (issue #741)
+  env$nlmixrPureInputUi <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
+  env$uiUnfix <- nlmixr2global$nlmixr2EstEnv$uiUnfix
   .ret[[1]]
 }

@@ -77,16 +77,32 @@ nlmixr2Est.default <- function(env, ...) {
 #' original model
 #'
 #' @param ret input for updating
+#' @param env estimation environment holding the per-call restore info
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixrEstUpdatesOrigModel <- function(ret) {
+.nlmixrEstUpdatesOrigModel <- function(ret, env=NULL) {
   .ui <- try(ret$ui, silent=TRUE)
   if (inherits(.ui, "try-error")) return(ret)
+  # Prefer the per-call copies stashed on the estimation environment by
+  # .preProcessHooksRun(); the globals are wiped by any nested nlmixr2() call
+  # during estimation (setOfv/addCwres/...), which dropped zero etas from the
+  # final model (issue #741).  Fall back to the globals for direct
+  # nlmixr2Est() paths that did not run the pre-process hooks.
+  if (is.environment(env) && exists("nlmixrPureInputUi", envir=env, inherits=FALSE)) {
+    .pureInputUi <- env$nlmixrPureInputUi
+  } else {
+    .pureInputUi <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
+  }
+  if (is.environment(env) && exists("uiUnfix", envir=env, inherits=FALSE)) {
+    .uiUnfix <- env$uiUnfix
+  } else {
+    .uiUnfix <- nlmixr2global$nlmixr2EstEnv$uiUnfix
+  }
   if (inherits(.ui, "rxUi")) {
     # this needs to be in reverse order of the changes, which means apply zero omegas then fixed
-    if (!is.null(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi)) {
-      .final <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
+    if (!is.null(.pureInputUi)) {
+      .final <- .pureInputUi
       .finalIni <- .final$iniDf
       .iniDf <- .ui$iniDf
       .theta <- .iniDf[is.na(.iniDf$neta1), ]
@@ -117,9 +133,9 @@ nlmixr2Est.default <- function(env, ...) {
       assign("omega", .final$omega, envir=ret$env)
       .minfo("initial model updated with final estimates, some zero etas are excluded from output")
     }
-    if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    if (!is.null(.uiUnfix)) {
       # Adjust to original model without literal fix
-      .final <- nlmixr2global$nlmixr2EstEnv$uiUnfix
+      .final <- .uiUnfix
       .iniDf0 <- ret$env$ui$iniDf
       .iniDf2 <- .final$iniDf
       .iniDf2$est <- vapply(.iniDf2$name,
@@ -290,7 +306,7 @@ nlmixr2Est0 <- function(env, ...) {
       warning(.w[[i]])
     })
   }
-  .nlmixrEstUpdatesOrigModel(.ret)
+  .nlmixrEstUpdatesOrigModel(.ret, env)
   # Mu-referenced (lin/irls) families: the C++ covariance step bailed (a mu->phi reduced
   # cov gives wrong SEs on the mu-referenced/linear parameters).  Now that the fit is
   # fully finalized (mu-rewriting restored), recompute the covariance on the full base
