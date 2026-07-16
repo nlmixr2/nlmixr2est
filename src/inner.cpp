@@ -458,6 +458,11 @@ struct focei_options {
                              // so the conditional likelihood (incl. censoring via
                              // doCensNormal1 and transform-both-sides) is evaluated
                              // at the scaled error.  1.0 (no-op) for every other method.
+  bool freezeOde = false;    // when true likInner0 skips the ODE integration and
+                             // reuses the current ind->solve states, only
+                             // recomputing f/r/density (residual-only re-evaluation).
+                             // The caller must have restored the correct states.
+                             // false (no-op) for every other method / normal solves.
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -1284,6 +1289,9 @@ double likInner0(double *eta, int id) {
   } else {
     recalc = true;
   }
+  // freezeOde: force the density recompute (with the current residual params) but
+  // reuse the states already in ind->solve -- see the guarded solve below.
+  if (op_focei.freezeOde) recalc = true;
   arma::vec rPopVec;  // FOCE: per-obs eta=0 population R (empty for FOCEI)
   if (recalc){
     if (op_focei.mixIdxN != 0) {
@@ -1317,10 +1325,6 @@ double likInner0(double *eta, int id) {
     if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
       fInd->stickyRecalcN2 = 0;
     }
-    setIndSolve(ind, -1);
-    // op->badSolve is racy under cores>1; our retry loop reads per-subject
-    // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
-    resetOpBadSolve(op);
     bool predSolve = false;
     // Guard for ind->neqOverride; lazily allocated in the doFD branch, lives
     // until likInner0 returns so all reads of ind->solve see the same predNeq
@@ -1328,6 +1332,16 @@ double likInner0(double *eta, int id) {
     std::unique_ptr<IndNeqOverrideGuard> neqGuard;
     // Mixture subjects (id >= nSub) use the base subject index for rxode2 calls.
     int _rxId = getRxId(id);
+    // freezeOde: the caller has restored the states in ind->solve; skip the entire
+    // integration and drop straight to the calc_lhs / density loop, recomputing
+    // f/r with the current (residual) parameters only.
+    if (op_focei.freezeOde) {
+      // no integration; ind->solve already holds the frozen states
+    } else {
+    setIndSolve(ind, -1);
+    // op->badSolve is racy under cores>1; our retry loop reads per-subject
+    // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
+    resetOpBadSolve(op);
     if (fInd->doFD == 0) {
       double prevTol = getIndTolFactor(ind);
       innerOde(_rxId);
@@ -1360,6 +1374,7 @@ double likInner0(double *eta, int id) {
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
+    } // end (!freezeOde) integration guard
     bool isBadSolve = false;
     // predSolve lays the buffer out at predNeq stride; scan only those slots.
     int effNeq = predSolve ? op_focei.predNeq : getOpNeq(op);
@@ -10066,6 +10081,100 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
     for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Residual-only re-evaluation cache (ODE-freeze).  During residual-parameter
+// optimization the ODE states are invariant (residual params only affect the
+// output f/r, not d/dt), so npFreezeBuild solves each (support point, subject)
+// once and caches the ind->solve trajectory; npFreezePsiScaled then rebuilds Psi
+// from the cached states through likInner0's freezeOde path -- calc_lhs recomputes
+// f/r with the current residual params, skipping the (costly) integration.
+static std::vector<std::vector<double> > gFreezeCache;  // [k*nsub + base] -> solve buffer
+static int gFreezeNsub = 0, gFreezeNpoint = 0;
+
+static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind) {
+  return (getOpNeq(op) + getOpNlin(op)) * getIndNallTimes(ind);
+}
+
+void npFreezeBuild(const arma::mat& etaPoints, int cores) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  gFreezeNsub = nsub; gFreezeNpoint = nPoint;
+  gFreezeCache.assign((size_t)nPoint * nsub, std::vector<double>());
+  op_focei.freezeOde = false;   // normal solves fill the cache
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      npEvalCondLik(&eta[0], base);   // normal solve, fills ind->solve
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(base));
+      double *s = getIndSolve(ind);
+      gFreezeCache[(size_t)k * nsub + base].assign(s, s + npIndSolveSize(op, ind));
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+}
+
+// Frozen counterpart of npBuildPsiCoreScaled at gamma == 1: restore each subject's
+// cached states, then re-evaluate the conditional likelihood without solving.
+void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, double* offset) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  arma::mat lp(nsub, nPoint);
+  op_focei.freezeOde = true;    // reuse cached states; recompute f/r only
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(base));
+      const std::vector<double>& c = gFreezeCache[(size_t)k * nsub + base];
+      double *s = getIndSolve(ind);
+      std::copy(c.begin(), c.end(), s);              // restore cached states
+      lp(base, k) = npEvalCondLik(&eta[0], base);    // frozen: no integration
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  op_focei.freezeOde = false;
+  arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
+  if (offset != nullptr) *offset = arma::accu(m);
+  psi.set_size(nsub, nPoint);
+  for (int k = 0; k < nPoint; ++k)
+    for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
+}
+
+void npFreezeClear() { gFreezeCache.clear(); gFreezeNsub = 0; gFreezeNpoint = 0; }
 
 //' Build the nonparametric Psi (conditional-likelihood) matrix
 //'

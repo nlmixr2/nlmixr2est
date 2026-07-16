@@ -25,6 +25,14 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi);
 void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
                          arma::mat& psi);
 
+// ODE-freeze cache for residual-parameter optimization: npFreezeBuild solves and
+// caches each (support point, subject) once; npFreezePsiScaled rebuilds the
+// (normalized) Psi from the cached states without re-integrating; npFreezeClear
+// releases the cache.
+void npFreezeBuild(const arma::mat& etaPoints, int cores);
+void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, double* offset);
+void npFreezeClear();
+
 // Build Psi at a residual-error multiplier gamma, reusing likInner0's full
 // conditional likelihood so censoring and transform-both-sides are handled at the
 // scaled error.  Row-normalized (log-sum-exp) for numerical stability; the true
