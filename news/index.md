@@ -578,6 +578,16 @@
 
 #### Output, tables, and printing
 
+- A zero-fixed eta (e.g. `bsva ~ 0`) is again restored into the fitted
+  model’s
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)/[`model()`](https://nlmixr2.github.io/rxode2/reference/model.html)
+  blocks when the estimation makes a nested
+  [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  call (e.g. adding the focei objective or CWRES), so
+  `fit |> ini(bsva ~ 0.1)` works; the nested call used to wipe the
+  restore info held in a global
+  ([\#741](https://github.com/nlmixr2/nlmixr2est/issues/741)).
+
 - `laplace`/`agq` family fits label their `$objDf` row
   `Laplace`/`AGQ<n>` (matching `$ofvType`) instead of `FOCEi`;
   previously the default `interaction=TRUE` made the interaction label
