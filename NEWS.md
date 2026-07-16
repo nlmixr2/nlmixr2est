@@ -229,6 +229,10 @@
 - `$parFixed` honors a user `sigdig`/`ci` for fits with literally-fixed
   parameters.
 
+- Literally-fixed population parameters now report their back-transformed value
+  (`exp`/`expit`/`probitInv`) in the `Back-transformed` column instead of the
+  raw log/logit-scale estimate.
+
 - `fit$time` again attributes model build/compile to `setup`/`configure` (and
   the nlm family times setup/optimize) instead of `other`.
 
