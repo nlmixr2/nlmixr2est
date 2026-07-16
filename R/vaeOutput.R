@@ -40,7 +40,13 @@
       terms <- c(terms, paste0(bn, " * ", enc))
       betaVals[[bn]] <- fit$beta[k, j]
     }
-    repl <- paste0("(", thName, " + ", paste(terms, collapse = " + "), ")")
+    ## Inject the covariate terms FLAT (no wrapping parentheses): the mu-ref line
+    ## is `p <- exp(theta + eta)`, so replacing `theta` with `theta + beta*cov`
+    ## keeps the additive `exp(theta + beta*cov + eta)` form rxode2 recognizes as
+    ## a mu-referenced exp() parameter.  Wrapping in parens -- `exp((theta +
+    ## beta*cov) + eta)` -- hides the exp() back-transform from muRefCurEval, so
+    ## the theta prints on the raw log scale instead of back-transformed.
+    repl <- paste0(thName, " + ", paste(terms, collapse = " + "))
     newTxt <- gsub(paste0("\\b", thName, "\\b"), repl, deparse1(.lines[[.idx]]))
     ui2 <- do.call(rxode2::model, list(ui2, str2lang(newTxt)))
   }
