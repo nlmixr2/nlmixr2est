@@ -120,7 +120,7 @@
                        resFixed,
                        ue,
                        mixProb = numeric(0),
-                       mixProbMethod = c("regularized", "annealed"),
+                       mixProbMethod = c("regularized", "annealed", "regress"),
                        mixProbStepExp = 1,
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
@@ -560,6 +560,9 @@
     nSaCov = nSaCov,
     pasMix = pasMix,
     mixProbMethod = if (identical(mixProbMethod, "regularized")) 1L else 0L,
+    # resolved string form; the "regress" membership-as-regressor path
+    # dispatches on this (the integer above stays regularized/annealed only).
+    mixProbMethodStr = mixProbMethod,
     mixProbPriorN = mixProbPriorN,
     mixSampleMethod = if (identical(mixSampleMethod, "msaem")) 1L else 0L,
     minv = minv,
