@@ -49,6 +49,49 @@
   try(chol(covm[.good, .good, drop = FALSE]), silent = TRUE)
 }
 
+#' Recompute the covariance eigen diagnostics + objDf condition numbers from the
+#' fit's installed covariance (method-independent).  NA rows/columns from a
+#' rank-deficient covariance (see `.nlmixr2RobustCov()`) are dropped before the
+#' eigen decomposition.  Adds the `Condition#(Cov)`/`Condition#(Cor)` columns
+#' when missing so every installed covariance reports its condition numbers.
+#' @param env fit environment with `cov` installed
+#' @return invisibly TRUE if the diagnostics were updated
+#' @noRd
+.nlmixr2CovConditionUpdate <- function(env) {
+  if (!exists("cov", envir = env, inherits = FALSE)) return(invisible(FALSE))
+  .cov <- get("cov", envir = env)
+  if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) return(invisible(FALSE))
+  .cn <- .cnr <- NA_real_
+  .good <- which(!is.na(diag(.cov)))
+  if (length(.good) > 0L) {
+    .c <- .cov[.good, .good, drop = FALSE]
+    .e <- try(eigen(.c, symmetric = TRUE), silent = TRUE)
+    if (!inherits(.e, "try-error")) {
+      assign("eigenCov", .e$values, envir = env)
+      assign("eigenVecCov", .e$vectors, envir = env)
+      .a <- abs(.e$values)
+      if (length(.a) > 0L) .cn <- max(.a) / min(.a)
+    }
+    assign("fullCor", .cov2cor(.c), envir = env)
+    .er <- try(eigen(stats::cov2cor(.c), symmetric = TRUE), silent = TRUE)
+    if (!inherits(.er, "try-error")) {
+      assign("eigenCor", .er$values, envir = env)
+      assign("eigenVecCor", .er$vectors, envir = env)
+      .a <- abs(.er$values)
+      if (length(.a) > 0L) .cnr <- max(.a) / min(.a)
+    }
+  }
+  assign("conditionNumberCov", .cn, envir = env)
+  assign("conditionNumberCor", .cnr, envir = env)
+  if (exists("objDf", envir = env, inherits = FALSE)) {
+    .od <- get("objDf", envir = env)
+    .od[["Condition#(Cov)"]] <- .cn
+    .od[["Condition#(Cor)"]] <- .cnr
+    assign("objDf", .od, envir = env)
+  }
+  invisible(TRUE)
+}
+
 .setCov <- function(obj, ...) {
   .pt <- proc.time()
   .env <- obj
@@ -140,6 +183,7 @@
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed
   .env$covMethod <- .fit2$covMethod
+  .nlmixr2CovConditionUpdate(.env)
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
     if (identical(.parent[[.cur]], obj)) {
@@ -222,6 +266,7 @@
   .extras <- list()
   for (.n in c("covR", "covS", "covRS", "Rinv", "Sinv", "R", "S", "covLvl", "skipCov",
                "eigenCov", "eigenVecCov", "conditionNumberCov", "covList",
+               "fullCor", "eigenCor", "eigenVecCor", "conditionNumberCor",
                "popDf", "popDfSig", "parFixedDf", "parFixed", "se")) {
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
@@ -241,6 +286,9 @@
   assign("cov", .r$cov, envir = .env)
   assign("covMethod", .r$covMethod, envir = .env)
   for (.n in names(.r$extras)) assign(.n, .r$extras[[.n]], envir = .env)
+  # the mu fit's objDf was rendered before any cov existed; recompute the eigen
+  # diagnostics + Condition#(Cov)/Condition#(Cor) from the installed cov
+  .nlmixr2CovConditionUpdate(.env)
   invisible(TRUE)
 }
 

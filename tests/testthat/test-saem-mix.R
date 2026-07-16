@@ -512,7 +512,9 @@ nmTest({
     # without breaking mu-referencing. So this test checks the
     # *set* of recovered clearances against the true set, not tcl1
     # specifically against the EM truth.
-    set.seed(2024)
+    # rxWithSeed pins the data stream and restores the global RNG state afterwards
+    # (no bare set.seed leak into the fit or downstream tests)
+    rxode2::rxWithSeed(2024, {
     tclEm <- log(8); tclPm <- log(0.8); tv0 <- log(30); tka0 <- log(1.2)
     sigma <- 0.20; omegaCl <- 0.09; omegaV <- 0.04
     nEm <- 20; nPm <- 10; n <- nEm + nPm
@@ -536,6 +538,7 @@ nmTest({
     doseRows <- data.frame(ID = seq_len(n), time = 0, DV = NA_real_, AMT = 100, EVID = 1)
     simData <- rbind(doseRows, do.call(rbind, simRows))
     simData <- simData[order(simData$ID, simData$time), ]
+    })
 
     # Nonlinear-wrapped (bounded) mu-referencing: cl <- mix(expit(tcl+eta,...))
     twoPopBounded <- function() {

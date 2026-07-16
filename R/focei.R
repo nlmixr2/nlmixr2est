@@ -2782,8 +2782,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     assign("ui", rxode2::rxUiCompress(.env$ui), envir=.env)
   })
-  if (any(names(.ret) == "CWRES") && regexpr("^fo", est) == -1) {
-    # focei is available; add objective function
+  .nAGQ <- tryCatch(.ret$foceiControl$nAGQ, error = function(e) 0L)
+  if (any(names(.ret) == "CWRES") && regexpr("^fo", est) == -1 &&
+        !isTRUE(.nAGQ > 0)) {
+    # focei is available; add objective function.  Quadrature fits (laplace/agq,
+    # nAGQ > 0) keep their own objective row active; use setOfv(fit, "focei") to
+    # add the focei objective explicitly.
     .setOfvFo(.ret, "focei")
   }
   .postFinalObjectHooksRun(.ret)
