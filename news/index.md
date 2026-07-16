@@ -594,6 +594,10 @@
 - `$parFixed` honors a user `sigdig`/`ci` for fits with literally-fixed
   parameters.
 
+- Literally-fixed population parameters now report their
+  back-transformed value (`exp`/`expit`/`probitInv`) in the
+  `Back-transformed` column instead of the raw log/logit-scale estimate.
+
 - `fit$time` again attributes model build/compile to `setup`/`configure`
   (and the nlm family times setup/optimize) instead of `other`.
 
@@ -605,6 +609,17 @@
 
 - `fast = TRUE` with a `linCmt()` model downgrades to `fast = FALSE`
   with a message instead of silently falling back per gradient call.
+
+- `est = "vae"` with automatic covariate selection now reports the
+  selected covariate coefficients (`beta_<par>_<cov>`) in
+  `$parFixed`/`$parFixedDf` instead of dropping them when a population
+  parameter is fixed, and the covariate-bearing mu-parameters
+  back-transform (`exp`) instead of printing on the raw log scale.
+
+- `est = "vae"` no longer errors with `cannot find parameter 'NA'` when
+  a structural (mu-referenced) parameter is fixed with
+  [`fix()`](https://rdrr.io/r/utils/fix.html); its random effect is kept
+  (variance estimated) with the fixed value carried in the model.
 
 #### Data handling
 
