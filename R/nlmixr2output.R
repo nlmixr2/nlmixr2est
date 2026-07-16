@@ -331,6 +331,12 @@
         check.names = FALSE,
         check.rows = FALSE
       )
+    # Keep estimated thetas absent from the (pre-literal-fix) model -- e.g. the
+    # covariate-coefficient thetas (beta_<par>_<cov>) est="vae" injects after
+    # covariate selection.  They live in $theta/$cov but not in uiUnfix, so the
+    # reindex below would silently drop them (leaving a covariate-free table).
+    # Append them after the original theta order.
+    .tn <- c(.tn, setdiff(rownames(.popDfEst), .tn))
     # combine estimated and fixed parameters, ordered by theta name
     .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
     .ret$popDf <- .popDf
