@@ -36,6 +36,17 @@
   invisible()
 }
 
+# Auto initial-grid size when the user does not supply `points`.  Floors at 2028
+# (the Pmetrics NPAG default, which covers a low-dimensional model well) and grows
+# 512 points per support-point dimension (eta) beyond that, so a high-dimensional
+# grid stays dense enough not to collapse.  Tested: theo (3 etas) -> 2028 matches
+# Pmetrics; warfarin (8 etas) -> 4096 gives a non-degenerate PK/PD fit where a fixed
+# 2028 collapsed.  The adaptive grid then refines from this seed.
+#' @noRd
+.npAutoPoints <- function(neta) {
+  max(2028L, as.integer(512L * max(1L, as.integer(neta))))
+}
+
 #' @noRd
 .npEstCore <- function(env, est, muModel = NULL, ...) {
   .ui <- env$ui
@@ -60,7 +71,15 @@
   .ctl$npBoxLower <- as.numeric(.box$lower)
   .ctl$npBoxUpper <- as.numeric(.box$upper)
   .ctl$npEtaNames <- .box$names
-  .ctl$npPoints <- as.integer(if (is.null(.ctl$points)) 2028L else .ctl$points)
+  # initial grid size: when the user does not supply `points`, scale it with the
+  # number of support-point dimensions (etas).  A fixed grid (Pmetrics uses 2028)
+  # covers a low-dimensional model well but grows sparse in high dimensions, where
+  # the support can collapse; scale it so each added dimension keeps coverage.  npb
+  # supplies its own K (truncation) so it never hits this auto path.
+  .ctl$npPoints <-
+    if (is.null(.ctl$points) || is.na(.ctl$points)) {
+      .npAutoPoints(length(.box$names))
+    } else as.integer(.ctl$points)
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
   # gamma scales the residual variance r; a generalized (non-normal) endpoint has
   # r == 1, so the gamma warm-start is a no-op -- force it off there.
@@ -224,7 +243,7 @@
 #' @noRd
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
-  .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
+  .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
               gridWidth = 4, gridBounds = "auto",
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,

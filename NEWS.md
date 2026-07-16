@@ -2,6 +2,12 @@
 
 ## New features
 
+- `est="npag"` now picks the initial grid size automatically from the model's
+  dimensionality when `npagControl(points=)` is not supplied: `max(2028, 512 * n_eta)`
+  (2028 is the Pmetrics NPAG default, which covers a low-dimensional model but grows
+  sparse and can collapse in high dimensions).  Theophylline (3 etas) resolves to
+  2028 (matching Pmetrics); warfarin (8 etas) to 4096.  Supply `points` to override.
+
 - `est="npag"` is more robust on high-dimensional models (many etas), validated by a
   golden comparison against Pmetrics NPAG on the Warfarin PK/PD model (transit
   absorption + Emax turnover, 8 parameters): the per-cycle Psi build is now per-row

@@ -36,12 +36,12 @@ the last one.}
 }
 \value{
 The value of the expression, or when \code{lst = TRUE} a
-list of the form \code{list(object, warning = ws, error = es)}
-where \code{ws} and \code{es} are character vectors of unique
-warning and error messages (\code{es} is always \code{NULL}
-when \code{collectErr = FALSE}, and is also \code{NULL} when
-the expression evaluated successfully under \code{collectErr =
-TRUE}).
+    list of the form \code{list(object, warning = ws, error = es)}
+    where \code{ws} and \code{es} are character vectors of unique
+    warning and error messages (\code{es} is always \code{NULL}
+    when \code{collectErr = FALSE}, and is also \code{NULL} when
+    the expression evaluated successfully under \code{collectErr =
+    TRUE}).
 }
 \description{
 Collect warnings and just warn once.

@@ -5,7 +5,7 @@
 \title{Control for the npag (nonparametric adaptive grid) method}
 \usage{
 npagControl(
-  points = 2028L,
+  points = NULL,
   cycles = 100L,
   gammaOptimize = TRUE,
   residOptimize = c("alternate", "final", "none"),
@@ -16,7 +16,12 @@ npagControl(
 )
 }
 \arguments{
-\item{points}{Initial Sobol grid size (support points).}
+\item{points}{Initial Sobol grid size (support points).  `NULL` (default) picks
+it automatically from the number of support-point dimensions (etas):
+`max(2028, 512 * n_eta)` -- a fixed grid (Pmetrics uses 2028) covers a
+low-dimensional model but grows sparse and can collapse in high dimensions, so
+the auto size floors at 2028 and scales up per added eta.  Supply an integer to
+override.}
 
 \item{cycles}{Maximum adaptive-grid cycles.}
 

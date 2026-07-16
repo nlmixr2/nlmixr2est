@@ -39,7 +39,12 @@
 #' values if a fixed error model is desired.
 #'
 #' @inheritParams impmapControl
-#' @param points Initial Sobol grid size (support points).
+#' @param points Initial Sobol grid size (support points).  `NULL` (default) picks
+#'   it automatically from the number of support-point dimensions (etas):
+#'   `max(2028, 512 * n_eta)` -- a fixed grid (Pmetrics uses 2028) covers a
+#'   low-dimensional model but grows sparse and can collapse in high dimensions, so
+#'   the auto size floors at 2028 and scales up per added eta.  Supply an integer to
+#'   override.
 #' @param cycles Maximum adaptive-grid cycles.
 #' @param gammaOptimize Use a global assay-error multiplier (gamma) as a per-cycle
 #'   warm start for the overall residual magnitude, folded into the variance-scale
@@ -85,13 +90,15 @@
 #' @examples
 #'
 #' npagControl()
-npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
+npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
-  .ctl$points <- as.integer(points)
+  # NULL -> auto (scaled with the number of dimensions in .npEstCore); NA is the
+  # sentinel that survives the control round-trip.
+  .ctl$points <- if (is.null(points)) NA_integer_ else as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
