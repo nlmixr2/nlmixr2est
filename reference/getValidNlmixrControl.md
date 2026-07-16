@@ -113,6 +113,24 @@ getValidNlmixrCtl(control)
 # S3 method for class 'nls'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'mnpag'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'inpag'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mnpb'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'inpb'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'npag'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'npb'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'optim'
 getValidNlmixrCtl(control)
 

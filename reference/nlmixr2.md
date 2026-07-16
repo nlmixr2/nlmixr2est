@@ -143,13 +143,13 @@ The nlmixr object has the following fields:
 | env |  | This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence \$env |
 | runInfo |  | This returns a list of all the warnings or fit information |
 | rxControl |  | Integration options used to control rxode2 |
-| scaleInfo |  | The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=...) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) |
+| scaleInfo |  | The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) |
 | seed |  | This is the initial seed used for saem |
 | shrink |  | This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error |
 | simInfo |  | This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish |
 | table |  | These are the table options that were used when generating the table output (were CWRES included, etc |
 | theta |  | Estimates for eta for each individual |
-| time |  | Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) |
+| time |  | Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) |
 | ui |  | Final estimates for the model |
 | atol | n2r | Absolute tolerance that NONMEM specified; will be used when solving |
 | dfObs | n2r | Degrees of freedom by observation |
@@ -770,8 +770,8 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9472
-#> → compress phiM in nlmixr2 object, save 448672
+#> → compress parHistData in nlmixr2 object, save 9360
+#> → compress phiM in nlmixr2 object, save 448336
 
 # }
 ```

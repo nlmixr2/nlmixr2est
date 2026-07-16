@@ -97,6 +97,24 @@ nmObjGetControl(x, ...)
 # Default S3 method
 nmObjGetControl(x, ...)
 
+# S3 method for class 'mnpag'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'inpag'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'mnpb'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'inpb'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'npag'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'npb'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'optim'
 nmObjGetControl(x, ...)
 

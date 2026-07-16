@@ -37,6 +37,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmeGetNonMuRefNames.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessCovariatesPresent.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessNpMuExpand.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2FitUpdateParams.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc></url>
@@ -126,6 +127,14 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjUiSetCompressed.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmSuppressMsg.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npBuildPsi.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npCondense_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npIpmBurke.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npObjAtGamma_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npSobolGrid_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npagControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npagCycle_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/npbControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/postFinalObjectHooks.html</loc></url>

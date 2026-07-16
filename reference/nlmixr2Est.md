@@ -127,6 +127,24 @@ nlmixr2Est(env, ...)
 # S3 method for class 'nls'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'npag'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mnpag'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'inpag'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'npb'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mnpb'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'inpb'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'optim'
 nlmixr2Est(env, ...)
 

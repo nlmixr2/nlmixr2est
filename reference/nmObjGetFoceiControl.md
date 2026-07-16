@@ -61,6 +61,24 @@ nmObjGetFoceiControl(x, ...)
 # Default S3 method
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'mnpag'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'inpag'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'mnpb'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'inpb'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'npag'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'npb'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'posthoc'
 nmObjGetFoceiControl(x, ...)
 

@@ -173,6 +173,12 @@ plot(fit)
   : Shared fit driver for the nlm-family estimation methods
 - [`.nlmixr0preProcessCovariatesPresent()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessCovariatesPresent.md)
   : Preprocess Covariates needed (or other data items)
+- [`.nlmixr0preProcessNpMuExpand()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessNpMuExpand.md)
+  : Preprocessing hook: mu-expand non-mu structural fixed-effect thetas
+  for the nonparametric engines, before the rest of the pipeline builds
+  on the ui. Doing it here (rather than mutating the ui mid-setup) keeps
+  the injected pseudo-etas consistent through covariate/mu processing
+  and model compilation. Off when control\$muExpand is FALSE.
 - [`.nlmixrPreprocessLiteralFix()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrPreprocessLiteralFix.md)
   : This literally fixes parameters in the model
 - [`.preProcessDataUi()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessDataUi.md)
@@ -303,6 +309,10 @@ plot(fit)
   : Set if the nlmixr2 object will return a compressed ui
 - [`nmsimplex()`](https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.md)
   : Nelder-Mead simplex search
+- [`npagControl()`](https://nlmixr2.github.io/nlmixr2est/reference/npagControl.md)
+  : Control for the npag (nonparametric adaptive grid) method
+- [`npbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/npbControl.md)
+  : Control for the npb (nonparametric Bayes) method
 - [`ofv()`](https://nlmixr2.github.io/nlmixr2est/reference/ofv.md) :
   Return the objective function
 - [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md)

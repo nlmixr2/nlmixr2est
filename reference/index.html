@@ -140,6 +140,13 @@
 
         <dt>
 
+          <code><a href="dot-nlmixr0preProcessNpMuExpand.html">.nlmixr0preProcessNpMuExpand()</a></code>
+
+        </dt>
+        <dd>Preprocessing hook: mu-expand non-mu structural fixed-effect thetas for the nonparametric engines, before the rest of the pipeline builds on the ui. Doing it here (rather than mutating the ui mid-setup) keeps the injected pseudo-etas consistent through covariate/mu processing and model compilation. Off when control$muExpand is FALSE.</dd>
+
+        <dt>
+
           <code><a href="dot-nlmixrPreprocessLiteralFix.html">.nlmixrPreprocessLiteralFix()</a></code>
 
         </dt>
@@ -550,6 +557,20 @@
 
         </dt>
         <dd>Nelder-Mead simplex search</dd>
+
+        <dt>
+
+          <code><a href="npagControl.html">npagControl()</a></code>
+
+        </dt>
+        <dd>Control for the npag (nonparametric adaptive grid) method</dd>
+
+        <dt>
+
+          <code><a href="npbControl.html">npbControl()</a></code>
+
+        </dt>
+        <dd>Control for the npb (nonparametric Bayes) method</dd>
 
         <dt>
 

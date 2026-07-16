@@ -253,7 +253,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x559ba3538f98>
+#> <bytecode: 0x55ea49969dc0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
