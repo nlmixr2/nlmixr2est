@@ -124,13 +124,13 @@ The nlmixr object has the following fields:\tabular{lll}{
    env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $env \cr
    runInfo \tab  \tab This returns a list of all the warnings or fit information \cr
    rxControl \tab  \tab Integration options used to control rxode2 \cr
-   scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=...) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
+   scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
    seed \tab  \tab This is the initial seed used for saem \cr
    shrink \tab  \tab This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error \cr
    simInfo \tab  \tab This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish \cr
    table \tab  \tab These are the table options that were used when generating the table output (were CWRES included, etc \cr
    theta \tab  \tab Estimates for eta for each individual \cr
-   time \tab  \tab Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) \cr
+   time \tab  \tab Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) \cr
    ui \tab  \tab Final estimates for the model \cr
    atol \tab n2r \tab Absolute tolerance that NONMEM specified; will be used when solving \cr
    dfObs \tab n2r \tab Degrees of freedom by observation \cr

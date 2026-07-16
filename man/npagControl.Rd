@@ -4,16 +4,36 @@
 \alias{npagControl}
 \title{Control for the npag (nonparametric adaptive grid) method}
 \usage{
-npagControl(points = 2028L, cycles = 100L, gammaOptimize = TRUE, ...)
+npagControl(
+  points = 2028L,
+  cycles = 100L,
+  gammaOptimize = TRUE,
+  residOptimize = c("alternate", "final", "none"),
+  ...
+)
 }
 \arguments{
 \item{points}{Initial Sobol grid size (support points).}
 
 \item{cycles}{Maximum adaptive-grid cycles.}
 
-\item{gammaOptimize}{Optimize the residual-error magnitude (gamma) each cycle
-(only valid for normal endpoints; censoring and transform-both-sides are
-supported).}
+\item{gammaOptimize}{Use a global assay-error multiplier (gamma) as a per-cycle
+warm start for the overall residual magnitude, folded into the variance-scale
+coefficients (`add`/`prop`/`lnorm`).  The per-endpoint values, the add/prop
+ratio, and the transform/autocorrelation parameters come from
+\code{residOptimize}.  Only valid for normal endpoints; censoring and
+transform-both-sides are supported.}
+
+\item{residOptimize}{How to estimate the residual-error thetas (every endpoint's
+`add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support
+points and weights held fixed, using Nelder-Mead on the nonparametric -2LL.
+\code{"alternate"} (default) optimizes them every cycle (block-coordinate
+ascent); \code{"final"} optimizes once at the converged support; \code{"none"}
+holds them at their initial values (only the gamma warm-start adjusts the
+overall magnitude).  Fixed residual parameters are always held.  The
+optimization uses the bounded \code{minqa::bobyqa}, honoring the ini-block
+lower/upper bounds of the residual parameters (e.g. keeping an additive SD
+non-negative); an unbounded optimizer could wander into an invalid region.}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }
@@ -30,6 +50,19 @@ Note: the npag objective is the nonparametric marginal log-likelihood and uses
 a different constant convention than NONMEM/FOCEI, so its `-2LL` is NOT
 comparable to nlmixr2's FOCEI/SAEM/FOCE `-2LL`.  Compare npag runs to each
 other or to Pmetrics NPAG.
+
+Note on residual error with a flexible support distribution: the residual
+parameters are estimated against the nonparametric objective (see
+\code{residOptimize}) with the support-point distribution held fixed.  Because
+that distribution is flexible, it can absorb variability a parametric model
+(FOCEI/SAEM) would attribute to residual error -- especially the additive term
+of a combined additive+proportional model at low concentrations.  As a result
+the additive coefficient of a combined error model may be estimated smaller
+(sometimes toward zero) than the corresponding parametric fit, while the
+proportional term and per-endpoint magnitudes are recovered well.  This is an
+expected property of nonparametric estimation, not a convergence failure; use
+\code{residOptimize = "none"} to hold the residual parameters at their initial
+values if a fixed error model is desired.
 }
 \examples{
 
