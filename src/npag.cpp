@@ -25,10 +25,10 @@ namespace {
   int gNpCores = 1;
 
   // clamp a candidate to the parameter's natural range (belt-and-suspenders with
-  // the bobyqa bounds): SD > 0, correlation in (-1,1).
+  // the bobyqa bounds): SD >= 0, continuous-AR correlation in (0,1).
   double npResidVal(double v, int kind) {
-    if (kind == 1) return std::fabs(v);                                 // SD > 0
-    if (kind == 2) return std::max(-0.999, std::min(0.999, v));         // corr in (-1,1)
+    if (kind == 1) return std::fabs(v);                                 // SD >= 0
+    if (kind == 2) return std::max(0.0, std::min(0.999, v));            // AR corr in (0,1)
     return v;                                                           // lambda etc.
   }
 

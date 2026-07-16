@@ -136,12 +136,12 @@
   .kind[.optType %in% c("boxCox", "yeoJohnson", "pw")] <- 0L
   .control$npResidOptKind <- as.integer(.kind)
   # ini-block bounds of the residual-opt params (for the bounded bobyqa step),
-  # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and a
-  # correlation (kind 2) is in (-1, 1).
+  # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and the
+  # continuous-AR correlation (kind 2) is in (0, 1).
   .lo <- as.numeric(.thOrd$lower[.errOpt])
   .hi <- as.numeric(.thOrd$upper[.errOpt])
   .lo[.kind == 1L] <- pmax(.lo[.kind == 1L], 0)
-  .lo[.kind == 2L] <- pmax(.lo[.kind == 2L], -0.999)
+  .lo[.kind == 2L] <- pmax(.lo[.kind == 2L], 0)
   .hi[.kind == 2L] <- pmin(.hi[.kind == 2L], 0.999)
   .control$npResidOptLower <- .lo
   .control$npResidOptUpper <- .hi
