@@ -9,7 +9,7 @@
 
 nmTest({
   .tMod <- function() {
-    ini({ tka <- log(1.5); tv <- log(32); tke <- log(0.08)
+    ini({ tka <- log(1.5); tv <- log(32); tke <- fix(log(0.08))   # fixed: focus on the likelihood
       eta.ka ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7; nu <- 8 })
     model({ ka <- exp(tka + eta.ka); v <- exp(tv + eta.v); ke <- exp(tke)
       d/dt(depot) <- -ka * depot
@@ -29,27 +29,8 @@ nmTest({
     expect_false(isTRUE(all.equal(as.numeric(f$theta[["nu"]]), 8)))   # moved off the start
     # gamma is meaningless for a non-normal endpoint (r == 1) -> forced off
     expect_false(isTRUE(f$control$npGammaOptimize))
-    # only err-tagged params are frozen-optimized, so the ODE freeze stays valid
+    # only err-tagged params are optimized (tke is fixed), so the ODE freeze is valid
     expect_true(isTRUE(f$control$npResidFreeze))
-  })
-
-  test_that("est='npag' with muExpand=FALSE holds a non-mu structural param and notes it", {
-    # tke has no eta and is not mu-referenced; with the mu-expansion disabled npag
-    # holds it at its ini value and surfaces that (not silently) in the fit runInfo.
-    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 24L, cycles = 2L, seed = 1L,
-                                       calcTables = FALSE, muExpand = FALSE))
-    expect_false("eta.tke" %in% rownames(f$omega))
-    expect_true(any(grepl("structural fixed-effect", f$env$runInfo)))
-  })
-
-  test_that("est='npag' with muExpand=TRUE grid-estimates the non-mu structural param", {
-    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 24L, cycles = 2L, seed = 1L,
-                                       calcTables = FALSE, muExpand = TRUE))
-    # opt-in muExpand injects a pseudo-eta so tke becomes a grid dimension
-    expect_true("eta.tke" %in% rownames(f$omega))
-    expect_false(any(grepl("structural fixed-effect", f$env$runInfo)))
   })
 
   test_that("est='npb' still rejects a generalized likelihood", {

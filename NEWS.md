@@ -2,21 +2,23 @@
 
 ## New features
 
-- `est="npag"`/`est="npb"` now mu-expand non-mu structural parameters by default
-  (saem-style; `npagControl(muExpand=TRUE)`).  npag natively estimates only
-  mu-referenced (grid) and residual/likelihood parameters, so a non-mu structural
-  fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) was held at its ini value.
-  mu-expansion injects a pseudo-eta (`ke <- exp(tke + eta.tke)`) so the parameter
-  becomes grid-estimable, then recovers it as a FIXED effect at finalization: the
-  injected eta's support-weighted mean is folded into its theta (so the reported
-  estimate reflects it -- e.g. recovering theo's ke from a deliberately-wrong start)
-  and the injected random effect is collapsed (no BSV).  The injected eta carries a
-  FIXED omega (excluded from the free omega objective, like IOV), so it also works in
-  mixture models -- the mixture proportions are left out of the injection and move
-  via the in-cycle EM.  Set `muExpand=FALSE` to hold such parameters at their ini
-  value instead (reported in the fit `$runInfo`).  (A non-mu-referenced ETA -- an eta
-  with no paired theta -- needs no expansion: the npag box already covers every eta,
-  so it is a grid dimension estimated as a pure random effect.)
+- `est="npag"`/`est="npb"` now estimate non-mu structural fixed-effect parameters
+  (a theta with no eta, e.g. `ke <- exp(tke)`, which npag's grid otherwise does not
+  cover -- it covers only mu-referenced and residual/likelihood parameters).  By
+  default they are optimized as "regressors" in the residual step: the bounded
+  `bobyqa` moves them alongside the residual parameters, re-solving the ODE per
+  candidate (they feed the states, so the ODE freeze is turned off for that step).
+  This identifies them sharply -- e.g. recovering theophylline's clearance from a
+  deliberately-wrong start, and a bimodal mixture proportion (p1 = 0.70) that the
+  grid alternative recovered only weakly.  The opt-in `npagControl(muExpand=TRUE)`
+  instead uses the saem-style mu-expansion: inject a pseudo-eta
+  (`ke <- exp(tke + eta.tke)`), grid-estimate, and recover it as a fixed effect at
+  finalization (support-mean folded into the theta, injected random effect collapsed;
+  the injected eta carries a FIXED omega, excluded from the free omega objective like
+  IOV, so it also works in mixture models).  `residOptimize="none"` holds the
+  structural regressors together with the residual parameters.  (A non-mu-referenced
+  ETA -- an eta with no paired theta -- needs neither: the npag box already covers
+  every eta, so it is a grid dimension estimated as a pure random effect.)
 
 - `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
   The nonparametric objective sums the inner per-observation llikObs, which for a

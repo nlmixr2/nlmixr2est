@@ -9,7 +9,7 @@ npagControl(
   cycles = 100L,
   gammaOptimize = TRUE,
   residOptimize = c("alternate", "final", "none"),
-  muExpand = TRUE,
+  muExpand = FALSE,
   ...
 )
 }
@@ -36,16 +36,18 @@ optimization uses the bounded \code{minqa::bobyqa}, honoring the ini-block
 lower/upper bounds of the residual parameters (e.g. keeping an additive SD
 non-negative); an unbounded optimizer could wander into an invalid region.}
 
-\item{muExpand}{saem-style mu-expansion of non-mu structural parameters
-(default `TRUE`).  npag natively estimates only mu-referenced (grid) and
-residual/likelihood parameters; a non-mu structural fixed-effect theta (no eta,
-e.g. `ke <- exp(tke)`) is otherwise held at its initial value.  mu-expansion
-injects a pseudo-eta (`ke <- exp(tke + eta.tke)`) so the parameter becomes
-grid-estimable, then recovers it as a FIXED effect at finalization: its
-support-mean is folded into the theta (the reported estimate) and the injected
-random effect is collapsed (no BSV).  Set `FALSE` to instead hold such a
-parameter at its initial value (reported in the fit's `$runInfo`).  Not applied
-to mixture models (a pre-existing npag+mixture multi-eta limitation).}
+\item{muExpand}{how to estimate non-mu structural fixed-effect parameters (a
+theta with no eta, e.g. `ke <- exp(tke)`; npag's grid otherwise covers only
+mu-referenced and residual/likelihood parameters).  `FALSE` (default) optimizes
+them directly as "regressors" in the residual step -- the bounded `bobyqa` moves
+them alongside the residual parameters, re-solving the ODE each candidate (they
+feed the states, so the ODE freeze is turned off) -- which identifies them well
+(e.g. recovering a clearance and a mixture proportion from poor starts).  `TRUE`
+instead uses the saem-style mu-expansion: inject a pseudo-eta
+(`ke <- exp(tke + eta.tke)`), grid-estimate, and recover it as a fixed effect at
+finalization (support-mean folded into the theta, injected random effect
+collapsed).  The regressor default usually identifies these parameters more
+sharply than the grid.}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

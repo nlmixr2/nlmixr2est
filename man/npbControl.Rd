@@ -14,7 +14,7 @@ npbControl(
   seed = 42L,
   cycles = 100L,
   gammaOptimize = FALSE,
-  muExpand = TRUE,
+  muExpand = FALSE,
   ...
 )
 }

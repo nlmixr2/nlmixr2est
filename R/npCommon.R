@@ -180,20 +180,23 @@
   # optimized set it must clear this flag (forcing a re-solve per candidate).
   .optErr <- !is.na(.thOrd$err[.errOpt])
   .control$npResidFreeze <- length(.optErr) == 0L || all(.optErr)
-  # npag estimates only the mu-referenced (grid) parameters and the residual/
-  # likelihood (err-tagged) parameters.  A non-mu, non-fixed structural fixed-effect
-  # theta (err==NA, no eta) cannot be placed on the grid and is HELD at its initial
-  # value -- warn so this is not silent.  The mu-expansion that saem uses (theta+eta
-  # with the eta variance -> 0) would let npag estimate these; that is a followup.
+  # A non-mu, non-fixed structural fixed-effect theta (err==NA, no eta) is neither a
+  # grid dimension nor a residual/likelihood parameter.  With muExpand=TRUE it has
+  # been injected as a pseudo-eta (so it is now mu-referenced and not seen here);
+  # otherwise, optimize it directly as a "regressor" in the residual step (bobyqa,
+  # kind 0 = free, ini-block bounds).  A regressor feeds the ODE, so the step must
+  # RE-SOLVE (clear npResidFreeze) rather than reuse the frozen states.
   .isMuRef <- .thOrd$name %in% .mr$theta
   .isMixP <- .thOrd$name %in% .mixNames
-  .heldStruct <- .thOrd$name[is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP]
-  if (length(.heldStruct) > 0L) {
-    warning("est=\"", .est, "\": structural fixed-effect parameter(s) ",
-            paste(.heldStruct, collapse = ", "), " are not mu-referenced and are ",
-            "held at their initial values (npag estimates only mu-referenced and ",
-            "residual/likelihood parameters); mu-reference, fix() them, or set ",
-            "muExpand=TRUE to estimate them", call. = FALSE)
+  .regress <- which(is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP)
+  if (length(.regress) > 0L) {
+    .control$npResidOptIdx <- c(.control$npResidOptIdx, as.integer(.regress - 1L))
+    .control$npResidOptKind <- c(.control$npResidOptKind, rep(0L, length(.regress)))
+    .control$npResidOptLower <- c(.control$npResidOptLower, as.numeric(.thOrd$lower[.regress]))
+    .control$npResidOptUpper <- c(.control$npResidOptUpper, as.numeric(.thOrd$upper[.regress]))
+    .control$npResidFreeze <- FALSE
+    # residOptimize="none" (npResidMode 0) holds everything, regressors included --
+    # do not override it here.
   }
   # mu-expanded (injected) etas: finalization recovers each as a FIXED effect by
   # folding its support-mean into the paired theta and collapsing its random effect.
@@ -226,7 +229,7 @@
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
   .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
-              residOptimize = "alternate", muExpand = TRUE,
+              residOptimize = "alternate", muExpand = FALSE,
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]

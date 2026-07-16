@@ -1,10 +1,9 @@
-## saem-style mu-expansion for npag: a non-mu-referenced structural fixed-effect
-## theta (err==NA, no eta -- e.g. `ke <- exp(tke)`) is not a grid dimension and
-## feeds the ODE, so npag cannot estimate it directly.  The mu-expansion injects a
-## pseudo-eta (`ke <- exp(tke + eta.tke)`) so the parameter becomes a grid
-## dimension estimated by the support-point distribution (same convention as every
-## npag theta: the reference theta stays put and the location lives in the
-## support).  Real fit -> weekly slow batch.
+## Non-mu structural fixed-effect thetas for npag: a theta with no eta (err==NA,
+## e.g. `ke <- exp(tke)`) is not a grid dimension and feeds the ODE.  By default
+## (muExpand=FALSE) npag optimizes it as a "regressor" in the residual step
+## (bobyqa, re-solving the ODE per candidate); muExpand=TRUE instead injects a
+## pseudo-eta and grid-estimates it, recovering it as a fixed effect.  Both make
+## the theta move.  Real fit -> weekly slow batch.
 
 nmTest({
   # deliberately-wrong ke start (0.30); theo's ke is ~0.08-0.10
@@ -33,10 +32,14 @@ nmTest({
     expect_true(all(abs(.sp[, ncol(.sp)]) < 1e-8))     # injected eta support zeroed
   })
 
-  test_that("est='npag' muExpand=FALSE leaves the non-mu structural theta held", {
+  test_that("est='npag' default (regressor) recovers a non-mu structural theta directly", {
     f <- nlmixr2(.mod, nlmixr2data::theo_sd, est = "npag", control = .ctl(FALSE))
-    expect_false("eta.tke" %in% rownames(f$omega))
-    expect_equal(as.numeric(f$theta[["tke"]]), log(0.30))   # held at ini
+    expect_false("eta.tke" %in% rownames(f$omega))          # no injected eta: a regressor
+    # optimized directly in the residual step -> the reported theta recovers theo ke
+    # from the wrong 0.30 start, without a grid dimension.
+    expect_true(exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
+                exp(as.numeric(f$theta[["tke"]])) < 0.15)
+    expect_false(isTRUE(all.equal(as.numeric(f$theta[["tke"]]), log(0.30))))  # moved
   })
 
   # fixture 2: a non-mu-referenced eta (enters non-additively, so rxode2 does not
