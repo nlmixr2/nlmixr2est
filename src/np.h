@@ -56,6 +56,18 @@ arma::mat npFinalizeFit(Rcpp::Environment e, arma::mat& support,
                         const std::vector<int>& injEtaIdx,
                         const std::vector<int>& injThetaIdx);
 
+// Residual/regressor theta optimization with the support points + weights FIXED:
+// bounded bobyqa over the fullTheta indices in idx (kinds in kind) against the
+// nonparametric -2LL on the given (support, weights).  freeze reuses the cached
+// ODE states (valid iff every optimized theta feeds only the post-solve f/r); a
+// regressor that feeds the ODE must pass freeze=false so each candidate re-solves.
+// Leaves fullTheta at the optimum; returns the -2LL (R_NegInf on failure, thetas
+// restored).  Implemented in npag.cpp, shared with npb.cpp.
+double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
+                       const std::vector<int>& idx, const std::vector<int>& kind,
+                       int cores, const std::vector<double>& lower,
+                       const std::vector<double>& upper, bool freeze);
+
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).
 void npagOuter(Rcpp::Environment e);

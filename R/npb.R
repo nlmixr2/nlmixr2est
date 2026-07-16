@@ -30,6 +30,17 @@
 #' @param propSd Standard deviation of the Gaussian random-walk MH proposal for
 #'   the support-point locations (eta space).
 #' @param seed Random seed for the sampler.
+#' @param residOptimize How to estimate the residual-error thetas (every endpoint's
+#'   `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) and any non-mu
+#'   structural "regressor" theta, with the sampled mixing distribution held fixed,
+#'   using the bounded `bobyqa` on the nonparametric -2LL.  \code{"alternate"}
+#'   (default) re-fits them during burn-in and then holds them fixed for the sampling
+#'   phase (so every collected draw shares the converged residual scale);
+#'   \code{"final"} holds them at their initial values through sampling and fits once
+#'   at the converged draw; \code{"none"} holds them at their initial values
+#'   throughout.  Fixed residual parameters are always held.  Unlike npag, npb does
+#'   not optimize the assay-error multiplier (gamma); the residual thetas are fit
+#'   directly.
 #' @param cycles Unused for npb (kept for control compatibility).
 #' @param gammaOptimize Unused for npb (kept for control compatibility).
 #' @param ... Parameters passed to [impmapControl()].
@@ -40,13 +51,16 @@
 #'
 #' npbControl()
 npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
-                       nchains = 1L, propSd = 0.2, seed = 42L, cycles = 100L,
+                       nchains = 1L, propSd = 0.2, seed = 42L,
+                       residOptimize = c("alternate", "final", "none"),
+                       cycles = 100L,
                        gammaOptimize = FALSE, muExpand = FALSE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
+  .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)
   .ctl$alpha <- as.numeric(alpha)
   .ctl$burnin <- as.integer(burnin)

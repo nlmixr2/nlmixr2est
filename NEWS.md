@@ -49,8 +49,19 @@
   is forced off (a non-normal endpoint has r == 1).  A non-mu-referenced structural
   fixed-effect parameter cannot be placed on the grid and is held at its initial
   value, reported in the fit's `$runInfo`.  `est="npb"` handles non-normal endpoints
-  too (the Gibbs sweep sums the same llikObs) -- it samples the mixing distribution
-  but does not optimize an err-tagged likelihood parameter.
+  too (the Gibbs sweep sums the same llikObs).
+
+- `est="npb"` now runs the residual/regressor optimization (previously it held the
+  residual-error and non-mu structural "regressor" thetas at their initial values and
+  only sampled the mixing distribution).  With the sampled mixing distribution held
+  fixed, the same bounded `bobyqa` step npag uses fits the residual thetas (add/prop/
+  lnorm/lambda/ar) and any structural regressor -- recovering, e.g., theophylline's
+  clearance from a deliberately-wrong start.  `npbControl(residOptimize=)` selects it:
+  `"alternate"` (default) re-fits during burn-in and then holds the thetas fixed for
+  the sampling phase (so every collected draw shares the converged residual scale),
+  `"final"` fits once at the converged draw, `"none"` holds them at their initial
+  values.  Unlike npag, npb does not optimize the assay-error multiplier (gamma) -- the
+  residual thetas are fit directly.
 
 - `est="npag"` and `est="npb"` now support mixture (sub-population) `mix()` models.
   Each subject is split into per-component pseudo-subjects and the conditional

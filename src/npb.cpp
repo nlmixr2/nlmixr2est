@@ -50,6 +50,22 @@ static arma::vec npbGelmanRubin(const std::vector<arma::mat>& chains) {
   return rhat;
 }
 
+// Occupied support (weight > tiny) as a compact (support, weights) pair for the
+// residual/regressor optimization, falling back to the max-weight cluster.  The
+// truncated stick keeps K clusters but most carry ~0 weight; passing only the
+// occupied ones keeps the frozen-solve cache small.
+static void npbCompactSupport(const arma::mat& phi, const arma::vec& w,
+                              arma::mat& sup, arma::vec& wt) {
+  std::vector<arma::uword> occ;
+  for (arma::uword k = 0; k < w.n_elem; ++k) if (w[k] > 1e-8) occ.push_back(k);
+  if (occ.empty()) occ.push_back(w.index_max());
+  arma::uvec idx(occ);
+  sup = phi.rows(idx);
+  wt = w(idx);
+  double s = arma::accu(wt);
+  if (s > 0.0) wt /= s;
+}
+
 void npbOuter(Environment e) {
   List control = e["control"];
   int K = as<int>(control["npPoints"]);          // truncation level
@@ -85,6 +101,40 @@ void npbOuter(Environment e) {
     as<bool>(control["npMixOptimize"]);
   int nMix = impNmix();
   double mixAlpha0 = 1.0;   // symmetric Dirichlet prior on the proportions
+
+  // residual/regressor optimization (shared with npag): with the mixing
+  // distribution held fixed, bounded-bobyqa the residual-error thetas (and any
+  // non-mu structural "regressor" thetas) against the nonparametric -2LL.  The
+  // index/kind/bound vectors are built in R (.npFamilyFit), identical to npag.
+  // npResidMode: 0 none, 1 alternate (re-fit during burn-in, then hold fixed for
+  // the sampling phase so every collected draw shares the converged residuals),
+  // 2 final (fit once at the converged draw).
+  int residMode = control.containsElementNamed("npResidMode") ? as<int>(control["npResidMode"]) : 0;
+  std::vector<int> residOptIdx, residOptKind;
+  std::vector<double> residOptLower, residOptUpper;
+  bool residFreeze = true;
+  if (control.containsElementNamed("npResidOptIdx")) {
+    IntegerVector ro = control["npResidOptIdx"];
+    residOptIdx.assign(ro.begin(), ro.end());
+  }
+  if (control.containsElementNamed("npResidOptKind")) {
+    IntegerVector rk = control["npResidOptKind"];
+    residOptKind.assign(rk.begin(), rk.end());
+  }
+  if (control.containsElementNamed("npResidOptLower")) {
+    NumericVector rl = control["npResidOptLower"];
+    residOptLower.assign(rl.begin(), rl.end());
+  }
+  if (control.containsElementNamed("npResidOptUpper")) {
+    NumericVector ru = control["npResidOptUpper"];
+    residOptUpper.assign(ru.begin(), ru.end());
+  }
+  if (control.containsElementNamed("npResidFreeze"))
+    residFreeze = as<bool>(control["npResidFreeze"]);
+  bool hasResidOpt = residMode != 0 && !residOptIdx.empty();
+  // bound the in-burn-in optimization rounds (each is a bounded bobyqa with a Psi
+  // rebuild) so a long burn-in does not multiply the cost.
+  int residEvery = std::max(1, nBurn / 10);
   Function setSeed("set.seed");
 
   // pooled across chains
@@ -95,7 +145,7 @@ void npbOuter(Environment e) {
   std::vector<arma::rowvec> supAll;
   std::vector<double> wAll;
   std::vector<arma::mat> chainMeanDraws(nchains);   // per chain, for Gelman-Rubin
-  arma::mat lastPsi;             // final-sweep Psi of the last chain (objective)
+  arma::mat phiLast;            // final-sweep support of the last chain (objective)
   arma::vec wLast;              // final weights of the last chain
   int total = nBurn + nSamp;
 
@@ -117,7 +167,6 @@ void npbOuter(Environment e) {
     // (a) conditional likelihoods p(y_i | phi_k) and cluster assignments
     arma::mat psi;
     npBuildPsiCore(phi, cores, psi);   // nsub x K
-    lastPsi = psi;
     std::vector<int> nk(K, 0);
     for (int i = 0; i < nsub; ++i) {
       arma::rowvec p = psi.row(i) % w.t();
@@ -169,6 +218,20 @@ void npbOuter(Environment e) {
       }
       if (std::log(R::unif_rand()) < propLp - curLp) phi.row(k) = prop;
     }
+    // (c2) residual/regressor optimization (alternate): re-fit the residual thetas
+    // against the current draw's mixing distribution during burn-in, then hold them
+    // for the sampling phase so every collected draw shares the converged residual
+    // scale.  Chain 0 only; later chains inherit the fitted residuals.  Bracketed by
+    // Put/GetRNGstate because npOptimizeResid calls back into R (bobyqa).
+    if (hasResidOpt && residMode == 1 && chain == 0 && it > 0 && it < nBurn &&
+        (it % residEvery == 0)) {
+      arma::mat rsup; arma::vec rwt;
+      npbCompactSupport(phi, w, rsup, rwt);
+      PutRNGstate();
+      npOptimizeResid(rsup, rwt, residOptIdx, residOptKind, cores,
+                      residOptLower, residOptUpper, residFreeze);
+      GetRNGstate();
+    }
     // (d) accumulate post-burn-in draws
     if (it >= nBurn) {
       if (mixOpt && nMix > 1) {
@@ -186,7 +249,17 @@ void npbOuter(Environment e) {
   PutRNGstate();
   chainMeanDraws[chain] = chainMd;
   wLast = w;
+  phiLast = phi;
   } // end chain loop
+
+  // residual/regressor optimization (final): fit once at the converged draw.
+  // (alternate mode has already converged the residuals during burn-in.)
+  if (hasResidOpt && residMode == 2) {
+    arma::mat rsup; arma::vec rwt;
+    npbCompactSupport(phiLast, wLast, rsup, rwt);
+    npOptimizeResid(rsup, rwt, residOptIdx, residOptKind, cores,
+                    residOptLower, residOptUpper, residFreeze);
+  }
 
   arma::vec rhat = npbGelmanRubin(chainMeanDraws);
   arma::mat postEta = postEtaAcc / ((double)nchains * nSamp);
@@ -202,10 +275,13 @@ void npbOuter(Environment e) {
     if (wsum > 0.0) weights /= wsum;
   }
 
-  // nonparametric marginal log-likelihood at the final draw (last chain)
+  // nonparametric marginal log-likelihood at the final draw (last chain), rebuilt
+  // AFTER any residual optimization so it reflects the installed residual thetas.
+  arma::mat finalPsi;
+  npBuildPsiCore(phiLast, cores, finalPsi);
   double objf = 0.0;
   for (int i = 0; i < nsub; ++i) {
-    double s = arma::accu(lastPsi.row(i) % wLast.t());
+    double s = arma::accu(finalPsi.row(i) % wLast.t());
     objf += std::log(std::max(1e-300, s));
   }
 

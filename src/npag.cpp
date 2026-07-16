@@ -64,12 +64,12 @@ namespace {
 // is flat/degenerate outside the valid region (e.g. a negative SD), and an
 // unbounded optimizer can wander there.  Leaves fullTheta at the optimum,
 // returns the -2LL (R_NegInf if bobyqa fails, with the thetas left at start).
-static double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
-                              const std::vector<int>& idx,
-                              const std::vector<int>& kind, int cores,
-                              const std::vector<double>& lower,
-                              const std::vector<double>& upper,
-                              bool freeze) {
+double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
+                       const std::vector<int>& idx,
+                       const std::vector<int>& kind, int cores,
+                       const std::vector<double>& lower,
+                       const std::vector<double>& upper,
+                       bool freeze) {
   int n = (int)idx.size();
   if (n == 0) return R_NegInf;
   gNpSupport = &support; gNpWeights = &weights;

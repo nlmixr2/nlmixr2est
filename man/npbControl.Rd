@@ -12,6 +12,7 @@ npbControl(
   nchains = 1L,
   propSd = 0.2,
   seed = 42L,
+  residOptimize = c("alternate", "final", "none"),
   cycles = 100L,
   gammaOptimize = FALSE,
   muExpand = FALSE,
@@ -34,6 +35,18 @@ reported when \code{nchains > 1}).}
 the support-point locations (eta space).}
 
 \item{seed}{Random seed for the sampler.}
+
+\item{residOptimize}{How to estimate the residual-error thetas (every endpoint's
+`add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) and any non-mu
+structural "regressor" theta, with the sampled mixing distribution held fixed,
+using the bounded `bobyqa` on the nonparametric -2LL.  \code{"alternate"}
+(default) re-fits them during burn-in and then holds them fixed for the sampling
+phase (so every collected draw shares the converged residual scale);
+\code{"final"} holds them at their initial values through sampling and fits once
+at the converged draw; \code{"none"} holds them at their initial values
+throughout.  Fixed residual parameters are always held.  Unlike npag, npb does
+not optimize the assay-error multiplier (gamma); the residual thetas are fit
+directly.}
 
 \item{cycles}{Unused for npb (kept for control compatibility).}
 

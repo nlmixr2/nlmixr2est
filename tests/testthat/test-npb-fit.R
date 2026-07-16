@@ -56,4 +56,33 @@ nmTest({
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
   })
+
+  test_that("est='npb' does the residual/regressor optimization (like npag)", {
+    # tke has no eta and is not mu-referenced -> a "regressor" the residual step
+    # re-solves the ODE for; add.sd is a residual-error param.  Both are held under
+    # residOptimize="none" and estimated under "alternate".
+    .rMod <- function() {
+      ini({ tka <- log(1.5); tv <- log(32); tke <- log(0.03)   # truth ~ log(0.08)
+        eta.ka ~ 0.3; eta.v ~ 0.1; add.sd <- 0.4 })
+      model({ ka <- exp(tka + eta.ka); v <- exp(tv + eta.v); ke <- exp(tke)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .fit <- function(mode)
+      nlmixr2(.rMod, nlmixr2data::theo_sd, est = "npb",
+              control = npbControl(points = 30L, burnin = 40L, nsamp = 30L,
+                                   residOptimize = mode, seed = 1L))
+    fNone <- .fit("none")
+    fAlt  <- .fit("alternate")
+    # "none" holds the regressor and the residual param at their initial values
+    expect_equal(as.numeric(fNone$theta[["tke"]]), log(0.03), tolerance = 1e-6)
+    expect_equal(as.numeric(fNone$theta[["add.sd"]]), 0.4, tolerance = 1e-6)
+    # "alternate" recovers the structural regressor from its poor start (log 0.03 ->
+    # near the log(0.08) truth) and moves the residual param off its start
+    expect_true(as.numeric(fAlt$theta[["tke"]]) > log(0.03) + 0.5)
+    expect_lt(abs(as.numeric(fAlt$theta[["tke"]]) - log(0.08)), 0.4)
+    expect_false(isTRUE(all.equal(as.numeric(fAlt$theta[["add.sd"]]), 0.4)))
+  })
 })
