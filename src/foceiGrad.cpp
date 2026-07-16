@@ -304,44 +304,54 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
       Nsg(l, k) = s;
     }
   // dHt/d(direction s) (moving mode s=eta and explicit theta columns)
+  // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pfrf*a(s) + pfRR*aR(s);
+  // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s).
+  // The f-partial of dfr is pfrf, not pffR -- they differ for the Gauss-Newton
+  // determinant, where dfr is identically zero (see censGradCoefs).
+  // These are indexed (o, s) only, so compute them once per s instead of inside the l/m
+  // loops, which recomputed them neta^2 times per (s, o).  The sum over o is untouched, so
+  // the result is bit-identical.
   std::vector<mat> dHtD(ndir);
+  vec ddff(nobs), ddfr(nobs), ddrr(nobs);
   for (int s = 0; s < ndir; s++) {
+    for (int o = 0; o < nobs; o++) {
+      ddff[o] = pfff[o] * a(o, s) + pffR[o] * aR(o, s);
+      ddfr[o] = pfrf[o] * a(o, s) + pfRR[o] * aR(o, s);
+      ddrr[o] = pfRR[o] * a(o, s) + pRRR[o] * aR(o, s);
+    }
     mat D(neta, neta, fill::zeros);
     for (int l = 0; l < neta; l++)
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
         for (int o = 0; o < nobs; o++) {
-          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pfrf*a(s) + pfRR*aR(s);
-          // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s).
-          // The f-partial of dfr is pfrf, not pffR -- they differ for the Gauss-Newton
-          // determinant, where dfr is identically zero (see censGradCoefs).
-          double ddff = pfff[o] * a(o, s) + pffR[o] * aR(o, s);
-          double ddfr = pfrf[o] * a(o, s) + pfRR[o] * aR(o, s);
-          double ddrr = pfRR[o] * a(o, s) + pRRR[o] * aR(o, s);
-          v += ddff * a(o, l) * a(o, m) + dff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
-            ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
+          v += ddff[o] * a(o, l) * a(o, m) + dff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
+            ddfr[o] * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
             dfr[o] * (A(o, l, s) * aR(o, m) + a(o, l) * AR(o, m, s) + AR(o, l, s) * a(o, m) + aR(o, l) * A(o, m, s)) +
-            ddrr * aR(o, l) * aR(o, m) + drr[o] * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s));
+            ddrr[o] * aR(o, l) * aR(o, m) + drr[o] * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s));
         }
         D(l, m) = v;
       }
     dHtD[s] = D;
   }
   // dHt/dsigma_k (df/dsigma=0)
+  // sigma moves R only: d(dff)/dsig = pffR*Rsig, d(dfr)/dsig = pfRR*Rsig,
+  // d(drr)/dsig = pRRR*Rsig; aR moves via RsigDir, a is fixed.  As in dHtD these are
+  // indexed (o, k) only, so compute them once per k -- bit-identical, the o sum is untouched.
   std::vector<mat> dHtSg(nsg);
+  vec sdff(nobs), sdfr(nobs), sdrr(nobs);
   for (int k = 0; k < nsg; k++) {
     int c = sigCol[k] - 1; mat D(neta, neta, fill::zeros);
+    for (int o = 0; o < nobs; o++) {
+      sdff[o] = pffR[o] * Rsig(o, c); sdfr[o] = pfRR[o] * Rsig(o, c); sdrr[o] = pRRR[o] * Rsig(o, c);
+    }
     for (int l = 0; l < neta; l++)
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
         for (int o = 0; o < nobs; o++) {
-          // sigma moves R only: d(dff)/dsig = pffR*Rsig, d(dfr)/dsig = pfRR*Rsig,
-          // d(drr)/dsig = pRRR*Rsig; aR moves via RsigDir, a is fixed.
-          double ddff = pffR[o] * Rsig(o, c), ddfr = pfRR[o] * Rsig(o, c), ddrr = pRRR[o] * Rsig(o, c);
-          v += ddff * a(o, l) * a(o, m) +
-            ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
+          v += sdff[o] * a(o, l) * a(o, m) +
+            sdfr[o] * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
             dfr[o] * (a(o, l) * RsigDir(o, m, c) + RsigDir(o, l, c) * a(o, m)) +
-            ddrr * aR(o, l) * aR(o, m) + drr[o] * (RsigDir(o, l, c) * aR(o, m) + aR(o, l) * RsigDir(o, m, c));
+            sdrr[o] * aR(o, l) * aR(o, m) + drr[o] * (RsigDir(o, l, c) * aR(o, m) + aR(o, l) * RsigDir(o, m, c));
         }
         D(l, m) = v;
       }
