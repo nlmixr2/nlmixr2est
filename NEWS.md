@@ -2,6 +2,16 @@
 
 ## New features
 
+- The nlm parameter-history machinery can now be driven by an external
+  optimizer.  `nlmerSolveGrad()` gains a `record` argument that logs the
+  evaluation's population parameter estimate (the per-subject mean of the
+  `phi` columns) into the resident scale, and `nlmGetParHist()` is now
+  exported so an externally-optimized engine (e.g. `babelmixr2`'s nlmer,
+  driven by `lme4::nlmer`) can recover the accumulated parameter history
+  before `.nlmFreeEnv()`.  A new optional `showOfv` field in the nlm solve
+  control hides the objective column for these engines (they record
+  parameters only).
+
 ### New estimation methods
 
 - `est = "advi"` (`adviControl()`): automatic differentiation variational

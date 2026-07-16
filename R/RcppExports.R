@@ -319,11 +319,21 @@ nlmSolveR <- function(theta) {
 #' @details This is an internal function and should not be called
 #'   directly.
 #'
+#' @param record When \code{TRUE}, record this evaluation's population
+#'   parameter estimate -- the per-subject mean of \code{thetaMat}'s columns
+#'   (\code{phi = beta + b} averaged over subjects, which equals the fixed
+#'   effect exactly for parameters without a random effect) -- into the
+#'   resident nlm parameter history via the shared scale machinery.  This is
+#'   how an external optimizer (e.g. \code{lme4::nlmer}) populates the
+#'   iteration print and the history recovered by \code{nlmGetParHist()}.  No
+#'   objective value is recorded (the scale's \code{showOfv} is expected to be
+#'   0 for these engines).  Defaults to \code{FALSE}.
+#'
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-nlmerSolveGrad <- function(thetaMat) {
-    .Call(`_nlmixr2est_nlmerSolveGrad`, thetaMat)
+nlmerSolveGrad <- function(thetaMat, record = FALSE) {
+    .Call(`_nlmixr2est_nlmerSolveGrad`, thetaMat, record)
 }
 
 nlmSetScaleC <- function(scaleC) {
@@ -370,6 +380,25 @@ nlmCensInfo <- function() {
     .Call(`_nlmixr2est_nlmCensInfo`)
 }
 
+#' Recover and finalize the resident nlm parameter history
+#'
+#' Returns the parameter history accumulated in the resident nlm scaling
+#' struct (one row per iteration type per recorded evaluation) as a data
+#' frame, and stops further recording/printing (\code{save} and \code{every}
+#' are reset to 0).  Must be called while \code{.nlmSetupEnv()} is still
+#' loaded -- i.e. before \code{.nlmFreeEnv()}.  Used by \code{.nlmFinalizeList}
+#' for the standard nlm-family estimators and directly by externally-optimized
+#' engines such as \code{babelmixr2}'s nlmer.
+#'
+#' @param p When \code{TRUE} (default) also print the final iteration line.
+#'
+#' @return A data frame of the recorded parameter history.
+#'
+#' @details This is an internal function and should not be called directly.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 nlmGetParHist <- function(p = TRUE) {
     .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
