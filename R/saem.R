@@ -266,6 +266,10 @@
     # at their defaults ("classic"/"eta"), so no behavior change here.
     .cfg$sharedInner <- rxode2::rxGetControl(ui, "sharedInner", "classic")
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "eta")
+    # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
+    # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
+    # for normal models too, not just general-likelihood.
+    .cfg$nonMuThetaRegress <- as.integer(identical(.cfg$nonMuTheta, "regress"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
