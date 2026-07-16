@@ -357,6 +357,7 @@ void npagOuter(Environment e) {
     impSetOmega(omModel, impDiagXform());
   }
   ctl.omModel = omModel;
+  impUpdateMixProbs();          // populate mixProb from the mix() proportion thetas (npag skips updateTheta)
   impIterPrintStart();          // shared scale.h iteration printer + parHist
   npagResult r;
   try {

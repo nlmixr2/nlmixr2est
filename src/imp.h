@@ -90,6 +90,7 @@ void impIterPrintGet(Rcpp::Environment e);       // closing rule + stash e$parHi
 // ---- mixture (sub-population) support ----
 int impNmix();                                     // number of components (1 if none)
 double impMixProb(int j);                          // population proportion of component j (0-based)
+void impUpdateMixProbs();                          // recompute mixProb from the mix() proportion thetas (npag/npb setup)
 void impSetMixThetas(const arma::vec& theta);      // install absolute $MIX thetas (mean-posterior EM) + recompute proportions
 
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
