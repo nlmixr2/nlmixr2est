@@ -305,7 +305,8 @@ nlmeControl <- nlmixr2NlmeControl
 #' @param ui rxode2 ui
 #' @return non mu referenced names
 #' @author Matthew L. Fidler
-#' @noRd
+#' @export
+#' @keywords internal
 .nlmeGetNonMuRefNames <- function(names, ui) {
   .muRef <- ui$muRefDataFrame
   vapply(names, function(n) {

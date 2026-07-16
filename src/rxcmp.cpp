@@ -10,6 +10,18 @@ extern "C" SEXP _rxode2version4(SEXP v4) {
   return R_NilValue;
 }
 
+//' Get the ODE states of a model (rxode2 v3/v4 compatible)
+//'
+//' Calls \code{rxode2::rxState()} (or \code{rxode2::rxStateOde()} with
+//' rxode2 version 4) on the input.
+//'
+//' @param inp rxode2 model (or symengine environment) to query
+//'
+//' @return character vector of ODE state names
+//'
+//' @author Matthew L. Fidler
+//' @keywords internal
+//' @export
 //[[Rcpp::export]]
 SEXP rxode2stateOde(SEXP inp) {
   // This is a work-round to allow rxode2 3 and rxode 4 to both work

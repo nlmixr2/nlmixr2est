@@ -479,6 +479,18 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+#' Get the ODE states of a model (rxode2 v3/v4 compatible)
+#'
+#' Calls \code{rxode2::rxState()} (or \code{rxode2::rxStateOde()} with
+#' rxode2 version 4) on the input.
+#'
+#' @param inp rxode2 model (or symengine environment) to query
+#'
+#' @return character vector of ODE state names
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
