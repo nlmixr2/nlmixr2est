@@ -246,6 +246,10 @@
   covariate-bearing mu-parameters back-transform (`exp`) instead of printing on
   the raw log scale.
 
+- `est = "vae"` no longer errors with `cannot find parameter 'NA'` when a
+  structural (mu-referenced) parameter is fixed with `fix()`; its random effect
+  is kept (variance estimated) with the fixed value carried in the model.
+
 ### Data handling
 
 - SAEM no longer errors with `No data with ID` for a dose-only subject;

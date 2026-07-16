@@ -23,6 +23,10 @@
 
   ## 1. inject covariate terms into each parameter's model line
   for (k in seq_along(thetaNames)) {
+    ## a free/fixed eta (thetaForEta == NA: literalFix-ed or non-mu-referenced)
+    ## has no structural theta to attach a covariate to and is excluded from
+    ## covariate selection -- skip it (its structure is already in the model)
+    if (is.na(thetaNames[k])) next
     sel <- if (is.null(fit$selected)) integer(0) else which(fit$selected[k, ])
     if (length(sel) == 0L) next
     thName <- thetaNames[k]
@@ -54,7 +58,11 @@
   ## 2. set ini() estimates to the VAE solution
   .setIni <- function(u, expr) do.call(rxode2::ini, list(u, str2lang(expr)))
   for (k in seq_along(thetaNames)) {
-    ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
+    ## a free/fixed eta has no structural theta (thetaForEta == NA) -- its
+    ## population location is already a literal in the model, so only set omega
+    if (!is.na(thetaNames[k])) {
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
+    }
     ui2 <- .setIni(ui2, paste0(fit$prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
   }
   for (bn in names(betaVals)) ui2 <- .setIni(ui2, paste0(bn, " <- ", signif(betaVals[[bn]], 12)))
