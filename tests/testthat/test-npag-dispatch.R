@@ -51,7 +51,7 @@ test_that("mu sugar methods are flagged as mu-referenced", {
   }
 })
 
-test_that("npb rejects generalized (non-normal) likelihoods; npag supports them", {
+test_that("npag and npb both allow generalized (non-normal) likelihoods", {
   pois <- function() {
     ini({ tlam <- log(2); eta.lam ~ 0.1 })
     model({ lam <- exp(tlam + eta.lam); y ~ pois(lam) })
@@ -60,9 +60,8 @@ test_that("npb rejects generalized (non-normal) likelihoods; npag supports them"
     ini({ tv <- log(32); add.sd <- 0.7; eta.v ~ 0.1 })
     model({ v <- exp(tv + eta.v); cp <- v; cp ~ add(add.sd) })
   }
-  # npb (Gibbs) still rejects a non-normal endpoint ...
-  expect_error(.npAssertNormal(rxode2::assertRxUi(pois), "npb"), "generalized")
-  expect_error(.npAssertNormal(rxode2::assertRxUi(norm), "npb"), NA)   # normal ok
-  # ... but npag now supports generalized / ll() likelihoods (no error)
-  expect_error(.npAssertNormal(rxode2::assertRxUi(pois), "npag"), NA)
+  # the general-likelihood detector (which drives e.g. gamma-off) recognizes a
+  # non-normal endpoint; neither engine rejects it -- both sum the inner llikObs.
+  expect_true(nlmixr2est:::.npIsGeneralLik(rxode2::assertRxUi(pois)))
+  expect_false(nlmixr2est:::.npIsGeneralLik(rxode2::assertRxUi(norm)))
 })

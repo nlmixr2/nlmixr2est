@@ -33,10 +33,14 @@ nmTest({
     expect_true(isTRUE(f$control$npResidFreeze))
   })
 
-  test_that("est='npb' still rejects a generalized likelihood", {
-    expect_error(
-      nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npb",
-              control = npbControl(points = 10L, burnin = 5L, nsamp = 5L)),
-      "does not support generalized")
+  test_that("est='npb' also fits a generalized (Student-t) likelihood", {
+    # npb sums the same per-observation llikObs as npag, so the Gibbs sweep handles
+    # a non-normal endpoint too (it just samples the mixing distribution rather than
+    # optimizing an err-tagged likelihood parameter).
+    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npb",
+                 control = npbControl(points = 20L, burnin = 15L, nsamp = 15L, seed = 1L))
+    expect_s3_class(f, "nlmixr2FitData")
+    expect_true(is.finite(as.numeric(f$objf)))
+    expect_equal(ncol(f$env$npbSupport), 2L)   # eta.ka, eta.v support dimensions
   })
 })

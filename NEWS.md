@@ -48,8 +48,9 @@
   non-err parameter ever enters the optimized set the step re-solves instead.  gamma
   is forced off (a non-normal endpoint has r == 1).  A non-mu-referenced structural
   fixed-effect parameter cannot be placed on the grid and is held at its initial
-  value, reported in the fit's `$runInfo`.  `est="npb"` still rejects non-normal
-  endpoints.
+  value, reported in the fit's `$runInfo`.  `est="npb"` handles non-normal endpoints
+  too (the Gibbs sweep sums the same llikObs) -- it samples the mixing distribution
+  but does not optimize an err-tagged likelihood parameter.
 
 - `est="npag"` and `est="npb"` now support mixture (sub-population) `mix()` models.
   Each subject is split into per-component pseudo-subjects and the conditional

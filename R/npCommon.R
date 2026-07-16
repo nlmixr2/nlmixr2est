@@ -22,20 +22,6 @@
   !is.null(.dist) && length(.dist) > 0L && any(as.character(.dist) != "norm")
 }
 
-#' Reject generalized (non-normal) likelihoods for the npb (Bayesian) engine.
-#' npag supports them (the objective is the summed llikObs); npb's stick-breaking
-#' Gibbs sampler is not yet validated on non-normal endpoints, so it errors.
-#' @noRd
-.npAssertNormal <- function(ui, est) {
-  if (grepl("npb", est, fixed = TRUE) && .npIsGeneralLik(ui)) {
-    stop("the '", est, "' estimation routine does not support generalized ",
-         "(non-normal) likelihoods; only normally-distributed endpoints -- ",
-         "optionally with censoring (BLQ/ALQ) or transform-both-sides -- are ",
-         "supported (use est=\"npag\")", call. = FALSE)
-  }
-  invisible()
-}
-
 # Auto initial-grid size when the user does not supply `points`.  Floors at 2028
 # (the Pmetrics NPAG default, which covers a low-dimensional model well) and grows
 # 512 points per support-point dimension (eta) beyond that, so a high-dimensional
@@ -51,7 +37,9 @@
 .npEstCore <- function(env, est, muModel = NULL, ...) {
   .ui <- env$ui
   .what <- paste0(" for the estimation routine '", est, "'")
-  .npAssertNormal(.ui, est)
+  # both npag and npb handle generalized (non-normal) / ll() endpoints: the
+  # conditional likelihood sums the inner per-observation llikObs (correct for any
+  # endpoint), which is all the npag grid and the npb Gibbs sweep need.
   if (!rxode2hasLlik()) {
     rxode2::assertRxUiTransformNormal(.ui, .what, .var.name = .ui$modelName)
   }
