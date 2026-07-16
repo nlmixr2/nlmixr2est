@@ -2,16 +2,17 @@
 
 ## New features
 
-- `saemControl(nonMuTheta="regress")` estimates population `theta` parameters that
-  have no associated random effect (the SAEM `phi0` fixed effects) by a bounded direct
-  optimization of the observation likelihood each iteration, keeping them as plain
-  regressors instead of stochastic `phi0` draws with a shrinking variance.  The
-  optimization uses robust coordinate descent within a local trust region, honoring each
-  theta's `ini`-block bounds, and holds `phi0` fixed (no stochastic sampling) once the
-  optimizer owns it.  On a simulated model with three no-eta thetas (`ka`, `V`, a Hill
-  power) this recovered them far more accurately than the default (e.g. the absorption
-  theta RMSE dropped ~16x) at some extra runtime.  Default remains `"eta"` (the historic
-  `phi0` handling); `"regress"` is opt-in.
+- SAEM now estimates population `theta` parameters that have no associated random
+  effect (the SAEM `phi0` fixed effects) by a bounded direct optimization of the
+  observation likelihood each iteration -- `saemControl(nonMuTheta="regress")`, now the
+  DEFAULT -- keeping them as plain directly-estimated regressors instead of stochastic
+  `phi0` draws with a shrinking variance.  The optimization uses robust coordinate
+  descent within a local trust region, honoring each theta's `ini`-block bounds, and
+  holds `phi0` fixed once the optimizer owns it.  On a simulated model with three no-eta
+  thetas (`ka`, `V`, a Hill power) this recovered them far more accurately than the old
+  handling (e.g. the absorption theta RMSE dropped ~16x), at some extra runtime (the
+  objective re-solves the ODE).  The previous behavior is available with
+  `saemControl(nonMuTheta="eta")`.
 
 - `est="npag"`/`est="npb"` now ESTIMATE a mixture (`mix()`) model's component structural
   parameters (e.g. a per-subpopulation clearance) instead of holding them at their

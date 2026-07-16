@@ -237,15 +237,20 @@
 #'     it is validated.
 #'
 #' @param nonMuTheta Controls how a population `theta` that is not
-#'   mu-referenced (does not appear linearly with an eta) is handled.
+#'   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
+#'   fixed effects) is estimated.
 #'
-#'   * `"eta"` (default): the historic SAEM treatment (the parameter is
-#'     carried through the phi structure).
+#'   * `"regress"` (default): keep the parameter as a plain directly-estimated
+#'     `theta` regressor.  Each iteration `phi0` is estimated by a bounded
+#'     direct optimization of the observation likelihood (robust coordinate
+#'     descent within a local trust region, honoring the `ini` bounds), held
+#'     fixed rather than drawn stochastically with a shrinking variance.  This
+#'     recovers population parameters that have no associated random effect
+#'     more accurately, at some extra runtime (the objective re-solves the
+#'     ODE).
 #'
-#'   * `"regress"`: keep the parameter as a plain `theta` regressor in the
-#'     translated model (as the mu-referenced FOCEI family does), rather
-#'     than folding it into the phi/eta structure.  Can improve stability
-#'     of population parameters that have no associated random effect.
+#'   * `"eta"`: the historic SAEM treatment (the parameter is carried through
+#'     the stochastic `phi0` block).
 #'
 #' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
 #'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
@@ -378,7 +383,7 @@ saemControl <- function(seed = 99,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         sharedInner = c("classic", "shared"),
-                        nonMuTheta = c("eta", "regress"),
+                        nonMuTheta = c("regress", "eta"),
                         censOption = c("gauss", "laplace"),
                         fast = FALSE,
                         fastKernel = c("firstN", "throughout", "additive"),
