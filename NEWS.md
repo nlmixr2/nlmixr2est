@@ -1,5 +1,7 @@
 # nlmixr2est (development version)
 
+## New features
+
 - SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
   event data keeps `DV` when the model references it (previously dropped, so the
   likelihood solve errored "parameter(s) required for solving: DV"); the
@@ -144,882 +146,254 @@
   parameter names and Jacobian-corrected; Omega and residual terms are
   untransformed so they pass through unchanged.
 
-- Fix `covMethod="analytic"` (the FOCEI default) silently dropping the Omega
-  block when it falls back to the finite-difference covariance: with
-  `covFull=TRUE` (the default) the full theta+sigma+Omega finite-difference
-  covariance is now installed on the fallback, matching the shape the analytic
-  covariance would have produced instead of a theta-only matrix.
+### New estimation methods
 
-- New function `formatMinWidth()` for shorter, more often non-scientific
-  `$parFixed` display; `$parFixed` is now built with data.frame operations
-  instead of environment side-effects (#346, #516)
+- `est = "advi"` (`adviControl()`): automatic differentiation variational
+  inference (Kucukelbir et al. 2017), mean-field or block full-rank family,
+  point-estimate or full-Bayes mode.  The variational gradient comes from the
+  FOCEi forward sensitivities and the whole optimization runs in one C++ call,
+  reproducibly and independent of the thread count.
 
-- Restored the `$parFixed` shrinkage coloring (green/red by magnitude) in the
-  printed fit; the `$parFixed` refactor changed the shrinkage marker from
-  `<value>%<` to `<value><`, which the print coloring no longer matched (so the
-  raw `<`/`>` markers leaked and high shrinkage was not flagged red)
+- `est = "impmap"` and `est = "imp"` (`impmapControl()` / `impControl()`):
+  importance-sampling EM in the style of NONMEM `METHOD=IMP`, with the E-step
+  proposal at each subject's MAP mode (`impmap`) or running conditional mean
+  (`imp`).  Supports mu-referenced, mixture, bounded and `fix()`ed models; the
+  reported objective is a FOCEi evaluation at the EM estimate.  Quasi-random
+  (Sobol) importance sampling (`qr=`, Leary & Dunlavey 2012) and SIR M-step
+  acceleration (`sir=`) are available and stay thread-count independent.
 
-- Fix `$parFixed` ignoring a user-specified `sigdig`/`ci` for fits with
-  literally-fixed parameters
+- `est = "qrpem"` (`qrpemControl()`): sugar for the impmap EM with `qr = TRUE`
+  and `sir = TRUE`.
 
-- In the mu-referenced estimation family (`mfocei`/`ifocei`, `mfoce`/`ifoce`,
-  `mfocep`/`ifocep`, `magq`/`iagq`, `mlaplace`/`ilaplace`), the
-  regression-updated mu thetas (population and covariate coefficients) now
-  appear as standard columns, in natural theta order, in the live iteration
-  print and in `fit$parHist`/`parHistData`; gradient rows record `NaN` for them
-  (shown as blank console cells) and the previous appended `|   mu|` row was
-  removed.
+- `est = "fsaem"` (`saemControl(fast = TRUE)`): fast SAEM (Karimi, Lavielle &
+  Moulines 2020) using a MAP-centered independent Metropolis-Hastings kernel in
+  the early iterations, with continuous single-endpoint and non-time-varying
+  mu-referenced covariate support (other models run standard SAEM).
 
-- SAEM no longer errors when the between-subject-variability covariance
-  (`Omega`) collapses to a non-positive-definite matrix mid-run.  It is now
-  projected to the nearest positive-definite matrix (with a one-time user-visible
-  warning recorded in `fit$runInfo`) instead of stopping with `inv_sympd():
-  matrix is singular or not positive definite`.
+- Mu-referenced FOCEI family: `mfocei`/`ifocei`, `mfoce`/`ifoce`,
+  `mfocep`/`ifocep`, `magq`/`iagq`, `mlaplace`/`ilaplace` (with matching
+  `*Control()` functions).  Mu-referenced population and covariate-coefficient
+  thetas are profiled out of the outer optimizer by an in-C++ OLS (`m*`) or
+  IRLS (`i*`) regression; bounded mu parameters are regression-updated with a
+  clamped step.  New `foceiControl()` options `muModel`, `muRefCovAlg`,
+  `muModelTol`, `muModelMaxCycles`, `muModelClampRetries`.
 
-- Fixed the `foceiControl(fast=TRUE)` analytic outer gradient for FOCEI models
-  whose residual variance depends on the prediction (`prop()`, `add()+prop()`,
-  `combined1`, `pow()`, `add()+pow()`).  The `(f,R)` determinant chain rule
-  aliased `d(dfr)/df` onto `pffR = d(dff)/dR`.  Those coincide only when the
-  determinant coefficients are second partials of a potential, which holds for
-  the exact censored Laplace determinant but not for the Gauss-Newton expected
-  information used on a normal observation: there `(dff,dfr,drr) = (1/R, 0,
-  0.5/R^2)`, so `d(dfr)/df = 0` while `d(dff)/dR = -1/R^2`.  The aliasing injected
-  a spurious `-a(s)/R^2 * (a_l*aR_m + aR_l*a_m)` term into `dHt/ddir`.  It is
-  proportional to `aR = dR/ddir`, so additive error, `lnorm`, transforms on an
-  additive endpoint, and every FOCE variant (frozen variance) were unaffected --
-  only FOCEI with a prediction-dependent variance was wrong, by 20% to 600%
-  depending on the error model.  The bad gradient made `foceif`/`mufoceif` stall
-  with `false convergence (8)` short of the `focei` optimum.  Verified exact
-  against Richardson-extrapolated central differences across `add`, `prop`,
-  `add+prop`, `combined1`, `pow`, `add+pow`, `lnorm`, `boxCox` and `yeoJohnson`.
+- `focep`/`mfocep`/`ifocep`: the `foce`/`mfoce`/`ifoce` methods with
+  `foce = "foce+"` forced.
 
-- The analytic-covariance augmented model now relies on `rxode2::rxOptExpr()`'s
-  own chunked (and `rxControl(cores=)`-parallel) optimization instead of a
-  hand-rolled line chunker.  Every `rxOptExpr()` call site (focei, nlm, nls,
-  saem, nlme, rpem and the analytic covariance) now passes the fit's
-  `rxControl(cores=)` through as `parallel=`, so the chunks are optimized with
-  the same thread setting the solves use.  Requires an rxode2 with chunked
-  `rxOptExpr()` (current rxode2 main).
+- `*f` convenience methods (`focef`, `foceif`, `focepf` and the mu/irls
+  variants): the base method with `foceiControl(fast = TRUE)` as the default.
 
-- Added `vaeCovariates()`, which returns the subject-level covariates that
-  `est = "vae"` would explore during automated covariate selection (name, type
-  and centering value), using the same discovery rules as the fit; `warn=FALSE`
-  silences the time-varying-covariate exclusion warning.  Exported so other
-  packages can inspect the search space without running an estimation.
+### FOCEI / FOCE
 
-- Added an automatic differentiation variational inference method
-  (`est = "advi"`, Kucukelbir et al. 2017) with `adviControl()`.  The variational
-  gradient is obtained from the FOCEi forward sensitivities (the inner
-  per-subject eta gradient and the outer theta-sensitivity score) rather than
-  automatic differentiation, and the whole optimization (the adaptive
-  step-size-scale search plus the stochastic-gradient-ascent loop) runs in a
-  single C++ call.  It supports mean-field and block full-rank variational families
-  (`adviFamily`), both a point-estimate (variational-EM, output comparable to
-  FOCEi/SAEM) and a full-Bayes (`pointEstimate=FALSE`, with a full-rank
-  variational posterior over the population parameters) mode,
-  mu-referenced and non-mu structural thetas plus residual error, multiple
-  endpoints and BLQ censoring (via the reused inner likelihood), the paper's
-  adaptive step-size with a step-size-scale search (`adaptEta`), and a warm-resume
-  API (`adviControl(resume=)`).  The reparameterization noise is drawn from a
-  counter-based stream keyed by the global iteration index, so a shorter run is a
-  bit-for-bit prefix of a longer one and results are independent of the thread
-  count.  The run prints the standard nlmixr2 iteration table (like `saem`/`vae`,
-  `adviControl(print=)`) with the step-size search and the main run shown as
-  labeled stages, and the walk is saved as standard `parHistData`
-  (`fit$parHist`).  The inner and theta-sensitivity models are set up once and
-  reused by the output step (no model re-build at finalize).
-  The per-subject ELBO and gradient are computed in parallel over subjects
-  (`rxControl(cores=)`); a serial id-ordered reduction keeps the result identical
-  for any thread count.
+- `foceiControl(fast = TRUE)`: analytic FOCEI/FOCE outer gradient from Almquist
+  (2015) sensitivity equations, solved for all subjects in one threaded rxode2
+  solve; out-of-scope models fall back to finite differences.  Covers censored
+  M2/M3/M4, an estimated boxCox/yeoJohnson lambda, `matExp()`/`indLin()`, foce+,
+  modeled dosing (`f()`/`lag()`/`rate()`/`dur()`), and mu-referenced covariate
+  reuse.  Under `fast` the outer optimizer defaults to `lbfgsb3c` and `mceta`
+  defaults to `-2` (Eq-48 warm-start of the next inner problem).
 
-- Added quasi-random (Sobol) importance sampling to the `imp`/`impmap`
-  estimation methods (QRPEM, Leary & Dunlavey PAGE 2012):
-  `impmapControl(qr = TRUE)` draws the E-step samples from a low-discrepancy
-  Sobol sequence mapped through the inverse normal CDF, so the E-step
-  integrals converge at O(1/N) instead of O(1/sqrt(N)) -- more accurate at the
-  same `isample` and a smoother objective trace.  `qrShift` controls the
-  Cranley-Patterson randomization of the point set and `qrRefresh` whether the
-  shift is redrawn each iteration (`FALSE` makes each EM iteration a
-  deterministic map).  The Monte-Carlo covariance (`impCov = TRUE`) uses the
-  quasi-random points too.  Results stay reproducible and thread-count
-  independent.
+- `covMethod = "analytic"` (folding in the old `covType`): exact analytic
+  observed-information covariance for FOCEI/FOCE matching NONMEM
+  `$COV MATRIX=R`, covering additive/proportional/combined error, censored
+  M2/M3/M4 (`censOption = "gauss"`), estimated lambda, foce+,
+  `matExp()`/`indLin()`, and mu-referenced/covariate parameters; out-of-scope
+  fits fall back to the finite-difference sandwich.
 
-- Added SIR (sampling-importance-resampling) acceleration for the
-  `imp`/`impmap` M-step: `impmapControl(sir = TRUE, sirSample = )` runs the
-  non-mu / residual-error Newton update on an equal-weight systematic resample
-  of the importance samples, cutting the theta-sensitivity solves from
-  `isample` to `sirSample` (default `max(25, ceiling(isample/10))`) per subject per
-  iteration.
+- `covFull = TRUE` (now the default) reports the full theta + residual + Omega
+  covariance for both the analytic and finite-difference methods, with Omega
+  rows named by the random effect (`om.eta.cl` / `cov.eta.cl.eta.v`).
+  `covMethod = "r,s"` is a true sandwich `solve(Rfull) %*% Sfull %*% solve(Rfull)`,
+  `"s"` is `solve(Sfull)`, `"r"` is `solve(Rfull)`; `covFull = FALSE` keeps the
+  theta-only shape.
 
-- Added `est = "qrpem"` with `qrpemControl()`, sugar for the impmap
-  importance-sampling EM with `qr = TRUE` and `sir = TRUE`.
+- `foceiControl(foce = c("nonmem", "foce+"))`: `"nonmem"` (default) freezes the
+  FOCE residual variance at the `eta = 0` prediction to match NONMEM; `"foce+"`
+  keeps the live conditional variance.
 
-- Fixed `impmapControl(impSeed = )` being ignored: the FOCEI solve setup reset
-  the ambient seed before the importance-sampling E-step, so every `impSeed`
-  produced the identical draw.  The E-step / covariance / QR-shift / SIR
-  streams now derive from `impSeed` directly, so a different `impSeed` gives a
-  different (but reproducible and thread-count-independent) importance sample.
+- `foceiControl(censOption = c("gauss", "laplace"))`: censored (M2/M3/M4/BLQ)
+  inner-Hessian treatment; `"gauss"` (default) matches common tools, `"laplace"`
+  uses the exact censored second derivative.
 
-- The `est = "vae"` training loop (variational-autoencoder NLME) now runs
-  entirely in C++ (`vaeTrainCpp_`): the burn-in / KL-anneal / EM / smoothing
-  schedule, the LSTM encoder forward/backward, the FOCEi inner-likelihood
-  evaluation, the closed-form M-step (including BICc-ELBO covariate selection),
-  Adam, and the iteration/parameter-history walk.  Each gradient step now
-  re-parameterizes the inner problem in place (`updateTheta`) instead of
-  re-running the full FOCEi setup (`rxSymInvCholCreate` + `foceiSetup_`) it did
-  every step in R, so VAE fits are substantially faster.
+- `foceiControl(warm = c("calc", "save"))`: `"calc"` (default) warm-starts each
+  `n1qn1` inner problem from the eta Hessian recalculated at the current theta.
 
-- The analytic FOCEI/FOCE outer gradient and observed-information covariance
-  (`foceiControl(fast = TRUE)` / `covType = "analytic"`) now build a smaller
-  augmented sensitivity model by reusing eta sensitivities for mu-referenced
-  covariate coefficients.  A covariate coefficient `b` enters through an eta's
-  parameter (`cl = exp(tcl + eta.cl + b*cov)`), so for a covariate that is
-  constant within each subject every sensitivity of `b` equals the linked eta's
-  scaled by the covariate value (`df/db = cov*df/deta`).  Those covariate
-  directions are therefore emitted as algebraic scaled copies instead of
-  integrating their own state-sensitivity ODEs, shrinking the compiled model
-  ~25-58% and cutting its (super-linear) build time ~1.3x-4x on larger covariate
-  models -- the result is bit-identical.  Detection reuses rxode2's own mu-reference
-  classification (`muRefCovariateDataFrame` + `mu2RefCovariateReplaceDataFrame`),
-  covers bare and algebraic (`log(WT/70)`, `WT-70`) covariates, and falls back to
-  the full symbolic build for anything the eta-scaling identity does not cover
-  (time-varying covariates, a shared/reused eta).  The analytic covariance also now
-  restricts itself to Gaussian endpoints (`t`/`cauchy`/count/ordinal likelihoods and
-  multiple estimated transform lambdas fall back to the finite-difference covariance).
-- Extended that reuse to a covariate on an **eta-less** parameter (`v = exp(tv + b*cov)`
-  with no `eta.v`): the coefficient now reuses the structural theta's own sensitivity
-  direction (`df/db = cov*df/dtv`, since `tv` and `b` enter the mu identically) instead
-  of building its own state-sensitivity ODEs.  Previously such a model errored inside the
-  direction map and silently fell back to the finite-difference covariance; it now stays
-  analytic for both the covariance and the fast outer gradient (matching finite differences),
-  and holds the integrated-direction count fixed regardless of how many covariates sit on
-  eta-less parameters (~1.3x fewer for one, ~2.6x for three).  A structural-theta
-  occurrence guard (shared with the eta guard) keeps the reuse exact.
-- Fixed the analytic (`fast=TRUE`) outer gradient and covariance being wrong for a
-  model where a mu-referenced parameter's random effect is shared across parameters
-  (e.g. `eta.cl` used in both `cl` and `v`).  The mu-referenced theta reused that eta's
-  state sensitivity, but `df/dtheta` (one parameter) differs from `df/deta` (all the
-  parameters the eta appears in), so the gradient/covariance for that theta was
-  incorrect.  Such a theta now gets its own true-sensitivity direction (the eta keeps
-  its own), so the gradient and covariance stay analytic and are correct.
-- Added a fast-SAEM (f-SAEM, Karimi, Lavielle and Moulines 2020) simulation
-  step: `saemControl()` gains `fast`/`fastKernel`/`fastCov`/`fastIter`/`fastLik`
-  options and a new `est = "fsaem"` method (sugar for `saemControl(fast =
-  TRUE)`).  When enabled, the early SAEM iterations replace the random-walk
-  Metropolis simulation with an independent Metropolis-Hastings kernel whose
-  Gaussian proposal is centered at each subject's conditional MAP (reusing the
-  FOCEi inner likelihood), which reaches the MLE in fewer iterations; later
-  iterations degrade to the standard kernels.  Supports continuous
-  single-endpoint models (additive, proportional or combined error), including
-  non-time-varying mu-referenced covariates (absorbed into the per-subject prior
-  mean of the inner); models outside this envelope (e.g. time-varying
-  covariates, mixtures) transparently run standard SAEM.
-- `saem` and `fsaem` now fit general log-likelihood endpoints (`ll(name) ~
-  <expr>`, e.g. Weibull/exponential time-to-event), in the style of `saemix`
-  likelihood models: the model returns the per-observation log-likelihood, the
-  simulation step uses it directly as the observation loss, and the population
-  parameters and between-subject variances are estimated by the standard SAEM
-  M-step (no separate residual error).  Fixed-effect-only parameters of such a
-  model are refined by a direct L-BFGS-B optimization of the observation
-  likelihood (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
-  `lbfgsMaxIter`, derived from `sigdig` like `foceiControl()`), respecting the
-  parameter bounds from the model.
-- The `fsaem` IMH kernel now draws its proposals from `rxode2`'s threefry engine
-  (seeded from the fit's `seed` plus the chain/subject index), so results are
-  reproducible regardless of the number of threads.  Proposals for a bounded
-  log-likelihood parameter are re-drawn up to `saemControl(nRetry = 10)` times
-  and then clamped to the violated boundary.  The whole `saem`/`fsaem` fit now
-  runs inside `rxode2::rxWithSeed()` so a session's first fit is seeded and fits
-  never contaminate each other's RNG state.
-- New estimation methods `est = "impmap"` and `est = "imp"`: importance-sampling
-  expectation-maximization in the style of NONMEM's `METHOD=IMP`, with the
-  E-step proposal centered at each subject's MAP mode (`impmap`) or at the
-  running conditional mean (`imp`, NONMEM `MAPITER=0`).  Options are set with
-  `impmapControl()` / `impControl()`, including the number of importance samples
-  (`isample`), maximum EM iterations (`nIter`), proposal scale adaptation
-  (`gamma`, `iscaleMin`, `iscaleMax`, `iaccept`), a NONMEM-style windowed
-  convergence test (`ctol`, `nConvWindow`), a reproducible thread-independent
-  sampling seed (`impSeed`), and an experimental Monte-Carlo covariance
-  (`impCov=TRUE`).  Mu-referenced models (including covariates), mixture models,
-  parameter bounds, and `fix()`ed thetas/omegas are supported; the reported
-  objective is a FOCEi evaluation at the EM estimates so fits are comparable
-  with the focei family.
-- The "initial ETAs were nudged" warning is now only raised when an ETA
-  actually stayed at zero and a nudge was performed, not merely when the nudge
-  check ran (which previously produced a spurious warning on well-behaved fits).
-- For a fully mu-referenced model (every eta mu-referenced, so the initial etas
-  are all zero) a user-specified non-default `foceiControl(mceta=)` now falls
-  back to the default (`mceta=-2`) with a warning, since the mceta
-  starting-point search has nothing to explore.
-- The reported fit timing (`fit$time`) again attributes the symengine model
-  build and rxode2 compilation to `setup` (focei family) / `configure` (saem)
-  instead of leaking it into the `other` bucket.  The nlm-family methods
-  (nlm/nlminb/bobyqa/newuoa/uobyqa/n1qn1/lbfgsb3c/optim/nls) now time their
-  preprocessing and EBE model build as `setup` and the model build + optimizer
-  as `optimize`, instead of leaving nearly all of it in `other`.
-- Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice, which made a
-  control round-trip (`do.call(nlmControl, ...)`) error with "formal argument
-  ... matched by multiple actual arguments".
-- `fast=TRUE` (and the `*f` methods) with a `linCmt()` model now downgrades to
-  `fast=FALSE` up front with a message instead of re-attempting the symengine
-  augmented-model build (and silently falling back to finite differences) on every
-  outer-gradient call; the analytic covariance likewise reports the `linCmt()`
-  fallback instead of failing silently.
-- Fixed a segfault in the analytic covariance step for models out of analytic scope
-  (e.g. models using `tad()`/`podo()`): building the augmented sensitivity model frees
-  the fit's global solve, and the finite-difference sandwich fallback then solved
-  against freed memory.  The freed solve is now restored before the fallback runs.
-- Iteration printing now labels the estimation phase on the back-transformed (`X`)
-  row: `est = "vae"` shows `Burn in`/`KL anneal`/`EM`/`Smooth` in the objective
-  column (with a key legend in the header), and `est = "saem"` tags the row
-  `SA: X` / `EM: X` for the burn-in and EM phases.
-- Fixed `muModel = "lin"`/`"irls"` erroring with "undefined columns selected" when a
-  model has two or more mu-referenced covariates that are expressions (e.g.
-  `log(WT/70)`) rather than bare data columns (#711).
-- `est = "vae"` now assembles its fit with `nlmixr2CreateOutputFromUi()` and computes
-  its covariance directly in the focei covariance step; `vaeControl(covMethod=)` now
-  takes the focei choices (`"analytic"` (default), `"r,s"`, `"r"`, `"s"`, `""`)
-  instead of `"linear"`.
-- Fixed the analytic (`fast=TRUE`) outer gradient never being used during live
-  optimization: the gradient hook read `omega`/`theta`/`etaObf` from the fit
-  environment, which are only written at finalize, so every call silently fell back
-  to finite differences.  The C++ hook now refreshes that state each gradient call;
-  the cached augmented-model metadata (`foceiModel$outerMeta`) carries all fields the
-  batched solve needs.
-- The mu-referenced families (`mfoceif`/`ifoceif`/...) now consume the analytic
-  gradient on the profiled (mu-reduced) parameter set; a gradient/parameter-set size
-  mismatch stops (never a silent FD fallback) and FD is only used when the
-  sensitivity system fails to solve (with a one-time warning).
-- The mu-referenced FOCEI families (`mfocei`/`ifocei`/...) now profile plain
-  (covariate-free) mu-referenced population thetas out of the outer optimizer via the
-  in-C++ regression as well (intercept-only groups), so outer gradients -- numeric or
-  analytic -- are only calculated for the non-mu-referenced parameters (residual
-  errors, omegas, non-mu thetas); user-fixed mu-referenced thetas remain
-  outer-optimized.  The regress/re-optimize cycle defaults were tightened
-  (`muModelTol` 1e-3 -> 1e-5, `muModelMaxCycles` 10 -> 20) so the profiled fits
-  converge to the same optimum as the base methods (usually faster, since the outer
-  optimizer sees a well-converged profiled objective).
-- Renamed the mu-referenced FOCEI-family estimation methods (all introduced in this
-  development version): the `irls*` methods are now `i*` (`ifocei`, `ifoce`, `ifocep`,
-  `iagq`, `ilaplace` and fast variants `ifoceif`/`ifocef`/`ifocepf`) and the `mu*`
-  methods are now `m*` (`mfocei`, `mfoce`, `mfocep`, `magq`, `mlaplace` and
-  `mfoceif`/`mfocef`/`mfocepf`), with matching control functions
-  (`ifoceiControl()`, `mfoceiControl()`, ...).  The old names are removed (they never
-  shipped in a release).
-- The analytic (`fast=TRUE`) outer gradient and `covMethod="analytic"` now handle
-  models whose residual-error parameters are all fixed.  Such a fit's outer problem is
-  omega-only (structural thetas mu-profiled, residuals fixed), and omegas do not enter
-  the ODE, so no model re-solve per parameter is needed; previously the analytic path
-  fell back to finite differences (re-solving the ODE for every omega step).  The
-  general (f,R) assembler now runs with no free residual direction, reading the (fixed)
-  variance from the solved `rx_r_`.
-- Bounded mu-referenced parameters (population thetas and covariate coefficients) are
-  now also profiled by the mu/irls regression in the clamped `m*`/`i*` family
-  (`mfocei`/`ifocei` and variants, `muModel != "none"`), with the update clamped to
-  the bounds (box-constrained least squares, `foceiControl(muModelClampRetries=)`);
-  parameters that were clamped during the fit are reported once as a fit note.  Every
-  other (non-clamped) method keeps the previous style: a bounded population theta
-  rejects its whole mu group (with a warning) and a bounded covariate coefficient
-  stays an ordinary outer-optimized parameter.
-- Fixed the mu-family regression's handling of a user-fixed covariate coefficient:
-  its (fixed) contribution was added into the regression target but never taken back
-  out, so each regression pass shifted the group's linear predictor by the fixed
-  term (biasing the population theta and inflating the eta variance).  The fixed
-  contribution is now left out of the regression entirely.
-- `fast=TRUE` now defaults the outer optimizer to `lbfgsb3c` (FD methods keep
-  `nlminb`); an explicit `outerOpt` is honored.
-- The iteration print and `$parHistData` track analytic gradients as their own type
-  (`A`/`"Analytic Gradient"`), and the fit header reports the gradient actually
-  used and the mu-model variant, e.g. `(outer: lbfgsb3c; grad: analytic; mu: irls)`.
-- `est = "vae"` iteration print now shows back-transformed (`X`) parameters (e.g.
-  `exp()` thetas) like focei/saem, drops the redundant unscaled (`U`) block (vae
-  never scales), and the development-time verbose print was removed.
-- Mixture models: parallel inner loops now solve mixture components strictly one at
-  a time (components share the physical subjects' data structures), parallelizing
-  over subjects within each component.
-- Fixed a segmentation fault in `est = "vae"`: the parallel inner-likelihood
-  loop now caps its thread count at the rxode2 solve's `op->cores` (1 for
-  models rxode2 flags not thread safe, e.g. `linCmt()` gradients), matching
-  the other FOCEi parallel loops.
-- SAEM no longer errors with `No data with ID: <id>` for a subject that has
-  a dose but no usable observation (e.g. all of its `DV` values are missing,
-  which `rxode2::etTrans()` converts to `EVID==2` records).  The shared
-  preprocessor (`.foceiPreProcessData()`) now drops any subject without an
-  observation -- emitting the same `IDs without observations dropped` message
-  `rxode2` already uses for dose-only subjects -- and the shared table builder
-  re-inserts those subjects' rows with a population `PRED` (solved at `eta = 0`)
-  and `NA` individual columns (`IPRED`, etas, residuals).  Every estimation
-  method now handles observation-less subjects the same way: the subject is
-  reported in `$runInfo` and appears in the output with a population prediction
-  and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
-  removed (#687).
-- Censored (M2/M3/M4/BLQ) observations now use the exact censored second derivative
-  for the FOCEI inner Laplace Hessian (`foceiControl(censOption = "laplace")`, the new
-  default); `censOption = "gauss"` keeps the historic uncensored Gauss-Newton curvature.
-- Added `foceiControl(censOption = ...)` to choose the censored (M2/M3/M4/BLQ)
-  second-derivative treatment.  `"gauss"` (the default) keeps the historic uncensored
-  Gauss-Newton curvature, matching common PMx tools; `"laplace"` uses the exact
-  censored second derivative for the inner Laplace Hessian and analytic covariance.
-  Non-censored fits are unchanged.  The option is accepted by `saemControl`/`nlmControl`
-  for a uniform interface but is inert there (SAEM has no Laplace inner Hessian; NLM uses a
-  finite-difference Hessian that already reflects censoring), so their censoring text stays
-  plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
+- `sensMethod` (nlm-family controls and `foceiControl()`): forward or in-engine
+  discrete adjoint (`"adjoint"`) ODE parameter sensitivities; `"default"` reads
+  `getOption("nlmixr2est.adjoint")`.
 
-- The mu-referenced FOCEI families (`mfocei`/`ifocei`/`mfoce`/`mfocep`/...) now
-  compute their covariance on the full corresponding `focei`/`foce`/`focep` model, at the
-  mu fit's converged theta and eta with the inner problem frozen (as if the full model had
-  produced that point), instead of the mu->phi reduced model used during estimation.  This
-  fixes incorrect standard errors on the mu-referenced/covariate ("linear") parameters (the
-  sandwich `covMethod="r,s"` was the most affected) and honors the requested `covMethod`.
+- Residual (error-model) parameters are now included in the focei-family
+  covariance (only fixed, IOV and mixture-probability thetas skip).
 
-- `covMethod="analytic"` now falls back to the finite-difference sandwich (`"r,s"`) when
-  the analytic covariance is unavailable for a model (e.g. `linCmt()`), instead of the
-  R-matrix (`"r"`) alone.
+- Mixture (`mix()`) support for `focei`/`foce`/`fo`/`foi`.
 
-- The analytic `fast` gradient and `covMethod="analytic"` now cover `matExp()` /
-  `indLin()` (matrix-exponential / inductive-linearization) models for FOCEI, FOCE,
-  and foce+ (and their mu/irls families), matching the equivalent ODE fit; an
-  `indLin()` forcing state no longer misorders compartments in the augmented model.
+### SAEM
 
-- The analytic `fast` outer gradient now covers foce+ (`focep`), matching the
-  finite-difference gradient (its live-conditional-R kernel was already used by the
-  analytic covariance).
+- `saemControl(covFull = TRUE)` (default): full theta + residual + Omega
+  covariance from the linearized FIM.  New `covMethod = "sa"`
+  (stochastic-approximation Fisher information, Kuhn & Lavielle 2005).
+  `parHistData` records off-diagonal Omega block covariances.
 
-- The analytic `fast` gradient now covers censored M2/M3/M4 observations for FOCEI
-  (both `censOption` values) and FOCE (default `censOption="gauss"`); the FOCE EBE is
-  re-solved with the exact censored score at the frozen variance.  The reported
-  censoring text notes the second-derivative treatment used (e.g. `"M3 censoring (laplace)"`).
+- `saem`/`fsaem` fit general log-likelihood endpoints (`ll(name) ~ <expr>`,
+  e.g. time-to-event); fixed-effect-only parameters are refined by bounded
+  L-BFGS-B (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
+  `lbfgsMaxIter`).
 
-- `covMethod="analytic"` now covers censored M2/M3/M4 observations for FOCEI and FOCE
-  with the default `censOption="gauss"` (censored score partials with the Gauss-Newton
-  determinant, and a censoring-aware FOCE EBE re-solve); `censOption="laplace"` still
-  uses the FD covariance.
+### matExp() / indLin()
 
-- Fixed the sign of the M2 (interval) upper-tail term in the censored inner
-  gradient, which had shifted M2 EBEs and objective values.
-
-- Added `foceiControl(fast = TRUE)` to compute the FOCEI outer (population)
-  gradient analytically from Almquist (2015) sensitivity equations instead of by
-  finite differences; out-of-scope models fall back to the finite-difference
-  gradient.  Under `fast`, the outer optimizer defaults to `"lbfgsb3c"`; pairing
-  it with a derivative-free `outerOpt` reverts to `fast = FALSE`.
-
-- The analytic `fast` outer gradient now solves every subject's augmented
-  sensitivity model in one OpenMP-threaded rxode2 population solve (for both the
-  FOCEI and FOCE families) instead of one R solve per subject, which previously
-  dominated the gradient cost.
-
-- The analytic `fast` outer gradient now supports a both-sides transform with an
-  estimated boxCox/yeoJohnson lambda: lambda enters as a prediction-sensitivity
-  direction plus the DV-transform residual chain and the transform Jacobian.
-
-- `covMethod="analytic"` now supports an estimated boxCox/yeoJohnson lambda for FOCEI,
-  FOCE, and foce+ (the observed-information carries the DV-transform 2nd-order chain).
-
-- Fixed the post-fit `foceiCovAnalytic()`/`getVarCov()` recompute falling back to the
-  finite-difference covariance for a general `(f,R)` variance (multi-endpoint /
-  non-add-prop / estimated-lambda transform): it now routes to the same general `(f,R)`
-  assembly as the live fit, reproducing the installed analytic covariance instead of
-  returning `NULL`.
-
-- Fixed the analytic FOCE/foce+ covariance silently falling back to the finite-difference
-  Hessian: the per-subject eta=0 solve list dropped its NULL foce+ slots (`list[[i]] <-
-  NULL` shrinks the list), so foce+ (and some FOCE) covariances went out of bounds.
-
-- Fixed the general `(f,R)` analytic covariance (multi-endpoint / non-add-prop variance /
-  both-sides transform) reporting `covMethod="r"` instead of `"analytic"`.
-
-- Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
-  `mfocef`, `mfocepf`, `mfoceif`, `ifocef`, `ifocepf`, `ifoceif` --
-  each equivalent to its base method with `foceiControl(fast = TRUE)` as the
-  default (the analytic outer gradient + Eq-48 warm-start).
-
-- The analytic gradient/covariance augmented model now carries modeled dosing
-  parameters (`f()`, `lag()`/`alag()`, `rate()`, `dur()`) and their second-order
-  dose-based ("jump") sensitivities via rxode2's `eventSens = "jump"`; previously
-  such models produced an incorrect (dose-unscaled) augmented solve.
-
-- The default outer optimizer (`foceiControl(outerOpt=)`) is now `"nlminb"` for
-  the finite-difference methods (and `"lbfgsb3c"` when `fast = TRUE`).
-
-- `foceiControl(mceta=)` now defaults to `-2`: when the analytic gradient supplies
-  the EBE sensitivity (`fast = TRUE`), the next inner-problem starting eta is the
-  Almquist (2015) Eq-48 extrapolation `eta* + (d eta*/d theta)(theta_new - theta_old)`,
-  accepted only within the standardized-eta reset bound (else the last eta, or 0
-  when that is also out of bound).  `mceta = -1` jumps between the extrapolation and
-  eta=0.  Both fall back to keeping the last eta when no analytic sensitivity is
-  available (`fast = FALSE`), so the default is behavior-preserving there.
-
-- The analytic covariance (`covMethod = "analytic"`) now supports `foce = "foce+"`
-  (the live conditional residual variance), including the `focep` method; previously
-  it fell back to the finite-difference covariance.
-
-- The FOCEI `covType` control was removed; the analytic-vs-finite-difference R-matrix
-  choice is now part of `foceiControl(covMethod = c("analytic", "r,s", "r", "s", ""))`,
-  with `"analytic"` (the exact observed-information R-matrix) the default.
-
-- `foceiControl(covSolveTol=)` now also tightens the ODE solves behind the
-  finite-difference covariance methods (previously it only applied to the analytic
-  augmented-sensitivity solves).
-
-- The SAEM iteration history (`parHistData`) now records the off-diagonal `Omega`
-  covariances of declared blocks (`cov.<eta>.<eta>`), alongside the existing diagonal
-  variances and residual parameters.
-
-- SAEM now reports a full theta + residual + Omega covariance by default
-  (`saemControl(covFull = TRUE)`): the linearized-FIM (`covMethod = "linFim"`) variance block
-  (Omega variances/covariances and residual error parameters) is added to the structural-theta
-  block, Omega rows named by the random effect (`om.eta.cl` / `cov.eta.cl.eta.v`), and the
-  residual SEs are surfaced in the parameter table.  `covFull = FALSE` keeps the legacy
-  structural-theta-only covariance.
-
-- Added `saemControl(covMethod = "sa")`, a stochastic-approximation Fisher Information
-  covariance (Kuhn & Lavielle 2005, as used by Monolix): a dedicated post-estimation phase
-  (`nSaCov` iterations) holds the parameters at the converged estimate and Monte-Carlo
-  averages the Louis observed-information into a converged full theta + Omega + residual
-  covariance.
-
-- Fixed `covMethod = "fim"`: the SAEM Fisher information omitted the deterministic mu-block
-  complete Hessian, leaving its fixed-effect block indefinite (`fim` produced NaN standard
-  errors).  The mu Fisher information is now added, so `fim` inverts to a valid positive
-  definite full theta + Omega + residual covariance.
-
-- `covMethod = "fim"`/`"sa"` now report off-diagonal `Omega` covariances and
-  proportional/combined residual standard errors by splicing them from the linearized-FIM
-  variance block (the analytic simulation FIM keeps the structural-theta block).
-
-- The analytic covariance now reports `fit$covMethod` as `"analytic"` (instead of `"r"`),
-  and its Omega variance/covariance rows are named by the random effect -- `om.eta.cl` /
-  `cov.eta.cl.eta.v` -- rather than by the mu-referenced theta (`om.tcl`).
-
-- Residual (error-model) parameters are now part of the focei-family covariance: their
-  standard errors are estimated alongside the structural thetas (`skipCov` no longer skips
-  them; only fixed, IOV, and mlogit-scale mixture-probability thetas are skipped).
-
-- `foceiCovAnalytic()` now caches its result on the fit and installs the covariance as
-  `fit$cov`, so repeated calls and `getVarCov()` reuse it instead of recomputing the
-  augmented sensitivity solve every time.
-
-- Added the `focep`, `mfocep`, and `ifocep` estimation methods -- the `foce`,
-  `mfoce`, and `ifoce` methods with `foce = "foce+"` forced (the live conditional
-  residual variance R).
-
-- Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE evaluates the
-  residual variance R: `"nonmem"` (new default) freezes R at the `eta = 0` population
-  prediction to match NONMEM FOCE, while `"foce+"` keeps the live conditional R (the FOCE
-  behavior in nlmixr2est 6.0.1 and earlier), which can be slightly more accurate but does
-  not match NONMEM and falls back to the finite-difference covariance under
-  `covType = "analytic"`.
-
-- Added `foceiControl(covType = "analytic")`, an exact analytic observed-information
-  covariance for FOCEI and FOCE fits.  The R-matrix is assembled in closed form -- a data
-  term from the analytic 2nd-order sensitivities (rxode2 `.rxSens`) and a log-determinant
-  term whose 3rd-order tensor is recovered by Shi (2021) central differences of those
-  sensitivities (keeping the augmented ODE at O(ndir^2)) -- matching NONMEM
-  `$COV MATRIX=R`.  It is computed while the optimizer is live and covers additive,
-  proportional, and combined error, and mu-referenced, covariate, and other
-  non-mu-referenced structural parameters (and non-mu-referenced etas) as well as
-  SD-scale inter-occasion variability; any fit outside its scope (FO, `nAGQ > 1`,
-  censoring, DV-transformed error, bounded-parameter transforms, a structural theta
-  shared by two etas, or a non-SD `iovXform` -- and a pure-proportional variance that
-  vanishes at a near-zero prediction) emits a message and falls back to the
-  finite-difference Hessian.  FOCE (interaction off) uses the general total-derivative
-  Hessian and re-solves the FOCE empirical-Bayes estimates to the FOCE inner stationarity
-  before assembly (FOCE reduces to the FOCEI result for additive error).  It defaults to
-  `covMethod = "r"` (the observed-information inverse); an explicit `covMethod = "r,s"` or
-  `"s"` is honored, with the analytic R feeding the native finite-difference sandwich /
-  S-matrix.  `covFull` chooses the `"r"` `fit$cov` shape: the structural-theta block
-  (default, matching the finite-difference shape) or the full theta + residual sigma +
-  Omega matrix, which adds the Omega/residual SEs the `"r"` matrix does not provide (via
-  rxode2's `rxOmegaVarCovDeriv`).  The augmented-solve tolerance is derived from `sigdig`
-  (override with `covSolveTol`).  The default remains `covType = "fd"`.
-
-- `covFull = TRUE` now also works with `covType = "fd"`: the full theta + residual sigma +
-  Omega covariance is computed by central finite differences of the objective over the same
-  parameter set the analytic engine uses, at the finite-difference covariance seam.  The
-  Omega block is perturbed on the variance-covariance scale directly (natural scale, no
-  Cholesky Jacobian).  It reuses the same infrastructure as the theta-only `foceiCalcR`:
-  the per-parameter step is chosen by the Gill-Murray-Saunders-Wright (1983) optimal
-  finite-difference-interval routine (`gill83`), and the Hessian uses the 5-point diagonal /
-  4-point off-diagonal stencils, so the multi-random-effect Hessian stays positive-definite.
-  It matches the analytic covariance (and NONMEM `$COV MATRIX=R`) to finite-difference
-  tolerance, handles IOV (the occasion-variance SD is an ordinary theta), and gives users
-  the residual/Omega SEs the theta-only FD cov omits.
-
-- Fixed the FOCE (`interaction = FALSE`) objective function and empirical-Bayes
-  estimates.  The residual variance `R` entering the FOCE inner likelihood must be
-  evaluated at the `eta = 0` population prediction and held constant (the truncated
-  Sheiner-Beal inner gradient drops `dR/deta`).  The previous code froze `R`
-  symbolically, which only removed *explicit* `eta` symbols: for ODE models a live
-  model state stayed in `R` (so `R` remained `eta`-dependent), and for `linCmt()`
-  models the freeze injected a second `linCmt`/`linCmtB` call that corrupted the
-  inner sensitivities and stalled the `eta` optimization.  `R` is now supplied at
-  `eta = 0` from the inner model itself, so FOCE with an ODE model agrees with the
-  closed-form (`linCmt`) result and both match the NONMEM FOCE reference (Wang 2007).
-  The `eta = 0` `R` depends only on `theta`, so it is cached across the inner
-  iterations (recomputed once per parameter update), keeping FOCE close to the FOCEI
-  per-iteration cost.
-
-- Fixed the FOCEI `covMethod = "r"` / `"s"` / `"r,s"` standard errors, which were
-  inflated by a constant factor (√2 for `"r"`, 2 for `"s"`) because the R- and
-  S-matrix covariances used `2*R^{-1}` / `4*S^{-1}` instead of `R^{-1}` / `S^{-1}`;
-  they now match NONMEM `$COV` (#666).
-- Added `sensMethod` to `nlmControl()`/`foceiControl()`; the nlm-family
-  methods can now compute ODE parameter sensitivities with the in-engine
-  discrete adjoint (`"adjoint"`) using the matching `s`-method, or pick it
-  automatically (`"auto"`) when estimated thetas exceed ODE states, matching
-  the forward result
-- Matrix-exponential / inductive-linearization models (`matExp()` with optional
-  `indLin()` forcing) now estimate with the focei family (focei/foce/foi/posthoc),
-  the nlm family (nlm/nlminb/...), and SAEM, matching the equivalent ODE model.
-  A hand-written `matExp()` model that used `indLin()` previously registered the
-  forcing state as compartment 1, reversing it relative to the ODE and misplacing
-  default (compartment-1) dosing; the generated cmt()/d/dt() declarations now
-  order compartments source-first from the `k_<from>_<to>` graph.  SAEM also now
-  materializes the implied `d/dt()` for these models instead of erroring
-- Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
-  warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
-  at the starting eta and the current theta (including `ll()`/`dnorm()` models
-  with finite-difference Hessians); the Hessian is always recalculated rather
-  than reused from an earlier outer evaluation, since theta moves between
-  evaluations and a saved Hessian would be stale.  `"save"` keeps the prior
-  behavior
-- Computing NPDE for a fit with a degenerate simulated covariance (e.g. a
-  residual SD estimated near zero) no longer aborts the R session; the affected
-  subject's NPDE is set to `NA` instead
-
-- `matExp()`/`indLin()` models now estimate with the focei family, the nlm
-  family, and SAEM, matching the equivalent ODE model; compartments are
+- Matrix-exponential / inductive-linearization models estimate with the focei,
+  nlm and SAEM families, matching the equivalent ODE model; compartments are
   ordered source-first from the `k_<from>_<to>` graph so default dosing is
-  placed correctly
+  placed correctly.
 
-- Added `sensMethod` to the nlm-family controls (`nlmControl()`,
-  `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
-  and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
-  sensitivities can be computed with the forward sensitivities (`"forward"`) or
-  the in-engine discrete adjoint (`"adjoint"`).  When left at `"default"`, the
-  method is taken from the global option `getOption("nlmixr2est.adjoint")`
-  (default `"forward"`), so the package-wide policy can be set in one place
+### Output and utilities
 
-- `fo`/`foi` now force forward sensitivities (adjoint does not apply to the
-  eta=0 linearization), and the adjoint base-method restore in the focei family
-  is a strict no-op for forward fits, fixing `fo`/`foi` tables/residuals
+- New `vaeCovariates()` returns the covariates `est = "vae"` would explore.
 
-- Fix a fit aborting with `initial 'omega' matrix inverse is non-positive
-  definite` when a degenerate fit (e.g. SAEM collapsing an uninformative
-  random-effect variance to 0) leaves a singular omega; the sym-inv-chol setup
-  now nearPD-corrects it so the residual/table diagnostics still run
+- New `formatMinWidth()` for shorter `$parFixed` display; `$parFixed` is rebuilt
+  with data.frame operations (#346, #516).
 
-- Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
-  usable observation; such subjects are now dropped before estimation and
-  re-inserted into the output with a population `PRED` and `NA` individual
-  columns, like FOCEi (#687)
+- All estimators share one iteration printer (`iterPrintControl()`,
+  `src/scale.h`) with a common row layout; analytic gradients are tracked as
+  their own `parHist` type and the fit header reports the gradient and mu-model
+  used, e.g. `(outer: lbfgsb3c; grad: analytic; mu: irls)`.
 
-- Internal consolidation of data preparation and the nlm-family
-  control/fit functions across estimation methods; no change to any fit
-  result
+- `est = "vae"` training runs entirely in C++ (`vaeTrainCpp_`) and
+  reparameterizes the inner problem in place, so fits are substantially faster.
 
-- Fix `cov2cor` error when omega has exactly one nonzero diagonal
+### Changed defaults
 
-- Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
-  when exactly one covariate-model parameter is estimated
+- `outerOpt = "nlminb"` for the finite-difference methods (`"lbfgsb3c"` when
+  `fast = TRUE`), `sigdig = 4`, `mceta = -2`, `censOption = "gauss"`,
+  `foce = "nonmem"`, `covMethod = "analytic"`.
 
-- Internal consolidation of data preparation across estimation methods (no
-  change to any fit result).  The shared preprocessor `.foceiPreProcessData()`
-  already fed every method; this removes the duplication layered on top of it:
-  two never-called data-setup functions (`.nlminbFitDataSetup`,
-  `.nlsFitDataSetup`) were deleted; the column-name normalization and the
-  time-varying-covariate detection were each extracted into a single shared
-  helper (`.nmUpcaseNonCov`, `.nlmixrTimeVaryingCovariates`); and the nine
-  nlm-family `*FamilyControl`/`*FamilyFit` functions (`nlm`, `nlminb`, `bobyqa`,
-  `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nls`) were collapsed onto
-  two generics (`.nlmFamilyControlGeneric`, `.nlmFamilyFitGeneric`).  SAEM's
-  internal event-table `dv` column drop in `.configsaem()` is now by-name with a
-  layout assertion instead of a positional index.
-- Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
-  `mceta >= 1` and `maxInnerIterations == 0`
+## Bug fixes
 
-- Fix Windows heap-corruption segfault for gradient/pooled estimator
-  fits at more than one core
+### Covariance and standard errors
 
-- Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
-  (or falling back) when exactly one covariate-model parameter is estimated,
-  due to a vector-collapse transpose bug in `calc.COV()`.
-- Defensively use `drop = FALSE` when subsetting the omega covariance
-  matrix for the correlation (`cov2cor`) calculation, so an omega with
-  exactly one nonzero diagonal element does not collapse to a scalar and
-  trigger a "'V' is not a square numeric matrix" error.
-- Fix `cov2cor` error when omega has exactly one nonzero diagonal by
-  subsetting with `drop = FALSE`
-- SAEM covariance no longer errors with `Error in rxode2::rxInv(.tmp) : Not a
-  matrix.` for models with a single population parameter (which arises e.g. with
-  M2/M3/M4 censoring).  The covariance fallback inverts a subset of the FIM
-  (`.saem$Ha[1:.nth, 1:.nth]`); for a single parameter that subset dropped from a
-  1x1 matrix to a scalar, which `rxode2::rxInv()` rejects.  The subset now keeps
-  `drop = FALSE`.
-- The parallel test suite (`Config/testthat/parallel`) now gives each
-  worker its own rxode2 model-compile directory and sizes the worker
-  pool to the host (capped at 2 on CRAN).  Previously all workers
-  compiled models into one shared cache directory and raced, producing
-  spurious "error building model" failures and the 6h CI timeouts.
-- The parallel test suite (`Config/testthat/parallel`) is now robust on
-  CI.  Three independent problems were fixed:
-  - Each worker gets its own rxode2 model-compile directory; workers
-    previously raced on one shared cache directory, producing spurious
-    "error building model" failures and 6h timeouts.
-  - The worker pool is sized to the host (`detectCores()/2`, 1 on CRAN)
-    and can be pinned with the `NLMIXR2_TESTTHAT_CPUS` environment
-    variable (needed inside containers, where `detectCores()` reports the
-    host rather than the cpuset allotment).
-- The test suite is now robust on CI.  Three independent problems were
-  fixed:
-  - Each test process gets its own rxode2 model-compile directory; with
-    `Config/testthat/parallel` the workers previously raced on one shared
-    cache directory, producing spurious "error building model" failures
-    and 6h timeouts.
-  - The suite runs a single testthat worker by default (overridable with
-    the `NLMIXR2_TESTTHAT_CPUS` environment variable) with within-solve
-    threads kept at 2, so `workers x threads` no longer saturates every
-    CPU -- leaving a core for the CI runner's heartbeat agent.  Saturating
-    all cores was starving the agent and killing the devel/oldrel jobs
-    with exit 143 ("the runner has received a shutdown signal").
-  - BLAS/OpenMP thread pools are now capped in the CI *environment*
-    (`OPENBLAS_NUM_THREADS` etc. in the workflow) instead of via
-    `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS is loaded at process
-    startup and reads that variable only then, so the in-R setting was
-    always too late and OpenBLAS ran one thread per core.
-- The test suite runs a single testthat worker on CI and on CRAN (so it
-  does not oversubscribe a core-limited runner) and parallel
-  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
-  capped to 2 only on CRAN and left to rxode2's own management otherwise.
-- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
-  with a single population parameter
+- `covMethod = "r"`/`"s"`/`"r,s"` standard errors were inflated by a constant
+  factor (`sqrt(2)` for `"r"`, `2` for `"s"`) from using `2*R^-1`/`4*S^-1`; they
+  now match NONMEM `$COV` (#666).
 
-- Test suite uses a single testthat worker on CI/CRAN and parallel
-  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
+- A bounded-parameter fit under an unbounded method (e.g. `saem`) leaked the
+  internal `rxBoundedTr.<name>` into `$cov` without the back-transform Jacobian;
+  `$cov` is now renamed to the original parameters and Jacobian-corrected.
 
-- `fit$time` now reports every estimation stage consistently
+- The analytic FOCE/foce+ covariance no longer falls out of bounds (from dropped
+  `eta = 0` solve slots) to the finite-difference Hessian; the general `(f,R)`
+  covariance reports `covMethod = "analytic"` (was `"r"`), and
+  `foceiCovAnalytic()`/`getVarCov()` reproduce it instead of falling back.
 
-- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
-  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
-  `foceiControl()` correctly omits `outerOpt` when it is left at this
-  default.
-- Aggregated ODE-solve warnings flushed during `focei`/`saem`
-  estimation (e.g. `[lsoda -- internal t + h = t ...]: N warning(s) for
-  subject(s): ...`) now report the real subject id instead of
-  `Unknown`.  Estimation passes a declassed data frame to rxode2, so
-  rxode2's subject-id factor table was empty during the fit; the fit's
-  `idLvl` is now pushed into rxode2 via `rxSetIdLvlFactors()` right
-  after estimation setup.  Degrades gracefully (the warning falls back
-  to an `internal #N` index) when run against an rxode2 that predates
-  the `rxSetIdLvlFactors` symbol.
-- Fix issue 641: FOCEI now updates additive mu-referenced population
-  parameters whose initial estimates are large in magnitude.
-  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
-  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
-  unit steps in scaled space to negligible steps in unscaled space and
-  effectively pinned such parameters at their initial value (e.g.
-  `tvemax <- -40` with no transform).
-- Added new mu-referenced FOCEI-family estimation methods: `mfocei`,
-  `ifocei` (FOCEI); `mfoce`, `ifoce` (FOCE); `magq`, `iagq`
-  (adaptive Gauss-Hermite quadrature); `mlaplace`, `ilaplace`
-  (Laplace).  For any theta/eta that participates in a mu-ref covariate
-  relationship (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
-  covariate-coefficient theta(s) are excluded from the outer gradient
-  optimizer entirely and instead re-derived directly by a closed-form
-  OLS (`mu*` methods) or curvature-reweighted IRLS (`irls*` methods)
-  regression of each subject's back-calculated conditional value on the
-  covariate(s); the regression residual becomes that subject's eta.
-  This runs natively in C++ inside the same inner-optimization pass
-  every outer iteration already uses -- no restart loop, no repeated
-  model setup/compilation, no R-level round trip -- and converges to
-  comparable objective function values and parameter estimates as the
-  corresponding standard method, typically in less time. New
-  `foceiControl()` options control the mechanism: `muModel`
-  (`"none"`/`"lin"`/`"irls"`, default `"none"`), `muRefCovAlg`,
-  `muModelTol`, `muModelMaxCycles`. Ordinary `focei`/`foce`/`agq`/
-  `laplace`/`fo`/`foi` default to `muModel="none"` and are completely
-  unaffected; `fo`/`foi` are intentionally not given `mu*`/`irls*`
-  counterparts (their first-order approximation has no per-subject
-  conditional estimate to regress against).
-- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
-  `sigdig = 4`
+- Fixed a segfault in the analytic covariance for out-of-scope models (the
+  augmented build freed the fit's solve before the finite-difference fallback
+  ran), and the sign of the M2 upper-tail term in the censored inner gradient.
 
-- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
-  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`,
-  `mlaplace`/`ilaplace`, with new `foceiControl()` options
-  `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
+- The mu-referenced/irls FOCEI-family fits (`mfocei`/`ifocei`/...) now report
+  `Condition#(Cov)`/`Condition#(Cor)` in `$objDf`; the post-fit covariance
+  install skipped them because the fit tables were rendered before the
+  full-model covariance was recomputed.
 
-- Errors during estimation are now collected and reported together
-  instead of only the last one (new `collectErr` argument to
-  `.collectWarn()`).
-- FOCEi no longer aborts R with `Cube::slice(): index out of bounds` when
-  `mceta >= 1` is combined with a pure evaluation that runs with
-  `maxInnerIterations == 0` (the covariance step, or
-  `nlmixr2extra::linearize()`).  The Monte-Carlo ETA-sample cube is filled only
-  when `maxInnerIterations > 0`, so the inner-loop read indexed an empty cube and
-  the resulting exception, thrown inside the OpenMP parallel region, was uncaught
-  and aborted R.  The read is now guarded (`id < n_slices`) and skipped when the
-  cube holds no slice for the subject.
-  instead of only the last one
+- Converting a fit to a different covariance (`setCov()`, `getVarCov()`)
+  now refreshes `Condition#(Cov)`/`Condition#(Cor)` and the eigen
+  diagnostics from the newly installed covariance instead of leaving the
+  previous method's values in place.
 
-- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
-  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
-  statically links its own OpenMP runtime, so when the parallel inner
-  loop called rxode2's solver across threads rxode2 saw every worker as
-  thread 0 and collapsed its per-thread solve buffers onto a single
-  slot, racing and corrupting the heap.  The inner loop now hands rxode2
-  the real thread id via `setRxThreadId()` from rxode2 api (requires the
-  matching rxode2).
+- SAEM `covMethod = "fim"` adds the mu-block Hessian (was indefinite / NaN SEs),
+  and `"fim"`/`"sa"` report off-diagonal Omega and combined residual SEs.
+  Fixed `covMethod = "linFim"` and the SAEM covariance erroring for a single
+  population/covariate parameter, and `cov2cor` for a one-nonzero-diagonal Omega.
 
-- Fixed `covMethod = "r"` and `covMethod = "s"` standard errors, which
-  were inflated by constant factors (`sqrt(2)` and `2`, respectively).
-  With the objective on the `-2*logLik` scale the R matrix is the
-  observed information and the S matrix is the score cross-product, so
-  the covariances are `R^-1` and `S^-1`; they were returned as `2*R^-1`
-  and `4*S^-1`.  The default sandwich method `"r,s"` (`R^-1 S R^-1`) was
-  already correct and is unchanged.  `covR`/`covS` are fixed at source so
-  the sandwich-selection heuristic also compares consistently-scaled
-  covariances (#666).
+### Estimation and convergence
 
-- The iteration-time progress output emitted by every estimator
-  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
-  newuoa, uobyqa) now flows through a single shared printer
-  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
-  Each estimator's iteration trace has the same `#`/`U`/`X` row
-  layout, column wrapping, ANSI handling, periodic header re-emit
-  cadence, and per-iteration user-interrupt check.
-- Fix issue 641: FOCEI now updates additive mu-referenced population
-  parameters with large-magnitude initial estimates
+- Fixed the `fast = TRUE` analytic gradient for models whose residual variance
+  depends on the prediction (`prop`, `add+prop`, `combined1`, `pow`, `add+pow`):
+  a determinant chain-rule aliasing injected a spurious term.
 
-- Iteration-time progress output for all estimators now flows through
-  a shared printer; new `iterPrintControl()` bundles the `every`,
-  `ncol`, `headerEvery`, `useColor`, `simple` options
+- Fixed the `fast = TRUE` analytic gradient/covariance for a random effect
+  shared across parameters, enabled sensitivity reuse for a covariate on an
+  eta-less parameter, and fixed the gradient never being used live (it read
+  finalize-only state and silently fell back to finite differences).
 
-- `focei` (and the `foce`/`fo`/`foi`/`posthoc` family) again shows the
-  `Function Val.` objective-function column in its iteration trace.
-  The column had silently disappeared when the shared printer gained
-  its `showOfv` flag, because `focei` sets up its scaling struct by
-  hand and the flag defaulted to off — dropping the objective from
-  every outer optimizer (including `foceiControl(outerOpt = "bobyqa")`)
-  and misaligning the gradient (`G`/`F`/`C`/`M`) rows, whose method
-  label lives in that same column slot.
-- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
-  `posthoc`, which had dropped out once the shared printer gained `showOfv`
+- Fixed the FOCE (`interaction = FALSE`) objective and empirical-Bayes
+  estimates: the residual variance is now supplied at the `eta = 0` prediction,
+  so ODE and `linCmt()` FOCE agree and match the NONMEM reference.
 
+- Bounded the Shi (2021) finite-difference step so a curvature-free search can
+  no longer corrupt the shared solver state.
 
-- Added `sensMethod` to the nlm-family controls (`nlmControl()`,
-  `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
-  and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
-  sensitivities can be computed with the forward sensitivities (`"forward"`) or
-  the in-engine discrete adjoint (`"adjoint"`).  When left at `"default"`, the
-  method is taken from the global option `getOption("nlmixr2est.adjoint")`
-  (default `"forward"`), so the package-wide policy can be set in one place
+- Fixed `muModel = "lin"`/`"irls"` erroring with two or more covariate
+  expressions (#711) and the user-fixed covariate-coefficient regression bias.
 
-- `fo`/`foi` now force forward sensitivities (adjoint does not apply to the
-  eta=0 linearization), and the adjoint base-method restore in the focei family
-  is a strict no-op for forward fits, fixing `fo`/`foi` tables/residuals
+- Fixed `impmapControl(impSeed = )` being ignored.
 
-- Fix a fit aborting with `initial 'omega' matrix inverse is non-positive
-  definite` when a degenerate fit (e.g. SAEM collapsing an uninformative
-  random-effect variance to 0) leaves a singular omega; the sym-inv-chol setup
-  now nearPD-corrects it so the residual/table diagnostics still run
+- FOCEI now updates additive mu-referenced population parameters with
+  large-magnitude initial estimates (#641).
 
-- Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
-  usable observation; such subjects are now dropped before estimation and
-  re-inserted into the output with a population `PRED` and `NA` individual
-  columns, like FOCEi (#687)
+### Crashes and stability
 
-- Internal consolidation of data preparation and the nlm-family
-  control/fit functions across estimation methods; no change to any fit
-  result
+- Fixed a Windows heap-corruption segfault at more than one core (rxode2 saw
+  every worker as thread 0); the inner loops now pass the real thread id.
 
-- Fix `cov2cor` error when omega has exactly one nonzero diagonal
+- Fixed a segfault in `est = "vae"` (thread count capped at the solve's core
+  count) and in `nlmSetup` on the first estimator call of a session.
 
-- Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
-  when exactly one covariate-model parameter is estimated
+- Fixed FOCEi aborting with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` and `maxInnerIterations == 0`, and a heap-buffer overflow / wrong
+  back-transform in SAEM Box-Cox residual models.
 
-- Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
-  `mceta >= 1` and `maxInnerIterations == 0`
+- A non-positive-definite `Omega` is projected to the nearest PD matrix (SAEM
+  mid-run, with a `fit$runInfo` warning; and the sym-inv-chol setup for a
+  degenerate fit) so residual/table diagnostics still run; NPDE with a
+  degenerate simulated covariance sets the subject's NPDE to `NA` instead of
+  aborting.
 
-- Fix Windows heap-corruption segfault for gradient/pooled estimator
-  fits at more than one core
+### Output, tables, and printing
 
-- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
-  with a single population parameter
+- `laplace`/`agq` family fits label their `$objDf` row `Laplace`/`AGQ<n>`
+  (matching `$ofvType`) instead of `FOCEi`; previously the default
+  `interaction=TRUE` made the interaction label win over the quadrature one.
+  The quadrature objective stays the active one after CWRES; `setOfv(fit,
+  "focei")` (and `addCwres()`) now evaluate the true focei objective on a
+  quadrature fit instead of re-labeling its quadrature value.
 
-- Test suite uses a single testthat worker on CI/CRAN and parallel
-  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
+- Restored the `Function Val.` objective column and the `$parFixed` shrinkage
+  coloring; periodic headers now repeat only the column labels.
 
-- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
-  `posthoc`, which had dropped out once the shared printer gained `showOfv`
+- `$parFixed` honors a user `sigdig`/`ci` for fits with literally-fixed
+  parameters.
 
-- Periodic header re-emits now repeat only the column labels, not the
-  full `Key:` legend
+- `fit$time` again attributes model build/compile to `setup`/`configure` (and
+  the nlm family times setup/optimize) instead of `other`.
 
-- `fit$time` now reports every estimation stage consistently
+- Aggregated ODE-solve warnings report the real subject id; `parHistData` shows
+  mixture-probability parameters on the natural scale and `fit$mixList` returns
+  all components; iteration printing labels the estimation phase (`Burn in`/
+  `KL anneal`/`EM`/`Smooth` for vae, `SA`/`EM` for saem).
 
-- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
-  `sigdig = 4`
+- `fast = TRUE` with a `linCmt()` model downgrades to `fast = FALSE` with a
+  message instead of silently falling back per gradient call.
 
-- Added mu-referenced FOCEI-family estimation methods: `mfocei`/
-  `ifocei`, `mfoce`/`ifoce`, `magq`/`iagq`,
-  `mlaplace`/`ilaplace`, with new `foceiControl()` options
-  `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
+### Data handling
 
-- Errors during estimation are now collected and reported together
-  instead of only the last one
+- SAEM no longer errors with `No data with ID` for a dose-only subject;
+  observation-less subjects are dropped before estimation and re-inserted into
+  the output with a population `PRED` and `NA` individual columns, like FOCEi
+  (#687).
 
-- Fix issue 641: FOCEI now updates additive mu-referenced population
-  parameters with large-magnitude initial estimates
+- Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice.  The "initial
+  ETAs were nudged" warning fires only when a nudge actually happened, and a
+  non-default `mceta` on a fully mu-referenced model falls back to the default
+  with a warning.  `saemControl(covMethod = "")` (skip covariance) no longer
+  errors.
 
-- Iteration-time progress output for all estimators now flows through
-  a shared printer; new `iterPrintControl()` bundles the `every`,
-  `ncol`, `headerEvery`, `useColor`, `simple` options
+### Internal
 
-- Added focei, foce, foi, fo mixture support in `nlmixr2est`
-
-- Fix `focei` mixture models with llik residual distributions erroring
-  when a model had exactly one mixture probability parameter
-
-- Fix `fit$mixList` returning only the first mixture component
-
-- `parHistData` Back-Transformed rows now show mixture probability
-  parameters on the natural probability scale
-
-- Hardened mixture-model (`mix()`) estimation: clearer errors for
-  `est="nlme"` and invalid initial probabilities, warnings for
-  underflowing/collapsing mixture probabilities, and a fix for the
-  SAEM omega-diagonal floor being raised outside mixture fits
-
-- Fix segfault in `nlmSetup` on the first estimator call of a fresh R
-  session for pooled estimators
-
-- Fix heap-buffer overflow and wrong back-transform in SAEM lambda
-  (Box-Cox) residual-error models
-
-- Fix heap-buffer overflow and wrong back-transform in SAEM lambda
-  (Box-Cox) residual-error models
-
-- Guard against null pointer arithmetic in inner.cpp
-
-- Use OpenMP threading for S matrix calculation
-
-- Use OpenMP threading wile calculating NPDEs
-
-- Bounded the adaptive finite-difference step size (Shi et al. 2021) used for the
-  FOCEi eta gradient to a reasonable region.  When the finite differences carried
-  no detectable curvature the step-size search could grow the step without bound
-  and probe a parameter far outside the region where the local model holds,
-  producing a degenerate ODE solve that corrupted the shared solver state and
-  collapsed the eta finite-difference sensitivity on later inner iterations (the
-  eta could get stuck near 0).  The step is now clamped both above and below.
-
-- `saemControl(covMethod = "")` no longer errors.  `""` is a documented choice
-  that skips the covariance step, but `saemControl()` rejected it because
-  `match.arg()` selects choices with `pmatch()`, and `pmatch("")` matches
-  nothing; it is now handled explicitly.
+- Consolidated data preparation and the nlm-family control/fit functions, and
+  the analytic-covariance augmented model now uses rxode2's chunked
+  `rxOptExpr()`; no change to fit results.  The test suite runs a single
+  testthat worker on CI/CRAN and parallel elsewhere, with within-solve threads
+  capped to 2 on CRAN.
 
 # nlmixr2est 6.1.0
 

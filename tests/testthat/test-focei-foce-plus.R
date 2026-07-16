@@ -60,12 +60,18 @@ nmTest({
     # profile objective at the SAME model (verified: plain focep warm-started
     # from the profiled fit's etaMat reproduces its objective at that point).
     # They must agree with each other and never end ABOVE the plain fit.
+    # warm="save" (self-init inner Hessian) is pinned: the default
+    # warm="calc" recalculates the eta Hessian at the mu-regression's
+    # restarted theta/eta and steers this fixture's multi-modal inner
+    # problem into a shallower basin (~122.5 > plain 114.7), while the plain
+    # fit is basin-insensitive -- the deeper-mode property this test guards
+    # holds for the self-init warm.
     fM <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "mfocep",
-             foceiControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+             foceiControl(print = 0L, calcTables = FALSE, covMethod = "", warm = "save"))))
     fI <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "ifocep",
-             foceiControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+             foceiControl(print = 0L, calcTables = FALSE, covMethod = "", warm = "save"))))
     expect_true(is.finite(fM$objective))
     expect_true(is.finite(fI$objective))
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)

@@ -7723,7 +7723,11 @@ NumericMatrix foceiCalcCov(Environment e){
 // directly (op_focei.omegaInv/cholOmegaInv/logDetOmegaInv5 set from the perturbed Omega,
 // op_focei.covFdDirect makes updateTheta skip the unscale + Cholesky rebuild) -- so the
 // Hessian is natural-scale with no Jacobian (the rxOmegaVarCovDeriv parameterization).
-// Split into small helpers below; the orchestrator is foceiCalcRFdFull. ---
+// The orchestrator also builds the full OPG cross-product S (0.25*sum of per-subject
+// gradient outer products) over the SAME params/steps, so the r,s covariance can be a true
+// full sandwich Rinv*S*Rinv (not just the Hessian inverse Rinv).  Both are stashed for the
+// R-side install (.foceiInstallFdFullCov).  Split into small helpers below; the orchestrator
+// is foceiCalcRFdFull. ---
 struct FdFullCtx { IntegerVector thPos, omA, omB; arma::mat Om0; int nth = 0, nom = 0; };
 
 // set op_focei Omega state from a variance-covariance Omega; false if it is not PD.
@@ -7818,12 +7822,14 @@ static double foceiFdOffDiag(const FdFullCtx &c, int i, int j, const std::vector
 // full natural-scale FD Hessian at x0 (f0=obj(x0)), mirroring foceiCalcR: a Gill-optimal
 // per-parameter step (gill83) with the 5-point diagonal and 4-point off-diagonal stencils.
 // If gill83 fails for a coordinate, fall back to the step-doubling diagonal.  Returns false
-// on any non-finite probe.
-static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, double f0, arma::mat &H) {
+// on any non-finite probe.  Writes the accepted per-parameter steps to `h` (reused by the
+// full-S cross-product below so R and S difference on the same steps).
+static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, double f0,
+                           arma::mat &H, std::vector<double> &h) {
   int np = c.nth + c.nom;
   H.zeros(np, np);
   if (!R_FINITE(f0)) return false;
-  std::vector<double> h(np);
+  h.assign(np, 0.0);
   for (int i = 0; i < np; ++i) {
     double e = foceiFdGillStep(c, i, x0, f0);
     double d2 = R_FINITE(e) ? foceiFdDiag5(c, i, x0, f0, e) : NA_REAL;
@@ -7836,6 +7842,49 @@ static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, do
     if (!R_FINITE(v)) return false;
     H(i, j) = H(j, i) = v;
   }
+  return true;
+}
+
+// per-subject -2LL contributions after a foceiFdObjAt probe -- the quantity foceiS
+// differences (native: likSav[gid] = -2*fInd->lik[0]).  Returns false for mixture models
+// (op_focei.mixIdxN != 0: no per-subject contribution is stashed) or any non-finite subject
+// value (a failed inner solve leaves lik[0] = NA_REAL), so the caller keeps the native cov.
+static bool foceiFdLikById(arma::vec &out) {
+  if (op_focei.mixIdxN != 0) return false;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  if (nsub <= 0) return false;
+  out.set_size(nsub);
+  for (int gid = 0; gid < nsub; ++gid) {
+    double l = inds_focei[gid].lik[0];
+    if (!R_FINITE(l)) return false;
+    out[gid] = -2.0 * l;
+  }
+  return true;
+}
+
+// full natural-scale cross-product (OPG) S = 0.25 * sum_i g_i g_i^T, with per-subject
+// central-difference gradients g_i over the SAME parameters and accepted steps `h` as
+// foceiFdHessian.  Matches the native foceiS convention (S = 0.25*sum, paired with
+// R = 0.5*Hessian), so Rinv * S * Rinv reproduces the native sandwich scale over the full
+// theta+sigma+Omega parameter set.  Returns false on any non-finite probe or if the
+// per-subject contributions are unavailable (foceiFdLikById), keeping the native cov.
+static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
+                         const std::vector<double> &h, arma::mat &S) {
+  int np = c.nth + c.nom;
+  arma::vec lp, lm;
+  arma::mat G;
+  for (int j = 0; j < np; ++j) {
+    std::vector<double> xp = x0, xm = x0;
+    xp[j] += h[j]; xm[j] -= h[j];
+    if (!R_FINITE(foceiFdObjAt(c, xp)) || !foceiFdLikById(lp)) return false;
+    if (!R_FINITE(foceiFdObjAt(c, xm)) || !foceiFdLikById(lm)) return false;
+    if (G.n_rows == 0) G.zeros(lp.n_elem, np);
+    if (lp.n_elem != G.n_rows || lm.n_elem != G.n_rows) return false;
+    G.col(j) = (lp - lm) / (2.0 * h[j]);
+  }
+  if (G.n_rows == 0) return false;
+  S = 0.25 * (G.t() * G);
   return true;
 }
 
@@ -7879,7 +7928,13 @@ void foceiCalcRFdFull(Environment e) {
 
   op_focei.covFdDirect = 1;
   arma::mat H;
-  bool ok = foceiFdHessian(c, x0, foceiFdObjAt(c, x0), H);
+  std::vector<double> h;
+  bool ok = foceiFdHessian(c, x0, foceiFdObjAt(c, x0), H, h);
+  // only the S-using cov methods need the OPG cross-product ("r,s" sandwich or "s"); this is
+  // the final selection after foceiCalcCov's heuristic, matching what e["covMethod"] reports.
+  bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3);
+  arma::mat S;
+  bool okS = ok && needS && foceiFdSFull(c, x0, h, S);
 
   // restore live state
   std::copy(fth0.begin(), fth0.end(), &op_focei.fullTheta[0]);
@@ -7888,10 +7943,15 @@ void foceiCalcRFdFull(Environment e) {
   if (!ok) return;
 
   arma::mat cov;
-  if (!arma::inv_sympd(cov, 0.5 * H) && !arma::inv(cov, 0.5 * H)) return;   // cov = 2 H^{-1}
+  if (!arma::inv_sympd(cov, 0.5 * H) && !arma::inv(cov, 0.5 * H)) return;   // cov = 2 H^{-1} = Rinv
   NumericMatrix covR = wrap(cov);
   covR.attr("dimnames") = List::create(nm, nm);
-  e[".fdFullCov"] = covR;
+  e[".fdFullCov"] = covR;                       // Rinv_full (feeds "r" and the sandwich)
+  if (okS) {
+    NumericMatrix Sout = wrap(S);
+    Sout.attr("dimnames") = List::create(nm, nm);
+    e[".fdFullS"] = Sout;                        // Sfull (feeds "s" and the sandwich)
+  }
 }
 
 void addLlikObs(Environment e) {
@@ -8382,6 +8442,18 @@ void foceiFinalizeTables(Environment e){
   } else if (op_focei.fo == 1){
     objDf.attr("row.names") = CharacterVector::create("FO");
     e["ofvType"] = "fo";
+  } else if (_nagq > 0)  {
+    // quadrature label wins over interaction so laplace/agq fits (whose controls
+    // default interaction=TRUE) do not print as "FOCEi"; ofvType is the
+    // lowercased row label so broom/setOfv row matching works
+    if (_nagq == 1) {
+      objDf.attr("row.names") = CharacterVector::create("Laplace");
+      e["ofvType"] = "laplace";
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
+      e["ofvType"] = "agq" + std::to_string(_nagq);
+    }
+    addLlikObs(e);
   } else if (op_focei.interaction){
     objDf.attr("row.names") = CharacterVector::create("FOCEi");
     addLlikObs(e);
@@ -8390,14 +8462,6 @@ void foceiFinalizeTables(Environment e){
     std::string ofvType = as<std::string>(e["ofvType"]);
     objDf.attr("row.names") = ofvType;
     e["ofvType"]= ofvType;
-  } else if (_nagq > 0)  {
-    if (_nagq == 1) {
-      objDf.attr("row.names") = CharacterVector::create("Laplace");
-    } else {
-      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
-    }
-    addLlikObs(e);
-    e["ofvType"] = "agq";
   } else {
     if (op_focei.needOptimHess) {
       objDf.attr("row.names") = CharacterVector::create("lFOCEi");
@@ -9463,16 +9527,12 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.c1            = op_focei.c1;
     op_focei.scale.c2            = op_focei.c2;
     op_focei.scale.simple        = 0;
-    // focei has a meaningful per-iteration objective function, so show the
-    // "Function Val." column.  op_focei is a zero-initialized global and
-    // focei configures its scaling struct by hand here (it does not call
-    // scaleSetup(), which is where showOfv would otherwise default to 1),
-    // so this must be set explicitly — otherwise the column, its header,
-    // and the gradient-row label that lives in the same slot are dropped
-    // for every outer optimizer (e.g. outerOpt="bobyqa").
+    // focei configures its scaling struct by hand (no scaleSetup()), so set
+    // showOfv explicitly or the "Function Val." column and gradient-row label
+    // are dropped for every outer optimizer.
     op_focei.scale.showOfv       = 1;
-    // focei's richer Key suffix — gradient-method legend and omega note.
-    // Appended after "X: Back-transformed parameters; " by scalePrintHeader.
+    // focei's richer Key suffix (gradient-method legend and omega note),
+    // appended after "X: Back-transformed parameters; " by scalePrintHeader.
     op_focei.scale.keyExtra = muPrintActive() ?
       "G: Gill difference gradient approximation\n"
       "F: Forward difference gradient approximation\n"
@@ -9590,20 +9650,17 @@ Environment foceiFitCpp_(Environment e){
     // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
     CovSolveTolGuard _covTolGuard(e);
     foceiCalcCov(e);
-    // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed
-    // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way --
-    // BUT only when the analytic covariance actually succeeded (it stashes .analyticCov).
-    // When covType="analytic" is out of scope it falls back to the finite-difference
-    // covariance, and without this the full-cov step would be skipped, silently dropping
-    // the Omega block and leaving a theta-only cov.  So also run the FD full-cov step on
-    // that fallback (analytic requested but .analyticCov absent), keeping the requested
-    // theta+sigma+Omega shape.
-    if (op_focei.covFull && op_focei.covMethod != 0 && e.exists("control")) {
+    // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
+    // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of
+    // scope leaves no .analyticCov and drops to the FD r,s sandwich) so that fallback still
+    // gets the full cov.  Gated to muModel==0 and a real native cov (e["cov"] present) so the
+    // mu-ref bail and the boundary bail do not trigger a wasted/reduced-model FD Hessian.
+    if (op_focei.covFull && op_focei.covMethod != 0 && op_focei.muModel == 0 &&
+        e.exists("cov") && e.exists("control")) {
       List _ctlF = as<List>(e["control"]);
       std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
         as<std::string>(_ctlF["covType"]) : "fd";
-      bool _analyticInstalled = e.exists(".analyticCov");
-      if (_covTypeF != "analytic" || !_analyticInstalled) {
+      if (_covTypeF != "analytic" || !e.exists(".analyticCov")) {
         try { foceiCalcRFdFull(e); }
         catch (Rcpp::internal::InterruptedException&) { throw; }
         catch (Rcpp::LongjumpException&) { throw; }

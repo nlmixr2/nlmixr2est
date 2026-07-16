@@ -35,6 +35,10 @@ nmTest({
       .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0))
       expect_equal(.fM$covMethod, "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
+      # the recomputed cov's condition numbers are added to objDf post-install
+      expect_true(all(c("Condition#(Cov)", "Condition#(Cor)") %in% names(.fM$objDf)))
+      expect_true(is.finite(.fM$objDf[["Condition#(Cov)"]][1]))
+      expect_true(is.finite(.fM$objDf[["Condition#(Cor)"]][1]))
       # (a) equals the base method computed the SAME (frozen) way at the mu point
       .fF <- .baseFrozen(mfun, baseEst, baseCtl, .fM$ui, .fM$eta, "analytic")
       .sM <- sqrt(diag(.fM$cov)); .sF <- sqrt(diag(.fF$cov))
