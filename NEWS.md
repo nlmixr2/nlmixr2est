@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- SAEM general log-likelihood: the fixed-effect-only (phi0) refinement step
+  (saemix "ind.fix10", fsaem `distribution=general`) is now optimized with the
+  same derivative-free optimizers as the residual step (nelder-mead / newuoa,
+  selected by `type`) instead of L-BFGS-B -- the model emits no analytic
+  d(ll)/d(phi0), so the previous finite-difference-gradient L-BFGS was pure
+  overhead.  phi0 does not enter the ODE, so the states are solved once and held
+  fixed while phi0 is optimized (ODE-freeze), each evaluation recomputing only the
+  log-likelihood.  The SAEM-side L-BFGS plumbing (phi0 gradient, trampolines,
+  `lbfgs*` config) is removed; FOCEI's `outerOpt="lbfgsb"` is unaffected.
+
 - Nonparametric engines (cont.): the `npag` residual-parameter optimization now
   freezes the ODE states -- the inner likelihood solves each (support point,
   subject) once and re-evaluates only the output `f`/`r` for each candidate
