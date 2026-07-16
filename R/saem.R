@@ -262,6 +262,10 @@
                                    else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
                         fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
                         fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
+    # Carried for the SAEM unification work; consumed in later phases.  Inert
+    # at their defaults ("classic"/"eta"), so no behavior change here.
+    .cfg$sharedInner <- rxode2::rxGetControl(ui, "sharedInner", "classic")
+    .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "eta")
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
