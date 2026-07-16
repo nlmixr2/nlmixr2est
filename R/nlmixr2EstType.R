@@ -14,7 +14,9 @@
   "Nonparametric",
   "Machine learning",
   "Model Based Meta Analysis",
-  "Optimizer (NLM family)"
+  "Optimal Design",
+  "Optimizer (NLM family)",
+  "External"
 )
 
 # est -> list(type=, description=) for the built-in, user-facing methods.
@@ -121,6 +123,21 @@
         paste0("   ", cli::symbol$line, " ", .name, " -- ", .r$description)
       }, character(1)))
   }), use.names=FALSE)
+}
+
+#' Print the tagged, category-grouped estimation methods to the console
+#'
+#' Used when `nlmixr2()` is called with no arguments, and shares its formatting
+#' with the unsupported-`est=` error.
+#' @return the `nlmixr2AllEstType()` data frame, invisibly
+#' @noRd
+.nlmixr2EstTypePrint <- function() {
+  .lines <- .nlmixr2EstTypeLines()
+  if (length(.lines) > 0L) {
+    message("nlmixr2 estimation methods (specify with `est=`):\n",
+            paste(.lines, collapse="\n"))
+  }
+  invisible(nlmixr2AllEstType())
 }
 
 #' Tagged list of the available nlmixr2 estimation methods

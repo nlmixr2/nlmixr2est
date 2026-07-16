@@ -5,7 +5,9 @@
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
   Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short
-  description of each, instead of a single flat list.  The new `nlmixr2AllEstType()`
+  description of each, instead of a single flat list.  Calling `nlmixr2()` with no
+  arguments prints the same grouped list (and invisibly returns it).  The new
+  `nlmixr2AllEstType()`
   returns the same information as a data frame, and each built-in method carries `type`
   and `description` attributes (e.g. `attr(nlmixr2Est.focei, "type")`) that third-party
   methods can set to join the list.

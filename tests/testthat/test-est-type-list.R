@@ -22,6 +22,12 @@ test_that("tagged estimation-method list (issue #750)", {
   expect_true(any(grepl("Linearized", .lines)))
 })
 
+test_that("nlmixr2() with no arguments prints the grouped list", {
+  expect_message(.df <- nlmixr2(), "estimation methods")
+  expect_s3_class(.df, "data.frame")
+  expect_true(all(c("focei", "saem") %in% .df$est))
+})
+
 test_that("unsupported est= prints the grouped list", {
   one.cmt <- function() {
     ini({
