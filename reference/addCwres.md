@@ -102,8 +102,8 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8848
-#> → compress phiM in nlmixr2 object, save 443520
+#> → compress parHistData in nlmixr2 object, save 8592
+#> → compress phiM in nlmixr2 object, save 446912
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -113,18 +113,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.919963 3.1007e-05 0.01500861      0.069     0.998 1.74       0.934
-#>         table compress     other
-#> elapsed 0.061    0.141 0.4939974
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.8497446 2.2964e-05 0.01300935      0.073     1.028 2.777       0.929
+#>         table compress    other
+#> elapsed 0.078    0.128 0.462223
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
-#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
-#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
+#> tka              0.454  0.192 42.2       1.57 (1.08, 2.29)     69.6     -0.514 
+#> tcl               1.01 0.0850 8.40       2.75 (2.33, 3.25)     27.5       3.02 
+#> tv         log V  3.45 0.0451 1.31       31.6 (28.9, 34.5)     13.2       11.2 
+#> add.sd           0.700      0    0    0.700 (0.700, 0.700)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -134,14 +134,14 @@ print(f)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.118 -0.513 -0.0739  320.
-#> 2 1      0.25  2.84  3.22 -0.378  3.84 -1.00  -1.44   0.118 -0.513 -0.0739  206.
-#> 3 1      0.57  6.57  5.65  0.916  6.67 -0.101 -0.144  0.118 -0.513 -0.0739  117.
+#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06    0.103 -0.486 -0.0781
+#> 2 1      0.25  2.84  3.21 -0.371  3.81 -0.968  -1.38    0.103 -0.486 -0.0781
+#> 3 1      0.57  6.57  5.62  0.946  6.61 -0.0394 -0.0563  0.103 -0.486 -0.0781
 #> # ℹ 129 more rows
-#> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
-#> #   dosenum <dbl>
+#> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
+#> #   tad <dbl>, dosenum <dbl>
 
 # even though you may have forgotten to add the cwres, you can add it to the data.frame:
 
@@ -178,22 +178,22 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 117.0711 373.6709 393.8505      -179.8354        19.29371        1.427592
+#> FOCEi 116.9138 373.5136 393.6932      -179.7568        18.80749         1.42463
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.919963 3.1007e-05 0.01500861      0.069     0.998 1.74       0.934
-#>         table compress     other
-#> elapsed 0.061    0.141 0.4939974
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.8497446 2.2964e-05 0.01300935      0.073     1.028 2.777       0.929
+#>         table compress    other
+#> elapsed 0.078    0.128 0.462223
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.452  0.192 42.4       1.57 (1.08, 2.29)     69.7     -0.830 
-#> tcl               1.04 0.0864 8.30       2.83 (2.39, 3.36)     28.0       3.23 
-#> tv         log V  3.45 0.0445 1.29       31.5 (28.9, 34.4)     13.0       12.2 
-#> add.sd           0.699      0    0    0.699 (0.699, 0.699)                     
+#> tka              0.454  0.192 42.2       1.57 (1.08, 2.29)     69.6     -0.514 
+#> tcl               1.01 0.0850 8.40       2.75 (2.33, 3.25)     27.5       3.02 
+#> tv         log V  3.45 0.0451 1.31       31.6 (28.9, 34.5)     13.2       11.2 
+#> add.sd           0.700      0    0    0.700 (0.700, 0.700)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -203,14 +203,14 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 22
-#>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.118 -0.513 -0.0739  320.
-#> 2 1      0.25  2.84  3.22 -0.378  3.84 -1.00  -1.44   0.118 -0.513 -0.0739  206.
-#> 3 1      0.57  6.57  5.65  0.916  6.67 -0.101 -0.144  0.118 -0.513 -0.0739  117.
+#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06    0.103 -0.486 -0.0781
+#> 2 1      0.25  2.84  3.21 -0.371  3.81 -0.968  -1.38    0.103 -0.486 -0.0781
+#> 3 1      0.57  6.57  5.62  0.946  6.61 -0.0394 -0.0563  0.103 -0.486 -0.0781
 #> # ℹ 129 more rows
-#> # ℹ 10 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
-#> #   dosenum <dbl>, WRES <dbl>, CPRED <dbl>, CRES <dbl>, CWRES <dbl>
+#> # ℹ 11 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
+#> #   tad <dbl>, dosenum <dbl>, WRES <dbl>, CPRED <dbl>, CRES <dbl>, CWRES <dbl>
 
 # Note this also adds the FOCEi objective function
 # }

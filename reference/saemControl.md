@@ -53,7 +53,8 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   sharedInner = c("classic", "shared"),
-  nonMuTheta = c("eta", "regress"),
+  nonMuTheta = c("regress", "eta"),
+  residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
   fast = FALSE,
   fastKernel = c("firstN", "throughout", "additive"),
@@ -480,15 +481,29 @@ saemControl(
 - nonMuTheta:
 
   Controls how a population \`theta\` that is not mu-referenced (does
-  not appear linearly with an eta) is handled.
+  not appear linearly with an eta – the SAEM \`phi0\` fixed effects) is
+  estimated.
 
-  \* \`"eta"\` (default): the historic SAEM treatment (the parameter is
-  carried through the phi structure).
+  \* \`"regress"\` (default): keep the parameter as a plain
+  directly-estimated \`theta\` regressor. Each iteration \`phi0\` is
+  estimated by a bounded direct optimization of the observation
+  likelihood (robust coordinate descent within a local trust region,
+  honoring the \`ini\` bounds), held fixed rather than drawn
+  stochastically with a shrinking variance. This recovers population
+  parameters that have no associated random effect more accurately, at
+  some extra runtime (the objective re-solves the ODE).
 
-  \* \`"regress"\`: keep the parameter as a plain \`theta\` regressor in
-  the translated model (as the mu-referenced FOCEI family does), rather
-  than folding it into the phi/eta structure. Can improve stability of
-  population parameters that have no associated random effect.
+  \* \`"eta"\`: the historic SAEM treatment (the parameter is carried
+  through the stochastic \`phi0\` block).
+
+- residWarmStart:
+
+  Boolean (default \`TRUE\`); warm-start the residual-error parameters
+  from the observed per-endpoint moments at the initial predictions
+  (additive SD from \`sqrt(mean(err^2))\`, proportional SD from
+  \`sqrt(mean((err/f)^2))\`), the same moment estimate \`est="npag"\`
+  uses. Gives the stochastic step a better starting residual scale. Set
+  \`FALSE\` to start from the \`ini\`-block residual values instead.
 
 - censOption:
 

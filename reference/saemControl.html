@@ -86,7 +86,8 @@
 <span>  mixProbPriorN <span class="op">=</span> <span class="fl">20</span>,</span>
 <span>  mixSampleMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"parallel"</span>, <span class="st">"msaem"</span><span class="op">)</span>,</span>
 <span>  sharedInner <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"classic"</span>, <span class="st">"shared"</span><span class="op">)</span>,</span>
-<span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"eta"</span>, <span class="st">"regress"</span><span class="op">)</span>,</span>
+<span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"eta"</span><span class="op">)</span>,</span>
+<span>  residWarmStart <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  fastKernel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"firstN"</span>, <span class="st">"throughout"</span>, <span class="st">"additive"</span><span class="op">)</span>,</span>
@@ -490,13 +491,27 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
 
 <dt id="arg-nonmutheta">nonMuTheta<a class="anchor" aria-label="anchor" href="#arg-nonmutheta"></a></dt>
 <dd><p>Controls how a population `theta` that is not
-  mu-referenced (does not appear linearly with an eta) is handled.</p>
-<p>* `"eta"` (default): the historic SAEM treatment (the parameter is
-    carried through the phi structure).</p>
-<p>* `"regress"`: keep the parameter as a plain `theta` regressor in the
-    translated model (as the mu-referenced FOCEI family does), rather
-    than folding it into the phi/eta structure.  Can improve stability
-    of population parameters that have no associated random effect.</p></dd>
+  mu-referenced (does not appear linearly with an eta – the SAEM `phi0`
+  fixed effects) is estimated.</p>
+<p>* `"regress"` (default): keep the parameter as a plain directly-estimated
+    `theta` regressor.  Each iteration `phi0` is estimated by a bounded
+    direct optimization of the observation likelihood (robust coordinate
+    descent within a local trust region, honoring the `ini` bounds), held
+    fixed rather than drawn stochastically with a shrinking variance.  This
+    recovers population parameters that have no associated random effect
+    more accurately, at some extra runtime (the objective re-solves the
+    ODE).</p>
+<p>* `"eta"`: the historic SAEM treatment (the parameter is carried through
+    the stochastic `phi0` block).</p></dd>
+
+
+<dt id="arg-residwarmstart">residWarmStart<a class="anchor" aria-label="anchor" href="#arg-residwarmstart"></a></dt>
+<dd><p>Boolean (default `TRUE`); warm-start the residual-error
+parameters from the observed per-endpoint moments at the initial predictions
+(additive SD from `sqrt(mean(err^2))`, proportional SD from
+`sqrt(mean((err/f)^2))`), the same moment estimate `est="npag"` uses.  Gives
+the stochastic step a better starting residual scale.  Set `FALSE` to start
+from the `ini`-block residual values instead.</p></dd>
 
 
 <dt id="arg-censoption">censOption<a class="anchor" aria-label="anchor" href="#arg-censoption"></a></dt>

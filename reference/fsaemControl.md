@@ -602,7 +602,10 @@ fsaemControl()
 #> [1] "classic"
 #> 
 #> $nonMuTheta
-#> [1] "eta"
+#> [1] "regress"
+#> 
+#> $residWarmStart
+#> [1] TRUE
 #> 
 #> $fast
 #> [1] TRUE

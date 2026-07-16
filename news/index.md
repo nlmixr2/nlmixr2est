@@ -4,18 +4,35 @@
 
 ### New features
 
-- `saemControl(nonMuTheta="regress")` estimates population `theta`
-  parameters that have no associated random effect (the SAEM `phi0`
-  fixed effects) by a bounded direct optimization of the observation
-  likelihood each iteration, keeping them as plain regressors instead of
-  stochastic `phi0` draws with a shrinking variance. The optimization
-  uses robust coordinate descent within a local trust region, honoring
-  each theta’s `ini`-block bounds, and holds `phi0` fixed (no stochastic
-  sampling) once the optimizer owns it. On a simulated model with three
-  no-eta thetas (`ka`, `V`, a Hill power) this recovered them far more
-  accurately than the default (e.g. the absorption theta RMSE dropped
-  ~16x) at some extra runtime. Default remains `"eta"` (the historic
-  `phi0` handling); `"regress"` is opt-in.
+- SAEM warm-starts its residual-error parameters from the observed
+  per-endpoint moments at the initial predictions (additive SD from
+  `sqrt(mean(err^2))`, proportional SD from `sqrt(mean((err/f)^2))`),
+  the same moment estimate `est="npag"`/`est="npb"` use –
+  `saemControl(residWarmStart=TRUE)`, the default. Because SAEM forms
+  this at the unconverged population prediction, the proportional moment
+  excludes near-zero predictions (where between-subject variability
+  dominates) and the warm-started value is clamped to a sane multiple of
+  the `ini` value. Set `residWarmStart=FALSE` to start from the `ini`
+  residual values.
+
+- The proportional residual moment used to warm-start
+  `est="npag"`/`est="npb"` (and now SAEM) guards against a near-zero
+  prediction: the ratio is `err / (abs(f) <= 1e-6 ? 1 : f)`, so an `f`
+  at (or near) zero no longer blows up the proportional moment.
+
+- SAEM now estimates population `theta` parameters that have no
+  associated random effect (the SAEM `phi0` fixed effects) by a bounded
+  direct optimization of the observation likelihood each iteration –
+  `saemControl(nonMuTheta="regress")`, now the DEFAULT – keeping them as
+  plain directly-estimated regressors instead of stochastic `phi0` draws
+  with a shrinking variance. The optimization uses robust coordinate
+  descent within a local trust region, honoring each theta’s `ini`-block
+  bounds, and holds `phi0` fixed once the optimizer owns it. On a
+  simulated model with three no-eta thetas (`ka`, `V`, a Hill power)
+  this recovered them far more accurately than the old handling
+  (e.g. the absorption theta RMSE dropped ~16x), at some extra runtime
+  (the objective re-solves the ODE). The previous behavior is available
+  with `saemControl(nonMuTheta="eta")`.
 
 - `est="npag"`/`est="npb"` now ESTIMATE a mixture (`mix()`) model’s
   component structural parameters (e.g. a per-subpopulation clearance)
