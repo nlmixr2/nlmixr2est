@@ -35,4 +35,30 @@ nmTest({
     expect_false("eta.tke" %in% rownames(f$omega))
     expect_equal(as.numeric(f$theta[["tke"]]), log(0.30))   # held at ini
   })
+
+  # fixture 2: a non-mu-referenced eta (enters non-additively, so rxode2 does not
+  # pair it with a theta) needs NO mu-expansion -- the npag box covers every eta, so
+  # it is already a grid dimension estimated as a pure random effect (population mean
+  # ~0).  Confirm it fits and its support distribution is recovered.
+  .modEta <- function() {
+    ini({ tka <- log(1.5); tv <- log(32); tke <- log(0.1)
+      eta.ka ~ 0.3; eta.v ~ 0.1; eta.ke ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); v <- exp(tv + eta.v); ke <- exp(tke) * (1 + eta.ke)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - ke * center
+      cp <- center / v; cp ~ add(add.sd) })
+  }
+
+  test_that("est='npag' natively estimates a non-mu-referenced eta as a grid dimension", {
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.modEta))
+    expect_false("eta.ke" %in% .ui$muRefDataFrame$eta)   # genuinely non-mu
+    f <- nlmixr2(.modEta, nlmixr2data::theo_sd, est = "npag",
+                 control = npagControl(points = 64L, cycles = 10L, gammaOptimize = FALSE,
+                                       seed = 1L, calcTables = FALSE))
+    expect_true("eta.ke" %in% rownames(f$omega))          # it is a support dimension
+    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights
+    .j <- ncol(.sp)                                        # eta.ke is the last eta
+    expect_true(abs(sum(.wt * .sp[, .j])) < 0.5)           # pure RE: support mean ~ 0
+    expect_gt(f$omega["eta.ke", "eta.ke"], 0)              # a BSV was estimated
+  })
 })

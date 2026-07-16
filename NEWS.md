@@ -10,7 +10,9 @@
   pseudo-eta is injected (`ke <- exp(tke + eta.tke)`) so the parameter becomes a
   grid dimension estimated by the support-point distribution.  Off by default
   because it changes the model (the parameter gains a support distribution); it is
-  not applied to mixture models.
+  not applied to mixture models.  (A non-mu-referenced ETA -- an eta with no paired
+  theta -- needs no expansion: the npag box already covers every eta, so it is a
+  grid dimension estimated as a pure random effect.)
 
 - `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
   The nonparametric objective sums the inner per-observation llikObs, which for a
