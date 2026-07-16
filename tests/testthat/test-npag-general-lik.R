@@ -33,13 +33,23 @@ nmTest({
     expect_true(isTRUE(f$control$npResidFreeze))
   })
 
-  test_that("est='npag' records a runInfo note for a held non-mu structural param", {
-    # tke has no eta and is not mu-referenced, so npag holds it at its ini value;
-    # this is surfaced (not silent) in the fit's runInfo.
+  test_that("est='npag' with muExpand=FALSE holds a non-mu structural param and notes it", {
+    # tke has no eta and is not mu-referenced; with the mu-expansion disabled npag
+    # holds it at its ini value and surfaces that (not silently) in the fit runInfo.
     f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag",
                  control = npagControl(points = 24L, cycles = 2L, seed = 1L,
-                                       calcTables = FALSE))
+                                       calcTables = FALSE, muExpand = FALSE))
+    expect_false("eta.tke" %in% rownames(f$omega))
     expect_true(any(grepl("structural fixed-effect", f$env$runInfo)))
+  })
+
+  test_that("est='npag' with muExpand=TRUE grid-estimates the non-mu structural param", {
+    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag",
+                 control = npagControl(points = 24L, cycles = 2L, seed = 1L,
+                                       calcTables = FALSE, muExpand = TRUE))
+    # opt-in muExpand injects a pseudo-eta so tke becomes a grid dimension
+    expect_true("eta.tke" %in% rownames(f$omega))
+    expect_false(any(grepl("structural fixed-effect", f$env$runInfo)))
   })
 
   test_that("est='npb' still rejects a generalized likelihood", {

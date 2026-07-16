@@ -1,0 +1,97 @@
+# saem-style mu-expansion for the nonparametric engines.
+#
+# npag estimates only the mu-referenced (grid) parameters and the residual/
+# likelihood (err-tagged) parameters.  A non-mu-referenced STRUCTURAL fixed-effect
+# theta (err==NA, no eta, not fixed, not a mixture proportion -- e.g. `ke <-
+# exp(tke)`) has nowhere to be estimated: it is not a grid dimension and it feeds
+# the ODE, so the frozen residual step cannot touch it.  saem handles every
+# parameter uniformly by making it mu-referenced; we do the same here -- inject a
+# pseudo-eta (`param = theta + eta`) so the theta becomes a grid dimension estimated
+# by the support-point mean-shift.  Because the structural parameter now rides the
+# grid (which solves the ODE anyway) and not the residual step, the residual step
+# keeps optimizing only err-tagged parameters and its ODE freeze stays valid.
+#
+# The injected eta starts with a modest variance so the initial Sobol box is wide
+# enough to locate the theta; for a true fixed effect the nonparametric grid
+# collapses that dimension toward a point mass (the "fix eta to 0" limit).
+
+#' Substitute `theta` with `(theta + eta)` inside a single model expression.
+#' @noRd
+.npSubstThetaAddEta <- function(expr, theta, eta) {
+  do.call("substitute",
+          list(expr, setNames(list(bquote(.(as.name(theta)) + .(as.name(eta)))), theta)))
+}
+
+#' Mu-expand every non-mu structural fixed-effect theta of a nonparametric-engine
+#' model so it becomes grid-estimable.  Returns the (possibly rewritten) ui.
+#' @param ui rxode2 ui
+#' @param initVar initial variance for each injected pseudo-eta (box half-width is
+#'   gridWidth * sqrt(initVar) on the transformed scale)
+#' @noRd
+.npMuExpand <- function(ui, initVar = 0.25) {
+  # mixture models have their own estimation machinery (component marginalization +
+  # proportion EM); injecting pseudo-etas into their structural parameters mixes
+  # poorly with the pseudo-subject/omega setup, so skip mu-expansion there.
+  if (length(ui$mixProbs) > 0L) return(ui)
+  .iniDf <- ui$iniDf
+  .th <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
+  .mr <- ui$muRefDataFrame
+  .mixNames <- ui$mixProbs
+  .isFix <- !is.na(.th$fix) & .th$fix
+  .isMu <- .th$name %in% .mr$theta
+  .isMix <- .th$name %in% .mixNames
+  .isErr <- !is.na(.th$err)
+  # parameters that appear inside a mix() call are mixture-component structure, not
+  # simple structural fixed effects -- injecting an eta there would change the
+  # mixture model, so exclude them (their estimation rides the mixture machinery).
+  .mixVars <- unique(unlist(lapply(ui$lstExpr, function(e)
+    unlist(lapply(.findMixCalls(e), all.vars)))))
+  .isInMix <- .th$name %in% .mixVars
+  .cand <- .th$name[!.isFix & !.isMu & !.isMix & !.isErr & !.isInMix]
+  if (length(.cand) == 0L) return(ui)
+  .etaNames <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
+  .allNames <- .iniDf$name
+  for (.tn in .cand) {
+    # a unique pseudo-eta name for this theta
+    .etaN <- paste0("eta.", .tn)
+    .k <- 1L
+    while (.etaN %in% .allNames) { .etaN <- paste0("eta.", .tn, ".", .k); .k <- .k + 1L }
+    .allNames <- c(.allNames, .etaN)
+    # rewrite every model expression that uses the theta: theta -> (theta + eta)
+    .le <- ui$lstExpr
+    .used <- FALSE
+    for (i in seq_along(.le)) {
+      if (.tn %in% all.vars(.le[[i]])) {
+        .new <- .npSubstThetaAddEta(.le[[i]], .tn, .etaN)
+        ui <- eval(bquote(rxode2::model(ui, .(.new))))
+        .used <- TRUE
+      }
+    }
+    if (.used) {
+      ui <- eval(bquote(rxode2::ini(ui, .(as.name(.etaN)) ~ .(initVar))))
+    }
+  }
+  ui
+}
+
+# Which est strings are nonparametric-engine families (and their mu/irls sugar).
+.npEstFamily <- c("npag", "mnpag", "inpag", "npb", "mnpb", "inpb")
+
+#' Preprocessing hook: mu-expand non-mu structural fixed-effect thetas for the
+#' nonparametric engines, before the rest of the pipeline builds on the ui.  Doing
+#' it here (rather than mutating the ui mid-setup) keeps the injected pseudo-etas
+#' consistent through covariate/mu processing and model compilation.  Off when
+#' control$muExpand is FALSE.
+#' @inheritParams nlmixr2
+#' @return list(ui=) when the model was expanded, else NULL
+#' @export
+#' @author Matthew L. Fidler
+.nlmixr0preProcessNpMuExpand <- function(ui, est, data, control) {
+  if (is.null(est) || !(est %in% .npEstFamily)) return(NULL)
+  if (!is.null(control) && isFALSE(control$muExpand)) return(NULL)
+  .ui2 <- .npMuExpand(ui)
+  if (identical(.ui2, ui)) return(NULL)
+  list(ui = .ui2)
+}
+
+preProcessHooksAdd(".nlmixr0preProcessNpMuExpand", .nlmixr0preProcessNpMuExpand)

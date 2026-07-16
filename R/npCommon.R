@@ -212,7 +212,7 @@
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
   .np <- list(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
-              residOptimize = "alternate",
+              residOptimize = "alternate", muExpand = FALSE,
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -225,6 +225,7 @@
   .ctl$cycles <- as.integer(.np$cycles)
   .ctl$gammaOptimize <- isTRUE(.np$gammaOptimize)
   .ctl$residOptimize <- as.character(.np$residOptimize)
+  .ctl$muExpand <- isTRUE(.np$muExpand)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)

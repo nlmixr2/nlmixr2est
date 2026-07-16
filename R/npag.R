@@ -57,6 +57,14 @@
 #'   optimization uses the bounded \code{minqa::bobyqa}, honoring the ini-block
 #'   lower/upper bounds of the residual parameters (e.g. keeping an additive SD
 #'   non-negative); an unbounded optimizer could wander into an invalid region.
+#' @param muExpand saem-style mu-expansion of non-mu structural parameters.  npag
+#'   estimates only mu-referenced (grid) and residual/likelihood parameters; a
+#'   non-mu structural fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) is
+#'   otherwise held at its initial value.  When `TRUE`, such a parameter is made
+#'   grid-estimable by injecting a pseudo-eta (`ke <- exp(tke + eta.tke)`).  Default
+#'   `FALSE` (opt-in): it changes the model (the parameter gains a support
+#'   distribution / small BSV) and is not applied to mixture models.  A held
+#'   parameter is reported in the fit's `$runInfo`.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -65,13 +73,15 @@
 #'
 #' npagControl()
 npagControl <- function(points = 2028L, cycles = 100L, gammaOptimize = TRUE,
-                        residOptimize = c("alternate", "final", "none"), ...) {
+                        residOptimize = c("alternate", "final", "none"),
+                        muExpand = FALSE, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
+  .ctl$muExpand <- isTRUE(muExpand)
   .ctl
 }
 

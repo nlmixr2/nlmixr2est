@@ -491,6 +491,12 @@ arma::mat npFinalizeFit(Environment e, const arma::mat& support,
     int fi = fixedEta[f];
     if (fi >= 0 && fi < neta && haveModel) Omega(fi, fi) = omModel(fi, fi);
   }
+  // positive-definite floor: a support dimension can collapse to ~0 variance (a
+  // near-point-mass -- common for a mu-expanded fixed-effect eta), which makes the
+  // installed Omega singular and the posthoc MAP's Omega^-1 fail.  Floor the
+  // diagonal so the inverse is well-defined; the tiny variance still reads as "no
+  // BSV" for that parameter.
+  for (int d = 0; d < neta; ++d) if (omInstall(d, d) < 1e-6) omInstall(d, d) = 1e-6;
   impSetOmega(omInstall, impDiagXform());
   // fold the fitted assay-error multiplier (gamma) into the variance-scale
   // residual coefficients: r was fit as gamma^2 * r(theta), which equals

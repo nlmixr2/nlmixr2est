@@ -192,8 +192,8 @@ nmObjGetControl.impmap <- function(x, ...) {
   # are nonparametric-engine control fields that foceiControl does not accept; drop
   # them so a downstream do.call(foceiControl, .) (e.g. .setOfvFo, general-likelihood
   # tables) does not error with "unused argument".
-  .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "alpha",
-                "burnin", "nsamp", "nchains", "propSd", "est")
+  .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "muExpand",
+                "alpha", "burnin", "nsamp", "nchains", "propSd", "est")
   .n <- .n[!grepl("^np[A-Z]", .n) & !(.n %in% .npKnobs)]
   .foceiControl <- setNames(lapply(.n, function(n) .impmapControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"

@@ -2,6 +2,16 @@
 
 ## New features
 
+- `est="npag"`/`est="npb"` gain an opt-in saem-style mu-expansion
+  (`npagControl(muExpand=TRUE)`, default `FALSE`).  npag estimates only
+  mu-referenced (grid) and residual/likelihood parameters, so a non-mu structural
+  fixed-effect theta (no eta, e.g. `ke <- exp(tke)`) is otherwise held at its ini
+  value (now reported in the fit `$runInfo` instead of silently).  With muExpand a
+  pseudo-eta is injected (`ke <- exp(tke + eta.tke)`) so the parameter becomes a
+  grid dimension estimated by the support-point distribution.  Off by default
+  because it changes the model (the parameter gains a support distribution); it is
+  not applied to mixture models.
+
 - `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
   The nonparametric objective sums the inner per-observation llikObs, which for a
   non-normal endpoint is exactly the user's log-likelihood, so the objective is
