@@ -60,7 +60,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "fsaem", "cov-condition"),
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429",
-    "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd"),
+    "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
+    "saem-nonmutheta"),
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
