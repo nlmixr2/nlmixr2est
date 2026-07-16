@@ -2,6 +2,11 @@
 
 ## New features
 
+- `est="npb"` now supports multiple independent chains (`npbControl(nchains=)`):
+  the stick-breaking Gibbs sampler runs once per chain (seed offset per chain),
+  the posterior-mean draws are pooled, and a Gelman-Rubin R-hat per eta is
+  reported in `$env$npbRhat` (~1 at convergence; > ~1.1 flags non-convergence).
+
 - SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
   event data keeps `DV` when the model references it (previously dropped, so the
   likelihood solve errored "parameter(s) required for solving: DV"); the

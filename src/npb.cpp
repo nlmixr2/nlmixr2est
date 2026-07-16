@@ -23,6 +23,33 @@
 
 using namespace Rcpp;
 
+// Gelman-Rubin potential-scale-reduction factor (R-hat) per parameter across
+// chains.  Each chain matrix is (draws x params); returns one R-hat per param
+// (~1 at convergence).  Returns all-ones for < 2 chains or < 2 draws.
+static arma::vec npbGelmanRubin(const std::vector<arma::mat>& chains) {
+  int m = (int)chains.size();
+  int p = (m > 0) ? (int)chains[0].n_cols : 0;
+  arma::vec rhat(p, arma::fill::ones);
+  if (m < 2) return rhat;
+  int n = (int)chains[0].n_rows;
+  if (n < 2) return rhat;
+  for (int j = 0; j < p; ++j) {
+    arma::vec cm(m), cv(m);
+    for (int c = 0; c < m; ++c) {
+      arma::vec col = chains[c].col(j);
+      cm[c] = arma::mean(col);
+      cv[c] = arma::var(col);                 // (n-1) denominator
+    }
+    double grand = arma::mean(cm);
+    double B = (double)n / (m - 1) * arma::accu(arma::square(cm - grand));
+    double W = arma::mean(cv);
+    if (W <= 0.0) { rhat[j] = 1.0; continue; }
+    double Vhat = ((double)(n - 1) / n) * W + (1.0 / n) * B;
+    rhat[j] = std::sqrt(Vhat / W);
+  }
+  return rhat;
+}
+
 void npbOuter(Environment e) {
   List control = e["control"];
   int K = as<int>(control["npPoints"]);          // truncation level
@@ -31,6 +58,8 @@ void npbOuter(Environment e) {
   double alpha = as<double>(control["npAlpha"]);
   double propSd = as<double>(control["npPropSd"]);
   int seed = as<int>(control["npSeed"]);
+  int nchains = control.containsElementNamed("nchains") ? as<int>(control["nchains"]) : 1;
+  if (nchains < 1) nchains = 1;
   int cores = impCores();
 
   int nsub = impNsub();
@@ -47,25 +76,31 @@ void npbOuter(Environment e) {
   }
   arma::vec g0sd = arma::sqrt(g0var);
 
-  // reproducible RNG seeded from the control (via R's RNG so set.seed also works)
   Function setSeed("set.seed");
-  setSeed(seed);
-  GetRNGstate();
 
+  // pooled across chains
+  arma::mat postEtaAcc(nsub, neta, arma::fill::zeros);
+  arma::mat meanDraws((size_t)nchains * nSamp, neta, arma::fill::zeros);
+  std::vector<arma::rowvec> supAll;
+  std::vector<double> wAll;
+  std::vector<arma::mat> chainMeanDraws(nchains);   // per chain, for Gelman-Rubin
+  arma::mat lastPsi;             // final-sweep Psi of the last chain (objective)
+  arma::vec wLast;              // final weights of the last chain
+  int total = nBurn + nSamp;
+
+  // Independent chains (seed offset per chain) for Gelman-Rubin R-hat.
+  for (int chain = 0; chain < nchains; ++chain) {
+  // reproducible RNG seeded from the control (via R's RNG so set.seed also works)
+  setSeed(seed + chain);
+  GetRNGstate();
   // initialize support points from G_0, uniform weights
   arma::mat phi(K, neta);
   for (int k = 0; k < K; ++k)
     for (int j = 0; j < neta; ++j) phi(k, j) = R::rnorm(0.0, g0sd[j]);
   arma::vec w(K); w.fill(1.0 / K);
-
-  arma::mat postEtaAcc(nsub, neta, arma::fill::zeros);
-  arma::mat meanDraws(nSamp, neta, arma::fill::zeros);
-  std::vector<arma::rowvec> supAll;
-  std::vector<double> wAll;
   std::vector<int> z(nsub, 0);
-  arma::mat lastPsi;              // final-sweep Psi for the objective
+  arma::mat chainMd(nSamp, neta, arma::fill::zeros);
   int drawn = 0;
-  int total = nBurn + nSamp;
 
   for (int it = 0; it < total; ++it) {
     // (a) conditional likelihoods p(y_i | phi_k) and cluster assignments
@@ -119,14 +154,20 @@ void npbOuter(Environment e) {
     // (d) accumulate post-burn-in draws
     if (it >= nBurn) {
       for (int i = 0; i < nsub; ++i) postEtaAcc.row(i) += phi.row(z[i]);
-      meanDraws.row(drawn) = w.t() * phi;
+      arma::rowvec md = w.t() * phi;
+      chainMd.row(drawn) = md;
+      meanDraws.row((size_t)chain * nSamp + drawn) = md;
       for (int k = 0; k < K; ++k) if (w[k] > 1e-8) { supAll.push_back(phi.row(k)); wAll.push_back(w[k]); }
       drawn++;
     }
   }
   PutRNGstate();
+  chainMeanDraws[chain] = chainMd;
+  wLast = w;
+  } // end chain loop
 
-  arma::mat postEta = postEtaAcc / (double)nSamp;
+  arma::vec rhat = npbGelmanRubin(chainMeanDraws);
+  arma::mat postEta = postEtaAcc / ((double)nchains * nSamp);
 
   // posterior mixing distribution E[F]: pooled post-burn-in support points with
   // their (renormalized) weights.
@@ -139,10 +180,10 @@ void npbOuter(Environment e) {
     if (wsum > 0.0) weights /= wsum;
   }
 
-  // nonparametric marginal log-likelihood at the final draw
+  // nonparametric marginal log-likelihood at the final draw (last chain)
   double objf = 0.0;
   for (int i = 0; i < nsub; ++i) {
-    double s = arma::accu(lastPsi.row(i) % w.t());
+    double s = arma::accu(lastPsi.row(i) % wLast.t());
     objf += std::log(std::max(1e-300, s));
   }
 
@@ -154,7 +195,9 @@ void npbOuter(Environment e) {
   e["npbSupport"] = wrap(support);          // pooled posterior support (E[F])
   e["npbWeights"] = wrap(weights);
   e["npbPosteriorEta"] = wrap(postEta);     // per-subject posterior mean eta
-  e["npbMeanDraws"] = wrap(meanDraws);      // posterior draws of the population mean (CIs)
+  e["npbMeanDraws"] = wrap(meanDraws);      // pooled posterior draws of the mean (CIs)
+  e["npbRhat"] = wrap(rhat);                // Gelman-Rubin R-hat per eta (~1 converged)
+  e["npbNchains"] = nchains;
   e["npbOmega"] = wrap(Omega);
   e["npbAlpha"] = alpha;
   e["npbK"] = K;

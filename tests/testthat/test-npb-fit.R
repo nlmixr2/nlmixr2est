@@ -39,6 +39,18 @@ nmTest({
     expect_equal(as.numeric(f1$objf), as.numeric(f2$objf), tolerance = 1e-8)
   })
 
+  test_that("est='npb' multi-chain reports Gelman-Rubin R-hat", {
+    f <- nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "npb",
+                 control = npbControl(points = 20L, burnin = 100L, nsamp = 150L,
+                                      nchains = 3L, seed = 42L))
+    expect_equal(f$env$npbNchains, 3L)
+    # pooled draws across chains, and one R-hat per eta near 1 at convergence
+    expect_equal(nrow(f$env$npbMeanDraws), 3L * 150L)
+    .rhat <- f$env$npbRhat
+    expect_equal(length(.rhat), 3L)
+    expect_true(all(is.finite(.rhat)) && all(.rhat >= 1 - 1e-8) && all(.rhat < 1.3))
+  })
+
   test_that("mu-referenced sugar est='mnpb' fits", {
     f <- nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "mnpb", control = .ctl())
     expect_s3_class(f, "nlmixr2FitData")
