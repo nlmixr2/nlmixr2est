@@ -226,7 +226,10 @@
     stop(msg)
   }
   s <- subset(data$nmdat, EVID == 0)
-  data$data <- as.matrix(s[, c("ID", "TIME", "DV", c(model$covars, inPars))])
+  # a general-likelihood model lists DV in inPars; DV is already included, so keep
+  # the column set unique to avoid a duplicated DV column (which would make the
+  # observation vector data$data[, "DV"] a matrix).
+  data$data <- as.matrix(s[, unique(c("ID", "TIME", "DV", model$covars, inPars))])
 
   # Subjects without an observation are now dropped upstream, so the previous
   # "No data with ID" guard here is unreachable and has been removed.
@@ -331,17 +334,27 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  # drop 'dv' by name (kernel gets observations separately as 'y'); assert layout instead of hardcoding index
+  # normally drop 'dv' by name (the kernel gets observations separately as 'y').
+  # A general log-likelihood model, though, references DV in its rx_pred_ (the ll
+  # expression), so DV must be kept as a solve input -- otherwise rxode2 reports
+  # "parameter(s) required for solving: DV".  Detect that from inPars (which lists
+  # DV for such a model) and keep the column, exposed to the solve as "DV".
   .dvCol <- which(tolower(names(dat)) == "dv")
   if (length(.dvCol) != 1L || .dvCol != 6L) {
     stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
          call. = FALSE)
   }
+  .dvIsInput <- any(toupper(inPars) == "DV")
+  .dvVals <- if (.dvIsInput) dat[[.dvCol]] else NULL
   dat <- as.data.frame(dat[, -.dvCol])
   names(dat) <- vapply(names(dat), function(n) {
     if (n %in% inPars) return(n)
     return(toupper(n))
   }, character(1), USE.NAMES = FALSE)
+  # general-likelihood models reference DV in the solve; append it as a named
+  # input at the END so the fixed ID/TIME/EVID/... column layout the kernel reads
+  # positionally is unchanged, while rxode2 still supplies DV to the model by name.
+  if (.dvIsInput) dat[["DV"]] <- .dvVals
 
   dat$ID <- as.integer(dat$ID)
 
