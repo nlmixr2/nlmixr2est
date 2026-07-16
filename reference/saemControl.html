@@ -81,10 +81,12 @@
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
-<span>  mixProbMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regularized"</span>, <span class="st">"annealed"</span><span class="op">)</span>,</span>
+<span>  mixProbMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regularized"</span>, <span class="st">"annealed"</span>, <span class="st">"regress"</span><span class="op">)</span>,</span>
 <span>  mixProbStepExp <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  mixProbPriorN <span class="op">=</span> <span class="fl">20</span>,</span>
 <span>  mixSampleMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"parallel"</span>, <span class="st">"msaem"</span><span class="op">)</span>,</span>
+<span>  sharedInner <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"classic"</span>, <span class="st">"shared"</span><span class="op">)</span>,</span>
+<span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"eta"</span>, <span class="st">"regress"</span><span class="op">)</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  fastKernel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"firstN"</span>, <span class="st">"throughout"</span>, <span class="st">"additive"</span><span class="op">)</span>,</span>
@@ -418,7 +420,15 @@ uses the legacy finite-difference behavior.</p></dd>
 <p>* `"annealed"`: give the mixing-probability update its own decaying
     step-size schedule (`mixProbStepExp`) instead of the
     full-replacement step used during `nBurn`. Lower bias, but does
-    not by itself fix a systematic (non-noise-driven) collapse.</p></dd>
+    not by itself fix a systematic (non-noise-driven) collapse.</p>
+<p>* `"regress"`: treat per-subject mixture membership as a fixed
+    regressor.  Each subject is assigned a component up front and that
+    assignment is held fixed and fed into the solve (via the existing
+    mixture-index regressor), skipping the per-iteration soft-EM
+    responsibility step entirely.  Avoids the responsibility feedback
+    loop by construction and can be more stable when the components are
+    well separated; less appropriate when membership is genuinely
+    uncertain.</p></dd>
 
 
 <dt id="arg-mixprobstepexp">mixProbStepExp<a class="anchor" aria-label="anchor" href="#arg-mixprobstepexp"></a></dt>
@@ -462,6 +472,31 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
     sign) but still not reliable – it often settles at a safety-floor
     value rather than the true variance. Prefer `"parallel"` unless
     specifically evaluating this method.</p></dd>
+
+
+<dt id="arg-sharedinner">sharedInner<a class="anchor" aria-label="anchor" href="#arg-sharedinner"></a></dt>
+<dd><p>Controls how SAEM computes individual predictions
+  (`f`), residual variances (`r`), and per-observation likelihood
+  contributions.</p>
+<p>* `"classic"` (default): the historic SAEM per-endpoint residual
+    machinery (its own `res_mod` handling of add/prop/pow/Box-Cox/AR
+    error models).</p>
+<p>* `"shared"`: reuse the shared FOCEI inner driver (`likInner0`), the
+    same endpoint-agnostic engine used by FOCEI and the nonparametric
+    methods, so residual/prediction/likelihood logic is not duplicated.
+    Intended to be numerically equivalent to `"classic"`; opt-in while
+    it is validated.</p></dd>
+
+
+<dt id="arg-nonmutheta">nonMuTheta<a class="anchor" aria-label="anchor" href="#arg-nonmutheta"></a></dt>
+<dd><p>Controls how a population `theta` that is not
+  mu-referenced (does not appear linearly with an eta) is handled.</p>
+<p>* `"eta"` (default): the historic SAEM treatment (the parameter is
+    carried through the phi structure).</p>
+<p>* `"regress"`: keep the parameter as a plain `theta` regressor in the
+    translated model (as the mu-referenced FOCEI family does), rather
+    than folding it into the phi/eta structure.  Can improve stability
+    of population parameters that have no associated random effect.</p></dd>
 
 
 <dt id="arg-censoption">censOption<a class="anchor" aria-label="anchor" href="#arg-censoption"></a></dt>

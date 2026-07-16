@@ -598,6 +598,12 @@ fsaemControl()
 #> $mixSampleMethod
 #> [1] "parallel"
 #> 
+#> $sharedInner
+#> [1] "classic"
+#> 
+#> $nonMuTheta
+#> [1] "eta"
+#> 
 #> $fast
 #> [1] TRUE
 #> 

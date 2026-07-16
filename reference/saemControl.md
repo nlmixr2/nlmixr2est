@@ -48,10 +48,12 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  mixProbMethod = c("regularized", "annealed"),
+  mixProbMethod = c("regularized", "annealed", "regress"),
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
+  sharedInner = c("classic", "shared"),
+  nonMuTheta = c("eta", "regress"),
   censOption = c("gauss", "laplace"),
   fast = FALSE,
   fastKernel = c("firstN", "throughout", "additive"),
@@ -408,6 +410,14 @@ saemControl(
   full-replacement step used during \`nBurn\`. Lower bias, but does not
   by itself fix a systematic (non-noise-driven) collapse.
 
+  \* \`"regress"\`: treat per-subject mixture membership as a fixed
+  regressor. Each subject is assigned a component up front and that
+  assignment is held fixed and fed into the solve (via the existing
+  mixture-index regressor), skipping the per-iteration soft-EM
+  responsibility step entirely. Avoids the responsibility feedback loop
+  by construction and can be more stable when the components are well
+  separated; less appropriate when membership is genuinely uncertain.
+
 - mixProbStepExp:
 
   Only used when \`mixProbMethod="annealed"\`. Decay exponent for the
@@ -451,6 +461,34 @@ saemControl(
   reliable – it often settles at a safety-floor value rather than the
   true variance. Prefer \`"parallel"\` unless specifically evaluating
   this method.
+
+- sharedInner:
+
+  Controls how SAEM computes individual predictions (\`f\`), residual
+  variances (\`r\`), and per-observation likelihood contributions.
+
+  \* \`"classic"\` (default): the historic SAEM per-endpoint residual
+  machinery (its own \`res_mod\` handling of add/prop/pow/Box-Cox/AR
+  error models).
+
+  \* \`"shared"\`: reuse the shared FOCEI inner driver (\`likInner0\`),
+  the same endpoint-agnostic engine used by FOCEI and the nonparametric
+  methods, so residual/prediction/likelihood logic is not duplicated.
+  Intended to be numerically equivalent to \`"classic"\`; opt-in while
+  it is validated.
+
+- nonMuTheta:
+
+  Controls how a population \`theta\` that is not mu-referenced (does
+  not appear linearly with an eta) is handled.
+
+  \* \`"eta"\` (default): the historic SAEM treatment (the parameter is
+  carried through the phi structure).
+
+  \* \`"regress"\`: keep the parameter as a plain \`theta\` regressor in
+  the translated model (as the mu-referenced FOCEI family does), rather
+  than folding it into the phi/eta structure. Can improve stability of
+  population parameters that have no associated random effect.
 
 - censOption:
 
