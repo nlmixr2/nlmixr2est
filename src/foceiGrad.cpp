@@ -429,21 +429,32 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
   const bool hasSig = (Rsig.n_cols > 0);
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
+  // arma's inv() throws on a singular H/Ht (Makevars.in sets ARMA_DONT_USE_OPENMP but not
+  // ARMA_DONT_USE_EXCEPTIONS), and an exception escaping an OpenMP structured block is
+  // std::terminate -- the R PROCESS dies.  It is not an R condition, so the driver's
+  // tryCatch(..., error=function(e) NULL) cannot intercept it and the FD fallback never
+  // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
+  // subject and poison it: the result carries NaN and the R driver's is.finite() gate
+  // degrades to finite differences, which is the intended behaviour.
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
-    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
-    mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
-    cube Ai = A.rows(o0, o1), ARi = AR.rows(o0, o1);
-    mat Rsigi = hasSig ? mat(Rsig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    cube RsigDiri = hasSig ? cube(RsigDir.rows(o0, o1)) : cube(o1 - o0 + 1, ndir, 0);
-    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
-    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
-    vec gi; mat etaPi;
-    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, censOpt, fv.subvec(o0, o1), yv.subvec(o0, o1),
-                        Rv.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
-                        neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
-    gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+    try {
+      int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+      mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
+      cube Ai = A.rows(o0, o1), ARi = AR.rows(o0, o1);
+      mat Rsigi = hasSig ? mat(Rsig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      cube RsigDiri = hasSig ? cube(RsigDir.rows(o0, o1)) : cube(o1 - o0 + 1, ndir, 0);
+      mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+      vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
+      vec gi; mat etaPi;
+      foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, censOpt, fv.subvec(o0, o1), yv.subvec(o0, o1),
+                          Rv.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
+                          neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
+      gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+    } catch (...) {
+      gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan);
+    }
   }
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
@@ -565,20 +576,31 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
   const bool hasSig = (R0sig.n_cols > 0);
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
+  // arma's inv() throws on a singular H/Ht (Makevars.in sets ARMA_DONT_USE_OPENMP but not
+  // ARMA_DONT_USE_EXCEPTIONS), and an exception escaping an OpenMP structured block is
+  // std::terminate -- the R PROCESS dies.  It is not an R condition, so the driver's
+  // tryCatch(..., error=function(e) NULL) cannot intercept it and the FD fallback never
+  // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
+  // subject and poison it: the result carries NaN and the R driver's is.finite() gate
+  // degrades to finite differences, which is the intended behaviour.
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
-    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
-    mat ai = a.rows(o0, o1), aRei = aRe.rows(o0, o1), aRci = aRc.rows(o0, o1);
-    cube Ai = A.rows(o0, o1);
-    mat R0sigi = hasSig ? mat(R0sig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
-    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
-    vec gi; mat etaPi;
-    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi, fv.subvec(o0, o1), yv.subvec(o0, o1),
-                            R0v.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
-                            neta, nth, nsg, nom, dirTh, sigCol, fp, gi, etaPi);
-    gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+    try {
+      int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+      mat ai = a.rows(o0, o1), aRei = aRe.rows(o0, o1), aRci = aRc.rows(o0, o1);
+      cube Ai = A.rows(o0, o1);
+      mat R0sigi = hasSig ? mat(R0sig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+      vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
+      vec gi; mat etaPi;
+      foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi, fv.subvec(o0, o1), yv.subvec(o0, o1),
+                              R0v.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
+                              neta, nth, nsg, nom, dirTh, sigCol, fp, gi, etaPi);
+      gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+    } catch (...) {
+      gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan);
+    }
   }
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
@@ -759,18 +781,29 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
   cube Rall(np, np, nsub, fill::zeros);
+  // arma's inv() throws on a singular H/Ht (Makevars.in sets ARMA_DONT_USE_OPENMP but not
+  // ARMA_DONT_USE_EXCEPTIONS), and an exception escaping an OpenMP structured block is
+  // std::terminate -- the R PROCESS dies.  It is not an R condition, so the driver's
+  // tryCatch(..., error=function(e) NULL) cannot intercept it and the FD fallback never
+  // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
+  // subject and poison it: the result carries NaN and the R driver's is.finite() gate
+  // degrades to finite differences, which is the intended behaviour.
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
-    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
-    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
-    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
-    Rall.slice(i) = foceiRSubjectFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
-                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1), dvi, dv2i, censi, limi,
-                                     fv.subvec(o0, o1), yv.subvec(o0, o1), Rv.subvec(o0, o1),
-                                     ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
-                                     neta, ndir, ndirP, nom, dirP);
+    try {
+      int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+      mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+      vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
+      Rall.slice(i) = foceiRSubjectFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
+                                       aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1), dvi, dv2i, censi, limi,
+                                       fv.subvec(o0, o1), yv.subvec(o0, o1), Rv.subvec(o0, o1),
+                                       ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
+                                       neta, ndir, ndirP, nom, dirP);
+    } catch (...) {
+      Rall.slice(i).fill(datum::nan);
+    }
   }
   mat R = sum(Rall, 2);
   return R;
@@ -956,18 +989,29 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
   cube Rall(np, np, nsub, fill::zeros);
+  // arma's inv() throws on a singular H/Ht (Makevars.in sets ARMA_DONT_USE_OPENMP but not
+  // ARMA_DONT_USE_EXCEPTIONS), and an exception escaping an OpenMP structured block is
+  // std::terminate -- the R PROCESS dies.  It is not an R condition, so the driver's
+  // tryCatch(..., error=function(e) NULL) cannot intercept it and the FD fallback never
+  // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
+  // subject and poison it: the result carries NaN and the R driver's is.finite() gate
+  // degrades to finite differences, which is the intended behaviour.
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
-    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
-    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
-    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
-    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
-    Rall.slice(i) = foceiRSubjectFoceFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
-                                         aRe.rows(o0, o1), aRc.rows(o0, o1), ARe.rows(o0, o1), ARc.rows(o0, o1), dvi, dv2i,
-                                         censi, limi, fv.subvec(o0, o1), yv.subvec(o0, o1), R0v.subvec(o0, o1),
-                                         ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
-                                         neta, ndir, ndirP, nom, dirP);
+    try {
+      int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+      mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+      ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+      vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
+      Rall.slice(i) = foceiRSubjectFoceFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
+                                           aRe.rows(o0, o1), aRc.rows(o0, o1), ARe.rows(o0, o1), ARc.rows(o0, o1), dvi, dv2i,
+                                           censi, limi, fv.subvec(o0, o1), yv.subvec(o0, o1), R0v.subvec(o0, o1),
+                                           ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
+                                           neta, ndir, ndirP, nom, dirP);
+    } catch (...) {
+      Rall.slice(i).fill(datum::nan);
+    }
   }
   mat R = sum(Rall, 2);
   return R;
