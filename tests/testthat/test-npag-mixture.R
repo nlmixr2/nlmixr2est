@@ -93,16 +93,22 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    # muExpand=FALSE: this test validates the proportion EM with a fixed structural
-    # model (tka/tcl held); mu-expanding them adds free parameters that weaken the
-    # proportion identification.  Mixture + mu-expansion is covered separately.
+    # muExpand=FALSE: the component structural thetas (tka, tcl1, tcl2) are estimated
+    # as regressors against the exact mixture likelihood (they are NOT mu-referenced
+    # here); mu-expansion is an alternative covered separately.
     f <- nlmixr2(mixMod, dat, est = "npag",
                  control = npagControl(points = 64L, cycles = 20L, seed = 1L,
                                        gammaOptimize = FALSE, muExpand = FALSE))
     expect_s3_class(f, "nlmixr2FitData")
     # the slow-clearance proportion (p1) recovers the simulated fraction (0.70)
-    # from a deliberately-wrong 0.50 start -- the EM update moved it.
+    # from a deliberately-wrong 0.50 start.
     expect_equal(as.numeric(f$theta[["p1"]]), mean(comp == 0), tolerance = 0.1)
+    # the component clearances are ESTIMATED (mixture likelihood, NONMEM7 eq 1.182),
+    # not held at ini -- they recover the two simulated subpopulations (cl = 0.5, 2).
+    expect_equal(exp(as.numeric(f$theta[["tcl1"]])), 0.5, tolerance = 0.25)
+    expect_equal(exp(as.numeric(f$theta[["tcl2"]])), 2.0, tolerance = 0.5)
+    # and the additive residual does not collapse to zero
+    expect_true(as.numeric(f$theta[["add.sd"]]) > 0.1)
   })
 
   test_that("est='npag' mu-expands a mixture model's structural thetas (multi-eta)", {

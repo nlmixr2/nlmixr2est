@@ -501,10 +501,13 @@ void npagOuter(Environment e) {
     IntegerVector rp = control["npResidOptProp"];
     ctl.residOptProp.assign(rp.begin(), rp.end());
   }
-  if (control.containsElementNamed("npObsEndpoint")) {
-    IntegerVector oe = control["npObsEndpoint"];
-    ctl.obsEndpoint.set_size(oe.size());
-    for (int j = 0; j < oe.size(); ++j) ctl.obsEndpoint[j] = oe[j];
+  // per-observation endpoint for the moment warm start, built from the cached CMT
+  // covariate (rxode2 getIndCmt) so a multi-endpoint model warm-starts each endpoint's
+  // residual from its own moment.  npEndpointCmt gives the per-endpoint cmt (predDf order).
+  if (control.containsElementNamed("npEndpointCmt")) {
+    IntegerVector ec = control["npEndpointCmt"];
+    std::vector<int> endpointCmt(ec.begin(), ec.end());
+    ctl.obsEndpoint = npBuildObsEndpoint(endpointCmt);
   }
   if (control.containsElementNamed("npRegressIdx")) {
     IntegerVector gi = control["npRegressIdx"];

@@ -163,6 +163,10 @@
   .errEnd[is.na(.errEnd)] <- 0L
   .control$npResidOptEnd <- as.integer(.errEnd)
   .control$npResidOptProp <- as.integer(startsWith(.optType, "prop"))
+  # per-endpoint compartment (predDf order) so the C++ side can map each observation's
+  # cmt (rxode2 getIndCmt, the CMT time-varying covariate) to its endpoint index for the
+  # per-endpoint moment warm start.  cmt values are distinct, not necessarily sequential.
+  .control$npEndpointCmt <- tryCatch(as.integer(ui$predDf$cmt), error = function(e) integer(0))
   # ini-block bounds of the residual-opt params (for the bounded bobyqa step),
   # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and the
   # continuous-AR correlation (kind 2) is in (0, 1).
@@ -198,13 +202,14 @@
   # (ELS) set -- mixing the two objectives mis-identifies both.
   .isMuRef <- .thOrd$name %in% .mr$theta
   .isMixP <- .thOrd$name %in% .mixNames
-  # The residual/regressor optimization (extended least squares over the base solve)
-  # is not mixture-aware, so a mix() model's structural component parameters must not
-  # be driven by it -- they are handled by the mixture marginalization + proportion
-  # update, and are held at their initial values here.  Regressors are therefore only
-  # optimized for non-mixture models.
-  .isMix <- length(.mixNames) > 0L
-  .regress <- if (.isMix) integer(0) else which(is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP)
+  # A non-mu, non-fixed structural fixed-effect theta (err==NA, no eta) is optimized as
+  # a "regressor".  This INCLUDES a mix() model's structural component parameters (e.g.
+  # the per-component typical clearance): the residual/regressor objective is the exact
+  # conditional likelihood, which for a mixture marginalizes over the components with the
+  # held proportions (NONMEM7 eq 1.182), so moving a component parameter changes that
+  # component's fit and the mixture likelihood -- the components are estimated, not held.
+  # Only the mixture PROPORTIONS are excluded (they move in the proportion update step).
+  .regress <- which(is.na(.thOrd$err) & !.isFix & !.isMuRef & !.isMixP)
   if (length(.regress) > 0L) {
     .control$npRegressIdx <- as.integer(.regress - 1L)
     .control$npRegressLower <- as.numeric(.thOrd$lower[.regress])

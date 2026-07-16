@@ -28,6 +28,11 @@ double npResidELS(const arma::mat& postEta);
 // residual optimization.
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd);
 
+// Per-observation 0-based endpoint index (subject-major getIndIx order) from the cached
+// CMT covariate (rxode2 getIndCmt): matches each observation's cmt to endpointCmt (the
+// per-endpoint cmt values, predDf order).  All-zeros for a single-endpoint model.
+arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt);
+
 // Build the Psi matrix (nSub x nPoint) on the already set-up FOCEi inner solve:
 // psi(i,k) = p(y_i | support point k) where etaPoints is nPoint x neta.  Parallel
 // over base subjects.  Requires vaeInnerSetup_ (or foceiSetup_) already run.

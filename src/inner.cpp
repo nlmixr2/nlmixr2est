@@ -10060,27 +10060,45 @@ double npEvalCondLik(double *eta, int id) {
   return s;
 }
 
-// Conditional residual objective at fixed per-subject etas (postEta, nsub x neta --
-// the posterior-mean support eta of each subject).  For each subject solve at eta_i,
-// then read the per-observation prediction f and variance r from the inner model
-// (grabRFmatFromInner) and the transform-both-sides observation dv; the contribution
-// is the EXACT normal negative log-likelihood 0.5*(f-dv)^2/r + 0.5*log(r) +
-// 0.5*log(2*pi) (r is the model's variance).  The 0.5*log(r) term penalizes r -> 0, so
-// -- unlike the marginal likelihood on a flexible support, which rewards a vanishing
-// residual -- the residual scale settles at the spread of the data around the
-// individual fits, as in saem/focei.  (This differs from -2*log-lik only by the
-// positive factor and additive constant, so the residual minimizer is identical to the
-// extended-least-squares form; the exact -LL is used for an interpretable objective.)
-// r is the model's own per-observation variance, so a combined error model and
-// multiple endpoints are handled with no endpoint bookkeeping here.  npEvalCondLik
-// re-solves, so a structural regressor that moved the ODE is reflected in f.  Returns
-// R_PosInf on a bad solve (so bobyqa rejects the candidate).
+double npMixCondLik(double *eta, int base, int nsub, int nMix);   // fwd (defined below)
+
+// Residual objective at fixed per-subject etas (postEta, nsub x neta -- the
+// posterior-mean support eta of each subject).
+//
+// Non-mixture (nMix == 1): the extended-least-squares normal negative log-likelihood
+// sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi)) at the individual predictions
+// (f, r from the inner solve; dv on the transform-both-sides scale).  The 0.5*log(r)
+// term penalizes r -> 0, so -- unlike the marginal likelihood on a flexible support,
+// which rewards a vanishing residual -- the residual scale settles at the spread of the
+// data around the individual fits, as in saem/focei.
+//
+// Mixture (nMix > 1): the EXACT mixture negative log-likelihood -sum_i log(sum_m a_m
+// exp(cll_m)) (npMixCondLik; NONMEM7 eq 1.182), marginalizing over the components with
+// the CURRENT mixture probabilities a_m (held here; the component structural parameters
+// that move each f_m are what this objective optimizes, so the components are estimated
+// rather than held).  The per-component cll_m carries the -0.5*log(r) penalty, so the
+// residual does not collapse.  The ELS approximation is not used for a mixture because
+// it evaluates a single component, which would not marginalize the proportions.
+//
+// Evaluated at the fixed posterior-mean etas, so a structural/component regressor that
+// re-solves the ODE is reflected; returns R_PosInf on a bad solve (bobyqa rejects it).
 double npResidELS(const arma::mat& postEta) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  double nll = 0.0;
+  int nMix = impNmix();
   std::vector<double> eta(neta);
+  if (nMix > 1) {
+    double nll = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+      double cll = npMixCondLik(&eta[0], i, nsub, nMix);
+      if (!std::isfinite(cll)) return R_PosInf;
+      nll += -cll;
+    }
+    return nll;
+  }
+  double nll = 0.0;
   for (int i = 0; i < nsub; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
     double cl = npEvalCondLik(&eta[0], i);
@@ -10145,6 +10163,36 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
     }
   }
   return mom;
+}
+
+// Per-observation 0-based endpoint index in the subject-major getIndIx order that
+// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  endpointCmt gives
+// the cmt value of each endpoint in predDf order (cmt values are distinct, not
+// necessarily sequential); each observation's cmt is matched to it.  A single-endpoint
+// model has no CMT covariate, so getIndCmt returns 1 and every observation maps to
+// endpoint 0.  Lets the moment warm start be per-endpoint for a multi-endpoint model.
+arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int nsub = (int)getRxNsub(rx);
+  std::vector<int> out;
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n; ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;   // observations only, matching npResidMoments
+      int cmt = getIndCmt(op, ind, kk);
+      int e = 0;
+      for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
+        if (endpointCmt[ee] == cmt) { e = (int)ee; break; }
+      }
+      out.push_back(e);
+    }
+  }
+  arma::ivec ret((arma::uword)out.size());
+  for (size_t k = 0; k < out.size(); ++k) ret[k] = out[k];
+  return ret;
 }
 
 // Mixture-marginalized conditional log-likelihood for physical subject `base` at

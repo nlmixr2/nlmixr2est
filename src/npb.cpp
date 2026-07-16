@@ -140,10 +140,10 @@ void npbOuter(Environment e) {
     IntegerVector rp = control["npResidOptProp"];
     residOptProp.assign(rp.begin(), rp.end());
   }
-  if (control.containsElementNamed("npObsEndpoint")) {
-    IntegerVector oe = control["npObsEndpoint"];
-    obsEndpoint.set_size(oe.size());
-    for (int j = 0; j < oe.size(); ++j) obsEndpoint[j] = oe[j];
+  if (control.containsElementNamed("npEndpointCmt")) {
+    IntegerVector ec = control["npEndpointCmt"];
+    std::vector<int> endpointCmt(ec.begin(), ec.end());
+    obsEndpoint = npBuildObsEndpoint(endpointCmt);
   }
   if (control.containsElementNamed("npRegressIdx")) {
     IntegerVector gi = control["npRegressIdx"];

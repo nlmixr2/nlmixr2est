@@ -2,6 +2,21 @@
 
 ## New features
 
+- `est="npag"`/`est="npb"` now ESTIMATE a mixture (`mix()`) model's component structural
+  parameters (e.g. a per-subpopulation clearance) instead of holding them at their
+  initial values.  The residual/regressor step optimizes them against the exact mixture
+  negative log-likelihood `-sum_i log(sum_m a_m exp(cll_m))` (NONMEM7 eq 1.182),
+  marginalizing over the components with the current proportions `a_m` (which the
+  proportion update step moves); each per-component conditional log-likelihood carries
+  the `-0.5*log(r)` penalty, so the additive residual does not collapse.  Verified: a
+  two-subpopulation clearance model recovers both component clearances and the mixing
+  proportion, with a non-zero additive SD.
+
+- The per-endpoint residual moment warm start now attributes each observation to its
+  endpoint via a new rxode2 accessor (`getIndCmt`, reading the CMT time-varying
+  covariate), so a multi-endpoint model warm-starts each endpoint's residual from its
+  own moment.  Requires the matching rxode2 (function-pointer table index 82).
+
 - `est="npag"`/`est="npb"` now estimate the residual-error parameters with EXTENDED
   LEAST SQUARES at the individual predictions instead of the marginal likelihood.  The
   marginal likelihood over a flexible nonparametric support rewards a vanishing residual
