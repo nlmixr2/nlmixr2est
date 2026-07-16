@@ -240,6 +240,12 @@
 - `fast = TRUE` with a `linCmt()` model downgrades to `fast = FALSE` with a
   message instead of silently falling back per gradient call.
 
+- `est = "vae"` with automatic covariate selection now reports the selected
+  covariate coefficients (`beta_<par>_<cov>`) in `$parFixed`/`$parFixedDf`
+  instead of dropping them when a population parameter is fixed, and the
+  covariate-bearing mu-parameters back-transform (`exp`) instead of printing on
+  the raw log scale.
+
 ### Data handling
 
 - SAEM no longer errors with `No data with ID` for a dose-only subject;
