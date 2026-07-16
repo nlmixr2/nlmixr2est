@@ -1,5 +1,21 @@
 # nlmixr2est (development version)
 
+- SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
+  event data keeps `DV` when the model references it (previously dropped, so the
+  likelihood solve errored "parameter(s) required for solving: DV"); the
+  fixed-effect-only (phi0) parameters are optimized with the bounded `bobyqa`
+  honoring the ini-block bounds (so a likelihood SD stays non-negative); and the
+  fsaem fast kernel now maps a structural phi0 parameter to `mprior_phi0` instead
+  of running past the phi1 columns (which crashed with an Armadillo bounds error).
+  Normal-endpoint saem/fsaem are unchanged.
+
+- Nonparametric engines (cont.): `est="npag"` optimizes the residual parameters
+  with the bounded `minqa::bobyqa`, honoring the ini-block lower/upper bounds of
+  each residual parameter (e.g. an additive SD stays >= 0, an AR correlation in
+  (-1,1)).  An unbounded optimizer could wander into an invalid region, so newuoa
+  / nelder-mead are no longer used for the residual step (the `residType` control
+  is removed).
+
 - SAEM general log-likelihood: the fixed-effect-only (phi0) refinement step
   (saemix "ind.fix10", fsaem `distribution=general`) is now optimized with the
   same derivative-free optimizers as the residual step (nelder-mead / newuoa,

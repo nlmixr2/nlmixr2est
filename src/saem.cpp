@@ -562,12 +562,12 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
                             int nsweep, int cores, NumericVector lower, NumericVector upper,
                             IntegerVector nbd, double seed, int nRetry, int kiter);
 
-// phi0 objective trampoline for the general-likelihood direct optimization
-// (nelder-mead / newuoa via the shared _saemOpt); gPhi0Self is the active SAEM
-// object.  Defined after the class body.
+// phi0 objective for the general-likelihood direct optimization (bounded bobyqa
+// via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
+// Rcpp::InternalFunction.  Defined after the class body.
 class SAEM;
 static SAEM* gPhi0Self = nullptr;
-static void gPhi0ObjFn(double *p, double *fval);
+static double gPhi0ObjR(Rcpp::NumericVector p);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -653,20 +653,23 @@ public:
     _saemFreezeOde = false;
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
     _saemFreezeOde = true;
-    std::vector<double> start(nphi0), step(nphi0), xmin(nphi0);
-    for (int c = 0; c < nphi0; c++) {
-      start[c] = mprior_phi0(0, c);
-      step[c] = 0.2 * std::fabs(start[c]) + 0.1;
-      xmin[c] = start[c];
-    }
-    // reuse _saemOpt (nelder-mead / newuoa on _saemType) by pointing its objective
-    // and start/step at the frozen phi0 problem.
+    // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
+    // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
+    // nelder-mead) could push a phi0 like a likelihood SD into an invalid region.
     gPhi0Self = this;
-    fn_ptr savedFn = _saemFn; double *savedStart = _saemStart; double *savedStep = _saemStep;
-    _saemFn = gPhi0ObjFn; _saemStart = start.data(); _saemStep = step.data();
-    _saemOpt(nphi0, xmin.data());
-    _saemFn = savedFn; _saemStart = savedStart; _saemStep = savedStep;
+    Rcpp::NumericVector par0(nphi0), lo(nphi0), hi(nphi0);
+    for (int c = 0; c < nphi0; c++) {
+      par0[c] = mprior_phi0(0, c);
+      lo[c] = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
+      hi[c] = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+    }
+    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+    Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+    Rcpp::InternalFunction fn(&gPhi0ObjR);
+    Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
+                                Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi);
     _saemFreezeOde = false;
+    Rcpp::NumericVector xmin = ret["x"];
     for (int c = 0; c < nphi0; c++) {
       double cur = mprior_phi0(0, c);
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
@@ -956,6 +959,12 @@ public:
     resKeep = find(resFixed==0);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
+    // ini-block bounds of the phi0 thetas (i0 column order) for the bounded
+    // general-likelihood phi0 optimization.
+    if (x.containsElementNamed("phi0Lower")) {
+      phi0Lower = as<vec>(x["phi0Lower"]);
+      phi0Upper = as<vec>(x["phi0Upper"]);
+    }
     nb_sa = as<int>(x["nb_sa"]);
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
     // (missing, e.g. a saved cfg from an older version) disables the tag.
@@ -3036,6 +3045,8 @@ private:
   int nb_fixResid;
   int niter_phi0;
   double coef_phi0;
+  vec phi0Lower;
+  vec phi0Upper;
   double rmcmc;
   double coef_sa;
   vec pas, pash;
@@ -3283,7 +3294,18 @@ private:
       // positions <- population phi = mprior_phi1 row 0; residual positions <-
       // ares/bres) and call the C++ orchestration directly.
       NumericVector theta(fsaemNTheta);
-      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++) theta[fsaemStructPos(j)] = mprior_phi1(0, j);
+      // current population value for each structural theta, in phi order: phi1
+      // params from mprior_phi1, phi0 params (fixed effects with no random effect,
+      // e.g. a general-likelihood SD) from mprior_phi0.  The old code indexed
+      // mprior_phi1 for EVERY structural position, which ran past nphi1 whenever a
+      // general-likelihood model had a structural phi0 parameter.
+      arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
+      for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
+      for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
+      bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
+      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
+        theta[fsaemStructPos(j)] =
+          phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
       for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
         int ep = fsaemResidEp(j);
         theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
@@ -3308,15 +3330,17 @@ private:
                                  NumericVector(Plambda.begin(), Plambda.end()),
                                  wrap(etaCur), nmc, kiter));
     }
+    // the fast kernel re-pointed the global solve to the FOCEi inner (N subjects);
+    // restore the SAEM model's (N*nmc) solve as current BEFORE any early return so
+    // the E-step / M-step (and a general-likelihood user_fn) always read the right
+    // solve, even when the proposal is rejected (acc dimension mismatch).
+    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    _rx = getRxSolve_();
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) phiM(r, i1(j)) = acc(r, j) + mprior_phi1(subj, j);
     }
-    // the R closure re-pointed the global solve to the FOCEi inner (N subjects);
-    // restore the SAEM model's (N*nmc) solve as current before the M-step reads it.
-    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
-    _rx = getRxSolve_();
   }
 
   void do_mcmc(const int method,
@@ -3739,8 +3763,8 @@ private:
 };
 
 // phi0 objective trampoline for the general-likelihood direct optimization.
-static void gPhi0ObjFn(double *p, double *fval) {
-  *fval = gPhi0Self->phi0Objective(p);
+static double gPhi0ObjR(Rcpp::NumericVector p) {
+  return gPhi0Self->phi0Objective(p.begin());
 }
 
 

@@ -280,8 +280,18 @@
     .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
-    # The general-likelihood phi0 step is optimized derivative-free (nelder-mead /
-    # newuoa via `type`) with the ODE states frozen; no L-BFGS config is needed.
+    # The general-likelihood phi0 step is optimized with the bounded bobyqa
+    # (.boundedResidOpt) and the ODE states frozen.  Provide the phi0 (fixed-
+    # effect-only) parameter bounds, in phi0 (i0) column order, from the theta
+    # iniDf so the optimization stays in a valid region.
+    if (!is.null(.cfg$nphi0) && .cfg$nphi0 > 0L) {
+      .pars <- ui$saemParamsToEstimate
+      .phi0Names <- .pars[.cfg$i0]
+      .lo <- ui$iniDf$lower[match(.phi0Names, ui$iniDf$name)]
+      .hi <- ui$iniDf$upper[match(.phi0Names, ui$iniDf$name)]
+      .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
+      .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
+    }
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
     }
