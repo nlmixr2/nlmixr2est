@@ -272,6 +272,10 @@
     .cfg$nonMuThetaRegress <- as.integer(identical(.cfg$nonMuTheta, "regress"))
     # warm-start residual params from observed per-endpoint moments (npag-style)
     .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
+    # mixProbMethod="regress": fix per-subject mixture membership (hard classify
+    # once) instead of the soft-EM responsibility step.
+    .cfg$mixProbRegress <- as.integer(identical(
+      rxode2::rxGetControl(ui, "mixProbMethod", "regularized"), "regress"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres

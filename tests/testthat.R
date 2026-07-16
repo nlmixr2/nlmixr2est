@@ -66,7 +66,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
   # batch 5
-  c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "posthoc", "ar-est",
+  c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
     "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
   # batch 6 -- heaviest remaining files on the single-worker CI runner

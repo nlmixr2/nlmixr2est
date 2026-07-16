@@ -1339,6 +1339,18 @@ public:
       as<int>(x["nonMuThetaRegress"]) : 0;
     residWarmStart = x.containsElementNamed("residWarmStart") ?
       as<int>(x["residWarmStart"]) : 1;
+    mixProbRegress = x.containsElementNamed("mixProbRegress") ?
+      as<int>(x["mixProbRegress"]) : 0;
+    // Mixtures: the direct phi0 optimizer does not partition a per-component
+    // structural theta (tcl1/tcl2) by subject membership, so it would leave an
+    // under-populated component's theta unconstrained (runaway).  Fall back to
+    // the stochastic phi0 block, which respects membership via the per-chain
+    // mixest regressor.  (nMix is read earlier in inits.)  Likewise the residual
+    // warm-start (formed at the population eta=0 prediction) is especially
+    // unreliable for a mixture -- the poor initial fit inflates the residual and
+    // flattens the likelihood, preventing the components from separating.  Both
+    // gates must follow the reads above so they are not overwritten.
+    if (nMix > 1) { nonMuThetaRegress = 0; residWarmStart = 0; }
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
@@ -1448,6 +1460,20 @@ public:
       RSprintf("initial user_fn successful\n");
     }
     warmStartResid(nMix > 1 ? fsave_mix(0) : fsave);
+    if (nMix > 1 && mixProbRegress) {
+      // mixProbMethod="regress": classify each subject to its best component
+      // once (hard) and hold membership fixed -- mixWeights becomes a 0/1
+      // indicator, so the existing responsibility-weighted machinery (arResk,
+      // sufficient stats, phiM_weighted) collapses to a hard assignment.  The
+      // soft-EM E-step and the mixProb SA update are skipped below.
+      mixFixedAssign = mixNaiveClassify(0.0);
+      mixWeights.zeros(N, nMix);
+      for (int i = 0; i < N; i++) {
+        unsigned int a = mixFixedAssign(i);
+        if (a >= 1 && a <= (unsigned int)nMix) mixWeights(i, a - 1) = 1.0;
+      }
+      mixProb = mean(mixWeights, 0).t();
+    }
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
       // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
       // best-fitting hypothesis (mixNaiveClassify) so iteration 0 isn't symmetric.
@@ -1643,10 +1669,12 @@ public:
             w_i(j) = mixProb(j) * exp(minL - Ly(i, j));
             sumW += w_i(j);
           }
-          if (sumW > 0.0) {
-            mixWeights.row(i) = w_i / sumW;
-          } else {
-            mixWeights.row(i) = mixProb.t();
+          if (!mixProbRegress) {
+            if (sumW > 0.0) {
+              mixWeights.row(i) = w_i / sumW;
+            } else {
+              mixWeights.row(i) = mixProb.t();
+            }
           }
         }
 
@@ -1899,10 +1927,12 @@ public:
             w_i(j) = mixProb(j) * exp(min_L - L_ji(i, j));
             sum_w += w_i(j);
           }
-          if (sum_w > 0.0) {
-            mixWeights.row(i) = w_i / sum_w;
-          } else {
-            mixWeights.row(i) = mixProb.t();
+          if (!mixProbRegress) {
+            if (sum_w > 0.0) {
+              mixWeights.row(i) = w_i / sum_w;
+            } else {
+              mixWeights.row(i) = mixProb.t();
+            }
           }
         }
 
@@ -3175,7 +3205,11 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
-      if (nMix > 1) {
+      if (nMix > 1 && mixProbRegress) {
+        // Fixed membership: the mixing proportions are just the (constant) hard
+        // assignment fractions; no soft-EM SA update.
+        mixProb = mean(mixWeights, 0).t();
+      } else if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
         if (mixProbMethod == 1) {
           // Dirichlet-style regularization: blend in mixProbPriorN pseudo-subjects from the
@@ -3371,6 +3405,11 @@ private:
   int _phi0OdeSensitive = -1;
   // Warm-start residual params from observed per-endpoint moments (npag-style).
   int residWarmStart;
+  // mixProbMethod="regress": fix per-subject mixture membership (hard classify
+  // once) instead of the soft-EM responsibility step.  mixFixedAssign holds the
+  // 1-based assigned component per subject.
+  int mixProbRegress;
+  uvec mixFixedAssign;
 
   int nendpnt;
   uvec ix_endpnt;
