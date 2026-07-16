@@ -1,0 +1,19 @@
+## Pmetrics NPAG (Rust engine) reference population means, frozen offline from the
+## POC outputs at ~/src/npb_nlmixr2 (theo: useCases/theo_sd/1, cycles=20; warfarin:
+## 104/, cycles=20).  Values are the support-point weighted means (theta.csv) of the
+## final nonparametric mixing distribution.  Committed as a static golden fixture --
+## the test suite never runs Rust/Pmetrics.  neg2ll is the Pmetrics NPAG -2LL and is
+## NOT directly comparable to nlmixr2's npag -2LL (different constant convention);
+## the comparison is on the population means (and support-point count).
+model,param,pmetrics_mean,nspp,neg2ll
+theo,ka,1.6634,12,301.35
+theo,v,31.4428,12,301.35
+theo,ke,0.0919,12,301.35
+warfarin,ktr,1.4675,20,2256.42
+warfarin,ka,1.1588,20,2256.42
+warfarin,v,8.4110,20,2256.42
+warfarin,cl,0.1417,20,2256.42
+warfarin,emax,0.9386,20,2256.42
+warfarin,ec50,1.0140,20,2256.42
+warfarin,kout,0.0657,20,2256.42
+warfarin,e0,99.0020,20,2256.42

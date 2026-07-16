@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "inner.h"
 #include "imp.h"
+#include "np.h"
 #include "rxomp.h"
 #include "solveWarnHelper.h"
 #include "vaeEncoder.h"
@@ -450,6 +451,18 @@ struct focei_options {
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
+  bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
+  bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
+  double npResidScale = 1.0; // npag/npb residual-error magnitude multiplier (gamma):
+                             // likInner0 scales the residual variance r by this^2,
+                             // so the conditional likelihood (incl. censoring via
+                             // doCensNormal1 and transform-both-sides) is evaluated
+                             // at the scaled error.  1.0 (no-op) for every other method.
+  bool freezeOde = false;    // when true likInner0 skips the ODE integration and
+                             // reuses the current ind->solve states, only
+                             // recomputing f/r/density (residual-only re-evaluation).
+                             // The caller must have restored the correct states.
+                             // false (no-op) for every other method / normal solves.
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
@@ -1276,6 +1289,9 @@ double likInner0(double *eta, int id) {
   } else {
     recalc = true;
   }
+  // freezeOde: force the density recompute (with the current residual params) but
+  // reuse the states already in ind->solve -- see the guarded solve below.
+  if (op_focei.freezeOde) recalc = true;
   arma::vec rPopVec;  // FOCE: per-obs eta=0 population R (empty for FOCEI)
   if (recalc){
     if (op_focei.mixIdxN != 0) {
@@ -1309,10 +1325,6 @@ double likInner0(double *eta, int id) {
     if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
       fInd->stickyRecalcN2 = 0;
     }
-    setIndSolve(ind, -1);
-    // op->badSolve is racy under cores>1; our retry loop reads per-subject
-    // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
-    resetOpBadSolve(op);
     bool predSolve = false;
     // Guard for ind->neqOverride; lazily allocated in the doFD branch, lives
     // until likInner0 returns so all reads of ind->solve see the same predNeq
@@ -1320,6 +1332,16 @@ double likInner0(double *eta, int id) {
     std::unique_ptr<IndNeqOverrideGuard> neqGuard;
     // Mixture subjects (id >= nSub) use the base subject index for rxode2 calls.
     int _rxId = getRxId(id);
+    // freezeOde: the caller has restored the states in ind->solve; skip the entire
+    // integration and drop straight to the calc_lhs / density loop, recomputing
+    // f/r with the current (residual) parameters only.
+    if (op_focei.freezeOde) {
+      // no integration; ind->solve already holds the frozen states
+    } else {
+    setIndSolve(ind, -1);
+    // op->badSolve is racy under cores>1; our retry loop reads per-subject
+    // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
+    resetOpBadSolve(op);
     if (fInd->doFD == 0) {
       double prevTol = getIndTolFactor(ind);
       innerOde(_rxId);
@@ -1352,6 +1374,7 @@ double likInner0(double *eta, int id) {
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
+    } // end (!freezeOde) integration guard
     bool isBadSolve = false;
     // predSolve lays the buffer out at predNeq stride; scan only those slots.
     int effNeq = predSolve ? op_focei.predNeq : getOpNeq(op);
@@ -1515,6 +1538,7 @@ double likInner0(double *eta, int id) {
       fInd->nObs = 0;
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
+      double tbsJac = 0.0;   // per-obs transform-both-sides Jacobian (npag/npb only)
       int cens = 0;
       if (predSolve) {
         iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1577,7 +1601,8 @@ double likInner0(double *eta, int id) {
           }
           cens = 0;
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
-          fInd->tbsLik+=tbsL(dv0);
+          tbsJac = tbsL(dv0);
+          fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
           if (ISNA(lhs[op_focei.predOffset + op_focei.neta + 1])){
             return NA_REAL;
@@ -1590,6 +1615,12 @@ double likInner0(double *eta, int id) {
             if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0 &&
                 op_focei.foceType == 0) {
               r = rPopVec(k);
+            }
+            // npag/npb residual-error magnitude (gamma): scale the variance so the
+            // downstream density AND doCensNormal1 (censoring) see the scaled error.
+            // npResidScale is 1.0 for every other method (bit-identical).
+            if (op_focei.npResidScale != 1.0) {
+              r *= op_focei.npResidScale * op_focei.npResidScale;
             }
             if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
               r = 1.0;
@@ -1634,7 +1665,10 @@ double likInner0(double *eta, int id) {
               if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
                 lnr = _safe_log(r);
               } else {
-                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1]);
+                // npResidScale (npag/npb gamma) scales the log-variance to match
+                // the scaled r used in the err^2/r term; 1.0 for every other method.
+                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1] *
+                                op_focei.npResidScale * op_focei.npResidScale);
               }
             }
             else lnr = 0;
@@ -1694,7 +1728,10 @@ double likInner0(double *eta, int id) {
                if (dist == rxDistributionNorm) {
                  double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
                  ll = doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
-                 llikObs[kk] = ll;
+                 // npag/npb sum llikObs directly as the conditional density, so the
+                 // transform-both-sides Jacobian (added to fInd->tbsLik -> the FOCEI
+                 // marginal lik) must be folded in per observation here.
+                 llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
@@ -1722,7 +1759,7 @@ double likInner0(double *eta, int id) {
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
                 ll =doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
-                llikObs[kk] = ll;
+                llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
@@ -4816,6 +4853,10 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = (estStr == "imp");
     op_focei.isAdvi = (estStr == "advi");
     op_focei.isQrpem = (estStr == "qrpem");
+    // npag + its mu-referenced sugar (mnpag = OLS "lin", inpag = IRLS) share the
+    // npagOuter driver; likewise npb + mnpb/inpb.
+    op_focei.isNpag = (estStr == "npag" || estStr == "mnpag" || estStr == "inpag");
+    op_focei.isNpb = (estStr == "npb" || estStr == "mnpb" || estStr == "inpb");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
@@ -4823,6 +4864,8 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = false;
     op_focei.isAdvi = false;
     op_focei.isQrpem = false;
+    op_focei.isNpag = false;
+    op_focei.isNpb = false;
   }
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
@@ -8615,9 +8658,26 @@ int impBaseSeed() { return op_focei.impSeed; }
 int impNmix() { return (int)op_focei.mixIdxN + 1; }        // number of components (1 if none)
 double impMixProb(int j) { return op_focei.mixProb[j]; }    // population proportion of component j (0-based)
 
-// Install absolute $MIX thetas (the multinomial-logit of the target proportions)
-// and recompute the population proportions / Jacobian -- used for the stable
-// mean-posterior EM update (mirrors the Omega-theta path in updateTheta()).
+// Recompute op_focei.mixProb from the current mixture-proportion thetas (the
+// mix() proportions, held as a multinomial-logit in fullTheta).  updateTheta()
+// does this on the FOCEI/imp outer path; npag/npb run maxOuterIterations=0 and
+// never call updateTheta, so they must call this once at setup (and after any
+// mixture-theta change) or mixProb stays 0.
+void impUpdateMixProbs() {
+  if (op_focei.mixIdxN == 0) return;
+  NumericVector curTheta(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, curTheta.begin());
+  IntegerVector mixIdx(op_focei.mixIdxN);
+  std::copy(&op_focei.mixIdx[0], &op_focei.mixIdx[0] + op_focei.mixIdxN, mixIdx.begin());
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  Function f = as<Function>(nlmixr2[".getMixFromLog"]);
+  NumericVector mixProbs = f(curTheta, mixIdx);
+  std::copy(mixProbs.begin(), mixProbs.end(), &op_focei.mixProb[0]);
+}
+
+// Install absolute mixture-proportion thetas (the multinomial-logit of the target
+// proportions) and recompute the population proportions / Jacobian -- used for the
+// EM update of the mixture weights (mirrors the Omega-theta path in updateTheta()).
 void impSetMixThetas(const arma::vec& theta) {
   for (int m = 0; m < (int)op_focei.mixIdxN; ++m)
     op_focei.fullTheta[op_focei.mixIdx[m] - 1] = theta[m];
@@ -8827,7 +8887,14 @@ void impReMap() {
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   Environment rxode2ns = Environment::namespace_env("rxode2");
   Function f = rxode2ns["rxSymInvCholCreate"];
-  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Omega),
+  // positive-definite guard: a support-point covariance can be numerically
+  // non-PD (a collapsed/degenerate dimension -- e.g. a small BSV on well-separated
+  // mixture clusters, or a mu-expanded fixed-effect eta), which makes
+  // rxSymInvCholCreate error "initial 'omega' matrix inverse is non-positive
+  // definite".  Symmetrize and floor the diagonal so the inverse is well-defined.
+  arma::mat Om = 0.5 * (Omega + Omega.t());
+  for (unsigned int d = 0; d < Om.n_rows; ++d) if (Om(d, d) < 1e-6) Om(d, d) = 1e-6;
+  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Om),
                       Rcpp::Named("diag.xform") = diagXform));
   if (op_focei.fo == 1) {
     op_focei.omega = getOmegaMat();
@@ -9531,6 +9598,12 @@ Environment foceiFitCpp_(Environment e){
       // est="impmap": run the importance-sampling EM driver (src/imp.cpp) in
       // place of the FOCEI outer optimizer.  Module M1 does a single MAP pass.
       impOuter(e);
+    } else if (op_focei.isNpag) {
+      // est="npag": nonparametric adaptive grid (src/npag.cpp).
+      npagOuter(e);
+    } else if (op_focei.isNpb) {
+      // est="npb": nonparametric Bayes stick-breaking DP (src/npb.cpp).
+      npbOuter(e);
     } else {
       foceiOuter(e);
     }
@@ -9954,6 +10027,571 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
   return List::create(_["obj"] = objR, _["lp"] = lpR, _["f"] = fl);
+}
+
+// ===========================================================================
+// Nonparametric (npag / npb) support: the conditional-likelihood primitive and
+// the Psi matrix builder.  A support point is an eta vector (each mu-referenced
+// eta maps to one population parameter).  For a support point we need the
+// CONDITIONAL data likelihood p(y_i | support point) WITHOUT the Omega prior:
+// likInner0 populates fInd->llikObs[kk] with the per-observation conditional
+// log-density (no prior; the Omega quadratic is only folded into fInd->llik), so
+// the conditional log-likelihood is the sum of llikObs over the observation rows.
+// Reuses the FOCEi inner solve set up by vaeInnerSetup_ -- so it inherits the ODE
+// solve, residual-error models, transform-both-sides and censoring unchanged.
+
+// Conditional log-likelihood log p(y_i | eta) for subject id (no Omega prior).
+// Returns -Inf if any observation had a non-finite density (e.g. a bad solve).
+double npEvalCondLik(double *eta, int id) {
+  likInner0(eta, id);
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  focei_ind *fInd = &(inds_focei[id]);
+  double s = 0.0;
+  int n = getIndNallTimes(ind);
+  for (int j = 0; j < n; ++j) {
+    int kk = getIndIx(ind, j);
+    if (isDose(getIndEvid(ind, kk))) continue;  // dose rows carry NA in llikObs
+    if (getIndEvid(ind, kk) != 0) continue;     // count observations only
+    double v = fInd->llikObs[kk];
+    if (ISNAN(v) || !std::isfinite(v)) return R_NegInf;
+    s += v;
+  }
+  return s;
+}
+
+double npMixCondLik(double *eta, int base, int nsub, int nMix);   // fwd (defined below)
+
+// Residual objective at fixed per-subject etas (postEta, nsub x neta -- the
+// posterior-mean support eta of each subject).
+//
+// Non-mixture (nMix == 1): the extended-least-squares normal negative log-likelihood
+// sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi)) at the individual predictions
+// (f, r from the inner solve; dv on the transform-both-sides scale).  The 0.5*log(r)
+// term penalizes r -> 0, so -- unlike the marginal likelihood on a flexible support,
+// which rewards a vanishing residual -- the residual scale settles at the spread of the
+// data around the individual fits, as in saem/focei.
+//
+// Mixture (nMix > 1): the EXACT mixture negative log-likelihood -sum_i log(sum_m a_m
+// exp(cll_m)) (npMixCondLik; NONMEM7 eq 1.182), marginalizing over the components with
+// the CURRENT mixture probabilities a_m (held here; the component structural parameters
+// that move each f_m are what this objective optimizes, so the components are estimated
+// rather than held).  The per-component cll_m carries the -0.5*log(r) penalty, so the
+// residual does not collapse.  The ELS approximation is not used for a mixture because
+// it evaluates a single component, which would not marginalize the proportions.
+//
+// Evaluated at the fixed posterior-mean etas, so a structural/component regressor that
+// re-solves the ODE is reflected; returns R_PosInf on a bad solve (bobyqa rejects it).
+double npResidELS(const arma::mat& postEta) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  int nMix = impNmix();
+  std::vector<double> eta(neta);
+  if (nMix > 1) {
+    double nll = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+      double cll = npMixCondLik(&eta[0], i, nsub, nMix);
+      if (!std::isfinite(cll)) return R_PosInf;
+      nll += -cll;
+    }
+    return nll;
+  }
+  double nll = 0.0;
+  for (int i = 0; i < nsub; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    double cl = npEvalCondLik(&eta[0], i);
+    if (!std::isfinite(cl)) return R_PosInf;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    arma::mat fr = grabRFmatFromInner(i, false);   // nObs x 2 (f, r), transformed scale
+    int ko = 0;
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;      // observations only
+      double dv = tbs(getIndDv(ind, kk));
+      double f = fr(ko, 0), r = fr(ko, 1);
+      ko++;
+      if (!std::isfinite(r) || r <= 0.0) r = 1.0;
+      double e = f - dv;
+      nll += 0.5 * e * e / r + 0.5 * std::log(r) + M_LN_SQRT_2PI;
+    }
+  }
+  return nll;
+}
+
+// Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
+// obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
+// order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
+// each endpoint we accumulate, on the transform-both-sides scale, the additive moment
+// sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
+// the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
+// sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
+// single scale per endpoint, to set) the residual optimization.  Returns an
+// nEnd x 3 matrix [sumAdd, sumProp, n].
+arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  std::vector<double> eta(neta);
+  int obsIdx = 0;
+  for (int i = 0; i < nsub; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    double cl = npEvalCondLik(&eta[0], i);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    arma::mat fr = grabRFmatFromInner(i, false);
+    int ko = 0;
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = tbs(getIndDv(ind, kk));
+      double f = fr(ko, 0);
+      ko++;
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      obsIdx++;
+      if (e < 0 || e >= nEnd) continue;
+      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+      double err = f - dv;
+      mom(e, 0) += err * err;
+      if (f != 0.0 && std::isfinite(err / f)) mom(e, 1) += (err / f) * (err / f);
+      mom(e, 2) += 1.0;
+    }
+  }
+  return mom;
+}
+
+// Per-observation 0-based endpoint index in the subject-major getIndIx order that
+// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  endpointCmt gives
+// the cmt value of each endpoint in predDf order (cmt values are distinct, not
+// necessarily sequential); each observation's cmt is matched to it.  A single-endpoint
+// model has no CMT covariate, so getIndCmt returns 1 and every observation maps to
+// endpoint 0.  Lets the moment warm start be per-endpoint for a multi-endpoint model.
+arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int nsub = (int)getRxNsub(rx);
+  std::vector<int> out;
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n; ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;   // observations only, matching npResidMoments
+      int cmt = getIndCmt(op, ind, kk);
+      int e = 0;
+      for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
+        if (endpointCmt[ee] == cmt) { e = (int)ee; break; }
+      }
+      out.push_back(e);
+    }
+  }
+  arma::ivec ret((arma::uword)out.size());
+  for (size_t k = 0; k < out.size(); ++k) ret[k] = out[k];
+  return ret;
+}
+
+// Mixture-marginalized conditional log-likelihood for physical subject `base` at
+// eta: log( sum_m mixProb(m) * p(y_base | eta, component m) ).  Mixture components
+// are the pseudo-subjects base + m*nsub (likInner0 pins the component from the id,
+// via getRxMixFromId), evaluated serially since they share the subject's solve
+// buffer.  For a non-mixture model (nMix == 1) this is exactly npEvalCondLik(eta,
+// base), so those fits are bit-identical.
+double npMixCondLik(double *eta, int base, int nsub, int nMix) {
+  if (nMix <= 1) return npEvalCondLik(eta, base);
+  std::vector<double> lp(nMix);
+  double mx = R_NegInf;
+  for (int m = 0; m < nMix; ++m) {
+    double ll = npEvalCondLik(eta, base + m * nsub) +
+      std::log(std::max(1e-300, impMixProb(m)));
+    lp[m] = ll;
+    if (std::isfinite(ll) && ll > mx) mx = ll;
+  }
+  if (!std::isfinite(mx)) return R_NegInf;
+  double se = 0.0;
+  for (int m = 0; m < nMix; ++m) se += std::exp(lp[m] - mx);
+  return mx + std::log(se);
+}
+
+// EM update of the mixture proportions (op_focei.mixProb) with the support points
+// (etaPoints, nPoint x neta) and their weights (lam) held FIXED.  For each subject
+// i and component m the component marginal is q_im = sum_k lam_k p(y_i | eta_k, m);
+// the responsibility gamma_im = mixProb_m q_im / sum_m' mixProb_m' q_im'; and the
+// new proportion is the mean responsibility over subjects.  Installs the result via
+// impSetMixThetas (mlogit of the new proportions).  No-op for a non-mixture model.
+// Component m of physical subject `base` is the pseudo-subject base + m*nsub.
+void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) {
+  int nMix = impNmix();
+  if (nMix <= 1 || op_focei.mixIdxN == 0) return;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  // running log-sum-exp of log(lam_k) + condLik over the support points, per (i,m)
+  arma::mat runMax(nsub, nMix); runMax.fill(R_NegInf);
+  arma::mat runSum(nsub, nMix, arma::fill::zeros);
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+    double logLam = std::log(std::max(1e-300, lam[k]));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      for (int m = 0; m < nMix; ++m) {
+        double cl = npEvalCondLik(&eta[0], base + m * nsub);
+        if (!std::isfinite(cl)) continue;
+        double val = logLam + cl;
+        double rMax = runMax(base, m);
+        if (val > rMax) {
+          runSum(base, m) = std::isfinite(rMax) ? runSum(base, m) * std::exp(rMax - val) + 1.0 : 1.0;
+          runMax(base, m) = val;
+        } else {
+          runSum(base, m) += std::exp(val - rMax);
+        }
+      }
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // responsibilities -> mean over subjects -> new proportions
+  arma::vec newProb(nMix, arma::fill::zeros);
+  for (int i = 0; i < nsub; ++i) {
+    arma::vec g(nMix); double gmax = R_NegInf;
+    for (int m = 0; m < nMix; ++m) {
+      double rMax = runMax(i, m);
+      double logq = std::isfinite(rMax) ? rMax + std::log(runSum(i, m)) : R_NegInf;
+      g[m] = std::log(std::max(1e-300, impMixProb(m))) + logq;
+      if (std::isfinite(g[m]) && g[m] > gmax) gmax = g[m];
+    }
+    if (!std::isfinite(gmax)) { newProb += 1.0 / nMix; continue; }  // no density: uniform
+    double gsum = 0.0;
+    for (int m = 0; m < nMix; ++m) { g[m] = std::exp(g[m] - gmax); gsum += g[m]; }
+    for (int m = 0; m < nMix; ++m) newProb[m] += g[m] / gsum;
+  }
+  newProb /= (double)nsub;
+  // keep every component alive (avoid a collapsed 0 proportion) and renormalize
+  for (int m = 0; m < nMix; ++m) newProb[m] = std::max(1e-4, newProb[m]);
+  newProb /= arma::accu(newProb);
+  Environment rxode2 = Environment::namespace_env("rxode2");
+  Function mlogit = as<Function>(rxode2["mlogit"]);
+  NumericVector pin(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) pin[m] = newProb[m];
+  NumericVector th = mlogit(pin);
+  arma::vec thv(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) thv[m] = th[m];
+  impSetMixThetas(thv);
+}
+
+// npb mixture-proportion Gibbs step: given each subject's currently-assigned support
+// eta (subEta, nsub x neta), sample its mix() component from the posterior
+// responsibility mixProb_m * p(y_i | eta_i, component m), then draw the proportions
+// from Dirichlet(alpha0 + component counts) and install them via impSetMixThetas.
+// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  Must run
+// inside a Get/PutRNGstate scope (npbOuter provides it).  No-op for a non-mixture.
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
+  int nMix = impNmix();
+  if (nMix <= 1 || op_focei.mixIdxN == 0) return;
+  int nsub = (int)subEta.n_rows;
+  int neta = (int)subEta.n_cols;
+  std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
+  for (int i = 0; i < nsub; ++i) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = subEta(i, j);
+    std::vector<double> g(nMix); double gmax = R_NegInf;
+    for (int m = 0; m < nMix; ++m) {
+      double cl = npEvalCondLik(&eta[0], i + m * nsub);
+      g[m] = std::log(std::max(1e-300, impMixProb(m))) + cl;
+      if (std::isfinite(g[m]) && g[m] > gmax) gmax = g[m];
+    }
+    int mi = 0;
+    if (std::isfinite(gmax)) {
+      double gsum = 0.0;
+      for (int m = 0; m < nMix; ++m) { g[m] = std::exp(g[m] - gmax); gsum += g[m]; }
+      double u = R::unif_rand() * gsum, c = 0.0;
+      for (int m = 0; m < nMix; ++m) { c += g[m]; mi = m; if (u <= c) break; }
+    } else {
+      mi = (int)(R::unif_rand() * nMix); if (mi >= nMix) mi = nMix - 1;
+    }
+    counts[mi] += 1.0;
+  }
+  // Dirichlet(counts) draw = normalized independent Gamma(counts_m, 1)
+  arma::vec p(nMix); double psum = 0.0;
+  for (int m = 0; m < nMix; ++m) { p[m] = R::rgamma(counts[m], 1.0); psum += p[m]; }
+  for (int m = 0; m < nMix; ++m) p[m] = std::max(1e-4, p[m] / std::max(1e-300, psum));
+  p /= arma::accu(p);
+  Environment rxode2 = Environment::namespace_env("rxode2");
+  Function mlogit = as<Function>(rxode2["mlogit"]);
+  NumericVector pin(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) pin[m] = p[m];
+  NumericVector th = mlogit(pin);
+  arma::vec thv(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) thv[m] = th[m];
+  impSetMixThetas(thv);
+}
+
+// Build Psi (nSub x nPoint) with psi(i,k) = p(y_i | support point k), where
+// etaPoints is nPoint x neta.  Parallel over base subjects for each support
+// point, reusing the vaeInnerLikCore parallel discipline (per-thread rxode2
+// solve slot, no R API in the loop).  Requires vaeInnerSetup_ already run.
+void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nMix = impNmix();
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  psi.set_size(nsub, nPoint);
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) {
+    sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+  }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      double ll = npMixCondLik(&eta[0], base, nsub, nMix);
+      psi(base, k) = std::exp(ll);
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) {
+    _innerParallel.store(0, std::memory_order_release);
+    sortIds(rx, 0);
+  }
+}
+
+// Build the UNNORMALIZED Psi at a residual-error multiplier gamma.  Same as
+// npBuildPsiCore but with op_focei.npResidScale = gamma held over the solve, so
+// the returned p(y_i | point) are on a single absolute scale (no per-row
+// log-sum-exp offset).  Used by the global-optimality certificate D(F), which
+// forms cross-matrix ratios p(y_i|theta)/p(y_i|F) that a per-row normalization
+// would corrupt.
+void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
+                         arma::mat& psi) {
+  double savedScale = op_focei.npResidScale;
+  op_focei.npResidScale = gamma;
+  npBuildPsiCore(etaPoints, cores, psi);
+  op_focei.npResidScale = savedScale;
+}
+
+// Build Psi at a residual-error multiplier gamma (op_focei.npResidScale), reusing
+// likInner0's FULL conditional likelihood -- so censoring (doCensNormal1) and
+// transform-both-sides are evaluated correctly at the scaled error, not just the
+// plain Gaussian case.  Row-normalized by the per-subject max (log-sum-exp) so
+// exp() never underflows a whole subject row to zero (which would break Burke's
+// Cholesky); Burke's weights are invariant to per-row scaling, and the removed
+// row maxima are returned in *offset so the true log-likelihood is
+// burke_objf + offset.
+void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
+                          arma::mat& psi, double* offset) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nMix = impNmix();
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  arma::mat lp(nsub, nPoint);
+  double savedScale = op_focei.npResidScale;
+  op_focei.npResidScale = gamma;   // likInner0 scales r by gamma^2 (incl. cens/tbs)
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      lp(base, k) = npMixCondLik(&eta[0], base, nsub, nMix);
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  op_focei.npResidScale = savedScale;
+  arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
+  if (offset != nullptr) *offset = arma::accu(m);
+  psi.set_size(nsub, nPoint);
+  for (int k = 0; k < nPoint; ++k) {
+    for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Residual-only re-evaluation cache (ODE-freeze).  During residual-parameter
+// optimization the ODE states are invariant (residual params only affect the
+// output f/r, not d/dt), so npFreezeBuild solves each (support point, subject)
+// once and caches the ind->solve trajectory; npFreezePsiScaled then rebuilds Psi
+// from the cached states through likInner0's freezeOde path -- calc_lhs recomputes
+// f/r with the current residual params, skipping the (costly) integration.
+static std::vector<std::vector<double> > gFreezeCache;  // [(k*nsub+base)*nMix + m] -> solve buffer
+static int gFreezeNsub = 0, gFreezeNpoint = 0, gFreezeNmix = 1;
+
+// log( sum_m mixProb(m) * exp(ll[m]) ); ll[] are the per-component conditional
+// log-likelihoods for one subject.  Identity for a single component.
+static double npMixLogSumExp(const std::vector<double>& ll) {
+  int nMix = (int)ll.size();
+  if (nMix <= 1) return ll.empty() ? R_NegInf : ll[0];
+  double mx = R_NegInf;
+  std::vector<double> lp(nMix);
+  for (int m = 0; m < nMix; ++m) {
+    lp[m] = ll[m] + std::log(std::max(1e-300, impMixProb(m)));
+    if (std::isfinite(lp[m]) && lp[m] > mx) mx = lp[m];
+  }
+  if (!std::isfinite(mx)) return R_NegInf;
+  double se = 0.0;
+  for (int m = 0; m < nMix; ++m) se += std::exp(lp[m] - mx);
+  return mx + std::log(se);
+}
+
+static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind) {
+  return (getOpNeq(op) + getOpNlin(op)) * getIndNallTimes(ind);
+}
+
+void npFreezeBuild(const arma::mat& etaPoints, int cores) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nMix = impNmix();
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  gFreezeNsub = nsub; gFreezeNpoint = nPoint; gFreezeNmix = nMix;
+  gFreezeCache.assign((size_t)nPoint * nsub * nMix, std::vector<double>());
+  op_focei.freezeOde = false;   // normal solves fill the cache
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      // each mixture component's solve shares the physical subject's buffer, so
+      // solve + cache them serially per subject (parallel over subjects).
+      for (int m = 0; m < nMix; ++m) {
+        int id = base + m * nsub;
+        npEvalCondLik(&eta[0], id);   // normal solve, fills ind->solve
+        rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+        double *s = getIndSolve(ind);
+        gFreezeCache[((size_t)k * nsub + base) * nMix + m].assign(s, s + npIndSolveSize(op, ind));
+      }
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+}
+
+// Frozen counterpart of npBuildPsiCoreScaled at gamma == 1: restore each subject's
+// cached states, then re-evaluate the conditional likelihood without solving.
+void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, double* offset) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nPoint = (int)etaPoints.n_rows;
+  int neta = (int)etaPoints.n_cols;
+  arma::mat lp(nsub, nPoint);
+  op_focei.freezeOde = true;    // reuse cached states; recompute f/r only
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  for (int k = 0; k < nPoint; ++k) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      std::vector<double> llm(gFreezeNmix);
+      for (int m = 0; m < gFreezeNmix; ++m) {
+        int id = base + m * nsub;
+        rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+        const std::vector<double>& c = gFreezeCache[((size_t)k * nsub + base) * gFreezeNmix + m];
+        double *s = getIndSolve(ind);
+        std::copy(c.begin(), c.end(), s);            // restore cached states
+        llm[m] = npEvalCondLik(&eta[0], id);         // frozen: no integration
+      }
+      lp(base, k) = npMixLogSumExp(llm);             // mixture-marginalized
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  op_focei.freezeOde = false;
+  arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
+  if (offset != nullptr) *offset = arma::accu(m);
+  psi.set_size(nsub, nPoint);
+  for (int k = 0; k < nPoint; ++k)
+    for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
+}
+
+void npFreezeClear() { gFreezeCache.clear(); gFreezeNsub = 0; gFreezeNpoint = 0; gFreezeNmix = 1; }
+
+//' Build the nonparametric Psi (conditional-likelihood) matrix
+//'
+//' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
+//' \code{psi[i, k] = p(y_i | support point k)} for each subject \code{i} (rows)
+//' and support point \code{k} (columns), where each support point is an eta
+//' vector.  Exposed for testing the conditional-likelihood primitive.
+//'
+//' @param etaPoints Numeric matrix of support points, one per row (columns are
+//'   etas).
+//' @param cores Number of OpenMP threads.
+//' @return Numeric matrix psi (subjects in rows, support points in columns).
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores) {
+  arma::mat pts(etaPoints.begin(), etaPoints.nrow(), etaPoints.ncol(), false, true);
+  arma::mat psi;
+  npBuildPsiCore(pts, cores, psi);
+  NumericMatrix out(psi.n_rows, psi.n_cols);
+  std::copy(psi.begin(), psi.end(), out.begin());
+  return out;
 }
 
 // ===========================================================================

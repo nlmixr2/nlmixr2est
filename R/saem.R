@@ -280,23 +280,17 @@
     .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
-    # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization
-    .cfg$lbfgsLmm     <- as.integer(rxode2::rxGetControl(ui, "lbfgsLmm", 5L))
-    .cfg$lbfgsFactr   <- rxode2::rxGetControl(ui, "lbfgsFactr", 1e7)
-    .cfg$lbfgsPgtol   <- rxode2::rxGetControl(ui, "lbfgsPgtol", 0)
-    .cfg$lbfgsMaxIter <- as.integer(rxode2::rxGetControl(ui, "lbfgsMaxIter", 20L))
-    # phi0 (fixed-effect-only) parameter bounds, in phi0 (i0) column order, from
-    # the theta iniDf bounds so the direct optimization respects them
+    # The general-likelihood phi0 step is optimized with the bounded bobyqa
+    # (.boundedResidOpt) and the ODE states frozen.  Provide the phi0 (fixed-
+    # effect-only) parameter bounds, in phi0 (i0) column order, from the theta
+    # iniDf so the optimization stays in a valid region.
     if (!is.null(.cfg$nphi0) && .cfg$nphi0 > 0L) {
       .pars <- ui$saemParamsToEstimate
       .phi0Names <- .pars[.cfg$i0]
       .lo <- ui$iniDf$lower[match(.phi0Names, ui$iniDf$name)]
       .hi <- ui$iniDf$upper[match(.phi0Names, ui$iniDf$name)]
-      .cfg$lbfgsPhi0Nbd <- as.integer(ifelse(is.finite(.lo) & is.finite(.hi), 2L,
-                                      ifelse(is.finite(.lo), 1L,
-                                      ifelse(is.finite(.hi), 3L, 0L))))
-      .cfg$lbfgsPhi0Lower <- ifelse(is.finite(.lo), .lo, 0)
-      .cfg$lbfgsPhi0Upper <- ifelse(is.finite(.hi), .hi, 0)
+      .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
+      .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)

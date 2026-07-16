@@ -75,7 +75,13 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
   # batch 7 -- advi (variational inference) multi-iteration fits
   c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
-    "advi-fullbayes")
+    "advi-fullbayes"),
+  # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
+  # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
+  # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
+  # in the push/PR subset) and run weekly only.
+  c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
+    "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand", "npag-golden")
 )
 .slowAll <- unlist(.slowBatches)
 

@@ -2,6 +2,264 @@
 
 ## New features
 
+- `est="npag"`/`est="npb"` now ESTIMATE a mixture (`mix()`) model's component structural
+  parameters (e.g. a per-subpopulation clearance) instead of holding them at their
+  initial values.  The residual/regressor step optimizes them against the exact mixture
+  negative log-likelihood `-sum_i log(sum_m a_m exp(cll_m))` (NONMEM7 eq 1.182),
+  marginalizing over the components with the current proportions `a_m` (which the
+  proportion update step moves); each per-component conditional log-likelihood carries
+  the `-0.5*log(r)` penalty, so the additive residual does not collapse.  Verified: a
+  two-subpopulation clearance model recovers both component clearances and the mixing
+  proportion, with a non-zero additive SD.
+
+- The per-endpoint residual moment warm start now attributes each observation to its
+  endpoint via a new rxode2 accessor (`getIndCmt`, reading the CMT time-varying
+  covariate), so a multi-endpoint model warm-starts each endpoint's residual from its
+  own moment.  Requires the matching rxode2 (function-pointer table index 82).
+
+- `est="npag"`/`est="npb"` now estimate the residual-error parameters with EXTENDED
+  LEAST SQUARES at the individual predictions instead of the marginal likelihood.  The
+  marginal likelihood over a flexible nonparametric support rewards a vanishing residual
+  (each support point can then fit its subjects arbitrarily well), so the residual could
+  drift toward zero.  The residual step now minimizes the exact conditional normal
+  negative log-likelihood `sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi))` at the
+  posterior-mean etas (equivalently extended least squares -- same minimizer) -- the
+  `0.5*log(r)` term penalizes `r -> 0`, giving the saem/focei
+  residual (e.g. theophylline add.sd ~ 0.73, prop.sd ~ 0.15) rather than a collapsed one.
+  Each variance-scale parameter is warm-started (and, for a single scale per endpoint,
+  set) from the saem-style per-endpoint moment: an additive SD from `sqrt(mean(err^2))`, a
+  proportional SD from `sqrt(mean((err/f)^2))`, both on the transform-both-sides scale (so
+  lognormal / box-cox are handled on the transformed residual).  A non-mu structural
+  "regressor" is optimized in the same step, with the posterior-mean etas re-derived per
+  candidate so the eta grid cannot stale-absorb the structural shift (this identifies it,
+  e.g. recovering theophylline's clearance from a deliberately-wrong start).  After the
+  residual + regressor thetas converge, a final adaptive-grid pass re-optimizes the
+  support with those thetas held CONSTANT, so the support is the nonparametric MLE of the
+  mixing distribution for the fitted residual and the D(F) global-optimality certificate
+  is restored (~0).  npb runs the same residual/regressor step inside its sampler.  (A
+  mix() model's structural component parameters are held at their initial values -- the
+  ELS step is not mixture-aware; the components are handled by the mixture marginalization
+  and proportion update.)
+
+- `est="npag"` now picks the initial grid size automatically from the model's
+  dimensionality when `npagControl(points=)` is not supplied: `max(2028, 512 * n_eta)`
+  (2028 is the Pmetrics NPAG default, which covers a low-dimensional model but grows
+  sparse and can collapse in high dimensions).  Theophylline (3 etas) resolves to
+  2028 (matching Pmetrics); warfarin (8 etas) to 4096.  Supply `points` to override.
+
+- `est="npag"` is more robust on high-dimensional models (many etas), validated by a
+  golden comparison against Pmetrics NPAG on the Warfarin PK/PD model (transit
+  absorption + Emax turnover, 8 parameters): the per-cycle Psi build is now per-row
+  log-sum-exp normalized on the non-gamma path too, so a hard subject's conditional
+  density cannot underflow a whole row to zero (which aborted condensation); the
+  Burke interior-point solve ridges the Newton matrix and retries instead of aborting
+  when it is ill-conditioned; and `npagControl()` exposes `gridWidth` and
+  `gridBounds` (`"auto"`/`"ini"`/`"both"`) so a bounded, high-dimensional grid can be
+  focused on the plausible region (an unbounded box collapses the support).  These
+  are numerically transparent for well-conditioned fits (the normalization restores
+  the exact objective; Burke weights are scale-invariant).
+
+- `est="npag"`/`est="npb"` now estimate non-mu structural fixed-effect parameters
+  (a theta with no eta, e.g. `ke <- exp(tke)`, which npag's grid otherwise does not
+  cover -- it covers only mu-referenced and residual/likelihood parameters).  By
+  default they are optimized as "regressors" in the residual step: the bounded
+  `bobyqa` moves them alongside the residual parameters, re-solving the ODE per
+  candidate (they feed the states, so the ODE freeze is turned off for that step).
+  This identifies them sharply -- e.g. recovering theophylline's clearance from a
+  deliberately-wrong start, and a bimodal mixture proportion (p1 = 0.70) that the
+  grid alternative recovered only weakly.  The opt-in `npagControl(muExpand=TRUE)`
+  instead uses the saem-style mu-expansion: inject a pseudo-eta
+  (`ke <- exp(tke + eta.tke)`), grid-estimate, and recover it as a fixed effect at
+  finalization (support-mean folded into the theta, injected random effect collapsed;
+  the injected eta carries a FIXED omega, excluded from the free omega objective like
+  IOV, so it also works in mixture models).  `residOptimize="none"` holds the
+  structural regressors together with the residual parameters.  (A non-mu-referenced
+  ETA -- an eta with no paired theta -- needs neither: the npag box already covers
+  every eta, so it is a grid dimension estimated as a pure random effect.)
+
+- `est="npag"` now supports generalized (non-normal) / user-`ll()` likelihoods.
+  The nonparametric objective sums the inner per-observation llikObs, which for a
+  non-normal endpoint is exactly the user's log-likelihood, so the objective is
+  already correct; the residual/likelihood parameters (e.g. a Student-t's degrees
+  of freedom, `iniDf$err` non-NA) are estimated with the same frozen-ODE bounded
+  step as the residual parameters.  Freezing the ODE during that step is valid only
+  when every optimized parameter feeds the post-solve f/r alone (err-tagged) -- if a
+  non-err parameter ever enters the optimized set the step re-solves instead.  gamma
+  is forced off (a non-normal endpoint has r == 1).  A non-mu-referenced structural
+  fixed-effect parameter cannot be placed on the grid and is held at its initial
+  value, reported in the fit's `$runInfo`.  `est="npb"` handles non-normal endpoints
+  too (the Gibbs sweep sums the same llikObs).
+
+- `est="npb"` now runs the residual/regressor optimization (previously it held the
+  residual-error and non-mu structural "regressor" thetas at their initial values and
+  only sampled the mixing distribution).  With the sampled mixing distribution held
+  fixed, the same bounded `bobyqa` step npag uses fits the residual thetas (add/prop/
+  lnorm/lambda/ar) and any structural regressor -- recovering, e.g., theophylline's
+  clearance from a deliberately-wrong start.  `npbControl(residOptimize=)` selects it:
+  `"alternate"` (default) re-fits during burn-in and then holds the thetas fixed for
+  the sampling phase (so every collected draw shares the converged residual scale),
+  `"final"` fits once at the converged draw, `"none"` holds them at their initial
+  values.  Unlike npag, npb does not optimize the assay-error multiplier (gamma) -- the
+  residual thetas are fit directly.
+
+- `est="npag"` and `est="npb"` now support mixture (sub-population) `mix()` models.
+  Each subject is split into per-component pseudo-subjects and the conditional
+  likelihood is marginalized over the components using the mixture proportions
+  (`p(y_i | phi) = sum_m mixProb_m * p(y_i | phi, component m)`).  npag updates an
+  estimated proportion each cycle by an EM step (support points and weights held
+  fixed); npb samples the proportions inside the blocked Gibbs sweep -- each subject
+  draws a component from its posterior responsibility and the proportions are drawn
+  from Dirichlet(1 + component counts), with the posterior-mean proportions reported
+  in `$env$npbMixProb`.  A `fix()`ed proportion is held at its ini value in both.
+
+- `est="npb"` now supports multiple independent chains (`npbControl(nchains=)`):
+  the stick-breaking Gibbs sampler runs once per chain (seed offset per chain),
+  the posterior-mean draws are pooled, and a Gelman-Rubin R-hat per eta is
+  reported in `$env$npbRhat` (~1 at convergence; > ~1.1 flags non-convergence).
+
+- SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
+  event data keeps `DV` when the model references it (previously dropped, so the
+  likelihood solve errored "parameter(s) required for solving: DV"); the
+  fixed-effect-only (phi0) parameters are optimized with the bounded `bobyqa`
+  honoring the ini-block bounds (so a likelihood SD stays non-negative); and the
+  fsaem fast kernel now maps a structural phi0 parameter to `mprior_phi0` instead
+  of running past the phi1 columns (which crashed with an Armadillo bounds error).
+  Normal-endpoint saem/fsaem are unchanged.
+
+- Nonparametric engines (cont.): `est="npag"` optimizes the residual parameters
+  with the bounded `minqa::bobyqa`, honoring the ini-block lower/upper bounds of
+  each residual parameter (e.g. an additive SD stays >= 0, an AR correlation in
+  (-1,1)).  An unbounded optimizer could wander into an invalid region, so newuoa
+  / nelder-mead are no longer used for the residual step (the `residType` control
+  is removed).
+
+- SAEM general log-likelihood: the fixed-effect-only (phi0) refinement step
+  (saemix "ind.fix10", fsaem `distribution=general`) is now optimized with the
+  same derivative-free optimizers as the residual step (nelder-mead / newuoa,
+  selected by `type`) instead of L-BFGS-B -- the model emits no analytic
+  d(ll)/d(phi0), so the previous finite-difference-gradient L-BFGS was pure
+  overhead.  phi0 does not enter the ODE, so the states are solved once and held
+  fixed while phi0 is optimized (ODE-freeze), each evaluation recomputing only the
+  log-likelihood.  The SAEM-side L-BFGS plumbing (phi0 gradient, trampolines,
+  `lbfgs*` config) is removed; FOCEI's `outerOpt="lbfgsb"` is unaffected.
+
+- Nonparametric engines (cont.): the `npag` residual-parameter optimization now
+  freezes the ODE states -- the inner likelihood solves each (support point,
+  subject) once and re-evaluates only the output `f`/`r` for each candidate
+  residual theta, skipping the (costly) re-integration.  Results are identical to
+  the full re-solve; on a combined-error theo fit it is ~35% faster, and much more
+  for models with expensive ODEs.  Exposed as a general `freezeOde` option on the
+  inner likelihood (off by default, so all other engines are bit-identical).
+
+- Nonparametric engines (cont.): `est="npag"` now estimates the residual-error
+  parameters generally.  A single variance-scale parameter (pure additive or
+  proportional) is handled by the fast gamma up/down search folded into that
+  theta; anything else -- combined additive+proportional (the add/prop ratio a
+  single gamma cannot recover), multiple endpoints (each `add.sd`/`prop.sd`), and
+  transform (`boxCox`/`yeoJohnson` lambda) or autocorrelation (`ar`) parameters --
+  is optimized against the nonparametric objective with the support points and
+  weights held fixed, using the same optimizers as SAEM (`residType`: `"newuoa"`
+  default, or `"nelder-mead"`), with gamma as a warm start.  The `residOptimize`
+  control selects `"alternate"` (default, every cycle), `"final"` (once at the
+  converged support), or `"none"` (hold at ini).  On a simulated two-endpoint
+  model npag recovers `add.sd1`=0.20 and `add.sd2`=1.47 (truth 0.20 / 1.50),
+  matching FOCEI, where a single global gamma had forced them equal; on simulated
+  AR(1) data (true `ar1.cor`=0.6) it recovers ~0.54 from a 0 start where gradient
+  FOCEI stalls at the `ar1.cor`=0 saddle.  The reported residual reflects the
+  estimate.  Note: because the support distribution is flexible it can absorb
+  additive residual scatter, so the additive term of a combined error model may be
+  smaller than a parametric fit (documented in `?npagControl`).
+
+- Nonparametric engines (cont.): the `npag`/`npb` conditional likelihood now
+  folds in the transform-both-sides (dTBS) per-observation Jacobian, so `lnorm`,
+  `boxCox`, and `yeoJohnson` residual models are handled correctly and lambda-type
+  transform parameters are estimable.  Proportional and combined additive +
+  proportional error are supported, and the global-optimality certificate D(F) is
+  now evaluated at the fitted gamma (so it reaches ~0 for proportional/combined
+  models with gamma optimization on).  A model whose transform link sees a
+  non-positive prediction (e.g. `lnorm` at an observation where the prediction is
+  0) now raises a clear error instead of an Armadillo empty-matrix crash.
+
+- Nonparametric engines (cont.): the `npag`/`npb` engines now support fixed
+  parameters.  Fixed population `theta`s (including fixed residual parameters such
+  as `add.sd <- fix(0.7)`) are held at their ini value.  Fixed-`Omega` etas -- for
+  example a fixed inter-occasion variance `iov.ka ~ fix(0.05) | occ` -- remain
+  support-point dimensions but keep their variance held at the fixed value instead
+  of being estimated, so IOV models fit.
+
+- Nonparametric engines (cont.): `est="npag"` now reports the global-optimality
+  certificate D(F) (`$env$npagDF`; ~0 certifies the nonparametric maximum
+  likelihood), records a per-cycle parameter-history trace through the shared
+  scale.h printer (`$parHistData`), and installs the reported `Omega` masked by
+  the model's sparsity so correlated-eta models keep their off-diagonal terms.
+  AR(1) and other transform-both-sides / structured residual models are supported
+  (the residual enters as `f + sqrt(r)*eps`, so any structure carried in `r` flows
+  through the conditional likelihood).
+
+- Validation: a bimodal-recovery test confirms `est="npag"` recovers a
+  two-subpopulation (fast/slow absorption) parameter distribution -- both modes
+  carry substantial weight and the recovered cluster means land near the
+  simulated truth -- the defining nonparametric capability a single-mode
+  parametric random-effect model cannot reproduce.
+
+- `est="npb"` (nonparametric Bayes) is now a usable engine: a truncated
+  stick-breaking Dirichlet-process mixture sampled by a blocked
+  Metropolis-within-Gibbs sampler (cluster assignments, stick weights, MH support
+  locations).  It reuses the same conditional-likelihood primitive as npag and
+  returns a `nlmixr2FitData` with the posterior mixing distribution
+  (`$env$npbSupport`/`npbWeights`), per-subject posterior-mean etas, and posterior
+  draws of the population mean (`npbMeanDraws`) for Bayesian credible intervals.
+  `npbControl()` exposes `points` (truncation K), `alpha`, `burnin`, `nsamp`,
+  `propSd`, and `seed`.  (Gelman-Rubin multi-chain convergence is a follow-up.)
+
+- `est="npag"` is now a usable engine: it returns a standard `nlmixr2FitData`
+  object with the nonparametric population summary (mean + variance mapped to the
+  reported `theta`/`Omega`), per-subject posterior-mean etas, and the discrete
+  support-point distribution attached to the fit (`$env$npagSupport`,
+  `npagWeights`, `npagPosteriorEta`, `npagGamma`, `npagNspp`).  `npagControl()`
+  exposes `points`, `cycles`, and `gammaOptimize`.  (The reported `Omega` uses the
+  support-point variances; correlated-Omega models and the global-optimality
+  certificate are follow-ups.)
+
+- Nonparametric engines (cont.): added the residual-error magnitude (gamma)
+  optimization inside the NPAG cycle (per-cycle up/down search).  Gamma scales the
+  residual variance inside the FOCEi inner likelihood, so censoring (BLQ/ALQ via
+  the M3 censored likelihood -- the normal tail probability below/above the limit)
+  and transform-both-sides are handled correctly at the scaled error.  The objective uses a log-sum-exp row normalization for
+  numerical stability.  Generalized (non-normal) likelihoods are not supported and
+  are rejected with an error.  Note: the npag/npb objective is the nonparametric
+  marginal log-likelihood and is NOT comparable to NONMEM/FOCEI -2LL.
+
+- Nonparametric engines (cont.): assembled the NPAG adaptive-grid cycle (Yamada
+  Alg 1) -- Sobol grid, Psi, Burke IPM, weight/QR condensation, adaptive-grid
+  expansion (`npExpandGrid`), and the eps/F convergence controller.  Runs
+  end-to-end on Theophylline (exposed as `npagCycle_` ahead of the full
+  fit-object wiring).
+
+- Nonparametric engines (cont.): added the Sobol initial grid (`npSobolGrid`),
+  weight-threshold and QR rank-revealing condensation (`npCondenseWeights` /
+  `npCondenseQR`), and the eta-space support-point box (`.npEtaBox`,
+  control-selectable via `gridBounds`/`gridWidth`).
+
+- Nonparametric engines (cont.): added the conditional-likelihood primitive
+  (`npEvalCondLik`) and the parallel Psi-matrix builder (`npBuildPsi`), reusing
+  the FOCEi inner solve so residual-error models, transform-both-sides and
+  censoring carry over unchanged.
+
+- Scaffolding for two native nonparametric estimation engines, `est="npag"`
+  (nonparametric adaptive grid) and `est="npb"` (nonparametric Bayes), plus their
+  mu-referenced sugar variants `mnpag`/`inpag` and `mnpb`/`inpb` (OLS and IRLS
+  covariate M-step).  Both reuse the FOCEI inner likelihood machinery; the
+  estimation loop runs in C++.  The algorithm itself is added in subsequent
+  releases (the drivers currently report that estimation is not yet implemented).
+
+- Fix the covariance matrix (`$cov`) of a bounded-parameter fit run with an
+  unbounded method (e.g. `saem`): the internal `rxBoundedTr.<name>` name leaked
+  into `$cov` and the back-transform Jacobian was not applied to it, so the
+  reported standard errors were on the internal (transformed) scale.  `$cov`
+  (and the stashed full theta+Omega covariance) are now renamed to the original
+  parameter names and Jacobian-corrected; Omega and residual terms are
+  untransformed so they pass through unchanged.
 - The nlm parameter-history machinery can now be driven by an external
   optimizer.  `nlmerSolveGrad()` gains a `record` argument that logs the
   evaluation's population parameter estimate (the per-subject mean of the

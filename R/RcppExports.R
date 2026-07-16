@@ -188,6 +188,23 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+#' Build the nonparametric Psi (conditional-likelihood) matrix
+#'
+#' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
+#' \code{psi[i, k] = p(y_i | support point k)} for each subject \code{i} (rows)
+#' and support point \code{k} (columns), where each support point is an eta
+#' vector.  Exposed for testing the conditional-likelihood primitive.
+#'
+#' @param etaPoints Numeric matrix of support points, one per row (columns are
+#'   etas).
+#' @param cores Number of OpenMP threads.
+#' @return Numeric matrix psi (subjects in rows, support points in columns).
+#' @keywords internal
+#' @export
+npBuildPsi <- function(etaPoints, cores) {
+    .Call(`_nlmixr2est_npBuildPsi`, etaPoints, cores)
+}
+
 vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
     .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
 }
@@ -409,6 +426,82 @@ nlmAdjustHessian <- function(Hin, theta) {
 
 nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
+}
+
+#' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
+#' @param etaPoints support points, one per row
+#' @param cores threads
+#' @param gamma residual-error multiplier
+#' @return offset-corrected marginal log-likelihood
+#' @keywords internal
+#' @export
+npObjAtGamma_ <- function(etaPoints, cores, gamma) {
+    .Call(`_nlmixr2est_npObjAtGamma_`, etaPoints, cores, gamma)
+}
+
+#' Run the NPAG adaptive-grid cycle on a set-up inner problem
+#'
+#' Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs
+#' the full Yamada adaptive-grid cycle (Sobol grid -> Psi -> Burke IPM ->
+#' condensation -> expansion -> convergence) and returns the discrete mixing
+#' distribution.  Exposed for testing ahead of the full fit-object wiring.
+#'
+#' @param lower,upper Numeric vectors, the per-eta support-point box.
+#' @param points Initial Sobol grid size.
+#' @param cycles Maximum cycles.
+#' @param cores OpenMP threads.
+#' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
+#'   (only valid for uncensored normal endpoints).
+#' @return A list with \code{support} (support points, eta space; one per row),
+#'   \code{weights}, \code{objf} (log-likelihood), \code{gamma}, \code{cycles},
+#'   and \code{converged}.
+#' @keywords internal
+#' @export
+npagCycle_ <- function(lower, upper, points = 2028L, cycles = 100L, cores = 1L, gammaOptimize = FALSE) {
+    .Call(`_nlmixr2est_npagCycle_`, lower, upper, points, cycles, cores, gammaOptimize)
+}
+
+#' Burke interior-point weight solver (nonparametric maximum likelihood)
+#'
+#' Solves the convex nonparametric-maximum-likelihood weight problem for a fixed
+#' set of support points: given the likelihood matrix \code{psi} (subjects in
+#' rows, support points in columns) it returns the maximum-likelihood mixing
+#' weights and the objective (log-likelihood).  Exposed for testing the C++
+#' interior-point routine against golden fixtures.
+#'
+#' @param psi Numeric matrix, \code{psi[i, k] = p(y_i | support point k)}, with
+#'   subjects in rows and support points in columns.
+#' @return A list with \code{weights} (length \code{ncol(psi)}, non-negative,
+#'   summing to 1) and \code{objective} (the maximized log-likelihood).
+#' @keywords internal
+#' @export
+npIpmBurke <- function(psi) {
+    .Call(`_nlmixr2est_npIpmBurke`, psi)
+}
+
+#' Sobol initial grid over a box (nonparametric engines)
+#'
+#' @param n Number of support points.
+#' @param lower,upper Numeric vectors giving the per-dimension box bounds.
+#' @return Numeric matrix, one support point per row.
+#' @keywords internal
+#' @export
+npSobolGrid_ <- function(n, lower, upper) {
+    .Call(`_nlmixr2est_npSobolGrid_`, n, lower, upper)
+}
+
+#' Condense support points (nonparametric engines)
+#'
+#' @param lambda Support-point weights.
+#' @param psi Conditional-likelihood matrix (subjects x support points).
+#' @param ratio Weight-threshold ratio (keep weight > max*ratio).
+#' @param tol QR rank-revealing tolerance.
+#' @return List with 1-based kept indices from the weight threshold
+#'   (\code{weightKeep}) and from the subsequent QR pass (\code{qrKeep}).
+#' @keywords internal
+#' @export
+npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
+    .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {

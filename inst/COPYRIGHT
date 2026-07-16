@@ -14,4 +14,13 @@ Intenrally the folloiwng copyrights are held:
   and their SAEMIX package, which was released under the GPL.  The
   code in this routine is written by Wenping Wang and relased under the GPL
 
+* The Laboratory of Applied Pharmacokinetics and Bioinformatics (LAPKB)
+  for the Pmetrics engine and its Rust crates pmcore and pharmsol, both
+  released under GPL-3.  The nonparametric estimation code in this package
+  (the NPAG / NPB engines: Burke's interior-point weight solver in
+  src/npCommon.cpp, and the adaptive-grid / condensation routines) is a
+  C++ reimplementation derived from those crates and is released under the
+  GPL.  See <https://github.com/LAPKB/PMcore> and the algorithm papers by
+  Yamada et al. (2021) and Tatarinova et al. (2013).
+
 The code is distributed under the GPL version 2 or greater.
