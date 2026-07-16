@@ -423,7 +423,8 @@
 #' @param controlClass the control object's S3 class (e.g. `"nlmControl"`)
 #' @return Nothing; assigns the resolved control onto `env$ui`
 #' @author Matthew L. Fidler
-#' @noRd
+#' @export
+#' @keywords internal
 .nlmFamilyControlGeneric <- function(env, controlFn, controlClass) {
   .ui <- env$ui
   .control <- env$control
