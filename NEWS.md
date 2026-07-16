@@ -2,6 +2,14 @@
 
 ## New features
 
+- Requesting an unsupported `est=` method (e.g. a typo) now prints the available
+  estimation methods grouped by category (Linearized, Integral approximation,
+  Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short
+  description of each, instead of a single flat list.  The new `nlmixr2AllEstType()`
+  returns the same information as a data frame, and each built-in method carries `type`
+  and `description` attributes (e.g. `attr(nlmixr2Est.focei, "type")`) that third-party
+  methods can set to join the list.
+
 - `saemControl(nonMuTheta="regress")` estimates population `theta` parameters that
   have no associated random effect (the SAEM `phi0` fixed effects) by a bounded direct
   optimization of the observation likelihood each iteration, keeping them as plain

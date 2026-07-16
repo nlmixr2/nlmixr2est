@@ -136,6 +136,14 @@ getValidNlmixrCtl.tableControl <- function(control) {
 #' @export
 getValidNlmixrCtl.default <- function(control) {
   .cls <- class(control)[1]
+  # An unknown est= reaches here before nlmixr2Est dispatch; show the tagged,
+  # category-grouped list of available methods (issue #750) when one exists.
+  .lines <- .nlmixr2EstTypeLines(current=.cls)
+  if (length(.lines) > 0L) {
+    stop("nlmixr2 estimation `est=\"", .cls, "\"` is not supported; available methods:\n",
+         paste(.lines, collapse="\n"),
+         call.=FALSE)
+  }
   stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrCtl.", .cls, "` method",
        call.=FALSE)
 }
