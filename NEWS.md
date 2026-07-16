@@ -33,14 +33,15 @@
   value, reported in the fit's `$runInfo`.  `est="npb"` still rejects non-normal
   endpoints.
 
-- `est="npag"` now supports mixture (sub-population) `mix()` models.  Each subject
-  is split into per-component pseudo-subjects and the conditional likelihood is
-  marginalized over the components using the mixture proportions
-  (`p(y_i | phi) = sum_m mixProb_m * p(y_i | phi, component m)`).  An estimated
-  proportion is updated each cycle by an EM step (support points and weights held
-  fixed), recovering the sub-population fractions; a `fix()`ed proportion is held
-  at its ini value.  `est="npb"` does not support `mix()` models yet and now errors
-  with a clear message instead of silently holding the proportions.
+- `est="npag"` and `est="npb"` now support mixture (sub-population) `mix()` models.
+  Each subject is split into per-component pseudo-subjects and the conditional
+  likelihood is marginalized over the components using the mixture proportions
+  (`p(y_i | phi) = sum_m mixProb_m * p(y_i | phi, component m)`).  npag updates an
+  estimated proportion each cycle by an EM step (support points and weights held
+  fixed); npb samples the proportions inside the blocked Gibbs sweep -- each subject
+  draws a component from its posterior responsibility and the proportions are drawn
+  from Dirichlet(1 + component counts), with the posterior-mean proportions reported
+  in `$env$npbMixProb`.  A `fix()`ed proportion is held at its ini value in both.
 
 - `est="npb"` now supports multiple independent chains (`npbControl(nchains=)`):
   the stick-breaking Gibbs sampler runs once per chain (seed offset per chain),

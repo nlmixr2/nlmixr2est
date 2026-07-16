@@ -93,6 +93,7 @@ double impMixProb(int j);                          // population proportion of c
 void impUpdateMixProbs();                          // recompute mixProb from the mix() proportion thetas (npag/npb setup)
 void impSetMixThetas(const arma::vec& theta);      // install absolute mixture-proportion thetas (EM) + recompute proportions
 void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores); // EM update of the mixture proportions (support/weights fixed)
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0);     // npb Gibbs: Dirichlet draw of the mixture proportions
 
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas

@@ -38,20 +38,27 @@ nmTest({
     expect_false(isTRUE(all.equal(as.numeric(f5$objf), as.numeric(f9$objf))))
   })
 
-  test_that("est='npb' errors on a mix() model (not supported yet)", {
+  test_that("est='npb' fits a mix() model and samples the mixture proportion", {
     .mixMod <- function() {
       ini({ tka <- log(1.5); tv <- log(32); tcl1 <- log(2); tcl2 <- log(0.5)
-        eta.ka ~ 0.3; eta.v ~ 0.1; p1 <- 0.5; add.sd <- 0.7 })
-      model({ ka <- exp(tka + eta.ka); v <- exp(tv + eta.v)
+        eta.v ~ 0.1; p1 <- 0.5; add.sd <- 0.7 })
+      model({ ka <- exp(tka); v <- exp(tv + eta.v)
         cl <- mix(exp(tcl1), p1, exp(tcl2)); ke <- cl / v
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    expect_error(
-      nlmixr2(.mixMod, nlmixr2data::theo_sd, est = "npb",
-              control = npbControl(points = 10L, burnin = 5L, nsamp = 5L)),
-      "does not support mixture")
+    f <- nlmixr2(.mixMod, nlmixr2data::theo_sd, est = "npb",
+                 control = npbControl(points = 20L, burnin = 20L, nsamp = 20L, seed = 1L))
+    expect_s3_class(f, "nlmixr2FitData")
+    expect_true(is.finite(as.numeric(f$objf)))
+    # the mixture proportions are sampled (Dirichlet Gibbs) -> a valid probability
+    # vector, reported in $env$npbMixProb, that has moved off the 0.5 start.
+    .p <- f$env$npbMixProb
+    expect_equal(length(.p), 2L)
+    expect_equal(sum(.p), 1, tolerance = 1e-6)
+    expect_true(all(.p > 0 & .p < 1))
+    expect_true(as.numeric(f$theta[["p1"]]) > 0 && as.numeric(f$theta[["p1"]]) < 1)
   })
 
   test_that("est='npag' estimates the mix() proportion via the in-cycle EM update", {

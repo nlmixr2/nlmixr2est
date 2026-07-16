@@ -76,10 +76,20 @@ void npbOuter(Environment e) {
   }
   arma::vec g0sd = arma::sqrt(g0var);
 
-  // npb does not support mix() models (guarded in R); no mixture-proportion setup.
+  // mixture (mix()) support: populate mixProb from the proportion thetas so
+  // npBuildPsiCore marginalizes over the components (npMixCondLik).  When the
+  // proportions are estimated (npMixOptimize), sample them each sweep from
+  // Dirichlet(alpha0 + counts); otherwise hold the ini proportions.
+  impUpdateMixProbs();
+  bool mixOpt = control.containsElementNamed("npMixOptimize") &&
+    as<bool>(control["npMixOptimize"]);
+  int nMix = impNmix();
+  double mixAlpha0 = 1.0;   // symmetric Dirichlet prior on the proportions
   Function setSeed("set.seed");
 
   // pooled across chains
+  std::vector<double> mixProbSum(std::max(nMix, 1), 0.0);   // post-burn-in proportion draws
+  int mixProbN = 0;
   arma::mat postEtaAcc(nsub, neta, arma::fill::zeros);
   arma::mat meanDraws((size_t)nchains * nSamp, neta, arma::fill::zeros);
   std::vector<arma::rowvec> supAll;
@@ -122,6 +132,13 @@ void npbOuter(Environment e) {
       }
       z[i] = zi; nk[zi]++;
     }
+    // (a2) mixture proportions: Dirichlet Gibbs draw from each subject's assigned
+    // support eta and its posterior component responsibility.
+    if (mixOpt && nMix > 1) {
+      arma::mat subEta(nsub, neta);
+      for (int i = 0; i < nsub; ++i) subEta.row(i) = phi.row(z[i]);
+      npbSampleMixProbs(subEta, mixAlpha0);
+    }
     // (b) stick-breaking weights  v_k ~ Beta(1 + n_k, alpha + sum_{j>k} n_j)
     std::vector<int> tail(K, 0);
     { int acc = 0; for (int k = K - 1; k >= 0; --k) { tail[k] = acc; acc += nk[k]; } }
@@ -154,6 +171,10 @@ void npbOuter(Environment e) {
     }
     // (d) accumulate post-burn-in draws
     if (it >= nBurn) {
+      if (mixOpt && nMix > 1) {
+        for (int m = 0; m < nMix; ++m) mixProbSum[m] += impMixProb(m);
+        mixProbN++;
+      }
       for (int i = 0; i < nsub; ++i) postEtaAcc.row(i) += phi.row(z[i]);
       arma::rowvec md = w.t() * phi;
       chainMd.row(drawn) = md;
@@ -188,6 +209,24 @@ void npbOuter(Environment e) {
     objf += std::log(std::max(1e-300, s));
   }
 
+  // install the posterior-MEAN mixture proportions (more stable than the last
+  // draw) so the reported proportion thetas reflect the posterior, and stash the
+  // mean for accessors.
+  if (mixOpt && nMix > 1 && mixProbN > 0) {
+    arma::vec pmean(nMix);
+    for (int m = 0; m < nMix; ++m) pmean[m] = mixProbSum[m] / (double)mixProbN;
+    for (int m = 0; m < nMix; ++m) pmean[m] = std::max(1e-4, pmean[m]);
+    pmean /= arma::accu(pmean);
+    Environment rxode2ns = Environment::namespace_env("rxode2");
+    Function mlogit = as<Function>(rxode2ns["mlogit"]);
+    NumericVector pin(nMix - 1);
+    for (int m = 0; m < nMix - 1; ++m) pin[m] = pmean[m];
+    NumericVector th = mlogit(pin);
+    arma::vec thv(nMix - 1);
+    for (int m = 0; m < nMix - 1; ++m) thv[m] = th[m];
+    impSetMixThetas(thv);
+    e["npbMixProb"] = wrap(pmean);
+  }
   // npb does not optimize the assay-error multiplier, so there is no gamma to
   // fold into the residual thetas (gamma = 1 makes the fold a no-op).
   // npb does not mu-expand (guarded in R), so no injected etas to collapse.

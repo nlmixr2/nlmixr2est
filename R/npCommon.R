@@ -157,17 +157,13 @@
   .control$npResidOptUpper <- .hi
   if (is.null(.control$npResidMode)) .control$npResidMode <- 1L
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
-  # mixture (mix()) proportions: estimate them via the in-cycle EM update unless
-  # every mixture-proportion parameter is fixed (then hold the ini proportions).
-  # npb (the Bayesian sampler) does not support mixture models yet -- error rather
-  # than silently marginalize with the proportions held.
+  # mixture (mix()) proportions: npag estimates them via the in-cycle EM update; npb
+  # samples them via a Dirichlet(alpha0 + component counts) Gibbs step.  Either way
+  # the components are marginalized in the conditional likelihood.  Skip the update/
+  # sampling (hold the ini proportions) only when every proportion is fixed.
   .mixNames <- ui$mixProbs
   .npMixOptimize <- FALSE
   if (length(.mixNames) > 0) {
-    if (grepl("npb", .est, fixed = TRUE)) {
-      stop("est=\"", .est, "\" does not support mixture mix() models yet; use est=\"npag\"",
-           call. = FALSE)
-    }
     .mixRows <- .thOrd[.thOrd$name %in% .mixNames, , drop = FALSE]
     .npMixOptimize <- any(!(!is.na(.mixRows$fix) & .mixRows$fix))
   }

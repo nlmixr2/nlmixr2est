@@ -10162,6 +10162,53 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
   impSetMixThetas(thv);
 }
 
+// npb mixture-proportion Gibbs step: given each subject's currently-assigned support
+// eta (subEta, nsub x neta), sample its mix() component from the posterior
+// responsibility mixProb_m * p(y_i | eta_i, component m), then draw the proportions
+// from Dirichlet(alpha0 + component counts) and install them via impSetMixThetas.
+// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  Must run
+// inside a Get/PutRNGstate scope (npbOuter provides it).  No-op for a non-mixture.
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
+  int nMix = impNmix();
+  if (nMix <= 1 || op_focei.mixIdxN == 0) return;
+  int nsub = (int)subEta.n_rows;
+  int neta = (int)subEta.n_cols;
+  std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
+  for (int i = 0; i < nsub; ++i) {
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = subEta(i, j);
+    std::vector<double> g(nMix); double gmax = R_NegInf;
+    for (int m = 0; m < nMix; ++m) {
+      double cl = npEvalCondLik(&eta[0], i + m * nsub);
+      g[m] = std::log(std::max(1e-300, impMixProb(m))) + cl;
+      if (std::isfinite(g[m]) && g[m] > gmax) gmax = g[m];
+    }
+    int mi = 0;
+    if (std::isfinite(gmax)) {
+      double gsum = 0.0;
+      for (int m = 0; m < nMix; ++m) { g[m] = std::exp(g[m] - gmax); gsum += g[m]; }
+      double u = R::unif_rand() * gsum, c = 0.0;
+      for (int m = 0; m < nMix; ++m) { c += g[m]; mi = m; if (u <= c) break; }
+    } else {
+      mi = (int)(R::unif_rand() * nMix); if (mi >= nMix) mi = nMix - 1;
+    }
+    counts[mi] += 1.0;
+  }
+  // Dirichlet(counts) draw = normalized independent Gamma(counts_m, 1)
+  arma::vec p(nMix); double psum = 0.0;
+  for (int m = 0; m < nMix; ++m) { p[m] = R::rgamma(counts[m], 1.0); psum += p[m]; }
+  for (int m = 0; m < nMix; ++m) p[m] = std::max(1e-4, p[m] / std::max(1e-300, psum));
+  p /= arma::accu(p);
+  Environment rxode2 = Environment::namespace_env("rxode2");
+  Function mlogit = as<Function>(rxode2["mlogit"]);
+  NumericVector pin(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) pin[m] = p[m];
+  NumericVector th = mlogit(pin);
+  arma::vec thv(nMix - 1);
+  for (int m = 0; m < nMix - 1; ++m) thv[m] = th[m];
+  impSetMixThetas(thv);
+}
+
 // Build Psi (nSub x nPoint) with psi(i,k) = p(y_i | support point k), where
 // etaPoints is nPoint x neta.  Parallel over base subjects for each support
 // point, reusing the vaeInnerLikCore parallel discipline (per-thread rxode2
