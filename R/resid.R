@@ -499,58 +499,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
-
-#' Add table information to nlmixr2 fit object without tables
-#'
-#' @param object nlmixr2 family of objects
-#' @param updateObject Update the object (default FALSE)
-#' @param data Saved data from
-#' @param thetaEtaParameters Internal theta/eta parameters
-#' @param table a `tableControl()` list of options
-#' @param keep Character Vector of items to keep
-#' @param drop Character Vector of items to drop or NULL
-#' @param envir Environment to search for updating
-#' @return Fit with table information attached
-#' @author Matthew Fidler
-#' @export
-#' @examples
-#'
-#' \donttest{
-#'
-#' one.cmt <- function() {
-#'   ini({
-#'     ## You may label each parameter with a comment
-#'     tka <- 0.45 # Log Ka
-#'     tcl <- log(c(0, 2.7, 100)) # Log Cl
-#'     ## This works with interactive models
-#'     ## You may also label the preceding line with label("label text")
-#'     tv <- 3.45; label("log V")
-#'     ## the label("Label name") works with all models
-#'     eta.ka ~ 0.6
-#'     eta.cl ~ 0.3
-#'     eta.v ~ 0.1
-#'     add.sd <- 0.7
-#'   })
-#'   model({
-#'     ka <- exp(tka + eta.ka)
-#'     cl <- exp(tcl + eta.cl)
-#'     v <- exp(tv + eta.v)
-#'     linCmt() ~ add(add.sd)
-#'   })
-#' }
-#'
-#' # run without tables step
-#' f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
-#'
-#' print(f)
-#'
-#' # Now add the tables
-#'
-#' f <- addTable(f)
-#'
-#' print(f)
-#'
-#' }
 #' Re-insert subjects dropped during preprocessing into an output table
 #'
 #' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
@@ -654,6 +602,57 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   add
 }
+#' Add table information to nlmixr2 fit object without tables
+#'
+#' @param object nlmixr2 family of objects
+#' @param updateObject Update the object (default FALSE)
+#' @param data Saved data from
+#' @param thetaEtaParameters Internal theta/eta parameters
+#' @param table a `tableControl()` list of options
+#' @param keep Character Vector of items to keep
+#' @param drop Character Vector of items to drop or NULL
+#' @param envir Environment to search for updating
+#' @return Fit with table information attached
+#' @author Matthew Fidler
+#' @export
+#' @examples
+#'
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'   ini({
+#'     ## You may label each parameter with a comment
+#'     tka <- 0.45 # Log Ka
+#'     tcl <- log(c(0, 2.7, 100)) # Log Cl
+#'     ## This works with interactive models
+#'     ## You may also label the preceding line with label("label text")
+#'     tv <- 3.45; label("log V")
+#'     ## the label("Label name") works with all models
+#'     eta.ka ~ 0.6
+#'     eta.cl ~ 0.3
+#'     eta.v ~ 0.1
+#'     add.sd <- 0.7
+#'   })
+#'   model({
+#'     ka <- exp(tka + eta.ka)
+#'     cl <- exp(tcl + eta.cl)
+#'     v <- exp(tv + eta.v)
+#'     linCmt() ~ add(add.sd)
+#'   })
+#' }
+#'
+#' # run without tables step
+#' f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
+#'
+#' print(f)
+#'
+#' # Now add the tables
+#'
+#' f <- addTable(f)
+#'
+#' print(f)
+#'
+#' }
 addTable <- function(object, updateObject = FALSE,
                      data=object$dataSav,
                      thetaEtaParameters=object$foceiThetaEtaParameters,

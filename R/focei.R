@@ -589,6 +589,18 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   rxode2::rxNorm(.mv)
 }
 
+#' Load a model into a symengine environment
+#'
+#' @param newmod model text (normalized rxode2 model, e.g. from a prune)
+#' @param promoteLinSens when `TRUE`, promote `linCmt()` to the
+#'   sensitivity-based solved system
+#' @param fullModel when `TRUE`, change the printed message to indicate the
+#'   full model is being loaded
+#' @return symengine environment from `rxode2::rxS()` with `rx_r_` coerced to
+#'   a symengine object when needed
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
 .loadSymengine <- function(newmod, promoteLinSens = TRUE, fullModel = FALSE) {
   if (.getRxPredLlikOption()) {
     if (fullModel) {
@@ -624,6 +636,16 @@ rxUiGet.loadPrune <- function(x, ...) {
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
 attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 
+#' Calculate d(state)/d(eta) or d(state)/d(theta) sensitivities
+#'
+#' @param s symengine environment (from `.loadSymengine()`)
+#' @param theta when `TRUE` calculate the sensitivities with respect to
+#'   `THETA[#]`; otherwise with respect to `ETA[#]`
+#' @return the symengine environment `s` augmented with the sensitivity
+#'   equations (`..sens`, `..ddt`, `..stateInfo`, ...)
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
 .sensEtaOrTheta <- function(s, theta=FALSE) {
   .etaVars <- NULL
   if (theta && exists("..maxTheta", s)) {
