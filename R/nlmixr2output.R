@@ -19,6 +19,32 @@
   }
   NULL
 }
+
+#' Back-transform a literally-fixed theta value for the $parFixed table
+#'
+#' Literally-fixed thetas are re-inserted into $popDf after the C++/inner step,
+#' so they never pass through its back-transform.  Apply the same default rule
+#' here from the mu-ref `curEval` (exp/expit/probitInv).  A user-specified
+#' `backTransform`, `muRefExtra` parameters (e.g. `exp(tv + eta + 2)`), and
+#' covariate coefficients are left on the natural scale -- the user
+#' back-transform is applied later by `.updateParFixedApplyManualBacktransformations`.
+#' @noRd
+.updateParFixedBackTransformFixed <- function(ui, name, value) {
+  .iniDf <- ui$iniDf
+  .w <- which(.iniDf$name == name)
+  if (length(.w) == 1L && !is.na(.iniDf$backTransform[.w])) return(value)
+  if (name %in% ui$muRefExtra$parameter) return(value)
+  if (name %in% ui$muRefCovariateDataFrame$covariateParameter) return(value)
+  .m <- ui$muRefCurEval
+  .w <- which(.m$parameter == name)
+  if (length(.w) == 1L) {
+    .ce <- .m$curEval[.w]
+    if (isTRUE(.ce == "exp")) return(exp(value))
+    if (isTRUE(.ce == "expit")) return(rxode2::expit(value, .m$low[.w], .m$hi[.w]))
+    if (isTRUE(.ce == "probitInv")) return(rxode2::probitInv(value, .m$low[.w], .m$hi[.w]))
+  }
+  value
+}
 #' Get the parameter label and apply to parameter dataset
 #'
 #' @param popDf data.frame of parameter estimates
@@ -324,13 +350,21 @@
         Estimate = unname(.theta[.fixedNames]),
         SE = NA_real_,
         `%RSE` = NA_real_,
-        `Back-transformed` = unname(.theta[.fixedNames]),
+        `Back-transformed` = vapply(.fixedNames, function(.n) {
+          .updateParFixedBackTransformFixed(.ui, .n, unname(.theta[.n]))
+        }, numeric(1), USE.NAMES = FALSE),
         `CI Lower` = NA_real_,
         `CI Upper` = NA_real_,
         row.names = .fixedNames,
         check.names = FALSE,
         check.rows = FALSE
       )
+    # Keep estimated thetas absent from the (pre-literal-fix) model -- e.g. the
+    # covariate-coefficient thetas (beta_<par>_<cov>) est="vae" injects after
+    # covariate selection.  They live in $theta/$cov but not in uiUnfix, so the
+    # reindex below would silently drop them (leaving a covariate-free table).
+    # Append them after the original theta order.
+    .tn <- c(.tn, setdiff(rownames(.popDfEst), .tn))
     # combine estimated and fixed parameters, ordered by theta name
     .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
     .ret$popDf <- .popDf
