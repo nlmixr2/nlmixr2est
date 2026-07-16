@@ -288,16 +288,14 @@ foceiControl(
 
 - covFull:
 
-  controls the shape of `fit$cov`. `FALSE` (default) installs only the
-  structural-theta block (the NONMEM-matched theta covariance, matching
-  the historical finite-difference `fit$cov` shape for backwards
-  compatibility); `TRUE` installs the full theta + residual sigma +
-  Omega covariance – assembled analytically for `covMethod="analytic"`,
-  or by central finite differences of the objective over the same
-  parameter set for the finite-difference methods (perturbing Omega on
-  the variance-covariance scale, with the per-parameter Gill (1983) step
-  and the 5-point/4-point stencils that `foceiCalcR` uses). The theta
-  standard errors are identical either way.
+  shape of `fit$cov`. `TRUE` (default) installs the full theta +
+  residual sigma + Omega covariance (assembled analytically for
+  `covMethod="analytic"`, or by central finite differences over the same
+  parameter set otherwise). For the finite-difference methods it follows
+  `covMethod`: `"r,s"` is the full sandwich
+  `solve(Rfull) %*% Sfull %*% solve(Rfull)`, `"s"` is `solve(Sfull)`,
+  `"r"` is `solve(Rfull)`. `FALSE` installs only the structural-theta
+  block (the historical shape).
 
 - fast:
 
@@ -581,26 +579,16 @@ foceiControl(
 
 - muModel:
 
-  Selects the mu-referenced-FOCEI-family regression variant for
-  mu-referenced thetas/etas: `"none"` (default, ordinary FOCEI); `"lin"`
-  (`mfocei`/`mfoce`/`magq`/ `mlaplace`: mu-referenced population thetas
-  – and their covariate coefficient(s), if any (see `muRefCovAlg`) – are
-  excluded from the outer optimizer and re-derived in C++ by closed-form
-  OLS regression of each subject's back-calculated value on the
-  covariate(s) (intercept-only for a covariate-free pair), residual
-  becomes that subject's eta; repeats until convergence, see
-  `muModelTol`/`muModelMaxCycles`); or `"irls"`
-  (`ifocei`/`ifoce`/`iagq`/`ilaplace`: same mechanism, reweighted by
-  inner-optimization curvature). Only the outer gradients for
-  non-mu-referenced parameters (including residual-error thetas and all
-  omegas) are then calculated.
-
-  Bounded mu-referenced parameters (population thetas and covariate
-  coefficients) are regression-updated too: the update is clamped to the
-  bounds (box-constrained least squares, see `muModelClampRetries`), and
-  any parameter that was clamped is reported once as a fit note. A
-  user-fixed ([`fix()`](https://rdrr.io/r/utils/fix.html)) mu population
-  theta is never regression-updated.
+  Mu-referenced-FOCEI-family regression variant: `"none"` (default,
+  ordinary FOCEI); `"lin"` (`mfocei`/`mfoce`/`magq`/`mlaplace`) profiles
+  mu-referenced population thetas and covariate coefficients out of the
+  outer optimizer via closed-form OLS regression of each subject's
+  back-calculated value on the covariates (`muModelTol`/
+  `muModelMaxCycles`); `"irls"` (`ifocei`/`ifoce`/`iagq`/`ilaplace`)
+  reweights that by inner-optimization curvature. Bounded mu parameters
+  are regression-updated with a clamped step (`muModelClampRetries`); a
+  user-fixed ([`fix()`](https://rdrr.io/r/utils/fix.html)) mu theta is
+  never updated.
 
 - muRefCovAlg:
 

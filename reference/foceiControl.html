@@ -329,16 +329,14 @@ derives a tight tolerance from <code>sigdig</code>; supply a number to override 
 
 
 <dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>
-<dd><p>controls the shape of <code>fit$cov</code>.  <code>FALSE</code> (default)
-installs only the structural-theta block (the NONMEM-matched theta
-covariance, matching the historical finite-difference <code>fit$cov</code> shape
-for backwards compatibility); <code>TRUE</code> installs the full theta + residual
-sigma + Omega covariance – assembled analytically for
-<code>covMethod="analytic"</code>, or by central finite differences of the objective
-over the same parameter set for the finite-difference methods (perturbing Omega
-on the variance-covariance scale, with the per-parameter Gill (1983) step and the
-5-point/4-point stencils that <code>foceiCalcR</code> uses).  The theta standard
-errors are identical either way.</p></dd>
+<dd><p>shape of <code>fit$cov</code>.  <code>TRUE</code> (default) installs the
+full theta + residual sigma + Omega covariance (assembled analytically for
+<code>covMethod="analytic"</code>, or by central finite differences over the same
+parameter set otherwise).  For the finite-difference methods it follows
+<code>covMethod</code>: <code>"r,s"</code> is the full sandwich
+<code>solve(Rfull) %*% Sfull %*% solve(Rfull)</code>, <code>"s"</code> is
+<code>solve(Sfull)</code>, <code>"r"</code> is <code>solve(Rfull)</code>.  <code>FALSE</code>
+installs only the structural-theta block (the historical shape).</p></dd>
 
 
 <dt id="arg-fast">fast<a class="anchor" aria-label="anchor" href="#arg-fast"></a></dt>
@@ -632,26 +630,17 @@ option <code>resetEtaP</code>.</p></dd>
 
 
 <dt id="arg-mumodel">muModel<a class="anchor" aria-label="anchor" href="#arg-mumodel"></a></dt>
-<dd><p>Selects the mu-referenced-FOCEI-family regression variant
-    for mu-referenced thetas/etas: <code>"none"</code> (default, ordinary
-    FOCEI); <code>"lin"</code> (<code>mfocei</code>/<code>mfoce</code>/<code>magq</code>/
-    <code>mlaplace</code>: mu-referenced population thetas – and their
-    covariate coefficient(s), if any (see <code>muRefCovAlg</code>) – are
-    excluded from the outer optimizer and re-derived in C++ by
-    closed-form OLS regression of each subject's back-calculated value
-    on the covariate(s) (intercept-only for a covariate-free pair),
-    residual becomes that subject's eta; repeats until convergence, see
-    <code>muModelTol</code>/<code>muModelMaxCycles</code>); or <code>"irls"</code>
-    (<code>ifocei</code>/<code>ifoce</code>/<code>iagq</code>/<code>ilaplace</code>:
-    same mechanism, reweighted by inner-optimization curvature).
-    Only the outer gradients for non-mu-referenced parameters (including
-    residual-error thetas and all omegas) are then calculated.</p>
-<p>Bounded mu-referenced parameters (population thetas and covariate
-    coefficients) are regression-updated too: the update is clamped to
-    the bounds (box-constrained least squares, see
-    <code>muModelClampRetries</code>), and any parameter that was clamped is
-    reported once as a fit note. A user-fixed (<code><a href="https://rdrr.io/r/utils/fix.html" class="external-link">fix()</a></code>) mu
-    population theta is never regression-updated.</p></dd>
+<dd><p>Mu-referenced-FOCEI-family regression variant: <code>"none"</code>
+(default, ordinary FOCEI); <code>"lin"</code>
+(<code>mfocei</code>/<code>mfoce</code>/<code>magq</code>/<code>mlaplace</code>) profiles
+mu-referenced population thetas and covariate coefficients out of the
+outer optimizer via closed-form OLS regression of each subject's
+back-calculated value on the covariates (<code>muModelTol</code>/
+<code>muModelMaxCycles</code>); <code>"irls"</code>
+(<code>ifocei</code>/<code>ifoce</code>/<code>iagq</code>/<code>ilaplace</code>) reweights that
+by inner-optimization curvature.  Bounded mu parameters are
+regression-updated with a clamped step (<code>muModelClampRetries</code>);
+a user-fixed (<code><a href="https://rdrr.io/r/utils/fix.html" class="external-link">fix()</a></code>) mu theta is never updated.</p></dd>
 
 
 <dt id="arg-murefcovalg">muRefCovAlg<a class="anchor" aria-label="anchor" href="#arg-murefcovalg"></a></dt>
