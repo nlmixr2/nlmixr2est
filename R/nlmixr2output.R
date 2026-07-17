@@ -393,13 +393,17 @@
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
-  .bsv <- .updateParFixedAddBsv(
-    popDf, iniDf = .ui$iniDf, omega = .ret$omega,
-    .sigdig = .parFixedDigits,
-    .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
-  )
-  popDf <- .bsv$popDf
-  popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
+  # without etas both columns would be entirely blank, so drop them (#355)
+  .bsv <- list(popDf = popDf, bsvFixedNames = character())
+  if (!is.null(.ret$omega)) {
+    .bsv <- .updateParFixedAddBsv(
+      popDf, iniDf = .ui$iniDf, omega = .ret$omega,
+      .sigdig = .parFixedDigits,
+      .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
+    )
+    popDf <- .bsv$popDf
+    popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
+  }
   .ret$popDf <- popDf
   # $popDfSig may still exist from the C++ side but is no longer used
   .ret$parFixed <-
