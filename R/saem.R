@@ -309,6 +309,9 @@
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
     }
+    if (identical(rxode2::rxGetControl(ui, "sharedInner", "classic"), "shared")) {
+      .cfg <- .saemSharedInstallStep(ui, data, .rxControl, .cfg)
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })
@@ -317,7 +320,8 @@
   })
   # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
   # down so it does not leak into a later fit's solve state (reproducibility).
-  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE)) ||
+      identical(rxode2::rxGetControl(ui, "sharedInner", "classic"), "shared")) {
     try(vaeInnerFree_(), silent = TRUE)
   }
   .saemRes

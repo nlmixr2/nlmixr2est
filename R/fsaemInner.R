@@ -161,6 +161,40 @@
                         ifelse(is.finite(.hi), 3L, 0L)))))
 }
 
+#' Install the shared FOCEi inner driver (likInner0) for `sharedInner="shared"`.
+#'
+#' Sets up the same FOCEi inner problem `fsaem` uses (`.fsaemInnerSetup` ->
+#' `vaeInnerSetup_`), stored in `cfg$sharedInnerEnv`, so SAEM can compute its
+#' residual / prediction / likelihood through the shared driver instead of the
+#' duplicated per-endpoint `res_mod`/`arResk` machinery.  Prototype: gated to a
+#' single additive-error continuous endpoint (same gate as the fast kernel);
+#' unsupported models fall back to the classic path.  Inert until the shared
+#' residual read is wired in (see plans/kernel-unification.md).
+#' @noRd
+.saemSharedInstallStep <- function(ui, data, rxControl, cfg) {
+  if (!.fsaemSupported(ui)) {
+    .minfo(paste0("sharedInner='shared' prototype not yet supported for this model ",
+                  "(needs a single additive-error continuous endpoint); using classic residuals"))
+    cfg$sharedInner <- "classic"
+    return(cfg)
+  }
+  .fc <- list(rxControl = rxControl,
+              fastInnerIt = 100L,
+              sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
+              optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
+              literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
+              addProp = rxode2::rxGetControl(ui, "addProp", "combined2"),
+              eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
+              indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
+              maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),
+              odeRecalcFactor = rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5))
+  .neta <- sum(ui$iniDf$neta1 == ui$iniDf$neta2, na.rm = TRUE)
+  .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
+  .etaMat <- matrix(0.0, .N, .neta)
+  cfg$sharedInnerEnv <- .fsaemInnerSetup(ui, data, .etaMat, .fc)
+  cfg
+}
+
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
     .minfo(paste0("f-SAEM (fast=TRUE) fast kernel not yet supported for this model ",
