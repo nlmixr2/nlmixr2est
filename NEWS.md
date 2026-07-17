@@ -473,6 +473,13 @@
 
 ### Estimation
 
+- FOCEi/FOCE models with a trigonometric term whose argument is a compound
+  expression divided by something (for example a sinusoidal enterohepatic-cycle
+  release `sin(2 * 3.14 * (time - mtime1) / period)`) no longer fail to build
+  with "too few arguments to function 'sin'".  The fix is in `rxode2`'s
+  `rxFromSE()` (which was dropping the whole argument, emitting `sin()`); a
+  regression test is added here (nlmixr2/nlmixr2est#513).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
