@@ -47,7 +47,7 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  mixProbMethod = c("regularized", "annealed", "regress"),
+  mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
@@ -306,9 +306,19 @@ uses the legacy finite-difference behavior.}
   component), stabilizes the mixing-probability estimate against
   collapsing onto a single component (the responsibility used to
   update it is itself weighted by the current mixing probability,
-  which can create a runaway feedback loop). Two options:
+  which can create a runaway feedback loop). Three options:
 
-  * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+  * `"regress"` (default): treat per-subject mixture membership as a
+    fixed regressor.  Each subject is hard-classified to a component up
+    front, held fixed, and fed into the solve (via the existing
+    mixture-index regressor), skipping the per-iteration soft-EM
+    responsibility step entirely.  Avoids the responsibility feedback
+    loop / collapse by construction and is lower-bias; on heavily
+    overlapping components it is higher-variance (an early
+    misclassification is not revisited), so prefer `"regularized"` when
+    membership is genuinely uncertain.
+
+  * `"regularized"`: blend `mixProbPriorN` pseudo-subjects,
     distributed per the initial mixing probability, into the
     responsibility average each iteration (Dirichlet/MAP-EM-style).
     Prevents collapse even in difficult cases, at the cost of some
@@ -317,16 +327,7 @@ uses the legacy finite-difference behavior.}
   * `"annealed"`: give the mixing-probability update its own decaying
     step-size schedule (`mixProbStepExp`) instead of the
     full-replacement step used during `nBurn`. Lower bias, but does
-    not by itself fix a systematic (non-noise-driven) collapse.
-
-  * `"regress"`: treat per-subject mixture membership as a fixed
-    regressor.  Each subject is assigned a component up front and that
-    assignment is held fixed and fed into the solve (via the existing
-    mixture-index regressor), skipping the per-iteration soft-EM
-    responsibility step entirely.  Avoids the responsibility feedback
-    loop by construction and can be more stable when the components are
-    well separated; less appropriate when membership is genuinely
-    uncertain.}
+    not by itself fix a systematic (non-noise-driven) collapse.}
 
 \item{mixProbStepExp}{Only used when `mixProbMethod="annealed"`. Decay
 exponent for the mixing-probability step size
@@ -375,11 +376,16 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     machinery (its own `res_mod` handling of add/prop/pow/Box-Cox/AR
     error models).
 
-  * `"shared"`: reuse the shared FOCEI inner driver (`likInner0`), the
-    same endpoint-agnostic engine used by FOCEI and the nonparametric
-    methods, so residual/prediction/likelihood logic is not duplicated.
-    Intended to be numerically equivalent to `"classic"`; opt-in while
-    it is validated.}
+  * `"shared"`: estimate the residual through the shared FOCEI inner
+    driver (`likInner0`), the same endpoint-agnostic engine used by FOCEI
+    and the nonparametric methods, instead of the duplicated `res_mod`
+    machinery.  Each EM iteration it evaluates the inner at the
+    conditional-mean etas and SA-blends the residual moment into the
+    error parameters.  A distinct estimator (per-subject conditional mean,
+    not the `N*nmc` MCMC chains) but near-equivalent to `"classic"`
+    (structural to ~0.01-0.03, residual SD to ~1% on theophylline for
+    add/prop error).  Prototype: single add/prop/combined continuous
+    endpoint, no mixtures; opt-in while it is broadened.}
 
 \item{nonMuTheta}{Controls how a population `theta` that is not
   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
