@@ -88,6 +88,15 @@ test_that("shared inner driver reproduces a converged SAEM fit's IPRED / r", {
   # r is the additive residual variance (add.sd^2) at the converged add.sd
   .addSd <- as.numeric(.f$theta[.th$name])[.th$name == "add.sd"]
   expect_true(all(abs(.res$r - .addSd^2) < 1e-3))
+
+  # the FAST in-loop update path (saemSharedResidUpdate_: cheap re-parameterize +
+  # residual, the callable the SAEM loop uses each iteration) matches the
+  # R .fsaemInnerUpdate path.
+  .env2 <- .fsaemInnerSetup(m(), d, matrix(0, nrow(.condEta), 1L), .fc)
+  .res2 <- saemSharedResidUpdate_(.thetaFull, .omega, .condEta)
+  .fsaemInnerFree()
+  expect_lt(max(abs(.res2$f - .f$IPRED)), 0.05)
+  expect_lt(max(abs(.res2$f - .res$f)), 1e-3)
 })
 
 test_that("shared inner driver handles a PROPORTIONAL error model (r = (prop.sd*f)^2)", {
