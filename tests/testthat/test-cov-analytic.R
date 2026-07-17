@@ -110,6 +110,17 @@ nmTest({
     expect_true(all(is.finite(.se)) && all(.se > 0))
   })
 
+  test_that("setCov(fit, 'analytic') recomputes the analytic covariance post-fit", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                                   foceiControl(print = 0L, covMethod = "r,s")))
+    expect_false(identical(fit$covMethod, "analytic"))
+    fit <- suppressMessages(suppressWarnings(setCov(fit, "analytic")))
+    expect_identical(fit$covMethod, "analytic")
+    expect_true(all(is.finite(sqrt(diag(fit$cov)))))
+  })
+
   test_that("finite-difference covMethod='r,s' covFull=TRUE installs the true full FD sandwich", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

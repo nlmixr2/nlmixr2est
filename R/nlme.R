@@ -16,6 +16,13 @@
 #'   maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
 #'   value is verbose (`verbose=TRUE`).  When `print` is not supplied an
 #'   explicit `verbose` is used as given.
+#' @param covMethod Covariance method: `"analytic"` (default) computes the
+#'   focei observed-information covariance at the converged nlme estimates
+#'   post-fit (falling back to the finite-difference `"r,s"` -> `"r"`/`"s"`
+#'   chain when out of analytic scope); `"r,s"`, `"r"`, `"s"` request the
+#'   finite-difference forms directly; `"nlme"` and `""` skip the recompute
+#'   and keep nlme's own standard errors.  When the recompute fails the
+#'   `"nlme"` covariance is kept.
 #' @return a nlmixr-nlme list
 #' @examples
 #' nlmeControl()
@@ -33,7 +40,8 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE,
-    eventSens=c("jump", "fd"), print=NULL, ...) {
+    eventSens=c("jump", "fd"), print=NULL,
+    covMethod=c("analytic", "r,s", "r", "s", "nlme", ""), ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
@@ -65,6 +73,14 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
+  if (checkmate::testIntegerish(covMethod, len=1, any.missing=FALSE)) {
+    # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
+    covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
+  } else if (length(covMethod) == 1L && !nzchar(covMethod)) {
+    covMethod <- ""
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
 
   # 'print' is the common nlmixr control alias; nlme prints through 'verbose',
   # so map it (print=0 means quiet) and let an explicit 'verbose' stand when
@@ -76,7 +92,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "covMethod"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -128,7 +144,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable, muRefCovAlg=muRefCovAlg,
-               eventSens=eventSens,
+               eventSens=eventSens, covMethod=covMethod,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmeControl"
   .ret
@@ -422,13 +438,13 @@ nmObjGetControl.nlme <- function(x, ...) {
   stop("cannot find nlme related control object", call.=FALSE)
 }
 
-.nlmeControlToFoceiControl <- function(env, assign=TRUE) {
+.nlmeControlToFoceiControl <- function(env, assign=TRUE, covMethod=0L) {
   .nlmeControl <- env$nlmeControl
   .ui <- env$ui
   .foceiControl <- foceiControl(rxControl=env$nlmeControl$rxControl,
                                 maxOuterIterations=0L,
                                 maxInnerIterations=0L,
-                                covMethod=0L,
+                                covMethod=covMethod,
                                 etaMat=env$etaMat,
                                 sumProd=.nlmeControl$sumProd,
                                 optExpression=.nlmeControl$optExpression,
@@ -451,7 +467,12 @@ nmObjGetControl.nlme <- function(x, ...) {
 #' @export
 #' @rdname nmObjGetFoceiControl
 nmObjGetFoceiControl.nlme <- function(x, ...) {
-  .nlmeControlToFoceiControl(x[[1]])
+  .env <- x[[1]]
+  # the post-fit recompute (.foceiRecomputeMuCov) reads its covMethod from this
+  # control; "nlme"/"" keep the legacy nlme covariance/no covariance (0L)
+  .cm <- tryCatch(.env$nlmeControl$covMethod, error = function(e) NULL)
+  if (is.null(.cm) || !nzchar(.cm) || identical(.cm, "nlme")) .cm <- 0L
+  .nlmeControlToFoceiControl(.env, covMethod=.cm)
 }
 
 .nlmeFamilyFit <- function(env, ...) {

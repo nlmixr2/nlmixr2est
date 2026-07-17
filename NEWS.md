@@ -2,6 +2,33 @@
 
 ## New features
 
+- The analytic observed-information covariance is now the preferred `covMethod`
+  across the mixed-model estimation methods, falling back to each method's
+  previous default when a model is out of analytic scope:
+    - `est="saem"`/`"fsaem"` keep the stochastic-approximation FIM (`"sa"`) as
+      the default `covMethod`, now followed by `"analytic"` and `"linFim"`.
+      `covMethod="analytic"` computes the FOCEI analytic covariance at the
+      converged SAEM estimates and falls back to the linearized FIM (`"linFim"`)
+      with a message when out of scope or not positive definite; the `"linFim"`
+      covariance stays selectable via `setCov(fit, "linFim")`.
+    - `est="nlme"` gains a `covMethod` argument
+      (`c("analytic", "r,s", "r", "s", "nlme", "")`, default `"analytic"`) that
+      recomputes the covariance at the converged nlme estimates; `"nlme"` keeps
+      nlme's own standard errors (also available via `setCov(fit, "nlme")`).
+    - `est="npag"`/`"npb"` (and their `m`/`i` variants), which previously
+      reported no covariance, now compute one post-fit at the converged
+      estimates (default `"analytic"` with the finite-difference fallback
+      chain).
+    - `est="imp"`/`"impmap"`/`"qrpem"` gain a `covMethod` argument
+      (`c("imp", "analytic", "r,s", "r", "s", "")`, default `"imp"`).  `"imp"`
+      is the Monte-Carlo importance-sampling covariance that the old
+      `impCov=TRUE` selected (the `impCov` argument is removed); the other
+      tokens compute the post-fit FOCEI covariance.
+    - `est="advi"` keeps its variational covariance (`"advi"`) as the default but
+      now honors an explicit `covMethod` (e.g. `"analytic"`) without overwriting
+      it with the variational covariance.
+    - `setCov()`/`getVarCov()` accept `covMethod="analytic"` post-fit.
+
 - A general FOCE-family per-subject log-likelihood can now be built from an
   `rxode2` UI model and used outside of a fit, for MCMC/SAMBA-style algorithms
   (issue #414).  `foceiLikLoad()` compiles the inner model and sets up the
@@ -497,6 +524,11 @@
   not carry `"foceiControl"` in their class vector, and the restart-path
   environment check rejected them even though the fit had been set up from a
   valid control.  The check now recognises the whole FOCEi control family.
+- `est="fsaem"` (fast SAEM) now reports a covariance matrix.  The fast kernel's
+  FOCEi inner setup overwrote the shared control's `covMethod` during the fit,
+  so the covariance step ran with no method selected and left the fit with an
+  unlabeled, partially degenerate covariance; the intended `covMethod` is now
+  restored before the covariance is computed.
 
 - Models that combine `linCmt()` with ODEs (for example a solved PK driving an
   effect-compartment ODE) now estimate correctly with the FOCEi and nlm

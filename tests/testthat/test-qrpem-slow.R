@@ -131,11 +131,11 @@ nmTest({
     expect_gt(max(abs(.draw(1L) - .draw(999L))), 0.05)
   })
 
-  test_that("Q4: impCov=TRUE with qr=TRUE gives an SPD covariance matching FOCEI |r|", {
+  test_that("Q4: covMethod='imp' with qr=TRUE gives an SPD covariance matching FOCEI |r|", {
     .fi <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
               impmapControl(print=0L, nIter=40L, isample=500L, qr=TRUE,
-                            impCov=TRUE)))
+                            covMethod="imp")))
     .se <- as.numeric(.fi$env$impSe)
     .nth <- .fi$env$impCovThetaN
     expect_true(all(is.finite(.se) & .se > 0))

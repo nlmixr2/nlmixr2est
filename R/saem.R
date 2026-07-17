@@ -647,6 +647,14 @@
 .saemCalcCov <- function(env) {
   .ui <- env$ui
   .cm <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
+  if (identical(.cm, "analytic")) {
+    # the analytic observed-information covariance is computed post-fit
+    # (.saemInstallAnalyticCov, once the fit object exists); compute the
+    # linearized FIM now as the ready fallback and flag the analytic attempt
+    assign(".saemCovAnalyticPending", TRUE, envir = env)
+    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    .cm <- "linFim"
+  }
   if (.cm %in% c("sa", "fim")) {
     # Both invert a SAEM observed-information matrix (.saemFimToCov): "sa" uses the
     # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
@@ -1099,6 +1107,74 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
+#' Install the analytic FOCEI covariance on a SAEM fit (post-fit)
+#'
+#' `covMethod="analytic"` computes the linearized FIM as the ready fallback
+#' during estimation (`.saemCalcCov`) and flags the analytic attempt.  Once the
+#' fit object exists this computes the FOCEI analytic observed-information
+#' covariance at the converged SAEM estimates and installs it (PD-guarded),
+#' keeping the `linFim` covariance recoverable via `covList`.  On any failure it
+#' messages and keeps the linearized FIM.
+#' @param fit saem fit (or its environment)
+#' @return nothing, called for side effects
+#' @noRd
+.saemInstallAnalyticCov <- function(fit) {
+  .env <- fit
+  if (rxode2::rxIs(fit, "nlmixr2FitData")) .env <- fit$env
+  if (!is.environment(.env) ||
+        !isTRUE(tryCatch(get(".saemCovAnalyticPending", envir = .env, inherits = FALSE),
+                         error = function(e) FALSE))) {
+    return(invisible())
+  }
+  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+  if (is.null(.r) || !is.matrix(.r$cov) || !all(is.finite(.r$cov))) {
+    message("covMethod=\"analytic\" could not be computed for this model; using the linearized FIM (covMethod=\"linFim\")")
+    return(invisible())
+  }
+  .cov <- 0.5 * (.r$cov + t(.r$cov))                        # exact symmetry
+  .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+  if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
+    message("covMethod=\"analytic\" covariance is not positive definite; using the linearized FIM (covMethod=\"linFim\")")
+    return(invisible())
+  }
+  # keep the linFim covariance recoverable via setCov(fit, "linFim")
+  if (exists("cov", envir = .env, inherits = FALSE) && is.matrix(.env$cov)) {
+    .lin <- list(.env$cov)
+    names(.lin) <- as.character(if (exists("covMethod", envir = .env, inherits = FALSE)) {
+      .env$covMethod
+    } else "linFim")
+    .cl <- if (exists("covList", envir = .env, inherits = FALSE)) .env$covList else NULL
+    if (is.null(.cl[[names(.lin)]])) .cl <- c(.cl, .lin)
+    assign("covList", .cl, envir = .env)
+  }
+  .env$cov <- .cov
+  .env$covMethod <- "analytic"
+  assign(".covAnalytic", .r, envir = .env)                 # getVarCov()/$cov reuse it
+  # overwrite the parameter-table SEs from the analytic covariance
+  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
+    .pf <- .env$parFixedDf
+    .se <- sqrt(diag(.cov))
+    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)),
+                    error = function(e) 0.95)
+    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+    for (.n in rownames(.pf)) {
+      if (.n %in% names(.se) && "SE" %in% names(.pf)) {
+        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
+        .pf[.n, "SE"] <- .s
+        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
+        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
+              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
+          .pf[.n, "CI Lower"] <- .e - .qn * .s
+          .pf[.n, "CI Upper"] <- .e + .qn * .s
+        }
+      }
+    }
+    .env$parFixedDf <- .pf
+  }
+  .nlmixr2CovConditionUpdate(.env)
+  invisible()
+}
+
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
@@ -1109,6 +1185,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
+  # the fast (f-SAEM) kernel sets up a FOCEi inner problem whose foceiControl
+  # (covMethod="") clobbers the shared ui control covMethod during .saemFitModel;
+  # capture the intended covMethod up front and restore it before .saemCalcCov
+  .covMethodSaem <- .control$covMethod
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
@@ -1126,6 +1206,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .nlmixrSetMuRefTimeVarying(.ui, .tv)
   on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
   .ret$ui <- .ui
+  # restore the covMethod the fast kernel may have overwritten (see above)
+  if (!is.null(.covMethodSaem)) {
+    rxode2::rxAssignControlValue(.ui, "covMethod", .covMethodSaem)
+  }
   .saemCalcCov(.ret)
   .ret <- nlmixrWithTiming("postprocess", {
     if (!is.null(.ret$saem$tolFactor)) {
@@ -1170,6 +1254,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
       }
       .rEnv$covMethod <- if (.cm %in% c("linFim", "fim", "sa")) .cm else "linFim"
     }
+    # covMethod="analytic": now that the linFim fallback is installed and the fit
+    # table is built, attempt the FOCEI analytic covariance at the converged
+    # estimates (keeps linFim on any failure).
+    .saemInstallAnalyticCov(.ret)
     # For mixture models: post-correct me/mn/mu in the assembled fit table
     # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
     if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
