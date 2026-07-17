@@ -78,7 +78,7 @@ adviControl <- function(seed = 42L,
                         useColor = NULL,
                         printNcol = NULL,
 
-                        covMethod = c("advi", "analytic", "r,s", "r", "s", ""),
+                        covMethod = c("analytic", "advi", "r,s", "r", "s", ""),
                         optExpression = TRUE,
                         sumProd = FALSE,
                         literalFix = TRUE,
