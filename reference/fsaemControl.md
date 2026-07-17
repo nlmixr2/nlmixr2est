@@ -587,7 +587,7 @@ fsaemControl()
 #> [1] "jump"
 #> 
 #> $mixProbMethod
-#> [1] "regularized"
+#> [1] "regress"
 #> 
 #> $mixProbStepExp
 #> [1] 1

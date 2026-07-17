@@ -4,13 +4,16 @@
 
 ### New features
 
-- `saemControl(mixProbMethod="regress")` fixes per-subject mixture
-  membership: each subject is hard-classified to its best component
-  once, held fixed, and the soft-EM responsibility step is skipped. On a
-  2-component clearance mixture this recovered the component clearances
-  and mixing proportion more accurately than the soft-EM default (which
-  can let a component collapse), while reusing the existing
-  responsibility-weighted machinery via a 0/1 `mixWeights`.
+- SAEM mixture models now fix per-subject membership by default
+  (`saemControl(mixProbMethod="regress")`, the new default): each
+  subject is hard-classified to its best component once, held fixed, and
+  the soft-EM responsibility step is skipped (reusing the existing
+  responsibility-weighted machinery via a 0/1 `mixWeights`). This avoids
+  the soft-EM collapse (a component running away to a degenerate value)
+  and is lower-bias on both well-separated and overlapping component
+  evaluations; on heavily overlapping components it can be
+  higher-variance, so the previous soft-EM behavior remains available
+  with `mixProbMethod="regularized"`.
 
 - SAEM warm-starts its residual-error parameters from the observed
   per-endpoint moments at the initial predictions (additive SD from
