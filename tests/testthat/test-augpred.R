@@ -187,4 +187,34 @@ nmTest({
     expect_error(augPred(fit1), NA)
 
   })
+
+  test_that("augPred with a zero eta used in the prediction (focei, #514)", {
+
+    # #514: the zeroed eta (eta.v) appears in both the ODE and the
+    # residual/prediction (cp = A1/v).  This exercised a code path that
+    # failed for focei with "parameter(s) are required for solving: eta.v".
+    pheno <- function() {
+      ini({
+        tcl <- log(0.008)
+        tv <-  log(0.6)
+        eta.v ~ 0
+        eta.cl ~ 1
+        add.err <- 0.1
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        ke <- cl / v
+        d/dt(A1) = - ke * A1
+        cp = A1 / v
+        cp ~ add(add.err)
+      })
+    }
+
+    fit514 <- .nlmixr(pheno, nlmixr2data::pheno_sd, est = "focei",
+                      foceiControlFast)
+
+    expect_error(augPred(fit514), NA)
+
+  })
 })
