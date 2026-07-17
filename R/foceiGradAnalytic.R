@@ -635,10 +635,30 @@
     .ag <- .agq(neta, nAGQ); .qx <- .ag$x; .qw <- .ag$w; .nn <- .ag$n
     .Eks <- vector("list", nsub)
     for (i in seq_len(nsub)) .Eks[[i]] <- vector("list", .nn)
-    # Nodes read only f/R/a/aR/Rsig, never A/AR/RsigDir, so a 1st-order-only model would
-    # do -- but building one costs a second symengine+gcc pass to save ~0.1s of solve per
-    # fit (the node solve is ~8% of the gradient), so reuse the eta-hat model as-is.
-    .amN <- am
+    # The nodes read only f/R/a/aR/Rsig -- never A/AR/RsigDir, which are used solely at
+    # eta-hat (exact inner Hessian -> etaP, and dHtD) -- so they solve a 1st-order model:
+    # 26 ODE states -> 8.  They are nAGQ^neta solves per gradient and dominate once the
+    # grid grows, so this is worth 1.07x-1.91x on the gradient.
+    #
+    # Prefer the `outerNode` sibling built at model setup and qs2-cached in foceiModel
+    # (same treatment as `outer`); fall back to building it.  Cached on the fit env either
+    # way, with a FALSE sentinel so a model that cannot build one does not re-attempt the
+    # symengine pass every gradient call.
+    .amN <- if (!is.null(startedEnv) && exists(".foceiGradAugNode", startedEnv, inherits = FALSE))
+      get(".foceiGradAugNode", startedEnv) else NULL
+    if (is.null(.amN)) {
+      .fmN <- tryCatch(ui$foceiModel, error = function(e) NULL)
+      .amN <- if (!is.null(.fmN) && inherits(.fmN$outerNode, "rxode2") && !is.null(.fmN$outerNodeMeta)) {
+        c(list(augMod = .fmN$outerNode), .fmN$outerNodeMeta)
+      } else {
+        .foceiAnalyticAugModelDirs(ui, dirs, order = 1L)
+      }
+      if (!(!is.null(.amN) && inherits(.amN$augMod, "rxode2"))) .amN <- FALSE
+      if (!is.null(startedEnv)) assign(".foceiGradAugNode", .amN, envir = startedEnv)
+    }
+    # a missing/unbuildable node model is not fatal: fall back to the eta-hat model, which
+    # is what the nodes used before this optimization existed
+    if (isFALSE(.amN) || is.null(.amN) || .amN$ndir != ndir) .amN <- am
     # BATCHED node solve: every (subject, node) pair goes through ONE rxSolve as a
     # pseudo-subject, rather than nn separate population solves.  Chunk the node set so
     # a wide grid (nn = nAGQ^neta) cannot blow up memory -- the solve returns an E per
@@ -972,13 +992,37 @@ rxUiGet.foceiOuter <- function(x, ...) {
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
-  # nAGQ > 1 (adaptive Gaussian quadrature) uses the SAME augmented model: the
+  # nAGQ > 1 (adaptive Gaussian quadrature) uses the SAME augmented model at eta-hat: the
   # quadrature nodes are extra eta points on the same sensitivity solve, so the
-  # direction set and the symbolic expansion are unchanged.
+  # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
+  # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
   .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
 }
 attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
+
+#' Augmented model for the AGQ quadrature NODES: the same direction set as `foceiOuter`
+#' but 1st order only.
+#'
+#' The nodes read only `f`/`R`/`a`/`aR`/`Rsig` -- they never touch `A`/`AR`/`RsigDir`,
+#' because the 2nd-order block is used solely at eta-hat (the exact inner Hessian -> etaP,
+#' and dHtD).  Dropping that tier takes the node solve from 26 ODE states to 8 on a
+#' one-compartment model, and the nodes are `nAGQ^neta` solves per gradient -- 45-54% of
+#' the gradient at neta=3/nAGQ=3 and 77-86% at neta=5.  Measured: 1.07x (neta=3, nAGQ=2)
+#' to 1.91x (neta=5, nAGQ=3) on the whole gradient.
+#'
+#' Only built for nAGQ > 1; every other fast fit gets NULL and pays no extra build.  Like
+#' `foceiOuter` this rides in the qs2-cached `foceiModel` list, so the extra symengine+gcc
+#' pass is paid once per model, not once per session.
+#' @noRd
+rxUiGet.foceiOuterNode <- function(x, ...) {
+  .ui <- x[[1]]
+  if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
+  if (as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) <= 1L) return(NULL)
+  .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
+  .foceiAnalyticAugModelDirs(.ui, .dir$dirs, order = 1L)
+}
+attr(rxUiGet.foceiOuterNode, "rstudio") <- emptyenv()
 
 #' Estimation-scale (Cholesky) Omega-inverse derivatives for the outer gradient's
 #' Omega block, from rxode2's `rxSymInvCholEnvCalculate` (rxSymInv.R d.omegaInv /

@@ -965,8 +965,13 @@
   # f-part (prediction a/A) spans f-directions only (sigma slots are zero-filled by the reader);
   # R-part (aR/AR) spans every direction.  iiF/jjF index the f2 pairs into the FULL dirs vector.
   list(f1 = paste0("rx_f1_", fDirs), fDirIdx = match(fDirs, dirs),
-       f2 = paste0("rx_f2_", P2$i, "_", P2$j), iiF = match(P2$i, dirs), jjF = match(P2$j, dirs),
-       rvar1 = paste0("rx_rvar1_", dirs), rvar2 = paste0("rx_rvar2_", P2r$i, "_", P2r$j),
+       # the nrow() guards are load-bearing: paste0 treats a zero-length argument as "", so an
+       # empty P2 (order = 1) gives "rx_f2__" rather than character(0) -- a bogus column name
+       # that makes the solve's column check fail and every node solve return NULL.
+       f2 = if (nrow(P2)) paste0("rx_f2_", P2$i, "_", P2$j) else character(0),
+       iiF = match(P2$i, dirs), jjF = match(P2$j, dirs),
+       rvar1 = paste0("rx_rvar1_", dirs),
+       rvar2 = if (nrow(P2r)) paste0("rx_rvar2_", P2r$i, "_", P2r$j) else character(0),
        ii = match(P2r$i, dirs), jj = match(P2r$j, dirs),
        rsig = if (length(sigTh)) paste0("rx_rsig_", sigTh, "_") else character(0),
        rsig1 = lapply(sigTh, function(.n) paste0("rx_rsig1_", .n, "_", dirs)),
@@ -1084,8 +1089,16 @@
   }
   .res
 }
-.foceiAnalyticAugModelDirs <- function(ui, dirs) {
+#' @param order sensitivity tier: 2 (default) emits the 1st and 2nd-order chains; 1 emits
+#'   the 1st-order chain only, for a consumer needing just a/aR (the AGQ quadrature nodes
+#'   never read A/AR/RsigDir).  With `order = 1` the reader zero-fills A/AR naturally:
+#'   `P2`/`P2r` are empty, so `cols$f2`/`cols$rvar2` are `character(0)` and the A/AR fill
+#'   loops never execute.
+#' @noRd
+.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L) {
+  order <- as.integer(order)
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
+                          "|o", order,                                  # sensitivity tier -> distinct cached model
                           "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP"),     # skip flag -> distinct cached model
                           # subject-constant covariate set -> which covariate directions get eta-scaling reuse
                           "|cc", paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL),
@@ -1142,7 +1155,9 @@
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
     .s1 <- rxode2::.rxSens(.s, .mfDirs)
     if (length(.s1) == 0L) return(NULL)
-    .s2 <- rxode2::.rxSens(.s, .mfDirs, .mfDirs)    # 2nd order (model f-directions only): the expensive expansion
+    # 2nd order (model f-directions only): the expensive expansion.  order = 1 skips it
+    # entirely -- no 2nd-order state-sensitivity compartments, no f2/rvar2 chains.
+    .s2 <- if (order >= 2L) rxode2::.rxSens(.s, .mfDirs, .mfDirs) else character(0)
     .pred <- get("rx_pred_", .s)
     # residual variance rx_r_ (any structure) with its own 1st/2nd sensitivity chains,
     # exactly like the prediction -- so R and dR/ddir, d2R/ddir2 come from the SOLVE
@@ -1180,6 +1195,9 @@
     .P2 <- .P2[match(.P2$i, .fDirs) <= match(.P2$j, .fDirs), , drop = FALSE]
     .P2r <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)        # variance rvar2: every direction
     .P2r <- .P2r[match(.P2r$i, dirs) <= match(.P2r$j, dirs), , drop = FALSE]
+    # order = 1: no 2nd-order pairs at all -- empties .fL2/.rL2, the 2nd-order IC block,
+    # and cols$f2/cols$rvar2, so the reader zero-fills A/AR.
+    if (order < 2L) { .P2 <- .P2[0L, , drop = FALSE]; .P2r <- .P2r[0L, , drop = FALSE] }
     # model directions first (they define the columns the covariate columns scale), covariate
     # directions after -- rxode2 evaluates assignments in order.
     .fL1 <- c(vapply(.mfDirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1)),
