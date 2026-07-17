@@ -488,6 +488,11 @@
   (#517).  The FO/FOI fit now carries its control, and an intermediate fit
   without a method-specific `nmObjGetControl` surfaces its stored control rather
   than returning `NULL`.
+- `est="fo"`/`est="foi"` fits no longer error with "cannot find fo/foi related
+  control object".  The `freezeResidGrad` work added an internal `residThetaIdx`
+  field to the fitted control, which was not on the accepted-internal
+  (`.foceiControlInternal`) list, so the post-fit table step failed when it
+  re-validated the control by round-tripping it through `foceiControl()`.
 - `est="nlme"` now accepts the common `print` control alias, so
   `nlmixr2(..., "nlme", list(print=0))` no longer errors with
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so

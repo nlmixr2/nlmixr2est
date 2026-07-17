@@ -19,7 +19,12 @@
                            "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault")
+                           "outerOptDefault",
+                           # residual-theta index vector stashed on the control by
+                           # .foceiFamilyReturn (ui$foceiResidTheta); internal so a
+                           # built control round-trips (e.g. fo/foi post-fit
+                           # nmObjGetControl re-validation)
+                           "residThetaIdx")
 
 #' Control Options for FOCEi
 #'
