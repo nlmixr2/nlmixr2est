@@ -235,7 +235,11 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     predOnly <- TRUE
   }
   if (predOnly) {
-    .ipredModel <- fit$ipredModel
+    # Use predOnlyModel (which outputs the user-defined lhs like ka/cl/v and
+    # tad/dosenum) instead of ipredModel (only rx_pred_/rx_r_ + sensitivities).
+    # This keeps the output columns consistent with the cwres=TRUE path, which
+    # solves predOnlyModel for these display columns; see nlmixr2/nlmixr2est#497.
+    .ipredModel <- fit$predOnlyModel
   }
   .ret <- list(ipred = .residAdjustIpredNames(
     .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
