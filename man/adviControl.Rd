@@ -119,6 +119,13 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
     gradient cross-product (evaluated at the individual empirical
     Bayes estimates).
 
+ "\code{analytic}" (default) Compute the FOCEI analytic observed-information
+ covariance at the converged SAEM estimates.  When the model is out of
+ analytic-covariance scope (e.g. \code{linCmt()}, a non-normal likelihood,
+ or a non-SD IOV parameterization) or the result is not positive definite,
+ it falls back to the linearized Fisher information (\code{linFim}) with a
+ message.
+
  "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
 
  "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM

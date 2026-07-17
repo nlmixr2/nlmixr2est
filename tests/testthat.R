@@ -61,11 +61,13 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
-    "saem-nonmutheta", "saem-sharedinner", "focei-theta-reset-bounds"),
+    "saem-nonmutheta", "saem-sharedinner", "focei-theta-reset-bounds",
+    "saem-cov-analytic"),
 
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
-    "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit"),
+    "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
+    "nlme-cov"),
   # batch 5
   c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
