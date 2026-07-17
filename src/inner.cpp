@@ -2692,6 +2692,10 @@ static inline bool thetaReset0(bool forceReset = false) {
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
   LogicalVector adjustEta(op_focei.muRefN);
+  // Actual shift applied to each mu-referenced theta.  For an interior shift
+  // this equals the eta mean (etaM); near a bound the shift is clamped, so the
+  // matching eta re-centering must use the applied shift, not etaM (issue #454).
+  NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
   for (int ii = (int)op_focei.ntheta; ii--;) {
     thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
@@ -2718,10 +2722,30 @@ static inline bool thetaReset0(bool forceReset = false) {
         adjustEta[ii] = false;
       }  else {
         ref = thetaIni[ij] + op_focei.etaM(ii,0);
-        if (thetaDown[ij] < ref && thetaUp[ij] > ref) {
-          thetaIni[ij] = ref;
-          adjustEta[ii] = true;
-          doAdjust = true;
+        if (thetaDown[ij] < thetaUp[ij]) {
+          // Keep the shifted theta inside its (margin-adjusted) bounds instead
+          // of skipping the shift entirely; a clamped, partial shift still moves
+          // the parameter toward the drifting eta mean without landing out of
+          // range (issue #454).  An interior shift is applied exactly as before.
+          bool clamped = false;
+          if (ref <= thetaDown[ij]) {
+            ref = thetaDown[ij];
+            clamped = true;
+          } else if (ref >= thetaUp[ij]) {
+            ref = thetaUp[ij];
+            clamped = true;
+          }
+          double shift = ref - thetaIni[ij];
+          if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
+            appliedShift[ii] = shift;
+            thetaIni[ij] = ref;
+            adjustEta[ii] = true;
+            doAdjust = true;
+          } else {
+            // Already pinned at the bound: leave it be so a parameter that
+            // wants to move past its bound does not force an endless reset.
+            adjustEta[ii] = false;
+          }
         } else {
           adjustEta[ii] = false;
         }
@@ -2741,7 +2765,7 @@ static inline bool thetaReset0(bool forceReset = false) {
     for (int jj = op_focei.neta; jj--; ) {
       if (op_focei.muRef[jj] != -1  && op_focei.muRef[jj] < (int)op_focei.ntheta &&
           adjustEta[jj]) {
-        etaMat(ii, jj) = fInd->eta[jj]-op_focei.etaM(jj,0);
+        etaMat(ii, jj) = fInd->eta[jj]-appliedShift[jj];
       } else {
         etaMat(ii, jj) = fInd->eta[jj];
       }
@@ -2753,6 +2777,47 @@ static inline bool thetaReset0(bool forceReset = false) {
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
             &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
             omegaTheta.begin());
+  // Issue #454: a "bad" optimization step (or a mu-reference shift near a
+  // boundary) can leave a reset theta outside its allowed range.  Project each
+  // estimated theta back into its (margin-adjusted) bounds so the restart never
+  // begins out of range; if the bounds are themselves infeasible (lower >=
+  // upper) stop with an informative error rather than continue silently.
+  bool didClamp = false;
+  CharacterVector thetaNames;
+  bool haveNames = false;
+  {
+    Function loadNamespace2("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2b = loadNamespace2("nlmixr2est");
+    Environment thetaResetEnv = nlmixr2b[".thetaReset"];
+    if (thetaResetEnv.exists("thetaNames") &&
+        TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
+      thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
+      haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
+    }
+  }
+  for (int ii = (int)op_focei.ntheta; ii--;) {
+    if (isFixedTheta(ii)) continue;
+    if (thetaDown[ii] >= thetaUp[ii]) {
+      if (haveNames) {
+        std::string nm = as<std::string>(thetaNames[ii]);
+        stop(_("theta reset cannot keep '%s' within its bounds (lower >= upper); check the model bounds"),
+             nm.c_str());
+      } else {
+        stop(_("theta reset cannot keep theta %d within its bounds (lower >= upper); check the model bounds"),
+             ii + 1);
+      }
+    }
+    if (thetaIni[ii] < thetaDown[ii]) {
+      thetaIni[ii] = thetaDown[ii];
+      didClamp = true;
+    } else if (thetaIni[ii] > thetaUp[ii]) {
+      thetaIni[ii] = thetaUp[ii];
+      didClamp = true;
+    }
+  }
+  if (didClamp) {
+    warning(_("theta reset moved one or more parameters back within their bounds"));
+  }
   thetaReset00(thetaIni, omegaTheta, etaMat);
   return true;
 }

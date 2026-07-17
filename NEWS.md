@@ -539,6 +539,10 @@
 - FOCEI now updates additive mu-referenced population parameters with
   large-magnitude initial estimates (#641).
 
+- FOCEI theta resets now keep every reset population parameter inside its
+  bounds instead of restarting the optimization out of range, and stop with an
+  informative error when a parameter's bounds are infeasible (#454).
+
 ### Crashes and stability
 
 - Fixed a Windows heap-corruption segfault at more than one core (rxode2 saw
