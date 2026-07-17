@@ -475,6 +475,12 @@
 
 ### Estimation
 
+- The `est="fo"`/`est="foi"` linearization pass returned an intermediate fit
+  object with an empty `control`, so `.updateParFixed()` silently fell back to
+  default table settings (`ci`/`sigdigTable`) instead of the fit's control
+  (#517).  The FO/FOI fit now carries its control, and an intermediate fit
+  without a method-specific `nmObjGetControl` surfaces its stored control rather
+  than returning `NULL`.
 - `est="nlme"` now accepts the common `print` control alias, so
   `nlmixr2(..., "nlme", list(print=0))` no longer errors with
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so

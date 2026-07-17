@@ -2739,6 +2739,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     }
     assign("est", est, envir=.ret)
+    # The FO/FOI estimation path (fo=TRUE, maxOuterIterations>0) returns the fit
+    # env with an empty `control` binding, so downstream consumers such as
+    # .updateParFixed() would see a NULL control and fall back to defaults
+    # (issue #517).  Populate the raw binding from the fit's control so the
+    # object carries its control (nmObjGetControl.default then surfaces it).
+    if (is.environment(.ret) && !is.null(.control) &&
+          is.null(get0("control", envir=.ret, inherits=FALSE))) {
+      assign("control", .control, envir=.ret)
+    }
     .foceiInstallAnalyticCov(.ret)
     .foceiInstallFdFullCov(.ret)
     .updateParFixed(.ret)
