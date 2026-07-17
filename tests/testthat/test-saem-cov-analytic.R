@@ -32,10 +32,12 @@ nmTest({
 
   ctl <- function(...) saemControl(nBurn = 100, nEm = 150, print = 0, seed = 42, ...)
 
-  test_that("SAEM default covMethod installs the analytic covariance", {
+  test_that("SAEM covMethod='analytic' installs the analytic covariance", {
     skip_on_cran()
+    ## the default is "sa"; request the analytic observed information explicitly
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl())))
+      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem",
+              control = ctl(covMethod = "analytic"))))
     expect_identical(fit$covMethod, "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
@@ -53,25 +55,39 @@ nmTest({
     expect_identical(fit$covMethod, "linFim")
   })
 
-  test_that("out-of-scope model (linCmt) falls back to linFim with a message", {
+  test_that("out-of-scope model (linCmt) with covMethod='analytic' falls back to linFim", {
     skip_on_cran()
     expect_message(
       fit <<- suppressWarnings(
-        nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem", control = ctl())),
+        nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem",
+                control = ctl(covMethod = "analytic"))),
       "linearized FIM")
     expect_identical(fit$covMethod, "linFim")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })
 
-  test_that("fsaem inherits the analytic covMethod default without erroring", {
+  test_that("saem default covMethod is the stochastic-approximation FIM", {
     skip_on_cran()
-    ## fsaem is saemControl(fast=TRUE): it inherits the analytic covMethod
-    ## default.  The fast kernel's covariance labeling is a separate subsystem;
-    ## this just checks the analytic default does not break the fast fit.
-    expect_identical(fsaemControl()$covMethod, "analytic")
+    expect_identical(saemControl()$covMethod, "sa")
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl())))
+    expect_identical(fit$covMethod, "sa")
+    expect_true(all(is.finite(fit$parFixedDf$SE)))
+  })
+
+  test_that("fsaem produces a labeled covariance with the sa default", {
+    skip_on_cran()
+    ## fsaem is saemControl(fast=TRUE): it inherits the "sa" covMethod default.
+    ## The fast kernel overwrites the ui covMethod when it sets up its FOCEi inner
+    ## problem; .saemFamilyFit restores it so the covariance is computed + labeled.
+    expect_identical(fsaemControl()$covMethod, "sa")
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(odeMod, nlmixr2data::theo_sd, est = "fsaem", control = ctl())))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
+    expect_identical(fit$covMethod, "sa")
+    expect_false(is.null(fit$cov))
+    expect_true(all(is.finite(fit$parFixedDf$SE)))
+    expect_true(all(fit$parFixedDf$SE > 0))
   })
 })

@@ -3,7 +3,9 @@
 # base-est mapping used by the post-fit covariance recompute.
 
 test_that("covMethod defaults prefer analytic", {
-  expect_identical(saemControl()$covMethod, "analytic")
+  ## saem keeps the stochastic-approximation FIM ("sa") first, analytic second
+  expect_identical(saemControl()$covMethod, "sa")
+  expect_identical(saemControl(covMethod = "analytic")$covMethod, "analytic")
   expect_identical(nlmeControl()$covMethod, "analytic")
   expect_identical(vaeControl()$covMethod, "analytic")
   ## advi keeps its own variational covariance first, with analytic second

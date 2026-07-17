@@ -1185,6 +1185,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
+  # the fast (f-SAEM) kernel sets up a FOCEi inner problem whose foceiControl
+  # (covMethod="") clobbers the shared ui control covMethod during .saemFitModel;
+  # capture the intended covMethod up front and restore it before .saemCalcCov
+  .covMethodSaem <- .control$covMethod
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
@@ -1202,6 +1206,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .nlmixrSetMuRefTimeVarying(.ui, .tv)
   on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
   .ret$ui <- .ui
+  # restore the covMethod the fast kernel may have overwritten (see above)
+  if (!is.null(.covMethodSaem)) {
+    rxode2::rxAssignControlValue(.ui, "covMethod", .covMethodSaem)
+  }
   .saemCalcCov(.ret)
   .ret <- nlmixrWithTiming("postprocess", {
     if (!is.null(.ret$saem$tolFactor)) {

@@ -5,11 +5,12 @@
 - The analytic observed-information covariance is now the preferred `covMethod`
   across the mixed-model estimation methods, falling back to each method's
   previous default when a model is out of analytic scope:
-    - `est="saem"`/`"fsaem"` default to `covMethod="analytic"`: the FOCEI
-      analytic covariance is computed at the converged SAEM estimates and falls
-      back to the linearized FIM (`"linFim"`) with a message when out of scope
-      or not positive definite.  The `"linFim"` covariance stays selectable via
-      `setCov(fit, "linFim")`.
+    - `est="saem"`/`"fsaem"` keep the stochastic-approximation FIM (`"sa"`) as
+      the default `covMethod`, now followed by `"analytic"` and `"linFim"`.
+      `covMethod="analytic"` computes the FOCEI analytic covariance at the
+      converged SAEM estimates and falls back to the linearized FIM (`"linFim"`)
+      with a message when out of scope or not positive definite; the `"linFim"`
+      covariance stays selectable via `setCov(fit, "linFim")`.
     - `est="nlme"` gains a `covMethod` argument
       (`c("analytic", "r,s", "r", "s", "nlme", "")`, default `"analytic"`) that
       recomputes the covariance at the converged nlme estimates; `"nlme"` keeps
@@ -514,6 +515,12 @@
 ## Bug fixes
 
 ### Estimation
+
+- `est="fsaem"` (fast SAEM) now reports a covariance matrix.  The fast kernel's
+  FOCEi inner setup overwrote the shared control's `covMethod` during the fit,
+  so the covariance step ran with no method selected and left the fit with an
+  unlabeled, partially degenerate covariance; the intended `covMethod` is now
+  restored before the covariance is computed.
 
 - Models that combine `linCmt()` with ODEs (for example a solved PK driving an
   effect-compartment ODE) now estimate correctly with the FOCEi and nlm
