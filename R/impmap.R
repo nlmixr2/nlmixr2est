@@ -50,16 +50,17 @@
 #'   `impmapControl()` this is always `"lin"` and cannot be changed.
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.
-#' @param impCov Experimental: when `TRUE`, compute a Monte-Carlo
-#'   observed-information covariance for the estimated thetas and Omega
-#'   parameters (a finite-difference Hessian of the importance-sampling objective
-#'   over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
-#'   Off by default.  When `TRUE` this covariance is the one installed on the
-#'   fit and the post-fit analytic/finite-difference recompute (see
-#'   `covMethod` in [foceiControl()]) is skipped.  The theta standard errors match the Hessian-based FOCEI
-#'   covariance; the variance of a tightly-determined random effect (an Omega
-#'   diagonal) can still be over-estimated because the fixed samples barely span
-#'   its prior variation.
+#' @param covMethod Covariance method.  `"imp"` (default) computes the
+#'   Monte-Carlo importance-sampling observed-information covariance for the
+#'   estimated thetas and Omega parameters (a finite-difference Hessian of the
+#'   importance-sampling objective over fixed common-random-number samples),
+#'   stashed as `$impCov` / `$impSe` and installed as the fit covariance; the
+#'   theta standard errors match the Hessian-based FOCEI covariance, though the
+#'   variance of a tightly-determined random effect (an Omega diagonal) can be
+#'   over-estimated because the fixed samples barely span its prior variation.
+#'   `"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
+#'   post-fit at the converged estimates (see [foceiControl()]); `""` skips the
+#'   covariance step.
 #' @param qr When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
 #'   samples instead of pseudo-random Gaussian samples (QRPEM, Leary &
 #'   Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead of
@@ -97,7 +98,7 @@ impmapControl <- function(sigdig=3,
                           ctol=NULL,
                           nConvWindow=10L,
                           impSeed=42L,
-                          impCov=FALSE,
+                          covMethod=c("imp", "analytic", "r,s", "r", "s", ""),
                           qr=FALSE,
                           qrShift=TRUE,
                           qrRefresh=TRUE,
@@ -123,7 +124,19 @@ impmapControl <- function(sigdig=3,
     stop("'sirSample' (", .sirSample, ") cannot exceed 'isample' (", .isample, ")",
          call.=FALSE)
   }
-  .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
+  # covMethod="imp" drives the Monte-Carlo importance-sampling covariance in the
+  # C++ kernel (op_focei.impCov); every other token is the post-fit FOCEI
+  # covariance, so hand foceiControl a valid token (the estimation pass forces
+  # covMethod=0L regardless -- see .impmapFamilyFit).
+  if (length(covMethod) == 1L && !nzchar(covMethod)) {
+    covMethod <- ""
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
+  .impCov <- identical(covMethod, "imp")
+  .foceiCovMethod <- if (.impCov) "analytic" else covMethod
+  .control <- foceiControl(sigdig=sigdig, ..., covMethod=.foceiCovMethod, muModel="lin")
+  .control$impCov <- .impCov
   .control$isample <- as.integer(isample)
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
@@ -134,7 +147,6 @@ impmapControl <- function(sigdig=3,
   .control$ctol <- if (is.null(ctol)) NULL else as.double(ctol)
   .control$nConvWindow <- as.integer(nConvWindow)
   .control$impSeed <- as.integer(impSeed)
-  .control$impCov <- as.logical(impCov)
   .control$qr <- qr
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
