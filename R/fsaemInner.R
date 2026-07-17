@@ -161,56 +161,6 @@
                         ifelse(is.finite(.hi), 3L, 0L)))))
 }
 
-#' Install the shared FOCEi inner driver (likInner0) for `sharedInner="shared"`.
-#'
-#' Sets up the same FOCEi inner problem `fsaem` uses (`.fsaemInnerSetup` ->
-#' `vaeInnerSetup_`), stored in `cfg$sharedInnerEnv`, so SAEM can compute its
-#' residual / prediction / likelihood through the shared driver instead of the
-#' duplicated per-endpoint `res_mod`/`arResk` machinery.  Prototype: gated to a
-#' single additive-error continuous endpoint (same gate as the fast kernel);
-#' unsupported models fall back to the classic path.  Inert until the shared
-#' residual read is wired in (see plans/kernel-unification.md).
-#' @noRd
-.saemSharedInstallStep <- function(ui, data, rxControl, cfg) {
-  if (!.fsaemSupported(ui)) {
-    .minfo(paste0("sharedInner='shared' prototype not yet supported for this model ",
-                  "(needs a single add/prop/combined continuous endpoint, no mixtures); ",
-                  "using classic residuals"))
-    cfg$sharedInner <- "classic"
-    return(cfg)
-  }
-  .fc <- list(rxControl = rxControl,
-              fastInnerIt = 100L,
-              sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
-              optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
-              literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
-              addProp = rxode2::rxGetControl(ui, "addProp", "combined2"),
-              eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
-              indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
-              maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),
-              odeRecalcFactor = rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5))
-  .neta <- sum(ui$iniDf$neta1 == ui$iniDf$neta2, na.rm = TRUE)
-  .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
-  .etaMat <- matrix(0.0, .N, .neta)
-  cfg$sharedInnerEnv <- .fsaemInnerSetup(ui, data, .etaMat, .fc)
-  # G2 diagnostic (bit-identity): the C++ loop does a no-op inner-solve switch
-  # round trip once (last iteration) to prove the switch does not corrupt the
-  # SAEM solve state -- the fit must stay identical to classic.
-  cfg$sharedInnerDiag <- 1L
-  # theta-position mapping (ntheta order) so the C++ loop can build the full
-  # THETA vector for the inner from the current structural (phiPop) + residual
-  # (ares/bres) estimates -- same construction the fast kernel uses.
-  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "err", "condition")]
-  .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
-  .structPos <- which(is.na(.thetaDf$err))
-  .residPos <- which(!is.na(.thetaDf$err))
-  cfg$sharedStructPos  <- as.integer(.structPos - 1L)
-  cfg$sharedResidPos   <- as.integer(.residPos - 1L)
-  cfg$sharedResidIsAdd <- as.integer(.thetaDf$err[.residPos] == "add")
-  cfg$sharedResidEp    <- as.integer(match(.thetaDf$condition[.residPos], ui$predDf$cond) - 1L)
-  cfg
-}
-
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
     .minfo(paste0("f-SAEM (fast=TRUE) fast kernel not yet supported for this model ",

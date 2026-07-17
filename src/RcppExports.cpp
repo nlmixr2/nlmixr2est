@@ -712,30 +712,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// saemSharedResid_
-Rcpp::List saemSharedResid_(arma::mat etaMat);
-RcppExport SEXP _nlmixr2est_saemSharedResid_(SEXP etaMatSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type etaMat(etaMatSEXP);
-    rcpp_result_gen = Rcpp::wrap(saemSharedResid_(etaMat));
-    return rcpp_result_gen;
-END_RCPP
-}
-// saemSharedResidUpdate_
-Rcpp::List saemSharedResidUpdate_(Rcpp::NumericVector theta, Rcpp::NumericVector omegaDiag, arma::mat etaMat);
-RcppExport SEXP _nlmixr2est_saemSharedResidUpdate_(SEXP thetaSEXP, SEXP omegaDiagSEXP, SEXP etaMatSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type theta(thetaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type omegaDiag(omegaDiagSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type etaMat(etaMatSEXP);
-    rcpp_result_gen = Rcpp::wrap(saemSharedResidUpdate_(theta, omegaDiag, etaMat));
-    return rcpp_result_gen;
-END_RCPP
-}
 // npBuildPsi
 NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores);
 RcppExport SEXP _nlmixr2est_npBuildPsi(SEXP etaPointsSEXP, SEXP coresSEXP) {
