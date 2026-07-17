@@ -473,6 +473,17 @@
 
 ### Estimation
 
+- `est="saem"` no longer collapses subjects that combine two dosing episodes with
+  overlapping clock times separated by an `evid=4` reset -- for example a crossover
+  where an IV arm and a depot (`f(depot)`) arm share the same times.  SAEM solves
+  each subject in the ODE solver's internal time-sorted order, which relocated the
+  reset ahead of the first episode's observations and merged the two episodes into
+  one trajectory; SAEM then reported a nearly constant `PRED` and a grossly inflated
+  residual (`focei`/`posthoc` already handled this correctly).  The reset episodes
+  are now offset internally so the solve times increase within a subject, matching
+  `rxSolve()`/`focei`; predictions are unchanged because only time-since-reset
+  matters (#455).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
