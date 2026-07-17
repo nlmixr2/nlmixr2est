@@ -581,6 +581,13 @@
 
 ### Output, tables, and printing
 
+- Model-defined variables (e.g. `ka`, `cl`, `v`, `tad`, `dosenum`, and any
+  user-added line such as `WT.OUT <- WT`) are now included in the output table
+  whether or not `cwres` is requested.  Previously `tableControl(cwres=FALSE)`
+  dropped these columns while `cwres=TRUE` (the default) kept them, so the same
+  model produced different output columns depending on the residual request
+  (#497).
+
 - A zero-fixed eta (e.g. `bsva ~ 0`) is again restored into the fitted model's
   `ini()`/`model()` blocks when the estimation makes a nested `nlmixr2()` call
   (e.g. adding the focei objective or CWRES), so `fit |> ini(bsva ~ 0.1)`
