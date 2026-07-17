@@ -382,10 +382,13 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     machinery.  Each EM iteration it evaluates the inner at the
     conditional-mean etas and SA-blends the residual moment into the
     error parameters.  A distinct estimator (per-subject conditional mean,
-    not the `N*nmc` MCMC chains) but near-equivalent to `"classic"`
-    (structural to ~0.01-0.03, residual SD to ~1% on theophylline for
-    add/prop error).  Prototype: single add/prop/combined continuous
-    endpoint, no mixtures; opt-in while it is broadened.}
+    not the `N*nmc` MCMC chains): the structural parameters match `"classic"`
+    closely (~0.01-0.03 on theophylline) and the proportional residual to
+    ~0.1%, but the ADDITIVE residual SD differs more at finite N (~15-20%)
+    because the conditional-mean moment omits the within-subject eta-variance
+    contribution the chain-averaged SSR includes (asymptotically equivalent).
+    Prototype: single add/prop/combined continuous endpoint, no mixtures;
+    opt-in while it is broadened.}
 
 \item{nonMuTheta}{Controls how a population `theta` that is not
   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
