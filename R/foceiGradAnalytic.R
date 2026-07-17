@@ -675,7 +675,14 @@
         if (neta == 1L) matrix(.e, ncol = 1L) else .e
       }))
       .repData <- .foceiAgqRepData(data, nsub, .m)
-      .Ek <- .foceiAnalyticSolveAll(.amN, th, .repEta, seq_len(nsub * .m), .repData,
+      # Key the pseudo-subject IDs on .idCode, exactly as the eta-hat batch solve does: .repEta
+      # row (b-1)*nsub+i carries subject-position i's eta, whose events live under etTrans code
+      # .idCode[i] (= i only when the eta order matches the etTrans code order).  Pairing
+      # positionally (seq_len) would give subject i's eta the events of etTrans code i, which
+      # for a permuted/non-1..N ID order in a balanced design is silently wrong (the obs-count
+      # guard would not catch it).  For the identity order this is exactly seq_len(nsub*.m).
+      .repIds <- rep((seq_len(.m) - 1L) * nsub, each = nsub) + rep(.idCode, times = .m)
+      .Ek <- .foceiAnalyticSolveAll(.amN, th, .repEta, .repIds, .repData,
                                     rep(.obsT, .m), solveTol)
       if (is.null(.Ek)) return(NULL)
       for (.j in seq_along(.kk)) for (i in seq_len(nsub))
