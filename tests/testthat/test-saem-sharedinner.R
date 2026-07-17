@@ -149,13 +149,11 @@ test_that("sharedInner='shared' residual estimator is asymptotically equivalent 
   }
   .cl <- .grab("classic")
   .sh <- .grab("shared")
-  # structural params (tka, tcl, tv) agree closely -- the key asymptotic
-  # equivalence.  The residual (add.sd) is the conditional-mean moment, a
-  # distinct estimator that differs from the chain-averaged SSR by Jensen (f is
-  # nonlinear in eta), so it gets a wider band.
+  # structural params (tka, tcl, tv) agree closely, and with the SA-blended
+  # residual the conditional-mean add.sd now matches classic to ~1%.
   .struct <- c("tka", "tcl", "tv")
   expect_lt(max(abs(.sh[.struct] - .cl[.struct])), 0.1)
-  expect_lt(abs(.sh[["add.sd"]] - .cl[["add.sd"]]) / .cl[["add.sd"]], 0.25)
+  expect_lt(abs(.sh[["add.sd"]] - .cl[["add.sd"]]) / .cl[["add.sd"]], 0.05)
 })
 
 test_that("shared inner driver handles a PROPORTIONAL error model (r = (prop.sd*f)^2)", {
