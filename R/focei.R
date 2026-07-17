@@ -2285,6 +2285,28 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
 }
 
+# Control classes of the FOCEi family.  Every one is built by foceiControl()
+# and then reclassed (see foceiControl(), and the mu-referenced / method
+# variants in muRefControl.R, fo.R, foce.R, ...), so it carries all of
+# foceiControl()'s fields and .foceiFitInternal() accepts it -- but its class
+# vector does NOT include "foceiControl".  Enumerated here so the restart-path
+# validation below recognises them; add a new family control's class when one
+# is introduced.
+.nlmixrFoceiFamilyControlClasses <- c(
+  "foceiControl", "foceControl", "focepControl",
+  "foControl", "foiControl",
+  "mfoceiControl", "ifoceiControl", "mfoceControl", "ifoceControl",
+  "mfocepControl", "ifocepControl",
+  "agqControl", "magqControl", "iagqControl",
+  "laplaceControl", "mlaplaceControl", "ilaplaceControl",
+  "impmapControl")
+
+# TRUE for foceiControl and every control built from it (see
+# .nlmixrFoceiFamilyControlClasses).
+.nlmixrIsFoceiFamilyControl <- function(x) {
+  inherits(x, "foceiControl") || any(class(x) %in% .nlmixrFoceiFamilyControlClasses)
+}
+
 .nlmixrCheckFoceiEnvironment <- function(ret) {
   checkmate::assertDataFrame(ret$dataSav, .var.name="focei$dataSav")
   checkmate::assertNumeric(ret$thetaIni, any.missing=FALSE,
@@ -2304,7 +2326,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
                           any.missing=FALSE, .var.name="focei$etaMat")
-  if (!inherits(ret$control, "foceiControl")) {
+  if (!.nlmixrIsFoceiFamilyControl(ret$control)) {
     stop("focei$control must be a focei control object",
          call.=FALSE)
   }

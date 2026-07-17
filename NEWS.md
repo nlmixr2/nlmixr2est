@@ -516,6 +516,14 @@
 
 ### Estimation
 
+- A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`, `foce`,
+  `focep`, `agq`, `laplace`, and the `*f` fast variants such as `ifoceif`) that
+  needed to restart -- for example after a zero/bad-gradient theta reset -- died
+  with `focei$control must be a focei control object`.  These controls are all
+  built by `foceiControl()` and then reclassed to their own class, so they do
+  not carry `"foceiControl"` in their class vector, and the restart-path
+  environment check rejected them even though the fit had been set up from a
+  valid control.  The check now recognises the whole FOCEi control family.
 - `est="fsaem"` (fast SAEM) now reports a covariance matrix.  The fast kernel's
   FOCEi inner setup overwrote the shared control's `covMethod` during the fit,
   so the covariance step ran with no method selected and left the fit with an
