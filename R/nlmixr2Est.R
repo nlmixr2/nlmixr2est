@@ -122,6 +122,12 @@ nlmixr2Est.default <- function(env, ...) {
       .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
       if (length(.etas$name) > 0) {
         .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
+        ## Only map etas that also exist in the pure input model.  A fit
+        ## may re-express etas that are absent from the input model (e.g.
+        ## SAEM expands an IOV eta into per-occasion id-level etas plus a
+        ## variance theta); those cannot be mapped back by name and their
+        ## variance is restored via the theta loop above.
+        .etaNames <- .etaNames[.etaNames %in% .finalIni$name]
         .etaFinal <- vapply(.etaNames, function(n) {
           .finalIni[which(.finalIni$name == n), "neta1"]
         }, double(1), USE.NAMES=TRUE)
