@@ -2,21 +2,6 @@
 
 ## New features
 
-- `saemControl(sharedInner="shared")` (opt-in; default `"classic"`) estimates
-  SAEM's residual through the shared FOCEi inner driver (`likInner0`) -- the same
-  endpoint-/error-model-agnostic engine FOCEI and the nonparametric methods use --
-  instead of SAEM's own per-endpoint `res_mod`/`arResk` machinery.  Each EM
-  iteration it evaluates the inner at the conditional-mean etas (the solve is
-  switched to the FOCEi inner and safely restored) and SA-blends the residual
-  moment into `ares`/`bres`.  This is a distinct estimator (the per-subject inner
-  uses the conditional mean, not the `N*nmc` MCMC chains).  The structural
-  parameters match `"classic"` closely (~0.01-0.03 on theophylline) and the
-  proportional residual to ~0.1%; the additive residual SD differs more at finite
-  N (~15-20%) because the conditional-mean moment omits the within-subject
-  eta-variance contribution the chain-averaged SSR includes (asymptotically
-  equivalent).  Prototype: a single add/prop/combined continuous endpoint, no
-  mixtures; the default `"classic"` path is bit-for-bit unchanged.
-
 - `est="npag"`/`est="npb"` now PIN the current ODE solve during the
   residual-error (`err`) parameter optimization instead of re-integrating.  Those
   parameters do not change the prediction `f`, so each subject's states are

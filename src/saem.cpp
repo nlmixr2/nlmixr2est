@@ -561,11 +561,6 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
                             NumericMatrix mprior, NumericMatrix etaCur, int nchain,
                             int nsweep, int cores, NumericVector lower, NumericVector upper,
                             IntegerVector nbd, double seed, int nRetry, int kiter);
-// inner.cpp: sets up the FOCEi inner (op_focei + rxInner) as the current solve.
-RObject vaeInnerSetup_(Environment e);
-// inner.cpp: re-parameterize the inner at theta/omega and return per-obs f/r +
-// residual moment (sumSq, sumSqRel, nMom) at the given etas.
-Rcpp::List saemSharedResidUpdate_(NumericVector theta, NumericVector omegaDiag, arma::mat etaMat);
 
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
 // via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
@@ -1065,17 +1060,6 @@ public:
         fsaemSaemOpt = as<List>(x["opt"]);
         fsaemSaemEvt = x["evt"];
       }
-      if (x.containsElementNamed("sharedInnerDiag") &&
-          x.containsElementNamed("sharedInnerEnv")) {
-        sharedInnerDiag = as<int>(x["sharedInnerDiag"]);
-        sharedInnerEnv = x["sharedInnerEnv"];
-        fsaemSaemOpt = as<List>(x["opt"]);   // reuse for the solve restore
-        fsaemSaemEvt = x["evt"];
-        sharedStructPos = as<ivec>(x["sharedStructPos"]);
-        sharedResidPos = as<ivec>(x["sharedResidPos"]);
-        sharedResidIsAdd = as<ivec>(x["sharedResidIsAdd"]);
-        sharedResidEp = as<ivec>(x["sharedResidEp"]);
-      }
       // C++-native direct-call fields (no-covariate path): the loop calls
       // fsaemStepCpp_ itself, with no per-iteration Rcpp::Function round-trip.
       fsaemNoCov = x.containsElementNamed("fsaemNoCov") ? as<int>(x["fsaemNoCov"]) : 0;
@@ -1435,61 +1419,6 @@ public:
     }
     // keep the per-observation SD vectors (used in the S-step g = vecares +
     // vecbres*|ft|) consistent with the warm-started scalars.
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
-  }
-
-  // sharedInner="shared": estimate the residual params from the SHARED FOCEi
-  // inner driver (likInner0) at the conditional-mean etas, instead of arResk's
-  // N*nmc-chain SSR.  A distinct-but-asymptotically-equivalent estimator: at
-  // convergence the conditional-mean residual moment matches the chain-averaged
-  // one.  Switch the global solve to the inner, build the inner THETA from the
-  // current structural (phiPop) + residual estimate, get the moment, set
-  // ares/bres, then restore the SAEM solve.  Prototype: single endpoint.
-  void sharedResidEstimate(unsigned int kiter) {
-    if (Rf_isNull(sharedInnerEnv) || (int)sharedStructPos.n_elem == 0) return;
-    int nth = (int)sharedStructPos.n_elem + (int)sharedResidPos.n_elem;
-    // population phi (structural), phi1 from mprior_phi1, phi0 from mprior_phi0
-    arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
-    for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
-    for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
-    NumericVector theta(nth);
-    for (int j = 0; j < (int)sharedStructPos.n_elem; j++)
-      theta[sharedStructPos(j)] = phiPop((arma::uword)j);
-    for (int j = 0; j < (int)sharedResidPos.n_elem; j++) {
-      int ep = sharedResidEp(j);
-      theta[sharedResidPos(j)] = sharedResidIsAdd(j) ? ares(ep) : bres(ep);
-    }
-    arma::vec omega = Gamma2_phi1.diag();
-    // the inner expects the ETA (deviation from the population), not the phi:
-    // eta = mpost_phi (conditional-mean phi) - mprior_phi1 (population mean).
-    arma::mat condEta = mpost_phi.cols(i1) - mprior_phi1;
-    // switch to the FOCEi inner, evaluate, restore the SAEM solve
-    Rcpp::Environment ienv(sharedInnerEnv);
-    vaeInnerSetup_(ienv);
-    Rcpp::List res = saemSharedResidUpdate_(theta,
-      NumericVector(omega.begin(), omega.end()), condEta);
-    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
-    _rx = getRxSolve_();
-    // moment-based residual estimate (single endpoint b=0)
-    double nMom = as<double>(res["nMom"]);
-    if (nMom <= 0.0) return;
-    double mAdd = std::sqrt(as<double>(res["sumSq"]) / nMom);
-    double mProp = std::sqrt(as<double>(res["sumSqRel"]) / nMom);
-    int b = 0;
-    bool hasAdd = false, hasProp = false;
-    for (int j = 0; j < (int)sharedResidPos.n_elem; j++) {
-      if (sharedResidEp(j) != b) continue;
-      if (sharedResidIsAdd(j)) hasAdd = true; else hasProp = true;
-    }
-    double split = (hasAdd && hasProp) ? std::sqrt(0.5) : 1.0;
-    // SA-blend toward the moment (matching SAEM's stochastic approximation) so the
-    // residual is smoothed like the classic statrese path, not a hard override.
-    double p = pas(std::min(kiter, (unsigned int)(pas.n_elem - 1)));
-    if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0)
-      ares(b) = ares(b) + p * (mAdd * split - ares(b));
-    if (hasProp && std::isfinite(mProp) && mProp > 0.0)
-      bres(b) = bres(b) + p * (mProp * split - bres(b));
     vecares = ares(ix_endpnt);
     vecbres = bres(ix_endpnt);
   }
@@ -2626,11 +2555,8 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
-      // general log-likelihood (distribution==4): no residual error params to update.
-      // sharedInner="shared": the per-endpoint res_mod residual update is RETIRED --
-      // ares/bres come solely from sharedResidEstimate() (shared inner driver) below.
-      bool _sharedResidActive = sharedInnerDiag && !Rf_isNull(sharedInnerEnv);
-      if (distribution != 4 && !_sharedResidActive)
+      // general log-likelihood (distribution==4): no residual error params to update
+      if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
         // AR(1): update the correlation from this iteration's residual pairs
         // (grid-search profile likelihood + stochastic approximation).  statrese
@@ -3389,15 +3315,6 @@ public:
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
-      // sharedInner="shared": estimate the residual params from the SHARED FOCEi
-      // inner driver at the conditional-mean etas each EM iteration (retires
-      // arResk's role under the flag).  The proven-safe solve switch + restore is
-      // inside sharedResidEstimate().  A distinct-but-asymptotically-equivalent
-      // estimator: structural params converge to the classic fit, the residual to
-      // the conditional-mean moment.
-      if (sharedInnerDiag && kiter < (unsigned int)niter && !Rf_isNull(sharedInnerEnv)) {
-        sharedResidEstimate(kiter);
-      }
     }//kiter
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
@@ -3447,13 +3364,6 @@ private:
   RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
   List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
   RObject fsaemSaemEvt = R_NilValue;// x["evt"]
-  // sharedInner="shared": switch the global solve to the FOCEi inner and back to
-  // estimate the residual params from the shared driver at the conditional-mean
-  // etas (retires arResk under the flag).  The theta-position mapping builds the
-  // inner's full THETA from the current structural (phiPop) + residual estimates.
-  RObject sharedInnerEnv = R_NilValue;
-  int sharedInnerDiag = 0;
-  ivec sharedStructPos, sharedResidPos, sharedResidIsAdd, sharedResidEp;
   // C++-native direct-call state (no-covariate path)
   int fsaemNoCov = 0;
   RObject fsaemInnerEnv = R_NilValue;
