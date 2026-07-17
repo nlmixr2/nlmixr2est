@@ -73,7 +73,10 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
-  if (length(covMethod) == 1L && !nzchar(covMethod)) {
+  if (checkmate::testIntegerish(covMethod, len=1, any.missing=FALSE)) {
+    # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
+    covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
+  } else if (length(covMethod) == 1L && !nzchar(covMethod)) {
     covMethod <- ""
   } else {
     covMethod <- match.arg(covMethod)
