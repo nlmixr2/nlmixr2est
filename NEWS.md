@@ -473,6 +473,13 @@
 
 ### Estimation
 
+- The `est="fo"`/`est="foi"` linearization pass returned an intermediate fit
+  object with an empty `control`, so `.updateParFixed()` silently fell back to
+  default table settings (`ci`/`sigdigTable`) instead of the fit's control
+  (#517).  The FO/FOI fit now carries its control, and an intermediate fit
+  without a method-specific `nmObjGetControl` surfaces its stored control rather
+  than returning `NULL`.
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
