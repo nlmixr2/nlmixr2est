@@ -1446,7 +1446,7 @@ public:
   // one.  Switch the global solve to the inner, build the inner THETA from the
   // current structural (phiPop) + residual estimate, get the moment, set
   // ares/bres, then restore the SAEM solve.  Prototype: single endpoint.
-  void sharedResidEstimate() {
+  void sharedResidEstimate(unsigned int kiter) {
     if (Rf_isNull(sharedInnerEnv) || (int)sharedStructPos.n_elem == 0) return;
     int nth = (int)sharedStructPos.n_elem + (int)sharedResidPos.n_elem;
     // population phi (structural), phi1 from mprior_phi1, phi0 from mprior_phi0
@@ -1483,8 +1483,13 @@ public:
       if (sharedResidIsAdd(j)) hasAdd = true; else hasProp = true;
     }
     double split = (hasAdd && hasProp) ? std::sqrt(0.5) : 1.0;
-    if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0) ares(b) = mAdd * split;
-    if (hasProp && std::isfinite(mProp) && mProp > 0.0) bres(b) = mProp * split;
+    // SA-blend toward the moment (matching SAEM's stochastic approximation) so the
+    // residual is smoothed like the classic statrese path, not a hard override.
+    double p = pas(std::min(kiter, (unsigned int)(pas.n_elem - 1)));
+    if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0)
+      ares(b) = ares(b) + p * (mAdd * split - ares(b));
+    if (hasProp && std::isfinite(mProp) && mProp > 0.0)
+      bres(b) = bres(b) + p * (mProp * split - bres(b));
     vecares = ares(ix_endpnt);
     vecbres = bres(ix_endpnt);
   }
@@ -3388,7 +3393,7 @@ public:
       // estimator: structural params converge to the classic fit, the residual to
       // the conditional-mean moment.
       if (sharedInnerDiag && kiter < (unsigned int)niter && !Rf_isNull(sharedInnerEnv)) {
-        sharedResidEstimate();
+        sharedResidEstimate(kiter);
       }
     }//kiter
     // restore the converged estimate after the SA covariance phase (the reported fit
