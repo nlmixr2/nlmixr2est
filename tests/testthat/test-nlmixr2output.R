@@ -161,9 +161,7 @@ test_that("formatMinWidth in parFixed", {
             formatMinWidth(fitFixed$parFixedDf$`CI Lower`, digits = 4),
             formatMinWidth(fitFixed$parFixedDf$`CI Upper`, digits = 4)
           )[2:4]
-        ),
-        `BSV(SD)` = c("", "", "", ""),
-        `Shrink(SD)%` = c("", "", "", "")
+        )
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -207,9 +205,7 @@ test_that("formatMinWidth in parFixed", {
             formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`, digits = 4),
             formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`, digits = 4)
           )[2:4]
-        ),
-        `BSV(SD)` = c("", "", "", ""),
-        `Shrink(SD)%` = c("", "", "", "")
+        )
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -234,9 +230,7 @@ test_that("formatMinWidth in parFixed", {
               formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = 4),
               formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = 4),
               formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = 4)
-            )[2:4]),
-        `BSV(SD)` = c("", "", "", ""),
-        `Shrink(SD)%` = c("", "", "", "")
+            )[2:4])
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -255,4 +249,13 @@ test_that("formatMinWidth in parFixed", {
   expect_equal(unname(fitNoLiteralFix$parFixed["tka", "%RSE"]), "FIXED")
   expect_equal(unname(fitNoLiteralFix$parFixed["tcl", "SE"]),
                formatMinWidth(fitNoLiteralFix$parFixedDf["tcl", "SE"], digits = 4))
+
+  # nlmixr2est#355: without etas the BSV/shrinkage columns are always blank
+  expect_false(any(startsWith(names(fitFixed$parFixed), "BSV(")))
+  expect_false("Shrink(SD)%" %in% names(fitFixed$parFixed))
+  expect_false(any(startsWith(names(fitFixed$parFixedDf), "BSV(")))
+  expect_false("Shrink(SD)%" %in% names(fitFixed$parFixedDf))
+  # ...but a model with etas keeps them
+  expect_true(any(startsWith(names(fit$parFixed), "BSV(")))
+  expect_true("Shrink(SD)%" %in% names(fit$parFixed))
 })

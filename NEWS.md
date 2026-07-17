@@ -657,6 +657,10 @@
 
 ### Output, tables, and printing
 
+- For models without etas, the `BSV(SD)` and `Shrink(SD)%` columns are no longer
+  added to `$parFixed` and `$parFixedDf`; they were always blank for these models
+  (#355).
+
 - Model-defined variables (e.g. `ka`, `cl`, `v`, `tad`, `dosenum`, and any
   user-added line such as `WT.OUT <- WT`) are now included in the output table
   whether or not `cwres` is requested.  Previously `tableControl(cwres=FALSE)`
