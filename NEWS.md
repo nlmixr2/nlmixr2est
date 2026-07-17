@@ -449,6 +449,14 @@
 
 ## Bug fixes
 
+### Estimation
+
+- `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
+  message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
+  the mixture structure and then failed late in the output tables with a cryptic
+  "the probabilities in a mixture must sum to a number between 0 and 1, they sum
+  to: 0".
+
 ### Covariance and standard errors
 
 - `covMethod = "r"`/`"s"`/`"r,s"` standard errors were inflated by a constant
