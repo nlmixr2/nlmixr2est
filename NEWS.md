@@ -2,6 +2,19 @@
 
 ## New features
 
+- The FOCEi-family outer finite-difference gradient now freezes the ODE solve
+  when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
+  the default).  Those parameters do not change the prediction `f` (or the EBEs
+  or `df/deta`), so each subject's base states and EBE are cached once per
+  gradient and only `r`/the density is recomputed -- no re-integration and no
+  inner eta re-optimization -- mirroring what `est="npag"`/`est="npb"` already do
+  for their residual step.  This is a small approximation to the exact FOCEi
+  gradient (it drops the eta sensitivity of the Laplace `log det` term); across
+  prop+add, additive-only, and box-Cox/transform-both-sides error models on
+  `theo_sd` it left the objective within ~0.02 and every parameter within ~1% of
+  the exact re-solve while roughly halving gradient time (about 2x).  Set
+  `freezeResidGrad=FALSE` to recover the exact full re-solve gradient.
+
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
   Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short
