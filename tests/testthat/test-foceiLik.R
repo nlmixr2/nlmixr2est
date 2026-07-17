@@ -67,13 +67,13 @@ test_that("foceiLikRun() returns per-id log-likelihoods on the right scale", {
   h <- foceiLikLoad(.foceiLikMod, d, "focei")
   on.exit(foceiLikUnload(), add = TRUE)
   eta0 <- matrix(0, h$nid, h$neta)
-  llData <- foceiLikRun(h$initPar, eta0, type = "pred")
+  llData <- foceiLikRun(h$initPar, eta0, type = "cond")
   expect_length(llData, 4L)
   expect_true(all(is.finite(llData)))
   expect_equal(names(llData), as.character(h$idLvl))
-  # "ipred" is the default type, and it differs from "pred" (by the eta prior)
+  # "joint" is the default type, and it differs from "cond" (by the eta prior)
   expect_equal(foceiLikRun(h$initPar, eta0),
-               foceiLikRun(h$initPar, eta0, type = "ipred"))
+               foceiLikRun(h$initPar, eta0, type = "joint"))
   expect_false(isTRUE(all.equal(as.numeric(llData),
                                as.numeric(foceiLikRun(h$initPar, eta0)))))
   # Reference at eta=0 in nlmixr2's residual convention:
@@ -89,7 +89,7 @@ test_that("foceiLikRun() returns per-id log-likelihoods on the right scale", {
   expect_equal(as.numeric(llData), ref, tolerance = 1e-2)
 })
 
-test_that("foceiLikRun(type='ipred') adds exactly the Gaussian eta prior", {
+test_that("foceiLikRun(type='joint') adds exactly the Gaussian eta prior", {
   skip_on_cran()
   d <- .foceiLikData()
   h <- foceiLikLoad(.foceiLikMod, d, "focei")
@@ -97,9 +97,9 @@ test_that("foceiLikRun(type='ipred') adds exactly the Gaussian eta prior", {
   omega <- 0.1
   for (etaVal in list(rep(0, 4), c(-0.3, 0.1, 0.25, 0.4))) {
     eta <- matrix(etaVal, h$nid, h$neta)
-    llD <- foceiLikRun(h$initPar, eta, type = "pred")
-    llO <- foceiLikRun(h$initPar, eta, type = "ipred")
-    # ipred - pred must be the fully normalized N(0, Omega) log density.  The
+    llD <- foceiLikRun(h$initPar, eta, type = "cond")
+    llO <- foceiLikRun(h$initPar, eta, type = "joint")
+    # joint - cond must be the fully normalized N(0, Omega) log density.  The
     # prior is built from the engine's own omegaInv/logDetOmegaInv5 (the same
     # Omega the inner likelihood uses), whose representation differs from the
     # nominal ini() value by ~4e-5 relative -- hence the tolerance here.
@@ -114,8 +114,8 @@ test_that("foceiLikRun() is invariant to the thread count", {
   h <- foceiLikLoad(.foceiLikMod, d, "focei")
   on.exit(foceiLikUnload(), add = TRUE)
   eta <- matrix(c(-0.2, 0.05, 0.3, -0.1), h$nid, h$neta)
-  llS <- foceiLikRun(h$initPar, eta, type = "ipred", cores = 1L)
-  llP <- foceiLikRun(h$initPar, eta, type = "ipred", cores = 4L)
+  llS <- foceiLikRun(h$initPar, eta, type = "joint", cores = 1L)
+  llP <- foceiLikRun(h$initPar, eta, type = "joint", cores = 4L)
   expect_equal(llS, llP, tolerance = 1e-12)
 })
 
@@ -128,8 +128,8 @@ test_that("each likelihood type runs; interaction only matters away from eta=0",
     h <- foceiLikLoad(.foceiLikMod, d, lik)
     on.exit(foceiLikUnload(), add = TRUE)
     expect_equal(h$likelihood, lik)
-    list(zero = foceiLikRun(h$initPar, eta0, type = "ipred"),
-         nz = foceiLikRun(h$initPar, etaNz, type = "ipred"))
+    list(zero = foceiLikRun(h$initPar, eta0, type = "joint"),
+         nz = foceiLikRun(h$initPar, etaNz, type = "joint"))
   })
   names(res) <- c("focei", "focep", "foce")
   for (r in res) {
@@ -159,13 +159,13 @@ test_that("foceiLikRun() responds to theta changes", {
   h <- foceiLikLoad(.foceiLikMod, d, "focei")
   on.exit(foceiLikUnload(), add = TRUE)
   eta0 <- matrix(0, h$nid, h$neta)
-  ll0 <- foceiLikRun(h$initPar, eta0, type = "pred")
+  ll0 <- foceiLikRun(h$initPar, eta0, type = "cond")
   # doubling the additive SD must change the data log-likelihood
   th2 <- h$initPar; th2[3] <- th2[3] * 2
-  ll2 <- foceiLikRun(th2, eta0, type = "pred")
+  ll2 <- foceiLikRun(th2, eta0, type = "cond")
   expect_false(isTRUE(all.equal(as.numeric(ll0), as.numeric(ll2))))
   # and the theta must actually be re-applied (not cached): returning to the
   # original theta reproduces the original value
-  ll0b <- foceiLikRun(h$initPar, eta0, type = "pred")
+  ll0b <- foceiLikRun(h$initPar, eta0, type = "cond")
   expect_equal(ll0, ll0b, tolerance = 1e-12)
 })

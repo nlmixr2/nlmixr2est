@@ -7,7 +7,7 @@
 foceiLikRun(
   theta,
   eta,
-  type = c("ipred", "pred"),
+  type = c("joint", "cond"),
   cores = rxode2::getRxThreads()
 )
 }
@@ -20,11 +20,9 @@ a ready starting value.}
 \item{eta}{A `nid` by `neta` matrix of random effects (one row per subject,
 in the loaded system's subject order).}
 
-\item{type}{`"ipred"` (default) returns the individual joint log density --
-the conditional data log-likelihood plus the Gaussian eta log-prior;
-`"pred"` returns only the conditional data log-likelihood
-`log p(y_i | eta_i)`, without the eta prior.  Gaussian endpoints follow
-nlmixr2's internal residual-likelihood convention.}
+\item{type}{`"joint"` (default) returns the individual joint log density
+`log p(y_i, eta_i)`; `"cond"` returns the conditional data log-likelihood
+`log p(y_i | eta_i)` alone.  See Details.}
 
 \item{cores}{Number of threads for the parallel per-subject evaluation.}
 }
@@ -36,6 +34,39 @@ A named numeric vector (length `nid`, named by subject id) of
 Writes the population parameter vector into the loaded system and returns the
 per-subject log-likelihood at the supplied etas, computed in parallel over
 subjects.  Requires a system loaded by [foceiLikLoad()].
+}
+\details{
+Both types are evaluated at the etas you supply, so both use each subject's
+individual predictions; neither is a population (eta = 0) quantity.  They
+differ only by the random-effect prior term:
+
+- `"cond"` is the conditional data log-likelihood `log p(y_i | eta_i)`, the
+  observation contribution alone.
+- `"joint"` is `log p(y_i, eta_i) = log p(y_i | eta_i) + log p(eta_i)`, which
+  adds the Gaussian random-effect prior
+  `log p(eta_i) = -0.5 eta_i' Omega^-1 eta_i + 0.5 log|Omega^-1| - neta/2 log(2 pi)`.
+
+So `"joint"` minus `"cond"` is exactly `log p(eta_i)`.  `"joint"` is the
+default because it is the usual target for MCMC/SAMBA-style samplers: as a
+function of `eta_i` it is the individual's posterior kernel, and it is the
+quantity the FOCEi inner problem optimizes over the etas.  Use `"cond"` when
+you supply the random-effect density yourself, or when you need the
+observation contribution separately.
+
+The prior is built from the loaded system's own `Omega^-1` and its log
+determinant -- the same Omega the inner likelihood uses -- so `"joint"` stays
+internally consistent with the engine rather than with the nominal `ini()`
+values (the two differ by a small amount through Omega's internal
+`rxSymInv` representation).
+
+For Gaussian endpoints the observation contribution follows nlmixr2's
+internal residual-likelihood convention, `-0.5 err^2/r - 0.5 log(r)`, which
+omits the additive `-0.5 log(2 pi)` per observation; general log-likelihood
+(`ll()`) endpoints contribute the user's log density as written.  The eta
+prior above is fully normalized.  Both types are therefore proper log
+densities up to a fixed per-observation constant that does not depend on
+`theta` or `eta`, so likelihood ratios, and any sampler that uses them, are
+unaffected.
 }
 \seealso{
 [foceiLikLoad()], [foceiLikUnload()]

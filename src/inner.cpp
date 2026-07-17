@@ -12256,8 +12256,8 @@ RObject foceiLikSetTheta_(NumericVector theta) {
 }
 
 // Evaluate the per-id log-likelihood at the supplied etas, parallel over ids.
-// retType 0 = "ipred" individual joint log density (conditional data log-lik +
-// the fully-normalized Gaussian eta prior), retType 1 = "pred" conditional
+// retType 0 = "joint" individual joint log density (conditional data log-lik +
+// the fully-normalized Gaussian eta prior), retType 1 = "cond" conditional
 // log-lik log p(y_i | eta_i) (no Omega prior).  Both are built from
 // npEvalCondLik (a known +log conditional likelihood) so the sign convention is
 // unambiguous.  Parallel discipline copied from vaeInnerLikCore (per-thread
