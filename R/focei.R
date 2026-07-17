@@ -777,8 +777,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
   }
   rxode2::rxProgress(dim(.grd)[1])
+  # Guard the abort so a clean rxProgressStop() below prevents the generic
+  # "Aborted calculation" from masking the informative error we raise here
+  # (issue #515).
+  .progressStopped <- FALSE
   on.exit({
-    rxode2::rxProgressAbort()
+    if (!.progressStopped) rxode2::rxProgressAbort()
   })
   .any.zero <- FALSE
   .all.zero <- TRUE
@@ -796,7 +800,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .ret
   })
   if (.all.zero) {
-    stop("none of the predictions depend on 'ETA'", call. = FALSE)
+    rxode2::rxProgressStop()
+    .progressStopped <- TRUE
+    stop("none of the model predictions depend on a random effect ('ETA'); ",
+         "check that each endpoint's distribution parameter is linked to an ",
+         "eta-varying model quantity (for example 'y ~ dpois(rate)' needs ",
+         "'rate' to be a model-predicted value, not a fixed population parameter)",
+         call. = FALSE)
   }
   if (.any.zero) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
@@ -809,6 +819,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .s$..HdEta <- .ret
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
+  .progressStopped <- TRUE
   .s
 }
 attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO related methods"
@@ -2153,6 +2164,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
            call.=FALSE)
     }
+    # On a theta-reset restart .ret carries the previous fit's etaObf, whose ID
+    # column foceiEtas() built as a factor of the original subject IDs; coerce it
+    # back to the integer the assertion (and the C++ setup) expect (issue #470).
     if (is.factor(.ret$etaObf$ID)) {
       .ret$etaObf$ID <- as.integer(.ret$etaObf$ID)
     }

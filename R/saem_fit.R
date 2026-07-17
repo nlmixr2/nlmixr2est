@@ -638,8 +638,14 @@
   cfg$opt$cmt_endpnt <- cfg$optM$cmt_endpnt <- sort(unique(s))
   cfg$nendpnt <- length(unique(s))
   if (model$nendpnt != cfg$nendpnt) {
-    msg <- sprintf("mis-match in nbr endpoints in model & in data")
-    stop(msg)
+    msg <- paste0(
+      sprintf("mis-match in number of endpoints between the model (%d) and the data (%d)",
+              model$nendpnt, cfg$nendpnt),
+      sprintf("\nthe data has observations (EVID=0) in %d compartment(s): %s",
+              cfg$nendpnt, paste(cfg$opt$cmt_endpnt, collapse=", ")),
+      "\ncheck that the 'CMT'/'DVID' values in your dataset match the number of",
+      "\nendpoints (model error terms like 'cp ~ add(add.sd)') defined in your model")
+    stop(msg, call.=FALSE)
   }
   t <- unlist(split(1L:length(s), s))
   cfg$ys <- cfg$y[t]
