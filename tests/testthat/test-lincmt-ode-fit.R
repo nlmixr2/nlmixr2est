@@ -139,6 +139,33 @@ nmTest({
     }
   })
 
+  test_that("the FD fallback and the table/pred models agree with the all-ODE model", {
+    # The linCmt() compartments sit at a different number in the sensitivity
+    # inner model than in the prediction models, which share one event table.
+    # The translation removes the linCmt() block, so every model in the family
+    # (inner, predNoLhs/FD fallback, predOnly/tables) uses one numbering.
+    withr::with_seed(42, {
+      rxode2::rxSetSeed(42)
+      .d <- .simData()
+    })
+    # fallbackFD=TRUE routes a failed inner solve through the prediction model
+    for (.fb in c(FALSE, TRUE)) {
+      .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "",
+                           calcTables = FALSE, fallbackFD = .fb)
+      .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
+      .fOde <- suppressWarnings(nlmixr2(.ode(), .d, est = "focei", control = .ctl))
+      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4,
+                   info = paste0("fallbackFD=", .fb))
+    }
+    # the prediction/table models are solved with the same event table
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
+    .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
+    .fOde <- suppressWarnings(nlmixr2(.ode(), .d, est = "focei", control = .ctl))
+    for (.col in c("IPRED", "PRED", "IRES", "CWRES")) {
+      expect_equal(.fLin[[.col]], .fOde[[.col]], tolerance = 1e-4, info = .col)
+    }
+  })
+
   test_that("focei and saem agree on a combined linCmt()/ODE model", {
     withr::with_seed(42, {
       rxode2::rxSetSeed(42)
