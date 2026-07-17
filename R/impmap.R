@@ -54,7 +54,9 @@
 #'   observed-information covariance for the estimated thetas and Omega
 #'   parameters (a finite-difference Hessian of the importance-sampling objective
 #'   over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
-#'   Off by default.  The theta standard errors match the Hessian-based FOCEI
+#'   Off by default.  When `TRUE` this covariance is the one installed on the
+#'   fit and the post-fit analytic/finite-difference recompute (see
+#'   `covMethod` in [foceiControl()]) is skipped.  The theta standard errors match the Hessian-based FOCEI
 #'   covariance; the variance of a tightly-determined random effect (an Omega
 #'   diagonal) can still be over-estimated because the fixed samples barely span
 #'   its prior variation.
@@ -239,8 +241,11 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 .impmapFamilyFit <- function(env, ui, ...) {
   # With est="impmap", foceiFitCpp_ runs impOuter() (src/imp.cpp) in place of
   # foceiOuter().  The FOCEI outer optimizer is turned off (maxOuterIterations=0)
-  # because impOuter drives its own EM iteration; covariance is off for now.
+  # because impOuter drives its own EM iteration; the in-fit covariance is off
+  # (it would bail on muModel="lin" anyway) -- the covariance is computed
+  # post-fit on the full model at the converged estimates (.foceiRecomputeMuCov).
   .control <- ui$control
+  .covMethodUser <- .control$covMethod  # restored on the fit env control below
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
@@ -285,7 +290,26 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # the Omega parameters come out unnamed on this path; fill them in (defensively,
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
+  .impRestoreCovMethod(.fit, .covMethodUser)
   .fit
+}
+
+#' Restore the user's covMethod on the fit env's stored control
+#'
+#' The estimation pass forces covMethod=0L (the in-fit C++ step would bail on
+#' muModel="lin"), and that runtime control is what gets stored on the fit env;
+#' the post-fit recompute (.foceiRecomputeMuCov) reads the covMethod from there,
+#' so put the user's choice back.
+#' @noRd
+.impRestoreCovMethod <- function(fit, covMethod) {
+  .fenv <- tryCatch(fit$env, error = function(e) NULL)
+  if (is.environment(.fenv) &&
+        exists("impmapControl", envir = .fenv, inherits = FALSE)) {
+    .ic <- get("impmapControl", envir = .fenv)
+    .ic$covMethod <- covMethod
+    assign("impmapControl", .ic, envir = .fenv)
+  }
+  invisible(fit)
 }
 
 #' Fill the Omega row/column names on the impmap covariance

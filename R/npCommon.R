@@ -106,8 +106,9 @@
 #' @noRd
 .npFamilyFit <- function(env, ui, ...) {
   .control <- ui$control
+  .covMethodUser <- .control$covMethod  # restored on the fit env control below
   .control$maxOuterIterations <- 0L
-  .control$covMethod <- 0L
+  .control$covMethod <- 0L  # covariance is computed post-fit (.foceiRecomputeMuCov)
   .env <- ui$foceiOptEnv     # builds foceiMuGroupTheta (covariate mu-groups)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
@@ -236,7 +237,9 @@
     .control$npMuExpandThetaIdx <- as.integer(.ti[.ok])
   }
   assign("control", .control, envir = ui)
-  .foceiFamilyReturn(env, ui, ..., est = .est)
+  .fit <- .foceiFamilyReturn(env, ui, ..., est = .est)
+  .impRestoreCovMethod(.fit, .covMethodUser)
+  .fit
 }
 
 # mu-attribute for the plain methods: gated on the control (mu only when the user
