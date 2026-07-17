@@ -1252,8 +1252,13 @@ Rcpp::List foceiGradAllAgqFR_(const arma::mat& a, const arma::cube& A,
   cube etaPall(neta, np, nsub, fill::zeros);
   ivec okv(nsub, fill::zeros);
   const bool hasSig = (Rsig.n_cols > 0);
+  // An arma exception escaping this OpenMP structured block is std::terminate -- the R
+  // PROCESS dies (see foceiGradAllFR_).  The subject kernel uses the non-throwing inv()/chol()
+  // bool forms for its designed singular-matrix failures (-> ok=false -> FD), but catch any
+  // unexpected throw per subject and poison it: NaN + okv=0 both route the R driver to FD.
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
+    try {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1, no = o1 - o0 + 1;
     mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
     cube Ai = A.rows(o0, o1), ARi = AR.rows(o0, o1);
@@ -1278,6 +1283,9 @@ Rcpp::List foceiGradAllAgqFR_(const arma::mat& a, const arma::cube& A,
                            ehat.row(i).t(), Oi, dOiEst, tr28,
                            neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi, ok);
     if (ok) { gmat.col(i) = gi; etaPall.slice(i) = etaPi; okv[i] = 1; }
+    } catch (...) {
+      gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan); okv[i] = 0;
+    }
   }
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall,

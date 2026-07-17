@@ -1894,6 +1894,12 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .phiU <- function(M) { U <- M; U[lower.tri(U)] <- 0; diag(U) <- diag(U) / 2; U }
   .ch <- tryCatch(chol(Ht), error = function(e) NULL)   # non-PD Ht -> caller falls back to FD
   if (is.null(.ch)) return(NULL)
+  # PD margin, as in the gradient path: chol() succeeding is not proof the objective placed
+  # the nodes via chol(Ht).  arma's is_sympd() and R's chol() disagree near the PD boundary,
+  # and at fit time calcEtaHessian switches to nmNearPD/cholSE when !is_sympd() -- so a
+  # near-boundary Ht would mean the cov differentiates a different node placement than was
+  # optimized.  Require the margin and fall back to FD otherwise.
+  if (!is.finite(rcond(Ht)) || rcond(Ht) < 1e-10) return(NULL)
   Ginv <- backsolve(.ch, diag(neta))                    # chol(Ht)^-1 places the nodes
   # TOTAL derivatives of Ht through etahat(theta) -- the node placement moves with the mode
   dHtStar <- lapply(1:npE, function(p) { D <- dHt_p(p)
