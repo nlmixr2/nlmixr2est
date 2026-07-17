@@ -383,6 +383,13 @@ setCov <- function(fit, method) {
       return(invisible(fit))
     }
   }
+  # not cached: the analytic / finite-difference methods can be recomputed on the
+  # full model at the converged estimates (.setCov refits with est="none")
+  if (method %in% c("analytic", "r,s", "r", "s")) {
+    .setCov(fit, covMethod = method)
+    .env$covMethod <- method
+    return(invisible(fit))
+  }
   stop("different covariance types have not been calculated",
     call. = FALSE
   )
