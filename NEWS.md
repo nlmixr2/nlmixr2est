@@ -496,8 +496,11 @@
   FOCEi, one per theta for nlm) shifted `depot`/`central` past the compartment
   numbers the data was translated against, so the dose silently landed in a
   sensitivity compartment, every prediction came back `0` and the objective
-  function was meaningless.  `est="saem"` was never affected and is unchanged,
-  as are `linCmt()` models with no other ODE (#286).
+  function was meaningless.  Since the model is then no longer mixing a solved
+  system with ODEs, these fits now warn (recorded in `fit$runInfo`) that the
+  analytic `linCmt()` could not be used.  `est="saem"` was never affected, keeps
+  the analytic `linCmt()` and does not warn, as do `linCmt()` models with no
+  other ODE (#286).
 
 - A model that combines an inter-occasion variability (IOV) term with a zero
   inter-individual variability eta on another parameter (for example

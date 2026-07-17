@@ -133,8 +133,13 @@
   .state <- ui$state
   .ui <- try(rxode2::linToOde(ui), silent = TRUE)
   if (inherits(.ui, "try-error")) return(NULL)
-  .minfo(paste0("mixed 'linCmt()'/ODE model: solving the linear compartments as ODEs for '",
-                est, "'"))
+  # The model no longer mixes solved and ODE compartments, which is what was
+  # asked for; say so rather than quietly changing how the model is solved.
+  warning("'", est, "' cannot use the analytic 'linCmt()' in a model that also has ODEs ",
+          "(the sensitivity compartments it adds renumber the linear compartments); ",
+          "the linear compartments are solved as ODEs instead, which is slower. ",
+          "'est=\"saem\"' uses the analytic 'linCmt()'.",
+          call.=FALSE)
   .ui <- .linCmtOdeRestoreStateOrder(.ui, .state)
   if (!identical(.ui$state, .state)) {
     # never renumber the data's compartments quietly

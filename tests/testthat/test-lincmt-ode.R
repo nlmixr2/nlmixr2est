@@ -1,9 +1,11 @@
 nmTest({
   # Issue #286: a model mixing linCmt() with ODEs.  rxode2 requires the
-  # linCmt() compartments to be the last states of the solve, so the FOCEi
-  # inner model's eta-sensitivity states push depot/central past the
-  # compartment numbers the data was translated against.  The linear part is
-  # solved as ODEs instead for the FOCEi family.
+  # linCmt() compartments to be the last states of the solve, so the
+  # sensitivity states these methods add (one per eta for FOCEi, one per theta
+  # for nlm) push depot/central past the compartment numbers the data was
+  # translated against.  The linear part is solved as ODEs instead, which is
+  # warned about since the model then no longer mixes a solved system with
+  # ODEs at all.
 
   .pure <- function() {
     ini({
@@ -55,23 +57,35 @@ nmTest({
 
   test_that("the linCmt()/ODE hook applies to the methods that add sensitivity states", {
     # saem/nlme build no sensitivity compartments, so they keep the analytic
-    # linCmt() solution
-    expect_null(.preProcessLinCmtOde(.mixed(), "saem", NULL, NULL))
-    expect_null(.preProcessLinCmtOde(.mixed(), "nlme", NULL, NULL))
+    # linCmt() solution -- and must not warn
+    expect_silent(expect_null(.preProcessLinCmtOde(.mixed(), "saem", NULL, NULL)))
+    expect_silent(expect_null(.preProcessLinCmtOde(.mixed(), "nlme", NULL, NULL)))
     # a linCmt() model with no other ODE is never shifted
-    expect_null(.preProcessLinCmtOde(.pure(), "focei", NULL, NULL))
-    expect_null(.preProcessLinCmtOde(.pure(), "nlm", NULL, NULL))
+    expect_silent(expect_null(.preProcessLinCmtOde(.pure(), "focei", NULL, NULL)))
+    expect_silent(expect_null(.preProcessLinCmtOde(.pure(), "nlm", NULL, NULL)))
     # FOCEi family (eta sensitivities) and nlm family (theta sensitivities)
     for (.e in c("focei", "foce", "fo", "laplace", "agq", "nlm", "nlminb",
                  "bobyqa", "optim", "n1qn1")) {
-      expect_true(is.list(.preProcessLinCmtOde(.mixed(), .e, NULL, NULL)),
+      expect_true(is.list(suppressWarnings(.preProcessLinCmtOde(.mixed(), .e, NULL, NULL))),
                   info = .e)
     }
   })
 
+  test_that("solving the linear compartments as ODEs is warned about, not silent", {
+    # the model no longer mixes a solved system with ODEs, so the user has to
+    # be told the analytic linCmt() is not being used
+    expect_warning(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL),
+                   "cannot use the analytic 'linCmt\\(\\)'")
+    expect_warning(.preProcessLinCmtOde(.mixed(), "nlm", NULL, NULL),
+                   "solved as ODEs")
+    # the warning names the routine that could not use it
+    expect_warning(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL), "focei")
+    expect_warning(.preProcessLinCmtOde(.mixed(), "nlm", NULL, NULL), "nlm")
+  })
+
   test_that("the mixed model is translated to ODEs without renumbering compartments", {
     .ui <- .mixed()
-    .r <- .preProcessLinCmtOde(.ui, "focei", NULL, NULL)$ui
+    .r <- suppressWarnings(.preProcessLinCmtOde(.ui, "focei", NULL, NULL))$ui
     # linCmt() is gone -- the compartments are real ODE states now
     expect_true(is.null(.r$mvL) || !.uiIsMixedLinCmtOde(.r))
     expect_false(any(vapply(.r$lstExpr, function(e) {
@@ -86,7 +100,7 @@ nmTest({
   })
 
   test_that("the translated model keeps the linCmt() output defined before it is used", {
-    .r <- .preProcessLinCmtOde(.mixed(), "focei", NULL, NULL)$ui
+    .r <- suppressWarnings(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL))$ui
     .lines <- .r$lstExpr
     .isDdtCe <- vapply(.lines, function(e) {
       is.call(e) && is.call(e[[2]]) && identical(e[[2]][[2]], quote(d)) &&

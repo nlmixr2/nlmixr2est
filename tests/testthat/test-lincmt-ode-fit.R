@@ -70,6 +70,20 @@ nmTest({
     .d[order(.d$id, .d$time, -.d$evid), ]
   }
 
+  test_that("a fit of a combined linCmt()/ODE model records the ODE translation in $runInfo", {
+    withr::with_seed(42, {
+      rxode2::rxSetSeed(42)
+      .d <- .simData(nid = 4)
+    })
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "",
+                         calcTables = FALSE)
+    .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
+    expect_true(any(grepl("analytic 'linCmt()'", .fLin$runInfo, fixed = TRUE)))
+    # the equivalent all-ODE model has nothing to say about linCmt()
+    .fOde <- suppressWarnings(nlmixr2(.ode(), .d, est = "focei", control = .ctl))
+    expect_false(any(grepl("linCmt", .fOde$runInfo, fixed = TRUE)))
+  })
+
   test_that("focei estimates a combined linCmt()/ODE model like the all-ODE model", {
     withr::with_seed(42, {
       rxode2::rxSetSeed(42)
