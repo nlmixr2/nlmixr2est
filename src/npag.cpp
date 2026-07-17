@@ -89,7 +89,6 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                        const std::vector<int>& optEnd,
                        const std::vector<int>& optProp,
                        bool reDerive) {
-  (void) freeze;
   int n = (int)idx.size();
   if (n == 0) return R_PosInf;
   gNpOptIdx = idx; gNpOptKind = kind;
@@ -138,6 +137,13 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (!std::isfinite(hi[j])) hi[j] = v + 6.0;
     }
   }
+  // PIN the current solve for a residual-only optimization: the err params do not
+  // change f, so cache each subject's (per-component) states at the posterior
+  // etas and freeze the ODE -- npResidELS then recomputes only r, no
+  // re-integration (nMix-fold fewer solves for a mixture).  A structural
+  // regressor (reDerive) DOES move f, so it must keep re-solving.
+  bool doFreeze = freeze && !reDerive;
+  if (doFreeze) npResidFreezeBuild(gNpPostEta);   // also sets op_focei.freezeOde
   // .boundedResidOpt: bobyqa (>=2 params) / bounded optimize (1 param), honoring
   // the ini-block bounds so the optimizer stays in the valid region.
   Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
@@ -146,6 +152,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
                               Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
                               Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n));
+  if (doFreeze) npResidFreezeClear();   // unfreezes op_focei.freezeOde
   double f = as<double>(ret["value"]);
   gNpReDerive = false;
   if (!ISNA(f)) {

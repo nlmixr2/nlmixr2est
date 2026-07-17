@@ -2,6 +2,15 @@
 
 ## New features
 
+- `est="npag"`/`est="npb"` now PIN the current ODE solve during the
+  residual-error (`err`) parameter optimization instead of re-integrating.  Those
+  parameters do not change the prediction `f`, so each subject's states are
+  cached at its posterior etas and the ODE is frozen (`op_focei.freezeOde`) while
+  only `r` is recomputed -- for a mixture the frozen recompute reuses each
+  component's cached states rather than re-solving them.  A structural regressor
+  (which does move `f`, including an estimated per-component clearance) still
+  re-solves.  Results are unchanged.
+
 - SAEM mixture models now fix per-subject membership by default
   (`saemControl(mixProbMethod="regress")`, the new default): each subject is
   hard-classified to its best component once, held fixed, and the soft-EM
