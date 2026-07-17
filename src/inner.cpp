@@ -10227,6 +10227,22 @@ Rcpp::List saemSharedResid_(arma::mat etaMat) {
                             Rcpp::_["objf"] = nll);
 }
 
+// Per-iteration shared-inner residual step (kernel unification): re-parameterize
+// the already-set-up FOCEi inner at the current theta/omega (cheap, no
+// recompile -- vaeInnerUpdateParCore, same as fsaem's in-loop update) and return
+// the per-observation f/r/loglik at the given etas.  This is the callable the
+// SAEM loop uses each iteration under sharedInner="shared" to obtain f/r from the
+// shared driver.  theta is the full ntheta vector; omegaDiag the eta variances.
+// [[Rcpp::export]]
+Rcpp::List saemSharedResidUpdate_(Rcpp::NumericVector theta,
+                                  Rcpp::NumericVector omegaDiag,
+                                  arma::mat etaMat) {
+  arma::vec th(theta.begin(), theta.size(), false);
+  arma::vec om(omegaDiag.begin(), omegaDiag.size(), false);
+  vaeInnerUpdateParCore(th, om);   // re-parameterize the inner at theta/omega
+  return saemSharedResid_(etaMat);
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
