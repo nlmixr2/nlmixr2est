@@ -493,6 +493,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiNFreezeResidGrad
+int foceiNFreezeResidGrad();
+RcppExport SEXP _nlmixr2est_foceiNFreezeResidGrad() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiNFreezeResidGrad());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiSetup_
 NumericVector foceiSetup_(const RObject& obj, const RObject& data, NumericVector theta, IntegerVector mixIdx, Nullable<LogicalVector> thetaFixed, Nullable<LogicalVector> skipCov, RObject rxInv, Nullable<NumericVector> lower, Nullable<NumericVector> upper, Nullable<NumericMatrix> etaMat, Nullable<List> control);
 RcppExport SEXP _nlmixr2est_foceiSetup_(SEXP objSEXP, SEXP dataSEXP, SEXP thetaSEXP, SEXP mixIdxSEXP, SEXP thetaFixedSEXP, SEXP skipCovSEXP, SEXP rxInvSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP etaMatSEXP, SEXP controlSEXP) {
@@ -709,30 +719,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type grad(gradSEXP);
     Rcpp::traits::input_parameter< bool >::type preds(predsSEXP);
     rcpp_result_gen = Rcpp::wrap(vaeInnerLik(etaMat, cores, grad, preds));
-    return rcpp_result_gen;
-END_RCPP
-}
-// saemSharedResid_
-Rcpp::List saemSharedResid_(arma::mat etaMat);
-RcppExport SEXP _nlmixr2est_saemSharedResid_(SEXP etaMatSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type etaMat(etaMatSEXP);
-    rcpp_result_gen = Rcpp::wrap(saemSharedResid_(etaMat));
-    return rcpp_result_gen;
-END_RCPP
-}
-// saemSharedResidUpdate_
-Rcpp::List saemSharedResidUpdate_(Rcpp::NumericVector theta, Rcpp::NumericVector omegaDiag, arma::mat etaMat);
-RcppExport SEXP _nlmixr2est_saemSharedResidUpdate_(SEXP thetaSEXP, SEXP omegaDiagSEXP, SEXP etaMatSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type theta(thetaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type omegaDiag(omegaDiagSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type etaMat(etaMatSEXP);
-    rcpp_result_gen = Rcpp::wrap(saemSharedResidUpdate_(theta, omegaDiag, etaMat));
     return rcpp_result_gen;
 END_RCPP
 }

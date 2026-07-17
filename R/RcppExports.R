@@ -95,6 +95,10 @@ foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
 
+foceiNFreezeResidGrad <- function() {
+    .Call(`_nlmixr2est_foceiNFreezeResidGrad`)
+}
+
 foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
     .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
 }
@@ -186,14 +190,6 @@ vaeInnerUpdatePar_ <- function(thFull, omegaDiag) {
 
 vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
-}
-
-saemSharedResid_ <- function(etaMat) {
-    .Call(`_nlmixr2est_saemSharedResid_`, etaMat)
-}
-
-saemSharedResidUpdate_ <- function(theta, omegaDiag, etaMat) {
-    .Call(`_nlmixr2est_saemSharedResidUpdate_`, theta, omegaDiag, etaMat)
 }
 
 #' Build the nonparametric Psi (conditional-likelihood) matrix

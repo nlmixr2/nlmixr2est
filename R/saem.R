@@ -262,9 +262,6 @@
                                    else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
                         fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
                         fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
-    # Carried for the SAEM unification work; consumed in later phases.  Inert
-    # at their defaults ("classic"/"eta"), so no behavior change here.
-    .cfg$sharedInner <- rxode2::rxGetControl(ui, "sharedInner", "classic")
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -309,9 +306,6 @@
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
     }
-    if (identical(rxode2::rxGetControl(ui, "sharedInner", "classic"), "shared")) {
-      .cfg <- .saemSharedInstallStep(ui, data, .rxControl, .cfg)
-    }
     .saemCheckCfg(.cfg)
     .cfg
   })
@@ -320,8 +314,7 @@
   })
   # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
   # down so it does not leak into a later fit's solve state (reproducibility).
-  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE)) ||
-      identical(rxode2::rxGetControl(ui, "sharedInner", "classic"), "shared")) {
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
     try(vaeInnerFree_(), silent = TRUE)
   }
   .saemRes
@@ -1204,7 +1197,7 @@ nlmixr2Est.saem <- function(env, ...) {
   }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")

@@ -593,6 +593,15 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
+#' @param freezeResidGrad When `TRUE`, the outer finite-difference gradient
+#'   freezes the ODE solve (and the individual EBEs) when perturbing a
+#'   residual/error-model parameter -- these parameters do not change the
+#'   structural prediction `f`, so the states are reused and only the
+#'   residual density is recomputed, mirroring the npag residual step.  This
+#'   is a small approximation to the FOCEi gradient (it drops the eta
+#'   sensitivity of the Laplace `log det` term); set `FALSE` to recover the
+#'   exact full re-solve gradient.
+#'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
@@ -786,6 +795,7 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          sensMethod = c("default", "forward", "adjoint"),
+                         freezeResidGrad=TRUE,
                          boundedTransform=TRUE) { #
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
@@ -1262,6 +1272,7 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
   checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  checkmate::assertLogical(freezeResidGrad, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1402,6 +1413,7 @@ foceiControl <- function(sigdig = 4, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     sensMethod=sensMethod,
+    freezeResidGrad=freezeResidGrad,
     boundedTransform=boundedTransform
   )
   if (!is.null(.xtra$est)) {

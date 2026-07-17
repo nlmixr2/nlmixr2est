@@ -155,5 +155,13 @@ nmObjGetControl.saem <- function(x, ...) {
 nmObjGetControl.default <- function(x, ...) {
   ## stop("cannot figure out get the control, add method for `nmObjHandleControlObject.", class(x)[1], "`",
   ##      call.=FALSE)
+  # Intermediate fits without a method-specific getter (e.g. the est="none"
+  # FO/FOI linearization pass, issue #517) still carry their control in the
+  # raw `control` binding -- surface it so $control is not silently NULL.
+  .env <- x[[1]]
+  if (is.environment(.env) && exists("control", envir=.env, inherits=FALSE)) {
+    .control <- get("control", envir=.env)
+    if (is.list(.control)) return(.control)
+  }
   NULL
 }

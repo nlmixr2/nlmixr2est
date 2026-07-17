@@ -35,8 +35,6 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerSetup_(SEXP);
-extern SEXP _nlmixr2est_saemSharedResid_(SEXP);
-extern SEXP _nlmixr2est_saemSharedResidUpdate_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeTrainCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeElboStepCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -79,6 +77,7 @@ SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
 SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiNumericGrad(SEXP);
+SEXP _nlmixr2est_foceiNFreezeResidGrad(void);
 
 SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
                              SEXP, SEXP, SEXP, SEXP, SEXP,
@@ -186,8 +185,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},
   {"_nlmixr2est_vaeEncoderFwdBwd", (DL_FUNC) &_nlmixr2est_vaeEncoderFwdBwd, 13},
   {"_nlmixr2est_vaeInnerSetup_", (DL_FUNC) &_nlmixr2est_vaeInnerSetup_, 1},
-  {"_nlmixr2est_saemSharedResid_", (DL_FUNC) &_nlmixr2est_saemSharedResid_, 1},
-  {"_nlmixr2est_saemSharedResidUpdate_", (DL_FUNC) &_nlmixr2est_saemSharedResidUpdate_, 3},
   {"_nlmixr2est_vaeInnerUpdatePar_", (DL_FUNC) &_nlmixr2est_vaeInnerUpdatePar_, 2},
   {"_nlmixr2est_vaeTrainCpp_", (DL_FUNC) &_nlmixr2est_vaeTrainCpp_, 11},
   {"_nlmixr2est_vaeElboStepCpp_", (DL_FUNC) &_nlmixr2est_vaeElboStepCpp_, 11},
@@ -261,6 +258,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},
   {"_nlmixr2est_foceiNumericGrad", (DL_FUNC) &_nlmixr2est_foceiNumericGrad, 1},
+  {"_nlmixr2est_foceiNFreezeResidGrad", (DL_FUNC) &_nlmixr2est_foceiNFreezeResidGrad, 0},
   {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},

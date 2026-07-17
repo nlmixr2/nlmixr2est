@@ -483,6 +483,11 @@ struct focei_options {
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
+  bool freezeResidGrad = true; // foceiControl(freezeResidGrad): freeze the ODE (and
+                               // the EBEs) in the outer FD gradient when perturbing a
+                               // residual/error theta -- the default is decided empirically.
+  std::vector<char> residThetaMask; // per-fullTheta flag (1 = residual/err theta), built at setup
+  int nFreezeResidGrad = 0;    // diagnostic: residual-theta FD perturbations that froze the ODE
 };
 
 focei_options op_focei;
@@ -798,22 +803,30 @@ void updateZm(focei_ind *indF){
 
 static inline double getScaleC(int i){
   if (ISNA(op_focei.scaleC[i])) {
+    // The default scaling constant is 1/|initPar|.  When a parameter is
+    // initialized at exactly 0 (e.g. a covariate effect or an additive term)
+    // this is 1/0 = Inf, which clamps to scaleCmax and makes the parameter
+    // effectively unoptimizable: a tiny step in scaled space becomes a huge
+    // step in the parameter, so the line search freezes it at its starting
+    // value.  Fall back to unit scaling when initPar is 0 so a zero-initialized
+    // parameter is still estimated.
+    double aInit = fabs(op_focei.initPar[i]);
     switch (op_focei.xPar[i]){
     case 1: // log
       op_focei.scaleC[i]=1.0;
       break;
     case 2: // diag^2
-      op_focei.scaleC[i]=1.0/fabs(op_focei.initPar[i]);
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     case 3: // exp(diag)
       op_focei.scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      op_focei.scaleC[i] = 1.0/(2.0*fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
       break;
     default:
-      op_focei.scaleC[i]= 1.0/(fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     }
   }
@@ -2692,6 +2705,10 @@ static inline bool thetaReset0(bool forceReset = false) {
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
   LogicalVector adjustEta(op_focei.muRefN);
+  // Actual shift applied to each mu-referenced theta.  For an interior shift
+  // this equals the eta mean (etaM); near a bound the shift is clamped, so the
+  // matching eta re-centering must use the applied shift, not etaM (issue #454).
+  NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
   for (int ii = (int)op_focei.ntheta; ii--;) {
     thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
@@ -2718,10 +2735,30 @@ static inline bool thetaReset0(bool forceReset = false) {
         adjustEta[ii] = false;
       }  else {
         ref = thetaIni[ij] + op_focei.etaM(ii,0);
-        if (thetaDown[ij] < ref && thetaUp[ij] > ref) {
-          thetaIni[ij] = ref;
-          adjustEta[ii] = true;
-          doAdjust = true;
+        if (thetaDown[ij] < thetaUp[ij]) {
+          // Keep the shifted theta inside its (margin-adjusted) bounds instead
+          // of skipping the shift entirely; a clamped, partial shift still moves
+          // the parameter toward the drifting eta mean without landing out of
+          // range (issue #454).  An interior shift is applied exactly as before.
+          bool clamped = false;
+          if (ref <= thetaDown[ij]) {
+            ref = thetaDown[ij];
+            clamped = true;
+          } else if (ref >= thetaUp[ij]) {
+            ref = thetaUp[ij];
+            clamped = true;
+          }
+          double shift = ref - thetaIni[ij];
+          if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
+            appliedShift[ii] = shift;
+            thetaIni[ij] = ref;
+            adjustEta[ii] = true;
+            doAdjust = true;
+          } else {
+            // Already pinned at the bound: leave it be so a parameter that
+            // wants to move past its bound does not force an endless reset.
+            adjustEta[ii] = false;
+          }
         } else {
           adjustEta[ii] = false;
         }
@@ -2741,7 +2778,7 @@ static inline bool thetaReset0(bool forceReset = false) {
     for (int jj = op_focei.neta; jj--; ) {
       if (op_focei.muRef[jj] != -1  && op_focei.muRef[jj] < (int)op_focei.ntheta &&
           adjustEta[jj]) {
-        etaMat(ii, jj) = fInd->eta[jj]-op_focei.etaM(jj,0);
+        etaMat(ii, jj) = fInd->eta[jj]-appliedShift[jj];
       } else {
         etaMat(ii, jj) = fInd->eta[jj];
       }
@@ -2753,6 +2790,47 @@ static inline bool thetaReset0(bool forceReset = false) {
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
             &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
             omegaTheta.begin());
+  // Issue #454: a "bad" optimization step (or a mu-reference shift near a
+  // boundary) can leave a reset theta outside its allowed range.  Project each
+  // estimated theta back into its (margin-adjusted) bounds so the restart never
+  // begins out of range; if the bounds are themselves infeasible (lower >=
+  // upper) stop with an informative error rather than continue silently.
+  bool didClamp = false;
+  CharacterVector thetaNames;
+  bool haveNames = false;
+  {
+    Function loadNamespace2("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2b = loadNamespace2("nlmixr2est");
+    Environment thetaResetEnv = nlmixr2b[".thetaReset"];
+    if (thetaResetEnv.exists("thetaNames") &&
+        TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
+      thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
+      haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
+    }
+  }
+  for (int ii = (int)op_focei.ntheta; ii--;) {
+    if (isFixedTheta(ii)) continue;
+    if (thetaDown[ii] >= thetaUp[ii]) {
+      if (haveNames) {
+        std::string nm = as<std::string>(thetaNames[ii]);
+        stop(_("theta reset cannot keep '%s' within its bounds (lower >= upper); check the model bounds"),
+             nm.c_str());
+      } else {
+        stop(_("theta reset cannot keep theta %d within its bounds (lower >= upper); check the model bounds"),
+             ii + 1);
+      }
+    }
+    if (thetaIni[ii] < thetaDown[ii]) {
+      thetaIni[ii] = thetaDown[ii];
+      didClamp = true;
+    } else if (thetaIni[ii] > thetaUp[ii]) {
+      thetaIni[ii] = thetaUp[ii];
+      didClamp = true;
+    }
+  }
+  if (didClamp) {
+    warning(_("theta reset moved one or more parameters back within their bounds"));
+  }
   thetaReset00(thetaIni, omegaTheta, etaMat);
   return true;
 }
@@ -4322,6 +4400,13 @@ NumericVector foceiNumericGrad(NumericVector theta){
   return ret;
 }
 
+// Diagnostic: number of residual-theta FD perturbations that froze the ODE over
+// the whole fit (0 when freezeResidGrad is off or the model has no err thetas).
+//[[Rcpp::export]]
+int foceiNFreezeResidGrad() {
+  return op_focei.nFreezeResidGrad;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Setup FOCEi functions
 CharacterVector rxParams_(const RObject &obj);
@@ -4973,6 +5058,21 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
+  // freezeResidGrad: mask over fullTheta (ntheta+omegan) marking the residual/error
+  // thetas whose FD perturbation may freeze the ODE (residThetaIdx is 0-based).
+  op_focei.freezeResidGrad = foceiO.containsElementNamed("freezeResidGrad") ?
+    as<bool>(foceiO["freezeResidGrad"]) : true;
+  op_focei.nFreezeResidGrad = 0;
+  op_focei.residThetaMask.assign((size_t)op_focei.ntheta + op_focei.omegan, 0);
+  if (foceiO.containsElementNamed("residThetaIdx") && !Rf_isNull(foceiO["residThetaIdx"])) {
+    IntegerVector residThetaIdx = as<IntegerVector>(foceiO["residThetaIdx"]);
+    for (int ri = 0; ri < residThetaIdx.size(); ++ri) {
+      int idx = residThetaIdx[ri];
+      if (idx >= 0 && idx < (int)op_focei.residThetaMask.size()) {
+        op_focei.residThetaMask[idx] = 1;
+      }
+    }
+  }
   int* tempMixIdx = NULL;
   if (op_focei.mixIdxN > 0) {
     tempMixIdx = R_Calloc(op_focei.mixIdxN, int);
@@ -10176,84 +10276,6 @@ double npResidELS(const arma::mat& postEta) {
     }
   }
   return nll;
-}
-
-// SAEM kernel unification (sharedInner="shared"): per-observation f, r, and
-// conditional log-density at the given per-subject etas, computed through the
-// SHARED FOCEi inner driver (likInner0) instead of SAEM's own res_mod/arResk.
-// Requires the FOCEi inner already set up (vaeInnerSetup_, via
-// .saemSharedInstallStep).  etaMat is nsub x neta (the SAEM conditional-mean
-// etas).  Returns per-observation f, r, ll, id plus the ELS residual objective
-// -- the shared-driver counterpart of SAEM's resMat/user_fn read, for the
-// equivalence gate and, later, the residual M-step / -2LL.
-// [[Rcpp::export]]
-Rcpp::List saemSharedResid_(arma::mat etaMat) {
-  rx = getRxSolve_();
-  int nsub = (int)getRxNsub(rx);
-  int neta = op_focei.neta;
-  if ((int)etaMat.n_cols != neta)
-    stop("saemSharedResid_: etaMat has %d cols, expected neta=%d",
-         (int)etaMat.n_cols, neta);
-  std::vector<double> eta(neta);
-  std::vector<double> fAll, rAll, llAll;
-  std::vector<int> idAll;
-  double nll = 0.0;
-  // residual moment at the conditional-mean etas (for the shared M-step residual
-  // estimate under sharedInner="shared"): additive sum((dv-f)^2), proportional
-  // sum(((dv-f)/f)^2) with the f==0 guard, and the obs count.
-  double sumSq = 0.0, sumSqRel = 0.0; int nMom = 0;
-  for (int i = 0; i < nsub && i < (int)etaMat.n_rows; ++i) {
-    for (int j = 0; j < neta; ++j) eta[j] = etaMat(i, j);
-    double cl = npEvalCondLik(&eta[0], i);   // likInner0 + sum of per-obs llik
-    (void) cl;
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
-    focei_ind *fInd = &(inds_focei[i]);
-    arma::mat fr = grabRFmatFromInner(i, false);   // nObs x 2 (f, r), tbs scale
-    int ko = 0;
-    int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;   // observations only
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0), r = fr(ko, 1);
-      double ll = fInd->llikObs[kk];
-      ko++;
-      fAll.push_back(f); rAll.push_back(r); llAll.push_back(ll);
-      idAll.push_back(i + 1);
-      double rr = (std::isfinite(r) && r > 0.0) ? r : 1.0;
-      double e = f - dv;
-      nll += 0.5 * e * e / rr + 0.5 * std::log(rr) + M_LN_SQRT_2PI;
-      if (std::isfinite(e)) {
-        sumSq += e * e;
-        double denom = (std::fabs(f) <= 1e-6) ? 1.0 : f;   // f==0 guard
-        double rel = e / denom;
-        if (std::isfinite(rel)) sumSqRel += rel * rel;
-        nMom++;
-      }
-    }
-  }
-  return Rcpp::List::create(Rcpp::_["id"] = idAll, Rcpp::_["f"] = fAll,
-                            Rcpp::_["r"] = rAll, Rcpp::_["ll"] = llAll,
-                            Rcpp::_["objf"] = nll,
-                            Rcpp::_["sumSq"] = sumSq, Rcpp::_["sumSqRel"] = sumSqRel,
-                            Rcpp::_["nMom"] = nMom);
-}
-
-// Per-iteration shared-inner residual step (kernel unification): re-parameterize
-// the already-set-up FOCEi inner at the current theta/omega (cheap, no
-// recompile -- vaeInnerUpdateParCore, same as fsaem's in-loop update) and return
-// the per-observation f/r/loglik at the given etas.  This is the callable the
-// SAEM loop uses each iteration under sharedInner="shared" to obtain f/r from the
-// shared driver.  theta is the full ntheta vector; omegaDiag the eta variances.
-// [[Rcpp::export]]
-Rcpp::List saemSharedResidUpdate_(Rcpp::NumericVector theta,
-                                  Rcpp::NumericVector omegaDiag,
-                                  arma::mat etaMat) {
-  arma::vec th(theta.begin(), theta.size(), false);
-  arma::vec om(omegaDiag.begin(), omegaDiag.size(), false);
-  vaeInnerUpdateParCore(th, om);   // re-parameterize the inner at theta/omega
-  return saemSharedResid_(etaMat);
 }
 
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.

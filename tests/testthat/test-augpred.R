@@ -175,6 +175,40 @@ nmTest({
     expect_error(augPred(fit), NA)
   })
 
+  test_that("augPred keeps the fit's original (factor/character) IDs (issue #450)", {
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    dat <- nlmixr2data::theo_sd
+    dat$ID <- paste0("SUBJ-", dat$ID)
+
+    fit <- .nlmixr(one.cmt, dat, est="focei", control=foceiControlFast)
+
+    ap <- augPred(fit)
+
+    # the augPred id column must carry the actual subject ids from the fit,
+    # not the internal integer re-numbering
+    expect_true(is.factor(ap$id))
+    expect_equal(levels(ap$id), fit$idLvl)
+    expect_true(all(grepl("^SUBJ-", levels(ap$id))))
+  })
+
   test_that("augPred with zero etas", {
 
     # Use centralized model from helper-models.R
@@ -185,6 +219,36 @@ nmTest({
                     foceiControlFast)
 
     expect_error(augPred(fit1), NA)
+
+  })
+
+  test_that("augPred with a zero eta used in the prediction (focei, #514)", {
+
+    # #514: the zeroed eta (eta.v) appears in both the ODE and the
+    # residual/prediction (cp = A1/v).  This exercised a code path that
+    # failed for focei with "parameter(s) are required for solving: eta.v".
+    pheno <- function() {
+      ini({
+        tcl <- log(0.008)
+        tv <-  log(0.6)
+        eta.v ~ 0
+        eta.cl ~ 1
+        add.err <- 0.1
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        ke <- cl / v
+        d/dt(A1) = - ke * A1
+        cp = A1 / v
+        cp ~ add(add.err)
+      })
+    }
+
+    fit514 <- .nlmixr(pheno, nlmixr2data::pheno_sd, est = "focei",
+                      foceiControlFast)
+
+    expect_error(augPred(fit514), NA)
 
   })
 })

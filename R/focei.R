@@ -777,8 +777,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
   }
   rxode2::rxProgress(dim(.grd)[1])
+  # Guard the abort so a clean rxProgressStop() below prevents the generic
+  # "Aborted calculation" from masking the informative error we raise here
+  # (issue #515).
+  .progressStopped <- FALSE
   on.exit({
-    rxode2::rxProgressAbort()
+    if (!.progressStopped) rxode2::rxProgressAbort()
   })
   .any.zero <- FALSE
   .all.zero <- TRUE
@@ -796,7 +800,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .ret
   })
   if (.all.zero) {
-    stop("none of the predictions depend on 'ETA'", call. = FALSE)
+    rxode2::rxProgressStop()
+    .progressStopped <- TRUE
+    stop("none of the model predictions depend on a random effect ('ETA'); ",
+         "check that each endpoint's distribution parameter is linked to an ",
+         "eta-varying model quantity (for example 'y ~ dpois(rate)' needs ",
+         "'rate' to be a model-predicted value, not a fixed population parameter)",
+         call. = FALSE)
   }
   if (.any.zero) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
@@ -809,6 +819,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .s$..HdEta <- .ret
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
+  .progressStopped <- TRUE
   .s
 }
 attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO related methods"
@@ -1890,6 +1901,18 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 #attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
 attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
 
+#' @export
+rxUiGet.foceiResidTheta <- function(x, ...) {
+  # 0-based fullTheta indices of the non-fixed residual/error-model thetas
+  # (a non-NA `err` tag).  These do not change the structural prediction `f`,
+  # so the outer FD gradient can freeze the ODE when perturbing them.
+  .ui <- x[[1]]
+  .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+  .resid <- !is.na(.theta$err) & !.theta$fix
+  as.integer(.theta$ntheta[.resid] - 1L)
+}
+attr(rxUiGet.foceiResidTheta, "rstudio") <- c(FALSE, TRUE)
+
 #'  Setup the skip covariate function
 #'
 #'
@@ -1950,6 +1973,9 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
   env$control$printTop <- TRUE
+  # 0-based fullTheta indices of the residual/error thetas the outer FD gradient
+  # may freeze the ODE for (read in foceiSetup_, like impThetaSensIdx).
+  env$control$residThetaIdx <- ui$foceiResidTheta
   env
 }
 
@@ -2153,6 +2179,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
            call.=FALSE)
     }
+    # On a theta-reset restart .ret carries the previous fit's etaObf, whose ID
+    # column foceiEtas() built as a factor of the original subject IDs; coerce it
+    # back to the integer the assertion (and the C++ setup) expect (issue #470).
     if (is.factor(.ret$etaObf$ID)) {
       .ret$etaObf$ID <- as.integer(.ret$etaObf$ID)
     }
@@ -2725,6 +2754,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     }
     assign("est", est, envir=.ret)
+    # The FO/FOI estimation path (fo=TRUE, maxOuterIterations>0) returns the fit
+    # env with an empty `control` binding, so downstream consumers such as
+    # .updateParFixed() would see a NULL control and fall back to defaults
+    # (issue #517).  Populate the raw binding from the fit's control so the
+    # object carries its control (nmObjGetControl.default then surfaces it).
+    if (is.environment(.ret) && !is.null(.control) &&
+          is.null(get0("control", envir=.ret, inherits=FALSE))) {
+      assign("control", .control, envir=.ret)
+    }
     .foceiInstallAnalyticCov(.ret)
     .foceiInstallFdFullCov(.ret)
     .updateParFixed(.ret)
