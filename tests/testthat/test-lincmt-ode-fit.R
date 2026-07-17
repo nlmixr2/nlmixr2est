@@ -84,6 +84,61 @@ nmTest({
     expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4)
   })
 
+  # population-only versions for the nlm family (it has no etas); nlm adds a
+  # theta-sensitivity state per theta, which shifted the linCmt() compartments
+  # the same way the FOCEi eta-sensitivity states did
+  .linPop <- function() {
+    ini({
+      tka <- log(1.57); tcl <- log(2.72); tv <- log(31.5)
+      tke0 <- log(0.5); temax <- log(3)
+      pk.prop <- 0.1; pd.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+      ke0 <- exp(tke0); emax <- exp(temax)
+      C2 <- linCmt()
+      d/dt(ce) <- ke0 * (C2 - ce)
+      eff <- emax * ce
+      C2 ~ prop(pk.prop)
+      eff ~ add(pd.sd)
+    })
+  }
+  .odePop <- function() {
+    ini({
+      tka <- log(1.57); tcl <- log(2.72); tv <- log(31.5)
+      tke0 <- log(0.5); temax <- log(3)
+      pk.prop <- 0.1; pd.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+      ke0 <- exp(tke0); emax <- exp(temax)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - (cl / v) * central
+      C2 <- central / v
+      d/dt(ce) <- ke0 * (C2 - ce)
+      eff <- emax * ce
+      C2 ~ prop(pk.prop)
+      eff ~ add(pd.sd)
+    })
+  }
+
+  test_that("nlm estimates a combined linCmt()/ODE model like the all-ODE model", {
+    withr::with_seed(42, {
+      rxode2::rxSetSeed(42)
+      .d <- .simData()
+    })
+    # solveType="fun" uses no analytic derivatives and so never had the
+    # compartment shift; "grad"/"hessian" add theta-sensitivity states and did
+    for (.st in c("fun", "grad", "hessian")) {
+      .ctl <- nlmControl(print = 0, iterlim = 1, calcTables = FALSE,
+                         solveType = .st)
+      .fLin <- suppressWarnings(nlmixr2(.linPop(), .d, est = "nlm", control = .ctl))
+      .fOde <- suppressWarnings(nlmixr2(.odePop(), .d, est = "nlm", control = .ctl))
+      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4,
+                   info = paste0("solveType=", .st))
+    }
+  })
+
   test_that("focei and saem agree on a combined linCmt()/ODE model", {
     withr::with_seed(42, {
       rxode2::rxSetSeed(42)

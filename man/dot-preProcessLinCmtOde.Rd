@@ -2,7 +2,7 @@
 % Please edit documentation in R/preProcessLinCmtOde.R
 \name{.preProcessLinCmtOde}
 \alias{.preProcessLinCmtOde}
-\title{Translate a mixed `linCmt()`/ODE model to all-ODEs for the FOCEi family}
+\title{Translate a mixed `linCmt()`/ODE model to all-ODEs}
 \usage{
 .preProcessLinCmtOde(ui, est, data, control)
 }
@@ -21,14 +21,15 @@ to be different for each type of estimation method}
 list with the translated ui, or `NULL` when nothing to do
 }
 \description{
-The FOCEi inner model adds an ODE state per eta, and rxode2 requires the
-`linCmt()` compartments to be the last states of the solve
-(`op$linOffset = neq - numLin - numLinSens`).  The extra states therefore
-push depot/central past the compartment numbers the data was translated
-against (`.foceiPreProcessData()` uses the plain model), and a dose silently
-lands in a sensitivity state -- every prediction comes back 0.  Solving the
-linear part as ODEs removes the `linCmt()` block, so the numbering agrees
-again.  SAEM builds no eta-sensitivity states and is left alone.
+rxode2 requires the `linCmt()` compartments to be the last states of the
+solve (`op$linOffset = neq - numLin - numLinSens`), so their compartment
+number is one past the ODE states.  The FOCEi inner model adds an ODE state
+per eta, and the nlm family one per theta, which pushes depot/central past
+the compartment numbers the data was translated against
+(`.foceiPreProcessData()` uses the plain model).  A dose then silently lands
+in a sensitivity state -- every prediction comes back 0.  Solving the linear
+part as ODEs removes the `linCmt()` block, so the numbering agrees again.
+SAEM builds no sensitivity states and is left alone.
 }
 \author{
 Matthew L. Fidler

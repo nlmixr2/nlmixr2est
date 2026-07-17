@@ -490,13 +490,14 @@
 ### Estimation
 
 - Models that combine `linCmt()` with ODEs (for example a solved PK driving an
-  effect-compartment ODE) now estimate correctly with the FOCEi family; the
-  linear compartments are solved as ODEs for those methods.  Previously the
-  FOCEi inner model's eta-sensitivity states shifted `depot`/`central` past the
-  compartment numbers the data was translated against, so the dose silently
-  landed in a sensitivity compartment, every prediction came back `0` and the
-  objective function was meaningless.  `est="saem"` was never affected and is
-  unchanged, as are `linCmt()` models with no other ODE (#286).
+  effect-compartment ODE) now estimate correctly with the FOCEi and nlm
+  families; the linear compartments are solved as ODEs for those methods.
+  Previously the sensitivity compartments those methods add (one per eta for
+  FOCEi, one per theta for nlm) shifted `depot`/`central` past the compartment
+  numbers the data was translated against, so the dose silently landed in a
+  sensitivity compartment, every prediction came back `0` and the objective
+  function was meaningless.  `est="saem"` was never affected and is unchanged,
+  as are `linCmt()` models with no other ODE (#286).
 
 - A model that combines an inter-occasion variability (IOV) term with a zero
   inter-individual variability eta on another parameter (for example

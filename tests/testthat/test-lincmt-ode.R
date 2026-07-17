@@ -53,11 +53,20 @@ nmTest({
     expect_false(.uiIsMixedLinCmtOde(.ode()))
   })
 
-  test_that("the linCmt()/ODE hook only applies to the FOCEi family", {
+  test_that("the linCmt()/ODE hook applies to the methods that add sensitivity states", {
+    # saem/nlme build no sensitivity compartments, so they keep the analytic
+    # linCmt() solution
     expect_null(.preProcessLinCmtOde(.mixed(), "saem", NULL, NULL))
     expect_null(.preProcessLinCmtOde(.mixed(), "nlme", NULL, NULL))
+    # a linCmt() model with no other ODE is never shifted
     expect_null(.preProcessLinCmtOde(.pure(), "focei", NULL, NULL))
-    expect_true(is.list(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL)))
+    expect_null(.preProcessLinCmtOde(.pure(), "nlm", NULL, NULL))
+    # FOCEi family (eta sensitivities) and nlm family (theta sensitivities)
+    for (.e in c("focei", "foce", "fo", "laplace", "agq", "nlm", "nlminb",
+                 "bobyqa", "optim", "n1qn1")) {
+      expect_true(is.list(.preProcessLinCmtOde(.mixed(), .e, NULL, NULL)),
+                  info = .e)
+    }
   })
 
   test_that("the mixed model is translated to ODEs without renumbering compartments", {
