@@ -128,14 +128,25 @@ impmapControl <- function(sigdig=3,
   # C++ kernel (op_focei.impCov); every other token is the post-fit FOCEI
   # covariance, so hand foceiControl a valid token (the estimation pass forces
   # covMethod=0L regardless -- see .impmapFamilyFit).
-  if (length(covMethod) == 1L && !nzchar(covMethod)) {
-    covMethod <- ""
+  .dots <- list(...)
+  .impCov <- isTRUE(.dots$impCov)   # may already be set on a round-tripped control
+  .dots$impCov <- NULL              # internal field; do not forward to foceiControl
+  if (is.character(covMethod)) {
+    if (length(covMethod) == 1L && !nzchar(covMethod)) {
+      covMethod <- ""
+    } else {
+      covMethod <- match.arg(covMethod)
+    }
+    .impCov <- identical(covMethod, "imp")
+    .foceiCovMethod <- if (.impCov) "analytic" else covMethod
   } else {
-    covMethod <- match.arg(covMethod)
+    # round-trip: covMethod is already a resolved foceiControl integer slot;
+    # keep the impCov flag from the incoming control (read above)
+    .foceiCovMethod <- covMethod
   }
-  .impCov <- identical(covMethod, "imp")
-  .foceiCovMethod <- if (.impCov) "analytic" else covMethod
-  .control <- foceiControl(sigdig=sigdig, ..., covMethod=.foceiCovMethod, muModel="lin")
+  .control <- do.call(foceiControl,
+                      c(list(sigdig=sigdig), .dots,
+                        list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
   .control$isample <- as.integer(isample)
   .control$nIter <- as.integer(nIter)
