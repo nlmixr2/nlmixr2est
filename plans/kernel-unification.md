@@ -101,3 +101,35 @@ RISK NOTE: G2 is the first change that mutates the live SAEM kernel state
 (solve switching inside the loop).  The full callable chain (I1-I4, G1) is proven
 to reproduce SAEM's f/r, so the numerical risk is retired; G2's risk is
 state-management (restoring the SAEM solve on every path incl. early returns).
+
+## G2 diagnostic-first recipe (user-chosen; do this before the residual change)
+
+Goal: prove the in-loop solve switch does NOT corrupt SAEM, WITHOUT changing
+results.  The safe acceptance test is bit-identity: `sharedInner="shared"` with
+the diagnostic must equal classic.
+
+1. cfg (R, .saemSharedInstallStep): also pass `cfg$sharedInnerDiag <- 1L`.  cfg
+   already carries `opt`/`evt` (the SAEM solve) -- fsaem reads `x["opt"]`,
+   `x["evt"]`; reuse those for the restore.
+2. C++ inits(): read `sharedInnerDiag` + `sharedInnerEnv` (Environment) into
+   members (mirror the fsaemStep block at saem.cpp:1058).
+3. At the END of an iteration (start with kiter==niter-1 only), if
+   sharedInnerDiag:
+   a. SWITCH to the inner: `vaeInnerSetup_(Environment(sharedInnerEnv))` makes
+      the FOCEi inner (op_focei + rxInner, N subjects) the current solve.
+   b. (optional) compute f via `saemSharedResid_(mpost_phi.cols(i1))` and store
+      max|f_shared - <fit IPRED>| as a diagnostic; f_shared correctness is
+      already proven (I4), so this is belt-and-suspenders.
+   c. RESTORE: `setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N); _rx = getRxSolve_();`
+      (identical to saem.cpp:3652) so the M-step / finalization read the SAEM
+      (N*nmc) solve.
+4. ACCEPTANCE: fit under sharedInner="shared" (diag on) == classic bit-for-bit
+   (same objf/theta/omega).  If not, the switch corrupts state -- fix the
+   restore before proceeding to the residual change (G2 step 3).
+
+Why bit-identity is the right gate: the diagnostic does a no-op switch round
+trip; any difference from classic is pure state corruption from the switch, which
+is exactly what must be ruled out before the residual estimator is changed.
+
+STATUS: infrastructure complete + validated (I1-I4, prop, G1).  G2 is live-kernel
+solve-switching surgery; begin with the bit-identity diagnostic above.

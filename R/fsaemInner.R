@@ -193,6 +193,10 @@
   .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
   .etaMat <- matrix(0.0, .N, .neta)
   cfg$sharedInnerEnv <- .fsaemInnerSetup(ui, data, .etaMat, .fc)
+  # G2 diagnostic (bit-identity): the C++ loop does a no-op inner-solve switch
+  # round trip once (last iteration) to prove the switch does not corrupt the
+  # SAEM solve state -- the fit must stay identical to classic.
+  cfg$sharedInnerDiag <- 1L
   cfg
 }
 
