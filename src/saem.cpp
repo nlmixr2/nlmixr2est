@@ -1351,6 +1351,16 @@ public:
     // flattens the likelihood, preventing the components from separating.  Both
     // gates must follow the reads above so they are not overwritten.
     if (nMix > 1) { nonMuThetaRegress = 0; residWarmStart = 0; }
+    // Split-ETA mixtures (a separate eta per component) typically start with
+    // identical components (tcl1==tcl2) and must differentiate DURING the fit;
+    // fixed membership (mixProbMethod="regress") hard-classified at that
+    // symmetric init would lock in an arbitrary split and never separate.  Fall
+    // back to the robust soft-EM (regularized) for these.
+    if (nMix > 1 && mixProbRegress &&
+        omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+      mixProbRegress = 0;
+      mixProbMethod = 1; // regularized
+    }
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
