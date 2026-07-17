@@ -489,6 +489,19 @@
 
 ### Estimation
 
+- Models that combine `linCmt()` with ODEs (for example a solved PK driving an
+  effect-compartment ODE) now estimate correctly with the FOCEi and nlm
+  families; the linear compartments are solved as ODEs for those methods.
+  Previously the sensitivity compartments those methods add (one per eta for
+  FOCEi, one per theta for nlm) shifted `depot`/`central` past the compartment
+  numbers the data was translated against, so the dose silently landed in a
+  sensitivity compartment, every prediction came back `0` and the objective
+  function was meaningless.  Since the model is then no longer mixing a solved
+  system with ODEs, these fits now warn (recorded in `fit$runInfo`) that the
+  analytic `linCmt()` could not be used.  `est="saem"` was never affected, keeps
+  the analytic `linCmt()` and does not warn, as do `linCmt()` models with no
+  other ODE (#286).
+
 - `est="saem"` no longer estimates a `fix()`ed theta that has no eta attached to
   it; such a parameter now stays at its initial estimate, as it already did for
   the FOCEi family.  The direct phi0 optimization (`nonMuTheta="regress"`, and
