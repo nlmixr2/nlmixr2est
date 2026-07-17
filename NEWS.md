@@ -493,6 +493,11 @@
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so
   `print` maps to it (`print=0` runs quietly, any positive value is verbose);
   an explicit `verbose` is still honored when `print` is not supplied.
+- A bioavailability (`f()`), lag-time (`alag()`), `rate()` or `dur()` applied to
+  the `central` compartment of a first-order absorption `linCmt()` model is now
+  flagged with a warning.  The dose enters the implied `depot` compartment, so
+  such a property on `central` is silently ignored while solving; the warning
+  tells the user to move it to `depot` (nlmixr2/nlmixr2est#358).
 - FOCEi/FOCE models with a trigonometric term whose argument is a compound
   expression divided by something (for example a sinusoidal enterohepatic-cycle
   release `sin(2 * 3.14 * (time - mtime1) / period)`) no longer fail to build
