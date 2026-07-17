@@ -108,7 +108,7 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("fo"), .var.name=.ui$modelName)
   .foceiFamilyControl(env, ..., type="foControl")
   .control <- .ui$control
   .posthoc <- .control$posthoc

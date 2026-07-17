@@ -473,6 +473,14 @@
 
 ### Estimation
 
+- A single-subject / fixed-effect ("N of 1") model -- one whose only random
+  effects are fixed to zero, which are dropped before estimation -- now gives an
+  actionable error when a method that requires random effects (`fo`, `foi`,
+  `saem`, `fsaem`, `nlme`) is used, pointing to methods that can fit it (`focei`,
+  `foce`, or a population method such as `nlminb`, `bobyqa` or `nls`).  The error
+  also keeps the user's original model name instead of reporting the internal
+  `.mod` (issue #493).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic

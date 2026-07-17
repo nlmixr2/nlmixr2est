@@ -107,7 +107,11 @@
   .ini <- as.expression(lotri::as.lotri(.iniDf))
   .ini[[1]] <- quote(`ini`)
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
-  .mod()
+  .newUi <- rxode2::rxUiDecompress(.mod())
+  ## keep the user's original model name (rebuilding via .mod() would otherwise
+  ## report it as '.mod')
+  assign("modelName", ui$modelName, envir=.newUi)
+  .newUi
 }
 #' Remove an eta from the model
 #'
