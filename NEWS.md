@@ -574,6 +574,21 @@
   an integer so a genuinely non-converging fit reports its real reason instead of
   this spurious assertion (#470).
 
+- Fixed the `est = "agq"` quadrature node scaling.  The adaptive Gauss-Hermite
+  nodes were placed without the change-of-variable factor, so increasing `nAGQ`
+  did not converge to the marginal likelihood -- it converged to a wrong value
+  (still better than Laplace, so the objective looked reasonable).  The nodes are
+  Gauss-Hermite for the `e^{-x^2}` kernel while the integral has an `e^{-z'z/2}`
+  kernel, so they belong at `sqrt(2) * chol(Ht)^-1 * x` with an `exp(x'x)` untilt.
+  With the fix the objective converges to the exact marginal likelihood as `nAGQ`
+  grows.  Every `nAGQ > 1` objective value (and any standard errors derived from
+  it) changes; `focei`/`foce`/`fo`/`laplace` are unaffected.
+
+- The analytic covariance (`covType = "analytic"`) now falls back to finite
+  differences under `cholSECov = TRUE`: the covariance step re-factors the eta
+  Hessian with the generalized Cholesky, which for a non-positive-definite `Ht`
+  differs from the `chol()` the analytic observed information assumes.
+
 - Fixed the `fast = TRUE` analytic gradient for models whose residual variance
   depends on the prediction (`prop`, `add+prop`, `combined1`, `pow`, `add+pow`):
   a determinant chain-rule aliasing injected a spurious term.

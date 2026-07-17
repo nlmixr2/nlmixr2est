@@ -534,6 +534,12 @@
     # linCmt() has no symbolic state sensitivities for the augmented model
     if (isTRUE(any(ui$predDf$linCmt)))
       return(.foceiAnalyticFallback("a linCmt() model"))
+    # foceiCalcCov re-sets every subject's doChol from cholSECov (inner.cpp:7175) before the
+    # cov step, so the objective's log|Ht| then comes from the generalized Cholesky, not
+    # chol().  For a non-PD Ht that is a different quantity than the analytic R differentiates.
+    # (cholSEOpt is the OPTIMIZATION-phase flag and does not affect the cov step.)
+    if (isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE)))
+      return(.foceiAnalyticFallback("cholSECov=TRUE (the covariance step re-factors the eta Hessian)"))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
     # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
     # it only matters when interaction=0 (FOCEI always uses the live conditional R).
@@ -2183,6 +2189,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt)))
     return(.foceiAnalyticFallback("a linCmt() model"))
+  # see .foceiCalcRanalytic: cholSECov (not cholSEOpt) re-factors Ht at cov time
+  if (isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE)))
+    return(.foceiAnalyticFallback("cholSECov=TRUE (the covariance step re-factors the eta Hessian)"))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
