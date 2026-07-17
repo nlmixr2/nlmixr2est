@@ -561,6 +561,8 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
                             NumericMatrix mprior, NumericMatrix etaCur, int nchain,
                             int nsweep, int cores, NumericVector lower, NumericVector upper,
                             IntegerVector nbd, double seed, int nRetry, int kiter);
+// inner.cpp: sets up the FOCEi inner (op_focei + rxInner) as the current solve.
+RObject vaeInnerSetup_(Environment e);
 
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
 // via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
@@ -1058,6 +1060,13 @@ public:
       if (x.containsElementNamed("fsaemStep")) {
         fsaemStepFn = x["fsaemStep"];
         fsaemSaemOpt = as<List>(x["opt"]);
+        fsaemSaemEvt = x["evt"];
+      }
+      if (x.containsElementNamed("sharedInnerDiag") &&
+          x.containsElementNamed("sharedInnerEnv")) {
+        sharedInnerDiag = as<int>(x["sharedInnerDiag"]);
+        sharedInnerEnv = x["sharedInnerEnv"];
+        fsaemSaemOpt = as<List>(x["opt"]);   // reuse for the solve restore
         fsaemSaemEvt = x["evt"];
       }
       // C++-native direct-call fields (no-covariate path): the loop calls
@@ -3315,6 +3324,17 @@ public:
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
+      // sharedInner="shared" G2 diagnostic: once (last EM iteration) switch the
+      // global solve to the FOCEi inner and back, doing nothing with it, to prove
+      // the switch does not corrupt the SAEM solve state -- the fit must remain
+      // bit-identical to classic.  Restore mirrors the fsaem step (saem.cpp:3652).
+      if (sharedInnerDiag && kiter == (unsigned int)(niter - 1) &&
+          !Rf_isNull(sharedInnerEnv)) {
+        Rcpp::Environment _ienv(sharedInnerEnv);
+        vaeInnerSetup_(_ienv);                       // -> FOCEi inner is current
+        setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N); // <- restore SAEM (N*nmc) solve
+        _rx = getRxSolve_();
+      }
     }//kiter
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
@@ -3364,6 +3384,10 @@ private:
   RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
   List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
   RObject fsaemSaemEvt = R_NilValue;// x["evt"]
+  // sharedInner="shared" G2 diagnostic: no-op inner-solve switch round trip to
+  // prove the switch does not corrupt the SAEM solve (fit must equal classic).
+  RObject sharedInnerEnv = R_NilValue;
+  int sharedInnerDiag = 0;
   // C++-native direct-call state (no-covariate path)
   int fsaemNoCov = 0;
   RObject fsaemInnerEnv = R_NilValue;

@@ -99,6 +99,35 @@ test_that("shared inner driver reproduces a converged SAEM fit's IPRED / r", {
   expect_lt(max(abs(.res2$f - .res$f)), 1e-3)
 })
 
+test_that("sharedInner='shared' in-loop solve switch is bit-identical to classic (G2 diagnostic)", {
+  skip_on_cran()
+
+  # G2 diagnostic: sharedInner="shared" does a no-op switch of the global solve
+  # to the FOCEi inner and back once (last EM iteration).  The switch must NOT
+  # corrupt the SAEM solve state -- the fit must be bit-for-bit identical to
+  # classic, proving the solve-switch (the risky part of the kernel unification)
+  # is safe.
+  m <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.04); tv <- log(0.5); eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  d <- nlmixr2data::theo_sd
+  .grab <- function(si) {
+    .f <- suppressWarnings(nlmixr2(m, d, est = "saem",
+      control = saemControl(nBurn = 100, nEm = 50, print = 0, seed = 42, sharedInner = si)))
+    c(objf = as.numeric(.f$objf), fixef(.f))
+  }
+  .cl <- .grab("classic")
+  .sh <- .grab("shared")
+  expect_equal(unname(.sh), unname(.cl), tolerance = 1e-10)
+})
+
 test_that("shared inner driver handles a PROPORTIONAL error model (r = (prop.sd*f)^2)", {
   skip_on_cran()
 
