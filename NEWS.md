@@ -515,6 +515,13 @@
 
 ### Estimation and convergence
 
+- A FOCEI fit that hits a theta reset and then restarts no longer aborts with
+  `Assertion on 'fitEnv$etaObj$ID' failed: Must be of type 'integer', not
+  'factor'`.  The restart re-validated the previous attempt's `etaObf`, whose
+  `ID` column is a factor of the original subject IDs; it is now coerced back to
+  an integer so a genuinely non-converging fit reports its real reason instead of
+  this spurious assertion (#470).
+
 - Fixed the `fast = TRUE` analytic gradient for models whose residual variance
   depends on the prediction (`prop`, `add+prop`, `combined1`, `pow`, `add+pow`):
   a determinant chain-rule aliasing injected a spurious term.
