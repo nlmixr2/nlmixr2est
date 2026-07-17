@@ -1275,7 +1275,15 @@ static inline double foceiOfv0(double *theta); // fwd
 // then snapshot.  freezeOde is left off; numericGrad enables it per residual cpar.
 static void foceiResidFreezeBuildAt(double *theta) {
   op_focei.freezeOde = false;
+  // This base solve happens inside numericGrad, so it must not mutate outer
+  // state: with calcGrad off it reaches the theta-reset / mu-group / objective-
+  // recalc sites, and an ETA-drift reset raised here restarts the fit on every
+  // gradient (issue #641 fits then die on "maximum number of theta resets").
+  // calcGrad also matches how the perturbed evaluations below are solved.
+  int calcGrad0 = op_focei.calcGrad;
+  op_focei.calcGrad = 1;
   foceiOfv0(theta);
+  op_focei.calcGrad = calcGrad0;
   foceiResidFreezeSnapshot();
 }
 

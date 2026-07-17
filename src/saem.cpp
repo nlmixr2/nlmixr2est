@@ -572,6 +572,10 @@ static double gPhi0ObjR(Rcpp::NumericVector p);
 // gPhi0Work is the full phi0 vector, gPhi0Coord the coordinate optimize() varies.
 static arma::vec gPhi0Work;
 static int gPhi0Coord = 0;
+// Free (non-FIXED) phi0 coordinates the bounded optimizer varies; gPhi0Full holds
+// the full phi0 vector so FIXED coordinates keep their ini value in the objective.
+static arma::vec gPhi0Full;
+static std::vector<int> gPhi0FreeIx;
 static double gPhi0Obj1DR(double x);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
@@ -711,6 +715,25 @@ public:
 
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
+    // A user-FIXED phi0 theta must not be touched here.  Once this refinement
+    // owns phi0 the stochastic update that restores MCOV0(fixedIx0) is skipped
+    // (skipStochPhi0), so anything this function writes to a fixed entry is
+    // never put back and the theta drifts off its ini value.  fixedIx0 indexes
+    // phi0 columns (refinePhi0Lik only handles the intercept-only phi0 case).
+    std::vector<bool> phi0Fix((size_t)nphi0, false);
+    for (unsigned int j = 0; j < fixedIx0.n_elem; ++j) {
+      if (fixedIx0(j) < (unsigned int)nphi0) phi0Fix[(size_t)fixedIx0(j)] = true;
+    }
+    gPhi0FreeIx.clear();
+    for (int c = 0; c < nphi0; ++c) {
+      if (!phi0Fix[(size_t)c]) gPhi0FreeIx.push_back(c);
+    }
+    if (gPhi0FreeIx.empty()) return;
+    // Snapshot the fixed MCOV0 entries: the closing least-squares update rewrites
+    // all of MCOV0 from mprior_phi0, which redistributes a fixed theta's value
+    // across the design even when its coordinate never moved.
+    vec mcov0Fixed;
+    if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
     // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
     // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
     if (!Rf_isNull(fsaemStepFn)) {
@@ -779,6 +802,7 @@ public:
       Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
       for (int sweep = 0; sweep < 2; sweep++) {
         for (int c = 0; c < nphi0; c++) {
+          if (phi0Fix[(size_t)c]) continue;
           if (!(hi[c] > lo[c])) continue;
           gPhi0Coord = c;
           Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
@@ -793,10 +817,23 @@ public:
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gPhi0ObjR);
-      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                                  Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi);
+      // Optimize only the free coordinates: gPhi0ObjR expands them back into
+      // gPhi0Full, which holds the FIXED coordinates at their ini values.
+      gPhi0Full.set_size(nphi0);
+      for (int c = 0; c < nphi0; c++) gPhi0Full[c] = par0[c];
+      int nFree = (int)gPhi0FreeIx.size();
+      Rcpp::NumericVector parFree(nFree), loFree(nFree), hiFree(nFree);
+      for (int fi = 0; fi < nFree; fi++) {
+        int c = gPhi0FreeIx[(size_t)fi];
+        parFree[fi] = par0[c];
+        loFree[fi] = lo[c];
+        hiFree[fi] = hi[c];
+      }
+      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
+                                  Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree);
       Rcpp::NumericVector rx = ret["x"];
-      for (int c = 0; c < nphi0; c++) xmin[c] = rx[c];
+      for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
+      for (int fi = 0; fi < nFree; fi++) xmin[gPhi0FreeIx[(size_t)fi]] = rx[fi];
     }
     _saemFreezeOde = false;
     for (int c = 0; c < nphi0; c++) {
@@ -804,6 +841,7 @@ public:
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
     MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+    if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
   }
 
   void set_fn(user_funct f) {
@@ -4079,7 +4117,10 @@ private:
 
 // phi0 objective trampoline for the general-likelihood direct optimization.
 static double gPhi0ObjR(Rcpp::NumericVector p) {
-  return gPhi0Self->phi0Objective(p.begin());
+  for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+    gPhi0Full[gPhi0FreeIx[i]] = p[i];
+  }
+  return gPhi0Self->phi0Objective(gPhi0Full.memptr());
 }
 
 static double gPhi0Obj1DR(double x) {
