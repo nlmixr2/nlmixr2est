@@ -564,6 +564,12 @@
   (e.g. adding the focei objective or CWRES), so `fit |> ini(bsva ~ 0.1)`
   works; the nested call used to wipe the restore info held in a global (#741).
 
+- `augPred()` now works on a `focei` fit whose model has a zero-fixed eta that
+  appears in the prediction (e.g. `eta.v ~ 0` used in both the ODE and the
+  residual), instead of erroring with `parameter(s) are required for solving:
+  eta.v`; the simulation model drops the zero eta consistently with `saem`
+  (#514).
+
 - `laplace`/`agq` family fits label their `$objDf` row `Laplace`/`AGQ<n>`
   (matching `$ofvType`) instead of `FOCEi`; previously the default
   `interaction=TRUE` made the interaction label win over the quadrature one.
