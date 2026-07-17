@@ -323,7 +323,12 @@ nlmixr2Est0 <- function(env, ...) {
   # Now that the fit is fully finalized, recompute at the converged estimates
   # (see .foceiRecomputeBaseEst for the est -> base-model mapping).
   if (inherits(.ret, "nlmixr2FitCore")) {
+    # not every method assigns env$est (nlme/saem set it on the fit only), so
+    # fall back to the finalized fit's est
     .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
+    if (length(.estName) != 1L || !nzchar(.estName)) {
+      .estName <- tryCatch(as.character(.ret$est), error = function(e) "")
+    }
     if (length(.estName) == 1L &&
           !is.null(.foceiRecomputeBaseEst(.estName))) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
