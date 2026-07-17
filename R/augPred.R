@@ -168,6 +168,12 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   }
 
   .stk$id <- .sim$id
+  # rxSolve returns integer-coded ids; restore the fit's original ID labels
+  # (e.g. character/factor subject ids) so augPred identifies the actual subject
+  .idLvl <- fit$idLvl
+  if (!is.null(.idLvl) && is.factor(.stk$id)) {
+    levels(.stk$id) <- .idLvl[as.integer(levels(.stk$id))]
+  }
   .stk$time <- .sim$time
   .stk$cmt <- as.integer(.sim$CMT)
   .ipredModel <- .augPredIpredModel(fit)
