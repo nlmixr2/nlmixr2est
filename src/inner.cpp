@@ -10198,6 +10198,10 @@ Rcpp::List saemSharedResid_(arma::mat etaMat) {
   std::vector<double> fAll, rAll, llAll;
   std::vector<int> idAll;
   double nll = 0.0;
+  // residual moment at the conditional-mean etas (for the shared M-step residual
+  // estimate under sharedInner="shared"): additive sum((dv-f)^2), proportional
+  // sum(((dv-f)/f)^2) with the f==0 guard, and the obs count.
+  double sumSq = 0.0, sumSqRel = 0.0; int nMom = 0;
   for (int i = 0; i < nsub && i < (int)etaMat.n_rows; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = etaMat(i, j);
     double cl = npEvalCondLik(&eta[0], i);   // likInner0 + sum of per-obs llik
@@ -10220,11 +10224,20 @@ Rcpp::List saemSharedResid_(arma::mat etaMat) {
       double rr = (std::isfinite(r) && r > 0.0) ? r : 1.0;
       double e = f - dv;
       nll += 0.5 * e * e / rr + 0.5 * std::log(rr) + M_LN_SQRT_2PI;
+      if (std::isfinite(e)) {
+        sumSq += e * e;
+        double denom = (std::fabs(f) <= 1e-6) ? 1.0 : f;   // f==0 guard
+        double rel = e / denom;
+        if (std::isfinite(rel)) sumSqRel += rel * rel;
+        nMom++;
+      }
     }
   }
   return Rcpp::List::create(Rcpp::_["id"] = idAll, Rcpp::_["f"] = fAll,
                             Rcpp::_["r"] = rAll, Rcpp::_["ll"] = llAll,
-                            Rcpp::_["objf"] = nll);
+                            Rcpp::_["objf"] = nll,
+                            Rcpp::_["sumSq"] = sumSq, Rcpp::_["sumSqRel"] = sumSqRel,
+                            Rcpp::_["nMom"] = nMom);
 }
 
 // Per-iteration shared-inner residual step (kernel unification): re-parameterize
