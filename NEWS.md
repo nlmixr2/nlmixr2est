@@ -489,6 +489,17 @@
 
 ### Estimation
 
+- `est="saem"` no longer estimates a `fix()`ed theta that has no eta attached to
+  it; such a parameter now stays at its initial estimate, as it already did for
+  the FOCEi family.  The direct phi0 optimization (`nonMuTheta="regress"`, and
+  general-likelihood models) takes over phi0 partway through the fit and skips
+  the update that restores fixed values, so a fixed non-mu-referenced theta drifted
+  off its initial estimate.  Estimates of non-fixed parameters are unchanged.
+- `foceiControl(freezeResidGrad=TRUE)` (the default) no longer makes a fit die with
+  "maximum number of theta resets (10) exceeded".  The base solve that caches the
+  states/EBEs for the frozen gradient ran without the gradient flag set, so an
+  ETA-drift theta reset raised inside a gradient restarted the whole fit -- on every
+  gradient, until the reset limit tripped (#641).
 - A model that combines an inter-occasion variability (IOV) term with a zero
   inter-individual variability eta on another parameter (for example
   `eta.ka ~ 0` alongside `iov.cl ~ 0.1 | occ`) no longer fails with "initial
