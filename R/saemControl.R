@@ -231,11 +231,16 @@
 #'     machinery (its own `res_mod` handling of add/prop/pow/Box-Cox/AR
 #'     error models).
 #'
-#'   * `"shared"`: reuse the shared FOCEI inner driver (`likInner0`), the
-#'     same endpoint-agnostic engine used by FOCEI and the nonparametric
-#'     methods, so residual/prediction/likelihood logic is not duplicated.
-#'     Intended to be numerically equivalent to `"classic"`; opt-in while
-#'     it is validated.
+#'   * `"shared"`: estimate the residual through the shared FOCEI inner
+#'     driver (`likInner0`), the same endpoint-agnostic engine used by FOCEI
+#'     and the nonparametric methods, instead of the duplicated `res_mod`
+#'     machinery.  Each EM iteration it evaluates the inner at the
+#'     conditional-mean etas and SA-blends the residual moment into the
+#'     error parameters.  A distinct estimator (per-subject conditional mean,
+#'     not the `N*nmc` MCMC chains) but near-equivalent to `"classic"`
+#'     (structural to ~0.01-0.03, residual SD to ~1% on theophylline for
+#'     add/prop error).  Prototype: single add/prop/combined continuous
+#'     endpoint, no mixtures; opt-in while it is broadened.
 #'
 #' @param nonMuTheta Controls how a population `theta` that is not
 #'   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
