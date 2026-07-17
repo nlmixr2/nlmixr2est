@@ -197,6 +197,17 @@
   # round trip once (last iteration) to prove the switch does not corrupt the
   # SAEM solve state -- the fit must stay identical to classic.
   cfg$sharedInnerDiag <- 1L
+  # theta-position mapping (ntheta order) so the C++ loop can build the full
+  # THETA vector for the inner from the current structural (phiPop) + residual
+  # (ares/bres) estimates -- same construction the fast kernel uses.
+  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "err", "condition")]
+  .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
+  .structPos <- which(is.na(.thetaDf$err))
+  .residPos <- which(!is.na(.thetaDf$err))
+  cfg$sharedStructPos  <- as.integer(.structPos - 1L)
+  cfg$sharedResidPos   <- as.integer(.residPos - 1L)
+  cfg$sharedResidIsAdd <- as.integer(.thetaDf$err[.residPos] == "add")
+  cfg$sharedResidEp    <- as.integer(match(.thetaDf$condition[.residPos], ui$predDf$cond) - 1L)
   cfg
 }
 

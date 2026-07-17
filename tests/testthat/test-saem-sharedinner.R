@@ -99,14 +99,15 @@ test_that("shared inner driver reproduces a converged SAEM fit's IPRED / r", {
   expect_lt(max(abs(.res2$f - .res$f)), 1e-3)
 })
 
-test_that("sharedInner='shared' in-loop solve switch is bit-identical to classic (G2 diagnostic)", {
+test_that("sharedInner='shared' residual estimator is asymptotically equivalent to classic", {
   skip_on_cran()
 
-  # G2 diagnostic: sharedInner="shared" does a no-op switch of the global solve
-  # to the FOCEi inner and back once (last EM iteration).  The switch must NOT
-  # corrupt the SAEM solve state -- the fit must be bit-for-bit identical to
-  # classic, proving the solve-switch (the risky part of the kernel unification)
-  # is safe.
+  # sharedInner="shared" estimates the residual params from the shared FOCEi
+  # inner driver at the conditional-mean etas each EM iteration (retiring
+  # arResk's role).  This is a distinct-but-asymptotically-equivalent estimator:
+  # the STRUCTURAL params converge to the classic fit and the residual to the
+  # conditional-mean moment (close, not bit-for-bit).  The proven-safe in-loop
+  # solve switch underpins it.
   m <- function() {
     ini({ tka <- log(1.5); tcl <- log(0.04); tv <- log(0.5); eta.cl ~ 0.1; add.sd <- 0.7 })
     model({
@@ -120,12 +121,18 @@ test_that("sharedInner='shared' in-loop solve switch is bit-identical to classic
   d <- nlmixr2data::theo_sd
   .grab <- function(si) {
     .f <- suppressWarnings(nlmixr2(m, d, est = "saem",
-      control = saemControl(nBurn = 100, nEm = 50, print = 0, seed = 42, sharedInner = si)))
-    c(objf = as.numeric(.f$objf), fixef(.f))
+      control = saemControl(nBurn = 200, nEm = 150, print = 0, seed = 42, sharedInner = si)))
+    fixef(.f)
   }
   .cl <- .grab("classic")
   .sh <- .grab("shared")
-  expect_equal(unname(.sh), unname(.cl), tolerance = 1e-10)
+  # structural params (tka, tcl, tv) agree closely -- the key asymptotic
+  # equivalence.  The residual (add.sd) is the conditional-mean moment, a
+  # distinct estimator that differs from the chain-averaged SSR by Jensen (f is
+  # nonlinear in eta), so it gets a wider band.
+  .struct <- c("tka", "tcl", "tv")
+  expect_lt(max(abs(.sh[.struct] - .cl[.struct])), 0.1)
+  expect_lt(abs(.sh[["add.sd"]] - .cl[["add.sd"]]) / .cl[["add.sd"]], 0.25)
 })
 
 test_that("shared inner driver handles a PROPORTIONAL error model (r = (prop.sd*f)^2)", {
