@@ -12212,6 +12212,106 @@ RObject vaeInnerFree_() {
   return R_NilValue;
 }
 
+// ===========================================================================
+// General FOCE-family per-subject log-likelihood (issue #414): a public
+// load/run/unload wrapper around the FOCEi inner problem (vaeInnerSetup_ /
+// npEvalCondLik / vaeInnerFree_), for MCMC/SAMBA-style callers that need
+// individual log-likelihoods outside a fit.  The single-load guard lives here
+// (not in vaeInnerSetup_) so the internal advi/vae/npag paths are unaffected.
+static bool foceiLikLoaded = false;
+
+//[[Rcpp::export]]
+RObject foceiLikLoad_(Environment e) {
+  if (foceiLikLoaded)
+    stop("a general likelihood system is already loaded; call foceiLikUnload() first");
+  RObject initPar = vaeInnerSetup_(e);
+  foceiLikLoaded = true;
+  return initPar;
+}
+
+//[[Rcpp::export]]
+RObject foceiLikUnload_() {
+  vaeInnerFree_();
+  foceiLikLoaded = false;
+  return R_NilValue;
+}
+
+// Write a new estimation-scale parameter vector (length npars, the FOCEi
+// optimizer parameterization) into the loaded system and force a re-solve --
+// same mechanism as vaeInnerUpdateParCore's tail, but through the full
+// updateTheta() so the complete (possibly non-diagonal) Omega block is handled.
+//[[Rcpp::export]]
+RObject foceiLikSetTheta_(NumericVector theta) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  if ((int)theta.size() != (int)op_focei.npars)
+    stop("theta length %d != number of estimated parameters %d",
+         (int)theta.size(), (int)op_focei.npars);
+  std::vector<double> par(theta.begin(), theta.end());
+  updateTheta(par.data());
+  // likInner0 short-circuits on an unchanged eta (fInd->oldEta), only safe while
+  // theta/omega are fixed -- force a re-solve after a theta change.
+  rx = getRxSolve_();
+  for (int id = getRxNsubAndMix(rx); id--;) inds_focei[id].setup = 0;
+  return R_NilValue;
+}
+
+// Evaluate the per-id log-likelihood at the supplied etas, parallel over ids.
+// retType 0 = "overall" individual joint log density (conditional data log-lik +
+// the fully-normalized Gaussian eta prior), retType 1 = "data" conditional
+// log-lik log p(y_i | eta_i) (no Omega prior).  Both are built from
+// npEvalCondLik (a known +log conditional likelihood) so the sign convention is
+// unambiguous.  Parallel discipline copied from vaeInnerLikCore (per-thread
+// rxode2 solve slot, serial-outer mixture components, no R API in the loop).
+//[[Rcpp::export]]
+NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  NumericVector out(nid);
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  cores = min2(cores, getOpCores(op));
+  int nsub = (int)getRxNsub(rx);
+  int nMix = (nsub > 0 && nid % nsub == 0) ? nid / nsub : 0;
+  if (nMix == 0) { nsub = nid; nMix = 1; cores = 1; } // unexpected shape: serial
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) {
+    sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+  }
+  for (int m = 0; m < nMix; ++m) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; ++i) {
+      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      int id = base + m * nsub;
+      std::vector<double> eta(neta);
+      for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
+      // log p(eta) = -0.5 eta' Om^-1 eta + 0.5 log|Om^-1| - 0.5*neta*log(2pi);
+      // logDetOmegaInv5 = 0.5 log|Om^-1|, M_LN_SQRT_2PI = 0.5 log(2pi).
+      double v = npEvalCondLik(&eta[0], id);
+      if (retType == 0 && neta > 0 && std::isfinite(v)) {
+        arma::vec ev(&eta[0], neta);
+        double q = arma::as_scalar(ev.t() * op_focei.omegaInv * ev);
+        v += -0.5 * q + op_focei.logDetOmegaInv5 - (double)neta * M_LN_SQRT_2PI;
+      }
+      out[id] = v;
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(-1);
+#endif
+    }
+  }
+  if (doParallel) {
+    _innerParallel.store(0, std::memory_order_release);
+    sortIds(rx, 0);
+  }
+  return out;
+}
+
 
 // ---------------------------------------------------------------------------
 // VAE training loop (est="vae"), fully in C++.  This is a straight port of the
