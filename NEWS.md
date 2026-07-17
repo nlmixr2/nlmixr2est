@@ -475,6 +475,13 @@
 
 ### Estimation
 
+- A single-subject / fixed-effect ("N of 1") model -- one whose only random
+  effects are fixed to zero, which are dropped before estimation -- now gives an
+  actionable error when a method that requires random effects (`fo`, `foi`,
+  `saem`, `fsaem`, `nlme`) is used, pointing to methods that can fit it (`focei`,
+  `foce`, or a population method such as `nlminb`, `bobyqa` or `nls`).  The error
+  also keeps the user's original model name instead of reporting the internal
+  `.mod` (issue #493).
 - A focei model whose predictions do not depend on any random effect (for
   example `y ~ dpois(rate)` where `rate` is a fixed population parameter rather
   than a model-predicted value) no longer reports the generic "Aborted
