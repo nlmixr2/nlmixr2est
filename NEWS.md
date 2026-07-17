@@ -477,6 +477,15 @@
 
 ### Estimation
 
+- A model that combines an inter-occasion variability (IOV) term with a zero
+  inter-individual variability eta on another parameter (for example
+  `eta.ka ~ 0` alongside `iov.cl ~ 0.1 | occ`) no longer fails with "initial
+  'omega' matrix inverse is non-positive definite".  With IOV present the omega
+  is a per-condition list, so the zero-eta detector could not read the eta names
+  and left the zero eta in the matrix, making it singular; the zero eta is now
+  detected and removed as usual.  Restoring the original model after such a fit
+  also no longer errors for `est="saem"` (including `table=list(cwres=TRUE)`),
+  where the IOV eta is re-expressed as per-occasion id-level etas (#627).
 - `est="saem"` no longer collapses subjects that combine two dosing episodes with
   overlapping clock times separated by an `evid=4` reset -- for example a crossover
   where an IV arm and a depot (`f(depot)`) arm share the same times.  SAEM solves
