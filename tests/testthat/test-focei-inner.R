@@ -114,5 +114,46 @@ nmTest({
     expect_equal(c("tka", "tcl", "tv", "add.sd"), row.names(fit$parFixedDf))
   })
 
+  test_that("focei model with sine over a compound argument builds (#513)", {
+    # A trig function whose argument is a compound expression divided by
+    # something (here 2*3.14*(time-mtime1)/period) used to lose its argument in
+    # the symengine round-trip, emitting sin()/cos() with no argument and
+    # failing to compile ("too few arguments to function 'sin'").  Requires the
+    # rxFromSE fix in rxode2; skip on an rxode2 that still drops the argument.
+    skip_if(rxode2::rxFromSE("sin((a-b)/c)") == "sin()",
+            "installed rxode2 predates the rxFromSE compound-argument fix")
+
+    ehc <- function() {
+      ini({
+        tKa <- log(10)
+        tCl <- log(93794.73)
+        tV <- log(973551.9)
+        tKemp <- log(30)
+        tmtime1 <- log(1)
+        tperiod <- 6
+        add.err <- c(0, 0.01)
+        prop.err <- c(0, 0.2)
+        eta.Ka ~ 0.1
+        eta.mtime1 ~ 0.1
+      })
+      model({
+        Ka <- exp(tKa + eta.Ka)
+        Cl <- exp(tCl)
+        V <- exp(tV)
+        Kemp <- exp(tKemp)
+        mtime1 <- exp(tmtime1 + eta.mtime1)
+        period <- tperiod
+        SINE <- sin(2 * 3.14 * (time - mtime1) / period)
+        EHC <- ifelse(SINE > 0, SINE, 0)
+        d/dt(depot) = -Ka * depot + Kemp * GB * EHC
+        d/dt(center) = Ka * depot - Cl / V * center
+        d/dt(GB) = -Kemp * GB * EHC
+        Cp <- center / V
+        Cp ~ add(add.err) + prop(prop.err)
+      })
+    }
+    f <- suppressMessages(ehc())
+    expect_error(f$foceiModel, NA)
+  })
 
 })

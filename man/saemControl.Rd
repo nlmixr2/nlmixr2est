@@ -51,7 +51,6 @@ saemControl(
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
-  sharedInner = c("classic", "shared"),
   nonMuTheta = c("regress", "eta"),
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
@@ -367,25 +366,6 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     sign) but still not reliable -- it often settles at a safety-floor
     value rather than the true variance. Prefer `"parallel"` unless
     specifically evaluating this method.}
-
-\item{sharedInner}{Controls how SAEM computes individual predictions
-  (`f`), residual variances (`r`), and per-observation likelihood
-  contributions.
-
-  * `"classic"` (default): the historic SAEM per-endpoint residual
-    machinery (its own `res_mod` handling of add/prop/pow/Box-Cox/AR
-    error models).
-
-  * `"shared"`: estimate the residual through the shared FOCEI inner
-    driver (`likInner0`), the same endpoint-agnostic engine used by FOCEI
-    and the nonparametric methods, instead of the duplicated `res_mod`
-    machinery.  Each EM iteration it evaluates the inner at the
-    conditional-mean etas and SA-blends the residual moment into the
-    error parameters.  A distinct estimator (per-subject conditional mean,
-    not the `N*nmc` MCMC chains) but near-equivalent to `"classic"`
-    (structural to ~0.01-0.03, residual SD to ~1% on theophylline for
-    add/prop error).  Prototype: single add/prop/combined continuous
-    endpoint, no mixtures; opt-in while it is broadened.}
 
 \item{nonMuTheta}{Controls how a population `theta` that is not
   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
