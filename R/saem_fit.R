@@ -120,7 +120,7 @@
                        resFixed,
                        ue,
                        mixProb = numeric(0),
-                       mixProbMethod = c("regularized", "annealed", "regress"),
+                       mixProbMethod = c("regress", "regularized", "annealed"),
                        mixProbStepExp = 1,
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),

@@ -248,7 +248,7 @@
                         resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
                         mixProb=ui$saemMixProb,
-                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
+                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regress"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
@@ -275,7 +275,7 @@
     # mixProbMethod="regress": fix per-subject mixture membership (hard classify
     # once) instead of the soft-EM responsibility step.
     .cfg$mixProbRegress <- as.integer(identical(
-      rxode2::rxGetControl(ui, "mixProbMethod", "regularized"), "regress"))
+      rxode2::rxGetControl(ui, "mixProbMethod", "regress"), "regress"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
