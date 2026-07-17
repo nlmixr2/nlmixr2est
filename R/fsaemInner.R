@@ -174,7 +174,8 @@
 .saemSharedInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
     .minfo(paste0("sharedInner='shared' prototype not yet supported for this model ",
-                  "(needs a single additive-error continuous endpoint); using classic residuals"))
+                  "(needs a single add/prop/combined continuous endpoint, no mixtures); ",
+                  "using classic residuals"))
     cfg$sharedInner <- "classic"
     return(cfg)
   }
