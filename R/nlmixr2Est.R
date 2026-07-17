@@ -69,7 +69,14 @@ nlmixr2AllEst <- function() {
 #' @export
 nlmixr2Est.default <- function(env, ...) {
   .curEst <- class(env)[1]
-  stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",
+  .lines <- .nlmixr2EstTypeLines(current=.curEst)
+  if (length(.lines) == 0L) {
+    stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '",
+         paste(nlmixr2AllEst(), collapse="', '"), "'",
+         call.=FALSE)
+  }
+  stop("nlmixr2 estimation '", .curEst, "' not supported; available methods:\n",
+       paste(.lines, collapse="\n"),
        call.=FALSE)
 }
 
