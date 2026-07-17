@@ -124,10 +124,10 @@ foceiLikLoad <- function(object, data,
 #'   a ready starting value.
 #' @param eta A `nid` by `neta` matrix of random effects (one row per subject,
 #'   in the loaded system's subject order).
-#' @param type `"overall"` (default) returns the individual joint log density
-#'   (conditional data log-likelihood plus the Gaussian eta log-prior);
-#'   `"data"` returns only the conditional data log-likelihood
-#'   `log p(y_i | eta_i)` without the eta prior.  Gaussian endpoints follow
+#' @param type `"ipred"` (default) returns the individual joint log density --
+#'   the conditional data log-likelihood plus the Gaussian eta log-prior;
+#'   `"pred"` returns only the conditional data log-likelihood
+#'   `log p(y_i | eta_i)`, without the eta prior.  Gaussian endpoints follow
 #'   nlmixr2's internal residual-likelihood convention.
 #' @param cores Number of threads for the parallel per-subject evaluation.
 #' @return A named numeric vector (length `nid`, named by subject id) of
@@ -135,7 +135,7 @@ foceiLikLoad <- function(object, data,
 #' @seealso [foceiLikLoad()], [foceiLikUnload()]
 #' @export
 #' @author Matthew L. Fidler
-foceiLikRun <- function(theta, eta, type = c("overall", "data"),
+foceiLikRun <- function(theta, eta, type = c("ipred", "pred"),
                         cores = rxode2::getRxThreads()) {
   type <- match.arg(type)
   .h <- nlmixr2global$foceiLikEnv
@@ -160,7 +160,7 @@ foceiLikRun <- function(theta, eta, type = c("overall", "data"),
   .cores <- as.integer(cores)
   if (is.na(.cores) || .cores < 1L) .cores <- 1L
   foceiLikSetTheta_(theta)
-  .retType <- if (identical(type, "data")) 1L else 0L
+  .retType <- if (identical(type, "pred")) 1L else 0L
   .ll <- foceiLikEval_(eta, .cores, .retType)
   stats::setNames(.ll, .h$idLvl)
 }

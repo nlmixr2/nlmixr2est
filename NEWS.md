@@ -10,9 +10,9 @@
   matrix -- in parallel per subject -- and `foceiLikUnload()` frees it.  The
   likelihood type may be `"focei"` (with interaction), `"focep"` (FOCE+) or
   `"foce"` (NONMEM-style), and `foceiLikRun(type=)` selects the individual joint
-  density (default, including the eta prior) or the conditional data
-  log-likelihood alone.  Only one likelihood system may be loaded at a time;
-  loading a second errors until the first is unloaded.
+  density including the eta prior (`"ipred"`, the default) or the conditional
+  data log-likelihood alone (`"pred"`).  Only one likelihood system may be
+  loaded at a time; loading a second errors until the first is unloaded.
 - `fit$etaCI` returns per-subject confidence intervals for each individual's
   eta, complementing the existing `fit$etaSE` and `fit$etaRSE`.  The intervals
   are the empirical-Bayes estimate plus/minus a normal quantile times the eta

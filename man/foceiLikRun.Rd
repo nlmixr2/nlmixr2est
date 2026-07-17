@@ -7,7 +7,7 @@
 foceiLikRun(
   theta,
   eta,
-  type = c("overall", "data"),
+  type = c("ipred", "pred"),
   cores = rxode2::getRxThreads()
 )
 }
@@ -20,10 +20,10 @@ a ready starting value.}
 \item{eta}{A `nid` by `neta` matrix of random effects (one row per subject,
 in the loaded system's subject order).}
 
-\item{type}{`"overall"` (default) returns the individual joint log density
-(conditional data log-likelihood plus the Gaussian eta log-prior);
-`"data"` returns only the conditional data log-likelihood
-`log p(y_i | eta_i)` without the eta prior.  Gaussian endpoints follow
+\item{type}{`"ipred"` (default) returns the individual joint log density --
+the conditional data log-likelihood plus the Gaussian eta log-prior;
+`"pred"` returns only the conditional data log-likelihood
+`log p(y_i | eta_i)`, without the eta prior.  Gaussian endpoints follow
 nlmixr2's internal residual-likelihood convention.}
 
 \item{cores}{Number of threads for the parallel per-subject evaluation.}
