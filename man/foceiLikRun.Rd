@@ -68,6 +68,51 @@ densities up to a fixed per-observation constant that does not depend on
 `theta` or `eta`, so likelihood ratios, and any sampler that uses them, are
 unaffected.
 }
+\examples{
+
+\donttest{
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+h <- foceiLikLoad(one.cmt, theo_sd, "focei")
+
+eta <- matrix(0, h$nid, h$neta)
+
+# The individual joint log density log p(y_i, eta_i) (the default)
+foceiLikRun(h$initPar, eta)
+
+# The conditional data log-likelihood log p(y_i | eta_i) alone; the two
+# differ by the Gaussian eta prior
+foceiLikRun(h$initPar, eta, type = "cond")
+
+# Non-zero etas
+set.seed(42)
+foceiLikRun(h$initPar, matrix(stats::rnorm(h$nid * h$neta, 0, 0.1), h$nid, h$neta))
+
+# A new population parameter vector needs no reload
+theta <- h$initPar
+theta[1] <- theta[1] + 0.1
+foceiLikRun(theta, eta)
+
+foceiLikUnload()
+}
+}
 \seealso{
 [foceiLikLoad()], [foceiLikUnload()]
 }

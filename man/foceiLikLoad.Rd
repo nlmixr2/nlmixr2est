@@ -48,6 +48,44 @@ Only one likelihood system may be loaded at a time; loading errors if one is
 already loaded.  Use [foceiLikRun()] to evaluate and [foceiLikUnload()] to
 free.
 }
+\examples{
+
+\donttest{
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+# Set the likelihood up in memory once; only one may be loaded at a time
+h <- foceiLikLoad(one.cmt, theo_sd, "focei")
+
+# The handle carries the dimensions and a ready starting parameter vector
+h$nid
+h$neta
+h$initPar
+
+# Individual joint log-likelihood at eta = 0, one value per subject
+eta <- matrix(0, h$nid, h$neta)
+foceiLikRun(h$initPar, eta)
+
+# Free it when done (loading again before this errors)
+foceiLikUnload()
+}
+}
 \seealso{
 [foceiLikRun()], [foceiLikUnload()]
 }

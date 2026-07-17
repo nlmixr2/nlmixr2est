@@ -57,6 +57,44 @@
 #'   estimates, a ready `theta` for [foceiLikRun()]), `npars`, `ntheta`,
 #'   `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl` and `likelihood`.
 #' @seealso [foceiLikRun()], [foceiLikUnload()]
+#'
+#' @examples
+#'
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'   ini({
+#'     tka <- 0.45
+#'     tcl <- 1
+#'     tv <- 3.45
+#'     add.sd <- 0.7
+#'     eta.ka ~ 0.6
+#'     eta.cl ~ 0.3
+#'     eta.v ~ 0.1
+#'   })
+#'   model({
+#'     ka <- exp(tka + eta.ka)
+#'     cl <- exp(tcl + eta.cl)
+#'     v <- exp(tv + eta.v)
+#'     linCmt() ~ add(add.sd)
+#'   })
+#' }
+#'
+#' # Set the likelihood up in memory once; only one may be loaded at a time
+#' h <- foceiLikLoad(one.cmt, theo_sd, "focei")
+#'
+#' # The handle carries the dimensions and a ready starting parameter vector
+#' h$nid
+#' h$neta
+#' h$initPar
+#'
+#' # Individual joint log-likelihood at eta = 0, one value per subject
+#' eta <- matrix(0, h$nid, h$neta)
+#' foceiLikRun(h$initPar, eta)
+#'
+#' # Free it when done (loading again before this errors)
+#' foceiLikUnload()
+#' }
 #' @export
 #' @author Matthew L. Fidler
 foceiLikLoad <- function(object, data,
@@ -166,6 +204,51 @@ foceiLikLoad <- function(object, data,
 #' unaffected.
 #'
 #' @seealso [foceiLikLoad()], [foceiLikUnload()]
+#'
+#' @examples
+#'
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'   ini({
+#'     tka <- 0.45
+#'     tcl <- 1
+#'     tv <- 3.45
+#'     add.sd <- 0.7
+#'     eta.ka ~ 0.6
+#'     eta.cl ~ 0.3
+#'     eta.v ~ 0.1
+#'   })
+#'   model({
+#'     ka <- exp(tka + eta.ka)
+#'     cl <- exp(tcl + eta.cl)
+#'     v <- exp(tv + eta.v)
+#'     linCmt() ~ add(add.sd)
+#'   })
+#' }
+#'
+#' h <- foceiLikLoad(one.cmt, theo_sd, "focei")
+#'
+#' eta <- matrix(0, h$nid, h$neta)
+#'
+#' # The individual joint log density log p(y_i, eta_i) (the default)
+#' foceiLikRun(h$initPar, eta)
+#'
+#' # The conditional data log-likelihood log p(y_i | eta_i) alone; the two
+#' # differ by the Gaussian eta prior
+#' foceiLikRun(h$initPar, eta, type = "cond")
+#'
+#' # Non-zero etas
+#' set.seed(42)
+#' foceiLikRun(h$initPar, matrix(stats::rnorm(h$nid * h$neta, 0, 0.1), h$nid, h$neta))
+#'
+#' # A new population parameter vector needs no reload
+#' theta <- h$initPar
+#' theta[1] <- theta[1] + 0.1
+#' foceiLikRun(theta, eta)
+#'
+#' foceiLikUnload()
+#' }
 #' @export
 #' @author Matthew L. Fidler
 foceiLikRun <- function(theta, eta, type = c("joint", "cond"),
