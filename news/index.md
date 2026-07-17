@@ -4,6 +4,30 @@
 
 ### New features
 
+- Requesting an unsupported `est=` method (e.g. a typo) now prints the
+  available estimation methods grouped by category (Linearized, Integral
+  approximation, Stochastic EM, Nonparametric, Machine learning,
+  Optimizer (NLM family)) with a short description of each, instead of a
+  single flat list. Calling
+  [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  with no arguments prints the same grouped list (and invisibly returns
+  it). The new
+  [`nlmixr2AllEstType()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AllEstType.md)
+  returns the same information as a data frame, and each built-in method
+  carries `type` and `description` attributes
+  (e.g. `attr(nlmixr2Est.focei, "type")`) that third-party methods can
+  set to join the list.
+
+- `est="npag"`/`est="npb"` now PIN the current ODE solve during the
+  residual-error (`err`) parameter optimization instead of
+  re-integrating. Those parameters do not change the prediction `f`, so
+  each subject’s states are cached at its posterior etas and the ODE is
+  frozen (`op_focei.freezeOde`) while only `r` is recomputed – for a
+  mixture the frozen recompute reuses each component’s cached states
+  rather than re-solving them. A structural regressor (which does move
+  `f`, including an estimated per-component clearance) still re-solves.
+  Results are unchanged.
+
 - SAEM mixture models now fix per-subject membership by default
   (`saemControl(mixProbMethod="regress")`, the new default): each
   subject is hard-classified to its best component once, held fixed, and
@@ -532,6 +556,16 @@
   `censOption = "gauss"`, `foce = "nonmem"`, `covMethod = "analytic"`.
 
 ### Bug fixes
+
+#### Estimation
+
+- `est="advi"` now rejects a mixture (`mix()`) model up front with a
+  clear message
+  ([`rxode2::assertRxUiNoMix`](https://nlmixr2.github.io/rxode2/reference/assertRxUi.html))
+  instead of running a wrong fit that ignored the mixture structure and
+  then failed late in the output tables with a cryptic “the
+  probabilities in a mixture must sum to a number between 0 and 1, they
+  sum to: 0”.
 
 #### Covariance and standard errors
 

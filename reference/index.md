@@ -109,6 +109,8 @@
   : nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 - [`nlmixr2AllEst()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AllEst.md)
   : Show all the current estimation methods
+- [`nlmixr2AllEstType()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AllEstType.md)
+  : Tagged list of the available nlmixr2 estimation methods
 - [`nlmixr2AugPredSolve()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AugPredSolve.md)
   [`augPred(`*`<nlmixr2FitData>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AugPredSolve.md)
   : Augmented Prediction for nlmixr2 fit

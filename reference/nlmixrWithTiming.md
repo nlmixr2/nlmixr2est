@@ -88,7 +88,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8584
+#> → compress parHistData in nlmixr2 object, save 8592
 #> → compress phiM in nlmixr2 object, save 446912
 
 nlmixrWithTiming("time1", {
@@ -107,23 +107,18 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize  covariance preprocess configure  saem
-#> elapsed 0.07419162 2.4815e-05 0.009004533      0.065     0.214 3.044
-#>         postprocess table compress    other time2 time1
-#> elapsed       0.415 0.053    0.131 0.113779 1.002 1.002
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09842089 2.5127e-05 0.01000474      0.073     0.263 2.721       0.493
+#>         table compress     other time2 time1
+#> elapsed  0.06     0.13 0.1465492 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.454     0.192      42.2       1.57 (1.08, 2.29)     69.6
-#> tcl               1.01    0.0850      8.40       2.75 (2.33, 3.25)     27.5
-#> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 2.12e-311 3.03e-309    0.700 (0.700, 0.700)         
-#>        Shrink(SD)%
-#> tka        -0.514 
-#> tcl          3.02 
-#> tv           11.2 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.454  0.192 42.2       1.57 (1.08, 2.29)     69.6     -0.514 
+#> tcl               1.01 0.0850 8.40       2.75 (2.33, 3.25)     27.5       3.02 
+#> tv         log V  3.45 0.0451 1.31       31.6 (28.9, 34.5)     13.2       11.2 
+#> add.sd           0.700      0    0    0.700 (0.700, 0.700)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix

@@ -257,7 +257,7 @@ ifoceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x559f0fa7ac10>
+#> <bytecode: 0x55ecf1e4c2c0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
