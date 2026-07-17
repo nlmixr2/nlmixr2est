@@ -1,3 +1,15 @@
+# Named vector of zeros for every random effect in an omega/sigma.  Accepts a
+# single matrix or, for IOV, a list of matrices (id + per-occasion levels).
+.vpcZeroRanef <- function(mat) {
+  if (is.null(mat)) return(NULL)
+  if (is.list(mat) && !is.matrix(mat)) {
+    # unname() so the list names (id, occ) are not prefixed onto eta names
+    return(do.call(c, unname(lapply(mat, .vpcZeroRanef))))
+  }
+  .n <- dimnames(mat)[[2]]
+  setNames(rep(0, length(.n)), .n)
+}
+
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
@@ -152,9 +164,10 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   if (pred) {
     .si$nsim <- n # restore for pred
     .si2 <- .si
+    # For pred, zero out every random effect.  With IOV the omega is a
+    # list of matrices (e.g. id + occ), so collect names across all of them.
     .si2$params <- c(
-      .si$params, setNames(rep(0, dim(.si$omega)[1]), dimnames(.si$omega)[[2]]),
-      setNames(rep(0, dim(.si$sigma)[1]), dimnames(.si$sigma)[[2]]))
+      .si$params, .vpcZeroRanef(.si$omega), .vpcZeroRanef(.si$sigma))
     .si2$omega <- NULL
     .si2$sigma <- NULL
     .si2$returnType <- "data.frame"

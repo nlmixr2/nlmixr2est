@@ -675,6 +675,12 @@
   factor carries the actual (character/factor) ids from the fit instead of the
   internal integer re-numbering (#450).
 
+- `vpcSim(fit, pred=TRUE)` (and hence VPC plots with a `pred` line) now works
+  for models with IOV.  With IOV the fit's `omega` is a list of matrices (`id`
+  plus one per occasion level), which the `pred` path treated as a single
+  matrix and errored with `invalid 'times' argument`; the population prediction
+  now zeros every random effect across all omega levels (#629).
+
 - `fit$time` again attributes model build/compile to `setup`/`configure` (and
   the nlm family times setup/optimize) instead of `other`.
 
