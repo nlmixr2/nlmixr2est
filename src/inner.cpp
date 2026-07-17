@@ -10062,6 +10062,61 @@ double npEvalCondLik(double *eta, int id) {
 
 double npMixCondLik(double *eta, int base, int nsub, int nMix);   // fwd (defined below)
 
+// Frozen-solve cache for the RESIDUAL-only optimization: the ODE states at each
+// subject's posterior-mean eta (per mixture component).  When residual (err)
+// params are optimized, f does not change, so the states can be pinned and only
+// r recomputed -- exactly like saem's ODE-freeze.  Mixture components share the
+// physical subject's solve buffer, so each component's states must be cached and
+// restored before its (frozen) density recompute.  Built once before the resid
+// optimizer; consumed by npResidELS/npMixCondLik when op_focei.freezeOde is set.
+static std::vector<std::vector<double>> gNpResidCache;
+static int gNpResidNmix = 1;
+static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind);  // fwd
+
+void npResidFreezeBuild(const arma::mat& postEta) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  int nMix = impNmix();
+  gNpResidNmix = nMix;
+  gNpResidCache.assign((size_t)nsub * nMix, std::vector<double>());
+  bool sav = op_focei.freezeOde;
+  op_focei.freezeOde = false;   // normal solves fill the cache
+  std::vector<double> eta(neta);
+  for (int i = 0; i < nsub; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    for (int m = 0; m < nMix; ++m) {
+      int id = i + m * nsub;
+      npEvalCondLik(&eta[0], id);   // normal solve, fills ind->solve
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      double *s = getIndSolve(ind);
+      gNpResidCache[(size_t)i * nMix + m].assign(s, s + npIndSolveSize(op, ind));
+    }
+  }
+  (void) sav;
+  op_focei.freezeOde = true;   // subsequent npResidELS reuses the cached states
+}
+
+void npResidFreezeClear() {
+  op_focei.freezeOde = false;
+  gNpResidCache.clear();
+  gNpResidCache.shrink_to_fit();
+}
+
+// Restore subject i's component-m cached states so a frozen npEvalCondLik reuses
+// them (no-op unless op_focei.freezeOde and the cache is populated).
+static inline void npRestoreFrozen(int i, int m, int nsub) {
+  if (!op_focei.freezeOde || gNpResidCache.empty()) return;
+  size_t idx = (size_t)i * gNpResidNmix + m;
+  if (idx >= gNpResidCache.size()) return;
+  const std::vector<double>& c = gNpResidCache[idx];
+  if (c.empty()) return;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i + m * nsub));
+  std::copy(c.begin(), c.end(), getIndSolve(ind));
+}
+
 // Residual objective at fixed per-subject etas (postEta, nsub x neta -- the
 // posterior-mean support eta of each subject).
 //
@@ -10101,6 +10156,7 @@ double npResidELS(const arma::mat& postEta) {
   double nll = 0.0;
   for (int i = 0; i < nsub; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
+    npRestoreFrozen(i, 0, nsub);   // frozen resid opt: reuse cached states
     double cl = npEvalCondLik(&eta[0], i);
     if (!std::isfinite(cl)) return R_PosInf;
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
@@ -10210,6 +10266,7 @@ double npMixCondLik(double *eta, int base, int nsub, int nMix) {
   std::vector<double> lp(nMix);
   double mx = R_NegInf;
   for (int m = 0; m < nMix; ++m) {
+    npRestoreFrozen(base, m, nsub);   // frozen resid opt: reuse cached states
     double ll = npEvalCondLik(eta, base + m * nsub) +
       std::log(std::max(1e-300, impMixProb(m)));
     lp[m] = ll;

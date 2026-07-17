@@ -21,6 +21,13 @@ double npEvalCondLik(double *eta, int id);
 // scale from drifting to zero on a flexible support.  R_PosInf on a bad solve.
 double npResidELS(const arma::mat& postEta);
 
+// Pin the current solve for a residual-only optimization: cache each subject's
+// (per-component) ODE states at the posterior etas so npResidELS can recompute r
+// with the current residual params WITHOUT re-integrating (set op_focei.freezeOde
+// around the resid optimizer).  Clear releases the cache.
+void npResidFreezeBuild(const arma::mat& postEta);
+void npResidFreezeClear();
+
 // Per-endpoint moment residual sums at fixed per-subject etas: for each 0-based
 // endpoint (obsEndpoint gives the endpoint of each observation in subject-major
 // getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), and the

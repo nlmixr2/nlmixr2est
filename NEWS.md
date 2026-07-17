@@ -12,16 +12,14 @@
   and `description` attributes (e.g. `attr(nlmixr2Est.focei, "type")`) that third-party
   methods can set to join the list.
 
-- `saemControl(nonMuTheta="regress")` estimates population `theta` parameters that
-  have no associated random effect (the SAEM `phi0` fixed effects) by a bounded direct
-  optimization of the observation likelihood each iteration, keeping them as plain
-  regressors instead of stochastic `phi0` draws with a shrinking variance.  The
-  optimization uses robust coordinate descent within a local trust region, honoring each
-  theta's `ini`-block bounds, and holds `phi0` fixed (no stochastic sampling) once the
-  optimizer owns it.  On a simulated model with three no-eta thetas (`ka`, `V`, a Hill
-  power) this recovered them far more accurately than the default (e.g. the absorption
-  theta RMSE dropped ~16x) at some extra runtime.  Default remains `"eta"` (the historic
-  `phi0` handling); `"regress"` is opt-in.
+- `est="npag"`/`est="npb"` now PIN the current ODE solve during the
+  residual-error (`err`) parameter optimization instead of re-integrating.  Those
+  parameters do not change the prediction `f`, so each subject's states are
+  cached at its posterior etas and the ODE is frozen (`op_focei.freezeOde`) while
+  only `r` is recomputed -- for a mixture the frozen recompute reuses each
+  component's cached states rather than re-solving them.  A structural regressor
+  (which does move `f`, including an estimated per-component clearance) still
+  re-solves.  Results are unchanged.
 - SAEM mixture models now fix per-subject membership by default
   (`saemControl(mixProbMethod="regress")`, the new default): each subject is
   hard-classified to its best component once, held fixed, and the soft-EM
