@@ -19,11 +19,13 @@
   iteration it evaluates the inner at the conditional-mean etas (the solve is
   switched to the FOCEi inner and safely restored) and SA-blends the residual
   moment into `ares`/`bres`.  This is a distinct estimator (the per-subject inner
-  uses the conditional mean, not the `N*nmc` MCMC chains) but is near-equivalent
-  to `"classic"`: on theophylline the structural parameters agree to ~0.01-0.03
-  and the residual SD to ~1% for both additive and proportional error.  Prototype:
-  a single add/prop/combined continuous endpoint, no mixtures; the default
-  `"classic"` path is bit-for-bit unchanged.
+  uses the conditional mean, not the `N*nmc` MCMC chains).  The structural
+  parameters match `"classic"` closely (~0.01-0.03 on theophylline) and the
+  proportional residual to ~0.1%; the additive residual SD differs more at finite
+  N (~15-20%) because the conditional-mean moment omits the within-subject
+  eta-variance contribution the chain-averaged SSR includes (asymptotically
+  equivalent).  Prototype: a single add/prop/combined continuous endpoint, no
+  mixtures; the default `"classic"` path is bit-for-bit unchanged.
 
 - `est="npag"`/`est="npb"` now PIN the current ODE solve during the
   residual-error (`err`) parameter optimization instead of re-integrating.  Those
@@ -479,6 +481,12 @@
   calculation" message.  The underlying cause is raised directly with guidance on
   linking each endpoint's distribution parameter to an eta-varying model quantity
   (#515).
+- `est="saem"`'s "mis-match in nbr endpoints in model & in data" error is now
+  actionable: it reports the number of endpoints in the model versus the data,
+  lists the observation compartments found in the data, and points the user to
+  check that the `CMT`/`DVID` values match the number of model endpoints (error
+  terms).  This is the common case of a dataset with extra `DVID` levels that
+  the model has no matching endpoint for (issue #579).
 
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
@@ -570,6 +578,12 @@
   `ini()`/`model()` blocks when the estimation makes a nested `nlmixr2()` call
   (e.g. adding the focei objective or CWRES), so `fit |> ini(bsva ~ 0.1)`
   works; the nested call used to wipe the restore info held in a global (#741).
+
+- `augPred()` now works on a `focei` fit whose model has a zero-fixed eta that
+  appears in the prediction (e.g. `eta.v ~ 0` used in both the ODE and the
+  residual), instead of erroring with `parameter(s) are required for solving:
+  eta.v`; the simulation model drops the zero eta consistently with `saem`
+  (#514).
 
 - `laplace`/`agq` family fits label their `$objDf` row `Laplace`/`AGQ<n>`
   (matching `$ofvType`) instead of `FOCEi`; previously the default
