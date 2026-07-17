@@ -473,6 +473,13 @@
 
 ### Estimation
 
+- FOCEi now estimates a population parameter that is initialized at exactly `0`
+  (e.g. a covariate effect or an additive term) instead of leaving it frozen at
+  its starting value.  The default scaling constant is `1/|initPar|`, which is
+  `Inf` when `initPar` is `0`; it clamped to `scaleCmax` and made the parameter
+  effectively unoptimizable.  `getScaleC()` now falls back to unit scaling when
+  the initial estimate is `0`.
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
