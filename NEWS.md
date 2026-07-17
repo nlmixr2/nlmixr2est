@@ -2,6 +2,18 @@
 
 ## New features
 
+- A general FOCE-family per-subject log-likelihood can now be built from an
+  `rxode2` UI model and used outside of a fit, for MCMC/SAMBA-style algorithms
+  (issue #414).  `foceiLikLoad()` compiles the inner model and sets up the
+  problem (including the data) in memory, `foceiLikRun()` evaluates the
+  individual log-likelihood at a supplied population parameter vector and eta
+  matrix -- in parallel per subject -- and `foceiLikUnload()` frees it.  The
+  likelihood type may be `"focei"` (with interaction), `"focep"` (FOCE+) or
+  `"foce"` (NONMEM-style), and `foceiLikRun(type=)` selects the individual joint
+  density `log p(y_i, eta_i)` (`"joint"`, the default) or the conditional data
+  log-likelihood `log p(y_i | eta_i)` alone (`"cond"`).  Only one likelihood
+  system may be loaded at a time; loading a second errors until the first is
+  unloaded.
 - `fit$etaCI` returns per-subject confidence intervals for each individual's
   eta, complementing the existing `fit$etaSE` and `fit$etaRSE`.  The intervals
   are the empirical-Bayes estimate plus/minus a normal quantile times the eta
