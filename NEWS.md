@@ -475,6 +475,13 @@
 
 ### Estimation
 
+- `est="saem"`'s "mis-match in nbr endpoints in model & in data" error is now
+  actionable: it reports the number of endpoints in the model versus the data,
+  lists the observation compartments found in the data, and points the user to
+  check that the `CMT`/`DVID` values match the number of model endpoints (error
+  terms).  This is the common case of a dataset with extra `DVID` levels that
+  the model has no matching endpoint for (issue #579).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
