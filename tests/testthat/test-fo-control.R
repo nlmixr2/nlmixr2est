@@ -52,4 +52,22 @@ nmTest({
     expect_s3_class(fitFoi$parFixed, "data.frame")
   })
 
+  test_that("a built control with internal residThetaIdx round-trips for fo/foi", {
+    # .foceiFamilyReturn stashes ui$foceiResidTheta on the control as
+    # $residThetaIdx.  The fo/foi post-fit table step re-validates the stored
+    # control by round-tripping it through foceiControl() (nmObjGetControl.fo /
+    # .foi), so residThetaIdx must be an accepted internal dot-argument.  When it
+    # was not, the round-trip errored with "unused argument: 'residThetaIdx'" and
+    # the fit died with "cannot find fo/foi related control object".
+    expect_true("residThetaIdx" %in% nlmixr2est:::.foceiControlInternal)
+
+    .ctl <- foceiControl()
+    .ctl$residThetaIdx <- c(1L, 2L, 3L)
+    # foceiControl() accepts the round-tripped internal field
+    expect_silent(do.call(foceiControl, .ctl))
+    # and the fo/foi validators return the method control rather than erroring
+    expect_true(inherits(nlmixr2est:::getValidNlmixrCtl.fo(list(.ctl)), "foControl"))
+    expect_true(inherits(nlmixr2est:::getValidNlmixrCtl.foi(list(.ctl)), "foiControl"))
+  })
+
 })
