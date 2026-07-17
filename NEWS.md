@@ -697,6 +697,13 @@
 
 ### Internal
 
+- Removed the last bare `Rf_error` call from the C++ sources (issue #632):
+  the `Rcpp::compileAttributes()` output now emits the parenthesized
+  `(Rf_error)` form, and the internal `rxError` macro was switched to
+  `(Rf_error)` as well, so the package no longer trips Rcpp's upcoming
+  `Rf_error` deprecation warning (RcppCore/Rcpp#1247).  The C `.Call`
+  entry-point validators keep their justified `Rf_errorcall` uses.
+
 - Consolidated data preparation and the nlm-family control/fit functions, and
   the analytic-covariance augmented model now uses rxode2's chunked
   `rxOptExpr()`; no change to fit results.  The test suite runs a single
