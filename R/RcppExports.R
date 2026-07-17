@@ -269,6 +269,22 @@ vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
 
+foceiLikLoad_ <- function(e) {
+    .Call(`_nlmixr2est_foceiLikLoad_`, e)
+}
+
+foceiLikUnload_ <- function() {
+    .Call(`_nlmixr2est_foceiLikUnload_`)
+}
+
+foceiLikSetTheta_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikSetTheta_`, theta)
+}
+
+foceiLikEval_ <- function(etaMat, cores, retType) {
+    .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
+}
+
 vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }

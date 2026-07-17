@@ -9,6 +9,7 @@
 \alias{nmObjGet.phiR}
 \alias{nmObjGet.phiSE}
 \alias{nmObjGet.phiRSE}
+\alias{nmObjGet.phiCI}
 \alias{nmObjGet.dataSav}
 \alias{nmObjGet.idLvl}
 \alias{nmObjGet.covLvl}
@@ -61,6 +62,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{phiSE}(x, ...)
 
 \method{nmObjGet}{phiRSE}(x, ...)
+
+\method{nmObjGet}{phiCI}(x, ...)
 
 \method{nmObjGet}{dataSav}(x, ...)
 

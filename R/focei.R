@@ -2145,15 +2145,21 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
-  # Drop subjects with no EVID==0 rows (DV=NA observations become EVID==2 in
-  # etTrans and would otherwise slip through); re-inserted later in addTable().
-  .obsId <- unique(.dat$ID[.dat$EVID == 0])
-  .noObsId <- setdiff(unique(.dat$ID), .obsId)
-  if (length(.noObsId) > 0L) {
+  # Drop subjects without an EVID==0 observation; re-inserted later in
+  # addTable().  Two ways a subject loses all observations: (1) DV=NA rows
+  # become EVID==2 in etTrans (rows still present, just no EVID==0), and (2)
+  # every row is removed outright (e.g. all-NA TIME), so the subject is absent
+  # from .dat but still listed in .idLvl.  Comparing the kept observation IDs
+  # against the full .idLvl index catches both -- comparing only against IDs
+  # present in .dat misses case (2) and leaves .idLvl longer than the solved
+  # subject count (issue #606).
+  .obsId <- sort(unique(.dat$ID[.dat$EVID == 0]))
+  .dropId <- setdiff(seq_along(.idLvl), .obsId)
+  if (length(.dropId) > 0L) {
     warning("IDs without observations dropped: ",
-            paste(.idLvl[.noObsId], collapse = " "), call. = FALSE)
-    .dat <- .dat[!(.dat$ID %in% .noObsId), , drop = FALSE]
-    .keepLvl <- .idLvl[sort(.obsId)]
+            paste(.idLvl[.dropId], collapse = " "), call. = FALSE)
+    .dat <- .dat[.dat$ID %in% .obsId, , drop = FALSE]
+    .keepLvl <- .idLvl[.obsId]
     .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
     .idLvl <- .keepLvl
   }
@@ -2279,6 +2285,28 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
 }
 
+# Control classes of the FOCEi family.  Every one is built by foceiControl()
+# and then reclassed (see foceiControl(), and the mu-referenced / method
+# variants in muRefControl.R, fo.R, foce.R, ...), so it carries all of
+# foceiControl()'s fields and .foceiFitInternal() accepts it -- but its class
+# vector does NOT include "foceiControl".  Enumerated here so the restart-path
+# validation below recognises them; add a new family control's class when one
+# is introduced.
+.nlmixrFoceiFamilyControlClasses <- c(
+  "foceiControl", "foceControl", "focepControl",
+  "foControl", "foiControl",
+  "mfoceiControl", "ifoceiControl", "mfoceControl", "ifoceControl",
+  "mfocepControl", "ifocepControl",
+  "agqControl", "magqControl", "iagqControl",
+  "laplaceControl", "mlaplaceControl", "ilaplaceControl",
+  "impmapControl")
+
+# TRUE for foceiControl and every control built from it (see
+# .nlmixrFoceiFamilyControlClasses).
+.nlmixrIsFoceiFamilyControl <- function(x) {
+  inherits(x, "foceiControl") || any(class(x) %in% .nlmixrFoceiFamilyControlClasses)
+}
+
 .nlmixrCheckFoceiEnvironment <- function(ret) {
   checkmate::assertDataFrame(ret$dataSav, .var.name="focei$dataSav")
   checkmate::assertNumeric(ret$thetaIni, any.missing=FALSE,
@@ -2298,7 +2326,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
                           any.missing=FALSE, .var.name="focei$etaMat")
-  if (!inherits(ret$control, "foceiControl")) {
+  if (!.nlmixrIsFoceiFamilyControl(ret$control)) {
     stop("focei$control must be a focei control object",
          call.=FALSE)
   }

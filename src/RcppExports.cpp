@@ -1026,6 +1026,51 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikLoad_
+RObject foceiLikLoad_(Environment e);
+RcppExport SEXP _nlmixr2est_foceiLikLoad_(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikLoad_(e));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikUnload_
+RObject foceiLikUnload_();
+RcppExport SEXP _nlmixr2est_foceiLikUnload_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiLikUnload_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikSetTheta_
+RObject foceiLikSetTheta_(NumericVector theta);
+RcppExport SEXP _nlmixr2est_foceiLikSetTheta_(SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikSetTheta_(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikEval_
+NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType);
+RcppExport SEXP _nlmixr2est_foceiLikEval_(SEXP etaMatSEXP, SEXP coresSEXP, SEXP retTypeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type retType(retTypeSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikEval_(etaMat, cores, retType));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeElboStepCpp_
 List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
 RcppExport SEXP _nlmixr2est_vaeElboStepCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP withGradSEXP) {

@@ -44,6 +44,7 @@ nlmixr2NlmeControl(
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
+  covMethod = c("analytic", "r,s", "r", "s", "nlme", ""),
   ...
 )
 
@@ -86,6 +87,7 @@ nlmeControl(
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
+  covMethod = c("analytic", "r,s", "r", "s", "nlme", ""),
   ...
 )
 }
@@ -286,6 +288,14 @@ uses the legacy finite-difference behavior.}
 maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
 value is verbose (`verbose=TRUE`).  When `print` is not supplied an
 explicit `verbose` is used as given.}
+
+\item{covMethod}{Covariance method: `"analytic"` (default) computes the
+focei observed-information covariance at the converged nlme estimates
+post-fit (falling back to the finite-difference `"r,s"` -> `"r"`/`"s"`
+chain when out of analytic scope); `"r,s"`, `"r"`, `"s"` request the
+finite-difference forms directly; `"nlme"` and `""` skip the recompute
+and keep nlme's own standard errors.  When the recompute fails the
+`"nlme"` covariance is kept.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

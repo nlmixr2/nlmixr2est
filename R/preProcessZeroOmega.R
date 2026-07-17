@@ -9,7 +9,12 @@
   if (length(.iniDf$neta1) == 0) return(character(0))
   .r <- range(.iniDf$neta1)
   .r <- seq(.r[1], .r[2])
-  .etaNames <- dimnames(ui$omega)[[1]]
+  ## Derive the eta name for each index from iniDf directly.  With IOV
+  ## present ui$omega is a list (per condition), so dimnames(ui$omega)[[1]]
+  ## is NULL and the zero etas would never be detected.
+  .etaNames <- vapply(.r, function(i) {
+    .iniDf[.iniDf$neta1 == i & .iniDf$neta2 == i, "name"]
+  }, character(1), USE.NAMES=FALSE)
   .zeroEta <- vapply(.r, function(i) {
     all(.iniDf[(.iniDf$neta1 == i) | (.iniDf$neta2 == i), "est"] == 0)
   }, logical(1), USE.NAMES=FALSE)

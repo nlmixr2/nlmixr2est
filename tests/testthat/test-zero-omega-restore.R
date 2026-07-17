@@ -37,3 +37,39 @@ test_that("zero etas are restored in the final ui even with nested nlmixr2 calls
   newUi <- suppressMessages(rxode2::ini(fit, bsva ~ 0.1))
   expect_equal(newUi$iniDf$est[newUi$iniDf$name == "bsva"], 0.1)
 })
+
+test_that("zero iiv eta is detected alongside an IOV eta (#627)", {
+  # With IOV present ui$omega is a per-condition list, so the zero-eta
+  # detector used to read dimnames() off a list, return NULL and leave the
+  # zero eta in the omega -- producing a singular initial 'omega' matrix.
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      iov.cl ~ 0.1 | occ
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(one.cmt))
+
+  expect_equal(.getZeroEtasFromModel(ui), "eta.ka")
+
+  # downgrading drops the zero eta and leaves a non-singular id omega plus
+  # the untouched occ (IOV) omega
+  ui2 <- .downgradeEtas(ui, "eta.ka")
+  expect_false("eta.ka" %in% ui2$iniDf$name)
+  expect_true("iov.cl" %in% ui2$iniDf$name)
+  expect_true(is.list(ui2$omega))
+  expect_false("eta.ka" %in% dimnames(ui2$omega$id)[[1]])
+  expect_true(all(eigen(ui2$omega$id, only.values = TRUE)$values > 0))
+})

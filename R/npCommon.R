@@ -106,8 +106,19 @@
 #' @noRd
 .npFamilyFit <- function(env, ui, ...) {
   .control <- ui$control
+  # the nonparametric kernels do not compute the Monte-Carlo importance-sampling
+  # ("imp") covariance; force it off (impmapControl's default) so the post-fit
+  # recompute installs the FOCEI covariance instead
+  .control$impCov <- FALSE
+  .covMethodUser <- .control$covMethod  # restored on the fit env control below
+  if (is.null(.covMethodUser) || identical(as.integer(.covMethodUser), 0L)) {
+    # the inherited "imp" default maps to covMethod=0L for np; recompute the
+    # analytic FOCEI covariance instead of reporting none
+    .covMethodUser <- 2L
+    .control$covType <- "analytic"
+  }
   .control$maxOuterIterations <- 0L
-  .control$covMethod <- 0L
+  .control$covMethod <- 0L  # covariance is computed post-fit (.foceiRecomputeMuCov)
   .env <- ui$foceiOptEnv     # builds foceiMuGroupTheta (covariate mu-groups)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
@@ -236,7 +247,9 @@
     .control$npMuExpandThetaIdx <- as.integer(.ti[.ok])
   }
   assign("control", .control, envir = ui)
-  .foceiFamilyReturn(env, ui, ..., est = .est)
+  .fit <- .foceiFamilyReturn(env, ui, ..., est = .est)
+  .impRestoreCovMethod(.fit, .covMethodUser)
+  .fit
 }
 
 # mu-attribute for the plain methods: gated on the control (mu only when the user

@@ -2,6 +2,50 @@
 
 ## New features
 
+- The analytic observed-information covariance is now the preferred `covMethod`
+  across the mixed-model estimation methods, falling back to each method's
+  previous default when a model is out of analytic scope:
+    - `est="saem"`/`"fsaem"` keep the stochastic-approximation FIM (`"sa"`) as
+      the default `covMethod`, now followed by `"analytic"` and `"linFim"`.
+      `covMethod="analytic"` computes the FOCEI analytic covariance at the
+      converged SAEM estimates and falls back to the linearized FIM (`"linFim"`)
+      with a message when out of scope or not positive definite; the `"linFim"`
+      covariance stays selectable via `setCov(fit, "linFim")`.
+    - `est="nlme"` gains a `covMethod` argument
+      (`c("analytic", "r,s", "r", "s", "nlme", "")`, default `"analytic"`) that
+      recomputes the covariance at the converged nlme estimates; `"nlme"` keeps
+      nlme's own standard errors (also available via `setCov(fit, "nlme")`).
+    - `est="npag"`/`"npb"` (and their `m`/`i` variants), which previously
+      reported no covariance, now compute one post-fit at the converged
+      estimates (default `"analytic"` with the finite-difference fallback
+      chain).
+    - `est="imp"`/`"impmap"`/`"qrpem"` gain a `covMethod` argument
+      (`c("imp", "analytic", "r,s", "r", "s", "")`, default `"imp"`).  `"imp"`
+      is the Monte-Carlo importance-sampling covariance that the old
+      `impCov=TRUE` selected (the `impCov` argument is removed); the other
+      tokens compute the post-fit FOCEI covariance.
+    - `est="advi"` keeps its variational covariance (`"advi"`) as the default but
+      now honors an explicit `covMethod` (e.g. `"analytic"`) without overwriting
+      it with the variational covariance.
+    - `setCov()`/`getVarCov()` accept `covMethod="analytic"` post-fit.
+
+- A general FOCE-family per-subject log-likelihood can now be built from an
+  `rxode2` UI model and used outside of a fit, for MCMC/SAMBA-style algorithms
+  (issue #414).  `foceiLikLoad()` compiles the inner model and sets up the
+  problem (including the data) in memory, `foceiLikRun()` evaluates the
+  individual log-likelihood at a supplied population parameter vector and eta
+  matrix -- in parallel per subject -- and `foceiLikUnload()` frees it.  The
+  likelihood type may be `"focei"` (with interaction), `"focep"` (FOCE+) or
+  `"foce"` (NONMEM-style), and `foceiLikRun(type=)` selects the individual joint
+  density `log p(y_i, eta_i)` (`"joint"`, the default) or the conditional data
+  log-likelihood `log p(y_i | eta_i)` alone (`"cond"`).  Only one likelihood
+  system may be loaded at a time; loading a second errors until the first is
+  unloaded.
+- `fit$etaCI` returns per-subject confidence intervals for each individual's
+  eta, complementing the existing `fit$etaSE` and `fit$etaRSE`.  The intervals
+  are the empirical-Bayes estimate plus/minus a normal quantile times the eta
+  standard error, using the fit's `ci` level (default 0.95).  Like `etaSE`, it
+  requires `CWRES` in the fit (add with `addCwres()` for non-focei methods).
 - The FOCEi-family outer finite-difference gradient now freezes the ODE solve
   when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
   the default).  Those parameters do not change the prediction `f` (or the EBEs
@@ -472,6 +516,53 @@
 
 ### Estimation
 
+- A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`, `foce`,
+  `focep`, `agq`, `laplace`, and the `*f` fast variants such as `ifoceif`) that
+  needed to restart -- for example after a zero/bad-gradient theta reset -- died
+  with `focei$control must be a focei control object`.  These controls are all
+  built by `foceiControl()` and then reclassed to their own class, so they do
+  not carry `"foceiControl"` in their class vector, and the restart-path
+  environment check rejected them even though the fit had been set up from a
+  valid control.  The check now recognises the whole FOCEi control family.
+- `est="fsaem"` (fast SAEM) now reports a covariance matrix.  The fast kernel's
+  FOCEi inner setup overwrote the shared control's `covMethod` during the fit,
+  so the covariance step ran with no method selected and left the fit with an
+  unlabeled, partially degenerate covariance; the intended `covMethod` is now
+  restored before the covariance is computed.
+
+- Models that combine `linCmt()` with ODEs (for example a solved PK driving an
+  effect-compartment ODE) now estimate correctly with the FOCEi and nlm
+  families; the linear compartments are solved as ODEs for those methods.
+  Previously the sensitivity compartments those methods add (one per eta for
+  FOCEi, one per theta for nlm) shifted `depot`/`central` past the compartment
+  numbers the data was translated against, so the dose silently landed in a
+  sensitivity compartment, every prediction came back `0` and the objective
+  function was meaningless.  Since the model is then no longer mixing a solved
+  system with ODEs, these fits now warn (recorded in `fit$runInfo`) that the
+  analytic `linCmt()` could not be used.  `est="saem"` was never affected, keeps
+  the analytic `linCmt()` and does not warn, as do `linCmt()` models with no
+  other ODE (#286).
+
+- `est="saem"` no longer estimates a `fix()`ed theta that has no eta attached to
+  it; such a parameter now stays at its initial estimate, as it already did for
+  the FOCEi family.  The direct phi0 optimization (`nonMuTheta="regress"`, and
+  general-likelihood models) takes over phi0 partway through the fit and skips
+  the update that restores fixed values, so a fixed non-mu-referenced theta drifted
+  off its initial estimate.  Estimates of non-fixed parameters are unchanged.
+- `foceiControl(freezeResidGrad=TRUE)` (the default) no longer makes a fit die with
+  "maximum number of theta resets (10) exceeded".  The base solve that caches the
+  states/EBEs for the frozen gradient ran without the gradient flag set, so an
+  ETA-drift theta reset raised inside a gradient restarted the whole fit -- on every
+  gradient, until the reset limit tripped (#641).
+- A model that combines an inter-occasion variability (IOV) term with a zero
+  inter-individual variability eta on another parameter (for example
+  `eta.ka ~ 0` alongside `iov.cl ~ 0.1 | occ`) no longer fails with "initial
+  'omega' matrix inverse is non-positive definite".  With IOV present the omega
+  is a per-condition list, so the zero-eta detector could not read the eta names
+  and left the zero eta in the matrix, making it singular; the zero eta is now
+  detected and removed as usual.  Restoring the original model after such a fit
+  also no longer errors for `est="saem"` (including `table=list(cwres=TRUE)`),
+  where the IOV eta is re-expressed as per-occasion id-level etas (#627).
 - `est="saem"` no longer collapses subjects that combine two dosing episodes with
   overlapping clock times separated by an `evid=4` reset -- for example a crossover
   where an IV arm and a depot (`f(depot)`) arm share the same times.  SAEM solves
@@ -488,6 +579,11 @@
   (#517).  The FO/FOI fit now carries its control, and an intermediate fit
   without a method-specific `nmObjGetControl` surfaces its stored control rather
   than returning `NULL`.
+- `est="fo"`/`est="foi"` fits no longer error with "cannot find fo/foi related
+  control object".  The `freezeResidGrad` work added an internal `residThetaIdx`
+  field to the fitted control, which was not on the accepted-internal
+  (`.foceiControlInternal`) list, so the post-fit table step failed when it
+  re-validated the control by round-tripping it through `foceiControl()`.
 - `est="nlme"` now accepts the common `print` control alias, so
   `nlmixr2(..., "nlme", list(print=0))` no longer errors with
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so
@@ -532,6 +628,10 @@
   to: 0".
 
 ### Covariance and standard errors
+
+- `fit$etaSE` columns are now labeled `se(<eta>)` (matching `fit$etaRSE`'s
+  `rse(<eta>)%`); the label was previously applied to a matrix's `names()`
+  (a no-op) so the columns came back as bare eta names.
 
 - `covMethod = "r"`/`"s"`/`"r,s"` standard errors were inflated by a constant
   factor (`sqrt(2)` for `"r"`, `2` for `"s"`) from using `2*R^-1`/`4*S^-1`; they
@@ -637,6 +737,10 @@
 
 ### Output, tables, and printing
 
+- For models without etas, the `BSV(SD)` and `Shrink(SD)%` columns are no longer
+  added to `$parFixed` and `$parFixedDf`; they were always blank for these models
+  (#355).
+
 - Model-defined variables (e.g. `ka`, `cl`, `v`, `tad`, `dosenum`, and any
   user-added line such as `WT.OUT <- WT`) are now included in the output table
   whether or not `cwres` is requested.  Previously `tableControl(cwres=FALSE)`
@@ -676,6 +780,12 @@
   factor carries the actual (character/factor) ids from the fit instead of the
   internal integer re-numbering (#450).
 
+- `vpcSim(fit, pred=TRUE)` (and hence VPC plots with a `pred` line) now works
+  for models with IOV.  With IOV the fit's `omega` is a list of matrices (`id`
+  plus one per occasion level), which the `pred` path treated as a single
+  matrix and errored with `invalid 'times' argument`; the population prediction
+  now zeros every random effect across all omega levels (#629).
+
 - `fit$time` again attributes model build/compile to `setup`/`configure` (and
   the nlm family times setup/optimize) instead of `other`.
 
@@ -703,6 +813,13 @@
   observation-less subjects are dropped before estimation and re-inserted into
   the output with a population `PRED` and `NA` individual columns, like FOCEi
   (#687).
+
+- FOCEi no longer errors with `'names' attribute [n] must be the same length as
+  the vector [m]` when a subject's records are all removed during data
+  translation (e.g. every `TIME` is `NA`).  Such a subject vanishes from the
+  processed data entirely rather than losing only its observations, so it is now
+  detected and dropped from the subject index alongside observation-less
+  subjects (#606).
 
 - Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice.  The "initial
   ETAs were nudged" warning fires only when a nudge actually happened, and a

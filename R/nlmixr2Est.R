@@ -122,6 +122,12 @@ nlmixr2Est.default <- function(env, ...) {
       .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
       if (length(.etas$name) > 0) {
         .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
+        ## Only map etas that also exist in the pure input model.  A fit
+        ## may re-express etas that are absent from the input model (e.g.
+        ## SAEM expands an IOV eta into per-occasion id-level etas plus a
+        ## variance theta); those cannot be mapped back by name and their
+        ## variance is restored via the theta loop above.
+        .etaNames <- .etaNames[.etaNames %in% .finalIni$name]
         .etaFinal <- vapply(.etaNames, function(n) {
           .finalIni[which(.finalIni$name == n), "neta1"]
         }, double(1), USE.NAMES=TRUE)
@@ -311,14 +317,20 @@ nlmixr2Est0 <- function(env, ...) {
     })
   }
   .nlmixrEstUpdatesOrigModel(.ret, env)
-  # Mu-referenced (lin/irls) families: the C++ covariance step bailed (a mu->phi reduced
-  # cov gives wrong SEs on the mu-referenced/linear parameters).  Now that the fit is
-  # fully finalized (mu-rewriting restored), recompute the covariance on the full base
-  # focei/foce/focep model.
+  # Post-fit covariance recompute on the full base model: the mu-referenced
+  # (lin/irls) families' C++ covariance step bailed (a mu->phi reduced cov gives
+  # wrong SEs), and the imp/np/nlme families never compute one during estimation.
+  # Now that the fit is fully finalized, recompute at the converged estimates
+  # (see .foceiRecomputeBaseEst for the est -> base-model mapping).
   if (inherits(.ret, "nlmixr2FitCore")) {
+    # not every method assigns env$est (nlme/saem set it on the fit only), so
+    # fall back to the finalized fit's est
     .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
+    if (length(.estName) != 1L || !nzchar(.estName)) {
+      .estName <- tryCatch(as.character(.ret$est), error = function(e) "")
+    }
     if (length(.estName) == 1L &&
-          grepl("^(m|i)(focei|foce|focep|agq|laplace)$", .estName)) {
+          !is.null(.foceiRecomputeBaseEst(.estName))) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
     }
   }

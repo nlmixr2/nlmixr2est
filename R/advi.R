@@ -241,9 +241,21 @@
     .nm <- c(.thNm, paste0("omega.", res$etaNames[res$phiOmIdx[res$phiOmIdx >= 0] + 1L]))
     if (nrow(.cov) == length(.nm)) dimnames(.cov) <- list(.nm, .nm)
     .e$adviCov <- .cov
-    ## install the population variational covariance as the fit's SE source (the
-    ## theta block maps directly to parFixedDf's population/residual parameters)
-    .adviInstallVarCov(.fit, res)
+    ## covMethod="advi": install the population variational covariance as the
+    ## fit's SE source (the theta block maps directly to parFixedDf's
+    ## population/residual parameters).  For any other covMethod the FOCEi
+    ## covariance step (analytic/r,s/...) already ran on the full inner model;
+    ## only fall back to the variational covariance if that chain came up empty.
+    .cmDone <- tryCatch(as.character(.e$covMethod), error = function(e) "")
+    if (identical(.control$covMethod, "advi")) {
+      .adviInstallVarCov(.fit, res)
+    } else if (is.null(.e$cov) || !is.matrix(.e$cov) ||
+                 length(.cmDone) != 1L || !nzchar(.cmDone) ||
+                 identical(.cmDone, "failed")) {
+      message("covMethod=\"", .control$covMethod,
+              "\" covariance was not available; using the ADVI variational covariance")
+      .adviInstallVarCov(.fit, res)
+    }
   }
   .e$adviState <- .st
   .fit
