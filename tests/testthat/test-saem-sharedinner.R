@@ -1,3 +1,26 @@
+test_that("sharedInner='shared' residual estimator is asymptotically equivalent (proportional)", {
+  skip_on_cran()
+
+  # As the additive equivalence test, but proportional error -- where the
+  # conditional-mean residual estimator is very close to classic (~1%).
+  m <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.04); tv <- log(0.5); eta.cl ~ 0.1; prop.sd <- 0.2 })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ prop(prop.sd)
+    })
+  }
+  d <- nlmixr2data::theo_sd
+  .g <- function(si) fixef(suppressWarnings(nlmixr2(m, d, est = "saem",
+    control = saemControl(nBurn = 200, nEm = 150, print = 0, seed = 42, sharedInner = si))))
+  .cl <- .g("classic"); .sh <- .g("shared")
+  expect_lt(max(abs(.sh[c("tka", "tcl", "tv")] - .cl[c("tka", "tcl", "tv")])), 0.1)
+  expect_lt(abs(.sh[["prop.sd"]] - .cl[["prop.sd"]]) / .cl[["prop.sd"]], 0.1)
+})
+
 test_that("saemSharedResid_ (sharedInner='shared') computes f/r through likInner0", {
   skip_on_cran()
 
