@@ -684,6 +684,10 @@
 
 ### Internal
 
+- Removed an unreachable duplicate `missingTable` default assignment in
+  `nlmixr2Est0()` (issue #385); the earlier default already fixes the value, so
+  the second block could never run.  No change to fit results.
+
 - Consolidated data preparation and the nlm-family control/fit functions, and
   the analytic-covariance augmented model now uses rxode2's chunked
   `rxOptExpr()`; no change to fit results.  The test suite runs a single
