@@ -2145,15 +2145,21 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
-  # Drop subjects with no EVID==0 rows (DV=NA observations become EVID==2 in
-  # etTrans and would otherwise slip through); re-inserted later in addTable().
-  .obsId <- unique(.dat$ID[.dat$EVID == 0])
-  .noObsId <- setdiff(unique(.dat$ID), .obsId)
-  if (length(.noObsId) > 0L) {
+  # Drop subjects without an EVID==0 observation; re-inserted later in
+  # addTable().  Two ways a subject loses all observations: (1) DV=NA rows
+  # become EVID==2 in etTrans (rows still present, just no EVID==0), and (2)
+  # every row is removed outright (e.g. all-NA TIME), so the subject is absent
+  # from .dat but still listed in .idLvl.  Comparing the kept observation IDs
+  # against the full .idLvl index catches both -- comparing only against IDs
+  # present in .dat misses case (2) and leaves .idLvl longer than the solved
+  # subject count (issue #606).
+  .obsId <- sort(unique(.dat$ID[.dat$EVID == 0]))
+  .dropId <- setdiff(seq_along(.idLvl), .obsId)
+  if (length(.dropId) > 0L) {
     warning("IDs without observations dropped: ",
-            paste(.idLvl[.noObsId], collapse = " "), call. = FALSE)
-    .dat <- .dat[!(.dat$ID %in% .noObsId), , drop = FALSE]
-    .keepLvl <- .idLvl[sort(.obsId)]
+            paste(.idLvl[.dropId], collapse = " "), call. = FALSE)
+    .dat <- .dat[.dat$ID %in% .obsId, , drop = FALSE]
+    .keepLvl <- .idLvl[.obsId]
     .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
     .idLvl <- .keepLvl
   }
