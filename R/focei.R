@@ -2164,6 +2164,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
            call.=FALSE)
     }
+    # On a theta-reset restart .ret carries the previous fit's etaObf, whose ID
+    # column foceiEtas() built as a factor of the original subject IDs; coerce it
+    # back to the integer the assertion (and the C++ setup) expect (issue #470).
     if (is.factor(.ret$etaObf$ID)) {
       .ret$etaObf$ID <- as.integer(.ret$etaObf$ID)
     }
