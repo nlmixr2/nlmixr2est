@@ -248,7 +248,7 @@
                         resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
                         mixProb=ui$saemMixProb,
-                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
+                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regress"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
@@ -265,11 +265,17 @@
     # Carried for the SAEM unification work; consumed in later phases.  Inert
     # at their defaults ("classic"/"eta"), so no behavior change here.
     .cfg$sharedInner <- rxode2::rxGetControl(ui, "sharedInner", "classic")
-    .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "eta")
+    .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
     # for normal models too, not just general-likelihood.
     .cfg$nonMuThetaRegress <- as.integer(identical(.cfg$nonMuTheta, "regress"))
+    # warm-start residual params from observed per-endpoint moments (npag-style)
+    .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
+    # mixProbMethod="regress": fix per-subject mixture membership (hard classify
+    # once) instead of the soft-EM responsibility step.
+    .cfg$mixProbRegress <- as.integer(identical(
+      rxode2::rxGetControl(ui, "mixProbMethod", "regress"), "regress"))
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres

@@ -688,6 +688,27 @@ public:
   // recomputes the log-likelihood.  The model emits no analytic d(ll)/d(phi0), so
   // the optimization is derivative-free (nelder-mead / newuoa), reusing the shared
   // _saemOpt driver selected by the `type` control (_saemType).
+  // Detect (once) whether any phi0 param changes the structural prediction f.
+  // Perturb each phi0 column and re-solve; if f never moves, phi0 touches only
+  // the residual/likelihood and the ODE can be frozen during its optimization.
+  bool phi0AffectsOde() {
+    bool savedFreeze = _saemFreezeOde;
+    _saemFreezeOde = false;
+    vec f0 = user_fn(phiM, evt, optM).col(0);
+    double maxd = 0.0;
+    for (int c = 0; c < nphi0; c++) {
+      mat pp = phiM;
+      pp.col(i0(c)) += 0.1;
+      vec f1 = user_fn(pp, evt, optM).col(0);
+      double d = arma::abs(f1 - f0).max();
+      if (std::isfinite(d) && d > maxd) maxd = d;
+    }
+    // restore states at the true phiM
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }
+    _saemFreezeOde = savedFreeze;
+    return maxd > 1e-8;
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
     // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
@@ -696,14 +717,24 @@ public:
       setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
       _rx = getRxSolve_();
     }
-    // General-likelihood phi0 params (e.g. a likelihood SD) do NOT enter the
-    // ODE, so the states are solved once and frozen while phi0 is optimized.
-    // For nonMuTheta="regress" on a NORMAL model the phi0 thetas DO drive the
-    // ODE (ka, V, ...), so freezing would make the objective blind to them --
-    // keep the ODE live so each objective evaluation re-solves.
-    bool doFreeze = (distribution == 4);
+    // Decide whether to freeze the ODE during the phi0 optimization.  General-
+    // likelihood phi0 params (a likelihood SD) never enter the ODE.  For a
+    // normal model under nonMuTheta="regress", phi0 thetas that drive the ODE
+    // (ka, V, ...) need a LIVE re-solve each evaluation, but phi0 params that
+    // touch only the residual/likelihood (not f) should be frozen -- solve once,
+    // recompute only the objective, exactly like npag's ELS residual step.  The
+    // f-sensitivity is detected once (perturb each phi0, see if f moves).
     _saemFreezeOde = false;
-    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
+    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
+    bool doFreeze;
+    if (distribution == 4) {
+      doFreeze = true;
+    } else if (nonMuThetaRegress) {
+      if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
+      doFreeze = (_phi0OdeSensitive == 0);
+    } else {
+      doFreeze = false;
+    }
     _saemFreezeOde = doFreeze;
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
     // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
@@ -1306,10 +1337,90 @@ public:
     distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
+    residWarmStart = x.containsElementNamed("residWarmStart") ?
+      as<int>(x["residWarmStart"]) : 1;
+    mixProbRegress = x.containsElementNamed("mixProbRegress") ?
+      as<int>(x["mixProbRegress"]) : 0;
+    // Mixtures: the direct phi0 optimizer does not partition a per-component
+    // structural theta (tcl1/tcl2) by subject membership, so it would leave an
+    // under-populated component's theta unconstrained (runaway).  Fall back to
+    // the stochastic phi0 block, which respects membership via the per-chain
+    // mixest regressor.  (nMix is read earlier in inits.)  Likewise the residual
+    // warm-start (formed at the population eta=0 prediction) is especially
+    // unreliable for a mixture -- the poor initial fit inflates the residual and
+    // flattens the likelihood, preventing the components from separating.  Both
+    // gates must follow the reads above so they are not overwritten.
+    if (nMix > 1) { nonMuThetaRegress = 0; residWarmStart = 0; }
+    // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
+    // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
 
+  }
+
+  // Warm-start the residual-error parameters (ares/bres) from the observed
+  // per-endpoint moments at the initial predictions, like npag's npResidMoments:
+  // additive SD = sqrt(mean(err^2)), proportional SD = sqrt(mean((err/f)^2)),
+  // on the transform-both-sides scale.  Only seeds the scale(s) an endpoint's
+  // error model actually uses; a combined (add+prop) endpoint splits the
+  // variance half/half as a warm start.  fsaveFull is chain-major f (>= ntotal).
+  void warmStartResid(const vec &fsaveFull) {
+    if (!residWarmStart || distribution == 4) return;
+    if ((int)fsaveFull.n_elem < ntotal) return;
+    vec fk = fsaveFull.subvec(0, ntotal - 1);
+    fk = fk(ix_sorting);
+    for (int b = 0; b < nendpnt; b++) {
+      int rm = (int)res_mod(b);
+      bool hasAdd = (rm==rmAdd || rm==rmAddProp || rm==rmAddPow ||
+                     rm==rmAddLam || rm==rmAddPropLam || rm==rmAddPowLam);
+      bool hasProp = (rm==rmProp || rm==rmAddProp || rm==rmPropLam || rm==rmAddPropLam);
+      // Max |ft| in this endpoint.  SAEM computes this at the population (eta=0)
+      // prediction, so at small |ft| the residual is dominated by between-subject
+      // variability, not residual noise -- exclude those (< 5% of max) from the
+      // proportional moment so BSV does not inflate the warm-started prop SD.
+      double fmax = 0.0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double aft = std::fabs(_powerD(fk(i), lambda(b), yj(b), low(b), hi(b)));
+        if (std::isfinite(aft) && aft > fmax) fmax = aft;
+      }
+      double fthr = 0.05 * fmax;
+      double sAdd = 0.0, sProp = 0.0; int n = 0, nProp = 0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double ft = _powerD(fk(i), lambda(b), yj(b), low(b), hi(b));
+        double yt = hasFixedObsTransform ? ysTrans(i)
+          : _powerD(ys(i), lambda(b), yj(b), low(b), hi(b));
+        double err = ft - yt;
+        if (!std::isfinite(err)) continue;
+        sAdd += err * err; n++;
+        if (std::fabs(ft) <= fthr) continue;
+        // proportional guard for f==0: denominator 1 when |f| is tiny so a
+        // near-zero prediction does not blow up the proportional moment.
+        double denom = (std::fabs(ft) <= 1e-6) ? 1.0 : ft;
+        double ratio = err / denom;
+        if (std::isfinite(ratio)) { sProp += ratio * ratio; nProp++; }
+      }
+      if (n == 0) continue;
+      if (nProp == 0) nProp = 1;
+      double split = (hasAdd && hasProp) ? std::sqrt(0.5) : 1.0;
+      double mAdd = std::sqrt(sAdd / n) * split;
+      double mProp = std::sqrt(sProp / nProp) * split;
+      // SAEM computes this moment at the UNCONVERGED initial phi (npag/npb use
+      // converged posterior etas), so it is contaminated by structural misfit
+      // and can be far too large -- clamp the warm-started value to [0.2x, 5x]
+      // the user's ini value so a poor initial fit cannot push the residual into
+      // a runaway basin (an over-large residual flattens the S-step likelihood,
+      // which then keeps the residual large).  The f==0 guard above is the
+      // shared fix; this clamp is SAEM-specific.
+      if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0 && ares(b) > 0.0)
+        ares(b) = std::min(std::max(mAdd, 0.2*ares(b)), 5.0*ares(b));
+      if (hasProp && std::isfinite(mProp) && mProp > 0.0 && bres(b) > 0.0)
+        bres(b) = std::min(std::max(mProp, 0.2*bres(b)), 5.0*bres(b));
+    }
+    // keep the per-observation SD vectors (used in the S-step g = vecares +
+    // vecbres*|ft|) consistent with the warm-started scalars.
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
   }
 
   void saem_fit() {
@@ -1349,6 +1460,52 @@ public:
     }
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
+    }
+    warmStartResid(nMix > 1 ? fsave_mix(0) : fsave);
+    if (nMix > 1 && mixProbRegress) {
+      // mixProbMethod="regress": classify each subject to its best component
+      // once (hard) and hold membership fixed -- mixWeights becomes a 0/1
+      // indicator, so the existing responsibility-weighted machinery (arResk,
+      // sufficient stats, phiM_weighted) collapses to a hard assignment.  The
+      // soft-EM E-step and the mixProb SA update are skipped below.
+      mixFixedAssign = mixNaiveClassify(0.0);
+      // Fall back to soft-EM (regularized) when fixed membership cannot work:
+      //  (a) SPLIT-ETA mixtures -- each component owns a distinct eta, so
+      //      omegaShareSubpop has >= 2 distinct non-zero subpop values (a
+      //      shared-eta mixture has just one).  Components start identical and
+      //      must differentiate during the fit; a hard split at the symmetric
+      //      init is arbitrary and never separates.
+      //  (b) a degenerate classification that leaves a component empty (its
+      //      theta would be unconstrained).
+      uvec _nzSub = omegaShareSubpop.elem(find(omegaShareSubpop > 0));
+      uvec _uniqSub = unique(_nzSub);
+      bool isSplitEta = (_uniqSub.n_elem >= 2);
+      bool allPop = true;
+      for (int j = 0; j < nMix; j++) {
+        int cnt = 0;
+        for (int i = 0; i < N; i++) if ((int)mixFixedAssign(i) == j + 1) cnt++;
+        if (cnt == 0) { allPop = false; break; }
+      }
+      if (isSplitEta || !allPop) {
+        mixProbRegress = 0;
+        mixProbMethod = 1; // regularized
+      } else {
+      mixWeights.zeros(N, nMix);
+      for (int i = 0; i < N; i++) {
+        unsigned int a = mixFixedAssign(i);
+        if (a >= 1 && a <= (unsigned int)nMix) mixWeights(i, a - 1) = 1.0;
+      }
+      mixProb = mean(mixWeights, 0).t();
+      // Supply the fixed assignment as a per-subject mixest regressor so the
+      // S-step can solve each subject once under its OWN component (mixest=0 in
+      // user_function -> per-subject indMixest), instead of nMix per-component
+      // chains.  Tile over the nmc MCMC chains (phiM row k*N+i is subject i).
+      Rcpp::IntegerVector mixestFull(N * nmc);
+      for (int k = 0; k < nmc; k++)
+        for (int i = 0; i < N; i++)
+          mixestFull[k * N + i] = (int)mixFixedAssign(i);
+      mx.optM["mixest"] = mixestFull;
+      } // end allPop else
     }
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
       // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
@@ -1545,10 +1702,12 @@ public:
             w_i(j) = mixProb(j) * exp(minL - Ly(i, j));
             sumW += w_i(j);
           }
-          if (sumW > 0.0) {
-            mixWeights.row(i) = w_i / sumW;
-          } else {
-            mixWeights.row(i) = mixProb.t();
+          if (!mixProbRegress) {
+            if (sumW > 0.0) {
+              mixWeights.row(i) = w_i / sumW;
+            } else {
+              mixWeights.row(i) = mixProb.t();
+            }
           }
         }
 
@@ -1657,8 +1816,14 @@ public:
         field<mat> DYF_mix(nMix);
         field<vec> U_y_mix(nMix);
 
-        for (int jMix = 0; jMix < nMix; jMix++) {
-          current_saem_state->_saemMixest = jMix + 1;
+        // mixProbMethod="regress": membership is fixed, so run the S-step ONCE
+        // (jMix=0) with each subject solved under its own component via the
+        // per-subject mixest regressor (mx.optM["mixest"], _saemMixest kept 0),
+        // then fan the result out to every component below.  The soft-EM path
+        // runs one full per-component chain per component.
+        int nMixLoop = mixProbRegress ? 1 : nMix;
+        for (int jMix = 0; jMix < nMixLoop; jMix++) {
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
 
           mat &cur_phiM = phiM_mix(jMix);
           vec &cur_fsave = fsave_mix(jMix);
@@ -1772,12 +1937,29 @@ public:
             }
             U_y_mix(jMix) = joint_nll;
           }
-          current_saem_state->_saemMixest = jMix + 1;
-          cur_fsave = user_fn(cur_phiM, evt, optM).col(0);
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
+          cur_fsave = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                              mixProbRegress ? mx.optM : optM).col(0);
         }
         current_saem_state->_saemMixest = 0;
 
-        // Compute posterior weights a_ji
+        // Fixed membership: fan the single solved chain out to every component
+        // so the downstream AE-step / sufficient-stat accumulation (which sums
+        // mixWeights(i,j)*phiM_mix(j)) sees each subject's one solve under a 0/1
+        // weight.  Copy phi/fsave/cens/limit from component 0.
+        if (mixProbRegress) {
+          for (int j = 1; j < nMix; j++) {
+            phiM_mix(j) = phiM_mix(0);
+            fsave_mix(j) = fsave_mix(0);
+            cens_mix(j) = cens_mix(0);
+            limit_mix(j) = limit_mix(0);
+          }
+        }
+
+        // Compute posterior weights a_ji (soft-EM only; regress keeps the fixed
+        // 0/1 mixWeights and only ran one component's chain, so U_y_mix(1..) are
+        // empty and must not be read).
+        if (!mixProbRegress) {
         mat L_ji(N, nMix);
         for (int j = 0; j < nMix; j++) {
           const vec &U_y_j = U_y_mix(j);
@@ -1806,6 +1988,7 @@ public:
           } else {
             mixWeights.row(i) = mixProb.t();
           }
+        }
         }
 
         if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
@@ -3077,7 +3260,11 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
-      if (nMix > 1) {
+      if (nMix > 1 && mixProbRegress) {
+        // Fixed membership: the mixing proportions are just the (constant) hard
+        // assignment fractions; no soft-EM SA update.
+        mixProb = mean(mixWeights, 0).t();
+      } else if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
         if (mixProbMethod == 1) {
           // Dirichlet-style regularization: blend in mixProbPriorN pseudo-subjects from the
@@ -3267,6 +3454,17 @@ private:
   // with directly-optimized, bound-respecting values (no shrinking phi0
   // variance).  0 = classic phi0, 1 = direct-optimize.
   int nonMuThetaRegress;
+  // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
+  // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
+  // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
+  int _phi0OdeSensitive = -1;
+  // Warm-start residual params from observed per-endpoint moments (npag-style).
+  int residWarmStart;
+  // mixProbMethod="regress": fix per-subject mixture membership (hard classify
+  // once) instead of the soft-EM responsibility step.  mixFixedAssign holds the
+  // 1-based assigned component per subject.
+  int mixProbRegress;
+  uvec mixFixedAssign;
 
   int nendpnt;
   uvec ix_endpnt;

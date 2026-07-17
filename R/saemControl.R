@@ -161,9 +161,19 @@
 #'   component), stabilizes the mixing-probability estimate against
 #'   collapsing onto a single component (the responsibility used to
 #'   update it is itself weighted by the current mixing probability,
-#'   which can create a runaway feedback loop). Two options:
+#'   which can create a runaway feedback loop). Three options:
 #'
-#'   * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+#'   * `"regress"` (default): treat per-subject mixture membership as a
+#'     fixed regressor.  Each subject is hard-classified to a component up
+#'     front, held fixed, and fed into the solve (via the existing
+#'     mixture-index regressor), skipping the per-iteration soft-EM
+#'     responsibility step entirely.  Avoids the responsibility feedback
+#'     loop / collapse by construction and is lower-bias; on heavily
+#'     overlapping components it is higher-variance (an early
+#'     misclassification is not revisited), so prefer `"regularized"` when
+#'     membership is genuinely uncertain.
+#'
+#'   * `"regularized"`: blend `mixProbPriorN` pseudo-subjects,
 #'     distributed per the initial mixing probability, into the
 #'     responsibility average each iteration (Dirichlet/MAP-EM-style).
 #'     Prevents collapse even in difficult cases, at the cost of some
@@ -173,15 +183,6 @@
 #'     step-size schedule (`mixProbStepExp`) instead of the
 #'     full-replacement step used during `nBurn`. Lower bias, but does
 #'     not by itself fix a systematic (non-noise-driven) collapse.
-#'
-#'   * `"regress"`: treat per-subject mixture membership as a fixed
-#'     regressor.  Each subject is assigned a component up front and that
-#'     assignment is held fixed and fed into the solve (via the existing
-#'     mixture-index regressor), skipping the per-iteration soft-EM
-#'     responsibility step entirely.  Avoids the responsibility feedback
-#'     loop by construction and can be more stable when the components are
-#'     well separated; less appropriate when membership is genuinely
-#'     uncertain.
 #'
 #' @param mixProbStepExp Only used when `mixProbMethod="annealed"`. Decay
 #'   exponent for the mixing-probability step size
@@ -237,15 +238,27 @@
 #'     it is validated.
 #'
 #' @param nonMuTheta Controls how a population `theta` that is not
-#'   mu-referenced (does not appear linearly with an eta) is handled.
+#'   mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
+#'   fixed effects) is estimated.
 #'
-#'   * `"eta"` (default): the historic SAEM treatment (the parameter is
-#'     carried through the phi structure).
+#'   * `"regress"` (default): keep the parameter as a plain directly-estimated
+#'     `theta` regressor.  Each iteration `phi0` is estimated by a bounded
+#'     direct optimization of the observation likelihood (robust coordinate
+#'     descent within a local trust region, honoring the `ini` bounds), held
+#'     fixed rather than drawn stochastically with a shrinking variance.  This
+#'     recovers population parameters that have no associated random effect
+#'     more accurately, at some extra runtime (the objective re-solves the
+#'     ODE).
 #'
-#'   * `"regress"`: keep the parameter as a plain `theta` regressor in the
-#'     translated model (as the mu-referenced FOCEI family does), rather
-#'     than folding it into the phi/eta structure.  Can improve stability
-#'     of population parameters that have no associated random effect.
+#'   * `"eta"`: the historic SAEM treatment (the parameter is carried through
+#'     the stochastic `phi0` block).
+#'
+#' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
+#'   parameters from the observed per-endpoint moments at the initial predictions
+#'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
+#'   `sqrt(mean((err/f)^2))`), the same moment estimate `est="npag"` uses.  Gives
+#'   the stochastic step a better starting residual scale.  Set `FALSE` to start
+#'   from the `ini`-block residual values instead.
 #'
 #' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
 #'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
@@ -373,12 +386,13 @@ saemControl <- function(seed = 99,
                         iovXform = c("sd", "var", "logsd", "logvar"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
-                        mixProbMethod = c("regularized", "annealed", "regress"),
+                        mixProbMethod = c("regress", "regularized", "annealed"),
                         mixProbStepExp = 1,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         sharedInner = c("classic", "shared"),
-                        nonMuTheta = c("eta", "regress"),
+                        nonMuTheta = c("regress", "eta"),
+                        residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
                         fast = FALSE,
                         fastKernel = c("firstN", "throughout", "additive"),
@@ -457,6 +471,7 @@ saemControl <- function(seed = 99,
   mixSampleMethod <- match.arg(mixSampleMethod)
   sharedInner <- match.arg(sharedInner)
   nonMuTheta <- match.arg(nonMuTheta)
+  checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(fast, any.missing=FALSE, len=1)
   fastKernel <- match.arg(fastKernel)
@@ -593,6 +608,7 @@ saemControl <- function(seed = 99,
     mixSampleMethod=mixSampleMethod,
     sharedInner=sharedInner,
     nonMuTheta=nonMuTheta,
+    residWarmStart=residWarmStart,
     fast=fast,
     fastKernel=fastKernel,
     fastCov=fastCov,
