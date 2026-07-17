@@ -602,6 +602,10 @@
   (`exp`/`expit`/`probitInv`) in the `Back-transformed` column instead of the
   raw log/logit-scale estimate.
 
+- `augPred()` now keeps the fit's original subject ids: the returned `id`
+  factor carries the actual (character/factor) ids from the fit instead of the
+  internal integer re-numbering (#450).
+
 - `fit$time` again attributes model build/compile to `setup`/`configure` (and
   the nlm family times setup/optimize) instead of `other`.
 
