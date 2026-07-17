@@ -475,6 +475,12 @@
 
 ### Estimation
 
+- A focei model whose predictions do not depend on any random effect (for
+  example `y ~ dpois(rate)` where `rate` is a fixed population parameter rather
+  than a model-predicted value) no longer reports the generic "Aborted
+  calculation" message.  The underlying cause is raised directly with guidance on
+  linking each endpoint's distribution parameter to an eta-varying model quantity
+  (#515).
 - `est="saem"`'s "mis-match in nbr endpoints in model & in data" error is now
   actionable: it reports the number of endpoints in the model versus the data,
   lists the observation compartments found in the data, and points the user to
