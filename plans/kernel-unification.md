@@ -65,8 +65,39 @@ multi-endpoint / censoring / TBS and before retiring `arResk`.
 
 ## Order of increments (commit each)
 
-- [ ] I1: R scaffolding -- `sharedInner="shared"` installs the focei inner
-  (inert; sets up `cfg$sharedInnerEnv`, no behavior change).
-- [ ] I2: C++ `saemSharedResid_` returning per-subject f/r/loglik at given etas.
-- [ ] I3: equivalence test (shared vs classic f/r/objf on the add model).
-- [ ] I4: checkpoint; then broaden error models + retire `arResk` under the flag.
+- [x] I1: R scaffolding -- `sharedInner="shared"` installs the focei inner
+  (inert; `cfg$sharedInnerEnv`, shared==classic bit-for-bit). MERGED.
+- [x] I2: C++ `saemSharedResid_(etaMat)` returning per-obs f/r/loglik via
+  likInner0 at given etas. MERGED.
+- [x] I3: equivalence at eta=0 vs an independent structural solve (f to ODE
+  tol, r exact). MERGED.
+- [x] I4: full-fit equivalence -- shared f reproduces a converged fit's IPRED
+  (~2e-4), r exact. Add + prop error validated. MERGED.
+- [x] G1: `saemSharedResidUpdate_(theta, omega, etaMat)` -- cheap in-loop inner
+  re-parameterize (vaeInnerUpdateParCore) + residual; the per-iteration callable.
+  Reproduces IPRED via the fast path. MERGED.
+- [ ] G2 (NEXT, deepest/riskiest -- C++ SAEM-loop surgery):
+  1. In `src/saem.cpp` under `sharedInner`, at the M-step: switch the global
+     solve to the FOCEi inner (the fsaem pattern -- `vaeInnerSetup_`/
+     `vaeInnerUpdateParCore` makes the inner current), call the
+     `saemSharedResidUpdate_` logic at the conditional-mean etas
+     (`mpost_phi`->etas) to get per-obs f/r, then `setupRx(fsaemSaemOpt, ...)`
+     to RESTORE the SAEM (N*nmc) solve before the rest of the M-step (mirror
+     `saem.cpp:716` and `:3652`).
+  2. FIRST do it as a DIAGNOSTIC (compute shared f in-loop, assert
+     max|f_saem - f_shared| ~ ODE tol each iteration) to prove the in-loop
+     solve-switch is correct WITHOUT changing behavior.
+  3. THEN estimate the residual params from the shared residuals (y - f) via the
+     per-endpoint moment (like `warmStartResid`), replacing `arResk`'s SSR for
+     the residual M-step -- under the flag only.
+  4. Equivalence-gate vs classic on the eval set; keep the classic path until the
+     default flips.
+- [ ] G3: route `calc.2LL` -- careful (SAEM's -2LL is MARGINAL/GQ, the shared
+  llikObs is CONDITIONAL; needs the GQ integrator to consume the shared per-obs
+  density, not a drop-in swap).
+- [ ] G4: flip default once equivalence holds across the eval set.
+
+RISK NOTE: G2 is the first change that mutates the live SAEM kernel state
+(solve switching inside the loop).  The full callable chain (I1-I4, G1) is proven
+to reproduce SAEM's f/r, so the numerical risk is retired; G2's risk is
+state-management (restoring the SAEM solve on every path incl. early returns).
