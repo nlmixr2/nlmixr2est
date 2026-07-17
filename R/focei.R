@@ -1295,9 +1295,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
   # it; the direction metadata travels separately in `outerMeta`.
   .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
-  # AGQ (nAGQ>1) only: the 1st-order model the quadrature nodes solve on.  Built here so it
-  # rides in the qs2 cache next to `outer` -- otherwise the extra symengine+gcc pass would
-  # be re-paid every session, which is the only reason an earlier attempt was reverted.
+  # AGQ (nAGQ>1) only: the 1st-order model the nodes solve on, built here so it rides in the
+  # qs2 cache next to `outer` rather than re-paying the symengine+gcc pass each session.
   .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
@@ -1309,8 +1308,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
-    # AGQ node model (1st order); NULL for nAGQ<=1.  Same split as outer/outerMeta: the
-    # compiled model at top level so the qs2 rxLoad reloads it, metadata separately.
+    # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
+    # top level so the qs2 rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
     outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
@@ -1438,12 +1437,10 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## fast=TRUE adds the augmented outer-gradient model (foceiModelList$outer), so it
   ## must key the cache -- else a non-fast build (outer=NULL) would be reused for a
   ## fast fit (foceType too, since foce+ has no outer model).
-  ## nAGQ likewise: only nAGQ>1 builds the 1st-order node model (foceiModelList$outerNode),
-  ## so without it a FOCEI/Laplace fit would cache outerNode=NULL and a later AGQ fit of the
-  ## SAME model would read that cache, find no node model, and silently fall back to solving
-  ## the nodes on the 26-state eta-hat model -- no error, just the optimization quietly not
-  ## happening.  Keyed as the boolean, not nAGQ itself: the node model depends only on
-  ## whether there are quadrature nodes, not on how many, so nAGQ=2 and nAGQ=3 share it.
+  ## nAGQ likewise: only nAGQ>1 builds outerNode, so without it a FOCEI fit would cache
+  ## outerNode=NULL and a later AGQ fit of the SAME model would silently solve the nodes on
+  ## the eta-hat model instead.  Keyed as the boolean -- the node model depends on whether
+  ## there are nodes, not how many -- so nAGQ=2 and nAGQ=3 share one build.
   .agqNodes <- as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) > 1L
   .fast <- isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))
   .foceType <- rxode2::rxGetControl(.ui, "foceType", 0L)
