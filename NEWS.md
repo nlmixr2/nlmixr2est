@@ -10,7 +10,12 @@
   component running away to a degenerate value) and is lower-bias on both
   well-separated and overlapping component evaluations; on heavily overlapping
   components it can be higher-variance, so the previous soft-EM behavior remains
-  available with `mixProbMethod="regularized"`.
+  available with `mixProbMethod="regularized"`.  Because membership is fixed, the
+  S-step solves each subject once under its own component (a per-subject mixest
+  regressor) instead of running one MCMC chain per component -- roughly an
+  `nMix`-fold reduction in ODE solves per iteration.  Split-ETA mixtures (a
+  separate eta per component, which start symmetric and must differentiate during
+  the fit) automatically fall back to soft-EM (`regularized`).
 
 - SAEM warm-starts its residual-error parameters from the observed per-endpoint
   moments at the initial predictions (additive SD from `sqrt(mean(err^2))`,

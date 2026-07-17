@@ -1351,16 +1351,8 @@ public:
     // flattens the likelihood, preventing the components from separating.  Both
     // gates must follow the reads above so they are not overwritten.
     if (nMix > 1) { nonMuThetaRegress = 0; residWarmStart = 0; }
-    // Split-ETA mixtures (a separate eta per component) typically start with
-    // identical components (tcl1==tcl2) and must differentiate DURING the fit;
-    // fixed membership (mixProbMethod="regress") hard-classified at that
-    // symmetric init would lock in an arbitrary split and never separate.  Fall
-    // back to the robust soft-EM (regularized) for these.
-    if (nMix > 1 && mixProbRegress &&
-        omegaShareSubpop.n_elem == (unsigned int)nphi1) {
-      mixProbRegress = 0;
-      mixProbMethod = 1; // regularized
-    }
+    // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
+    // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
@@ -1477,12 +1469,43 @@ public:
       // sufficient stats, phiM_weighted) collapses to a hard assignment.  The
       // soft-EM E-step and the mixProb SA update are skipped below.
       mixFixedAssign = mixNaiveClassify(0.0);
+      // Fall back to soft-EM (regularized) when fixed membership cannot work:
+      //  (a) SPLIT-ETA mixtures -- each component owns a distinct eta, so
+      //      omegaShareSubpop has >= 2 distinct non-zero subpop values (a
+      //      shared-eta mixture has just one).  Components start identical and
+      //      must differentiate during the fit; a hard split at the symmetric
+      //      init is arbitrary and never separates.
+      //  (b) a degenerate classification that leaves a component empty (its
+      //      theta would be unconstrained).
+      uvec _nzSub = omegaShareSubpop.elem(find(omegaShareSubpop > 0));
+      uvec _uniqSub = unique(_nzSub);
+      bool isSplitEta = (_uniqSub.n_elem >= 2);
+      bool allPop = true;
+      for (int j = 0; j < nMix; j++) {
+        int cnt = 0;
+        for (int i = 0; i < N; i++) if ((int)mixFixedAssign(i) == j + 1) cnt++;
+        if (cnt == 0) { allPop = false; break; }
+      }
+      if (isSplitEta || !allPop) {
+        mixProbRegress = 0;
+        mixProbMethod = 1; // regularized
+      } else {
       mixWeights.zeros(N, nMix);
       for (int i = 0; i < N; i++) {
         unsigned int a = mixFixedAssign(i);
         if (a >= 1 && a <= (unsigned int)nMix) mixWeights(i, a - 1) = 1.0;
       }
       mixProb = mean(mixWeights, 0).t();
+      // Supply the fixed assignment as a per-subject mixest regressor so the
+      // S-step can solve each subject once under its OWN component (mixest=0 in
+      // user_function -> per-subject indMixest), instead of nMix per-component
+      // chains.  Tile over the nmc MCMC chains (phiM row k*N+i is subject i).
+      Rcpp::IntegerVector mixestFull(N * nmc);
+      for (int k = 0; k < nmc; k++)
+        for (int i = 0; i < N; i++)
+          mixestFull[k * N + i] = (int)mixFixedAssign(i);
+      mx.optM["mixest"] = mixestFull;
+      } // end allPop else
     }
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
       // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
@@ -1793,8 +1816,14 @@ public:
         field<mat> DYF_mix(nMix);
         field<vec> U_y_mix(nMix);
 
-        for (int jMix = 0; jMix < nMix; jMix++) {
-          current_saem_state->_saemMixest = jMix + 1;
+        // mixProbMethod="regress": membership is fixed, so run the S-step ONCE
+        // (jMix=0) with each subject solved under its own component via the
+        // per-subject mixest regressor (mx.optM["mixest"], _saemMixest kept 0),
+        // then fan the result out to every component below.  The soft-EM path
+        // runs one full per-component chain per component.
+        int nMixLoop = mixProbRegress ? 1 : nMix;
+        for (int jMix = 0; jMix < nMixLoop; jMix++) {
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
 
           mat &cur_phiM = phiM_mix(jMix);
           vec &cur_fsave = fsave_mix(jMix);
@@ -1908,12 +1937,29 @@ public:
             }
             U_y_mix(jMix) = joint_nll;
           }
-          current_saem_state->_saemMixest = jMix + 1;
-          cur_fsave = user_fn(cur_phiM, evt, optM).col(0);
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
+          cur_fsave = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                              mixProbRegress ? mx.optM : optM).col(0);
         }
         current_saem_state->_saemMixest = 0;
 
-        // Compute posterior weights a_ji
+        // Fixed membership: fan the single solved chain out to every component
+        // so the downstream AE-step / sufficient-stat accumulation (which sums
+        // mixWeights(i,j)*phiM_mix(j)) sees each subject's one solve under a 0/1
+        // weight.  Copy phi/fsave/cens/limit from component 0.
+        if (mixProbRegress) {
+          for (int j = 1; j < nMix; j++) {
+            phiM_mix(j) = phiM_mix(0);
+            fsave_mix(j) = fsave_mix(0);
+            cens_mix(j) = cens_mix(0);
+            limit_mix(j) = limit_mix(0);
+          }
+        }
+
+        // Compute posterior weights a_ji (soft-EM only; regress keeps the fixed
+        // 0/1 mixWeights and only ran one component's chain, so U_y_mix(1..) are
+        // empty and must not be read).
+        if (!mixProbRegress) {
         mat L_ji(N, nMix);
         for (int j = 0; j < nMix; j++) {
           const vec &U_y_j = U_y_mix(j);
@@ -1937,13 +1983,12 @@ public:
             w_i(j) = mixProb(j) * exp(min_L - L_ji(i, j));
             sum_w += w_i(j);
           }
-          if (!mixProbRegress) {
-            if (sum_w > 0.0) {
-              mixWeights.row(i) = w_i / sum_w;
-            } else {
-              mixWeights.row(i) = mixProb.t();
-            }
+          if (sum_w > 0.0) {
+            mixWeights.row(i) = w_i / sum_w;
+          } else {
+            mixWeights.row(i) = mixProb.t();
           }
+        }
         }
 
         if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
