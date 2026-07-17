@@ -27,8 +27,10 @@ public:
     }
 };
 
-// Map rxError to Rf_error for C++ exceptions to easily jump out
-#define rxError Rf_error
+// Map rxError to the parenthesized (Rf_error) form so the call bypasses
+// Rcpp's Rf_error deprecation macro (RcppCore/Rcpp#1247).  C++ code that
+// needs proper stack unwinding should call Rcpp::stop instead.
+#define rxError (Rf_error)
 
 #else /* C */
 /* C equivalent of rxProtect: RAII guard using __attribute__((cleanup)).

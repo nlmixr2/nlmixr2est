@@ -2,6 +2,19 @@
 
 ## New features
 
+- The FOCEi-family outer finite-difference gradient now freezes the ODE solve
+  when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
+  the default).  Those parameters do not change the prediction `f` (or the EBEs
+  or `df/deta`), so each subject's base states and EBE are cached once per
+  gradient and only `r`/the density is recomputed -- no re-integration and no
+  inner eta re-optimization -- mirroring what `est="npag"`/`est="npb"` already do
+  for their residual step.  This is a small approximation to the exact FOCEi
+  gradient (it drops the eta sensitivity of the Laplace `log det` term); across
+  prop+add, additive-only, and box-Cox/transform-both-sides error models on
+  `theo_sd` it left the objective within ~0.02 and every parameter within ~1% of
+  the exact re-solve while roughly halving gradient time (about 2x).  Set
+  `freezeResidGrad=FALSE` to recover the exact full re-solve gradient.
+
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
   Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short
@@ -687,6 +700,12 @@
 - Removed an unreachable duplicate `missingTable` default assignment in
   `nlmixr2Est0()` (issue #385); the earlier default already fixes the value, so
   the second block could never run.  No change to fit results.
+- Removed the last bare `Rf_error` call from the C++ sources (issue #632):
+  the `Rcpp::compileAttributes()` output now emits the parenthesized
+  `(Rf_error)` form, and the internal `rxError` macro was switched to
+  `(Rf_error)` as well, so the package no longer trips Rcpp's upcoming
+  `Rf_error` deprecation warning (RcppCore/Rcpp#1247).  The C `.Call`
+  entry-point validators keep their justified `Rf_errorcall` uses.
 
 - Consolidated data preparation and the nlm-family control/fit functions, and
   the analytic-covariance augmented model now uses rxode2's chunked
