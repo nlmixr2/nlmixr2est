@@ -61,6 +61,19 @@
   `interaction=TRUE`; a fit that cannot use it falls back to finite differences
   rather than failing.
 
+- `covType="analytic"` now covers `est="agq"` as well (it previously declined for
+  `nAGQ > 1` and fell back to the finite-difference covariance).  The AGQ
+  observed information is the FOCEi one with the same single term swapped, so the
+  `log det` half is reused unchanged and only the data half becomes an expectation
+  over the quadrature nodes plus a covariance between their score contributions.
+  At `nAGQ=1` it reduces to the FOCEi observed information exactly, and the FOCEi
+  and Laplace results are unchanged.  Validated against a finite-difference
+  oracle (tight ODE tolerance, Richardson extrapolation): the AGQ standard errors
+  agree to that oracle's own noise floor.  As with the gradient, a model outside
+  its scope -- a general or multi-endpoint residual variance, censoring, IOV, a
+  finite `agqLow`/`agqHi` clamp, `cholSECov=TRUE`, or `interaction=FALSE` --
+  reports why and keeps the finite-difference covariance.
+
 - The FOCEi-family outer finite-difference gradient now freezes the ODE solve
   when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
   the default).  Those parameters do not change the prediction `f` (or the EBEs
