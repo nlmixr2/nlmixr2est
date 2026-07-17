@@ -19,11 +19,13 @@
   iteration it evaluates the inner at the conditional-mean etas (the solve is
   switched to the FOCEi inner and safely restored) and SA-blends the residual
   moment into `ares`/`bres`.  This is a distinct estimator (the per-subject inner
-  uses the conditional mean, not the `N*nmc` MCMC chains) but is near-equivalent
-  to `"classic"`: on theophylline the structural parameters agree to ~0.01-0.03
-  and the residual SD to ~1% for both additive and proportional error.  Prototype:
-  a single add/prop/combined continuous endpoint, no mixtures; the default
-  `"classic"` path is bit-for-bit unchanged.
+  uses the conditional mean, not the `N*nmc` MCMC chains).  The structural
+  parameters match `"classic"` closely (~0.01-0.03 on theophylline) and the
+  proportional residual to ~0.1%; the additive residual SD differs more at finite
+  N (~15-20%) because the conditional-mean moment omits the within-subject
+  eta-variance contribution the chain-averaged SSR includes (asymptotically
+  equivalent).  Prototype: a single add/prop/combined continuous endpoint, no
+  mixtures; the default `"classic"` path is bit-for-bit unchanged.
 
 - `est="npag"`/`est="npb"` now PIN the current ODE solve during the
   residual-error (`err`) parameter optimization instead of re-integrating.  Those
@@ -479,6 +481,31 @@
   with "too few arguments to function 'sin'".  The fix is in `rxode2`'s
   `rxFromSE()` (which was dropping the whole argument, emitting `sin()`); a
   regression test is added here (nlmixr2/nlmixr2est#513).
+- FOCEi now estimates a population parameter that is initialized at exactly `0`
+  (e.g. a covariate effect or an additive term) instead of leaving it frozen at
+  its starting value.  The default scaling constant is `1/|initPar|`, which is
+  `Inf` when `initPar` is `0`; it clamped to `scaleCmax` and made the parameter
+  effectively unoptimizable.  `getScaleC()` now falls back to unit scaling when
+  the initial estimate is `0`.
+- A single-subject / fixed-effect ("N of 1") model -- one whose only random
+  effects are fixed to zero, which are dropped before estimation -- now gives an
+  actionable error when a method that requires random effects (`fo`, `foi`,
+  `saem`, `fsaem`, `nlme`) is used, pointing to methods that can fit it (`focei`,
+  `foce`, or a population method such as `nlminb`, `bobyqa` or `nls`).  The error
+  also keeps the user's original model name instead of reporting the internal
+  `.mod` (issue #493).
+- A focei model whose predictions do not depend on any random effect (for
+  example `y ~ dpois(rate)` where `rate` is a fixed population parameter rather
+  than a model-predicted value) no longer reports the generic "Aborted
+  calculation" message.  The underlying cause is raised directly with guidance on
+  linking each endpoint's distribution parameter to an eta-varying model quantity
+  (#515).
+- `est="saem"`'s "mis-match in nbr endpoints in model & in data" error is now
+  actionable: it reports the number of endpoints in the model versus the data,
+  lists the observation compartments found in the data, and points the user to
+  check that the `CMT`/`DVID` values match the number of model endpoints (error
+  terms).  This is the common case of a dataset with extra `DVID` levels that
+  the model has no matching endpoint for (issue #579).
 
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
@@ -521,6 +548,13 @@
   population/covariate parameter, and `cov2cor` for a one-nonzero-diagonal Omega.
 
 ### Estimation and convergence
+
+- A FOCEI fit that hits a theta reset and then restarts no longer aborts with
+  `Assertion on 'fitEnv$etaObj$ID' failed: Must be of type 'integer', not
+  'factor'`.  The restart re-validated the previous attempt's `etaObf`, whose
+  `ID` column is a factor of the original subject IDs; it is now coerced back to
+  an integer so a genuinely non-converging fit reports its real reason instead of
+  this spurious assertion (#470).
 
 - Fixed the `fast = TRUE` analytic gradient for models whose residual variance
   depends on the prediction (`prop`, `add+prop`, `combined1`, `pow`, `add+pow`):
@@ -566,10 +600,23 @@
 
 ### Output, tables, and printing
 
+- Model-defined variables (e.g. `ka`, `cl`, `v`, `tad`, `dosenum`, and any
+  user-added line such as `WT.OUT <- WT`) are now included in the output table
+  whether or not `cwres` is requested.  Previously `tableControl(cwres=FALSE)`
+  dropped these columns while `cwres=TRUE` (the default) kept them, so the same
+  model produced different output columns depending on the residual request
+  (#497).
+
 - A zero-fixed eta (e.g. `bsva ~ 0`) is again restored into the fitted model's
   `ini()`/`model()` blocks when the estimation makes a nested `nlmixr2()` call
   (e.g. adding the focei objective or CWRES), so `fit |> ini(bsva ~ 0.1)`
   works; the nested call used to wipe the restore info held in a global (#741).
+
+- `augPred()` now works on a `focei` fit whose model has a zero-fixed eta that
+  appears in the prediction (e.g. `eta.v ~ 0` used in both the ODE and the
+  residual), instead of erroring with `parameter(s) are required for solving:
+  eta.v`; the simulation model drops the zero eta consistently with `saem`
+  (#514).
 
 - `laplace`/`agq` family fits label their `$objDf` row `Laplace`/`AGQ<n>`
   (matching `$ofvType`) instead of `FOCEi`; previously the default
@@ -587,6 +634,10 @@
 - Literally-fixed population parameters now report their back-transformed value
   (`exp`/`expit`/`probitInv`) in the `Back-transformed` column instead of the
   raw log/logit-scale estimate.
+
+- `augPred()` now keeps the fit's original subject ids: the returned `id`
+  factor carries the actual (character/factor) ids from the fit instead of the
+  internal integer re-numbering (#450).
 
 - `fit$time` again attributes model build/compile to `setup`/`configure` (and
   the nlm family times setup/optimize) instead of `other`.

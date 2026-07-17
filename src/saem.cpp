@@ -2626,8 +2626,11 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
-      // general log-likelihood (distribution==4): no residual error params to update
-      if (distribution != 4)
+      // general log-likelihood (distribution==4): no residual error params to update.
+      // sharedInner="shared": the per-endpoint res_mod residual update is RETIRED --
+      // ares/bres come solely from sharedResidEstimate() (shared inner driver) below.
+      bool _sharedResidActive = sharedInnerDiag && !Rf_isNull(sharedInnerEnv);
+      if (distribution != 4 && !_sharedResidActive)
       for(int b=0; b<nendpnt; ++b) {
         // AR(1): update the correlation from this iteration's residual pairs
         // (grid-search profile likelihood + stochastic approximation).  statrese

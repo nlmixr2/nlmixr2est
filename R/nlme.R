@@ -510,7 +510,7 @@ nlmixr2Est.nlme <- function(env, ...) {
          call. = FALSE)
   }
   rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("nlme"), .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)

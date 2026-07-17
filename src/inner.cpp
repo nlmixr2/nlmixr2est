@@ -798,22 +798,30 @@ void updateZm(focei_ind *indF){
 
 static inline double getScaleC(int i){
   if (ISNA(op_focei.scaleC[i])) {
+    // The default scaling constant is 1/|initPar|.  When a parameter is
+    // initialized at exactly 0 (e.g. a covariate effect or an additive term)
+    // this is 1/0 = Inf, which clamps to scaleCmax and makes the parameter
+    // effectively unoptimizable: a tiny step in scaled space becomes a huge
+    // step in the parameter, so the line search freezes it at its starting
+    // value.  Fall back to unit scaling when initPar is 0 so a zero-initialized
+    // parameter is still estimated.
+    double aInit = fabs(op_focei.initPar[i]);
     switch (op_focei.xPar[i]){
     case 1: // log
       op_focei.scaleC[i]=1.0;
       break;
     case 2: // diag^2
-      op_focei.scaleC[i]=1.0/fabs(op_focei.initPar[i]);
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     case 3: // exp(diag)
       op_focei.scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      op_focei.scaleC[i] = 1.0/(2.0*fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
       break;
     default:
-      op_focei.scaleC[i]= 1.0/(fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     }
   }

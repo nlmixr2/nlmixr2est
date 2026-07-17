@@ -102,6 +102,14 @@ nmTest({
     expect_true(all(!is.na(tab2$CMT)))
     expect_s3_class(tab2$CMT, "factor")
 
+    # nlmixr2/nlmixr2est#497: model-defined variables (V, Cl, K, cp, ...) must
+    # appear in the cwres=FALSE output just as they do with cwres=TRUE.  Only the
+    # cwres-specific residual columns should differ between the two tables.
+    expect_true(all(c("V", "Cl", "K", "cp") %in% names(tab1)))
+    expect_setequal(setdiff(names(tab2), names(tab1)),
+                    c("WRES", "CPRED", "CRES", "CWRES"))
+    expect_equal(setdiff(names(tab1), names(tab2)), character(0))
+
     tab3 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=TRUE))
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab3)))
     expect_true(all(!is.na(tab3$CMT)))

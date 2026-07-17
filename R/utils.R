@@ -21,6 +21,22 @@
 
 # Utilities for nlmixr2 ####################################################
 
+#' Message suffix for a method that requires random effects
+#'
+#' Used as the `extra` argument to `rxode2::assertRxUiMixedOnly()` so a
+#' single-subject / fixed-effect ("N of 1") model gets an actionable error
+#' pointing to the methods that can fit models with no random effects.
+#'
+#' @param est estimation method name
+#' @return character message suffix
+#' @author Matthew L. Fidler
+#' @noRd
+.noRandomEffectMsg <- function(est) {
+  paste0(" for the estimation routine '", est,
+         "'; a model with no random effects (for example single-subject or 'N of 1' data) can be ",
+         "fit with 'focei', 'foce', or a population method such as 'nlminb', 'bobyqa' or 'nls'")
+}
+
 #' Cox Box, Yeo Johnson and inverse transformation
 #'
 #' @param x data to transform
