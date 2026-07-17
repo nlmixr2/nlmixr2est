@@ -718,6 +718,13 @@
   the output with a population `PRED` and `NA` individual columns, like FOCEi
   (#687).
 
+- FOCEi no longer errors with `'names' attribute [n] must be the same length as
+  the vector [m]` when a subject's records are all removed during data
+  translation (e.g. every `TIME` is `NA`).  Such a subject vanishes from the
+  processed data entirely rather than losing only its observations, so it is now
+  detected and dropped from the subject index alongside observation-less
+  subjects (#606).
+
 - Fixed `nlmControl()` listing `eventSens`/`sensMethod` twice.  The "initial
   ETAs were nudged" warning fires only when a nudge actually happened, and a
   non-default `mceta` on a fully mu-referenced model falls back to the default
