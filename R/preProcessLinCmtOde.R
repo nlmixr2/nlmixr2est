@@ -120,7 +120,8 @@
 #' (`.foceiPreProcessData()` uses the plain model).  A dose then silently lands
 #' in a sensitivity state -- every prediction comes back 0.  Solving the linear
 #' part as ODEs removes the `linCmt()` block, so the numbering agrees again.
-#' SAEM builds no sensitivity states and is left alone.
+#' SAEM and NLME build no sensitivity states (NLME solves a pred-only
+#' finite-difference model) and are left alone.
 #'
 #' @param ui rxode2 ui
 #' @inheritParams nlmixr2

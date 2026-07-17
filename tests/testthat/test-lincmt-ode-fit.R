@@ -70,6 +70,73 @@ nmTest({
     .d[order(.d$id, .d$time, -.d$evid), ]
   }
 
+  # single-endpoint version for nlme, which is not translated: it solves a
+  # pred-only finite-difference model (nlmeFD) and so adds no sensitivity
+  # compartments to shift the linCmt() block.  If nlme ever gains analytic
+  # sensitivities this fit stops matching saem and this test fails.
+  .linPd <- function() {
+    ini({
+      tka <- log(1.57); tcl <- log(2.72); tv <- log(31.5); tke0 <- log(0.5)
+      eta.ka ~ 0.2; eta.cl ~ 0.1
+      pd.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      ke0 <- exp(tke0)
+      C2 <- linCmt()
+      d/dt(ce) <- ke0 * (C2 - ce)
+      ce ~ add(pd.sd)
+    })
+  }
+  .simPd <- function(nid = 12) {
+    .sim <- rxode2::rxode2({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      ke0 <- exp(tke0)
+      C2 <- linCmt()
+      d/dt(ce) <- ke0 * (C2 - ce)
+    })
+    .th <- c(tka = log(1.57), tcl = log(2.72), tv = log(31.5), tke0 = log(0.5))
+    .ev <- rxode2::et(amt = 320, cmt = "depot")
+    .ev <- rxode2::et(.ev, seq(0.5, 24, by = 2))
+    .ev <- rxode2::et(.ev, id = seq_len(nid))
+    .s <- rxode2::rxSolve(.sim, .th, .ev,
+                          omega = lotri::lotri(eta.ka ~ 0.2, eta.cl ~ 0.1),
+                          addDosing = FALSE, returnType = "data.frame")
+    .obs <- data.frame(id = .s$id, time = .s$time,
+                       dv = .s$ce + 0.3 * stats::rnorm(nrow(.s)),
+                       cmt = "ce", amt = NA_real_, evid = 0)
+    .d <- rbind(data.frame(id = seq_len(nid), time = 0, dv = NA_real_,
+                           cmt = "depot", amt = 320, evid = 1), .obs)
+    .d[order(.d$id, .d$time, -.d$evid), ]
+  }
+
+  test_that("nlme keeps the analytic linCmt() and still fits a combined linCmt()/ODE model", {
+    withr::with_seed(7, {
+      rxode2::rxSetSeed(7)
+      .d <- .simPd()
+    })
+    # nlme is not translated
+    expect_silent(expect_null(.preProcessLinCmtOde(.linPd(), "nlme", NULL, NULL)))
+    .fNlme <- suppressWarnings(nlmixr2(.linPd(), .d, est = "nlme",
+                                       control = nlmeControl(print = 0,
+                                                             calcTables = FALSE)))
+    # saem is the reference: it also keeps the analytic linCmt()
+    .fSaem <- suppressWarnings(nlmixr2(.linPd(), .d, est = "saem",
+                                       control = saemControl(print = 0, nBurn = 100,
+                                                             nEm = 150,
+                                                             calcTables = FALSE)))
+    .n <- setNames(.fNlme$parFixedDf$Estimate, rownames(.fNlme$parFixedDf))
+    .s <- setNames(.fSaem$parFixedDf$Estimate, rownames(.fSaem$parFixedDf))
+    # the dose reaches the linCmt() system: v and cl are recovered (they would
+    # be meaningless if every prediction were 0)
+    expect_equal(unname(.n["tv"]), log(31.5), tolerance = 0.05)
+    expect_equal(unname(.n["tcl"]), log(2.72), tolerance = 0.2)
+    # and nlme agrees with the analytic-linCmt reference
+    for (.p in c("tv", "tcl", "pd.sd")) {
+      expect_equal(unname(.n[.p]), unname(.s[.p]), tolerance = 0.05, info = .p)
+    }
+  })
+
   test_that("a fit of a combined linCmt()/ODE model records the ODE translation in $runInfo", {
     withr::with_seed(42, {
       rxode2::rxSetSeed(42)
