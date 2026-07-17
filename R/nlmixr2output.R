@@ -470,6 +470,7 @@
   "etaC"="phiC",
   "etaSE"="phiSE",
   "etaRSE"="phiRSE",
+  "etaCI"="phiCI",
   "uiIni"="iniUi"
 )
 

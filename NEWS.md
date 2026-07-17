@@ -2,6 +2,11 @@
 
 ## New features
 
+- `fit$etaCI` returns per-subject confidence intervals for each individual's
+  eta, complementing the existing `fit$etaSE` and `fit$etaRSE`.  The intervals
+  are the empirical-Bayes estimate plus/minus a normal quantile times the eta
+  standard error, using the fit's `ci` level (default 0.95).  Like `etaSE`, it
+  requires `CWRES` in the fit (add with `addCwres()` for non-focei methods).
 - The FOCEi-family outer finite-difference gradient now freezes the ODE solve
   when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
   the default).  Those parameters do not change the prediction `f` (or the EBEs
@@ -537,6 +542,10 @@
   to: 0".
 
 ### Covariance and standard errors
+
+- `fit$etaSE` columns are now labeled `se(<eta>)` (matching `fit$etaRSE`'s
+  `rse(<eta>)%`); the label was previously applied to a matrix's `names()`
+  (a no-op) so the columns came back as bare eta names.
 
 - `covMethod = "r"`/`"s"`/`"r,s"` standard errors were inflated by a constant
   factor (`sqrt(2)` for `"r"`, `2` for `"s"`) from using `2*R^-1`/`4*S^-1`; they
