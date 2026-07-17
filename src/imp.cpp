@@ -811,7 +811,7 @@ void impOuter(Environment e) {
 
   // Monte-Carlo observed-information covariance (theta block) at the converged
   // estimate, before the inner neqOverride is cleared (the inner solves use it).
-  // Experimental, opt-in via impmapControl(impCov=TRUE).
+  // Selected by impmapControl(covMethod="imp") (the default).
   if (impCovEnabled()) impComputeCov(e);
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.

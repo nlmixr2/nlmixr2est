@@ -243,7 +243,7 @@
 .foceiRecomputeMuCov <- function(fit, est) {
   .baseEst <- .foceiRecomputeBaseEst(est)
   if (is.null(.baseEst)) return(NULL)
-  # impCov=TRUE installed the Monte-Carlo importance-sampling covariance;
+  # covMethod="imp" installed the Monte-Carlo importance-sampling covariance;
   # that explicit request wins over the recompute
   if (identical(tryCatch(fit$covMethod, error = function(e) NULL), "imp")) {
     return(NULL)
