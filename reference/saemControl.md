@@ -48,11 +48,10 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  mixProbMethod = c("regularized", "annealed", "regress"),
+  mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
-  sharedInner = c("classic", "shared"),
   nonMuTheta = c("regress", "eta"),
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
@@ -398,11 +397,21 @@ saemControl(
   the mixing-probability estimate against collapsing onto a single
   component (the responsibility used to update it is itself weighted by
   the current mixing probability, which can create a runaway feedback
-  loop). Two options:
+  loop). Three options:
 
-  \* \`"regularized"\` (default): blend \`mixProbPriorN\`
-  pseudo-subjects, distributed per the initial mixing probability, into
-  the responsibility average each iteration (Dirichlet/MAP-EM-style).
+  \* \`"regress"\` (default): treat per-subject mixture membership as a
+  fixed regressor. Each subject is hard-classified to a component up
+  front, held fixed, and fed into the solve (via the existing
+  mixture-index regressor), skipping the per-iteration soft-EM
+  responsibility step entirely. Avoids the responsibility feedback loop
+  / collapse by construction and is lower-bias; on heavily overlapping
+  components it is higher-variance (an early misclassification is not
+  revisited), so prefer \`"regularized"\` when membership is genuinely
+  uncertain.
+
+  \* \`"regularized"\`: blend \`mixProbPriorN\` pseudo-subjects,
+  distributed per the initial mixing probability, into the
+  responsibility average each iteration (Dirichlet/MAP-EM-style).
   Prevents collapse even in difficult cases, at the cost of some bias
   toward the initial guess; may need larger \`nBurn\`/\`nEm\`.
 
@@ -410,14 +419,6 @@ saemControl(
   step-size schedule (\`mixProbStepExp\`) instead of the
   full-replacement step used during \`nBurn\`. Lower bias, but does not
   by itself fix a systematic (non-noise-driven) collapse.
-
-  \* \`"regress"\`: treat per-subject mixture membership as a fixed
-  regressor. Each subject is assigned a component up front and that
-  assignment is held fixed and fed into the solve (via the existing
-  mixture-index regressor), skipping the per-iteration soft-EM
-  responsibility step entirely. Avoids the responsibility feedback loop
-  by construction and can be more stable when the components are well
-  separated; less appropriate when membership is genuinely uncertain.
 
 - mixProbStepExp:
 
@@ -462,21 +463,6 @@ saemControl(
   reliable – it often settles at a safety-floor value rather than the
   true variance. Prefer \`"parallel"\` unless specifically evaluating
   this method.
-
-- sharedInner:
-
-  Controls how SAEM computes individual predictions (\`f\`), residual
-  variances (\`r\`), and per-observation likelihood contributions.
-
-  \* \`"classic"\` (default): the historic SAEM per-endpoint residual
-  machinery (its own \`res_mod\` handling of add/prop/pow/Box-Cox/AR
-  error models).
-
-  \* \`"shared"\`: reuse the shared FOCEI inner driver (\`likInner0\`),
-  the same endpoint-agnostic engine used by FOCEI and the nonparametric
-  methods, so residual/prediction/likelihood logic is not duplicated.
-  Intended to be numerically equivalent to \`"classic"\`; opt-in while
-  it is validated.
 
 - nonMuTheta:
 

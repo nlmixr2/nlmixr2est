@@ -82,6 +82,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
+<span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -123,6 +124,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
+<span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -394,6 +396,14 @@ for <code><a href="foceiControl.html">foceiControl()</a></code> only takes effec
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.</p></dd>
+
+
+<dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
+<dd><p>Convenience alias for the shared nlmixr `print` control.
+`nlme` prints progress through its own `verbose` option, so `print`
+maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
+value is verbose (`verbose=TRUE`).  When `print` is not supplied an
+explicit `verbose` is used as given.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

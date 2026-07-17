@@ -4,6 +4,21 @@
 
 ### New features
 
+- The FOCEi-family outer finite-difference gradient now freezes the ODE
+  solve when perturbing a residual/error (`err`) parameter
+  (`foceiControl(freezeResidGrad=TRUE)`, the default). Those parameters
+  do not change the prediction `f` (or the EBEs or `df/deta`), so each
+  subject’s base states and EBE are cached once per gradient and only
+  `r`/the density is recomputed – no re-integration and no inner eta
+  re-optimization – mirroring what `est="npag"`/`est="npb"` already do
+  for their residual step. This is a small approximation to the exact
+  FOCEi gradient (it drops the eta sensitivity of the Laplace `log det`
+  term); across prop+add, additive-only, and
+  box-Cox/transform-both-sides error models on `theo_sd` it left the
+  objective within ~0.02 and every parameter within ~1% of the exact
+  re-solve while roughly halving gradient time (about 2x). Set
+  `freezeResidGrad=FALSE` to recover the exact full re-solve gradient.
+
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the
   available estimation methods grouped by category (Linearized, Integral
   approximation, Stochastic EM, Nonparametric, Machine learning,
@@ -559,6 +574,79 @@
 
 #### Estimation
 
+- `est="saem"` no longer collapses subjects that combine two dosing
+  episodes with overlapping clock times separated by an `evid=4` reset –
+  for example a crossover where an IV arm and a depot (`f(depot)`) arm
+  share the same times. SAEM solves each subject in the ODE solver’s
+  internal time-sorted order, which relocated the reset ahead of the
+  first episode’s observations and merged the two episodes into one
+  trajectory; SAEM then reported a nearly constant `PRED` and a grossly
+  inflated residual (`focei`/`posthoc` already handled this correctly).
+  The reset episodes are now offset internally so the solve times
+  increase within a subject, matching
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)/`focei`;
+  predictions are unchanged because only time-since-reset matters
+  ([\#455](https://github.com/nlmixr2/nlmixr2est/issues/455)).
+
+- The `est="fo"`/`est="foi"` linearization pass returned an intermediate
+  fit object with an empty `control`, so `.updateParFixed()` silently
+  fell back to default table settings (`ci`/`sigdigTable`) instead of
+  the fit’s control
+  ([\#517](https://github.com/nlmixr2/nlmixr2est/issues/517)). The
+  FO/FOI fit now carries its control, and an intermediate fit without a
+  method-specific `nmObjGetControl` surfaces its stored control rather
+  than returning `NULL`.
+
+- `est="nlme"` now accepts the common `print` control alias, so
+  `nlmixr2(..., "nlme", list(print=0))` no longer errors with
+  `unused argument: 'print'`. `nlme` prints through its own `verbose`
+  option, so `print` maps to it (`print=0` runs quietly, any positive
+  value is verbose); an explicit `verbose` is still honored when `print`
+  is not supplied.
+
+- FOCEi/FOCE models with a trigonometric term whose argument is a
+  compound expression divided by something (for example a sinusoidal
+  enterohepatic-cycle release
+  `sin(2 * 3.14 * (time - mtime1) / period)`) no longer fail to build
+  with “too few arguments to function ‘sin’”. The fix is in `rxode2`’s
+  `rxFromSE()` (which was dropping the whole argument, emitting
+  [`sin()`](https://rdrr.io/r/base/Trig.html)); a regression test is
+  added here (nlmixr2/nlmixr2est#513).
+
+- FOCEi now estimates a population parameter that is initialized at
+  exactly `0` (e.g. a covariate effect or an additive term) instead of
+  leaving it frozen at its starting value. The default scaling constant
+  is `1/|initPar|`, which is `Inf` when `initPar` is `0`; it clamped to
+  `scaleCmax` and made the parameter effectively unoptimizable.
+  `getScaleC()` now falls back to unit scaling when the initial estimate
+  is `0`.
+
+- A single-subject / fixed-effect (“N of 1”) model – one whose only
+  random effects are fixed to zero, which are dropped before estimation
+  – now gives an actionable error when a method that requires random
+  effects (`fo`, `foi`, `saem`, `fsaem`, `nlme`) is used, pointing to
+  methods that can fit it (`focei`, `foce`, or a population method such
+  as `nlminb`, `bobyqa` or `nls`). The error also keeps the user’s
+  original model name instead of reporting the internal `.mod` (issue
+  [\#493](https://github.com/nlmixr2/nlmixr2est/issues/493)).
+
+- A focei model whose predictions do not depend on any random effect
+  (for example `y ~ dpois(rate)` where `rate` is a fixed population
+  parameter rather than a model-predicted value) no longer reports the
+  generic “Aborted calculation” message. The underlying cause is raised
+  directly with guidance on linking each endpoint’s distribution
+  parameter to an eta-varying model quantity
+  ([\#515](https://github.com/nlmixr2/nlmixr2est/issues/515)).
+
+- `est="saem"`’s “mis-match in nbr endpoints in model & in data” error
+  is now actionable: it reports the number of endpoints in the model
+  versus the data, lists the observation compartments found in the data,
+  and points the user to check that the `CMT`/`DVID` values match the
+  number of model endpoints (error terms). This is the common case of a
+  dataset with extra `DVID` levels that the model has no matching
+  endpoint for (issue
+  [\#579](https://github.com/nlmixr2/nlmixr2est/issues/579)).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a
   clear message
   ([`rxode2::assertRxUiNoMix`](https://nlmixr2.github.io/rxode2/reference/assertRxUi.html))
@@ -611,6 +699,15 @@
 
 #### Estimation and convergence
 
+- A FOCEI fit that hits a theta reset and then restarts no longer aborts
+  with
+  `Assertion on 'fitEnv$etaObj$ID' failed: Must be of type 'integer', not 'factor'`.
+  The restart re-validated the previous attempt’s `etaObf`, whose `ID`
+  column is a factor of the original subject IDs; it is now coerced back
+  to an integer so a genuinely non-converging fit reports its real
+  reason instead of this spurious assertion
+  ([\#470](https://github.com/nlmixr2/nlmixr2est/issues/470)).
+
 - Fixed the `fast = TRUE` analytic gradient for models whose residual
   variance depends on the prediction (`prop`, `add+prop`, `combined1`,
   `pow`, `add+pow`): a determinant chain-rule aliasing injected a
@@ -641,6 +738,12 @@
   large-magnitude initial estimates
   ([\#641](https://github.com/nlmixr2/nlmixr2est/issues/641)).
 
+- FOCEI theta resets now keep every reset population parameter inside
+  its bounds instead of restarting the optimization out of range, and
+  stop with an informative error when a parameter’s bounds are
+  infeasible
+  ([\#454](https://github.com/nlmixr2/nlmixr2est/issues/454)).
+
 #### Crashes and stability
 
 - Fixed a Windows heap-corruption segfault at more than one core (rxode2
@@ -663,6 +766,14 @@
 
 #### Output, tables, and printing
 
+- Model-defined variables (e.g. `ka`, `cl`, `v`, `tad`, `dosenum`, and
+  any user-added line such as `WT.OUT <- WT`) are now included in the
+  output table whether or not `cwres` is requested. Previously
+  `tableControl(cwres=FALSE)` dropped these columns while `cwres=TRUE`
+  (the default) kept them, so the same model produced different output
+  columns depending on the residual request
+  ([\#497](https://github.com/nlmixr2/nlmixr2est/issues/497)).
+
 - A zero-fixed eta (e.g. `bsva ~ 0`) is again restored into the fitted
   model’s
   [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)/[`model()`](https://nlmixr2.github.io/rxode2/reference/model.html)
@@ -672,6 +783,14 @@
   `fit |> ini(bsva ~ 0.1)` works; the nested call used to wipe the
   restore info held in a global
   ([\#741](https://github.com/nlmixr2/nlmixr2est/issues/741)).
+
+- [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) now works on
+  a `focei` fit whose model has a zero-fixed eta that appears in the
+  prediction (e.g. `eta.v ~ 0` used in both the ODE and the residual),
+  instead of erroring with
+  `parameter(s) are required for solving: eta.v`; the simulation model
+  drops the zero eta consistently with `saem`
+  ([\#514](https://github.com/nlmixr2/nlmixr2est/issues/514)).
 
 - `laplace`/`agq` family fits label their `$objDf` row
   `Laplace`/`AGQ<n>` (matching `$ofvType`) instead of `FOCEi`;
@@ -692,6 +811,12 @@
 - Literally-fixed population parameters now report their
   back-transformed value (`exp`/`expit`/`probitInv`) in the
   `Back-transformed` column instead of the raw log/logit-scale estimate.
+
+- [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) now keeps the
+  fit’s original subject ids: the returned `id` factor carries the
+  actual (character/factor) ids from the fit instead of the internal
+  integer re-numbering
+  ([\#450](https://github.com/nlmixr2/nlmixr2est/issues/450)).
 
 - `fit$time` again attributes model build/compile to `setup`/`configure`
   (and the nlm family times setup/optimize) instead of `other`.
@@ -733,6 +858,21 @@
   errors.
 
 #### Internal
+
+- Removed an unreachable duplicate `missingTable` default assignment in
+  `nlmixr2Est0()` (issue
+  [\#385](https://github.com/nlmixr2/nlmixr2est/issues/385)); the
+  earlier default already fixes the value, so the second block could
+  never run. No change to fit results.
+
+- Removed the last bare `Rf_error` call from the C++ sources (issue
+  [\#632](https://github.com/nlmixr2/nlmixr2est/issues/632)): the
+  [`Rcpp::compileAttributes()`](https://rdrr.io/pkg/Rcpp/man/compileAttributes.html)
+  output now emits the parenthesized `(Rf_error)` form, and the internal
+  `rxError` macro was switched to `(Rf_error)` as well, so the package
+  no longer trips Rcpp’s upcoming `Rf_error` deprecation warning
+  (RcppCore/Rcpp#1247). The C `.Call` entry-point validators keep their
+  justified `Rf_errorcall` uses.
 
 - Consolidated data preparation and the nlm-family control/fit
   functions, and the analytic-covariance augmented model now uses

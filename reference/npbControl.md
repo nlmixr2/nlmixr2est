@@ -290,7 +290,7 @@ npbControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55ecf1e4c2c0>
+#> <bytecode: 0x55cbe3802bd0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -944,6 +944,9 @@ npbControl()
 #> 
 #> $sensMethod
 #> [1] "default"
+#> 
+#> $freezeResidGrad
+#> [1] TRUE
 #> 
 #> $boundedTransform
 #> [1] TRUE
