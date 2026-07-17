@@ -10178,6 +10178,55 @@ double npResidELS(const arma::mat& postEta) {
   return nll;
 }
 
+// SAEM kernel unification (sharedInner="shared"): per-observation f, r, and
+// conditional log-density at the given per-subject etas, computed through the
+// SHARED FOCEi inner driver (likInner0) instead of SAEM's own res_mod/arResk.
+// Requires the FOCEi inner already set up (vaeInnerSetup_, via
+// .saemSharedInstallStep).  etaMat is nsub x neta (the SAEM conditional-mean
+// etas).  Returns per-observation f, r, ll, id plus the ELS residual objective
+// -- the shared-driver counterpart of SAEM's resMat/user_fn read, for the
+// equivalence gate and, later, the residual M-step / -2LL.
+// [[Rcpp::export]]
+Rcpp::List saemSharedResid_(arma::mat etaMat) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int neta = op_focei.neta;
+  if ((int)etaMat.n_cols != neta)
+    stop("saemSharedResid_: etaMat has %d cols, expected neta=%d",
+         (int)etaMat.n_cols, neta);
+  std::vector<double> eta(neta);
+  std::vector<double> fAll, rAll, llAll;
+  std::vector<int> idAll;
+  double nll = 0.0;
+  for (int i = 0; i < nsub && i < (int)etaMat.n_rows; ++i) {
+    for (int j = 0; j < neta; ++j) eta[j] = etaMat(i, j);
+    double cl = npEvalCondLik(&eta[0], i);   // likInner0 + sum of per-obs llik
+    (void) cl;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    focei_ind *fInd = &(inds_focei[i]);
+    arma::mat fr = grabRFmatFromInner(i, false);   // nObs x 2 (f, r), tbs scale
+    int ko = 0;
+    int n = getIndNallTimes(ind);
+    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;   // observations only
+      double dv = tbs(getIndDv(ind, kk));
+      double f = fr(ko, 0), r = fr(ko, 1);
+      double ll = fInd->llikObs[kk];
+      ko++;
+      fAll.push_back(f); rAll.push_back(r); llAll.push_back(ll);
+      idAll.push_back(i + 1);
+      double rr = (std::isfinite(r) && r > 0.0) ? r : 1.0;
+      double e = f - dv;
+      nll += 0.5 * e * e / rr + 0.5 * std::log(rr) + M_LN_SQRT_2PI;
+    }
+  }
+  return Rcpp::List::create(Rcpp::_["id"] = idAll, Rcpp::_["f"] = fAll,
+                            Rcpp::_["r"] = rAll, Rcpp::_["ll"] = llAll,
+                            Rcpp::_["objf"] = nll);
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
