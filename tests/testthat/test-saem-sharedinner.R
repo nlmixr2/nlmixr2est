@@ -89,3 +89,40 @@ test_that("shared inner driver reproduces a converged SAEM fit's IPRED / r", {
   .addSd <- as.numeric(.f$theta[.th$name])[.th$name == "add.sd"]
   expect_true(all(abs(.res$r - .addSd^2) < 1e-3))
 })
+
+test_that("shared inner driver handles a PROPORTIONAL error model (r = (prop.sd*f)^2)", {
+  skip_on_cran()
+
+  # The driver reads r from rxInner's rx_r_, so it is error-model-agnostic;
+  # confirm proportional error reproduces r = (prop.sd*f)^2.
+  m <- function() {
+    ini({ tka <- log(1.5); tcl <- log(0.04); tv <- log(0.5); eta.cl ~ 0.1; prop.sd <- 0.2 })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ prop(prop.sd)
+    })
+  }
+  d <- nlmixr2data::theo_sd
+  .f <- suppressWarnings(nlmixr2(m, d, est = "saem",
+    control = saemControl(nBurn = 100, nEm = 50, print = 0)))
+  .th <- .f$ui$iniDf; .th <- .th[!is.na(.th$ntheta), ]; .th <- .th[order(.th$ntheta), ]
+  .thetaFull <- as.numeric(.f$theta[.th$name]); .omega <- diag(.f$omega)
+  .condEta <- as.matrix(.f$eta[order(.f$eta$ID), "eta.cl", drop = FALSE])
+  .fc <- list(rxControl = rxode2::rxControl(), fastInnerIt = 100L, sumProd = FALSE,
+              optExpression = TRUE, literalFix = FALSE, addProp = "combined2",
+              eventSens = "jump", indTolRelax = TRUE, maxOdeRecalc = 5L,
+              odeRecalcFactor = 10^0.5)
+  .env <- .fsaemInnerSetup(m(), d, .condEta, .fc)
+  .fsaemInnerUpdate(.env, .thetaFull, .omega, .condEta)
+  .res <- saemSharedResid_(.condEta)
+  .fsaemInnerFree()
+
+  expect_lt(max(abs(.res$f - .f$IPRED)), 0.05)
+  .propSd <- as.numeric(.f$theta[.th$name])[.th$name == "prop.sd"]
+  .rExpect <- (.propSd * .res$f)^2
+  .keep <- .res$f > 1   # ignore near-zero predictions
+  expect_lt(max(abs(.res$r[.keep] - .rExpect[.keep]) / .rExpect[.keep]), 1e-3)
+})
