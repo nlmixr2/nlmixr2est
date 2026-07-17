@@ -516,6 +516,10 @@
 
 ### Covariance and standard errors
 
+- `fit$etaSE` columns are now labeled `se(<eta>)` (matching `fit$etaRSE`'s
+  `rse(<eta>)%`); the label was previously applied to a matrix's `names()`
+  (a no-op) so the columns came back as bare eta names.
+
 - `covMethod = "r"`/`"s"`/`"r,s"` standard errors were inflated by a constant
   factor (`sqrt(2)` for `"r"`, `2` for `"s"`) from using `2*R^-1`/`4*S^-1`; they
   now match NONMEM `$COV` (#666).

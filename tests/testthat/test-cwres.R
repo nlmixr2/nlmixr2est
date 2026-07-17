@@ -54,9 +54,9 @@ nmTest({
                    "eta.v (2.5%)", "eta.v (97.5%)"))
     .qn <- stats::qnorm(0.975)
     expect_equal(.etaCI[["eta.ka (2.5%)"]],
-                 .eta$eta.ka - .qn * .etaSE[["eta.ka"]])
+                 .eta$eta.ka - .qn * .etaSE[["se(eta.ka)"]])
     expect_equal(.etaCI[["eta.ka (97.5%)"]],
-                 .eta$eta.ka + .qn * .etaSE[["eta.ka"]])
+                 .eta$eta.ka + .qn * .etaSE[["se(eta.ka)"]])
 
     fit <- .cloneFit(baseFit)
 

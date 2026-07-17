@@ -384,8 +384,7 @@ nmObjGet.phiSE <- function(x, ...) {
     suppressWarnings(sqrt(diag(.cov)))
   }, double(.d1), USE.NAMES=FALSE)
   dim(.ret) <- c(.d1, length(.phi))
-  dimnames(.ret) <- list(colnames(.phi[[1]]), names(.phi))
-  names(.ret) <- paste0("se(", names(.ret), ")")
+  dimnames(.ret) <- list(paste0("se(", colnames(.phi[[1]]), ")"), names(.phi))
   .ret <- as.data.frame(t(.ret))
   .id <- seq_along(.phi)
   if (!is.null(names(.phi))) {
@@ -411,9 +410,8 @@ nmObjGet.phiRSE <- function(x, ...) {
     suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,, drop=FALSE])*100)
   }, double(.d1), USE.NAMES=FALSE)
   dim(.ret) <- c(.d1, length(.phi))
-  dimnames(.ret) <- list(colnames(.phi[[1]]), names(.phi))
+  dimnames(.ret) <- list(paste0("rse(", colnames(.phi[[1]]), ")%"), names(.phi))
   .ret <- as.data.frame(t(.ret))
-  names(.ret) <- paste0("rse(", names(.ret), ")%")
   .id <- seq_along(.phi)
   if (!is.null(names(.phi))) {
     .id <- names(.phi)
