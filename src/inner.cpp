@@ -483,6 +483,11 @@ struct focei_options {
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
+  bool freezeResidGrad = true; // foceiControl(freezeResidGrad): freeze the ODE (and
+                               // the EBEs) in the outer FD gradient when perturbing a
+                               // residual/error theta -- the default is decided empirically.
+  std::vector<char> residThetaMask; // per-fullTheta flag (1 = residual/err theta), built at setup
+  int nFreezeResidGrad = 0;    // diagnostic: residual-theta FD perturbations that froze the ODE
 };
 
 focei_options op_focei;
@@ -4395,6 +4400,13 @@ NumericVector foceiNumericGrad(NumericVector theta){
   return ret;
 }
 
+// Diagnostic: number of residual-theta FD perturbations that froze the ODE over
+// the whole fit (0 when freezeResidGrad is off or the model has no err thetas).
+//[[Rcpp::export]]
+int foceiNFreezeResidGrad() {
+  return op_focei.nFreezeResidGrad;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Setup FOCEi functions
 CharacterVector rxParams_(const RObject &obj);
@@ -5046,6 +5058,21 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
+  // freezeResidGrad: mask over fullTheta (ntheta+omegan) marking the residual/error
+  // thetas whose FD perturbation may freeze the ODE (residThetaIdx is 0-based).
+  op_focei.freezeResidGrad = foceiO.containsElementNamed("freezeResidGrad") ?
+    as<bool>(foceiO["freezeResidGrad"]) : true;
+  op_focei.nFreezeResidGrad = 0;
+  op_focei.residThetaMask.assign((size_t)op_focei.ntheta + op_focei.omegan, 0);
+  if (foceiO.containsElementNamed("residThetaIdx") && !Rf_isNull(foceiO["residThetaIdx"])) {
+    IntegerVector residThetaIdx = as<IntegerVector>(foceiO["residThetaIdx"]);
+    for (int ri = 0; ri < residThetaIdx.size(); ++ri) {
+      int idx = residThetaIdx[ri];
+      if (idx >= 0 && idx < (int)op_focei.residThetaMask.size()) {
+        op_focei.residThetaMask[idx] = 1;
+      }
+    }
+  }
   int* tempMixIdx = NULL;
   if (op_focei.mixIdxN > 0) {
     tempMixIdx = R_Calloc(op_focei.mixIdxN, int);
