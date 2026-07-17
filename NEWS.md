@@ -473,6 +473,12 @@
 
 ### Estimation
 
+- `est="nlme"` now accepts the common `print` control alias, so
+  `nlmixr2(..., "nlme", list(print=0))` no longer errors with
+  `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so
+  `print` maps to it (`print=0` runs quietly, any positive value is verbose);
+  an explicit `verbose` is still honored when `print` is not supplied.
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
