@@ -7,6 +7,18 @@
   are the empirical-Bayes estimate plus/minus a normal quantile times the eta
   standard error, using the fit's `ci` level (default 0.95).  Like `etaSE`, it
   requires `CWRES` in the fit (add with `addCwres()` for non-focei methods).
+- The FOCEi-family outer finite-difference gradient now freezes the ODE solve
+  when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
+  the default).  Those parameters do not change the prediction `f` (or the EBEs
+  or `df/deta`), so each subject's base states and EBE are cached once per
+  gradient and only `r`/the density is recomputed -- no re-integration and no
+  inner eta re-optimization -- mirroring what `est="npag"`/`est="npb"` already do
+  for their residual step.  This is a small approximation to the exact FOCEi
+  gradient (it drops the eta sensitivity of the Laplace `log det` term); across
+  prop+add, additive-only, and box-Cox/transform-both-sides error models on
+  `theo_sd` it left the objective within ~0.02 and every parameter within ~1% of
+  the exact re-solve while roughly halving gradient time (about 2x).  Set
+  `freezeResidGrad=FALSE` to recover the exact full re-solve gradient.
 
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
@@ -465,12 +477,27 @@
 
 ### Estimation
 
+- `est="saem"` no longer collapses subjects that combine two dosing episodes with
+  overlapping clock times separated by an `evid=4` reset -- for example a crossover
+  where an IV arm and a depot (`f(depot)`) arm share the same times.  SAEM solves
+  each subject in the ODE solver's internal time-sorted order, which relocated the
+  reset ahead of the first episode's observations and merged the two episodes into
+  one trajectory; SAEM then reported a nearly constant `PRED` and a grossly inflated
+  residual (`focei`/`posthoc` already handled this correctly).  The reset episodes
+  are now offset internally so the solve times increase within a subject, matching
+  `rxSolve()`/`focei`; predictions are unchanged because only time-since-reset
+  matters (#455).
 - The `est="fo"`/`est="foi"` linearization pass returned an intermediate fit
   object with an empty `control`, so `.updateParFixed()` silently fell back to
   default table settings (`ci`/`sigdigTable`) instead of the fit's control
   (#517).  The FO/FOI fit now carries its control, and an intermediate fit
   without a method-specific `nmObjGetControl` surfaces its stored control rather
   than returning `NULL`.
+- `est="fo"`/`est="foi"` fits no longer error with "cannot find fo/foi related
+  control object".  The `freezeResidGrad` work added an internal `residThetaIdx`
+  field to the fitted control, which was not on the accepted-internal
+  (`.foceiControlInternal`) list, so the post-fit table step failed when it
+  re-validated the control by round-tripping it through `foceiControl()`.
 - `est="nlme"` now accepts the common `print` control alias, so
   `nlmixr2(..., "nlme", list(print=0))` no longer errors with
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so
@@ -585,6 +612,10 @@
 - FOCEI now updates additive mu-referenced population parameters with
   large-magnitude initial estimates (#641).
 
+- FOCEI theta resets now keep every reset population parameter inside its
+  bounds instead of restarting the optimization out of range, and stop with an
+  informative error when a parameter's bounds are infeasible (#454).
+
 ### Crashes and stability
 
 - Fixed a Windows heap-corruption segfault at more than one core (rxode2 saw
@@ -679,6 +710,16 @@
   errors.
 
 ### Internal
+
+- Removed an unreachable duplicate `missingTable` default assignment in
+  `nlmixr2Est0()` (issue #385); the earlier default already fixes the value, so
+  the second block could never run.  No change to fit results.
+- Removed the last bare `Rf_error` call from the C++ sources (issue #632):
+  the `Rcpp::compileAttributes()` output now emits the parenthesized
+  `(Rf_error)` form, and the internal `rxError` macro was switched to
+  `(Rf_error)` as well, so the package no longer trips Rcpp's upcoming
+  `Rf_error` deprecation warning (RcppCore/Rcpp#1247).  The C `.Call`
+  entry-point validators keep their justified `Rf_errorcall` uses.
 
 - Consolidated data preparation and the nlm-family control/fit functions, and
   the analytic-covariance augmented model now uses rxode2's chunked

@@ -17,6 +17,70 @@
 ## You should have received a copy of the GNU General Public License
 ## along with nlmixr2.  If not, see <http://www.gnu.org/licenses/>.
 
+#' Make within-subject solve times strictly increasing across reset episodes
+#'
+#' The SAEM kernel integrates each subject's records in the ODE solver's internal
+#' time-sorted order.  A subject encoded with overlapping-time reset episodes -- for
+#' example a crossover where an IV arm and a depot arm share the same clock times and
+#' are separated by an `evid=4` reset -- then has its reset record relocated ahead of
+#' the first episode's observations by the time-sort, collapsing the two episodes into
+#' a single merged trajectory (nlmixr2/nlmixr2est#455).  rxode2's `rxSolve()` keeps the
+#' episodes separate because it processes records in input order.
+#'
+#' Offset each reset episode as a block so the solve times become strictly increasing
+#' within a subject; the kernel's time-sort then matches the input order.  Predictions
+#' are unchanged: a reset zeroes the system, so only time-since-reset matters and that
+#' is preserved when an episode's dose and observations are shifted together.  For data
+#' that is already monotonic within subject (including monotonic-time resets) this is a
+#' no-op.
+#'
+#' `dat` is the post-`etTrans` event table (columns ID, TIME, EVID, ...); `evid==3`
+#' marks the reset that starts a new episode.  Columns are resolved by name
+#' (case-insensitive) so this works both on the kernel event table built in
+#' `.configsaem` and on the `dataSav`-derived table used by the `saemDopred*`
+#' diagnostics; positions 1/2/3 are the fallback.
+#' @param dat post-etTrans event data.frame with ID, TIME and EVID columns
+#' @return `dat` with its TIME column offset so each subject's times increase monotonically
+#' @noRd
+.saemMonotonicResetTime <- function(dat) {
+  .nm <- toupper(names(dat))
+  .idCol <- which(.nm == "ID")[1L]; if (is.na(.idCol)) .idCol <- 1L
+  .timeCol <- which(.nm == "TIME")[1L]; if (is.na(.timeCol)) .timeCol <- 2L
+  .evidCol <- which(.nm == "EVID")[1L]; if (is.na(.evidCol)) .evidCol <- 3L
+  .id <- dat[[.idCol]]
+  .time <- dat[[.timeCol]]
+  .evid <- dat[[.evidCol]]
+  .n <- length(.time)
+  if (.n < 2L) return(dat)
+  # gap added past the running maximum when a reset would otherwise overlap; its
+  # value does not affect predictions (the reset zeroes the system) -- it only
+  # guarantees strict ordering regardless of the solver's sort stability.
+  .gap <- 1.0
+  .offset <- 0.0
+  .runMax <- -Inf
+  .prevId <- .id[1L]
+  .changed <- FALSE
+  for (.i in seq_len(.n)) {
+    if (!identical(.id[.i], .prevId)) {
+      .offset <- 0.0
+      .runMax <- -Inf
+      .prevId <- .id[.i]
+    }
+    # A reset (evid==3) whose current adjusted time would not advance past the
+    # running maximum starts an overlapping episode: shift it and the rest of the
+    # subject's records just past the running maximum.
+    if (.evid[.i] == 3 && .time[.i] + .offset <= .runMax) {
+      .offset <- .runMax + .gap - .time[.i]
+      .changed <- TRUE
+    }
+    .adj <- .time[.i] + .offset
+    if (.adj > .runMax) .runMax <- .adj
+    .time[.i] <- .adj
+  }
+  if (.changed) dat[[.timeCol]] <- .time
+  dat
+}
+
 #' Configure an SAEM model
 #'
 #' Configure an SAEM model by generating an input list to the SAEM model function
@@ -326,6 +390,9 @@
                          ssAtDoseTime = rxControl$ssAtDoseTime)
   .nobs <- attr(class(dat), ".rxode2.lst")$nobs
   dat <- as.data.frame(dat) # convert back evid=3 oddness...
+  # Keep overlapping-time reset episodes (e.g. combined IV + depot crossover with
+  # evid=4) from being collapsed by the kernel's time-sorted solve (issue #455).
+  dat <- .saemMonotonicResetTime(dat)
   ## if(length(dat) !=7) stop("SAEM doesn't support time varying covariates yet.");
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params

@@ -786,7 +786,11 @@ nmObjGet.saemEvtDf <- function(x, ...) {
   .obj <- x[[1]]
   .evt <- nmObjGet.dataSav(x, ...)
   .evt$ID <- .evt$ID - 1
-  .evt
+  # Reproduce the fit's kernel event table: reset episodes are offset so
+  # within-subject solve times increase (issue #455).  Without this the
+  # saemDopred* diagnostics would solve a merged trajectory and disagree with
+  # the fit; a no-op unless the subject has overlapping-time reset episodes.
+  .saemMonotonicResetTime(.evt)
 }
 #attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
 

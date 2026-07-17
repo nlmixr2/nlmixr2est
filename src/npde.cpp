@@ -127,8 +127,8 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, 
   // pd already holds the below-limit probability (left cens) or 1-pd (right cens);
   // replace with runif over that range, then back-calculate EPRED from sorted tcomp.
   arma::vec curRow;
-  unsigned int j, j2;
-  double low, hi, low2, hi2;
+  unsigned int j2;
+  double low2, hi2;
   switch (cens[i]) {
   case 1:
     curRow = sort(trans(ret.matsim.row(i)));
@@ -143,16 +143,14 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, 
   default:
     return;
   }
-  // Now back-calculate the EPRED
-  j = trunc(ret.pd[i]*K);
+  // Back-calculate the imputed transformed observation from the marginal (npd)
+  // percentile pd2; yobst is a single value shared by both the npde and npd
+  // tracks, so only the marginal percentile (which indexes the sorted simulated
+  // row curRow) is meaningful here.
   j2 = trunc(ret.pd2[i]*K);
-  // pd can round to 1.0; clamp to keep curRow indices in bounds
-  if (j >= K) j = K - 1;
+  // pd2 can round to 1.0; clamp to keep curRow indices in bounds
   if (j2 >= K) j2 = K - 1;
-  low = curRow[j];
   low2 = curRow[j2];
-  if (j+1 >= K) hi = (j > 0) ? (2*low - curRow[j-1]) : low;
-  else hi = curRow[j+1];
   if (j2+1 >= K) hi2 = (j2 > 0) ? (2*low2 - curRow[j2-1]) : low2;
   else hi2 = curRow[j2+1];
   // Use npd instead of npde as suggested by Nguyen2017; toggled by npdeControl()

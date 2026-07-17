@@ -483,6 +483,11 @@ struct focei_options {
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
+  bool freezeResidGrad = true; // foceiControl(freezeResidGrad): freeze the ODE (and
+                               // the EBEs) in the outer FD gradient when perturbing a
+                               // residual/error theta -- the default is decided empirically.
+  std::vector<char> residThetaMask; // per-fullTheta flag (1 = residual/err theta), built at setup
+  int nFreezeResidGrad = 0;    // diagnostic: residual-theta FD perturbations that froze the ODE
 };
 
 focei_options op_focei;
@@ -1237,6 +1242,99 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 // inner model at eta=0 and read rx_r_ (lhs[neta+1]) per obs into rPop in the
 // likInner0 observation k-order.  Call BEFORE the inner solve (this overwrites
 // ind->solve; the inner solve re-establishes it).
+// --- freezeResidGrad: base-EBE freeze cache for the outer FD gradient ---------
+// When the FD outer gradient perturbs a residual/error theta, f/eta/(df/deta) do
+// not change, so each subject's base-EBE ODE states and base EBE are snapshotted
+// once (at the unperturbed theta) and reused (op_focei.freezeOde) -- only r and
+// the density are recomputed.  Mirrors npag's npResidFreeze* machinery.
+static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind); // fwd
+struct FoceiResidFreezeEntry { std::vector<double> solve; std::vector<double> eta; };
+static std::vector<FoceiResidFreezeEntry> gFoceiResidFreeze;
+
+// Snapshot every subject's (and mixture component's) current states + EBE as the
+// frozen base.  Does NOT set freezeOde -- numericGrad toggles it per residual
+// cpar.  Caller must be at the unperturbed theta with the base solve in place.
+static void foceiResidFreezeSnapshot() {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int nsubMix = (int)getRxNsubAndMix(rx);
+  int neta = op_focei.neta;
+  gFoceiResidFreeze.assign(nsubMix, FoceiResidFreezeEntry());
+  for (int id = 0; id < nsubMix; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    double *s = getIndSolve(ind);
+    gFoceiResidFreeze[id].solve.assign(s, s + npIndSolveSize(op, ind));
+    focei_ind *fInd = &inds_focei[id];
+    if (neta > 0 && fInd->eta != NULL)
+      gFoceiResidFreeze[id].eta.assign(fInd->eta, fInd->eta + neta);
+  }
+}
+
+static inline double foceiOfv0(double *theta); // fwd
+// Solve at the unperturbed theta (full inner opt -> true base EBE + states),
+// then snapshot.  freezeOde is left off; numericGrad enables it per residual cpar.
+static void foceiResidFreezeBuildAt(double *theta) {
+  op_focei.freezeOde = false;
+  foceiOfv0(theta);
+  foceiResidFreezeSnapshot();
+}
+
+// True when the cpar-th free optimizer parameter maps to a residual/error theta.
+static inline bool foceiCparIsResid(int cpar) {
+  if (!op_focei.freezeResidGrad || op_focei.fixedTrans == NULL) return false;
+  if (cpar < 0 || cpar >= (int)op_focei.npars) return false;
+  int idx = op_focei.fixedTrans[cpar];
+  return idx >= 0 && idx < (int)op_focei.residThetaMask.size() &&
+    op_focei.residThetaMask[idx] != 0;
+}
+
+// Restore subject id's cached base states into ind->solve.  Called from the
+// likInner0 freeze guard (a FOCE getPopR eta=0 solve may have clobbered them);
+// a no-op when the cache is empty (e.g. npag, which keeps its own cache).
+static inline void foceiResidRestoreFrozen(int id) {
+  if (gFoceiResidFreeze.empty() || id < 0 ||
+      id >= (int)gFoceiResidFreeze.size()) return;
+  const std::vector<double>& c = gFoceiResidFreeze[id].solve;
+  if (c.empty()) return;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  std::copy(c.begin(), c.end(), getIndSolve(ind));
+}
+
+// Restore every subject's base EBE into fInd->eta, so a frozen innerEval
+// evaluates the density at the base EBE (undoing any intervening structural
+// perturbation that moved the eta).
+static inline void foceiResidRestoreEtas() {
+  if (gFoceiResidFreeze.empty() || op_focei.neta <= 0) return;
+  int neta = op_focei.neta;
+  int nsubMix = (int)gFoceiResidFreeze.size();
+  for (int id = 0; id < nsubMix; ++id) {
+    focei_ind *fInd = &inds_focei[id];
+    const std::vector<double>& e = gFoceiResidFreeze[id].eta;
+    if ((int)e.size() == neta && fInd->eta != NULL)
+      std::copy(e.begin(), e.end(), fInd->eta);
+  }
+}
+
+static void foceiResidFreezeClear() {
+  op_focei.freezeOde = false;
+  gFoceiResidFreeze.clear();
+  gFoceiResidFreeze.shrink_to_fit();
+}
+
+// Enable/disable the ODE freeze for the current cpar's FD perturbation: freeze
+// (reusing the base EBE + states) for a residual theta, otherwise re-solve.
+static inline void foceiFreezeForCpar(bool freezeResid, int cpar) {
+  if (!freezeResid) return;
+  if (foceiCparIsResid(cpar)) {
+    foceiResidRestoreEtas();
+    op_focei.freezeOde = true;
+    op_focei.nFreezeResidGrad++;
+  } else {
+    op_focei.freezeOde = false;
+  }
+}
+
 static void getPopR(int id, arma::vec &rPop) {
   int _rxId = getRxId(id); // base subject index for rxode2
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
@@ -1344,7 +1442,10 @@ double likInner0(double *eta, int id) {
     // integration and drop straight to the calc_lhs / density loop, recomputing
     // f/r with the current (residual) parameters only.
     if (op_focei.freezeOde) {
-      // no integration; ind->solve already holds the frozen states
+      // no integration; restore the cached base states (a FOCE getPopR eta=0
+      // solve above may have clobbered ind->solve).  No-op for npag, which
+      // restores its own cache before calling in.
+      foceiResidRestoreFrozen(id);
     } else {
     setIndSolve(ind, -1);
     // op->badSolve is racy under cores>1; our retry loop reads per-subject
@@ -2700,6 +2801,10 @@ static inline bool thetaReset0(bool forceReset = false) {
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
   LogicalVector adjustEta(op_focei.muRefN);
+  // Actual shift applied to each mu-referenced theta.  For an interior shift
+  // this equals the eta mean (etaM); near a bound the shift is clamped, so the
+  // matching eta re-centering must use the applied shift, not etaM (issue #454).
+  NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
   for (int ii = (int)op_focei.ntheta; ii--;) {
     thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
@@ -2726,10 +2831,30 @@ static inline bool thetaReset0(bool forceReset = false) {
         adjustEta[ii] = false;
       }  else {
         ref = thetaIni[ij] + op_focei.etaM(ii,0);
-        if (thetaDown[ij] < ref && thetaUp[ij] > ref) {
-          thetaIni[ij] = ref;
-          adjustEta[ii] = true;
-          doAdjust = true;
+        if (thetaDown[ij] < thetaUp[ij]) {
+          // Keep the shifted theta inside its (margin-adjusted) bounds instead
+          // of skipping the shift entirely; a clamped, partial shift still moves
+          // the parameter toward the drifting eta mean without landing out of
+          // range (issue #454).  An interior shift is applied exactly as before.
+          bool clamped = false;
+          if (ref <= thetaDown[ij]) {
+            ref = thetaDown[ij];
+            clamped = true;
+          } else if (ref >= thetaUp[ij]) {
+            ref = thetaUp[ij];
+            clamped = true;
+          }
+          double shift = ref - thetaIni[ij];
+          if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
+            appliedShift[ii] = shift;
+            thetaIni[ij] = ref;
+            adjustEta[ii] = true;
+            doAdjust = true;
+          } else {
+            // Already pinned at the bound: leave it be so a parameter that
+            // wants to move past its bound does not force an endless reset.
+            adjustEta[ii] = false;
+          }
         } else {
           adjustEta[ii] = false;
         }
@@ -2749,7 +2874,7 @@ static inline bool thetaReset0(bool forceReset = false) {
     for (int jj = op_focei.neta; jj--; ) {
       if (op_focei.muRef[jj] != -1  && op_focei.muRef[jj] < (int)op_focei.ntheta &&
           adjustEta[jj]) {
-        etaMat(ii, jj) = fInd->eta[jj]-op_focei.etaM(jj,0);
+        etaMat(ii, jj) = fInd->eta[jj]-appliedShift[jj];
       } else {
         etaMat(ii, jj) = fInd->eta[jj];
       }
@@ -2761,6 +2886,47 @@ static inline bool thetaReset0(bool forceReset = false) {
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
             &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
             omegaTheta.begin());
+  // Issue #454: a "bad" optimization step (or a mu-reference shift near a
+  // boundary) can leave a reset theta outside its allowed range.  Project each
+  // estimated theta back into its (margin-adjusted) bounds so the restart never
+  // begins out of range; if the bounds are themselves infeasible (lower >=
+  // upper) stop with an informative error rather than continue silently.
+  bool didClamp = false;
+  CharacterVector thetaNames;
+  bool haveNames = false;
+  {
+    Function loadNamespace2("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2b = loadNamespace2("nlmixr2est");
+    Environment thetaResetEnv = nlmixr2b[".thetaReset"];
+    if (thetaResetEnv.exists("thetaNames") &&
+        TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
+      thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
+      haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
+    }
+  }
+  for (int ii = (int)op_focei.ntheta; ii--;) {
+    if (isFixedTheta(ii)) continue;
+    if (thetaDown[ii] >= thetaUp[ii]) {
+      if (haveNames) {
+        std::string nm = as<std::string>(thetaNames[ii]);
+        stop(_("theta reset cannot keep '%s' within its bounds (lower >= upper); check the model bounds"),
+             nm.c_str());
+      } else {
+        stop(_("theta reset cannot keep theta %d within its bounds (lower >= upper); check the model bounds"),
+             ii + 1);
+      }
+    }
+    if (thetaIni[ii] < thetaDown[ii]) {
+      thetaIni[ii] = thetaDown[ii];
+      didClamp = true;
+    } else if (thetaIni[ii] > thetaUp[ii]) {
+      thetaIni[ii] = thetaUp[ii];
+      didClamp = true;
+    }
+  }
+  if (didClamp) {
+    warning(_("theta reset moved one or more parameters back within their bounds"));
+  }
   thetaReset00(thetaIni, omegaTheta, etaMat);
   return true;
 }
@@ -3106,7 +3272,7 @@ void innerOpt() {
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
-  if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0) {
+  if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
     int nsubAll = (int)getRxNsubAndMix(rx);
     int nmc = op_focei.mceta - 1;
     if (nmc > 0 && op_focei.neta > 0) {
@@ -3128,7 +3294,9 @@ void innerOpt() {
   } else {
     op_focei.mcetaSamples.reset();
   }
-  if (op_focei.maxInnerIterations <= 0){
+  // freezeOde: evaluate each subject's density at its (restored) base EBE with a
+  // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
+  if (op_focei.maxInnerIterations <= 0 || op_focei.freezeOde){
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
     for (int id = 0; id < getRxNsubAndMix(rx); id++){
       focei_ind *indF = &(inds_focei[id]);
@@ -4047,6 +4215,15 @@ void numericGrad(double *theta, double *g){
     return;
   }
   if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
+  // freezeResidGrad: if any free parameter is a residual/error theta, snapshot the
+  // base EBE + states once so those perturbations can freeze the ODE below.
+  bool _freezeResid = false;
+  if (op_focei.freezeResidGrad && !op_focei.residThetaMask.empty()) {
+    for (int cp = 0; cp < (int)op_focei.npars; cp++) {
+      if (foceiCparIsResid(cp)) { _freezeResid = true; break; }
+    }
+  }
+  if (_freezeResid) foceiResidFreezeBuildAt(theta);
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -4072,6 +4249,7 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
+        foceiFreezeForCpar(_freezeResid, cpar);
         op_focei.calcGrad=1;
         op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
                                            f0, grFinal, 0, cpar,
@@ -4116,6 +4294,7 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
+        foceiFreezeForCpar(_freezeResid, cpar);
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                         theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                         -1, gill83fnG, 1, op_focei.lastOfv);
@@ -4204,6 +4383,7 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
+        foceiFreezeForCpar(_freezeResid, cpar);
         if (doForward){
           delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar]);
         } else {
@@ -4321,6 +4501,8 @@ void numericGrad(double *theta, double *g){
     }
     op_focei.calcGrad=0;
   }
+  // freezeResidGrad: drop the freeze and cache so the next objective solves normally.
+  if (_freezeResid) foceiResidFreezeClear();
 }
 
 //[[Rcpp::export]]
@@ -4328,6 +4510,13 @@ NumericVector foceiNumericGrad(NumericVector theta){
   NumericVector ret(theta.size());
   numericGrad(&theta[0], &ret[0]);
   return ret;
+}
+
+// Diagnostic: number of residual-theta FD perturbations that froze the ODE over
+// the whole fit (0 when freezeResidGrad is off or the model has no err thetas).
+//[[Rcpp::export]]
+int foceiNFreezeResidGrad() {
+  return op_focei.nFreezeResidGrad;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4981,6 +5170,21 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
+  // freezeResidGrad: mask over fullTheta (ntheta+omegan) marking the residual/error
+  // thetas whose FD perturbation may freeze the ODE (residThetaIdx is 0-based).
+  op_focei.freezeResidGrad = foceiO.containsElementNamed("freezeResidGrad") ?
+    as<bool>(foceiO["freezeResidGrad"]) : true;
+  op_focei.nFreezeResidGrad = 0;
+  op_focei.residThetaMask.assign((size_t)op_focei.ntheta + op_focei.omegan, 0);
+  if (foceiO.containsElementNamed("residThetaIdx") && !Rf_isNull(foceiO["residThetaIdx"])) {
+    IntegerVector residThetaIdx = as<IntegerVector>(foceiO["residThetaIdx"]);
+    for (int ri = 0; ri < residThetaIdx.size(); ++ri) {
+      int idx = residThetaIdx[ri];
+      if (idx >= 0 && idx < (int)op_focei.residThetaMask.size()) {
+        op_focei.residThetaMask[idx] = 1;
+      }
+    }
+  }
   int* tempMixIdx = NULL;
   if (op_focei.mixIdxN > 0) {
     tempMixIdx = R_Calloc(op_focei.mixIdxN, int);
