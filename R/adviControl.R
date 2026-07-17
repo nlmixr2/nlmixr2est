@@ -261,6 +261,10 @@ getValidNlmixrCtl.advi <- function(control) {
 nlmixr2Est.advi <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'advi'", .var.name = .ui$modelName)
+  ## advi has no mixture support (mean-field VI on the theta-sensitivity model);
+  ## reject mix() up front instead of running a wrong fit that fails late in the
+  ## output tables with a cryptic "probabilities in a mixture ... sum to 0".
+  rxode2::assertRxUiNoMix(.ui, " for the estimation routine 'advi'", .var.name = .ui$modelName)
   ## absorb the validated control (set by getValidNlmixrControl before dispatch)
   if (exists("control", envir = env) && inherits(env$control, "adviControl")) {
     assign("adviControl", env$control, envir = env)
