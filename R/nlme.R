@@ -11,6 +11,11 @@
 #'   of `random`, `fixed`, `sens`, the nlme object is returned
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @param print Convenience alias for the shared nlmixr `print` control.
+#'   `nlme` prints progress through its own `verbose` option, so `print`
+#'   maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
+#'   value is verbose (`verbose=TRUE`).  When `print` is not supplied an
+#'   explicit `verbose` is used as given.
 #' @return a nlmixr-nlme list
 #' @examples
 #' nlmeControl()
@@ -28,7 +33,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE,
-    eventSens=c("jump", "fd"), ...) {
+    eventSens=c("jump", "fd"), print=NULL, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
@@ -60,6 +65,14 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
+
+  # 'print' is the common nlmixr control alias; nlme prints through 'verbose',
+  # so map it (print=0 means quiet) and let an explicit 'verbose' stand when
+  # 'print' is not supplied.
+  if (!is.null(print)) {
+    checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+    verbose <- print > 0
+  }
 
   .xtra <- list(...)
   .bad <- names(.xtra)
