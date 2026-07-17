@@ -2,6 +2,12 @@
 
 ## New features
 
+- `fit$etaCI` returns per-subject confidence intervals for each individual's
+  eta, complementing the existing `fit$etaSE` and `fit$etaRSE`.  The intervals
+  are the empirical-Bayes estimate plus/minus a normal quantile times the eta
+  standard error, using the fit's `ci` level (default 0.95).  Like `etaSE`, it
+  requires `CWRES` in the fit (add with `addCwres()` for non-focei methods).
+
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
   Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short

@@ -32,6 +32,7 @@ nmTest({
     expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
     expect_warning(fit$etaSE)
     expect_warning(fit$etaRSE)
+    expect_warning(fit$etaCI)
     expect_warning(fit$etaR)
     expect_false(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
     suppressMessages(expect_error(addCwres(fit), NA))
@@ -39,8 +40,23 @@ nmTest({
     expect_equal(row.names(fit$objDf)[1], "FOCEi")
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
+    expect_false(is.null(fit$etaCI))
     expect_false(is.null(fit$etaR))
     expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
+
+    # etaCI brackets the eta estimate and matches etaSE at the fit ci level
+    .etaCI <- fit$etaCI
+    .etaSE <- fit$etaSE
+    .eta <- fit$eta
+    expect_equal(names(.etaCI),
+                 c("ID", "eta.ka (2.5%)", "eta.ka (97.5%)",
+                   "eta.cl (2.5%)", "eta.cl (97.5%)",
+                   "eta.v (2.5%)", "eta.v (97.5%)"))
+    .qn <- stats::qnorm(0.975)
+    expect_equal(.etaCI[["eta.ka (2.5%)"]],
+                 .eta$eta.ka - .qn * .etaSE[["eta.ka"]])
+    expect_equal(.etaCI[["eta.ka (97.5%)"]],
+                 .eta$eta.ka + .qn * .etaSE[["eta.ka"]])
 
     fit <- .cloneFit(baseFit)
 

@@ -422,6 +422,41 @@ nmObjGet.phiRSE <- function(x, ...) {
 }
 attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's eta (if present)"
 
+#' @rdname nmObjGet
+#' @export
+nmObjGet.phiCI <- function(x, ...) {
+  .obj <- x[[1]]
+  .phi <- .obj$phiC
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
+  .ci <- rxode2::rxGetControl(.obj$ui, "ci", 0.95)
+  .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+  .etaNames <- colnames(.phi[[1]])
+  .eta <- .obj$eta[, .etaNames, drop=FALSE]
+  .low <- (1 - .ci) / 2
+  .hi <- 1 - .low
+  .lowLab <- paste0(format(100 * .low, trim=TRUE, digits=3), "%")
+  .hiLab <- paste0(format(100 * .hi, trim=TRUE, digits=3), "%")
+  .ret <- lapply(seq_along(.phi), function(i) {
+    .cov <- .phi[[i]]
+    .se <- suppressWarnings(sqrt(diag(.cov)))
+    .est <- unlist(.eta[i, , drop=FALSE])
+    .row <- data.frame(t(as.vector(rbind(.est - .qn * .se, .est + .qn * .se))))
+    names(.row) <- as.vector(rbind(paste0(.etaNames, " (", .lowLab, ")"),
+                                   paste0(.etaNames, " (", .hiLab, ")")))
+    .row
+  })
+  .ret <- do.call(rbind, .ret)
+  .id <- seq_along(.phi)
+  if (!is.null(names(.phi))) {
+    .id <- names(.phi)
+  }
+  cbind(data.frame(ID=.id), .ret)
+}
+attr(nmObjGet.phiCI, "desc") <- "confidence interval of each individual's eta (if present)"
+
 
 
 #' @rdname nmObjGet
