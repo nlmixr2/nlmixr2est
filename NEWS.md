@@ -473,6 +473,13 @@
 
 ### Estimation
 
+- A focei model whose predictions do not depend on any random effect (for
+  example `y ~ dpois(rate)` where `rate` is a fixed population parameter rather
+  than a model-predicted value) no longer reports the generic "Aborted
+  calculation" message.  The underlying cause is raised directly with guidance on
+  linking each endpoint's distribution parameter to an eta-varying model quantity
+  (#515).
+
 - `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
