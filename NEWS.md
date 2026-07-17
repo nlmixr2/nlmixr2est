@@ -697,6 +697,9 @@
 
 ### Internal
 
+- Removed an unreachable duplicate `missingTable` default assignment in
+  `nlmixr2Est0()` (issue #385); the earlier default already fixes the value, so
+  the second block could never run.  No change to fit results.
 - Removed the last bare `Rf_error` call from the C++ sources (issue #632):
   the `Rcpp::compileAttributes()` output now emits the parenthesized
   `(Rf_error)` form, and the internal `rxError` macro was switched to
