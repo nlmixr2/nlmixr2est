@@ -106,5 +106,14 @@ nmTest({
     expect_true(.f > 0.6 && .f < 0.9)
     # PRED is no longer collapsed to a single value
     expect_true(stats::sd(fit$PRED) > 0.3)
+
+    # The low-level saemDopred* diagnostics rebuild the event table from the saved
+    # data; they must apply the same reset offset as the fit, otherwise they solve a
+    # merged trajectory.  With the offset the individual predictions track the
+    # observations (cor ~0.97); a merged solve collapses this to ~0.5.
+    .ip <- fit$saemDopredIpred
+    .dvObs <- dat$DV[!is.na(dat$DV)]
+    expect_equal(length(.ip), length(.dvObs))
+    expect_true(stats::cor(.dvObs, .ip) > 0.85)
   })
 })

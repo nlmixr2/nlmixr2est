@@ -35,14 +35,21 @@
 #' no-op.
 #'
 #' `dat` is the post-`etTrans` event table (columns ID, TIME, EVID, ...); `evid==3`
-#' marks the reset that starts a new episode.
-#' @param dat post-etTrans event data.frame (ID=col 1, TIME=col 2, EVID=col 3)
-#' @return `dat` with column 2 (TIME) offset so each subject's times increase monotonically
+#' marks the reset that starts a new episode.  Columns are resolved by name
+#' (case-insensitive) so this works both on the kernel event table built in
+#' `.configsaem` and on the `dataSav`-derived table used by the `saemDopred*`
+#' diagnostics; positions 1/2/3 are the fallback.
+#' @param dat post-etTrans event data.frame with ID, TIME and EVID columns
+#' @return `dat` with its TIME column offset so each subject's times increase monotonically
 #' @noRd
 .saemMonotonicResetTime <- function(dat) {
-  .id <- dat[[1L]]
-  .time <- dat[[2L]]
-  .evid <- dat[[3L]]
+  .nm <- toupper(names(dat))
+  .idCol <- which(.nm == "ID")[1L]; if (is.na(.idCol)) .idCol <- 1L
+  .timeCol <- which(.nm == "TIME")[1L]; if (is.na(.timeCol)) .timeCol <- 2L
+  .evidCol <- which(.nm == "EVID")[1L]; if (is.na(.evidCol)) .evidCol <- 3L
+  .id <- dat[[.idCol]]
+  .time <- dat[[.timeCol]]
+  .evid <- dat[[.evidCol]]
   .n <- length(.time)
   if (.n < 2L) return(dat)
   # gap added past the running maximum when a reset would otherwise overlap; its
@@ -70,7 +77,7 @@
     if (.adj > .runMax) .runMax <- .adj
     .time[.i] <- .adj
   }
-  if (.changed) dat[[2L]] <- .time
+  if (.changed) dat[[.timeCol]] <- .time
   dat
 }
 
