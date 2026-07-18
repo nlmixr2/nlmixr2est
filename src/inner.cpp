@@ -12886,15 +12886,23 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
   std::vector<int> freeSet(nCov), inSet;
   for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
   vaeBnbRec(c, inSet, freeSet);
+  VaeSubsetFit out;
+  // No finite-scoring model was ever recorded (e.g. non-positive omega or a
+  // non-finite y made every score NaN/inf).  Fall back to the intercept-only
+  // model so the output always has at least the intercept coefficient.
+  if (c.bestCoef.is_empty()) {
+    out.coef.set_size(1);
+    out.coef[0] = y.n_elem ? arma::mean(y) : 0.0;
+    return out;
+  }
   // return with selection sorted ascending and coef reordered to match
   std::vector<int> order(c.bestSel.size());
   for (size_t s = 0; s < order.size(); ++s) order[s] = (int)s;
   std::sort(order.begin(), order.end(),
             [&](int a, int b) { return c.bestSel[a] < c.bestSel[b]; });
-  VaeSubsetFit out;
   out.sel.resize(c.bestSel.size());
   out.coef.set_size(c.bestCoef.n_elem);
-  out.coef[0] = c.bestCoef.n_elem ? c.bestCoef[0] : 0.0;
+  out.coef[0] = c.bestCoef[0];
   for (size_t s = 0; s < order.size(); ++s) {
     out.sel[s] = c.bestSel[order[s]];
     out.coef[s + 1] = c.bestCoef[order[s] + 1];
@@ -13028,13 +13036,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
     arma::vec baseline;
     // L0-penalty warmup ramp: the per-covariate cost multiplier ramps linearly
-    // from covSelectAlpha (at it=1) down to 1 at it=klWarmup-1, then stays 1 --
-    // matching the reference `alpha_pen = linspace(alpha, 1, kl_iter)` indexed by
-    // the 1-based iteration.  covSelectAlpha==1 (or klWarmup<=1) disables it.
+    // from covSelectAlpha at it=1 toward 1, then holds at 1 for it>=klWarmup --
+    // matching the reference `alpha_pen = linspace(alpha, 1, klWarmup)` indexed
+    // 0-based by (it-1).  covSelectAlpha==1 (or klWarmup<=1) disables it.
     double covPenCoef = 1.0;
     bool covRamp = false;
     if (klWarmup > 1 && it < klWarmup && covSelectAlpha != 1.0) {
-      covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)it / (double)(klWarmup - 1);
+      covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)(it - 1) / (double)(klWarmup - 1);
       covRamp = true;
     }
     if (doCov) {
@@ -13146,6 +13154,12 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
   const int zDim = (int)mu.n_cols;
   const int N = (int)mu.n_rows;
   const int nCov = (int)covMat.n_cols;
+  // recycle length-1 omega/isFree to zDim (mirrors the caller-side rep_len);
+  // otherwise require an exact per-eta length so we never index out of bounds.
+  if (omega.n_elem == 1) omega = arma::vec(zDim, arma::fill::value(omega[0]));
+  else if ((int)omega.n_elem != zDim) Rcpp::stop("'omega' must have length 1 or zDim (%d)", zDim);
+  if (isFree.size() == 1) isFree = LogicalVector(zDim, (int)isFree[0]);
+  else if ((int)isFree.size() != zDim) Rcpp::stop("'isFree' must have length 1 or zDim (%d)", zDim);
   arma::mat X(N, 1 + nCov); X.col(0).ones();
   if (nCov > 0) X.cols(1, nCov) = covMat;
   arma::vec intercept(zDim, arma::fill::zeros);
