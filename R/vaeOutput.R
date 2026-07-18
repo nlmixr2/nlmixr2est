@@ -136,6 +136,22 @@
   .ui <- env$ui
   .control <- env$vaeControl
   .ui2 <- .vaeUpdateModel(.ui, fit)
+  ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
+  ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
+  ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
+  ## model and its column from the EBE matrix -- the parameter is reported as a
+  ## plain fixed effect.
+  .injEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
+  if (length(.injEtas) > 0L) {
+    .injEtas <- .injEtas[.injEtas %in% fit$prep$etaNames]
+    if (length(.injEtas) > 0L) {
+      .ui2 <- rmEta(.ui2, .injEtas)
+      .keep <- !(fit$prep$etaNames %in% .injEtas)
+      fit$mu <- fit$mu[, .keep, drop = FALSE]
+      fit$zPopMat <- fit$zPopMat[, .keep, drop = FALSE]
+      fit$prep$etaNames <- fit$prep$etaNames[.keep]
+    }
+  }
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
   ## encoder etas as the FOCEi inner starting point [nsub, neta] in eta order
