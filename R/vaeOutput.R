@@ -141,7 +141,13 @@
   ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
   ## model and its column from the EBE matrix -- the parameter is reported as a
   ## plain fixed effect.
-  .injEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
+  ## per-fit record (set by the preprocess hook, copied onto env by runPreProcess);
+  ## fall back to the global only for direct callers that bypass the hook wrapper
+  .injEtas <- if (exists("vaeNonMuEtas", envir = env, inherits = FALSE)) {
+    env$vaeNonMuEtas
+  } else {
+    nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
+  }
   if (length(.injEtas) > 0L) {
     .injEtas <- .injEtas[.injEtas %in% fit$prep$etaNames]
     if (length(.injEtas) > 0L) {

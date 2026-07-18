@@ -17,8 +17,8 @@
   .idf <- ui$iniDf
   .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
   if (nrow(.th) == 0L) return(character(0))
-  .mu <- ui$muRefDataFrame$theta
-  .cov <- ui$muRefCovariateDataFrame$theta
+  .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
+  .cov <- if (is.null(ui$muRefCovariateDataFrame)) character(0) else ui$muRefCovariateDataFrame$theta
   .cand <- setdiff(.th$name, c(.mu, .cov))
   if (length(.cand) == 0L) return(character(0))
   ## keep only thetas that actually appear in a model expression (so an eta can be
@@ -50,23 +50,32 @@ isTRUE2 <- function(x) !is.na(x) & x
     .lines <- .ui$lstExpr
     .idx <- which(vapply(.lines, function(e) .p %in% all.vars(e), logical(1)))
     if (length(.idx) == 0L) next
-    .idx <- .idx[1]
+    ## rewrite EVERY expression that references the theta, not just the first: the
+    ## injected eta is a single per-subject random effect, so replacing each `p`
+    ## with `p + eta` uses the same eta realization everywhere and consistently
+    ## moves the structural parameter into the latent space (a first-only rewrite
+    ## would leave the other uses frozen at the population value).
     ## inject FLAT (no wrapping parens) so `exp(theta + eta)` stays the additive
     ## form rxode2 recognizes as a mu-referenced exp() parameter (parens would hide
     ## the exp() back-transform -- see .vaeUpdateModel)
-    .newTxt <- gsub(paste0("\\b", .p, "\\b"), paste0(.p, " + ", .eta),
-                    deparse1(.lines[[.idx]]))
-    .ui <- do.call(rxode2::model, list(.ui, str2lang(.newTxt)))
+    for (.i in .idx) {
+      .newTxt <- gsub(paste0("\\b", .p, "\\b"), paste0(.p, " + ", .eta),
+                      deparse1(.lines[[.i]]))
+      .ui <- do.call(rxode2::model, list(.ui, str2lang(.newTxt)))
+    }
     .ui <- do.call(rxode2::ini, list(.ui, str2lang(paste0(.eta, " ~ ", signif(omega, 12)))))
     .etas <- c(.etas, .eta)
   }
   if (fix && length(.etas) > 0L) {
     ## rxode2 ini(eta ~ fix(v)) does not flag the omega; set the diagonal fix flag
-    ## directly (read by .vaeDataPrep's omegaFix detection) and rebuild.
+    ## directly (read by .vaeDataPrep's omegaFix detection), then rebuild the UI
+    ## from the edited iniDf via the compress round-trip (as in advi.R) so any
+    ## derived UI fields are re-synced.
     .ui <- rxode2::rxUiDecompress(.ui)
     .df <- .ui$iniDf
     .df$fix[!is.na(.df$neta1) & .df$neta1 == .df$neta2 & .df$name %in% .etas] <- TRUE
     assign("iniDf", .df, envir = .ui)
+    .ui <- rxode2::rxUiCompress(.ui)
   }
   list(ui = .ui, etas = .etas)
 }

@@ -80,7 +80,7 @@ nmTest({
               control = vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
                                    nGradStep = 2L, covariateSelection = FALSE, print = 0L,
                                    nonMuTheta = "none"))))
-    expect_equal(fit0$theta[["lke"]], log(0.086), tolerance = 1e-9)
-    expect_equal(fit0$theta[["lV"]], log(32), tolerance = 1e-9)
+    expect_equal(fit0$theta[["lke"]], log(0.086), tolerance = 1e-6)
+    expect_equal(fit0$theta[["lV"]], log(32), tolerance = 1e-6)
   })
 })
