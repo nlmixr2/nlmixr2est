@@ -80,7 +80,8 @@ bobyqaControl <- function(npt=NULL,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=FALSE,
-                          covMethod=c("r", ""),
+                          covMethod=c("r", "sa", "imp", ""),
+                          covMethodDeferred=NA_character_,
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                           eventSens=c("jump", "fd"), ...) {
 
@@ -166,12 +167,18 @@ bobyqaControl <- function(npt=NULL,
   }
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
 
+  covMethod <- match.arg(covMethod)
+  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
+  covMethod <- .nlmCovDef$covMethod
+  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
+
   .ret <- list(npt=npt,
                rhobeg=rhobeg,
                rhoend=rhoend,
                iprint=iprint,
                maxfun=maxfun,
-               covMethod=match.arg(covMethod),
+               covMethod=covMethod,
+               covMethodDeferred=covMethodDeferred,
                optExpression=optExpression,
                literalFix=literalFix,
                literalFixRes=literalFixRes,

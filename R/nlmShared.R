@@ -173,6 +173,24 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
+#' Split a foreign ("sa"/"imp") covariance request off an nlm-family covMethod.
+#'
+#' The nlm-family kernels compute only their own Hessian-based ("r") or
+#' optimizer-native covariance; "sa"/"imp" are recomputed post-fit at the
+#' converged estimates by the decoupled engine (see `.covRecompute`).  Returns
+#' the covMethod to use for the native step ("" -> skip it) and the deferred
+#' request to stash on the control for the central post-fit hook.
+#' @param covMethod resolved nlm-family covMethod
+#' @return list(covMethod, deferred)
+#' @noRd
+.nlmCovMethodDefer <- function(covMethod) {
+  if (is.character(covMethod) && length(covMethod) == 1L &&
+        covMethod %in% c("sa", "imp")) {
+    return(list(covMethod = "", deferred = covMethod))
+  }
+  list(covMethod = covMethod, deferred = NA_character_)
+}
+
 .nlmFinalizeList <- function(env, lst, par="par", printLine=TRUE,
                              hessianCov=TRUE) {
   .ret <- lst

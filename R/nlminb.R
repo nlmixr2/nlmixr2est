@@ -117,7 +117,8 @@ nlminbControl <- function(eval.max=200,
                           eventSens = c("jump", "fd"),
                           sensMethod = c("default", "forward", "adjoint"),
                           calcTables=TRUE, compress=TRUE,
-                          covMethod=c("r", "nlminb", ""),
+                          covMethod=c("r", "nlminb", "sa", "imp", ""),
+                          covMethodDeferred=NA_character_,
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
@@ -154,6 +155,9 @@ nlminbControl <- function(eval.max=200,
             "switching to covMethod='r'")
     covMethod <- "r"
   }
+  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
+  covMethod <- .nlmCovDef$covMethod
+  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
 
   .eventTypeIdx <- c("central" =2L, "forward"=1L)
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -281,6 +285,7 @@ nlminbControl <- function(eval.max=200,
                gradTo=gradTo,
 
                covMethod=covMethod,
+               covMethodDeferred=covMethodDeferred,
                optExpression=optExpression,
                literalFix=literalFix,
                literalFixRes=literalFixRes,

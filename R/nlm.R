@@ -116,7 +116,8 @@ nlmControl <- function(typsize = NULL,
                        literalFixRes=TRUE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=FALSE,
-                       covMethod=c("r", "nlm", ""),
+                       covMethod=c("r", "nlm", "sa", "imp", ""),
+                       covMethodDeferred=NA_character_,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
@@ -198,6 +199,9 @@ nlmControl <- function(typsize = NULL,
   } else {
     covMethod <- match.arg(covMethod)
   }
+  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
+  covMethod <- .nlmCovDef$covMethod
+  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
 
   .eventTypeIdx <- c("central" =2L, "forward"=1L)
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -267,6 +271,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
 
   .ret <- list(covMethod=covMethod,
+               covMethodDeferred=covMethodDeferred,
                typsize = typsize,
                fscale = fscale, print.level = print.level, ndigit=ndigit, gradtol = gradtol,
                stepmax = stepmax,

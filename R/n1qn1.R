@@ -76,7 +76,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          eventSens = c("jump", "fd"),
                          sensMethod = c("default", "forward", "adjoint"),
                          calcTables=TRUE, compress=FALSE,
-                         covMethod=c("r", "n1qn1", ""),
+                         covMethod=c("r", "n1qn1", "sa", "imp", ""),
+                         covMethodDeferred=NA_character_,
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
 
@@ -163,13 +164,19 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
 
+  covMethod <- match.arg(covMethod)
+  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
+  covMethod <- .nlmCovDef$covMethod
+  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
+
   .ret <- list(
     epsilon = epsilon,
     max_iterations = max_iterations,
     nsim = nsim,
     imp = imp,
     print.functions=print.functions,
-    covMethod=match.arg(covMethod),
+    covMethod=covMethod,
+    covMethodDeferred=covMethodDeferred,
     optExpression=optExpression,
     literalFix=literalFix,
     literalFixRes=literalFixRes,
