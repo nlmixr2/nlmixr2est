@@ -51,6 +51,29 @@
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
 #'
+#' @details
+#'
+#' Covariate selection -- MIQP vs. branch-and-bound.  Per latent parameter the
+#' selection step minimizes the same L0/BIC objective
+#' `RSS_S/omega + log(N)*|S|` over subsets `S` of the candidate covariates (`RSS_S`
+#' is the residual sum of squares of the ordinary-least-squares fit on the
+#' intercept plus `S`).  The reference implementation (Rohleff et al.) writes this
+#' as a Mixed-Integer Quadratic Program (MIQP) -- binary include/exclude
+#' indicators with big-M constraints -- and solves it with the commercial Gurobi
+#' solver through `cvxpy`.  No MIQP-capable solver is freely available in R: Gurobi
+#' is commercial/licensed, and the open QP solvers on CRAN (e.g. `osqp`) are
+#' continuous-only and cannot represent the binary selection.  A continuous convex
+#' relaxation (L1 / lasso) would be solvable but only approximates best subset.
+#'
+#' This package instead solves the identical L0/BIC objective EXACTLY with a
+#' self-contained branch-and-bound: each candidate support's coefficients are the
+#' closed-form OLS fit and branches are pruned by a valid lower bound (the RSS of
+#' the OLS fit using all still-free covariates).  It therefore returns the same
+#' optimum the MIQP would -- no commercial dependency and no relaxation/accuracy
+#' loss -- and scales to a few dozen covariates.  The search is worst-case
+#' exponential in the number of covariates, but the pruning makes the practical
+#' (sparse) case fast (e.g. 32 candidate covariates in a fraction of a second).
+#'
 #' @return vae control structure (class `vaeControl`)
 #' @export
 #' @author Matthew L. Fidler
