@@ -2215,9 +2215,17 @@ double LikInner2(double *eta, int likId, int id) {
           // Get the x and w for the current iteration
           arma::vec x = aqx.row(curi).t();
           arma::vec w = aqw.row(curi).t();
-          arma::vec etaCur = etahat +  Ginv_5 * x;
+          // aqx/aqw are Gauss-Hermite for the e^{-x^2} kernel (fastGHQuad::gaussHermiteData,
+          // weights divided by sqrt(pi) in .agq() so they sum to 1).  The integral here has
+          // an e^{-z'z/2} kernel, so the node substitution is z = sqrt(2)*x: nodes at
+          // etahat + sqrt(2)*Ginv_5*x (Ginv_5 = inv(chol(Ht)), the inverse eta-Hessian
+          // Cholesky factor Ht^-1/2), untilt exp(+x'x).  The sqrt(2) Jacobian cancels the
+          // normalized weights, so no extra constant is needed.  Without it the rule targets
+          // N(etahat, Ht^-1/2) and converges to the wrong limit (it still beats Laplace,
+          // which is why it looks right: ~3x better, then frozen).
+          arma::vec etaCur = etahat + M_SQRT2 * Ginv_5 * x;
           lik  = -likInner0(etaCur.memptr(), id);
-          lik += sum(log(w) +  0.5 * x % x); // x % x  = x^2
+          lik += sum(log(w) + x % x); // x % x  = x^2
           // Can be factored out
           //lik += op_focei.logDetOmegaInv5;
           lik = max2(lik, op_focei.aqLow);

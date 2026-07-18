@@ -62,6 +62,16 @@
   NULL
 }
 
+# Shared cholSECov analytic-cov guard, used by both .foceiCalcRanalytic (live hook) and
+# .foceiCovAnalyticCalc (standalone entry) so the gate and its reason cannot diverge.
+# foceiCalcCov() re-sets every subject's doChol from cholSECov before the cov step (see
+# src/inner.cpp, `fInd->doChol = !op_focei.cholSECov`), so the objective's log|Ht| then
+# comes from the generalized Cholesky, not chol().  For a non-PD Ht that is a different
+# quantity than the analytic R differentiates.  (cholSEOpt is the OPTIMIZATION-phase flag
+# and does not affect the cov step.)
+.foceiCholSECovReason <- "cholSECov=TRUE (the covariance step re-factors the eta Hessian)"
+.foceiCholSECovActive <- function(ui) isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))
+
 #' Transform the observed DV onto the rx_pred_ (transformed) scale for a both-sides
 #' transform, using the solved per-observation transform parameters `trans`
 #' (lambda/yj/low/hi, each length nobs).  Runs the SAME C++ transform the inner problem
@@ -534,6 +544,8 @@
     # linCmt() has no symbolic state sensitivities for the augmented model
     if (isTRUE(any(ui$predDf$linCmt)))
       return(.foceiAnalyticFallback("a linCmt() model"))
+    if (.foceiCholSECovActive(ui))
+      return(.foceiAnalyticFallback(.foceiCholSECovReason))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
     # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
     # it only matters when interaction=0 (FOCEI always uses the live conditional R).
@@ -2183,6 +2195,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt)))
     return(.foceiAnalyticFallback("a linCmt() model"))
+  if (.foceiCholSECovActive(ui))
+    return(.foceiAnalyticFallback(.foceiCholSECovReason))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
