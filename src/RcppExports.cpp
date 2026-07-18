@@ -1204,8 +1204,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeBestSubset_
-List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov);
-RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP) {
+List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov, std::string strategy);
+RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP, SEXP strategySEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1214,7 +1214,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::vec >::type omega(omegaSEXP);
     Rcpp::traits::input_parameter< LogicalVector >::type isFree(isFreeSEXP);
     Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov));
+    Rcpp::traits::input_parameter< std::string >::type strategy(strategySEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov, strategy));
     return rcpp_result_gen;
 END_RCPP
 }

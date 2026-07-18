@@ -2,6 +2,12 @@
 
 ## New features
 
+- `vaeControl(bnbStrategy=)` selects the frontier discipline for the exact
+  branch-and-bound covariate selection in `est="vae"`: `"lifo"` (default, the
+  existing last-in-first-out depth-first search), `"fifo"` (first-in-first-out)
+  or `"lc"` (least cost / best-first).  The solver is exact, so the selected
+  covariates are identical for every strategy; only the search order differs.
+
 - `est="vae"` can now estimate structural population parameters that have no
   random effect (are not mu-referenced).  Previously such a `theta` was frozen at
   its `ini()` value because the VAE only estimates parameters in the latent space.

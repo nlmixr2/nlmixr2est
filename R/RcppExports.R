@@ -309,8 +309,8 @@ vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, par
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
 
-vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov) {
-    .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov)
+vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov, strategy = "lifo") {
+    .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov, strategy)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {

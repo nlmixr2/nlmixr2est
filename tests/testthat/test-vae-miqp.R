@@ -58,6 +58,43 @@ nmTest({
     }
   })
 
+  test_that("bnbStrategy fifo/lc reach the identical exact optimum as the default lifo", {
+    ## the solver is exact, so every frontier discipline must return the same
+    ## selection/coefficients -- only the search order differs.  Exercised across
+    ## the golden fixture (mechanism is actually wired through to the kernel).
+    g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
+    for (nm in names(g)) {
+      ci <- g[[nm]]; ip <- ci$inputs
+      omega <- rep_len(ip$omega, ci$zDim)
+      isFree <- rep_len(ip$isFree, ci$zDim)
+      base <- vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "lifo")
+      for (strat in c("fifo", "lc")) {
+        alt <- vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, strat)
+        expect_equal(alt, base,
+                     info = paste0("strategy ", strat, " differs from lifo in case ", ci$name))
+      }
+    }
+  })
+
+  test_that("vaeBestSubset_ rejects an unknown branch-and-bound strategy", {
+    g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
+    ci <- g[[1]]; ip <- ci$inputs
+    omega <- rep_len(ip$omega, ci$zDim)
+    isFree <- rep_len(ip$isFree, ci$zDim)
+    expect_error(vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "bogus"),
+                 "lifo")
+  })
+
+  test_that("bnbStrategy is tunable in vaeControl and defaults to lifo", {
+    expect_equal(vaeControl()$bnbStrategy, "lifo")
+    expect_equal(vaeControl(bnbStrategy = "fifo")$bnbStrategy, "fifo")
+    expect_equal(vaeControl(bnbStrategy = "lc")$bnbStrategy, "lc")
+    ## round-trips through the list -> vaeControl reconstruction used at dispatch
+    ctl <- vaeControl(bnbStrategy = "lc")
+    expect_equal(do.call(vaeControl, unclass(ctl))$bnbStrategy, "lc")
+    expect_error(vaeControl(bnbStrategy = "bogus"))
+  })
+
   test_that("covSelectAlpha is tunable in vaeControl and defaults to the reference 2", {
     expect_equal(vaeControl()$covSelectAlpha, 2)
     expect_equal(vaeControl(covSelectAlpha = 3)$covSelectAlpha, 3)

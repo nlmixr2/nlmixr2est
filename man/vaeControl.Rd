@@ -17,6 +17,7 @@ vaeControl(
   sigma0 = NULL,
   covariateSelection = TRUE,
   covSelectAlpha = 2,
+  bnbStrategy = c("lifo", "fifo", "lc"),
   nonMuTheta = c("regress", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
   likelihood = c("focei", "foce", "focep", "laplace"),
@@ -86,6 +87,12 @@ penalty, ramped linearly from `covSelectAlpha` down to `1` over the
 reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 penalize covariate entry more heavily early in training; `1` disables the
 ramp.}
+
+\item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
+selection: `"lifo"` (default, last-in-first-out depth-first search),
+`"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
+solver is exact, so the selected covariates are identical for every strategy;
+only the search order (and thus efficiency) differs.}
 
 \item{nonMuTheta}{How to treat a structural population `theta` that has no
   random effect (is not mu-referenced) so it can still be estimated by the VAE
