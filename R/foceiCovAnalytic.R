@@ -688,8 +688,7 @@
     # error -- and the gate must sit above the routing, not in the assembler.  foceiOnly and
     # censored route to AssembleRFR (no qx/qw); IOV would hand the node callback xi-space
     # etas and un-rescaled a/A; agqLow/agqHi kinks the objective (inner.cpp clamps each
-    # node's lik); cholSECov re-factors Ht with cholSE__ at cov time (inner.cpp:7168 -- NOT
-    # cholSEOpt, which is optimization-only).  The analytic gradient declines the same set.
+    # node's lik).  cholSECov is already declined at the top of this hook.
     if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
       .agqLo <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqLow", -Inf)))
       .agqHi <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqHi", Inf)))
@@ -697,7 +696,6 @@
         else if (.hasCensD) "censored observations"
         else if (length(iovVars) > 0L) "inter-occasion variability (IOV)"
         else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) "a finite agqLow/agqHi node clamp"
-        else if (isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))) "cholSECov=TRUE"
         else NULL
       if (!is.null(.why))
         return(.foceiAnalyticFallback(paste0("adaptive Gaussian quadrature (nAGQ > 1) with ", .why)))
@@ -1955,14 +1953,14 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   P <- vector("list", nn); lg <- numeric(nn); vK <- vector("list", nn)
   for (k in seq_len(nn)) {
     x <- qx[k, ]
-    etak <- ehat + as.numeric(Ginv %*% x)
+    etak <- ehat + sqrt(2) * as.numeric(Ginv %*% x)   # sqrt(2)*Ginv*x, matching inner.cpp
     Ek <- solveNode(etak)
     if (is.null(Ek)) return(NULL)                       # node solve failed -> caller drops to FD
     P[[k]] <- .nodeParts(Ek, etak)
-    lg[k] <- sum(log(qw[k, ])) + 0.5 * sum(x^2) - P[[k]]$Phi   # u_k = log a_k
+    lg[k] <- sum(log(qw[k, ])) + sum(x^2) - P[[k]]$Phi   # u_k = log a_k (exp(x'x) untilt)
     # matrix(, nrow=neta) is load-bearing: at neta==1 vapply drops the dim, vK[[k]][, p]
     # throws and the tryCatch silently falls back to FD.  Same guard as etaP above.
-    vK[[k]] <- matrix(vapply(1:npE, function(p) etaP[, p] + as.numeric(dGinvL[[p]] %*% x),
+    vK[[k]] <- matrix(vapply(1:npE, function(p) etaP[, p] + sqrt(2) * as.numeric(dGinvL[[p]] %*% x),
                              numeric(neta)), nrow = neta)
   }
   lg <- lg - max(lg); pk <- exp(lg); pk <- pk / sum(pk)  # pi_k (softmax, shifted for stability)
@@ -1975,7 +1973,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     d2G <- d2GinvF(aa, bb); e2 <- .e2[[aa]][[bb]]; s <- 0
     for (k in seq_len(nn)) {
       va <- vK[[k]][, aa]; vb <- vK[[k]][, bb]
-      wab <- e2 + as.numeric(d2G %*% qx[k, ])            # d2etaCur_k/dp dq
+      wab <- e2 + sqrt(2) * as.numeric(d2G %*% qx[k, ])   # d2etaCur_k/dp dq (sqrt(2) on d2Ginv*x)
       Pk <- P[[k]]
       s <- s + pk[k] * (Pk$d2P(aa, bb) + sum(Pk$M(aa) * vb) + sum(Pk$M(bb) * va) +
                           as.numeric(t(va) %*% Pk$H %*% vb) + sum(Pk$g * wab))
@@ -2389,7 +2387,6 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     .why <- if (isTRUE(ef$foceiOnly)) "a general or multi-endpoint residual variance"
       else if (.hasCens) "censored observations"
       else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) "a finite agqLow/agqHi node clamp"
-      else if (isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))) "cholSECov=TRUE"
       else NULL
     if (!is.null(.why))
       return(.foceiAnalyticFallback(paste0("adaptive Gaussian quadrature (nAGQ > 1) with ", .why)))

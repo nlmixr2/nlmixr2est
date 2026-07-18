@@ -246,8 +246,10 @@
   for (k in seq_len(nn)) {
     x <- qx[k, ]; w <- qw[k, ]; Ek <- Eks[[k]]
     if (is.null(Ek)) return(NULL)
-    etaCur <- ehat + as.numeric(Ginv %*% x)
-    lognode[k] <- sum(log(w)) + 0.5 * sum(x^2) + (.lf(Ek, etaCur) - l0)
+    # sqrt(2): change-of-variable z=sqrt(2)x for the e^{-x^2} Gauss-Hermite kernel, matching
+    # inner.cpp's node placement (nodes at sqrt(2)*Ginv*x, untilt exp(x'x)).
+    etaCur <- ehat + sqrt(2) * as.numeric(Ginv %*% x)
+    lognode[k] <- sum(log(w)) + sum(x^2) + (.lf(Ek, etaCur) - l0)
     .resk <- Ek$y - Ek$f; .Rk <- Ek$R
     rfk <- -.resk / .Rk; rRk <- 0.5 * (1 / .Rk - .resk^2 / .Rk^2)
     # Phi_eta at the NODE: nonzero (the envelope theorem does not apply off the mode)
@@ -259,7 +261,7 @@
       else if (.t == "sg") sum(rRk * Ek$Rsig[, sigCol[p - nth]])
       # the -tr28 constant is node-independent; sum_k pi_k = 1 passes it through
       else 0.5 * as.numeric(t(etaCur) %*% dOiEst[[omc(p)]] %*% etaCur) - tr28[omc(p)]
-      perNode[k, p] <- .dphi + sum(gPhik * (etaP[, p] + as.numeric(dGinvL[[p]] %*% x)))
+      perNode[k, p] <- .dphi + sum(gPhik * (etaP[, p] + sqrt(2) * as.numeric(dGinvL[[p]] %*% x)))
     }
   }
   if (!all(is.finite(lognode))) return(NULL)
@@ -671,7 +673,9 @@
       .repEta <- do.call(rbind, lapply(.kk, function(k) {
         .x <- .qx[k, ]
         .e <- t(vapply(seq_len(nsub),
-                       function(i) etaSolve[i, ] + as.numeric(.GinvL[[i]] %*% .x), numeric(neta)))
+                       # sqrt(2): the node SOLVE position must match the kernel's etaCur =
+                       # etahat + sqrt(2)*Ginv*x, or the node sensitivities are at the wrong eta.
+                       function(i) etaSolve[i, ] + sqrt(2) * as.numeric(.GinvL[[i]] %*% .x), numeric(neta)))
         if (neta == 1L) matrix(.e, ncol = 1L) else .e
       }))
       .repData <- .foceiAgqRepData(data, nsub, .m)

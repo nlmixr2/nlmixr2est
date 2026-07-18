@@ -1177,7 +1177,7 @@ static void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
   vec rfk(nobs), rRk(nobs);
   for (int k = 0; k < nn; k++) {
     vec x = qx.row(k).t();
-    vec etaCur = ehat + Ginv * x;
+    vec etaCur = ehat + M_SQRT2 * Ginv * x;   // sqrt(2)*Ginv*x, matching inner.cpp node placement
     int b = k * nobs;                              // node k block start
     double lk = 0.0;
     for (int o = 0; o < nobs; o++) {
@@ -1189,7 +1189,7 @@ static void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
     lk = -0.5 * lk - 0.5 * as_scalar(etaCur.t() * Oi * etaCur);
     double lw = 0.0, xx = 0.0;
     for (int j = 0; j < neta; j++) { lw += std::log(qw(k, j)); xx += qx(k, j) * qx(k, j); }
-    lognode[k] = lw + 0.5 * xx + (lk - l0);
+    lognode[k] = lw + xx + (lk - l0);   // exp(x'x) untilt (was 0.5*x'x)
     // Phi_eta at the NODE: nonzero (no envelope theorem off the mode)
     vec gPhik = Oi * etaCur;
     for (int l = 0; l < neta; l++) {
@@ -1212,7 +1212,7 @@ static void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
         int kk = pp - nth - nsg;
         dphi = 0.5 * as_scalar(etaCur.t() * dOiEst.slice(kk) * etaCur) - tr28[kk];
       }
-      vec dEta = etaP.col(pp) + dGinvL[pp] * x;
+      vec dEta = etaP.col(pp) + M_SQRT2 * dGinvL[pp] * x;   // sqrt(2) on dGinv*x
       perNode(k, pp) = dphi + dot(gPhik, dEta);
     }
   }
