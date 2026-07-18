@@ -57,7 +57,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "qrpem-slow", "focei-foce-plus"),
   # batch 2
   c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
-    "fsaem", "cov-condition"),
+    "fsaem", "cov-condition", "agq-cov"),
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
@@ -67,7 +67,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
-    "nlme-cov"),
+    "nlme-cov", "agq-fast-grad"),
   # batch 5
   c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",

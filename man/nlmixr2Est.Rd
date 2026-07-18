@@ -23,6 +23,9 @@
 \alias{nlmixr2Est.ifoceif}
 \alias{nlmixr2Est.ifocef}
 \alias{nlmixr2Est.ifocepf}
+\alias{nlmixr2Est.agqf}
+\alias{nlmixr2Est.magqf}
+\alias{nlmixr2Est.iagqf}
 \alias{nlmixr2Est.focep}
 \alias{nlmixr2Est.foi}
 \alias{nlmixr2Est.fsaem}
@@ -97,6 +100,12 @@
 \method{nlmixr2Est}{ifocef}(env, ...)
 
 \method{nlmixr2Est}{ifocepf}(env, ...)
+
+\method{nlmixr2Est}{agqf}(env, ...)
+
+\method{nlmixr2Est}{magqf}(env, ...)
+
+\method{nlmixr2Est}{iagqf}(env, ...)
 
 \method{nlmixr2Est}{focep}(env, ...)
 

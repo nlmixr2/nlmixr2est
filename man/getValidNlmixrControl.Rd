@@ -20,6 +20,9 @@
 \alias{getValidNlmixrCtl.ifoceif}
 \alias{getValidNlmixrCtl.ifocef}
 \alias{getValidNlmixrCtl.ifocepf}
+\alias{getValidNlmixrCtl.agqf}
+\alias{getValidNlmixrCtl.magqf}
+\alias{getValidNlmixrCtl.iagqf}
 \alias{getValidNlmixrCtl.focep}
 \alias{getValidNlmixrCtl.foi}
 \alias{getValidNlmixrCtl.fsaem}
@@ -93,6 +96,12 @@
 \method{getValidNlmixrCtl}{ifocef}(control)
 
 \method{getValidNlmixrCtl}{ifocepf}(control)
+
+\method{getValidNlmixrCtl}{agqf}(control)
+
+\method{getValidNlmixrCtl}{magqf}(control)
+
+\method{getValidNlmixrCtl}{iagqf}(control)
 
 \method{getValidNlmixrCtl}{focep}(control)
 

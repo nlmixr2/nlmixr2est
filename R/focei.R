@@ -1295,6 +1295,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
   # it; the direction metadata travels separately in `outerMeta`.
   .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
+  # AGQ (nAGQ>1) only: the 1st-order model the nodes solve on, built here so it rides in the
+  # qs2 cache next to `outer` rather than re-paying the symengine+gcc pass each session.
+  .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
     innerOeta = innerOeta,
@@ -1305,6 +1308,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
+    # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
+    # top level so the qs2 rxLoad reloads it, metadata separately.
+    outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
+    outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
@@ -1430,6 +1437,11 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## fast=TRUE adds the augmented outer-gradient model (foceiModelList$outer), so it
   ## must key the cache -- else a non-fast build (outer=NULL) would be reused for a
   ## fast fit (foceType too, since foce+ has no outer model).
+  ## nAGQ likewise: only nAGQ>1 builds outerNode, so without it a FOCEI fit would cache
+  ## outerNode=NULL and a later AGQ fit of the SAME model would silently solve the nodes on
+  ## the eta-hat model instead.  Keyed as the boolean -- the node model depends on whether
+  ## there are nodes, not how many -- so nAGQ=2 and nAGQ=3 share one build.
+  .agqNodes <- as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) > 1L
   .fast <- isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))
   .foceType <- rxode2::rxGetControl(.ui, "foceType", 0L)
   ## The augmented outer model (foceiModelList$outer) also depends on which covariates
@@ -1442,7 +1454,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
-                   .eventSens, .sensMethod, .rxMethod, .fast, .foceType,
+                   .eventSens, .sensMethod, .rxMethod, .fast, .foceType, .agqNodes,
                    .constCovs, Sys.getenv("FOCEI_NO_SIGMA_SKIP"),
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))

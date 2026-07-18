@@ -63,6 +63,10 @@ foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, cen
     .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
+foceiGradAllAgqFR_ <- function(a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, aN, aRN, RsigN, fN, RN, qx, qw, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllAgqFR_`, a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, aN, aRN, RsigN, fN, RN, qx, qw, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores)
+}
+
 impSirIndex_ <- function(zk, sirN, u0) {
     .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
 }

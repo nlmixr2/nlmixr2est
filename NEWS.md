@@ -46,6 +46,34 @@
   are the empirical-Bayes estimate plus/minus a normal quantile times the eta
   standard error, using the fit's `ci` level (default 0.95).  Like `etaSE`, it
   requires `CWRES` in the fit (add with `addCwres()` for non-focei methods).
+
+- `est="agq"` now supports the analytic outer gradient (`agqControl(fast=TRUE)`),
+  which was previously available only to the FOCEi family.  The AGQ objective is
+  the FOCEi objective with one term swapped -- `l(etahat)` becomes
+  `log(sum_k a_k)` over the quadrature nodes, while the `log det`, Omega and tbs
+  terms are unchanged -- so its gradient reuses the same sensitivity solve and
+  adds the node terms plus `tr(Ht^-1 dHt/dp)` for the node placement.  As with
+  FOCEi this replaces the finite-difference outer gradient, so it is exact rather
+  than a difference approximation and costs one augmented solve instead of one
+  extra solve per parameter.  The quadrature nodes solve a cheaper 1st-order
+  model than the eta-hat point needs (they never read the 2nd-order block), which
+  is where most of the node cost goes once the grid grows.  Requires
+  `interaction=TRUE`; a fit that cannot use it falls back to finite differences
+  rather than failing.
+
+- `covType="analytic"` now covers `est="agq"` as well (it previously declined for
+  `nAGQ > 1` and fell back to the finite-difference covariance).  The AGQ
+  observed information is the FOCEi one with the same single term swapped, so the
+  `log det` half is reused unchanged and only the data half becomes an expectation
+  over the quadrature nodes plus a covariance between their score contributions.
+  At `nAGQ=1` it reduces to the FOCEi observed information exactly, and the FOCEi
+  and Laplace results are unchanged.  Validated against a finite-difference
+  oracle (tight ODE tolerance, Richardson extrapolation): the AGQ standard errors
+  agree to that oracle's own noise floor.  As with the gradient, a model outside
+  its scope -- a general or multi-endpoint residual variance, censoring, IOV, a
+  finite `agqLow`/`agqHi` clamp, `cholSECov=TRUE`, or `interaction=FALSE` --
+  reports why and keeps the finite-difference covariance.
+
 - The FOCEi-family outer finite-difference gradient now freezes the ODE solve
   when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
   the default).  Those parameters do not change the prediction `f` (or the EBEs
