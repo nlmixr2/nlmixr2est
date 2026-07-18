@@ -9,6 +9,11 @@
   estimated and reports it as `theta + mean(eta)` (the temporary eta is dropped
   from the output model): `"eta"` (default) estimates the injected omega, `"fix"`
   holds it fixed at `nonMuEtaOmega`, and `"none"` keeps the old freeze behavior.
+  `"regress"` instead injects no eta and estimates each such theta directly by a
+  bounded `bobyqa` regression against the FOCEi inner likelihood every M-step
+  (bounds from the `ini()` lower/upper, blended with the M-step gain) -- the VAE
+  analog of `saemControl(nonMuTheta="regress")`, recovering a no-random-effect
+  population parameter without adding a spurious random effect.
   A `$runInfo` note lists which parameters were converted.
 
 - The analytic observed-information covariance is now the preferred `covMethod`

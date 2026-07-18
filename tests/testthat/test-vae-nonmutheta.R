@@ -45,10 +45,31 @@ nmTest({
     expect_null(.preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "none")))
   })
 
+  test_that("nonMuTheta='regress' injects no eta and leaves the fixed thetas intact", {
+    ui <- rxode2::assertRxUi(.nmt())
+    ## the hook makes no model change (the thetas are regressed later in the M-step)
+    r <- suppressWarnings(suppressMessages(
+      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "regress"))))
+    expect_null(r)
+    ## no eta injected: the UI still carries only the original eta.kout
+    expect_equal(ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, "name"],
+                 "eta.kout")
+    ## prep exposes the regress-target theta indices + ini bounds
+    p <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+                      vaeControl(nonMuTheta = "regress"))
+    expect_setequal(p$regressNames, c("tR0", "tIC50"))
+    expect_equal(length(p$regressThetaIdx0), 2L)
+    ## "eta" mode leaves the regress fields empty
+    p2 <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+                       vaeControl(nonMuTheta = "eta"))
+    expect_equal(length(p2$regressNames), 0L)
+  })
+
   test_that("vaeControl exposes nonMuTheta/nonMuEtaOmega with the documented defaults", {
     expect_equal(vaeControl()$nonMuTheta, "eta")
     expect_equal(vaeControl()$nonMuEtaOmega, 0.01)
     expect_equal(vaeControl(nonMuTheta = "fix")$nonMuTheta, "fix")
+    expect_equal(vaeControl(nonMuTheta = "regress")$nonMuTheta, "regress")
     expect_error(vaeControl(nonMuTheta = "bogus"))
     expect_error(vaeControl(nonMuEtaOmega = -1))
   })
@@ -82,5 +103,33 @@ nmTest({
                                    nonMuTheta = "none"))))
     expect_equal(fit0$theta[["lke"]], log(0.086), tolerance = 1e-6)
     expect_equal(fit0$theta[["lV"]], log(32), tolerance = 1e-6)
+  })
+
+  test_that("nonMuTheta='regress' estimates a non-mu theta by bounded bobyqa, no eta", {
+    skip_on_cran()
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- c(log(0.01), log(0.086), log(1)); lV <- log(32)
+        eta.ka ~ 0.3; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke); V <- exp(lV)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ctl <- vaeControl(itersBurnIn = 5L, iters = 15L, klWarmup = 5L, gammaIter = 10L,
+                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
+                      nonMuTheta = "regress")
+    fit <- suppressWarnings(suppressMessages(
+      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    ## the regression moved the non-mu thetas off their ini (evidence the M-step
+    ## bobyqa step ran) ...
+    expect_gt(abs(fit$theta[["lke"]] - log(0.086)), 1e-4)
+    expect_gt(abs(fit$theta[["lV"]] - log(32)), 1e-4)
+    ## ... and stayed within the ini() bounds for the bounded parameter
+    expect_gte(fit$theta[["lke"]], log(0.01))
+    expect_lte(fit$theta[["lke"]], log(1))
+    ## NO eta was injected: only the real eta.ka remains
+    expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"],
+                 "eta.ka")
+    ## the regress note is recorded in $runInfo
+    expect_true(any(grepl("bobyqa regression", fit$runInfo)))
   })
 })
