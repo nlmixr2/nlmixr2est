@@ -516,6 +516,17 @@
 
 ### Estimation
 
+- `est="vae"` covariate selection no longer silently selects nothing at 32
+  candidate covariates.  The best-subset step enumerated all `2^nCov` subsets,
+  which is undefined behavior at `nCov = 32` (`1u << 32` wraps to `1`, so only
+  the empty model was ever tried) and intractable well before that.  It now uses
+  an exact branch-and-bound over the same L0/BIC objective, returning the
+  identical optimum while scaling to a few dozen covariates.
+
+- `est="vae"` no longer errors with `replacement has 0 rows` on data that has no
+  `AMT` column (dose-free datasets such as the neonate weight data); such rows
+  are now treated as observations (`EVID = 0`).
+
 - A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`, `foce`,
   `focep`, `agq`, `laplace`, and the `*f` fast variants such as `ifoceif`) that
   needed to restart -- for example after a zero/bad-gradient theta reset -- died
