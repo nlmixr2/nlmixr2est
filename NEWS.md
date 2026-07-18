@@ -2,6 +2,20 @@
 
 ## New features
 
+- `est="vae"` can now estimate structural population parameters that have no
+  random effect (are not mu-referenced).  Previously such a `theta` was frozen at
+  its `ini()` value because the VAE only estimates parameters in the latent space.
+  `vaeControl(nonMuTheta=)` now injects a small eta into each such theta so it is
+  estimated and reports it as `theta + mean(eta)` (the temporary eta is dropped
+  from the output model): `"eta"` (default) estimates the injected omega, `"fix"`
+  holds it fixed at `nonMuEtaOmega`, and `"none"` keeps the old freeze behavior.
+  `"regress"` instead injects no eta and estimates each such theta directly by a
+  bounded `bobyqa` regression against the FOCEi inner likelihood every M-step
+  (bounds from the `ini()` lower/upper, blended with the M-step gain) -- the VAE
+  analog of `saemControl(nonMuTheta="regress")`, recovering a no-random-effect
+  population parameter without adding a spurious random effect.
+  A `$runInfo` note lists which parameters were converted.
+
 - The analytic observed-information covariance is now the preferred `covMethod`
   across the mixed-model estimation methods, falling back to each method's
   previous default when a model is out of analytic scope:

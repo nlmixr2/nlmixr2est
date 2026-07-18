@@ -34,6 +34,28 @@
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
 #'   covariate selection during training; when `FALSE` fit the given fixed
 #'   covariate structure only (faster population-only mode).
+#' @param nonMuTheta How to treat a structural population `theta` that has no
+#'   random effect (is not mu-referenced) so it can still be estimated by the VAE
+#'   (which only estimates parameters that occupy the latent space).  For the
+#'   eta-injection modes a small eta is injected so the parameter enters the
+#'   latent space, and the reported fixed effect is `theta + mean(eta)` with the
+#'   temporary eta dropped from the output model.
+#'
+#'   * `"eta"` (default): inject the eta with an ESTIMATED omega (starting at
+#'     `nonMuEtaOmega`).
+#'   * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega`.
+#'   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
+#'     historic behavior).
+#'   * `"regress"`: no eta is injected; instead each such theta is estimated
+#'     directly, re-optimized every M-step by a bounded `bobyqa` regression against
+#'     the FOCEi inner likelihood (bounds from the `ini()` lower/upper), blended
+#'     with the M-step gain.  This is the VAE analog of
+#'     `saemControl(nonMuTheta="regress")` and recovers a no-random-effect
+#'     population parameter without adding a spurious random effect.
+#'     `nonMuEtaOmega` is unused in this mode.
+#' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta
+#'   (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
+#'   unused for `"regress"`).
 #' @param covSelectAlpha Starting multiplier for the covariate-selection L0
 #'   penalty, ramped linearly from `covSelectAlpha` down to `1` over the
 #'   `klWarmup` warmup iterations and held at `1` afterward (matching the
@@ -89,6 +111,8 @@ vaeControl <- function(seed = 42L,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
                        covSelectAlpha = 2,
+                       nonMuTheta = c("eta", "fix", "none", "regress"),
+                       nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
@@ -133,6 +157,8 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  nonMuTheta <- match.arg(nonMuTheta)
+  checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertLogical(returnVae, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
@@ -211,6 +237,8 @@ vaeControl <- function(seed = 42L,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
                covSelectAlpha = covSelectAlpha,
+               nonMuTheta = nonMuTheta,
+               nonMuEtaOmega = nonMuEtaOmega,
                likelihood = likelihood,
                objf = objf,
                nIsSample = as.integer(nIsSample),

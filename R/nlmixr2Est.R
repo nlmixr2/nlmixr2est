@@ -301,7 +301,14 @@ nlmixr2Est0 <- function(env, ...) {
   }
   .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
-  .warnings <- c(nlmixr2global$preProcessHookWarnings, .lst[[2]])
+  # prefer the per-call copy stashed on env (the global is wiped by nested
+  # estimation calls, e.g. the vae post-fit covariance recompute)
+  .hookWarn <- if (is.environment(env) && exists("preProcessHookWarnings", envir=env, inherits=FALSE)) {
+    env$preProcessHookWarnings
+  } else {
+    nlmixr2global$preProcessHookWarnings
+  }
+  .warnings <- c(.hookWarn, .lst[[2]])
   .warnings <- .filterSyntheticIovMuWarnings(.warnings, get("ui", envir = env))
   if (inherits(.ret, "nlmixr2FitCore") ||
         inherits(.ret, "nlmixr2Fit")) {

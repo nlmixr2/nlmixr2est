@@ -32,6 +32,7 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$nlmixr2EstEnv <- new.env(parent=emptyenv())
   nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
   nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
+  nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
 
   nlmixr2global$nlsEnv <- new.env(parent=emptyenv())
 
