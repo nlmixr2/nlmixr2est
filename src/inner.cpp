@@ -12791,6 +12791,116 @@ static inline void vaeAdam(arma::mat& p, const arma::mat& g, VaeAdamBlk& st,
   p -= lr * (mhat / (arma::sqrt(vhat) + eps));
 }
 
+// Exact L0/BIC best-subset selection for one eta dimension, replacing the former
+// exhaustive 2^nCov enumeration (which was undefined behavior at nCov==32:
+// `1u << 32` masks to `1u << 0 == 1`, so nothing was ever selected).  Minimizes
+//   score(S) = RSS_S / omega + penalty * |S|
+// over supports S subset of {0..nCov-1}, where RSS_S is the OLS residual sum of
+// squares regressing y on [intercept, X_S].  This is the same objective the
+// reference MIQP (cvxpy + GUROBI, penalty = ln N) solves; branch-and-bound with
+// the "full remaining fit" RSS lower bound returns the identical exact optimum
+// while scaling to a few dozen covariates.
+struct VaeSubsetFit {
+  std::vector<int> sel;  // selected covariate indices (0-based), ascending
+  arma::vec coef;        // [intercept, beta_sel...] aligned with sel
+};
+
+// OLS RSS of y on X.cols(cols); optionally returns the coefficients.
+static double vaeOlsRss(const arma::mat& X, const arma::uvec& cols,
+                        const arma::vec& y, arma::vec* coefOut) {
+  arma::mat Xs = X.cols(cols);
+  arma::vec coef;
+  bool ok = arma::solve(coef, Xs, y);
+  if (!ok) ok = arma::solve(coef, Xs, y, arma::solve_opts::force_approx);
+  if (!ok) { if (coefOut) coefOut->reset(); return std::numeric_limits<double>::infinity(); }
+  if (coefOut) *coefOut = coef;
+  return arma::accu(arma::square(y - Xs * coef));
+}
+
+// X columns for a covariate index list: col 0 (intercept) then 1 + each index.
+static arma::uvec vaeSubsetCols(const std::vector<int>& idx) {
+  arma::uvec cols(1 + idx.size());
+  cols[0] = 0;
+  for (size_t s = 0; s < idx.size(); ++s) cols[s + 1] = 1 + (arma::uword)idx[s];
+  return cols;
+}
+
+struct VaeBnbCtx {
+  const arma::mat* X;   // [N, 1 + nCov], col 0 is the intercept
+  const arma::vec* y;   // [N]
+  double omega;
+  double penalty;       // per-covariate L0 cost
+  double bestScore;
+  std::vector<int> bestSel;
+  arma::vec bestCoef;
+};
+
+// Evaluate the model whose support is exactly `inSet`; update the incumbent.
+static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
+  arma::uvec cols = vaeSubsetCols(inSet);
+  arma::vec coef;
+  double rss = vaeOlsRss(*c.X, cols, *c.y, &coef);
+  double score = rss / c.omega + c.penalty * (double)inSet.size();
+  if (score < c.bestScore) { c.bestScore = score; c.bestSel = inSet; c.bestCoef = coef; }
+}
+
+// Branch on freeSet (pre-sorted ascending by univariate strength so the strongest
+// covariate -- freeSet.back() -- is branched first, "include" child first).
+static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& freeSet) {
+  vaeBnbLeaf(c, inSet);                 // candidate: exclude all remaining free
+  if (freeSet.empty()) return;
+  // lower bound: no superset of inSet (adding any free covariates) can beat the
+  // OLS fit that uses ALL of them, and each committed covariate already costs
+  // `penalty`.  Adding columns only lowers RSS, so this bounds the whole subtree.
+  std::vector<int> all = inSet;
+  all.insert(all.end(), freeSet.begin(), freeSet.end());
+  double rssFull = vaeOlsRss(*c.X, vaeSubsetCols(all), *c.y, nullptr);
+  double lb = rssFull / c.omega + c.penalty * (double)inSet.size();
+  if (lb >= c.bestScore) return;        // prune
+  int j = freeSet.back(); freeSet.pop_back();
+  inSet.push_back(j);                   // include j
+  vaeBnbRec(c, inSet, freeSet);
+  inSet.pop_back();
+  vaeBnbRec(c, inSet, freeSet);         // exclude j
+  freeSet.push_back(j);                 // restore for the caller
+}
+
+static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
+                                    double omega, double penalty) {
+  const int nCov = (int)X.n_cols - 1;
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
+  c.bestScore = std::numeric_limits<double>::infinity();
+  // order covariates by univariate strength (RSS of [intercept, x_j] ascending
+  // -> stronger last) so the branch order finds good incumbents early.
+  std::vector<std::pair<double,int> > strength(nCov);
+  for (int j = 0; j < nCov; ++j) {
+    std::vector<int> one(1, j);
+    strength[j] = std::make_pair(vaeOlsRss(X, vaeSubsetCols(one), y, nullptr), j);
+  }
+  std::sort(strength.begin(), strength.end(),
+            [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
+              return a.first > b.first;  // weakest first, strongest at back()
+            });
+  std::vector<int> freeSet(nCov), inSet;
+  for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
+  vaeBnbRec(c, inSet, freeSet);
+  // return with selection sorted ascending and coef reordered to match
+  std::vector<int> order(c.bestSel.size());
+  for (size_t s = 0; s < order.size(); ++s) order[s] = (int)s;
+  std::sort(order.begin(), order.end(),
+            [&](int a, int b) { return c.bestSel[a] < c.bestSel[b]; });
+  VaeSubsetFit out;
+  out.sel.resize(c.bestSel.size());
+  out.coef.set_size(c.bestCoef.n_elem);
+  out.coef[0] = c.bestCoef.n_elem ? c.bestCoef[0] : 0.0;
+  for (size_t s = 0; s < order.size(); ++s) {
+    out.sel[s] = c.bestSel[order[s]];
+    out.coef[s + 1] = c.bestCoef[order[s] + 1];
+  }
+  return out;
+}
+
 //[[Rcpp::export]]
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
                   int cores, NumericVector row0, CharacterVector parNames,
@@ -12923,23 +13033,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) {
         if (isFreeR[k]) continue;
         arma::vec yk = last.mu.col(k);
-        double bestScore = std::numeric_limits<double>::infinity();
-        arma::uvec bestCols; arma::vec bestCoef; arma::uvec bestS;
-        for (unsigned int mask = 0; mask < (1u << nCov); ++mask) {
-          std::vector<unsigned> Sset; for (int b = 0; b < nCov; ++b) if (mask & (1u << b)) Sset.push_back(b);
-          arma::uvec cols(1 + Sset.size()); cols[0] = 0; for (size_t s = 0; s < Sset.size(); ++s) cols[s + 1] = 1 + Sset[s];
-          arma::mat Xs = X.cols(cols);
-          arma::vec coef;
-          if (!arma::solve(coef, Xs, yk)) { if (!arma::solve(coef, Xs, yk, arma::solve_opts::force_approx)) continue; }
-          double rss = arma::accu(arma::square(yk - Xs * coef));
-          double score = rss / omega[k] + logN * (double)Sset.size();
-          if (score < bestScore) { bestScore = score; bestCols = cols; bestCoef = coef; bestS = arma::uvec(Sset.size()); for (size_t s = 0; s < Sset.size(); ++s) bestS[s] = Sset[s]; }
-        }
+        VaeSubsetFit fit = vaeBestSubsetL0(yk, X, omega[k], logN);
+        arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
         if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
         intercept[k] = ic; bestCoef[0] = ic;
-        for (arma::uword s = 0; s < bestS.n_elem; ++s) { beta(k, bestS[s]) = bestCoef[s + 1]; selected(k, bestS[s]) = 1; }
+        arma::uvec bestCols = vaeSubsetCols(fit.sel);
+        for (size_t s = 0; s < fit.sel.size(); ++s) { beta(k, fit.sel[s]) = bestCoef[s + 1]; selected(k, fit.sel[s]) = 1; }
         zPopMat.col(k) = X.cols(bestCols) * bestCoef;
       }
       arma::vec omegaCur(zDim);
@@ -13017,6 +13118,34 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["selected"] = selected, _["elboTrace"] = elboTrace,
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
                       _["mixnum"] = mixnumOut);
+}
+
+// Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE
+// covariate M-step.  Runs vaeBestSubsetL0 per eta dimension (skipping isFree rows)
+// so the selection can be validated against the golden MIQP-equivalent fixture
+// without invoking the full training loop.
+//[[Rcpp::export]]
+List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
+                    LogicalVector isFree, double penaltyPerCov) {
+  const int zDim = (int)mu.n_cols;
+  const int N = (int)mu.n_rows;
+  const int nCov = (int)covMat.n_cols;
+  arma::mat X(N, 1 + nCov); X.col(0).ones();
+  if (nCov > 0) X.cols(1, nCov) = covMat;
+  arma::vec intercept(zDim, arma::fill::zeros);
+  arma::mat beta(zDim, nCov, arma::fill::zeros);
+  arma::umat selected(zDim, nCov, arma::fill::zeros);
+  for (int k = 0; k < zDim; ++k) {
+    if (isFree[k]) continue;
+    VaeSubsetFit fit = vaeBestSubsetL0(mu.col(k), X, omega[k], penaltyPerCov);
+    intercept[k] = fit.coef.n_elem ? fit.coef[0] : 0.0;
+    for (size_t s = 0; s < fit.sel.size(); ++s) {
+      beta(k, fit.sel[s]) = fit.coef[s + 1];
+      selected(k, fit.sel[s]) = 1;
+    }
+  }
+  return List::create(_["intercept"] = intercept, _["beta"] = beta,
+                      _["selected"] = selected);
 }
 
 //[[Rcpp::export]]
