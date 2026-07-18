@@ -50,6 +50,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrOptimFunC.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrPreprocessLiteralFix.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessDataUi.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessLinCmtOde.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc></url>
@@ -60,6 +61,9 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiFitCpp_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiLikRun.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiLikUnload.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/focepControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/formatMinWidth.html</loc></url>

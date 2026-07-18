@@ -28,6 +28,9 @@ nmObjGet(x, ...)
 # S3 method for class 'phiRSE'
 nmObjGet(x, ...)
 
+# S3 method for class 'phiCI'
+nmObjGet(x, ...)
+
 # S3 method for class 'dataSav'
 nmObjGet(x, ...)
 

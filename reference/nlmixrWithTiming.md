@@ -107,10 +107,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1021923 4.1052e-05 0.01100639      0.091     0.285 3.001       0.533
-#>         table compress     other time2 time1
-#> elapsed 0.074    0.137 0.1387602 1.002 1.002
+#>            setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.101736 3.0897e-05 0.01200505      0.086     0.292 2.761       0.544
+#>         table compress    other time2 time1
+#> elapsed 0.067    0.133 0.149228 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

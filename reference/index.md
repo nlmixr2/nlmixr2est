@@ -44,6 +44,8 @@
   : This literally fixes parameters in the model
 - [`.preProcessDataUi()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessDataUi.md)
   : Preprocess the zero omegas
+- [`.preProcessLinCmtOde()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessLinCmtOde.md)
+  : Translate a mixed \`linCmt()\`/ODE model to all-ODEs
 - [`.preProcessZeroOmega()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.md)
   : Preprocess the zero omegas
 - [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)
@@ -52,6 +54,12 @@
   : Control options for the foce estimation method
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   : Control Options for FOCEi
+- [`foceiLikLoad()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.md)
+  : Load a general FOCE-family likelihood into memory
+- [`foceiLikRun()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikRun.md)
+  : Evaluate a loaded general FOCE-family likelihood at supplied etas
+- [`foceiLikUnload()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikUnload.md)
+  : Unload the general FOCE-family likelihood from memory
 - [`focepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/focepControl.md)
   : Control options for the focep (FOCE+) estimation method
 - [`foiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foiControl.md)

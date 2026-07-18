@@ -327,18 +327,18 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.9289579 0.8843364  9.655e-06      0.059       0.012 0.038    0.001
-#>            other
-#> elapsed 0.114696
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.8511081 0.859156  8.796e-06      0.053       0.008 0.032    0.001
+#>              other
+#> elapsed 0.09872707
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)                    
-#> Em    8.773  8.361 95.31     8.773 (-7.615, 25.16)                    
-#> E50   4.054  2.863 70.62     4.054 (-1.558, 9.666)                    
-#> g     2.000  FIXED FIXED                     2.000                    
+#>        Est.     SE  %RSE   Back-transformed(95%CI)
+#> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)
+#> Em    8.773  8.361 95.31     8.773 (-7.615, 25.16)
+#> E50   4.054  2.863 70.62     4.054 (-1.558, 9.666)
+#> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
