@@ -188,6 +188,14 @@
     if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
   }, error = function(e) 1L)
 
+  ## surface the parallel-encoder-backward non-reproducibility in $runInfo (this
+  ## warning is collected into the fit's run information); only relevant when it
+  ## actually parallelizes (cores > 1)
+  if (isTRUE(control$parEncoderBackward) && .cores > 1L) {
+    warning("encoder: small parallel deviation; parEncoderBackward=FALSE turns off",
+            call. = FALSE)
+  }
+
   ## the print level lives in iterPrintControl$every (absorbed by vaeControl);
   ## surface it as control$print for the C++ loop's final parHist print gate
   control$print <- as.integer(control$iterPrintControl$every)

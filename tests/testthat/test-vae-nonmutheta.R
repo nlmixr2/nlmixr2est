@@ -138,7 +138,7 @@ nmTest({
     expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"],
                  "eta.ka")
     ## the regress note is recorded in $runInfo
-    expect_true(any(grepl("bobyqa regression", fit$runInfo)))
+    expect_true(any(grepl("regressing non-mu theta", fit$runInfo)))
     ## the regressed thetas are surfaced in the iteration-print / parameter history
     ## (not just estimated silently) and their final walk value tracks the fit.  The
     ## tolerance is deliberately loose: the point is that the printed column IS the
