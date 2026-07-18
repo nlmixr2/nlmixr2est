@@ -12847,8 +12847,11 @@ static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
 
 // Branch on freeSet (pre-sorted ascending by univariate strength so the strongest
 // covariate -- freeSet.back() -- is branched first, "include" child first).
-static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& freeSet) {
-  vaeBnbLeaf(c, inSet);                 // candidate: exclude all remaining free
+// evalSelf gates the leaf eval of `inSet`: the exclude child inherits the parent's
+// inSet, which the parent already evaluated, so it passes false to avoid re-fitting.
+static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& freeSet,
+                      bool evalSelf) {
+  if (evalSelf) vaeBnbLeaf(c, inSet);   // candidate: exclude all remaining free
   if (freeSet.empty()) return;
   // lower bound: no superset of inSet (adding any free covariates) can beat the
   // OLS fit that uses ALL of them, and each committed covariate already costs
@@ -12859,10 +12862,10 @@ static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& f
   double lb = rssFull / c.omega + c.penalty * (double)inSet.size();
   if (lb >= c.bestScore) return;        // prune
   int j = freeSet.back(); freeSet.pop_back();
-  inSet.push_back(j);                   // include j
-  vaeBnbRec(c, inSet, freeSet);
+  inSet.push_back(j);                   // include j -> new subset, evaluate it
+  vaeBnbRec(c, inSet, freeSet, true);
   inSet.pop_back();
-  vaeBnbRec(c, inSet, freeSet);         // exclude j
+  vaeBnbRec(c, inSet, freeSet, false);  // exclude j -> same inSet, already evaluated
   freeSet.push_back(j);                 // restore for the caller
 }
 
@@ -12885,16 +12888,24 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
             });
   std::vector<int> freeSet(nCov), inSet;
   for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
-  vaeBnbRec(c, inSet, freeSet);
+  vaeBnbRec(c, inSet, freeSet, true);
+  VaeSubsetFit out;
+  // No finite-scoring model was ever recorded (e.g. non-positive omega or a
+  // non-finite y made every score NaN/inf).  Fall back to the intercept-only
+  // model so the output always has at least the intercept coefficient.
+  if (c.bestCoef.is_empty()) {
+    out.coef.set_size(1);
+    out.coef[0] = y.n_elem ? arma::mean(y) : 0.0;
+    return out;
+  }
   // return with selection sorted ascending and coef reordered to match
   std::vector<int> order(c.bestSel.size());
   for (size_t s = 0; s < order.size(); ++s) order[s] = (int)s;
   std::sort(order.begin(), order.end(),
             [&](int a, int b) { return c.bestSel[a] < c.bestSel[b]; });
-  VaeSubsetFit out;
   out.sel.resize(c.bestSel.size());
   out.coef.set_size(c.bestCoef.n_elem);
-  out.coef[0] = c.bestCoef.n_elem ? c.bestCoef[0] : 0.0;
+  out.coef[0] = c.bestCoef[0];
   for (size_t s = 0; s < order.size(); ++s) {
     out.sel[s] = c.bestSel[order[s]];
     out.coef[s + 1] = c.bestCoef[order[s] + 1];
@@ -13008,7 +13019,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const double learningRate = as<double>(control["learningRate"]);
   const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
   const bool covariateSelection = as<bool>(control["covariateSelection"]);
-  const double covSelectAlpha = as<double>(control["covSelectAlpha"]);
+  // tolerate control lists that predate covSelectAlpha (older serialized objects):
+  // a missing field means no ramp existed, so default to 1.0 (ramp disabled).
+  const double covSelectAlpha = control.containsElementNamed("covSelectAlpha") ?
+    as<double>(control["covSelectAlpha"]) : 1.0;
   const int printCtl = as<int>(control["print"]);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
@@ -13090,13 +13104,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
     arma::vec baseline;
     // L0-penalty warmup ramp: the per-covariate cost multiplier ramps linearly
-    // from covSelectAlpha (at it=1) down to 1 at it=klWarmup-1, then stays 1 --
-    // matching the reference `alpha_pen = linspace(alpha, 1, kl_iter)` indexed by
-    // the 1-based iteration.  covSelectAlpha==1 (or klWarmup<=1) disables it.
+    // from covSelectAlpha at it=1 toward 1, then holds at 1 for it>=klWarmup --
+    // matching the reference `alpha_pen = linspace(alpha, 1, klWarmup)` indexed
+    // 0-based by (it-1).  covSelectAlpha==1 (or klWarmup<=1) disables it.
     double covPenCoef = 1.0;
     bool covRamp = false;
     if (klWarmup > 1 && it < klWarmup && covSelectAlpha != 1.0) {
-      covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)it / (double)(klWarmup - 1);
+      covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)(it - 1) / (double)(klWarmup - 1);
       covRamp = true;
     }
     if (doCov) {
@@ -13241,6 +13255,12 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
   const int zDim = (int)mu.n_cols;
   const int N = (int)mu.n_rows;
   const int nCov = (int)covMat.n_cols;
+  // recycle length-1 omega/isFree to zDim (mirrors the caller-side rep_len);
+  // otherwise require an exact per-eta length so we never index out of bounds.
+  if (omega.n_elem == 1) omega = arma::vec(zDim, arma::fill::value(omega[0]));
+  else if ((int)omega.n_elem != zDim) Rcpp::stop("'omega' must have length 1 or zDim (%d)", zDim);
+  if (isFree.size() == 1) isFree = LogicalVector(zDim, (int)isFree[0]);
+  else if ((int)isFree.size() != zDim) Rcpp::stop("'isFree' must have length 1 or zDim (%d)", zDim);
   arma::mat X(N, 1 + nCov); X.col(0).ones();
   if (nCov > 0) X.cols(1, nCov) = covMat;
   arma::vec intercept(zDim, arma::fill::zeros);
