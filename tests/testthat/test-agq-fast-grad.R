@@ -39,24 +39,30 @@ nmTest({
     expect_false(agqControl()$fast)
   })
 
-  test_that("nAGQ=1: the AGQ kernel reproduces the FOCEI analytic gradient", {
+  test_that("nAGQ=1: the AGQ dispatch reproduces the Laplace analytic gradient", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
-    # At one node (x=0, pi=1) the quadrature collapses onto the mode, so the AGQ form
-    # must equal the FOCEI form up to the envelope term Phi_eta(etahat)'etaP -- zero at a
-    # converged EBE.  This is the identity that guards the duplicated eta-hat block.
-    .f <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "laplace",
-      laplaceControl(fast = TRUE, maxOuterIterations = 0L, maxInnerIterations = 500L,
-                     covMethod = "", calcTables = FALSE, print = 0L)))
-    .g <- .foceiGradAnalyticCalc(.f)
-    expect_false(is.null(.g))
-    expect_true(all(is.finite(.g)))
+    # At one node (x=0, pi=1) the quadrature collapses onto the mode, so the AGQ objective
+    # equals the Laplace objective and the outer gradients must agree (the envelope term
+    # Phi_eta(etahat)'etaP is zero at a converged EBE).  Both fits fix theta
+    # (maxOuterIterations=0), so the two analytic gradients are evaluated at the same point;
+    # this is the identity that guards the duplicated eta-hat block.
+    .c0 <- list(maxOuterIterations = 0L, maxInnerIterations = 500L,
+                covMethod = "", calcTables = FALSE, print = 0L)
+    .fl <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "laplace",
+      do.call(laplaceControl, c(list(fast = TRUE), .c0))))
+    .fa <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
+      do.call(agqControl, c(list(fast = TRUE, nAGQ = 1L), .c0))))
+    .gl <- .foceiGradAnalyticCalc(.fl)
+    .ga <- .foceiGradAnalyticCalc(.fa)
+    expect_false(is.null(.gl))
+    expect_false(is.null(.ga))
+    expect_true(all(is.finite(.ga)))
+    expect_equal(unname(.ga), unname(.gl), tolerance = 1e-4)
   })
 
   test_that("analytic AGQ gradient matches central differences (nAGQ=2 and 3)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     for (.n in c(2L, 3L)) {
       .f <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
@@ -82,7 +88,6 @@ nmTest({
 
   test_that("out-of-scope AGQ models fall back to the finite-difference gradient", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # fast=FALSE: no analytic gradient at all
     .f0 <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = 2L)))
@@ -100,7 +105,6 @@ nmTest({
 
   test_that("fast=TRUE AGQ fit matches the finite-difference fit", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # outerOpt forced on BOTH arms: fast=TRUE otherwise re-defaults nlminb -> lbfgsb3c,
     # which would make this compare optimizers rather than gradients.
@@ -118,7 +122,6 @@ nmTest({
 
   test_that("est='agqf' equals est='agq' with fast=TRUE", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     .a <- suppressMessages(suppressWarnings(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agqf",
       agqControl(nAGQ = 2L, outerOpt = "lbfgsb3c", covMethod = "", calcTables = FALSE, print = 0L))))
@@ -131,7 +134,6 @@ nmTest({
 
   test_that("analytic AGQ gradient matches central differences for a covariate model", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     .cov <- function() {
       ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5); wt.cl <- 0.1

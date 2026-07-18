@@ -34,7 +34,7 @@ nmTest({
 
   test_that("the AGQ branch with a single node reproduces the FOCEI branch exactly", {
     skip_on_cran()
-    skip_on_ci()
+    skip_if_not_installed("nlmixr2data")
     fit <- suppressMessages(nlmixr(.agq_cov_mod, nlmixr2data::theo_sd, "focei",
                                    foceiControl(print = 0L, covMethod = "")))
     ui <- rxode2::rxUiDecompress(fit$finalUi)
@@ -72,7 +72,7 @@ nmTest({
 
   test_that("covType='analytic' engages for nAGQ>1 and for a single eta", {
     skip_on_cran()
-    skip_on_ci()
+    skip_if_not_installed("nlmixr2data")
     for (.n in c(2L, 3L)) {
       fit <- suppressMessages(nlmixr(.agq_cov_mod, nlmixr2data::theo_sd, "agq",
                                      agqControl(print = 0L, covMethod = "", nAGQ = .n)))
@@ -92,7 +92,7 @@ nmTest({
 
   test_that("AGQ declines (message + NULL) for every scope the node terms do not cover", {
     skip_on_cran()
-    skip_on_ci()
+    skip_if_not_installed("nlmixr2data")
     # interaction=0 routes to the FOCE assembler, which takes no qx/qw and would silently
     # return the nAGQ=1 FOCE covariance for an AGQ fit.
     fit <- suppressMessages(nlmixr(.agq_cov_mod, nlmixr2data::theo_sd, "agq",

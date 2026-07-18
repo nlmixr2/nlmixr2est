@@ -1019,8 +1019,9 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
 
 // AGQ (nAGQ > 1) per-subject outer gradient (R oracle: .foceiAnalyticSubjectGradAgqFR).
 // FOCEI with one term of the objective replaced (inner.cpp LikInner2): l(etahat) ->
-// log(sum_k a_k), a_k = w_k exp(0.5 x_k'x_k) exp(l(etaCur_k)), etaCur_k = etahat + Ginv
-// x_k, Ginv = chol(Ht)^-1.  The log-det/Omega/tbs terms are unchanged, so the FOCEI trace
+// log(sum_k a_k), a_k = w_k exp(x_k'x_k) exp(l(etaCur_k)), etaCur_k = etahat +
+// sqrt(2)*Ginv x_k, Ginv = chol(Ht)^-1 (the sqrt(2) node scaling and exp(x'x) untilt match
+// inner.cpp).  The log-det/Omega/tbs terms are unchanged, so the FOCEI trace
 // term carries over as-is:
 //
 //   g[p] = 2*sum_k pi_k*[dPhi_p(etaCur_k) + Phi_eta(etaCur_k)'(etaP[,p] + dGinv_p x_k)]

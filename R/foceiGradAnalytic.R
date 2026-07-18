@@ -157,7 +157,9 @@
     .hit <- get0(.fp, envir = .foceiAgqRepCache, inherits = FALSE)
     if (!is.null(.hit)) return(.hit)
   }
-  .r <- do.call(rbind, lapply(seq_len(nn), function(k) { d <- data; d$ID <- (k - 1L) * nsub + d$ID; d }))
+  # as.integer(ID) matches how .idCode normalizes factor IDs, so the offset pseudo-subject
+  # IDs stay aligned with .repIds (a bare factor ID would coerce to NA under arithmetic).
+  .r <- do.call(rbind, lapply(seq_len(nn), function(k) { d <- data; d$ID <- (k - 1L) * nsub + as.integer(d$ID); d }))
   if (!is.null(.fp)) {
     if (length(ls(.foceiAgqRepCache, all.names = TRUE)) >= 32L)
       rm(list = ls(.foceiAgqRepCache, all.names = TRUE), envir = .foceiAgqRepCache)
@@ -168,8 +170,9 @@
 
 #' (f,R) AGQ per-subject outer gradient (nAGQ > 1): FOCEI with one term of the objective
 #' replaced (inner.cpp LikInner2) -- `l(etahat)` becomes `log(sum_k a_k)` over the
-#' quadrature grid, `a_k = w_k exp(0.5 x_k'x_k) exp(l(etaCur_k))`, `etaCur_k = etahat +
-#' Ginv x_k`, `Ginv = chol(Ht)^-1`.  The log-det/Omega/tbs terms are unchanged, so the
+#' quadrature grid, `a_k = w_k exp(x_k'x_k) exp(l(etaCur_k))`, `etaCur_k = etahat +
+#' sqrt(2)*Ginv x_k`, `Ginv = chol(Ht)^-1` (the sqrt(2) node scaling and exp(x'x) untilt
+#' match inner.cpp).  The log-det/Omega/tbs terms are unchanged, so the
 #' FOCEI trace term carries over as-is:
 #'
 #'   g[p] = 2*sum_k pi_k*[dPhi_p(etaCur_k) + Phi_eta(etaCur_k)'(etaP[,p] + dGinv_p x_k)]
@@ -228,8 +231,11 @@
   etaP <- vapply(seq_len(np), function(p) as.numeric(-HiM %*% Mcol(p)), numeric(neta))
   if (neta == 1L) etaP <- matrix(etaP, nrow = 1L)
   # Cholesky factor of Ht and its differential (the only new algebra; dHtStar is
-  # the same total derivative the FOCEI trace term uses)
-  H0 <- chol(Ht)                          # Ht = H0'H0, H0 upper triangular
+  # the same total derivative the FOCEI trace term uses).  A non-PD/near-singular Ht means
+  # the objective placed nodes via the nmNearPD/cholSE branch, not chol(Ht) -- differentiating
+  # chol() would be the wrong function, so bail (same PD-margin guard as the batch path).
+  H0 <- tryCatch(chol(Ht), error = function(e) NULL)
+  if (is.null(H0) || !is.finite(rcond(Ht)) || rcond(Ht) < 1e-10) return(NULL)  # Ht = H0'H0, H0 upper triangular
   Ginv <- backsolve(H0, diag(neta))       # H0^-1
   dHtStarL <- vector("list", np); dGinvL <- vector("list", np)
   for (p in seq_len(np)) {
