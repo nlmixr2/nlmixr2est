@@ -345,6 +345,7 @@ saemControl <- function(seed = 99,
                         print = 1L,
                         trace = 0, # nolint
                         covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+                        covMethodDeferred = NA_character_,
                         covFull = TRUE,
                         nSaCov = 500L,
                         calcTables = TRUE,
@@ -533,8 +534,8 @@ saemControl <- function(seed = 99,
   }
 
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
-  # importance-sampling covariance post-fit at the converged estimates.
-  covMethodDeferred <- NA_character_
+  # importance-sampling covariance post-fit at the converged estimates.  The
+  # covMethodDeferred formal carries a round-tripped request (default NA).
   if (identical(covMethod, "")) {
     ## "" requests no covariance; match.arg() cannot select it because
     ## pmatch("") matches nothing, so handle it explicitly.
