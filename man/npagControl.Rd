@@ -13,6 +13,7 @@ npagControl(
   gridWidth = 4,
   gridBounds = c("auto", "ini", "both"),
   dfScan = -1L,
+  cores = NULL,
   ...
 )
 }
@@ -78,6 +79,11 @@ certificate: `-1` (default) auto-sizes it to `max(2048, 2 * points)`, `0`
 skips the certificate (`npagDF` is `NA`), and a positive value sets an
 explicit scan size.  The scan does not affect the fit, only the reported
 certificate; a smaller scan is faster.}
+
+\item{cores}{Number of threads used for the parallel per-subject conditional-
+likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
+(`rxode2::getRxThreads()`); an integer sets the thread count for the fit
+(restored afterwards).  Results are independent of the thread count.}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

@@ -93,6 +93,10 @@
 #'   skips the certificate (`npagDF` is `NA`), and a positive value sets an
 #'   explicit scan size.  The scan does not affect the fit, only the reported
 #'   certificate; a smaller scan is faster.
+#' @param cores Number of threads used for the parallel per-subject conditional-
+#'   likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
+#'   (`rxode2::getRxThreads()`); an integer sets the thread count for the fit
+#'   (restored afterwards).  Results are independent of the thread count.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -103,7 +107,8 @@
 npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
-                        gridBounds = c("auto", "ini", "both"), dfScan = -1L, ...) {
+                        gridBounds = c("auto", "ini", "both"), dfScan = -1L,
+                        cores = NULL, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   # NULL -> auto (scaled with the number of dimensions in .npEstCore); NA is the
@@ -111,6 +116,8 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
   .ctl$points <- if (is.null(points)) NA_integer_ else as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   .ctl$dfScan <- as.integer(dfScan)
+  # NA -> use the default rxode2 thread count (resolved in .npEstCore)
+  .ctl$npCores <- if (is.null(cores)) NA_integer_ else as.integer(cores)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)

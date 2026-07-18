@@ -291,8 +291,7 @@
   Gibbs step for `mix()` models) now solve their per-subject conditional
   likelihoods in parallel over subjects, matching the already-parallel Psi build.
   The proposal and accept/reject draws stay serial in their original order, so a
-  fixed-seed fit is bit-for-bit identical regardless of thread count
-  (`rxode2::setRxThreads()`).
+  fixed-seed fit is bit-for-bit identical regardless of thread count.
 
 - `est="npag"` is faster: it no longer does a redundant full conditional-density
   build at the first cycle (the degeneracy check now reads the working build's
@@ -300,6 +299,11 @@
   default and configurable via `npagControl(dfScan=)` (`-1` auto, `0` to skip the
   certificate, or an explicit scan size).  Neither change affects the fitted
   support, Omega, thetas, or objective.
+
+- `npagControl(cores=)` and `npbControl(cores=)` set the number of threads used
+  for the parallel per-subject conditional-likelihood solves.  The default
+  (`NULL`) uses the current `rxode2` thread count (`rxode2::getRxThreads()`); an
+  integer sets the thread count for the fit and restores it afterwards.
 
 - SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
   event data keeps `DV` when the model references it (previously dropped, so the

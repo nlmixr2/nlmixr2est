@@ -97,6 +97,19 @@
   env$impmapControl <- .control
   env$est <- est
   .ui <- env$ui
+  # honor npagControl(cores=)/npbControl(cores=): the parallel per-subject solves
+  # in the kernels use the solve's thread count (op->cores), which rxode2 sizes
+  # from getRxThreads() when the inner solve is built inside .npFamilyFit.  Set
+  # the thread count for the fit (default: the current rxode2 threads) and restore
+  # it afterwards; the fit results are independent of the thread count.
+  .nCores <- if (is.null(.ctl$npCores) || is.na(.ctl$npCores)) {
+    rxode2::getRxThreads()
+  } else as.integer(.ctl$npCores)
+  if (!is.na(.nCores) && .nCores >= 1L && rxode2::getRxThreads() != .nCores) {
+    .oldThreads <- rxode2::getRxThreads()
+    rxode2::setRxThreads(.nCores)
+    on.exit(rxode2::setRxThreads(.oldThreads), add = TRUE)
+  }
   .npFamilyFit(env, .ui, ...)
 }
 
@@ -269,7 +282,7 @@
   .in <- control[[1]]
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
-              gridWidth = 4, gridBounds = "auto", dfScan = -1L,
+              gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -286,6 +299,7 @@
   .ctl$gridWidth <- as.numeric(.np$gridWidth)
   .ctl$gridBounds <- as.character(.np$gridBounds)
   .ctl$dfScan <- as.integer(.np$dfScan)
+  .ctl$npCores <- as.integer(.np$npCores)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)
