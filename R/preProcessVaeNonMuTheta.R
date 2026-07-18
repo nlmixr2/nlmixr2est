@@ -67,13 +67,17 @@ isTRUE2 <- function(x) !is.na(x) & x
     .etas <- c(.etas, .eta)
   }
   if (fix && length(.etas) > 0L) {
-    ## rxode2 ini(eta ~ fix(v)) does not flag the omega; set the diagonal fix flag
-    ## directly (read by .vaeDataPrep's omegaFix detection), then rebuild the UI
-    ## from the edited iniDf via the compress round-trip (as in advi.R) so any
-    ## derived UI fields are re-synced.
+    ## nonMuTheta="fix" holds the whole parameter fixed: both the injected omega
+    ## AND the structural theta (the fixed effect) stay at their ini() value.
+    ## rxode2 ini(eta ~ fix(v)) does not flag the omega, so set the diagonal fix
+    ## flag directly (read by .vaeDataPrep's omegaFix); also fix the paired theta
+    ## rows (read by .vaeDataPrep's zPopFix -> the M-step holds the typical value
+    ## at ini and drops it from the iteration print).  Rebuild via the compress
+    ## round-trip (as in advi.R) so derived UI fields re-sync.
     .ui <- rxode2::rxUiDecompress(.ui)
     .df <- .ui$iniDf
     .df$fix[!is.na(.df$neta1) & .df$neta1 == .df$neta2 & .df$name %in% .etas] <- TRUE
+    .df$fix[!is.na(.df$ntheta) & .df$name %in% thetas] <- TRUE
     assign("iniDf", .df, envir = .ui)
     .ui <- rxode2::rxUiCompress(.ui)
   }

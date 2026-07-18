@@ -12990,6 +12990,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::ivec errThetaIdx0 = vaeToIvec(prep["errThetaIdx0"]);
   LogicalVector isFreeR = prep["isFree"];
   LogicalVector omegaFixR = prep["omegaFix"];
+  // zPopFix[k]: the structural theta backing latent dim k is fixed (nonMuTheta=
+  // "fix" or a user-fixed theta with an eta) -- the M-step holds zPop[k] at ini.
+  LogicalVector zPopFixR = prep["zPopFix"];
   arma::vec zPop = as<arma::vec>(prep["zPop"]);
   arma::vec omega = as<arma::vec>(prep["omega"]);
   arma::vec a = as<arma::vec>(prep["a"]);
@@ -13038,12 +13041,20 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 
   // ---- parameter-history row helper ----
   arma::ivec structIdx = vaeToIvec(structIdx0);
+  // number of omega columns printed: the non-fixed latent dims (a zPopFix dim is
+  // held at ini with a fixed omega, so it is dropped from both the structural and
+  // the omega columns -- matching R's structIdx/omegaIdx).
+  int nOmegaPrint = 0;
+  for (int k = 0; k < zDim; ++k) if (!zPopFixR[k]) nOmegaPrint++;
+  // regIdx holds the full-theta indices of the nonMuTheta="regress" params; `th`
+  // is captured by reference so the printed value tracks the live M-step update.
   auto parRow = [&](const arma::vec& zP, const arma::vec& om, const arma::vec& av) {
-    NumericVector r(structIdx.n_elem + zDim + av.n_elem);
+    NumericVector r(structIdx.n_elem + nOmegaPrint + av.n_elem + regIdx.n_elem);
     int p = 0;
     for (arma::uword s = 0; s < structIdx.n_elem; ++s) r[p++] = zP[structIdx[s]];
-    for (int k = 0; k < zDim; ++k) r[p++] = om[k];
+    for (int k = 0; k < zDim; ++k) if (!zPopFixR[k]) r[p++] = om[k];
     for (arma::uword e = 0; e < av.n_elem; ++e) r[p++] = av[e];
+    for (arma::uword g = 0; g < regIdx.n_elem; ++g) r[p++] = th[regIdx[g]];
     return r;
   };
 
@@ -13079,7 +13090,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         omegaCur[k] = v / N;
       }
       arma::vec aCur = vaeUpdateErr(st.preds, yList, errTypeCode, a, errLower, errUpper);
-      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
+      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
@@ -13121,6 +13132,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       intercept.zeros(); beta.zeros(); selected.zeros();
       for (int k = 0; k < zDim; ++k) {
         if (isFreeR[k]) continue;
+        // fixed structural theta: hold the intercept at ini, add no covariates
+        if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); continue; }
         arma::vec yk = last.mu.col(k);
         VaeSubsetFit fit = vaeBestSubsetL0(yk, X, omega[k], covPenalty);
         arma::vec bestCoef = fit.coef;
@@ -13157,7 +13170,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         omegaCur[k] = v / N;
       }
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
-      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
+      for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);

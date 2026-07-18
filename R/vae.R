@@ -48,8 +48,12 @@
 #'     recovers a no-random-effect population parameter without adding a spurious
 #'     random effect.  `nonMuEtaOmega` is unused in this mode.
 #'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
-#'     `nonMuEtaOmega`).
-#'   * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega`.
+#'     `nonMuEtaOmega`); the typical value is estimated and appears in the
+#'     iteration table.
+#'   * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega` AND hold
+#'     the typical-value theta fixed at its `ini()` value.  Nothing about the
+#'     parameter is estimated, so it is not shown in the iteration table (it is
+#'     reported at its `ini()` value, marked fixed, with the injected eta dropped).
 #'   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
 #'     historic behavior).
 #' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta

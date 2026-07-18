@@ -119,6 +119,11 @@ vaeCovariates <- function(data, warn = TRUE) {
   .isFree <- is.na(.zPopThetaIdx)
   .zPop <- numeric(.neta)                                      # structural population means (transformed)
   .zPop[!.isFree] <- as.numeric(.th[.zPopThetaIdx[!.isFree]])
+  ## latent dims whose backing structural theta is FIXED (e.g. nonMuTheta="fix", or
+  ## a user-fixed theta carrying an eta): the M-step holds their typical value at
+  ## the ini() value, and they are dropped from the iteration print.
+  .zPopFix <- logical(.neta)
+  .zPopFix[!.isFree] <- isTRUE2(.thRows$fix[.zPopThetaIdx[!.isFree]])
 
   ## omega init (diagonal) for the etas + which variances are FIXED (held by the
   ## M-step, not estimated)
@@ -213,6 +218,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
+       zPopFix = .zPopFix,
        zPopLower = .zPopLower, zPopUpper = .zPopUpper,
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
