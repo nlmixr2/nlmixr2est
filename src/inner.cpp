@@ -12834,6 +12834,16 @@ static arma::uvec vaeSubsetCols(const std::vector<int>& idx) {
 // recursive depth-first order and is the default.
 enum VaeBnbStrategy { VAE_BNB_LIFO, VAE_BNB_FIFO, VAE_BNB_LC };
 
+// Map a control/argument string to the enum, failing fast on an unknown value so a
+// hand-rolled control list or corrupted serialized object cannot silently fall back
+// to LIFO.  A genuinely missing field is defaulted by the caller before this point.
+static VaeBnbStrategy vaeParseBnbStrategy(const std::string& s) {
+  if (s == "lifo") return VAE_BNB_LIFO;
+  if (s == "fifo") return VAE_BNB_FIFO;
+  if (s == "lc")   return VAE_BNB_LC;
+  Rcpp::stop("bnbStrategy must be one of 'lifo', 'fifo', 'lc'");
+}
+
 struct VaeBnbCtx {
   const arma::mat* X;   // [N, 1 + nCov], col 0 is the intercept
   const arma::vec* y;   // [N]
@@ -12845,33 +12855,49 @@ struct VaeBnbCtx {
   arma::vec bestCoef;
 };
 
+// Order-independent tie-break: on an exact score tie prefer the lexicographically
+// smaller sorted support so the incumbent is deterministic regardless of the frontier
+// discipline (otherwise "first encountered" would depend on the search order).  Exact
+// equality -- not a tolerance -- is what keeps the winner well defined and transitive.
+static bool vaeSelLess(std::vector<int> a, std::vector<int> b) {
+  std::sort(a.begin(), a.end());
+  std::sort(b.begin(), b.end());
+  return a < b;  // std::vector lexicographic compare
+}
+
 // Evaluate the model whose support is exactly `inSet`; update the incumbent.
 static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
   arma::uvec cols = vaeSubsetCols(inSet);
   arma::vec coef;
   double rss = vaeOlsRss(*c.X, cols, *c.y, &coef);
   double score = rss / c.omega + c.penalty * (double)inSet.size();
-  if (score < c.bestScore) { c.bestScore = score; c.bestSel = inSet; c.bestCoef = coef; }
+  if (score < c.bestScore ||
+      (score == c.bestScore && vaeSelLess(inSet, c.bestSel))) {
+    c.bestScore = score; c.bestSel = inSet; c.bestCoef = coef;
+  }
 }
 
-// One node of the search: commit `inSet`, `freeSet` remains to branch on, `evalSelf`
-// gates the leaf eval of `inSet` (the exclude child inherits an inSet its parent
-// already evaluated), and `lb` is the precomputed subtree lower bound used both as
-// the least-cost priority key and for a re-check prune at pop time.
+// One node of the search: commit `inSet`; the free covariates still to branch on are
+// the prefix freeSet0[0, freeSize) (freeSet is only ever suffix-popped, so a length
+// suffices -- no per-node copy).  `evalSelf` gates the leaf eval of `inSet` (the
+// exclude child inherits an inSet its parent already evaluated), and `lb` is the
+// precomputed subtree lower bound used both as the least-cost priority key and for a
+// re-check prune at pop time.
 struct VaeBnbNode {
   std::vector<int> inSet;
-  std::vector<int> freeSet;
+  int freeSize;
   bool evalSelf;
   double lb;
 };
 
 // Subtree lower bound: no superset of inSet (adding any free covariates) can beat the
 // OLS fit that uses ALL of them, and each committed covariate already costs `penalty`.
-// Adding columns only lowers RSS, so this bounds the whole subtree.
+// Adding columns only lowers RSS, so this bounds the whole subtree.  The free set is
+// freeSet0[0, freeSize).
 static double vaeBnbLowerBound(VaeBnbCtx& c, const std::vector<int>& inSet,
-                               const std::vector<int>& freeSet) {
+                               const std::vector<int>& freeSet0, int freeSize) {
   std::vector<int> all = inSet;
-  all.insert(all.end(), freeSet.begin(), freeSet.end());
+  all.insert(all.end(), freeSet0.begin(), freeSet0.begin() + freeSize);
   double rssFull = vaeOlsRss(*c.X, vaeSubsetCols(all), *c.y, nullptr);
   return rssFull / c.omega + c.penalty * (double)inSet.size();
 }
@@ -12886,8 +12912,8 @@ struct VaeBnbNodeWorse {
 // branched first, "include" child first -- identical branching to the former
 // recursion; only the frontier container differs.
 static void vaeBnbSearch(VaeBnbCtx& c, const std::vector<int>& freeSet0) {
-  VaeBnbNode root; root.inSet.clear(); root.freeSet = freeSet0;
-  root.evalSelf = true; root.lb = vaeBnbLowerBound(c, root.inSet, root.freeSet);
+  VaeBnbNode root; root.inSet.clear(); root.freeSize = (int)freeSet0.size();
+  root.evalSelf = true; root.lb = vaeBnbLowerBound(c, root.inSet, freeSet0, root.freeSize);
   std::vector<VaeBnbNode> stack;                       // LIFO
   std::deque<VaeBnbNode> queue;                        // FIFO
   std::priority_queue<VaeBnbNode, std::vector<VaeBnbNode>, VaeBnbNodeWorse> pq;  // LC
@@ -12910,18 +12936,18 @@ static void vaeBnbSearch(VaeBnbCtx& c, const std::vector<int>& freeSet0) {
       node = stack.back(); stack.pop_back(); break;
     }
     if (node.evalSelf) vaeBnbLeaf(c, node.inSet);
-    if (node.freeSet.empty()) continue;
+    if (node.freeSize == 0) continue;
     // re-check with the current incumbent: bestScore may have improved since this
     // node was generated, keeping the prune admissible under any frontier order.
     if (node.lb >= c.bestScore) continue;
-    int j = node.freeSet.back();
-    std::vector<int> childFree = node.freeSet; childFree.pop_back();
+    int j = freeSet0[node.freeSize - 1];       // strongest remaining free covariate
+    int childFree = node.freeSize - 1;
     VaeBnbNode inc;  inc.inSet = node.inSet; inc.inSet.push_back(j);
-    inc.freeSet = childFree; inc.evalSelf = true;
-    inc.lb = vaeBnbLowerBound(c, inc.inSet, inc.freeSet);
-    VaeBnbNode exc;  exc.inSet = node.inSet; exc.freeSet = childFree;
+    inc.freeSize = childFree; inc.evalSelf = true;
+    inc.lb = vaeBnbLowerBound(c, inc.inSet, freeSet0, childFree);
+    VaeBnbNode exc;  exc.inSet = node.inSet; exc.freeSize = childFree;
     exc.evalSelf = false;  // inSet already evaluated by the parent; bound tightens as j drops out
-    exc.lb = vaeBnbLowerBound(c, exc.inSet, exc.freeSet);
+    exc.lb = vaeBnbLowerBound(c, exc.inSet, freeSet0, childFree);
     switch (c.strategy) {
     case VAE_BNB_FIFO: queue.push_back(inc); queue.push_back(exc); break;
     case VAE_BNB_LC:   pq.push(inc); pq.push(exc); break;
@@ -13092,8 +13118,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // (the former recursive depth-first order) for older serialized control objects.
   const std::string bnbStrat = control.containsElementNamed("bnbStrategy") ?
     as<std::string>(control["bnbStrategy"]) : "lifo";
-  const VaeBnbStrategy bnbStrategy = (bnbStrat == "fifo") ? VAE_BNB_FIFO :
-    (bnbStrat == "lc") ? VAE_BNB_LC : VAE_BNB_LIFO;
+  const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(bnbStrat);
   const int printCtl = as<int>(control["print"]);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
@@ -13334,8 +13359,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
                     LogicalVector isFree, double penaltyPerCov,
                     std::string strategy = "lifo") {
-  const VaeBnbStrategy bnbStrategy = (strategy == "fifo") ? VAE_BNB_FIFO :
-    (strategy == "lc") ? VAE_BNB_LC : VAE_BNB_LIFO;
+  const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(strategy);
   const int zDim = (int)mu.n_cols;
   const int N = (int)mu.n_rows;
   const int nCov = (int)covMat.n_cols;

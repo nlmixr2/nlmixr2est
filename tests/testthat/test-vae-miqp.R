@@ -76,6 +76,15 @@ nmTest({
     }
   })
 
+  test_that("vaeBestSubset_ rejects an unknown branch-and-bound strategy", {
+    g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
+    ci <- g[[1]]; ip <- ci$inputs
+    omega <- rep_len(ip$omega, ci$zDim)
+    isFree <- rep_len(ip$isFree, ci$zDim)
+    expect_error(vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "bogus"),
+                 "lifo")
+  })
+
   test_that("bnbStrategy is tunable in vaeControl and defaults to lifo", {
     expect_equal(vaeControl()$bnbStrategy, "lifo")
     expect_equal(vaeControl(bnbStrategy = "fifo")$bnbStrategy, "fifo")
