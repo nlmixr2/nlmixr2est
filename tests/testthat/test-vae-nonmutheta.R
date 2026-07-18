@@ -66,10 +66,10 @@ nmTest({
   })
 
   test_that("vaeControl exposes nonMuTheta/nonMuEtaOmega with the documented defaults", {
-    expect_equal(vaeControl()$nonMuTheta, "eta")
+    expect_equal(vaeControl()$nonMuTheta, "regress")
     expect_equal(vaeControl()$nonMuEtaOmega, 0.01)
     expect_equal(vaeControl(nonMuTheta = "fix")$nonMuTheta, "fix")
-    expect_equal(vaeControl(nonMuTheta = "regress")$nonMuTheta, "regress")
+    expect_equal(vaeControl(nonMuTheta = "eta")$nonMuTheta, "eta")
     expect_error(vaeControl(nonMuTheta = "bogus"))
     expect_error(vaeControl(nonMuEtaOmega = -1))
   })
@@ -83,7 +83,8 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ctl <- vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L)
+                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
+                      nonMuTheta = "eta")
     fit <- suppressWarnings(suppressMessages(
       nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
     ## lke and lV (no eta in the input) are now estimated (moved off their ini)

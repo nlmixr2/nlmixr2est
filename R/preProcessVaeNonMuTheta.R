@@ -102,7 +102,7 @@ isTRUE2 <- function(x) !is.na(x) & x
 #' @author Matthew L. Fidler
 .preProcessVaeNonMuTheta <- function(ui, est, data, control) {
   if (!inherits(control, "vaeControl")) return(NULL)
-  .mode <- if (is.null(control$nonMuTheta)) "eta" else control$nonMuTheta
+  .mode <- if (is.null(control$nonMuTheta)) "regress" else control$nonMuTheta
   ## reset per-fit record of injected etas (read by the VAE output collapse)
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
   if (identical(.mode, "none")) return(NULL)

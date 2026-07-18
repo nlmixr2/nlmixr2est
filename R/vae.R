@@ -41,18 +41,17 @@
 #'   latent space, and the reported fixed effect is `theta + mean(eta)` with the
 #'   temporary eta dropped from the output model.
 #'
-#'   * `"eta"` (default): inject the eta with an ESTIMATED omega (starting at
+#'   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
+#'     injected; instead each such theta is estimated directly, re-optimized every
+#'     M-step by a bounded `bobyqa` regression against the FOCEi inner likelihood
+#'     (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+#'     recovers a no-random-effect population parameter without adding a spurious
+#'     random effect.  `nonMuEtaOmega` is unused in this mode.
+#'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
 #'     `nonMuEtaOmega`).
 #'   * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega`.
 #'   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
 #'     historic behavior).
-#'   * `"regress"`: no eta is injected; instead each such theta is estimated
-#'     directly, re-optimized every M-step by a bounded `bobyqa` regression against
-#'     the FOCEi inner likelihood (bounds from the `ini()` lower/upper), blended
-#'     with the M-step gain.  This is the VAE analog of
-#'     `saemControl(nonMuTheta="regress")` and recovers a no-random-effect
-#'     population parameter without adding a spurious random effect.
-#'     `nonMuEtaOmega` is unused in this mode.
 #' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta
 #'   (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 #'   unused for `"regress"`).
@@ -111,7 +110,7 @@ vaeControl <- function(seed = 42L,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
                        covSelectAlpha = 2,
-                       nonMuTheta = c("eta", "fix", "none", "regress"),
+                       nonMuTheta = c("regress", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
