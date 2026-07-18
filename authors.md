@@ -54,8 +54,6 @@
 
 - **Yuan Xiong**. Author.
 
-- **Hidde van de Beek**. Contributor.
-
 ## Citation
 
 Source:

@@ -4,6 +4,37 @@
 
 ### New features
 
+- The analytic observed-information covariance is now the preferred
+  `covMethod` across the mixed-model estimation methods, falling back to
+  each method’s previous default when a model is out of analytic scope:
+
+  - `est="saem"`/`"fsaem"` keep the stochastic-approximation FIM
+    (`"sa"`) as the default `covMethod`, now followed by `"analytic"`
+    and `"linFim"`. `covMethod="analytic"` computes the FOCEI analytic
+    covariance at the converged SAEM estimates and falls back to the
+    linearized FIM (`"linFim"`) with a message when out of scope or not
+    positive definite; the `"linFim"` covariance stays selectable via
+    `setCov(fit, "linFim")`.
+  - `est="nlme"` gains a `covMethod` argument
+    (`c("analytic", "r,s", "r", "s", "nlme", "")`, default `"analytic"`)
+    that recomputes the covariance at the converged nlme estimates;
+    `"nlme"` keeps nlme’s own standard errors (also available via
+    `setCov(fit, "nlme")`).
+  - `est="npag"`/`"npb"` (and their `m`/`i` variants), which previously
+    reported no covariance, now compute one post-fit at the converged
+    estimates (default `"analytic"` with the finite-difference fallback
+    chain).
+  - `est="imp"`/`"impmap"`/`"qrpem"` gain a `covMethod` argument
+    (`c("imp", "analytic", "r,s", "r", "s", "")`, default `"imp"`).
+    `"imp"` is the Monte-Carlo importance-sampling covariance that the
+    old `impCov=TRUE` selected (the `impCov` argument is removed); the
+    other tokens compute the post-fit FOCEI covariance.
+  - `est="advi"` keeps its variational covariance (`"advi"`) as the
+    default but now honors an explicit `covMethod` (e.g. `"analytic"`)
+    without overwriting it with the variational covariance.
+  - [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)/[`getVarCov()`](https://rdrr.io/pkg/nlme/man/getVarCov.html)
+    accept `covMethod="analytic"` post-fit.
+
 - A general FOCE-family per-subject log-likelihood can now be built from
   an `rxode2` UI model and used outside of a fit, for MCMC/SAMBA-style
   algorithms (issue
@@ -602,6 +633,26 @@
 
 #### Estimation
 
+- A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`,
+  `foce`, `focep`, `agq`, `laplace`, and the `*f` fast variants such as
+  `ifoceif`) that needed to restart – for example after a
+  zero/bad-gradient theta reset – died with
+  `focei$control must be a focei control object`. These controls are all
+  built by
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  and then reclassed to their own class, so they do not carry
+  `"foceiControl"` in their class vector, and the restart-path
+  environment check rejected them even though the fit had been set up
+  from a valid control. The check now recognises the whole FOCEi control
+  family.
+
+- `est="fsaem"` (fast SAEM) now reports a covariance matrix. The fast
+  kernel’s FOCEi inner setup overwrote the shared control’s `covMethod`
+  during the fit, so the covariance step ran with no method selected and
+  left the fit with an unlabeled, partially degenerate covariance; the
+  intended `covMethod` is now restored before the covariance is
+  computed.
+
 - Models that combine `linCmt()` with ODEs (for example a solved PK
   driving an effect-compartment ODE) now estimate correctly with the
   FOCEi and nlm families; the linear compartments are solved as ODEs for
@@ -792,6 +843,25 @@
   to an integer so a genuinely non-converging fit reports its real
   reason instead of this spurious assertion
   ([\#470](https://github.com/nlmixr2/nlmixr2est/issues/470)).
+
+- Fixed the `est = "agq"` quadrature node scaling. The adaptive
+  Gauss-Hermite nodes were placed without the change-of-variable factor,
+  so increasing `nAGQ` did not converge to the marginal likelihood – it
+  converged to a wrong value (still better than Laplace, so the
+  objective looked reasonable). The nodes are Gauss-Hermite for the
+  `e^{-x^2}` kernel while the integral has an `e^{-z'z/2}` kernel, so
+  they belong at `sqrt(2) * chol(Ht)^-1 * x` with an `exp(x'x)` untilt.
+  With the fix the objective converges to the exact marginal likelihood
+  as `nAGQ` grows. Every `nAGQ > 1` objective value (and any standard
+  errors derived from it) changes; `focei`/`foce`/`fo`/`laplace` are
+  unaffected.
+
+- The analytic covariance (`covType = "analytic"`) now falls back to
+  finite differences under `cholSECov = TRUE`: the covariance step
+  re-factors the eta Hessian with the generalized Cholesky, which for a
+  non-positive-definite `Ht` differs from the
+  [`chol()`](https://rdrr.io/r/base/chol.html) the analytic observed
+  information assumes.
 
 - Fixed the `fast = TRUE` analytic gradient for models whose residual
   variance depends on the prediction (`prop`, `add+prop`, `combined1`,

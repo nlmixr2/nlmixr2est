@@ -235,7 +235,7 @@ focepControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5594b0c712a0>
+#> <bytecode: 0x559e0599ae98>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -891,7 +891,7 @@ focepControl()
 #> [1] "default"
 #> 
 #> $freezeResidGrad
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $boundedTransform
 #> [1] TRUE

@@ -321,7 +321,7 @@ npagControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5594b0c712a0>
+#> <bytecode: 0x559e0599ae98>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -977,9 +977,12 @@ npagControl()
 #> [1] "default"
 #> 
 #> $freezeResidGrad
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $boundedTransform
+#> [1] TRUE
+#> 
+#> $impCov
 #> [1] TRUE
 #> 
 #> $isample
@@ -1008,9 +1011,6 @@ npagControl()
 #> 
 #> $impSeed
 #> [1] 42
-#> 
-#> $impCov
-#> [1] FALSE
 #> 
 #> $qr
 #> [1] FALSE

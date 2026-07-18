@@ -166,6 +166,22 @@ adviControl(
   each individual's gradient cross-product (evaluated at the individual
   empirical Bayes estimates).
 
+  "`sa`" (default) Use the stochastic-approximation Fisher Information
+  Matrix. After estimation, a dedicated covariance phase (`nSaCov`
+  iterations) holds the parameters at the converged estimate and keeps
+  resimulating the individual parameters, Monte-Carlo averaging the
+  Louis observed-information integrand into a converged FIM decoupled
+  from the cooling schedule (the approach used by Monolix; Kuhn &
+  Lavielle 2005). Always includes every estimated population parameter
+  (theta, the `Omega` diagonal variances, and residual).
+
+  "`analytic`" Compute the FOCEI analytic observed-information
+  covariance at the converged SAEM estimates. When the model is out of
+  analytic-covariance scope (e.g. `linCmt()`, a non-normal likelihood,
+  or a non-SD IOV parameterization) or the result is not positive
+  definite, it falls back to the linearized Fisher information
+  (`linFim`) with a message.
+
   "`linFim`" Use the Linearized Fisher Information Matrix to calculate
   the covariance.
 
@@ -174,15 +190,6 @@ adviControl(
   observed information to a full theta + `Omega` diagonal + residual
   covariance, but uses the (noisier) estimation-phase matrix rather than
   a dedicated cov phase.
-
-  "`sa`" Use the stochastic-approximation Fisher Information Matrix.
-  After estimation, a dedicated covariance phase (`nSaCov` iterations)
-  holds the parameters at the converged estimate and keeps resimulating
-  the individual parameters, Monte-Carlo averaging the Louis
-  observed-information integrand into a converged FIM decoupled from the
-  cooling schedule (the approach used by Monolix; Kuhn & Lavielle 2005).
-  Always includes every estimated population parameter (theta, the
-  `Omega` diagonal variances, and residual).
 
   For both `fim` and `sa` the simulation-based Fisher information covers
   the structural theta, the `Omega` diagonal variances, and additive

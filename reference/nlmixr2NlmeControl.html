@@ -83,6 +83,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"nlme"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -125,6 +126,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"nlme"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -404,6 +406,16 @@ uses the legacy finite-difference behavior.</p></dd>
 maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
 value is verbose (`verbose=TRUE`).  When `print` is not supplied an
 explicit `verbose` is used as given.</p></dd>
+
+
+<dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
+<dd><p>Covariance method: `"analytic"` (default) computes the
+focei observed-information covariance at the converged nlme estimates
+post-fit (falling back to the finite-difference `"r,s"` -&gt; `"r"`/`"s"`
+chain when out of analytic scope); `"r,s"`, `"r"`, `"s"` request the
+finite-difference forms directly; `"nlme"` and `""` skip the recompute
+and keep nlme's own standard errors.  When the recompute fails the
+`"nlme"` covariance is kept.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -938,6 +950,9 @@ explicit `verbose` is used as given.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $eventSens</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "jump"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "analytic"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $genRxControl</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1454,6 +1469,9 @@ explicit `verbose` is used as given.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $eventSens</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "jump"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "analytic"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $genRxControl</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>

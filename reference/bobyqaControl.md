@@ -323,21 +323,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -720.4741 1123.403 1138.126      -558.7015        4044.675        210.6639
+#> lPop -703.7783 1140.099 1154.822      -567.0494        227.1412        54.66857
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.8511081 0.859156  8.796e-06      0.053       0.008 0.032    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.8482746 0.8181677  8.505e-06       0.05       0.008 0.034    0.001
 #>              other
-#> elapsed 0.09872707
+#> elapsed 0.09654921
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)
-#> Em    8.773  8.361 95.31     8.773 (-7.615, 25.16)
-#> E50   4.054  2.863 70.62     4.054 (-1.558, 9.666)
+#> E0  -0.7269 0.2634 36.23 -0.7269 (-1.243, -0.2107)
+#> Em    4.823  1.709 35.44      4.823 (1.473, 8.174)
+#> E50   2.381 0.9629 40.45     2.381 (0.4933, 4.268)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -347,16 +347,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0564     0 -0.447 -0.574
-#> 2 1     0.0595     1 -1.02  -0.574
-#> 3 1     0.0650     1 -1.02  -0.574
+#> 1 1     0.0245     0 -0.395 -0.726
+#> 2 1     0.0449     0 -0.395 -0.725
+#> 3 1     0.0596     0 -0.395 -0.724
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.576142209690813, 8.77266419276703, 4.05415635008737 
-#> objective: 558.701494344943 
-#> number of function evaluations: 375 
+#> parameter estimates: -0.726918835382729, 4.82339277189501, 2.38058378578091 
+#> objective: 567.049361411538 
+#> number of function evaluations: 229 
 # }
 ```

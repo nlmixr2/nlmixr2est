@@ -253,7 +253,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5594b0c712a0>
+#> <bytecode: 0x559e0599ae98>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -909,7 +909,7 @@ agqControl()
 #> [1] "default"
 #> 
 #> $freezeResidGrad
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $boundedTransform
 #> [1] TRUE
@@ -976,6 +976,13 @@ fit <- nlmixr(f, r, est="agq")
 #>  
 #>  
 #> ✔ done
+#> rxode2 5.1.3 using 2 threads (see ?getRxThreads)
+#>   no cache: create with `rxCreateCache()`
+#> 
+#> Attaching package: ‘rxode2’
+#> The following objects are masked from ‘package:nlmixr2est’:
+#> 
+#>     boxCox, yeoJohnson
 #> covType="analytic": adaptive Gaussian quadrature (nAGQ > 1) is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done

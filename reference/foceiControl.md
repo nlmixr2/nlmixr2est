@@ -66,7 +66,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "lbfgsb3c", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -139,7 +139,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   sensMethod = c("default", "forward", "adjoint"),
-  freezeResidGrad = TRUE,
+  freezeResidGrad = FALSE,
   boundedTransform = TRUE
 )
 ```
@@ -961,8 +961,8 @@ foceiControl(
   \`f\`, so the states are reused and only the residual density is
   recomputed, mirroring the npag residual step. This is a small
   approximation to the FOCEi gradient (it drops the eta sensitivity of
-  the Laplace \`log det\` term); set \`FALSE\` to recover the exact full
-  re-solve gradient.
+  the Laplace \`log det\` term); the default is \`FALSE\` to recover the
+  exact full re-solve gradient.
 
 - boundedTransform:
 

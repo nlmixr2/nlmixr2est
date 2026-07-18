@@ -63,7 +63,7 @@ by finite differences.</p>
 <span>  ctol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  nConvWindow <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  impSeed <span class="op">=</span> <span class="fl">42L</span>,</span>
-<span>  impCov <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"imp"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  qr <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  qrShift <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  qrRefresh <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -136,15 +136,18 @@ the objective-function change for convergence (NONMEM-style CTYPE).</p></dd>
 streams; results are reproducible and independent of the thread count.</p></dd>
 
 
-<dt id="arg-impcov">impCov<a class="anchor" aria-label="anchor" href="#arg-impcov"></a></dt>
-<dd><p>Experimental: when `TRUE`, compute a Monte-Carlo
-observed-information covariance for the estimated thetas and Omega
-parameters (a finite-difference Hessian of the importance-sampling objective
-over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
-Off by default.  The theta standard errors match the Hessian-based FOCEI
-covariance; the variance of a tightly-determined random effect (an Omega
-diagonal) can still be over-estimated because the fixed samples barely span
-its prior variation.</p></dd>
+<dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
+<dd><p>Covariance method.  `"imp"` (default) computes the
+Monte-Carlo importance-sampling observed-information covariance for the
+estimated thetas and Omega parameters (a finite-difference Hessian of the
+importance-sampling objective over fixed common-random-number samples),
+stashed as `$impCov` / `$impSe` and installed as the fit covariance; the
+theta standard errors match the Hessian-based FOCEI covariance, though the
+variance of a tightly-determined random effect (an Omega diagonal) can be
+over-estimated because the fixed samples barely span its prior variation.
+`"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
+post-fit at the converged estimates (see [foceiControl()]); `""` skips the
+covariance step.</p></dd>
 
 
 <dt id="arg-qr">qr<a class="anchor" aria-label="anchor" href="#arg-qr"></a></dt>
@@ -385,7 +388,7 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$x &lt;- .ret$par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5594b0c712a0&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x559e0599ae98&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1041,9 +1044,12 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "default"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $freezeResidGrad</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $boundedTransform</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $impCov</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $isample</span>
@@ -1072,9 +1078,6 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $impSeed</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 42</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $impCov</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $qr</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>

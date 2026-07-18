@@ -554,7 +554,7 @@ fsaemControl()
 #> [1] 0.95
 #> 
 #> $covMethod
-#> [1] "linFim"
+#> [1] "sa"
 #> 
 #> $covFull
 #> [1] TRUE
