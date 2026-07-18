@@ -13038,12 +13038,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 
   // ---- parameter-history row helper ----
   arma::ivec structIdx = vaeToIvec(structIdx0);
+  // regIdx holds the full-theta indices of the nonMuTheta="regress" params; `th`
+  // is captured by reference so the printed value tracks the live M-step update.
   auto parRow = [&](const arma::vec& zP, const arma::vec& om, const arma::vec& av) {
-    NumericVector r(structIdx.n_elem + zDim + av.n_elem);
+    NumericVector r(structIdx.n_elem + zDim + av.n_elem + regIdx.n_elem);
     int p = 0;
     for (arma::uword s = 0; s < structIdx.n_elem; ++s) r[p++] = zP[structIdx[s]];
     for (int k = 0; k < zDim; ++k) r[p++] = om[k];
     for (arma::uword e = 0; e < av.n_elem; ++e) r[p++] = av[e];
+    for (arma::uword g = 0; g < regIdx.n_elem; ++g) r[p++] = th[regIdx[g]];
     return r;
   };
 

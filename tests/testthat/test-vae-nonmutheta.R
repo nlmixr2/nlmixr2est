@@ -132,5 +132,11 @@ nmTest({
                  "eta.ka")
     ## the regress note is recorded in $runInfo
     expect_true(any(grepl("bobyqa regression", fit$runInfo)))
+    ## the regressed thetas are surfaced in the iteration-print / parameter history
+    ## (not just estimated silently) and their final walk value matches the fit
+    expect_true(all(c("lke", "lV") %in% names(fit$parHistData)))
+    .last <- fit$parHistData[nrow(fit$parHistData), ]
+    expect_equal(.last[["lke"]], exp(fit$theta[["lke"]]), tolerance = 1e-3)
+    expect_equal(.last[["lV"]], exp(fit$theta[["lV"]]), tolerance = 1e-3)
   })
 })

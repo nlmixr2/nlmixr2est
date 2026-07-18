@@ -557,6 +557,13 @@
 
 ### Estimation
 
+- `est="vae"` with `nonMuTheta="regress"` now shows the regressed non-mu-referenced
+  thetas in the iteration table and parameter history.  The M-step `bobyqa`
+  regression already estimated them, but they were omitted from the printed
+  parameter walk (only the latent-space thetas, omega, and residual error were
+  shown), so their progress was invisible; they are now appended to each row with
+  the correct back-transform.
+
 - `est="vae"` covariate selection no longer silently selects nothing at 32
   candidate covariates.  The best-subset step enumerated all `2^nCov` subsets,
   which is undefined behavior at `nCov = 32` (`1u << 32` wraps to `1`, so only

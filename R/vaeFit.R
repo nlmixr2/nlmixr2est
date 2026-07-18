@@ -106,11 +106,14 @@
 }
 
 #' Tracked population parameters (structural typical values, omega diagonal,
-#' residual error) as a single named vector -- one parameter-history row.
+#' residual error, and any nonMuTheta="regress" fixed-effect thetas) as a single
+#' named vector -- one parameter-history row.  The regressed thetas are appended
+#' last so the column order matches the C++ `parRow` lambda and the `xform` codes.
 #' @noRd
 .vaeParRow <- function(zPop, omega, a, parInfo) {
   .z <- if (length(parInfo$structIdx)) setNames(zPop[parInfo$structIdx], parInfo$structNames) else numeric(0)
-  c(.z, setNames(omega, parInfo$omegaNames), setNames(as.numeric(a), parInfo$aNames))
+  .reg <- if (length(parInfo$regressNames)) setNames(as.numeric(parInfo$regressVals), parInfo$regressNames) else numeric(0)
+  c(.z, setNames(omega, parInfo$omegaNames), setNames(as.numeric(a), parInfo$aNames), .reg)
 }
 
 #' Encode the per-eta error type of each residual-error parameter for the C++
@@ -148,6 +151,13 @@
     parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
                     omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
   }
+  ## nonMuTheta="regress": surface the regressed fixed-effect thetas in the
+  ## parameter-history walk.  Their starting values are the ini() estimates at the
+  ## regressed theta indices (0-based `regressThetaIdx0` into the full theta).
+  parInfo$regressNames <- prep$regressNames
+  parInfo$regressVals <- if (length(prep$regressThetaIdx0)) {
+    prep$th[prep$regressThetaIdx0 + 1L]
+  } else numeric(0)
   .row0 <- .vaeParRow(prep$zPop, prep$omega, prep$a, parInfo)
 
   ## prep buffers the C++ loop needs, in the layout vaeTrainCpp_ unpacks: 0-based
@@ -209,9 +219,11 @@
                    structNames = .map$thetaForEta[.structIdx],
                    omegaNames = paste0("o(", .prep$etaNames, ")"),
                    aNames = names(.prep$a))
-  ## back-transform codes for the printed walk (X row: exp/expit/probit thetas)
+  ## back-transform codes for the printed walk (X row: exp/expit/probit thetas).
+  ## Include the nonMuTheta="regress" thetas so their column gets the right
+  ## back-transform (they are appended last, matching .vaeParRow / the C++ parRow).
   .parInfo$xform <- .iterPrintXParFromUi(
-    .ui, c(.parInfo$structNames, .parInfo$omegaNames, .parInfo$aNames))
+    .ui, c(.parInfo$structNames, .parInfo$omegaNames, .parInfo$aNames, .prep$regressNames))
   ## set up the inner likelihood once (compiled model + processed data)
   .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
   on.exit(.vaeInnerFree(), add = TRUE)
