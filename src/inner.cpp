@@ -13120,8 +13120,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const std::string bnbStrat = control.containsElementNamed("bnbStrategy") ?
     as<std::string>(control["bnbStrategy"]) : "lifo";
   const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(bnbStrat);
-  // opt-in parallel encoder backward (default off = serial, bit-identical);
-  // tolerate older serialized control objects that predate the field.
+  // Parallel encoder backward.  vaeControl() always injects this field (its
+  // default is TRUE unless options(nlmixr2.identical=TRUE)), so a live fit never
+  // reaches the fallback.  The fallback only fires for control objects serialized
+  // before the field existed; those were produced when the backward pass was
+  // always serial, so `false` reproduces exactly what they did.
   const bool parEncoderBackward = control.containsElementNamed("parEncoderBackward") ?
     as<bool>(control["parEncoderBackward"]) : false;
   const int printCtl = as<int>(control["print"]);

@@ -79,12 +79,16 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
   std::vector<arma::mat> tWih, tWhh, tFcW;
   std::vector<arma::vec> tbih, tbhh, tFcB;
   if (parBwd) {
-    tWih.assign(cores, arma::zeros<arma::mat>(4 * h, xDim));
-    tWhh.assign(cores, arma::zeros<arma::mat>(4 * h, h));
-    tbih.assign(cores, arma::zeros<arma::vec>(4 * h));
-    tbhh.assign(cores, arma::zeros<arma::vec>(4 * h));
-    tFcW.assign(cores, arma::zeros<arma::mat>(outDim, h + nCov));
-    tFcB.assign(cores, arma::zeros<arma::vec>(outDim));
+    // resize + per-element zero() rather than assign(cores, zeros(...)): the
+    // latter builds one buffer and deep-copies it `cores` times; this fills each
+    // thread buffer in place.
+    tWih.resize(cores); tWhh.resize(cores); tFcW.resize(cores);
+    tbih.resize(cores); tbhh.resize(cores); tFcB.resize(cores);
+    for (int c = 0; c < cores; ++c) {
+      tWih[c].zeros(4 * h, xDim); tWhh[c].zeros(4 * h, h);
+      tbih[c].zeros(4 * h); tbhh[c].zeros(4 * h);
+      tFcW[c].zeros(outDim, h + nCov); tFcB[c].zeros(outDim);
+    }
   }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(static) if((cores > 1 && !backward) || parBwd)

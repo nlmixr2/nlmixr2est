@@ -7,6 +7,28 @@
 # Reuses the rxode2 model()/ini() piping to add the eta and rmEta()/.downgradeEtas
 # to drop it -- no new UI-surgery machinery.
 
+#' Collapse a character vector to a comma-separated list that (together with
+#' `prefix`) fits `budget` characters, replacing the overflow tail with
+#' "+k more" so a runInfo note stays single-line and bounded.
+#' @param x character vector
+#' @param prefix leading text the list is appended to (counted against budget)
+#' @param budget maximum total character width
+#' @return length-1 character
+#' @noRd
+.vaeTruncList <- function(x, prefix = "", budget = 74L) {
+  .n <- length(x)
+  .avail <- budget - nchar(prefix)
+  .keep <- .n
+  repeat {
+    .more <- .n - .keep
+    .txt <- paste(x[seq_len(.keep)], collapse = ", ")
+    if (.more > 0L) .txt <- paste0(.txt, ", +", .more, " more")
+    if (.keep <= 1L || nchar(.txt) <= .avail) break
+    .keep <- .keep - 1L
+  }
+  .txt
+}
+
 #' Structural population thetas that are NOT mu-referenced (candidates for a
 #' VAE-injected eta): a theta that appears in the model, is not a residual-error
 #' or covariate-coefficient theta, is not fixed, and has no eta referencing it.
@@ -116,15 +138,15 @@ isTRUE2 <- function(x) !is.na(x) & x
     ## "regress": no eta is injected -- the thetas stay plain fixed effects and are
     ## estimated by a bounded bobyqa regression in the VAE M-step (see
     ## .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI unchanged.
-    warning("regressing non-mu theta(s): ",
-            paste(.thetas, collapse = ", "), call. = FALSE)
+    .pre <- "regressing non-mu theta(s): "
+    warning(.pre, .vaeTruncList(.thetas, prefix = .pre), call. = FALSE)
     return(NULL)
   }
   .omega <- if (is.null(control$nonMuEtaOmega)) 0.01 else control$nonMuEtaOmega
   .inj <- .vaeInjectNonMuEtas(ui, .thetas, .omega, fix = identical(.mode, "fix"))
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- .inj$etas
-  warning("non-mu-referenced theta(s) given temp eta (nonMuTheta=\"", .mode,
-          "\"): ", paste(.thetas, collapse = ", "), call. = FALSE)
+  .pre <- paste0("non-mu-referenced theta(s) temp eta [", .mode, "]: ")
+  warning(.pre, .vaeTruncList(.thetas, prefix = .pre), call. = FALSE)
   list(ui = .inj$ui)
 }
 preProcessHooksAdd(".preProcessVaeNonMuTheta", .preProcessVaeNonMuTheta)

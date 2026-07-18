@@ -192,7 +192,7 @@
   ## warning is collected into the fit's run information); only relevant when it
   ## actually parallelizes (cores > 1)
   if (isTRUE(control$parEncoderBackward) && .cores > 1L) {
-    warning("parallel fit; options(nlmixr2.identical=TRUE) to reproduce",
+    warning("encoder: small parallel deviation; parEncoderBackward=FALSE turns off",
             call. = FALSE)
   }
 
