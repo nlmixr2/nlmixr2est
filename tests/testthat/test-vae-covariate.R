@@ -115,10 +115,11 @@ nmTest({
                       print = 1L)
     tc <- textConnection("msgs", "w", local = TRUE)
     sink(tc, type = "message")
+    ## guarantee the message sink and connection are released even if the fit errors
+    withr::defer({ sink(type = "message"); close(tc) })
     out <- capture.output(
       suppressWarnings(nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)),
       type = "output")
-    sink(type = "message"); close(tc)
     allout <- c(out, msgs)
     ## the ramp iterations (it < klWarmup) are labeled, and the legend documents it
     expect_true(any(grepl("CovSel ramp", allout)))

@@ -12847,8 +12847,11 @@ static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
 
 // Branch on freeSet (pre-sorted ascending by univariate strength so the strongest
 // covariate -- freeSet.back() -- is branched first, "include" child first).
-static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& freeSet) {
-  vaeBnbLeaf(c, inSet);                 // candidate: exclude all remaining free
+// evalSelf gates the leaf eval of `inSet`: the exclude child inherits the parent's
+// inSet, which the parent already evaluated, so it passes false to avoid re-fitting.
+static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& freeSet,
+                      bool evalSelf) {
+  if (evalSelf) vaeBnbLeaf(c, inSet);   // candidate: exclude all remaining free
   if (freeSet.empty()) return;
   // lower bound: no superset of inSet (adding any free covariates) can beat the
   // OLS fit that uses ALL of them, and each committed covariate already costs
@@ -12859,10 +12862,10 @@ static void vaeBnbRec(VaeBnbCtx& c, std::vector<int>& inSet, std::vector<int>& f
   double lb = rssFull / c.omega + c.penalty * (double)inSet.size();
   if (lb >= c.bestScore) return;        // prune
   int j = freeSet.back(); freeSet.pop_back();
-  inSet.push_back(j);                   // include j
-  vaeBnbRec(c, inSet, freeSet);
+  inSet.push_back(j);                   // include j -> new subset, evaluate it
+  vaeBnbRec(c, inSet, freeSet, true);
   inSet.pop_back();
-  vaeBnbRec(c, inSet, freeSet);         // exclude j
+  vaeBnbRec(c, inSet, freeSet, false);  // exclude j -> same inSet, already evaluated
   freeSet.push_back(j);                 // restore for the caller
 }
 
@@ -12885,7 +12888,7 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
             });
   std::vector<int> freeSet(nCov), inSet;
   for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
-  vaeBnbRec(c, inSet, freeSet);
+  vaeBnbRec(c, inSet, freeSet, true);
   VaeSubsetFit out;
   // No finite-scoring model was ever recorded (e.g. non-positive omega or a
   // non-finite y made every score NaN/inf).  Fall back to the intercept-only
@@ -12954,7 +12957,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const double learningRate = as<double>(control["learningRate"]);
   const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
   const bool covariateSelection = as<bool>(control["covariateSelection"]);
-  const double covSelectAlpha = as<double>(control["covSelectAlpha"]);
+  // tolerate control lists that predate covSelectAlpha (older serialized objects):
+  // a missing field means no ramp existed, so default to 1.0 (ramp disabled).
+  const double covSelectAlpha = control.containsElementNamed("covSelectAlpha") ?
+    as<double>(control["covSelectAlpha"]) : 1.0;
   const int printCtl = as<int>(control["print"]);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
