@@ -539,6 +539,12 @@
   `AMT` column (dose-free datasets such as the neonate weight data); such rows
   are now treated as observations (`EVID = 0`).
 
+- `est="saem"` no longer dies with `argument is of length zero` when building the
+  SAEM model list.  Some `rxode2` versions omit the `ar` column from a model's
+  `predDf`, and the SAEM autocorrelation helpers indexed that column directly; they
+  now fall back to the `iniDf` (`err == "ar"`) representation when the column is
+  absent.
+
 - A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`, `foce`,
   `focep`, `agq`, `laplace`, and the `*f` fast variants such as `ifoceif`) that
   needed to restart -- for example after a zero/bad-gradient theta reset -- died
