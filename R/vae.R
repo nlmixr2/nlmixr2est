@@ -65,6 +65,11 @@
 #'   reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 #'   penalize covariate entry more heavily early in training; `1` disables the
 #'   ramp.
+#' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
+#'   selection: `"lifo"` (default, last-in-first-out depth-first search),
+#'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
+#'   solver is exact, so the selected covariates are identical for every strategy;
+#'   only the search order (and thus efficiency) differs.
 #' @param objf Which objective-function value is active for AIC/BIC/BICc. Both
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
@@ -114,6 +119,7 @@ vaeControl <- function(seed = 42L,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
                        covSelectAlpha = 2,
+                       bnbStrategy = c("lifo", "fifo", "lc"),
                        nonMuTheta = c("regress", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
@@ -160,6 +166,7 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  bnbStrategy <- match.arg(bnbStrategy)
   nonMuTheta <- match.arg(nonMuTheta)
   checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
@@ -240,6 +247,7 @@ vaeControl <- function(seed = 42L,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
                covSelectAlpha = covSelectAlpha,
+               bnbStrategy = bnbStrategy,
                nonMuTheta = nonMuTheta,
                nonMuEtaOmega = nonMuEtaOmega,
                likelihood = likelihood,
