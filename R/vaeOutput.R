@@ -71,6 +71,15 @@
     .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
     ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
   }
+  ## 3. non-mu thetas estimated by the bobyqa regression (nonMuTheta="regress"):
+  ## these have no eta, so write each regressed value straight into its ini() est.
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
+      !is.null(names(fit$regressTheta))) {
+    for (rn in names(fit$regressTheta)) {
+      .rv <- fit$regressTheta[[rn]]
+      if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
+    }
+  }
   ## The incremental model()/ini() edits above leave the ui's cached `covariates`
   ## stale: an injected covariate-coefficient theta (beta_<par>_<cov>) is added to
   ## the iniDf as a theta but ALSO stays listed as a covariate.  The augmented
