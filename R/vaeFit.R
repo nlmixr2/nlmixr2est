@@ -158,6 +158,11 @@
     errThetaIdx0 = as.integer(prep$errThetaIdx) - 1L,
     errTypeCode = .vaeErrTypeCode(prep$errType),
     yList = lapply(prep$subj, function(s) as.numeric(s$y))))
+  ## nonMuTheta="regress": 0-based full-theta indices + ini bounds of the fixed
+  ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
+  prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
+  prepC$regressLower <- as.numeric(prep$regressLower)
+  prepC$regressUpper <- as.numeric(prep$regressUpper)
 
   .cores <- tryCatch({
     .c <- control$rxControl$cores
@@ -186,7 +191,7 @@
 .vaeFitModel <- function(env) {
   .ui <- env$ui
   .control <- if (exists("vaeControl", envir = env)) env$vaeControl else vaeControl()
-  .prep <- .vaeDataPrep(.ui, env$data)
+  .prep <- .vaeDataPrep(.ui, env$data, .control)
   ## mixture info from the ui: nMix components with probs (p1,...,1-sum)
   .nMix <- tryCatch(as.integer(.ui$saemNMix), error = function(e) 1L)
   if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
