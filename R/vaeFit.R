@@ -107,13 +107,17 @@
 
 #' Tracked population parameters (structural typical values, omega diagonal,
 #' residual error, and any nonMuTheta="regress" fixed-effect thetas) as a single
-#' named vector -- one parameter-history row.  The regressed thetas are appended
-#' last so the column order matches the C++ `parRow` lambda and the `xform` codes.
+#' named vector -- one parameter-history row.  `parInfo` supplies only the column
+#' metadata (indices/names); the printed structural typical values and omega
+#' diagonal skip fixed latent dims (`structIdx`/`omegaIdx`), and the regressed
+#' thetas are appended last (values via `regressVals`) so the column order matches
+#' the C++ `parRow` lambda and the `xform` codes.
 #' @noRd
-.vaeParRow <- function(zPop, omega, a, parInfo) {
+.vaeParRow <- function(zPop, omega, a, parInfo, regressVals = NULL) {
   .z <- if (length(parInfo$structIdx)) setNames(zPop[parInfo$structIdx], parInfo$structNames) else numeric(0)
-  .reg <- if (length(parInfo$regressNames)) setNames(as.numeric(parInfo$regressVals), parInfo$regressNames) else numeric(0)
-  c(.z, setNames(omega, parInfo$omegaNames), setNames(as.numeric(a), parInfo$aNames), .reg)
+  .om <- if (length(parInfo$omegaIdx)) setNames(omega[parInfo$omegaIdx], parInfo$omegaNames) else numeric(0)
+  .reg <- if (length(parInfo$regressNames)) setNames(as.numeric(regressVals), parInfo$regressNames) else numeric(0)
+  c(.z, .om, setNames(as.numeric(a), parInfo$aNames), .reg)
 }
 
 #' Encode the per-eta error type of each residual-error parameter for the C++
@@ -148,17 +152,20 @@
   ## codes (`xform`, from .iterPrintXParFromUi) -- default to the eta names.
   if (is.null(parInfo)) {
     .sIdx <- which(!prep$isFree & !prep$zPopFix)
+    .oIdx <- which(!prep$zPopFix)
     parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
-                    omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
+                    omegaIdx = .oIdx, omegaNames = paste0("o(", prep$etaNames[.oIdx], ")"),
+                    aNames = names(prep$a))
   }
   ## nonMuTheta="regress": surface the regressed fixed-effect thetas in the
-  ## parameter-history walk.  Their starting values are the ini() estimates at the
-  ## regressed theta indices (0-based `regressThetaIdx0` into the full theta).
+  ## parameter-history walk.  parInfo carries only their names (metadata); their
+  ## starting VALUES (the ini() estimates at the regressed theta indices, 0-based
+  ## `regressThetaIdx0` into the full theta) are passed to .vaeParRow explicitly.
   parInfo$regressNames <- prep$regressNames
-  parInfo$regressVals <- if (length(prep$regressThetaIdx0)) {
+  .regressVals0 <- if (length(prep$regressThetaIdx0)) {
     prep$th[prep$regressThetaIdx0 + 1L]
   } else numeric(0)
-  .row0 <- .vaeParRow(prep$zPop, prep$omega, prep$a, parInfo)
+  .row0 <- .vaeParRow(prep$zPop, prep$omega, prep$a, parInfo, regressVals = .regressVals0)
 
   ## prep buffers the C++ loop needs, in the layout vaeTrainCpp_ unpacks: 0-based
   ## theta indices (-1 for a free/mixture eta), error-type codes, per-subject
@@ -216,13 +223,17 @@
   ## parameter-history / iteration-print names: structural typical values on the
   ## mu-referenced etas, the omega diagonal, and the residual error params
   .map <- .foceiEtaThetaMap(.ui)
-  ## printed structural columns: the estimated latent-space typical values, i.e.
-  ## the non-free etas whose backing theta is NOT fixed (a fixed theta -- e.g.
-  ## nonMuTheta="fix" -- is held at ini and excluded from the iteration print)
+  ## printed structural + omega columns: the estimated latent-space parameters,
+  ## i.e. the dims whose backing theta is NOT fixed.  A fixed theta (e.g.
+  ## nonMuTheta="fix") is held at ini with a fixed omega, so BOTH its typical value
+  ## (structIdx also drops free/mixture etas) and its omega (omegaIdx) are excluded
+  ## from the iteration print.
   .structIdx <- which(!.prep$isFree & !.prep$zPopFix)
+  .omegaIdx <- which(!.prep$zPopFix)
   .parInfo <- list(structIdx = .structIdx,
                    structNames = .map$thetaForEta[.structIdx],
-                   omegaNames = paste0("o(", .prep$etaNames, ")"),
+                   omegaIdx = .omegaIdx,
+                   omegaNames = paste0("o(", .prep$etaNames[.omegaIdx], ")"),
                    aNames = names(.prep$a))
   ## back-transform codes for the printed walk (X row: exp/expit/probit thetas).
   ## Include the nonMuTheta="regress" thetas so their column gets the right
