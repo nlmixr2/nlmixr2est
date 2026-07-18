@@ -58,6 +58,16 @@ nmTest({
     }
   })
 
+  test_that("covSelectAlpha is tunable in vaeControl and defaults to the reference 2", {
+    expect_equal(vaeControl()$covSelectAlpha, 2)
+    expect_equal(vaeControl(covSelectAlpha = 3)$covSelectAlpha, 3)
+    ## round-trips through the list -> vaeControl reconstruction used at dispatch
+    ctl <- vaeControl(covSelectAlpha = 1.5)
+    expect_equal(do.call(vaeControl, unclass(ctl))$covSelectAlpha, 1.5)
+    ## the ramp multiplier must be >= 1 (penalty is only ever inflated early)
+    expect_error(vaeControl(covSelectAlpha = 0.5))
+  })
+
   test_that("nCov=32 selects the exact sparse support quickly (regresses 1u<<32 overflow)", {
     g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
     ci <- g$E; ip <- ci$inputs

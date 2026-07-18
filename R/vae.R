@@ -34,6 +34,12 @@
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
 #'   covariate selection during training; when `FALSE` fit the given fixed
 #'   covariate structure only (faster population-only mode).
+#' @param covSelectAlpha Starting multiplier for the covariate-selection L0
+#'   penalty, ramped linearly from `covSelectAlpha` down to `1` over the
+#'   `klWarmup` warmup iterations and held at `1` afterward (matching the
+#'   reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
+#'   penalize covariate entry more heavily early in training; `1` disables the
+#'   ramp.
 #' @param objf Which objective-function value is active for AIC/BIC/BICc. Both
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
@@ -59,6 +65,7 @@ vaeControl <- function(seed = 42L,
                        burnInLearningRate = 8e-3,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
+                       covSelectAlpha = 2,
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
@@ -102,6 +109,7 @@ vaeControl <- function(seed = 42L,
     checkmate::assertNumeric(sigma0, lower = 0, finite = TRUE, any.missing = FALSE, min.len = 1)
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertLogical(returnVae, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
@@ -179,6 +187,7 @@ vaeControl <- function(seed = 42L,
                burnInLearningRate = burnInLearningRate,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
+               covSelectAlpha = covSelectAlpha,
                likelihood = likelihood,
                objf = objf,
                nIsSample = as.integer(nIsSample),

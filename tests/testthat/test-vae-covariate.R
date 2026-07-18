@@ -97,4 +97,31 @@ nmTest({
     expect_equal(pf["beta_lka_WT", "Back-transformed"],
                  pf["beta_lka_WT", "Estimate"], tolerance = 1e-6)
   })
+
+  ## The L0-penalty warmup ramp (covSelectAlpha) is a distinct step in the
+  ## iteration table -- it must be labeled "CovSel ramp" on the ramp iterations,
+  ## which are exactly the ones that evaluate and print the ELBO objective.
+  test_that("est=vae shows the CovSel ramp step in the iteration print", {
+    skip_on_cran()
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ctl <- vaeControl(itersBurnIn = 2L, iters = 6L, klWarmup = 4L, gammaIter = 5L,
+                      nGradStep = 2L, covariateSelection = TRUE, covSelectAlpha = 2,
+                      print = 1L)
+    tc <- textConnection("msgs", "w", local = TRUE)
+    sink(tc, type = "message")
+    out <- capture.output(
+      suppressWarnings(nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)),
+      type = "output")
+    sink(type = "message"); close(tc)
+    allout <- c(out, msgs)
+    ## the ramp iterations (it < klWarmup) are labeled, and the legend documents it
+    expect_true(any(grepl("CovSel ramp", allout)))
+    expect_true(any(grepl("covariate-selection L0-penalty warmup", allout)))
+  })
 })

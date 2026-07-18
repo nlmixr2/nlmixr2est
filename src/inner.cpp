@@ -10952,6 +10952,7 @@ RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
   // phase legend for the labels shown in the Function-Val cell
   _vaeScale.keyExtra =
     "Burn in: encoder-only burn-in; KL anneal: KL-weight ramp;\n"
+    "CovSel ramp: covariate-selection L0-penalty warmup (alpha ramps to 1);\n"
     "EM: main EM phase; Smooth: EMA-smoothing phase\n";
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   scalePrintHeader(&_vaeScale);
@@ -12945,6 +12946,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const double learningRate = as<double>(control["learningRate"]);
   const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
   const bool covariateSelection = as<bool>(control["covariateSelection"]);
+  const double covSelectAlpha = as<double>(control["covSelectAlpha"]);
   const int printCtl = as<int>(control["print"]);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
@@ -13025,15 +13027,26 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   for (int it = 1; it <= iters; ++it) {
     double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
     arma::vec baseline;
+    // L0-penalty warmup ramp: the per-covariate cost multiplier ramps linearly
+    // from covSelectAlpha (at it=1) down to 1 at it=klWarmup-1, then stays 1 --
+    // matching the reference `alpha_pen = linspace(alpha, 1, kl_iter)` indexed by
+    // the 1-based iteration.  covSelectAlpha==1 (or klWarmup<=1) disables it.
+    double covPenCoef = 1.0;
+    bool covRamp = false;
+    if (klWarmup > 1 && it < klWarmup && covSelectAlpha != 1.0) {
+      covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)it / (double)(klWarmup - 1);
+      covRamp = true;
+    }
     if (doCov) {
       // BICc-ELBO covariate M-step
+      const double covPenalty = covPenCoef * logN;
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
       for (int k = 0; k < zDim; ++k) {
         if (isFreeR[k]) continue;
         arma::vec yk = last.mu.col(k);
-        VaeSubsetFit fit = vaeBestSubsetL0(yk, X, omega[k], logN);
+        VaeSubsetFit fit = vaeBestSubsetL0(yk, X, omega[k], covPenalty);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
@@ -13099,7 +13112,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       last = st;
     }
     elboTrace[it - 1] = esum / Lg;
-    const char* phase = (it <= klWarmup) ? "KL anneal" : (it <= gammaIter) ? "EM" : "Smooth";
+    // the L0-penalty warmup is a distinct step whose objective (the ELBO printed
+    // on this row) is evaluated below, so surface it in the iteration table.
+    const char* phase = (doCov && covRamp) ? "CovSel ramp"
+      : (it <= klWarmup) ? "KL anneal" : (it <= gammaIter) ? "EM" : "Smooth";
     vaeIterPrintRow_(parRow(zPop, omega, a), elboTrace[it - 1], phase);
     Rcpp::checkUserInterrupt();
   }

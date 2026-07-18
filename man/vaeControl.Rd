@@ -16,6 +16,7 @@ vaeControl(
   burnInLearningRate = 0.008,
   sigma0 = NULL,
   covariateSelection = TRUE,
+  covSelectAlpha = 2,
   likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
   nIsSample = 3000L,
@@ -76,6 +77,13 @@ individual parameter. This is distinct from the `ini()` omega.}
 \item{covariateSelection}{When `TRUE` (default) perform automated BICc-ELBO
 covariate selection during training; when `FALSE` fit the given fixed
 covariate structure only (faster population-only mode).}
+
+\item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
+penalty, ramped linearly from `covSelectAlpha` down to `1` over the
+`klWarmup` warmup iterations and held at `1` afterward (matching the
+reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
+penalize covariate entry more heavily early in training; `1` disables the
+ramp.}
 
 \item{likelihood}{Inner likelihood used for the objective, EBEs, and
 gradients, all run through the same FOCEi inner interface: `"focei"`
