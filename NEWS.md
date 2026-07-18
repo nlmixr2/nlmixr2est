@@ -516,6 +516,12 @@
 
 ### Estimation
 
+- `est="saem"` no longer dies with `argument is of length zero` when building the
+  SAEM model list.  Newer `rxode2` (>= 5.1.3) drops the `ar` column from a model's
+  `predDf`, and the SAEM autocorrelation helpers indexed that column directly; they
+  now fall back to the `iniDf` (`err == "ar"`) representation when the column is
+  absent.
+
 - A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`, `foce`,
   `focep`, `agq`, `laplace`, and the `*f` fast variants such as `ifoceif`) that
   needed to restart -- for example after a zero/bad-gradient theta reset -- died
