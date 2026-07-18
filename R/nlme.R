@@ -41,7 +41,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE,
     eventSens=c("jump", "fd"), print=NULL,
-    covMethod=c("analytic", "r,s", "r", "s", "nlme", ""), ...) {
+    covMethod=c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""), ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)

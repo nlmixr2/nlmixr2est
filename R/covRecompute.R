@@ -172,12 +172,11 @@
 #' @return "sa"/"imp" or NA_character_
 #' @noRd
 .covGetDeferred <- function(fit) {
-  # the family controls are reconstructed through the nmObjGet `$` accessor, not
-  # stored as literal env variables -- read them via `$` (do.call keeps the name
-  # a variable) rather than get() on the fit env.
-  for (.cn in c("foceiControl", "saemControl", "nlmControl", "vaeControl",
-                "adviControl", "nlmeControl")) {
-    .ctl <- tryCatch(do.call("$", list(fit, .cn)), error = function(e) NULL)
+  # fit$control is the uniform per-method control accessor (nmObjGetControl);
+  # families that finalize through .foceiFamilyReturn (vae/advi/impmap/np) carry
+  # the deferred request on the internal foceiControl instead.
+  for (.acc in c("control", "foceiControl")) {
+    .ctl <- tryCatch(do.call("$", list(fit, .acc)), error = function(e) NULL)
     .d <- if (is.list(.ctl)) .ctl$covMethodDeferred else NULL
     if (!is.null(.d) && length(.d) == 1L && !is.na(.d) && nzchar(.d)) return(.d)
   }

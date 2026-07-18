@@ -107,13 +107,17 @@
 .npFamilyFit <- function(env, ui, ...) {
   .control <- ui$control
   # the nonparametric kernels do not compute the Monte-Carlo importance-sampling
-  # ("imp") covariance; force it off (impmapControl's default) so the post-fit
-  # recompute installs the FOCEI covariance instead
+  # ("imp") covariance in-kernel; the "imp" default (and explicit imp) recomputes
+  # it post-fit at the converged NP estimates via the decoupled engine
+  .wantImp <- isTRUE(.control$impCov)
   .control$impCov <- FALSE
   .covMethodUser <- .control$covMethod  # restored on the fit env control below
-  if (is.null(.covMethodUser) || identical(as.integer(.covMethodUser), 0L)) {
-    # the inherited "imp" default maps to covMethod=0L for np; recompute the
-    # analytic FOCEI covariance instead of reporting none
+  if (.wantImp) {
+    # NP default: install the decoupled importance-sampling covariance post-fit
+    .control$covMethodDeferred <- "imp"
+    .covMethodUser <- 0L                # no FOCEI recompute; the deferred hook installs imp
+  } else if (is.null(.covMethodUser) || identical(as.integer(.covMethodUser), 0L)) {
+    # an explicit non-imp request that resolved to none -> analytic FOCEI recompute
     .covMethodUser <- 2L
     .control$covType <- "analytic"
   }
