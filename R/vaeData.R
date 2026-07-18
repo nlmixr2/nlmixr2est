@@ -97,7 +97,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' @param data estimation data (ID/TIME/DV/EVID/... columns)
 #' @return list of prepared VAE inputs
 #' @noRd
-.vaeDataPrep <- function(ui, data) {
+.vaeDataPrep <- function(ui, data, control = NULL) {
   .idf <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)
   .etaNames <- .map$etaNames
@@ -136,6 +136,24 @@ vaeCovariates <- function(data, warn = TRUE) {
   .zPopLower <- rep(-Inf, .neta); .zPopUpper <- rep(Inf, .neta)
   .zPopLower[!.isFree] <- as.numeric(.thRows$lower[.zPopThetaIdx[!.isFree]])
   .zPopUpper[!.isFree] <- as.numeric(.thRows$upper[.zPopThetaIdx[!.isFree]])
+
+  ## nonMuTheta="regress": the non-mu-referenced fixed-effect thetas (no eta, no
+  ## error, no covariate coefficient) are estimated directly by a bounded bobyqa
+  ## regression in the M-step.  Carry their 0-based index into the full theta
+  ## vector (`.th`, ntheta order) plus the ini() bounds (NA -> +-Inf).
+  .regressNames <- character(0)
+  .regressThetaIdx0 <- integer(0)
+  .regressLower <- numeric(0); .regressUpper <- numeric(0)
+  if (identical(control$nonMuTheta, "regress")) {
+    .regressNames <- .vaeNonMuThetas(ui)
+    if (length(.regressNames) > 0L) {
+      .ri <- match(.regressNames, .thRows$name)
+      .regressThetaIdx0 <- as.integer(.ri - 1L)
+      .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
+      .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
+      .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+    }
+  }
 
   ## residual error params (all of them, in theta order): value, theta index,
   ## type (add/prop/...), and bounds. Combined models have >1 row; log-likelihood
@@ -198,6 +216,8 @@ vaeCovariates <- function(data, warn = TRUE) {
        zPopLower = .zPopLower, zPopUpper = .zPopUpper,
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
+       regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
+       regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,

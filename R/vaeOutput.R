@@ -71,6 +71,15 @@
     .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
     ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
   }
+  ## 3. non-mu thetas estimated by the bobyqa regression (nonMuTheta="regress"):
+  ## these have no eta, so write each regressed value straight into its ini() est.
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
+      !is.null(names(fit$regressTheta))) {
+    for (rn in names(fit$regressTheta)) {
+      .rv <- fit$regressTheta[[rn]]
+      if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
+    }
+  }
   ## The incremental model()/ini() edits above leave the ui's cached `covariates`
   ## stale: an injected covariate-coefficient theta (beta_<par>_<cov>) is added to
   ## the iniDf as a theta but ALSO stays listed as a covariate.  The augmented
@@ -136,6 +145,28 @@
   .ui <- env$ui
   .control <- env$vaeControl
   .ui2 <- .vaeUpdateModel(.ui, fit)
+  ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
+  ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
+  ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
+  ## model and its column from the EBE matrix -- the parameter is reported as a
+  ## plain fixed effect.
+  ## per-fit record (set by the preprocess hook, copied onto env by runPreProcess);
+  ## fall back to the global only for direct callers that bypass the hook wrapper
+  .injEtas <- if (exists("vaeNonMuEtas", envir = env, inherits = FALSE)) {
+    env$vaeNonMuEtas
+  } else {
+    nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
+  }
+  if (length(.injEtas) > 0L) {
+    .injEtas <- .injEtas[.injEtas %in% fit$prep$etaNames]
+    if (length(.injEtas) > 0L) {
+      .ui2 <- rmEta(.ui2, .injEtas)
+      .keep <- !(fit$prep$etaNames %in% .injEtas)
+      fit$mu <- fit$mu[, .keep, drop = FALSE]
+      fit$zPopMat <- fit$zPopMat[, .keep, drop = FALSE]
+      fit$prep$etaNames <- fit$prep$etaNames[.keep]
+    }
+  }
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
   ## encoder etas as the FOCEi inner starting point [nsub, neta] in eta order

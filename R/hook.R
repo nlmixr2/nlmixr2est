@@ -320,5 +320,11 @@ preProcessHooks <- function(name=NULL) {
   # post-estimation restore in .nlmixrEstUpdatesOrigModel() runs (issue #741)
   env$nlmixrPureInputUi <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
   env$uiUnfix <- nlmixr2global$nlmixr2EstEnv$uiUnfix
+  # Same reason for the collected hook warnings: a nested estimation call resets
+  # the global before the wrapper folds them into $runInfo, so keep a per-call copy
+  env$preProcessHookWarnings <- .ret[[2]]
+  # Per-call copy of the VAE-injected non-mu etas so concurrent fits in one R
+  # session cannot overwrite each other's record before the output collapse reads it
+  env$vaeNonMuEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
   .ret[[1]]
 }
