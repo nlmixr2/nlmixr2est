@@ -13,6 +13,9 @@
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
                            "covType",
+                           # foreign covariance ("sa"/"imp") deferred to a post-fit
+                           # recompute; internal so a built control round-trips.
+                           "covMethodDeferred",
                            # subject-constant covariates stashed by .foceiFamilyReturn
                            # for the analytic covariate-coefficient reuse; internal so
                            # a built control round-trips (e.g. posthoc re-validation).
@@ -672,7 +675,7 @@ foceiControl <- function(sigdig = 4, #
                          derivMethod = c("switch", "forward", "central"), #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
-                         covMethod = c("analytic", "r,s", "r", "s", ""), #
+                         covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
@@ -1041,6 +1044,9 @@ foceiControl <- function(sigdig = 4, #
   # solver as the (internal, derived) covType string, which also travels via ... so a
   # built control round-trips.
   covType <- "fd"
+  # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
+  # recompute them post-fit at the converged estimates (see .covRecompute).
+  covMethodDeferred <- NA_character_
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
     .ct <- list(...)$covType
@@ -1050,7 +1056,10 @@ foceiControl <- function(sigdig = 4, #
       covMethod <- 0L
     } else {
       covMethod <- match.arg(covMethod)
-      if (identical(covMethod, "analytic")) {
+      if (covMethod %in% c("sa", "imp")) {
+        covMethodDeferred <- covMethod
+        covMethod <- 0L
+      } else if (identical(covMethod, "analytic")) {
         covType <- "analytic"
         covMethod <- 2L
       } else {
@@ -1058,6 +1067,10 @@ foceiControl <- function(sigdig = 4, #
         covMethod <- setNames(.covMethodIdx[covMethod], NULL)
       }
     }
+  }
+  # round-tripped controls carry the deferred request as a ... field
+  if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
+    covMethodDeferred <- list(...)$covMethodDeferred
   }
   if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
                                                       finite = TRUE, any.missing = FALSE)
@@ -1294,6 +1307,7 @@ foceiControl <- function(sigdig = 4, #
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
     covType = covType,
+    covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,

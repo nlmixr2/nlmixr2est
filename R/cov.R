@@ -383,11 +383,34 @@ setCov <- function(fit, method) {
       return(invisible(fit))
     }
   }
-  # not cached: the analytic / finite-difference methods can be recomputed on the
-  # full model at the converged estimates (.setCov refits with est="none")
-  if (method %in% c("analytic", "r,s", "r", "s")) {
+  # analytic: compute the EXACT analytic observed information; on any failure the
+  # covariance is left UNCHANGED -- it is never silently downgraded to the "r,s"
+  # finite-difference covariance (which the C++ cov chain would otherwise fall
+  # back to and mislabel "analytic").
+  if (identical(method, "analytic")) {
+    .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+    if (is.null(.r) || !is.matrix(.r$cov) || !all(is.finite(.r$cov)) ||
+          !isTRUE(.covInstallResult(.env, list(cov = .r$cov, covMethod = "analytic")))) {
+      stop("covMethod=\"analytic\" could not be computed for this fit; the covariance is left unchanged",
+           call. = FALSE)
+    }
+    assign(".covAnalytic", .r, envir = .env)
+    return(invisible(fit))
+  }
+  # not cached: the finite-difference methods can be recomputed on the full model
+  # at the converged estimates (.setCov refits with est="none")
+  if (method %in% c("r,s", "r", "s")) {
     .setCov(fit, covMethod = method)
     .env$covMethod <- method
+    return(invisible(fit))
+  }
+  # sa/imp: decoupled recompute at the converged estimates (works on any fit)
+  if (method %in% c("sa", "imp")) {
+    .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
+    if (!isTRUE(.covInstallResult(.env, .r))) {
+      stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
+           call. = FALSE)
+    }
     return(invisible(fit))
   }
   stop("different covariance types have not been calculated",
