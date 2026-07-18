@@ -183,6 +183,7 @@
        intercept = as.numeric(.fit$intercept), beta = .fit$beta, selected = .selected,
        covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
        mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
+       regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

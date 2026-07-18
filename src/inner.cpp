@@ -12902,6 +12902,60 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
   return out;
 }
 
+// nonMuTheta="regress": bounded bobyqa regression of the non-mu fixed-effect
+// thetas against the FOCEi inner likelihood at the current encoder etas.  Mirrors
+// SAEM's refinePhi0Lik / gPhi0ObjR pattern: the objective stays in C++ (fast) and
+// only the bounded optimizer orchestration is the shared R helper .boundedResidOpt.
+// Context is passed through file-scope globals set by the M-step before each call.
+static arma::vec gVaeRegThBase;      // full base theta (regress slots overwritten per eval)
+static arma::uvec gVaeRegIdx;        // indices into the full theta of the regress params
+static arma::ivec gVaeRegZpopIdx0;   // zPopThetaIdx0 for vaeBuildTh
+static arma::ivec gVaeRegErrIdx0;    // errThetaIdx0 for vaeBuildTh
+static arma::vec gVaeRegBaseline;    // population center (zDim) -- inner eta offset
+static arma::vec gVaeRegA;           // residual-error params
+static arma::vec gVaeRegOmega;       // omega diagonal
+static arma::mat gVaeRegEtaCentered; // last.mu - baseline  [N, zDim]
+static int gVaeRegCores;
+static int gVaeRegNMix;
+static arma::vec gVaeRegMixProb;
+
+static double gVaeThetaObjR(Rcpp::NumericVector r) {
+  arma::vec thc = gVaeRegThBase;
+  for (arma::uword j = 0; j < gVaeRegIdx.n_elem; ++j) thc[gVaeRegIdx[j]] = r[j];
+  arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline, gVaeRegErrIdx0, gVaeRegA);
+  vaeInnerUpdateParCore(thv, gVaeRegOmega);
+  const int N = (int)gVaeRegEtaCentered.n_rows;
+  const int nMix = gVaeRegNMix;
+  arma::mat etaEval = gVaeRegEtaCentered;
+  if (nMix > 1) {
+    etaEval.set_size(nMix * N, gVaeRegEtaCentered.n_cols);
+    for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = gVaeRegEtaCentered;
+  }
+  arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(etaEval, gVaeRegCores, false, false, obj, lp, pf);
+  double v;
+  if (nMix > 1) {
+    // per-subject mixture -2LL via log-sum-exp (same as vaeElboStepCpp)
+    v = 0;
+    for (int i = 0; i < N; ++i) {
+      double mmax = -std::numeric_limits<double>::infinity();
+      arma::vec ll(nMix);
+      for (int m = 0; m < nMix; ++m) {
+        double lv = std::log(gVaeRegMixProb[m]) - 0.5 * obj[m * N + i];
+        if (!R_FINITE(lv)) lv = -std::numeric_limits<double>::infinity();
+        ll[m] = lv; if (lv > mmax) mmax = lv;
+      }
+      if (R_FINITE(mmax)) {
+        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
+        v += -2 * (mmax + std::log(se));
+      }
+    }
+  } else {
+    v = arma::accu(obj);
+  }
+  return R_FINITE(v) ? v : 1e18;   // penalize a non-finite candidate
+}
+
 //[[Rcpp::export]]
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
                   int cores, NumericVector row0, CharacterVector parNames,
@@ -12933,6 +12987,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::vec errLower = as<arma::vec>(prep["errLower"]);
   arma::vec errUpper = as<arma::vec>(prep["errUpper"]);
   arma::ivec errTypeCode = vaeToIvec(prep["errTypeCode"]);
+  // nonMuTheta="regress": indices (into the full theta) + ini bounds of the
+  // fixed-effect thetas re-optimized each M-step by the bounded bobyqa regression
+  // (empty in every other mode -> the regression block is skipped).
+  arma::ivec regThetaIdx0v = vaeToIvec(prep["regressThetaIdx0"]);
+  arma::uvec regIdx(regThetaIdx0v.n_elem);
+  for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
+  arma::vec regLower = as<arma::vec>(prep["regressLower"]);
+  arma::vec regUpper = as<arma::vec>(prep["regressUpper"]);
   List yListR = prep["yList"];
   std::vector<std::vector<double> > yList(N);
   for (int i = 0; i < N; ++i) { NumericVector yi = yListR[i]; yList[i].assign(yi.begin(), yi.end()); }
@@ -13092,6 +13154,38 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       isCovStep = false;
       baseline = zPop;
     }
+    // nonMuTheta="regress" M-step: re-optimize the non-mu fixed-effect thetas
+    // with a bounded bobyqa regression against the FOCEi inner likelihood at the
+    // current encoder etas (last.mu centered by baseline), blended with the gain
+    // gamma and clamped to the ini bounds.  Runs once the KL warmup is over (the
+    // encoder is informative), matching SAEM's kiter>=niter_phi0 gate.
+    if (regIdx.n_elem > 0 && it > klWarmup) {
+      gVaeRegThBase = th;
+      gVaeRegIdx = regIdx;
+      gVaeRegZpopIdx0 = zPopThetaIdx0;
+      gVaeRegErrIdx0 = errThetaIdx0;
+      gVaeRegBaseline = baseline;
+      gVaeRegA = a;
+      gVaeRegOmega = omega;
+      gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
+      gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
+      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+      Rcpp::InternalFunction fn(&gVaeThetaObjR);
+      int m = (int)regIdx.n_elem;
+      Rcpp::NumericVector par0(m), lo(m), hi(m);
+      for (int j = 0; j < m; ++j) { par0[j] = th[regIdx[j]]; lo[j] = regLower[j]; hi[j] = regUpper[j]; }
+      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
+                                  Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi);
+      Rcpp::NumericVector rx = ret["x"];
+      for (int j = 0; j < m; ++j) {
+        double cur = th[regIdx[j]];
+        double upd = cur + gamma * (rx[j] - cur);
+        if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
+        if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
+        if (R_FINITE(upd)) th[regIdx[j]] = upd;
+      }
+    }
     double alphaKL = (it <= klWarmup) ? 0.01 + 0.99 * (it - 1) / std::max(1, klWarmup - 1) : 1.0;
     double esum = 0;
     for (int l = 1; l <= Lg; ++l) {
@@ -13129,11 +13223,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                                 _["bhh"] = bhh, _["fcW"] = fcW, _["fcB"] = fcB);
   IntegerVector mixnumOut(N);
   for (int i = 0; i < N; ++i) mixnumOut[i] = last.mixnum[i];
+  arma::vec regressThetaOut = (regIdx.n_elem > 0) ? arma::vec(th.elem(regIdx)) : arma::vec();
   return List::create(_["params"] = paramsOut, _["zPop"] = zPop, _["omega"] = omega,
                       _["a"] = a, _["intercept"] = intercept, _["beta"] = beta,
                       _["selected"] = selected, _["elboTrace"] = elboTrace,
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
-                      _["mixnum"] = mixnumOut);
+                      _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE
