@@ -397,11 +397,12 @@ rxUiGet.saemArActive <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
   .iniDf <- .ui$iniDf
-  # rxode2 >= 5.1.3 dropped the predDf `ar` column; AR is now expressed only
-  # through iniDf (err == "ar"), so treat a missing column as all-NA.
+  # Some rxode2 versions omit the predDf `ar` column entirely, expressing AR
+  # only through iniDf (err == "ar"); index it only when it is actually present
+  # for this condition, otherwise fall back to iniDf.
   .ar <- .predDf$ar
   vapply(seq_along(.predDf$cond), function(i) {
-    if (!is.null(.ar) && !is.na(.ar[i])) return(1L)
+    if (length(.ar) >= i && !is.na(.ar[i])) return(1L)
     if (isTRUE(any(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i]))) return(1L)
     0L
   }, integer(1), USE.NAMES=FALSE)
@@ -415,7 +416,7 @@ rxUiGet.saemArCor <- function(x, ...) {
   .iniDf <- .ui$iniDf
   .ar <- .predDf$ar
   vapply(seq_along(.predDf$cond), function(i) {
-    if (!is.null(.ar) && !is.na(.ar[i])) {
+    if (length(.ar) >= i && !is.na(.ar[i])) {
       .v <- suppressWarnings(as.numeric(.ar[i]))
       if (!is.na(.v)) return(.v)
     }
