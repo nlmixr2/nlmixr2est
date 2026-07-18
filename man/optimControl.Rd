@@ -53,7 +53,8 @@ optimControl(
   sensMethod = c("default", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", "optim", ""),
+  covMethod = c("r", "optim", "sa", "imp", ""),
+  covMethodDeferred = NA_character_,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -269,6 +270,11 @@ will calculate tables. By default this is \code{TRUE}}
 \item{covMethod}{allows selection of "r", which uses nlmixr2's
 `nlmixr2Hess()` for the hessian calculation or "optim" which uses
 the hessian from `stats::optim(.., hessian=TRUE)`}
+
+\item{covMethodDeferred}{Internal.  When a foreign covariance ("sa"/"imp")
+is requested, it is stashed here and computed post-fit at the converged
+estimates by the decoupled recompute engine (\code{setCov()} uses the same
+path); \code{NA} otherwise.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

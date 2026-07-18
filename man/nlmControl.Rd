@@ -47,7 +47,8 @@ nlmControl(
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", "nlm", ""),
+  covMethod = c("r", "nlm", "sa", "imp", ""),
+  covMethodDeferred = NA_character_,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -248,6 +249,11 @@ will calculate tables. By default this is \code{TRUE}}
 \item{covMethod}{"r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
 "nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
 "nlm" when using nlmixr2's hessian/gradient for solving.}
+
+\item{covMethodDeferred}{Internal.  When a foreign covariance ("sa"/"imp")
+is requested, it is stashed here and computed post-fit at the converged
+estimates by the decoupled recompute engine (\code{setCov()} uses the same
+path); \code{NA} otherwise.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

@@ -37,7 +37,8 @@ lbfgsb3cControl(
   sensMethod = c("default", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "sa", "imp", ""),
+  covMethodDeferred = NA_character_,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -179,8 +180,9 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
-\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
-default) uses the exact analytic observed-information R-matrix (reported as
+\item{covMethod}{Method for calculating the covariance.  \code{"r,s"} (the
+default) is the sandwich estimator (see below).  \code{"analytic"}
+uses the exact analytic observed-information R-matrix (reported as
 \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
 errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
 error, mu-referenced/covariate/other structural parameters (and
@@ -193,7 +195,16 @@ finite-difference methods use R (the Hessian) and S (the sum of individual
 gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
-\code{""} to skip the covariance step.}
+\code{""} to skip the covariance step.  \code{"sa"} (SAEM Louis
+stochastic-approximation FIM) and \code{"imp"} (importance-sampling
+Monte-Carlo observed information) are also accepted for any method; they
+are computed post-fit at the converged estimates by the decoupled
+recompute engine.}
+
+\item{covMethodDeferred}{Internal.  When a foreign covariance ("sa"/"imp")
+is requested, it is stashed here and computed post-fit at the converged
+estimates by the decoupled recompute engine (\code{setCov()} uses the same
+path); \code{NA} otherwise.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

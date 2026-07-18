@@ -78,6 +78,11 @@
 #'
 #'  "" Does not calculate the covariance step.
 #'
+#' @param covMethodDeferred Internal.  When a foreign covariance ("sa"/"imp")
+#'   is requested, it is stashed here and computed post-fit at the converged
+#'   estimates by the decoupled recompute engine (\code{setCov()} uses the same
+#'   path); \code{NA} otherwise.
+#'
 #' @param covFull Boolean (default \code{TRUE}) indicating the covariance
 #'   should include every estimated population parameter -- the structural and
 #'   residual thetas plus the \code{Omega} variance/covariance elements -- named

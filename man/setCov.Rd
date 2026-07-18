@@ -16,7 +16,14 @@ options for the choices)}
 Fit object with covariance updated
 }
 \description{
-Set the covariance type based on prior calculated covariances
+Switches a completed fit's covariance to \code{method}.  A previously
+computed covariance is re-installed from the cache; otherwise it is
+recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
+\code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
+Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
+recompute engine -- so any covariance can be applied to any fit.  When
+\code{"analytic"} cannot be computed the covariance is left unchanged (it is
+never silently downgraded to \code{"r,s"}).
 }
 \seealso{
 \code{\link{foceiControl}()}, \code{\link{saemControl}()}
