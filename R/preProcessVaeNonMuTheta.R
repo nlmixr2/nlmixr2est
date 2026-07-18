@@ -108,6 +108,15 @@ isTRUE2 <- function(x) !is.na(x) & x
   if (identical(.mode, "none")) return(NULL)
   .thetas <- .vaeNonMuThetas(ui)
   if (length(.thetas) == 0L) return(NULL)
+  if (identical(.mode, "regress")) {
+    ## "regress": no eta is injected -- the thetas stay plain fixed effects and are
+    ## estimated by a bounded bobyqa regression in the VAE M-step (see
+    ## .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI unchanged.
+    warning("est=\"vae\": the following non-mu-referenced population parameter(s) ",
+            "will be estimated by a bounded bobyqa regression (nonMuTheta=\"regress\"): ",
+            paste(.thetas, collapse = ", "), call. = FALSE)
+    return(NULL)
+  }
   .omega <- if (is.null(control$nonMuEtaOmega)) 0.01 else control$nonMuEtaOmega
   .inj <- .vaeInjectNonMuEtas(ui, .thetas, .omega, fix = identical(.mode, "fix"))
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- .inj$etas
