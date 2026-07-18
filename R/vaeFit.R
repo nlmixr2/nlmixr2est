@@ -147,7 +147,7 @@
   ## structural names (the mu-referenced theta names) and the back-transform
   ## codes (`xform`, from .iterPrintXParFromUi) -- default to the eta names.
   if (is.null(parInfo)) {
-    .sIdx <- which(!prep$isFree)
+    .sIdx <- which(!prep$isFree & !prep$zPopFix)
     parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
                     omegaNames = paste0("o(", prep$etaNames, ")"), aNames = names(prep$a))
   }
@@ -173,6 +173,8 @@
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
   prepC$regressLower <- as.numeric(prep$regressLower)
   prepC$regressUpper <- as.numeric(prep$regressUpper)
+  ## latent dims whose structural theta is fixed (held at ini by the M-step)
+  prepC$zPopFix <- as.logical(prep$zPopFix)
 
   .cores <- tryCatch({
     .c <- control$rxControl$cores
@@ -214,7 +216,10 @@
   ## parameter-history / iteration-print names: structural typical values on the
   ## mu-referenced etas, the omega diagonal, and the residual error params
   .map <- .foceiEtaThetaMap(.ui)
-  .structIdx <- which(!.prep$isFree)
+  ## printed structural columns: the estimated latent-space typical values, i.e.
+  ## the non-free etas whose backing theta is NOT fixed (a fixed theta -- e.g.
+  ## nonMuTheta="fix" -- is held at ini and excluded from the iteration print)
+  .structIdx <- which(!.prep$isFree & !.prep$zPopFix)
   .parInfo <- list(structIdx = .structIdx,
                    structNames = .map$thetaForEta[.structIdx],
                    omegaNames = paste0("o(", .prep$etaNames, ")"),

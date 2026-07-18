@@ -30,7 +30,7 @@ nmTest({
     expect_true(all(c("tR0", "tIC50") %in% r$ui$muRefDataFrame$theta))  # now mu-referenced
   })
 
-  test_that("nonMuTheta='fix' holds the injected omega fixed", {
+  test_that("nonMuTheta='fix' holds the injected omega AND the theta fixed", {
     ui <- rxode2::assertRxUi(.nmt())
     r <- suppressWarnings(suppressMessages(
       .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "fix", nonMuEtaOmega = 0.001))))
@@ -38,6 +38,13 @@ nmTest({
     inj <- idf[!is.na(idf$neta1) & idf$neta1 == idf$neta2 & idf$name != "eta.kout", ]
     expect_true(all(inj$est == 0.001))
     expect_true(all(inj$fix))
+    ## the paired structural thetas are held fixed too (the fixed effect is not
+    ## estimated in "fix" mode)
+    expect_true(all(idf$fix[idf$name %in% c("tR0", "tIC50") & !is.na(idf$ntheta)]))
+    ## prep flags those latent dims as zPopFix so the M-step holds them at ini
+    p <- .vaeDataPrep(r$ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+                      vaeControl(nonMuTheta = "fix"))
+    expect_true(any(p$zPopFix))
   })
 
   test_that("nonMuTheta='none' injects nothing", {
@@ -138,5 +145,29 @@ nmTest({
     .last <- fit$parHistData[nrow(fit$parHistData), ]
     expect_equal(.last[["lke"]], exp(fit$theta[["lke"]]), tolerance = 1e-3)
     expect_equal(.last[["lV"]], exp(fit$theta[["lV"]]), tolerance = 1e-3)
+  })
+
+  test_that("nonMuTheta='fix' holds the theta at ini and omits it from the print", {
+    skip_on_cran()
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32); eta.ka ~ 0.3; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke); V <- exp(lV)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ctl <- vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
+                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
+                      nonMuTheta = "fix")
+    fit <- suppressWarnings(suppressMessages(
+      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    ## the fixed effects stay exactly at their ini() value (not estimated) ...
+    expect_equal(fit$theta[["lke"]], log(0.086), tolerance = 1e-8)
+    expect_equal(fit$theta[["lV"]], log(32), tolerance = 1e-8)
+    ## ... are reported as fixed, with the injected eta dropped ...
+    idf <- fit$iniDf
+    expect_true(all(idf$fix[idf$name %in% c("lke", "lV") & !is.na(idf$ntheta)]))
+    expect_equal(idf[!is.na(idf$neta1) & idf$neta1 == idf$neta2, "name"], "eta.ka")
+    ## ... and are NOT shown in the iteration table / parameter history
+    expect_false(any(c("lke", "lV") %in% names(fit$parHistData)))
   })
 })

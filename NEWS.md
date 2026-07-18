@@ -11,9 +11,11 @@
   (bounds from the `ini()` lower/upper, blended with the M-step gain), recovering a
   no-random-effect population parameter without adding a spurious random effect.
   The eta-injection alternatives estimate it as `theta + mean(eta)` (the temporary
-  eta is dropped from the output model): `"eta"` estimates the injected omega,
-  `"fix"` holds it fixed at `nonMuEtaOmega`; `"none"` keeps the old freeze behavior.
-  A `$runInfo` note lists which parameters were converted.
+  eta is dropped from the output model): `"eta"` estimates the injected omega and
+  the typical value; `"fix"` holds both the injected omega AND the typical-value
+  theta fixed at their `ini()` values (nothing about the parameter is estimated, so
+  it does not appear in the iteration table); `"none"` keeps the old freeze
+  behavior.  A `$runInfo` note lists which parameters were converted.
 
 - The analytic observed-information covariance is now the preferred `covMethod`
   across the mixed-model estimation methods, falling back to each method's
