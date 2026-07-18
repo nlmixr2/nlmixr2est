@@ -88,12 +88,33 @@ f <- nlmixr2(one.cmt, theo_sd, "saem")
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
-#> Error: argument is of length zero
+#> ℹ calculate uninformed etas
+#> ℹ done
+#> covMethod="sa" could not be computed; using the linearized FIM
+#> Calculating covariance matrix
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of saem model...
+#> ✔ done
+#> → finding duplicate expressions in saem predOnly model 0...
+#> → finding duplicate expressions in saem predOnly model 1...
+#> → finding duplicate expressions in saem predOnly model 2...
+#> → optimizing duplicate expressions in saem predOnly model 2...
+#> ✔ done
+#>  
+#>  
+#> → Calculating residuals/tables
+#> ✔ done
+#> → compress origData in nlmixr2 object, save 6584
+#> → compress parHistData in nlmixr2 object, save 8592
+#> → compress phiM in nlmixr2 object, save 446912
 
 # even though you may have forgotten to add the NPDE, you can add it to the data.frame:
 
 f <- addNpde(f)
-#> Error: object 'f' not found
+#> → Add NPDE
+#>  
+#>  
+#> ✔ done
 
 # }
 ```

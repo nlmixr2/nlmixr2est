@@ -16,15 +16,16 @@ List of supported nlmixr2 estimation options (est=...)
 
 ``` r
 nlmixr2AllEst()
-#>  [1] "advi"       "agq"        "bobyqa"     "fo"         "foce"      
-#>  [6] "focef"      "focei"      "foceif"     "focep"      "focepf"    
-#> [11] "foi"        "fsaem"      "iagq"       "ifoce"      "ifocef"    
-#> [16] "ifocei"     "ifoceif"    "ifocep"     "ifocepf"    "ilaplace"  
-#> [21] "imp"        "impmap"     "inpag"      "inpb"       "laplace"   
-#> [26] "lbfgsb3c"   "magq"       "mfoce"      "mfocef"     "mfocei"    
-#> [31] "mfoceif"    "mfocep"     "mfocepf"    "mlaplace"   "mnpag"     
-#> [36] "mnpb"       "n1qn1"      "newuoa"     "nlm"        "nlme"      
-#> [41] "nlminb"     "nls"        "npag"       "npb"        "optim"     
-#> [46] "posthoc"    "predict"    "qrpem"      "rxSolve"    "saem"      
-#> [51] "simulate"   "simulation" "uobyqa"     "vae"       
+#>  [1] "advi"       "agq"        "agqf"       "bobyqa"     "fo"        
+#>  [6] "foce"       "focef"      "focei"      "foceif"     "focep"     
+#> [11] "focepf"     "foi"        "fsaem"      "iagq"       "iagqf"     
+#> [16] "ifoce"      "ifocef"     "ifocei"     "ifoceif"    "ifocep"    
+#> [21] "ifocepf"    "ilaplace"   "imp"        "impmap"     "inpag"     
+#> [26] "inpb"       "laplace"    "lbfgsb3c"   "magq"       "magqf"     
+#> [31] "mfoce"      "mfocef"     "mfocei"     "mfoceif"    "mfocep"    
+#> [36] "mfocepf"    "mlaplace"   "mnpag"      "mnpb"       "n1qn1"     
+#> [41] "newuoa"     "nlm"        "nlme"       "nlminb"     "nls"       
+#> [46] "npag"       "npb"        "optim"      "posthoc"    "predict"   
+#> [51] "qrpem"      "rxSolve"    "saem"       "simulate"   "simulation"
+#> [56] "uobyqa"     "vae"       
 ```

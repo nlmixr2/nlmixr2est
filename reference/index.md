@@ -46,6 +46,9 @@
   : Preprocess the zero omegas
 - [`.preProcessLinCmtOde()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessLinCmtOde.md)
   : Translate a mixed \`linCmt()\`/ODE model to all-ODEs
+- [`.preProcessVaeNonMuTheta()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessVaeNonMuTheta.md)
+  : VAE preprocessing hook: inject etas for non-mu-referenced thetas per
+  vaeControl(nonMuTheta=).
 - [`.preProcessZeroOmega()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.md)
   : Preprocess the zero omegas
 - [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)

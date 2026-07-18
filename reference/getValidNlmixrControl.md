@@ -47,6 +47,15 @@ getValidNlmixrCtl(control)
 # S3 method for class 'ifocepf'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'agqf'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'magqf'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'iagqf'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'focep'
 getValidNlmixrCtl(control)
 

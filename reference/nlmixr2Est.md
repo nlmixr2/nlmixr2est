@@ -53,6 +53,15 @@ nlmixr2Est(env, ...)
 # S3 method for class 'ifocepf'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'agqf'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'magqf'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'iagqf'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'focep'
 nlmixr2Est(env, ...)
 

@@ -4,6 +4,24 @@
 
 ### New features
 
+- `est="vae"` can now estimate structural population parameters that
+  have no random effect (are not mu-referenced). Previously such a
+  `theta` was frozen at its
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) value
+  because the VAE only estimates parameters in the latent space.
+  `vaeControl(nonMuTheta=)` selects the treatment: `"regress"` (default,
+  matching `saemControl(nonMuTheta=)`) injects no eta and estimates each
+  such theta directly by a bounded `bobyqa` regression against the FOCEi
+  inner likelihood every M-step (bounds from the
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  lower/upper, blended with the M-step gain), recovering a
+  no-random-effect population parameter without adding a spurious random
+  effect. The eta-injection alternatives estimate it as
+  `theta + mean(eta)` (the temporary eta is dropped from the output
+  model): `"eta"` estimates the injected omega, `"fix"` holds it fixed
+  at `nonMuEtaOmega`; `"none"` keeps the old freeze behavior. A
+  `$runInfo` note lists which parameters were converted.
+
 - The analytic observed-information covariance is now the preferred
   `covMethod` across the mixed-model estimation methods, falling back to
   each method’s previous default when a model is out of analytic scope:
@@ -62,6 +80,36 @@
   the fit (add with
   [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
   for non-focei methods).
+
+- `est="agq"` now supports the analytic outer gradient
+  (`agqControl(fast=TRUE)`), which was previously available only to the
+  FOCEi family. The AGQ objective is the FOCEi objective with one term
+  swapped – `l(etahat)` becomes `log(sum_k a_k)` over the quadrature
+  nodes, while the `log det`, Omega and tbs terms are unchanged – so its
+  gradient reuses the same sensitivity solve and adds the node terms
+  plus `tr(Ht^-1 dHt/dp)` for the node placement. As with FOCEi this
+  replaces the finite-difference outer gradient, so it is exact rather
+  than a difference approximation and costs one augmented solve instead
+  of one extra solve per parameter. The quadrature nodes solve a cheaper
+  1st-order model than the eta-hat point needs (they never read the
+  2nd-order block), which is where most of the node cost goes once the
+  grid grows. Requires `interaction=TRUE`; a fit that cannot use it
+  falls back to finite differences rather than failing.
+
+- `covType="analytic"` now covers `est="agq"` as well (it previously
+  declined for `nAGQ > 1` and fell back to the finite-difference
+  covariance). The AGQ observed information is the FOCEi one with the
+  same single term swapped, so the `log det` half is reused unchanged
+  and only the data half becomes an expectation over the quadrature
+  nodes plus a covariance between their score contributions. At `nAGQ=1`
+  it reduces to the FOCEi observed information exactly, and the FOCEi
+  and Laplace results are unchanged. Validated against a
+  finite-difference oracle (tight ODE tolerance, Richardson
+  extrapolation): the AGQ standard errors agree to that oracle’s own
+  noise floor. As with the gradient, a model outside its scope – a
+  general or multi-endpoint residual variance, censoring, IOV, a finite
+  `agqLow`/`agqHi` clamp, `cholSECov=TRUE`, or `interaction=FALSE` –
+  reports why and keeps the finite-difference covariance.
 
 - The FOCEi-family outer finite-difference gradient now freezes the ODE
   solve when perturbing a residual/error (`err`) parameter
@@ -632,6 +680,28 @@
 ### Bug fixes
 
 #### Estimation
+
+- `est="vae"` covariate selection no longer silently selects nothing at
+  32 candidate covariates. The best-subset step enumerated all `2^nCov`
+  subsets, which is undefined behavior at `nCov = 32` (`1u << 32` wraps
+  to `1`, so only the empty model was ever tried) and intractable well
+  before that. It now uses an exact branch-and-bound over the same
+  L0/BIC objective, returning the identical optimum while scaling to a
+  few dozen covariates. The selection penalty now also follows the
+  reference implementation’s warmup ramp, tunable via
+  `vaeControl(covSelectAlpha=)` (default `2`, ramped to `1` over
+  `klWarmup` iterations); ramp iterations are labeled `CovSel ramp` in
+  the iteration table.
+
+- `est="vae"` no longer errors with `replacement has 0 rows` on data
+  that has no `AMT` column (dose-free datasets such as the neonate
+  weight data); such rows are now treated as observations (`EVID = 0`).
+
+- `est="saem"` no longer dies with `argument is of length zero` when
+  building the SAEM model list. Some `rxode2` versions omit the `ar`
+  column from a model’s `predDf`, and the SAEM autocorrelation helpers
+  indexed that column directly; they now fall back to the `iniDf`
+  (`err == "ar"`) representation when the column is absent.
 
 - A mu-referenced or method-variant FOCEi fit (`ifocei`, `mfocei`,
   `foce`, `focep`, `agq`, `laplace`, and the `*f` fast variants such as
