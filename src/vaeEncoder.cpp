@@ -17,6 +17,9 @@
 // Validated against the torch autograd oracle (tests/testthat/fixtures/vae/
 // encoder_golden.rds) and finite differences to ~1e-6.
 #include "vaeEncoder.h"
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 // [[Rcpp::depends(RcppArmadillo)]]
 
 using namespace Rcpp;
@@ -37,7 +40,8 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
                           arma::cube& Lout, arma::mat& zOut,
                           arma::mat& gWih, arma::mat& gWhh,
                           arma::vec& gbih, arma::vec& gbhh,
-                          arma::mat& gFcW, arma::vec& gFcB) {
+                          arma::mat& gFcW, arma::vec& gFcB,
+                          int cores, bool parBackward) {
   const int N = dataIn.n_rows;
   const int h = Whh.n_cols;
   const int xDim = dataIn.n_slices;
@@ -62,6 +66,29 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
     gFcW.zeros(outDim, h + nCov); gFcB.zeros(outDim);
   }
 
+  // The forward pass writes only per-subject-disjoint outputs (mu/logSigma/L/z),
+  // so it parallelizes bit-identically.  The backward accumulates the parameter
+  // gradients across subjects AND timesteps as one continuous left fold, so by
+  // default it stays serial (the if() clause drops to one thread) to be
+  // bit-identical.  When parBackward is set, each thread sums its statically
+  // assigned subjects into a private partial (tWih.. below) and the partials are
+  // reduced in thread order after the loop -- deterministic for a fixed `cores`
+  // but ~1e-12 off the serial fold.  schedule(static) is required so each
+  // thread's subject set/order (hence its partial) is reproducible.
+  const bool parBwd = (cores > 1 && backward && parBackward);
+  std::vector<arma::mat> tWih, tWhh, tFcW;
+  std::vector<arma::vec> tbih, tbhh, tFcB;
+  if (parBwd) {
+    tWih.assign(cores, arma::zeros<arma::mat>(4 * h, xDim));
+    tWhh.assign(cores, arma::zeros<arma::mat>(4 * h, h));
+    tbih.assign(cores, arma::zeros<arma::vec>(4 * h));
+    tbhh.assign(cores, arma::zeros<arma::vec>(4 * h));
+    tFcW.assign(cores, arma::zeros<arma::mat>(outDim, h + nCov));
+    tFcB.assign(cores, arma::zeros<arma::vec>(outDim));
+  }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(static) if((cores > 1 && !backward) || parBwd)
+#endif
   for (int i = 0; i < N; ++i) {
     const int Ti = lengths[i];
     // forward caches for this subject
@@ -107,6 +134,18 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
     if (!backward) continue;
 
     // ---- backward ----
+    // accumulate into this thread's private partial when parBwd, else straight
+    // into the shared (serial, continuous-fold) outputs
+    int tid = 0;
+#ifdef _OPENMP
+    if (parBwd) tid = omp_get_thread_num();
+#endif
+    arma::mat& aWih = parBwd ? tWih[tid] : gWih;
+    arma::mat& aWhh = parBwd ? tWhh[tid] : gWhh;
+    arma::vec& abih = parBwd ? tbih[tid] : gbih;
+    arma::vec& abhh = parBwd ? tbhh[tid] : gbhh;
+    arma::mat& aFcW = parBwd ? tFcW[tid] : gFcW;
+    arma::vec& aFcB = parBwd ? tFcB[tid] : gFcB;
     arma::vec gZi = gZ.row(i).t();
     arma::vec gMu = gZi;                          // dz/dmu = I
     arma::mat gL = gZi * epsI.t();                // dLoss/dL via z = mu + L eps
@@ -119,8 +158,8 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
     gOut.subvec(zDim, 2 * zDim - 1) = gLogSigma;
     if (nOff > 0) gOut.subvec(2 * zDim, outDim - 1) = gLmask;
 
-    gFcB += gOut;
-    gFcW += gOut * combined.t();
+    aFcB += gOut;
+    aFcW += gOut * combined.t();
     arma::vec gCombined = fcW.t() * gOut;
     arma::vec dh = gCombined.subvec(0, h - 1);    // grad on final hidden state
     arma::vec dc(h, arma::fill::zeros);
@@ -147,13 +186,23 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
       dpre.subvec(3 * h, 4 * h - 1) = doPre;
 
       arma::vec hPrevT = (t > 0) ? H.col(t - 1) : arma::vec(h, arma::fill::zeros);
-      gWih += dpre * X.col(t).t();
-      gWhh += dpre * hPrevT.t();
-      gbih += dpre;
-      gbhh += dpre;
+      aWih += dpre * X.col(t).t();
+      aWhh += dpre * hPrevT.t();
+      abih += dpre;
+      abhh += dpre;
 
       dh = Whh.t() * dpre;   // grad to h_{t-1}
       dc = dcPrev;
+    }
+  }
+
+  // reduce per-thread partials in thread order (parBwd only); the shared outputs
+  // were already zeroed above so this is the whole gradient.
+  if (parBwd) {
+    for (int t = 0; t < cores; ++t) {
+      gWih += tWih[t]; gWhh += tWhh[t];
+      gbih += tbih[t]; gbhh += tbhh[t];
+      gFcW += tFcW[t]; gFcB += tFcB[t];
     }
   }
 }

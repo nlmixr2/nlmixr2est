@@ -12467,7 +12467,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
                                  const arma::mat& zPopMat, const arma::vec& baseline,
                                  const arma::vec& omega, const arma::vec& a, double alphaKL,
                                  int nMix, const arma::vec& mixProb, int cores,
-                                 bool withGrad = true) {
+                                 bool withGrad = true, bool parEncoderBackward = false) {
   VaeStepOut S; S.ok = true;
   const int N = dataIn.n_rows;
   // encoder forward (no backward yet -- need z to form gZ first)
@@ -12477,7 +12477,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
   vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                        dummyGz, dummyGls, false, mu, logSigma, Lout, zOut,
-                       gWih, gWhh, gbih, gbhh, gFcW, gFcB);
+                       gWih, gWhh, gbih, gbhh, gFcW, gFcB, cores);
   arma::mat eta = zOut;
   eta.each_row() -= baseline.t();                       // z - baseline
   // inner-problem re-parameterization + evaluation
@@ -12543,7 +12543,8 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
     vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                          gZ, gLS, true, mu2, ls2, L2, z2,
-                         S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB);
+                         S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB, cores,
+                         parEncoderBackward);
   }
   S.pxz = pxz; S.DKL = DKL; S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpBest;
   if (!R_FINITE(pxz)) S.ok = true; // a failed subject is zeroed in gZ, not fatal
@@ -13119,6 +13120,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const std::string bnbStrat = control.containsElementNamed("bnbStrategy") ?
     as<std::string>(control["bnbStrategy"]) : "lifo";
   const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(bnbStrat);
+  // opt-in parallel encoder backward (default off = serial, bit-identical);
+  // tolerate older serialized control objects that predate the field.
+  const bool parEncoderBackward = control.containsElementNamed("parEncoderBackward") ?
+    as<bool>(control["parEncoderBackward"]) : false;
   const int printCtl = as<int>(control["print"]);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
@@ -13165,7 +13170,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat zPopMat(N, zDim); zPopMat.each_row() = zPop.t();
       VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, zPop,
-                                     omega, a, 0.001, nMix, mixProb, cores);
+                                     omega, a, 0.001, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
       bihM = bih; bhhM = bhh; fcBM = fcB;
       vaeAdam(Wih, st.gWih, aWih, burnInLearningRate, tstep);
@@ -13223,6 +13228,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
+      // Each latent dim k runs an independent exact L0 branch-and-bound and writes
+      // only disjoint cells (intercept[k], beta.row(k), selected.row(k),
+      // zPopMat.col(k)); vaeBestSubsetL0 keeps all state in a per-call VaeBnbCtx
+      // (no globals, no RNG, no rxode2), so parallelizing over k is bit-identical.
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
+#endif
       for (int k = 0; k < zDim; ++k) {
         if (isFreeR[k]) continue;
         // fixed structural theta: hold the intercept at ini, add no covariates
@@ -13313,7 +13325,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       vaeDrawEps(eps, (uint32_t)(seed + 1000003 + (it - 1) * Lg + l));
       VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopArg, baseline,
-                                     omega, a, alphaKL, nMix, mixProb, cores);
+                                     omega, a, alphaKL, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
       bihM = bih; bhhM = bhh; fcBM = fcB;
       vaeAdam(Wih, st.gWih, aWih, learningRate, tstep);

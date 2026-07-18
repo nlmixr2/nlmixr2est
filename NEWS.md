@@ -2,6 +2,20 @@
 
 ## New features
 
+- `est="vae"` now runs multi-threaded.  The per-subject encoder forward pass and
+  the exact branch-and-bound covariate M-step (previously serial, dominating the
+  EM and covariate-selection phases) are parallelized over the `cores` set in
+  `vaeControl(rxControl=rxode2::rxControl(cores=))` (defaulting to
+  `rxode2::getRxThreads()`), joining the already-threaded decoder solve.  The
+  encoder forward pass and the covariate branch-and-bound are bit-identical to the
+  single-threaded run.  The encoder backward (gradient) pass is also parallelized
+  by default (`vaeControl(parEncoderBackward=TRUE)`); its cross-subject sum cannot
+  be reduced in parallel bit-identically, so it is deterministic for a fixed
+  `cores` but differs slightly from the serial path.  A note is added to the fit's
+  `$runInfo` when it is active.  For bit-identical, fully reproducible results set
+  `options(nlmixr2.identical=TRUE)` (flips the default to serial) or
+  `vaeControl(parEncoderBackward=FALSE)`.
+
 - `vaeControl(bnbStrategy=)` selects the frontier discipline for the exact
   branch-and-bound covariate selection in `est="vae"`: `"lifo"` (default, the
   existing last-in-first-out depth-first search), `"fifo"` (first-in-first-out)
