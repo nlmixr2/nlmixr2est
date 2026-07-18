@@ -169,6 +169,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
 struct npagCtl {
   int points = 2028;    // initial Sobol grid size
   int cycles = 100;     // maximum cycles
+  int dfScan = -1;      // D(F) certificate scan size (-1 auto, 0 skip, >0 explicit)
   int cores = 1;
   double ratio = 1e-3;  // weight-threshold condensation (max*ratio)
   double qrTol = 1e-8;  // QR rank-revealing tolerance
@@ -281,29 +282,27 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     // builds Psi through likInner0 (npBuildPsiCoreScaled) so censoring and
     // transform-both-sides are handled at the scaled residual error.
     double obj0 = 0.0, offset = 0.0;
+    // capture the per-row max (pre-normalization) at cycle 1 for the degeneracy
+    // check below -- avoids a separate raw Psi build over the whole initial grid.
+    arma::vec rowMax;
+    arma::vec* rowMaxPtr = (cycle == 1) ? &rowMax : nullptr;
     if (ctl.gammaOptimize) {
-      npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset);
+      npBuildPsiCoreScaled(theta, ctl.cores, gamma, psi, &offset, rowMaxPtr);
     } else {
       // per-row log-sum-exp normalized (the removed maxima are returned in offset)
       // so a hard subject's conditional density cannot underflow a whole Psi row to
       // zero -- which would abort condensation (npCondenseQR).  Burke's weights are
       // invariant to per-row scaling; the objective adds offset back.
-      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &offset);
+      npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &offset, rowMaxPtr);
     }
     // a subject whose conditional density is 0 at EVERY support point makes the
     // Burke IPM (and condensation) degenerate -- report it clearly.  The usual cause
     // is a transform-both-sides link evaluated where the structural prediction is
     // non-positive (e.g. lnorm/log at an observation whose model prediction is 0).
-    // Check on the RAW (unnormalized) build: the per-row log-sum-exp normalization of
-    // the working psi masks a zero row (exp(-Inf) becomes a NaN the offset absorbs),
-    // so a raw exp(condLik) is what reliably exposes the degeneracy.  One extra Psi
-    // build, only at cycle 1.
+    // The build's per-row max (pre log-sum-exp normalization) is -Inf exactly for
+    // such a subject, so it detects the degeneracy without a separate raw Psi build.
     if (cycle == 1) {
-      arma::mat psiRaw;
-      npBuildPsiCore(theta, ctl.cores, psiRaw);
-      arma::vec rowSum = arma::sum(psiRaw, 1);
-      arma::uvec bad = arma::find_nonfinite(rowSum);
-      if (bad.is_empty()) bad = arma::find(rowSum <= 0.0);
+      arma::uvec bad = arma::find_nonfinite(rowMax);
       if (!bad.is_empty()) {
         throw std::runtime_error(
           "npag/npb: " + std::to_string(bad.n_elem) + " subject(s) (first at index " +
@@ -463,6 +462,8 @@ void npagOuter(Environment e) {
   npagCtl ctl;
   ctl.points = as<int>(control["npPoints"]);
   ctl.cycles = as<int>(control["npCycles"]);
+  if (control.containsElementNamed("npDfScan"))
+    ctl.dfScan = as<int>(control["npDfScan"]);
   ctl.cores = impCores();
   ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
   ctl.trace = true;
@@ -567,13 +568,16 @@ void npagOuter(Environment e) {
   // (so p(y_i|theta) and p(y_i|F) share the fitted residual scale) over a fresh
   // Sobol scan of the box; at the NPML max D(theta,F) ~ 0 (a large positive value
   // means the grid missed a mode -- not the global optimum).
+  // dfScan == 0 skips the certificate (leaves npagDF = NA); >0 sets the scan
+  // size explicitly; -1 (default) auto-sizes it.  The scan is one-time overhead
+  // that does not change the fit, so a smaller scan just weakens the certificate.
   double npagDF = NA_REAL;
-  {
+  if (ctl.dfScan != 0) {
     arma::mat psiSup;
     npBuildPsiCoreGamma(r.theta, ctl.cores, r.gamma, psiSup);  // nsub x nspp (unnormalized)
     arma::vec pyf = psiSup * r.lambda;                 // p(y_i|F)
     pyf = arma::clamp(pyf, 1e-300, arma::datum::inf);
-    int nScan = std::max(2048, 4 * ctl.points);
+    int nScan = (ctl.dfScan > 0) ? ctl.dfScan : std::max(2048, 2 * ctl.points);
     arma::mat scan = npSobolGrid(nScan, lower, upper);
     arma::mat psiScan;
     npBuildPsiCoreGamma(scan, ctl.cores, r.gamma, psiScan);    // nsub x nScan

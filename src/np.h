@@ -62,8 +62,25 @@ void npFreezeClear();
 // conditional likelihood so censoring and transform-both-sides are handled at the
 // scaled error.  Row-normalized (log-sum-exp) for numerical stability; the true
 // log-likelihood is burke_objf + *offset.
+// rowMax (optional): the per-subject pre-normalization max log conditional
+// likelihood over the support points.  A subject whose value is non-finite
+// (-Inf) had zero density at every support point (degenerate); lets the caller
+// detect that without a separate raw Psi build.
 void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
-                          arma::mat& psi, double* offset);
+                          arma::mat& psi, double* offset, arma::vec* rowMax = nullptr);
+
+// Subject-parallel conditional-likelihood contributions for the npb
+// support-location MH step: for each physical subject, k = z[subject]; when
+// occupied, computes the current/proposed conditional log-likelihoods at the
+// cluster's current/proposed support eta (curLoc[k] / propLoc[k]) into
+// curContrib/propContrib (indexed by physical subject id).  No RNG inside; the
+// caller keeps the (serial) proposal + accept/reject draws.  Implemented in
+// inner.cpp, used by npb.cpp.
+void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ,
+                         std::vector<std::vector<double> >& curLoc,
+                         std::vector<std::vector<double> >& propLoc,
+                         std::vector<double>& curContrib,
+                         std::vector<double>& propContrib);
 
 // Shared fit finalization for the nonparametric engines: given the discrete
 // mixing distribution (support points in eta space + weights) and the per-subject

@@ -69,6 +69,9 @@
       .npAutoPoints(length(.box$names))
     } else as.integer(.ctl$points)
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
+  # global-optimality (D(F)) Sobol scan size (npag only): -1 auto
+  # (max(2048, 2*npPoints)), 0 to skip the certificate, >0 for an explicit count.
+  .ctl$npDfScan <- as.integer(if (is.null(.ctl$dfScan)) -1L else .ctl$dfScan)
   # gamma scales the residual variance r; a generalized (non-normal) endpoint has
   # r == 1, so the gamma warm-start is a no-op -- force it off there.
   .isGenLik <- .npIsGeneralLik(.ui)
@@ -266,7 +269,7 @@
   .in <- control[[1]]
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
-              gridWidth = 4, gridBounds = "auto",
+              gridWidth = 4, gridBounds = "auto", dfScan = -1L,
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -282,6 +285,7 @@
   .ctl$muExpand <- isTRUE(.np$muExpand)
   .ctl$gridWidth <- as.numeric(.np$gridWidth)
   .ctl$gridBounds <- as.character(.np$gridBounds)
+  .ctl$dfScan <- as.integer(.np$dfScan)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)

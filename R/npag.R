@@ -88,6 +88,11 @@
 #'   parameter's ini-block lower/upper bounds where finite (else auto); `"both"`
 #'   uses the ini bounds when present and auto otherwise.  For a high-dimensional
 #'   model, bounded ini estimates + `"ini"` keep the grid in range.
+#' @param dfScan Size of the Sobol scan used for the D(F) global-optimality
+#'   certificate: `-1` (default) auto-sizes it to `max(2048, 2 * points)`, `0`
+#'   skips the certificate (`npagDF` is `NA`), and a positive value sets an
+#'   explicit scan size.  The scan does not affect the fit, only the reported
+#'   certificate; a smaller scan is faster.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -98,13 +103,14 @@
 npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
-                        gridBounds = c("auto", "ini", "both"), ...) {
+                        gridBounds = c("auto", "ini", "both"), dfScan = -1L, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   # NULL -> auto (scaled with the number of dimensions in .npEstCore); NA is the
   # sentinel that survives the control round-trip.
   .ctl$points <- if (is.null(points)) NA_integer_ else as.integer(points)
   .ctl$cycles <- as.integer(cycles)
+  .ctl$dfScan <- as.integer(dfScan)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)

@@ -10599,20 +10599,47 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
   if (nMix <= 1 || op_focei.mixIdxN == 0) return;
   int nsub = (int)subEta.n_rows;
   int neta = (int)subEta.n_cols;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  // Parallel: each subject's per-component log-weight log(mixProb_m)+condLik and
+  // its max, into G (nsub x nMix) + gmax (nsub).  No RNG here, so the serial
+  // categorical draws below keep their original order and the fit stays
+  // reproducible bit-for-bit.
+  arma::mat G(nsub, nMix, arma::fill::value(R_NegInf));
+  arma::vec gmaxv(nsub, arma::fill::value(R_NegInf));
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    std::vector<double> eta(neta);
+    for (int j = 0; j < neta; ++j) eta[j] = subEta(base, j);
+    double gm = R_NegInf;
+    for (int m = 0; m < nMix; ++m) {
+      double cl = npEvalCondLik(&eta[0], base + m * nsub);
+      double g = std::log(std::max(1e-300, impMixProb(m))) + cl;
+      G(base, m) = g;
+      if (std::isfinite(g) && g > gm) gm = g;
+    }
+    gmaxv[base] = gm;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // Serial categorical draw per subject (unchanged RNG order), then Dirichlet.
   std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
   for (int i = 0; i < nsub; ++i) {
-    std::vector<double> eta(neta);
-    for (int j = 0; j < neta; ++j) eta[j] = subEta(i, j);
-    std::vector<double> g(nMix); double gmax = R_NegInf;
-    for (int m = 0; m < nMix; ++m) {
-      double cl = npEvalCondLik(&eta[0], i + m * nsub);
-      g[m] = std::log(std::max(1e-300, impMixProb(m))) + cl;
-      if (std::isfinite(g[m]) && g[m] > gmax) gmax = g[m];
-    }
     int mi = 0;
-    if (std::isfinite(gmax)) {
-      double gsum = 0.0;
-      for (int m = 0; m < nMix; ++m) { g[m] = std::exp(g[m] - gmax); gsum += g[m]; }
+    if (std::isfinite(gmaxv[i])) {
+      std::vector<double> g(nMix); double gsum = 0.0;
+      for (int m = 0; m < nMix; ++m) { g[m] = std::exp(G(i, m) - gmaxv[i]); gsum += g[m]; }
       double u = R::unif_rand() * gsum, c = 0.0;
       for (int m = 0; m < nMix; ++m) { c += g[m]; mi = m; if (u <= c) break; }
     } else {
@@ -10677,6 +10704,49 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
   }
 }
 
+// Per-subject conditional-likelihood contributions for the npb support-location
+// MH step (src/npb.cpp step c).  For each physical subject, k = z[subject]; when
+// that cluster is occupied it computes the current and proposed conditional
+// log-likelihoods at the cluster's current/proposed support eta (curLoc[k] /
+// propLoc[k], each length neta).  Solves are subject-parallel using the same
+// discipline as npBuildPsiCore; no RNG/R-API inside.  Results are written per
+// physical subject id into curContrib/propContrib (0 for a subject whose cluster
+// is empty).  The caller does the (serial) proposal draws and accept/reject, so
+// the RNG stream -- and thus reproducibility -- is unchanged.
+void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ,
+                         std::vector<std::vector<double> >& curLoc,
+                         std::vector<std::vector<double> >& propLoc,
+                         std::vector<double>& curContrib,
+                         std::vector<double>& propContrib) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  int nsub = (int)getRxNsub(rx);
+  int K = (int)occ.size();
+  curContrib.assign(nsub, 0.0);
+  propContrib.assign(nsub, 0.0);
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    int k = (base >= 0 && base < (int)z.size()) ? z[base] : -1;
+    if (k >= 0 && k < K && occ[k]) {
+      curContrib[base] = npEvalCondLik(&curLoc[k][0], base);
+      propContrib[base] = npEvalCondLik(&propLoc[k][0], base);
+    }
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+}
+
 // Build the UNNORMALIZED Psi at a residual-error multiplier gamma.  Same as
 // npBuildPsiCore but with op_focei.npResidScale = gamma held over the solve, so
 // the returned p(y_i | point) are on a single absolute scale (no per-row
@@ -10700,7 +10770,7 @@ void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
 // row maxima are returned in *offset so the true log-likelihood is
 // burke_objf + offset.
 void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
-                          arma::mat& psi, double* offset) {
+                          arma::mat& psi, double* offset, arma::vec* rowMax) {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   cores = min2(cores, getOpCores(op));
@@ -10734,6 +10804,7 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
   op_focei.npResidScale = savedScale;
   arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
   if (offset != nullptr) *offset = arma::accu(m);
+  if (rowMax != nullptr) *rowMax = m;
   psi.set_size(nsub, nPoint);
   for (int k = 0; k < nPoint; ++k) {
     for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
