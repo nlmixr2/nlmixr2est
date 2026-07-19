@@ -4,6 +4,13 @@
 
 ### New features
 
+- `vaeControl(bnbStrategy=)` selects the frontier discipline for the
+  exact branch-and-bound covariate selection in `est="vae"`: `"lifo"`
+  (default, the existing last-in-first-out depth-first search), `"fifo"`
+  (first-in-first-out) or `"lc"` (least cost / best-first). The solver
+  is exact, so the selected covariates are identical for every strategy;
+  only the search order differs.
+
 - `est="vae"` can now estimate structural population parameters that
   have no random effect (are not mu-referenced). Previously such a
   `theta` was frozen at its
@@ -18,8 +25,12 @@
   no-random-effect population parameter without adding a spurious random
   effect. The eta-injection alternatives estimate it as
   `theta + mean(eta)` (the temporary eta is dropped from the output
-  model): `"eta"` estimates the injected omega, `"fix"` holds it fixed
-  at `nonMuEtaOmega`; `"none"` keeps the old freeze behavior. A
+  model): `"eta"` estimates the injected omega and the typical value;
+  `"fix"` holds both the injected omega AND the typical-value theta
+  fixed at their
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) values
+  (nothing about the parameter is estimated, so it does not appear in
+  the iteration table); `"none"` keeps the old freeze behavior. A
   `$runInfo` note lists which parameters were converted.
 
 - The analytic observed-information covariance is now the preferred
@@ -680,6 +691,14 @@
 ### Bug fixes
 
 #### Estimation
+
+- `est="vae"` with `nonMuTheta="regress"` now shows the regressed
+  non-mu-referenced thetas in the iteration table and parameter history.
+  The M-step `bobyqa` regression already estimated them, but they were
+  omitted from the printed parameter walk (only the latent-space thetas,
+  omega, and residual error were shown), so their progress was
+  invisible; they are now appended to each row with the correct
+  back-transform.
 
 - `est="vae"` covariate selection no longer silently selects nothing at
   32 candidate covariates. The best-subset step enumerated all `2^nCov`

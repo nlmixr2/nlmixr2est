@@ -60,6 +60,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  sigma0 <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covariateSelection <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  covSelectAlpha <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>  bnbStrategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lifo"</span>, <span class="st">"fifo"</span>, <span class="st">"lc"</span><span class="op">)</span>,</span>
 <span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"eta"</span>, <span class="st">"fix"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
 <span>  nonMuEtaOmega <span class="op">=</span> <span class="fl">0.01</span>,</span>
 <span>  likelihood <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"foce"</span>, <span class="st">"focep"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
@@ -158,6 +159,14 @@ penalize covariate entry more heavily early in training; `1` disables the
 ramp.</p></dd>
 
 
+<dt id="arg-bnbstrategy">bnbStrategy<a class="anchor" aria-label="anchor" href="#arg-bnbstrategy"></a></dt>
+<dd><p>Frontier discipline for the exact branch-and-bound covariate
+selection: `"lifo"` (default, last-in-first-out depth-first search),
+`"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
+solver is exact, so the selected covariates are identical for every strategy;
+only the search order (and thus efficiency) differs.</p></dd>
+
+
 <dt id="arg-nonmutheta">nonMuTheta<a class="anchor" aria-label="anchor" href="#arg-nonmutheta"></a></dt>
 <dd><p>How to treat a structural population `theta` that has no
   random effect (is not mu-referenced) so it can still be estimated by the VAE
@@ -172,8 +181,12 @@ ramp.</p></dd>
     recovers a no-random-effect population parameter without adding a spurious
     random effect.  `nonMuEtaOmega` is unused in this mode.
   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
-    `nonMuEtaOmega`).
-  * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega`.
+    `nonMuEtaOmega`); the typical value is estimated and appears in the
+    iteration table.
+  * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega` AND hold
+    the typical-value theta fixed at its `ini()` value.  Nothing about the
+    parameter is estimated, so it is not shown in the iteration table (it is
+    reported at its `ini()` value, marked fixed, with the injected eta dropped).
   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
     historic behavior).</p></dd>
 
