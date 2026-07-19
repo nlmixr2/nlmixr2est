@@ -707,28 +707,69 @@ void impOuter(Environment e) {
       // For a mixture the loop runs over the expanded pseudo-subjects and the
       // component weight a_ij is already folded into sampZk, so this forms the
       // component-weighted score directly.
+      //
+      // The score/Hessian accumulation is one long sequential floating-point sum
+      // threaded across subjects, so it is kept serial (in eid order) for bit-
+      // identity; only the solve-heavy half (impThetaSensCollect) is parallelized.
+      // Each subject's samples (SIR-resampled if enabled) and collected sensitivity
+      // outputs are stashed per subject, then accumulated in eid order below.  cores
+      // already carries the mixture / pool-sizing serial guard (forced to 1 above).
+      std::vector<impThetaSensData> coll(nExp);
+      std::vector<arma::mat> Ssub(nExp);
+      std::vector<arma::vec> zksub(nExp);
+      std::vector<char> useSub(nExp, 0);
+      // Parallelize the theta-sensitivity solves over subjects; each subject writes
+      // only its own slot (coll[eid]) and the score/Hessian accumulation below stays
+      // serial in eid order, so the result is bit-identical to the serial M-step.
+      // Only engage when the solve method is thread-safe (liblsoda); the
+      // inner-parallel flag (impInnerParallelOn/Off) defers worker-thread R-API
+      // warnings.  impThetaSensCollect reads calc_lhs into a thread-local buffer and
+      // loosens tolerance per-subject, so no shared solve state is touched.  cores
+      // already carries the mixture / pool-sizing serial guard (forced to 1).
+      bool doParM = (cores > 1) && impMStepParallelOk();
+      if (doParM) impInnerParallelOn();
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(static) if(doParM)
+#endif
       for (int eid = 0; eid < nExp; ++eid) {
-        if (sampS[eid].n_rows == 0) continue;
-        if (sir && sirN < (int)sampS[eid].n_rows) {
-          // SIR acceleration: an equal-weight systematic resample stands in
-          // for the full weighted sample, cutting the theta-sens solves from
-          // isample to sirN per subject.  For a mixture, zk sums to the
-          // component responsibility a_ij (folded in by impEStep), so the
-          // equal weights carry a_ij/sirN to preserve the component mass.
-          double aij = arma::accu(sampZk[eid]);
-          if (!(aij > 0.0) || !R_finite(aij)) continue;
-          setRxThreadId(0);
-          nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
-          double u0 = rxUnifEng(0.0, 1.0);
-          setRxThreadId(-1);
-          arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
-          arma::mat Ssir = sampS[eid].rows(ridx);
-          arma::vec zkEq(sirN);
-          zkEq.fill(aij / (double)sirN);
-          impThetaScore(eid, Ssir, zkEq, g, H);
-        } else {
-          impThetaScore(eid, sampS[eid], sampZk[eid], g, H);
+#ifdef _OPENMP
+        if (doParM) setRxThreadId(omp_get_thread_num());
+#endif
+        if (sampS[eid].n_rows != 0) {
+          if (sir && sirN < (int)sampS[eid].n_rows) {
+            // SIR acceleration: an equal-weight systematic resample stands in
+            // for the full weighted sample, cutting the theta-sens solves from
+            // isample to sirN per subject.  For a mixture, zk sums to the
+            // component responsibility a_ij (folded in by impEStep), so the
+            // equal weights carry a_ij/sirN to preserve the component mass.
+            double aij = arma::accu(sampZk[eid]);
+            if (aij > 0.0 && R_finite(aij)) {
+              // Seed this subject's stream on the current thread; the drawn u0 is
+              // a pure function of the (iter, eid) seed, so it is thread-count
+              // invariant.
+              nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
+              double u0 = rxUnifEng(0.0, 1.0);
+              arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
+              Ssub[eid] = sampS[eid].rows(ridx);
+              zksub[eid].set_size(sirN); zksub[eid].fill(aij / (double)sirN);
+              impThetaSensCollect(eid, Ssub[eid], coll[eid]);
+              useSub[eid] = 1;
+            }
+          } else {
+            Ssub[eid] = sampS[eid];
+            zksub[eid] = sampZk[eid];
+            impThetaSensCollect(eid, Ssub[eid], coll[eid]);
+            useSub[eid] = 1;
+          }
         }
+#ifdef _OPENMP
+        if (doParM) setRxThreadId(-1);
+#endif
+      }
+      if (doParM) impInnerParallelOff();
+      // Serial accumulation in eid order -- bit-identical to the serial theta score.
+      for (int eid = 0; eid < nExp; ++eid) {
+        if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
       }
       g /= (double)nsub;
       H /= (double)nsub;

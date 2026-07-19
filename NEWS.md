@@ -3,11 +3,14 @@
 ## New features
 
 - The `imp` / `impmap` / `qrpem` importance-sampling family is faster: the
-  Monte-Carlo covariance (`covMethod="imp"`, the default) and the per-subject
-  proposal build in the E-step are now parallelized over subjects, using the
-  `cores` set in the control's `rxControl` (defaulting to
-  `rxode2::getRxThreads()`), joining the already-threaded E-step weight loop.
-  Both are bit-identical to the single-threaded run at any thread count.
+  theta-score M-step, the Monte-Carlo covariance (`covMethod="imp"`, the default)
+  and the per-subject proposal build in the E-step are now parallelized over
+  subjects, using the `cores` set in the control's `rxControl` (defaulting to
+  `rxode2::getRxThreads()`), joining the already-threaded E-step weight loop.  All
+  are bit-identical to the single-threaded run at any thread count.  This also
+  fixes a latent bug in the theta-sensitivity M-step where `d(V)/d(theta)` was read
+  from an under-sized per-thread lhs buffer, so a residual-error variance that
+  depends on a structural parameter now contributes the correct M-step gradient.
 
 - `est="vae"` now runs multi-threaded.  The per-subject encoder forward pass and
   the exact branch-and-bound covariate M-step (previously serial, dominating the

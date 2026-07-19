@@ -1,8 +1,8 @@
 # Guards the bit-identical, thread-count-independent parallelization of the imp
-# family: the E-step, the E-step proposal build, and the Monte-Carlo covariance
-# are parallelized over subjects, so a full fit must be byte-for-byte identical at
-# any thread count.  Kept in the essential (non-slow) subset -- a couple of tiny
-# fits -- so it runs on every push/PR.
+# family: the E-step, the E-step proposal build, the theta-score M-step, and the
+# Monte-Carlo covariance are all parallelized over subjects, so a full fit must be
+# byte-for-byte identical at any thread count.  Kept in the essential (non-slow)
+# subset -- a couple of tiny fits -- so it runs on every push/PR.
 nmTest({
   test_that("imp family full fit is thread-count independent (E/M-step + cov)", {
     one.cmt <- function() {
