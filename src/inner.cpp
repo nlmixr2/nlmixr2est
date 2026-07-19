@@ -2104,6 +2104,12 @@ double likInner0(double *eta, int id) {
             _o.df_deta = _dfp; _o.llik = &_llAdd; _o.dLL_deta = _cDeta.data();
             for (int _ci = 0; _ci < _nContrib; ++_ci) _nlmixrContrib[_ci]->obs(&_o);
             fInd->llik += _llAdd;
+            // npag/npb build the conditional likelihood by summing llikObs (not
+            // fInd->llik), so fold the extra per-obs LL in here too -- otherwise a
+            // contributor's added likelihood would reach focei/foce/vae/advi but be
+            // silently dropped for the nonparametric methods.  Zero when the
+            // contributor only records cotangents (e.g. nn weight-grad capture).
+            llikObs[kk] += _llAdd;
             for (int _q = 0; _q < op_focei.neta; ++_q) lp(_q, 0) += _cDeta[_q];
           }
           // k--;
