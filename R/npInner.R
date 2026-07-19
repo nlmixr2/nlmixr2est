@@ -2,7 +2,7 @@
 # problem once (via vaeInnerSetup_) so the conditional-likelihood primitive
 # (npEvalCondLik) and the Psi builder (npBuildPsi) can be evaluated per support
 # point, reusing the ODE solve, residual-error models, transform-both-sides and
-# censoring unchanged.  Mirrors .fsaemInnerSetup / .adviInnerSetup.
+# censoring unchanged.  Mirrors .adviInnerSetup.
 
 #' A foceiControl carrying the npag/npb inner likelihood + solving options.
 #' @noRd

@@ -32,7 +32,6 @@
   imp     = list(type="Integral approximation", description="Importance sampling (no MAP search)"),
   impmap  = list(type="Integral approximation", description="Importance sampling (MAP)"),
   saem    = list(type="Stochastic EM", description="Stochastic Approximation EM"),
-  fsaem   = list(type="Stochastic EM", description="Fast SAEM (Karimi-Lavielle)"),
   qrpem   = list(type="Stochastic EM", description="Quasi-Random Parametric EM"),
   npag    = list(type="Nonparametric", description="NonParametric Adaptive Grid"),
   npb     = list(type="Nonparametric", description="Nonparametric Bayes"),

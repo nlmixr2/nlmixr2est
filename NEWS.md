@@ -70,7 +70,7 @@
 - The analytic observed-information covariance is now the preferred `covMethod`
   across the mixed-model estimation methods, falling back to each method's
   previous default when a model is out of analytic scope:
-    - `est="saem"`/`"fsaem"` keep the stochastic-approximation FIM (`"sa"`) as
+    - `est="saem"` keeps the stochastic-approximation FIM (`"sa"`) as
       the default `covMethod`, now followed by `"analytic"` and `"linFim"`.
       `covMethod="analytic"` computes the FOCEI analytic covariance at the
       converged SAEM estimates and falls back to the linearized FIM (`"linFim"`)
@@ -336,14 +336,13 @@
   (`NULL`) uses the current `rxode2` thread count (`rxode2::getRxThreads()`); an
   integer sets the thread count for the fit and restores it afterwards.
 
-- SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
-  event data keeps `DV` when the model references it (previously dropped, so the
-  likelihood solve errored "parameter(s) required for solving: DV"); the
-  fixed-effect-only (phi0) parameters are optimized with the bounded `bobyqa`
-  honoring the ini-block bounds (so a likelihood SD stays non-negative); and the
-  fsaem fast kernel now maps a structural phi0 parameter to `mprior_phi0` instead
-  of running past the phi1 columns (which crashed with an Armadillo bounds error).
-  Normal-endpoint saem/fsaem are unchanged.
+- `est="saem"` now fits general log-likelihood (`ll() ~ expr`) models the saemix
+  way (the model returns the per-observation loglik; the standard MCMC kernels use
+  `-ll` as the observation loss).  The solve event data keeps `DV` when the model
+  references it (previously dropped, so the likelihood solve errored
+  "parameter(s) required for solving: DV"); the fixed-effect-only (phi0)
+  parameters are optimized with the bounded `bobyqa` honoring the ini-block bounds
+  (so a likelihood SD stays non-negative).  Normal-endpoint saem is unchanged.
 
 - Nonparametric engines (cont.): `est="npag"` optimizes the residual parameters
   with the bounded `minqa::bobyqa`, honoring the ini-block lower/upper bounds of
@@ -353,7 +352,7 @@
   is removed).
 
 - SAEM general log-likelihood: the fixed-effect-only (phi0) refinement step
-  (saemix "ind.fix10", fsaem `distribution=general`) is now optimized with the
+  (saemix "ind.fix10", `distribution=general`) is now optimized with the
   same derivative-free optimizers as the residual step (nelder-mead / newuoa,
   selected by `type`) instead of L-BFGS-B -- the model emits no analytic
   d(ll)/d(phi0), so the previous finite-difference-gradient L-BFGS was pure
@@ -508,11 +507,6 @@
 - `est = "qrpem"` (`qrpemControl()`): sugar for the impmap EM with `qr = TRUE`
   and `sir = TRUE`.
 
-- `est = "fsaem"` (`saemControl(fast = TRUE)`): fast SAEM (Karimi, Lavielle &
-  Moulines 2020) using a MAP-centered independent Metropolis-Hastings kernel in
-  the early iterations, with continuous single-endpoint and non-time-varying
-  mu-referenced covariate support (other models run standard SAEM).
-
 - Mu-referenced FOCEI family: `mfocei`/`ifocei`, `mfoce`/`ifoce`,
   `mfocep`/`ifocep`, `magq`/`iagq`, `mlaplace`/`ilaplace` (with matching
   `*Control()` functions).  Mu-referenced population and covariate-coefficient
@@ -578,7 +572,7 @@
   (stochastic-approximation Fisher information, Kuhn & Lavielle 2005).
   `parHistData` records off-diagonal Omega block covariances.
 
-- `saem`/`fsaem` fit general log-likelihood endpoints (`ll(name) ~ <expr>`,
+- `saem` fits general log-likelihood endpoints (`ll(name) ~ <expr>`,
   e.g. time-to-event); fixed-effect-only parameters are refined by bounded
   L-BFGS-B (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
   `lbfgsMaxIter`).
@@ -667,12 +661,6 @@
   not carry `"foceiControl"` in their class vector, and the restart-path
   environment check rejected them even though the fit had been set up from a
   valid control.  The check now recognises the whole FOCEi control family.
-- `est="fsaem"` (fast SAEM) now reports a covariance matrix.  The fast kernel's
-  FOCEi inner setup overwrote the shared control's `covMethod` during the fit,
-  so the covariance step ran with no method selected and left the fit with an
-  unlabeled, partially degenerate covariance; the intended `covMethod` is now
-  restored before the covariance is computed.
-
 - Models that combine `linCmt()` with ODEs (for example a solved PK driving an
   effect-compartment ODE) now estimate correctly with the FOCEi and nlm
   families; the linear compartments are solved as ODEs for those methods.
@@ -742,7 +730,7 @@
 - A single-subject / fixed-effect ("N of 1") model -- one whose only random
   effects are fixed to zero, which are dropped before estimation -- now gives an
   actionable error when a method that requires random effects (`fo`, `foi`,
-  `saem`, `fsaem`, `nlme`) is used, pointing to methods that can fit it (`focei`,
+  `saem`, `nlme`) is used, pointing to methods that can fit it (`focei`,
   `foce`, or a population method such as `nlminb`, `bobyqa` or `nls`).  The error
   also keeps the user's original model name instead of reporting the internal
   `.mod` (issue #493).

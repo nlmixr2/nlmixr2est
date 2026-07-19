@@ -1,6 +1,6 @@
 # foceiLik.R -- a general FOCE-family per-subject log-likelihood built from an
 # rxode2 UI model (issue #414).  Exposes the FOCEi inner problem (the same engine
-# advi/vae/fsaem/npag reuse) as a public load / run / unload lifecycle for
+# advi/vae/npag reuse) as a public load / run / unload lifecycle for
 # MCMC/SAMBA-style callers that need individual log-likelihoods, evaluated in
 # parallel per id, outside a full fit.  Only one system can be loaded at a time.
 
@@ -119,7 +119,7 @@ foceiLikLoad <- function(object, data,
   .ui <- rxode2::rxUiDecompress(.env0$ui)
   .data <- .env0$data
   .control <- .env0$control
-  # advi/fsaem-style inner setup on the hooked ui
+  # advi-style inner setup on the hooked ui
   .ui$control <- .control
   .env <- .ui$foceiOptEnv
   .env$ui <- .ui

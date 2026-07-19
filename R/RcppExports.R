@@ -249,22 +249,6 @@ adviOptimize_ <- function(args) {
     .Call(`_nlmixr2est_adviOptimize_`, args)
 }
 
-fsaemInnerMap_ <- function(cores) {
-    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
-}
-
-fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
-    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
-}
-
-fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
-    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
-}
-
-fsaemMapImhCpp_ <- function(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
-    .Call(`_nlmixr2est_fsaemMapImhCpp_`, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
-}
-
 vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }

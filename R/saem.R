@@ -253,15 +253,7 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop,
-                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
-                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
-                        # a general log-likelihood endpoint has no normal do_mcmc
-                        # fallback, so the fast kernel must run every iteration
-                        fastKernel=if (.fsaemGeneralLik(ui)) "throughout"
-                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
-                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
-                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
+                        omegaShareSubpop=ui$saemOmegaShareSubpop)
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -303,20 +295,12 @@
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
-    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
-      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
-    }
     .saemCheckCfg(.cfg)
     .cfg
   })
   .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
-  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
-  # down so it does not leak into a later fit's solve state (reproducibility).
-  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
-    try(vaeInnerFree_(), silent = TRUE)
-  }
   .saemRes
   })
 }
@@ -1277,10 +1261,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
-  # saem supports a general log-likelihood endpoint (ll() ~ expr) the same way
-  # saemix does (the model returns the per-obs loglik; the RWM kernels use -ll as
-  # the observation loss); only require normality for the ordinary case.
-  if (!.fsaemGeneralLik(.ui)) {
+  # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
+  # (the model returns the per-obs loglik; the RWM kernels use -ll as the
+  # observation loss); only require normality for the ordinary case.
+  if (!.saemGeneralLik(.ui)) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
