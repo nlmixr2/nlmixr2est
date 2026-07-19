@@ -34,6 +34,56 @@
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
 #'   covariate selection during training; when `FALSE` fit the given fixed
 #'   covariate structure only (faster population-only mode).
+#' @param nonMuTheta How to treat a structural population `theta` that has no
+#'   random effect (is not mu-referenced) so it can still be estimated by the VAE
+#'   (which only estimates parameters that occupy the latent space).  For the
+#'   eta-injection modes a small eta is injected so the parameter enters the
+#'   latent space, and the reported fixed effect is `theta + mean(eta)` with the
+#'   temporary eta dropped from the output model.
+#'
+#'   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
+#'     injected; instead each such theta is estimated directly, re-optimized every
+#'     M-step by a bounded `bobyqa` regression against the FOCEi inner likelihood
+#'     (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+#'     recovers a no-random-effect population parameter without adding a spurious
+#'     random effect.  `nonMuEtaOmega` is unused in this mode.
+#'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
+#'     `nonMuEtaOmega`); the typical value is estimated and appears in the
+#'     iteration table.
+#'   * `"fix"`: inject the eta with omega held FIXED at `nonMuEtaOmega` AND hold
+#'     the typical-value theta fixed at its `ini()` value.  Nothing about the
+#'     parameter is estimated, so it is not shown in the iteration table (it is
+#'     reported at its `ini()` value, marked fixed, with the injected eta dropped).
+#'   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
+#'     historic behavior).
+#' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta
+#'   (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
+#'   unused for `"regress"`).
+#' @param covSelectAlpha Starting multiplier for the covariate-selection L0
+#'   penalty, ramped linearly from `covSelectAlpha` down to `1` over the
+#'   `klWarmup` warmup iterations and held at `1` afterward (matching the
+#'   reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
+#'   penalize covariate entry more heavily early in training; `1` disables the
+#'   ramp.
+#' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
+#'   selection: `"lifo"` (default, last-in-first-out depth-first search),
+#'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
+#'   solver is exact, so the selected covariates are identical for every strategy;
+#'   only the search order (and thus efficiency) differs.
+#' @param parEncoderBackward Parallelize the encoder backward (gradient) pass over
+#'   subjects.  Defaults to `TRUE` unless `options(nlmixr2.identical = TRUE)` is
+#'   set (which flips the default to `FALSE`); an explicit value here always wins.
+#'   The encoder forward pass and the covariate branch-and-bound already run
+#'   multi-threaded and are bit-identical to the serial run.  The backward gradient
+#'   is a continuous cross-subject sum, so parallelizing it (per-thread partials
+#'   reduced in thread order) makes the result deterministic for a fixed number of
+#'   `cores` but no longer bit-identical to the serial path: the per-step gradient
+#'   differs at ~1e-12, which compounds through the iterative SGD/EM training to a
+#'   small final difference (well below any estimation tolerance), and results may
+#'   differ across different `cores`.  When it is active (and `cores > 1`) a note is
+#'   added to the fit's `$runInfo`.  Set this to `FALSE` -- or globally
+#'   `options(nlmixr2.identical = TRUE)` -- for bit-identical, fully reproducible
+#'   results.
 #' @param objf Which objective-function value is active for AIC/BIC/BICc. Both
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
@@ -44,6 +94,29 @@
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
+#'
+#' @details
+#'
+#' Covariate selection -- MIQP vs. branch-and-bound.  Per latent parameter the
+#' selection step minimizes the same L0/BIC objective
+#' `RSS_S/omega + log(N)*|S|` over subsets `S` of the candidate covariates (`RSS_S`
+#' is the residual sum of squares of the ordinary-least-squares fit on the
+#' intercept plus `S`).  The reference implementation (Rohleff et al.) writes this
+#' as a Mixed-Integer Quadratic Program (MIQP) -- binary include/exclude
+#' indicators with big-M constraints -- and solves it with the commercial Gurobi
+#' solver through `cvxpy`.  No MIQP-capable solver is freely available in R: Gurobi
+#' is commercial/licensed, and the open QP solvers on CRAN (e.g. `osqp`) are
+#' continuous-only and cannot represent the binary selection.  A continuous convex
+#' relaxation (L1 / lasso) would be solvable but only approximates best subset.
+#'
+#' This package instead solves the identical L0/BIC objective EXACTLY with a
+#' self-contained branch-and-bound: each candidate support's coefficients are the
+#' closed-form OLS fit and branches are pruned by a valid lower bound (the RSS of
+#' the OLS fit using all still-free covariates).  It therefore returns the same
+#' optimum the MIQP would -- no commercial dependency and no relaxation/accuracy
+#' loss -- and scales to a few dozen covariates.  The search is worst-case
+#' exponential in the number of covariates, but the pruning makes the practical
+#' (sparse) case fast (e.g. 32 candidate covariates in a fraction of a second).
 #'
 #' @return vae control structure (class `vaeControl`)
 #' @export
@@ -59,6 +132,11 @@ vaeControl <- function(seed = 42L,
                        burnInLearningRate = 8e-3,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
+                       covSelectAlpha = 2,
+                       bnbStrategy = c("lifo", "fifo", "lc"),
+                       parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
+                       nonMuTheta = c("regress", "eta", "fix", "none"),
+                       nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
@@ -68,7 +146,7 @@ vaeControl <- function(seed = 42L,
                        useColor = NULL,
                        printNcol = NULL,
 
-                       covMethod = c("analytic", "r,s", "r", "s", ""),
+                       covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
                        optExpression = TRUE,
                        sumProd = FALSE,
                        literalFix = TRUE,
@@ -102,6 +180,11 @@ vaeControl <- function(seed = 42L,
     checkmate::assertNumeric(sigma0, lower = 0, finite = TRUE, any.missing = FALSE, min.len = 1)
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  bnbStrategy <- match.arg(bnbStrategy)
+  checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
+  nonMuTheta <- match.arg(nonMuTheta)
+  checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertLogical(returnVae, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
@@ -179,6 +262,11 @@ vaeControl <- function(seed = 42L,
                burnInLearningRate = burnInLearningRate,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
+               covSelectAlpha = covSelectAlpha,
+               bnbStrategy = bnbStrategy,
+               parEncoderBackward = parEncoderBackward,
+               nonMuTheta = nonMuTheta,
+               nonMuEtaOmega = nonMuEtaOmega,
                likelihood = likelihood,
                objf = objf,
                nIsSample = as.integer(nIsSample),

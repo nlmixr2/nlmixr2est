@@ -38,11 +38,16 @@ extern SEXP _nlmixr2est_vaeInnerSetup_(SEXP);
 extern SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeTrainCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeElboStepCpp_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_vaeBestSubset_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeDecoderPxz_(SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeDecoderSolveSubject_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerLik(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerFree_(void);
+extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
+extern SEXP _nlmixr2est_foceiLikUnload_(void);
+extern SEXP _nlmixr2est_foceiLikSetTheta_(SEXP);
+extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -65,6 +70,7 @@ SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, S
 SEXP _nlmixr2est_foceiSubjectRFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectRfoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiGradAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiGradAllAgqFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiGradAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiRAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -77,6 +83,7 @@ SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
 SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiNumericGrad(SEXP);
+SEXP _nlmixr2est_foceiNFreezeResidGrad(void);
 
 SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
                              SEXP, SEXP, SEXP, SEXP, SEXP,
@@ -139,7 +146,7 @@ SEXP _nlmixr2est_nlmSetup(SEXP);
 SEXP _nlmixr2est_nlmFree(void);
 SEXP _nlmixr2est_nlmSolveGradHess(SEXP);
 SEXP _nlmixr2est_nlmSolveGradR(SEXP);
-SEXP _nlmixr2est_nlmerSolveGrad(SEXP);
+SEXP _nlmixr2est_nlmerSolveGrad(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSolveR(SEXP);
 SEXP _nlmixr2est_nlmSolveSwitch(SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
@@ -169,6 +176,12 @@ SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 
 SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
+SEXP _nlmixr2est_npIpmBurke(SEXP);
+SEXP _nlmixr2est_npBuildPsi(SEXP, SEXP);
+SEXP _nlmixr2est_npSobolGrid_(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_npCondense_(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_npagCycle_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_npObjAtGamma_(SEXP, SEXP, SEXP);
 SEXP _rxode2rxFixRes(SEXP, SEXP);
 
 SEXP _nlmixr2est_registerTestContrib(void);
@@ -194,11 +207,16 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_vaeInnerUpdatePar_", (DL_FUNC) &_nlmixr2est_vaeInnerUpdatePar_, 2},
   {"_nlmixr2est_vaeTrainCpp_", (DL_FUNC) &_nlmixr2est_vaeTrainCpp_, 11},
   {"_nlmixr2est_vaeElboStepCpp_", (DL_FUNC) &_nlmixr2est_vaeElboStepCpp_, 11},
+  {"_nlmixr2est_vaeBestSubset_", (DL_FUNC) &_nlmixr2est_vaeBestSubset_, 6},
   {"_nlmixr2est_vaeDecoderPxz_", (DL_FUNC) &_nlmixr2est_vaeDecoderPxz_, 2},
   {"_nlmixr2est_vaeDecoderSolveSubject_", (DL_FUNC) &_nlmixr2est_vaeDecoderSolveSubject_, 6},
   {"_nlmixr2est_vaeDecoderElboStep_", (DL_FUNC) &_nlmixr2est_vaeDecoderElboStep_, 14},
   {"_nlmixr2est_vaeInnerLik", (DL_FUNC) &_nlmixr2est_vaeInnerLik, 4},
   {"_nlmixr2est_vaeInnerFree_", (DL_FUNC) &_nlmixr2est_vaeInnerFree_, 0},
+  {"_nlmixr2est_foceiLikLoad_", (DL_FUNC) &_nlmixr2est_foceiLikLoad_, 1},
+  {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},
+  {"_nlmixr2est_foceiLikSetTheta_", (DL_FUNC) &_nlmixr2est_foceiLikSetTheta_, 1},
+  {"_nlmixr2est_foceiLikEval_", (DL_FUNC) &_nlmixr2est_foceiLikEval_, 3},
   {"_nlmixr2est_adviElboGrad_", (DL_FUNC) &_nlmixr2est_adviElboGrad_, 6},
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},
@@ -236,7 +254,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmSolveR", (DL_FUNC) &_nlmixr2est_nlmSolveR, 1},
   {"_nlmixr2est_nlmSetup", (DL_FUNC) &_nlmixr2est_nlmSetup, 1},
   {"_nlmixr2est_nlmSolveGradR", (DL_FUNC) &_nlmixr2est_nlmSolveGradR, 1},
-  {"_nlmixr2est_nlmerSolveGrad", (DL_FUNC) &_nlmixr2est_nlmerSolveGrad, 1},
+  {"_nlmixr2est_nlmerSolveGrad", (DL_FUNC) &_nlmixr2est_nlmerSolveGrad, 2},
   {"_nlmixr2est_nlmSolveGradHess", (DL_FUNC) &_nlmixr2est_nlmSolveGradHess, 1},
   {"_nlmixr2est_nlmFree", (DL_FUNC) &_nlmixr2est_nlmFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
@@ -254,6 +272,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 23},
   {"_nlmixr2est_foceiSubjectRfoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRfoceFR_, 24},
   {"_nlmixr2est_foceiGradAllFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFR_, 25},
+  {"_nlmixr2est_foceiGradAllAgqFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllAgqFR_, 28},
   {"_nlmixr2est_foceiSubjectGradFoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFoceFR_, 22},
   {"_nlmixr2est_foceiGradAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFoceFR_, 24},
   {"_nlmixr2est_foceiRAllFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFR_, 25},
@@ -264,6 +283,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},
   {"_nlmixr2est_foceiNumericGrad", (DL_FUNC) &_nlmixr2est_foceiNumericGrad, 1},
+  {"_nlmixr2est_foceiNFreezeResidGrad", (DL_FUNC) &_nlmixr2est_foceiNFreezeResidGrad, 0},
   {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
@@ -297,6 +317,12 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_popResFinal", (DL_FUNC) &_nlmixr2est_popResFinal, 1},
   {"_nlmixr2est_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2est_nlmixrExpandFdParNlme_, 2},
   {"_nlmixr2est_nmNearPD_", (DL_FUNC) &_nlmixr2est_nmNearPD_, 10},
+  {"_nlmixr2est_npIpmBurke", (DL_FUNC) &_nlmixr2est_npIpmBurke, 1},
+  {"_nlmixr2est_npBuildPsi", (DL_FUNC) &_nlmixr2est_npBuildPsi, 2},
+  {"_nlmixr2est_npSobolGrid_", (DL_FUNC) &_nlmixr2est_npSobolGrid_, 3},
+  {"_nlmixr2est_npCondense_", (DL_FUNC) &_nlmixr2est_npCondense_, 4},
+  {"_nlmixr2est_npagCycle_", (DL_FUNC) &_nlmixr2est_npagCycle_, 6},
+  {"_nlmixr2est_npObjAtGamma_", (DL_FUNC) &_nlmixr2est_npObjAtGamma_, 3},
   {NULL, NULL, 0}
 };
 

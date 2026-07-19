@@ -11,10 +11,10 @@
 
 #' Install the stashed analytic covariance as `fit$cov` (the native path fills
 #' only the theta block).  No-op on the FD fallback (which foceiCalcR already
-#' warned about).  `covFull=FALSE` (default) installs the structural-theta submatrix
-#' (NONMEM-matched theta cov, backwards-compatible shape); `covFull=TRUE` installs
-#' the full theta+sigma+Omega matrix (identical theta SEs) -- the assembly is always
-#' full.
+#' warned about).  `covFull=TRUE` (default) installs the full theta+sigma+Omega
+#' matrix (identical theta SEs); `covFull=FALSE` installs the structural-theta
+#' submatrix (NONMEM-matched theta cov, backwards-compatible shape) -- the assembly
+#' is always full.
 #' @param .ret focei fit environment
 #' @noRd
 .foceiInstallAnalyticCov <- function(.ret) {
@@ -24,7 +24,7 @@
   if (!exists(".analyticCov", envir = .ret, inherits = FALSE)) return(invisible())
   .cov <- get(".analyticCov", envir = .ret)
   if (!is.matrix(.cov) || !all(is.finite(.cov))) return(invisible())
-  .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", FALSE))
+  .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", TRUE))
   if (!.full && exists(".analyticThetaNames", envir = .ret, inherits = FALSE)) {
     .th <- get(".analyticThetaNames", envir = .ret)          # structural cov-theta block only
     .th <- .th[.th %in% rownames(.cov)]
@@ -42,15 +42,7 @@
   .ret$covMethod <- "analytic"           # report the analytic observed information (not "r")
   # covFull=TRUE swaps in a larger matrix than C++ foceiFinalizeTables saw, so its
   # condition numbers (computed from the theta-only native cov) are stale -- recompute.
-  if (.full && exists("objDf", envir = .ret, inherits = FALSE)) {
-    .od <- get("objDf", envir = .ret)
-    if ("Condition#(Cov)" %in% names(.od)) .od[["Condition#(Cov)"]] <- max(.ev) / min(.ev)
-    if ("Condition#(Cor)" %in% names(.od)) {
-      .evc <- suppressWarnings(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
-      .od[["Condition#(Cor)"]] <- max(.evc) / min(.evc)
-    }
-    assign("objDf", .od, envir = .ret)
-  }
+  if (.full) .foceiCovCondition(.ret, .cov, .ev)
   invisible()
 }
 
@@ -69,6 +61,16 @@
           " is out of analytic-covariance scope; using the finite-difference covariance instead")
   NULL
 }
+
+# Shared cholSECov analytic-cov guard, used by both .foceiCalcRanalytic (live hook) and
+# .foceiCovAnalyticCalc (standalone entry) so the gate and its reason cannot diverge.
+# foceiCalcCov() re-sets every subject's doChol from cholSECov before the cov step (see
+# src/inner.cpp, `fInd->doChol = !op_focei.cholSECov`), so the objective's log|Ht| then
+# comes from the generalized Cholesky, not chol().  For a non-PD Ht that is a different
+# quantity than the analytic R differentiates.  (cholSEOpt is the OPTIMIZATION-phase flag
+# and does not affect the cov step.)
+.foceiCholSECovReason <- "cholSECov=TRUE (the covariance step re-factors the eta Hessian)"
+.foceiCholSECovActive <- function(ui) isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))
 
 #' Transform the observed DV onto the rx_pred_ (transformed) scale for a both-sides
 #' transform, using the solved per-observation transform parameters `trans`
@@ -431,6 +433,10 @@
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   am <- .foceiAnalyticAugModelDirs(ui, dirs)
   if (is.null(am) || am$ndir != ndir) return(NULL)
+  # AGQ (nAGQ>1) swaps the objective's data half for -log(sum_k a_k); NULL keeps the
+  # FOCEI/Laplace path byte-for-byte.
+  .nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
+  .ag <- if (.nAGQ > 1L) .agq(neta, .nAGQ) else NULL
   np <- nth + nsg + omd$nom
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)     # FOCE re-solves EBEs to S_FOCE=0
@@ -505,9 +511,15 @@
       }
       ehat <- ehat * etaScale                          # xi_hat = w * eta_hat on occasion etas
     }
+    # AGQ: the quadrature nodes are placed per subject (from that subject's Ht), so they are
+    # solved inside the subject assembly via this callback.  Order 2 (`SolveFA`) is enough --
+    # the nodes need a/A but never the 3rd-order Ath, which is an eta-hat-only quantity.
+    .sn <- if (is.null(.ag)) NULL else function(etak)
+      .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
     Ri <- tryCatch(.foceiAnalyticSubjectR(E, ehat, Om, ef, neta, nth, nsg, ef$sgVar, omd,
                                           ndir = ndir, dirTh = dirTh, Oi = Oi, interaction = interaction,
-                                          E0 = E0, foceType = foceType),
+                                          E0 = E0, foceType = foceType,
+                                          qx = .ag$x, qw = .ag$w, solveNode = .sn),
                    error = function(e) NULL)
     if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
     R <- R + Ri
@@ -542,12 +554,19 @@
     # linCmt() has no symbolic state sensitivities for the augmented model
     if (isTRUE(any(ui$predDf$linCmt)))
       return(.foceiAnalyticFallback("a linCmt() model"))
+    if (.foceiCholSECovActive(ui))
+      return(.foceiAnalyticFallback(.foceiCholSECovReason))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
     # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
     # it only matters when interaction=0 (FOCEI always uses the live conditional R).
     foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
-      return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
+    # AGQ is supported for FOCEI (interaction=1) only -- the node terms are derived on the
+    # FOCEI conditional R.  This gate is load-bearing: .foceiAnalyticSubjectR routes
+    # interaction=0 to the FOCE assembler, which takes no qx/qw and would silently return the
+    # nAGQ=1 FOCE covariance for an AGQ fit.  Matches the analytic gradient, which declines
+    # the same combination.
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L && interaction != 1L)
+      return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1) without interaction"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
     # Estimated boxCox/yeoJohnson lambda: both the FOCEI and FOCE (nonmem / foce+)
@@ -664,6 +683,24 @@
     if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
       return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
 
+    # AGQ scope.  The node terms live only in .foceiAnalyticSubjectR, so every route that
+    # leaves it returns the nAGQ=1 Laplace cov stamped covMethod="analytic" -- finite, no
+    # error -- and the gate must sit above the routing, not in the assembler.  foceiOnly and
+    # censored route to AssembleRFR (no qx/qw); IOV would hand the node callback xi-space
+    # etas and un-rescaled a/A; agqLow/agqHi kinks the objective (inner.cpp clamps each
+    # node's lik).  cholSECov is already declined at the top of this hook.
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
+      .agqLo <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqLow", -Inf)))
+      .agqHi <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqHi", Inf)))
+      .why <- if (isTRUE(ef$foceiOnly)) "a general or multi-endpoint residual variance"
+        else if (.hasCensD) "censored observations"
+        else if (length(iovVars) > 0L) "inter-occasion variability (IOV)"
+        else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) "a finite agqLow/agqHi node clamp"
+        else NULL
+      if (!is.null(.why))
+        return(.foceiAnalyticFallback(paste0("adaptive Gaussian quadrature (nAGQ > 1) with ", .why)))
+    }
+
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
     # the C++ hook skips its finite-difference fallback if the assembly then fails.
@@ -752,6 +789,9 @@
   dOi <- vector("list", nom)
   d2Oi <- lapply(seq_len(nom), function(i) lapply(seq_len(nom), function(j) Z))
   d2LD <- matrix(0, nom, nom)
+  # dLD (1st derivative of log|Omega|): unused by the FOCEI R (only 2nd derivatives appear
+  # there), but Cov_pi(Phi_p, Phi_q) needs Phi's 1st derivative on the Omega block.
+  dLD <- numeric(nom)
   # ordinary variance/covariance parameters (one per row of `pairs`)
   if (nOrd > 0L) {
     for (a in seq_len(nOrd)) {
@@ -759,6 +799,7 @@
       for (b in seq_len(nOrd)) d2Oi[[a]][[b]] <- d$d2OmegaInv[[ordIdx[a]]][[ordIdx[b]]]
     }
     d2LD[seq_len(nOrd), seq_len(nOrd)] <- d$d2LogDet[ordIdx, ordIdx, drop = FALSE]
+    dLD[seq_len(nOrd)] <- d$dLogDet[ordIdx]
   }
   # IOV shared-variance parameters (grouped + chain-ruled to the SD scale w)
   if (nIov > 0L) {
@@ -772,9 +813,10 @@
       for (a in gi) for (b in gi) s2 <- s2 + d$d2OmegaInv[[a]][[b]]
       d2Oi[[p]][[p]] <- 4 * w^2 * s2 + 2 * sdOi                 # d2OmegaInv/dw^2
       d2LD[p, p] <- 4 * w^2 * sum(d$d2LogDet[gi, gi]) + 2 * sum(d$dLogDet[gi])
+      dLD[p] <- 2 * w * sum(d$dLogDet[gi])                      # dlog|Omega|/dw
     }
   }
-  list(nom = nom, dOi = dOi, d2Oi = d2Oi, d2LD = d2LD)
+  list(nom = nom, dOi = dOi, d2Oi = d2Oi, d2LD = d2LD, dLD = dLD)
 }
 
 #' Symbolic error machinery (rho/p f-derivatives + sigma partials) for one
@@ -898,7 +940,10 @@
   DD <- function(e, ...) { for (v in c(...)) e <- stats::D(e, v); e }
   sgVar <- c(if (hasA) "sa", if (hasP) "sp"); sgName <- c(if (hasA) addN, if (hasP) propN)
   val <- setNames(c(if (hasA) er$est[er$name == addN], if (hasP) er$est[er$name == propN]), sgVar)
-  sc <- list(r1 = DD(rhoE, "f"), r2 = DD(rhoE, "f", "f"), r3 = DD(rhoE, "f", "f", "f"),
+  # r0 is rho itself: unused by the FOCEI R, but pi_k is a softmax over Phi(eta_k) and the
+  # cov-path solve carries f/a/A with no $R to rebuild it from.
+  sc <- list(r0 = rhoE,
+             r1 = DD(rhoE, "f"), r2 = DD(rhoE, "f", "f"), r3 = DD(rhoE, "f", "f", "f"),
              p = pE, p1 = DD(pE, "f"), p2 = DD(pE, "f", "f"),
              q0 = qE, q1 = DD(qE, "f"), q2 = DD(qE, "f", "f"),
              pF = pFE, pF1 = DD(pFE, "f"), pF2 = DD(pFE, "f", "f"))
@@ -961,8 +1006,13 @@
   # f-part (prediction a/A) spans f-directions only (sigma slots are zero-filled by the reader);
   # R-part (aR/AR) spans every direction.  iiF/jjF index the f2 pairs into the FULL dirs vector.
   list(f1 = paste0("rx_f1_", fDirs), fDirIdx = match(fDirs, dirs),
-       f2 = paste0("rx_f2_", P2$i, "_", P2$j), iiF = match(P2$i, dirs), jjF = match(P2$j, dirs),
-       rvar1 = paste0("rx_rvar1_", dirs), rvar2 = paste0("rx_rvar2_", P2r$i, "_", P2r$j),
+       # the nrow() guards are load-bearing: paste0 treats a zero-length argument as "", so an
+       # empty P2 (order = 1) gives "rx_f2__" rather than character(0) -- a bogus column name
+       # that makes the solve's column check fail and every node solve return NULL.
+       f2 = if (nrow(P2)) paste0("rx_f2_", P2$i, "_", P2$j) else character(0),
+       iiF = match(P2$i, dirs), jjF = match(P2$j, dirs),
+       rvar1 = paste0("rx_rvar1_", dirs),
+       rvar2 = if (nrow(P2r)) paste0("rx_rvar2_", P2r$i, "_", P2r$j) else character(0),
        ii = match(P2r$i, dirs), jj = match(P2r$j, dirs),
        rsig = if (length(sigTh)) paste0("rx_rsig_", sigTh, "_") else character(0),
        rsig1 = lapply(sigTh, function(.n) paste0("rx_rsig1_", .n, "_", dirs)),
@@ -1080,8 +1130,16 @@
   }
   .res
 }
-.foceiAnalyticAugModelDirs <- function(ui, dirs) {
+#' @param order sensitivity tier: 2 (default) emits the 1st and 2nd-order chains; 1 emits
+#'   the 1st-order chain only, for a consumer needing just a/aR (the AGQ quadrature nodes
+#'   never read A/AR/RsigDir).  With `order = 1` the reader zero-fills A/AR naturally:
+#'   `P2`/`P2r` are empty, so `cols$f2`/`cols$rvar2` are `character(0)` and the A/AR fill
+#'   loops never execute.
+#' @noRd
+.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L) {
+  order <- as.integer(order)
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
+                          "|o", order,                                  # sensitivity tier -> distinct cached model
                           "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP"),     # skip flag -> distinct cached model
                           # subject-constant covariate set -> which covariate directions get eta-scaling reuse
                           "|cc", paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL),
@@ -1138,7 +1196,9 @@
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
     .s1 <- rxode2::.rxSens(.s, .mfDirs)
     if (length(.s1) == 0L) return(NULL)
-    .s2 <- rxode2::.rxSens(.s, .mfDirs, .mfDirs)    # 2nd order (model f-directions only): the expensive expansion
+    # 2nd order (model f-directions only): the expensive expansion.  order = 1 skips it
+    # entirely -- no 2nd-order state-sensitivity compartments, no f2/rvar2 chains.
+    .s2 <- if (order >= 2L) rxode2::.rxSens(.s, .mfDirs, .mfDirs) else character(0)
     .pred <- get("rx_pred_", .s)
     # residual variance rx_r_ (any structure) with its own 1st/2nd sensitivity chains,
     # exactly like the prediction -- so R and dR/ddir, d2R/ddir2 come from the SOLVE
@@ -1176,6 +1236,9 @@
     .P2 <- .P2[match(.P2$i, .fDirs) <= match(.P2$j, .fDirs), , drop = FALSE]
     .P2r <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)        # variance rvar2: every direction
     .P2r <- .P2r[match(.P2r$i, dirs) <= match(.P2r$j, dirs), , drop = FALSE]
+    # order = 1: no 2nd-order pairs at all -- empties .fL2/.rL2, the 2nd-order IC block,
+    # and cols$f2/cols$rvar2, so the reader zero-fills A/AR.
+    if (order < 2L) { .P2 <- .P2[0L, , drop = FALSE]; .P2r <- .P2r[0L, , drop = FALSE] }
     # model directions first (they define the columns the covariate columns scale), covariate
     # directions after -- rxode2 evaluates assignments in order.
     .fL1 <- c(vapply(.mfDirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1)),
@@ -1282,43 +1345,19 @@
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
     # prediction chains, so rxOptExpr materially shrinks the per-solve work.
-    # rxOptExpr is ~O(n^3.5) in model size, so optimizing the whole (~200-350 line)
-    # augmented model in one call dominates the build (~25s+).  Split into contiguous
-    # line-chunks and optimize each separately: k chunks of size n/k cost ~n^3/k^2 -- an
-    # ~8-13x speedup -- losing only cross-chunk CSE (the optimized text grows ~15-20%,
-    # negligible since the aug model is solved only hundreds of times per fit).  rxOptExpr
-    # restarts its introduced-variable counter at rx_expr_0 each call, so give each chunk a
-    # unique rx_expr_ prefix before concatenating (the aug model never uses that prefix).
+    # rxode2's rxOptExpr() itself optimizes a large model in cost-balanced chunks by
+    # default (it disguises the compartment-scoped constructs -- state ICs and
+    # f/alag/lag/rate/dur dosing modifiers -- a chunk would otherwise orphan, and
+    # falls back to a single whole-model pass if a chunk cannot be optimized), so the
+    # ~200-350 line augmented model no longer needs hand-rolled chunking here.  The
+    # fit's rxControl(cores=) is passed through so the chunks are optimized in
+    # parallel with the same thread setting the solves use (`.cores` also rides along
+    # in the result so the batched solves run parallel).
+    .cores <- .optExprCores(ui)
     if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
-      .modTxt <- tryCatch({
-        .ln <- strsplit(.modTxt, "\n", fixed = TRUE)[[1]]
-        # The chunker optimizes contiguous 40-line pieces independently for build speed.
-        # rxOptExpr parses each chunk as a standalone model, so a chunk that holds a
-        # compartment-scoped construct -- a state initial condition (`W(0)=`) or a dosing
-        # modifier (`f(cmt)=` / `lag(cmt)=`->`alag(cmt)=` / `rate(cmt)=` / `dur(cmt)=`) --
-        # without the matching `d/dt(cmt)=` (which, for a parameter-dependent IC/modifier,
-        # sits many sensitivity-ODE lines away in an EARLIER chunk) raises e.g. "'W(0)'
-        # present, but d/dt(W) not defined".  These lines cannot simply be pulled out and
-        # re-appended: their RHS may read a model variable whose value the optimized body
-        # changes, so position is load-bearing.  When any such construct is present, drop to
-        # a single whole-model rxOptExpr call (the original, correct behavior -- slower to
-        # build but rare); keep the fast chunking for the common unconstrained models.
-        .special <- any(grepl("(0)=", .ln, fixed = TRUE)) ||
-          any(grepl("^(f|alag|lag|rate|dur)\\([^)=]*\\)=", .ln))
-        .k <- if (.special) 1L else max(1L, ceiling(length(.ln) / 40))
-        if (.k <= 1L) {
-          rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model")
-        } else {
-          .grp <- ceiling(seq_along(.ln) / ceiling(length(.ln) / .k))
-          .opt <- vapply(sort(unique(.grp)), function(.g) {
-            .chTxt <- paste(.ln[.grp == .g], collapse = "\n")
-            .o <- tryCatch(rxode2::rxOptExpr(.chTxt, "FOCEi outer gradient model"),
-                           error = function(e) .chTxt)
-            gsub("rx_expr_", paste0("rx_expr_c", .g, "_"), .o, fixed = TRUE)
-          }, character(1))
-          paste(.opt, collapse = "\n")
-        }
-      }, error = function(e) .modTxt)
+      .modTxt <- tryCatch(
+        rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model", parallel = .cores),
+        error = function(e) .modTxt)
     }
     # Declare the theta/eta inputs AND the model covariates up front (param()) so the
     # solve parameter order is fixed and positional.  Reuse .uiGetThetaEtaParams -- the
@@ -1332,11 +1371,9 @@
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
     # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
-    .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
-                       error = function(e) 0L)
     list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
          st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
-         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = if (length(.cores)) .cores else 0L, key = .key)
+         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .cores, key = .key)
   }, error = function(e) NULL)
   if (!is.null(.key) && !is.null(.res)) {
     if (length(ls(.foceiAnalyticAugCache, all.names = TRUE)) >= 64L)    # bound retained compiled models
@@ -1755,7 +1792,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSubjectR <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
                                    ndir = neta, dirTh = seq_len(nth), Oi = solve(Om),
-                                   interaction = 1L, E0 = NULL, foceType = 0L) {
+                                   interaction = 1L, E0 = NULL, foceType = 0L,
+                                   qx = NULL, qw = NULL, solveNode = NULL) {
   if (identical(as.integer(interaction), 0L))
     return(.foceiAnalyticSubjectRfoce(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
                                       ndir = ndir, dirTh = dirTh, Oi = Oi, E0 = E0,
@@ -1835,12 +1873,113 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   Cpe <- function(p, l) 0.5 * (tr(Hti %*% d2HtEtaP(p, l)) - tr(Hti %*% dHt_p(p) %*% Hti %*% dHtD[[l]]))
   Cpp <- function(aa, bb) 0.5 * (tr(Hti %*% d2Ht_pp(aa, bb)) - tr(Hti %*% dHt_p(aa) %*% Hti %*% dHt_p(bb)))
   .CpeRow <- lapply(1:npE, function(p) vapply(ei, function(l) Cpe(p, l), numeric(1)))  # length-neta row per p
+  .ldOf <- function(aa, bb, e2) Cpp(aa, bb) + sum(.CpeRow[[aa]] * etaP[, bb]) +
+    sum(.CpeRow[[bb]] * etaP[, aa]) + as.numeric(t(etaP[, aa]) %*% Cee %*% etaP[, bb]) + sum(Cen * e2)
+  if (is.null(qx)) {                                  # ---- FOCEI/Laplace (nAGQ == 1) ----
+    R <- matrix(0, npE, npE)
+    for (aa in 1:npE) for (bb in aa:npE) {              # R is symmetric -- fill upper, mirror
+      dat <- d2Phi(aa, bb) - as.numeric(t(.Mcols[[aa]]) %*% HiM %*% .Mcols[[bb]])
+      R[aa, bb] <- R[bb, aa] <- dat + .ldOf(aa, bb, eta2(aa, bb))
+    }
+    return(R)
+  }
+  # ---- AGQ (nAGQ > 1) ------------------------------------------------------------------
+  # L_i = -log(sum_k a_k) + 0.5*log|Ht|, so only the DATA half changes; `ld` above is the
+  # log-det half and is reused verbatim:
+  #     R_i = ld + E_pi[Phi_pq^total(k)] - Cov_pi(Phi_p^total, Phi_q^total)
+  # At nAGQ=1 there is one node at etahat with pi=1: Cov vanishes and E_pi[.] collapses to
+  # the total d2Phi(etahat) = d2Phi - M'H^-1 M, i.e. exactly the `dat` branch above.
+  .phiU <- function(M) { U <- M; U[lower.tri(U)] <- 0; diag(U) <- diag(U) / 2; U }
+  .ch <- tryCatch(chol(Ht), error = function(e) NULL)   # non-PD Ht -> caller falls back to FD
+  if (is.null(.ch)) return(NULL)
+  # PD margin, as in the gradient path: chol() succeeding is not proof the objective placed
+  # the nodes via chol(Ht).  arma's is_sympd() and R's chol() disagree near the PD boundary,
+  # and at fit time calcEtaHessian switches to nmNearPD/cholSE when !is_sympd() -- so a
+  # near-boundary Ht would mean the cov differentiates a different node placement than was
+  # optimized.  Require the margin and fall back to FD otherwise.
+  if (!is.finite(rcond(Ht)) || rcond(Ht) < 1e-10) return(NULL)
+  Ginv <- backsolve(.ch, diag(neta))                    # chol(Ht)^-1 places the nodes
+  # TOTAL derivatives of Ht through etahat(theta) -- the node placement moves with the mode
+  dHtStar <- lapply(1:npE, function(p) { D <- dHt_p(p)
+    for (l in ei) D <- D + dHtD[[l]] * etaP[l, p]; D })
+  .e2 <- lapply(1:npE, function(aa) vector("list", npE))
+  for (aa in 1:npE) for (bb in aa:npE) { v <- eta2(aa, bb); .e2[[aa]][[bb]] <- v; .e2[[bb]][[aa]] <- v }
+  d2HtStar <- function(aa, bb) { D <- d2Ht_pp(aa, bb)
+    for (l in ei) D <- D + d2HtEtaP(aa, l) * etaP[l, bb] + d2HtEtaP(bb, l) * etaP[l, aa]
+    for (l in ei) for (m in ei) D <- D + d2HtDD[[l]][[m]] * etaP[l, aa] * etaP[m, bb]
+    for (l in ei) D <- D + dHtD[[l]] * .e2[[aa]][[bb]][l]; D }
+  # dGinv_p = -Ginv*PhiU(Ginv' dHtStar_p Ginv); differentiate once more for d2Ginv
+  UL <- lapply(1:npE, function(p) .phiU(t(Ginv) %*% dHtStar[[p]] %*% Ginv))
+  dGinvL <- lapply(1:npE, function(p) -Ginv %*% UL[[p]])
+  d2GinvF <- function(aa, bb) Ginv %*% UL[[bb]] %*% UL[[aa]] -
+    Ginv %*% .phiU(t(dGinvL[[bb]]) %*% dHtStar[[aa]] %*% Ginv + t(Ginv) %*% d2HtStar(aa, bb) %*% Ginv +
+                   t(Ginv) %*% dHtStar[[aa]] %*% dGinvL[[bb]])
+  # Phi and its p/eta derivatives at a node.  Phi_eta(node) != 0 (unlike at etahat), which
+  # is what makes the d2etaCur (w_kpq) term survive here and vanish in the FOCEI branch.
+  .nodeParts <- function(Ek, etak) {
+    ak <- Ek$a; Ak <- Ek$A; fk <- Ek$f
+    evk <- function(e) ef$ev(e, fk, y)
+    r1k <- evk(ef$sc$r1); r2k <- evk(ef$sc$r2)
+    aek <- ak[, ei, drop = FALSE]
+    Hk <- Oi; for (l in ei) for (m in ei) Hk[l, m] <- Hk[l, m] + sum(r2k * ak[, l] * ak[, m] + r1k * Ak[, l, m])
+    Nk <- matrix(0, neta, ndir); for (l in ei) for (d in di) Nk[l, d] <- sum(r2k * ak[, l] * ak[, d] + r1k * Ak[, l, d])
+    gk <- as.numeric(Oi %*% etak) + vapply(ei, function(l) sum(r1k * ak[, l]), numeric(1))
+    PVperk <- function(p) lapply(ef$per[[sgi(p)]], evk)
+    PVpairk <- function(aa, bb) { s1 <- sgi(aa); s2 <- sgi(bb)
+      key <- if (paste0(s1, s2) %in% names(ef$pair)) paste0(s1, s2) else paste0(s2, s1)
+      lapply(ef$pair[[key]], evk) }
+    Mk <- function(p) { t <- typ(p)
+      if (t == "th") return(Nk[, .dirOf(p)])
+      if (t == "sg") return(as.numeric(crossprod(aek, PVperk(p)$rf)))
+      as.numeric(omd$dOi[[omc(p)]] %*% etak) }
+    dPk <- function(p) { t <- typ(p)
+      if (t == "th") return(sum(r1k * ak[, .dirOf(p)]))
+      if (t == "sg") return(sum(PVperk(p)$rs))
+      0.5 * as.numeric(t(etak) %*% omd$dOi[[omc(p)]] %*% etak) + 0.5 * omd$dLD[omc(p)] }
+    d2Pk <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)
+      if (ta == "th" && tb == "th")
+        return(sum(r2k * ak[, .dirOf(aa)] * ak[, .dirOf(bb)] + r1k * Ak[, .dirOf(aa), .dirOf(bb)]))
+      if (ta == "om" && tb == "om")
+        return(0.5 * as.numeric(t(etak) %*% omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% etak) +
+                 0.5 * omd$d2LD[omc(aa), omc(bb)])
+      if (ta == "om" || tb == "om") return(0)
+      if (ta == "sg" && tb == "sg") return(sum(PVpairk(aa, bb)$rss))
+      thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa
+      as.numeric(crossprod(ak[, .dirOf(thp)], PVperk(sg)$rf)) }
+    list(H = Hk, g = gk, M = Mk, dP = dPk, d2P = d2Pk,
+         Phi = sum(evk(ef$sc$r0)) + 0.5 * as.numeric(t(etak) %*% Oi %*% etak))
+  }
+  nn <- nrow(qx)
+  P <- vector("list", nn); lg <- numeric(nn); vK <- vector("list", nn)
+  for (k in seq_len(nn)) {
+    x <- qx[k, ]
+    etak <- ehat + sqrt(2) * as.numeric(Ginv %*% x)   # sqrt(2)*Ginv*x, matching inner.cpp
+    Ek <- solveNode(etak)
+    if (is.null(Ek)) return(NULL)                       # node solve failed -> caller drops to FD
+    P[[k]] <- .nodeParts(Ek, etak)
+    lg[k] <- sum(log(qw[k, ])) + sum(x^2) - P[[k]]$Phi   # u_k = log a_k (exp(x'x) untilt)
+    # matrix(, nrow=neta) is load-bearing: at neta==1 vapply drops the dim, vK[[k]][, p]
+    # throws and the tryCatch silently falls back to FD.  Same guard as etaP above.
+    vK[[k]] <- matrix(vapply(1:npE, function(p) etaP[, p] + sqrt(2) * as.numeric(dGinvL[[p]] %*% x),
+                             numeric(neta)), nrow = neta)
+  }
+  lg <- lg - max(lg); pk <- exp(lg); pk <- pk / sum(pk)  # pi_k (softmax, shifted for stability)
+  gp <- matrix(0, nn, npE)                               # Phi_p^total at each node
+  for (k in seq_len(nn)) for (p in 1:npE)
+    gp[k, p] <- P[[k]]$dP(p) + sum(P[[k]]$g * vK[[k]][, p])
+  Eg <- as.numeric(crossprod(pk, gp))
   R <- matrix(0, npE, npE)
-  for (aa in 1:npE) for (bb in aa:npE) {                # R is symmetric -- fill upper, mirror
-    dat <- d2Phi(aa, bb) - as.numeric(t(.Mcols[[aa]]) %*% HiM %*% .Mcols[[bb]])
-    ld <- Cpp(aa, bb) + sum(.CpeRow[[aa]] * etaP[, bb]) + sum(.CpeRow[[bb]] * etaP[, aa]) +
-          as.numeric(t(etaP[, aa]) %*% Cee %*% etaP[, bb]) + sum(Cen * eta2(aa, bb))
-    R[aa, bb] <- R[bb, aa] <- dat + ld
+  for (aa in 1:npE) for (bb in aa:npE) {
+    d2G <- d2GinvF(aa, bb); e2 <- .e2[[aa]][[bb]]; s <- 0
+    for (k in seq_len(nn)) {
+      va <- vK[[k]][, aa]; vb <- vK[[k]][, bb]
+      wab <- e2 + sqrt(2) * as.numeric(d2G %*% qx[k, ])   # d2etaCur_k/dp dq (sqrt(2) on d2Ginv*x)
+      Pk <- P[[k]]
+      s <- s + pk[k] * (Pk$d2P(aa, bb) + sum(Pk$M(aa) * vb) + sum(Pk$M(bb) * va) +
+                          as.numeric(t(va) %*% Pk$H %*% vb) + sum(Pk$g * wab))
+    }
+    cv <- sum(pk * gp[, aa] * gp[, bb]) - Eg[aa] * Eg[bb]
+    R[aa, bb] <- R[bb, aa] <- .ldOf(aa, bb, e2) + s - cv
   }
   R
 }
@@ -2217,11 +2356,14 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt)))
     return(.foceiAnalyticFallback("a linCmt() model"))
+  if (.foceiCholSECovActive(ui))
+    return(.foceiAnalyticFallback(.foceiCholSECovReason))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
-    return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
+  # AGQ needs interaction=1 -- see .foceiCalcRanalytic for why this gate is load-bearing.
+  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L && interaction != 1L)
+    return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1) without interaction"))
   # IOV is out of scope; derive the flag from THIS fit, not the process-global
   # .uiIovEnv (which reflects the LAST-preprocessed model).  An occasion (IOV) eta
   # carries a non-"id" `condition` -- the same signal .uiApplyIov keys on.
@@ -2236,6 +2378,19 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
+
+  # AGQ scope -- see .foceiCalcRanalytic for why this must gate above the routing (IOV is
+  # already declined outright on this path).
+  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
+    .agqLo <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqLow", -Inf)))
+    .agqHi <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "agqHi", Inf)))
+    .why <- if (isTRUE(ef$foceiOnly)) "a general or multi-endpoint residual variance"
+      else if (.hasCens) "censored observations"
+      else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) "a finite agqLow/agqHi node clamp"
+      else NULL
+    if (!is.null(.why))
+      return(.foceiAnalyticFallback(paste0("adaptive Gaussian quadrature (nAGQ > 1) with ", .why)))
+  }
 
   ini <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)                    # theta <-> eta pairing

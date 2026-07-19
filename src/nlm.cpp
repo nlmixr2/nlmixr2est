@@ -265,6 +265,13 @@ RObject nlmSetup(Environment e) {
                    as<List>(control["xform"]));
   scaleApplyIterPrintControl(&(nlmOp.scale),
                              as<List>(control["iterPrintControl"]));
+  // Optional: hide the objective ("Function Val.") column.  Engines driven by
+  // an external optimizer that records parameters only -- e.g. nlmer via
+  // nlmerSolveGrad(record=TRUE) -- set this so the header (printed right after
+  // setup) and iteration rows agree.  Defaults to shown.
+  if (control.containsElementNamed("showOfv")) {
+    nlmOp.scale.showOfv = as<int>(control["showOfv"]);
+  }
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -642,11 +649,21 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 //' @details This is an internal function and should not be called
 //'   directly.
 //'
+//' @param record When \code{TRUE}, record this evaluation's population
+//'   parameter estimate -- the per-subject mean of \code{thetaMat}'s columns
+//'   (\code{phi = beta + b} averaged over subjects, which equals the fixed
+//'   effect exactly for parameters without a random effect) -- into the
+//'   resident nlm parameter history via the shared scale machinery.  This is
+//'   how an external optimizer (e.g. \code{lme4::nlmer}) populates the
+//'   iteration print and the history recovered by \code{nlmGetParHist()}.  No
+//'   objective value is recorded (the scale's \code{showOfv} is expected to be
+//'   0 for these engines).  Defaults to \code{FALSE}.
+//'
 //' @author Matthew L. Fidler
 //' @keywords internal
 //' @export
 //[[Rcpp::export]]
-RObject nlmerSolveGrad(arma::mat &thetaMat) {
+RObject nlmerSolveGrad(arma::mat &thetaMat, bool record=false) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
   int nsub = getRxNsub(rx);
@@ -667,6 +684,14 @@ RObject nlmerSolveGrad(arma::mat &thetaMat) {
     arma::vec th = thetaMat.row(id).t();
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(th, id);
     setRxThreadId(-1);
+  }
+  if (record) {
+    // Population parameter estimate = column means of the per-subject phi.
+    // No objective is available here (lme4 owns the deviance), so record the
+    // parameters only -- NA_REAL fills the unused Function-Val slot, which the
+    // scale hides when showOfv == 0.
+    arma::vec mu = arma::mean(thetaMat, 0).t();
+    scalePrintFun(&(nlmOp.scale), mu.memptr(), NA_REAL);
   }
   return wrap(ret);
 }
@@ -1049,6 +1074,25 @@ SEXP nlmCensInfo() {
   return ret;
 }
 
+//' Recover and finalize the resident nlm parameter history
+//'
+//' Returns the parameter history accumulated in the resident nlm scaling
+//' struct (one row per iteration type per recorded evaluation) as a data
+//' frame, and stops further recording/printing (\code{save} and \code{every}
+//' are reset to 0).  Must be called while \code{.nlmSetupEnv()} is still
+//' loaded -- i.e. before \code{.nlmFreeEnv()}.  Used by \code{.nlmFinalizeList}
+//' for the standard nlm-family estimators and directly by externally-optimized
+//' engines such as \code{babelmixr2}'s nlmer.
+//'
+//' @param p When \code{TRUE} (default) also print the final iteration line.
+//'
+//' @return A data frame of the recorded parameter history.
+//'
+//' @details This is an internal function and should not be called directly.
+//'
+//' @author Matthew L. Fidler
+//' @keywords internal
+//' @export
 //[[Rcpp::export]]
 RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;

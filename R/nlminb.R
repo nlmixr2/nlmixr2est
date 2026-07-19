@@ -4,6 +4,9 @@
 #' @inheritParams stats::nlminb
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
+#'   the optimizer's own Hessian; \code{""} skips the covariance step.
 #' @param returnNlminb logical; when TRUE this will return the nlminb
 #'   result instead of the nlmixr2 fit object
 #' @param eval.max Maximum number of evaluations of the objective

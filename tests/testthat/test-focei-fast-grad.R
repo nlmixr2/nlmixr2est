@@ -327,4 +327,73 @@ nmTest({
     expect_false(isTRUE(fF$foceiControl$fast))
     expect_true(is.finite(fF$objf))
   })
+
+  test_that("FOCEI + prop(): analytic gradient matches central differences near the optimum", {
+    skip_on_cran()
+    skip_on_ci()
+    # Exercises the (f,R) determinant chain d(dfr)/ddir = pfrf*a + pfRR*aR (foceiGradSubjectFR_)
+    # for a prediction-dependent variance: aR = dR/ddir is nonzero only under FOCEI with
+    # prop()/pow()/combined error, so additive error and every FOCE variant (frozen variance)
+    # leave this path untested.  Data are simulated at the initial estimates, so the gradient
+    # is evaluated near the optimum where the log|Ht| determinant term is a first-order
+    # contributor -- the covariate test above sits far from the optimum, where a data-fit
+    # gradient of ~5e4 masks a determinant error of several hundred percent.
+    obsT <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24)
+    m <- function() {
+      ini({ tka <- log(1); tcl <- log(4); tv <- log(60)
+            eta.ka ~ 0.09; eta.cl ~ 0.09; eta.v ~ 0.09
+            prop.sd <- 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - (cl / v) * center
+              cp <- center / v
+              cp ~ prop(prop.sd) })
+    }
+    set.seed(7001)
+    d <- do.call(rbind, lapply(1:40, function(i)
+      rbind(data.frame(ID = i, TIME = 0, AMT = 100, DV = 0, EVID = 101),
+            data.frame(ID = i, TIME = obsT, AMT = 0, DV = 0, EVID = 0))))
+    d$DV <- rxode2::rxSolve(rxode2::rxode2(m), d, addDosing = TRUE)$sim
+    d$DV[d$EVID != 0] <- 0
+    ph <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei",
+          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                       maxOuterIterations = 0L, maxInnerIterations = 500L))))
+    g <- .foceiGradAnalyticCalc(ph)
+    expect_false(is.null(g))
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                     maxInnerIterations = 500L))))$objf
+    }
+    # per-parameter step: a flat h=1e-3 perturbs prop.sd=0.1 by 1%, which leaves the central
+    # difference itself carrying ~10% error
+    fd <- vapply(names(base), function(nm) {
+      h <- 1e-3 * max(abs(base[[nm]]), 0.05)
+      (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
+    }, numeric(1))
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
+  test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .ui <- rxode2::rxUiDecompress(nlmixr2(.fast_one_cmt))
+    rxode2::rxAssignControlValue(.ui, "fast", TRUE)
+    .om <- lotri::lotri(eta.ka ~ 0.6, eta.cl ~ 0.3, eta.v ~ 0.1)
+    .ref <- .foceiEstOmegaDeriv(.ui, .om)                       # fresh env (no `e`)
+    expect_false(is.null(.ref))
+    # an env whose rxInv is already at this Omega: reused, and EXACTLY equal
+    .e <- new.env()
+    .e$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .e), .ref, tolerance = 0)
+    # a STALE env (different Omega) must fall back, not return the wrong derivatives
+    .s <- new.env()
+    .s$rxInv <- rxode2::rxSymInvCholCreate(mat = .om * 1.5, diag.xform = "sqrt")
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .s), .ref, tolerance = 0)
+    # a junk / absent rxInv falls back too
+    .j <- new.env(); .j$rxInv <- "not an rxSymInvCholEnv"
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, .j), .ref, tolerance = 0)
+    expect_equal(.foceiEstOmegaDeriv(.ui, .om, new.env()), .ref, tolerance = 0)
+  })
 })

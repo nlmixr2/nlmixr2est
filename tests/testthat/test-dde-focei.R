@@ -40,7 +40,7 @@ nmTest({
     .dat <- .dde_focei_data()
     fit <- suppressWarnings(suppressMessages(
       nlmixr(.dde_focei_mod, .dat, "focei",
-             foceiControl(print = 0L, fast = TRUE))))
+             foceiControl(print = 0L, fast = TRUE, covMethod = "analytic"))))
     # the augmented delayed-sensitivity solve fed the covariance without diverging
     expect_equal(fit$covMethod, "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))

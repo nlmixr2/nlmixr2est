@@ -12,7 +12,8 @@ saemControl(
   nu = c(2, 2, 2),
   print = 1L,
   trace = 0,
-  covMethod = c("linFim", "fim", "sa", "r,s", "r", "s", ""),
+  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+  covMethodDeferred = NA_character_,
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -47,10 +48,12 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  mixProbMethod = c("regularized", "annealed"),
+  mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
+  nonMuTheta = c("regress", "eta"),
+  residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
   fast = FALSE,
   fastKernel = c("firstN", "throughout", "additive"),
@@ -110,20 +113,27 @@ typical fitting.}
     gradient cross-product (evaluated at the individual empirical
     Bayes estimates).
 
+ "\code{sa}" (default) Use the stochastic-approximation Fisher Information
+ Matrix.  After estimation, a dedicated covariance phase (\code{nSaCov}
+ iterations) holds the parameters at the converged estimate and keeps
+ resimulating the individual parameters, Monte-Carlo averaging the Louis
+ observed-information integrand into a converged FIM decoupled from the cooling
+ schedule (the approach used by Monolix; Kuhn & Lavielle 2005).  Always includes
+ every estimated population parameter (theta, the \code{Omega} diagonal
+ variances, and residual).
+
+ "\code{analytic}" Compute the FOCEI analytic observed-information covariance at
+ the converged SAEM estimates.  When the model is out of analytic-covariance
+ scope (e.g. \code{linCmt()}, a non-normal likelihood, or a non-SD IOV
+ parameterization) or the result is not positive definite, it falls back to the
+ linearized Fisher information (\code{linFim}) with a message.
+
  "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
 
  "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM
  estimation to calculate the covariance.  Like \code{sa} it inverts the observed
  information to a full theta + \code{Omega} diagonal + residual covariance, but
  uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.
-
- "\code{sa}" Use the stochastic-approximation Fisher Information Matrix.  After
- estimation, a dedicated covariance phase (\code{nSaCov} iterations) holds the
- parameters at the converged estimate and keeps resimulating the individual
- parameters, Monte-Carlo averaging the Louis observed-information integrand into a
- converged FIM decoupled from the cooling schedule (the approach used by Monolix;
- Kuhn & Lavielle 2005).  Always includes every estimated population parameter
- (theta, the \code{Omega} diagonal variances, and residual).
 
  For both \code{fim} and \code{sa} the simulation-based Fisher information covers the
  structural theta, the \code{Omega} diagonal variances, and additive residual error.
@@ -139,6 +149,11 @@ typical fitting.}
  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
 
  "" Does not calculate the covariance step.}
+
+\item{covMethodDeferred}{Internal.  When a foreign covariance ("sa"/"imp")
+is requested, it is stashed here and computed post-fit at the converged
+estimates by the decoupled recompute engine (\code{setCov()} uses the same
+path); \code{NA} otherwise.}
 
 \item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
 should include every estimated population parameter -- the structural and
@@ -303,9 +318,19 @@ uses the legacy finite-difference behavior.}
   component), stabilizes the mixing-probability estimate against
   collapsing onto a single component (the responsibility used to
   update it is itself weighted by the current mixing probability,
-  which can create a runaway feedback loop). Two options:
+  which can create a runaway feedback loop). Three options:
 
-  * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+  * `"regress"` (default): treat per-subject mixture membership as a
+    fixed regressor.  Each subject is hard-classified to a component up
+    front, held fixed, and fed into the solve (via the existing
+    mixture-index regressor), skipping the per-iteration soft-EM
+    responsibility step entirely.  Avoids the responsibility feedback
+    loop / collapse by construction and is lower-bias; on heavily
+    overlapping components it is higher-variance (an early
+    misclassification is not revisited), so prefer `"regularized"` when
+    membership is genuinely uncertain.
+
+  * `"regularized"`: blend `mixProbPriorN` pseudo-subjects,
     distributed per the initial mixing probability, into the
     responsibility average each iteration (Dirichlet/MAP-EM-style).
     Prevents collapse even in difficult cases, at the cost of some
@@ -354,6 +379,29 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     sign) but still not reliable -- it often settles at a safety-floor
     value rather than the true variance. Prefer `"parallel"` unless
     specifically evaluating this method.}
+
+\item{nonMuTheta}{Controls how a population `theta` that is not
+  mu-referenced (does not appear linearly with an eta -- the SAEM `phi0`
+  fixed effects) is estimated.
+
+  * `"regress"` (default): keep the parameter as a plain directly-estimated
+    `theta` regressor.  Each iteration `phi0` is estimated by a bounded
+    direct optimization of the observation likelihood (robust coordinate
+    descent within a local trust region, honoring the `ini` bounds), held
+    fixed rather than drawn stochastically with a shrinking variance.  This
+    recovers population parameters that have no associated random effect
+    more accurately, at some extra runtime (the objective re-solves the
+    ODE).
+
+  * `"eta"`: the historic SAEM treatment (the parameter is carried through
+    the stochastic `phi0` block).}
+
+\item{residWarmStart}{Boolean (default `TRUE`); warm-start the residual-error
+parameters from the observed per-endpoint moments at the initial predictions
+(additive SD from `sqrt(mean(err^2))`, proportional SD from
+`sqrt(mean((err/f)^2))`), the same moment estimate `est="npag"` uses.  Gives
+the stochastic step a better starting residual scale.  Set `FALSE` to start
+from the `ini`-block residual values instead.}
 
 \item{censOption}{Treatment of the second derivative for censored
 (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)

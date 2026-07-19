@@ -13,6 +13,12 @@
 // pre-sized and are zeroed here); when false the gradient outputs are left
 // untouched.  Outputs mu/logSigma/Lout/zOut must be pre-sized
 // ([N,zDim], [N,zDim], [zDim,zDim,N], [N,zDim]).
+// `cores` (>1) parallelizes the per-subject forward pass with OpenMP (disjoint
+// writes -> bit-identical).  The backward gradient is a continuous cross-subject
+// left fold, so it stays serial (bit-identical) UNLESS `parBackward` is set: then
+// it is parallelized with per-thread partial gradients reduced in thread order
+// (deterministic for a fixed `cores`, but differs ~1e-12 from the serial path and
+// across different `cores`).
 void vaeEncoderFwdBwdCore(const arma::cube& dataIn,     // [N, Tmax, xDim]
                           const arma::ivec& lengths,    // [N]
                           const arma::mat& covIn,       // [N, nCov]
@@ -31,6 +37,7 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn,     // [N, Tmax, xDim]
                           arma::cube& Lout, arma::mat& zOut,
                           arma::mat& gWih, arma::mat& gWhh,
                           arma::vec& gbih, arma::vec& gbhh,
-                          arma::mat& gFcW, arma::vec& gFcB);
+                          arma::mat& gFcW, arma::vec& gFcB,
+                          int cores = 1, bool parBackward = false);
 
 #endif // __VAEENCODER_H__

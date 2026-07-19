@@ -60,6 +60,15 @@ nmTest({
     .ctl2 <- do.call(saemControl, .ctl)
     expect_equal(.ctl, .ctl2)
 
+    ## covMethod="" requests no covariance; it is a documented choice but
+    ## match.arg() cannot select it (pmatch("") matches nothing), so it must be
+    ## handled explicitly rather than erroring.
+    expect_error(saemControl(covMethod=""), NA)
+    expect_equal(saemControl(covMethod="")$covMethod, "")
+    .ctl <- saemControl(covMethod="")
+    .ctl2 <- do.call(saemControl, .ctl)
+    expect_equal(.ctl, .ctl2)
+
     expect_error(saemControl(foceiControl="matt"))
   })
 

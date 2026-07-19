@@ -119,6 +119,10 @@ nlmixr2Version <- function() {
 nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
+  # `nlmixr2()` with no model prints the available estimation methods
+  if (missing(object)) {
+    return(.nlmixr2EstTypePrint())
+  }
   ## rxode2::rxUnloadAll() # don't unload everything anymore
   .nlmixr2globalReset()
   nlmixr2global$nlmixr2Time <- proc.time()

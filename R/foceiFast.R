@@ -132,3 +132,37 @@ attr(nlmixr2Est.ifocepf, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocepf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.ifocepf, "iov") <- TRUE
 attr(nlmixr2Est.ifocepf, "mu") <- .foceiFastMuAttr
+
+## ---- agq / magq / iagq (adaptive Gaussian quadrature) --------------------
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.agqf <- function(control) .foceiFastCtl(control, agqControl)
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.agqf <- function(env, ...) nlmixr2Est.agq(env, ...)
+attr(nlmixr2Est.agqf, "covPresent") <- TRUE
+attr(nlmixr2Est.agqf, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.agqf, "iov") <- TRUE
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.magqf <- function(control) .foceiFastCtl(control, magqControl)
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.magqf <- function(env, ...) nlmixr2Est.magq(env, ...)
+attr(nlmixr2Est.magqf, "covPresent") <- TRUE
+attr(nlmixr2Est.magqf, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.magqf, "iov") <- TRUE
+attr(nlmixr2Est.magqf, "mu") <- .foceiFastMuAttr
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.iagqf <- function(control) .foceiFastCtl(control, iagqControl)
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.iagqf <- function(env, ...) nlmixr2Est.iagq(env, ...)
+attr(nlmixr2Est.iagqf, "covPresent") <- TRUE
+attr(nlmixr2Est.iagqf, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.iagqf, "iov") <- TRUE
+attr(nlmixr2Est.iagqf, "mu") <- .foceiFastMuAttr

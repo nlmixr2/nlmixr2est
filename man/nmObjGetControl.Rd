@@ -2,8 +2,8 @@
 % Please edit documentation in R/adviControl.R, R/agq.R, R/bobyqa.R, R/fo.R,
 %   R/foce.R, R/focep.R, R/foi.R, R/ifocep.R, R/imp.R, R/impmap.R, R/laplace.R,
 %   R/lbfgsb3c.R, R/mfocep.R, R/muRefControl.R, R/n1qn1.R, R/newuoa.R, R/nlm.R,
-%   R/nlme.R, R/nlminb.R, R/nls.R, R/nmObjHandle.R, R/optim.R, R/posthoc.R,
-%   R/qrpem.R, R/uobyqa.R, R/vae.R
+%   R/nlme.R, R/nlminb.R, R/nls.R, R/nmObjHandle.R, R/npCommon.R, R/npag.R,
+%   R/npb.R, R/optim.R, R/posthoc.R, R/qrpem.R, R/uobyqa.R, R/vae.R
 \name{nmObjGetControl.advi}
 \alias{nmObjGetControl.advi}
 \alias{nmObjGetControl.agq}
@@ -36,6 +36,12 @@
 \alias{nmObjGetControl.focei}
 \alias{nmObjGetControl.saem}
 \alias{nmObjGetControl.default}
+\alias{nmObjGetControl.mnpag}
+\alias{nmObjGetControl.inpag}
+\alias{nmObjGetControl.mnpb}
+\alias{nmObjGetControl.inpb}
+\alias{nmObjGetControl.npag}
+\alias{nmObjGetControl.npb}
 \alias{nmObjGetControl.optim}
 \alias{nmObjGetControl.posthoc}
 \alias{nmObjGetControl.qrpem}
@@ -104,6 +110,18 @@ nmObjGetControl(x, ...)
 \method{nmObjGetControl}{saem}(x, ...)
 
 \method{nmObjGetControl}{default}(x, ...)
+
+\method{nmObjGetControl}{mnpag}(x, ...)
+
+\method{nmObjGetControl}{inpag}(x, ...)
+
+\method{nmObjGetControl}{mnpb}(x, ...)
+
+\method{nmObjGetControl}{inpb}(x, ...)
+
+\method{nmObjGetControl}{npag}(x, ...)
+
+\method{nmObjGetControl}{npb}(x, ...)
 
 \method{nmObjGetControl}{optim}(x, ...)
 

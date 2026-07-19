@@ -453,7 +453,7 @@ nmTest({
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
   })
 
-  test_that("C2: experimental MC covariance (impCov) is off by default; theta SEs match FOCEI |r|", {
+  test_that("C2: MC covariance (covMethod='imp') is the default; theta SEs match FOCEI |r|", {
     one.cmt <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -468,14 +468,13 @@ nmTest({
       })
     }
     .d <- nlmixr2data::theo_sd
-    # off by default: no covariance stash
+    # covMethod="" turns the covariance step off: no covariance stash
     .f0 <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 1L)))
+                                    impmapControl(print = 0L, nIter = 1L, covMethod = "")))
     expect_null(.f0$env$impSe)
-    # opt-in: the full (theta + Omega) covariance
+    # default covMethod="imp": the full (theta + Omega) MC covariance
     .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 40L, isample = 500L,
-                                                  impCov = TRUE)))
+                                    impmapControl(print = 0L, nIter = 40L, isample = 500L)))
     .se <- as.numeric(.fi$env$impSe)
     .nth <- .fi$env$impCovThetaN
     expect_true(all(is.finite(.se) & .se > 0))

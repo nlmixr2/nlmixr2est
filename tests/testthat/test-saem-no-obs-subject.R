@@ -62,6 +62,36 @@ nmTest({
     expect_true(all(is.na(.f3$IPRED)))        # individual columns NA
   })
 
+  test_that("FOCEI tolerates a subject whose rows are all removed (all-NA TIME) (#606)", {
+    # #606: unlike #687 (dose row present, DV all NA), here every row of the
+    # subject is dropped outright by etTrans (all TIME NA), so the subject is
+    # absent from dataSav but still listed in idLvl.  The old drop logic only
+    # caught subjects that still had rows, leaving idLvl one longer than the
+    # solved subject count -> foceiPhiOne named a length-N list with N+1 names
+    # ("'names' attribute [N+1] must be the same length as the vector [N]").
+    d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:3, ]
+    d$TIME[d$ID == 3] <- NA_real_
+    # maxOuterIterations=0 keeps this fast and lands directly on the phi step
+    # where the length mismatch surfaced.
+    fitFocei <- suppressWarnings(suppressMessages(
+      .nlmixr(one.compartment, d, est = "focei",
+              control = foceiControl(print = 0, maxOuterIterations = 0))))
+    expect_true(inherits(fitFocei, "nlmixr2FitData"))
+    expect_equal(
+      sum(grepl("IDs without observations dropped: 3", fitFocei$runInfo, fixed = TRUE)),
+      1L)
+    # estimation used only the two subjects that have data
+    expect_setequal(as.integer(as.character(fitFocei$eta$ID)), c(1L, 2L))
+    # dropped subject re-inserted in the output; its TIME (hence PRED/IPRED) is
+    # NA so nothing can be solved, but the rows are preserved
+    .dfF <- as.data.frame(fitFocei)
+    .f3 <- .dfF[as.integer(as.character(.dfF$ID)) == 3, ]
+    expect_equal(nrow(.f3), 11L)
+    expect_true(all(is.na(.f3$TIME)))
+    expect_true(all(is.na(.f3$PRED)))
+    expect_true(all(is.na(.f3$IPRED)))
+  })
+
   test_that("multiple no-observation subjects are each dropped and re-inserted (#687)", {
     d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:4, ]
     # subjects 3 and 4: a dose but no measurement

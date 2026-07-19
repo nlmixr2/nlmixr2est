@@ -4,9 +4,18 @@ library(rxode2)
 library(nlmixr2est)
 
 # Test thread policy (kept deliberately simple):
-#   * testthat workers: a SINGLE worker on CI or CRAN, so the suite does not
-#     oversubscribe a shared / core-limited runner; everywhere else testthat
-#     manages Config/testthat/parallel normally.
+#   * testthat workers: SERIAL (in-process) on CI or CRAN; everywhere else
+#     testthat manages Config/testthat/parallel normally.  Serial rather than
+#     a single parallel worker: with 1 worker parallel mode adds nothing but
+#     the callr message pipe, and that pipe base64-serializes every non-success
+#     test event -- an *erroring* test whose backtrace inlines a large object
+#     (any do.call(f, list(<fit/data>)) frame) ships the whole object through
+#     it at ~18x its size in the orchestrator (measured), and a single >1.5GB
+#     payload kills the whole run with "Error in gsub: result string is too
+#     long" (R's 2GB string cap).  This is what "the runner has received a
+#     shutdown signal" / runner-OOM windows+devel failures were.  Serial mode
+#     has no pipe, and streams output so a hung/failing file is identifiable
+#     from testthat.Rout.
 #   * rxode2 (and data.table) within-solve threads: capped to 2 on CRAN, per
 #     CRAN's two-core policy; on CI and locally rxode2 manages its own threads.
 .onCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
@@ -15,6 +24,7 @@ library(nlmixr2est)
 if (.onCI || .onCran) {
   options(Ncpus = 1L)
   Sys.setenv(TESTTHAT_CPUS = "1")
+  Sys.setenv(TESTTHAT_PARALLEL = "FALSE")
 }
 if (.onCran) {
   setRxThreads(2L)
@@ -44,17 +54,22 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
 .slowBatches <- list(
   # batch 1
   c("focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
-    "qrpem-slow"),
+    "qrpem-slow", "focei-foce-plus"),
   # batch 2
-  c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power"),
+  c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
+    "fsaem", "cov-condition", "agq-cov", "cov-decouple-saimp"),
   # batch 3
-  c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429",
-    "focei-wang2007-bounded"),
+  c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
+    "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
+    "saem-nonmutheta", "saem-sharedinner", "focei-theta-reset-bounds",
+    "saem-cov-analytic"),
+
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
-    "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad"),
+    "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
+    "nlme-cov", "agq-fast-grad"),
   # batch 5
-  c("focei-llik", "iov", "nlm-adjoint", "saem-mix", "posthoc", "ar-est",
+  c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
     "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
   # batch 6 -- heaviest remaining files on the single-worker CI runner
@@ -64,7 +79,13 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "vae-fixbounds", "vae-parhist", "vae-iov", "split", "unary-mu", "timing"),
   # batch 7 -- advi (variational inference) multi-iteration fits
   c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
-    "advi-fullbayes")
+    "advi-fullbayes"),
+  # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
+  # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
+  # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
+  # in the push/PR subset) and run weekly only.
+  c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
+    "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand", "npag-golden")
 )
 .slowAll <- unlist(.slowBatches)
 

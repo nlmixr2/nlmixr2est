@@ -21,6 +21,22 @@
 
 # Utilities for nlmixr2 ####################################################
 
+#' Message suffix for a method that requires random effects
+#'
+#' Used as the `extra` argument to `rxode2::assertRxUiMixedOnly()` so a
+#' single-subject / fixed-effect ("N of 1") model gets an actionable error
+#' pointing to the methods that can fit models with no random effects.
+#'
+#' @param est estimation method name
+#' @return character message suffix
+#' @author Matthew L. Fidler
+#' @noRd
+.noRandomEffectMsg <- function(est) {
+  paste0(" for the estimation routine '", est,
+         "'; a model with no random effects (for example single-subject or 'N of 1' data) can be ",
+         "fit with 'focei', 'foce', or a population method such as 'nlminb', 'bobyqa' or 'nls'")
+}
+
 #' Cox Box, Yeo Johnson and inverse transformation
 #'
 #' @param x data to transform
@@ -169,7 +185,8 @@ nsis <- function() { ## build installer...
 #'     TRUE}).
 #'
 #' @author Matthew L. Fidler
-#' @noRd
+#' @keywords internal
+#' @export
 .collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
   ws <- NULL
   es <- NULL
@@ -417,4 +434,13 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
 
 .sampleOmega <- function(omega) {
   rxode2::rxRmvn(1, sigma=omega)
+}
+
+# The fit's rxControl(cores=) for rxOptExpr(parallel=): chunked expression
+# optimization then parallelizes with the same thread setting the solves use
+# (0 keeps rxControl(cores=)'s meaning, the rxode2 thread setting).
+.optExprCores <- function(ui) {
+  .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
+                     error = function(e) 0L)
+  if (!length(.cores) || is.na(.cores)) 0L else .cores
 }

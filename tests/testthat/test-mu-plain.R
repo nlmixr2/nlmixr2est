@@ -108,14 +108,20 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(bnd)
-    expect_no_warning(g <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE)))
-    # bounded tka is regression-updated too (update clamped to [-2, 2])
+    # clamp=TRUE (the mfocei/ifocei family style): bounded tka is
+    # regression-updated too (update clamped to [-2, 2])
+    expect_no_warning(g <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE, clamp = TRUE)))
     expect_equal(vapply(g, function(x) x$theta, character(1)),
                  c("tka", "tcl", "tv"))
-    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)
+    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)
     expect_equal(s$muGroupThetaLower, c(-2, -Inf, -Inf))
     expect_equal(s$muGroupThetaUpper, c(2, Inf, Inf))
     expect_null(s$muGroupCovBounded)
+    # clamp=FALSE (every other method, the default for a bare ui): the
+    # bounded plain theta is rejected from the mu-referencing instead
+    expect_no_warning(g0 <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE)))
+    expect_equal(vapply(g0, function(x) x$theta, character(1)),
+                 c("tcl", "tv"))
 
     fx <- function() {
       ini({
@@ -199,7 +205,7 @@ nmTest({
     }
     ui <- rxode2::rxode2(mixedBnd)
     expect_no_warning(s <- suppressMessages(
-      nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)))
+      nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)))
     thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     expect_equal(thNames[s$muGroupTheta + 1L], c("tcl", "tka", "tv"))
     # bounded tcl group carries its clamp bounds; plain groups are infinite

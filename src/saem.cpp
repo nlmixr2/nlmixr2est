@@ -38,17 +38,6 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
 			  int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
 			  int *iprint);
 
-// L-BFGS-B with C linkage (src/lbfgsR.c), used to directly optimize the
-// observation log-likelihood over fixed-effect-only (phi0) parameters for a
-// general-likelihood (distribution==4) model -- the saemix "ind.fix10" step.
-typedef double optimfn(int n, double *par, void *ex);
-typedef void optimgr(int n, double *par, double *gr, void *ex);
-extern "C" void lbfgsbRX(int n, int lmm, double *x, double *lower,
-                         double *upper, int *nbd, double *Fmin, optimfn fn,
-                         optimgr gr, int *fail, void *ex, double factr,
-                         double pgtol, int *fncount, int *grcount,
-                         int maxit, char *msg, int trace, int nREPORT);
-
 double *_saemYptr;
 double *_saemFptr;
 int _saemLen;
@@ -64,6 +53,10 @@ double _saemLambdaR;
 double _saemPowR;
 int _saemPropT=0;
 bool _warnAtolRtol=false;
+// ODE-freeze for the general-likelihood phi0 optimization: when true, user_function
+// skips par_solve and reuses the states already in the solve buffers, recomputing
+// only the per-observation log-likelihood (phi0 params are independent of the ODE).
+static bool _saemFreezeOde=false;
 static std::vector<double> _saemFtCache;
 static std::vector<double> _saemYtrCache;
 static std::vector<double> _saemFaCache;
@@ -569,10 +562,21 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
                             int nsweep, int cores, NumericVector lower, NumericVector upper,
                             IntegerVector nbd, double seed, int nRetry, int kiter);
 
-// Trampolines for the L-BFGS-B phi0 direct optimization (the SAEM object is
-// passed through `ex`); defined after the class body.
-static double saemPhi0ObjTramp(int n, double *par, void *ex);
-static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex);
+// phi0 objective for the general-likelihood direct optimization (bounded bobyqa
+// via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
+// Rcpp::InternalFunction.  Defined after the class body.
+class SAEM;
+static SAEM* gPhi0Self = nullptr;
+static double gPhi0ObjR(Rcpp::NumericVector p);
+// Coordinate-descent state for the normal-model phi0 direct optimization:
+// gPhi0Work is the full phi0 vector, gPhi0Coord the coordinate optimize() varies.
+static arma::vec gPhi0Work;
+static int gPhi0Coord = 0;
+// Free (non-FIXED) phi0 coordinates the bounded optimizer varies; gPhi0Full holds
+// the full phi0 vector so FIXED coordinates keep their ini value in the objective.
+static arma::vec gPhi0Full;
+static std::vector<int> gPhi0FreeIx;
+static double gPhi0Obj1DR(double x);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -629,59 +633,215 @@ public:
       phiCand.col(i0(c)).fill(p[c]);
     }
     mat fMat = user_fn(phiCand, evt, optM);
-    double v = -accu(fMat.col(0));
+    double v;
+    if (distribution == 4) {
+      // general log-likelihood: the prediction column IS the per-obs loglik
+      v = -accu(fMat.col(0));
+    } else {
+      // normal models (nonMuTheta="regress"): residual objective from f
+      v = phi0NormalSSR(fMat.col(0));
+    }
     if (!std::isfinite(v)) return 1e300;
     return v;
   }
 
-  // Central finite-difference gradient of phi0Objective (the model does not emit
-  // analytic d(ll)/d(phi0); FD is robust and low-dimensional here).
-  void phi0Gradient(double *p, double *gr) {
-    for (int c = 0; c < nphi0; c++) {
-      double p0 = p[c];
-      double h = 1e-4 * (std::fabs(p0) + 1e-4);
-      p[c] = p0 + h; double fp = phi0Objective(p);
-      p[c] = p0 - h; double fm = phi0Objective(p);
-      p[c] = p0;
-      gr[c] = (fp - fm) / (2.0 * h);
+  // Side-effect-free observation -log-likelihood objective for the normal-model
+  // phi0 direct optimization (nonMuTheta="regress").  This is the SAME
+  // per-observation Gaussian -loglik the MCMC acceptance uses (arDYF /
+  // independent branch): 0.5*((yt-ft)/g)^2 + log(g), with residual SD
+  // g = ares(b) + bres(b)*|ft| (saem.cpp:1457) and TBS transform ft via
+  // _powerD.  Properly normalized across error models and endpoints (unlike a
+  // raw SSR), summed over MCMC chains.  Does NOT touch the AR accumulators /
+  // M-step state (unlike arResk), so it is safe to call inside the optimizer.
+  // The TBS data jacobian is omitted: it is constant in phi0, so it does not
+  // change the argmin.  AR correlation is left to the M-step.
+  double phi0NormalSSR(const vec &fall) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    double v = 0.0;
+    for (int k = 0; k < nmc; k++) {
+      vec fk = fall.subvec(k * ntotal, (k + 1) * ntotal - 1);
+      fk = fk(ix_sorting);
+      for (int b = 0; b < nendpnt; b++) {
+        int nb = (int)(y_offset(b + 1) - y_offset(b));
+        for (int i = 0; i < nb; i++) {
+          double fi = fk(y_offset(b) + i);
+          double ft = _powerD(fi, lambda(b), yj(b), low(b), hi(b));
+          double yt = hasFixedObsTransform ? ysTrans(y_offset(b) + i)
+            : _powerD(ys(y_offset(b) + i), lambda(b), yj(b), low(b), hi(b));
+          double g = ares(b) + bres(b) * std::fabs(ft);
+          if (g == 0.0) g = 1.0;
+          else if (g < double_xmin) g = double_xmin;
+          else if (g > xmax) g = xmax;
+          double e = yt - ft;
+          v += 0.5 * (e / g) * (e / g) + std::log(g);
+        }
+      }
     }
+    return v;
   }
 
   // saemix "ind.fix10" step: refine the fixed-effect-only (phi0) parameters of a
-  // general-likelihood model by a direct L-BFGS-B optimization of the observation
+  // general-likelihood model by a direct optimization of the observation
   // log-likelihood (seeded at the current phi(theta) values), then apply a
   // stochastic-approximation update and keep MCOV0 consistent so the next
   // iteration's mprior_phi0 = COV0*MCOV0 reproduces it.  Only the intercept-only
   // (no phi0 covariate) case is handled.
+  //
+  // phi0 does not enter the ODE, so the states are solved once and then held
+  // fixed (ODE-freeze) while phi0 is optimized -- each objective evaluation only
+  // recomputes the log-likelihood.  The model emits no analytic d(ll)/d(phi0), so
+  // the optimization is derivative-free (nelder-mead / newuoa), reusing the shared
+  // _saemOpt driver selected by the `type` control (_saemType).
+  // Detect (once) whether any phi0 param changes the structural prediction f.
+  // Perturb each phi0 column and re-solve; if f never moves, phi0 touches only
+  // the residual/likelihood and the ODE can be frozen during its optimization.
+  bool phi0AffectsOde() {
+    bool savedFreeze = _saemFreezeOde;
+    _saemFreezeOde = false;
+    vec f0 = user_fn(phiM, evt, optM).col(0);
+    double maxd = 0.0;
+    for (int c = 0; c < nphi0; c++) {
+      mat pp = phiM;
+      pp.col(i0(c)) += 0.1;
+      vec f1 = user_fn(pp, evt, optM).col(0);
+      double d = arma::abs(f1 - f0).max();
+      if (std::isfinite(d) && d > maxd) maxd = d;
+    }
+    // restore states at the true phiM
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }
+    _saemFreezeOde = savedFreeze;
+    return maxd > 1e-8;
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
+    // A user-FIXED phi0 theta must not be touched here.  Once this refinement
+    // owns phi0 the stochastic update that restores MCOV0(fixedIx0) is skipped
+    // (skipStochPhi0), so anything this function writes to a fixed entry is
+    // never put back and the theta drifts off its ini value.  fixedIx0 indexes
+    // phi0 columns (refinePhi0Lik only handles the intercept-only phi0 case).
+    std::vector<bool> phi0Fix((size_t)nphi0, false);
+    for (unsigned int j = 0; j < fixedIx0.n_elem; ++j) {
+      if (fixedIx0(j) < (unsigned int)nphi0) phi0Fix[(size_t)fixedIx0(j)] = true;
+    }
+    gPhi0FreeIx.clear();
+    for (int c = 0; c < nphi0; ++c) {
+      if (!phi0Fix[(size_t)c]) gPhi0FreeIx.push_back(c);
+    }
+    if (gPhi0FreeIx.empty()) return;
+    // Snapshot the fixed MCOV0 entries: the closing least-squares update rewrites
+    // all of MCOV0 from mprior_phi0, which redistributes a fixed theta's value
+    // across the design even when its coordinate never moved.
+    vec mcov0Fixed;
+    if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
     // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
     // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
     if (!Rf_isNull(fsaemStepFn)) {
       setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
       _rx = getRxSolve_();
     }
-    std::vector<double> x(nphi0), lower(nphi0, 0.0), upper(nphi0, 0.0);
-    std::vector<int> nbd(nphi0, 0);
+    // Decide whether to freeze the ODE during the phi0 optimization.  General-
+    // likelihood phi0 params (a likelihood SD) never enter the ODE.  For a
+    // normal model under nonMuTheta="regress", phi0 thetas that drive the ODE
+    // (ka, V, ...) need a LIVE re-solve each evaluation, but phi0 params that
+    // touch only the residual/likelihood (not f) should be frozen -- solve once,
+    // recompute only the objective, exactly like npag's ELS residual step.  The
+    // f-sensitivity is detected once (perturb each phi0, see if f moves).
+    _saemFreezeOde = false;
+    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
+    bool doFreeze;
+    if (distribution == 4) {
+      doFreeze = true;
+    } else if (nonMuThetaRegress) {
+      if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
+      doFreeze = (_phi0OdeSensitive == 0);
+    } else {
+      doFreeze = false;
+    }
+    _saemFreezeOde = doFreeze;
+    // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
+    // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
+    // nelder-mead) could push a phi0 like a likelihood SD into an invalid region.
+    gPhi0Self = this;
+    Rcpp::NumericVector par0(nphi0), lo(nphi0), hi(nphi0);
+    // Normal-model phi0 thetas (nonMuTheta="regress") drive the ODE, so the
+    // observation objective has huge NaN plateaus far from the current value;
+    // an unbounded bobyqa span breaks there.  Constrain each step to a LOCAL
+    // trust region around the current value (intersected with any ini bounds)
+    // so the SA iteration refines it gradually, like a clamped regression step.
+    // General-likelihood phi0 (distribution==4) keeps the original wide bounds.
+    bool localTrust = (distribution != 4) && nonMuThetaRegress;
     for (int c = 0; c < nphi0; c++) {
-      x[c] = mprior_phi0(0, c);
-      if ((int)phi0Nbd.n_elem == nphi0) {
-        nbd[c] = phi0Nbd(c);
-        lower[c] = phi0Lower(c);
-        upper[c] = phi0Upper(c);
+      par0[c] = mprior_phi0(0, c);
+      double userLo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
+      double userHi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+      if (localTrust) {
+        // ABSOLUTE trust radius (not relative to par0): a relative radius lets a
+        // param that starts to drift grow its own step and run away.
+        double trust = 0.75;
+        double tl = par0[c] - trust, th = par0[c] + trust;
+        lo[c] = std::isfinite(userLo) ? std::max(userLo, tl) : tl;
+        hi[c] = std::isfinite(userHi) ? std::min(userHi, th) : th;
+      } else {
+        lo[c] = userLo;
+        hi[c] = userHi;
       }
     }
-    double Fmin; int fail = 0, fncount = 0, grcount = 0;
-    char msg[100];
-    lbfgsbRX(nphi0, lbfgsLmm, x.data(), lower.data(), upper.data(), nbd.data(),
-             &Fmin, saemPhi0ObjTramp, saemPhi0GrTramp, &fail, (void *)this,
-             lbfgsFactr, lbfgsPgtol, &fncount, &grcount, lbfgsMaxIter, msg, 0,
-             lbfgsMaxIter + 1);
+    Rcpp::NumericVector xmin(nphi0);
+    if (localTrust) {
+      // Normal-model phi0 objective is extremely ill-conditioned (a tiny
+      // proportional-error SD makes it change by orders of magnitude over a
+      // small phi0 step), which breaks bobyqa's quadratic model.  Use robust
+      // coordinate descent with R's golden-section optimize() (no quadratic
+      // model), a few sweeps, within the local trust bounds.
+      gPhi0Self = this;
+      gPhi0Work.set_size(nphi0);
+      for (int c = 0; c < nphi0; c++) gPhi0Work[c] = par0[c];
+      Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+      Rcpp::Function optimize = stats["optimize"];
+      Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
+      for (int sweep = 0; sweep < 2; sweep++) {
+        for (int c = 0; c < nphi0; c++) {
+          if (phi0Fix[(size_t)c]) continue;
+          if (!(hi[c] > lo[c])) continue;
+          gPhi0Coord = c;
+          Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
+                                  Rcpp::_["lower"] = lo[c],
+                                  Rcpp::_["upper"] = hi[c]);
+          double xm = Rcpp::as<double>(o["minimum"]);
+          gPhi0Work[c] = xm;
+        }
+      }
+      for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
+    } else {
+      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+      Rcpp::InternalFunction fn(&gPhi0ObjR);
+      // Optimize only the free coordinates: gPhi0ObjR expands them back into
+      // gPhi0Full, which holds the FIXED coordinates at their ini values.
+      gPhi0Full.set_size(nphi0);
+      for (int c = 0; c < nphi0; c++) gPhi0Full[c] = par0[c];
+      int nFree = (int)gPhi0FreeIx.size();
+      Rcpp::NumericVector parFree(nFree), loFree(nFree), hiFree(nFree);
+      for (int fi = 0; fi < nFree; fi++) {
+        int c = gPhi0FreeIx[(size_t)fi];
+        parFree[fi] = par0[c];
+        loFree[fi] = lo[c];
+        hiFree[fi] = hi[c];
+      }
+      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
+                                  Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree);
+      Rcpp::NumericVector rx = ret["x"];
+      for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
+      for (int fi = 0; fi < nFree; fi++) xmin[gPhi0FreeIx[(size_t)fi]] = rx[fi];
+    }
+    _saemFreezeOde = false;
     for (int c = 0; c < nphi0; c++) {
       double cur = mprior_phi0(0, c);
-      mprior_phi0.col(c).fill(cur + pas(kiter) * (x[c] - cur));
+      mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
     MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+    if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
   }
 
   void set_fn(user_funct f) {
@@ -966,17 +1126,11 @@ public:
     resKeep = find(resFixed==0);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
-    // L-BFGS-B tolerances for the general-likelihood phi0 direct optimization
-    lbfgsLmm = x.containsElementNamed("lbfgsLmm") ? as<int>(x["lbfgsLmm"]) : 5;
-    lbfgsFactr = x.containsElementNamed("lbfgsFactr") ? as<double>(x["lbfgsFactr"]) : 1e7;
-    lbfgsPgtol = x.containsElementNamed("lbfgsPgtol") ? as<double>(x["lbfgsPgtol"]) : 0.0;
-    lbfgsMaxIter = x.containsElementNamed("lbfgsMaxIter") ? as<int>(x["lbfgsMaxIter"]) : 20;
-    // Bounds for the phi0 direct optimization, in phi0 (i0) column order, taken
-    // from the theta iniDf bounds (L-BFGS-B nbd: 0 none, 1 lower, 2 both, 3 upper)
-    if (x.containsElementNamed("lbfgsPhi0Lower")) {
-      phi0Lower = as<vec>(x["lbfgsPhi0Lower"]);
-      phi0Upper = as<vec>(x["lbfgsPhi0Upper"]);
-      phi0Nbd = as<ivec>(x["lbfgsPhi0Nbd"]);
+    // ini-block bounds of the phi0 thetas (i0 column order) for the bounded
+    // general-likelihood phi0 optimization.
+    if (x.containsElementNamed("phi0Lower")) {
+      phi0Lower = as<vec>(x["phi0Lower"]);
+      phi0Upper = as<vec>(x["phi0Upper"]);
     }
     nb_sa = as<int>(x["nb_sa"]);
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
@@ -1219,10 +1373,92 @@ public:
     mx.optM   = optM;
 
     distribution=as<int>(x["distribution"]);
+    nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
+      as<int>(x["nonMuThetaRegress"]) : 0;
+    residWarmStart = x.containsElementNamed("residWarmStart") ?
+      as<int>(x["residWarmStart"]) : 1;
+    mixProbRegress = x.containsElementNamed("mixProbRegress") ?
+      as<int>(x["mixProbRegress"]) : 0;
+    // Mixtures: the direct phi0 optimizer does not partition a per-component
+    // structural theta (tcl1/tcl2) by subject membership, so it would leave an
+    // under-populated component's theta unconstrained (runaway).  Fall back to
+    // the stochastic phi0 block, which respects membership via the per-chain
+    // mixest regressor.  (nMix is read earlier in inits.)  Likewise the residual
+    // warm-start (formed at the population eta=0 prediction) is especially
+    // unreliable for a mixture -- the poor initial fit inflates the residual and
+    // flattens the likelihood, preventing the components from separating.  Both
+    // gates must follow the reads above so they are not overwritten.
+    if (nMix > 1) { nonMuThetaRegress = 0; residWarmStart = 0; }
+    // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
+    // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
     phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
     //Rcout << phiMFile[0];
 
+  }
+
+  // Warm-start the residual-error parameters (ares/bres) from the observed
+  // per-endpoint moments at the initial predictions, like npag's npResidMoments:
+  // additive SD = sqrt(mean(err^2)), proportional SD = sqrt(mean((err/f)^2)),
+  // on the transform-both-sides scale.  Only seeds the scale(s) an endpoint's
+  // error model actually uses; a combined (add+prop) endpoint splits the
+  // variance half/half as a warm start.  fsaveFull is chain-major f (>= ntotal).
+  void warmStartResid(const vec &fsaveFull) {
+    if (!residWarmStart || distribution == 4) return;
+    if ((int)fsaveFull.n_elem < ntotal) return;
+    vec fk = fsaveFull.subvec(0, ntotal - 1);
+    fk = fk(ix_sorting);
+    for (int b = 0; b < nendpnt; b++) {
+      int rm = (int)res_mod(b);
+      bool hasAdd = (rm==rmAdd || rm==rmAddProp || rm==rmAddPow ||
+                     rm==rmAddLam || rm==rmAddPropLam || rm==rmAddPowLam);
+      bool hasProp = (rm==rmProp || rm==rmAddProp || rm==rmPropLam || rm==rmAddPropLam);
+      // Max |ft| in this endpoint.  SAEM computes this at the population (eta=0)
+      // prediction, so at small |ft| the residual is dominated by between-subject
+      // variability, not residual noise -- exclude those (< 5% of max) from the
+      // proportional moment so BSV does not inflate the warm-started prop SD.
+      double fmax = 0.0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double aft = std::fabs(_powerD(fk(i), lambda(b), yj(b), low(b), hi(b)));
+        if (std::isfinite(aft) && aft > fmax) fmax = aft;
+      }
+      double fthr = 0.05 * fmax;
+      double sAdd = 0.0, sProp = 0.0; int n = 0, nProp = 0;
+      for (unsigned int i = y_offset(b); i < y_offset(b+1); i++) {
+        double ft = _powerD(fk(i), lambda(b), yj(b), low(b), hi(b));
+        double yt = hasFixedObsTransform ? ysTrans(i)
+          : _powerD(ys(i), lambda(b), yj(b), low(b), hi(b));
+        double err = ft - yt;
+        if (!std::isfinite(err)) continue;
+        sAdd += err * err; n++;
+        if (std::fabs(ft) <= fthr) continue;
+        // proportional guard for f==0: denominator 1 when |f| is tiny so a
+        // near-zero prediction does not blow up the proportional moment.
+        double denom = (std::fabs(ft) <= 1e-6) ? 1.0 : ft;
+        double ratio = err / denom;
+        if (std::isfinite(ratio)) { sProp += ratio * ratio; nProp++; }
+      }
+      if (n == 0) continue;
+      if (nProp == 0) nProp = 1;
+      double split = (hasAdd && hasProp) ? std::sqrt(0.5) : 1.0;
+      double mAdd = std::sqrt(sAdd / n) * split;
+      double mProp = std::sqrt(sProp / nProp) * split;
+      // SAEM computes this moment at the UNCONVERGED initial phi (npag/npb use
+      // converged posterior etas), so it is contaminated by structural misfit
+      // and can be far too large -- clamp the warm-started value to [0.2x, 5x]
+      // the user's ini value so a poor initial fit cannot push the residual into
+      // a runaway basin (an over-large residual flattens the S-step likelihood,
+      // which then keeps the residual large).  The f==0 guard above is the
+      // shared fix; this clamp is SAEM-specific.
+      if (hasAdd && std::isfinite(mAdd) && mAdd > 0.0 && ares(b) > 0.0)
+        ares(b) = std::min(std::max(mAdd, 0.2*ares(b)), 5.0*ares(b));
+      if (hasProp && std::isfinite(mProp) && mProp > 0.0 && bres(b) > 0.0)
+        bres(b) = std::min(std::max(mProp, 0.2*bres(b)), 5.0*bres(b));
+    }
+    // keep the per-observation SD vectors (used in the S-step g = vecares +
+    // vecbres*|ft|) consistent with the warm-started scalars.
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
   }
 
   void saem_fit() {
@@ -1262,6 +1498,52 @@ public:
     }
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
+    }
+    warmStartResid(nMix > 1 ? fsave_mix(0) : fsave);
+    if (nMix > 1 && mixProbRegress) {
+      // mixProbMethod="regress": classify each subject to its best component
+      // once (hard) and hold membership fixed -- mixWeights becomes a 0/1
+      // indicator, so the existing responsibility-weighted machinery (arResk,
+      // sufficient stats, phiM_weighted) collapses to a hard assignment.  The
+      // soft-EM E-step and the mixProb SA update are skipped below.
+      mixFixedAssign = mixNaiveClassify(0.0);
+      // Fall back to soft-EM (regularized) when fixed membership cannot work:
+      //  (a) SPLIT-ETA mixtures -- each component owns a distinct eta, so
+      //      omegaShareSubpop has >= 2 distinct non-zero subpop values (a
+      //      shared-eta mixture has just one).  Components start identical and
+      //      must differentiate during the fit; a hard split at the symmetric
+      //      init is arbitrary and never separates.
+      //  (b) a degenerate classification that leaves a component empty (its
+      //      theta would be unconstrained).
+      uvec _nzSub = omegaShareSubpop.elem(find(omegaShareSubpop > 0));
+      uvec _uniqSub = unique(_nzSub);
+      bool isSplitEta = (_uniqSub.n_elem >= 2);
+      bool allPop = true;
+      for (int j = 0; j < nMix; j++) {
+        int cnt = 0;
+        for (int i = 0; i < N; i++) if ((int)mixFixedAssign(i) == j + 1) cnt++;
+        if (cnt == 0) { allPop = false; break; }
+      }
+      if (isSplitEta || !allPop) {
+        mixProbRegress = 0;
+        mixProbMethod = 1; // regularized
+      } else {
+      mixWeights.zeros(N, nMix);
+      for (int i = 0; i < N; i++) {
+        unsigned int a = mixFixedAssign(i);
+        if (a >= 1 && a <= (unsigned int)nMix) mixWeights(i, a - 1) = 1.0;
+      }
+      mixProb = mean(mixWeights, 0).t();
+      // Supply the fixed assignment as a per-subject mixest regressor so the
+      // S-step can solve each subject once under its OWN component (mixest=0 in
+      // user_function -> per-subject indMixest), instead of nMix per-component
+      // chains.  Tile over the nmc MCMC chains (phiM row k*N+i is subject i).
+      Rcpp::IntegerVector mixestFull(N * nmc);
+      for (int k = 0; k < nmc; k++)
+        for (int i = 0; i < N; i++)
+          mixestFull[k * N + i] = (int)mixFixedAssign(i);
+      mx.optM["mixest"] = mixestFull;
+      } // end allPop else
     }
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
       // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
@@ -1306,14 +1588,14 @@ public:
         _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
         if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
       }
+      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
       gamma2_phi1=Gamma2_phi1.diag();
-      IGamma2_phi1=inv_sympd(Gamma2_phi1);
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
       CGamma21=COV21%D2Gamma21;
 
+      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "Gamma2_phi0 (Omega)");
       gamma2_phi0=Gamma2_phi0.diag();
-      IGamma2_phi0=inv_sympd(Gamma2_phi0);
       D1Gamma20=LCOV0*IGamma2_phi0;
       D2Gamma20=D1Gamma20*LCOV0.t();
       CGamma20=COV20%D2Gamma20;
@@ -1458,10 +1740,12 @@ public:
             w_i(j) = mixProb(j) * exp(minL - Ly(i, j));
             sumW += w_i(j);
           }
-          if (sumW > 0.0) {
-            mixWeights.row(i) = w_i / sumW;
-          } else {
-            mixWeights.row(i) = mixProb.t();
+          if (!mixProbRegress) {
+            if (sumW > 0.0) {
+              mixWeights.row(i) = w_i / sumW;
+            } else {
+              mixWeights.row(i) = mixProb.t();
+            }
           }
         }
 
@@ -1570,8 +1854,14 @@ public:
         field<mat> DYF_mix(nMix);
         field<vec> U_y_mix(nMix);
 
-        for (int jMix = 0; jMix < nMix; jMix++) {
-          current_saem_state->_saemMixest = jMix + 1;
+        // mixProbMethod="regress": membership is fixed, so run the S-step ONCE
+        // (jMix=0) with each subject solved under its own component via the
+        // per-subject mixest regressor (mx.optM["mixest"], _saemMixest kept 0),
+        // then fan the result out to every component below.  The soft-EM path
+        // runs one full per-component chain per component.
+        int nMixLoop = mixProbRegress ? 1 : nMix;
+        for (int jMix = 0; jMix < nMixLoop; jMix++) {
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
 
           mat &cur_phiM = phiM_mix(jMix);
           vec &cur_fsave = fsave_mix(jMix);
@@ -1685,12 +1975,29 @@ public:
             }
             U_y_mix(jMix) = joint_nll;
           }
-          current_saem_state->_saemMixest = jMix + 1;
-          cur_fsave = user_fn(cur_phiM, evt, optM).col(0);
+          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
+          cur_fsave = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                              mixProbRegress ? mx.optM : optM).col(0);
         }
         current_saem_state->_saemMixest = 0;
 
-        // Compute posterior weights a_ji
+        // Fixed membership: fan the single solved chain out to every component
+        // so the downstream AE-step / sufficient-stat accumulation (which sums
+        // mixWeights(i,j)*phiM_mix(j)) sees each subject's one solve under a 0/1
+        // weight.  Copy phi/fsave/cens/limit from component 0.
+        if (mixProbRegress) {
+          for (int j = 1; j < nMix; j++) {
+            phiM_mix(j) = phiM_mix(0);
+            fsave_mix(j) = fsave_mix(0);
+            cens_mix(j) = cens_mix(0);
+            limit_mix(j) = limit_mix(0);
+          }
+        }
+
+        // Compute posterior weights a_ji (soft-EM only; regress keeps the fixed
+        // 0/1 mixWeights and only ran one component's chain, so U_y_mix(1..) are
+        // empty and must not be read).
+        if (!mixProbRegress) {
         mat L_ji(N, nMix);
         for (int j = 0; j < nMix; j++) {
           const vec &U_y_j = U_y_mix(j);
@@ -1719,6 +2026,7 @@ public:
           } else {
             mixWeights.row(i) = mixProb.t();
           }
+        }
         }
 
         if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
@@ -2126,13 +2434,25 @@ public:
         MCOV0(jcov0)=Plambda0;
       }
       mprior_phi1=COV1*MCOV1;
-      mprior_phi0=COV0*MCOV0;
-      // General log-likelihood: the sampled-mean update above only weakly informs
-      // fixed-effect-only (phi0) parameters, so once the SA/variance-shrinkage
-      // phase has begun, refine them by a direct L-BFGS-B optimization of the
-      // observation likelihood (saemix ind.fix10).  refinePhi0Lik restores the
-      // SAEM solve first, so it is safe under the f-SAEM fast kernel too.
-      if (distribution == 4 && nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+      // nonMuTheta="regress": once the direct phi0 optimizer owns phi0
+      // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
+      // sampled-mean update -- that fights the optimizer and lets phi0 drift.
+      // The optimizer result from the previous iteration persists as the seed.
+      bool skipStochPhi0 = nonMuThetaRegress && (distribution != 4) &&
+        (kiter >= (unsigned int)niter_phi0);
+      if (!skipStochPhi0) {
+        mprior_phi0=COV0*MCOV0;
+      }
+      // The sampled-mean update above only weakly informs fixed-effect-only
+      // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
+      // refine them by a direct bounded optimization with the ODE states frozen
+      // (saemix ind.fix10).  Enabled for general log-likelihood models
+      // (distribution==4) and, via nonMuTheta="regress", for normal models --
+      // keeping non-mu thetas as directly-optimized, bound-respecting regressors
+      // instead of stochastic phi0 draws.  refinePhi0Lik restores the SAEM solve
+      // first, so it is safe under the f-SAEM fast kernel too.
+      if ((distribution == 4 || nonMuThetaRegress) &&
+          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
@@ -2978,7 +3298,11 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
-      if (nMix > 1) {
+      if (nMix > 1 && mixProbRegress) {
+        // Fixed membership: the mixing proportions are just the (constant) hard
+        // assignment fractions; no soft-EM SA update.
+        mixProb = mean(mixWeights, 0).t();
+      } else if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
         if (mixProbMethod == 1) {
           // Dirichlet-style regularization: blend in mixProbPriorN pseudo-subjects from the
@@ -3057,13 +3381,8 @@ private:
   int nb_fixResid;
   int niter_phi0;
   double coef_phi0;
-  int lbfgsLmm;
-  double lbfgsFactr;
-  double lbfgsPgtol;
-  int lbfgsMaxIter;
   vec phi0Lower;
   vec phi0Upper;
-  ivec phi0Nbd;
   double rmcmc;
   double coef_sa;
   vec pas, pash;
@@ -3167,6 +3486,23 @@ private:
   mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
+  // nonMuTheta="regress": estimate the fixed-effect-only (phi0) parameters by
+  // the bounded direct optimizer (refinePhi0Lik) for NORMAL models too, instead
+  // of only the stochastic phi0 block.  Keeps such thetas as plain regressors
+  // with directly-optimized, bound-respecting values (no shrinking phi0
+  // variance).  0 = classic phi0, 1 = direct-optimize.
+  int nonMuThetaRegress;
+  // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
+  // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
+  // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
+  int _phi0OdeSensitive = -1;
+  // Warm-start residual params from observed per-endpoint moments (npag-style).
+  int residWarmStart;
+  // mixProbMethod="regress": fix per-subject mixture membership (hard classify
+  // once) instead of the soft-EM responsibility step.  mixFixedAssign holds the
+  // 1-based assigned component per subject.
+  int mixProbRegress;
+  uvec mixFixedAssign;
 
   int nendpnt;
   uvec ix_endpnt;
@@ -3242,6 +3578,28 @@ private:
     ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
   }
 
+  // Invert a symmetric covariance (omega) matrix.  If it is not positive
+  // definite, project it to the nearest positive-definite matrix (in place, so
+  // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
+  // once, and return the inverse of the corrected matrix.
+  bool _nearPdWarned = false;
+  mat invSympdNearPd(mat &G, const char *what) {
+    mat out;
+    if (inv_sympd(out, G)) return out;
+    mat pd;
+    if (nmNearPD(pd, G)) {
+      G = pd;
+      if (!_nearPdWarned) {
+        Rcpp::warning(std::string("SAEM: ") + what +
+                      " was not positive definite; projected to the nearest positive-definite matrix (results may be affected)");
+        _nearPdWarned = true;
+      }
+      if (inv_sympd(out, G)) return out;
+    }
+    // last resort: general inverse of the symmetrized matrix
+    return inv(0.5 * (G + G.t()));
+  }
+
   void set_mcmcphi(mcmcphi &mphi1,
 		   const uvec i1,
 		   const int nphi1,
@@ -3289,7 +3647,18 @@ private:
       // positions <- population phi = mprior_phi1 row 0; residual positions <-
       // ares/bres) and call the C++ orchestration directly.
       NumericVector theta(fsaemNTheta);
-      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++) theta[fsaemStructPos(j)] = mprior_phi1(0, j);
+      // current population value for each structural theta, in phi order: phi1
+      // params from mprior_phi1, phi0 params (fixed effects with no random effect,
+      // e.g. a general-likelihood SD) from mprior_phi0.  The old code indexed
+      // mprior_phi1 for EVERY structural position, which ran past nphi1 whenever a
+      // general-likelihood model had a structural phi0 parameter.
+      arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
+      for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
+      for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
+      bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
+      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
+        theta[fsaemStructPos(j)] =
+          phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
       for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
         int ep = fsaemResidEp(j);
         theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
@@ -3314,15 +3683,17 @@ private:
                                  NumericVector(Plambda.begin(), Plambda.end()),
                                  wrap(etaCur), nmc, kiter));
     }
+    // the fast kernel re-pointed the global solve to the FOCEi inner (N subjects);
+    // restore the SAEM model's (N*nmc) solve as current BEFORE any early return so
+    // the E-step / M-step (and a general-likelihood user_fn) always read the right
+    // solve, even when the proposal is rejected (acc dimension mismatch).
+    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    _rx = getRxSolve_();
     if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
     for (unsigned int r = 0; r < phiM.n_rows; r++) {
       int subj = (int)(r % (unsigned int)N);
       for (int j = 0; j < nphi1; j++) phiM(r, i1(j)) = acc(r, j) + mprior_phi1(subj, j);
     }
-    // the R closure re-pointed the global solve to the FOCEi inner (N subjects);
-    // restore the SAEM model's (N*nmc) solve as current before the M-step reads it.
-    setupRx(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
-    _rx = getRxSolve_();
   }
 
   void do_mcmc(const int method,
@@ -3744,14 +4115,17 @@ private:
   }
 };
 
-// L-BFGS-B trampolines for the phi0 direct optimization (ex is the SAEM object).
-static double saemPhi0ObjTramp(int n, double *par, void *ex) {
-  (void)n;
-  return ((SAEM *)ex)->phi0Objective(par);
+// phi0 objective trampoline for the general-likelihood direct optimization.
+static double gPhi0ObjR(Rcpp::NumericVector p) {
+  for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+    gPhi0Full[gPhi0FreeIx[i]] = p[i];
+  }
+  return gPhi0Self->phi0Objective(gPhi0Full.memptr());
 }
-static void saemPhi0GrTramp(int n, double *par, double *gr, void *ex) {
-  (void)n;
-  ((SAEM *)ex)->phi0Gradient(par, gr);
+
+static double gPhi0Obj1DR(double x) {
+  gPhi0Work[gPhi0Coord] = x;
+  return gPhi0Self->phi0Objective(gPhi0Work.memptr());
 }
 
 
@@ -3813,6 +4187,10 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       }
     }
   }
+  // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE, so
+  // during the phi0 optimization the states are reused and only the log-likelihood
+  // is recomputed below -- skip the (costly) re-integration entirely.
+  if (!_saemFreezeOde) {
   resetRxBadSolve(_rx);
   par_solve(_rx); // Solve the complete system (possibly in parallel)
   int j=0;
@@ -3852,6 +4230,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
     }
   }
+  } // end (!_saemFreezeOde) integration guard
   // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;

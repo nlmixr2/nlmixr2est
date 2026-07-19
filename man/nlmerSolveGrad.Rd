@@ -4,12 +4,22 @@
 \alias{nlmerSolveGrad}
 \title{Per-subject prediction and Jacobian for mixed-effects engines}
 \usage{
-nlmerSolveGrad(thetaMat)
+nlmerSolveGrad(thetaMat, record = FALSE)
 }
 \arguments{
 \item{thetaMat}{A \code{nsub x ntheta} matrix of per-subject
 parameter values.  Row \code{id} is solved against subject
 \code{id} (in the loaded \code{etTrans} order).}
+
+\item{record}{When \code{TRUE}, record this evaluation's population
+parameter estimate -- the per-subject mean of \code{thetaMat}'s columns
+(\code{phi = beta + b} averaged over subjects, which equals the fixed
+effect exactly for parameters without a random effect) -- into the
+resident nlm parameter history via the shared scale machinery.  This is
+how an external optimizer (e.g. \code{lme4::nlmer}) populates the
+iteration print and the history recovered by \code{nlmGetParHist()}.  No
+objective value is recorded (the scale's \code{showOfv} is expected to be
+0 for these engines).  Defaults to \code{FALSE}.}
 }
 \value{
 A \code{nobsTot x (ntheta+1)} matrix in the loaded

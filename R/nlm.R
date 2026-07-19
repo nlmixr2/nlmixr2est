@@ -578,7 +578,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model")
+    .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model",
+                              parallel = .optExprCores(x[[1]]))
     .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
@@ -766,7 +767,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' @author Matthew L Fidler
 #' @noRd
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
-                           optExpression = TRUE) {
+                           optExpression = TRUE, cores = 0L) {
   .rxInjectMatExpDdt(.s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -844,8 +845,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .msuccess("done")
   }
   if (optExpression) {
-    .s$..nlmS <- rxode2::rxOptExpr(.s$..nlmS, "nlm llik gradient")
-    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nlm pred-only")
+    .s$..nlmS <- rxode2::rxOptExpr(.s$..nlmS, "nlm llik gradient", parallel = cores)
+    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nlm pred-only", parallel = cores)
   }
 }
 
@@ -863,7 +864,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
     .calcSens <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
     .s$..adjSens <- .rxAdjointSensLines(.nlmPrune(x), .calcSens, .adj$stiff)
   }
-  .rxFinalizeNlm(.s, .sumProd, .optExpression)
+  .rxFinalizeNlm(.s, .sumProd, .optExpression, .optExprCores(x[[1]]))
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)

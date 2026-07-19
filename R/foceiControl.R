@@ -13,13 +13,21 @@
                            # derived from covMethod ("analytic" vs the finite-difference
                            # formulas); kept internal so a built control round-trips.
                            "covType",
+                           # foreign covariance ("sa"/"imp") deferred to a post-fit
+                           # recompute; internal so a built control round-trips.
+                           "covMethodDeferred",
                            # subject-constant covariates stashed by .foceiFamilyReturn
                            # for the analytic covariate-coefficient reuse; internal so
                            # a built control round-trips (e.g. posthoc re-validation).
                            "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault")
+                           "outerOptDefault",
+                           # residual-theta index vector stashed on the control by
+                           # .foceiFamilyReturn (ui$foceiResidTheta); internal so a
+                           # built control round-trips (e.g. fo/foi post-fit
+                           # nmObjGetControl re-validation)
+                           "residThetaIdx")
 
 #' Control Options for FOCEi
 #'
@@ -57,8 +65,9 @@
 #'     derivatives while calculating the covariance components
 #'     (Hessian and S).
 #'
-#' @param covMethod Method for calculating the covariance.  \code{"analytic"} (the
-#'     default) uses the exact analytic observed-information R-matrix (reported as
+#' @param covMethod Method for calculating the covariance.  \code{"r,s"} (the
+#'     default) is the sandwich estimator (see below).  \code{"analytic"}
+#'     uses the exact analytic observed-information R-matrix (reported as
 #'     \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
 #'     errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
 #'     error, mu-referenced/covariate/other structural parameters (and
@@ -71,23 +80,25 @@
 #'     gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 #'     (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 #'     (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
-#'     \code{""} to skip the covariance step.
+#'     \code{""} to skip the covariance step.  \code{"sa"} (SAEM Louis
+#'     stochastic-approximation FIM) and \code{"imp"} (importance-sampling
+#'     Monte-Carlo observed information) are also accepted for any method; they
+#'     are computed post-fit at the converged estimates by the decoupled
+#'     recompute engine.
 #'
 #' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
 #'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
 #'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
 #'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
 #'
-#' @param covFull controls the shape of \code{fit$cov}.  \code{FALSE} (default)
-#'     installs only the structural-theta block (the NONMEM-matched theta
-#'     covariance, matching the historical finite-difference \code{fit$cov} shape
-#'     for backwards compatibility); \code{TRUE} installs the full theta + residual
-#'     sigma + Omega covariance -- assembled analytically for
-#'     \code{covMethod="analytic"}, or by central finite differences of the objective
-#'     over the same parameter set for the finite-difference methods (perturbing Omega
-#'     on the variance-covariance scale, with the per-parameter Gill (1983) step and the
-#'     5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
-#'     errors are identical either way.
+#' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
+#'     full theta + residual sigma + Omega covariance (assembled analytically for
+#'     \code{covMethod="analytic"}, or by central finite differences over the same
+#'     parameter set otherwise).  For the finite-difference methods it follows
+#'     \code{covMethod}: \code{"r,s"} is the full sandwich
+#'     \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)}, \code{"s"} is
+#'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
+#'     installs only the structural-theta block (the historical shape).
 #'
 #' @param fast When \code{TRUE}, compute the outer (population) gradient
 #'     analytically from Almquist (2015) sensitivity equations instead of by
@@ -279,27 +290,17 @@
 #'     individual Hessian is reset when ETAs are reset using the
 #'     option \code{resetEtaP}.
 #'
-#' @param muModel Selects the mu-referenced-FOCEI-family regression variant
-#'     for mu-referenced thetas/etas: \code{"none"} (default, ordinary
-#'     FOCEI); \code{"lin"} (\code{mfocei}/\code{mfoce}/\code{magq}/
-#'     \code{mlaplace}: mu-referenced population thetas -- and their
-#'     covariate coefficient(s), if any (see \code{muRefCovAlg}) -- are
-#'     excluded from the outer optimizer and re-derived in C++ by
-#'     closed-form OLS regression of each subject's back-calculated value
-#'     on the covariate(s) (intercept-only for a covariate-free pair),
-#'     residual becomes that subject's eta; repeats until convergence, see
-#'     \code{muModelTol}/\code{muModelMaxCycles}); or \code{"irls"}
-#'     (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}:
-#'     same mechanism, reweighted by inner-optimization curvature).
-#'     Only the outer gradients for non-mu-referenced parameters (including
-#'     residual-error thetas and all omegas) are then calculated.
-#'
-#'     Bounded mu-referenced parameters (population thetas and covariate
-#'     coefficients) are regression-updated too: the update is clamped to
-#'     the bounds (box-constrained least squares, see
-#'     \code{muModelClampRetries}), and any parameter that was clamped is
-#'     reported once as a fit note. A user-fixed (\code{fix()}) mu
-#'     population theta is never regression-updated.
+#' @param muModel Mu-referenced-FOCEI-family regression variant: \code{"none"}
+#'     (default, ordinary FOCEI); \code{"lin"}
+#'     (\code{mfocei}/\code{mfoce}/\code{magq}/\code{mlaplace}) profiles
+#'     mu-referenced population thetas and covariate coefficients out of the
+#'     outer optimizer via closed-form OLS regression of each subject's
+#'     back-calculated value on the covariates (\code{muModelTol}/
+#'     \code{muModelMaxCycles}); \code{"irls"}
+#'     (\code{ifocei}/\code{ifoce}/\code{iagq}/\code{ilaplace}) reweights that
+#'     by inner-optimization curvature.  Bounded mu parameters are
+#'     regression-updated with a clamped step (\code{muModelClampRetries});
+#'     a user-fixed (\code{fix()}) mu theta is never updated.
 #'
 #' @param muRefCovAlg When `TRUE` (default), algebraic expressions that can
 #'     be mu-referenced are internally rewritten as mu-referenced
@@ -605,6 +606,16 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
+#' @param freezeResidGrad When `TRUE`, the outer finite-difference
+#'   gradient freezes the ODE solve (and the individual EBEs) when
+#'   perturbing a residual/error-model parameter -- these parameters
+#'   do not change the structural prediction `f`, so the states are
+#'   reused and only the residual density is recomputed, mirroring the
+#'   npag residual step.  This is a small approximation to the FOCEi
+#'   gradient (it drops the eta sensitivity of the Laplace `log det`
+#'   term); the default is `FALSE` to recover the exact full re-solve
+#'   gradient.
+#'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
@@ -669,7 +680,7 @@ foceiControl <- function(sigdig = 4, #
                          derivMethod = c("switch", "forward", "central"), #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
-                         covMethod = c("analytic", "r,s", "r", "s", ""), #
+                         covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
@@ -712,9 +723,9 @@ foceiControl <- function(sigdig = 4, #
                          cholSECov = FALSE, #
                          fo = FALSE, #
                          covTryHarder = FALSE, #
-                         outerOpt = c("nlminb",
+                         outerOpt = c("bobyqa",
+                                      "nlminb",
                                       "lbfgsb3c",
-                                      "bobyqa",
                                       "L-BFGS-B",
                                       "mma",
                                       "lbfgsbLG",
@@ -798,6 +809,7 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          sensMethod = c("default", "forward", "adjoint"),
+                         freezeResidGrad=FALSE,
                          boundedTransform=TRUE) { #
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
@@ -1037,6 +1049,9 @@ foceiControl <- function(sigdig = 4, #
   # solver as the (internal, derived) covType string, which also travels via ... so a
   # built control round-trips.
   covType <- "fd"
+  # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
+  # recompute them post-fit at the converged estimates (see .covRecompute).
+  covMethodDeferred <- NA_character_
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
     .ct <- list(...)$covType
@@ -1046,7 +1061,10 @@ foceiControl <- function(sigdig = 4, #
       covMethod <- 0L
     } else {
       covMethod <- match.arg(covMethod)
-      if (identical(covMethod, "analytic")) {
+      if (covMethod %in% c("sa", "imp")) {
+        covMethodDeferred <- covMethod
+        covMethod <- 0L
+      } else if (identical(covMethod, "analytic")) {
         covType <- "analytic"
         covMethod <- 2L
       } else {
@@ -1054,6 +1072,10 @@ foceiControl <- function(sigdig = 4, #
         covMethod <- setNames(.covMethodIdx[covMethod], NULL)
       }
     }
+  }
+  # round-tripped controls carry the deferred request as a ... field
+  if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
+    covMethodDeferred <- list(...)$covMethodDeferred
   }
   if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
                                                       finite = TRUE, any.missing = FALSE)
@@ -1086,7 +1108,7 @@ foceiControl <- function(sigdig = 4, #
     # outerOptDefault records that the default was taken so a *f wrapper
     # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "nlminb"
+      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
@@ -1274,6 +1296,7 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
   checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  checkmate::assertLogical(freezeResidGrad, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1289,6 +1312,7 @@ foceiControl <- function(sigdig = 4, #
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
     covType = covType,
+    covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,
@@ -1414,6 +1438,7 @@ foceiControl <- function(sigdig = 4, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     sensMethod=sensMethod,
+    freezeResidGrad=freezeResidGrad,
     boundedTransform=boundedTransform
   )
   if (!is.null(.xtra$est)) {

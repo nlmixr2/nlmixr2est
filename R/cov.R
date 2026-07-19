@@ -49,6 +49,49 @@
   try(chol(covm[.good, .good, drop = FALSE]), silent = TRUE)
 }
 
+#' Recompute the covariance eigen diagnostics + objDf condition numbers from the
+#' fit's installed covariance (method-independent).  NA rows/columns from a
+#' rank-deficient covariance (see `.nlmixr2RobustCov()`) are dropped before the
+#' eigen decomposition.  Adds the `Condition#(Cov)`/`Condition#(Cor)` columns
+#' when missing so every installed covariance reports its condition numbers.
+#' @param env fit environment with `cov` installed
+#' @return invisibly TRUE if the diagnostics were updated
+#' @noRd
+.nlmixr2CovConditionUpdate <- function(env) {
+  if (!exists("cov", envir = env, inherits = FALSE)) return(invisible(FALSE))
+  .cov <- get("cov", envir = env)
+  if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) return(invisible(FALSE))
+  .cn <- .cnr <- NA_real_
+  .good <- which(!is.na(diag(.cov)))
+  if (length(.good) > 0L) {
+    .c <- .cov[.good, .good, drop = FALSE]
+    .e <- try(eigen(.c, symmetric = TRUE), silent = TRUE)
+    if (!inherits(.e, "try-error")) {
+      assign("eigenCov", .e$values, envir = env)
+      assign("eigenVecCov", .e$vectors, envir = env)
+      .a <- abs(.e$values)
+      if (length(.a) > 0L) .cn <- max(.a) / min(.a)
+    }
+    assign("fullCor", .cov2cor(.c), envir = env)
+    .er <- try(eigen(stats::cov2cor(.c), symmetric = TRUE), silent = TRUE)
+    if (!inherits(.er, "try-error")) {
+      assign("eigenCor", .er$values, envir = env)
+      assign("eigenVecCor", .er$vectors, envir = env)
+      .a <- abs(.er$values)
+      if (length(.a) > 0L) .cnr <- max(.a) / min(.a)
+    }
+  }
+  assign("conditionNumberCov", .cn, envir = env)
+  assign("conditionNumberCor", .cnr, envir = env)
+  if (exists("objDf", envir = env, inherits = FALSE)) {
+    .od <- get("objDf", envir = env)
+    .od[["Condition#(Cov)"]] <- .cn
+    .od[["Condition#(Cor)"]] <- .cnr
+    assign("objDf", .od, envir = env)
+  }
+  invisible(TRUE)
+}
+
 .setCov <- function(obj, ...) {
   .pt <- proc.time()
   .env <- obj
@@ -81,9 +124,16 @@
   }
   if (!is.null(.lst$covMethod)) {
     if (rxode2::rxIs(.lst$covMethod, "character")) {
-      .lst$covMethod <- match.arg(.lst$covMethod, c("r,s", "r", "s"))
-      .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-      .control$covMethod <- .covMethodIdx[.lst$covMethod]
+      .lst$covMethod <- match.arg(.lst$covMethod, c("analytic", "r,s", "r", "s"))
+      if (identical(.lst$covMethod, "analytic")) {
+        .control$covMethod <- 2L
+        .control$covType <- "analytic"
+      } else {
+        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+        .control$covMethod <- .covMethodIdx[.lst$covMethod]
+        # an explicit FD request must not re-run the analytic hook
+        .control$covType <- "fd"
+      }
     } else if (inherits(.lst$covMethod, "matrix")) {
       .env2$cov <- as.matrix(.lst$covMethod)
       .env2$ui <- obj$ui
@@ -140,7 +190,7 @@
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed
   .env$covMethod <- .fit2$covMethod
-  #.updateParFixed(.env)
+  .nlmixr2CovConditionUpdate(.env)
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
     if (identical(.parent[[.cur]], obj)) {
@@ -153,24 +203,51 @@
   return(.env$cov)
 }
 
-#' Recompute a mu-referenced (lin/irls) fit's covariance on the full base model
+#' Base est whose full model the post-fit covariance recompute runs on
+#'
+#' `NULL` for ests without a post-fit recompute.
+#' @param est estimation method string
+#' @return base est string or NULL
+#' @noRd
+.foceiRecomputeBaseEst <- function(est) {
+  # mu-referenced (lin/irls) families recompute on their own base method
+  if (grepl("^(m|i)(focei|foce|focep|agq|laplace)$", est)) {
+    return(sub("^(m|i)", "", est))
+  }
+  # methods whose estimation pass cannot produce a covariance (EM table pass,
+  # nonparametric engines, or an external engine) recompute on a
+  # zero-iteration focei model
+  if (est %in% c("imp", "impmap", "qrpem", "nlme") ||
+        grepl("^(m|i)?(npag|npb)$", est)) {
+    return("focei")
+  }
+  NULL
+}
+
+#' Recompute a fit's covariance on the full base model (post-fit)
 #'
 #' The estimation-time covariance step bails for mu-referenced-FOCEI-family fits
 #' (muModel = "lin"/"irls") -- see `foceiCalcCov()` in `src/inner.cpp` -- because
 #' the mu->phi reduced parameterization used during estimation yields incorrect
-#' standard errors on the mu-referenced/linear parameters.  This recomputes the
-#' covariance at the converged estimates with `muModel = "none"`, i.e. on the full
-#' corresponding focei/foce/focep model (all structural thetas as ordinary
-#' parameters), and installs it.  No-op for non-mu fits or when no covariance was
-#' requested.  Must run before the fit env is compressed (needs `etaMat`).
+#' standard errors on the mu-referenced/linear parameters.  The imp family
+#' (imp/impmap/qrpem) and nlme never compute a focei covariance during
+#' estimation at all.  This recomputes the covariance at the converged
+#' estimates with `muModel = "none"`, i.e. on the full base model (all
+#' structural thetas as ordinary parameters), and installs it; the C++
+#' covariance step runs the usual analytic -> "r,s" -> "r"/"s" chain.  No-op
+#' when no covariance was requested.  Must run before the fit env is
+#' compressed (needs `etaMat`).
 #' @param .ret assembled fit environment
 #' @return invisibly TRUE if the covariance was recomputed and installed
 #' @noRd
 .foceiRecomputeMuCov <- function(fit, est) {
-  # only the mu-referenced (lin/irls) families (mfocei/ifocei/mfoce/mfocep/...);
-  # anchored to the known method names so other i*/m* ests (imp, impmap, ...)
-  # never match
-  if (!grepl("^(m|i)(focei|foce|focep|agq|laplace)$", est)) return(NULL)
+  .baseEst <- .foceiRecomputeBaseEst(est)
+  if (is.null(.baseEst)) return(NULL)
+  # covMethod="imp" installed the Monte-Carlo importance-sampling covariance;
+  # that explicit request wins over the recompute
+  if (identical(tryCatch(fit$covMethod, error = function(e) NULL), "imp")) {
+    return(NULL)
+  }
   .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
   if (is.null(.control)) return(NULL)
   .cm <- .control$covMethod
@@ -179,7 +256,6 @@
   .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
                   error = function(e) NULL)
   if (is.null(.ui)) return(NULL)
-  .baseEst <- sub("^(m|i)", "", est)         # mfocei->focei, ifoce->foce, mfocep->focep
   .control$muModel <- "none"                 # recompute the foceiModel on the full model
   # drop the mu-group wiring so the recompute treats every structural theta as an
   # ordinary parameter (nothing excluded/re-profiled by the mu machinery); keep `fast`
@@ -223,6 +299,7 @@
   .extras <- list()
   for (.n in c("covR", "covS", "covRS", "Rinv", "Sinv", "R", "S", "covLvl", "skipCov",
                "eigenCov", "eigenVecCov", "conditionNumberCov", "covList",
+               "fullCor", "eigenCor", "eigenVecCor", "conditionNumberCor",
                "popDf", "popDfSig", "parFixedDf", "parFixed", "se")) {
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
@@ -236,16 +313,55 @@
 #' @noRd
 .foceiInstallMuCov <- function(fit, est) {
   .r <- tryCatch(.foceiRecomputeMuCov(fit, est), error = function(e) NULL)
-  if (is.null(.r)) return(invisible(FALSE))
   .env <- if (is.environment(fit)) fit else tryCatch(fit$env, error = function(e) NULL)
   if (!is.environment(.env)) return(invisible(FALSE))
+  if (is.null(.r)) {
+    # message only when a recompute was requested but failed and a legacy
+    # covariance (e.g. nlme's) is being kept
+    if (identical(est, "nlme") &&
+          exists("cov", envir = .env, inherits = FALSE)) {
+      .cm <- tryCatch(fit$foceiControl$covMethod, error = function(e) 0L)
+      if (!is.null(.cm) && !identical(as.integer(.cm), 0L)) {
+        message("the analytic/finite-difference covariance could not be computed; keeping the \"nlme\" covariance")
+      }
+    }
+    return(invisible(FALSE))
+  }
+  # keep the pre-existing covariance (e.g. nlme's tTable cov) recoverable via
+  # covList/setCov()
+  .stash <- NULL
+  if (exists("cov", envir = .env, inherits = FALSE) &&
+        exists("covMethod", envir = .env, inherits = FALSE)) {
+    .stash <- list(get("cov", envir = .env))
+    names(.stash) <- as.character(get("covMethod", envir = .env))
+  }
   assign("cov", .r$cov, envir = .env)
   assign("covMethod", .r$covMethod, envir = .env)
   for (.n in names(.r$extras)) assign(.n, .r$extras[[.n]], envir = .env)
+  if (!is.null(.stash) && !identical(names(.stash), .r$covMethod)) {
+    .covList <- NULL
+    if (exists("covList", envir = .env, inherits = FALSE)) {
+      .covList <- get("covList", envir = .env)
+    }
+    if (is.null(.covList[[names(.stash)]])) .covList <- c(.covList, .stash)
+    assign("covList", .covList, envir = .env)
+  }
+  # the mu fit's objDf was rendered before any cov existed; recompute the eigen
+  # diagnostics + Condition#(Cov)/Condition#(Cor) from the installed cov
+  .nlmixr2CovConditionUpdate(.env)
   invisible(TRUE)
 }
 
 #' Set the covariance type based on prior calculated covariances
+#'
+#' Switches a completed fit's covariance to \code{method}.  A previously
+#' computed covariance is re-installed from the cache; otherwise it is
+#' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
+#' \code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
+#' Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
+#' recompute engine (the latter two require a mixed-effects fit).  When
+#' \code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
+#' is left unchanged (it is never silently downgraded to \code{"r,s"}).
 #'
 #' @param fit nlmixr2 fit
 #' @param method covariance method (see the `covMethod` argument for the control
@@ -275,6 +391,36 @@ setCov <- function(fit, method) {
       .env$covMethod <- method
       return(invisible(fit))
     }
+  }
+  # analytic: compute the EXACT analytic observed information; on any failure the
+  # covariance is left UNCHANGED -- it is never silently downgraded to the "r,s"
+  # finite-difference covariance (which the C++ cov chain would otherwise fall
+  # back to and mislabel "analytic").
+  if (identical(method, "analytic")) {
+    .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+    if (is.null(.r) || !is.matrix(.r$cov) || !all(is.finite(.r$cov)) ||
+          !isTRUE(.covInstallResult(.env, list(cov = .r$cov, covMethod = "analytic")))) {
+      stop("covMethod=\"analytic\" could not be computed for this fit; the covariance is left unchanged",
+           call. = FALSE)
+    }
+    assign(".covAnalytic", .r, envir = .env)
+    return(invisible(fit))
+  }
+  # not cached: the finite-difference methods can be recomputed on the full model
+  # at the converged estimates (.setCov refits with est="none")
+  if (method %in% c("r,s", "r", "s")) {
+    .setCov(fit, covMethod = method)
+    .env$covMethod <- method
+    return(invisible(fit))
+  }
+  # sa/imp: decoupled recompute at the converged estimates (mixed-effects fits)
+  if (method %in% c("sa", "imp")) {
+    .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
+    if (!isTRUE(.covInstallResult(.env, .r))) {
+      stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
+           call. = FALSE)
+    }
+    return(invisible(fit))
   }
   stop("different covariance types have not been calculated",
     call. = FALSE

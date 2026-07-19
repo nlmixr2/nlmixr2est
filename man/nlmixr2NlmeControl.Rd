@@ -43,6 +43,8 @@ nlmixr2NlmeControl(
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
+  print = NULL,
+  covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...
 )
 
@@ -84,6 +86,8 @@ nlmeControl(
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
+  print = NULL,
+  covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...
 )
 }
@@ -278,6 +282,20 @@ for \code{foceiControl()} only takes effect when
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
+
+\item{print}{Convenience alias for the shared nlmixr `print` control.
+`nlme` prints progress through its own `verbose` option, so `print`
+maps to it: `print=0` runs quietly (`verbose=FALSE`) and any positive
+value is verbose (`verbose=TRUE`).  When `print` is not supplied an
+explicit `verbose` is used as given.}
+
+\item{covMethod}{Covariance method: `"analytic"` (default) computes the
+focei observed-information covariance at the converged nlme estimates
+post-fit (falling back to the finite-difference `"r,s"` -> `"r"`/`"s"`
+chain when out of analytic scope); `"r,s"`, `"r"`, `"s"` request the
+finite-difference forms directly; `"nlme"` and `""` skip the recompute
+and keep nlme's own standard errors.  When the recompute fails the
+`"nlme"` covariance is kept.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

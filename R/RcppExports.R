@@ -63,6 +63,10 @@ foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, cen
     .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
+foceiGradAllAgqFR_ <- function(a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, aN, aRN, RsigN, fN, RN, qx, qw, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllAgqFR_`, a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, aN, aRN, RsigN, fN, RN, qx, qw, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores)
+}
+
 impSirIndex_ <- function(zk, sirN, u0) {
     .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
 }
@@ -93,6 +97,10 @@ foceiOfv <- function(theta) {
 
 foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
+}
+
+foceiNFreezeResidGrad <- function() {
+    .Call(`_nlmixr2est_foceiNFreezeResidGrad`)
 }
 
 foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
@@ -188,6 +196,23 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+#' Build the nonparametric Psi (conditional-likelihood) matrix
+#'
+#' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
+#' \code{psi[i, k] = p(y_i | support point k)} for each subject \code{i} (rows)
+#' and support point \code{k} (columns), where each support point is an eta
+#' vector.  Exposed for testing the conditional-likelihood primitive.
+#'
+#' @param etaPoints Numeric matrix of support points, one per row (columns are
+#'   etas).
+#' @param cores Number of OpenMP threads.
+#' @return Numeric matrix psi (subjects in rows, support points in columns).
+#' @keywords internal
+#' @export
+npBuildPsi <- function(etaPoints, cores) {
+    .Call(`_nlmixr2est_npBuildPsi`, etaPoints, cores)
+}
+
 vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
     .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
 }
@@ -248,6 +273,22 @@ vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
 
+foceiLikLoad_ <- function(e) {
+    .Call(`_nlmixr2est_foceiLikLoad_`, e)
+}
+
+foceiLikUnload_ <- function() {
+    .Call(`_nlmixr2est_foceiLikUnload_`)
+}
+
+foceiLikSetTheta_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikSetTheta_`, theta)
+}
+
+foceiLikEval_ <- function(etaMat, cores, retType) {
+    .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
+}
+
 vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }
@@ -266,6 +307,10 @@ vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, eps
 
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
+}
+
+vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov, strategy = "lifo") {
+    .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov, strategy)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
@@ -319,11 +364,21 @@ nlmSolveR <- function(theta) {
 #' @details This is an internal function and should not be called
 #'   directly.
 #'
+#' @param record When \code{TRUE}, record this evaluation's population
+#'   parameter estimate -- the per-subject mean of \code{thetaMat}'s columns
+#'   (\code{phi = beta + b} averaged over subjects, which equals the fixed
+#'   effect exactly for parameters without a random effect) -- into the
+#'   resident nlm parameter history via the shared scale machinery.  This is
+#'   how an external optimizer (e.g. \code{lme4::nlmer}) populates the
+#'   iteration print and the history recovered by \code{nlmGetParHist()}.  No
+#'   objective value is recorded (the scale's \code{showOfv} is expected to be
+#'   0 for these engines).  Defaults to \code{FALSE}.
+#'
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-nlmerSolveGrad <- function(thetaMat) {
-    .Call(`_nlmixr2est_nlmerSolveGrad`, thetaMat)
+nlmerSolveGrad <- function(thetaMat, record = FALSE) {
+    .Call(`_nlmixr2est_nlmerSolveGrad`, thetaMat, record)
 }
 
 nlmSetScaleC <- function(scaleC) {
@@ -370,6 +425,25 @@ nlmCensInfo <- function() {
     .Call(`_nlmixr2est_nlmCensInfo`)
 }
 
+#' Recover and finalize the resident nlm parameter history
+#'
+#' Returns the parameter history accumulated in the resident nlm scaling
+#' struct (one row per iteration type per recorded evaluation) as a data
+#' frame, and stops further recording/printing (\code{save} and \code{every}
+#' are reset to 0).  Must be called while \code{.nlmSetupEnv()} is still
+#' loaded -- i.e. before \code{.nlmFreeEnv()}.  Used by \code{.nlmFinalizeList}
+#' for the standard nlm-family estimators and directly by externally-optimized
+#' engines such as \code{babelmixr2}'s nlmer.
+#'
+#' @param p When \code{TRUE} (default) also print the final iteration line.
+#'
+#' @return A data frame of the recorded parameter history.
+#'
+#' @details This is an internal function and should not be called directly.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 nlmGetParHist <- function(p = TRUE) {
     .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
@@ -382,10 +456,98 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+#' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
+#' @param etaPoints support points, one per row
+#' @param cores threads
+#' @param gamma residual-error multiplier
+#' @return offset-corrected marginal log-likelihood
+#' @keywords internal
+#' @export
+npObjAtGamma_ <- function(etaPoints, cores, gamma) {
+    .Call(`_nlmixr2est_npObjAtGamma_`, etaPoints, cores, gamma)
+}
+
+#' Run the NPAG adaptive-grid cycle on a set-up inner problem
+#'
+#' Requires the FOCEi inner problem to be set up (\code{.npInnerSetup}).  Runs
+#' the full Yamada adaptive-grid cycle (Sobol grid -> Psi -> Burke IPM ->
+#' condensation -> expansion -> convergence) and returns the discrete mixing
+#' distribution.  Exposed for testing ahead of the full fit-object wiring.
+#'
+#' @param lower,upper Numeric vectors, the per-eta support-point box.
+#' @param points Initial Sobol grid size.
+#' @param cycles Maximum cycles.
+#' @param cores OpenMP threads.
+#' @param gammaOptimize Optimize the residual-error magnitude (gamma) each cycle
+#'   (only valid for uncensored normal endpoints).
+#' @return A list with \code{support} (support points, eta space; one per row),
+#'   \code{weights}, \code{objf} (log-likelihood), \code{gamma}, \code{cycles},
+#'   and \code{converged}.
+#' @keywords internal
+#' @export
+npagCycle_ <- function(lower, upper, points = 2028L, cycles = 100L, cores = 1L, gammaOptimize = FALSE) {
+    .Call(`_nlmixr2est_npagCycle_`, lower, upper, points, cycles, cores, gammaOptimize)
+}
+
+#' Burke interior-point weight solver (nonparametric maximum likelihood)
+#'
+#' Solves the convex nonparametric-maximum-likelihood weight problem for a fixed
+#' set of support points: given the likelihood matrix \code{psi} (subjects in
+#' rows, support points in columns) it returns the maximum-likelihood mixing
+#' weights and the objective (log-likelihood).  Exposed for testing the C++
+#' interior-point routine against golden fixtures.
+#'
+#' @param psi Numeric matrix, \code{psi[i, k] = p(y_i | support point k)}, with
+#'   subjects in rows and support points in columns.
+#' @return A list with \code{weights} (length \code{ncol(psi)}, non-negative,
+#'   summing to 1) and \code{objective} (the maximized log-likelihood).
+#' @keywords internal
+#' @export
+npIpmBurke <- function(psi) {
+    .Call(`_nlmixr2est_npIpmBurke`, psi)
+}
+
+#' Sobol initial grid over a box (nonparametric engines)
+#'
+#' @param n Number of support points.
+#' @param lower,upper Numeric vectors giving the per-dimension box bounds.
+#' @return Numeric matrix, one support point per row.
+#' @keywords internal
+#' @export
+npSobolGrid_ <- function(n, lower, upper) {
+    .Call(`_nlmixr2est_npSobolGrid_`, n, lower, upper)
+}
+
+#' Condense support points (nonparametric engines)
+#'
+#' @param lambda Support-point weights.
+#' @param psi Conditional-likelihood matrix (subjects x support points).
+#' @param ratio Weight-threshold ratio (keep weight > max*ratio).
+#' @param tol QR rank-revealing tolerance.
+#' @return List with 1-based kept indices from the weight threshold
+#'   (\code{weightKeep}) and from the subsequent QR pass (\code{qrKeep}).
+#' @keywords internal
+#' @export
+npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
+    .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+#' Get the ODE states of a model (rxode2 v3/v4 compatible)
+#'
+#' Calls \code{rxode2::rxState()} (or \code{rxode2::rxStateOde()} with
+#' rxode2 version 4) on the input.
+#'
+#' @param inp rxode2 model (or symengine environment) to query
+#'
+#' @return character vector of ODE state names
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

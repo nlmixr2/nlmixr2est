@@ -83,3 +83,25 @@
   apply(pairs, 1, function(.pr) if (.pr[1] == .pr[2]) paste0("om.", onm[.pr[1]])
         else paste0("cov.", onm[.pr[1]], ".", onm[.pr[2]]))
 }
+
+#' Recompute the stale objDf condition numbers after a full cov is swapped in.
+#'
+#' `covFull=TRUE` installs a larger matrix than C++ foceiFinalizeTables saw, so its
+#' `Condition#(Cov)`/`Condition#(Cor)` (computed from the theta-only native cov) no longer
+#' match.  Shared by the analytic and finite-difference full-cov installers.
+#' @param .ret focei fit environment
+#' @param .cov the installed full covariance
+#' @param .ev optional precomputed symmetric eigenvalues of `.cov`
+#' @noRd
+.foceiCovCondition <- function(.ret, .cov, .ev = NULL) {
+  if (!exists("objDf", envir = .ret, inherits = FALSE)) return(invisible())
+  if (is.null(.ev)) .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+  .od <- get("objDf", envir = .ret)
+  if ("Condition#(Cov)" %in% names(.od)) .od[["Condition#(Cov)"]] <- max(.ev) / min(.ev)
+  if ("Condition#(Cor)" %in% names(.od)) {
+    .evc <- suppressWarnings(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
+    .od[["Condition#(Cor)"]] <- max(.evc) / min(.evc)
+  }
+  assign("objDf", .od, envir = .ret)
+  invisible()
+}

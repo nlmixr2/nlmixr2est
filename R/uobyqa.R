@@ -4,6 +4,9 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams bobyqaControl
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{""} skips the
+#'   covariance step.
 #' @param returnUobyqa return the uobyqa output instead of the nlmixr2
 #'   fit
 #'

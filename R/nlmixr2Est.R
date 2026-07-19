@@ -74,7 +74,14 @@ nlmixr2AllEst <- function() {
 #' @export
 nlmixr2Est.default <- function(env, ...) {
   .curEst <- class(env)[1]
-  stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",
+  .lines <- .nlmixr2EstTypeLines(current=.curEst)
+  if (length(.lines) == 0L) {
+    stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '",
+         paste(nlmixr2AllEst(), collapse="', '"), "'",
+         call.=FALSE)
+  }
+  stop("nlmixr2 estimation '", .curEst, "' not supported; available methods:\n",
+       paste(.lines, collapse="\n"),
        call.=FALSE)
 }
 
@@ -82,16 +89,32 @@ nlmixr2Est.default <- function(env, ...) {
 #' original model
 #'
 #' @param ret input for updating
+#' @param env estimation environment holding the per-call restore info
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixrEstUpdatesOrigModel <- function(ret) {
+.nlmixrEstUpdatesOrigModel <- function(ret, env=NULL) {
   .ui <- try(ret$ui, silent=TRUE)
   if (inherits(.ui, "try-error")) return(ret)
+  # Prefer the per-call copies stashed on the estimation environment by
+  # .preProcessHooksRun(); the globals are wiped by any nested nlmixr2() call
+  # during estimation (setOfv/addCwres/...), which dropped zero etas from the
+  # final model (issue #741).  Fall back to the globals for direct
+  # nlmixr2Est() paths that did not run the pre-process hooks.
+  if (is.environment(env) && exists("nlmixrPureInputUi", envir=env, inherits=FALSE)) {
+    .pureInputUi <- env$nlmixrPureInputUi
+  } else {
+    .pureInputUi <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
+  }
+  if (is.environment(env) && exists("uiUnfix", envir=env, inherits=FALSE)) {
+    .uiUnfix <- env$uiUnfix
+  } else {
+    .uiUnfix <- nlmixr2global$nlmixr2EstEnv$uiUnfix
+  }
   if (inherits(.ui, "rxUi")) {
     # this needs to be in reverse order of the changes, which means apply zero omegas then fixed
-    if (!is.null(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi)) {
-      .final <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
+    if (!is.null(.pureInputUi)) {
+      .final <- .pureInputUi
       .finalIni <- .final$iniDf
       .iniDf <- .ui$iniDf
       .theta <- .iniDf[is.na(.iniDf$neta1), ]
@@ -104,6 +127,12 @@ nlmixr2Est.default <- function(env, ...) {
       .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
       if (length(.etas$name) > 0) {
         .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
+        ## Only map etas that also exist in the pure input model.  A fit
+        ## may re-express etas that are absent from the input model (e.g.
+        ## SAEM expands an IOV eta into per-occasion id-level etas plus a
+        ## variance theta); those cannot be mapped back by name and their
+        ## variance is restored via the theta loop above.
+        .etaNames <- .etaNames[.etaNames %in% .finalIni$name]
         .etaFinal <- vapply(.etaNames, function(n) {
           .finalIni[which(.finalIni$name == n), "neta1"]
         }, double(1), USE.NAMES=TRUE)
@@ -122,9 +151,9 @@ nlmixr2Est.default <- function(env, ...) {
       assign("omega", .final$omega, envir=ret$env)
       .minfo("initial model updated with final estimates, some zero etas are excluded from output")
     }
-    if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    if (!is.null(.uiUnfix)) {
       # Adjust to original model without literal fix
-      .final <- nlmixr2global$nlmixr2EstEnv$uiUnfix
+      .final <- .uiUnfix
       .iniDf0 <- ret$env$ui$iniDf
       .iniDf2 <- .final$iniDf
       .iniDf2$est <- vapply(.iniDf2$name,
@@ -164,9 +193,6 @@ nlmixr2Est0 <- function(env, ...) {
   }
   if (!exists("missingEst", envir=env)) {
     assign("missingEst", FALSE, envir=env)
-  }
-  if (!exists("missingTable", envir=env)) {
-    assign("missingTable", TRUE, envir=env)
   }
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
@@ -280,7 +306,14 @@ nlmixr2Est0 <- function(env, ...) {
   }
   .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
-  .warnings <- c(nlmixr2global$preProcessHookWarnings, .lst[[2]])
+  # prefer the per-call copy stashed on env (the global is wiped by nested
+  # estimation calls, e.g. the vae post-fit covariance recompute)
+  .hookWarn <- if (is.environment(env) && exists("preProcessHookWarnings", envir=env, inherits=FALSE)) {
+    env$preProcessHookWarnings
+  } else {
+    nlmixr2global$preProcessHookWarnings
+  }
+  .warnings <- c(.hookWarn, .lst[[2]])
   .warnings <- .filterSyntheticIovMuWarnings(.warnings, get("ui", envir = env))
   if (inherits(.ret, "nlmixr2FitCore") ||
         inherits(.ret, "nlmixr2Fit")) {
@@ -295,16 +328,41 @@ nlmixr2Est0 <- function(env, ...) {
       warning(.w[[i]])
     })
   }
-  .nlmixrEstUpdatesOrigModel(.ret)
-  # Mu-referenced (lin/irls) families: the C++ covariance step bailed (a mu->phi reduced
-  # cov gives wrong SEs on the mu-referenced/linear parameters).  Now that the fit is
-  # fully finalized (mu-rewriting restored), recompute the covariance on the full base
-  # focei/foce/focep model.
+  .nlmixrEstUpdatesOrigModel(.ret, env)
+  # Post-fit covariance recompute on the full base model: the mu-referenced
+  # (lin/irls) families' C++ covariance step bailed (a mu->phi reduced cov gives
+  # wrong SEs), and the imp/np/nlme families never compute one during estimation.
+  # Now that the fit is fully finalized, recompute at the converged estimates
+  # (see .foceiRecomputeBaseEst for the est -> base-model mapping).
   if (inherits(.ret, "nlmixr2FitCore")) {
+    # not every method assigns env$est (nlme/saem set it on the fit only), so
+    # fall back to the finalized fit's est
     .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
+    if (length(.estName) != 1L || !nzchar(.estName)) {
+      .estName <- tryCatch(as.character(.ret$est), error = function(e) "")
+    }
     if (length(.estName) == 1L &&
-          grepl("^(m|i)(focei|foce|focep|agq|laplace)$", .estName)) {
+          !is.null(.foceiRecomputeBaseEst(.estName))) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
+    }
+    # A foreign covariance ("sa"/"imp") requested via covMethod= on a family
+    # whose kernel does not compute it (focei/saem/imp/vae/advi/np): recompute at
+    # the converged estimates and install.  Native requests carry no deferred
+    # field.  Drive off the deferred request's presence, skipping only when a
+    # valid matching cov is already installed (idempotent re-run).
+    .def <- .covGetDeferred(.ret)
+    if (!is.na(.def)) {
+      .curCov <- tryCatch(.ret$cov, error = function(e) NULL)
+      .installed <-
+        identical(tryCatch(.ret$covMethod, error = function(e) NULL), .def) &&
+        is.matrix(.curCov) && all(is.finite(.curCov))
+      if (!.installed) {
+        .rEnv <- if (is.environment(.ret)) .ret else tryCatch(.ret$env, error = function(e) NULL)
+        if (is.environment(.rEnv)) {
+          .r <- tryCatch(.covRecompute(.ret, .def), error = function(e) NULL)
+          try(.covInstallResult(.rEnv, .r), silent = TRUE)
+        }
+      }
     }
   }
   .ret

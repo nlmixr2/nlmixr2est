@@ -86,14 +86,18 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 (which historically caused 6h timeouts / exit-143 "the runner has received a
 shutdown signal"):
 
-- **testthat workers**: a single worker on CI (`CI=true`) or CRAN; everywhere
-  else testthat manages `Config/testthat/parallel` (`parallel: true`,
-  `edition: 3` in `DESCRIPTION`) normally.
+- **testthat workers**: SERIAL (`TESTTHAT_PARALLEL=FALSE`) on CI (`CI=true`) or
+  CRAN; everywhere else testthat manages `Config/testthat/parallel`
+  (`parallel: true`, `edition: 3` in `DESCRIPTION`) normally.  Serial is
+  deliberate, not just "one worker": parallel mode's worker->orchestrator
+  message pipe base64-serializes every non-success test event, so an ERRORING
+  test whose backtrace inlines a fit/data object (any `do.call(f, list(<big>))`
+  frame) ships that object at ~18x its size into the orchestrator and can kill
+  the whole run at R's 2GB string cap ("result string is too long") -- this is
+  what the windows/devel runner-OOM failures were.  Do not re-enable parallel
+  on CI without solving that.
 - **rxode2 / data.table within-solve threads**: capped to 2 on CRAN only; on CI
   and locally rxode2 manages its own threads.
-- **Do not pass a non-parallel reporter** to `test_check()` -- testthat silently
-  falls back to serial when `reporter$capabilities$parallel_support` is FALSE
-  (e.g. `LocationReporter`), which defeats the parallel config.
 
 ### Test batching (quick-core vs weekly)
 
@@ -124,6 +128,11 @@ When adding tests for an estimation method, split them by cost:
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
 - `R/nlmixr2Est.R` contains the central S3 dispatch table -- look here to understand what methods exist
+- Any `warning()` raised during an estimation run is collected into the fit's `$runInfo`
+  (that is how run-time notes reach the user). Warnings emitted by the estimation routines
+  must therefore be concise -- keep each under 75 characters so it renders on one line
+  (the `$runInfo` display adds a bullet prefix). Do NOT prefix them with the method name
+  (e.g. `est="vae":`) -- the fit already reports which method was run.
 
 ## Comment and documentation style
 

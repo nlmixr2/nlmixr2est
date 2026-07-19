@@ -4,8 +4,8 @@
 %   R/iagq.R, R/ifoce.R, R/ifocei.R, R/ifocep.R, R/ilaplace.R, R/imp.R,
 %   R/impmap.R, R/laplace.R, R/lbfgsb3c.R, R/magq.R, R/mfoce.R, R/mfocei.R,
 %   R/mfocep.R, R/mlaplace.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R,
-%   R/nlminb.R, R/nlmixr2Est.R, R/nls.R, R/optim.R, R/posthoc.R, R/qrpem.R,
-%   R/rxsolve.R, R/saem.R, R/uobyqa.R, R/vae.R
+%   R/nlminb.R, R/nlmixr2Est.R, R/nls.R, R/npag.R, R/npb.R, R/optim.R,
+%   R/posthoc.R, R/qrpem.R, R/rxsolve.R, R/saem.R, R/uobyqa.R, R/vae.R
 \name{nlmixr2Est.advi}
 \alias{nlmixr2Est.advi}
 \alias{nlmixr2Est.agq}
@@ -23,6 +23,9 @@
 \alias{nlmixr2Est.ifoceif}
 \alias{nlmixr2Est.ifocef}
 \alias{nlmixr2Est.ifocepf}
+\alias{nlmixr2Est.agqf}
+\alias{nlmixr2Est.magqf}
+\alias{nlmixr2Est.iagqf}
 \alias{nlmixr2Est.focep}
 \alias{nlmixr2Est.foi}
 \alias{nlmixr2Est.fsaem}
@@ -48,6 +51,12 @@
 \alias{nlmixr2Est}
 \alias{nlmixr2Est.default}
 \alias{nlmixr2Est.nls}
+\alias{nlmixr2Est.npag}
+\alias{nlmixr2Est.mnpag}
+\alias{nlmixr2Est.inpag}
+\alias{nlmixr2Est.npb}
+\alias{nlmixr2Est.mnpb}
+\alias{nlmixr2Est.inpb}
 \alias{nlmixr2Est.optim}
 \alias{nlmixr2Est.posthoc}
 \alias{nlmixr2Est.qrpem}
@@ -91,6 +100,12 @@
 \method{nlmixr2Est}{ifocef}(env, ...)
 
 \method{nlmixr2Est}{ifocepf}(env, ...)
+
+\method{nlmixr2Est}{agqf}(env, ...)
+
+\method{nlmixr2Est}{magqf}(env, ...)
+
+\method{nlmixr2Est}{iagqf}(env, ...)
 
 \method{nlmixr2Est}{focep}(env, ...)
 
@@ -141,6 +156,18 @@ nlmixr2Est(env, ...)
 \method{nlmixr2Est}{default}(env, ...)
 
 \method{nlmixr2Est}{nls}(env, ...)
+
+\method{nlmixr2Est}{npag}(env, ...)
+
+\method{nlmixr2Est}{mnpag}(env, ...)
+
+\method{nlmixr2Est}{inpag}(env, ...)
+
+\method{nlmixr2Est}{npb}(env, ...)
+
+\method{nlmixr2Est}{mnpb}(env, ...)
+
+\method{nlmixr2Est}{inpb}(env, ...)
 
 \method{nlmixr2Est}{optim}(env, ...)
 

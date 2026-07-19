@@ -17,7 +17,7 @@ impmapControl(
   ctol = NULL,
   nConvWindow = 10L,
   impSeed = 42L,
-  impCov = FALSE,
+  covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
@@ -64,14 +64,17 @@ the objective-function change for convergence (NONMEM-style CTYPE).}
 \item{impSeed}{Base seed for the per-subject thread-safe (threefry) RNG
 streams; results are reproducible and independent of the thread count.}
 
-\item{impCov}{Experimental: when `TRUE`, compute a Monte-Carlo
-observed-information covariance for the estimated thetas and Omega
-parameters (a finite-difference Hessian of the importance-sampling objective
-over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
-Off by default.  The theta standard errors match the Hessian-based FOCEI
-covariance; the variance of a tightly-determined random effect (an Omega
-diagonal) can still be over-estimated because the fixed samples barely span
-its prior variation.}
+\item{covMethod}{Covariance method.  `"imp"` (default) computes the
+Monte-Carlo importance-sampling observed-information covariance for the
+estimated thetas and Omega parameters (a finite-difference Hessian of the
+importance-sampling objective over fixed common-random-number samples),
+stashed as `$impCov` / `$impSe` and installed as the fit covariance; the
+theta standard errors match the Hessian-based FOCEI covariance, though the
+variance of a tightly-determined random effect (an Omega diagonal) can be
+over-estimated because the fixed samples barely span its prior variation.
+`"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
+post-fit at the converged estimates (see [foceiControl()]); `""` skips the
+covariance step.}
 
 \item{qr}{When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
 samples instead of pseudo-random Gaussian samples (QRPEM, Leary &

@@ -50,14 +50,17 @@
 #'   `impmapControl()` this is always `"lin"` and cannot be changed.
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.
-#' @param impCov Experimental: when `TRUE`, compute a Monte-Carlo
-#'   observed-information covariance for the estimated thetas and Omega
-#'   parameters (a finite-difference Hessian of the importance-sampling objective
-#'   over fixed common-random-number samples), stashed as `$impCov` / `$impSe`.
-#'   Off by default.  The theta standard errors match the Hessian-based FOCEI
-#'   covariance; the variance of a tightly-determined random effect (an Omega
-#'   diagonal) can still be over-estimated because the fixed samples barely span
-#'   its prior variation.
+#' @param covMethod Covariance method.  `"imp"` (default) computes the
+#'   Monte-Carlo importance-sampling observed-information covariance for the
+#'   estimated thetas and Omega parameters (a finite-difference Hessian of the
+#'   importance-sampling objective over fixed common-random-number samples),
+#'   stashed as `$impCov` / `$impSe` and installed as the fit covariance; the
+#'   theta standard errors match the Hessian-based FOCEI covariance, though the
+#'   variance of a tightly-determined random effect (an Omega diagonal) can be
+#'   over-estimated because the fixed samples barely span its prior variation.
+#'   `"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
+#'   post-fit at the converged estimates (see [foceiControl()]); `""` skips the
+#'   covariance step.
 #' @param qr When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
 #'   samples instead of pseudo-random Gaussian samples (QRPEM, Leary &
 #'   Dunlavey PAGE 2012); the E-step integrals converge at O(1/N) instead of
@@ -95,7 +98,7 @@ impmapControl <- function(sigdig=3,
                           ctol=NULL,
                           nConvWindow=10L,
                           impSeed=42L,
-                          impCov=FALSE,
+                          covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
                           qr=FALSE,
                           qrShift=TRUE,
                           qrRefresh=TRUE,
@@ -121,7 +124,30 @@ impmapControl <- function(sigdig=3,
     stop("'sirSample' (", .sirSample, ") cannot exceed 'isample' (", .isample, ")",
          call.=FALSE)
   }
-  .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
+  # covMethod="imp" drives the Monte-Carlo importance-sampling covariance in the
+  # C++ kernel (op_focei.impCov); every other token is the post-fit FOCEI
+  # covariance, so hand foceiControl a valid token (the estimation pass forces
+  # covMethod=0L regardless -- see .impmapFamilyFit).
+  .dots <- list(...)
+  .impCov <- isTRUE(.dots$impCov)   # may already be set on a round-tripped control
+  .dots$impCov <- NULL              # internal field; do not forward to foceiControl
+  if (is.character(covMethod)) {
+    if (length(covMethod) == 1L && !nzchar(covMethod)) {
+      covMethod <- ""
+    } else {
+      covMethod <- match.arg(covMethod)
+    }
+    .impCov <- identical(covMethod, "imp")
+    .foceiCovMethod <- if (.impCov) "analytic" else covMethod
+  } else {
+    # round-trip: covMethod is already a resolved foceiControl integer slot;
+    # keep the impCov flag from the incoming control (read above)
+    .foceiCovMethod <- covMethod
+  }
+  .control <- do.call(foceiControl,
+                      c(list(sigdig=sigdig), .dots,
+                        list(covMethod=.foceiCovMethod, muModel="lin")))
+  .control$impCov <- .impCov
   .control$isample <- as.integer(isample)
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
@@ -132,7 +158,6 @@ impmapControl <- function(sigdig=3,
   .control$ctol <- if (is.null(ctol)) NULL else as.double(ctol)
   .control$nConvWindow <- as.integer(nConvWindow)
   .control$impSeed <- as.integer(impSeed)
-  .control$impCov <- as.logical(impCov)
   .control$qr <- qr
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
@@ -187,6 +212,15 @@ nmObjGetControl.impmap <- function(x, ...) {
 .impmapControlToFoceiControl <- function(env, assign=TRUE) {
   .impmapControl <- env$impmapControl
   .n <- setdiff(names(.impmapControl), .impmapIsControlNames)
+  # np* internals (npBoxLower/npPoints/npResidFreeze ...) and the npag/npb user
+  # knobs (points/cycles/gammaOptimize/... -- but NOT seed, a real foceiControl arg)
+  # are nonparametric-engine control fields that foceiControl does not accept; drop
+  # them so a downstream do.call(foceiControl, .) (e.g. .setOfvFo, general-likelihood
+  # tables) does not error with "unused argument".
+  .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "muExpand",
+                "gridWidth", "gridBounds",
+                "alpha", "burnin", "nsamp", "nchains", "propSd", "est")
+  .n <- .n[!grepl("^np[A-Z]", .n) & !(.n %in% .npKnobs)]
   .foceiControl <- setNames(lapply(.n, function(n) .impmapControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
   if (assign) env$control <- .foceiControl
@@ -230,8 +264,11 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 .impmapFamilyFit <- function(env, ui, ...) {
   # With est="impmap", foceiFitCpp_ runs impOuter() (src/imp.cpp) in place of
   # foceiOuter().  The FOCEI outer optimizer is turned off (maxOuterIterations=0)
-  # because impOuter drives its own EM iteration; covariance is off for now.
+  # because impOuter drives its own EM iteration; the in-fit covariance is off
+  # (it would bail on muModel="lin" anyway) -- the covariance is computed
+  # post-fit on the full model at the converged estimates (.foceiRecomputeMuCov).
   .control <- ui$control
+  .covMethodUser <- .control$covMethod  # restored on the fit env control below
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
@@ -276,7 +313,26 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # the Omega parameters come out unnamed on this path; fill them in (defensively,
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
+  .impRestoreCovMethod(.fit, .covMethodUser)
   .fit
+}
+
+#' Restore the user's covMethod on the fit env's stored control
+#'
+#' The estimation pass forces covMethod=0L (the in-fit C++ step would bail on
+#' muModel="lin"), and that runtime control is what gets stored on the fit env;
+#' the post-fit recompute (.foceiRecomputeMuCov) reads the covMethod from there,
+#' so put the user's choice back.
+#' @noRd
+.impRestoreCovMethod <- function(fit, covMethod) {
+  .fenv <- tryCatch(fit$env, error = function(e) NULL)
+  if (is.environment(.fenv) &&
+        exists("impmapControl", envir = .fenv, inherits = FALSE)) {
+    .ic <- get("impmapControl", envir = .fenv)
+    .ic$covMethod <- covMethod
+    assign("impmapControl", .ic, envir = .fenv)
+  }
+  invisible(fit)
 }
 
 #' Fill the Omega row/column names on the impmap covariance

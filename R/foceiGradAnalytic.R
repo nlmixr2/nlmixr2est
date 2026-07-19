@@ -143,6 +143,140 @@
   list(g = g, etaP = etaP)
 }
 
+.foceiAgqRepCache <- new.env(parent = emptyenv())   # per-(data, nnodes) node-replicated event data
+#' Node-replicated event data for the batched AGQ node solve: the nodes are extra eta
+#' points on the SAME model and events, so all `nsub * nn` (subject, node) solves go
+#' through ONE rxSolve as pseudo-subjects (pseudo-id `(k-1)*nsub + i`) instead of `nn`
+#' population solves -- which also lets OpenMP balance `nsub*nn` solves instead of `nsub`.
+#' Depends only on `(data, nn)`, both fixed for a fit, so cache it: rebuilding the
+#' `nn`-fold rbind per gradient call would eat the win.
+#' @noRd
+.foceiAgqRepData <- function(data, nsub, nn) {
+  .fp <- tryCatch(digest::digest(list(data, nsub, nn)), error = function(e) NULL)
+  if (!is.null(.fp)) {
+    .hit <- get0(.fp, envir = .foceiAgqRepCache, inherits = FALSE)
+    if (!is.null(.hit)) return(.hit)
+  }
+  # as.integer(ID) matches how .idCode normalizes factor IDs, so the offset pseudo-subject
+  # IDs stay aligned with .repIds (a bare factor ID would coerce to NA under arithmetic).
+  .r <- do.call(rbind, lapply(seq_len(nn), function(k) { d <- data; d$ID <- (k - 1L) * nsub + as.integer(d$ID); d }))
+  if (!is.null(.fp)) {
+    if (length(ls(.foceiAgqRepCache, all.names = TRUE)) >= 32L)
+      rm(list = ls(.foceiAgqRepCache, all.names = TRUE), envir = .foceiAgqRepCache)
+    assign(.fp, .r, envir = .foceiAgqRepCache)
+  }
+  .r
+}
+
+#' (f,R) AGQ per-subject outer gradient (nAGQ > 1): FOCEI with one term of the objective
+#' replaced (inner.cpp LikInner2) -- `l(etahat)` becomes `log(sum_k a_k)` over the
+#' quadrature grid, `a_k = w_k exp(x_k'x_k) exp(l(etaCur_k))`, `etaCur_k = etahat +
+#' sqrt(2)*Ginv x_k`, `Ginv = chol(Ht)^-1` (the sqrt(2) node scaling and exp(x'x) untilt
+#' match inner.cpp).  The log-det/Omega/tbs terms are unchanged, so the
+#' FOCEI trace term carries over as-is:
+#'
+#'   g[p] = 2*sum_k pi_k*[dPhi_p(etaCur_k) + Phi_eta(etaCur_k)'(etaP[,p] + dGinv_p x_k)]
+#'          + tr(Hti %*% dHtStar_p),   pi_k = a_k/sum(a)
+#'
+#' The envelope theorem does NOT apply (`l` is evaluated at the nodes, not the mode), so
+#' `Phi_eta(etaCur_k) != 0` and the moving mode enters via both `etaP` and the node
+#' placement `dGinv_p x_k`.  `dGinv_p = -Ginv %*% PhiU(t(Ginv) %*% dHtStar_p %*% Ginv)`
+#' (PhiU = triu, diagonal halved) needs no new sensitivity work -- it reuses the
+#' `dHtStar_p` the trace term already forms.  `Eks` holds the per-node solves; `qx`/`qw`
+#' are the `.agq()` grid.  At nAGQ=1 this reduces to `.foceiAnalyticSubjectGradFR`.
+#' @noRd
+.foceiAnalyticSubjectGradAgqFR <- function(E, Eks, ehat, Om, neta, nth, nsg, dirTh, sigCol,
+                                           dOiEst, tr28, ndir, qx, qw, Oi = solve(Om)) {
+  tr <- function(M) sum(diag(M))
+  .phiU <- function(A) { U <- A; U[lower.tri(U)] <- 0; diag(U) <- diag(U) / 2; U }
+  f <- E$f; y <- E$y; R <- E$R; a <- E$a; A <- E$A; aR <- E$aR; AR <- E$AR
+  Rsig <- E$Rsig; RsigDir <- E$RsigDir
+  res <- y - f
+  rf <- -res / R; rR <- 0.5 * (1 / R - res^2 / R^2)
+  rff <- 1 / R; rfR <- res / R^2; rRR <- 0.5 * (-1 / R^2 + 2 * res^2 / R^3)
+  eff <- 1 / R; eRR <- 0.5 / R^2
+  nom <- length(dOiEst); np <- nth + nsg + nom
+  ei <- seq_len(neta); di <- seq_len(ndir)
+  # exact inner Hessian H (-> etaP) and N: identical to the FOCEI (f,R) kernel
+  H <- Oi; N <- matrix(0, neta, ndir)
+  for (l in ei) {
+    for (m in ei) H[l, m] <- H[l, m] + sum(rff * a[, l] * a[, m] + rfR * (a[, l] * aR[, m] + aR[, l] * a[, m]) +
+                                             rRR * aR[, l] * aR[, m] + rf * A[, l, m] + rR * AR[, l, m])
+    for (d in di) N[l, d] <- sum(rff * a[, l] * a[, d] + rfR * (a[, l] * aR[, d] + aR[, l] * a[, d]) +
+                                   rRR * aR[, l] * aR[, d] + rf * A[, l, d] + rR * AR[, l, d])
+  }
+  HiM <- solve(H)
+  Nsg <- matrix(0, neta, nsg)
+  if (nsg > 0L) for (l in ei) for (k in seq_len(nsg)) { .c <- sigCol[k]
+    Nsg[l, k] <- sum(rfR * a[, l] * Rsig[, .c] + rRR * aR[, l] * Rsig[, .c] + rR * RsigDir[, l, .c]) }
+  # Laplace determinant Hessian Ht == C++ calcEtaHessian H (censOption="gauss":
+  # cHff=1/R, cHfr=0, cHrr=0.5/R^2 -- exactly eff/eRR); Ht places the AGQ nodes
+  Ht <- Oi; for (l in ei) for (m in ei) Ht[l, m] <- Ht[l, m] + sum(eff * a[, l] * a[, m] + eRR * aR[, l] * aR[, m])
+  Hti <- solve(Ht)
+  dHtD <- lapply(di, function(s) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum(-aR[, s] / R^2 * a[, l] * a[, m] + eff * (A[, l, s] * a[, m] + a[, l] * A[, m, s]) +
+                     -aR[, s] / R^3 * aR[, l] * aR[, m] + eRR * (AR[, l, s] * aR[, m] + aR[, l] * AR[, m, s])); D })
+  dHtSg <- if (nsg > 0L) lapply(seq_len(nsg), function(k) { .c <- sigCol[k]; D <- matrix(0, neta, neta)
+    for (l in ei) for (m in ei)
+      D[l, m] <- sum(-Rsig[, .c] / R^2 * a[, l] * a[, m] - Rsig[, .c] / R^3 * aR[, l] * aR[, m] +
+                       eRR * (RsigDir[, l, .c] * aR[, m] + aR[, l] * RsigDir[, m, .c])); D }) else list()
+  typ <- function(p) if (p <= nth) "th" else if (p <= nth + nsg) "sg" else "om"
+  omc <- function(p) p - nth - nsg
+  Mcol <- function(p) { t <- typ(p)
+    if (t == "th") return(N[, dirTh[p]]); if (t == "sg") return(Nsg[, p - nth])
+    as.numeric(dOiEst[[omc(p)]] %*% ehat) }
+  dHt_p <- function(p) { t <- typ(p)
+    if (t == "th") return(dHtD[[dirTh[p]]]); if (t == "sg") return(dHtSg[[p - nth]])
+    dOiEst[[omc(p)]] }
+  etaP <- vapply(seq_len(np), function(p) as.numeric(-HiM %*% Mcol(p)), numeric(neta))
+  if (neta == 1L) etaP <- matrix(etaP, nrow = 1L)
+  # Cholesky factor of Ht and its differential (the only new algebra; dHtStar is
+  # the same total derivative the FOCEI trace term uses).  A non-PD/near-singular Ht means
+  # the objective placed nodes via the nmNearPD/cholSE branch, not chol(Ht) -- differentiating
+  # chol() would be the wrong function, so bail (same PD-margin guard as the batch path).
+  H0 <- tryCatch(chol(Ht), error = function(e) NULL)
+  if (is.null(H0) || !is.finite(rcond(Ht)) || rcond(Ht) < 1e-10) return(NULL)  # Ht = H0'H0, H0 upper triangular
+  Ginv <- backsolve(H0, diag(neta))       # H0^-1
+  dHtStarL <- vector("list", np); dGinvL <- vector("list", np)
+  for (p in seq_len(np)) {
+    .dS <- dHt_p(p); for (l in ei) .dS <- .dS + etaP[l, p] * dHtD[[l]]
+    dHtStarL[[p]] <- .dS
+    dGinvL[[p]] <- -Ginv %*% .phiU(t(Ginv) %*% .dS %*% Ginv)
+  }
+  # log joint density up to an eta-independent constant (cancels in pi_k)
+  .lf <- function(Ee, eta) -0.5 * sum(log(Ee$R) + (Ee$y - Ee$f)^2 / Ee$R) -
+    0.5 * as.numeric(t(eta) %*% Oi %*% eta)
+  l0 <- .lf(E, ehat)
+  nn <- nrow(qx)
+  lognode <- numeric(nn); perNode <- matrix(0, nn, np)
+  for (k in seq_len(nn)) {
+    x <- qx[k, ]; w <- qw[k, ]; Ek <- Eks[[k]]
+    if (is.null(Ek)) return(NULL)
+    # sqrt(2): change-of-variable z=sqrt(2)x for the e^{-x^2} Gauss-Hermite kernel, matching
+    # inner.cpp's node placement (nodes at sqrt(2)*Ginv*x, untilt exp(x'x)).
+    etaCur <- ehat + sqrt(2) * as.numeric(Ginv %*% x)
+    lognode[k] <- sum(log(w)) + sum(x^2) + (.lf(Ek, etaCur) - l0)
+    .resk <- Ek$y - Ek$f; .Rk <- Ek$R
+    rfk <- -.resk / .Rk; rRk <- 0.5 * (1 / .Rk - .resk^2 / .Rk^2)
+    # Phi_eta at the NODE: nonzero (the envelope theorem does not apply off the mode)
+    gPhik <- as.numeric(Oi %*% etaCur)
+    for (l in ei) gPhik[l] <- gPhik[l] + sum(rfk * Ek$a[, l] + rRk * Ek$aR[, l])
+    for (p in seq_len(np)) {
+      .t <- typ(p)
+      .dphi <- if (.t == "th") sum(rfk * Ek$a[, dirTh[p]] + rRk * Ek$aR[, dirTh[p]])
+      else if (.t == "sg") sum(rRk * Ek$Rsig[, sigCol[p - nth]])
+      # the -tr28 constant is node-independent; sum_k pi_k = 1 passes it through
+      else 0.5 * as.numeric(t(etaCur) %*% dOiEst[[omc(p)]] %*% etaCur) - tr28[omc(p)]
+      perNode[k, p] <- .dphi + sum(gPhik * (etaP[, p] + sqrt(2) * as.numeric(dGinvL[[p]] %*% x)))
+    }
+  }
+  if (!all(is.finite(lognode))) return(NULL)
+  pk <- exp(lognode - max(lognode)); pk <- pk / sum(pk)     # quadrature posterior weights
+  g <- vapply(seq_len(np), function(p) 2 * sum(pk * perNode[, p]) + tr(Hti %*% dHtStarL[[p]]),
+              numeric(1))
+  list(g = g, etaP = etaP)
+}
+
 #' (f,R) FOCE per-subject outer gradient: the general form for any variance structure.
 #' FOCE evaluates the focep error structure with the variance frozen -- for `foceType=0`
 #' ("nonmem") R0 and its sensitivities come from the eta=0 population solve `E0` with the
@@ -410,7 +544,7 @@
 #' @noRd
 .foceiAnalyticGradCore <- function(ui, th, ebes, ids, data, Om, ef, .dir, dOiEst, tr28,
                                    omNames, solveTol, interaction = 1L, foceType = 0L,
-                                   startedEnv = NULL, am = NULL) {
+                                   startedEnv = NULL, am = NULL, nAGQ = 1L) {
   neta <- ncol(ebes); Oi <- solve(Om)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
   lamDir <- .dir$lamDir; lamNames <- .dir$lamNames; lamIdx <- .dir$lamIdx
@@ -475,7 +609,139 @@
   if (is.null(.EsAll)) return(NULL)
   g <- numeric(np)
   etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
-  if (.foce) {
+  if (nAGQ > 1L) {
+    # the quadrature kernel carries the plain normal log-density, so censoring and an
+    # estimated DV-transform lambda stay on finite differences
+    if (.hasCens || length(lamDir) > 0L) return(NULL)
+    nsub <- length(ids)
+    # the FOCEI batch path builds yB inline; the AGQ kernel needs E$y per solve
+    .addY <- function(E, i) {
+      .o <- .byId[[as.character(.idCode[i])]]; .o <- .o[.o$EVID == 0, , drop = FALSE]
+      E$y <- .foceiAnalyticTbsY(.o$DV, E$trans); E
+    }
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
+      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
+      .EsAll[[i]] <- .addY(E, i)
+    }
+    # Ginv = chol(Ht)^-1 places the nodes; a non-PD Ht means the objective took the
+    # nmNearPD/cholSE branch, a different (non-smooth) function -- fall back to FD.
+    .ei <- seq_len(neta)
+    .GinvL <- vector("list", nsub)
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; .eff <- 1 / E$R; .eRR <- 0.5 / E$R^2
+      .Ht <- Oi
+      for (l in .ei) for (m in .ei)
+        .Ht[l, m] <- .Ht[l, m] + sum(.eff * E$a[, l] * E$a[, m] + .eRR * E$aR[, l] * E$aR[, m])
+      .ch <- tryCatch(chol(.Ht), error = function(e) NULL)
+      if (is.null(.ch)) return(NULL)
+      # chol() succeeding is not proof the objective took the plain-chol branch: arma's
+      # is_sympd() and R's chol() disagree near the PD boundary, so require a PD margin.
+      if (!is.finite(rcond(.Ht)) || rcond(.Ht) < 1e-10) return(NULL)
+      .GinvL[[i]] <- backsolve(.ch, diag(neta))
+    }
+    .ag <- .agq(neta, nAGQ); .qx <- .ag$x; .qw <- .ag$w; .nn <- .ag$n
+    .Eks <- vector("list", nsub)
+    for (i in seq_len(nsub)) .Eks[[i]] <- vector("list", .nn)
+    # The nodes read only f/R/a/aR/Rsig -- never A/AR/RsigDir, which are used solely at
+    # eta-hat (exact inner Hessian -> etaP, and dHtD) -- so they solve a 1st-order model:
+    # 26 ODE states -> 8.  They are nAGQ^neta solves per gradient and dominate once the
+    # grid grows, so this is worth 1.07x-1.91x on the gradient.
+    #
+    # Prefer the `outerNode` sibling built at model setup and qs2-cached in foceiModel
+    # (same treatment as `outer`); fall back to building it.  Cached on the fit env either
+    # way, with a FALSE sentinel so a model that cannot build one does not re-attempt the
+    # symengine pass every gradient call.
+    .amN <- if (!is.null(startedEnv) && exists(".foceiGradAugNode", startedEnv, inherits = FALSE))
+      get(".foceiGradAugNode", startedEnv) else NULL
+    if (is.null(.amN)) {
+      .fmN <- tryCatch(ui$foceiModel, error = function(e) NULL)
+      .amN <- if (!is.null(.fmN) && inherits(.fmN$outerNode, "rxode2") && !is.null(.fmN$outerNodeMeta)) {
+        c(list(augMod = .fmN$outerNode), .fmN$outerNodeMeta)
+      } else {
+        .foceiAnalyticAugModelDirs(ui, dirs, order = 1L)
+      }
+      if (!(!is.null(.amN) && inherits(.amN$augMod, "rxode2"))) .amN <- FALSE
+      if (!is.null(startedEnv)) assign(".foceiGradAugNode", .amN, envir = startedEnv)
+    }
+    # a missing/unbuildable node model is not fatal: fall back to the eta-hat model, which
+    # is what the nodes used before this optimization existed
+    if (isFALSE(.amN) || is.null(.amN) || .amN$ndir != ndir) .amN <- am
+    # BATCHED node solve: every (subject, node) pair goes through ONE rxSolve as a
+    # pseudo-subject, rather than nn separate population solves.  Chunk the node set so
+    # a wide grid (nn = nAGQ^neta) cannot blow up memory -- the solve returns an E per
+    # pseudo-subject, so cap the pseudo-subject count per call.
+    .maxPs <- 2048L
+    .chunk <- max(1L, min(.nn, .maxPs %/% max(nsub, 1L)))
+    .ks <- split(seq_len(.nn), ceiling(seq_len(.nn) / .chunk))
+    for (.kk in .ks) {
+      .m <- length(.kk)
+      .repEta <- do.call(rbind, lapply(.kk, function(k) {
+        .x <- .qx[k, ]
+        .e <- t(vapply(seq_len(nsub),
+                       # sqrt(2): the node SOLVE position must match the kernel's etaCur =
+                       # etahat + sqrt(2)*Ginv*x, or the node sensitivities are at the wrong eta.
+                       function(i) etaSolve[i, ] + sqrt(2) * as.numeric(.GinvL[[i]] %*% .x), numeric(neta)))
+        if (neta == 1L) matrix(.e, ncol = 1L) else .e
+      }))
+      .repData <- .foceiAgqRepData(data, nsub, .m)
+      # Key the pseudo-subject IDs on .idCode, exactly as the eta-hat batch solve does: .repEta
+      # row (b-1)*nsub+i carries subject-position i's eta, whose events live under etTrans code
+      # .idCode[i] (= i only when the eta order matches the etTrans code order).  Pairing
+      # positionally (seq_len) would give subject i's eta the events of etTrans code i, which
+      # for a permuted/non-1..N ID order in a balanced design is silently wrong (the obs-count
+      # guard would not catch it).  For the identity order this is exactly seq_len(nsub*.m).
+      .repIds <- rep((seq_len(.m) - 1L) * nsub, each = nsub) + rep(.idCode, times = .m)
+      .Ek <- .foceiAnalyticSolveAll(.amN, th, .repEta, .repIds, .repData,
+                                    rep(.obsT, .m), solveTol)
+      if (is.null(.Ek)) return(NULL)
+      for (.j in seq_along(.kk)) for (i in seq_len(nsub))
+        .Eks[[i]][[.kk[.j]]] <- .addY(.Ek[[(.j - 1L) * nsub + i]], i)
+    }
+    # Assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllAgqFR_), mirroring the
+    # FOCEI batch path.  eta-hat arrays are concatenated over observations; the node
+    # arrays are node-major (nn blocks of totObs rows).  y does not vary by node.
+    nobsAll <- vapply(.EsAll, function(E) length(E$f), integer(1))
+    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))
+    aB <- matrix(0, totObs, ndir); aRB <- matrix(0, totObs, ndir)
+    AB <- array(0, c(totObs, ndir, ndir)); ARB <- array(0, c(totObs, ndir, ndir))
+    fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs)
+    RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
+    ehatB <- matrix(0, nsub, neta)
+    aNB <- matrix(0, .nn * totObs, ndir); aRNB <- matrix(0, .nn * totObs, ndir)
+    RsigNB <- matrix(0, .nn * totObs, nsg)
+    fNB <- numeric(.nn * totObs); RNB <- numeric(.nn * totObs)
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
+      aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
+      fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R
+      if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
+      ehatB[i, ] <- etaSolve[i, ]
+      for (k in seq_len(.nn)) {
+        .Ek <- .Eks[[i]][[k]]; .nr <- (k - 1L) * totObs + rows
+        aNB[.nr, ] <- .Ek$a; aRNB[.nr, ] <- .Ek$aR
+        fNB[.nr] <- .Ek$f; RNB[.nr] <- .Ek$R
+        if (nsg > 0L) RsigNB[.nr, ] <- .Ek$Rsig
+      }
+    }
+    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
+    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
+    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
+    .res <- tryCatch(foceiGradAllAgqFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, fB, yB, RB,
+                                        aNB, aRNB, RsigNB, fNB, RNB, .qx, .qw,
+                                        ehatB, as.integer(off), Oi, dOiCube,
+                                        if (nom > 0L) as.numeric(tr28) else numeric(0),
+                                        neta, nth, nsg, nom, as.integer(dirTh),
+                                        as.integer(seq_len(nsg)), ncores),
+                     error = function(e) NULL)
+    # any subject the kernel could not assemble (non-PD Ht -> the C++ objective took the
+    # nmNearPD/cholSE branch) invalidates the whole gradient: fall back to FD.
+    if (is.null(.res) || any(.res$ok == 0L) ||
+          !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
+    g <- .res$g
+    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
+  } else if (.foce) {
     # FOCE: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFoceFR_).  The frozen
     # R0 sensitivities are resolved per subject in R (nonmem: aRe=0, aRc/R0/R0sig from the
     # eta=0 solve E0; foce+ / additive nonmem: all from the eta-hat solve E) then batched.
@@ -586,7 +852,7 @@
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
 #' @noRd
-.foceiAnalyticGradSetup <- function(ui, thVals, Om) {
+.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL) {
   if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
@@ -602,7 +868,20 @@
   # foce+ (foceType=1, live conditional R) uses the same live-R kernel as the
   # analytic covariance (.foceiAnalyticSubjectGradFoceFR / .fpG), so its analytic
   # gradient is in scope alongside FOCEI and FOCE-nonmem.
-  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)
+  nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
+  # agqControl() forces interaction=TRUE, so only the FOCEI (f,R) kernel has a quadrature
+  # form -- a FOCE-AGQ combination cannot arise.
+  if (nAGQ > 1L && interaction != 1L) return(NULL)
+  # the aqLow/aqHi clamp (inner.cpp) kinks the objective; both default to +/-Inf
+  if (nAGQ > 1L &&
+        (is.finite(as.numeric(rxode2::rxGetControl(ui, "agqLow", -Inf))) ||
+           is.finite(as.numeric(rxode2::rxGetControl(ui, "agqHi", Inf))))) return(NULL)
+  # The grid is placed by Ht's Cholesky FACTOR (etaCur = etahat + chol(Ht)^-1 x), so we
+  # must differentiate the exact factorization the objective used.  cholSEOpt forces the
+  # generalized Cholesky, whose factor differs from chol() even for a PD matrix.  (The
+  # runtime doChol flips are temporary and fire only when the plain Cholesky fails --
+  # where chol(Ht) fails in R too, so those are already covered.)
+  if (nAGQ > 1L && isTRUE(as.logical(rxode2::rxGetControl(ui, "cholSEOpt", FALSE)))) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
   ini <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)
@@ -620,9 +899,10 @@
   # multiple estimated lambdas (per-endpoint) need an endpoint->lambda DV mapping not yet
   # wired; keep those on FD.  A single estimated lambda is the ported case.
   if (length(.dir$lamNames) > 1L) return(NULL)
-  .oe <- .foceiEstOmegaDeriv(ui, Om); if (is.null(.oe)) return(NULL)
+  .oe <- .foceiEstOmegaDeriv(ui, Om, e); if (is.null(.oe)) return(NULL)
   list(ef = ef, dir = .dir, dOiEst = .oe$dOi, tr28 = .oe$tr28, omNames = .oe$names,
-       neta = neta, etaNames = etaNames, interaction = interaction, foceType = foceType)
+       neta = neta, etaNames = etaNames, interaction = interaction, foceType = foceType,
+       nAGQ = nAGQ)
 }
 
 #' Post-fit analytic natural-scale gradient for a fitted object (validation /
@@ -645,7 +925,8 @@
     # FOCE-censored to FD internally); no blanket fallback here.
     .r <- .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
                                  st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
-                                 interaction = st$interaction, foceType = st$foceType)
+                                 interaction = st$interaction, foceType = st$foceType,
+                                 nAGQ = st$nAGQ)
     if (is.null(.r)) return(NULL)
     .r$g                                              # named natural-scale gradient (validation/tests)
   }, error = function(e) NULL)
@@ -667,7 +948,7 @@
       get("theta", e)$theta
     }
     names(thVals) <- thNames
-    st <- .foceiAnalyticGradSetup(ui, thVals, Om)
+    st <- .foceiAnalyticGradSetup(ui, thVals, Om, e)
     if (is.null(st)) return(NULL)
     th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     etaObf <- get("etaObf", e)
@@ -695,7 +976,7 @@
     .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
                            st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
                            interaction = st$interaction, foceType = st$foceType,
-                           startedEnv = e, am = am)
+                           startedEnv = e, am = am, nAGQ = st$nAGQ)
   }, error = function(e) NULL)
 }
 
@@ -728,24 +1009,66 @@ rxUiGet.foceiOuter <- function(x, ...) {
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
-  if (as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) > 1L) return(NULL)
+  # nAGQ > 1 (adaptive Gaussian quadrature) uses the SAME augmented model at eta-hat: the
+  # quadrature nodes are extra eta points on the same sensitivity solve, so the
+  # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
+  # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
   .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
 }
 attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
+
+#' Augmented model for the AGQ quadrature NODES: the same direction set as `foceiOuter`
+#' but 1st order only.
+#'
+#' The nodes read only `f`/`R`/`a`/`aR`/`Rsig` -- they never touch `A`/`AR`/`RsigDir`,
+#' because the 2nd-order block is used solely at eta-hat (the exact inner Hessian -> etaP,
+#' and dHtD).  Dropping that tier takes the node solve from 26 ODE states to 8 on a
+#' one-compartment model, and the nodes are `nAGQ^neta` solves per gradient -- 45-54% of
+#' the gradient at neta=3/nAGQ=3 and 77-86% at neta=5.  Measured: 1.07x (neta=3, nAGQ=2)
+#' to 1.91x (neta=5, nAGQ=3) on the whole gradient.
+#'
+#' Only built for nAGQ > 1; every other fast fit gets NULL and pays no extra build.  Like
+#' `foceiOuter` this rides in the qs2-cached `foceiModel` list, so the extra symengine+gcc
+#' pass is paid once per model, not once per session.
+#' @noRd
+rxUiGet.foceiOuterNode <- function(x, ...) {
+  .ui <- x[[1]]
+  if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
+  if (as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) <= 1L) return(NULL)
+  .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
+  .foceiAnalyticAugModelDirs(.ui, .dir$dirs, order = 1L)
+}
+attr(rxUiGet.foceiOuterNode, "rstudio") <- emptyenv()
 
 #' Estimation-scale (Cholesky) Omega-inverse derivatives for the outer gradient's
 #' Omega block, from rxode2's `rxSymInvCholEnvCalculate` (rxSymInv.R d.omegaInv /
 #' tr.28).  Returns `list(dOi = list(dOmega^{-1}/d theta_omega_k), tr28 = 0.5 *
 #' tr(dOmega^{-1}_k Omega), names = <omega parameter names>)`, or `NULL`.
 #' @noRd
-.foceiEstOmegaDeriv <- function(ui, Om) {
+.foceiEstOmegaDeriv <- function(ui, Om, e = NULL) {
   tryCatch({
     # Build the rxSymInvChol env from the current Omega with the SAME diagonal
     # transform the optimizer uses, so the Cholesky parameter order/scale matches
     # op_focei's Omega slots (rxUiGet.focei builds env$rxInv the same way).
     .diagXform <- rxode2::rxGetControl(ui, "diagXform", "sqrt")
-    .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform)
+    # A fresh env pays ~60ms of one-time symbolic setup on its first `$d.omegaInv` (a
+    # repeat read is free), which made this ~40% of each analytic gradient.  Reuse the
+    # fit's persistent `env$rxInv` (C++ keeps it current via setOmegaTheta) -- but only
+    # when it is already at this Omega, so a stale env falls back instead of silently
+    # returning derivatives at the wrong one.
+    .rxInv <- NULL
+    if (!is.null(e)) {
+      .cand <- tryCatch(get("rxInv", e), error = function(.) NULL)
+      if (!is.null(.cand) && rxode2::rxIs(.cand, "rxSymInvCholEnv")) {
+        .omChk <- tryCatch(as.matrix(.cand$omega), error = function(.) NULL)
+        if (!is.null(.omChk) && identical(dim(.omChk), dim(as.matrix(Om))) &&
+              isTRUE(all.equal(unname(.omChk), unname(as.matrix(Om)), tolerance = 1e-10))) {
+          .rxInv <- .cand
+        }
+      }
+    }
+    if (is.null(.rxInv)) .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform)
     # `$.rxSymInvCholEnv` dispatches to the C rxSymInvCholEnvCalculate; d.omegaInv
     # is the list of dOmega^-1/d(chol theta_k), tr.28 = 0.5*tr(dOmega^-1_k Omega).
     .dOi <- .rxInv$d.omegaInv

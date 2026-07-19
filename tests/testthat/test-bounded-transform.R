@@ -179,6 +179,35 @@ nmTest({
     expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
+  test_that("SAEM bounded-param covariance is renamed and Jacobian-corrected (#cov)", {
+    # Upper-bounded structural theta: tcl <- log(c(0, 2.7, 100)) -> upper_exp
+    .boundedModel <- function() {
+      ini({ tka <- 0.45; tcl <- log(c(0, 2.7, 100)); tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v); linCmt() ~ add(add.sd) })
+    }
+    .ctl <- function(bt) saemControl(print = 0, nBurn = 200, nEm = 100, seed = 42,
+                                     boundedTransform = bt)
+    set.seed(42)
+    fitF <- suppressMessages(suppressWarnings(
+      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(FALSE))))
+    set.seed(42)
+    fitT <- suppressMessages(suppressWarnings(
+      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(TRUE))))
+    # names: the internal rxBoundedTr.* name must not leak into $cov
+    expect_false(any(grepl("^rxBoundedTr\\.", rownames(fitT$cov))))
+    expect_true("tcl" %in% rownames(fitT$cov))
+    # the reported SE must be self-consistent with the (renamed) covariance
+    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]),
+                 sqrt(diag(fitT$cov))[["tcl"]], tolerance = 1e-6)
+    # Jacobian-corrected: the natural-scale SE agrees with the untransformed fit
+    # (would be off by ~1/|d(hi-exp(x))/dx| ~ 3.5x without the Jacobian)
+    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]),
+                 unname(fitF$parFixedDf["tcl", "SE"]), tolerance = 0.2)
+    expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
+  })
+
   test_that("boundedTransform arg wired into all 8 control functions", {
     expect_true(saemControl(boundedTransform = FALSE)$boundedTransform == FALSE)
     expect_true(foceiControl(boundedTransform = FALSE)$boundedTransform == FALSE)
