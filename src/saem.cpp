@@ -2135,10 +2135,11 @@ public:
             DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
           }
         } else if (distribution == 4) {
-          // General log-likelihood endpoint: the model returns the per-observation
-          // log-likelihood as its prediction (rx_pred_ ~ <ll>), so the observation
-          // loss is simply -ll (a general ll() endpoint is now rejected up front by
-          // the saem transform-normal assertion; retained for safety).
+          // General log-likelihood endpoint (ll() ~ expr): the model returns the
+          // per-observation log-likelihood as its prediction (rx_pred_ ~ <ll>), so
+          // the observation loss is simply -ll and the standard RWM kernels run
+          // unchanged.  Reachable for est="saem" when .saemGeneralLik(ui) is true
+          // (the transform-normal assertion is skipped for such a model).
           for (int k = 0; k < nmc; k++) {
             vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
             uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
