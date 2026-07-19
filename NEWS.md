@@ -865,6 +865,14 @@
   degenerate simulated covariance sets the subject's NPDE to `NA` instead of
   aborting.
 
+- Fixed a segfault when a dataset has no observed subject at all (every subject
+  is a placeholder with no `EVID==0` row, as in an aggregate-data output eval
+  such as `babelmixr2`/`admixr2`).  The no-observation-subject drop now keeps
+  the rows when there is no observed subject to fall back to, and `foceiSetup_`
+  no longer reads an empty id vector out of bounds.  `.nlmSetupEnv()` also now
+  supplies a default `iterPrintControl` when an external caller omits it,
+  instead of erroring with `Index out of bounds: [index='iterPrintControl']`.
+
 ### Output, tables, and printing
 
 - For models without etas, the `BSV(SD)` and `Shrink(SD)%` columns are no longer

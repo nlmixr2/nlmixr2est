@@ -115,6 +115,27 @@ nmTest({
     }
   })
 
+  test_that("a dataset with no observed subjects at all keeps its rows (aggregate-data / admixr2)", {
+    # Aggregate-data output evals (e.g. admixr2's est="adfo") hand FOCEI a
+    # dataset whose subjects are placeholders with no EVID==0 observation.
+    # Dropping *every* subject leaves an empty solve; foceiSetup_ then read
+    # ids[ids.size()-1] out of bounds and segfaulted.  With no observed subject
+    # to keep, the rows must be preserved (pre-#606 behavior).
+    d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:2, ]
+    d$DV[d$EVID == 0] <- NA_real_            # every subject: dose, but no measurement
+
+    fit <- suppressWarnings(suppressMessages(
+      .nlmixr(one.compartment, d, est = "focei",
+              control = foceiControl(print = 0, maxOuterIterations = 0,
+                                     maxInnerIterations = 0, covMethod = ""))))
+    expect_true(inherits(fit, "nlmixr2FitData"))
+    # nothing is dropped -- there is no observed subject to keep
+    expect_equal(
+      sum(grepl("IDs without observations dropped", fit$runInfo, fixed = TRUE)),
+      0L)
+    expect_setequal(as.integer(as.character(unique(as.data.frame(fit)$ID))), 1:2)
+  })
+
   test_that("a fit with all subjects observed is unaffected by the no-obs drop (#687)", {
     d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:3, ]
     fit <- suppressWarnings(suppressMessages(
