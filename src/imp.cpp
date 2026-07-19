@@ -127,14 +127,15 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
 
   // Per-expanded-subject proposal (mode, information H_i, log|H_i|, lower Cholesky
-  // of gamma * H_i^-1) -- from the per-component MAP modes, computed serially.
+  // of gamma * H_i^-1) -- from the per-component MAP modes.  Each subject fills only
+  // its own slot (no reduction, no RNG), so this is parallelized over subjects; the
+  // per-subject inner Hessian (impGetHessian) is the impmap serial cost.  cores
+  // already carries the mixture / pool-sizing serial guard.
   std::vector<arma::vec> modes(nExp);
   std::vector<arma::mat> Hs(nExp);
   std::vector<double> logDetH(nExp, 0.0);
   std::vector<arma::mat> cholL(nExp);
   std::vector<char> haveL(nExp, 0);
-  arma::vec mode(neta);
-  arma::mat H(neta, neta, arma::fill::zeros);
   // est="imp": no MAP search.  The proposal is centered at each subject's running
   // conditional mean (the current eta) with covariance gamma * V_i, where V_i is
   // that subject's conditional variance from the PREVIOUS E-step (passed in via
@@ -143,9 +144,16 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   // over-dispersed and always available.
   arma::mat impOmega;
   if (isImp) impGetOmega(impOmega);
-  arma::vec eta(neta);
+  bool doParProp = (cores > 1);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) if(doParProp)
+#endif
   for (int id = 0; id < nExp; ++id) {
+#ifdef _OPENMP
+    if (doParProp) setRxThreadId(omp_get_thread_num());
+#endif
     if (isImp) {
+      arma::vec eta(neta);
       impGetEta(id, eta);
       modes[id] = eta;
       arma::mat Sig;
@@ -163,21 +171,26 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
           Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
         }
       }
-      continue;
-    }
-    impGetMode(id, mode);
-    modes[id] = mode;
-    if (impGetHessian(id, H)) {
-      arma::mat Sigma;
-      double ldv, lds;
-      if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
-        Hs[id] = H;
-        logDetH[id] = ldv;
-        Sigma *= gamma;
-        arma::mat L;
-        if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
+    } else {
+      arma::vec mode(neta);
+      arma::mat H(neta, neta, arma::fill::zeros);
+      impGetMode(id, mode);
+      modes[id] = mode;
+      if (impGetHessian(id, H)) {
+        arma::mat Sigma;
+        double ldv, lds;
+        if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
+          Hs[id] = H;
+          logDetH[id] = ldv;
+          Sigma *= gamma;
+          arma::mat L;
+          if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
+        }
       }
     }
+#ifdef _OPENMP
+    if (doParProp) setRxThreadId(-1);
+#endif
   }
 
   // Per-expanded-subject E-step results (combined per base subject below).
@@ -395,6 +408,14 @@ void impComputeCov(Environment e) {
   int isample = impNsample();
   double gamma = impGammaProp();
   double invGamma2 = 1.0 / (2.0 * gamma);
+  // Parallelize the reweighted-objective subject loop (each subject contributes an
+  // independent scalar to the -2LL) when the inner solves are thread-safe: no
+  // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
+  // pool-sizing (neqOverride against the larger theta-sens pool) -- the same
+  // contract as the E-step.  The one-time fixed-sample draw below stays serial.
+  int cores = impCores();
+  if (cores < 1) cores = 1;
+  bool doParCov = (cores > 1) && (impNmix() == 1) && !impPoolSizing();
 
   // Free parameters in the optimizer's (fixedTrans) order -- the same order the
   // fit's covariance uses.  pl[j] is a theta fullTheta index when < ntheta, else
@@ -478,29 +499,45 @@ void impComputeCov(Environment e) {
   };
 
   // Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
+  // Each subject's contribution is an independent scalar; accumulate them into a
+  // per-subject buffer under the parallel loop, then reduce in id order so the sum
+  // is bit-identical to the serial `obj += ...` accumulation.
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
-    double obj = 0.0;
+    std::vector<double> objBuf(nsub, 0.0);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) if(doParCov)
+#endif
     for (int id = 0; id < nsub; ++id) {
-      if (!ok[id]) continue;
-      impForceResolve(id);
-      arma::vec q(isample); int nGood = 0;
-      for (int k = 0; k < isample; ++k) {
-        arma::vec eta = Ss[id].row(k).t();
-        arma::vec d = eta - modes[id];
-        double qk = -impEvalJointLik(eta, id) +
-          invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
-        if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
+#ifdef _OPENMP
+      if (doParCov) setRxThreadId(omp_get_thread_num());
+#endif
+      if (ok[id]) {
+        impForceResolve(id);
+        arma::vec q(isample); int nGood = 0;
+        for (int k = 0; k < isample; ++k) {
+          arma::vec eta = Ss[id].row(k).t();
+          arma::vec d = eta - modes[id];
+          double qk = -impEvalJointLik(eta, id) +
+            invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
+          if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
+        }
+        if (nGood != 0) {
+          double qmax = q.max();
+          double sumw = arma::accu(arma::exp(q - qmax));
+          double logMeanExp = qmax + std::log(sumw / (double)isample);
+          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) - 0.5 * logDetH[id];
+          objBuf[id] = -2.0 * (logMeanExp + Ci);
+        }
       }
-      if (nGood == 0) continue;
-      double qmax = q.max();
-      double sumw = arma::accu(arma::exp(q - qmax));
-      double logMeanExp = qmax + std::log(sumw / (double)isample);
-      double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) - 0.5 * logDetH[id];
-      obj += -2.0 * (logMeanExp + Ci);
+#ifdef _OPENMP
+      if (doParCov) setRxThreadId(-1);
+#endif
     }
+    double obj = 0.0;
+    for (int id = 0; id < nsub; ++id) obj += objBuf[id];
     return obj;
   };
 
