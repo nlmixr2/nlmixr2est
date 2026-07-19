@@ -167,6 +167,9 @@ struct focei_options {
   int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
   int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
   int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
+  int thetaSensNlhs = 0;      // lhs output count of the sensitivity model (impmap); the
+                              // per-thread pool lhs slice is sized for the inner model, so
+                              // the theta-sens solve reads/writes a local buffer this wide
   int innerNeq = 0;           // inner model state count when the pool is sized larger (impmap)
 
   unsigned int neta;
@@ -9251,12 +9254,17 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
 //   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
 // and the (mean+variance) Fisher information is
 //   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
-void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
-                   arma::vec& g, arma::mat& H) {
+void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
+  out.nobs = 0; out.fvec.clear(); out.Vvec.clear(); out.dfmat.clear();
+  out.dVmat.clear(); out.sampleOk.clear(); out.dvv.clear(); out.limv.clear();
+  out.censv.clear();
   int nSens = op_focei.impThetaSensIdx.size();
+  // thetaSensNlhs is the sensitivity model's true lhs width (set at setup); it sizes
+  // the calc_lhs output buffer below.  If it is unset (<=0) we cannot size the buffer
+  // to the width calc_lhs will write, so bail rather than risk a buffer overflow.
   if (nSens == 0 || op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
       op_focei.thetaSensPredOffset < 0 || op_focei.thetaSensROffset < 0 ||
-      rxThetaSens.calc_lhs == NULL) return;
+      op_focei.thetaSensNlhs <= 0 || rxThetaSens.calc_lhs == NULL) return;
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
@@ -9280,28 +9288,43 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   }
   // per-observation DV and censoring info (same across samples), on the
   // transformed scale -- matching how the inner problem reads them.
-  std::vector<double> dvv, limv;
-  std::vector<int> censv;
   { int kk;
     for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj);
       if (getIndEvid(ind, kk) == 0) {
-        dvv.push_back(tbs(getIndDv(ind, kk)));
+        out.dvv.push_back(tbs(getIndDv(ind, kk)));
         double lim = R_NegInf;
         if (hasRxLimit(rx)) {
           lim = getIndLimit(ind, kk);
           if (ISNA(lim)) lim = R_NegInf;
           else if (R_FINITE(lim)) lim = tbs(lim);
         }
-        limv.push_back(lim);
-        censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
+        out.limv.push_back(lim);
+        out.censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
       }
     }
   }
-  int nobs = (int)dvv.size();
+  int nobs = (int)out.dvv.size();
+  out.nobs = nobs;
   if (nobs == 0) return;
+  out.fvec.resize(nsamp); out.Vvec.resize(nsamp);
+  out.dfmat.resize(nsamp); out.dVmat.resize(nsamp);
+  out.sampleOk.assign(nsamp, 0);
+  // Make the theta-sensitivity solves history-independent (deterministic under
+  // parallelism), mirroring the ADVI ELBO inner loop: clear this subject's cached
+  // setup and reset its per-subject tolerance factor to base, so no prior subject,
+  // iteration, or thread can leak solve state into these solves.
+  fInd->setup = 0;
+  setIndTolFactor(ind, 1.0);
+  // fvec/Vvec/dfmat/dVmat are reused across samples (matching the original loop)
+  // and copied into the per-sample store only when the sample is usable.
   arma::vec fvec(nobs), Vvec(nobs);
   arma::mat dfmat(nobs, nSens), dVmat(nobs, nSens);
+  // Thread-local lhs buffer sized for the theta-sens model (thetaSensNlhs > 0 here,
+  // guarded above), allocated once per subject and reused across samples so calc_lhs
+  // never writes into the shared inner-sized per-thread pool slice (a data race under
+  // the parallel M-step) while avoiding a per-sample heap allocation in the hot path.
+  std::vector<double> tsLhsBuf((size_t)op_focei.thetaSensNlhs);
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
       setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
@@ -9319,7 +9342,13 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
       fInd->stickyRecalcN2++;
       op_focei.reducedTol.store(1, std::memory_order_relaxed);
       op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-      atolRtolFactor_(op_focei.odeRecalcFactor);
+      // Loosen ONLY this subject's tolerance (thread-safe) instead of the global
+      // atolRtolFactor_ (which mutates the shared grtol2/gatol2 arrays and races
+      // under the parallel M-step).  iniSubject() reapplies ind->tolFactor to the
+      // per-thread tolerance slice on the re-solve below.  This makes the M-step
+      // deterministic for a fixed thread count (not bit-identical to the serial
+      // global-relaxation path, but the relaxation is only a bad-solve fallback).
+      setIndTolFactor(ind, getIndTolFactor(ind) * op_focei.odeRecalcFactor);
       setIndSolve(ind, -1);
       resetOpBadSolve(op);
       thetaSensOde(_rxId);
@@ -9329,13 +9358,25 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
       if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) setIndTolFactor(ind, prevTol);
       else op_focei.stickyTol.store(1, std::memory_order_relaxed);
     }
+    bool okRow = true;
     if (!indHasBadSolve(op, ind)) {
+      // Re-point this subject's per-thread pointers (ind->lhs etc.) for the
+      // lhs-reading pass on the CURRENT thread before calc_lhs, exactly as
+      // likInner0 / shi21ThetaGeneral do (iniSubjectE with inLhs=1).  Serially this
+      // is a no-op (thread 0), but under the parallel M-step it is what makes the
+      // lhs reads land in this thread's slice instead of a stale one.
+      iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
+      // Read the sensitivity solve through the thread-local tsLhsBuf (allocated once
+      // per subject above): the shared per-thread pool slice (getIndLhs) is sized for
+      // the INNER model, so calc_lhs through it would overflow -- the highest-offset
+      // d(V)/d(theta) reads/writes spill into the neighbouring thread's slice, a data
+      // race under the parallel M-step (dV corruption, benign serially).
+      double *lhs = tsLhsBuf.data();
       // read f, V, d(f)/d(theta), d(V)/d(theta) from the sensitivity model lhs
       int ko = 0, kk;
       double curT;
       for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
         setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
-        double *lhs = getIndLhs(ind);
         if (isDose(getIndEvid(ind, kk))) {
           rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           continue;
@@ -9359,14 +9400,37 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
       for (int j = 0; j < (int)op_focei.neta; ++j) {
         setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
       }
-      if ((int)dfmat.n_rows != nobs) continue;
+      if ((int)dfmat.n_rows != nobs) okRow = false;
     }
+    if (okRow) {
+      out.fvec[k] = fvec; out.Vvec[k] = Vvec;
+      out.dfmat[k] = dfmat; out.dVmat[k] = dVmat;
+      out.sampleOk[k] = 1;
+    }
+  }
+}
+
+// Cheap arithmetic half of the theta score: accumulate the IS-weighted score `g`
+// and Gauss-Newton Hessian `H` from a subject's collected per-sample sensitivity
+// outputs, in the original (sample, obs) order.  g/H must be pre-sized (nSens).
+void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
+                      arma::vec& g, arma::mat& H) {
+  int nSens = op_focei.impThetaSensIdx.size();
+  if (nSens == 0 || c.nobs == 0) return;
+  int nobs = c.nobs;
+  int nsamp = (int)c.sampleOk.size();
+  for (int k = 0; k < nsamp; ++k) {
+    if (!c.sampleOk[k]) continue;
+    const arma::vec& fvec = c.fvec[k];
+    const arma::vec& Vvec = c.Vvec[k];
+    const arma::mat& dfmat = c.dfmat[k];
+    const arma::mat& dVmat = c.dVmat[k];
     for (int jo = 0; jo < nobs; ++jo) {
       double f = fvec[jo], V = Vvec[jo];
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
       arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
       if (!df.is_finite() || !dV.is_finite()) continue;
-      bool isCens = (censv[jo] != 0) || (R_FINITE(limv[jo]) && !ISNA(limv[jo]));
+      bool isCens = (c.censv[jo] != 0) || (R_FINITE(c.limv[jo]) && !ISNA(c.limv[jo]));
       if (isCens) {
         // Exact censored score/information from the analytic partials of
         // rho = -logLik (out[0]=rho_f, out[1]=rho_r, out[2..4]=rho_ff/rho_fr/rho_rr),
@@ -9374,19 +9438,26 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
         // log-likelihood score is -rho_f, -rho_r; the information is the rho 2nd
         // derivatives.  A normal obs reduces to the Gauss-Newton form below.
         double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
-        censNormalPartials((double)censv[jo], dvv[jo], limv[jo], f, V, 2, cp);
+        censNormalPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, 2, cp);
         g += zk[k] * (-cp[0] * df.t() - cp[1] * dV.t());
         H += zk[k] * (cp[2] * (df.t() * df) +
                       cp[3] * (df.t() * dV + dV.t() * df) +
                       cp[4] * (dV.t() * dV));
       } else {
-        double err = f - dvv[jo];
+        double err = f - c.dvv[jo];
         g += zk[k] * ((-err / V) * df.t() +
                       (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
         H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
       }
     }
   }
+}
+
+void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
+                   arma::vec& g, arma::mat& H) {
+  impThetaSensData c;
+  impThetaSensCollect(id, S, c);
+  impThetaAccumOne(c, zk, g, H);
 }
 
 // est="impmap": the theta-sensitivity model is the largest structure, so it sizes
@@ -9403,6 +9474,26 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 // mixture path), else the parallel E-step non-deterministically rejects a
 // subject's importance samples (neff collapse).
 bool impPoolSizing() { return op_focei.innerNeq > 0; }
+
+// ---- parallel theta-sensitivity solve scope (M-step) ----
+// The theta-sensitivity ODE solve is thread-safe (FOCEI solves it in parallel in
+// the S-matrix / analytic-cov paths), but only inside the FOCEI parallel-solve
+// scope: the solve method must be thread-safe (liblsoda), and the run must be
+// bracketed by sortIds + the _innerParallel flag so worker threads pick the right
+// per-thread solve memory and defer R-API warnings.  These thin helpers expose
+// that scope to the imp.cpp M-step driver (imp.cpp cannot see the _innerParallel
+// static).  None of them change the numeric solve, so the M-step stays
+// bit-identical (its score/Hessian accumulation is serial in eid order).
+bool impMStepParallelOk() {
+  rx = getRxSolve_();
+  return solveMethodThreadSafe(getSolvingOptions(rx)) != 0;
+}
+void impInnerParallelOn() {
+  _innerParallel.store(1, std::memory_order_release);
+}
+void impInnerParallelOff() {
+  _innerParallel.store(0, std::memory_order_release);
+}
 
 // Pin every subject's effective inner state count to op_focei.innerNeq, since the
 // pool (and op->neq) is sized for the larger theta-sensitivity model.
@@ -9525,6 +9616,7 @@ Environment foceiFitCpp_(Environment e){
           // theta j (1-based), in two ascending, contiguous blocks.  Record the lhs
           // offsets of the first of each (impThetaSensIdx[0] + 1).
           CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+          op_focei.thetaSensNlhs = tsLhs.size();
           op_focei.thetaSensPredOffset = -1;
           op_focei.thetaSensROffset = -1;
           if (op_focei.impThetaSensIdx.size() > 0) {
@@ -10106,6 +10198,7 @@ RObject vaeInnerSetup_(Environment e) {
       op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
       rxThetaSens.neq = op_focei.thetaSensNeq;
       CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+      op_focei.thetaSensNlhs = tsLhs.size();
       op_focei.thetaSensPredOffset = -1;
       op_focei.thetaSensROffset = -1;
       if (op_focei.impThetaSensIdx.size() > 0) {
