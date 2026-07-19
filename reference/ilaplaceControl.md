@@ -227,17 +227,21 @@ ilaplaceControl()
 #> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), 
 #>     ...) 
 #> {
-#>     .ctl <- .controlIterMax(control)
-#>     .ctl <- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", 
-#>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
-#>         "step.max", "sing.tol", "scale.inti", "diff.g")]
-#>     .ctl$trace <- 0
-#>     .ret <- stats::nlminb(start = par, objective = fn, gradient = gr, 
-#>         hessian = NULL, control = .ctl, lower = lower, upper = upper)
+#>     .ctl <- .controlMaxfun(control)
+#>     if (is.null(.ctl$npt)) 
+#>         .ctl$npt <- length(par) * 2 + 1
+#>     .ctl$iprint <- 0L
+#>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
+#>         "iprint", "maxfun")]
+#>     .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, 
+#>         upper = upper)
 #>     .ret$x <- .ret$par
+#>     .ret$message <- .ret$msg
+#>     .ret$convergence <- .ret$ierr
+#>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55e750ac4b70>
+#> <bytecode: 0x5586ac2051a0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -334,7 +338,7 @@ ilaplaceControl()
 #> [1] 1e+05
 #> 
 #> $outerOptTxt
-#> [1] "nlminb"
+#> [1] "bobyqa"
 #> 
 #> $outerOptDefault
 #> [1] TRUE
