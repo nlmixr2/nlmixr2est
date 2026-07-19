@@ -12953,9 +12953,14 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
 // The solve itself is passed in as an R callback (`solveFn`) invoked per attempt.
 
 // p(x|z) and d(pxz)/deta for one subject from f, R, df/deta (aMat), dR/deta (aRMat).
+// `id` (>= 0) and `etaPtr` thread the calling subject's context to the external
+// likelihood-contribution registry -- the SAME registry likInner0 cycles -- so
+// the analytic-decoder VAE path carries any nn/plugin contribution just like the
+// focei/foce inner engine.  id < 0 (the bare vaeDecoderPxz_ primitive) skips it.
 static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
                               const arma::mat& aMat, const arma::mat& aRMat,
-                              const arma::vec& y, double& pxz, arma::vec& gEta) {
+                              const arma::vec& y, double& pxz, arma::vec& gEta,
+                              int id = -1, const double* etaPtr = NULL) {
   const int no = (int)f.n_elem, neta = (int)aMat.n_cols;
   const double ln2pi = std::log(2 * M_PI);
   arma::vec rf(no), rR(no);
@@ -12971,6 +12976,32 @@ static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
     double s = 0;
     for (int o = 0; o < no; ++o) s += rf[o] * aMat(o, k) + rR[o] * aRMat(o, k);
     gEta[k] = s;
+  }
+  // external likelihood contributions (cycled in series); zero overhead when
+  // none registered.  pxz is the per-subject NEGATIVE log-likelihood and
+  // gEta = d(pxz)/d(eta), so the contributor LL adds -llik to pxz and the
+  // contributor d(LL)/d(eta) adds -dLL/deta to gEta.  rf = -dLL/df, rR = -dLL/dr
+  // (this path assumes the uncensored Gaussian p(x|z), matching vaeDecoderPxz).
+  if (_nlmixrNContrib > 0 && id >= 0) {
+    std::vector<double> cDeta(neta > 0 ? neta : 1, 0.0), cDfdeta(neta > 0 ? neta : 1, 0.0);
+    nlmixrLikSubj subj; subj.id = id; subj.neta = neta; subj.nobs = no; subj.eta = etaPtr;
+    for (int ci = 0; ci < _nlmixrNContrib; ++ci)
+      if (_nlmixrContrib[ci]->beginSubject) _nlmixrContrib[ci]->beginSubject(&subj);
+    for (int o = 0; o < no; ++o) {
+      for (int k = 0; k < neta; ++k) { cDfdeta[k] = aMat(o, k); cDeta[k] = 0.0; }
+      double llAdd = 0.0;
+      nlmixrLikObs oo;
+      oo.id = id; oo.k = o; oo.neta = neta;
+      oo.f = f[o]; oo.dv = y[o]; oo.r = R[o];
+      oo.dLL_df = -rf[o]; oo.dLL_dr = -rR[o];
+      oo.df_deta = (neta > 0 ? cDfdeta.data() : NULL);
+      oo.llik = &llAdd; oo.dLL_deta = cDeta.data();
+      for (int ci = 0; ci < _nlmixrNContrib; ++ci) _nlmixrContrib[ci]->obs(&oo);
+      pxz -= llAdd;
+      for (int k = 0; k < neta; ++k) gEta[k] -= cDeta[k];
+    }
+    for (int ci = 0; ci < _nlmixrNContrib; ++ci)
+      if (_nlmixrContrib[ci]->endSubject) _nlmixrContrib[ci]->endSubject(&subj);
   }
 }
 
@@ -13084,7 +13115,7 @@ List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector om
     if (!s.ok) { failed = true; break; }
     arma::vec yi = as<arma::vec>(yListR[i]);
     double pxi; arma::vec gEta;
-    vaeDecoderPxzCore(s.f, s.R, s.a, s.aR, yi, pxi, gEta);
+    vaeDecoderPxzCore(s.f, s.R, s.a, s.aR, yi, pxi, gEta, i, etai.memptr());
     pxz += pxi; gZdec.row(i) = gEta.t();
     preds[i] = NumericVector(s.f.begin(), s.f.end());
   }
