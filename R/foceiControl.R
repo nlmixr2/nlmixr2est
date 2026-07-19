@@ -1108,7 +1108,7 @@ foceiControl <- function(sigdig = 4, #
     # outerOptDefault records that the default was taken so a *f wrapper
     # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "nlminb"
+      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
