@@ -501,12 +501,14 @@ void impComputeCov(Environment e) {
   // Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
   // Each subject's contribution is an independent scalar; accumulate them into a
   // per-subject buffer under the parallel loop, then reduce in id order so the sum
-  // is bit-identical to the serial `obj += ...` accumulation.
+  // is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
+  // once here and refilled per call (the FD Hessian calls evalObj O(np^2) times).
+  std::vector<double> objBuf(nsub, 0.0);
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
-    std::vector<double> objBuf(nsub, 0.0);
+    std::fill(objBuf.begin(), objBuf.end(), 0.0);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doParCov)
 #endif
@@ -715,7 +717,9 @@ void impOuter(Environment e) {
       // outputs are stashed per subject, then accumulated in eid order below.  cores
       // already carries the mixture / pool-sizing serial guard (forced to 1 above).
       std::vector<impThetaSensData> coll(nExp);
-      std::vector<arma::mat> Ssub(nExp);
+      // Only zksub is retained per subject (the serial accumulation needs it); the
+      // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
+      // or a local SIR resample), so there is no per-subject copy of the full sample.
       std::vector<arma::vec> zksub(nExp);
       std::vector<char> useSub(nExp, 0);
       // Parallelize the theta-sensitivity solves over subjects; each subject writes
@@ -750,15 +754,14 @@ void impOuter(Environment e) {
               nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
               double u0 = rxUnifEng(0.0, 1.0);
               arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
-              Ssub[eid] = sampS[eid].rows(ridx);
+              arma::mat Ssir = sampS[eid].rows(ridx);
               zksub[eid].set_size(sirN); zksub[eid].fill(aij / (double)sirN);
-              impThetaSensCollect(eid, Ssub[eid], coll[eid]);
+              impThetaSensCollect(eid, Ssir, coll[eid]);
               useSub[eid] = 1;
             }
           } else {
-            Ssub[eid] = sampS[eid];
             zksub[eid] = sampZk[eid];
-            impThetaSensCollect(eid, Ssub[eid], coll[eid]);
+            impThetaSensCollect(eid, sampS[eid], coll[eid]);
             useSub[eid] = 1;
           }
         }

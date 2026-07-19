@@ -9259,9 +9259,12 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   out.dVmat.clear(); out.sampleOk.clear(); out.dvv.clear(); out.limv.clear();
   out.censv.clear();
   int nSens = op_focei.impThetaSensIdx.size();
+  // thetaSensNlhs is the sensitivity model's true lhs width (set at setup); it sizes
+  // the calc_lhs output buffer below.  If it is unset (<=0) we cannot size the buffer
+  // to the width calc_lhs will write, so bail rather than risk a buffer overflow.
   if (nSens == 0 || op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
       op_focei.thetaSensPredOffset < 0 || op_focei.thetaSensROffset < 0 ||
-      rxThetaSens.calc_lhs == NULL) return;
+      op_focei.thetaSensNlhs <= 0 || rxThetaSens.calc_lhs == NULL) return;
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
@@ -9317,6 +9320,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // and copied into the per-sample store only when the sample is usable.
   arma::vec fvec(nobs), Vvec(nobs);
   arma::mat dfmat(nobs, nSens), dVmat(nobs, nSens);
+  // Thread-local lhs buffer sized for the theta-sens model (thetaSensNlhs > 0 here,
+  // guarded above), allocated once per subject and reused across samples so calc_lhs
+  // never writes into the shared inner-sized per-thread pool slice (a data race under
+  // the parallel M-step) while avoiding a per-sample heap allocation in the hot path.
+  std::vector<double> tsLhsBuf((size_t)op_focei.thetaSensNlhs);
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
       setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
@@ -9358,16 +9366,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       // is a no-op (thread 0), but under the parallel M-step it is what makes the
       // lhs reads land in this thread's slice instead of a stale one.
       iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
-      // The per-thread pool lhs slice (getIndLhs) is sized for the INNER model, but
-      // the theta-sensitivity model emits more lhs outputs (d(f)/d(theta) and
-      // d(V)/d(theta) per estimated theta); running calc_lhs through the pool slice
-      // overflows it, and the highest-offset d(V)/d(theta) reads/writes spill into
-      // the neighbouring thread's slice -- a data race under the parallel M-step
-      // (dV corruption, benign serially because the neighbour slice is unused).
-      // Use a thread-local buffer sized for the theta-sens model instead, so
-      // calc_lhs never touches the shared per-thread slice.
-      std::vector<double> tsLhsBuf((size_t)(op_focei.thetaSensNlhs > 0 ?
-                                            op_focei.thetaSensNlhs : 1));
+      // Read the sensitivity solve through the thread-local tsLhsBuf (allocated once
+      // per subject above): the shared per-thread pool slice (getIndLhs) is sized for
+      // the INNER model, so calc_lhs through it would overflow -- the highest-offset
+      // d(V)/d(theta) reads/writes spill into the neighbouring thread's slice, a data
+      // race under the parallel M-step (dV corruption, benign serially).
       double *lhs = tsLhsBuf.data();
       // read f, V, d(f)/d(theta), d(V)/d(theta) from the sensitivity model lhs
       int ko = 0, kk;
