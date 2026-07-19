@@ -224,7 +224,7 @@ impControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5586ac2051a0>
+#> <bytecode: 0x55a132db0d68>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -878,9 +878,6 @@ impControl()
 #> 
 #> $sensMethod
 #> [1] "default"
-#> 
-#> $freezeResidGrad
-#> [1] FALSE
 #> 
 #> $boundedTransform
 #> [1] TRUE

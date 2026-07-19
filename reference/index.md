@@ -69,8 +69,6 @@
   : Control options foir the FOI estimation method
 - [`formatMinWidth()`](https://nlmixr2.github.io/nlmixr2est/reference/formatMinWidth.md)
   : Format numeric values to minimize the printing width
-- [`fsaemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/fsaemControl.md)
-  : Control options for the fsaem (fast SAEM) estimation method
 - [`getValidNlmixrControl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   [`getValidNlmixrCtl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   : Get valid nlmixr control object

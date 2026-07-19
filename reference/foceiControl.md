@@ -139,7 +139,6 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   sensMethod = c("default", "forward", "adjoint"),
-  freezeResidGrad = FALSE,
   boundedTransform = TRUE
 )
 ```
@@ -957,17 +956,6 @@ foceiControl(
   \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
   \`"adjoint"\` uses the in-engine discrete adjoint with the matching
   adjoint (\`s\`) method.
-
-- freezeResidGrad:
-
-  When \`TRUE\`, the outer finite-difference gradient freezes the ODE
-  solve (and the individual EBEs) when perturbing a residual/error-model
-  parameter – these parameters do not change the structural prediction
-  \`f\`, so the states are reused and only the residual density is
-  recomputed, mirroring the npag residual step. This is a small
-  approximation to the FOCEi gradient (it drops the eta sensitivity of
-  the Laplace \`log det\` term); the default is \`FALSE\` to recover the
-  exact full re-solve gradient.
 
 - boundedTransform:
 

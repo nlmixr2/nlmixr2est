@@ -4,7 +4,10 @@ A NONMEM-style Monte Carlo importance-sampling EM built on the
 mu-referenced FOCEI MAP. The proposal density for each subject is
 centered at the MAP mode (\`muModel="lin"\`); mu-referenced population
 parameters are updated by the EM gradient, while non-mu parameters
-(including the residual error) are updated by finite differences.
+(structural and residual error) are updated by a symbolic-sensitivity
+Newton step – the importance-sampling-weighted score and Gauss-Newton
+information built from the analytic \`d(f)/d(theta)\` and
+\`d(V)/d(theta)\` (exact censored partials for BLQ/M2/M3/M4 points).
 
 ## Usage
 
@@ -353,7 +356,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5586ac2051a0>
+#> <bytecode: 0x55a132db0d68>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1007,9 +1010,6 @@ impmapControl()
 #> 
 #> $sensMethod
 #> [1] "default"
-#> 
-#> $freezeResidGrad
-#> [1] FALSE
 #> 
 #> $boundedTransform
 #> [1] TRUE

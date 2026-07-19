@@ -128,10 +128,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1002644 3.8748e-05 0.01000585      0.089     0.244 7.241       0.556
-#>         compress    other
-#> elapsed    0.139 0.157691
+#>              setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.09581931 3.4291e-05 0.01000642      0.077      0.23 7.02       0.531
+#>         compress   other
+#> elapsed    0.137 0.14914
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -139,7 +139,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 2.12e-311 3.03e-309    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.65e-310 6.65e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -166,10 +166,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1002644 3.8748e-05 0.01000585      0.089     0.244 7.241       0.556
-#>         compress    other
-#> elapsed    0.139 0.157691
+#>              setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.09581931 3.4291e-05 0.01000642      0.077      0.23 7.02       0.531
+#>         compress   other
+#> elapsed    0.137 0.14914
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -177,7 +177,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 2.12e-311 3.03e-309    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.65e-310 6.65e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 

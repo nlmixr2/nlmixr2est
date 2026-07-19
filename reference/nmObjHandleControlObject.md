@@ -26,9 +26,6 @@ nmObjHandleControlObject(control, env)
 # S3 method for class 'foiControl'
 nmObjHandleControlObject(control, env)
 
-# S3 method for class 'fsaemControl'
-nmObjHandleControlObject(control, env)
-
 # S3 method for class 'ifocepControl'
 nmObjHandleControlObject(control, env)
 
