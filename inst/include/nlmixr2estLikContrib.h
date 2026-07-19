@@ -59,6 +59,12 @@ extern "C" {
   void nlmixrRemoveEmLik(nlmixrEmLik_fn fn);
   int  nlmixrHasLikContrib(void);   // fast check to skip hook overhead
 
+  // Cross-TU dispatch of the FOCEI-family bundle (drive the same registry from a
+  // population objective, e.g. nlm.cpp).  Guarded internally; no-op when empty.
+  void nlmixrLikContribBegin(const nlmixrLikSubj *s);
+  void nlmixrLikContribObs(nlmixrLikObs *o);
+  void nlmixrLikContribEnd(const nlmixrLikSubj *s);
+
 #ifdef __cplusplus
 }
 #endif

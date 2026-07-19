@@ -72,6 +72,21 @@ extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
 }
 extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
 
+// Cross-TU dispatch: drive the (static, inner.cpp-private) registry from another
+// translation unit (nlm.cpp's population objective).  Same series semantics as
+// the inline likInner0 hook.  No-ops when nothing is registered.
+extern "C" void nlmixrLikContribBegin(const nlmixrLikSubj *s) {
+  for (int i = 0; i < _nlmixrNContrib; ++i)
+    if (_nlmixrContrib[i]->beginSubject) _nlmixrContrib[i]->beginSubject(s);
+}
+extern "C" void nlmixrLikContribObs(nlmixrLikObs *o) {
+  for (int i = 0; i < _nlmixrNContrib; ++i) _nlmixrContrib[i]->obs(o);
+}
+extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
+  for (int i = 0; i < _nlmixrNContrib; ++i)
+    if (_nlmixrContrib[i]->endSubject) _nlmixrContrib[i]->endSubject(s);
+}
+
 // Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
