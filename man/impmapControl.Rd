@@ -110,8 +110,10 @@ impmapControl object
 A NONMEM-style Monte Carlo importance-sampling EM built on the mu-referenced
 FOCEI MAP.  The proposal density for each subject is centered at the MAP mode
 (`muModel="lin"`); mu-referenced population parameters are updated by the EM
-gradient, while non-mu parameters (including the residual error) are updated
-by finite differences.
+gradient, while non-mu parameters (structural and residual error) are updated
+by a symbolic-sensitivity Newton step -- the importance-sampling-weighted
+score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
+`d(V)/d(theta)` (exact censored partials for BLQ/M2/M3/M4 points).
 }
 \examples{
 

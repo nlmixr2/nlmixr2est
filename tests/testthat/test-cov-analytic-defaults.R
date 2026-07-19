@@ -48,7 +48,7 @@ test_that(".foceiRecomputeBaseEst maps the covariance-recompute methods", {
     expect_identical(nlmixr2est:::.foceiRecomputeBaseEst(e), "focei")
   }
   ## methods with their own covariance (or none) are not recomputed
-  for (e in c("focei", "saem", "fsaem", "nlm", "nls")) {
+  for (e in c("focei", "saem", "nlm", "nls")) {
     expect_null(nlmixr2est:::.foceiRecomputeBaseEst(e))
   }
 })

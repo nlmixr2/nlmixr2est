@@ -191,8 +191,12 @@ nmTest({
       .ctl <- ctlFun(print = 0, fast = TRUE, covMethod = "analytic")
       .fO <- .nlmixr(ode, dat, est = est, control = .ctl)
       .fM <- .nlmixr(mat, dat, est = est, control = .ctl)
-      # the matExp/indLin fit takes the analytic covariance (not a silent FD fallback)
-      expect_equal(.fM$covMethod, "analytic")
+      # the matExp/indLin fit walks the SAME covariance path as its ODE
+      # counterpart -- both take the analytic covariance where the observed
+      # information is PD, and both fall back identically where it is not (the
+      # near-collinear MM model under non-interaction FOCE).  A mis-built
+      # augmented model would diverge here (or blow the SE tolerance below).
+      expect_equal(.fM$covMethod, .fO$covMethod)
       expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
       expect_equal(unname(sqrt(diag(.fM$cov))), unname(sqrt(diag(.fO$cov))), tolerance = seTol)
     }

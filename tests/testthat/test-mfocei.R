@@ -318,7 +318,8 @@ nmTest({
 
     out <- withr::with_options(list(width = 200), capture.output({
       nlmixr2est::nlmixr(mod, theo_sd2, "mfocei",
-                          mfoceiControl(print = 1, maxOuterIterations = 2))
+                          mfoceiControl(print = 1, maxOuterIterations = 2,
+                                        outerOpt = "nlminb"))
     }))
 
     # the old bolt-on "|   mu|" row is gone

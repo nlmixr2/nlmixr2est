@@ -1,8 +1,7 @@
 nmTest({
-  # General log-likelihood endpoints (ll() ~ expr) are supported by BOTH saem and
-  # fsaem the saemix way: the model returns the per-observation log-likelihood as
-  # its prediction, the observation loss is -ll, and the standard MCMC kernels run
-  # unchanged (fsaem adds the IMH accelerator on top).
+  # General log-likelihood endpoints (ll() ~ expr) are supported by saem the saemix
+  # way: the model returns the per-observation log-likelihood as its prediction, the
+  # observation loss is -ll, and the standard MCMC kernels run unchanged.
 
   # exponential time-to-event data with a subject random effect on the mean
   .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
@@ -30,25 +29,6 @@ nmTest({
     expect_equal(exp(fixef(.f)[["tlam"]]), 40, tolerance = 0.2)
     # a random-effect variance was estimated
     expect_gt(.f$omega[1, 1], 0)
-  })
-
-  test_that("fsaem fits the same general log-likelihood endpoint", {
-    .d <- .mkTte(1L)
-    .f <- suppressMessages(nlmixr2(expTte, .d, est = "fsaem",
-      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1, print = 0L,
-                            calcTables = FALSE)))
-    expect_true(.f$saemControl$fast)
-    expect_equal(exp(fixef(.f)[["tlam"]]), 40, tolerance = 0.2)
-  })
-
-  test_that("saem and fsaem agree on a general log-likelihood endpoint", {
-    .d <- .mkTte(2L)
-    .ctl <- saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 3, print = 0L,
-                        calcTables = FALSE)
-    .ss <- suppressMessages(nlmixr2(expTte, .d, est = "saem",  control = .ctl))
-    .fs <- suppressMessages(nlmixr2(expTte, .d, est = "fsaem", control = .ctl))
-    # both land at the same MLE (the observation likelihood is identical)
-    expect_lt(abs(fixef(.ss)[["tlam"]] - fixef(.fs)[["tlam"]]), 0.08)
   })
 
   test_that("a general log-likelihood endpoint uses distribution=4 (no residual)", {

@@ -385,4 +385,9 @@ void npbOuter(Environment e) {
   e["npbBurnin"] = nBurn;
   e["npbNsamp"] = nSamp;
   e["npbLogLik"] = objf;
+  // A log/boxCox (lnorm) endpoint saw a non-positive prediction (floored by
+  // rxode2); the fit still ran on the floored value -- surface it into $runInfo.
+  if (impNpTbsDomainWarn()) {
+    Rcpp::warning("lnorm/log endpoint has a <=0 prediction; drop 0-prediction obs");
+  }
 }

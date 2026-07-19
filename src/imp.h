@@ -12,6 +12,10 @@
 int impNsub();
 int impNeta();
 
+// TRUE when a transform-both-sides (log/boxCox) endpoint saw a non-positive
+// (rxode2-floored) prediction during the last np fit; the np drivers warn on it.
+bool impNpTbsDomainWarn();
+
 // Importance-sampling controls carried on op_focei (set in foceiSetup_ from the
 // impmap control): samples per subject, proposal-variance inflation gamma, and
 // the solve's OpenMP core count.
@@ -87,6 +91,7 @@ struct impThetaSensData {
   int nobs = 0;
   std::vector<double> dvv, limv;
   std::vector<int> censv;
+  std::vector<int> distv;               // [nobs] per-obs distribution: rxDistributionNorm (f/V score) vs general LL (rx_pred_ IS the ll)
   std::vector<arma::vec> fvec, Vvec;    // [nsamp], each length nobs
   std::vector<arma::mat> dfmat, dVmat;  // [nsamp], each nobs x nSens
   std::vector<char> sampleOk;           // [nsamp], 0 = drop this sample
