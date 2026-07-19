@@ -99,10 +99,6 @@ foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
 
-foceiNFreezeResidGrad <- function() {
-    .Call(`_nlmixr2est_foceiNFreezeResidGrad`)
-}
-
 foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
     .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
 }

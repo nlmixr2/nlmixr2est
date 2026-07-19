@@ -139,19 +139,6 @@
   finite `agqLow`/`agqHi` clamp, `cholSECov=TRUE`, or `interaction=FALSE` --
   reports why and keeps the finite-difference covariance.
 
-- The FOCEi-family outer finite-difference gradient now freezes the ODE solve
-  when perturbing a residual/error (`err`) parameter (`foceiControl(freezeResidGrad=TRUE)`,
-  the default).  Those parameters do not change the prediction `f` (or the EBEs
-  or `df/deta`), so each subject's base states and EBE are cached once per
-  gradient and only `r`/the density is recomputed -- no re-integration and no
-  inner eta re-optimization -- mirroring what `est="npag"`/`est="npb"` already do
-  for their residual step.  This is a small approximation to the exact FOCEi
-  gradient (it drops the eta sensitivity of the Laplace `log det` term); across
-  prop+add, additive-only, and box-Cox/transform-both-sides error models on
-  `theo_sd` it left the objective within ~0.02 and every parameter within ~1% of
-  the exact re-solve while roughly halving gradient time (about 2x).  Set
-  `freezeResidGrad=FALSE` to recover the exact full re-solve gradient.
-
 - Requesting an unsupported `est=` method (e.g. a typo) now prints the available
   estimation methods grouped by category (Linearized, Integral approximation,
   Stochastic EM, Nonparametric, Machine learning, Optimizer (NLM family)) with a short
@@ -628,6 +615,23 @@
 
 ### Estimation
 
+- `est="impmap"` now estimates the non-mu structural and residual-error thetas of a
+  general (custom `ll()`) likelihood model.  For such an endpoint `rx_pred_` is the
+  log-likelihood itself and `rx_r_` is `0`, so the Gauss-Newton M-step skipped every
+  observation (`V<=0`) and left those thetas frozen at their initial values; the
+  M-step now uses the analytic `d(ll)/d(theta)` directly (empirical-Fisher
+  information), so a raw `ll()` fit recovers the same parameters as the equivalent
+  `add()` model.
+
+- `est="npag"`/`est="npb"` no longer error with `unused argument: 'dfScan'` when the
+  post-fit importance-sampling covariance is recomputed (the `dfScan` field leaked
+  into the down-converted `foceiControl`).
+
+- `est="npag"`/`est="npb"` with a transform-both-sides (`lnorm`/log/box-Cox) endpoint
+  whose model prediction is non-positive at some observation (e.g. a pre-dose
+  observation where the structural prediction is `0`) now records a note in the fit's
+  `$runInfo` instead of silently fitting the rxode2-floored value with no indication.
+
 - `est="vae"` with `nonMuTheta="regress"` now shows the regressed non-mu-referenced
   thetas in the iteration table and parameter history.  The M-step `bobyqa`
   regression already estimated them, but they were omitted from the printed
@@ -718,11 +722,6 @@
   (#517).  The FO/FOI fit now carries its control, and an intermediate fit
   without a method-specific `nmObjGetControl` surfaces its stored control rather
   than returning `NULL`.
-- `est="fo"`/`est="foi"` fits no longer error with "cannot find fo/foi related
-  control object".  The `freezeResidGrad` work added an internal `residThetaIdx`
-  field to the fitted control, which was not on the accepted-internal
-  (`.foceiControlInternal`) list, so the post-fit table step failed when it
-  re-validated the control by round-tripping it through `foceiControl()`.
 - `est="nlme"` now accepts the common `print` control alias, so
   `nlmixr2(..., "nlme", list(print=0))` no longer errors with
   `unused argument: 'print'`.  `nlme` prints through its own `verbose` option, so

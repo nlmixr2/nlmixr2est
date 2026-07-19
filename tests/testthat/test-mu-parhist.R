@@ -33,11 +33,11 @@ nmTest({
     out <- withr::with_options(list(width = 200), capture.output({
       fitM <- nlmixr2est::nlmixr(.ocmt, d, "ifocei",
                                  ifoceiControl(print = 1, maxOuterIterations = 2L,
-                                               covMethod = "", calcTables = FALSE))
+                                               outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
     }))
     fitP <- .nlmixr(.ocmt, d, "focei",
                     foceiControl(print = 0, maxOuterIterations = 2L,
-                                 covMethod = "", calcTables = FALSE))
+                                 outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
 
     # same columns as plain focei on the same model, natural theta order
     expect_identical(names(fitM$parHist), names(fitP$parHist))
@@ -114,7 +114,7 @@ nmTest({
     }
     fit <- .nlmixr(mod, theo_sd2, "mfocei",
                    mfoceiControl(print = 0, maxOuterIterations = 2L,
-                                 covMethod = "", calcTables = FALSE))
+                                 outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
     nm <- names(fit$parHist)
     expect_true(all(c("tka", "tcl", "tv", "allo.cl", "add.sd") %in% nm))
     # natural ini order: coefficient between tv and add.sd

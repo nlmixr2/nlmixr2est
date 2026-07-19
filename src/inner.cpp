@@ -414,6 +414,10 @@ struct focei_options {
   NumericVector probitThetaLow;
   double badSolveObjfAdj = 100;
   std::atomic<bool> didPredSolve{false};
+  // npag/npb: set when a transform-both-sides (log/boxCox) endpoint has a
+  // non-positive untransformed prediction (rxode2's _powerD floors it at _eps
+  // instead of returning -Inf).  Surfaced as a warning by the np driver.
+  std::atomic<bool> npTbsDomainWarn{false};
   bool canDoFD  = false;
   bool adjLik = false;
   bool fallbackFD = false;
@@ -488,11 +492,6 @@ struct focei_options {
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
-  bool freezeResidGrad = true; // foceiControl(freezeResidGrad): freeze the ODE (and
-                               // the EBEs) in the outer FD gradient when perturbing a
-                               // residual/error theta -- the default is decided empirically.
-  std::vector<char> residThetaMask; // per-fullTheta flag (1 = residual/err theta), built at setup
-  int nFreezeResidGrad = 0;    // diagnostic: residual-theta FD perturbations that froze the ODE
 };
 
 focei_options op_focei;
@@ -697,6 +696,7 @@ extern "C" void rxOptionsFreeFocei() {
 
   op_focei.alloc = false;
   op_focei.didPredSolve = false;
+  op_focei.npTbsDomainWarn = false;
 
   // Placement-new reset (copy-assignment is deleted by std::atomic members).
   op_focei.~focei_options();
@@ -1247,106 +1247,6 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 // inner model at eta=0 and read rx_r_ (lhs[neta+1]) per obs into rPop in the
 // likInner0 observation k-order.  Call BEFORE the inner solve (this overwrites
 // ind->solve; the inner solve re-establishes it).
-// --- freezeResidGrad: base-EBE freeze cache for the outer FD gradient ---------
-// When the FD outer gradient perturbs a residual/error theta, f/eta/(df/deta) do
-// not change, so each subject's base-EBE ODE states and base EBE are snapshotted
-// once (at the unperturbed theta) and reused (op_focei.freezeOde) -- only r and
-// the density are recomputed.  Mirrors npag's npResidFreeze* machinery.
-static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind); // fwd
-struct FoceiResidFreezeEntry { std::vector<double> solve; std::vector<double> eta; };
-static std::vector<FoceiResidFreezeEntry> gFoceiResidFreeze;
-
-// Snapshot every subject's (and mixture component's) current states + EBE as the
-// frozen base.  Does NOT set freezeOde -- numericGrad toggles it per residual
-// cpar.  Caller must be at the unperturbed theta with the base solve in place.
-static void foceiResidFreezeSnapshot() {
-  rx = getRxSolve_();
-  rx_solving_options *op = getSolvingOptions(rx);
-  int nsubMix = (int)getRxNsubAndMix(rx);
-  int neta = op_focei.neta;
-  gFoceiResidFreeze.assign(nsubMix, FoceiResidFreezeEntry());
-  for (int id = 0; id < nsubMix; ++id) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-    double *s = getIndSolve(ind);
-    gFoceiResidFreeze[id].solve.assign(s, s + npIndSolveSize(op, ind));
-    focei_ind *fInd = &inds_focei[id];
-    if (neta > 0 && fInd->eta != NULL)
-      gFoceiResidFreeze[id].eta.assign(fInd->eta, fInd->eta + neta);
-  }
-}
-
-static inline double foceiOfv0(double *theta); // fwd
-// Solve at the unperturbed theta (full inner opt -> true base EBE + states),
-// then snapshot.  freezeOde is left off; numericGrad enables it per residual cpar.
-static void foceiResidFreezeBuildAt(double *theta) {
-  op_focei.freezeOde = false;
-  // This base solve happens inside numericGrad, so it must not mutate outer
-  // state: with calcGrad off it reaches the theta-reset / mu-group / objective-
-  // recalc sites, and an ETA-drift reset raised here restarts the fit on every
-  // gradient (issue #641 fits then die on "maximum number of theta resets").
-  // calcGrad also matches how the perturbed evaluations below are solved.
-  int calcGrad0 = op_focei.calcGrad;
-  op_focei.calcGrad = 1;
-  foceiOfv0(theta);
-  op_focei.calcGrad = calcGrad0;
-  foceiResidFreezeSnapshot();
-}
-
-// True when the cpar-th free optimizer parameter maps to a residual/error theta.
-static inline bool foceiCparIsResid(int cpar) {
-  if (!op_focei.freezeResidGrad || op_focei.fixedTrans == NULL) return false;
-  if (cpar < 0 || cpar >= (int)op_focei.npars) return false;
-  int idx = op_focei.fixedTrans[cpar];
-  return idx >= 0 && idx < (int)op_focei.residThetaMask.size() &&
-    op_focei.residThetaMask[idx] != 0;
-}
-
-// Restore subject id's cached base states into ind->solve.  Called from the
-// likInner0 freeze guard (a FOCE getPopR eta=0 solve may have clobbered them);
-// a no-op when the cache is empty (e.g. npag, which keeps its own cache).
-static inline void foceiResidRestoreFrozen(int id) {
-  if (gFoceiResidFreeze.empty() || id < 0 ||
-      id >= (int)gFoceiResidFreeze.size()) return;
-  const std::vector<double>& c = gFoceiResidFreeze[id].solve;
-  if (c.empty()) return;
-  rx = getRxSolve_();
-  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-  std::copy(c.begin(), c.end(), getIndSolve(ind));
-}
-
-// Restore every subject's base EBE into fInd->eta, so a frozen innerEval
-// evaluates the density at the base EBE (undoing any intervening structural
-// perturbation that moved the eta).
-static inline void foceiResidRestoreEtas() {
-  if (gFoceiResidFreeze.empty() || op_focei.neta <= 0) return;
-  int neta = op_focei.neta;
-  int nsubMix = (int)gFoceiResidFreeze.size();
-  for (int id = 0; id < nsubMix; ++id) {
-    focei_ind *fInd = &inds_focei[id];
-    const std::vector<double>& e = gFoceiResidFreeze[id].eta;
-    if ((int)e.size() == neta && fInd->eta != NULL)
-      std::copy(e.begin(), e.end(), fInd->eta);
-  }
-}
-
-static void foceiResidFreezeClear() {
-  op_focei.freezeOde = false;
-  gFoceiResidFreeze.clear();
-  gFoceiResidFreeze.shrink_to_fit();
-}
-
-// Enable/disable the ODE freeze for the current cpar's FD perturbation: freeze
-// (reusing the base EBE + states) for a residual theta, otherwise re-solve.
-static inline void foceiFreezeForCpar(bool freezeResid, int cpar) {
-  if (!freezeResid) return;
-  if (foceiCparIsResid(cpar)) {
-    foceiResidRestoreEtas();
-    op_focei.freezeOde = true;
-    op_focei.nFreezeResidGrad++;
-  } else {
-    op_focei.freezeOde = false;
-  }
-}
 
 static void getPopR(int id, arma::vec &rPop) {
   int _rxId = getRxId(id); // base subject index for rxode2
@@ -1455,10 +1355,8 @@ double likInner0(double *eta, int id) {
     // integration and drop straight to the calc_lhs / density loop, recomputing
     // f/r with the current (residual) parameters only.
     if (op_focei.freezeOde) {
-      // no integration; restore the cached base states (a FOCE getPopR eta=0
-      // solve above may have clobbered ind->solve).  No-op for npag, which
-      // restores its own cache before calling in.
-      foceiResidRestoreFrozen(id);
+      // no integration: npag/npb restored its own cached base states in
+      // ind->solve before calling in, so drop straight to the density loop.
     } else {
     setIndSolve(ind, -1);
     // op->badSolve is racy under cores>1; our retry loop reads per-subject
@@ -1709,6 +1607,25 @@ double likInner0(double *eta, int id) {
           if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
             return NA_REAL;
             //throw std::runtime_error("bad solve");
+          }
+          // npag/npb: a transform-both-sides (log/boxCox) endpoint whose
+          // UNtransformed prediction is non-positive is a domain error (e.g. an
+          // lnorm/log endpoint at an observation whose model prediction is 0).
+          // rxode2's _powerD floors log/boxCox at _eps (returning a finite,
+          // huge-negative density) rather than -Inf, so it is invisible to the
+          // nonparametric density.  Invert the transform: a floored prediction
+          // round-trips to <= _eps.  Flag it (the np driver surfaces one warning
+          // into the fit's $runInfo); the fit still proceeds on the floored value.
+          if (op_focei.isNpag || op_focei.isNpb) {
+            int _tYj = getIndLambdaYj(ind), _tDist = 0, _tTrans = 0;
+            _splitYj(&_tYj, &_tDist, &_tTrans);
+            if (_tTrans == 0 || _tTrans == 3) {   // 0 = boxCox, 3 = log/lnorm
+              double _rawF = _powerDi(f, getIndLambda(ind), getIndLambdaYj(ind),
+                                      getIndLogitLow(ind), getIndLogitHi(ind));
+              if (!R_finite(_rawF) || _rawF <= _eps) {
+                op_focei.npTbsDomainWarn.store(true, std::memory_order_relaxed);
+              }
+            }
           }
           // fInd->f(k, 0) = lhs[0];
           err = f - dv;
@@ -4236,15 +4153,6 @@ void numericGrad(double *theta, double *g){
     return;
   }
   if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
-  // freezeResidGrad: if any free parameter is a residual/error theta, snapshot the
-  // base EBE + states once so those perturbations can freeze the ODE below.
-  bool _freezeResid = false;
-  if (op_focei.freezeResidGrad && !op_focei.residThetaMask.empty()) {
-    for (int cp = 0; cp < (int)op_focei.npars; cp++) {
-      if (foceiCparIsResid(cp)) { _freezeResid = true; break; }
-    }
-  }
-  if (_freezeResid) foceiResidFreezeBuildAt(theta);
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -4270,7 +4178,6 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
-        foceiFreezeForCpar(_freezeResid, cpar);
         op_focei.calcGrad=1;
         op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
                                            f0, grFinal, 0, cpar,
@@ -4315,7 +4222,6 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
-        foceiFreezeForCpar(_freezeResid, cpar);
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                         theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                         -1, gill83fnG, 1, op_focei.lastOfv);
@@ -4404,7 +4310,6 @@ void numericGrad(double *theta, double *g){
       if (mixGrad(theta, g, cpar) == 1) {
         continue;
       } else {
-        foceiFreezeForCpar(_freezeResid, cpar);
         if (doForward){
           delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar]);
         } else {
@@ -4522,8 +4427,6 @@ void numericGrad(double *theta, double *g){
     }
     op_focei.calcGrad=0;
   }
-  // freezeResidGrad: drop the freeze and cache so the next objective solves normally.
-  if (_freezeResid) foceiResidFreezeClear();
 }
 
 //[[Rcpp::export]]
@@ -4531,13 +4434,6 @@ NumericVector foceiNumericGrad(NumericVector theta){
   NumericVector ret(theta.size());
   numericGrad(&theta[0], &ret[0]);
   return ret;
-}
-
-// Diagnostic: number of residual-theta FD perturbations that froze the ODE over
-// the whole fit (0 when freezeResidGrad is off or the model has no err thetas).
-//[[Rcpp::export]]
-int foceiNFreezeResidGrad() {
-  return op_focei.nFreezeResidGrad;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5191,21 +5087,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
-  // freezeResidGrad: mask over fullTheta (ntheta+omegan) marking the residual/error
-  // thetas whose FD perturbation may freeze the ODE (residThetaIdx is 0-based).
-  op_focei.freezeResidGrad = foceiO.containsElementNamed("freezeResidGrad") ?
-    as<bool>(foceiO["freezeResidGrad"]) : true;
-  op_focei.nFreezeResidGrad = 0;
-  op_focei.residThetaMask.assign((size_t)op_focei.ntheta + op_focei.omegan, 0);
-  if (foceiO.containsElementNamed("residThetaIdx") && !Rf_isNull(foceiO["residThetaIdx"])) {
-    IntegerVector residThetaIdx = as<IntegerVector>(foceiO["residThetaIdx"]);
-    for (int ri = 0; ri < residThetaIdx.size(); ++ri) {
-      int idx = residThetaIdx[ri];
-      if (idx >= 0 && idx < (int)op_focei.residThetaMask.size()) {
-        op_focei.residThetaMask[idx] = 1;
-      }
-    }
-  }
   int* tempMixIdx = NULL;
   if (op_focei.mixIdxN > 0) {
     tempMixIdx = R_Calloc(op_focei.mixIdxN, int);
@@ -8810,6 +8691,10 @@ int impNsub() {
   return getRxNsub(rx);
 }
 
+bool impNpTbsDomainWarn() {
+  return op_focei.npTbsDomainWarn.load(std::memory_order_relaxed);
+}
+
 int impNeta() {
   return op_focei.neta;
 }
@@ -9257,7 +9142,7 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
 void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   out.nobs = 0; out.fvec.clear(); out.Vvec.clear(); out.dfmat.clear();
   out.dVmat.clear(); out.sampleOk.clear(); out.dvv.clear(); out.limv.clear();
-  out.censv.clear();
+  out.censv.clear(); out.distv.clear();
   int nSens = op_focei.impThetaSensIdx.size();
   // thetaSensNlhs is the sensitivity model's true lhs width (set at setup); it sizes
   // the calc_lhs output buffer below.  If it is unset (<=0) we cannot size the buffer
@@ -9301,6 +9186,12 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
         }
         out.limv.push_back(lim);
         out.censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
+        // per-obs distribution: a general (non-normal) log-likelihood endpoint
+        // outputs rx_pred_ = the ll and rx_r_ = 0 (vs a normal endpoint's mean f
+        // / variance V), so the M-step score below must branch on this.
+        int _yj = getIndYj(ind), _dist = 0, _yj0 = 0;
+        _splitYj(&_yj, &_dist, &_yj0);
+        out.distv.push_back(_dist);
       }
     }
   }
@@ -9427,6 +9318,19 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
     const arma::mat& dVmat = c.dVmat[k];
     for (int jo = 0; jo < nobs; ++jo) {
       double f = fvec[jo], V = Vvec[jo];
+      // General (non-normal) log-likelihood endpoint: rx_pred_ IS the per-obs
+      // log-likelihood and rx_r_ == 0, so the Gauss-Newton (f/V) score below does
+      // not apply.  The theta score is d(ll)/d(theta) (dfmat already holds it) and
+      // the empirical (BHHH) Fisher information is its outer product -- PSD, so the
+      // Newton step ascends the likelihood.  This must run BEFORE the V<=0 guard,
+      // which would otherwise drop every LL obs (V==0) and freeze the M-step.
+      if (jo < (int)c.distv.size() && c.distv[jo] != rxDistributionNorm) {
+        arma::rowvec dll = dfmat.row(jo);
+        if (!R_finite(f) || !dll.is_finite()) continue;
+        g += zk[k] * dll.t();
+        H += zk[k] * (dll.t() * dll);
+        continue;
+      }
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
       arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
       if (!df.is_finite() || !dV.is_finite()) continue;

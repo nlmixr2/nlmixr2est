@@ -134,7 +134,7 @@ nmTest({
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 5e-2)
   })
 
-  test_that("est='npag' reports a clear error when a transform sees a zero prediction", {
+  test_that("est='npag' notes a transform that sees a zero prediction in runInfo", {
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.5
         eta.ka~0.3; eta.ke~0.1 })
@@ -142,11 +142,14 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~lnorm(add.sd) })
     }
-    ## theo_sd keeps the t=0 observation where cp is structurally 0 -> lnorm(0)
-    expect_error(
-      nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-              control=npagControl(points=100L, cycles=3L, gammaOptimize=FALSE, muExpand=FALSE)),
-      "zero conditional density at every support point")
+    ## theo_sd keeps the t=0 observation where cp is structurally 0 -> lnorm(0).
+    ## rxode2 floors the log-transform prediction at _eps rather than returning a
+    ## non-finite density, so the fit degrades gracefully instead of erroring; npag
+    ## records the non-positive-prediction note in $runInfo (not a live warning).
+    f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
+              control=npagControl(points=100L, cycles=3L, gammaOptimize=FALSE, muExpand=FALSE)))
+    expect_s3_class(f, "nlmixr2FitData")
+    expect_true(any(grepl("<=0 prediction|0-prediction obs", f$runInfo)))
   })
 
 })

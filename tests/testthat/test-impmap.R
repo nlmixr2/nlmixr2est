@@ -607,9 +607,12 @@ nmTest({
 
   test_that("General likelihood: a custom ll() model fits and matches FOCEI", {
     skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
-    # A general (custom) likelihood -- exactly the normal log-density written out --
-    # flows through the shared FOCEI inner problem, so impmap should estimate it and
-    # match FOCEI (the transform-normal assertion is relaxed when llik is available).
+    # A general (custom) likelihood written out as EXACTLY the normal log-density,
+    # so the reliable ground truth is the equivalent `add()` normal model (the
+    # FOCEI outer optimizer does not itself estimate a non-`err` sigma living inside
+    # a raw `ll()` -- a separate limitation).  impmap's non-mu M-step reads the
+    # analytic d(ll)/d(theta) directly, so it estimates the raw-`ll()` add.sd and
+    # must recover the same value as the equivalent normal fit.
     m <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -622,8 +625,19 @@ nmTest({
         ll(cp) ~ -0.5 * log(2 * pi) - log(add.sd) - 0.5 * ((DV - cp) / add.sd)^2
       })
     }
+    mNorm <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.cl ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        cp <- linCmt(); cp ~ add(add.sd)
+      })
+    }
     .d <- nlmixr2data::theo_sd
-    .ff <- suppressWarnings(nlmixr2(m, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+    .ff <- suppressWarnings(nlmixr2(mNorm, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
                                     impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(all(is.finite(fixef(.fi))))

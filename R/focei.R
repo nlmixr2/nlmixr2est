@@ -1913,18 +1913,6 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 #attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
 attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
 
-#' @export
-rxUiGet.foceiResidTheta <- function(x, ...) {
-  # 0-based fullTheta indices of the non-fixed residual/error-model thetas
-  # (a non-NA `err` tag).  These do not change the structural prediction `f`,
-  # so the outer FD gradient can freeze the ODE when perturbing them.
-  .ui <- x[[1]]
-  .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
-  .resid <- !is.na(.theta$err) & !.theta$fix
-  as.integer(.theta$ntheta[.resid] - 1L)
-}
-attr(rxUiGet.foceiResidTheta, "rstudio") <- c(FALSE, TRUE)
-
 #'  Setup the skip covariate function
 #'
 #'
@@ -1985,9 +1973,6 @@ attr(rxUiGet.foceiResidTheta, "rstudio") <- c(FALSE, TRUE)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
   env$control$printTop <- TRUE
-  # 0-based fullTheta indices of the residual/error thetas the outer FD gradient
-  # may freeze the ODE for (read in foceiSetup_, like impThetaSensIdx).
-  env$control$residThetaIdx <- ui$foceiResidTheta
   env
 }
 

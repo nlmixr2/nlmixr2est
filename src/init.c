@@ -83,7 +83,6 @@ SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
 SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiNumericGrad(SEXP);
-SEXP _nlmixr2est_foceiNFreezeResidGrad(void);
 
 SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
                              SEXP, SEXP, SEXP, SEXP, SEXP,
@@ -270,7 +269,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},
   {"_nlmixr2est_foceiNumericGrad", (DL_FUNC) &_nlmixr2est_foceiNumericGrad, 1},
-  {"_nlmixr2est_foceiNFreezeResidGrad", (DL_FUNC) &_nlmixr2est_foceiNFreezeResidGrad, 0},
   {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},

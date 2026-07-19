@@ -531,16 +531,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// foceiNFreezeResidGrad
-int foceiNFreezeResidGrad();
-RcppExport SEXP _nlmixr2est_foceiNFreezeResidGrad() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(foceiNFreezeResidGrad());
-    return rcpp_result_gen;
-END_RCPP
-}
 // foceiSetup_
 NumericVector foceiSetup_(const RObject& obj, const RObject& data, NumericVector theta, IntegerVector mixIdx, Nullable<LogicalVector> thetaFixed, Nullable<LogicalVector> skipCov, RObject rxInv, Nullable<NumericVector> lower, Nullable<NumericVector> upper, Nullable<NumericMatrix> etaMat, Nullable<List> control);
 RcppExport SEXP _nlmixr2est_foceiSetup_(SEXP objSEXP, SEXP dataSEXP, SEXP thetaSEXP, SEXP mixIdxSEXP, SEXP thetaFixedSEXP, SEXP skipCovSEXP, SEXP rxInvSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP etaMatSEXP, SEXP controlSEXP) {

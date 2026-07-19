@@ -805,8 +805,10 @@ nmTest({
     fVAR <- suppressWarnings(suppressMessages(nlmixr(iovm, dat, "focei",
                 foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, iovXform = "var"))))
     rxode2::setRxThreads(.oldThreads)
-    # fell back to FD: either a theta-only FD cov (no om. rows) or, as here, none at all
-    expect_false(is.matrix(fVAR$cov) && any(grepl("^om\\.", rownames(fVAR$cov))))
+    # the seam: iovXform="var" must NOT take the analytic path.  It falls back to a
+    # finite-difference covariance -- which under covFull=TRUE can itself carry `om.`
+    # rows -- so the analytic-vs-FD seam is the covMethod, not the presence of om. rows.
+    expect_false(identical(fVAR$covMethod, "analytic"))
   })
 
   test_that("covMethod selects the analytic-vs-FD seam and the reporting formula", {

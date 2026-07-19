@@ -548,6 +548,11 @@ void npagOuter(Environment e) {
   } catch (const std::exception& ex) {
     Rcpp::stop(std::string("npag cycle failed: ") + ex.what());
   }
+  // A log/boxCox (lnorm) endpoint saw a non-positive prediction (floored by
+  // rxode2); the fit still ran on the floored value -- surface it into $runInfo.
+  if (impNpTbsDomainWarn()) {
+    Rcpp::warning("lnorm/log endpoint has a <=0 prediction; drop 0-prediction obs");
+  }
 
   int nsub = impNsub();
   int neta = impNeta();
