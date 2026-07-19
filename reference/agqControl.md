@@ -120,10 +120,13 @@ agqControl()
 #> [1] 1
 #> 
 #> $covMethod
-#> [1] 2
+#> [1] 1
 #> 
 #> $covType
-#> [1] "analytic"
+#> [1] "fd"
+#> 
+#> $covMethodDeferred
+#> [1] NA
 #> 
 #> $covSolveTol
 #> NULL
@@ -253,7 +256,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -976,7 +979,6 @@ fit <- nlmixr(f, r, est="agq")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": adaptive Gaussian quadrature (nAGQ > 1) without interaction is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 
@@ -1035,7 +1037,6 @@ fit <- nlmixr(f, p, est="agq", control=agqControl(nAGQ=5))
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": adaptive Gaussian quadrature (nAGQ > 1) without interaction is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 
@@ -1090,7 +1091,6 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": a linCmt() model is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 

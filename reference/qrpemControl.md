@@ -110,6 +110,9 @@ qrpemControl()
 #> $covType
 #> [1] "analytic"
 #> 
+#> $covMethodDeferred
+#> [1] NA
+#> 
 #> $covSolveTol
 #> NULL
 #> 
@@ -238,7 +241,7 @@ qrpemControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

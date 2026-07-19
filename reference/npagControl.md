@@ -15,6 +15,8 @@ npagControl(
   muExpand = FALSE,
   gridWidth = 4,
   gridBounds = c("auto", "ini", "both"),
+  dfScan = -1L,
+  cores = NULL,
   ...
 )
 ```
@@ -96,6 +98,22 @@ npagControl(
   \`"both"\` uses the ini bounds when present and auto otherwise. For a
   high-dimensional model, bounded ini estimates + \`"ini"\` keep the
   grid in range.
+
+- dfScan:
+
+  Size of the Sobol scan used for the D(F) global-optimality
+  certificate: \`-1\` (default) auto-sizes it to \`max(2048, 2 \*
+  points)\`, \`0\` skips the certificate (\`npagDF\` is \`NA\`), and a
+  positive value sets an explicit scan size. The scan does not affect
+  the fit, only the reported certificate; a smaller scan is faster.
+
+- cores:
+
+  Number of threads used for the parallel per-subject conditional-
+  likelihood solves. \`NULL\` (default) uses the current \`rxode2\`
+  thread count (\`rxode2::getRxThreads()\`); an integer sets the thread
+  count for the fit (restored afterwards). Results are independent of
+  the thread count.
 
 - ...:
 
@@ -192,6 +210,9 @@ npagControl()
 #> 
 #> $covType
 #> [1] "analytic"
+#> 
+#> $covMethodDeferred
+#> [1] NA
 #> 
 #> $covSolveTol
 #> NULL
@@ -321,7 +342,7 @@ npagControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1035,6 +1056,12 @@ npagControl()
 #> 
 #> $cycles
 #> [1] 100
+#> 
+#> $dfScan
+#> [1] -1
+#> 
+#> $npCores
+#> [1] NA
 #> 
 #> $gammaOptimize
 #> [1] TRUE

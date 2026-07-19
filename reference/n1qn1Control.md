@@ -226,21 +226,11 @@ n1qn1Control(
 
 - covMethod:
 
-  Method for calculating the covariance. `"analytic"` (the default) uses
-  the exact analytic observed-information R-matrix (reported as
-  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
-  errors; it covers FOCEI/FOCE fits with additive, proportional, or
-  combined error, mu-referenced/covariate/other structural parameters
-  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
-  and emits a message and falls back to the finite-difference Hessian
-  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
-  error, bounded-parameter transforms, a structural theta shared by two
-  etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
-  at a near-zero prediction). The finite-difference methods use R (the
-  Hessian) and S (the sum of individual gradient cross-products at the
-  empirical Bayes estimates): `"r,s"` sandwich
-  (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
-  cross-product-based (`solve(S)`), or `""` to skip the covariance step.
+  Method for calculating the covariance. `"r"` (the default) uses
+  nlmixr2's
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
+  Hessian; `"n1qn1"` uses the optimizer's own Hessian; `""` skips the
+  covariance step.
 
 - adjObf:
 
@@ -351,10 +341,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.363227 0.5667587  7.624e-06      0.055       0.006 0.028    0.001
-#>             other
-#> elapsed 0.1240068
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3249784 0.5078959   6.79e-06      0.044       0.006 0.026    0.001
+#>              other
+#> elapsed 0.09511896
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

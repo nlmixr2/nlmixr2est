@@ -26,7 +26,7 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
@@ -263,14 +263,15 @@ foceiControl(
 
 - covMethod:
 
-  Method for calculating the covariance. `"analytic"` (the default) uses
-  the exact analytic observed-information R-matrix (reported as
-  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
-  errors; it covers FOCEI/FOCE fits with additive, proportional, or
-  combined error, mu-referenced/covariate/other structural parameters
-  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
-  and emits a message and falls back to the finite-difference Hessian
-  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
+  Method for calculating the covariance. `"r,s"` (the default) is the
+  sandwich estimator (see below). `"analytic"` uses the exact analytic
+  observed-information R-matrix (reported as \\R^{-1}\\) and
+  additionally returns the residual and `Omega` standard errors; it
+  covers FOCEI/FOCE fits with additive, proportional, or combined error,
+  mu-referenced/covariate/other structural parameters (and
+  non-mu-referenced etas), and SD-scale inter-occasion variability, and
+  emits a message and falls back to the finite-difference Hessian for
+  anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
   error, bounded-parameter transforms, a structural theta shared by two
   etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
   at a near-zero prediction). The finite-difference methods use R (the
@@ -278,6 +279,10 @@ foceiControl(
   empirical Bayes estimates): `"r,s"` sandwich
   (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
   cross-product-based (`solve(S)`), or `""` to skip the covariance step.
+  `"sa"` (SAEM Louis stochastic-approximation FIM) and `"imp"`
+  (importance-sampling Monte-Carlo observed information) are also
+  accepted for any method; they are computed post-fit at the converged
+  estimates by the decoupled recompute engine.
 
 - covSolveTol:
 

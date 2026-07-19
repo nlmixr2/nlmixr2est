@@ -92,14 +92,6 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #>  
 #>  
 #> ✔ done
-#> → loading into symengine environment...
-#> → pruning branches (`if`/`else`) of full model...
-#> ✔ done
-#> → calculate sensitivities
-#> → calculate sensitivities
-#> → optimizing duplicate expressions in FOCEi outer gradient model (2 chunks)...
-#>  
-#>  
 #> → Calculating residuals/tables
 #> ✔ done
 

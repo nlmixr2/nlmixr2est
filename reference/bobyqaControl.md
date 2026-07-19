@@ -207,21 +207,10 @@ bobyqaControl(
 
 - covMethod:
 
-  Method for calculating the covariance. `"analytic"` (the default) uses
-  the exact analytic observed-information R-matrix (reported as
-  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
-  errors; it covers FOCEI/FOCE fits with additive, proportional, or
-  combined error, mu-referenced/covariate/other structural parameters
-  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
-  and emits a message and falls back to the finite-difference Hessian
-  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
-  error, bounded-parameter transforms, a structural theta shared by two
-  etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
-  at a near-zero prediction). The finite-difference methods use R (the
-  Hessian) and S (the sum of individual gradient cross-products at the
-  empirical Bayes estimates): `"r,s"` sandwich
-  (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
-  cross-product-based (`solve(S)`), or `""` to skip the covariance step.
+  Method for calculating the covariance. `"r"` (the default) uses
+  nlmixr2's
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
+  Hessian; `""` skips the covariance step.
 
 - adjObf:
 
@@ -328,9 +317,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8866334 0.8991626  8.165e-06      0.062       0.008 0.033    0.002
-#>             other
-#> elapsed 0.1091959
+#> elapsed 0.8443665 0.8290909  7.421e-06      0.044       0.008 0.035    0.001
+#>              other
+#> elapsed 0.09853515
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

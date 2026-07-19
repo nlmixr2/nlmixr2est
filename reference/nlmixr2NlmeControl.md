@@ -46,7 +46,7 @@ nlmixr2NlmeControl(
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
-  covMethod = c("analytic", "r,s", "r", "s", "nlme", ""),
+  covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...
 )
 
@@ -89,7 +89,7 @@ nlmeControl(
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
-  covMethod = c("analytic", "r,s", "r", "s", "nlme", ""),
+  covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...
 )
 ```
@@ -902,7 +902,7 @@ nlmeControl()
 #> [1] "jump"
 #> 
 #> $covMethod
-#> [1] "analytic"
+#> [1] "nlme"
 #> 
 #> $genRxControl
 #> [1] TRUE
@@ -1422,7 +1422,7 @@ nlmixr2NlmeControl()
 #> [1] "jump"
 #> 
 #> $covMethod
-#> [1] "analytic"
+#> [1] "nlme"
 #> 
 #> $genRxControl
 #> [1] TRUE

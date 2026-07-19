@@ -124,10 +124,13 @@ mfoceControl()
 #> [1] 1
 #> 
 #> $covMethod
-#> [1] 2
+#> [1] 1
 #> 
 #> $covType
-#> [1] "analytic"
+#> [1] "fd"
+#> 
+#> $covMethodDeferred
+#> [1] NA
 #> 
 #> $covSolveTol
 #> NULL
@@ -257,7 +260,7 @@ mfoceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

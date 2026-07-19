@@ -1,6 +1,13 @@
 # Set the covariance type based on prior calculated covariances
 
-Set the covariance type based on prior calculated covariances
+Switches a completed fit's covariance to `method`. A previously computed
+covariance is re-installed from the cache; otherwise it is recomputed at
+the converged estimates: `"r,s"`/`"r"`/`"s"` and `"analytic"` on a
+zero-iteration FOCEI model, and `"sa"` (SAEM Louis FIM) / `"imp"`
+(importance-sampling Monte-Carlo) via the decoupled recompute engine
+(the latter two require a mixed-effects fit). When
+`"sa"`/`"imp"`/`"analytic"` cannot be computed the covariance is left
+unchanged (it is never silently downgraded to `"r,s"`).
 
 ## Usage
 

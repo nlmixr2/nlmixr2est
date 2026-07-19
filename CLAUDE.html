@@ -119,6 +119,7 @@
 <li>The <code>sharedControl()</code> function (<code>R/sharedControl.R</code>) defines options common across all estimation methods</li>
 <li>
 <code>R/nlmixr2Est.R</code> contains the central S3 dispatch table – look here to understand what methods exist</li>
+<li>Any <code><a href="https://rdrr.io/r/base/warning.html" class="external-link">warning()</a></code> raised during an estimation run is collected into the fit’s <code>$runInfo</code> (that is how run-time notes reach the user). Warnings emitted by the estimation routines must therefore be concise – keep each under 75 characters so it renders on one line (the <code>$runInfo</code> display adds a bullet prefix). Do NOT prefix them with the method name (e.g. <code>est="vae":</code>) – the fit already reports which method was run.</li>
 </ul></div>
 <div class="section level2">
 <h2 id="comment-and-documentation-style">Comment and documentation style<a class="anchor" aria-label="anchor" href="#comment-and-documentation-style"></a></h2>

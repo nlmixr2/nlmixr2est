@@ -13,7 +13,8 @@ saemControl(
   nu = c(2, 2, 2),
   print = 1L,
   trace = 0,
-  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", ""),
+  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+  covMethodDeferred = NA_character_,
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -173,6 +174,14 @@ saemControl(
   \\4\times S^-1\\
 
   "" Does not calculate the covariance step.
+
+- covMethodDeferred:
+
+  Internal. When a foreign covariance ("sa"/"imp") is requested, it is
+  stashed here and computed post-fit at the converged estimates by the
+  decoupled recompute engine
+  ([`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  uses the same path); `NA` otherwise.
 
 - covFull:
 

@@ -123,7 +123,6 @@ fit <- nlmixr(one.cmt, theo_sd, est="focei")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": a linCmt() model is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 

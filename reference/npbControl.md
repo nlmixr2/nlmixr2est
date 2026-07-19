@@ -19,6 +19,7 @@ npbControl(
   cycles = 100L,
   gammaOptimize = FALSE,
   muExpand = FALSE,
+  cores = NULL,
   ...
 )
 ```
@@ -79,6 +80,15 @@ npbControl(
 - gammaOptimize:
 
   Unused for npb (kept for control compatibility).
+
+- cores:
+
+  Number of threads used for the parallel per-subject conditional-
+  likelihood solves in the Gibbs sweeps. \`NULL\` (default) uses the
+  current \`rxode2\` thread count (\`rxode2::getRxThreads()\`); an
+  integer sets the thread count for the fit (restored afterwards). With
+  a fixed \`seed\` the fit is bit-for-bit identical regardless of the
+  thread count.
 
 - ...:
 
@@ -161,6 +171,9 @@ npbControl()
 #> 
 #> $covType
 #> [1] "analytic"
+#> 
+#> $covMethodDeferred
+#> [1] NA
 #> 
 #> $covSolveTol
 #> NULL
@@ -290,7 +303,7 @@ npbControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1004,6 +1017,9 @@ npbControl()
 #> 
 #> $cycles
 #> [1] 100
+#> 
+#> $npCores
+#> [1] NA
 #> 
 #> $gammaOptimize
 #> [1] FALSE

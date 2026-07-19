@@ -252,21 +252,9 @@ will calculate tables. By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating the covariance.  <code>"analytic"</code> (the
-default) uses the exact analytic observed-information R-matrix (reported as
-\(R^{-1}\)) and additionally returns the residual and <code>Omega</code> standard
-errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
-error, mu-referenced/covariate/other structural parameters (and
-non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
-message and falls back to the finite-difference Hessian for anything out of
-scope (FO, <code>nAGQ &gt; 1</code>, censoring, DV-transformed error, bounded-parameter
-transforms, a structural theta shared by two etas, non-SD <code>iovXform</code>, or a
-pure-proportional variance that vanishes at a near-zero prediction).  The
-finite-difference methods use R (the Hessian) and S (the sum of individual
-gradient cross-products at the empirical Bayes estimates): <code>"r,s"</code> sandwich
-(<code>solve(R)%*%S%*%solve(R)</code>), <code>"r"</code> Hessian-based
-(<code>solve(R)</code>), <code>"s"</code> cross-product-based (<code>solve(S)</code>), or
-<code>""</code> to skip the covariance step.</p></dd>
+<dd><p>Method for calculating the covariance.  <code>"r"</code> (the
+default) uses nlmixr2's <code><a href="nlmixr2Hess.html">nlmixr2Hess()</a></code> Hessian; <code>""</code> skips the
+covariance step.</p></dd>
 
 
 <dt id="arg-adjobf">adjObf<a class="anchor" aria-label="anchor" href="#arg-adjobf"></a></dt>
@@ -382,10 +370,10 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3856675 0.4630917  8.456e-06      0.072       0.007 0.029    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.4822324</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.315998 0.4268833   6.47e-06      0.053       0.006 0.421    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09511223</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

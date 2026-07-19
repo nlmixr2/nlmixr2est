@@ -23,6 +23,7 @@ vaeControl(
   covariateSelection = TRUE,
   covSelectAlpha = 2,
   bnbStrategy = c("lifo", "fifo", "lc"),
+  parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
   likelihood = c("focei", "foce", "focep", "laplace"),
@@ -32,7 +33,7 @@ vaeControl(
   print = 1L,
   useColor = NULL,
   printNcol = NULL,
-  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -126,6 +127,24 @@ vaeControl(
   \`"fifo"\` (first-in-first-out) or \`"lc"\` (least cost / best-first).
   The solver is exact, so the selected covariates are identical for
   every strategy; only the search order (and thus efficiency) differs.
+
+- parEncoderBackward:
+
+  Parallelize the encoder backward (gradient) pass over subjects.
+  Defaults to \`TRUE\` unless \`options(nlmixr2.identical = TRUE)\` is
+  set (which flips the default to \`FALSE\`); an explicit value here
+  always wins. The encoder forward pass and the covariate
+  branch-and-bound already run multi-threaded and are bit-identical to
+  the serial run. The backward gradient is a continuous cross-subject
+  sum, so parallelizing it (per-thread partials reduced in thread order)
+  makes the result deterministic for a fixed number of \`cores\` but no
+  longer bit-identical to the serial path: the per-step gradient differs
+  at ~1e-12, which compounds through the iterative SGD/EM training to a
+  small final difference (well below any estimation tolerance), and
+  results may differ across different \`cores\`. When it is active (and
+  \`cores \> 1\`) a note is added to the fit's \`\$runInfo\`. Set this
+  to \`FALSE\` – or globally \`options(nlmixr2.identical = TRUE)\` – for
+  bit-identical, fully reproducible results.
 
 - nonMuTheta:
 

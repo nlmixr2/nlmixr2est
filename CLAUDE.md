@@ -174,6 +174,13 @@ When adding tests for an estimation method, split them by cost:
   common across all estimation methods
 - `R/nlmixr2Est.R` contains the central S3 dispatch table – look here to
   understand what methods exist
+- Any [`warning()`](https://rdrr.io/r/base/warning.html) raised during
+  an estimation run is collected into the fit’s `$runInfo` (that is how
+  run-time notes reach the user). Warnings emitted by the estimation
+  routines must therefore be concise – keep each under 75 characters so
+  it renders on one line (the `$runInfo` display adds a bullet prefix).
+  Do NOT prefix them with the method name (e.g. `est="vae":`) – the fit
+  already reports which method was run.
 
 ## Comment and documentation style
 

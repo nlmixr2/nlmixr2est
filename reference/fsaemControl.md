@@ -556,6 +556,9 @@ fsaemControl()
 #> $covMethod
 #> [1] "sa"
 #> 
+#> $covMethodDeferred
+#> [1] NA
+#> 
 #> $covFull
 #> [1] TRUE
 #> 

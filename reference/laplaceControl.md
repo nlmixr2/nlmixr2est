@@ -104,10 +104,13 @@ laplaceControl()
 #> [1] 1
 #> 
 #> $covMethod
-#> [1] 2
+#> [1] 1
 #> 
 #> $covType
-#> [1] "analytic"
+#> [1] "fd"
+#> 
+#> $covMethodDeferred
+#> [1] NA
 #> 
 #> $covSolveTol
 #> NULL
@@ -237,7 +240,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d9b02827f8>
+#> <bytecode: 0x55e750ac4b70>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -960,7 +963,6 @@ fit <- nlmixr(f, r, est="laplace")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": a non-normal likelihood endpoint (t/cauchy/count/ordinal); the analytic path is Gaussian-only is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 
@@ -1019,7 +1021,6 @@ fit <- nlmixr(f, p, est="laplace")
 #>  
 #>  
 #> ✔ done
-#> covType="analytic": a non-normal likelihood endpoint (t/cauchy/count/ordinal); the analytic path is Gaussian-only is out of analytic-covariance scope; using the finite-difference covariance instead
 #> → Calculating residuals/tables
 #> ✔ done
 

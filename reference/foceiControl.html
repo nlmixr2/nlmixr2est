@@ -59,7 +59,7 @@
 <span>  derivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"switch"</span>, <span class="st">"forward"</span>, <span class="st">"central"</span><span class="op">)</span>,</span>
 <span>  derivSwitchTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covDerivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
-<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"analytic"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  covSolveTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -305,8 +305,9 @@ derivatives while calculating the covariance components
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating the covariance.  <code>"analytic"</code> (the
-default) uses the exact analytic observed-information R-matrix (reported as
+<dd><p>Method for calculating the covariance.  <code>"r,s"</code> (the
+default) is the sandwich estimator (see below).  <code>"analytic"</code>
+uses the exact analytic observed-information R-matrix (reported as
 \(R^{-1}\)) and additionally returns the residual and <code>Omega</code> standard
 errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
 error, mu-referenced/covariate/other structural parameters (and
@@ -319,7 +320,11 @@ finite-difference methods use R (the Hessian) and S (the sum of individual
 gradient cross-products at the empirical Bayes estimates): <code>"r,s"</code> sandwich
 (<code>solve(R)%*%S%*%solve(R)</code>), <code>"r"</code> Hessian-based
 (<code>solve(R)</code>), <code>"s"</code> cross-product-based (<code>solve(S)</code>), or
-<code>""</code> to skip the covariance step.</p></dd>
+<code>""</code> to skip the covariance step.  <code>"sa"</code> (SAEM Louis
+stochastic-approximation FIM) and <code>"imp"</code> (importance-sampling
+Monte-Carlo observed information) are also accepted for any method; they
+are computed post-fit at the converged estimates by the decoupled
+recompute engine.</p></dd>
 
 
 <dt id="arg-covsolvetol">covSolveTol<a class="anchor" aria-label="anchor" href="#arg-covsolvetol"></a></dt>
