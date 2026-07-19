@@ -2,6 +2,13 @@
 
 ## New features
 
+- The `imp` / `impmap` / `qrpem` importance-sampling family is faster: the
+  Monte-Carlo covariance (`covMethod="imp"`, the default) and the per-subject
+  proposal build in the E-step are now parallelized over subjects, using the
+  `cores` set in the control's `rxControl` (defaulting to
+  `rxode2::getRxThreads()`), joining the already-threaded E-step weight loop.
+  Both are bit-identical to the single-threaded run at any thread count.
+
 - `est="vae"` now runs multi-threaded.  The per-subject encoder forward pass and
   the exact branch-and-bound covariate M-step (previously serial, dominating the
   EM and covariate-selection phases) are parallelized over the `cores` set in
