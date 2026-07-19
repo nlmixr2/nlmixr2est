@@ -173,25 +173,6 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-#' Split a foreign ("sa"/"imp") covariance request off an nlm-family covMethod.
-#'
-#' The nlm-family kernels compute only their own Hessian-based ("r") or
-#' optimizer-native covariance; "sa"/"imp" are recomputed post-fit at the
-#' converged estimates by the decoupled engine (see `.covRecompute`).  The
-#' covMethod is left as "sa"/"imp" (a valid match.arg choice so the control
-#' round-trips); `.nlmFinalizeList` skips the native cov step for it and the
-#' central post-fit hook reads the deferred request off the control.
-#' @param covMethod resolved nlm-family covMethod
-#' @return list(covMethod, deferred)
-#' @noRd
-.nlmCovMethodDefer <- function(covMethod) {
-  if (is.character(covMethod) && length(covMethod) == 1L &&
-        covMethod %in% c("sa", "imp")) {
-    return(list(covMethod = covMethod, deferred = covMethod))
-  }
-  list(covMethod = covMethod, deferred = NA_character_)
-}
-
 .nlmFinalizeList <- function(env, lst, par="par", printLine=TRUE,
                              hessianCov=TRUE) {
   .ret <- lst
@@ -213,7 +194,7 @@
   if (inherits(lst, "nls")) {
     .cov <- summary(lst)$cov.unscaled
     .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .cov, .parScaled)
-  } else if (hessianCov && !(.ctl$covMethod %in% c("", "sa", "imp"))) {
+  } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)

@@ -359,9 +359,9 @@
 #' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
 #' \code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
 #' Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
-#' recompute engine -- so any covariance can be applied to any fit.  When
-#' \code{"analytic"} cannot be computed the covariance is left unchanged (it is
-#' never silently downgraded to \code{"r,s"}).
+#' recompute engine (the latter two require a mixed-effects fit).  When
+#' \code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
+#' is left unchanged (it is never silently downgraded to \code{"r,s"}).
 #'
 #' @param fit nlmixr2 fit
 #' @param method covariance method (see the `covMethod` argument for the control
@@ -413,7 +413,7 @@ setCov <- function(fit, method) {
     .env$covMethod <- method
     return(invisible(fit))
   }
-  # sa/imp: decoupled recompute at the converged estimates (works on any fit)
+  # sa/imp: decoupled recompute at the converged estimates (mixed-effects fits)
   if (method %in% c("sa", "imp")) {
     .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
     if (!isTRUE(.covInstallResult(.env, .r))) {

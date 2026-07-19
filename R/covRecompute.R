@@ -152,7 +152,9 @@
       if (.n %in% names(.se) && "SE" %in% names(.pf)) {
         .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
         .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
+        if ("%RSE" %in% names(.pf)) {
+          .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
+        }
         if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
               isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
           .pf[.n, "CI Lower"] <- .e - .qn * .s

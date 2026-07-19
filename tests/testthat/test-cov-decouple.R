@@ -41,13 +41,15 @@ nmTest({
     expect_equal(.f$cov, .cov0)
   })
 
-  test_that("all controls accept sa/imp as a covMethod choice", {
+  test_that("mixed-effects controls accept sa/imp; NLM family rejects them", {
     expect_equal(foceiControl(covMethod = "sa")$covMethodDeferred, "sa")
     expect_equal(foceiControl(covMethod = "imp")$covMethodDeferred, "imp")
     expect_equal(saemControl(covMethod = "imp")$covMethodDeferred, "imp")
     expect_silent(impmapControl(covMethod = "sa"))
-    expect_equal(nlmControl(covMethod = "sa")$covMethod, "sa")
-    expect_equal(bobyqaControl(covMethod = "imp")$covMethod, "imp")
+    # the NLM family is population-only, so sa/imp (random-effects covariances)
+    # are not offered there
+    expect_error(nlmControl(covMethod = "sa"))
+    expect_error(bobyqaControl(covMethod = "imp"))
     # nlme now defaults to keeping its own covariance
     expect_equal(eval(formals(nlmeControl)$covMethod)[1], "nlme")
     # vae now defaults to r,s

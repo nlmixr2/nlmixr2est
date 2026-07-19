@@ -167,8 +167,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          eventSens = c("jump", "fd"),
                          sensMethod = c("default", "forward", "adjoint"),
                          calcTables=TRUE, compress=FALSE,
-                         covMethod=c("r", "optim", "sa", "imp", ""),
-                         covMethodDeferred=NA_character_,
+                         covMethod=c("r", "optim", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
@@ -212,9 +211,6 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   } else {
     covMethod <- match.arg(covMethod)
   }
-  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
-  covMethod <- .nlmCovDef$covMethod
-  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
 
   .eventTypeIdx <- c("central" =2L, "forward"=1L)
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -293,7 +289,6 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
 
   .ret <- list(method=method,
                covMethod=covMethod,
-               covMethodDeferred=covMethodDeferred,
                trace=trace, # nolint
                fnscale=fnscale,
                parscale=parscale,

@@ -5,12 +5,13 @@
 - The SAEM Louis stochastic-approximation FIM (`covMethod="sa"`) and the
   importance-sampling Monte-Carlo observed information (`covMethod="imp"`) are no
   longer tied to `est="saem"`/`est="imp"`.  They can now be requested as the
-  `covMethod` of any estimation method (computed post-fit at the converged
-  estimates) and switched onto any completed fit with `setCov(fit, "sa")` /
-  `setCov(fit, "imp")`.
+  `covMethod` of any mixed-effects estimation method (computed post-fit at the
+  converged estimates) and switched onto any completed fit with
+  `setCov(fit, "sa")` / `setCov(fit, "imp")`.  (The population-only NLM family
+  has no random effects, so `sa`/`imp` do not apply there.)
 
 - Several estimation families changed their default `covMethod` now that any
-  covariance can be applied to any method:
+  covariance can be applied to any mixed-effects method:
     - the FOCEI family (`focei`/`foce`/`laplace`/`agq`) now defaults to the
       `"r,s"` sandwich (was `"analytic"`);
     - `est="vae"` now defaults to `"r,s"` (was `"analytic"`);

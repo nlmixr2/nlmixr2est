@@ -4,6 +4,10 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #'
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{""} skips the
+#'   covariance step.
+#'
 #' @param returnBobyqa return the bobyqa output instead of the nlmixr2
 #'   fit
 #'
@@ -80,8 +84,7 @@ bobyqaControl <- function(npt=NULL,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=FALSE,
-                          covMethod=c("r", "sa", "imp", ""),
-                          covMethodDeferred=NA_character_,
+                          covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                           eventSens=c("jump", "fd"), ...) {
 
@@ -167,18 +170,12 @@ bobyqaControl <- function(npt=NULL,
   }
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
 
-  covMethod <- match.arg(covMethod)
-  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
-  covMethod <- .nlmCovDef$covMethod
-  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
-
   .ret <- list(npt=npt,
                rhobeg=rhobeg,
                rhoend=rhoend,
                iprint=iprint,
                maxfun=maxfun,
-               covMethod=covMethod,
-               covMethodDeferred=covMethodDeferred,
+               covMethod=match.arg(covMethod),
                optExpression=optExpression,
                literalFix=literalFix,
                literalFixRes=literalFixRes,

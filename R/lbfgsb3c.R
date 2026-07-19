@@ -6,6 +6,10 @@
 #' @inheritParams lbfgsb3c::lbfgsb3c
 #' @inheritParams nlmControl
 #'
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{""} skips the
+#'   covariance step.
+#'
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit
 #'
@@ -98,8 +102,7 @@ lbfgsb3cControl <- function(trace=0,
                             eventSens = c("jump", "fd"),
                             sensMethod = c("default", "forward", "adjoint"),
                             calcTables=TRUE, compress=FALSE,
-                            covMethod=c("r", "sa", "imp", ""),
-                            covMethodDeferred=NA_character_,
+                            covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
@@ -186,11 +189,6 @@ lbfgsb3cControl <- function(trace=0,
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
 
-  covMethod <- match.arg(covMethod)
-  .nlmCovDef <- .nlmCovMethodDefer(covMethod)
-  covMethod <- .nlmCovDef$covMethod
-  if (!is.na(.nlmCovDef$deferred)) covMethodDeferred <- .nlmCovDef$deferred
-
   .ret <- list(
     trace=trace,
     factr=factr,
@@ -199,8 +197,7 @@ lbfgsb3cControl <- function(trace=0,
     reltol=reltol,
     lmm=lmm,
 
-    covMethod=covMethod,
-    covMethodDeferred=covMethodDeferred,
+    covMethod=match.arg(covMethod),
     optExpression=optExpression,
     literalFix=literalFix,
     literalFixRes=literalFixRes,
