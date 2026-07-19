@@ -18,11 +18,14 @@ nmTest({
     })
   }
 
-  test_that("nlme default covMethod recomputes the analytic covariance", {
+  test_that("nlme covMethod='analytic' recomputes the analytic covariance", {
     skip_on_cran()
+    ## nlme now keeps its own covariance by default
+    expect_identical(nlmeControl()$covMethod, "nlme")
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme", control = nlmeControl(print = 0))))
-    ## analytic (or its FD fallback), never the legacy nlme label by default
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme",
+              control = nlmeControl(print = 0, covMethod = "analytic"))))
+    ## analytic (or its FD fallback), never the legacy nlme label when requested
     expect_false(identical(fit$covMethod, "nlme"))
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))

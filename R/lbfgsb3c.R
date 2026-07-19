@@ -6,6 +6,10 @@
 #' @inheritParams lbfgsb3c::lbfgsb3c
 #' @inheritParams nlmControl
 #'
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{""} skips the
+#'   covariance step.
+#'
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit
 #'

@@ -28,7 +28,7 @@ vaeControl(
   print = 1L,
   useColor = NULL,
   printNcol = NULL,
-  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,

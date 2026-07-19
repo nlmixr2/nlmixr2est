@@ -30,9 +30,10 @@ nmTest({
     }
 
     .chk <- function(mfun, muEst, baseEst, muCtl, baseCtl) {
-      # analytic is the default; the mu recompute freezes the inner problem, and for the
-      # analytic observed information that reproduces the same value as a normal fit.
-      .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0))
+      # request the analytic covariance explicitly (the family default is now
+      # "r,s"); the mu recompute freezes the inner problem, and for the analytic
+      # observed information that reproduces the same value as a normal fit.
+      .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0, covMethod = "analytic"))
       expect_equal(.fM$covMethod, "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
       # the recomputed cov's condition numbers are added to objDf post-install
@@ -45,7 +46,7 @@ nmTest({
       .cmn <- intersect(names(.sM), names(.sF))
       expect_equal(unname(.sM[.cmn]), unname(.sF[.cmn]), tolerance = 1e-2)
       # (b) well-identified: also equals a normal base fit (converges to the same point)
-      .fN <- .nlmixr(mfun, theo_sd2, baseEst, baseCtl(print = 0))
+      .fN <- .nlmixr(mfun, theo_sd2, baseEst, baseCtl(print = 0, covMethod = "analytic"))
       .sN <- sqrt(diag(.fN$cov))
       expect_equal(unname(.sM[.cmn]), unname(.sN[.cmn]), tolerance = 5e-2)
     }
@@ -77,8 +78,8 @@ nmTest({
     }
     for (.est in c("mfocei", "ifocei")) {
       .ctl <- if (.est == "mfocei") mfoceiControl else ifoceiControl
-      .fB <- .nlmixr(modOde, theo_sd2, "focei", foceiControl(print = 0))
-      .fM <- .nlmixr(modOde, theo_sd2, .est, .ctl(print = 0))
+      .fB <- .nlmixr(modOde, theo_sd2, "focei", foceiControl(print = 0, covMethod = "analytic"))
+      .fM <- .nlmixr(modOde, theo_sd2, .est, .ctl(print = 0, covMethod = "analytic"))
       expect_equal(.fM$covMethod, "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["allo.cl", "SE"]))))
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))

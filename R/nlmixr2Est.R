@@ -340,6 +340,25 @@ nlmixr2Est0 <- function(env, ...) {
           !is.null(.foceiRecomputeBaseEst(.estName))) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
     }
+    # A foreign covariance ("sa"/"imp") requested via covMethod= on a family
+    # whose kernel does not compute it (focei/saem/imp/vae/advi/np): recompute at
+    # the converged estimates and install.  Native requests carry no deferred
+    # field.  Drive off the deferred request's presence, skipping only when a
+    # valid matching cov is already installed (idempotent re-run).
+    .def <- .covGetDeferred(.ret)
+    if (!is.na(.def)) {
+      .curCov <- tryCatch(.ret$cov, error = function(e) NULL)
+      .installed <-
+        identical(tryCatch(.ret$covMethod, error = function(e) NULL), .def) &&
+        is.matrix(.curCov) && all(is.finite(.curCov))
+      if (!.installed) {
+        .rEnv <- if (is.environment(.ret)) .ret else tryCatch(.ret$env, error = function(e) NULL)
+        if (is.environment(.rEnv)) {
+          .r <- tryCatch(.covRecompute(.ret, .def), error = function(e) NULL)
+          try(.covInstallResult(.rEnv, .r), silent = TRUE)
+        }
+      }
+    }
   }
   .ret
 }

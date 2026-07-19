@@ -16,6 +16,26 @@
   `options(nlmixr2.identical=TRUE)` (flips the default to serial) or
   `vaeControl(parEncoderBackward=FALSE)`.
 
+- The SAEM Louis stochastic-approximation FIM (`covMethod="sa"`) and the
+  importance-sampling Monte-Carlo observed information (`covMethod="imp"`) are no
+  longer tied to `est="saem"`/`est="imp"`.  They can now be requested as the
+  `covMethod` of any mixed-effects estimation method (computed post-fit at the
+  converged estimates) and switched onto any completed fit with
+  `setCov(fit, "sa")` / `setCov(fit, "imp")`.  (The population-only NLM family
+  has no random effects, so `sa`/`imp` do not apply there.)
+
+- Several estimation families changed their default `covMethod` now that any
+  covariance can be applied to any mixed-effects method:
+    - the FOCEI family (`focei`/`foce`/`laplace`/`agq`) now defaults to the
+      `"r,s"` sandwich (was `"analytic"`);
+    - `est="vae"` now defaults to `"r,s"` (was `"analytic"`);
+    - `est="nlme"` now keeps nlme's own covariance (`"nlme"`) by default;
+    - the nonparametric family (`npag`/`npb`) now defaults to the
+      importance-sampling covariance (`"imp"`).
+  `est="saem"` (`"sa"`), the importance-sampling family (`"imp"`), the NLM family
+  (`"r"`/optimizer Hessian), `est="advi"` (`"advi"`) and `fo`/`foi` (no
+  covariance) keep their previous defaults.
+
 - `vaeControl(bnbStrategy=)` selects the frontier discipline for the exact
   branch-and-bound covariate selection in `est="vae"`: `"lifo"` (default, the
   existing last-in-first-out depth-first search), `"fifo"` (first-in-first-out)
@@ -737,6 +757,10 @@
   to: 0".
 
 ### Covariance and standard errors
+
+- `setCov(fit, "analytic")` no longer silently installs (and mislabels) the
+  `"r,s"` finite-difference covariance when the analytic covariance cannot be
+  computed for the model; the fit's covariance is left unchanged instead.
 
 - `fit$etaSE` columns are now labeled `se(<eta>)` (matching `fit$etaRSE`'s
   `rse(<eta>)%`); the label was previously applied to a matrix's `names()`

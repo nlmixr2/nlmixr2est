@@ -1,20 +1,24 @@
-# Analytic-first covMethod defaults across the mixed-model estimation methods.
+# Per-family covMethod defaults across the mixed-model estimation methods.
 # Always-run core unit test: no fits, only the control objects and the shared
 # base-est mapping used by the post-fit covariance recompute.
 
-test_that("covMethod defaults prefer analytic", {
-  ## saem keeps the stochastic-approximation FIM ("sa") first, analytic second
+test_that("per-family covMethod defaults", {
+  ## saem keeps the stochastic-approximation FIM ("sa")
   expect_identical(saemControl()$covMethod, "sa")
   expect_identical(saemControl(covMethod = "analytic")$covMethod, "analytic")
-  expect_identical(nlmeControl()$covMethod, "analytic")
-  expect_identical(vaeControl()$covMethod, "analytic")
+  ## nlme now keeps nlme's own covariance by default
+  expect_identical(nlmeControl()$covMethod, "nlme")
+  ## vae now defaults to the r,s sandwich
+  expect_identical(vaeControl()$covMethod, "r,s")
   ## advi keeps its own variational covariance first, with analytic second
   expect_identical(adviControl()$covMethod, "advi")
   expect_identical(adviControl(covMethod = "analytic")$covMethod, "analytic")
-  ## focei was already analytic-first
-  expect_identical(foceiControl()$covMethod, 2L)
-  expect_identical(foceiControl()$covType, "analytic")
-  ## imp family inherits foceiControl's analytic default (integer slot + covType)
+  ## focei now defaults to the r,s sandwich (integer slot 1, finite-difference)
+  expect_identical(foceiControl()$covMethod, 1L)
+  expect_identical(foceiControl()$covType, "fd")
+  expect_identical(foceiControl(covMethod = "analytic")$covMethod, 2L)
+  ## imp family keeps the importance-sampling default (maps to the analytic slot
+  ## internally, with the MC covariance driven by the impCov flag)
   expect_identical(impmapControl()$covMethod, 2L)
   expect_identical(impmapControl()$covType, "analytic")
 })
