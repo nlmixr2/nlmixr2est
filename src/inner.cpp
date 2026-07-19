@@ -10270,8 +10270,8 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 // Reuses the FOCEi inner solve set up by vaeInnerSetup_ -- so it inherits the ODE
 // solve, residual-error models, transform-both-sides and censoring unchanged.
 
-// RAII for the npb/npag subject-parallel solve scopes: on construction it turns
-// on the inner parallel mode (sort ids + the _innerParallel flag); on
+// RAII for the npb/npag/advi subject-parallel solve scopes: on construction it
+// turns on the inner parallel mode (sort ids + the _innerParallel flag); on
 // destruction it guarantees the reset/un-sort on EVERY exit path, including an
 // exception escaping a solve, so a later serial solve never sees a stale sort or
 // flag.  A no-op when `on` is false (the serial path).
@@ -11208,7 +11208,8 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   int nsub = (int)getRxNsub(rx);
   if (nsub != N) { nsub = N; cores = 1; }        // unexpected shape: serial
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -11279,7 +11280,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     if (doParallel) setRxThreadId(-1);
 #endif
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
   // serial reduction in id order (thread-count invariant, matches serial code)
   double elbo = 0.0;
   for (int i = 0; i < N; ++i) {
@@ -11490,7 +11491,8 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
   int nsub = (int)getRxNsub(rx);
   if (nsub != N) { nsub = N; cores = 1; }        // unexpected shape: serial
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -11553,7 +11555,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     if (doParallel) setRxThreadId(-1);
 #endif
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
   double elbo = 0.0;
   for (int i = 0; i < N; ++i) {
     elbo += objBuf[i];

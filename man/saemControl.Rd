@@ -12,7 +12,8 @@ saemControl(
   nu = c(2, 2, 2),
   print = 1L,
   trace = 0,
-  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", ""),
+  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+  covMethodDeferred = NA_character_,
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -148,6 +149,11 @@ typical fitting.}
  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
 
  "" Does not calculate the covariance step.}
+
+\item{covMethodDeferred}{Internal.  When a foreign covariance ("sa"/"imp")
+is requested, it is stashed here and computed post-fit at the converged
+estimates by the decoupled recompute engine (\code{setCov()} uses the same
+path); \code{NA} otherwise.}
 
 \item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
 should include every estimated population parameter -- the structural and

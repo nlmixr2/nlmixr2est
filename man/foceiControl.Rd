@@ -25,7 +25,7 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
@@ -226,8 +226,9 @@ differences.}
 derivatives while calculating the covariance components
 (Hessian and S).}
 
-\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
-default) uses the exact analytic observed-information R-matrix (reported as
+\item{covMethod}{Method for calculating the covariance.  \code{"r,s"} (the
+default) is the sandwich estimator (see below).  \code{"analytic"}
+uses the exact analytic observed-information R-matrix (reported as
 \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
 errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
 error, mu-referenced/covariate/other structural parameters (and
@@ -240,7 +241,11 @@ finite-difference methods use R (the Hessian) and S (the sum of individual
 gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
-\code{""} to skip the covariance step.}
+\code{""} to skip the covariance step.  \code{"sa"} (SAEM Louis
+stochastic-approximation FIM) and \code{"imp"} (importance-sampling
+Monte-Carlo observed information) are also accepted for any method; they
+are computed post-fit at the converged estimates by the decoupled
+recompute engine.}
 
 \item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
 the augmented-sensitivity solves behind \code{covMethod="analytic"} and the

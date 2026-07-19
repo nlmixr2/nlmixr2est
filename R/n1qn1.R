@@ -6,6 +6,10 @@
 #' @inheritParams n1qn1::n1qn1
 #' @inheritParams nlmControl
 #'
+#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
+#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"n1qn1"} uses
+#'   the optimizer's own Hessian; \code{""} skips the covariance step.
+#'
 #' @param returnN1qn1 return the n1qn1 output instead of the nlmixr2
 #'   fit
 #' @return bobqya control structure

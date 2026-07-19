@@ -78,6 +78,11 @@
 #'
 #'  "" Does not calculate the covariance step.
 #'
+#' @param covMethodDeferred Internal.  When a foreign covariance ("sa"/"imp")
+#'   is requested, it is stashed here and computed post-fit at the converged
+#'   estimates by the decoupled recompute engine (\code{setCov()} uses the same
+#'   path); \code{NA} otherwise.
+#'
 #' @param covFull Boolean (default \code{TRUE}) indicating the covariance
 #'   should include every estimated population parameter -- the structural and
 #'   residual thetas plus the \code{Omega} variance/covariance elements -- named
@@ -344,7 +349,8 @@ saemControl <- function(seed = 99,
                         nu = c(2, 2, 2),
                         print = 1L,
                         trace = 0, # nolint
-                        covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", ""),
+                        covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+                        covMethodDeferred = NA_character_,
                         covFull = TRUE,
                         nSaCov = 500L,
                         calcTables = TRUE,
@@ -532,6 +538,9 @@ saemControl <- function(seed = 99,
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
 
+  # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
+  # importance-sampling covariance post-fit at the converged estimates.  The
+  # covMethodDeferred formal carries a round-tripped request (default NA).
   if (identical(covMethod, "")) {
     ## "" requests no covariance; match.arg() cannot select it because
     ## pmatch("") matches nothing, so handle it explicitly.
@@ -540,6 +549,10 @@ saemControl <- function(seed = 99,
     .covMethod <- covMethod
   } else {
     .covMethod <- match.arg(covMethod)
+    if (identical(.covMethod, "imp")) {
+      covMethodDeferred <- "imp"
+      .covMethod <- ""
+    }
   }
 
   checkmate::assertLogical(covFull, len=1, any.missing=FALSE)
@@ -583,6 +596,7 @@ saemControl <- function(seed = 99,
     sigdigTable=sigdigTable,
     ci=ci,
     covMethod=.covMethod,
+    covMethodDeferred=covMethodDeferred,
     covFull=covFull,
     nSaCov=as.integer(nSaCov),
     logLik=logLik,

@@ -17,7 +17,7 @@ impmapControl(
   ctol = NULL,
   nConvWindow = 10L,
   impSeed = 42L,
-  covMethod = c("imp", "analytic", "r,s", "r", "s", ""),
+  covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
