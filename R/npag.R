@@ -115,9 +115,9 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
   # sentinel that survives the control round-trip.
   .ctl$points <- if (is.null(points)) NA_integer_ else as.integer(points)
   .ctl$cycles <- as.integer(cycles)
-  .ctl$dfScan <- as.integer(dfScan)
+  .ctl$dfScan <- .npAssertDfScan(dfScan)
   # NA -> use the default rxode2 thread count (resolved in .npEstCore)
-  .ctl$npCores <- if (is.null(cores)) NA_integer_ else as.integer(cores)
+  .ctl$npCores <- .npAssertCores(cores)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)

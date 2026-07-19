@@ -77,8 +77,8 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 // caller keeps the (serial) proposal + accept/reject draws.  Implemented in
 // inner.cpp, used by npb.cpp.
 void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ,
-                         std::vector<std::vector<double> >& curLoc,
-                         std::vector<std::vector<double> >& propLoc,
+                         const std::vector<std::vector<double> >& curLoc,
+                         const std::vector<std::vector<double> >& propLoc,
                          std::vector<double>& curContrib,
                          std::vector<double>& propContrib);
 

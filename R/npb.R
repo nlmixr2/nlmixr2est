@@ -66,7 +66,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
   # NA -> use the default rxode2 thread count (resolved in .npEstCore)
-  .ctl$npCores <- if (is.null(cores)) NA_integer_ else as.integer(cores)
+  .ctl$npCores <- .npAssertCores(cores)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)

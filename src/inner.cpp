@@ -10270,6 +10270,24 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 // Reuses the FOCEi inner solve set up by vaeInnerSetup_ -- so it inherits the ODE
 // solve, residual-error models, transform-both-sides and censoring unchanged.
 
+// RAII for the npb/npag subject-parallel solve scopes: on construction it turns
+// on the inner parallel mode (sort ids + the _innerParallel flag); on
+// destruction it guarantees the reset/un-sort on EVERY exit path, including an
+// exception escaping a solve, so a later serial solve never sees a stale sort or
+// flag.  A no-op when `on` is false (the serial path).
+struct NpInnerParallelScope {
+  rx_solve* rx_;
+  bool on_;
+  NpInnerParallelScope(rx_solve* rxIn, bool on) : rx_(rxIn), on_(on) {
+    if (on_) { sortIds(rx_, 2); _innerParallel.store(1, std::memory_order_release); }
+  }
+  ~NpInnerParallelScope() {
+    if (on_) { _innerParallel.store(0, std::memory_order_release); sortIds(rx_, 0); }
+  }
+  NpInnerParallelScope(const NpInnerParallelScope&) = delete;
+  NpInnerParallelScope& operator=(const NpInnerParallelScope&) = delete;
+};
+
 // Conditional log-likelihood log p(y_i | eta) for subject id (no Omega prior).
 // Returns -Inf if any observation had a non-finite density (e.g. a bad solve).
 double npEvalCondLik(double *eta, int id) {
@@ -10528,7 +10546,8 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
   arma::mat runMax(nsub, nMix); runMax.fill(R_NegInf);
   arma::mat runSum(nsub, nMix, arma::fill::zeros);
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
@@ -10558,7 +10577,7 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
 #endif
     }
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
   // responsibilities -> mean over subjects -> new proportions
   arma::vec newProb(nMix, arma::fill::zeros);
   for (int i = 0; i < nsub; ++i) {
@@ -10609,7 +10628,8 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
   arma::mat G(nsub, nMix, arma::fill::value(R_NegInf));
   arma::vec gmaxv(nsub, arma::fill::value(R_NegInf));
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -10632,7 +10652,7 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
     if (doParallel) setRxThreadId(-1);
 #endif
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
   // Serial categorical draw per subject (unchanged RNG order), then Dirichlet.
   std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
   for (int i = 0; i < nsub; ++i) {
@@ -10714,8 +10734,8 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
 // is empty).  The caller does the (serial) proposal draws and accept/reject, so
 // the RNG stream -- and thus reproducibility -- is unchanged.
 void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ,
-                         std::vector<std::vector<double> >& curLoc,
-                         std::vector<std::vector<double> >& propLoc,
+                         const std::vector<std::vector<double> >& curLoc,
+                         const std::vector<std::vector<double> >& propLoc,
                          std::vector<double>& curContrib,
                          std::vector<double>& propContrib) {
   rx = getRxSolve_();
@@ -10726,7 +10746,8 @@ void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ
   curContrib.assign(nsub, 0.0);
   propContrib.assign(nsub, 0.0);
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -10737,14 +10758,18 @@ void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ
 #endif
     int k = (base >= 0 && base < (int)z.size()) ? z[base] : -1;
     if (k >= 0 && k < K && occ[k]) {
-      curContrib[base] = npEvalCondLik(&curLoc[k][0], base);
-      propContrib[base] = npEvalCondLik(&propLoc[k][0], base);
+      // Local per-thread copies: npEvalCondLik takes double* and shared clusters
+      // (multiple subjects with the same k) must not alias one buffer.
+      std::vector<double> curEta(curLoc[k]);
+      std::vector<double> propEta(propLoc[k]);
+      curContrib[base] = npEvalCondLik(&curEta[0], base);
+      propContrib[base] = npEvalCondLik(&propEta[0], base);
     }
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(-1);
 #endif
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
 }
 
 // Build the UNNORMALIZED Psi at a residual-error multiplier gamma.  Same as
@@ -10782,7 +10807,8 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
   double savedScale = op_focei.npResidScale;
   op_focei.npResidScale = gamma;   // likInner0 scales r by gamma^2 (incl. cens/tbs)
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+  {
+  NpInnerParallelScope npScope(rx, doParallel);
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
@@ -10800,7 +10826,7 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 #endif
     }
   }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  }
   op_focei.npResidScale = savedScale;
   arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
   if (offset != nullptr) *offset = arma::accu(m);

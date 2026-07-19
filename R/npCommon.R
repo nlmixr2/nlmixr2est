@@ -33,6 +33,32 @@
   max(2028L, as.integer(512L * max(1L, as.integer(neta))))
 }
 
+# Validate the npag `dfScan` control: a single finite integer that is -1 (auto),
+# 0 (skip the D(F) certificate), or a positive scan size.  Fails fast so a stray
+# value (e.g. -5) cannot silently behave like auto.
+#' @noRd
+.npAssertDfScan <- function(dfScan) {
+  if (length(dfScan) != 1L || is.na(dfScan) || !is.finite(dfScan) ||
+        as.integer(dfScan) != dfScan || dfScan < -1L) {
+    stop("'dfScan' must be a single integer: -1 (auto), 0 (skip), or a positive scan size",
+         call. = FALSE)
+  }
+  as.integer(dfScan)
+}
+
+# Validate the npag/npb `cores` control: NULL (use the current rxode2 thread
+# count, stored as NA) or a single positive integer thread count.
+#' @noRd
+.npAssertCores <- function(cores) {
+  if (is.null(cores)) return(NA_integer_)
+  if (length(cores) != 1L || is.na(cores) || !is.finite(cores) ||
+        as.integer(cores) != cores || cores < 1L) {
+    stop("'cores' must be NULL or a single positive integer number of threads",
+         call. = FALSE)
+  }
+  as.integer(cores)
+}
+
 #' @noRd
 .npEstCore <- function(env, est, muModel = NULL, ...) {
   .ui <- env$ui
