@@ -33,6 +33,32 @@
   max(2028L, as.integer(512L * max(1L, as.integer(neta))))
 }
 
+# Validate the npag `dfScan` control: a single finite integer that is -1 (auto),
+# 0 (skip the D(F) certificate), or a positive scan size.  Fails fast so a stray
+# value (e.g. -5) cannot silently behave like auto.
+#' @noRd
+.npAssertDfScan <- function(dfScan) {
+  if (length(dfScan) != 1L || is.na(dfScan) || !is.finite(dfScan) ||
+        as.integer(dfScan) != dfScan || dfScan < -1L) {
+    stop("'dfScan' must be a single integer: -1 (auto), 0 (skip), or a positive scan size",
+         call. = FALSE)
+  }
+  as.integer(dfScan)
+}
+
+# Validate the npag/npb `cores` control: NULL (use the current rxode2 thread
+# count, stored as NA) or a single positive integer thread count.
+#' @noRd
+.npAssertCores <- function(cores) {
+  if (is.null(cores)) return(NA_integer_)
+  if (length(cores) != 1L || is.na(cores) || !is.finite(cores) ||
+        as.integer(cores) != cores || cores < 1L) {
+    stop("'cores' must be NULL or a single positive integer number of threads",
+         call. = FALSE)
+  }
+  as.integer(cores)
+}
+
 #' @noRd
 .npEstCore <- function(env, est, muModel = NULL, ...) {
   .ui <- env$ui
@@ -69,6 +95,9 @@
       .npAutoPoints(length(.box$names))
     } else as.integer(.ctl$points)
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
+  # global-optimality (D(F)) Sobol scan size (npag only): -1 auto
+  # (max(2048, 2*npPoints)), 0 to skip the certificate, >0 for an explicit count.
+  .ctl$npDfScan <- as.integer(if (is.null(.ctl$dfScan)) -1L else .ctl$dfScan)
   # gamma scales the residual variance r; a generalized (non-normal) endpoint has
   # r == 1, so the gamma warm-start is a no-op -- force it off there.
   .isGenLik <- .npIsGeneralLik(.ui)
@@ -94,6 +123,19 @@
   env$impmapControl <- .control
   env$est <- est
   .ui <- env$ui
+  # honor npagControl(cores=)/npbControl(cores=): the parallel per-subject solves
+  # in the kernels use the solve's thread count (op->cores), which rxode2 sizes
+  # from getRxThreads() when the inner solve is built inside .npFamilyFit.  Set
+  # the thread count for the fit (default: the current rxode2 threads) and restore
+  # it afterwards; the fit results are independent of the thread count.
+  .nCores <- if (is.null(.ctl$npCores) || is.na(.ctl$npCores)) {
+    rxode2::getRxThreads()
+  } else as.integer(.ctl$npCores)
+  if (!is.na(.nCores) && .nCores >= 1L && rxode2::getRxThreads() != .nCores) {
+    .oldThreads <- rxode2::getRxThreads()
+    rxode2::setRxThreads(.nCores)
+    on.exit(rxode2::setRxThreads(.oldThreads), add = TRUE)
+  }
   .npFamilyFit(env, .ui, ...)
 }
 
@@ -266,7 +308,7 @@
   .in <- control[[1]]
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
-              gridWidth = 4, gridBounds = "auto",
+              gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,
               alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
               propSd = 0.2, seed = 42L)
   for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
@@ -282,6 +324,8 @@
   .ctl$muExpand <- isTRUE(.np$muExpand)
   .ctl$gridWidth <- as.numeric(.np$gridWidth)
   .ctl$gridBounds <- as.character(.np$gridBounds)
+  .ctl$dfScan <- as.integer(.np$dfScan)
+  .ctl$npCores <- as.integer(.np$npCores)
   .ctl$alpha <- as.numeric(.np$alpha)
   .ctl$burnin <- as.integer(.np$burnin)
   .ctl$nsamp <- as.integer(.np$nsamp)

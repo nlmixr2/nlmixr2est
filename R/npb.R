@@ -44,6 +44,11 @@
 #'   multiplier (gamma); the residual thetas are fit directly.
 #' @param cycles Unused for npb (kept for control compatibility).
 #' @param gammaOptimize Unused for npb (kept for control compatibility).
+#' @param cores Number of threads used for the parallel per-subject conditional-
+#'   likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
+#'   `rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread
+#'   count for the fit (restored afterwards).  With a fixed `seed` the fit is
+#'   bit-for-bit identical regardless of the thread count.
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npb engine.
 #' @export
@@ -55,11 +60,13 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        nchains = 1L, propSd = 0.2, seed = 42L,
                        residOptimize = c("alternate", "final", "none"),
                        cycles = 100L,
-                       gammaOptimize = FALSE, muExpand = FALSE, ...) {
+                       gammaOptimize = FALSE, muExpand = FALSE, cores = NULL, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   .ctl$points <- as.integer(points)
   .ctl$cycles <- as.integer(cycles)
+  # NA -> use the default rxode2 thread count (resolved in .npEstCore)
+  .ctl$npCores <- .npAssertCores(cores)
   .ctl$gammaOptimize <- isTRUE(gammaOptimize)
   .ctl$residOptimize <- match.arg(residOptimize)
   .ctl$muExpand <- isTRUE(muExpand)

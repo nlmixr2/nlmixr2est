@@ -16,6 +16,7 @@ npbControl(
   cycles = 100L,
   gammaOptimize = FALSE,
   muExpand = FALSE,
+  cores = NULL,
   ...
 )
 }
@@ -52,6 +53,12 @@ multiplier (gamma); the residual thetas are fit directly.}
 \item{cycles}{Unused for npb (kept for control compatibility).}
 
 \item{gammaOptimize}{Unused for npb (kept for control compatibility).}
+
+\item{cores}{Number of threads used for the parallel per-subject conditional-
+likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
+`rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread
+count for the fit (restored afterwards).  With a fixed `seed` the fit is
+bit-for-bit identical regardless of the thread count.}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

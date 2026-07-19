@@ -300,6 +300,25 @@
   the posterior-mean draws are pooled, and a Gelman-Rubin R-hat per eta is
   reported in `$env$npbRhat` (~1 at convergence; > ~1.1 flags non-convergence).
 
+- `est="npb"` is faster: the two per-sweep loops that re-solve the ODE serially
+  (the support-location Metropolis-Hastings step, and the mixture-proportion
+  Gibbs step for `mix()` models) now solve their per-subject conditional
+  likelihoods in parallel over subjects, matching the already-parallel Psi build.
+  The proposal and accept/reject draws stay serial in their original order, so a
+  fixed-seed fit is bit-for-bit identical regardless of thread count.
+
+- `est="npag"` is faster: it no longer does a redundant full conditional-density
+  build at the first cycle (the degeneracy check now reads the working build's
+  per-subject maxima), and the one-time D(F) global-optimality scan is smaller by
+  default and configurable via `npagControl(dfScan=)` (`-1` auto, `0` to skip the
+  certificate, or an explicit scan size).  Neither change affects the fitted
+  support, Omega, thetas, or objective.
+
+- `npagControl(cores=)` and `npbControl(cores=)` set the number of threads used
+  for the parallel per-subject conditional-likelihood solves.  The default
+  (`NULL`) uses the current `rxode2` thread count (`rxode2::getRxThreads()`); an
+  integer sets the thread count for the fit and restores it afterwards.
+
 - SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
   event data keeps `DV` when the model references it (previously dropped, so the
   likelihood solve errored "parameter(s) required for solving: DV"); the
