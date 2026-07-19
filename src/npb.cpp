@@ -239,26 +239,47 @@ void npbOuter(Environment e) {
       w[k] = std::exp(cumLog1mV) * vv;
       cumLog1mV += std::log(std::max(1e-300, 1.0 - vv));
     }
-    // (c) support locations: MH for occupied clusters, fresh G_0 draw otherwise
+    // (c) support locations: MH for occupied clusters, fresh G_0 draw otherwise.
+    // The proposal + accept/reject draws stay serial and in their original order
+    // (so the RNG stream, and thus reproducibility, is unchanged); only the
+    // per-subject conditional-likelihood solves are parallelized
+    // (npbSupportMHContrib).  Serial pre-pass draws the proposals and priors:
+    std::vector<char> occ(K, 0);
+    std::vector<std::vector<double> > curLoc(K), propLoc(K);
+    std::vector<double> curPrior(K, 0.0), propPrior(K, 0.0), acceptU(K, 0.0);
     for (int k = 0; k < K; ++k) {
       if (nk[k] == 0) {
         for (int j = 0; j < neta; ++j) phi(k, j) = R::rnorm(0.0, g0sd[j]);
         continue;
       }
+      occ[k] = 1;
       arma::rowvec cur = phi.row(k), prop = cur;
       for (int j = 0; j < neta; ++j) prop[j] += R::rnorm(0.0, propSd);
-      double curLp = 0.0, propLp = 0.0;
+      acceptU[k] = R::unif_rand();  // drawn now (before the solves) to keep RNG order
+      double cP = 0.0, pP = 0.0;
       for (int j = 0; j < neta; ++j) {
-        curLp += -0.5 * cur[j] * cur[j] / g0var[j];
-        propLp += -0.5 * prop[j] * prop[j] / g0var[j];
+        cP += -0.5 * cur[j] * cur[j] / g0var[j];
+        pP += -0.5 * prop[j] * prop[j] / g0var[j];
       }
-      std::vector<double> curEta(cur.begin(), cur.end()), propEta(prop.begin(), prop.end());
-      for (int i = 0; i < nsub; ++i) {
-        if (z[i] != k) continue;
-        curLp += npEvalCondLik(&curEta[0], i);
-        propLp += npEvalCondLik(&propEta[0], i);
-      }
-      if (std::log(R::unif_rand()) < propLp - curLp) phi.row(k) = prop;
+      curPrior[k] = cP; propPrior[k] = pP;
+      curLoc[k].assign(cur.begin(), cur.end());
+      propLoc[k].assign(prop.begin(), prop.end());
+    }
+    // parallel solves of each subject's cur/prop conditional log-likelihood
+    std::vector<double> curContrib, propContrib;
+    npbSupportMHContrib(z, occ, curLoc, propLoc, curContrib, propContrib);
+    // serial reduction (in ascending subject order per cluster, matching the old
+    // accumulation exactly) + accept/reject
+    std::vector<double> curLp(K), propLp(K);
+    for (int k = 0; k < K; ++k) { curLp[k] = curPrior[k]; propLp[k] = propPrior[k]; }
+    for (int i = 0; i < nsub; ++i) {
+      int k = z[i];
+      if (k >= 0 && k < K && occ[k]) { curLp[k] += curContrib[i]; propLp[k] += propContrib[i]; }
+    }
+    for (int k = 0; k < K; ++k) {
+      if (!occ[k]) continue;
+      if (std::log(acceptU[k]) < propLp[k] - curLp[k])
+        for (int j = 0; j < neta; ++j) phi(k, j) = propLoc[k][j];
     }
     // (c2) residual/regressor optimization (alternate): re-fit the residual thetas
     // against the current draw's mixing distribution during burn-in, then hold them

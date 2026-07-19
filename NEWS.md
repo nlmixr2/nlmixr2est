@@ -2,6 +2,20 @@
 
 ## New features
 
+- `est="vae"` now runs multi-threaded.  The per-subject encoder forward pass and
+  the exact branch-and-bound covariate M-step (previously serial, dominating the
+  EM and covariate-selection phases) are parallelized over the `cores` set in
+  `vaeControl(rxControl=rxode2::rxControl(cores=))` (defaulting to
+  `rxode2::getRxThreads()`), joining the already-threaded decoder solve.  The
+  encoder forward pass and the covariate branch-and-bound are bit-identical to the
+  single-threaded run.  The encoder backward (gradient) pass is also parallelized
+  by default (`vaeControl(parEncoderBackward=TRUE)`); its cross-subject sum cannot
+  be reduced in parallel bit-identically, so it is deterministic for a fixed
+  `cores` but differs slightly from the serial path.  A note is added to the fit's
+  `$runInfo` when it is active.  For bit-identical, fully reproducible results set
+  `options(nlmixr2.identical=TRUE)` (flips the default to serial) or
+  `vaeControl(parEncoderBackward=FALSE)`.
+
 - The SAEM Louis stochastic-approximation FIM (`covMethod="sa"`) and the
   importance-sampling Monte-Carlo observed information (`covMethod="imp"`) are no
   longer tied to `est="saem"`/`est="imp"`.  They can now be requested as the
@@ -21,14 +35,6 @@
   `est="saem"` (`"sa"`), the importance-sampling family (`"imp"`), the NLM family
   (`"r"`/optimizer Hessian), `est="advi"` (`"advi"`) and `fo`/`foi` (no
   covariance) keep their previous defaults.
-
-## Bug fixes
-
-### Output / tables
-
-- `setCov(fit, "analytic")` no longer silently installs (and mislabels) the
-  `"r,s"` finite-difference covariance when the analytic covariance cannot be
-  computed for the model; the fit's covariance is left unchanged instead.
 
 - `vaeControl(bnbStrategy=)` selects the frontier discipline for the exact
   branch-and-bound covariate selection in `est="vae"`: `"lifo"` (default, the
@@ -313,6 +319,25 @@
   the stick-breaking Gibbs sampler runs once per chain (seed offset per chain),
   the posterior-mean draws are pooled, and a Gelman-Rubin R-hat per eta is
   reported in `$env$npbRhat` (~1 at convergence; > ~1.1 flags non-convergence).
+
+- `est="npb"` is faster: the two per-sweep loops that re-solve the ODE serially
+  (the support-location Metropolis-Hastings step, and the mixture-proportion
+  Gibbs step for `mix()` models) now solve their per-subject conditional
+  likelihoods in parallel over subjects, matching the already-parallel Psi build.
+  The proposal and accept/reject draws stay serial in their original order, so a
+  fixed-seed fit is bit-for-bit identical regardless of thread count.
+
+- `est="npag"` is faster: it no longer does a redundant full conditional-density
+  build at the first cycle (the degeneracy check now reads the working build's
+  per-subject maxima), and the one-time D(F) global-optimality scan is smaller by
+  default and configurable via `npagControl(dfScan=)` (`-1` auto, `0` to skip the
+  certificate, or an explicit scan size).  Neither change affects the fitted
+  support, Omega, thetas, or objective.
+
+- `npagControl(cores=)` and `npbControl(cores=)` set the number of threads used
+  for the parallel per-subject conditional-likelihood solves.  The default
+  (`NULL`) uses the current `rxode2` thread count (`rxode2::getRxThreads()`); an
+  integer sets the thread count for the fit and restores it afterwards.
 
 - SAEM/fsaem now fit general log-likelihood (`ll() ~ expr`) models.  The solve
   event data keeps `DV` when the model references it (previously dropped, so the
@@ -732,6 +757,10 @@
   to: 0".
 
 ### Covariance and standard errors
+
+- `setCov(fit, "analytic")` no longer silently installs (and mislabels) the
+  `"r,s"` finite-difference covariance when the analytic covariance cannot be
+  computed for the model; the fit's covariance is left unchanged instead.
 
 - `fit$etaSE` columns are now labeled `se(<eta>)` (matching `fit$etaRSE`'s
   `rse(<eta>)%`); the label was previously applied to a matrix's `names()`

@@ -70,6 +70,20 @@
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
 #'   solver is exact, so the selected covariates are identical for every strategy;
 #'   only the search order (and thus efficiency) differs.
+#' @param parEncoderBackward Parallelize the encoder backward (gradient) pass over
+#'   subjects.  Defaults to `TRUE` unless `options(nlmixr2.identical = TRUE)` is
+#'   set (which flips the default to `FALSE`); an explicit value here always wins.
+#'   The encoder forward pass and the covariate branch-and-bound already run
+#'   multi-threaded and are bit-identical to the serial run.  The backward gradient
+#'   is a continuous cross-subject sum, so parallelizing it (per-thread partials
+#'   reduced in thread order) makes the result deterministic for a fixed number of
+#'   `cores` but no longer bit-identical to the serial path: the per-step gradient
+#'   differs at ~1e-12, which compounds through the iterative SGD/EM training to a
+#'   small final difference (well below any estimation tolerance), and results may
+#'   differ across different `cores`.  When it is active (and `cores > 1`) a note is
+#'   added to the fit's `$runInfo`.  Set this to `FALSE` -- or globally
+#'   `options(nlmixr2.identical = TRUE)` -- for bit-identical, fully reproducible
+#'   results.
 #' @param objf Which objective-function value is active for AIC/BIC/BICc. Both
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
@@ -120,6 +134,7 @@ vaeControl <- function(seed = 42L,
                        covariateSelection = TRUE,
                        covSelectAlpha = 2,
                        bnbStrategy = c("lifo", "fifo", "lc"),
+                       parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
@@ -167,6 +182,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   bnbStrategy <- match.arg(bnbStrategy)
+  checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
   checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
@@ -248,6 +264,7 @@ vaeControl <- function(seed = 42L,
                covariateSelection = covariateSelection,
                covSelectAlpha = covSelectAlpha,
                bnbStrategy = bnbStrategy,
+               parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,
                nonMuEtaOmega = nonMuEtaOmega,
                likelihood = likelihood,
