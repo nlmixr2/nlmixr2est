@@ -2152,7 +2152,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # subject count (issue #606).
   .obsId <- sort(unique(.dat$ID[.dat$EVID == 0]))
   .dropId <- setdiff(seq_along(.idLvl), .obsId)
-  if (length(.dropId) > 0L) {
+  # Only drop no-observation subjects when at least one subject *does* have an
+  # observation.  A dataset with no EVID==0 rows at all (e.g. an aggregate-data
+  # output eval, as in admixr2, whose subjects are all placeholders) must keep
+  # its rows -- dropping every subject leaves an empty solve and matches the
+  # pre-issue-#606 behavior these callers rely on.
+  if (length(.dropId) > 0L && length(.obsId) > 0L) {
     warning("IDs without observations dropped: ",
             paste(.idLvl[.dropId], collapse = " "), call. = FALSE)
     .dat <- .dat[.dat$ID %in% .obsId, , drop = FALSE]

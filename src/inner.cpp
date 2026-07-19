@@ -5224,7 +5224,9 @@ NumericVector foceiSetup_(const RObject &obj,
     stop("Can't find ID in dataset.");
   }
   IntegerVector ids = as<IntegerVector>(df[idn]);
-  int last = ids[ids.size()-1]-1;
+  // Guard an empty dataset (e.g. an aggregate-data output eval whose placeholder
+  // subject carries no observations): ids[ids.size()-1] would read out of bounds.
+  int last = ids.size() > 0 ? ids[ids.size()-1]-1 : 0;
   for (unsigned int j = ids.size(); j--;){
     if (last != ids[j]){
       last = ids[j];

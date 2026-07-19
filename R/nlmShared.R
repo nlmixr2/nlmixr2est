@@ -64,6 +64,15 @@
   if (!any(names(.ctl) == "hessErr")) {
     .ctl$hessErr <-   (.Machine$double.eps)^(1/3)
   }
+  # nlmSetup (nlm.cpp) reads control$iterPrintControl; external callers that
+  # hand-build a control (e.g. babelmixr2 fmeMcmc) may omit it, so synthesize
+  # one from the scalar print args instead of erroring in C.
+  if (!inherits(.ctl$iterPrintControl, "iterPrintControl")) {
+    .ctl$iterPrintControl <-
+      .absorbIterPrintControl(print = if (is.null(.ctl$print)) 1L else .ctl$print,
+                              printNcol = .ctl$printNcol,
+                              useColor = .ctl$useColor)
+  }
 
   .env <- new.env(parent=emptyenv())
   .env$rxControl <- .ctl$rxControl
