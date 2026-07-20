@@ -92,10 +92,12 @@ nmTest({
     mPInv  <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-probitInv(p,0,1); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
     tol <- 1e-4
     # gamma() (curEval "lgammafn"): 1/digamma(init) -- was mis-keyed to the linear default
-    expect_equal(scP(mGamma, 3), 1 / digamma(3), tolerance = tol)        # 1.0837
-    expect_equal(scP(mGamma, 1.4616), 1.4616, tolerance = 1e-3)          # digamma~0 -> |init|
+    expect_equal(scP(mGamma, 3), 1 / digamma(3), tolerance = tol)        # 1.0837, digamma>0
+    expect_equal(scP(mGamma, 1), 1, tolerance = tol)                     # digamma<0 (wrong sign) -> |init|
+    expect_equal(scP(mGamma, 1.4616), 1.4616, tolerance = 1e-3)          # digamma~0 (pole) -> |init|
     # factorial(): 1/digamma(init+1)
-    expect_equal(scP(mFact, 3), abs(1 / digamma(4)), tolerance = tol)    # 0.7961
+    expect_equal(scP(mFact, 3), 1 / digamma(4), tolerance = tol)         # 0.7961, digamma>0
+    expect_equal(scP(mFact, 0.2), 0.2, tolerance = tol)                  # digamma(x+1)<0 -> |init|
     # log(): log(|init|)*|init| in band; = 0 at init 1 -> |init|
     expect_equal(scP(mLog, 5), log(5) * 5, tolerance = tol)              # 8.047
     expect_equal(scP(mLog, 1), 1, tolerance = tol)                       # singular -> |init|=1

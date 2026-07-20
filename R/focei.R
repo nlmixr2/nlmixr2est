@@ -1771,11 +1771,15 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
             # Hence D(S("log(exp(x))"}, "x")
             .scaleC[.j] <- 1 # log scaled
           } else if (.curEval == "factorial") {
-            # Hence 1/D(S("log(factorial(x))"}, "x"):
-            .scaleC[.j] <- abs(1 / digamma(.ini$est[.j] + 1))
+            # 1/D(log(factorial(x)), x) = 1/digamma(x+1).  NOT abs(): digamma(x+1) is
+            # negative for x < ~0.462, giving a wrong-signed (unstable) scaling that
+            # must fall back to |init| -- the guard's v > 0 check catches it.
+            .scaleC[.j] <- 1 / digamma(.ini$est[.j] + 1)
           } else if (.curEval == "gamma" || .curEval == "lgammafn") {
-            # 1/D(log(gamma(x)), x); rxode2 reports gamma() as curEval "lgammafn"
-            .scaleC[.j] <- abs(1 / digamma(.ini$est[.j]))
+            # 1/D(log(gamma(x)), x) = 1/digamma(x).  NOT abs(): digamma(x) is negative
+            # for x < ~1.462, a wrong-signed scaling that must fall back to |init|.
+            # rxode2 reports gamma() as curEval "lgammafn".
+            .scaleC[.j] <- 1 / digamma(.ini$est[.j])
           } else if (.curEval == "log") {
             #1/D(log(log(x)), x)
             .scaleC[.j] <- log(abs(.ini$est[.j])) * abs(.ini$est[.j])
