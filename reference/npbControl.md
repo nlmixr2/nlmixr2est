@@ -81,6 +81,12 @@ npbControl(
 
   Unused for npb (kept for control compatibility).
 
+- muExpand:
+
+  When \`TRUE\`, mu-expand non-mu structural fixed-effect thetas (a
+  theta with no eta) into grid-estimable pseudo-etas before the fit;
+  \`FALSE\` (default) leaves them to the residual step.
+
 - cores:
 
   Number of threads used for the parallel per-subject conditional-
@@ -307,7 +313,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x556c7c81f450>
+#> <bytecode: 0x5579e90e2370>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

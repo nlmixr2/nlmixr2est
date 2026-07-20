@@ -11,6 +11,10 @@ vaeControl(nonMuTheta=).
 
 ## Arguments
 
+- ui:
+
+  rxode2 ui
+
 - est:
 
   estimation method (all methods are shown by \`nlmixr2AllEst()\`).

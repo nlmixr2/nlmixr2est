@@ -118,6 +118,12 @@ multiplier (gamma); the residual thetas are fit directly.</p></dd>
 <dd><p>Unused for npb (kept for control compatibility).</p></dd>
 
 
+<dt id="arg-muexpand">muExpand<a class="anchor" aria-label="anchor" href="#arg-muexpand"></a></dt>
+<dd><p>When `TRUE`, mu-expand non-mu structural fixed-effect thetas (a
+theta with no eta) into grid-estimable pseudo-etas before the fit; `FALSE`
+(default) leaves them to the residual step.</p></dd>
+
+
 <dt id="arg-cores">cores<a class="anchor" aria-label="anchor" href="#arg-cores"></a></dt>
 <dd><p>Number of threads used for the parallel per-subject conditional-
 likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
@@ -343,7 +349,7 @@ or to Pmetrics NPAG.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x556c7c81f450&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5579e90e2370&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
