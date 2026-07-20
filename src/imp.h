@@ -160,6 +160,7 @@ void impUpdateStructThetas(const arma::vec& step);
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
 void impComputeCov(Rcpp::Environment e);
+bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"
 // (in place of foceiOuter).  Module M1: a single MAP pass plus per-subject

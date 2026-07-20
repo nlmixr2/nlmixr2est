@@ -16,8 +16,10 @@
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include <boost/random/sobol.hpp>
+#include <ctime>
 #include "nmMcmcRng.h"
 #include "imp.h"
+#include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -504,6 +506,13 @@ void impComputeCov(Environment e) {
   // is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
   // once here and refilled per call (the FD Hessian calls evalObj O(np^2) times).
   std::vector<double> objBuf(nsub, 0.0);
+  // Progress bar over the finite-difference covariance evaluations, like the
+  // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
+  // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
+  bool covProg = impCovProgress();
+  clock_t covT0 = clock();
+  int covTot = 1 + 2 * np * np, covCur = 0, covTick = 0;
+  if (covProg) RSprintf("calculating covariance matrix\n");
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
@@ -540,6 +549,7 @@ void impComputeCov(Environment e) {
     }
     double obj = 0.0;
     for (int id = 0; id < nsub; ++id) obj += objBuf[id];
+    if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
     return obj;
   };
 
@@ -571,6 +581,7 @@ void impComputeCov(Environment e) {
       Hess(a, b) = v; Hess(b, a) = v;
     }
   }
+  if (covProg) par_progress(covTot, covTot, covTick, 1, covT0, 1);   // close the bar
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
   for (int id = 0; id < nsub; ++id) impForceResolve(id);

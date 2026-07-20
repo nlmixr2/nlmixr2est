@@ -597,6 +597,10 @@
   iteration printer (like every other method) and stores it on the fit as
   `parHistData`; the sampler's results are unchanged (bit-identical).
 
+- The importance-sampling (`covMethod = "imp"`) covariance step now shows a
+  progress bar over its finite-difference evaluations, like the focei
+  covariance step (shown when iteration printing is on).
+
 - New `vaeCovariates()` returns the covariates `est = "vae"` would explore.
 
 - New `formatMinWidth()` for shorter `$parFixed` display; `$parFixed` is rebuilt

@@ -8979,6 +8979,10 @@ void impIterPrintGet(Environment e) {
   if (!ph.isNULL()) e["parHistData"] = ph;
 }
 
+// Whether to draw the covariance-step progress bar: on when the fit is printing
+// iterations (scale.every was set from the control's print cadence; 0 = quiet).
+bool impCovProgress() { return op_focei.scale.every != 0; }
+
 // Newton step on the non-mu structural thetas: add step[s] to theta
 // impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
 void impUpdateStructThetas(const arma::vec& step) {
