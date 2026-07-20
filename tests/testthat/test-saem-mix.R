@@ -218,7 +218,9 @@ nmTest({
 
   test_that("test SAEM mixture model estimation", {
 
-    set.seed(42)
+    # rxWithSeed pins BOTH the R and rxode2 RNG for the data sim and restores
+    # them afterward, so this test neither depends on nor leaks seed state.
+    rxode2::rxWithSeed(42, {
     n_subj <- 30
     sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
     cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
@@ -240,6 +242,7 @@ nmTest({
         CMT = c(1, rep(2, length(times)))
       )
     }))
+    })
 
     one.compartment.mix <- function() {
       ini({
@@ -442,7 +445,9 @@ nmTest({
   test_that("SAEM mixture components actually separate (not just 'no error')", {
     # Regression test for the mixProb collapse bug (all subjects landing on
     # one component regardless of seed).
-    set.seed(42)
+    # rxWithSeed pins BOTH the R and rxode2 RNG for the data sim and restores
+    # them afterward, so this test neither depends on nor leaks seed state.
+    rxode2::rxWithSeed(42, {
     n_subj <- 30
     sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
     cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
@@ -464,6 +469,7 @@ nmTest({
         CMT = c(1, rep(2, length(times)))
       )
     }))
+    })
 
     one.compartment.mix <- function() {
       ini({
