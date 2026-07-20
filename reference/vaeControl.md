@@ -108,8 +108,12 @@ vaeControl(
 - covariateSelection:
 
   When \`TRUE\` (default) perform automated BICc-ELBO covariate
-  selection during training; when \`FALSE\` fit the given fixed
-  covariate structure only (faster population-only mode).
+  selection during training; when \`FALSE\` fit only the covariate
+  structure written in the model. In the \`FALSE\` case the
+  model-declared covariate coefficients (both linear \`beta\*WT\`
+  effects and transformed ones such as \`beta\*log(WT/70)\`) are
+  estimated in place by the regress M-step regardless of \`nonMuTheta\`;
+  a \`ini(... ~ fix())\` coefficient stays fixed.
 
 - covSelectAlpha:
 
