@@ -45,6 +45,11 @@ arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt);
 // over base subjects.  Requires vaeInnerSetup_ (or foceiSetup_) already run.
 void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi);
 
+// Support covariance masked by the model Omega sparsity (diagonal + modeled
+// off-diagonals), with fixed-Omega diagonals restored to the model value.
+// Shared by the npag/npb iteration-history push into op_focei.
+arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel);
+
 // Unnormalized Psi at a residual-error multiplier gamma (single absolute scale,
 // no per-row offset).  For the D(F) certificate's cross-matrix likelihood ratios.
 void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,

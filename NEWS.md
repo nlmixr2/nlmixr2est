@@ -593,6 +593,10 @@
   (`fit$env$npbMeanDraws`) get eta column names, and the per-eta R-hat vector
   (`fit$env$npbRhat`) gets eta row names.
 
+- `est = "npb"` now prints its per-sweep iteration history through the shared
+  iteration printer (like every other method) and stores it on the fit as
+  `parHistData`; the sampler's results are unchanged (bit-identical).
+
 - New `vaeCovariates()` returns the covariates `est = "vae"` would explore.
 
 - New `formatMinWidth()` for shorter `$parFixed` display; `$parFixed` is rebuilt

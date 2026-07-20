@@ -191,6 +191,9 @@ void npbOuter(Environment e) {
   arma::vec wLast;              // final weights of the last chain
   int total = nBurn + nSamp;
 
+  // shared scale.h iteration printer + parameter history (chain 0 sweeps).
+  impIterPrintStart();
+
   // Independent chains (seed offset per chain) for Gelman-Rubin R-hat.
   for (int chain = 0; chain < nchains; ++chain) {
   // reproducible RNG seeded from the control (via R's RNG so set.seed also works)
@@ -209,6 +212,28 @@ void npbOuter(Environment e) {
     // (a) conditional likelihoods p(y_i | phi_k) and cluster assignments
     arma::mat psi;
     npBuildPsiCore(phi, cores, psi);   // nsub x K
+    // per-sweep parameter-history row (chain 0), reusing the just-built psi for
+    // the marginal -2LL of the incoming (phi, w) draw.  Pushing the support
+    // covariance into op_focei is safe (npBuildPsiCore sums llikObs and does not
+    // use omegaInv) and is overwritten by npFinalizeFit.  impSetOmega calls back
+    // into R (rxSymInvCholCreate), so -- exactly as the npOptimizeResid step does
+    // -- bracket it with Put/GetRNGstate to preserve the sampler's RNG stream
+    // (and thus reproducibility) across the R call.
+    if (chain == 0) {
+      double llit = 0.0;
+      for (int i = 0; i < nsub; ++i)
+        llit += std::log(std::max(1e-300, arma::accu(psi.row(i) % w.t())));
+      arma::rowvec meanEta = w.t() * phi;
+      arma::mat Om(neta, neta, arma::fill::zeros);
+      for (int k = 0; k < K; ++k) {
+        arma::rowvec d = phi.row(k) - meanEta; Om += w[k] * (d.t() * d);
+      }
+      PutRNGstate();
+      impSetOmega(npMaskedOmega(Om, omModel), impDiagXform());
+      GetRNGstate();
+      arma::vec par; impGetEstPar(par);
+      impIterPrintRow(par, -2.0 * llit);
+    }
     std::vector<int> nk(K, 0);
     for (int i = 0; i < nsub; ++i) {
       arma::rowvec p = psi.row(i) % w.t();
@@ -372,6 +397,7 @@ void npbOuter(Environment e) {
   arma::mat Omega = npFinalizeFit(e, support, weights, postEta, objf, omModel,
                                   1.0, std::vector<int>(),
                                   std::vector<int>(), std::vector<int>());
+  impIterPrintGet(e);          // closing rule + stash e$parHistData
 
   e["npbSupport"] = wrap(support);          // pooled posterior support (E[F])
   e["npbWeights"] = wrap(weights);

@@ -205,7 +205,7 @@ struct npagCtl {
 // sparsity (diagonal always + modeled off-diagonals), with fixed-Omega diagonals
 // restored to the model (fixed) value -- those etas are pinned to 0 in the grid
 // so their support-point variance is 0.
-static arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel) {
+arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel) {
   int neta = (int)Omega.n_rows;
   arma::mat out(neta, neta, arma::fill::zeros);
   bool haveModel = ((int)omModel.n_rows == neta && (int)omModel.n_cols == neta);
