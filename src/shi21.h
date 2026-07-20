@@ -9,13 +9,13 @@ typedef arma::vec (*shi21fn_type)(arma::vec &t, int id);
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef = 7e-7, double rl = 1.5, double ru = 6.0,
-                    int maxiter=15);
+                    int maxiter=15, double hMax = 0.5, double hMin = 1e-4);
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef = 7e-7, double rl = 1.5, double ru = 6.0,
                     double nu = 8.0,
-                    int maxiter=15);
+                    int maxiter=15, double hMax = 0.5, double hMin = 1e-4);
 
 double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,

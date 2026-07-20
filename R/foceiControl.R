@@ -154,6 +154,19 @@
 #'   of the forward difference step size when using dosing events (lag
 #'   time, modeled duration/rate and bioavailability)
 #'
+#' @param shi21hMax Upper bound on the adaptive shi21 finite-difference
+#'   step size for FOCEi gradients (both the inner eta and outer
+#'   theta/covariate finite differences).  The step-size search never
+#'   probes a parameter by more than this on its estimation scale; a
+#'   larger value lets the gradient of a flat, small-magnitude parameter
+#'   (e.g. a covariate coefficient near 0) clear the ODE-solver noise
+#'   floor, at the cost of risking a degenerate solve at the probe.
+#'
+#' @param shi21hMin Lower bound on the adaptive shi21 finite-difference
+#'   step size for FOCEi gradients.  The floor is limited by the ODE
+#'   solver tolerance (atol/rtol), not machine precision; below it the
+#'   finite difference is dominated by solver noise.
+#'
 #' @param centralDerivEps Central difference tolerances (relative,
 #'   absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.
 #'
@@ -576,11 +589,11 @@
 #'   fits following other estimation methods, give identical results.
 #'
 #' @param warm Seeding of the n1qn1 inner-optimization Hessian:
-#'   `"calc"` (default) warm-starts each inner problem with the eta
+#'   `"save"` (default) uses the classic self-initialized Hessian.
+#'   `"calc"` instead warm-starts each inner problem with the eta
 #'   Hessian calculated at the starting eta and the current theta;
 #'   since theta moves between outer evaluations it is always
-#'   recalculated, never reused from an earlier round.  `"save"` uses
-#'   the classic self-initialized Hessian.
+#'   recalculated, never reused from an earlier round.
 #'
 #' @param nAGQ Number of Gauss-Hermite adaptive quadrature points. `0`
 #'   disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -740,6 +753,8 @@ foceiControl <- function(sigdig = 4, #
                          shi21maxInner = 20L,
                          shi21maxInnerCov =20L,
                          shi21maxFD=20L,
+                         shi21hMax=2.0,
+                         shi21hMin=1e-4,
                          gillK = 10L, #
                          gillStep = 4, #
                          gillFtol = 0, #
@@ -789,7 +804,7 @@ foceiControl <- function(sigdig = 4, #
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
                          mceta=-2L,
-                         warm=c("calc", "save"),
+                         warm=c("save", "calc"),
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
@@ -1273,6 +1288,11 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumber(shi21hMin, lower=0, finite=TRUE)
+  checkmate::assertNumber(shi21hMax, lower=0, finite=TRUE)
+  if (shi21hMax <= shi21hMin) {
+    stop("'shi21hMax' must be greater than 'shi21hMin'", call.=FALSE)
+  }
   checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
@@ -1410,6 +1430,8 @@ foceiControl <- function(sigdig = 4, #
     shi21maxInner=shi21maxInner,
     shi21maxInnerCov=shi21maxInnerCov,
     shi21maxFD=shi21maxFD,
+    shi21hMax=shi21hMax,
+    shi21hMin=shi21hMin,
     smatPer=smatPer,
     sdLowerFact=sdLowerFact,
     zeroGradFirstReset=zeroGradFirstReset,

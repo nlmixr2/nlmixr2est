@@ -2,6 +2,17 @@
 
 ## New features
 
+- `foceiControl()` gains `shi21hMax` and `shi21hMin` (defaults `2.0` and `1e-4`),
+  the upper and lower bounds on the adaptive shi21 finite-difference step used for
+  FOCEi gradients (both the inner eta and, when `shi21maxOuter != 0`, the outer
+  theta/covariate finite differences).  A larger upper bound lets the gradient of
+  a flat, small-magnitude parameter clear the ODE-solver noise floor.  The NLM
+  family keeps its own fixed bounds.
+
+- The FOCEi inner-Hessian warm start defaults to `warm="save"` (the classic
+  self-initialized n1qn1 Hessian).  Pass `warm="calc"` to seed each inner problem
+  with the eta Hessian calculated at the current theta/eta.
+
 - The `imp` / `impmap` / `qrpem` importance-sampling family is faster: the
   theta-score M-step, the Monte-Carlo covariance (`covMethod="imp"`, the default)
   and the per-subject proposal build in the E-step are now parallelized over

@@ -88,6 +88,8 @@ foceiControl(
   shi21maxInner = 20L,
   shi21maxInnerCov = 20L,
   shi21maxFD = 20L,
+  shi21hMax = 2,
+  shi21hMin = 1e-04,
   gillK = 10L,
   gillStep = 4,
   gillFtol = 0,
@@ -133,7 +135,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
-  warm = c("calc", "save"),
+  warm = c("save", "calc"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -509,6 +511,19 @@ un-optimized finite differences are used.}
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
 
+\item{shi21hMax}{Upper bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients (both the inner eta and outer
+theta/covariate finite differences).  The step-size search never
+probes a parameter by more than this on its estimation scale; a
+larger value lets the gradient of a flat, small-magnitude parameter
+(e.g. a covariate coefficient near 0) clear the ODE-solver noise
+floor, at the cost of risking a degenerate solve at the probe.}
+
+\item{shi21hMin}{Lower bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients.  The floor is limited by the ODE
+solver tolerance (atol/rtol), not machine precision; below it the
+finite difference is dominated by solver noise.}
+
 \item{gillK}{Max steps to determine the optimal forward/central
 difference step size per parameter (Gill 1983). `0` = no optimal
 step size determined.}
@@ -698,11 +713,11 @@ etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
-`"calc"` (default) warm-starts each inner problem with the eta
+`"save"` (default) uses the classic self-initialized Hessian.
+`"calc"` instead warm-starts each inner problem with the eta
 Hessian calculated at the starting eta and the current theta;
 since theta moves between outer evaluations it is always
-recalculated, never reused from an earlier round.  `"save"` uses
-the classic self-initialized Hessian.}
+recalculated, never reused from an earlier round.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with

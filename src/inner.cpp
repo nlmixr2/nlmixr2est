@@ -307,6 +307,8 @@ struct focei_options {
   int shi21maxInner;
   int shi21maxInnerCov;
   int shi21maxFD;
+  double shi21hMax; // upper bound on the adaptive FD step (all FOCEI shi21 calls)
+  double shi21hMin; // lower bound on the adaptive FD step
   double cholAccept;
   double resetEtaSize;
   std::atomic<int> didEtaReset{0};
@@ -1468,7 +1470,8 @@ double likInner0(double *eta, int id) {
                                                1.5,//double rl = 1.5,
                                                4.5,//double ru = 4.5,
                                                3.0,//double nu = 8.0);
-                                               op_focei.shi21maxFD); // maxiter
+                                               op_focei.shi21maxFD, // maxiter
+                                               op_focei.shi21hMax, op_focei.shi21hMin);
                 break;
               case 3: // forward
                 fInd->etahf[ii] = shi21Forward(shi21EtaF, curEta, h,
@@ -1476,7 +1479,8 @@ double likInner0(double *eta, int id) {
                                                op_focei.hessEpsInner, // ef,
                                                1.5,  //double rl = 1.5,
                                                6.0,  //double ru = 6.0);;
-                                               op_focei.shi21maxFD); // maxiter
+                                               op_focei.shi21maxFD, // maxiter
+                                               op_focei.shi21hMax, op_focei.shi21hMin);
               }
               etaGradF.col(ii) = grETA;
               if (op_focei.interaction == 1) {
@@ -1488,7 +1492,8 @@ double likInner0(double *eta, int id) {
                                                  1.5,//double rl = 1.5,
                                                  4.5,//double ru = 4.5,
                                                  3.0,//double nu = 8.0);
-                                                 op_focei.shi21maxFD); // maxiter
+                                                 op_focei.shi21maxFD, // maxiter
+                                                 op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
                 case 3: // forward
                   fInd->etahr[ii] = shi21Forward(shi21EtaR, curEta, h,
@@ -1496,7 +1501,8 @@ double likInner0(double *eta, int id) {
                                                  op_focei.hessEpsInner, // ef,
                                                  1.5,  //double rl = 1.5,
                                                  6.0,  //double ru = 6.0);;
-                                                 op_focei.shi21maxFD); // maxiter
+                                                 op_focei.shi21maxFD, // maxiter
+                                                 op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
                 }
                 etaGradR.col(ii) = grETA;
@@ -1925,7 +1931,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                       op_focei.hessEpsInner, //double ef = 7e-7,
                                       1.5,  //double rl = 1.5,
                                       6.0,  //double ru = 6.0);;
-                                      op_focei.shi21maxInner);  //maxiter=15
+                                      op_focei.shi21maxInner,  //maxiter=15
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
         H.col(k) = grPH;
         continue;
       }
@@ -1938,7 +1945,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                       1.5,//double rl = 1.5,
                                       4.5,//double ru = 4.5,
                                       3.0,//double nu = 8.0);
-                                      op_focei.shi21maxInner); // maxiter
+                                      op_focei.shi21maxInner, // maxiter
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
         H.col(k) = grPH;
         continue;
       }
@@ -4184,7 +4192,8 @@ void numericGrad(double *theta, double *g){
                                            op_focei.hessEpsInner, //double ef = 7e-7,
                                            1.5,  //double rl = 1.5,
                                            6.0,  //double ru = 6.0);;
-                                           maxiter);  //maxiter=15
+                                           maxiter,  //maxiter=15
+                                           op_focei.shi21hMax, op_focei.shi21hMin);
         op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
         g[cpar] = grFinal(0);
       }
@@ -5541,6 +5550,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.shi21maxInnerCov = as<int>(foceiO["shi21maxInnerCov"]);
   op_focei.optimHessCovType=as<int>(foceiO["optimHessCovType"]);
   op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
+  op_focei.shi21hMax = as<double>(foceiO["shi21hMax"]);
+  op_focei.shi21hMin = as<double>(foceiO["shi21hMin"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   // censOption: 0 "gauss" (historic uncensored Gauss-Newton, default) / 1 "laplace" (exact
   // censored 2nd deriv).  Tolerate an older control missing the field (-> gauss).
@@ -7418,7 +7429,8 @@ NumericMatrix foceiCalcCov(Environment e){
                                                 1.5,  //double rl = 1.5,
                                                 4.0,  //double ru = 6.0);;
                                                 3.0, // nu
-                                                op_focei.shi21maxOuter);  //maxiter=15
+                                                op_focei.shi21maxOuter,  //maxiter=15
+                                                op_focei.shi21hMax, op_focei.shi21hMin);
           } if (op_focei.gillKcov != 0){
             op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                              &theta[0], cpar, hessEps, gillKcov, gillStepCov,
@@ -9123,10 +9135,12 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
     arma::vec grF(nobs), grV(nobs);
     double h = 0.0;
     shi21Central(shi21ThetaF, curTheta, h, fvec, grF, id, tIdx,
-                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD,
+                 op_focei.shi21hMax, op_focei.shi21hMin);
     h = 0.0;
     shi21Central(shi21ThetaR, curTheta, h, Vvec, grV, id, tIdx,
-                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD,
+                 op_focei.shi21hMax, op_focei.shi21hMin);
     dfmat.col(s) = grF;
     dVmat.col(s) = grV;
   }
