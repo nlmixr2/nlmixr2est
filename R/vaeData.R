@@ -8,6 +8,45 @@
 .vaeReservedCols <- c("ID", "TIME", "DV", "EVID", "AMT", "CMT", "MDV", "SS", "II",
                       "ADDL", "RATE", "DUR", "DVID", "CENS", "LIMIT", "OCC")
 
+# Finite fallback bound (+/-) for an unbounded model-declared covariate coefficient
+# regressed by the VAE M-step; keeps the 1-D optimize() step from running away.
+# Generous on a transformed/log scale (an effect past this is implausible); a user
+# ini() bound overrides it.
+.vaeCovCoefBound <- 10
+
+# Max plausible log-scale effect used to derive a SCALE-AWARE fallback bound for a
+# raw linear covariate coefficient (beta*COV): |beta*max|COV|| <= this, so the
+# bound shrinks as the covariate magnitude grows (a raw WT coefficient is ~1/WT).
+.vaeCovCoefEffect <- 5
+
+#' Scale-aware finite fallback bounds for unbounded covariate coefficients.
+#'
+#' For a linear mu-ref covariate coefficient (in `muRefCovariateDataFrame`) the
+#' sane magnitude scales like `1/max|COV|`, so a fixed wide bound makes the 1-D
+#' optimize() overshoot a shallow interior optimum.  Scale that coefficient's
+#' bound by the covariate's data magnitude; leave transformed/unrecognized
+#' coefficients (already O(1) regressors) at the flat `.vaeCovCoefBound`.
+#' @param ui rxode2 ui
+#' @param data raw (un-normalized) modeling data
+#' @param names covariate-coefficient theta names needing a bound
+#' @return named numeric of positive half-widths (one per `names`)
+#' @noRd
+.vaeCovCoefBoundVec <- function(ui, data, names) {
+  .b <- setNames(rep(.vaeCovCoefBound, length(names)), names)
+  .mrc <- ui$muRefCovariateDataFrame
+  if (is.null(.mrc) || nrow(.mrc) == 0L) return(.b)
+  .dd <- as.data.frame(data); colnames(.dd) <- toupper(colnames(.dd))
+  for (.nm in names) {
+    .w <- which(.mrc$covariateParameter == .nm)
+    if (length(.w) == 0L) next
+    .cov <- toupper(.mrc$covariate[.w[1]])
+    if (is.null(.dd[[.cov]])) next
+    .mx <- max(abs(as.numeric(.dd[[.cov]])), na.rm = TRUE)
+    if (is.finite(.mx) && .mx > 0) .b[.nm] <- min(.vaeCovCoefBound, .vaeCovCoefEffect / .mx)
+  }
+  .b
+}
+
 #' Discover + encode subject-level covariates for the VAE search
 #' @param d normalized data.frame (upper-case column names)
 #' @param ids unique subject ids in estimation order
@@ -142,21 +181,45 @@ vaeCovariates <- function(data, warn = TRUE) {
   .zPopLower[!.isFree] <- as.numeric(.thRows$lower[.zPopThetaIdx[!.isFree]])
   .zPopUpper[!.isFree] <- as.numeric(.thRows$upper[.zPopThetaIdx[!.isFree]])
 
-  ## nonMuTheta="regress": the non-mu-referenced fixed-effect thetas (no eta, no
-  ## error, no covariate coefficient) are estimated directly by a bounded bobyqa
-  ## regression in the M-step.  Carry their 0-based index into the full theta
-  ## vector (`.th`, ntheta order) plus the ini() bounds (NA -> +-Inf).
+  ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
+  ## M-step (vs. the latent-space zPop update).  Two sources, unioned:
+  ##  * nonMuTheta="regress": non-mu-referenced structural thetas (no eta); and
+  ##  * covariateSelection=FALSE: model-declared covariate coefficients -- always
+  ##    estimated in place, independent of nonMuTheta, so the mu-referenced
+  ##    covariate expression the user wrote is fit rather than held fixed.
+  ## Carry each 0-based index into the full theta vector (`.th`, ntheta order)
+  ## plus the ini() bounds (NA -> +-Inf).
   .regressNames <- character(0)
   .regressThetaIdx0 <- integer(0)
   .regressLower <- numeric(0); .regressUpper <- numeric(0)
   if (identical(control$nonMuTheta, "regress")) {
     .regressNames <- .vaeNonMuThetas(ui)
-    if (length(.regressNames) > 0L) {
-      .ri <- match(.regressNames, .thRows$name)
-      .regressThetaIdx0 <- as.integer(.ri - 1L)
-      .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
-      .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
-      .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+  }
+  .covCoefNames <- character(0)
+  if (isFALSE(control$covariateSelection)) {
+    .covCoefNames <- .vaeCovariateCoefThetas(ui)
+    .regressNames <- c(.regressNames, .covCoefNames)
+  }
+  .regressNames <- unique(.regressNames)
+  if (length(.regressNames) > 0L) {
+    .ri <- match(.regressNames, .thRows$name)
+    .regressThetaIdx0 <- as.integer(.ri - 1L)
+    .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
+    .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
+    .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+    ## An UNBOUNDED covariate coefficient regressed alone routes through the 1-D
+    ## optimize() branch of .boundedResidOpt, which searches the whole interval and
+    ## overshoots a shallow interior optimum on a too-wide interval.  Give an
+    ## unbounded coefficient a finite, scale-aware fallback interval (user ini()
+    ## bounds still win); structural regress thetas keep their bounds (bobyqa is
+    ## stable, so they are left alone).
+    .isCov <- .regressNames %in% .covCoefNames
+    .noLo <- .isCov & !is.finite(.regressLower)
+    .noHi <- .isCov & !is.finite(.regressUpper)
+    if (any(.noLo | .noHi)) {
+      .bnd <- .vaeCovCoefBoundVec(ui, data, .regressNames[.isCov])
+      .regressLower[.noLo] <- -.bnd[.regressNames[.noLo]]
+      .regressUpper[.noHi] <- .bnd[.regressNames[.noHi]]
     }
   }
 

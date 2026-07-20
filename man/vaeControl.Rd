@@ -79,8 +79,11 @@ value giving a sharp initial posterior). `NULL` uses a small default per
 individual parameter. This is distinct from the `ini()` omega.}
 
 \item{covariateSelection}{When `TRUE` (default) perform automated BICc-ELBO
-covariate selection during training; when `FALSE` fit the given fixed
-covariate structure only (faster population-only mode).}
+covariate selection during training; when `FALSE` fit only the covariate
+structure written in the model.  In the `FALSE` case the model-declared
+covariate coefficients (both linear `beta*WT` effects and transformed ones
+such as `beta*log(WT/70)`) are estimated in place by the regress M-step
+regardless of `nonMuTheta`; a `ini(... ~ fix())` coefficient stays fixed.}
 
 \item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
 penalty, ramped linearly from `covSelectAlpha` down to `1` over the

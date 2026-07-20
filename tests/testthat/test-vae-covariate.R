@@ -125,4 +125,23 @@ nmTest({
     expect_true(any(grepl("CovSel ramp", allout)))
     expect_true(any(grepl("covariate-selection L0-penalty warmup", allout)))
   })
+
+  test_that("covariateSelection=FALSE estimates a model-declared coefficient (end-to-end)", {
+    skip_on_cran()
+    ## nonMuTheta='none' would formerly hold cl.wt fixed; it must now be regressed,
+    ## move off its init, and appear as a parameter-history column
+    cov <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + cl.wt * log(WT / 70) + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    ctl <- vaeControl(covariateSelection = FALSE, nonMuTheta = "none", itersBurnIn = 3L,
+                      klWarmup = 5L, iters = 15L, seed = 1L, print = 0L, calcTables = FALSE)
+    fit <- suppressWarnings(nlmixr2(cov, nlmixr2data::theo_sd, est = "vae", control = ctl))
+    est <- fit$parFixedDf["cl.wt", "Estimate"]
+    expect_true(is.finite(est))
+    expect_false(isTRUE(all.equal(est, 0.1)))        # moved off the init
+    expect_true("cl.wt" %in% colnames(fit$parHist)) # the regress M-step ran on it
+  })
 })
