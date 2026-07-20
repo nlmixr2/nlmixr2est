@@ -842,6 +842,9 @@ static inline double getScaleC(int i){
   if (i < (int)op_focei.ntheta &&
       (op_focei.scaleC[i] < op_focei.scaleRangeLow ||
        op_focei.scaleC[i] > op_focei.scaleRangeHigh)) {
+    // linear / additive theta: fall back to native |init| at any magnitude (|init|
+    // is the correct scale for a large-init additive theta, issue #641).  The
+    // bounded-transform midpoint fallback lives in the R .guardScaleC path.
     double aInit = fabs(op_focei.initPar[i]);
     op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }

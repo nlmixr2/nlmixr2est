@@ -1702,12 +1702,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' parameter's native magnitude `|init|` (NONMEM7 Appendix K), 1 when init is 0.
 #' In-band values are returned unchanged so existing results are preserved.
 #' @noRd
-.guardScaleC <- function(sc, init, lo = 0.1, hi = 10) {
-  if (length(sc) != 1L || is.na(sc) || !is.finite(sc) || sc <= 0 || sc < lo || sc > hi) {
-    .v <- abs(init)
-    return(if (.v == 0) 1 else .v)
-  }
-  sc
+.guardScaleC <- function(sc, init, lo = 0.1, hi = 10, mid = FALSE) {
+  .inband <- function(v) length(v) == 1L && !is.na(v) && is.finite(v) && v > 0 && v >= lo && v <= hi
+  if (.inband(sc)) return(sc)      # preferred: the derivative-based formula, in band
+  .v <- abs(init)
+  if (.inband(.v)) return(.v)      # second: the parameter's native magnitude |init|, in band
+  # Neither in band.  Bounded transforms (mid=TRUE) have a bounded safe range, so
+  # the geometric middle of the band is the safe choice.  Linear / additive and the
+  # other structural transforms (mid=FALSE) keep native |init| at any magnitude --
+  # |init| is the correct scale for a large-init additive theta (issue #641).
+  if (mid) sqrt(lo * hi) else if (.v == 0) 1 else .v
 }
 #' Setup the scaleC
 #'
@@ -1769,8 +1773,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
           } else if (.curEval == "factorial") {
             # Hence 1/D(S("log(factorial(x))"}, "x"):
             .scaleC[.j] <- abs(1 / digamma(.ini$est[.j] + 1))
-          } else if (.curEval == "gamma") {
-            #1/D(log(gamma(x)), x)
+          } else if (.curEval == "gamma" || .curEval == "lgammafn") {
+            # 1/D(log(gamma(x)), x); rxode2 reports gamma() as curEval "lgammafn"
             .scaleC[.j] <- abs(1 / digamma(.ini$est[.j]))
           } else if (.curEval == "log") {
             #1/D(log(log(x)), x)
@@ -1802,15 +1806,29 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
           }
-          # Guard the transform-specific scaleC to the stable band: a singular
-          # formula -- log() = 0 at init 1, logit = 0 at the interval midpoint,
-          # factorial/gamma diverging at a digamma zero -- falls back to |init|
-          # (foceiControl(scaleCband)).
+          # Per-transform guard: each transform's derivative-based scaleC is valid
+          # over its OWN range, so it is guarded to a band tailored to that
+          # transform and only its singular / bad region falls back to |init|.  A
+          # single global band would wrongly clip transforms whose healthy range
+          # differs (e.g. logit is legitimately small, expit legitimately large).
           if (!is.na(.scaleC[.j])) {
-            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .ini$est[.j], .scLo, .scHi)
+            .band <- switch(.curEval,
+              "exp"       = c(0, Inf),      # always 1; never guarded
+              "log"       = c(0.1, 10),     # excludes init <= 1 (scaleC <= 0) and the large tail
+              "logit"     = c(1e-4, 10),    # bounded param: small scaleC is valid; excludes the midpoint (0)
+              "probit"    = c(1e-4, 10),
+              "expit"     = c(0.1, 100),    # unbounded -> bounded: large scaleC is valid; excludes over-scaling
+              "probitInv" = c(0.1, 100),
+              "factorial" = c(0.1, 10),     # excludes the digamma-zero pole (-> Inf)
+              "gamma"     = c(0.1, 10),
+              "lgammafn"  = c(0.1, 10),     # rxode2 reports gamma() as "lgammafn"
+              c(.scLo, .scHi))              # fallback: the linear scaleCband
+            # midpoint fallback only for bounded transforms (bounded safe range)
+            .mid <- .curEval %in% c("logit", "probit", "expit", "probitInv")
+            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .ini$est[.j], .band[1], .band[2], mid = .mid)
           }
           # Additive / linear thetas are set below to the derivative-based
-          # 1/|init|, likewise guarded to scaleCband.
+          # 1/|init|, guarded to the linear scaleCband.
         }
       }
     }

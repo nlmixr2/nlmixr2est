@@ -2,17 +2,25 @@
 
 ## New features
 
-- FOCEi guards every `theta`'s scaling constant to a stable band, controlled by
-  `foceiControl(scaleCband=)` (default `c(0.1, 10)`).  Each parameter keeps its
-  derivative-based `scaleC` -- `1/|init|` for a linear/additive parameter, `1` for
-  a log parameter, or the transform-specific formula -- when it lands inside the
-  band, and otherwise falls back to the parameter's native magnitude `|init|`
-  (NONMEM7 Appendix K, eq 15.2).  This fixes the singular cases that froze or
-  destabilized the outer optimization -- `1/|init|` blowing up for a small
-  covariate initial estimate (and the issue-641 large-additive case, whose special
-  handling this subsumes), `log()` at init `1`, `logit` at the interval midpoint,
-  `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled common
-  case, and its results, unchanged.
+- FOCEi guards each `theta`'s scaling constant per transform, keeping the
+  derivative-based `scaleC` where it is well-behaved and falling back only in that
+  transform's singular / out-of-range region.  Each parameter keeps `1/|init|`
+  (linear/additive), `1` (log-normal), or its transform-specific formula while the
+  value stays inside a band tailored to that transform (the linear band is
+  `foceiControl(scaleCband=)`, default `c(0.1, 10)`).  Outside the band it falls
+  back to the parameter's native magnitude `|init|` (NONMEM7 Appendix K, eq 15.2);
+  for a bounded transform (`logit`/`expit`/`probit`/`probitInv`), if `|init|` is
+  also out of range it uses the geometric middle of the band.  This fixes the
+  singular cases that froze or destabilized the fit -- `1/|init|` blowing up for a
+  small covariate initial estimate (and the issue-641 large-additive case, whose
+  special handling this subsumes), `log()` at init `1`, `logit` at the interval
+  midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled
+  common case, and its results, unchanged.
+
+- Fixed FOCEi `scaleC` for a `gamma()`-transformed population parameter: rxode2
+  reports it as `curEval="lgammafn"`, which the scaling setup did not recognize, so
+  it silently received the linear `1/|init|` default instead of its `1/digamma`
+  scaling.
 
 - The FOCEi family nudges any population parameter (`theta`) initialized at
   exactly `0` off zero before estimation, controlled by
