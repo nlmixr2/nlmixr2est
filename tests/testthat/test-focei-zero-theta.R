@@ -45,7 +45,25 @@ nmTest({
     expect_equal(.hookB(mFix), 0)
   })
 
-  test_that("linear thetas get scaleC = |init| (NONMEM eq 15.2), log thetas 1", {
+  test_that("linear thetas get guarded 1/|init|, log thetas 1", {
+    scB <- function(binit) {
+      # bare ui has no scaleCband control -> the default c(0.1, 10) band applies
+      m <- eval(bquote(function() {
+        ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-.(binit); add.sd<-0.3; eta.cl~0.1 })
+        model({ ka<-exp(tka); cl<-exp(tcl+b*WT+eta.cl); v<-exp(tv); linCmt() ~ add(add.sd) })
+      }))
+      ui <- rxode2::rxUiDecompress(rxode2::rxode2(m))
+      sc <- ui$scaleCtheta
+      names(sc) <- ui$iniDf$name[!is.na(ui$iniDf$ntheta) & !ui$iniDf$fix]
+      unname(sc["b"])
+    }
+    # in-band: 1/|init| kept (results preserved).  b=2.5 -> 1/2.5 = 0.4
+    expect_equal(scB(2.5), 0.4)
+    # small init: 1/0.02 = 50 > 10 -> fall back to |init| = 0.02
+    expect_equal(scB(0.02), 0.02)
+    # large init: 1/40 = 0.025 < 0.1 -> fall back to |init| = 40
+    expect_equal(scB(40), 40)
+    # log-scaled structural theta -> 1
     m <- function() {
       ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-2.5; add.sd<-0.3; eta.cl~0.1 })
       model({ ka<-exp(tka); cl<-exp(tcl+b*WT+eta.cl); v<-exp(tv); linCmt() ~ add(add.sd) })
@@ -53,9 +71,6 @@ nmTest({
     ui <- rxode2::rxUiDecompress(rxode2::rxode2(m))
     sc <- ui$scaleCtheta
     names(sc) <- ui$iniDf$name[!is.na(ui$iniDf$ntheta) & !ui$iniDf$fix]
-    # linear covariate coefficient b (init 2.5) -> |init|
-    expect_equal(unname(sc["b"]), 2.5)
-    # log-scaled structural theta -> 1
     expect_equal(unname(sc["tka"]), 1)
   })
 })

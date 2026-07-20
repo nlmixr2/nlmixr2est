@@ -19,6 +19,7 @@ foceiControl(
   scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
+  scaleCband = c(0.1, 10),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -202,6 +203,16 @@ multiplicatively otherwise.}
 \item{scaleCmax}{Maximum value of the scaleC to prevent overflow.}
 
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
+
+\item{scaleCband}{Length-2 increasing pair `c(low, high)` (default
+`c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
+(`1/|init|` for a linear parameter, or the transform-specific
+formula) is kept when it lands inside this band, and otherwise
+replaced by the parameter's native magnitude `|init|`.  This catches
+the singular cases -- `1/|init|` blowing up for a small covariate
+initial estimate, `log()` at init `1`, `logit` at the interval
+midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
+well-scaled common case (and its results) untouched.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -742,12 +753,12 @@ gnlmm was 400.}
 
 \item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
 population parameter (`theta`) whose initial estimate is exactly `0`
-off zero before estimation, since the FOCEi scaling constant
-`1/|init|` is singular at `0` and would freeze the parameter.  The
-value `+zeroTheta` is used when it is within the parameter's bounds,
-otherwise `-zeroTheta`; if neither is within the bounds an error is
-raised.  Fixed parameters (including those fixed at `0`) are left
-untouched.}
+off zero before estimation.  FOCEi scales a linear parameter by its
+native magnitude `|init|`, which is `0` (no scale) for a zero
+initial estimate, so the parameter is moved to `+zeroTheta` when it
+is within the parameter's bounds, otherwise `-zeroTheta`; if neither
+is within the bounds an error is raised.  Fixed parameters
+(including those fixed at `0`) are left untouched.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

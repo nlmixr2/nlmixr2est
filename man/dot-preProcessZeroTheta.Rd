@@ -21,9 +21,9 @@ to be different for each type of estimation method}
 list with the ui (possibly modified)
 }
 \description{
-The FOCEi scaling constant is `1/|init|`, which is singular when a
-population parameter is initialized at exactly `0` (the parameter then
-freezes at its starting value).  This hook moves every estimated,
+FOCEi scales a linear parameter by its native magnitude `|init|`, which
+is `0` (no scale) when a population parameter is initialized at exactly
+`0` (the parameter then freezes).  This hook moves every estimated,
 non-fixed `theta` whose initial estimate is exactly `0` to `+zeroTheta`
 when that is within its bounds, otherwise `-zeroTheta`; if neither is
 within the bounds it errors.  Only runs for the FOCEi family (a

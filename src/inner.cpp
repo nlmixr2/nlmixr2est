@@ -223,6 +223,8 @@ struct focei_options {
   int normType;
   double scaleCmin;
   double scaleCmax;
+  double scaleRangeLow;  // foceiControl(scaleCband): below this a theta scaleC falls back to |init|
+  double scaleRangeHigh; // above this a theta scaleC falls back to |init|
   double c1;
   double c2;
   double scaleTo;
@@ -825,16 +827,23 @@ static inline double getScaleC(int i){
     case 5: // off diagonal chol(Omega^-1)
       op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
       break;
-    default:
-      // NONMEM-style scaling for a linear (additive / unbounded) theta: scale by
-      // the parameter's native magnitude |init| (NONMEM7 Appendix K, eq 15.2) so a
-      // natural optimizer step moves the parameter proportional to its own scale.
-      // The old 1/|init| default froze small-init and over-shot large-init
-      // parameters (issues #641 and the covariate-coefficient case).  |init| == 0
-      // -- a zero left after the zeroTheta nudge -- uses unit scaling.
-      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : aInit;
+    default: // linear / additive theta: derivative-based 1/|init|
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     }
+  }
+  // scaleCband (foceiControl(scaleCband=)): a theta whose derivative-based scaling
+  // constant lands outside [scaleRangeLow, scaleRangeHigh] is poorly scaled -- the
+  // 1/|init| default blows up for a small init and collapses for a large one.
+  // Fall back to the parameter's native magnitude |init| (NONMEM7 Appendix K,
+  // eq 15.2; |init| == 0 uses unit scaling).  In-band constants -- the common case
+  // -- are left untouched, so existing results are preserved.  Omega scalings keep
+  // their own formula (not guarded).
+  if (i < (int)op_focei.ntheta &&
+      (op_focei.scaleC[i] < op_focei.scaleRangeLow ||
+       op_focei.scaleC[i] > op_focei.scaleRangeHigh)) {
+    double aInit = fabs(op_focei.initPar[i]);
+    op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }
   return min2(max2(op_focei.scaleC[i], op_focei.scaleCmin),op_focei.scaleCmax);
 }
@@ -5585,6 +5594,14 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
   op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
   op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
+  if (foceiO.containsElementNamed("scaleCband")) {
+    NumericVector scb = as<NumericVector>(foceiO["scaleCband"]);
+    op_focei.scaleRangeLow = scb[0];
+    op_focei.scaleRangeHigh = scb[1];
+  } else {
+    op_focei.scaleRangeLow = 0.1;
+    op_focei.scaleRangeHigh = 10.0;
+  }
   op_focei.abstol=as<double>(foceiO["abstol"]);
   op_focei.reltol=as<double>(foceiO["reltol"]);
   op_focei.smatNorm=as<int>(foceiO["smatNorm"]);

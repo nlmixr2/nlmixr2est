@@ -1692,6 +1692,23 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   env
 }
 
+#' Guard a derivative-based scaleC to the stable band (foceiControl(scaleCband))
+#'
+#' A transform-specific scaleC formula (including the linear `1/|init|`) can go
+#' singular at ordinary initial estimates -- `1/|init|` blows up for a small
+#' covariate coefficient, `log()` is 0 at init 1, `logit` is 0 at the interval
+#' midpoint, `factorial`/`gamma` diverge at a digamma zero.  When the value falls
+#' outside `[lo, hi]` (or is non-finite / non-positive) it is replaced by the
+#' parameter's native magnitude `|init|` (NONMEM7 Appendix K), 1 when init is 0.
+#' In-band values are returned unchanged so existing results are preserved.
+#' @noRd
+.guardScaleC <- function(sc, init, lo = 0.1, hi = 10) {
+  if (length(sc) != 1L || is.na(sc) || !is.finite(sc) || sc <= 0 || sc < lo || sc > hi) {
+    .v <- abs(init)
+    return(if (.v == 0) 1 else .v)
+  }
+  sc
+}
 #' Setup the scaleC
 #'
 #' @param ui rxode2 UI
@@ -1701,6 +1718,9 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @noRd
 .foceiOptEnvSetupScaleC <- function(ui, env) {
   .controlScaleC <- rxode2::rxGetControl(ui, "scaleC", NULL)
+  .scBand <- rxode2::rxGetControl(ui, "scaleCband", c(0.1, 10))
+  .scLo <- .scBand[1]
+  .scHi <- .scBand[2]
   .len <- length(env$lower)
   if (is.null(.controlScaleC)) {
     .scaleC <- rep(NA_real_, .len)
@@ -1782,24 +1802,30 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
           }
-          # Additive (theta + eta) and other linear thetas fall through to the
-          # C++ getScaleC default, which now scales by the parameter's native
-          # magnitude |init| (NONMEM7 Appendix K, eq 15.2) -- this subsumes the
-          # former issue-641 special case for large-magnitude additive thetas.
+          # Guard the transform-specific scaleC to the stable band: a singular
+          # formula -- log() = 0 at init 1, logit = 0 at the interval midpoint,
+          # factorial/gamma diverging at a digamma zero -- falls back to |init|
+          # (foceiControl(scaleCband)).
+          if (!is.na(.scaleC[.j])) {
+            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .ini$est[.j], .scLo, .scHi)
+          }
+          # Additive / linear thetas are set below to the derivative-based
+          # 1/|init|, likewise guarded to scaleCband.
         }
       }
     }
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
-  # parameter; scale it by its native magnitude |init| to match the C++ getScaleC
-  # default (NONMEM7 Appendix K, eq 15.2).  Zero-init params (nudged off 0
-  # elsewhere) fall back to unit scaling.
+  # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
+  # falls back to native |init| (matches the C++ getScaleC default).  Zero-init
+  # params (nudged off 0 elsewhere) fall back to unit scaling.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
-      .v <- abs(.thetaIni$est[.k])
-      .scaleC[.nt] <- if (.v == 0) 1 else .v
+      .init <- .thetaIni$est[.k]
+      .raw <- if (.init == 0) Inf else 1 / abs(.init)
+      .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
     }
   }
   env$scaleC <- .scaleC

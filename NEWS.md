@@ -2,13 +2,17 @@
 
 ## New features
 
-- FOCEi now scales a linear (additive / unbounded) population parameter by its
-  native magnitude `|init|` (NONMEM7 Appendix K, eq 15.2) instead of the previous
-  `1/|init|`.  The old constant froze small-initial-estimate parameters (e.g. a
-  covariate coefficient) and under-scaled large-initial-estimate ones, so a unit
-  step in the internal (scaled) parameter is now proportional to the parameter's
-  own scale.  Log-scaled parameters keep `scaleC = 1`.  This subsumes and replaces
-  the earlier issue-641 special case for large-magnitude additive thetas.
+- FOCEi guards every `theta`'s scaling constant to a stable band, controlled by
+  `foceiControl(scaleCband=)` (default `c(0.1, 10)`).  Each parameter keeps its
+  derivative-based `scaleC` -- `1/|init|` for a linear/additive parameter, `1` for
+  a log parameter, or the transform-specific formula -- when it lands inside the
+  band, and otherwise falls back to the parameter's native magnitude `|init|`
+  (NONMEM7 Appendix K, eq 15.2).  This fixes the singular cases that froze or
+  destabilized the outer optimization -- `1/|init|` blowing up for a small
+  covariate initial estimate (and the issue-641 large-additive case, whose special
+  handling this subsumes), `log()` at init `1`, `logit` at the interval midpoint,
+  `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled common
+  case, and its results, unchanged.
 
 - The FOCEi family nudges any population parameter (`theta`) initialized at
   exactly `0` off zero before estimation, controlled by
