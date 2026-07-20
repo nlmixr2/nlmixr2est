@@ -295,6 +295,19 @@
   assign("control", .control, envir = ui)
   .fit <- .foceiFamilyReturn(env, ui, ..., est = .est)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # label the eta-space columns of the nonparametric outputs (support points,
+  # per-subject posterior etas) with the eta names for readability.
+  .env <- .fit$env
+  if (is.environment(.env)) {
+    .nm <- .etaNames
+    for (.o in c("npagSupport", "npagPosteriorEta")) {
+      .m <- .env[[.o]]
+      if (is.matrix(.m) && ncol(.m) == length(.nm)) {
+        colnames(.m) <- .nm
+        assign(.o, .m, envir = .env)
+      }
+    }
+  }
   .fit
 }
 

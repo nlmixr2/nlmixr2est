@@ -586,6 +586,10 @@
 
 ### Output and utilities
 
+- The `est = "npag"` support-point matrix (`fit$env$npagSupport`) and the
+  per-subject posterior eta matrix (`fit$env$npagPosteriorEta`) now carry the
+  eta names as column names.
+
 - New `vaeCovariates()` returns the covariates `est = "vae"` would explore.
 
 - New `formatMinWidth()` for shorter `$parFixed` display; `$parFixed` is rebuilt
