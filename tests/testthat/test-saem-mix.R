@@ -523,7 +523,10 @@ nmTest({
     rxode2::rxWithSeed(2024, {
     tclEm <- log(8); tclPm <- log(0.8); tv0 <- log(30); tka0 <- log(1.2)
     sigma <- 0.20; omegaCl <- 0.09; omegaV <- 0.04
-    nEm <- 20; nPm <- 10; n <- nEm + nPm
+    # 60 subjects (40 high-CL, 20 low-CL) gives the mixture enough information to
+    # pull the high component up to ~6.8 (vs ~5.9 at n=30), a robust margin over
+    # the >4 separation check that survives BLAS/numeric jitter across platforms.
+    nEm <- 40; nPm <- 20; n <- nEm + nPm
     clTrue <- c(exp(tclEm + rnorm(nEm, 0, sqrt(omegaCl))),
                 exp(tclPm + rnorm(nPm, 0, sqrt(omegaCl))))
     vTrue <- exp(tv0 + rnorm(n, 0, sqrt(omegaV)))
