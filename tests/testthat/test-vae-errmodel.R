@@ -40,7 +40,9 @@ nmTest({
   test_that("vae recovers a proportional error model", {
     skip_on_cran()
     d <- .vaeErrData()
-    dat <- d$mk(d$f + stats::rnorm(length(d$f), 0, 0.15 * abs(d$f)))
+    ## .vaeErrData() restores the RNG on return, so seed the measurement noise
+    ## with rxWithSeed() (wrapped: state is restored after, so nothing leaks).
+    dat <- rxode2::rxWithSeed(7, d$mk(d$f + stats::rnorm(length(d$f), 0, 0.15 * abs(d$f))))
     propMod <- function() {
       ini({ lka <- log(1.5); lke <- log(0.1); lV <- log(32)
         eta.ka ~ 0.05; eta.ke ~ 0.02; eta.V ~ 0.02; prop.err <- 0.1 })
@@ -57,7 +59,9 @@ nmTest({
   test_that("vae recovers a combined error model", {
     skip_on_cran()
     d <- .vaeErrData()
-    dat <- d$mk(d$f + stats::rnorm(length(d$f), 0, sqrt(0.2^2 + (0.1 * d$f)^2)))
+    ## .vaeErrData() restores the RNG on return, so seed the measurement noise
+    ## with rxWithSeed() (wrapped: state is restored after, so nothing leaks).
+    dat <- rxode2::rxWithSeed(202, d$mk(d$f + stats::rnorm(length(d$f), 0, sqrt(0.2^2 + (0.1 * d$f)^2))))
     combMod <- function() {
       ini({ lka <- log(1.5); lke <- log(0.1); lV <- log(32)
         eta.ka ~ 0.05; eta.ke ~ 0.02; eta.V ~ 0.02; add.err <- 0.2; prop.err <- 0.1 })
