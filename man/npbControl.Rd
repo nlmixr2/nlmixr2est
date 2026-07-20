@@ -54,6 +54,10 @@ multiplier (gamma); the residual thetas are fit directly.}
 
 \item{gammaOptimize}{Unused for npb (kept for control compatibility).}
 
+\item{muExpand}{When `TRUE`, mu-expand non-mu structural fixed-effect thetas (a
+theta with no eta) into grid-estimable pseudo-etas before the fit; `FALSE`
+(default) leaves them to the residual step.}
+
 \item{cores}{Number of threads used for the parallel per-subject conditional-
 likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
 `rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread

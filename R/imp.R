@@ -12,7 +12,6 @@
 #' than re-optimized to the MAP mode each iteration (NONMEM METHOD=IMP).  See
 #' [impmapControl()] for the full parameter list.
 #'
-#' @inheritParams impmapControl
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object with `mapIter = 0`.
 #' @export

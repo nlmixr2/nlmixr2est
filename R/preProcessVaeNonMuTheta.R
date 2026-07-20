@@ -123,6 +123,7 @@ isTRUE2 <- function(x) !is.na(x) & x
 #' VAE preprocessing hook: inject etas for non-mu-referenced thetas per
 #' vaeControl(nonMuTheta=).
 #' @inheritParams nlmixr2
+#' @param ui rxode2 ui
 #' @return list(ui=) possibly with injected etas
 #' @export
 #' @author Matthew L. Fidler

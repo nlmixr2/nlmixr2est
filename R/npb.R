@@ -20,7 +20,6 @@
 #' comparable to nlmixr2's FOCEI/SAEM/FOCE `-2LL`.  Compare npb runs to each other
 #' or to Pmetrics NPAG.
 #'
-#' @inheritParams impmapControl
 #' @param points Stick-breaking truncation level K (number of support points).
 #' @param alpha Dirichlet-process concentration parameter.
 #' @param burnin Number of burn-in Gibbs sweeps.
@@ -44,6 +43,9 @@
 #'   multiplier (gamma); the residual thetas are fit directly.
 #' @param cycles Unused for npb (kept for control compatibility).
 #' @param gammaOptimize Unused for npb (kept for control compatibility).
+#' @param muExpand When `TRUE`, mu-expand non-mu structural fixed-effect thetas (a
+#'   theta with no eta) into grid-estimable pseudo-etas before the fit; `FALSE`
+#'   (default) leaves them to the residual step.
 #' @param cores Number of threads used for the parallel per-subject conditional-
 #'   likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
 #'   `rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread

@@ -48,31 +48,6 @@
   nls      = list(type="Optimizer (NLM family)", description="nonlinear least squares")
 )
 
-#' Stamp the type/description attributes onto the built-in nlmixr2Est methods
-#'
-#' Runs from `.onLoad()` so that `attr(nlmixr2Est.focei, "type")` and
-#' `attr(nlmixr2Est.focei, "description")` are populated for the built-in
-#' methods; called for side effects.
-#' @return nothing
-#' @noRd
-.nlmixr2EstTypeApply <- function() {
-  .ns <- asNamespace("nlmixr2est")
-  for (.est in names(.nlmixr2EstTypeInfo)) {
-    .nm <- paste0("nlmixr2Est.", .est)
-    if (!exists(.nm, envir=.ns, inherits=FALSE)) next
-    .fn <- get(.nm, envir=.ns, inherits=FALSE)
-    if (!is.function(.fn)) next
-    .info <- .nlmixr2EstTypeInfo[[.est]]
-    attr(.fn, "type") <- .info$type
-    attr(.fn, "description") <- .info$description
-    .locked <- bindingIsLocked(.nm, .ns)
-    if (.locked) unlockBinding(.nm, .ns)
-    assign(.nm, .fn, envir=.ns)
-    if (.locked) lockBinding(.nm, .ns)
-  }
-  invisible()
-}
-
 #' Collect the tagged estimation methods grouped by category
 #'
 #' Reads the central registry first, then falls back to the `type`/`description`

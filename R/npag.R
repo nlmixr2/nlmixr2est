@@ -38,7 +38,6 @@
 #' \code{residOptimize = "none"} to hold the residual parameters at their initial
 #' values if a fixed error model is desired.
 #'
-#' @inheritParams impmapControl
 #' @param points Initial Sobol grid size (support points).  `NULL` (default) picks
 #'   it automatically from the number of support-point dimensions (etas):
 #'   `max(2028, 512 * n_eta)` -- a fixed grid (Pmetrics uses 2028) covers a

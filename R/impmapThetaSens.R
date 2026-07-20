@@ -62,6 +62,7 @@
 # rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
 # rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).
 
+#' @export
 rxUiGet.impmapThetaSens <- function(x, ...) {
   .ui <- x[[1]]
   .idx <- .impmapEstTheta(.ui)

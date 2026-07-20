@@ -90,6 +90,7 @@
 #' consistent through covariate/mu processing and model compilation.  Off when
 #' control$muExpand is FALSE.
 #' @inheritParams nlmixr2
+#' @param ui rxode2 ui
 #' @return list(ui=) when the model was expanded, else NULL
 #' @export
 #' @author Matthew L. Fidler
