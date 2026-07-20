@@ -295,17 +295,30 @@
   assign("control", .control, envir = ui)
   .fit <- .foceiFamilyReturn(env, ui, ..., est = .est)
   .impRestoreCovMethod(.fit, .covMethodUser)
-  # label the eta-space columns of the nonparametric outputs (support points,
-  # per-subject posterior etas) with the eta names for readability.
+  # label the eta-space dimensions of the nonparametric outputs with the eta
+  # names for readability: eta-per-column matrices (support points, per-subject
+  # posterior etas, npb posterior mean draws) get column names, and the npb
+  # per-eta R-hat vector gets element (row) names.
   .env <- .fit$env
   if (is.environment(.env)) {
     .nm <- .etaNames
-    for (.o in c("npagSupport", "npagPosteriorEta")) {
+    for (.o in c("npagSupport", "npagPosteriorEta",
+                 "npbSupport", "npbPosteriorEta", "npbMeanDraws")) {
       .m <- .env[[.o]]
       if (is.matrix(.m) && ncol(.m) == length(.nm)) {
         colnames(.m) <- .nm
         assign(.o, .m, envir = .env)
       }
+    }
+    # npbRhat is a per-eta column vector (wrapped as an neta x 1 matrix); name
+    # its rows.  Guard the plain-vector case too.
+    .rhat <- .env[["npbRhat"]]
+    if (is.matrix(.rhat) && nrow(.rhat) == length(.nm)) {
+      rownames(.rhat) <- .nm
+      assign("npbRhat", .rhat, envir = .env)
+    } else if (!is.null(.rhat) && is.null(dim(.rhat)) && length(.rhat) == length(.nm)) {
+      names(.rhat) <- .nm
+      assign("npbRhat", .rhat, envir = .env)
     }
   }
   .fit

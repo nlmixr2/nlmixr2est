@@ -586,9 +586,12 @@
 
 ### Output and utilities
 
-- The `est = "npag"` support-point matrix (`fit$env$npagSupport`) and the
-  per-subject posterior eta matrix (`fit$env$npagPosteriorEta`) now carry the
-  eta names as column names.
+- The nonparametric eta-space outputs now carry the eta names: for
+  `est = "npag"` the support-point matrix (`fit$env$npagSupport`) and posterior
+  eta matrix (`fit$env$npagPosteriorEta`) get eta column names; for
+  `est = "npb"` the same two matrices plus the posterior mean draws
+  (`fit$env$npbMeanDraws`) get eta column names, and the per-eta R-hat vector
+  (`fit$env$npbRhat`) gets eta row names.
 
 - New `vaeCovariates()` returns the covariates `est = "vae"` would explore.
 
