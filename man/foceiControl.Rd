@@ -136,7 +136,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
-  warm = c("save", "calc"),
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -725,11 +725,11 @@ etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
-`"save"` (default) uses the classic self-initialized Hessian.
-`"calc"` instead warm-starts each inner problem with the eta
+`"calc"` (default) warm-starts each inner problem with the eta
 Hessian calculated at the starting eta and the current theta;
 since theta moves between outer evaluations it is always
-recalculated, never reused from an earlier round.}
+recalculated, never reused from an earlier round.  `"save"` uses
+the classic self-initialized Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
