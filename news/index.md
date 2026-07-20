@@ -725,6 +725,10 @@
   the fit as `parHistData`; the sampler’s results are unchanged
   (bit-identical).
 
+- The importance-sampling (`covMethod = "imp"`) covariance step now
+  shows a progress bar over its finite-difference evaluations, like the
+  focei covariance step (shown when iteration printing is on).
+
 - New
   [`vaeCovariates()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeCovariates.md)
   returns the covariates `est = "vae"` would explore.
