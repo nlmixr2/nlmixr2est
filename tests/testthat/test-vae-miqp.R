@@ -42,7 +42,7 @@ nmTest({
   })
 
   test_that("branch-and-bound equals independent brute force on random problems", {
-    set.seed(11L)
+    .testSeed(11L)
     for (rep in 1:8) {
       N <- 90L; nCov <- sample(4:11, 1L)
       X <- matrix(rnorm(N * nCov), N, nCov)

@@ -10,7 +10,7 @@ nmTest({
       e0 + emax * x^hill / (ex50^hill + x^hill)
     }
 
-    set.seed(641)
+    .testSeed(641)
     d_mod <- data.frame(
       WEEK = rep(0:12, 5),
       ID = rep(1:5, each = 13),

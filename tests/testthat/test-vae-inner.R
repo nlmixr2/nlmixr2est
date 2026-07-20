@@ -16,7 +16,7 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
     ctl <- vaeControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    set.seed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
 
     .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -61,7 +61,7 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
     ctl <- vaeControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    set.seed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     env <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -74,7 +74,7 @@ nmTest({
     expect_equal(rFast0$lp, rRef0$lp, tolerance = 1e-10)
     ## near the setup values, agreement to a small tolerance
     for (i in 1:3) {
-      set.seed(i)
+      .testSeed(i)
       th <- prep$th * (1 + rnorm(length(prep$th), 0, 0.1))
       om <- prep$omega * exp(rnorm(3, 0, 0.3))
       vaeInnerUpdatePar_(as.numeric(th), as.numeric(om))
@@ -130,7 +130,7 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V })
     }
-    set.seed(42)
+    .testSeed(42)
     nPer <- 20L
     ev <- rxode2::et(amt = 320, cmt = "depot") %>% rxode2::et(seq(0.5, 24, length.out = 8))
     mkGroup <- function(ke, ids) {
@@ -190,7 +190,7 @@ nmTest({
     N <- prep$N; zDim <- prep$zDim; hDim <- 12L
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
-    set.seed(1)
+    .testSeed(1)
     params <- .vaeEncoderInitParams(zDim, hDim, 0L, prep$zPop, rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
     st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)

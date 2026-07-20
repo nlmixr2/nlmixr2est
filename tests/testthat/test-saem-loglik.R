@@ -5,7 +5,7 @@ nmTest({
 
   # exponential time-to-event data with a subject random effect on the mean
   .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
-    set.seed(seed)
+    .testSeed(seed)
     do.call(rbind, lapply(seq_len(n), function(i) {
       lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
       data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)

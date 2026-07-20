@@ -31,7 +31,7 @@ nmTest({
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod)); .ui$control <- vaeControl()
     .d <- nlmixr2data::theo_sd
-    set.seed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
+    .testSeed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
     expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d),
                    "time-varying covariate.*excluded from automatic covariate search: TVCOV")
     expect_false("TVCOV" %in% .p$covNames)            # excluded

@@ -692,7 +692,7 @@ nmTest({
     # theo_sd's IDs to 101..112 (or permuting them) must not change the covariance.
     d1 <- nlmixr2data::theo_sd                 # IDs 1..12
     d2 <- d1; d2$ID <- d2$ID + 100L            # IDs 101..112 (non-1..N)
-    set.seed(1); pm <- sample(1:12); d3 <- d1; d3$ID <- pm[d1$ID]   # a permutation of 1..N
+    .testSeed(1); pm <- sample(1:12); d3 <- d1; d3$ID <- pm[d1$ID]   # a permutation of 1..N
     ctl <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE)
     f1 <- suppressMessages(nlmixr(.cov_one_cmt, d1, "focei", ctl))
     f2 <- suppressMessages(nlmixr(.cov_one_cmt, d2, "focei", ctl))
@@ -749,7 +749,7 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # simulate a small data set with genuine between-occasion variability in CL so IOV is
     # identified (the fixture theo data has none, driving iov.cl onto its boundary).
-    set.seed(42)
+    .testSeed(42)
     .sim <- rxode2::rxode2({
       ka <- exp(0.5 + eta.ka); cl <- exp(1.0 + eta.cl + iov.cl); v <- exp(3.4 + eta.v)
       d/dt(depot)  <- -ka * depot

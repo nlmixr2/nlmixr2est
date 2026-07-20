@@ -4,7 +4,7 @@ nmTest({
     # Simulate subjects with a known population intercept/slope and
     # genuine random noise; with enough subjects OLS should recover both
     # within a reasonable tolerance.
-    set.seed(42)
+    .testSeed(42)
     n <- 300
     trueTheta <- 1.5
     trueBeta <- 0.5
@@ -25,7 +25,7 @@ nmTest({
   })
 
   test_that(".muRefLin respects a user-fixed covariate coefficient", {
-    set.seed(43)
+    .testSeed(43)
     n <- 100
     trueTheta <- 0.8
     fixedBeta <- 0.75
@@ -42,7 +42,7 @@ nmTest({
   })
 
   test_that(".muRefLin handles multiple covariates, some fixed and some free", {
-    set.seed(44)
+    .testSeed(44)
     n <- 200
     trueTheta <- 1.0
     trueBetaFree <- 0.4
@@ -58,7 +58,7 @@ nmTest({
   })
 
   test_that(".muRefIrls with equal weights matches .muRefLin exactly", {
-    set.seed(45)
+    .testSeed(45)
     n <- 80
     cov <- data.frame(logWT = rnorm(n, 0, 0.3))
     phi <- 1.2 + 0.6 * cov$logWT + rnorm(n, 0, 0.2)
@@ -75,7 +75,7 @@ nmTest({
     # variance (precise phi), half have large (noisy phi). A properly
     # curvature-weighted regression should track the precise group more
     # closely than an unweighted OLS fit would.
-    set.seed(46)
+    .testSeed(46)
     n <- 400
     # covariate spans the same full range in both the precise and noisy
     # halves (interleaved, not split by covariate value) so the slope stays

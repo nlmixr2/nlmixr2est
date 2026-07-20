@@ -189,10 +189,10 @@ nmTest({
     }
     .ctl <- function(bt) saemControl(print = 0, nBurn = 200, nEm = 100, seed = 42,
                                      boundedTransform = bt)
-    set.seed(42)
+    .testSeed(42)
     fitF <- suppressMessages(suppressWarnings(
       nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(FALSE))))
-    set.seed(42)
+    .testSeed(42)
     fitT <- suppressMessages(suppressWarnings(
       nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(TRUE))))
     # names: the internal rxBoundedTr.* name must not leak into $cov

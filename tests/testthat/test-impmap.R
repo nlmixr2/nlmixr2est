@@ -378,7 +378,7 @@ nmTest({
       })
     }
     # simulate a 2-endpoint dataset from the model
-    set.seed(1); rxode2::rxSetSeed(1)
+    .testSeed(1); rxode2::rxSetSeed(1)
     .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
@@ -538,7 +538,7 @@ nmTest({
               data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
       }))
     }
-    set.seed(11); rxode2::rxSetSeed(11)
+    .testSeed(11); rxode2::rxSetSeed(11)
     .d <- rbind(.mkg(3.0, 1:30), .mkg(9.0, 31:50))
     .d <- .d[order(.d$id, .d$time, -.d$evid), ]
     m <- function() {

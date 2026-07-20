@@ -16,7 +16,7 @@ nmTest({
     })
   }
 
-  set.seed(42)
+  .testSeed(42)
   dat <- Wang2007
   dat$DV <- dat$Y
   dat2 <- dat[dat$Time == 0, ]

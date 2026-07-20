@@ -56,7 +56,7 @@ nmTest({
     expect_lt(max(abs(E$aR)), 1e-8)
 
     ## ELBO data term p(x|z) gradient vs FD (synthetic DV = closed form + noise)
-    set.seed(42)
+    .testSeed(42)
     y <- fCf + rnorm(length(fCf), 0, 0.3)
     px <- .vaeDecoderPxz(E, y)
     pxzOf <- function(eta) {

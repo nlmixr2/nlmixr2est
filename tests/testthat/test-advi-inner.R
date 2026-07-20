@@ -15,7 +15,7 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
     ctl <- adviControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    set.seed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
 
     .adviInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
     on.exit(.adviInnerFree(), add = TRUE)

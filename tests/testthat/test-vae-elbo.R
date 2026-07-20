@@ -26,9 +26,9 @@ nmTest({
     am <- .vaeDecoderModel(ui)
 
     zDim <- prep$zDim; hDim <- 6L; nCov <- 0L
-    set.seed(7)
+    .testSeed(7)
     params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim))
-    set.seed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
+    .testSeed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
     alphaKL <- 0.7
 
     st <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, alphaKL, eps)
@@ -50,7 +50,7 @@ nmTest({
       }
       d
     }
-    set.seed(1)
+    .testSeed(1)
     for (nm in c("fcB", "fcW", "Wih", "Whh", "bih")) expect_lt(fdMax(nm), 1e-4)
   })
 })

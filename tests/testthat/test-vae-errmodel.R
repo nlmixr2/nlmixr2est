@@ -6,7 +6,7 @@
 
 nmTest({
   .vaeErrData <- function(seed = 7, N = 30L) {
-    set.seed(seed)
+    .testSeed(seed)
     simMod <- function() {
       ini({ lka <- log(1.5); lke <- log(0.1); lV <- log(32) })
       model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
@@ -73,7 +73,7 @@ nmTest({
 
   test_that("vae supports a general (Poisson) likelihood via the inner problem", {
     skip_on_cran()
-    set.seed(11)
+    .testSeed(11)
     N <- 40L; times <- seq(1, 10, by = 1); lb <- log(8)
     rows <- do.call(rbind, lapply(seq_len(N), function(i) {
       lam <- exp(lb + stats::rnorm(1, 0, 0.5)) * exp(-0.05 * times)

@@ -28,7 +28,7 @@ test_that("saemControl(nonMuTheta='regress') recovers no-eta thetas and engages 
   .times <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
   .nsub <- 40
   rxode2::rxSetSeed(1042)
-  set.seed(1042)
+  .testSeed(1042)
   .et <- rxode2::et(amt = 100, time = 0, cmt = "depot")
   .et <- rxode2::et(.et, .times)
   .et <- rxode2::et(.et, id = seq_len(.nsub))
