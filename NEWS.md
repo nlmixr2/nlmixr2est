@@ -2,6 +2,21 @@
 
 ## New features
 
+- FOCEi now scales a linear (additive / unbounded) population parameter by its
+  native magnitude `|init|` (NONMEM7 Appendix K, eq 15.2) instead of the previous
+  `1/|init|`.  The old constant froze small-initial-estimate parameters (e.g. a
+  covariate coefficient) and under-scaled large-initial-estimate ones, so a unit
+  step in the internal (scaled) parameter is now proportional to the parameter's
+  own scale.  Log-scaled parameters keep `scaleC = 1`.  This subsumes and replaces
+  the earlier issue-641 special case for large-magnitude additive thetas.
+
+- The FOCEi family nudges any population parameter (`theta`) initialized at
+  exactly `0` off zero before estimation, controlled by
+  `foceiControl(zeroTheta=)` (default `0.001`), since a zero initial estimate has
+  no native scale to scale by.  `+zeroTheta` is used when within the parameter's
+  bounds, otherwise `-zeroTheta`; if neither is within the bounds it errors.
+  Fixed parameters (including those fixed at `0`) are left untouched.
+
 - `foceiControl()` gains `shi21hMax` and `shi21hMin` (defaults `2.0` and `1e-4`),
   the upper and lower bounds on the adaptive shi21 finite-difference step used for
   FOCEi gradients (both the inner eta and, when `shi21maxOuter != 0`, the outer

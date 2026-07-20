@@ -140,6 +140,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   sensMethod = c("default", "forward", "adjoint"),
+  zeroTheta = 0.001,
   boundedTransform = TRUE
 )
 }
@@ -738,6 +739,15 @@ gnlmm was 400.}
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
 `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
 (`s`) method.}
+
+\item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
+population parameter (`theta`) whose initial estimate is exactly `0`
+off zero before estimation, since the FOCEi scaling constant
+`1/|init|` is singular at `0` and would freeze the parameter.  The
+value `+zeroTheta` is used when it is within the parameter's bounds,
+otherwise `-zeroTheta`; if neither is within the bounds an error is
+raised.  Fixed parameters (including those fixed at `0`) are left
+untouched.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

@@ -810,13 +810,6 @@ void updateZm(focei_ind *indF){
 
 static inline double getScaleC(int i){
   if (ISNA(op_focei.scaleC[i])) {
-    // The default scaling constant is 1/|initPar|.  When a parameter is
-    // initialized at exactly 0 (e.g. a covariate effect or an additive term)
-    // this is 1/0 = Inf, which clamps to scaleCmax and makes the parameter
-    // effectively unoptimizable: a tiny step in scaled space becomes a huge
-    // step in the parameter, so the line search freezes it at its starting
-    // value.  Fall back to unit scaling when initPar is 0 so a zero-initialized
-    // parameter is still estimated.
     double aInit = fabs(op_focei.initPar[i]);
     switch (op_focei.xPar[i]){
     case 1: // log
@@ -833,7 +826,13 @@ static inline double getScaleC(int i){
       op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
       break;
     default:
-      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
+      // NONMEM-style scaling for a linear (additive / unbounded) theta: scale by
+      // the parameter's native magnitude |init| (NONMEM7 Appendix K, eq 15.2) so a
+      // natural optimizer step moves the parameter proportional to its own scale.
+      // The old 1/|init| default froze small-init and over-shot large-init
+      // parameters (issues #641 and the covariate-coefficient case).  |init| == 0
+      // -- a zero left after the zeroTheta nudge -- uses unit scaling.
+      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : aInit;
       break;
     }
   }

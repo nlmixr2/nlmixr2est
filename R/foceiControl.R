@@ -614,6 +614,15 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
+#' @param zeroTheta Positive magnitude (default `0.001`) used to nudge a
+#'   population parameter (`theta`) whose initial estimate is exactly `0`
+#'   off zero before estimation.  FOCEi scales a linear parameter by its
+#'   native magnitude `|init|`, which is `0` (no scale) for a zero
+#'   initial estimate, so the parameter is moved to `+zeroTheta` when it
+#'   is within the parameter's bounds, otherwise `-zeroTheta`; if neither
+#'   is within the bounds an error is raised.  Fixed parameters
+#'   (including those fixed at `0`) are left untouched.
+#'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
@@ -809,6 +818,7 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          sensMethod = c("default", "forward", "adjoint"),
+                         zeroTheta=0.001,
                          boundedTransform=TRUE) { #
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
@@ -1288,6 +1298,10 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumber(zeroTheta, lower=0, finite=TRUE)
+  if (zeroTheta <= 0) {
+    stop("'zeroTheta' must be a positive number", call.=FALSE)
+  }
   checkmate::assertNumber(shi21hMin, lower=0, finite=TRUE)
   checkmate::assertNumber(shi21hMax, lower=0, finite=TRUE)
   if (shi21hMax <= shi21hMin) {
@@ -1443,7 +1457,8 @@ foceiControl <- function(sigdig = 4, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     sensMethod=sensMethod,
-    boundedTransform=boundedTransform
+    boundedTransform=boundedTransform,
+    zeroTheta=zeroTheta
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
