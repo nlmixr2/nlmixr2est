@@ -713,6 +713,10 @@
 
 #### Output and utilities
 
+- The `est = "npag"` support-point matrix (`fit$env$npagSupport`) and
+  the per-subject posterior eta matrix (`fit$env$npagPosteriorEta`) now
+  carry the eta names as column names.
+
 - New
   [`vaeCovariates()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeCovariates.md)
   returns the covariates `est = "vae"` would explore.
