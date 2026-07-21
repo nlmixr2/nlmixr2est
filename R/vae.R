@@ -95,6 +95,10 @@
 #'   \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 #'   \code{"r"}, \code{"s"}, or \code{""} to skip.
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
+#' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
+#'   `bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
+#'   derives it from `sigdig` (`10^(-sigdig-1)`, the FOCEi mechanism), or `1e-5`
+#'   when `sigdig` is `NULL`.
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
 #'
@@ -161,6 +165,7 @@ vaeControl <- function(seed = 42L,
                        ci = 0.95,
                        sigdig = NULL,
                        sigdigTable = NULL,
+                       rhoend = NULL,
 
                        stickyRecalcN = 4,
                        maxOdeRecalc = 5,
@@ -254,7 +259,12 @@ vaeControl <- function(seed = 42L,
                                                useColor = useColor,
                                                iterPrintControl = .xtra$iterPrintControl)
 
+  # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
+  # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
+  if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-5
+  checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ret <- list(seed = as.integer(seed),
+               rhoend = as.numeric(rhoend),
                itersBurnIn = as.integer(itersBurnIn),
                klWarmup = as.integer(klWarmup),
                gammaIter = as.integer(gammaIter),

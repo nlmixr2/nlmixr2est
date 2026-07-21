@@ -88,7 +88,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                        const arma::ivec& obsEndpoint,
                        const std::vector<int>& optEnd,
                        const std::vector<int>& optProp,
-                       bool reDerive) {
+                       bool reDerive, double rhoend) {
   int n = (int)idx.size();
   if (n == 0) return R_PosInf;
   gNpOptIdx = idx; gNpOptKind = kind;
@@ -151,7 +151,8 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   Rcpp::InternalFunction fn(&npResidObjR);
   Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
                               Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
-                              Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n));
+                              Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n,
+                                                                     Rcpp::_["rhoend"] = rhoend));
   if (doFreeze) npResidFreezeClear();   // unfreezes op_focei.freezeOde
   double f = as<double>(ret["value"]);
   gNpReDerive = false;
@@ -178,6 +179,7 @@ struct npagCtl {
   double thetaG = 1e-4; // objf-change tolerance that halves eps
   double thetaF = 1e-2; // successive-F tolerance for the exit test
   double thetaD = 1e-4; // minimum scaled distance for daughter points
+  double residRhoend = 1e-5; // bounded-bobyqa final trust-region radius (residual step)
   bool gammaOptimize = false; // optimize the residual-error magnitude (gamma)
   double gammaInit = 1.0;     // initial gamma multiplier
   double gammaDelta = 0.1;    // initial gamma step fraction
@@ -358,7 +360,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     // coordinate ascent), then re-solves the weights at the new thetas.
     if (ctl.residMode == 1 && doResidOpt) {
       npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                      ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress);
+                      ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
       double off = 0.0, b = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
@@ -407,7 +409,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   // "final" mode: optimize the residual + regressor thetas once at the converged support.
   if (ctl.residMode == 2 && doResidOpt) {
     npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                    ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress);
+                    ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
     double off = 0.0, b = 0.0;
     npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
     lam = npBurke(psi, &b); objf = b + off;
@@ -466,6 +468,8 @@ void npagOuter(Environment e) {
     ctl.dfScan = as<int>(control["npDfScan"]);
   ctl.cores = impCores();
   ctl.gammaOptimize = as<bool>(control["npGammaOptimize"]);
+  if (control.containsElementNamed("npResidRhoend"))
+    ctl.residRhoend = as<double>(control["npResidRhoend"]);
   ctl.trace = true;
   if (control.containsElementNamed("npResidScaleIdx")) {
     IntegerVector ri = control["npResidScaleIdx"];

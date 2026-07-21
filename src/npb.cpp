@@ -116,6 +116,9 @@ void npbOuter(Environment e) {
   std::vector<double> regressLower, regressUpper;
   arma::ivec obsEndpoint;
   bool residFreeze = true;
+  double npbResidRhoend = 1e-5; // bounded-bobyqa final trust-region radius (residual step)
+  if (control.containsElementNamed("npResidRhoend"))
+    npbResidRhoend = as<double>(control["npResidRhoend"]);
   if (control.containsElementNamed("npResidOptIdx")) {
     IntegerVector ro = control["npResidOptIdx"];
     residOptIdx.assign(ro.begin(), ro.end());
@@ -317,7 +320,7 @@ void npbOuter(Environment e) {
       npbCompactSupport(phi, w, rsup, rwt);
       PutRNGstate();
       npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
-                      obsEndpoint, optEnd, optProp, useRegress);
+                      obsEndpoint, optEnd, optProp, useRegress, npbResidRhoend);
       GetRNGstate();
     }
     // (d) accumulate post-burn-in draws
@@ -346,7 +349,7 @@ void npbOuter(Environment e) {
     arma::mat rsup; arma::vec rwt;
     npbCompactSupport(phiLast, wLast, rsup, rwt);
     npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
-                    obsEndpoint, optEnd, optProp, useRegress);
+                    obsEndpoint, optEnd, optProp, useRegress, npbResidRhoend);
   }
 
   arma::vec rhat = npbGelmanRubin(chainMeanDraws);
