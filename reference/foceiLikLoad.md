@@ -110,10 +110,10 @@ h$initPar
 # Individual joint log-likelihood at eta = 0, one value per subject
 eta <- matrix(0, h$nid, h$neta)
 foceiLikRun(h$initPar, eta)
-#>           1           2           3           4           5           6 
-#> -24.4017587  -9.3365473  -0.6718843  -5.5542461 -19.0895200 -33.8105271 
-#>           7           8           9          10          11          12 
-#> -24.9543558  -8.8147973 -32.7217521 -30.0008367 -18.5848785 -13.1123082 
+#>         1         2         3         4         5         6         7         8 
+#> -94.15985 -62.28137 -63.71703 -63.26625 -85.38786 -36.32018 -43.59111 -48.51995 
+#>         9        10        11        12 
+#> -60.63507 -83.32305 -52.96870 -77.66747 
 
 # Free it when done (loading again before this errors)
 foceiLikUnload()

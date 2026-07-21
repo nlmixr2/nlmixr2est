@@ -68,6 +68,7 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#> ℹ moved zero initial estimate(s) off 0 (foceiControl(zeroTheta)): tka
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done

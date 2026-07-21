@@ -323,14 +323,14 @@ print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0929        67.95285
+#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0932        67.95289
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3656686 0.3669157  8.948e-06       0.05       0.006 0.026    0.001
+#> elapsed 0.3409083 0.3428365  6.379e-06      0.045       0.006 0.024    0.001
 #>             other
-#> elapsed 0.1014067
+#> elapsed 0.1002489
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -355,9 +355,9 @@ print(fit2)
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.806218115844621, 5.48662262692952, 2.89816168968597 
+#> parameter estimates: -0.806218133511085, 5.4866229034296, 2.89816170901102 
 #> objective: 579.080149823443 
-#> number of function evaluations: 66 
+#> number of function evaluations: 72 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

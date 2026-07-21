@@ -346,7 +346,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5603bbeac1f8>
+#> <bytecode: 0x5637a5b7ecd8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -435,6 +435,9 @@ npagControl()
 #> 
 #> $scaleCmin
 #> [1] 1e-05
+#> 
+#> $scaleCband
+#> [1]  0.1 10.0
 #> 
 #> $scaleCmax
 #> [1] 1e+05
@@ -968,6 +971,12 @@ npagControl()
 #> $shi21maxFD
 #> [1] 20
 #> 
+#> $shi21hMax
+#> [1] 2
+#> 
+#> $shi21hMin
+#> [1] 1e-04
+#> 
 #> $smatPer
 #> [1] 0.6
 #> 
@@ -1003,6 +1012,9 @@ npagControl()
 #> 
 #> $boundedTransform
 #> [1] TRUE
+#> 
+#> $zeroTheta
+#> [1] 0.001
 #> 
 #> $impCov
 #> [1] TRUE

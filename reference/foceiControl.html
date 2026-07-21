@@ -53,6 +53,7 @@
 <span>  scaleType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlmixr2"</span>, <span class="st">"norm"</span>, <span class="st">"mult"</span>, <span class="st">"multAdd"</span><span class="op">)</span>,</span>
 <span>  scaleCmax <span class="op">=</span> <span class="fl">1e+05</span>,</span>
 <span>  scaleCmin <span class="op">=</span> <span class="fl">1e-05</span>,</span>
+<span>  scaleCband <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">10</span><span class="op">)</span>,</span>
 <span>  scaleC <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  scaleC0 <span class="op">=</span> <span class="fl">1e+05</span>,</span>
 <span>  derivEps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">20</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
@@ -122,6 +123,8 @@
 <span>  shi21maxInner <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  shi21maxInnerCov <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  shi21maxFD <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  shi21hMax <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>  shi21hMin <span class="op">=</span> <span class="fl">1e-04</span>,</span>
 <span>  gillK <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  gillStep <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  gillFtol <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -172,6 +175,7 @@
 <span>  agqLow <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
 <span>  agqHi <span class="op">=</span> <span class="cn">Inf</span>,</span>
 <span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
+<span>  zeroTheta <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -264,6 +268,18 @@ multiplicatively otherwise.</p></dd>
 
 <dt id="arg-scalecmin">scaleCmin<a class="anchor" aria-label="anchor" href="#arg-scalecmin"></a></dt>
 <dd><p>Minimum value of the scaleC to prevent underflow.</p></dd>
+
+
+<dt id="arg-scalecband">scaleCband<a class="anchor" aria-label="anchor" href="#arg-scalecband"></a></dt>
+<dd><p>Length-2 increasing pair `c(low, high)` (default
+`c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
+(`1/|init|` for a linear parameter, or the transform-specific
+formula) is kept when it lands inside this band, and otherwise
+replaced by the parameter's native magnitude `|init|`.  This catches
+the singular cases – `1/|init|` blowing up for a small covariate
+initial estimate, `log()` at init `1`, `logit` at the interval
+midpoint, `factorial`/`gamma` at a digamma zero – while leaving the
+well-scaled common case (and its results) untouched.</p></dd>
 
 
 <dt id="arg-scalec">scaleC<a class="anchor" aria-label="anchor" href="#arg-scalec"></a></dt>
@@ -706,6 +722,23 @@ of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)</p></dd>
 
 
+<dt id="arg-shi-hmax">shi21hMax<a class="anchor" aria-label="anchor" href="#arg-shi-hmax"></a></dt>
+<dd><p>Upper bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients (both the inner eta and outer
+theta/covariate finite differences).  The step-size search never
+probes a parameter by more than this on its estimation scale; a
+larger value lets the gradient of a flat, small-magnitude parameter
+(e.g. a covariate coefficient near 0) clear the ODE-solver noise
+floor, at the cost of risking a degenerate solve at the probe.</p></dd>
+
+
+<dt id="arg-shi-hmin">shi21hMin<a class="anchor" aria-label="anchor" href="#arg-shi-hmin"></a></dt>
+<dd><p>Lower bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients.  The floor is limited by the ODE
+solver tolerance (atol/rtol), not machine precision; below it the
+finite difference is dominated by solver noise.</p></dd>
+
+
 <dt id="arg-gillk">gillK<a class="anchor" aria-label="anchor" href="#arg-gillk"></a></dt>
 <dd><p>Max steps to determine the optimal forward/central
 difference step size per parameter (Gill 1983). `0` = no optimal
@@ -1019,6 +1052,17 @@ gnlmm was 400.</p></dd>
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
 `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
 (`s`) method.</p></dd>
+
+
+<dt id="arg-zerotheta">zeroTheta<a class="anchor" aria-label="anchor" href="#arg-zerotheta"></a></dt>
+<dd><p>Positive magnitude (default `0.001`) used to nudge a
+population parameter (`theta`) whose initial estimate is exactly `0`
+off zero before estimation.  FOCEi scales a linear parameter by its
+native magnitude `|init|`, which is `0` (no scale) for a zero
+initial estimate, so the parameter is moved to `+zeroTheta` when it
+is within the parameter's bounds, otherwise `-zeroTheta`; if neither
+is within the bounds an error is raised.  Fixed parameters
+(including those fixed at `0`) are left untouched.</p></dd>
 
 
 <dt id="arg-boundedtransform">boundedTransform<a class="anchor" aria-label="anchor" href="#arg-boundedtransform"></a></dt>

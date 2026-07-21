@@ -117,7 +117,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8584
+#> → compress parHistData in nlmixr2 object, save 8592
 #> → compress phiM in nlmixr2 object, save 446912
 
 print(f)
@@ -128,10 +128,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1851113 3.6395e-05  0.0120064      0.077     0.231 7.415       0.433
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1797125 3.339e-05 0.01000583      0.077     0.224 7.032       0.417
 #>         compress     other
-#> elapsed    0.144 0.1458459
+#> elapsed    0.136 0.1542483
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -139,7 +139,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.67e-310 6.68e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.68e-310 6.69e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -166,10 +166,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1851113 3.6395e-05  0.0120064      0.077     0.231 7.415       0.433
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1797125 3.339e-05 0.01000583      0.077     0.224 7.032       0.417
 #>         compress     other
-#> elapsed    0.144 0.1458459
+#> elapsed    0.136 0.1542483
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -177,7 +177,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.67e-310 6.68e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.68e-310 6.69e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 

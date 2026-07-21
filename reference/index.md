@@ -51,6 +51,8 @@
   vaeControl(nonMuTheta=).
 - [`.preProcessZeroOmega()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.md)
   : Preprocess the zero omegas
+- [`.preProcessZeroTheta()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroTheta.md)
+  : Nudge exactly-zero theta initial estimates off zero (FOCEi family)
 - [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)
   : Control options for the FO estimation method
 - [`foceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceControl.md)
