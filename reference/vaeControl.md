@@ -45,6 +45,7 @@ vaeControl(
   ci = 0.95,
   sigdig = NULL,
   sigdigTable = NULL,
+  rhoend = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -296,6 +297,13 @@ vaeControl(
   Significant digits in the final output table. If not specified, then
   it matches the significant digits in the \`sigdig\` optimization
   algorithm. If \`sigdig\` is NULL, use 3.
+
+- rhoend:
+
+  Final trust-region radius (\`rhoend\`) of the inner bounded \`bobyqa\`
+  used by the non-mu / covariate regress M-step. \`NULL\` (default)
+  derives it from \`sigdig\` (\`10^(-sigdig-1)\`, the FOCEi mechanism),
+  or \`1e-5\` when \`sigdig\` is \`NULL\`.
 
 - stickyRecalcN:
 

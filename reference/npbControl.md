@@ -20,6 +20,7 @@ npbControl(
   gammaOptimize = FALSE,
   muExpand = FALSE,
   cores = NULL,
+  rhoend = 1e-05,
   ...
 )
 ```
@@ -95,6 +96,12 @@ npbControl(
   integer sets the thread count for the fit (restored afterwards). With
   a fixed \`seed\` the fit is bit-for-bit identical regardless of the
   thread count.
+
+- rhoend:
+
+  Final trust-region radius (\`rhoend\`) of the inner bounded \`bobyqa\`
+  that fits the residual-error thetas. Defaults to \`1e-5\` (the FOCEi
+  convergence tolerance \`10^(-sigdig-1)\` at the default \`sigdig=4\`).
 
 - ...:
 
@@ -313,14 +320,14 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55d4d6e8a180>
+#> <bytecode: 0x55d310afeef8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 1e-04
+#> [1] 1e-05
 #> 
 #> $npt
 #> NULL

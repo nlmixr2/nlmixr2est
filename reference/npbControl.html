@@ -57,6 +57,7 @@ are added in a later milestone.</p>
 <span>  gammaOptimize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  muExpand <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  rhoend <span class="op">=</span> <span class="fl">1e-05</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -130,6 +131,12 @@ likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
 `rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread
 count for the fit (restored afterwards).  With a fixed `seed` the fit is
 bit-for-bit identical regardless of the thread count.</p></dd>
+
+
+<dt id="arg-rhoend">rhoend<a class="anchor" aria-label="anchor" href="#arg-rhoend"></a></dt>
+<dd><p>Final trust-region radius (`rhoend`) of the inner bounded
+`bobyqa` that fits the residual-error thetas.  Defaults to `1e-5` (the FOCEi
+convergence tolerance `10^(-sigdig-1)` at the default `sigdig=4`).</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -349,14 +356,14 @@ or to Pmetrics NPAG.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55d4d6e8a180&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55d310afeef8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhoend</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-05</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $npt</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>

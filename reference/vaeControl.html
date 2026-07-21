@@ -83,6 +83,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  rhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stickyRecalcN <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  maxOdeRecalc <span class="op">=</span> <span class="fl">5</span>,</span>
 <span>  odeRecalcFactor <span class="op">=</span> <span class="fl">10</span><span class="op">^</span><span class="op">(</span><span class="fl">0.5</span><span class="op">)</span>,</span>
@@ -336,6 +337,13 @@ this is unspecified (<code>NULL</code>) and uses the standard <code>atol</code>/
 <dd><p>Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.</p></dd>
+
+
+<dt id="arg-rhoend">rhoend<a class="anchor" aria-label="anchor" href="#arg-rhoend"></a></dt>
+<dd><p>Final trust-region radius (`rhoend`) of the inner bounded
+`bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
+derives it from `sigdig` (`10^(-sigdig-1)`, the FOCEi mechanism), or `1e-5`
+when `sigdig` is `NULL`.</p></dd>
 
 
 <dt id="arg-stickyrecalcn">stickyRecalcN<a class="anchor" aria-label="anchor" href="#arg-stickyrecalcn"></a></dt>
