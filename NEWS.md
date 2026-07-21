@@ -17,6 +17,17 @@
   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled
   common case, and its results, unchanged.
 
+- The bounded-transform (`logit`/`expit`/`probit`/`probitInv`) `scaleC` band is now
+  built from each parameter's OWN low and high bound instead of a fixed cutoff.  The
+  derivative-based `scaleC` factors as `N * M`, where `N` is a per-parameter scale
+  using the distance to each bound (`(x-low)(hi-x)/(hi-low)` for `logit`/`probit`,
+  `E/(hi-low)` for `expit`/`probitInv`) and `M` is a bounds-invariant factor that
+  carries the singularity.  Guarding `scaleC` to `N * [lo, hi]` applies the same
+  dimensionless band at every bound, so `logit(x, 0, 1)` and `logit(x, 1, 100)` are
+  guarded identically at equal fractional position.  Previously a wide interval
+  (e.g. `logit(x, 1, 100)`) had its healthy large `scaleC` clipped by the fixed
+  `c(1e-4, 10)` band and slammed to the midpoint; `(0, 1)` results are unchanged.
+
 - Fixed FOCEi `scaleC` for a `gamma()`-transformed population parameter: rxode2
   reports it as `curEval="lgammafn"`, which the scaling setup did not recognize, so
   it silently received the linear `1/|init|` default instead of its `1/digamma`
