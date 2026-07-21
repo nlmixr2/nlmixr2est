@@ -154,6 +154,19 @@
 #'   of the forward difference step size when using dosing events (lag
 #'   time, modeled duration/rate and bioavailability)
 #'
+#' @param shi21hMax Upper bound on the adaptive shi21 finite-difference
+#'   step size for FOCEi gradients (both the inner eta and outer
+#'   theta/covariate finite differences).  The step-size search never
+#'   probes a parameter by more than this on its estimation scale; a
+#'   larger value lets the gradient of a flat, small-magnitude parameter
+#'   (e.g. a covariate coefficient near 0) clear the ODE-solver noise
+#'   floor, at the cost of risking a degenerate solve at the probe.
+#'
+#' @param shi21hMin Lower bound on the adaptive shi21 finite-difference
+#'   step size for FOCEi gradients.  The floor is limited by the ODE
+#'   solver tolerance (atol/rtol), not machine precision; below it the
+#'   finite difference is dominated by solver noise.
+#'
 #' @param centralDerivEps Central difference tolerances (relative,
 #'   absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.
 #'
@@ -381,6 +394,16 @@
 #'
 #' @param scaleCmin Minimum value of the scaleC to prevent underflow.
 #'
+#' @param scaleCband Length-2 increasing pair `c(low, high)` (default
+#'   `c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
+#'   (`1/|init|` for a linear parameter, or the transform-specific
+#'   formula) is kept when it lands inside this band, and otherwise
+#'   replaced by the parameter's native magnitude `|init|`.  This catches
+#'   the singular cases -- `1/|init|` blowing up for a small covariate
+#'   initial estimate, `log()` at init `1`, `logit` at the interval
+#'   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
+#'   well-scaled common case (and its results) untouched.
+#'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
 #'     \code{Vscaled = (Vunscaled-C1)/C2} (see
@@ -601,6 +624,15 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
+#' @param zeroTheta Positive magnitude (default `0.001`) used to nudge a
+#'   population parameter (`theta`) whose initial estimate is exactly `0`
+#'   off zero before estimation.  FOCEi scales a linear parameter by its
+#'   native magnitude `|init|`, which is `0` (no scale) for a zero
+#'   initial estimate, so the parameter is moved to `+zeroTheta` when it
+#'   is within the parameter's bounds, otherwise `-zeroTheta`; if neither
+#'   is within the bounds an error is raised.  Fixed parameters
+#'   (including those fixed at `0`) are left untouched.
+#'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
@@ -659,6 +691,7 @@ foceiControl <- function(sigdig = 4, #
                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
                          scaleCmax = 1e5, #
                          scaleCmin = 1e-5, #
+                         scaleCband = c(0.1, 10), #
                          scaleC = NULL, #
                          scaleC0 = 1e5, #
                          derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -740,6 +773,8 @@ foceiControl <- function(sigdig = 4, #
                          shi21maxInner = 20L,
                          shi21maxInnerCov =20L,
                          shi21maxFD=20L,
+                         shi21hMax=2.0,
+                         shi21hMin=1e-4,
                          gillK = 10L, #
                          gillStep = 4, #
                          gillFtol = 0, #
@@ -794,6 +829,7 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          sensMethod = c("default", "forward", "adjoint"),
+                         zeroTheta=0.001,
                          boundedTransform=TRUE) { #
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
@@ -860,6 +896,10 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCband, lower=0, finite=TRUE, any.missing=FALSE, len=2)
+  if (scaleCband[1] >= scaleCband[2]) {
+    stop("'scaleCband' must be an increasing pair (low, high)", call.=FALSE)
+  }
   if (!is.null(scaleC)) {
     checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
   }
@@ -1273,6 +1313,15 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumber(zeroTheta, lower=0, finite=TRUE)
+  if (zeroTheta <= 0) {
+    stop("'zeroTheta' must be a positive number", call.=FALSE)
+  }
+  checkmate::assertNumber(shi21hMin, lower=0, finite=TRUE)
+  checkmate::assertNumber(shi21hMax, lower=0, finite=TRUE)
+  if (shi21hMax <= shi21hMin) {
+    stop("'shi21hMax' must be greater than 'shi21hMin'", call.=FALSE)
+  }
   checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
@@ -1367,6 +1416,7 @@ foceiControl <- function(sigdig = 4, #
     normType = normType,
     scaleC = scaleC,
     scaleCmin = as.double(scaleCmin),
+    scaleCband = as.double(scaleCband),
     scaleCmax = as.double(scaleCmax),
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
@@ -1410,6 +1460,8 @@ foceiControl <- function(sigdig = 4, #
     shi21maxInner=shi21maxInner,
     shi21maxInnerCov=shi21maxInnerCov,
     shi21maxFD=shi21maxFD,
+    shi21hMax=shi21hMax,
+    shi21hMin=shi21hMin,
     smatPer=smatPer,
     sdLowerFact=sdLowerFact,
     zeroGradFirstReset=zeroGradFirstReset,
@@ -1421,7 +1473,8 @@ foceiControl <- function(sigdig = 4, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     sensMethod=sensMethod,
-    boundedTransform=boundedTransform
+    boundedTransform=boundedTransform,
+    zeroTheta=zeroTheta
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est

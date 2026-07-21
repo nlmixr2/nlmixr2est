@@ -19,6 +19,7 @@ foceiControl(
   scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
+  scaleCband = c(0.1, 10),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -88,6 +89,8 @@ foceiControl(
   shi21maxInner = 20L,
   shi21maxInnerCov = 20L,
   shi21maxFD = 20L,
+  shi21hMax = 2,
+  shi21hMin = 1e-04,
   gillK = 10L,
   gillStep = 4,
   gillFtol = 0,
@@ -138,6 +141,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   sensMethod = c("default", "forward", "adjoint"),
+  zeroTheta = 0.001,
   boundedTransform = TRUE
 )
 }
@@ -199,6 +203,16 @@ multiplicatively otherwise.}
 \item{scaleCmax}{Maximum value of the scaleC to prevent overflow.}
 
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
+
+\item{scaleCband}{Length-2 increasing pair `c(low, high)` (default
+`c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
+(`1/|init|` for a linear parameter, or the transform-specific
+formula) is kept when it lands inside this band, and otherwise
+replaced by the parameter's native magnitude `|init|`.  This catches
+the singular cases -- `1/|init|` blowing up for a small covariate
+initial estimate, `log()` at init `1`, `logit` at the interval
+midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
+well-scaled common case (and its results) untouched.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -509,6 +523,19 @@ un-optimized finite differences are used.}
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
 
+\item{shi21hMax}{Upper bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients (both the inner eta and outer
+theta/covariate finite differences).  The step-size search never
+probes a parameter by more than this on its estimation scale; a
+larger value lets the gradient of a flat, small-magnitude parameter
+(e.g. a covariate coefficient near 0) clear the ODE-solver noise
+floor, at the cost of risking a degenerate solve at the probe.}
+
+\item{shi21hMin}{Lower bound on the adaptive shi21 finite-difference
+step size for FOCEi gradients.  The floor is limited by the ODE
+solver tolerance (atol/rtol), not machine precision; below it the
+finite difference is dominated by solver noise.}
+
 \item{gillK}{Max steps to determine the optimal forward/central
 difference step size per parameter (Gill 1983). `0` = no optimal
 step size determined.}
@@ -723,6 +750,15 @@ gnlmm was 400.}
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
 `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
 (`s`) method.}
+
+\item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
+population parameter (`theta`) whose initial estimate is exactly `0`
+off zero before estimation.  FOCEi scales a linear parameter by its
+native magnitude `|init|`, which is `0` (no scale) for a zero
+initial estimate, so the parameter is moved to `+zeroTheta` when it
+is within the parameter's bounds, otherwise `-zeroTheta`; if neither
+is within the bounds an error is raised.  Fixed parameters
+(including those fixed at `0`) are left untouched.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

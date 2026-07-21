@@ -55,7 +55,8 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
-                    double ef, double rl, double ru, int maxiter) {
+                    double ef, double rl, double ru, int maxiter,
+                    double hMax, double hMin) {
   // Algorithm 2.1 in paper
   // q=2, alpha=4, r=3
   // s = 0, 1
@@ -65,9 +66,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   } else {
     h = fabs(h);
   }
-  // Bound the FD step both ways -- see shi21Central; an unbounded step corrupts the
-  // shared solver state via a degenerate probe, and a vanishing step is roundoff.
-  const double hMax = 0.5, hMin = 1e-4;
+  // Bound the FD step both ways (hMax/hMin, caller-configurable) -- see shi21Central;
+  // an unbounded step corrupts the shared solver state via a degenerate probe, and a
+  // vanishing step is roundoff.
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
   gr.zeros(f0.n_elem); // avoid uninitialized read if no finite forward step is found
@@ -185,7 +186,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, double nu,
-                    int maxiter) {
+                    int maxiter, double hMax, double hMin) {
   // Algorithm 3.1
   // weights = -0.5, 0.5
   // s = -1, 1
@@ -196,14 +197,13 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   } else {
     h = fabs(h);
   }
-  // Bound the finite-difference step to a reasonable region.  Too big: a flat
-  // objective makes the ratio test keep growing h until it probes the parameter
-  // far outside the region where the local model holds (e.g. an eta perturbed by
-  // several units), producing a degenerate/failed solve that corrupts the shared
-  // solver state for every later finite difference.  Too small: repeated shrinking
-  // drives h into the roundoff-dominated regime (central optimum ~ eps^(1/3)).
-  // Clamp both ends so the step stays sane.
-  const double hMax = 0.5, hMin = 1e-4;
+  // Bound the finite-difference step to a reasonable region (hMax/hMin, caller-
+  // configurable).  Too big: a flat objective makes the ratio test keep growing h
+  // until it probes the parameter far outside the region where the local model holds
+  // (e.g. an eta perturbed by several units), producing a degenerate/failed solve
+  // that corrupts the shared solver state for every later finite difference.  Too
+  // small: repeated shrinking drives h into the roundoff-dominated regime (central
+  // optimum ~ eps^(1/3)).  Clamp both ends so the step stays sane.
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   double hlast = h;
 
