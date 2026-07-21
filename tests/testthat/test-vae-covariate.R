@@ -144,4 +144,57 @@ nmTest({
     expect_false(isTRUE(all.equal(est, 0.1)))        # moved off the init
     expect_true("cl.wt" %in% colnames(fit$parHist)) # the regress M-step ran on it
   })
+
+  ## pinCovariates=TRUE restricts the BICc search to the model-declared pairs: a
+  ## strong declared covariate is kept on ITS parameter only; a noise declared
+  ## covariate is dropped and written back as 0; no non-declared cell is selected.
+  test_that("pinCovariates restricts selection to declared pairs and zeros dropped ones", {
+    skip_on_cran()
+    d <- nlmixr2data::theo_sd
+    ids <- unique(d$ID)
+    ## subject-constant, positive, pure-noise covariate (no PK signal)
+    set.seed(42)
+    nz <- stats::setNames(stats::runif(length(ids), 0.5, 1.5), as.character(ids))
+    d$NZ <- nz[as.character(d$ID)]
+    theo <- function() {
+      ini({
+        lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        beta_lka_WT <- 0.1
+        beta_lke_NZ <- 0.1
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03
+        add.err <- 0.7
+      })
+      model({
+        ka <- exp(lka + beta_lka_WT * log(WT / 70) + eta.ka)
+        ke <- exp(lke + beta_lke_NZ * log(NZ / 1) + eta.ke)
+        V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V
+        cp ~ add(add.err)
+      })
+    }
+    ui <- rxode2::assertRxUi(theo)
+    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L, iters = 160L,
+                      seed = 1L, print = 0L, covMethod = "")
+    fit <- suppressWarnings(rxode2::rxWithSeed(1L, nlmixr2(ui, d, est = "vae", control = ctl)))
+
+    sel <- fit$vae$selected                          # rows: ka, ke, V ; cols: covNames
+    cn <- fit$vae$covNames
+    jWT <- match("WT", cn); jNZ <- match("NZ", cn)
+    ## restriction: V declares no covariate, so its row is all-FALSE; and each
+    ## covariate can only land on the parameter it was declared on.
+    expect_true(all(!sel[3, ]))
+    expect_false(sel[1, jNZ])                        # NZ never on ka
+    expect_false(sel[2, jWT])                        # WT never on ke
+    ## strong WT kept on ka; noise NZ dropped on ke
+    expect_true(sel[1, jWT])
+    expect_false(sel[2, jNZ])
+    ## returned model: dropped coefficient is exactly 0, kept one is non-trivial
+    idf <- fit$ui$iniDf
+    expect_equal(idf$est[idf$name == "beta_lke_NZ"], 0)
+    expect_gt(abs(idf$est[idf$name == "beta_lka_WT"]), 0.5)
+    ## the pinned note reached $runInfo
+    expect_true(any(grepl("pinned to model-specified", fit$runInfo)))
+  })
 })

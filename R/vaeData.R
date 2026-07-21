@@ -338,7 +338,11 @@ vaeCovariates <- function(data, warn = TRUE) {
       .pinActive <- TRUE
       .inRows <- .pinPairs[.pinPairs$inPool, , drop = FALSE]
       .nCov <- length(.cov$covNames)
-      if (.nCov > 0L && nrow(.inRows) > 0L) {
+      if (.nCov > 0L) {
+        ## restrict the search to the declared in-pool cells.  An all-zero row
+        ## means "no covariate may be selected on this dim" -- crucial when every
+        ## declared pair is out-of-pool, so a non-declared (or the out-of-pool)
+        ## covariate is never auto-selected under pinning.
         .covAllow <- matrix(0L, .neta, .nCov)
         for (.r in seq_len(nrow(.inRows))) {
           .j <- match(.inRows$covName[.r], .cov$covNames)
