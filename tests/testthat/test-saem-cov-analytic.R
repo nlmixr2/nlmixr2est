@@ -74,20 +74,4 @@ nmTest({
     expect_identical(fit$covMethod, "sa")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })
-
-  test_that("fsaem produces a labeled covariance with the sa default", {
-    skip_on_cran()
-    ## fsaem is saemControl(fast=TRUE): it inherits the "sa" covMethod default.
-    ## The fast kernel overwrites the ui covMethod when it sets up its FOCEi inner
-    ## problem; .saemFamilyFit restores it so the covariance is computed + labeled.
-    expect_identical(fsaemControl()$covMethod, "sa")
-    fit <- suppressMessages(suppressWarnings(
-      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "fsaem", control = ctl())))
-    expect_s3_class(fit, "nlmixr2FitData")
-    expect_true(is.finite(fit$objf))
-    expect_identical(fit$covMethod, "sa")
-    expect_false(is.null(fit$cov))
-    expect_true(all(is.finite(fit$parFixedDf$SE)))
-    expect_true(all(fit$parFixedDf$SE > 0))
-  })
 })

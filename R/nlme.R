@@ -30,7 +30,7 @@
 #' @family Estimation control
 #' @export
 nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
-    tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
+    tolerance = NULL, niterEM = 25, pnlsTol = NULL, msTol = NULL,
     returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
@@ -62,6 +62,12 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(niterEM, len=1, any.missing=FALSE, lower=1)
   checkmate::assertNumeric(minScale, len=1, any.missing=FALSE, lower=0)
+  # nlme optimizer tolerances from sigdig: keep the tuned defaults at sigdig=4 and
+  # tighten one order per significant digit; a user value wins, sigdig=NULL keeps
+  # the defaults (sigdig=5 -> tolerance=1e-6, msTol=1e-7, pnlsTol=1e-4)
+  if (is.null(tolerance)) tolerance <- if (!is.null(sigdig)) .sigdigScale(1e-5, sigdig) else 1e-05
+  if (is.null(msTol)) msTol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-06
+  if (is.null(pnlsTol)) pnlsTol <- if (!is.null(sigdig)) .sigdigScale(1e-3, sigdig) else 0.001
   checkmate::assertNumeric(pnlsTol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(msTol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(tolerance, len=1, any.missing=FALSE, lower=0)
@@ -104,15 +110,15 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     .genRxControl <- .xtra$genRxControl
   }
   if (is.null(rxControl)) {
-    if (is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+    if (!is.null(sigdig)) {
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

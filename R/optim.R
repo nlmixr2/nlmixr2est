@@ -125,8 +125,8 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          parscale=1.0,
                          ndeps=1e-3,
                          maxit=10000,
-                         abstol=1e-8,
-                         reltol=1e-8,
+                         abstol=NULL,
+                         reltol=NULL,
                          alpha=1.0,
                          beta=0.5,
                          gamma=2.0,
@@ -134,7 +134,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          warn.1d.NelderMead=TRUE,
                          type=NULL,
                          lmm=5,
-                         factr=1e7,
+                         factr=NULL,
                          pgtol=0,
                          temp=10,
                          tmax=10,
@@ -184,6 +184,11 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertNumeric(parscale, any.missing=FALSE)
   checkmate::assertNumeric(ndeps, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(maxit, len=1, any.missing=FALSE, lower=1)
+  # optim tolerances from sigdig, matching optim's closest FOCEi outer optimizer:
+  # abstol/reltol like foceiControl reltol, factr like foceiControl lbfgsFactr
+  # (pgtol stays at FOCEi's 0); a user value wins, sigdig=NULL keeps the defaults
+  if (is.null(abstol)) abstol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
+  if (is.null(reltol)) reltol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
   checkmate::assertNumeric(abstol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(reltol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(alpha, len=1, lower=0, any.missing=FALSE)
@@ -193,6 +198,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertLogical(warn.1d.NelderMead, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(type, len=1, lower=1, upper=3, any.missing=FALSE, null.ok=TRUE)
   checkmate::assertIntegerish(lmm, len=1, lower=1, any.missing=FALSE)
+  if (is.null(factr)) factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   checkmate::assertNumeric(factr, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(pgtol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(temp, len=1, lower=0, any.missing=FALSE)
@@ -239,14 +245,14 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
@@ -579,3 +585,81 @@ attr(nlmixr2Est.optim, "unbounded") <- function(control) {
   if (is.null(control) || is.null(control$method)) return(TRUE)
   !(control$method %in% c("L-BFGS-B", "Brent"))
 }
+
+#' Force `optim()`'s method for a sugar-alias estimation method
+#'
+#' Lets `est = "brent"` (etc.) stand in for `est = "optim"` with
+#' `optimControl(method = ...)`; any other `optimControl()` options the user
+#' supplies are kept, only the method is set by the alias.
+#' @param env dispatch environment
+#' @param .method the `optim()` method the alias selects
+#' @noRd
+.optimEstSugar <- function(env, .method, ...) {
+  .ctl <- if (exists("control", envir = env)) get("control", envir = env) else NULL
+  if (is.null(.ctl)) {
+    .ctl <- optimControl(method = .method)
+  } else if (inherits(.ctl, "optimControl")) {
+    .ctl$method <- .method
+  } else if (is.list(.ctl)) {
+    .ctl$method <- .method
+    .ctl <- do.call(optimControl, .ctl)
+  }
+  assign("control", .ctl, envir = env)
+  nlmixr2Est.optim(env, ...)
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.neldermead <- function(env, ...) .optimEstSugar(env, "Nelder-Mead", ...)
+attr(nlmixr2Est.neldermead, "covPresent") <- TRUE
+attr(nlmixr2Est.neldermead, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.bfgs <- function(env, ...) .optimEstSugar(env, "BFGS", ...)
+attr(nlmixr2Est.bfgs, "covPresent") <- TRUE
+attr(nlmixr2Est.bfgs, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.cg <- function(env, ...) .optimEstSugar(env, "CG", ...)
+attr(nlmixr2Est.cg, "covPresent") <- TRUE
+attr(nlmixr2Est.cg, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.lbfgsb <- function(env, ...) .optimEstSugar(env, "L-BFGS-B", ...)
+attr(nlmixr2Est.lbfgsb, "covPresent") <- TRUE
+attr(nlmixr2Est.lbfgsb, "unbounded") <- function(control) FALSE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.sann <- function(env, ...) .optimEstSugar(env, "SANN", ...)
+attr(nlmixr2Est.sann, "covPresent") <- TRUE
+attr(nlmixr2Est.sann, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.brent <- function(env, ...) .optimEstSugar(env, "Brent", ...)
+attr(nlmixr2Est.brent, "covPresent") <- TRUE
+attr(nlmixr2Est.brent, "unbounded") <- function(control) FALSE
+
+# the sugar aliases validate their control exactly like est="optim"
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.neldermead <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.bfgs <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.cg <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.lbfgsb <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.sann <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.brent <- getValidNlmixrCtl.optim

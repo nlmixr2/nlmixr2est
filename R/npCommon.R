@@ -205,6 +205,10 @@
   # 2 = correlation in (-1,1) (ar), 0 = free (lambda/exponent).
   .errOpt <- !is.na(.thOrd$err) & !.isFix
   .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
+  # inner bounded-bobyqa final trust-region radius for the residual step
+  # (npagControl/npbControl `rhoend`); default 1e-4 matches the optimizer
+  # convergence tolerance 10^-sigdig at the default sigdig=4
+  .control$npResidRhoend <- if (is.null(.control$rhoend)) 1e-4 else as.numeric(.control$rhoend)
   .optType <- .errType[.errOpt]
   .kind <- rep(1L, length(.optType))
   .kind[.optType %in% c("ar")] <- 2L
@@ -295,6 +299,32 @@
   assign("control", .control, envir = ui)
   .fit <- .foceiFamilyReturn(env, ui, ..., est = .est)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # label the eta-space dimensions of the nonparametric outputs with the eta
+  # names for readability: eta-per-column matrices (support points, per-subject
+  # posterior etas, npb posterior mean draws) get column names, and the npb
+  # per-eta R-hat vector gets element (row) names.
+  .env <- .fit$env
+  if (is.environment(.env)) {
+    .nm <- .etaNames
+    for (.o in c("npagSupport", "npagPosteriorEta",
+                 "npbSupport", "npbPosteriorEta", "npbMeanDraws")) {
+      .m <- .env[[.o]]
+      if (is.matrix(.m) && ncol(.m) == length(.nm)) {
+        colnames(.m) <- .nm
+        assign(.o, .m, envir = .env)
+      }
+    }
+    # npbRhat is a per-eta column vector (wrapped as an neta x 1 matrix); name
+    # its rows.  Guard the plain-vector case too.
+    .rhat <- .env[["npbRhat"]]
+    if (is.matrix(.rhat) && nrow(.rhat) == length(.nm)) {
+      rownames(.rhat) <- .nm
+      assign("npbRhat", .rhat, envir = .env)
+    } else if (!is.null(.rhat) && is.null(dim(.rhat)) && length(.rhat) == length(.nm)) {
+      names(.rhat) <- .nm
+      assign("npbRhat", .rhat, envir = .env)
+    }
+  }
   .fit
 }
 

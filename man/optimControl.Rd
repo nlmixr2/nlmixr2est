@@ -11,8 +11,8 @@ optimControl(
   parscale = 1,
   ndeps = 0.001,
   maxit = 10000,
-  abstol = 1e-08,
-  reltol = 1e-08,
+  abstol = NULL,
+  reltol = NULL,
   alpha = 1,
   beta = 0.5,
   gamma = 2,
@@ -20,7 +20,7 @@ optimControl(
   warn.1d.NelderMead = TRUE,
   type = NULL,
   lmm = 5,
-  factr = 1e+07,
+  factr = NULL,
   pgtol = 0,
   temp = 10,
   tmax = 10,
@@ -277,11 +277,17 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Optimization significant digits; controls the inner/outer
-optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
-(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
-sensitivity/steady-state with liblsoda), and boundary check tolerance
-(\code{5*10^(-sigdig+1)}).}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 4}
+this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the

@@ -63,7 +63,7 @@ nmTest({
 
   test_that("est='npag' estimates the mix() proportion via the in-cycle EM update", {
     skip_if_not_installed("rxode2")
-    set.seed(7)
+    .testSeed(7)
     N <- 40L
     comp <- rbinom(N, 1, 0.3)                  # 1 = fast-clearance subpopulation
     clTrue <- ifelse(comp == 1, 2, 0.5)

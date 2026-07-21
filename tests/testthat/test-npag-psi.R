@@ -23,7 +23,7 @@ nmTest({
     N <- length(ids)
 
     # support points in eta space (eta.ka, eta.v, eta.ke)
-    set.seed(42)
+    .testSeed(42)
     pts <- rbind(c(0, 0, 0),
                  c(0.4, -0.2, 0.1),
                  c(-0.5, 0.3, -0.15),

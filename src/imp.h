@@ -12,6 +12,10 @@
 int impNsub();
 int impNeta();
 
+// TRUE when a transform-both-sides (log/boxCox) endpoint saw a non-positive
+// (rxode2-floored) prediction during the last np fit; the np drivers warn on it.
+bool impNpTbsDomainWarn();
+
 // Importance-sampling controls carried on op_focei (set in foceiSetup_ from the
 // impmap control): samples per subject, proposal-variance inflation gamma, and
 // the solve's OpenMP core count.
@@ -76,6 +80,34 @@ double impEvalJointLik(const arma::vec& eta, int id);
 void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
                    arma::vec& g, arma::mat& H);
 
+// Split of impThetaScore into its solve-heavy half (impThetaSensCollect) and its
+// cheap arithmetic accumulation (impThetaAccumOne), so the M-step can collect
+// every subject's per-sample sensitivity outputs in parallel and then accumulate
+// the score/Hessian serially in the original order -- keeping the summed g/H
+// bit-identical to the serial loop.  Per-sample theta-sensitivity outputs for one
+// subject: f, V, d(f)/d(theta), d(V)/d(theta) per sample plus the subject-constant
+// DV / censoring vectors.
+struct impThetaSensData {
+  int nobs = 0;
+  std::vector<double> dvv, limv;
+  std::vector<int> censv;
+  std::vector<int> distv;               // [nobs] per-obs distribution: rxDistributionNorm (f/V score) vs general LL (rx_pred_ IS the ll)
+  std::vector<arma::vec> fvec, Vvec;    // [nsamp], each length nobs
+  std::vector<arma::mat> dfmat, dVmat;  // [nsamp], each nobs x nSens
+  std::vector<char> sampleOk;           // [nsamp], 0 = drop this sample
+};
+void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out);
+void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
+                      arma::vec& g, arma::mat& H);
+
+// Parallel theta-sensitivity solve scope for the M-step (implemented in inner.cpp):
+// only parallelize when the solve method is thread-safe (liblsoda); bracket the
+// parallel region with impInnerParallelOn/Off (the inner-parallel flag that defers
+// worker-thread R-API warnings).  Neither changes the numeric solve.
+bool impMStepParallelOk();
+void impInnerParallelOn();
+void impInnerParallelOff();
+
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
@@ -128,6 +160,7 @@ void impUpdateStructThetas(const arma::vec& step);
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
 void impComputeCov(Rcpp::Environment e);
+bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"
 // (in place of foceiOuter).  Module M1: a single MAP pass plus per-subject

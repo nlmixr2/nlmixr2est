@@ -14,6 +14,7 @@ npagControl(
   gridBounds = c("auto", "ini", "both"),
   dfScan = -1L,
   cores = NULL,
+  rhoend = 1e-04,
   ...
 )
 }
@@ -84,6 +85,11 @@ certificate; a smaller scan is faster.}
 likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
 (`rxode2::getRxThreads()`); an integer sets the thread count for the fit
 (restored afterwards).  Results are independent of the thread count.}
+
+\item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
+`bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
+`1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at the
+default `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

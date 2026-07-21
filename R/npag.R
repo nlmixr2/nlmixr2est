@@ -38,7 +38,6 @@
 #' \code{residOptimize = "none"} to hold the residual parameters at their initial
 #' values if a fixed error model is desired.
 #'
-#' @inheritParams impmapControl
 #' @param points Initial Sobol grid size (support points).  `NULL` (default) picks
 #'   it automatically from the number of support-point dimensions (etas):
 #'   `max(2028, 512 * n_eta)` -- a fixed grid (Pmetrics uses 2028) covers a
@@ -97,6 +96,10 @@
 #'   likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
 #'   (`rxode2::getRxThreads()`); an integer sets the thread count for the fit
 #'   (restored afterwards).  Results are independent of the thread count.
+#' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
+#'   `bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
+#'   `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at the
+#'   default `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -108,9 +111,11 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), dfScan = -1L,
-                        cores = NULL, ...) {
+                        cores = NULL, rhoend = 1e-4, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
+  checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
+  .ctl$rhoend <- as.numeric(rhoend)
   # NULL -> auto (scaled with the number of dimensions in .npEstCore); NA is the
   # sentinel that survives the control round-trip.
   .ctl$points <- if (is.null(points)) NA_integer_ else as.integer(points)

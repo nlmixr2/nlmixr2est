@@ -46,7 +46,7 @@ nmTest({
 
   test_that("vae clamps an error parameter to its bound", {
     skip_on_cran()
-    set.seed(3)
+    .testSeed(3)
     sm <- function() {
       ini({ lke <- log(0.1); lV <- log(32) })
       model({ ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)

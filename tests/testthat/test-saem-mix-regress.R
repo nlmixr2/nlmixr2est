@@ -3,7 +3,7 @@ test_that("saemControl(mixProbMethod='regress') fixes membership and separates t
 
   # additive-error 2-component clearance mixture (5x separation), the same
   # well-behaved model used elsewhere in the mixture tests
-  set.seed(42)
+  .testSeed(42)
   n_subj <- 30
   sub_pop <- rbinom(n_subj, 1, 0.6) + 1
   cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)

@@ -8,6 +8,8 @@ vaeControl(nonMuTheta=).}
 .preProcessVaeNonMuTheta(ui, est, data, control)
 }
 \arguments{
+\item{ui}{rxode2 ui}
+
 \item{est}{estimation method (all methods are shown by
 `nlmixr2AllEst()`). Methods can be added for other tools}
 

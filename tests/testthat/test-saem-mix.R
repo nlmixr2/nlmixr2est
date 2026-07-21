@@ -218,7 +218,9 @@ nmTest({
 
   test_that("test SAEM mixture model estimation", {
 
-    set.seed(42)
+    # rxWithSeed pins BOTH the R and rxode2 RNG for the data sim and restores
+    # them afterward, so this test neither depends on nor leaks seed state.
+    rxode2::rxWithSeed(42, {
     n_subj <- 30
     sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
     cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
@@ -240,6 +242,7 @@ nmTest({
         CMT = c(1, rep(2, length(times)))
       )
     }))
+    })
 
     one.compartment.mix <- function() {
       ini({
@@ -442,7 +445,9 @@ nmTest({
   test_that("SAEM mixture components actually separate (not just 'no error')", {
     # Regression test for the mixProb collapse bug (all subjects landing on
     # one component regardless of seed).
-    set.seed(42)
+    # rxWithSeed pins BOTH the R and rxode2 RNG for the data sim and restores
+    # them afterward, so this test neither depends on nor leaks seed state.
+    rxode2::rxWithSeed(42, {
     n_subj <- 30
     sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
     cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
@@ -464,6 +469,7 @@ nmTest({
         CMT = c(1, rep(2, length(times)))
       )
     }))
+    })
 
     one.compartment.mix <- function() {
       ini({
@@ -517,7 +523,10 @@ nmTest({
     rxode2::rxWithSeed(2024, {
     tclEm <- log(8); tclPm <- log(0.8); tv0 <- log(30); tka0 <- log(1.2)
     sigma <- 0.20; omegaCl <- 0.09; omegaV <- 0.04
-    nEm <- 20; nPm <- 10; n <- nEm + nPm
+    # 60 subjects (40 high-CL, 20 low-CL) gives the mixture enough information to
+    # pull the high component up to ~6.8 (vs ~5.9 at n=30), a robust margin over
+    # the >4 separation check that survives BLAS/numeric jitter across platforms.
+    nEm <- 40; nPm <- 20; n <- nEm + nPm
     clTrue <- c(exp(tclEm + rnorm(nEm, 0, sqrt(omegaCl))),
                 exp(tclPm + rnorm(nPm, 0, sqrt(omegaCl))))
     vTrue <- exp(tv0 + rnorm(n, 0, sqrt(omegaV)))

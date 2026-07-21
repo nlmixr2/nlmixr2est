@@ -29,6 +29,47 @@
   .txt
 }
 
+#' Covariate-coefficient thetas of a VAE model (the parameters that multiply a
+#' data covariate in a mu-referenced expression).  Read-only over the SHARED
+#' `muRefCovariateDataFrame`/`allCovs` UI fields -- the same covariate identity
+#' SAEM (saemMuRefCovariateDataFrame) and FOCEI (muRefClassify groups) consume --
+#' so nothing here mutates the shared covariate representation.
+#'
+#' Two categories are returned:
+#'  (a) linear effects rxode2 records in `muRefCovariateDataFrame` (`beta*WT`);
+#'  (b) transformed effects it does NOT (`beta*log(WT/70)`) -- detected as a
+#'      non-mu, non-error theta whose EVERY referencing model line also mentions
+#'      a data covariate (a plain structural theta appears in at least one
+#'      covariate-free line, so it is not mis-caught).
+#' User-fixed coefficients (`fix=TRUE`) are dropped.
+#' @param ui rxode2 ui
+#' @return character vector of theta names (possibly empty)
+#' @noRd
+.vaeCovariateCoefThetas <- function(ui) {
+  .idf <- ui$iniDf
+  .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
+  if (nrow(.th) == 0L) return(character(0))
+  .thNames <- .th$name
+  .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
+  ## (a) rxode2-recognized linear mu-ref covariate coefficients
+  .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
+             else as.character(ui$muRefCovariateDataFrame$covariateParameter)
+  ## (b) transformed covariate effects: a non-mu theta whose referencing lines
+  ## ALL reference a data covariate
+  .covData <- ui$allCovs
+  .transformed <- character(0)
+  if (length(.covData) > 0L) {
+    for (.p in setdiff(.thNames, .mu)) {
+      .lines <- Filter(function(e) .p %in% all.vars(e), ui$lstExpr)
+      if (length(.lines) == 0L) next
+      if (all(vapply(.lines, function(e) any(.covData %in% all.vars(e)), logical(1)))) {
+        .transformed <- c(.transformed, .p)
+      }
+    }
+  }
+  intersect(unique(c(.linear, .transformed)), .thNames)
+}
+
 #' Structural population thetas that are NOT mu-referenced (candidates for a
 #' VAE-injected eta): a theta that appears in the model, is not a residual-error
 #' or covariate-coefficient theta, is not fixed, and has no eta referencing it.
@@ -41,7 +82,10 @@
   if (nrow(.th) == 0L) return(character(0))
   .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
   .cov <- if (is.null(ui$muRefCovariateDataFrame)) character(0) else ui$muRefCovariateDataFrame$theta
-  .cand <- setdiff(.th$name, c(.mu, .cov))
+  ## covariate coefficients are estimated by the regress M-step (see .vaeDataPrep),
+  ## not by nonMuTheta eta/fix injection -- exclude them here
+  .covCoef <- .vaeCovariateCoefThetas(ui)
+  .cand <- setdiff(.th$name, c(.mu, .cov, .covCoef))
   if (length(.cand) == 0L) return(character(0))
   ## keep only thetas that actually appear in a model expression (so an eta can be
   ## attached to a structural line)
@@ -123,6 +167,7 @@ isTRUE2 <- function(x) !is.na(x) & x
 #' VAE preprocessing hook: inject etas for non-mu-referenced thetas per
 #' vaeControl(nonMuTheta=).
 #' @inheritParams nlmixr2
+#' @param ui rxode2 ui
 #' @return list(ui=) possibly with injected etas
 #' @export
 #' @author Matthew L. Fidler
@@ -131,6 +176,13 @@ isTRUE2 <- function(x) !is.na(x) & x
   .mode <- if (is.null(control$nonMuTheta)) "regress" else control$nonMuTheta
   ## reset per-fit record of injected etas (read by the VAE output collapse)
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
+  ## covariateSelection=FALSE: model-declared covariate coefficients are estimated
+  ## by the regress M-step regardless of nonMuTheta (see .vaeDataPrep) -- note it
+  .covCoef <- if (isFALSE(control$covariateSelection)) .vaeCovariateCoefThetas(ui) else character(0)
+  if (length(.covCoef) > 0L) {
+    .pre <- "estimating covariate coef(s): "
+    warning(.pre, .vaeTruncList(.covCoef, prefix = .pre), call. = FALSE)
+  }
   if (identical(.mode, "none")) return(NULL)
   .thetas <- .vaeNonMuThetas(ui)
   if (length(.thetas) == 0L) return(NULL)

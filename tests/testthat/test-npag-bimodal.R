@@ -7,7 +7,7 @@
 nmTest({
   test_that("est='npag' recovers a bimodal Ka distribution", {
     skip_if_not_installed("rxode2")
-    set.seed(42)
+    .testSeed(42)
     nEach <- 15L
     kaSlow <- 0.7; kaFast <- 3.5           # two subpopulations
     vTrue <- 30; keTrue <- 0.1

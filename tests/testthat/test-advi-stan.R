@@ -13,7 +13,7 @@ test_that("est='advi' population posterior agrees with rstan::vb()", {
   skip_if_not_installed("rstan")
 
   ## simulate a linear random-intercept dataset
-  set.seed(42)
+  .testSeed(42)
   nsub <- 60L; nobs <- 6L
   thetaTrue <- 5; omegaTrue <- 1; sigmaTrue <- 0.7
   eta <- stats::rnorm(nsub, 0, omegaTrue)

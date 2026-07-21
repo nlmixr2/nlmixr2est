@@ -32,7 +32,6 @@
   imp     = list(type="Integral approximation", description="Importance sampling (no MAP search)"),
   impmap  = list(type="Integral approximation", description="Importance sampling (MAP)"),
   saem    = list(type="Stochastic EM", description="Stochastic Approximation EM"),
-  fsaem   = list(type="Stochastic EM", description="Fast SAEM (Karimi-Lavielle)"),
   qrpem   = list(type="Stochastic EM", description="Quasi-Random Parametric EM"),
   npag    = list(type="Nonparametric", description="NonParametric Adaptive Grid"),
   npb     = list(type="Nonparametric", description="Nonparametric Bayes"),
@@ -51,25 +50,24 @@
 
 #' Stamp the type/description attributes onto the built-in nlmixr2Est methods
 #'
-#' Runs from `.onLoad()` so that `attr(nlmixr2Est.focei, "type")` and
-#' `attr(nlmixr2Est.focei, "description")` are populated for the built-in
-#' methods; called for side effects.
-#' @return nothing
+#' Called once as top-level code from zzz.R (which sources last), i.e. while the
+#' namespace is still being built and its bindings are not yet locked -- so a
+#' plain `assign()` suffices and no `unlockBinding()` (a CRAN check NOTE) is
+#' needed.  Populates `attr(nlmixr2Est.focei, "type")` etc. for the built-in
+#' methods, matching the existing iov/covPresent/mu attribute convention.
+#' @param ns namespace environment the methods live in
+#' @return nothing, called for side effects
 #' @noRd
-.nlmixr2EstTypeApply <- function() {
-  .ns <- asNamespace("nlmixr2est")
+.nlmixr2EstTypeApply <- function(ns) {
   for (.est in names(.nlmixr2EstTypeInfo)) {
     .nm <- paste0("nlmixr2Est.", .est)
-    if (!exists(.nm, envir=.ns, inherits=FALSE)) next
-    .fn <- get(.nm, envir=.ns, inherits=FALSE)
+    if (!exists(.nm, envir=ns, inherits=FALSE)) next
+    .fn <- get(.nm, envir=ns, inherits=FALSE)
     if (!is.function(.fn)) next
     .info <- .nlmixr2EstTypeInfo[[.est]]
     attr(.fn, "type") <- .info$type
     attr(.fn, "description") <- .info$description
-    .locked <- bindingIsLocked(.nm, .ns)
-    if (.locked) unlockBinding(.nm, .ns)
-    assign(.nm, .fn, envir=.ns)
-    if (.locked) lockBinding(.nm, .ns)
+    assign(.nm, .fn, envir=ns)
   }
   invisible()
 }

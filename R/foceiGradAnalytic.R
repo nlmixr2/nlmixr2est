@@ -1004,6 +1004,7 @@
 # qs2-cache the whole model list) and reused across every outer-gradient call.
 # Callable independently as `ui$foceiOuter`.  `NULL` when out of analytic scope
 # (the gradient then falls back to finite differences).
+#' @export
 rxUiGet.foceiOuter <- function(x, ...) {
   .ui <- x[[1]]
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
@@ -1032,6 +1033,7 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 #' `foceiOuter` this rides in the qs2-cached `foceiModel` list, so the extra symengine+gcc
 #' pass is paid once per model, not once per session.
 #' @noRd
+#' @export
 rxUiGet.foceiOuterNode <- function(x, ...) {
   .ui <- x[[1]]
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)

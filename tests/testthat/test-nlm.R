@@ -285,7 +285,7 @@ nmTest({
       })
     }
 
-    set.seed(123)
+    .testSeed(123)
     .ev <- et(amt = 320, cmt = "depot", id = 1:6) |> et(seq(0.5, 24, by = 1.5))
     .sim <- rxode2::rxSolve(odeMM, .ev,
                             params = c(tka = 0.5, tvmax = log(60),

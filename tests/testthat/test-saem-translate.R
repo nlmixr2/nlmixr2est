@@ -99,7 +99,7 @@ nmTest({
                  matrix(rep(0, 3 * 3), 3, 3))
 
     expect_equal(f$saemModelOmegaFixedValues,
-                 structure(c(0.6, 0, 0, 0, 0.3, 0, 0, 0, 0.1), .Dim = c(3L, 3L)))
+                 structure(c(0.6, 0, 0, 0, 0.3, 0, 0, 0, 0.1), dim = c(3L, 3L)))
 
     expect_equal(f$saemLow, -Inf)
 
@@ -136,7 +136,7 @@ nmTest({
     expect_equal(f$saemLogEta, c(tka = TRUE, tcl = TRUE, tv = TRUE))
 
     expect_equal(f$saemInitTheta,
-                 structure(c(1.56831218549017, 2.7, 31.5003923087479), .Names = c("", "", "")))
+                 structure(c(1.56831218549017, 2.7, 31.5003923087479), names = c("", "", "")))
 
     expect_equal(f$saemInitOmega,
                  c(tka = 0.6, tcl = 0.3, tv = 0.1))
@@ -198,13 +198,13 @@ nmTest({
                  c(3L, 1L, 2L))
 
     expect_equal(f$saemModelOmega,
-                 structure(c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1), .Dim = c(4L, 4L)))
+                 structure(c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1), dim = c(4L, 4L)))
 
     expect_equal(f$saemModelOmegaFixed,
-                 structure(c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), .Dim = c(4L, 4L)))
+                 structure(c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), dim = c(4L, 4L)))
 
     expect_equal(f$saemModelOmegaFixedValues,
-                 structure(c(0, 0, 0, 0, 0, 0.3, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.6), .Dim = c(4L, 4L)))
+                 structure(c(0, 0, 0, 0, 0, 0.3, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.6), dim = c(4L, 4L)))
 
     expect_equal(f$saemLow, -Inf)
 
@@ -401,7 +401,7 @@ nmTest({
 
     expect_equal(
       f$saemModelOmegaFixedValues,
-      structure(c(2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), .Dim = c(8L, 8L))
+      structure(c(2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), dim = c(8L, 8L))
     )
 
     expect_equal(f$saemLow, -Inf)
@@ -445,7 +445,7 @@ nmTest({
 
     expect_equal(
       f$saemInitTheta,
-      structure(c(0.001, 1.45, 0.004, 44, 12, 0.3, 1, 7), .Names = c("", "", "", "", "", "", "", ""))
+      structure(c(0.001, 1.45, 0.004, 44, 12, 0.3, 1, 7), names = c("", "", "", "", "", "", "", ""))
     )
 
     expect_equal(

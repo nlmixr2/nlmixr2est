@@ -99,10 +99,6 @@ foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
 
-foceiNFreezeResidGrad <- function() {
-    .Call(`_nlmixr2est_foceiNFreezeResidGrad`)
-}
-
 foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
     .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
 }
@@ -251,22 +247,6 @@ adviLoopFB_ <- function(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phi
 
 adviOptimize_ <- function(args) {
     .Call(`_nlmixr2est_adviOptimize_`, args)
-}
-
-fsaemInnerMap_ <- function(cores) {
-    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
-}
-
-fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
-    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
-}
-
-fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
-    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
-}
-
-fsaemMapImhCpp_ <- function(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
-    .Call(`_nlmixr2est_fsaemMapImhCpp_`, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
 }
 
 vaeInnerFree_ <- function() {

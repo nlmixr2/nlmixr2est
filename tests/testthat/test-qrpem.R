@@ -97,7 +97,7 @@ nmTest({
 
     # an equal-weight resample of a weighted sample reproduces its weighted
     # mean and covariance
-    set.seed(7)
+    .testSeed(7)
     .S <- matrix(rnorm(4000L * 2L), ncol = 2L)
     .w <- exp(-.5 * rowSums((.S - 0.3)^2)); .w <- .w / sum(.w)
     .mu <- colSums(.S * .w)

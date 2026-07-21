@@ -167,3 +167,74 @@ getValidNlmixrCtl.default <- function(control) {
   }
   return(list(ctl=.out, rest=.in))
 }
+
+#' Optimizer convergence tolerance derived from `sigdig`
+#'
+#' `10^(-sigdig)` -- the same exponent `sigdig` sets for the ODE `rtol`, so the
+#' optimizer converges to exactly the precision the solve can support (no chasing
+#' below the solver noise floor).  Shared so every estimation method's optimizer
+#' ties to `sigdig` the same way.
+#' @param sigdig optimization significant digits
+#' @return the tolerance
+#' @noRd
+.sigdigOptTol <- function(sigdig) 10^(-sigdig)
+
+#' L-BFGS `factr` derived from `sigdig` (relative-f tolerance `10^-sigdig`)
+#' @param sigdig optimization significant digits
+#' @return the `factr` value (`tol / .Machine$double.eps`)
+#' @noRd
+.sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
+
+#' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
+#'
+#' Keeps the method's tuned default at `sigdig = 4` and tightens/loosens it by one
+#' order of magnitude per significant digit (`default * 10^(4 - sigdig)`).  Used
+#' where a method's optimizer default should be preserved at the default `sigdig`
+#' rather than replaced by the FOCEi formula (nlm, nls, nlme).
+#' @param default the tolerance at `sigdig = 4`
+#' @param sigdig optimization significant digits
+#' @return the scaled tolerance
+#' @noRd
+.sigdigScale <- function(default, sigdig) default * 10^(4 - sigdig)
+
+#' Scale ODE solver tolerances from the optimization `sigdig`
+#'
+#' The optimization `sigdig` sets the optimizer tolerances directly (`10^-sigdig`,
+#' see [.sigdigOptTol()]); here it sets the ODE solver tolerances with ONE formula
+#' -- the same for every solver (stiff, non-stiff, auto-switch) so the story is
+#' simple and consistent with the optimizer:
+#'   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`
+#' The `rtol` exponent IS `sigdig`, and `atol` sits three orders below.  Sensitivity
+#' and steady-state solves run one order looser.  `tighten` shifts every exponent
+#' down by that many orders for a method that needs a tighter solve than the
+#' optimizer target (e.g. `est="nls"`, whose LM step is sensitive to solver noise).
+#' This mirrors the mapping moved into `rxode2::rxControl(sigdig=)` (rxode2 PR
+#' #1150); until that rxode2 release is the minimum dependency, nlmixr2est applies
+#' it to every auto-built `rxControl`.
+#' @param rxControl an `rxode2::rxControl()` object (modified and returned)
+#' @param sigdig optimization significant digits; `NULL` leaves `rxControl` as-is
+#' @param skip character vector of tolerance field names the user set explicitly
+#'   (e.g. from a `rxControl = list(atol = ...)`); these are left untouched so an
+#'   explicit `atol`/`rtol` overrides the `sigdig`-derived value
+#' @param tighten extra orders of magnitude to tighten every tolerance (default 0)
+#' @return `rxControl` with ODE solver tolerances set from `sigdig`
+#' @noRd
+.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0), tighten = 0) {
+  if (is.null(sigdig) || is.null(rxControl)) return(rxControl)
+  .rtol <- 10^(-(sigdig + tighten))
+  .atol <- 10^(-(sigdig + 3 + tighten))
+  # only set a tolerance the user did not pass explicitly (skip); sensitivity +
+  # steady-state solves run one order looser than the main solve
+  .set <- function(field, value) {
+    if (!(field %in% skip)) rxControl[[field]] <<- rep_len(value, length(rxControl[[field]]))
+  }
+  .set("rtol", .rtol)
+  .set("atol", .atol)
+  .set("rtolSens", 10 * .rtol)
+  .set("atolSens", 10 * .atol)
+  .set("ssRtol", 10 * .rtol)
+  .set("ssAtol", 10 * .atol)
+  if (!is.null(rxControl$ssRtolSens)) .set("ssRtolSens", 10 * .rtol)
+  if (!is.null(rxControl$ssAtolSens)) .set("ssAtolSens", 10 * .atol)
+  rxControl
+}

@@ -1,6 +1,6 @@
 nmTest({
   test_that(".nlmixr2RobustCov handles full-rank matrices like the plain QR solve", {
-    set.seed(42)
+    .testSeed(42)
     X <- matrix(rnorm(40), ncol = 4)
     expected <- solve(crossprod(X))
     got <- nlmixr2est:::.nlmixr2RobustCov(X)
@@ -8,7 +8,7 @@ nmTest({
   })
 
   test_that(".nlmixr2RobustCov degrades only the ill-identified parameter(s)", {
-    set.seed(42)
+    .testSeed(42)
     X <- matrix(rnorm(40), ncol = 4)
     # Zero out one column -- unidentifiable, should not blow up the others
     X[, 3] <- 0

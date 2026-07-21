@@ -6,7 +6,7 @@
 nmTest({
   .dde_focei_data <- function() {
     # method-of-steps reference DDE: y' = -k*delay(y, 1), constant history y = a.
-    set.seed(42)
+    .testSeed(42)
     .tk <- log(0.3); .ta <- log(2)
     .etak <- stats::rnorm(8, 0, sqrt(0.03))
     do.call(rbind, lapply(seq_len(8), function(id) {

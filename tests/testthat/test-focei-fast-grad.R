@@ -180,7 +180,7 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # a covariate (wtCl*WT) in the structural model: exercises the covariate direction
     # and the param() covariate declaration in the augmented outer model
-    set.seed(1)
+    .testSeed(1)
     d <- do.call(rbind, lapply(1:12, function(i)
       data.frame(ID = i, TIME = c(0, .5, 1, 2, 4, 8), EVID = c(101, 0, 0, 0, 0, 0),
                  AMT = c(100, 0, 0, 0, 0, 0), DV = c(NA, 8, 9, 7, 4, 1) + rnorm(6, 0, .3),
@@ -349,7 +349,7 @@ nmTest({
               cp <- center / v
               cp ~ prop(prop.sd) })
     }
-    set.seed(7001)
+    .testSeed(7001)
     d <- do.call(rbind, lapply(1:40, function(i)
       rbind(data.frame(ID = i, TIME = 0, AMT = 100, DV = 0, EVID = 101),
             data.frame(ID = i, TIME = obsT, AMT = 0, DV = 0, EVID = 0))))

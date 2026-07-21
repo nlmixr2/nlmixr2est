@@ -18,7 +18,7 @@
       )
     }
   )
-  .lt <- structure(.rs[.lt], .Names = .nms)
+  .lt <- structure(.rs[.lt], names = .nms)
   .lt <- .lt[.lt != 0]
   if (sd) {
     .d <- dim(x)

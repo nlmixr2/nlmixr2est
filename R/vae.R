@@ -32,8 +32,11 @@
 #'   FOCE with R frozen at the population prediction), `"focep"` (FOCE+, no
 #'   interaction but R evaluated at the live conditional eta), or `"laplace"`.
 #' @param covariateSelection When `TRUE` (default) perform automated BICc-ELBO
-#'   covariate selection during training; when `FALSE` fit the given fixed
-#'   covariate structure only (faster population-only mode).
+#'   covariate selection during training; when `FALSE` fit only the covariate
+#'   structure written in the model.  In the `FALSE` case the model-declared
+#'   covariate coefficients (both linear `beta*WT` effects and transformed ones
+#'   such as `beta*log(WT/70)`) are estimated in place by the regress M-step
+#'   regardless of `nonMuTheta`; a `ini(... ~ fix())` coefficient stays fixed.
 #' @param nonMuTheta How to treat a structural population `theta` that has no
 #'   random effect (is not mu-referenced) so it can still be estimated by the VAE
 #'   (which only estimates parameters that occupy the latent space).  For the
@@ -92,6 +95,10 @@
 #'   \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 #'   \code{"r"}, \code{"s"}, or \code{""} to skip.
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
+#' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
+#'   `bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
+#'   derives it from `sigdig` (`10^(-sigdig)`, matching the optimizer convergence
+#'   tolerance), or `1e-4` when `sigdig` is `NULL`.
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
 #'
@@ -158,6 +165,7 @@ vaeControl <- function(seed = 42L,
                        ci = 0.95,
                        sigdig = NULL,
                        sigdigTable = NULL,
+                       rhoend = NULL,
 
                        stickyRecalcN = 4,
                        maxOdeRecalc = 5,
@@ -223,14 +231,14 @@ vaeControl <- function(seed = 42L,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig = sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'",
          call. = FALSE)
@@ -251,7 +259,12 @@ vaeControl <- function(seed = 42L,
                                                useColor = useColor,
                                                iterPrintControl = .xtra$iterPrintControl)
 
+  # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
+  # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
+  if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
+  checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ret <- list(seed = as.integer(seed),
+               rhoend = as.numeric(rhoend),
                itersBurnIn = as.integer(itersBurnIn),
                klWarmup = as.integer(klWarmup),
                gammaIter = as.integer(gammaIter),

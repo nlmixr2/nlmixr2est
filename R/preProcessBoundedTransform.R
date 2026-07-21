@@ -45,7 +45,7 @@
     # stay in range.  saem estimates ar() in the M-step (not the outer
     # optimizer), so leave it untransformed there.
     if (!is.na(.thetaDf$err[i]) &&
-          !(identical(.thetaDf$err[i], "ar") && !(est %in% c("saem", "fsaem")))) next
+          !(identical(.thetaDf$err[i], "ar") && !(est %in% c("saem")))) next
     # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
     # path is handled in R/iov.R and should not be rewrapped here.
     if (!is.na(.thetaDf$backTransform[i]) &&

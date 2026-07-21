@@ -258,52 +258,6 @@
 #'   the stochastic step a better starting residual scale.  Set `FALSE` to start
 #'   from the `ini`-block residual values instead.
 #'
-#' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
-#'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
-#'   simulation of the individual random effects uses an independent
-#'   Metropolis-Hastings proposal centered at each subject's conditional
-#'   MAP estimate with a Laplace/linearization covariance, which converges
-#'   in far fewer SAEM iterations than the default random-walk Metropolis.
-#'   The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
-#'   default this is `FALSE` (standard SAEM).  The `fast*` options below are
-#'   only consulted when `fast=TRUE`.
-#'
-#' @param fastKernel Schedule for the f-SAEM independent Metropolis-Hastings
-#'   (IMH) kernel:
-#'
-#'   * `"firstN"` (default): use the IMH kernel for the first `fastIter`
-#'     iterations, then revert to the standard random-walk kernels.  This is
-#'     the recipe used in the f-SAEM paper -- the early iterations only need
-#'     an approximate posterior, so the fast kernel accelerates the initial
-#'     convergence and the steady-state behavior is unchanged.
-#'
-#'   * `"throughout"`: use the IMH kernel on every iteration for the whole
-#'     run.  Simpler, but recomputing the MAP/covariance every iteration is
-#'     costlier and unnecessary near convergence.
-#'
-#'   * `"additive"`: append the IMH kernel alongside the standard random-walk
-#'     kernels on every iteration.  Most mixing, most cost.
-#'
-#' @param fastCov Covariance used for the IMH Gaussian proposal:
-#'
-#'   * `"auto"` (default): Jacobian linearization for continuous-data
-#'     endpoints, Hessian (Laplace) for non-continuous endpoints.
-#'
-#'   * `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
-#'     structural-model Jacobian at the MAP (continuous data only).
-#'
-#'   * `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
-#'     individual log-likelihood at the MAP (any data type).
-#'
-#' @param fastIter Integer number of initial iterations to run the IMH kernel
-#'   when `fastKernel="firstN"` (default 20).  Ignored by the other
-#'   schedules.
-#'
-#' @param fastLik Inner likelihood used for the Hessian proposal path, one of
-#'   `"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
-#'   individual likelihood is reused to build the proposal (and, when the
-#'   Hessian path is active, reported by SAEM).
-#'
 #' @param lbfgsLmm Integer number of BFGS corrections (the L-BFGS-B `lmm`
 #'   memory) used when refining the fixed-effect-only parameters of a general
 #'   log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
@@ -312,18 +266,14 @@
 #' @param lbfgsFactr Convergence tolerance on the relative reduction in the
 #'   objective for that L-BFGS-B refinement (the `factr` control, in units of
 #'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-#'   same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).
+#'   same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).
 #'
 #' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
 #'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-#'   derived from `sigdig` (`10^(-sigdig - 1)`).
+#'   derived from `sigdig` (`10^(-sigdig)`).
 #'
 #' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
 #'   refinement.  Default 20.
-#'
-#' @param nRetry Integer number of times a bounded log-likelihood parameter's
-#'   f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
-#'   bounds before being clamped to the violated boundary.  Default 10.
 #'
 #' @param ... Other arguments to control SAEM.
 #'
@@ -362,7 +312,7 @@ saemControl <- function(seed = 99,
                         adjObf = TRUE,
                         sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
-                        tol = 1e-6,
+                        tol = NULL,
                         itmax = 30,
                         type = c("newuoa", "nelder-mead"),
                         powRange = 10,
@@ -392,16 +342,10 @@ saemControl <- function(seed = 99,
                         nonMuTheta = c("regress", "eta"),
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
-                        fast = FALSE,
-                        fastKernel = c("firstN", "throughout", "additive"),
-                        fastCov = c("auto", "jacobian", "hessian"),
-                        fastIter = 20L,
-                        fastLik = c("focei", "foce", "focep"),
                         lbfgsLmm = 5L,
                         lbfgsFactr = NULL,
                         lbfgsPgtol = NULL,
                         lbfgsMaxIter = 20L,
-                        nRetry = 10L,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -447,6 +391,10 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
   checkmate::assertLogical(adjObf, any.missing=FALSE, len=1)
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
+  # `tol` is the rhoend/tolerance of saem's inner residual-regression optimizer
+  # (bounded bobyqa / newuoa / nelder-mead); tie it to sigdig with the FOCEi
+  # mechanism.  A user value wins, sigdig=NULL keeps the historic default.
+  if (is.null(tol)) tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
   checkmate::assertNumeric(tol, any.missing=FALSE, len=1, finite=TRUE)
   checkmate::assertIntegerish(itmax, any.missing=FALSE, len=1, lower=1)
   checkmate::assertNumeric(powRange, any.missing=FALSE, len=1, lower=0)
@@ -470,11 +418,6 @@ saemControl <- function(seed = 99,
   nonMuTheta <- match.arg(nonMuTheta)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
-  checkmate::assertLogical(fast, any.missing=FALSE, len=1)
-  fastKernel <- match.arg(fastKernel)
-  fastCov <- match.arg(fastCov)
-  checkmate::assertIntegerish(fastIter, any.missing=FALSE, len=1, lower=1)
-  fastLik <- match.arg(fastLik)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -501,10 +444,10 @@ saemControl <- function(seed = 99,
     # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
     # derived from sigdig the same way foceiControl() does (factr = tol/eps)
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
     }
     if (is.null(lbfgsPgtol)) {
-      lbfgsPgtol <- 10^(-sigdig - 1)
+      lbfgsPgtol <- 10^(-sigdig)
     }
   }
   # defaults when sigdig is not supplied (~4 significant digits)
@@ -518,7 +461,6 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(lbfgsFactr, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(lbfgsPgtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(lbfgsMaxIter, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(nRetry, lower=0, len=1, any.missing=FALSE)
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
@@ -528,11 +470,11 @@ saemControl <- function(seed = 99,
     .env <- parent.frame(1)
   }
   if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
+    rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig, envir=.env), sigdig)
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
@@ -613,16 +555,10 @@ saemControl <- function(seed = 99,
     mixSampleMethod=mixSampleMethod,
     nonMuTheta=nonMuTheta,
     residWarmStart=residWarmStart,
-    fast=fast,
-    fastKernel=fastKernel,
-    fastCov=fastCov,
-    fastIter=as.integer(fastIter),
-    fastLik=fastLik,
     lbfgsLmm=as.integer(lbfgsLmm),
     lbfgsFactr=lbfgsFactr,
     lbfgsPgtol=lbfgsPgtol,
-    lbfgsMaxIter=as.integer(lbfgsMaxIter),
-    nRetry=as.integer(nRetry)
+    lbfgsMaxIter=as.integer(lbfgsMaxIter)
   )
   class(.ret) <- "saemControl"
   .ret

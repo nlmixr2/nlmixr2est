@@ -90,7 +90,7 @@ nmTest({
       rbind(b, b2)
     }
     template <- do.call(rbind, lapply(seq_len(nID), mk))
-    set.seed(1)
+    .testSeed(1)
     sim <- rxode2::rxSolve(combined, template)
     dat <- template
     dat$DV[is.na(dat$AMT)] <- sim$sim

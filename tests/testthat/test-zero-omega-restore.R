@@ -1,7 +1,7 @@
 test_that("zero etas are restored in the final ui even with nested nlmixr2 calls (#741)", {
   skip_on_cran()
 
-  set.seed(42)
+  .testSeed(42)
   d <- do.call(rbind, lapply(1:12, function(i) {
     b <- 2 + rnorm(1, 0, 0.3)
     data.frame(id = i, time = 1:5, DV = 1 + b * (1:5) + rnorm(5, 0, 0.2))

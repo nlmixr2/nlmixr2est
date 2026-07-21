@@ -173,7 +173,7 @@ nmTest({
     # close to focei's own answer, i.e. irls's reweighting doesn't
     # destabilize the estimate relative to plain OLS when the per-subject
     # information is uneven.
-    set.seed(1101)
+    .testSeed(1101)
     nsub <- 24
     ids <- seq_len(nsub)
     logWT <- rnorm(nsub, 0, 0.3)

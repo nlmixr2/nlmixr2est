@@ -189,12 +189,7 @@
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
-                       omegaShareSubpop = integer(0),
-                       fast = FALSE,
-                       fastIter = 20L,
-                       fastKernel = "firstN",
-                       fastCov = "auto",
-                       fastLik = "focei") {
+                       omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -212,8 +207,6 @@
   # All of saem's RNG now draws from the rxode2 threefry engine (the do_mcmc
   # proposals via setSeedEng1 streams, the phiM init via rxnorm), which the
   # rxWithSeed() wrapper in .saemFitModel seeds and restores -- no set.seed needed.
-  # "general" (=4) = general log-likelihood endpoint driven off the FOCEi inner
-  # (fsaem only); the E-step/M-step take the inner path, not a normal residual.
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
@@ -693,12 +686,7 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed,
-    fast=as.integer(isTRUE(fast)),
-    fastIter=as.integer(fastIter),
-    fastKernel=as.character(fastKernel),
-    fastCov=as.character(fastCov),
-    fastLik=as.character(fastLik))
+    resFixed=resFixed)
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]

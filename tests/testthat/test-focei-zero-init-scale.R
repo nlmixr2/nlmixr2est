@@ -26,7 +26,7 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    set.seed(11)
+    .testSeed(11)
     .obsT <- seq(0.5, 60, length.out = 12)
     .ev <- do.call(rbind, lapply(seq_len(60), function(id) {
       wt <- round(runif(1, 50, 110))

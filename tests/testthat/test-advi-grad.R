@@ -30,7 +30,7 @@ nmTest({
     ntheta <- prep$ntheta
 
     ## fixed variational + population state and a fixed eps draw
-    set.seed(11)
+    .testSeed(11)
     mu <- matrix(rnorm(N * neta, 0, 0.2), N, neta)
     omega <- matrix(rnorm(N * neta, -0.7, 0.1), N, neta)     # log-sd
     theta <- prep$theta                                      # natural-scale thetas
@@ -91,7 +91,7 @@ nmTest({
     N <- prep$N; neta <- 2L; nL <- neta * (neta + 1L) / 2L
     muRefIdx <- as.integer(prep$muRefThetaIdx); ntheta <- prep$ntheta
 
-    set.seed(2)
+    .testSeed(2)
     mu <- matrix(rnorm(N * neta, 0, 0.2), N, neta)
     Lp <- matrix(rnorm(N * nL, 0, 0.05), N, nL)
     for (k in seq_len(neta)) Lp[, k * (k + 1L) / 2L] <- 0.4   # positive diagonal

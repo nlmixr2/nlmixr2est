@@ -27,11 +27,17 @@ impmapControl(
 )
 }
 \arguments{
-\item{sigdig}{Optimization significant digits; controls the inner/outer
-optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
-(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
-sensitivity/steady-state with liblsoda), and boundary check tolerance
-(\code{5*10^(-sigdig+1)}).}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 4}
+this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
 
 \item{...}{Parameters used in the default `foceiControl()`}
 
@@ -110,8 +116,10 @@ impmapControl object
 A NONMEM-style Monte Carlo importance-sampling EM built on the mu-referenced
 FOCEI MAP.  The proposal density for each subject is centered at the MAP mode
 (`muModel="lin"`); mu-referenced population parameters are updated by the EM
-gradient, while non-mu parameters (including the residual error) are updated
-by finite differences.
+gradient, while non-mu parameters (structural and residual error) are updated
+by a symbolic-sensitivity Newton step -- the importance-sampling-weighted
+score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
+`d(V)/d(theta)` (exact censored partials for BLQ/M2/M3/M4 points).
 }
 \examples{
 

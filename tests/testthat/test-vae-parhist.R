@@ -47,8 +47,8 @@ nmTest({
     ## and the caller's global .Random.seed is restored on exit
     ctl <- vaeControl(itersBurnIn = 3L, iters = 4L, klWarmup = 2L, gammaIter = 3L,
                       nGradStep = 2L, covariateSelection = FALSE, print = 0L)
-    set.seed(123); want <- runif(3)
-    set.seed(123)
+    .testSeed(123); want <- runif(3)
+    .testSeed(123)
     invisible(suppressMessages(suppressWarnings(
       nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl))))
     got <- runif(3)

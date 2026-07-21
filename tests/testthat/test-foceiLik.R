@@ -19,7 +19,7 @@
 }
 
 .foceiLikData <- function() {
-  set.seed(42)
+  .testSeed(42)
   do.call(rbind, lapply(1:4, function(id) {
     tt <- c(0.5, 1, 2, 4, 8)
     data.frame(ID = id, TIME = tt,

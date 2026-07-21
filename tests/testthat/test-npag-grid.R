@@ -20,7 +20,7 @@ test_that("npSobolGrid is in-box, deterministic, and covers the box", {
 })
 
 test_that("npCondense weight-threshold matches the in-R reference (Yamada Alg 3)", {
-  set.seed(1); psi <- matrix(runif(12 * 10, 0.1, 2), 12, 10)
+  .testSeed(1); psi <- matrix(runif(12 * 10, 0.1, 2), 12, 10)
   lam <- c(0.3, 0.25, 0.2, 0.15, 0.05, 1e-5, 1e-6, 0.02, 1e-7, 0.03)
   ratio <- 1e-3
   ref <- which(lam > max(lam) * ratio)
@@ -29,7 +29,7 @@ test_that("npCondense weight-threshold matches the in-R reference (Yamada Alg 3)
 })
 
 test_that("npCondense QR drops linearly dependent support points", {
-  set.seed(2); base <- matrix(runif(12 * 5, 0.1, 2), 12, 5)
+  .testSeed(2); base <- matrix(runif(12 * 5, 0.1, 2), 12, 5)
   # columns 6,7 are exact duplicates of 1,2 -> rank 5
   psi <- cbind(base, base[, 1:2])
   lam <- rep(1 / 7, 7)

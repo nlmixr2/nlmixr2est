@@ -73,9 +73,9 @@
 #' # extra components and name the parameters
 #' }
 nlmControl <- function(typsize = NULL,
-                       fscale = 1, print.level = 0, ndigit = NULL, gradtol = 1e-6,
+                       fscale = 1, print.level = 0, ndigit = NULL, gradtol = NULL,
                        stepmax = NULL,
-                       steptol = 1e-6, iterlim = 10000, check.analyticals = FALSE,
+                       steptol = NULL, iterlim = 10000, check.analyticals = FALSE,
                        returnNlm=FALSE,
                        solveType=c("hessian", "grad", "fun"),
 
@@ -132,6 +132,10 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
   checkmate::assertIntegerish(print.level, lower=0, upper=2, any.missing=FALSE)
   checkmate::assertNumeric(ndigit, lower=0, len=1, any.missing=FALSE, null.ok=TRUE)
+  # nlm gradtol/steptol keyed to the shared sigdig target (10^-sigdig), matching the
+  # ODE rtol so nlm converges to the precision the solve supports; a user value wins
+  if (is.null(gradtol)) gradtol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  if (is.null(steptol)) steptol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
   checkmate::assertNumeric(gradtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(steptol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(iterlim, lower=1, len=1, any.missing=FALSE)
@@ -165,14 +169,14 @@ nlmControl <- function(typsize = NULL,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

@@ -31,6 +31,19 @@ nmTest({
     ci <- apply(md, 2, quantile, c(0.025, 0.975))
     expect_true(all(ci[1, ] < ci[2, ]))          # non-degenerate intervals
     expect_equal(f$env$npbK, 20L)
+    # eta-space outputs carry the eta names (columns for the matrices, rows for
+    # the per-eta R-hat vector)
+    .en <- c("eta.ka", "eta.v", "eta.ke")
+    expect_equal(colnames(f$env$npbSupport), .en)
+    expect_equal(colnames(f$env$npbPosteriorEta), .en)
+    expect_equal(colnames(f$env$npbMeanDraws), .en)
+    expect_equal(rownames(f$env$npbRhat), .en)
+    # npb records + saves its iteration history through the shared scale.h printer
+    # (one Scaled + one Back-Transformed row per chain-0 sweep = burnin + nsamp)
+    ph <- f$env$parHistData
+    expect_s3_class(ph, "data.frame")
+    expect_true(all(c("iter", "type", "objf") %in% names(ph)))
+    expect_equal(sum(ph$type == "Scaled"), 100L + 100L)
   })
 
   test_that("est='npb' is reproducible for a fixed seed", {

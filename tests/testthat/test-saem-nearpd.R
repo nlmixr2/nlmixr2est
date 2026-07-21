@@ -6,7 +6,7 @@ nmTest({
   # (nmNearPD), warns once, and finishes.
 
   .mkDat <- function() {
-    set.seed(42)
+    .testSeed(42)
     nid <- 30
     cov1 <- rnorm(nid, 70, 10)
     cov2 <- 0.5 * cov1 + rnorm(nid, 0, 5)
