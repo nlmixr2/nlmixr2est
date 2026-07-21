@@ -2,6 +2,19 @@
 
 ## New features
 
+- `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
+  covariates already written in the model.  When the model declares covariate
+  effects, the automatic BICc covariate search is restricted to those
+  covariate/parameter pairs -- it may still drop a declared covariate, but never
+  adds one on a parameter the model did not specify -- and the original model is
+  updated with the estimates, writing a dropped covariate's coefficient as `0`.
+  A declared covariate that cannot be searched (time-varying, or a raw-linear
+  form on a continuous covariate) is estimated in place by the regress M-step.
+  With `pinCovariates=FALSE` a model's declared covariates are estimated in place
+  and the search is turned off; with no declared covariates the full search runs.
+  Each case is noted in `$runInfo`.  (Time-varying covariates are still reported
+  as excluded from the search regardless of the setting.)
+
 - The optimization `sigdig` now sets both the ODE solver tolerances and every
   estimation method's optimizer convergence tolerance with one consistent formula,
   so the optimizer converges to exactly the precision the solve supports.  The ODE
