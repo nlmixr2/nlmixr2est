@@ -43,6 +43,20 @@ nmTest({
       model({ ka<-exp(tka); cl<-exp(tcl+b*WT+eta.cl); v<-exp(tv); linCmt() ~ add(add.sd) })
     }
     expect_equal(.hookB(mFix), 0)
+
+    # a residual-error sd at exactly 0 is left untouched (disables the
+    # component; the combined error model must still reduce to the smaller one)
+    hookErr <- function(uifun, nm) {
+      ui <- rxode2::rxUiDecompress(rxode2::rxode2(uifun))
+      r <- .preProcessZeroTheta(ui, "focei", NULL, foceiControl())
+      d <- (if (is.null(r)) ui else r$ui)$iniDf
+      unname(d$est[d$name == nm])
+    }
+    mErr <- function() {
+      ini({ tka<-0.45; tcl<- -1; tv<-3.45; add.sd<-0; prop.sd<-0.1; eta.cl~0.1 })
+      model({ ka<-exp(tka); cl<-exp(tcl+eta.cl); v<-exp(tv); linCmt() ~ add(add.sd) + prop(prop.sd) })
+    }
+    expect_equal(hookErr(mErr, "add.sd"), 0)
   })
 
   test_that("linear thetas get guarded 1/|init|, log thetas 1", {

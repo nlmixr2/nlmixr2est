@@ -23,7 +23,12 @@
   }
   .ui <- rxode2::rxUiDecompress(ui)
   .iniDf <- .ui$iniDf
-  .w <- which(!is.na(.iniDf$ntheta) & .iniDf$est == 0 & !.iniDf$fix)
+  # Only structural thetas need the nudge: residual-error parameters
+  # (is.na(err) FALSE) get their own scaleC (0.5*|init|, or 1 for boxCox/
+  # yeoJohnson), so |init|=0 never freezes them, and a 0-valued error sd is a
+  # deliberate "disable this component" that must reduce to the smaller model.
+  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err) &
+                .iniDf$est == 0 & !.iniDf$fix)
   if (length(.w) == 0L) return(NULL)
   .changed <- character(0)
   for (.i in .w) {
