@@ -524,14 +524,14 @@ saemControl(
   Convergence tolerance on the relative reduction in the objective for
   that L-BFGS-B refinement (the \`factr\` control, in units of machine
   epsilon). When \`NULL\` (default) it is derived from \`sigdig\` the
-  same way as \`foceiControl()\` (\`10^(-sigdig - 1) /
+  same way as \`foceiControl()\` (\`10^(-sigdig) /
   .Machine\$double.eps\`).
 
 - lbfgsPgtol:
 
   Convergence tolerance on the projected gradient for that L-BFGS-B
   refinement (the \`pgtol\` control). When \`NULL\` (default) it is
-  derived from \`sigdig\` (\`10^(-sigdig - 1)\`).
+  derived from \`sigdig\` (\`10^(-sigdig)\`).
 
 - lbfgsMaxIter:
 

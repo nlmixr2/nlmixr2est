@@ -85,12 +85,12 @@ nlminbControl(
 - rel.tol:
 
   Relative tolerance. When \`NULL\` (default) it is derived from
-  \`sigdig\` the way \`foceiControl()\` does (\`10^(-sigdig-1)\`).
+  \`sigdig\` the way \`foceiControl()\` does (\`10^(-sigdig)\`).
 
 - x.tol:
 
   X tolerance. When \`NULL\` (default) it is derived from \`sigdig\`
-  (\`10^(-sigdig-1)\`).
+  (\`10^(-sigdig)\`).
 
 - xf.tol:
 
@@ -431,9 +431,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3327615 0.6057579  6.723e-06      0.046       0.006 0.026    0.012
-#>             other
-#> elapsed 0.1154739
+#> elapsed 0.3360668 0.5949746  7.071e-06       0.06       0.006 0.025    0.011
+#>              other
+#> elapsed 0.09895154
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

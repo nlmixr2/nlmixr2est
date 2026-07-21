@@ -39,8 +39,9 @@
   now takes a configurable `rhoend` (final trust-region radius) via
   `npagControl(rhoend=)`, `npbControl(rhoend=)` and
   `vaeControl(rhoend=)`, threaded to the C++ engine. It defaults to
-  `1e-5` (the FOCEi convergence tolerance `10^(-sigdig-1)` at the
-  default `sigdig=4`); `vaeControl` derives it from `sigdig` when set.
+  `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at
+  the default `sigdig=4`; `vaeControl` derives it from `sigdig` when set
+  (`npag`/`npb` have no `sigdig`, so they use the fixed default).
   (`est="saem"` already routes its inner tolerance through
   `saemControl(tol=)`.)
 

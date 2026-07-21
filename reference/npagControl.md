@@ -17,7 +17,7 @@ npagControl(
   gridBounds = c("auto", "ini", "both"),
   dfScan = -1L,
   cores = NULL,
-  rhoend = 1e-05,
+  rhoend = 1e-04,
   ...
 )
 ```
@@ -119,9 +119,10 @@ npagControl(
 - rhoend:
 
   Final trust-region radius (\`rhoend\`) of the inner bounded \`bobyqa\`
-  that fits the residual-error thetas each cycle. Defaults to \`1e-5\`
-  (the FOCEi convergence tolerance \`10^(-sigdig-1)\` at the default
-  \`sigdig=4\`).
+  that fits the residual-error thetas each cycle. A fixed default of
+  \`1e-4\`, matching the optimizer convergence tolerance
+  \`10^(-sigdig)\` at the default \`sigdig = 4\` (npag has no
+  \`sigdig\`, so this is not derived from it).
 
 - ...:
 
@@ -354,14 +355,14 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55de8dd20ec8>
+#> <bytecode: 0x557c3d5ef850>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 1e-05
+#> [1] 1e-04
 #> 
 #> $npt
 #> NULL

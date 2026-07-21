@@ -122,12 +122,12 @@ appropriate</p></dd>
 
 <dt id="arg-rel-tol">rel.tol<a class="anchor" aria-label="anchor" href="#arg-rel-tol"></a></dt>
 <dd><p>Relative tolerance.  When `NULL` (default) it is derived from
-`sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`).</p></dd>
+`sigdig` the way `foceiControl()` does (`10^(-sigdig)`).</p></dd>
 
 
 <dt id="arg-x-tol">x.tol<a class="anchor" aria-label="anchor" href="#arg-x-tol"></a></dt>
 <dd><p>X tolerance.  When `NULL` (default) it is derived from `sigdig`
-(`10^(-sigdig-1)`).</p></dd>
+(`10^(-sigdig)`).</p></dd>
 
 
 <dt id="arg-xf-tol">xf.tol<a class="anchor" aria-label="anchor" href="#arg-xf-tol"></a></dt>
@@ -475,9 +475,9 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3327615 0.6057579  6.723e-06      0.046       0.006 0.026    0.012</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1154739</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3360668 0.5949746  7.071e-06       0.06       0.006 0.025    0.011</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09895154</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

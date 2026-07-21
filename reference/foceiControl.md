@@ -567,7 +567,7 @@ foceiControl(
 
 - rhoend:
 
-  Final trust region radius. If not defined, \`10^(-sigdig-1)\` is used.
+  Final trust region radius. If not defined, \`10^(-sigdig)\` is used.
   (bobyqa)
 
 - npt:

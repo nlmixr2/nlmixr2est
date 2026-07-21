@@ -60,7 +60,7 @@ newuoaControl(
 
 - rhoend:
 
-  Final trust region radius. If not defined, \`10^(-sigdig-1)\` is used.
+  Final trust region radius. If not defined, \`10^(-sigdig)\` is used.
   (bobyqa)
 
 - iprint:
@@ -335,9 +335,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3318058 0.4364772  7.264e-06      0.046       0.006 0.025    0.001
+#> elapsed 0.3339947 0.4426752  7.381e-06      0.053       0.006 0.026    0.001
 #>              other
-#> elapsed 0.09970975
+#> elapsed 0.09932275
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

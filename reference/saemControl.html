@@ -530,13 +530,13 @@ optimization of the observation likelihood.  Default 5.</p></dd>
 <dd><p>Convergence tolerance on the relative reduction in the
 objective for that L-BFGS-B refinement (the `factr` control, in units of
 machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).</p></dd>
+same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).</p></dd>
 
 
 <dt id="arg-lbfgspgtol">lbfgsPgtol<a class="anchor" aria-label="anchor" href="#arg-lbfgspgtol"></a></dt>
 <dd><p>Convergence tolerance on the projected gradient for that
 L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-derived from `sigdig` (`10^(-sigdig - 1)`).</p></dd>
+derived from `sigdig` (`10^(-sigdig)`).</p></dd>
 
 
 <dt id="arg-lbfgsmaxiter">lbfgsMaxIter<a class="anchor" aria-label="anchor" href="#arg-lbfgsmaxiter"></a></dt>

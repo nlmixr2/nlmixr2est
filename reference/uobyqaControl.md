@@ -60,7 +60,7 @@ uobyqaControl(
 
 - rhoend:
 
-  Final trust region radius. If not defined, \`10^(-sigdig-1)\` is used.
+  Final trust region radius. If not defined, \`10^(-sigdig)\` is used.
   (bobyqa)
 
 - iprint:
@@ -334,10 +334,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3488101 0.3598229  5.921e-06      0.048       0.006 0.027    0.001
-#>            other
-#> elapsed 0.130361
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.3862376 0.330891  7.971e-06      0.064       0.005 0.028    0.001
+#>             other
+#> elapsed 0.1078634
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
