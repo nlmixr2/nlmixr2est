@@ -182,6 +182,14 @@
   prepC$regressUpper <- as.numeric(prep$regressUpper)
   ## latent dims whose structural theta is fixed (held at ini by the M-step)
   prepC$zPopFix <- as.logical(prep$zPopFix)
+  ## pinned covariate selection: per-(eta x covariate) allow-mask restricting the
+  ## branch-and-bound to model-declared pairs.  Drop the NULL placeholder when
+  ## pinning is inactive so the C++ containsElementNamed guard sees no mask and
+  ## runs the full search.
+  prepC$covAllow <- NULL
+  if (!is.null(prep$covAllow)) {
+    prepC$covAllow <- matrix(as.integer(prep$covAllow), prep$zDim, ncol(prep$covMat))
+  }
 
   .cores <- tryCatch({
     .c <- control$rxControl$cores
