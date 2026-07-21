@@ -59,8 +59,8 @@ bobyqaControl(
 - rhoend:
 
   Final trust region radius. When \`NULL\` (default) it is derived from
-  \`sigdig\` the way \`foceiControl() does (\`10^(-sigdig)\`); otherwise
-  the minqa \`1e-6\*rhobeg\` default applies.
+  \`sigdig\` the way \`foceiControl()\` does (\`10^(-sigdig)\`);
+  otherwise the minqa \`1e-6\*rhobeg\` default applies.
 
 - iprint:
 
@@ -325,10 +325,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8615523 0.8392152 1.0025e-05      0.046       0.008 0.038    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.8126388 0.805428   9.34e-06      0.046       0.007 0.031    0.002
 #>              other
-#> elapsed 0.09622248
+#> elapsed 0.09992383
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
