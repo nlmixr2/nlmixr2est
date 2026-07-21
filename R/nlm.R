@@ -974,6 +974,46 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
+#' Set up an nlm-family objective for repeated hook-firing evaluation
+#'
+#' Preprocesses the data and LOADS the nlm population (predOnly) problem into the
+#' C++ engine, so that repeated \code{nlmSolveR(theta)} calls evaluate the
+#' population objective -- firing any registered likelihood-contribution hook
+#' (e.g. a plugin's per-observation cotangent capture) -- WITHOUT re-running the
+#' optimizer.  One compiled setup is reused across evaluations.  Intended for
+#' extension packages (e.g. nlmixr2nn) that optimize an out-of-band parameter
+#' block (network weights injected via a par-loader) and need the exact
+#' error-model cotangent from the nlm C++ solve at each iterate.  Free the loaded
+#' problem with \code{.nlmFreeEnv()} when done.
+#'
+#' @param ui rxode2/nlmixr2 model.  Uses \code{ui$control} when present.
+#' @param data event data.
+#' @param control optional nlm-family control; defaults to \code{nlmControl()}
+#'   (or \code{ui$control} if that is an nlm-family control).
+#' @return (invisibly) the scaled starting parameter vector to hand to
+#'   \code{nlmSolveR()}; the C++ problem is left loaded.
+#' @export
+#' @keywords internal
+#' @author Matthew L. Fidler
+nlmObjectiveSetup <- function(ui, data, control = NULL) {
+  .ui <- rxode2::rxUiDecompress(ui)
+  if (is.null(control)) {
+    control <- if (!is.null(.ui$control)) .ui$control else nlmControl()
+  }
+  .ui$control <- control
+  .ctl <- .ui$control
+  class(.ctl) <- NULL
+  .ret <- new.env(parent = emptyenv())
+  .foceiPreProcessData(data, .ret, .ui, .ctl$rxControl)
+  .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
+  ## solveType 1 / nlmRxModel: the objective-only predOnly model (no thetaGrad).
+  ## The hook fires from nlmSolveFid during the objective solve; the caller gets
+  ## the weight gradient from its own augmented-sensitivity solve, so no analytic
+  ## theta gradient is needed here.
+  .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmRxModel, .ctl)
+  invisible(.env$par.ini)
+}
+
 .nlmFitModel <- function(ui, dataSav) {
   .ctl <- ui$control
   class(.ctl) <- NULL
