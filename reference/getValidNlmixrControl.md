@@ -140,6 +140,24 @@ getValidNlmixrCtl(control)
 # S3 method for class 'optim'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'neldermead'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'bfgs'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'cg'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'lbfgsb'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'sann'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'brent'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'posthoc'
 getValidNlmixrCtl(control)
 

@@ -154,6 +154,24 @@ nlmixr2Est(env, ...)
 # S3 method for class 'optim'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'neldermead'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'bfgs'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'cg'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'lbfgsb'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'sann'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'brent'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'posthoc'
 nlmixr2Est(env, ...)
 
