@@ -37,6 +37,16 @@
 #'   covariate coefficients (both linear `beta*WT` effects and transformed ones
 #'   such as `beta*log(WT/70)`) are estimated in place by the regress M-step
 #'   regardless of `nonMuTheta`; a `ini(... ~ fix())` coefficient stays fixed.
+#' @param pinCovariates When `TRUE` (default) and the model already declares
+#'   covariate effects, restrict the automatic covariate selection to only the
+#'   covariate/parameter pairs written in the model -- the branch-and-bound
+#'   search may still drop a declared covariate, but can never add one the model
+#'   did not specify.  A declared covariate that is not a valid search candidate
+#'   (time-varying, or a raw-linear form that does not match the `log`/centered
+#'   encoding) is estimated in place by the regress M-step instead, with a note
+#'   in `$runInfo`.  When the model declares no covariates there is nothing to
+#'   pin and the full search runs.  Has no effect when `covariateSelection` is
+#'   `FALSE`.
 #' @param nonMuTheta How to treat a structural population `theta` that has no
 #'   random effect (is not mu-referenced) so it can still be estimated by the VAE
 #'   (which only estimates parameters that occupy the latent space).  For the
@@ -139,6 +149,7 @@ vaeControl <- function(seed = 42L,
                        burnInLearningRate = 8e-3,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
+                       pinCovariates = TRUE,
                        covSelectAlpha = 2,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
@@ -188,6 +199,7 @@ vaeControl <- function(seed = 42L,
     checkmate::assertNumeric(sigma0, lower = 0, finite = TRUE, any.missing = FALSE, min.len = 1)
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(pinCovariates, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
@@ -275,6 +287,7 @@ vaeControl <- function(seed = 42L,
                burnInLearningRate = burnInLearningRate,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
+               pinCovariates = pinCovariates,
                covSelectAlpha = covSelectAlpha,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
