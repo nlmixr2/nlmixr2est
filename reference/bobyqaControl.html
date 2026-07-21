@@ -92,7 +92,9 @@ adjusted upward if smaller than `abs(upper-lower)/2`.</p></dd>
 
 
 <dt id="arg-rhoend">rhoend<a class="anchor" aria-label="anchor" href="#arg-rhoend"></a></dt>
-<dd><p>Final trust region radius. Defaults to `1e-6*rhobeg`.</p></dd>
+<dd><p>Final trust region radius.  When `NULL` (default) it is derived
+from `sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`); otherwise the
+minqa `1e-6*rhobeg` default applies.</p></dd>
 
 
 <dt id="arg-iprint">iprint<a class="anchor" aria-label="anchor" href="#arg-iprint"></a></dt>
@@ -361,21 +363,21 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">bobyqa</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -720.4741 1123.403 1138.126      -558.7015        4044.699        210.6652</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -720.4741 1123.403 1138.126      -558.7015        4044.283        210.6512</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8770721 0.8912045  9.678e-06      0.052       0.008 0.035    0.002</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1017138</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.856484 0.8373057  8.262e-06      0.045       0.009 0.036    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09520204</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>   <span style="font-weight: bold;">Back-transformed(95%CI)</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    8.773  8.361 95.31     8.773 (-7.615, 25.16)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   4.054  2.863 70.62     4.054 (-1.558, 9.666)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    8.773  8.361 95.31     8.773 (-7.614, 25.16)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   4.054  2.863 70.62     4.054 (-1.557, 9.666)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>     2.000  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                     2.000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r</span></span>
@@ -393,9 +395,9 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-in"><span><span class="co"># you can also get the bobyqa output with</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">bobyqa</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.576142251830886, 8.77266535404348, 4.05415648984774 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 558.701494344944 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 438 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.576143958149363, 8.77251588922663, 4.05410531800092 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 558.701494345629 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 391 </span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>

@@ -129,9 +129,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1062071 3.7921e-05 0.01100623      0.086     0.254 6.784       0.472
+#> elapsed 0.1026326 2.9714e-05 0.01000502      0.075     0.229 7.033       0.405
 #>         compress     other
-#> elapsed    0.136 0.1497488
+#> elapsed    0.137 0.1333327
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -139,7 +139,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.64e-310 6.64e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -167,9 +167,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1062071 3.7921e-05 0.01100623      0.086     0.254 6.784       0.472
+#> elapsed 0.1026326 2.9714e-05 0.01000502      0.075     0.229 7.033       0.405
 #>         compress     other
-#> elapsed    0.136 0.1497488
+#> elapsed    0.137 0.1333327
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -177,7 +177,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.64e-310 6.64e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 

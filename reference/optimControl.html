@@ -45,8 +45,8 @@
 <span>  parscale <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  ndeps <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  maxit <span class="op">=</span> <span class="fl">10000</span>,</span>
-<span>  abstol <span class="op">=</span> <span class="fl">1e-08</span>,</span>
-<span>  reltol <span class="op">=</span> <span class="fl">1e-08</span>,</span>
+<span>  abstol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reltol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  alpha <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  beta <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  gamma <span class="op">=</span> <span class="fl">2</span>,</span>
@@ -54,7 +54,7 @@
 <span>  warn.1d.NelderMead <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  type <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lmm <span class="op">=</span> <span class="fl">5</span>,</span>
-<span>  factr <span class="op">=</span> <span class="fl">1e+07</span>,</span>
+<span>  factr <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  pgtol <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  temp <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  tmax <span class="op">=</span> <span class="fl">10</span>,</span>
@@ -516,22 +516,22 @@ skips the final back-transform.</p></dd>
 <span class="r-in"><span><span class="va">fit2</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">optim</span><span style="font-weight: bold;"> with </span><span style="color: #BBBB00; font-weight: bold;">BFGS</span><span style="font-weight: bold;"> method ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>          OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -694.437 1149.44 1164.163        -571.72        620.9496        76.79813</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -684.2964 1159.581 1174.304      -576.7903        56372.43        479.4776</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3776018 0.620632 1.0049e-05      0.061       0.007 0.029    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3350544 0.5232404   6.58e-06      0.047       0.006 0.025    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1527561</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1156987</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>   <span style="font-weight: bold;">Back-transformed(95%CI)</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.6182 0.2345 37.93 -0.6182 (-1.078, -0.1586)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    5.914  3.031 51.24   5.914 (-0.02573, 11.85)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   3.145  1.501 47.74     3.145 (0.2021, 6.088)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.2947 0.2131 72.33 -0.2947 (-0.7124, 0.1231)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    17.22  31.65 183.8     17.22 (-44.81, 79.26)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   7.688  8.845 115.1     7.688 (-9.649, 25.02)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>     2.000  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                     2.000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #BBBB00;">value</span><span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r (optim)</span></span>
@@ -541,9 +541,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 1,000 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   ID      TIME    DV  IPRED      v</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.042<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.431</span> -<span style="color: #BB0000;">0.617</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.069<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">1.05</span>  -<span style="color: #BB0000;">0.615</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.074<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.432</span> -<span style="color: #BB0000;">0.615</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.042<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.557</span> -<span style="color: #BB0000;">0.294</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.069<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">0.850</span> -<span style="color: #BB0000;">0.293</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.074<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.557</span> -<span style="color: #BB0000;">0.293</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 997 more rows</span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>

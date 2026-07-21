@@ -373,21 +373,21 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">newuoa</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -691.2571 1152.62 1167.343        -573.31        56625.66        833.0358</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -691.2571 1152.62 1167.343        -573.31        56598.19        832.7041</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3683204 0.4618508  8.455e-06      0.057       0.006 0.027    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1108203</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3118966 0.4144791    6.3e-06      0.044       0.006 0.024    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.105618</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>   <span style="font-weight: bold;">Back-transformed(95%CI)</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.6243 0.2158 34.56 -0.6243 (-1.047, -0.2014)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    15.36  32.23 209.8     15.36 (-47.80, 78.52)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   6.165  7.867 127.6     6.165 (-9.254, 21.58)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    15.36  32.22 209.7     15.36 (-47.78, 78.51)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   6.165  7.866 127.6     6.165 (-9.251, 21.58)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>     2.000  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                     2.000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r</span></span>
@@ -405,9 +405,9 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-in"><span><span class="co"># you can also get the nlm output with</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">newuoa</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.624293446322782, 15.3622922040594, 6.16530673469439 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 573.309967947753 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 677 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.624294733621613, 15.361499904745, 6.16512325961022 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 573.309967949451 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 595 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The nlm control has been modified slightly to include</span></span></span>
 <span class="r-in"><span><span class="co"># extra components and name the parameters</span></span></span>

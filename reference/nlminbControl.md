@@ -10,8 +10,8 @@ nlminbControl(
   iter.max = 150,
   trace = 0,
   abs.tol = 0,
-  rel.tol = 1e-10,
-  x.tol = 1.5e-08,
+  rel.tol = NULL,
+  x.tol = NULL,
   xf.tol = 2.2e-14,
   step.min = 1,
   step.max = 1,
@@ -84,11 +84,13 @@ nlminbControl(
 
 - rel.tol:
 
-  Relative tolerance. Defaults to \`1e-10\`.
+  Relative tolerance. When \`NULL\` (default) it is derived from
+  \`sigdig\` the way \`foceiControl()\` does (\`10^(-sigdig-1)\`).
 
 - x.tol:
 
-  X tolerance. Defaults to \`1.5e-8\`.
+  X tolerance. When \`NULL\` (default) it is derived from \`sigdig\`
+  (\`10^(-sigdig-1)\`).
 
 - xf.tol:
 
@@ -419,27 +421,27 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 2776
+#> → compress parHistData in nlmixr2 object, save 2608
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -717.7048 1126.172 1140.896      -560.0862        143.7132        39.92507
+#> lPop -717.7048 1126.172 1140.896      -560.0862        143.6999        39.92278
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.6849902 0.6478305  7.354e-06      0.056       0.006 0.027    0.012
-#>            other
-#> elapsed 0.111172
+#> elapsed 0.3159455 0.5938714  6.479e-06      0.046       0.005 0.024    0.399
+#>              other
+#> elapsed 0.09717661
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.     SE  %RSE  Back-transformed(95%CI)
 #> E0  -1.047 0.2689 25.67 -1.047 (-1.574, -0.5203)
 #> Em   4.917  1.343 27.30     4.917 (2.286, 7.549)
-#> E50  2.209 0.7169 32.46    2.209 (0.8037, 3.614)
+#> E50  2.209 0.7169 32.46    2.209 (0.8038, 3.614)
 #> g    2.000  FIXED FIXED                    2.000
 #>  
 #>   Covariance Type ($covMethod): r (nlminb)
@@ -461,7 +463,7 @@ print(fit2)
 fit2$nlminb
 #> $par
 #>        E0        Em       E50 
-#> -1.047331  4.917283  2.208892 
+#> -1.047335  4.917202  2.208856 
 #> 
 #> $objective
 #> [1] 560.0862
@@ -470,11 +472,11 @@ fit2$nlminb
 #> [1] 0
 #> 
 #> $iterations
-#> [1] 8
+#> [1] 7
 #> 
 #> $evaluations
 #> function gradient 
-#>       15        9 
+#>       14        8 
 #> 
 #> $message
 #> [1] "relative convergence (4)"
@@ -484,25 +486,25 @@ fit2$nlminb
 #> 
 #> $par.scaled
 #>          E0          Em         E50 
-#> -590.314051  131.069762    7.672606 
+#> -590.315830  131.067335    7.671457 
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001316935  0.003308636 -0.008519073
-#> Em   0.003308636  0.016106038 -0.032681000
-#> E50 -0.008519073 -0.032681000  0.079055891
+#>               E0           Em         E50
+#> E0   0.001316937  0.003308724 -0.00851920
+#> Em   0.003308724  0.016106760 -0.03268196
+#> E50 -0.008519200 -0.032681956  0.07905771
 #> 
 #> $cov.scaled
 #>             E0        Em       E50
-#> E0  10486.8449  860.7312 1485.8823
-#> Em    860.7312 1611.4759  758.9223
-#> E50  1485.8823  758.9223  524.4477
+#> E0  10486.8694  860.6009 1485.8243
+#> Em    860.6009 1611.3108  758.8434
+#> E50  1485.8243  758.8434  524.4083
 #> 
 #> $r
-#>                E0           Em          E50
-#> E0   0.0006584675  0.001654318 -0.004259536
-#> Em   0.0016543179  0.008053019 -0.016340500
-#> E50 -0.0042595364 -0.016340500  0.039527945
+#>                E0           Em         E50
+#> E0   0.0006584684  0.001654362 -0.00425960
+#> Em   0.0016543618  0.008053380 -0.01634098
+#> E50 -0.0042596001 -0.016340978  0.03952885
 #> 
 # }
 ```

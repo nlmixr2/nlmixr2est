@@ -331,21 +331,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -691.2571 1152.62 1167.343        -573.31        56625.66        833.0358
+#> lPop -691.2571 1152.62 1167.343        -573.31        56598.19        832.7041
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3683204 0.4618508  8.455e-06      0.057       0.006 0.027    0.001
-#>             other
-#> elapsed 0.1108203
+#> elapsed 0.3118966 0.4144791    6.3e-06      0.044       0.006 0.024    0.001
+#>            other
+#> elapsed 0.105618
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
 #> E0  -0.6243 0.2158 34.56 -0.6243 (-1.047, -0.2014)
-#> Em    15.36  32.23 209.8     15.36 (-47.80, 78.52)
-#> E50   6.165  7.867 127.6     6.165 (-9.254, 21.58)
+#> Em    15.36  32.22 209.7     15.36 (-47.78, 78.51)
+#> E50   6.165  7.866 127.6     6.165 (-9.251, 21.58)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -363,9 +363,9 @@ print(fit2)
 # you can also get the nlm output with
 
 fit2$newuoa
-#> parameter estimates: -0.624293446322782, 15.3622922040594, 6.16530673469439 
-#> objective: 573.309967947753 
-#> number of function evaluations: 677 
+#> parameter estimates: -0.624294733621613, 15.361499904745, 6.16512325961022 
+#> objective: 573.309967949451 
+#> number of function evaluations: 595 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

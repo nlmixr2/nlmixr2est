@@ -39,7 +39,7 @@
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">n1qn1Control</span><span class="op">(</span></span>
-<span>  epsilon <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="fl">0.25</span>,</span>
+<span>  epsilon <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  max_iterations <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  nsim <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  imp <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -387,14 +387,14 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">n1qn1</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -715.2361 1128.641 1143.364      -561.3205        493.1807        71.78878</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -715.2361 1128.641 1143.364      -561.3205        493.1802         71.7887</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3660678 0.5786952  8.566e-06      0.055       0.006 0.027    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1112284</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3128889 0.5428134  5.718e-06      0.048       0.005 0.024    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.108292</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -428,22 +428,22 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $H</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              [,1]         [,2]         [,3]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.001650649  0.002660560 -0.007137467</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.002660560  0.009466189 -0.020792349</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.007137467 -0.020792349  0.050431465</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.001615830  0.002649943 -0.007050603</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.002649943  0.009531677 -0.020904357</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.007050603 -0.020904357  0.050493848</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $c.hess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1]  0.001650649  0.002660560 -0.007137467  0.009466189 -0.020792349</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6]  0.050431465  0.000000000  0.000000000  0.000000000  0.000000000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1]  0.001615830  0.002649943 -0.007050603  0.009531677 -0.020904357</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6]  0.050493848  0.000000000  0.000000000  0.000000000  0.000000000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [11]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [16]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [21]  0.000000000  0.000000000  0.000000000  0.000000000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $n.fn</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 37</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 38</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $n.gr</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 37</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 38</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $scaleC</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.002875081 0.036929293 0.033369905</span>
@@ -454,21 +454,21 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $hessian</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>               E0           Em          E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001602122  0.002609465 -0.006942853</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001602122  0.002609465 -0.006942852</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.002609465  0.009410840 -0.020574667</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.006942853 -0.020574667  0.049546009</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.006942852 -0.020574667  0.049546010</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           E0       Em      E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  7368.597 2325.947 1998.439</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  2325.947 5348.213 2546.853</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 1998.439 2546.853 1418.389</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  7368.594 2325.943 1998.437</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  2325.943 5348.209 2546.851</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 1998.437 2546.851 1418.388</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $r</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                E0           Em          E50</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.0008010608  0.001304733 -0.003471426</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.0013047326  0.004705420 -0.010287333</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.0034714263 -0.010287333  0.024773004</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.0034714262 -0.010287333  0.024773005</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The nlm control has been modified slightly to include</span></span></span>

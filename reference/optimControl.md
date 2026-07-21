@@ -12,8 +12,8 @@ optimControl(
   parscale = 1,
   ndeps = 0.001,
   maxit = 10000,
-  abstol = 1e-08,
-  reltol = 1e-08,
+  abstol = NULL,
+  reltol = NULL,
   alpha = 1,
   beta = 0.5,
   gamma = 2,
@@ -21,7 +21,7 @@ optimControl(
   warn.1d.NelderMead = TRUE,
   type = NULL,
   lmm = 5,
-  factr = 1e+07,
+  factr = NULL,
   pgtol = 0,
   temp = 10,
   tmax = 10,
@@ -467,22 +467,22 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 fit2
 #> ── nlmixr² log-likelihood optim with BFGS method ──
 #> 
-#>          OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -694.437 1149.44 1164.163        -571.72        620.9496        76.79813
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -684.2964 1159.581 1174.304      -576.7903        56372.43        479.4776
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3776018 0.620632 1.0049e-05      0.061       0.007 0.029    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3350544 0.5232404   6.58e-06      0.047       0.006 0.025    0.001
 #>             other
-#> elapsed 0.1527561
+#> elapsed 0.1156987
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.6182 0.2345 37.93 -0.6182 (-1.078, -0.1586)
-#> Em    5.914  3.031 51.24   5.914 (-0.02573, 11.85)
-#> E50   3.145  1.501 47.74     3.145 (0.2021, 6.088)
+#> E0  -0.2947 0.2131 72.33 -0.2947 (-0.7124, 0.1231)
+#> Em    17.22  31.65 183.8     17.22 (-44.81, 79.26)
+#> E50   7.688  8.845 115.1     7.688 (-9.649, 25.02)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type (value$covMethod): r (optim)
@@ -492,9 +492,9 @@ fit2
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0429     0 -0.431 -0.617
-#> 2 1     0.0693     1 -1.05  -0.615
-#> 3 1     0.0743     0 -0.432 -0.615
+#> 1 1     0.0429     0 -0.557 -0.294
+#> 2 1     0.0693     1 -0.850 -0.293
+#> 3 1     0.0743     0 -0.557 -0.293
 #> # ℹ 997 more rows
 # }
 ```

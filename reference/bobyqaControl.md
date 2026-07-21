@@ -58,7 +58,9 @@ bobyqaControl(
 
 - rhoend:
 
-  Final trust region radius. Defaults to \`1e-6\*rhobeg\`.
+  Final trust region radius. When \`NULL\` (default) it is derived from
+  \`sigdig\` the way \`foceiControl()\` does (\`10^(-sigdig-1)\`);
+  otherwise the minqa \`1e-6\*rhobeg\` default applies.
 
 - iprint:
 
@@ -320,21 +322,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -720.4741 1123.403 1138.126      -558.7015        4044.699        210.6652
+#> lPop -720.4741 1123.403 1138.126      -558.7015        4044.283        210.6512
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8770721 0.8912045  9.678e-06      0.052       0.008 0.035    0.002
-#>             other
-#> elapsed 0.1017138
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.856484 0.8373057  8.262e-06      0.045       0.009 0.036    0.001
+#>              other
+#> elapsed 0.09520204
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
 #> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)
-#> Em    8.773  8.361 95.31     8.773 (-7.615, 25.16)
-#> E50   4.054  2.863 70.62     4.054 (-1.558, 9.666)
+#> Em    8.773  8.361 95.31     8.773 (-7.614, 25.16)
+#> E50   4.054  2.863 70.62     4.054 (-1.557, 9.666)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -352,8 +354,8 @@ print(fit2)
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.576142251830886, 8.77266535404348, 4.05415648984774 
-#> objective: 558.701494344944 
-#> number of function evaluations: 438 
+#> parameter estimates: -0.576143958149363, 8.77251588922663, 4.05410531800092 
+#> objective: 558.701494345629 
+#> number of function evaluations: 391 
 # }
 ```

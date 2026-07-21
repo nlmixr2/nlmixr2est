@@ -10,9 +10,9 @@ nlmControl(
   fscale = 1,
   print.level = 0,
   ndigit = NULL,
-  gradtol = 1e-06,
+  gradtol = NULL,
   stepmax = NULL,
-  steptol = 1e-06,
+  steptol = NULL,
   iterlim = 10000,
   check.analyticals = FALSE,
   returnNlm = FALSE,
@@ -444,9 +444,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3553495 0.6201203  9.228e-06       0.06       0.017 0.027    0.001
-#>             other
-#> elapsed 0.1155209
+#> elapsed 0.3240652 0.5531521  6.599e-06      0.044       0.006 0.024    0.001
+#>              other
+#> elapsed 0.09477612
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
