@@ -206,8 +206,9 @@
   .errOpt <- !is.na(.thOrd$err) & !.isFix
   .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
   # inner bounded-bobyqa final trust-region radius for the residual step
-  # (npagControl/npbControl `rhoend`); FOCEi rhoend at the default sigdig=4
-  .control$npResidRhoend <- if (is.null(.control$rhoend)) 1e-5 else as.numeric(.control$rhoend)
+  # (npagControl/npbControl `rhoend`); default 1e-4 matches the optimizer
+  # convergence tolerance 10^-sigdig at the default sigdig=4
+  .control$npResidRhoend <- if (is.null(.control$rhoend)) 1e-4 else as.numeric(.control$rhoend)
   .optType <- .errType[.errOpt]
   .kind <- rep(1L, length(.optType))
   .kind[.optType %in% c("ar")] <- 2L

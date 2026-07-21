@@ -266,11 +266,11 @@
 #' @param lbfgsFactr Convergence tolerance on the relative reduction in the
 #'   objective for that L-BFGS-B refinement (the `factr` control, in units of
 #'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-#'   same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).
+#'   same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).
 #'
 #' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
 #'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-#'   derived from `sigdig` (`10^(-sigdig - 1)`).
+#'   derived from `sigdig` (`10^(-sigdig)`).
 #'
 #' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
 #'   refinement.  Default 20.
@@ -444,10 +444,10 @@ saemControl <- function(seed = 99,
     # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
     # derived from sigdig the same way foceiControl() does (factr = tol/eps)
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
     }
     if (is.null(lbfgsPgtol)) {
-      lbfgsPgtol <- 10^(-sigdig - 1)
+      lbfgsPgtol <- 10^(-sigdig)
     }
   }
   # defaults when sigdig is not supplied (~4 significant digits)

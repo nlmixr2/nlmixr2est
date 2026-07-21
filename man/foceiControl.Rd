@@ -455,7 +455,7 @@ implemented yet.)}
 `abs(upper-lower)/2`. (bobyqa)}
 
 \item{rhoend}{Final trust region radius. If not defined,
-`10^(-sigdig-1)` is used. (bobyqa)}
+`10^(-sigdig)` is used. (bobyqa)}
 
 \item{npt}{Number of points for bobyqa's quadratic approximation to the
 objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.

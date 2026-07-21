@@ -97,8 +97,8 @@
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
 #' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
 #'   `bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
-#'   derives it from `sigdig` (`10^(-sigdig-1)`, the FOCEi mechanism), or `1e-5`
-#'   when `sigdig` is `NULL`.
+#'   derives it from `sigdig` (`10^(-sigdig)`, matching the optimizer convergence
+#'   tolerance), or `1e-4` when `sigdig` is `NULL`.
 #' @param returnVae When `TRUE` return the raw VAE training object instead of the
 #'   nlmixr2 fit.
 #'
@@ -261,7 +261,7 @@ vaeControl <- function(seed = 42L,
 
   # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
   # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
-  if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-5
+  if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ret <- list(seed = as.integer(seed),
                rhoend = as.numeric(rhoend),

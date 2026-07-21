@@ -116,7 +116,7 @@ void npbOuter(Environment e) {
   std::vector<double> regressLower, regressUpper;
   arma::ivec obsEndpoint;
   bool residFreeze = true;
-  double npbResidRhoend = 1e-5; // bounded-bobyqa final trust-region radius (residual step)
+  double npbResidRhoend = 1e-4; // bounded-bobyqa final trust-region radius (residual step)
   if (control.containsElementNamed("npResidRhoend"))
     npbResidRhoend = as<double>(control["npResidRhoend"]);
   if (control.containsElementNamed("npResidOptIdx")) {

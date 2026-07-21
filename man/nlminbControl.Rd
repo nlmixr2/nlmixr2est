@@ -75,10 +75,10 @@ to be non-negative, the previous default of `1e-20` would be more
 appropriate}
 
 \item{rel.tol}{Relative tolerance.  When `NULL` (default) it is derived from
-`sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`).}
+`sigdig` the way `foceiControl()` does (`10^(-sigdig)`).}
 
 \item{x.tol}{X tolerance.  When `NULL` (default) it is derived from `sigdig`
-(`10^(-sigdig-1)`).}
+(`10^(-sigdig)`).}
 
 \item{xf.tol}{false convergence tolerance.  Defaults to `2.2e-14`.}
 

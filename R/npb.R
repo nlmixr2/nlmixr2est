@@ -52,8 +52,9 @@
 #'   count for the fit (restored afterwards).  With a fixed `seed` the fit is
 #'   bit-for-bit identical regardless of the thread count.
 #' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
-#'   `bobyqa` that fits the residual-error thetas.  Defaults to `1e-5` (the FOCEi
-#'   convergence tolerance `10^(-sigdig-1)` at the default `sigdig=4`).
+#'   `bobyqa` that fits the residual-error thetas.  A fixed default of `1e-4`,
+#'   matching the optimizer convergence tolerance `10^(-sigdig)` at the default
+#'   `sigdig = 4` (npb has no `sigdig`, so this is not derived from it).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npb engine.
 #' @export
@@ -66,7 +67,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        residOptimize = c("alternate", "final", "none"),
                        cycles = 100L,
                        gammaOptimize = FALSE, muExpand = FALSE, cores = NULL,
-                       rhoend = 1e-5, ...) {
+                       rhoend = 1e-4, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)

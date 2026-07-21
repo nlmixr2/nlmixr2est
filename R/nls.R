@@ -117,7 +117,7 @@ nlsControl <- function(maxiter=10000,
 
   solveType <- match.arg(solveType)
 
-  # nls tolerances from sigdig: the LM/nls `tol` is 10^(-sigdig-1) (1e-5 at the
+  # nls tolerances from sigdig: the LM/nls `tol` is 10^(-sigdig) (1e-4 at the
   # default sigdig=4); the minpack.lm function/parameter tolerances keep their
   # sqrt(eps) default at sigdig=4 and tighten one order per significant digit.  A
   # user value wins, sigdig=NULL keeps the historic defaults.

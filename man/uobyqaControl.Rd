@@ -53,7 +53,7 @@ objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
 `abs(upper-lower)/2`. (bobyqa)}
 
 \item{rhoend}{Final trust region radius. If not defined,
-`10^(-sigdig-1)` is used. (bobyqa)}
+`10^(-sigdig)` is used. (bobyqa)}
 
 \item{iprint}{Controls amount of printing (`0`=none, `1`=start/end only,
 `2`=each new rho, `3`=every function evaluation, `>3`=every `iprint`

@@ -13240,7 +13240,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       int m = (int)regIdx.n_elem;
       Rcpp::NumericVector par0(m), lo(m), hi(m);
       for (int j = 0; j < m; ++j) { par0[j] = th[regIdx[j]]; lo[j] = regLower[j]; hi[j] = regUpper[j]; }
-      double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-5;
+      double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-4;
       Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
                                   Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
                                   Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));

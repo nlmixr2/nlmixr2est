@@ -118,7 +118,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                        const arma::ivec& obsEndpoint = arma::ivec(),
                        const std::vector<int>& optEnd = std::vector<int>(),
                        const std::vector<int>& optProp = std::vector<int>(),
-                       bool reDerive = false, double rhoend = 1e-5);
+                       bool reDerive = false, double rhoend = 1e-4);
 
 // Nonparametric adaptive-grid EM driver; called from foceiFitCpp_ when
 // est=="npag" (in place of foceiOuter).

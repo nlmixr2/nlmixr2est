@@ -179,7 +179,7 @@ struct npagCtl {
   double thetaG = 1e-4; // objf-change tolerance that halves eps
   double thetaF = 1e-2; // successive-F tolerance for the exit test
   double thetaD = 1e-4; // minimum scaled distance for daughter points
-  double residRhoend = 1e-5; // bounded-bobyqa final trust-region radius (residual step)
+  double residRhoend = 1e-4; // bounded-bobyqa final trust-region radius (residual step)
   bool gammaOptimize = false; // optimize the residual-error magnitude (gamma)
   double gammaInit = 1.0;     // initial gamma multiplier
   double gammaDelta = 0.1;    // initial gamma step fraction

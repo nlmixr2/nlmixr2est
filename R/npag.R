@@ -97,8 +97,9 @@
 #'   (`rxode2::getRxThreads()`); an integer sets the thread count for the fit
 #'   (restored afterwards).  Results are independent of the thread count.
 #' @param rhoend Final trust-region radius (`rhoend`) of the inner bounded
-#'   `bobyqa` that fits the residual-error thetas each cycle.  Defaults to `1e-5`
-#'   (the FOCEi convergence tolerance `10^(-sigdig-1)` at the default `sigdig=4`).
+#'   `bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
+#'   `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at the
+#'   default `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).
 #' @param ... Parameters passed to [impmapControl()].
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
@@ -110,7 +111,7 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), dfScan = -1L,
-                        cores = NULL, rhoend = 1e-5, ...) {
+                        cores = NULL, rhoend = 1e-4, ...) {
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
