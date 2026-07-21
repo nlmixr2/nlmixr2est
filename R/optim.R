@@ -585,3 +585,81 @@ attr(nlmixr2Est.optim, "unbounded") <- function(control) {
   if (is.null(control) || is.null(control$method)) return(TRUE)
   !(control$method %in% c("L-BFGS-B", "Brent"))
 }
+
+#' Force `optim()`'s method for a sugar-alias estimation method
+#'
+#' Lets `est = "brent"` (etc.) stand in for `est = "optim"` with
+#' `optimControl(method = ...)`; any other `optimControl()` options the user
+#' supplies are kept, only the method is set by the alias.
+#' @param env dispatch environment
+#' @param .method the `optim()` method the alias selects
+#' @noRd
+.optimEstSugar <- function(env, .method, ...) {
+  .ctl <- if (exists("control", envir = env)) get("control", envir = env) else NULL
+  if (is.null(.ctl)) {
+    .ctl <- optimControl(method = .method)
+  } else if (inherits(.ctl, "optimControl")) {
+    .ctl$method <- .method
+  } else if (is.list(.ctl)) {
+    .ctl$method <- .method
+    .ctl <- do.call(optimControl, .ctl)
+  }
+  assign("control", .ctl, envir = env)
+  nlmixr2Est.optim(env, ...)
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.neldermead <- function(env, ...) .optimEstSugar(env, "Nelder-Mead", ...)
+attr(nlmixr2Est.neldermead, "covPresent") <- TRUE
+attr(nlmixr2Est.neldermead, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.bfgs <- function(env, ...) .optimEstSugar(env, "BFGS", ...)
+attr(nlmixr2Est.bfgs, "covPresent") <- TRUE
+attr(nlmixr2Est.bfgs, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.cg <- function(env, ...) .optimEstSugar(env, "CG", ...)
+attr(nlmixr2Est.cg, "covPresent") <- TRUE
+attr(nlmixr2Est.cg, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.lbfgsb <- function(env, ...) .optimEstSugar(env, "L-BFGS-B", ...)
+attr(nlmixr2Est.lbfgsb, "covPresent") <- TRUE
+attr(nlmixr2Est.lbfgsb, "unbounded") <- function(control) FALSE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.sann <- function(env, ...) .optimEstSugar(env, "SANN", ...)
+attr(nlmixr2Est.sann, "covPresent") <- TRUE
+attr(nlmixr2Est.sann, "unbounded") <- function(control) TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.brent <- function(env, ...) .optimEstSugar(env, "Brent", ...)
+attr(nlmixr2Est.brent, "covPresent") <- TRUE
+attr(nlmixr2Est.brent, "unbounded") <- function(control) FALSE
+
+# the sugar aliases validate their control exactly like est="optim"
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.neldermead <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.bfgs <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.cg <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.lbfgsb <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.sann <- getValidNlmixrCtl.optim
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.brent <- getValidNlmixrCtl.optim

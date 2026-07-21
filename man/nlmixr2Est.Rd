@@ -57,6 +57,12 @@
 \alias{nlmixr2Est.mnpb}
 \alias{nlmixr2Est.inpb}
 \alias{nlmixr2Est.optim}
+\alias{nlmixr2Est.neldermead}
+\alias{nlmixr2Est.bfgs}
+\alias{nlmixr2Est.cg}
+\alias{nlmixr2Est.lbfgsb}
+\alias{nlmixr2Est.sann}
+\alias{nlmixr2Est.brent}
 \alias{nlmixr2Est.posthoc}
 \alias{nlmixr2Est.qrpem}
 \alias{nlmixr2Est.rxSolve}
@@ -167,6 +173,18 @@ nlmixr2Est(env, ...)
 \method{nlmixr2Est}{inpb}(env, ...)
 
 \method{nlmixr2Est}{optim}(env, ...)
+
+\method{nlmixr2Est}{neldermead}(env, ...)
+
+\method{nlmixr2Est}{bfgs}(env, ...)
+
+\method{nlmixr2Est}{cg}(env, ...)
+
+\method{nlmixr2Est}{lbfgsb}(env, ...)
+
+\method{nlmixr2Est}{sann}(env, ...)
+
+\method{nlmixr2Est}{brent}(env, ...)
 
 \method{nlmixr2Est}{posthoc}(env, ...)
 

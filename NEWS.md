@@ -32,6 +32,12 @@
   `pnlsTol = 1e-4`.  An explicitly supplied tolerance always overrides the
   `sigdig`-derived value.
 
+- Added sugar aliases for the `optim()` methods so `est = "neldermead"`,
+  `"bfgs"`, `"cg"`, `"lbfgsb"`, `"sann"` and `"brent"` stand in for
+  `est = "optim"` with `optimControl(method = ...)`.  Any other `optimControl()`
+  options still apply; the alias only sets the method (and its bounded/unbounded
+  handling, so `"brent"`/`"lbfgsb"` honor bounds).
+
 - The inner bounded-`bobyqa` optimizer that fits the residual-error thetas in
   `est="npag"`, `est="npb"` and the `est="vae"` regress M-step now takes a
   configurable `rhoend` (final trust-region radius) via `npagControl(rhoend=)`,
