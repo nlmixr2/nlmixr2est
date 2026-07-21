@@ -48,6 +48,30 @@
   nls      = list(type="Optimizer (NLM family)", description="nonlinear least squares")
 )
 
+#' Stamp the type/description attributes onto the built-in nlmixr2Est methods
+#'
+#' Called once as top-level code from zzz.R (which sources last), i.e. while the
+#' namespace is still being built and its bindings are not yet locked -- so a
+#' plain `assign()` suffices and no `unlockBinding()` (a CRAN check NOTE) is
+#' needed.  Populates `attr(nlmixr2Est.focei, "type")` etc. for the built-in
+#' methods, matching the existing iov/covPresent/mu attribute convention.
+#' @param ns namespace environment the methods live in
+#' @return nothing, called for side effects
+#' @noRd
+.nlmixr2EstTypeApply <- function(ns) {
+  for (.est in names(.nlmixr2EstTypeInfo)) {
+    .nm <- paste0("nlmixr2Est.", .est)
+    if (!exists(.nm, envir=ns, inherits=FALSE)) next
+    .fn <- get(.nm, envir=ns, inherits=FALSE)
+    if (!is.function(.fn)) next
+    .info <- .nlmixr2EstTypeInfo[[.est]]
+    attr(.fn, "type") <- .info$type
+    attr(.fn, "description") <- .info$description
+    assign(.nm, .fn, envir=ns)
+  }
+  invisible()
+}
+
 #' Collect the tagged estimation methods grouped by category
 #'
 #' Reads the central registry first, then falls back to the `type`/`description`

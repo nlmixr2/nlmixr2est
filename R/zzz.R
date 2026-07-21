@@ -122,6 +122,10 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   }
 }
 
+## Stamp type/description attrs onto the built-in nlmixr2Est.* methods at
+## namespace-build time (bindings not yet locked, so no unlockBinding needed).
+.nlmixr2EstTypeApply(environment())
+
 compiled.rxode2.md5 <- rxode2::rxMd5()
 
 .onAttach <- function(libname, pkgname) {
