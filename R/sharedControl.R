@@ -170,19 +170,20 @@ getValidNlmixrCtl.default <- function(control) {
 
 #' Optimizer convergence tolerance derived from `sigdig`
 #'
-#' The FOCEi-family convention: a convergence tolerance is `10^(-sigdig-1)`.
-#' Shared so every estimation method's optimizer ties to `sigdig` the same way
-#' FOCEi's outer optimizer does.
+#' `10^(-sigdig)` -- the same exponent `sigdig` sets for the ODE `rtol`, so the
+#' optimizer converges to exactly the precision the solve can support (no chasing
+#' below the solver noise floor).  Shared so every estimation method's optimizer
+#' ties to `sigdig` the same way.
 #' @param sigdig optimization significant digits
 #' @return the tolerance
 #' @noRd
-.sigdigOptTol <- function(sigdig) 10^(-sigdig - 1)
+.sigdigOptTol <- function(sigdig) 10^(-sigdig)
 
-#' L-BFGS `factr` derived from `sigdig` (matches `foceiControl(lbfgsFactr=)`)
+#' L-BFGS `factr` derived from `sigdig` (relative-f tolerance `10^-sigdig`)
 #' @param sigdig optimization significant digits
 #' @return the `factr` value (`tol / .Machine$double.eps`)
 #' @noRd
-.sigdigFactr <- function(sigdig) 10^(-sigdig - 1) / .Machine$double.eps
+.sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
 
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'
@@ -196,65 +197,32 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigScale <- function(default, sigdig) default * 10^(4 - sigdig)
 
-#' Is an ODE solver method purely non-stiff?
+#' Scale ODE solver tolerances from the optimization `sigdig`
 #'
-#' Uses `rxode2::rxIsNonStiff()` when the installed rxode2 exports it; otherwise
-#' falls back to the same comparison (switcher and stiff-only method codes are NOT
-#' non-stiff).  The fallback code list must stay in sync with `rxode2::rxIsNonStiff`.
-#' @param method integer method code (as stored on an `rxControl`)
-#' @return `TRUE` if the method is a purely non-stiff solver
-#' @noRd
-.rxIsNonStiffCode <- function(method) {
-  .m <- as.integer(method)
-  if (exists("rxIsNonStiff", envir = asNamespace("rxode2"), inherits = FALSE)) {
-    return(isTRUE(rxode2::rxIsNonStiff(.m)))
-  }
-  # fallback (older rxode2): switchers (lsoda/liblsoda/indLin) and stiff-only
-  # solvers are not non-stiff
-  .switcher <- c(1L, 2L, 3L)
-  .stiff <- c(13L, 14L, 21L, 31L, 32L, 33L, 34L, 35L, 36L, 37L, 38L, 107L,
-              213L, 236L, 233L, 234L, 238L, 235L, 231L, 232L, 237L, 221L)
-  !(.m %in% c(.switcher, .stiff))
-}
-
-#' Scale ODE solver tolerances from the optimization `sigdig`, split by stiffness
-#'
-#' The optimization `sigdig` sets the optimizer tolerances directly (unchanged);
-#' here it additionally sets the ODE solver tolerances.  This mirrors the mapping
-#' moved into `rxode2::rxControl(sigdig=)` itself (rxode2 PR #1150) -- until that
-#' rxode2 release is the minimum dependency, nlmixr2est applies it to every
-#' auto-built `rxControl` so all estimation methods share one convention.
-#'
-#' A stiff solver needs tighter tolerances than a purely non-stiff one, and `atol`
-#' sits well below `rtol` in both.  Classification uses `rxode2::rxIsNonStiff()`
-#' when available (else an equivalent fallback, see [.rxIsNonStiffCode()]): the
-#' non-stiff (looser) tolerances apply only to a purely non-stiff solver
-#' (`dop853`, `dop5`, the Runge-Kutta / Verner methods, ...) that is not part of an
-#' auto-switch composite; every stiff-only solver (`ros4`, `cvode`, `bdf`, ...),
-#' every auto-switching solver (`lsoda`/`liblsoda`), and every stiff-secondary
-#' composite (`dop853+ros4`, ...) gets the tighter stiff tolerances.  Sensitivity
-#' and steady-state solves run one order looser.
-#'
-#' At `sigdig = S`:
-#'   non-stiff: rtol = 10^-S,     atol = 10^(-S-3)
-#'   stiff:     rtol = 10^(-S-3), atol = 10^(-S-5)
-#'   sensitivity / steady-state: 10x the corresponding main tolerance
+#' The optimization `sigdig` sets the optimizer tolerances directly (`10^-sigdig`,
+#' see [.sigdigOptTol()]); here it sets the ODE solver tolerances with ONE formula
+#' -- the same for every solver (stiff, non-stiff, auto-switch) so the story is
+#' simple and consistent with the optimizer:
+#'   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`
+#' The `rtol` exponent IS `sigdig`, and `atol` sits three orders below.  Sensitivity
+#' and steady-state solves run one order looser.  `tighten` shifts every exponent
+#' down by that many orders for a method that needs a tighter solve than the
+#' optimizer target (e.g. `est="nls"`, whose LM step is sensitive to solver noise).
+#' This mirrors the mapping moved into `rxode2::rxControl(sigdig=)` (rxode2 PR
+#' #1150); until that rxode2 release is the minimum dependency, nlmixr2est applies
+#' it to every auto-built `rxControl`.
 #' @param rxControl an `rxode2::rxControl()` object (modified and returned)
 #' @param sigdig optimization significant digits; `NULL` leaves `rxControl` as-is
 #' @param skip character vector of tolerance field names the user set explicitly
 #'   (e.g. from a `rxControl = list(atol = ...)`); these are left untouched so an
 #'   explicit `atol`/`rtol` overrides the `sigdig`-derived value
+#' @param tighten extra orders of magnitude to tighten every tolerance (default 0)
 #' @return `rxControl` with ODE solver tolerances set from `sigdig`
 #' @noRd
-.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0)) {
+.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0), tighten = 0) {
   if (is.null(sigdig) || is.null(rxControl)) return(rxControl)
-  # non-stiff only for a purely non-stiff base solver with no stiff auto-switch
-  # secondary; switchers (lsoda/liblsoda), stiff-only solvers, and composites are
-  # all stiff and need the tighter tolerances
-  .nonStiff <- isTRUE(.rxIsNonStiffCode(rxControl$method)) &&
-    (is.null(rxControl$stiff2) || identical(as.integer(rxControl$stiff2), 0L))
-  .rtol <- 10^(-(if (.nonStiff) sigdig else sigdig + 3))
-  .atol <- 10^(-(if (.nonStiff) sigdig + 3 else sigdig + 5))
+  .rtol <- 10^(-(sigdig + tighten))
+  .atol <- 10^(-(sigdig + 3 + tighten))
   # only set a tolerance the user did not pass explicitly (skip); sensitivity +
   # steady-state solves run one order looser than the main solve
   .set <- function(field, value) {

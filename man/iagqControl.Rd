@@ -15,18 +15,17 @@ iagqControl(
 )
 }
 \arguments{
-\item{sigdig}{Optimization significant digits; controls the inner/outer
-optimization tolerance (\code{10^-sigdig}), the boundary check tolerance
-(\code{5*10^(-sigdig+1)}), and the ODE solver tolerances.  The solver
-tolerances are split by solver stiffness and keep \code{atol} well below
-\code{rtol}: a stiff solver (\code{lsoda}/\code{liblsoda} -- and any
-auto-switching method -- plus \code{indLin}, the default) uses
-\code{rtol = 10^(-sigdig-3)}, \code{atol = 10^(-sigdig-5)}, while the
-non-stiff explicit \code{dop853} uses the looser \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)}.  The sensitivity (\code{atolSens}/\code{rtolSens})
-and steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser
-than the corresponding main tolerance.  At the default \code{sigdig = 4} a
-stiff solve is \code{atol = 1e-9}, \code{rtol = 1e-7}.}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 4}
+this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with

@@ -132,10 +132,10 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
   checkmate::assertIntegerish(print.level, lower=0, upper=2, any.missing=FALSE)
   checkmate::assertNumeric(ndigit, lower=0, len=1, any.missing=FALSE, null.ok=TRUE)
-  # nlm() is not a FOCEi outer optimizer, so keep its tuned defaults at sigdig=4 and
-  # scale by one order per significant digit; a user value wins
-  if (is.null(gradtol)) gradtol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-6
-  if (is.null(steptol)) steptol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-6
+  # nlm gradtol/steptol keyed to the shared sigdig target (10^-sigdig), matching the
+  # ODE rtol so nlm converges to the precision the solve supports; a user value wins
+  if (is.null(gradtol)) gradtol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  if (is.null(steptol)) steptol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
   checkmate::assertNumeric(gradtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(steptol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(iterlim, lower=1, len=1, any.missing=FALSE)
