@@ -27,10 +27,17 @@
 #' Control Options for FOCEi
 #'
 #' @param sigdig Optimization significant digits; controls the inner/outer
-#'   optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
-#'   (\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
-#'   sensitivity/steady-state with liblsoda), and boundary check tolerance
-#'   (\code{5*10^(-sigdig+1)}).
+#'   optimization tolerance (\code{10^-sigdig}), the boundary check tolerance
+#'   (\code{5*10^(-sigdig+1)}), and the ODE solver tolerances.  The solver
+#'   tolerances are split by solver stiffness and keep \code{atol} well below
+#'   \code{rtol}: a stiff solver (\code{lsoda}/\code{liblsoda} -- and any
+#'   auto-switching method -- plus \code{indLin}, the default) uses
+#'   \code{rtol = 10^(-sigdig-3)}, \code{atol = 10^(-sigdig-5)}, while the
+#'   non-stiff explicit \code{dop853} uses the looser \code{rtol = 10^-sigdig},
+#'   \code{atol = 10^(-sigdig-3)}.  The sensitivity (\code{atolSens}/\code{rtolSens})
+#'   and steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser
+#'   than the corresponding main tolerance.  At the default \code{sigdig = 4} a
+#'   stiff solve is \code{atol = 1e-9}, \code{rtol = 1e-7}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
 #'   If not specified, then it matches the significant digits in the
@@ -1242,11 +1249,11 @@ foceiControl <- function(sigdig = 4, #
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig,
-                                     maxsteps=500000L)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig,
+                                                           maxsteps=500000L), sigdig)
       genRxControl <- TRUE
     } else if (is.list(rxControl)) {
-      rxControl <- do.call(rxode2::rxControl, rxControl)
+      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()",

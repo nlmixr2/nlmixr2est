@@ -466,11 +466,11 @@ saemControl <- function(seed = 99,
     .env <- parent.frame(1)
   }
   if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
+    rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig, envir=.env), sigdig)
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
     rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
