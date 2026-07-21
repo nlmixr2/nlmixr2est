@@ -22,12 +22,15 @@
   it silently received the linear `1/|init|` default instead of its `1/digamma`
   scaling.
 
-- The FOCEi family nudges any population parameter (`theta`) initialized at
-  exactly `0` off zero before estimation, controlled by
+- The FOCEi family nudges a structural population parameter (`theta`) initialized
+  at exactly `0` off zero before estimation, controlled by
   `foceiControl(zeroTheta=)` (default `0.001`), since a zero initial estimate has
   no native scale to scale by.  `+zeroTheta` is used when within the parameter's
   bounds, otherwise `-zeroTheta`; if neither is within the bounds it errors.
-  Fixed parameters (including those fixed at `0`) are left untouched.
+  Fixed parameters (including those fixed at `0`) are left untouched.  Residual
+  error parameters are also left untouched: they carry their own scaleC, so an
+  error `sd` set to exactly `0` still disables that component and a combined
+  error model reduces to the smaller model as before.
 
 - `foceiControl()` gains `shi21hMax` and `shi21hMin` (defaults `2.0` and `1e-4`),
   the upper and lower bounds on the adaptive shi21 finite-difference step used for
@@ -657,6 +660,13 @@
 ## Bug fixes
 
 ### Estimation
+
+- `est="vae"` with `covariateSelection=FALSE` now estimates the covariate
+  coefficients written into the model -- both linear (`beta*WT`) and transformed
+  (`beta*log(WT/70)`) effects -- rather than holding them at their `ini()` value.
+  They are fit in place by the regress M-step regardless of `nonMuTheta`
+  (previously fixed under `nonMuTheta="none"` and errored under `"fix"`/`"eta"`);
+  a coefficient set with `ini(... ~ fix())` still stays fixed.
 
 - `est="impmap"` now estimates the non-mu structural and residual-error thetas of a
   general (custom `ll()`) likelihood model.  For such an endpoint `rx_pred_` is the
