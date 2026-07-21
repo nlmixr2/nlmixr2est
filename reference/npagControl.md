@@ -346,7 +346,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x56337d2ac520>
+#> <bytecode: 0x557d88739d50>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -553,10 +553,10 @@ npagControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 5e-06
+#> [1] 1e-08
 #> 
 #> $rtol
-#> [1] 5e-06
+#> [1] 1e-06
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -762,10 +762,10 @@ npagControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 5e-04
+#> [1] 1e-07
 #> 
 #> $ssRtol
-#> [1] 5e-04
+#> [1] 1e-05
 #> 
 #> $safeZero
 #> [1] 1
@@ -791,16 +791,16 @@ npagControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1.581139e-05
+#> [1] 1e-07
 #> 
 #> $rtolSens
-#> [1] 1.581139e-05
+#> [1] 1e-05
 #> 
 #> $ssAtolSens
-#> [1] 0.002108483
+#> [1] 1e-07
 #> 
 #> $ssRtolSens
-#> [1] 0.002108483
+#> [1] 1e-05
 #> 
 #> $simVariability
 #> [1] NA

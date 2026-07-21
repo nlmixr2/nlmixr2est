@@ -58,10 +58,17 @@ adaptive Gauss-Hermite quadrature; see `foceiControl(muModel=)`.</p>
 
 <dl><dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
 <dd><p>Optimization significant digits; controls the inner/outer
-optimization tolerance (<code>10^-sigdig</code>), ODE solver tolerance
-(<code>0.5*10^(-sigdig-2)</code>, or <code>0.5*10^(-sigdig-1.5)</code> for
-sensitivity/steady-state with liblsoda), and boundary check tolerance
-(<code>5*10^(-sigdig+1)</code>).</p></dd>
+optimization tolerance (<code>10^-sigdig</code>), the boundary check tolerance
+(<code>5*10^(-sigdig+1)</code>), and the ODE solver tolerances.  The solver
+tolerances are split by solver stiffness and keep <code>atol</code> well below
+<code>rtol</code>: a stiff solver (<code>lsoda</code>/<code>liblsoda</code> – and any
+auto-switching method – plus <code>indLin</code>, the default) uses
+<code>rtol = 10^(-sigdig-3)</code>, <code>atol = 10^(-sigdig-5)</code>, while the
+non-stiff explicit <code>dop853</code> uses the looser <code>rtol = 10^-sigdig</code>,
+<code>atol = 10^(-sigdig-3)</code>.  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
+and steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser
+than the corresponding main tolerance.  At the default <code>sigdig = 4</code> a
+stiff solve is <code>atol = 1e-9</code>, <code>rtol = 1e-7</code>.</p></dd>
 
 
 <dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>
@@ -306,7 +313,7 @@ for the IRLS variant.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x56337d2ac520&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x557d88739d50&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -513,10 +520,10 @@ for the IRLS variant.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        2 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $atol</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 5e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-08</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rtol</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 5e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $maxsteps</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 500000</span>
@@ -722,10 +729,10 @@ for the IRLS variant.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssAtol</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 5e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-07</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssRtol</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 5e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-05</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $safeZero</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
@@ -751,16 +758,16 @@ for the IRLS variant.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $atolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.581139e-05</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-07</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rtolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.581139e-05</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-05</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssAtolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.002108483</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-07</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssRtolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.002108483</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-05</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $simVariability</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] NA</span>

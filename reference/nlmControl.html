@@ -386,10 +386,17 @@ function.  By default this is <code>TRUE</code></p></dd>
 
 <dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
 <dd><p>Optimization significant digits; controls the inner/outer
-optimization tolerance (<code>10^-sigdig</code>), ODE solver tolerance
-(<code>0.5*10^(-sigdig-2)</code>, or <code>0.5*10^(-sigdig-1.5)</code> for
-sensitivity/steady-state with liblsoda), and boundary check tolerance
-(<code>5*10^(-sigdig+1)</code>).</p></dd>
+optimization tolerance (<code>10^-sigdig</code>), the boundary check tolerance
+(<code>5*10^(-sigdig+1)</code>), and the ODE solver tolerances.  The solver
+tolerances are split by solver stiffness and keep <code>atol</code> well below
+<code>rtol</code>: a stiff solver (<code>lsoda</code>/<code>liblsoda</code> – and any
+auto-switching method – plus <code>indLin</code>, the default) uses
+<code>rtol = 10^(-sigdig-3)</code>, <code>atol = 10^(-sigdig-5)</code>, while the
+non-stiff explicit <code>dop853</code> uses the looser <code>rtol = 10^-sigdig</code>,
+<code>atol = 10^(-sigdig-3)</code>.  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
+and steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser
+than the corresponding main tolerance.  At the default <code>sigdig = 4</code> a
+stiff solve is <code>atol = 1e-9</code>, <code>rtol = 1e-7</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -484,9 +491,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3247022 0.5572849  6.182e-06      0.047       0.006 0.024        0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3553495 0.6201203  9.228e-06       0.06       0.017 0.027    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1000067</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1155209</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

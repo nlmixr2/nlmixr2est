@@ -4,6 +4,19 @@
 
 ### New features
 
+- The optimization `sigdig` now sets the ODE solver tolerances with the
+  common ODE convention – `atol` well below `rtol`, and split by solver
+  stiffness – for every estimation method (`sigdig` is routed through
+  all of focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and the nlm
+  family). A stiff solver (`lsoda`/`liblsoda`, any auto-switching
+  method, and `indLin` – the default) uses `rtol = 10^(-sigdig-3)`,
+  `atol = 10^(-sigdig-5)`; the non-stiff explicit `dop853` uses the
+  looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. Sensitivity
+  (`atolSens`/`rtolSens`) and steady-state (`ssAtol`/`ssRtol`) solves
+  run one order looser. At the default `sigdig = 4` a stiff solve is
+  `atol = 1e-9, rtol = 1e-7` (was a symmetric `atol = rtol = 5e-7`).
+  `sigdig` still drives all the optimizer tolerances as before.
+
 - FOCEi guards each `theta`’s scaling constant per transform, keeping
   the derivative-based `scaleC` where it is well-behaved and falling
   back only in that transform’s singular / out-of-range region. Each
@@ -817,6 +830,14 @@
 ### Bug fixes
 
 #### Estimation
+
+- `est="nlme"` now honors `sigdig` for the ODE solver tolerances. A
+  reversed condition made
+  [`nlmeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.md)
+  fall back to `atol=rtol=1e-4` whenever `sigdig` was set (i.e. always,
+  since it defaults to `4`) and only pass `sigdig` through when it was
+  `NULL`; the tolerances are now derived from `sigdig` like every other
+  method.
 
 - Fixed the FOCEi `scaleC` band guard corrupting `est="vae"` covariate
   selection. The guard only rescues a genuinely-computed

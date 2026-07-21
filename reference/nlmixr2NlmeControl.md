@@ -325,9 +325,17 @@ nlmeControl(
 - sigdig:
 
   Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
-  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
-  and boundary check tolerance (`5*10^(-sigdig+1)`).
+  tolerance (`10^-sigdig`), the boundary check tolerance
+  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
+  tolerances are split by solver stiffness and keep `atol` well below
+  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
+  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
+  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
+  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
+  sensitivity (`atolSens`/`rtolSens`) and steady-state
+  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
+  corresponding main tolerance. At the default `sigdig = 4` a stiff
+  solve is `atol = 1e-9`, `rtol = 1e-7`.
 
 - sigdigTable:
 
@@ -462,10 +470,10 @@ nlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-04
+#> [1] 1e-09
 #> 
 #> $rtol
-#> [1] 1e-04
+#> [1] 1e-07
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -982,10 +990,10 @@ nlmixr2NlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-04
+#> [1] 1e-09
 #> 
 #> $rtol
-#> [1] 1e-04
+#> [1] 1e-07
 #> 
 #> $maxsteps
 #> [1] 70000
