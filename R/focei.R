@@ -1692,6 +1692,27 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   env
 }
 
+#' Guard a derivative-based scaleC to the stable band (foceiControl(scaleCband))
+#'
+#' A transform-specific scaleC formula (including the linear `1/|init|`) can go
+#' singular at ordinary initial estimates -- `1/|init|` blows up for a small
+#' covariate coefficient, `log()` is 0 at init 1, `logit` is 0 at the interval
+#' midpoint, `factorial`/`gamma` diverge at a digamma zero.  When the value falls
+#' outside `[lo, hi]` (or is non-finite / non-positive) it is replaced by the
+#' parameter's native magnitude `|init|` (NONMEM7 Appendix K), 1 when init is 0.
+#' In-band values are returned unchanged so existing results are preserved.
+#' @noRd
+.guardScaleC <- function(sc, init, lo = 0.1, hi = 10, mid = FALSE) {
+  .inband <- function(v) length(v) == 1L && !is.na(v) && is.finite(v) && v > 0 && v >= lo && v <= hi
+  if (.inband(sc)) return(sc)      # preferred: the derivative-based formula, in band
+  .v <- abs(init)
+  if (.inband(.v)) return(.v)      # second: the parameter's native magnitude |init|, in band
+  # Neither in band.  Bounded transforms (mid=TRUE) have a bounded safe range, so
+  # the geometric middle of the band is the safe choice.  Linear / additive and the
+  # other structural transforms (mid=FALSE) keep native |init| at any magnitude --
+  # |init| is the correct scale for a large-init additive theta (issue #641).
+  if (mid) sqrt(lo * hi) else if (.v == 0) 1 else .v
+}
 #' Setup the scaleC
 #'
 #' @param ui rxode2 UI
@@ -1701,6 +1722,9 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @noRd
 .foceiOptEnvSetupScaleC <- function(ui, env) {
   .controlScaleC <- rxode2::rxGetControl(ui, "scaleC", NULL)
+  .scBand <- rxode2::rxGetControl(ui, "scaleCband", c(0.1, 10))
+  .scLo <- .scBand[1]
+  .scHi <- .scBand[2]
   .len <- length(env$lower)
   if (is.null(.controlScaleC)) {
     .scaleC <- rep(NA_real_, .len)
@@ -1747,11 +1771,15 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
             # Hence D(S("log(exp(x))"}, "x")
             .scaleC[.j] <- 1 # log scaled
           } else if (.curEval == "factorial") {
-            # Hence 1/D(S("log(factorial(x))"}, "x"):
-            .scaleC[.j] <- abs(1 / digamma(.ini$est[.j] + 1))
-          } else if (.curEval == "gamma") {
-            #1/D(log(gamma(x)), x)
-            .scaleC[.j] <- abs(1 / digamma(.ini$est[.j]))
+            # 1/D(log(factorial(x)), x) = 1/digamma(x+1).  NOT abs(): digamma(x+1) is
+            # negative for x < ~0.462, giving a wrong-signed (unstable) scaling that
+            # must fall back to |init| -- the guard's v > 0 check catches it.
+            .scaleC[.j] <- 1 / digamma(.ini$est[.j] + 1)
+          } else if (.curEval == "gamma" || .curEval == "lgammafn") {
+            # 1/D(log(gamma(x)), x) = 1/digamma(x).  NOT abs(): digamma(x) is negative
+            # for x < ~1.462, a wrong-signed scaling that must fall back to |init|.
+            # rxode2 reports gamma() as curEval "lgammafn".
+            .scaleC[.j] <- 1 / digamma(.ini$est[.j])
           } else if (.curEval == "log") {
             #1/D(log(log(x)), x)
             .scaleC[.j] <- log(abs(.ini$est[.j])) * abs(.ini$est[.j])
@@ -1781,19 +1809,45 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
               sqrt(qchisq(abs(y),1)/2) * sign(y)
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
-          } else if (is.na(.curEval) || .curEval == "") {
-            # Additive mu-reference (theta + eta).  Scale by the
-            # magnitude of the initial estimate so a unit step in the
-            # internal (scaled) parameter is proportional to the
-            # parameter's natural scale.  Falling through to the C++
-            # default of 1/|init| produced steps so small the optimizer
-            # could not move parameters with large-magnitude initials
-            # (issue 641).
-            .val <- abs(.ini$est[.j])
-            if (.val > 1) .scaleC[.j] <- .val
           }
+          # Per-transform guard: each transform's derivative-based scaleC is valid
+          # over its OWN range, so it is guarded to a band tailored to that
+          # transform and only its singular / bad region falls back to |init|.  A
+          # single global band would wrongly clip transforms whose healthy range
+          # differs (e.g. logit is legitimately small, expit legitimately large).
+          if (!is.na(.scaleC[.j])) {
+            .band <- switch(.curEval,
+              "exp"       = c(0, Inf),      # always 1; never guarded
+              "log"       = c(0.1, 10),     # excludes init <= 1 (scaleC <= 0) and the large tail
+              "logit"     = c(1e-4, 10),    # bounded param: small scaleC is valid; excludes the midpoint (0)
+              "probit"    = c(1e-4, 10),
+              "expit"     = c(0.1, 100),    # unbounded -> bounded: large scaleC is valid; excludes over-scaling
+              "probitInv" = c(0.1, 100),
+              "factorial" = c(0.1, 10),     # excludes the digamma-zero pole (-> Inf)
+              "gamma"     = c(0.1, 10),
+              "lgammafn"  = c(0.1, 10),     # rxode2 reports gamma() as "lgammafn"
+              c(.scLo, .scHi))              # fallback: the linear scaleCband
+            # midpoint fallback only for bounded transforms (bounded safe range)
+            .mid <- .curEval %in% c("logit", "probit", "expit", "probitInv")
+            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .ini$est[.j], .band[1], .band[2], mid = .mid)
+          }
+          # Additive / linear thetas are set below to the derivative-based
+          # 1/|init|, guarded to the linear scaleCband.
         }
       }
+    }
+  }
+  # Any estimated theta still without a scaleC is a linear (additive / unbounded)
+  # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
+  # falls back to native |init| (matches the C++ getScaleC default).  Zero-init
+  # params (nudged off 0 elsewhere) fall back to unit scaling.
+  .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+  for (.k in seq_len(nrow(.thetaIni))) {
+    .nt <- .thetaIni$ntheta[.k]
+    if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
+      .init <- .thetaIni$est[.k]
+      .raw <- if (.init == 0) Inf else 1 / abs(.init)
+      .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
     }
   }
   env$scaleC <- .scaleC
