@@ -90,6 +90,75 @@
   rxode2::assertRxUi(ui2$fun)
 }
 
+#' Update a PINNED VAE fit's model with the estimates.
+#'
+#' Unlike `.vaeUpdateModel` (which injects fresh `beta_<par>_<cov>` terms into a
+#' covariate-free base model), the pinned path keeps the user's ORIGINAL model
+#' -- their covariate terms, coefficient names and centers stay exactly as
+#' written -- and only writes ini() estimates.  A declared covariate the search
+#' selected gets its estimated slope; one it dropped is set to `0` (the term
+#' stays in the model).  In-pool slopes are estimated by the M-step prior
+#' regression in the VAE's mean-centered encoding, so the structural (intercept)
+#' theta absorbs the offset between the VAE center and the user's written center
+#' (the slope itself is center-invariant).  Out-of-pool declared covariates were
+#' estimated in place by the regress M-step and are written from `regressTheta`.
+#' @noRd
+.vaeUpdateModelPinned <- function(ui, fit) {
+  prep <- fit$prep
+  pairs <- prep$pinPairs
+  thetaNames <- .foceiEtaThetaMap(ui)$thetaForEta   # mu-referenced theta per eta
+  covNames <- fit$covNames
+  covPop <- prep$covPop
+  ui2 <- ui
+  .setIni <- function(u, expr) do.call(rxode2::ini, list(u, str2lang(expr)))
+
+  ## 1. in-pool declared coefficients: selected -> estimated slope, dropped -> 0.
+  ## Accumulate each selected slope's center offset into its structural theta.
+  corr <- numeric(length(thetaNames))
+  .inRows <- if (is.null(pairs)) pairs[0, ] else pairs[pairs$inPool, , drop = FALSE]
+  for (.r in seq_len(NROW(.inRows))) {
+    .k <- .inRows$k[.r]
+    .j <- match(.inRows$covName[.r], covNames)
+    .sel <- !is.null(fit$selected) && !is.na(.j) && isTRUE(fit$selected[.k, .j])
+    .betaVal <- if (.sel) fit$beta[.k, .j] else 0
+    ui2 <- .setIni(ui2, paste0(.inRows$coefName[.r], " <- ", signif(.betaVal, 12)))
+    if (.sel) {
+      .off <- if (identical(.inRows$covType[.r], "continuous")) {
+        .betaVal * log(.inRows$userCenter[.r] / covPop[.j])
+      } else {
+        .betaVal * (.inRows$userCenter[.r] - covPop[.j])
+      }
+      corr[.k] <- corr[.k] + .off
+    }
+  }
+
+  ## 2. structural population thetas (center-corrected) + omega per eta
+  for (k in seq_along(thetaNames)) {
+    if (!is.na(thetaNames[k])) {
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k] + corr[k], 12)))
+    }
+    ui2 <- .setIni(ui2, paste0(prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
+  }
+
+  ## 3. residual error params
+  .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
+  for (en in .errRow$name) {
+    .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
+    ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
+  }
+
+  ## 4. out-of-pool declared covariates + non-mu thetas estimated by the regress
+  ## M-step (written straight into their ini() est)
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
+        !is.null(names(fit$regressTheta))) {
+    for (rn in names(fit$regressTheta)) {
+      .rv <- fit$regressTheta[[rn]]
+      if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
+    }
+  }
+  rxode2::assertRxUi(ui2$fun)
+}
+
 #' Translate the vaeControl into the foceiControl that drives the output step:
 #' no outer/inner optimization (the VAE estimates and encoder etas are final),
 #' the VAE's chosen inner likelihood (focei -> interaction=1; foce/focep ->
@@ -144,7 +213,7 @@
 .vaeToFit <- function(env, fit) {
   .ui <- env$ui
   .control <- env$vaeControl
-  .ui2 <- .vaeUpdateModel(.ui, fit)
+  .ui2 <- if (isTRUE(fit$prep$pinActive)) .vaeUpdateModelPinned(.ui, fit) else .vaeUpdateModel(.ui, fit)
   ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
   ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
   ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
