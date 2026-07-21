@@ -227,18 +227,17 @@ bobyqaControl(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -322,21 +321,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -720.4741 1123.403 1138.126      -558.7015        4044.283        210.6512
+#> lPop -720.4741 1123.403 1138.126      -558.7015        4022.913        209.9283
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8675742 0.8641979  1.034e-05      0.053       0.009 0.034    0.002
-#>             other
-#> elapsed 0.1142175
+#> elapsed 0.8469254 0.8351083  5.791e-06      0.057       0.008 0.032    0.001
+#>              other
+#> elapsed 0.09596053
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.5761 0.2304 39.99 -0.5761 (-1.028, -0.1246)
-#> Em    8.773  8.361 95.31     8.773 (-7.614, 25.16)
-#> E50   4.054  2.863 70.62     4.054 (-1.557, 9.666)
+#> E0  -0.5763 0.2303 39.97 -0.5763 (-1.028, -0.1248)
+#> Em    8.765  8.338 95.13     8.765 (-7.577, 25.11)
+#> E50   4.052  2.857 70.51     4.052 (-1.548, 9.651)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -346,7 +345,7 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0564     0 -0.447 -0.574
+#> 1 1     0.0564     0 -0.447 -0.575
 #> 2 1     0.0595     1 -1.02  -0.574
 #> 3 1     0.0650     1 -1.02  -0.574
 #> # ℹ 997 more rows
@@ -354,8 +353,8 @@ print(fit2)
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.576143958149363, 8.77251588922663, 4.05410531800092 
-#> objective: 558.701494345629 
-#> number of function evaluations: 391 
+#> parameter estimates: -0.576283310352614, 8.7651421061649, 4.05150054402458 
+#> objective: 558.701496077373 
+#> number of function evaluations: 390 
 # }
 ```

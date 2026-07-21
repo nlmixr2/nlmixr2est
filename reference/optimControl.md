@@ -370,18 +370,17 @@ optimControl(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -468,21 +467,21 @@ fit2
 #> ── nlmixr² log-likelihood optim with BFGS method ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -684.2964 1159.581 1174.304      -576.7903        56372.43        479.4776
+#> lPop -675.4914 1168.386 1183.109      -581.1928        14608.13         128.638
 #> 
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3618065 0.5606393  5.731e-06      0.055       0.006 0.026    0.001
+#> elapsed 0.3418038 0.5444658  6.072e-06      0.047       0.007 0.025        0
 #>             other
-#> elapsed 0.1205485
+#> elapsed 0.1047244
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.2947 0.2131 72.33 -0.2947 (-0.7124, 0.1231)
-#> Em    17.22  31.65 183.8     17.22 (-44.81, 79.26)
-#> E50   7.688  8.845 115.1     7.688 (-9.649, 25.02)
+#> E0  -0.2572 0.2875 111.8 -0.2572 (-0.8207, 0.3063)
+#> Em    16.85  14.96 88.78     16.85 (-12.47, 46.17)
+#> E50   8.804  7.100 80.65     8.804 (-5.112, 22.72)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type (value$covMethod): r (optim)
@@ -492,9 +491,9 @@ fit2
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0429     0 -0.557 -0.294
-#> 2 1     0.0693     1 -0.850 -0.293
-#> 3 1     0.0743     0 -0.557 -0.293
+#> 1 1     0.0429     0 -0.573 -0.257
+#> 2 1     0.0693     1 -0.829 -0.256
+#> 3 1     0.0743     0 -0.573 -0.256
 #> # ℹ 997 more rows
 # }
 ```

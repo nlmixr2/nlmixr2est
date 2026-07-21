@@ -87,13 +87,13 @@ qrpemControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+11
+#> [1] 4.5036e+12
 #> 
 #> $scaleTo
 #> [1] 1
 #> 
 #> $epsilon
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -245,23 +245,23 @@ qrpemControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5623062975d0>
+#> <bytecode: 0x55de8dd20ec8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $npt
 #> NULL
 #> 
 #> $rel.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $x.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $eval.max
 #> [1] 4000
@@ -273,13 +273,13 @@ qrpemControl()
 #> [1] 1
 #> 
 #> $abstol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $reltol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivSwitchTol
-#> [1] 2e-04
+#> [1] 0.002
 #> 
 #> $resetHessianAndEta
 #> [1] 0
@@ -452,10 +452,10 @@ qrpemControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $rtol
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -661,10 +661,10 @@ qrpemControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $ssRtol
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $safeZero
 #> [1] 1
@@ -690,16 +690,16 @@ qrpemControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $rtolSens
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $ssAtolSens
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $ssRtolSens
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $simVariability
 #> [1] NA

@@ -115,9 +115,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9652854 3.2932e-05  0.0140062      0.077     1.029 6.578       1.008
+#> elapsed 0.8758012 2.4877e-05 0.01300458      0.074     0.994 6.586       0.943
 #>         table compress     other
-#> elapsed 0.058    0.132 0.4726754
+#> elapsed 0.065    0.141 0.4591693
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -125,7 +125,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.68e-310 6.69e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.67e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -189,9 +189,9 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9652854 3.2932e-05  0.0140062      0.077     1.029 6.578       1.008
+#> elapsed 0.8758012 2.4877e-05 0.01300458      0.074     0.994 6.586       0.943
 #>         table compress     other
-#> elapsed 0.058    0.132 0.4726754
+#> elapsed 0.065    0.141 0.4591693
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -199,7 +199,7 @@ if (!inherits(f, "try-error")) {
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.68e-310 6.69e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.67e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 

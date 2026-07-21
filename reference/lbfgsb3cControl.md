@@ -258,18 +258,17 @@ lbfgsb3cControl(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -349,22 +348,22 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -686.1115 1157.766 1172.489      -575.8828        11443.35        389.9271
+#>          OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -685.961 1157.916 1172.639       -575.958         3265.19        173.2675
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3965707 1.593208  8.586e-06      0.054       0.008 0.036    0.002
-#>            other
-#> elapsed 0.113213
+#> elapsed 0.3684926 1.511549  7.875e-06      0.044       0.006 0.025        0
+#>             other
+#> elapsed 0.1089501
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.7181 0.2229 31.03 -0.7181 (-1.155, -0.2813)
-#> Em    10.73  14.11 131.5     10.73 (-16.93, 38.38)
-#> E50   4.995  4.447 89.02     4.995 (-3.721, 13.71)
+#> E0  -0.7441 0.2174 29.22 -0.7441 (-1.170, -0.3180)
+#> Em    8.703  7.380 84.80     8.703 (-5.762, 23.17)
+#> E50   4.311  2.684 62.26    4.311 (-0.9498, 9.572)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -376,9 +375,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0343     0 -0.397 -0.718
-#> 2 1     0.0489     1 -1.11  -0.717
-#> 3 1     0.0501     0 -0.398 -0.717
+#> 1 1     0.0343     0 -0.389 -0.744
+#> 2 1     0.0489     1 -1.13  -0.743
+#> 3 1     0.0501     0 -0.389 -0.743
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -386,16 +385,16 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.7181425 10.7263638  4.9954149 
+#> -0.7440591  8.7028559  4.3109578 
 #> 
 #> $grad
-#> [1]  0.0001900423 -0.0003470364  0.0005667704
+#> [1] -0.0013035589 -0.0026641811  0.0003459083
 #> 
 #> $value
-#> [1] 575.8828
+#> [1] 575.958
 #> 
 #> $counts
-#> [1] 17 17
+#> [1] 12 12
 #> 
 #> $convergence
 #> [1] 0
@@ -407,26 +406,26 @@ fit2$lbfgsb3c
 #> [1] 0.002595759 0.031364338 0.028740636
 #> 
 #> $par.scaled
-#>        E0        Em       E50 
-#> -470.2817  325.0507  105.2223 
+#>         E0         Em        E50 
+#> -480.26594  260.53448   81.40733 
 #> 
 #> $hessian
-#>                E0            Em          E50
-#> E0   0.0013515893  0.0008768856 -0.002965837
-#> Em   0.0008768856  0.0014889114 -0.004570147
-#> E50 -0.0029658371 -0.0045701474  0.014285006
+#>               E0           Em          E50
+#> E0   0.001349488  0.001140202 -0.003468655
+#> Em   0.001140202  0.002448925 -0.006581618
+#> E50 -0.003468655 -0.006581618  0.018346748
 #> 
 #> $cov.scaled
-#>            E0        Em      E50
-#> E0   7371.897  19793.83  7863.11
-#> Em  19793.833 202392.10 68860.10
-#> E50  7863.110  68860.10 23942.69
+#>           E0        Em       E50
+#> E0  7013.738  8311.419  4307.620
+#> Em  8311.419 55371.787 21435.157
+#> E50 4307.620 21435.157  8721.964
 #> 
 #> $r
 #>                E0            Em          E50
-#> E0   0.0006757946  0.0004384428 -0.001482919
-#> Em   0.0004384428  0.0007444557 -0.002285074
-#> E50 -0.0014829185 -0.0022850737  0.007142503
+#> E0   0.0006747439  0.0005701008 -0.001734327
+#> Em   0.0005701008  0.0012244623 -0.003290809
+#> E50 -0.0017343273 -0.0032908092  0.009173374
 #> 
 
 # The nlm control has been modified slightly to include

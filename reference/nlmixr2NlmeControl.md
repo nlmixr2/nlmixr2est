@@ -324,18 +324,17 @@ nlmeControl(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -470,10 +469,10 @@ nlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-09
+#> [1] 1e-07
 #> 
 #> $rtol
-#> [1] 1e-07
+#> [1] 1e-04
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -679,10 +678,10 @@ nlmeControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $ssRtol
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $safeZero
 #> [1] 1
@@ -708,16 +707,16 @@ nlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $rtolSens
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $ssAtolSens
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $ssRtolSens
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $simVariability
 #> [1] NA
@@ -990,10 +989,10 @@ nlmixr2NlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-09
+#> [1] 1e-07
 #> 
 #> $rtol
-#> [1] 1e-07
+#> [1] 1e-04
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -1199,10 +1198,10 @@ nlmixr2NlmeControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $ssRtol
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $safeZero
 #> [1] 1
@@ -1228,16 +1227,16 @@ nlmixr2NlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $rtolSens
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $ssAtolSens
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $ssRtolSens
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $simVariability
 #> [1] NA

@@ -13,18 +13,17 @@ mfoceiControl(sigdig = 3, ..., muModel = c("lin", "irls", "none"))
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - ...:
 
@@ -104,13 +103,13 @@ mfoceiControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+11
+#> [1] 4.5036e+12
 #> 
 #> $scaleTo
 #> [1] 1
 #> 
 #> $epsilon
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -262,23 +261,23 @@ mfoceiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5623062975d0>
+#> <bytecode: 0x55de8dd20ec8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $npt
 #> NULL
 #> 
 #> $rel.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $x.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $eval.max
 #> [1] 4000
@@ -290,13 +289,13 @@ mfoceiControl()
 #> [1] 1
 #> 
 #> $abstol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $reltol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivSwitchTol
-#> [1] 2e-04
+#> [1] 0.002
 #> 
 #> $resetHessianAndEta
 #> [1] 0
@@ -469,10 +468,10 @@ mfoceiControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-08
+#> [1] 1e-06
 #> 
 #> $rtol
-#> [1] 1e-06
+#> [1] 0.001
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -678,10 +677,10 @@ mfoceiControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $ssRtol
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $safeZero
 #> [1] 1
@@ -707,16 +706,16 @@ mfoceiControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $rtolSens
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $ssAtolSens
-#> [1] 1e-07
+#> [1] 1e-05
 #> 
 #> $ssRtolSens
-#> [1] 1e-05
+#> [1] 0.01
 #> 
 #> $simVariability
 #> [1] NA

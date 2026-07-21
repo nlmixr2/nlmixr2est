@@ -185,18 +185,17 @@
 
 
 <dl><dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
-<dd><p>Optimization significant digits; controls the inner/outer
-optimization tolerance (<code>10^-sigdig</code>), the boundary check tolerance
-(<code>5*10^(-sigdig+1)</code>), and the ODE solver tolerances.  The solver
-tolerances are split by solver stiffness and keep <code>atol</code> well below
-<code>rtol</code>: a stiff solver (<code>lsoda</code>/<code>liblsoda</code> – and any
-auto-switching method – plus <code>indLin</code>, the default) uses
-<code>rtol = 10^(-sigdig-3)</code>, <code>atol = 10^(-sigdig-5)</code>, while the
-non-stiff explicit <code>dop853</code> uses the looser <code>rtol = 10^-sigdig</code>,
-<code>atol = 10^(-sigdig-3)</code>.  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
-and steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser
-than the corresponding main tolerance.  At the default <code>sigdig = 4</code> a
-stiff solve is <code>atol = 1e-9</code>, <code>rtol = 1e-7</code>.</p></dd>
+<dd><p>Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(<code>10^-sigdig</code>), the boundary check tolerance (<code>5*10^(-sigdig+1)</code>),
+and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
+<code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
+<code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>) and
+steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
+exactly the precision the solve supports.  At the default <code>sigdig = 4</code>
+this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

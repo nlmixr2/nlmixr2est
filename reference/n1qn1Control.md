@@ -245,18 +245,17 @@ n1qn1Control(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -345,14 +344,14 @@ print(fit2)
 #> ── nlmixr² log-likelihood n1qn1 ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -715.2361 1128.641 1143.364      -561.3205        493.1802         71.7887
+#> lPop -715.2361 1128.641 1143.364      -561.3205        493.1807        71.78878
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3478997 0.5655074  7.193e-06      0.062       0.006 0.038    0.001
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.327694 0.5281034  6.202e-06      0.046       0.006 0.024    0.001
 #>             other
-#> elapsed 0.1145857
+#> elapsed 0.1091964
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -386,22 +385,22 @@ fit2$n1qn1
 #> 
 #> $H
 #>              [,1]         [,2]         [,3]
-#> [1,]  0.001615830  0.002649943 -0.007050603
-#> [2,]  0.002649943  0.009531677 -0.020904357
-#> [3,] -0.007050603 -0.020904357  0.050493848
+#> [1,]  0.001650649  0.002660560 -0.007137467
+#> [2,]  0.002660560  0.009466189 -0.020792349
+#> [3,] -0.007137467 -0.020792349  0.050431465
 #> 
 #> $c.hess
-#>  [1]  0.001615830  0.002649943 -0.007050603  0.009531677 -0.020904357
-#>  [6]  0.050493848  0.000000000  0.000000000  0.000000000  0.000000000
+#>  [1]  0.001650649  0.002660560 -0.007137467  0.009466189 -0.020792349
+#>  [6]  0.050431465  0.000000000  0.000000000  0.000000000  0.000000000
 #> [11]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000
 #> [16]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000
 #> [21]  0.000000000  0.000000000  0.000000000  0.000000000
 #> 
 #> $n.fn
-#> [1] 38
+#> [1] 37
 #> 
 #> $n.gr
-#> [1] 38
+#> [1] 37
 #> 
 #> $scaleC
 #> [1] 0.002875081 0.036929293 0.033369905
@@ -412,21 +411,21 @@ fit2$n1qn1
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001602122  0.002609465 -0.006942852
+#> E0   0.001602122  0.002609465 -0.006942853
 #> Em   0.002609465  0.009410840 -0.020574667
-#> E50 -0.006942852 -0.020574667  0.049546010
+#> E50 -0.006942853 -0.020574667  0.049546009
 #> 
 #> $cov.scaled
 #>           E0       Em      E50
-#> E0  7368.594 2325.943 1998.437
-#> Em  2325.943 5348.209 2546.851
-#> E50 1998.437 2546.851 1418.388
+#> E0  7368.597 2325.947 1998.439
+#> Em  2325.947 5348.213 2546.853
+#> E50 1998.439 2546.853 1418.389
 #> 
 #> $r
 #>                E0           Em          E50
 #> E0   0.0008010608  0.001304733 -0.003471426
 #> Em   0.0013047326  0.004705420 -0.010287333
-#> E50 -0.0034714262 -0.010287333  0.024773005
+#> E50 -0.0034714263 -0.010287333  0.024773004
 #> 
 
 # The nlm control has been modified slightly to include

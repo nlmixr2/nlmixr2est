@@ -269,18 +269,17 @@ function.  By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
-<dd><p>Optimization significant digits; controls the inner/outer
-optimization tolerance (<code>10^-sigdig</code>), the boundary check tolerance
-(<code>5*10^(-sigdig+1)</code>), and the ODE solver tolerances.  The solver
-tolerances are split by solver stiffness and keep <code>atol</code> well below
-<code>rtol</code>: a stiff solver (<code>lsoda</code>/<code>liblsoda</code> – and any
-auto-switching method – plus <code>indLin</code>, the default) uses
-<code>rtol = 10^(-sigdig-3)</code>, <code>atol = 10^(-sigdig-5)</code>, while the
-non-stiff explicit <code>dop853</code> uses the looser <code>rtol = 10^-sigdig</code>,
-<code>atol = 10^(-sigdig-3)</code>.  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
-and steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser
-than the corresponding main tolerance.  At the default <code>sigdig = 4</code> a
-stiff solve is <code>atol = 1e-9</code>, <code>rtol = 1e-7</code>.</p></dd>
+<dd><p>Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(<code>10^-sigdig</code>), the boundary check tolerance (<code>5*10^(-sigdig+1)</code>),
+and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
+<code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
+<code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>) and
+steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
+exactly the precision the solve supports.  At the default <code>sigdig = 4</code>
+this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -373,14 +372,14 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">uobyqa</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801         407.093        67.95288</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801        407.0938        67.95303</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3627684 0.4179213  7.073e-06      0.053       0.006 0.026    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1043032</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3488101 0.3598229  5.921e-06      0.048       0.006 0.027    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.130361</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -405,9 +404,9 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-in"><span><span class="co"># you can also get the nlm output with fit2$nlm</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">uobyqa</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.806218086692849, 5.48662208163687, 2.89816154446765 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 579.080149823444 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 61 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.806218529273989, 5.48662370667654, 2.89816119688357 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 579.080149823452 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 58 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The nlm control has been modified slightly to include</span></span></span>
 <span class="r-in"><span><span class="co"># extra components and name the parameters</span></span></span>

@@ -228,18 +228,17 @@ newuoaControl(
 
 - sigdig:
 
-  Optimization significant digits; controls the inner/outer optimization
-  tolerance (`10^-sigdig`), the boundary check tolerance
-  (`5*10^(-sigdig+1)`), and the ODE solver tolerances. The solver
-  tolerances are split by solver stiffness and keep `atol` well below
-  `rtol`: a stiff solver (`lsoda`/`liblsoda` – and any auto-switching
-  method – plus `indLin`, the default) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`, while the non-stiff explicit `dop853` uses
-  the looser `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. The
-  sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) tolerances run one order looser than the
-  corresponding main tolerance. At the default `sigdig = 4` a stiff
-  solve is `atol = 1e-9`, `rtol = 1e-7`.
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below, so `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
+  Keying the optimizer to the same `10^-sigdig` means it converges to
+  exactly the precision the solve supports. At the default `sigdig = 4`
+  this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -331,21 +330,21 @@ print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -691.2571 1152.62 1167.343        -573.31        56598.19        832.7041
+#> lPop -691.2571 1152.62 1167.343        -573.31        56471.47        831.3488
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3468856 0.4378234  6.883e-06      0.054       0.006 0.037    0.001
-#>             other
-#> elapsed 0.1072841
+#> elapsed 0.3318058 0.4364772  7.264e-06      0.046       0.006 0.025    0.001
+#>              other
+#> elapsed 0.09970975
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI)
 #> E0  -0.6243 0.2158 34.56 -0.6243 (-1.047, -0.2014)
-#> Em    15.36  32.22 209.7     15.36 (-47.78, 78.51)
-#> E50   6.165  7.866 127.6     6.165 (-9.251, 21.58)
+#> Em    15.36  32.18 209.6     15.36 (-47.72, 78.43)
+#> E50   6.164  7.858 127.5     6.164 (-9.238, 21.57)
 #> g     2.000  FIXED FIXED                     2.000
 #>  
 #>   Covariance Type ($covMethod): r
@@ -363,9 +362,9 @@ print(fit2)
 # you can also get the nlm output with
 
 fit2$newuoa
-#> parameter estimates: -0.624294733621613, 15.361499904745, 6.16512325961022 
-#> objective: 573.309967949451 
-#> number of function evaluations: 595 
+#> parameter estimates: -0.624310996891431, 15.3565709623864, 6.1639318831118 
+#> objective: 573.309968013234 
+#> number of function evaluations: 754 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

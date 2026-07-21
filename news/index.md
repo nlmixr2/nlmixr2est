@@ -4,42 +4,26 @@
 
 ### New features
 
-- The optimization `sigdig` now sets the ODE solver tolerances with the
-  common ODE convention – `atol` well below `rtol`, and split by solver
-  stiffness – for every estimation method (`sigdig` is routed through
-  all of focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and the nlm
-  family). Stiffness is classified with
-  [`rxode2::rxIsNonStiff()`](https://nlmixr2.github.io/rxode2/reference/rxIsNonStiff.html):
-  a stiff-only solver (`ros4`, `cvode`, `bdf`, …), an auto-switching
-  solver (`lsoda`/`liblsoda`, the default) or a stiff-secondary
-  composite (`dop853+ros4`) uses `rtol = 10^(-sigdig-3)`,
-  `atol = 10^(-sigdig-5)`; a purely non-stiff solver (`dop853`, `dop5`,
-  the Runge-Kutta / Verner methods, …) uses the looser
-  `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. Sensitivity
-  (`atolSens`/`rtolSens`) and steady-state (`ssAtol`/`ssRtol`) solves
-  run one order looser. At the default `sigdig = 4` a stiff solve is
-  `atol = 1e-9, rtol = 1e-7` (was a symmetric `atol = rtol = 5e-7`). An
-  explicit `atol`/`rtol` passed through `rxControl` (a `list(...)` or a
-  full
-  [`rxode2::rxControl()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
-  object) still overrides the `sigdig`-derived value. `sigdig` still
-  drives all the optimizer tolerances as before.
-
-- The optimization `sigdig` now also sets each estimation method’s
-  optimizer convergence tolerances (previously only FOCEi and SAEM
-  derived some from `sigdig`). The FOCEi-family optimizers that other
-  methods reuse take the FOCEi formula `10^(-sigdig-1)` (`n1qn1`
-  `epsilon`; `bobyqa`/`newuoa`/`uobyqa` `rhoend`; `nlminb`
-  `rel.tol`/`x.tol`; `lbfgsb3c` `factr = 10^(-sigdig-1)/eps`; `optim`
-  `abstol`/`reltol`/`factr` matching its closest FOCEi optimizer;
-  `saem`’s inner residual-regression `tol`). Methods with their own
-  tuned defaults keep them at the default `sigdig = 4` and scale one
-  order per significant digit: `nlm` `gradtol`/`steptol` (`1e-6` at 4),
-  `nls` `tol` (`1e-5`) / `ftol`/`ptol` (`sqrt(eps)`), and `nlme`
-  `tolerance` (`1e-5`), `msTol` (`1e-6`), `pnlsTol` (`1e-3`) –
-  e.g. `nlme` at `sigdig = 5` is `tolerance = 1e-6`, `msTol = 1e-7`,
-  `pnlsTol = 1e-4`. An explicitly supplied tolerance always overrides
-  the `sigdig`-derived value.
+- The optimization `sigdig` now sets both the ODE solver tolerances and
+  every estimation method’s optimizer convergence tolerance with one
+  consistent formula, so the optimizer converges to exactly the
+  precision the solve supports. The ODE `rtol` exponent IS `sigdig` and
+  `atol` sits three orders below – `rtol = 10^-sigdig`,
+  `atol = 10^(-sigdig-3)` – the same for every solver (stiff, non-stiff,
+  auto-switching); sensitivity (`atolSens`/`rtolSens`) and steady-state
+  (`ssAtol`/`ssRtol`) solves run one order looser. Every optimizer’s
+  convergence tolerance is `10^-sigdig` to match (`n1qn1` `epsilon`;
+  `bobyqa`/`newuoa`/`uobyqa` `rhoend`; `nlminb` `rel.tol`/`x.tol`;
+  `lbfgsb3c`/`optim` `factr` as `10^-sigdig/eps`; the FOCEi outer
+  optimizer; `saem`’s inner residual `tol`; the standalone `nlm` and
+  `optim`). At the default `sigdig = 4` this is ODE
+  `atol = 1e-7, rtol = 1e-4` and optimizer tolerance `1e-4` (previously
+  a symmetric ODE `5e-7` with optimizer `1e-5`). `sigdig` is routed
+  through all of focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and
+  the nlm family. `est="nls"` keeps a tighter ODE (three orders below
+  the shared target) because its Levenberg-Marquardt step is sensitive
+  to solver noise. An explicit `atol`/`rtol` passed through `rxControl`
+  still overrides the `sigdig`-derived value.
 
 - Added sugar aliases for the
   [`optim()`](https://rdrr.io/r/stats/optim.html) methods so
