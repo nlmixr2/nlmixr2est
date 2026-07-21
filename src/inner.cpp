@@ -223,6 +223,8 @@ struct focei_options {
   int normType;
   double scaleCmin;
   double scaleCmax;
+  double scaleRangeLow;  // foceiControl(scaleCband): below this a theta scaleC falls back to |init|
+  double scaleRangeHigh; // above this a theta scaleC falls back to |init|
   double c1;
   double c2;
   double scaleTo;
@@ -307,6 +309,8 @@ struct focei_options {
   int shi21maxInner;
   int shi21maxInnerCov;
   int shi21maxFD;
+  double shi21hMax; // upper bound on the adaptive FD step (all FOCEI shi21 calls)
+  double shi21hMin; // lower bound on the adaptive FD step
   double cholAccept;
   double resetEtaSize;
   std::atomic<int> didEtaReset{0};
@@ -808,13 +812,6 @@ void updateZm(focei_ind *indF){
 
 static inline double getScaleC(int i){
   if (ISNA(op_focei.scaleC[i])) {
-    // The default scaling constant is 1/|initPar|.  When a parameter is
-    // initialized at exactly 0 (e.g. a covariate effect or an additive term)
-    // this is 1/0 = Inf, which clamps to scaleCmax and makes the parameter
-    // effectively unoptimizable: a tiny step in scaled space becomes a huge
-    // step in the parameter, so the line search freezes it at its starting
-    // value.  Fall back to unit scaling when initPar is 0 so a zero-initialized
-    // parameter is still estimated.
     double aInit = fabs(op_focei.initPar[i]);
     switch (op_focei.xPar[i]){
     case 1: // log
@@ -830,10 +827,26 @@ static inline double getScaleC(int i){
     case 5: // off diagonal chol(Omega^-1)
       op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
       break;
-    default:
+    default: // linear / additive theta: derivative-based 1/|init|
       op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
       break;
     }
+  }
+  // scaleCband (foceiControl(scaleCband=)): a theta whose derivative-based scaling
+  // constant lands outside [scaleRangeLow, scaleRangeHigh] is poorly scaled -- the
+  // 1/|init| default blows up for a small init and collapses for a large one.
+  // Fall back to the parameter's native magnitude |init| (NONMEM7 Appendix K,
+  // eq 15.2; |init| == 0 uses unit scaling).  In-band constants -- the common case
+  // -- are left untouched, so existing results are preserved.  Omega scalings keep
+  // their own formula (not guarded).
+  if (i < (int)op_focei.ntheta &&
+      (op_focei.scaleC[i] < op_focei.scaleRangeLow ||
+       op_focei.scaleC[i] > op_focei.scaleRangeHigh)) {
+    // linear / additive theta: fall back to native |init| at any magnitude (|init|
+    // is the correct scale for a large-init additive theta, issue #641).  The
+    // bounded-transform midpoint fallback lives in the R .guardScaleC path.
+    double aInit = fabs(op_focei.initPar[i]);
+    op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }
   return min2(max2(op_focei.scaleC[i], op_focei.scaleCmin),op_focei.scaleCmax);
 }
@@ -1468,7 +1481,8 @@ double likInner0(double *eta, int id) {
                                                1.5,//double rl = 1.5,
                                                4.5,//double ru = 4.5,
                                                3.0,//double nu = 8.0);
-                                               op_focei.shi21maxFD); // maxiter
+                                               op_focei.shi21maxFD, // maxiter
+                                               op_focei.shi21hMax, op_focei.shi21hMin);
                 break;
               case 3: // forward
                 fInd->etahf[ii] = shi21Forward(shi21EtaF, curEta, h,
@@ -1476,7 +1490,8 @@ double likInner0(double *eta, int id) {
                                                op_focei.hessEpsInner, // ef,
                                                1.5,  //double rl = 1.5,
                                                6.0,  //double ru = 6.0);;
-                                               op_focei.shi21maxFD); // maxiter
+                                               op_focei.shi21maxFD, // maxiter
+                                               op_focei.shi21hMax, op_focei.shi21hMin);
               }
               etaGradF.col(ii) = grETA;
               if (op_focei.interaction == 1) {
@@ -1488,7 +1503,8 @@ double likInner0(double *eta, int id) {
                                                  1.5,//double rl = 1.5,
                                                  4.5,//double ru = 4.5,
                                                  3.0,//double nu = 8.0);
-                                                 op_focei.shi21maxFD); // maxiter
+                                                 op_focei.shi21maxFD, // maxiter
+                                                 op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
                 case 3: // forward
                   fInd->etahr[ii] = shi21Forward(shi21EtaR, curEta, h,
@@ -1496,7 +1512,8 @@ double likInner0(double *eta, int id) {
                                                  op_focei.hessEpsInner, // ef,
                                                  1.5,  //double rl = 1.5,
                                                  6.0,  //double ru = 6.0);;
-                                                 op_focei.shi21maxFD); // maxiter
+                                                 op_focei.shi21maxFD, // maxiter
+                                                 op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
                 }
                 etaGradR.col(ii) = grETA;
@@ -1925,7 +1942,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                       op_focei.hessEpsInner, //double ef = 7e-7,
                                       1.5,  //double rl = 1.5,
                                       6.0,  //double ru = 6.0);;
-                                      op_focei.shi21maxInner);  //maxiter=15
+                                      op_focei.shi21maxInner,  //maxiter=15
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
         H.col(k) = grPH;
         continue;
       }
@@ -1938,7 +1956,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                       1.5,//double rl = 1.5,
                                       4.5,//double ru = 4.5,
                                       3.0,//double nu = 8.0);
-                                      op_focei.shi21maxInner); // maxiter
+                                      op_focei.shi21maxInner, // maxiter
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
         H.col(k) = grPH;
         continue;
       }
@@ -4184,7 +4203,8 @@ void numericGrad(double *theta, double *g){
                                            op_focei.hessEpsInner, //double ef = 7e-7,
                                            1.5,  //double rl = 1.5,
                                            6.0,  //double ru = 6.0);;
-                                           maxiter);  //maxiter=15
+                                           maxiter,  //maxiter=15
+                                           op_focei.shi21hMax, op_focei.shi21hMin);
         op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
         g[cpar] = grFinal(0);
       }
@@ -5541,6 +5561,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.shi21maxInnerCov = as<int>(foceiO["shi21maxInnerCov"]);
   op_focei.optimHessCovType=as<int>(foceiO["optimHessCovType"]);
   op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
+  op_focei.shi21hMax = as<double>(foceiO["shi21hMax"]);
+  op_focei.shi21hMin = as<double>(foceiO["shi21hMin"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   // censOption: 0 "gauss" (historic uncensored Gauss-Newton, default) / 1 "laplace" (exact
   // censored 2nd deriv).  Tolerate an older control missing the field (-> gauss).
@@ -5575,6 +5597,14 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
   op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
   op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
+  if (foceiO.containsElementNamed("scaleCband")) {
+    NumericVector scb = as<NumericVector>(foceiO["scaleCband"]);
+    op_focei.scaleRangeLow = scb[0];
+    op_focei.scaleRangeHigh = scb[1];
+  } else {
+    op_focei.scaleRangeLow = 0.1;
+    op_focei.scaleRangeHigh = 10.0;
+  }
   op_focei.abstol=as<double>(foceiO["abstol"]);
   op_focei.reltol=as<double>(foceiO["reltol"]);
   op_focei.smatNorm=as<int>(foceiO["smatNorm"]);
@@ -7418,7 +7448,8 @@ NumericMatrix foceiCalcCov(Environment e){
                                                 1.5,  //double rl = 1.5,
                                                 4.0,  //double ru = 6.0);;
                                                 3.0, // nu
-                                                op_focei.shi21maxOuter);  //maxiter=15
+                                                op_focei.shi21maxOuter,  //maxiter=15
+                                                op_focei.shi21hMax, op_focei.shi21hMin);
           } if (op_focei.gillKcov != 0){
             op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                              &theta[0], cpar, hessEps, gillKcov, gillStepCov,
@@ -9123,10 +9154,12 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
     arma::vec grF(nobs), grV(nobs);
     double h = 0.0;
     shi21Central(shi21ThetaF, curTheta, h, fvec, grF, id, tIdx,
-                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD,
+                 op_focei.shi21hMax, op_focei.shi21hMin);
     h = 0.0;
     shi21Central(shi21ThetaR, curTheta, h, Vvec, grV, id, tIdx,
-                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD,
+                 op_focei.shi21hMax, op_focei.shi21hMin);
     dfmat.col(s) = grF;
     dVmat.col(s) = grV;
   }

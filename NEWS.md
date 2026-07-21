@@ -2,6 +2,43 @@
 
 ## New features
 
+- FOCEi guards each `theta`'s scaling constant per transform, keeping the
+  derivative-based `scaleC` where it is well-behaved and falling back only in that
+  transform's singular / out-of-range region.  Each parameter keeps `1/|init|`
+  (linear/additive), `1` (log-normal), or its transform-specific formula while the
+  value stays inside a band tailored to that transform (the linear band is
+  `foceiControl(scaleCband=)`, default `c(0.1, 10)`).  Outside the band it falls
+  back to the parameter's native magnitude `|init|` (NONMEM7 Appendix K, eq 15.2);
+  for a bounded transform (`logit`/`expit`/`probit`/`probitInv`), if `|init|` is
+  also out of range it uses the geometric middle of the band.  This fixes the
+  singular cases that froze or destabilized the fit -- `1/|init|` blowing up for a
+  small covariate initial estimate (and the issue-641 large-additive case, whose
+  special handling this subsumes), `log()` at init `1`, `logit` at the interval
+  midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled
+  common case, and its results, unchanged.
+
+- Fixed FOCEi `scaleC` for a `gamma()`-transformed population parameter: rxode2
+  reports it as `curEval="lgammafn"`, which the scaling setup did not recognize, so
+  it silently received the linear `1/|init|` default instead of its `1/digamma`
+  scaling.
+
+- The FOCEi family nudges a structural population parameter (`theta`) initialized
+  at exactly `0` off zero before estimation, controlled by
+  `foceiControl(zeroTheta=)` (default `0.001`), since a zero initial estimate has
+  no native scale to scale by.  `+zeroTheta` is used when within the parameter's
+  bounds, otherwise `-zeroTheta`; if neither is within the bounds it errors.
+  Fixed parameters (including those fixed at `0`) are left untouched.  Residual
+  error parameters are also left untouched: they carry their own scaleC, so an
+  error `sd` set to exactly `0` still disables that component and a combined
+  error model reduces to the smaller model as before.
+
+- `foceiControl()` gains `shi21hMax` and `shi21hMin` (defaults `2.0` and `1e-4`),
+  the upper and lower bounds on the adaptive shi21 finite-difference step used for
+  FOCEi gradients (both the inner eta and, when `shi21maxOuter != 0`, the outer
+  theta/covariate finite differences).  A larger upper bound lets the gradient of
+  a flat, small-magnitude parameter clear the ODE-solver noise floor.  The NLM
+  family keeps its own fixed bounds.
+
 - The `imp` / `impmap` / `qrpem` importance-sampling family is faster: the
   theta-score M-step, the Monte-Carlo covariance (`covMethod="imp"`, the default)
   and the per-subject proposal build in the E-step are now parallelized over
