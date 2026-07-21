@@ -9,8 +9,8 @@ nlminbControl(
   iter.max = 150,
   trace = 0,
   abs.tol = 0,
-  rel.tol = 1e-10,
-  x.tol = 1.5e-08,
+  rel.tol = NULL,
+  x.tol = NULL,
   xf.tol = 2.2e-14,
   step.min = 1,
   step.max = 1,
@@ -74,9 +74,11 @@ convergence test is not used.  If the objective function is known
 to be non-negative, the previous default of `1e-20` would be more
 appropriate}
 
-\item{rel.tol}{Relative tolerance.  Defaults to `1e-10`.}
+\item{rel.tol}{Relative tolerance.  When `NULL` (default) it is derived from
+`sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`).}
 
-\item{x.tol}{X tolerance.  Defaults to `1.5e-8`.}
+\item{x.tol}{X tolerance.  When `NULL` (default) it is derived from `sigdig`
+(`10^(-sigdig-1)`).}
 
 \item{xf.tol}{false convergence tolerance.  Defaults to `2.2e-14`.}
 

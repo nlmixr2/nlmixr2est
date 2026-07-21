@@ -22,9 +22,11 @@
 #'   to be non-negative, the previous default of `1e-20` would be more
 #'   appropriate
 #'
-#' @param rel.tol Relative tolerance.  Defaults to `1e-10`.
+#' @param rel.tol Relative tolerance.  When `NULL` (default) it is derived from
+#'   `sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`).
 #'
-#' @param x.tol X tolerance.  Defaults to `1.5e-8`.
+#' @param x.tol X tolerance.  When `NULL` (default) it is derived from `sigdig`
+#'   (`10^(-sigdig-1)`).
 #'
 #' @param xf.tol false convergence tolerance.  Defaults to `2.2e-14`.
 #'
@@ -76,8 +78,8 @@ nlminbControl <- function(eval.max=200,
                           iter.max=150,
                           trace=0, # nolint
                           abs.tol=0,
-                          rel.tol=1e-10,
-                          x.tol=1.5e-8,
+                          rel.tol=NULL,
+                          x.tol=NULL,
                           xf.tol=2.2e-14,
                           step.min=1,
                           step.max=1,
@@ -125,6 +127,10 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
+  # nlminb convergence tolerances from sigdig (FOCEi mechanism, matches
+  # foceiControl reltol/x.tol); a user value wins, sigdig=NULL keeps the defaults
+  if (is.null(rel.tol)) rel.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-10
+  if (is.null(x.tol)) x.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1.5e-8
   checkmate::assertNumeric(rel.tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(x.tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(xf.tol, len=1, any.missing=FALSE, lower=0)
@@ -205,7 +211,7 @@ nlminbControl <- function(eval.max=200,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

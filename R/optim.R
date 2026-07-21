@@ -125,8 +125,8 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          parscale=1.0,
                          ndeps=1e-3,
                          maxit=10000,
-                         abstol=1e-8,
-                         reltol=1e-8,
+                         abstol=NULL,
+                         reltol=NULL,
                          alpha=1.0,
                          beta=0.5,
                          gamma=2.0,
@@ -134,7 +134,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          warn.1d.NelderMead=TRUE,
                          type=NULL,
                          lmm=5,
-                         factr=1e7,
+                         factr=NULL,
                          pgtol=0,
                          temp=10,
                          tmax=10,
@@ -184,6 +184,11 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertNumeric(parscale, any.missing=FALSE)
   checkmate::assertNumeric(ndeps, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(maxit, len=1, any.missing=FALSE, lower=1)
+  # optim tolerances from sigdig, matching optim's closest FOCEi outer optimizer:
+  # abstol/reltol like foceiControl reltol, factr like foceiControl lbfgsFactr
+  # (pgtol stays at FOCEi's 0); a user value wins, sigdig=NULL keeps the defaults
+  if (is.null(abstol)) abstol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
+  if (is.null(reltol)) reltol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
   checkmate::assertNumeric(abstol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(reltol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(alpha, len=1, lower=0, any.missing=FALSE)
@@ -193,6 +198,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertLogical(warn.1d.NelderMead, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(type, len=1, lower=1, upper=3, any.missing=FALSE, null.ok=TRUE)
   checkmate::assertIntegerish(lmm, len=1, lower=1, any.missing=FALSE)
+  if (is.null(factr)) factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   checkmate::assertNumeric(factr, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(pgtol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(temp, len=1, lower=0, any.missing=FALSE)
@@ -246,7 +252,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

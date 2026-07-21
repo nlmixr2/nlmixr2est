@@ -80,6 +80,9 @@ uobyqaControl <- function(npt=NULL,
                           eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
+  # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
+  # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
+  if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(iprint, any.missing=FALSE, lower=0, len=1)
@@ -123,7 +126,7 @@ uobyqaControl <- function(npt=NULL,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

@@ -25,7 +25,7 @@ saemControl(
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
-  tol = 1e-06,
+  tol = NULL,
   itmax = 30,
   type = c("newuoa", "nelder-mead"),
   powRange = 10,

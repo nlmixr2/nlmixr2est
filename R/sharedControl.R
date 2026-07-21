@@ -168,6 +168,34 @@ getValidNlmixrCtl.default <- function(control) {
   return(list(ctl=.out, rest=.in))
 }
 
+#' Optimizer convergence tolerance derived from `sigdig`
+#'
+#' The FOCEi-family convention: a convergence tolerance is `10^(-sigdig-1)`.
+#' Shared so every estimation method's optimizer ties to `sigdig` the same way
+#' FOCEi's outer optimizer does.
+#' @param sigdig optimization significant digits
+#' @return the tolerance
+#' @noRd
+.sigdigOptTol <- function(sigdig) 10^(-sigdig - 1)
+
+#' L-BFGS `factr` derived from `sigdig` (matches `foceiControl(lbfgsFactr=)`)
+#' @param sigdig optimization significant digits
+#' @return the `factr` value (`tol / .Machine$double.eps`)
+#' @noRd
+.sigdigFactr <- function(sigdig) 10^(-sigdig - 1) / .Machine$double.eps
+
+#' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
+#'
+#' Keeps the method's tuned default at `sigdig = 4` and tightens/loosens it by one
+#' order of magnitude per significant digit (`default * 10^(4 - sigdig)`).  Used
+#' where a method's optimizer default should be preserved at the default `sigdig`
+#' rather than replaced by the FOCEi formula (nlm, nls, nlme).
+#' @param default the tolerance at `sigdig = 4`
+#' @param sigdig optimization significant digits
+#' @return the scaled tolerance
+#' @noRd
+.sigdigScale <- function(default, sigdig) default * 10^(4 - sigdig)
+
 #' Is an ODE solver method purely non-stiff?
 #'
 #' Uses `rxode2::rxIsNonStiff()` when the installed rxode2 exports it; otherwise
@@ -213,9 +241,12 @@ getValidNlmixrCtl.default <- function(control) {
 #'   sensitivity / steady-state: 10x the corresponding main tolerance
 #' @param rxControl an `rxode2::rxControl()` object (modified and returned)
 #' @param sigdig optimization significant digits; `NULL` leaves `rxControl` as-is
+#' @param skip character vector of tolerance field names the user set explicitly
+#'   (e.g. from a `rxControl = list(atol = ...)`); these are left untouched so an
+#'   explicit `atol`/`rtol` overrides the `sigdig`-derived value
 #' @return `rxControl` with ODE solver tolerances set from `sigdig`
 #' @noRd
-.rxControlScaleSigdig <- function(rxControl, sigdig) {
+.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0)) {
   if (is.null(sigdig) || is.null(rxControl)) return(rxControl)
   # non-stiff only for a purely non-stiff base solver with no stiff auto-switch
   # secondary; switchers (lsoda/liblsoda), stiff-only solvers, and composites are
@@ -224,14 +255,18 @@ getValidNlmixrCtl.default <- function(control) {
     (is.null(rxControl$stiff2) || identical(as.integer(rxControl$stiff2), 0L))
   .rtol <- 10^(-(if (.nonStiff) sigdig else sigdig + 3))
   .atol <- 10^(-(if (.nonStiff) sigdig + 3 else sigdig + 5))
-  rxControl$rtol <- .rtol
-  rxControl$atol <- .atol
-  # sensitivity + steady-state solves run one order looser
-  rxControl$rtolSens <- 10 * .rtol
-  rxControl$atolSens <- 10 * .atol
-  rxControl$ssRtol <- rep_len(10 * .rtol, length(rxControl$ssRtol))
-  rxControl$ssAtol <- rep_len(10 * .atol, length(rxControl$ssAtol))
-  if (!is.null(rxControl$ssRtolSens)) rxControl$ssRtolSens <- rep_len(10 * .rtol, length(rxControl$ssRtolSens))
-  if (!is.null(rxControl$ssAtolSens)) rxControl$ssAtolSens <- rep_len(10 * .atol, length(rxControl$ssAtolSens))
+  # only set a tolerance the user did not pass explicitly (skip); sensitivity +
+  # steady-state solves run one order looser than the main solve
+  .set <- function(field, value) {
+    if (!(field %in% skip)) rxControl[[field]] <<- rep_len(value, length(rxControl[[field]]))
+  }
+  .set("rtol", .rtol)
+  .set("atol", .atol)
+  .set("rtolSens", 10 * .rtol)
+  .set("atolSens", 10 * .atol)
+  .set("ssRtol", 10 * .rtol)
+  .set("ssAtol", 10 * .atol)
+  if (!is.null(rxControl$ssRtolSens)) .set("ssRtolSens", 10 * .rtol)
+  if (!is.null(rxControl$ssAtolSens)) .set("ssAtolSens", 10 * .atol)
   rxControl
 }

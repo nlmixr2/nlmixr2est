@@ -6,15 +6,15 @@
 \usage{
 nlsControl(
   maxiter = 10000,
-  tol = 1e-05,
+  tol = NULL,
   minFactor = 1/1024,
   printEval = FALSE,
   warnOnly = FALSE,
   scaleOffset = 0,
   nDcentral = FALSE,
   algorithm = c("LM", "default", "plinear", "port"),
-  ftol = sqrt(.Machine$double.eps),
-  ptol = sqrt(.Machine$double.eps),
+  ftol = NULL,
+  ptol = NULL,
   gtol = 0,
   diag = list(),
   epsfcn = 0,

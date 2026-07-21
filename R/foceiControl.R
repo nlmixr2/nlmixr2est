@@ -1252,8 +1252,11 @@ foceiControl <- function(sigdig = 4, #
       rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig,
                                                            maxsteps=500000L), sigdig)
       genRxControl <- TRUE
+    } else if (inherits(rxControl, "rxControl")) {
+      # a fully-formed rxControl object is the user's explicit solving spec; leave
+      # it untouched so any atol/rtol it carries is respected
     } else if (is.list(rxControl)) {
-      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()",

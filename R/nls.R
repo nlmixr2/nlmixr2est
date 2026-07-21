@@ -42,7 +42,7 @@
 #'
 #' }
 nlsControl <- function(maxiter=10000,
-                       tol = 1e-05,
+                       tol = NULL,
                        minFactor = 1/1024,
                        printEval = FALSE,
                        warnOnly = FALSE,
@@ -51,8 +51,8 @@ nlsControl <- function(maxiter=10000,
                        algorithm = c("LM", "default", "plinear", "port"),
                        ############################################
                        ## minpack.lm
-                       ftol = sqrt(.Machine$double.eps),
-                       ptol = sqrt(.Machine$double.eps),
+                       ftol = NULL,
+                       ptol = NULL,
                        gtol = 0,
                        diag = list(),
                        epsfcn = 0,
@@ -117,6 +117,12 @@ nlsControl <- function(maxiter=10000,
 
   solveType <- match.arg(solveType)
 
+  # nls tolerances from sigdig: the LM/nls `tol` is 10^(-sigdig-1) (1e-5 at the
+  # default sigdig=4); the minpack.lm function/parameter tolerances keep their
+  # sqrt(eps) default at sigdig=4 and tighten one order per significant digit.  A
+  # user value wins, sigdig=NULL keeps the historic defaults.
+  if (is.null(ftol)) ftol <- if (!is.null(sigdig)) .sigdigScale(sqrt(.Machine$double.eps), sigdig) else sqrt(.Machine$double.eps)
+  if (is.null(ptol)) ptol <- if (!is.null(sigdig)) .sigdigScale(sqrt(.Machine$double.eps), sigdig) else sqrt(.Machine$double.eps)
   checkmate::assertNumeric(ftol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(ptol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(gtol, len=1, any.missing=FALSE, lower=0)
@@ -130,6 +136,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertLogical(warnOnly, len=1, any.missing = FALSE)
   checkmate::assertLogical(printEval, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(maxiter, len=1, any.missing=FALSE, lower=1)
+  if (is.null(tol)) tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-05
   checkmate::assertNumeric(tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minFactor, len=1, any.missing=FALSE, lower=0)
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
@@ -162,7 +169,7 @@ nlsControl <- function(maxiter=10000,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

@@ -48,7 +48,7 @@
 #' # The nlm control has been modified slightly to include
 #' # extra components and name the parameters
 #' }
-n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
+n1qn1Control <- function(epsilon = NULL,
                          max_iterations = 10000,
                          nsim = 10000,
                          imp = 0,
@@ -84,6 +84,11 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
 
+  # n1qn1 stopping tolerance from sigdig (FOCEi mechanism, matches foceiControl
+  # epsilon); a user-supplied value wins, sigdig=NULL keeps the historic default
+  if (is.null(epsilon)) {
+    epsilon <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else (.Machine$double.eps) ^ 0.25
+  }
   checkmate::assertNumeric(epsilon, len=1, any.missing=FALSE, lower=0)
   checkmate::assertIntegerish(max_iterations, len=1, any.missing=FALSE, lower=10)
   checkmate::assertIntegerish(nsim, len=1, any.missing=FALSE, lower=10)
@@ -127,7 +132,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

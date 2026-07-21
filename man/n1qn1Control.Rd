@@ -5,7 +5,7 @@
 \title{Control for n1qn1 estimation method in nlmixr2}
 \usage{
 n1qn1Control(
-  epsilon = (.Machine$double.eps)^0.25,
+  epsilon = NULL,
   max_iterations = 10000,
   nsim = 10000,
   imp = 0,

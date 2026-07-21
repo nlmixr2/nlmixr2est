@@ -312,7 +312,7 @@ saemControl <- function(seed = 99,
                         adjObf = TRUE,
                         sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
-                        tol = 1e-6,
+                        tol = NULL,
                         itmax = 30,
                         type = c("newuoa", "nelder-mead"),
                         powRange = 10,
@@ -391,6 +391,10 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
   checkmate::assertLogical(adjObf, any.missing=FALSE, len=1)
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
+  # `tol` is the rhoend/tolerance of saem's inner residual-regression optimizer
+  # (bounded bobyqa / newuoa / nelder-mead); tie it to sigdig with the FOCEi
+  # mechanism.  A user value wins, sigdig=NULL keeps the historic default.
+  if (is.null(tol)) tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
   checkmate::assertNumeric(tol, any.missing=FALSE, len=1, finite=TRUE)
   checkmate::assertIntegerish(itmax, any.missing=FALSE, len=1, lower=1)
   checkmate::assertNumeric(powRange, any.missing=FALSE, len=1, lower=0)
@@ -470,7 +474,7 @@ saemControl <- function(seed = 99,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)

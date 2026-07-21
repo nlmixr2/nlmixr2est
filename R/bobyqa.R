@@ -17,7 +17,9 @@
 #' @param rhobeg Initial trust region radius (with `rhoend`, must satisfy
 #'   `0 < rhoend < rhobeg`). Defaults to `min(0.95, 0.2*max(abs(par)))`;
 #'   adjusted upward if smaller than `abs(upper-lower)/2`.
-#' @param rhoend Final trust region radius. Defaults to `1e-6*rhobeg`.
+#' @param rhoend Final trust region radius.  When `NULL` (default) it is derived
+#'   from `sigdig` the way `foceiControl()` does (`10^(-sigdig-1)`); otherwise the
+#'   minqa `1e-6*rhobeg` default applies.
 #' @param iprint Controls amount of printing (`0`=none, `1`=start/end only,
 #'   `2`=each new rho, `3`=every function evaluation, `>3`=every `iprint`
 #'   evaluations). Default `0`.
@@ -89,6 +91,9 @@ bobyqaControl <- function(npt=NULL,
                           eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
+  # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
+  # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
+  if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(iprint, any.missing=FALSE, lower=0, len=1)
@@ -131,7 +136,7 @@ bobyqaControl <- function(npt=NULL,
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

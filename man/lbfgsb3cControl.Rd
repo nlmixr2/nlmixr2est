@@ -6,7 +6,7 @@
 \usage{
 lbfgsb3cControl(
   trace = 0,
-  factr = 1e+07,
+  factr = NULL,
   pgtol = 0,
   abstol = 0,
   reltol = 0,
