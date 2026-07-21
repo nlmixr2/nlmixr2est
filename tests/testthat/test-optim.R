@@ -50,4 +50,30 @@ nmTest({
 
   })
 
+  test_that("optim sugar aliases dispatch and honor bounds", {
+    # every alias is registered as an nlmixr2Est S3 method
+    for (.a in c("neldermead", "bfgs", "cg", "lbfgsb", "sann", "brent")) {
+      expect_true(!is.null(utils::getS3method("nlmixr2Est", .a)),
+                  info = .a)
+    }
+    # bounded-capable methods report unbounded=FALSE, the rest TRUE
+    .unb <- function(a) attr(utils::getS3method("nlmixr2Est", a), "unbounded")(NULL)
+    expect_false(.unb("brent"))
+    expect_false(.unb("lbfgsb"))
+    for (.a in c("neldermead", "bfgs", "cg", "sann")) {
+      expect_true(.unb(.a), info = .a)
+    }
+
+    # the alias forces the corresponding optim() method end-to-end
+    one.cmt <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7 })
+      model({ ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd) })
+    }
+    fitNM <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "neldermead")
+    expect_equal(fitNM$optimControl$method, "Nelder-Mead")
+    fitLB <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "lbfgsb")
+    expect_equal(fitLB$optimControl$method, "L-BFGS-B")
+  })
+
 })

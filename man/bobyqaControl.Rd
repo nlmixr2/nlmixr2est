@@ -50,7 +50,7 @@ objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `min(n*2, n+2)`.}
 adjusted upward if smaller than `abs(upper-lower)/2`.}
 
 \item{rhoend}{Final trust region radius.  When `NULL` (default) it is derived
-from `sigdig` the way `foceiControl() does (`10^(-sigdig)`); otherwise the
+from `sigdig` the way `foceiControl()` does (`10^(-sigdig)`); otherwise the
 minqa `1e-6*rhobeg` default applies.}
 
 \item{iprint}{Controls amount of printing (`0`=none, `1`=start/end only,

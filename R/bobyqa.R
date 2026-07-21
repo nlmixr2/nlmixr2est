@@ -18,7 +18,7 @@
 #'   `0 < rhoend < rhobeg`). Defaults to `min(0.95, 0.2*max(abs(par)))`;
 #'   adjusted upward if smaller than `abs(upper-lower)/2`.
 #' @param rhoend Final trust region radius.  When `NULL` (default) it is derived
-#'   from `sigdig` the way `foceiControl() does (`10^(-sigdig)`); otherwise the
+#'   from `sigdig` the way `foceiControl()` does (`10^(-sigdig)`); otherwise the
 #'   minqa `1e-6*rhobeg` default applies.
 #' @param iprint Controls amount of printing (`0`=none, `1`=start/end only,
 #'   `2`=each new rho, `3`=every function evaluation, `>3`=every `iprint`
