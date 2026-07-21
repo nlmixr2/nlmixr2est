@@ -839,7 +839,12 @@ static inline double getScaleC(int i){
   // eq 15.2; |init| == 0 uses unit scaling).  In-band constants -- the common case
   // -- are left untouched, so existing results are preserved.  Omega scalings keep
   // their own formula (not guarded).
-  if (i < (int)op_focei.ntheta &&
+  // Only guard a genuinely-computed derivative constant (> 0): a scaleC of exactly
+  // 0 is an uninitialized/unloaded value, not a singular formula to rescue, so
+  // leave it for the min/max clamp below (writing |init| back would corrupt a
+  // scaleC that a later real load -- or a non-outer method like the VAE inner that
+  // reads op_focei.scaleC directly -- expects untouched).
+  if (i < (int)op_focei.ntheta && op_focei.scaleC[i] > 0.0 &&
       (op_focei.scaleC[i] < op_focei.scaleRangeLow ||
        op_focei.scaleC[i] > op_focei.scaleRangeHigh)) {
     // linear / additive theta: fall back to native |init| at any magnitude (|init|

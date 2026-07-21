@@ -661,6 +661,13 @@
 
 ### Estimation
 
+- Fixed the FOCEi `scaleC` band guard corrupting `est="vae"` covariate selection.
+  The guard only rescues a genuinely-computed derivative-based scaling constant
+  (`> 0`) now; an uninitialized `scaleC` of exactly `0` is left for the usual
+  min/max clamp instead of being overwritten with `|init|`.  The overwrite had
+  broken VAE covariate discovery on theophylline (no covariates selected, betas
+  collapsed to `0`).
+
 - `est="vae"` with `covariateSelection=FALSE` now estimates the covariate
   coefficients written into the model -- both linear (`beta*WT`) and transformed
   (`beta*log(WT/70)`) effects -- rather than holding them at their `ini()` value.
