@@ -155,10 +155,10 @@ free.</p>
 <span class="r-in"><span><span class="co"># Individual joint log-likelihood at eta = 0, one value per subject</span></span></span>
 <span class="r-in"><span><span class="va">eta</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">h</span><span class="op">$</span><span class="va">nid</span>, <span class="va">h</span><span class="op">$</span><span class="va">neta</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="foceiLikRun.html">foceiLikRun</a></span><span class="op">(</span><span class="va">h</span><span class="op">$</span><span class="va">initPar</span>, <span class="va">eta</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -94.15985 -62.28137 -63.71703 -63.26625 -85.38786 -36.32018 -43.59111 -48.51995 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -60.63507 -83.32305 -52.96870 -77.66747 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           1           2           3           4           5           6 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.4017587  -9.3365473  -0.6718843  -5.5542461 -19.0895200 -33.8105271 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           7           8           9          10          11          12 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.9543558  -8.8147973 -32.7217521 -30.0008367 -18.5848785 -13.1123082 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Free it when done (loading again before this errors)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="foceiLikUnload.html">foceiLikUnload</a></span><span class="op">(</span><span class="op">)</span></span></span>

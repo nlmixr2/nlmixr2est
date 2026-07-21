@@ -155,35 +155,35 @@ unaffected.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The individual joint log density log p(y_i, eta_i) (the default)</span></span></span>
 <span class="r-in"><span><span class="fu">foceiLikRun</span><span class="op">(</span><span class="va">h</span><span class="op">$</span><span class="va">initPar</span>, <span class="va">eta</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -94.15985 -62.28137 -63.71703 -63.26625 -85.38786 -36.32018 -43.59111 -48.51995 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -60.63507 -83.32305 -52.96870 -77.66747 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           1           2           3           4           5           6 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.4017587  -9.3365473  -0.6718843  -5.5542461 -19.0895200 -33.8105271 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           7           8           9          10          11          12 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.9543558  -8.8147973 -32.7217521 -30.0008367 -18.5848785 -13.1123082 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The conditional data log-likelihood log p(y_i | eta_i) alone; the two</span></span></span>
 <span class="r-in"><span><span class="co"># differ by the Gaussian eta prior</span></span></span>
 <span class="r-in"><span><span class="fu">foceiLikRun</span><span class="op">(</span><span class="va">h</span><span class="op">$</span><span class="va">initPar</span>, <span class="va">eta</span>, type <span class="op">=</span> <span class="st">"cond"</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -93.41180 -61.53332 -62.96899 -62.51820 -84.63981 -35.57213 -42.84306 -47.77190 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -59.88703 -82.57500 -52.22065 -76.91942 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            1            2            3            4            5            6 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -23.65371163  -8.58850024   0.07616276  -4.80619898 -18.34147295 -33.06248005 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            7            8            9           10           11           12 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.20630875  -8.06675025 -31.97370504 -29.25278965 -17.83683139 -12.36426108 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Non-zero etas</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">foceiLikRun</span><span class="op">(</span><span class="va">h</span><span class="op">$</span><span class="va">initPar</span>, <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">h</span><span class="op">$</span><span class="va">nid</span> <span class="op">*</span> <span class="va">h</span><span class="op">$</span><span class="va">neta</span>, <span class="fl">0</span>, <span class="fl">0.1</span><span class="op">)</span>, <span class="va">h</span><span class="op">$</span><span class="va">nid</span>, <span class="va">h</span><span class="op">$</span><span class="va">neta</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -94.39492 -62.29327 -63.72068 -63.42463 -85.40293 -36.45668 -43.72089 -48.57601 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -60.72634 -83.39178 -52.99722 -77.87510 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           1           2           3           4           5           6 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -36.9555993 -11.2007086  -0.5086688 -22.2009369 -21.6157454 -67.7256691 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           7           8           9          10          11          12 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -34.2146289  -2.3798982 -29.7461021 -21.1068628 -14.4055705 -32.8805294 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># A new population parameter vector needs no reload</span></span></span>
 <span class="r-in"><span><span class="va">theta</span> <span class="op">&lt;-</span> <span class="va">h</span><span class="op">$</span><span class="va">initPar</span></span></span>
 <span class="r-in"><span><span class="va">theta</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="va">theta</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span> <span class="op">+</span> <span class="fl">0.1</span></span></span>
 <span class="r-in"><span><span class="fu">foceiLikRun</span><span class="op">(</span><span class="va">theta</span>, <span class="va">eta</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         1         2         3         4         5         6         7         8 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -94.15971 -62.28123 -63.71688 -63.26615 -85.38773 -36.32011 -43.59105 -48.51985 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         9        10        11        12 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -60.63491 -83.32295 -52.96853 -77.66737 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           1           2           3           4           5           6 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.4017439  -9.3365336  -0.6718685  -5.5542670 -19.0895071 -33.8105676 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           7           8           9          10          11          12 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -24.9544094  -8.8148170 -32.7217044 -30.0008741 -18.5848526 -13.1123297 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="foceiLikUnload.html">foceiLikUnload</a></span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
