@@ -304,6 +304,23 @@ vaeCovariates <- function(data, warn = TRUE) {
             paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
   }
 
+  ## pinCovariates=FALSE with a model that declares covariates: turn OFF the
+  ## automatic search and estimate every declared covariate in place by the
+  ## regress M-step (the covariateSelection=FALSE treatment).  Emptying the
+  ## search pool makes the C++ M-step skip covariate selection entirely.  With no
+  ## model-declared covariates there is nothing to switch off -- the full search
+  ## runs.  (Explicit covariateSelection=FALSE keeps its own path below.)
+  .declaredCoefs <- .vaeCovariateCoefThetas(ui)
+  .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L &&
+    !isFALSE(control$covariateSelection)
+  if (.searchOff) {
+    warning("pinCovariates=FALSE: model covariates estimated in place", call. = FALSE)
+    .cov$covNames <- character(0)
+    .cov$covMat <- matrix(0, N, 0L)
+    .cov$covType <- character(0)
+    .cov$covPop <- numeric(0)
+  }
+
   ## pinned covariate selection: restrict the search to model-declared covariate
   ## /parameter pairs.  Build the per-(eta k x covariate j) allow-mask from the
   ## `inPool` declared pairs; zero those coefficients in the training theta so the
@@ -358,15 +375,17 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   .covCoefNames <- character(0)
   if (isFALSE(control$covariateSelection)) {
-    .covCoefNames <- .vaeCovariateCoefThetas(ui)
-    .regressNames <- c(.regressNames, .covCoefNames)
+    .covCoefNames <- .declaredCoefs
+  } else if (.searchOff) {
+    ## pinCovariates=FALSE with model-declared covariates: all of them regress.
+    .covCoefNames <- .declaredCoefs
   } else if (.pinActive && length(.pinCovCoef) > 0L) {
     ## pinned selection: a declared covariate that cannot be handled by the
     ## restricted search (out-of-pool, or a form whose slope will not transfer)
     ## is estimated in place by the regress M-step, like covariateSelection=FALSE.
     .covCoefNames <- .pinCovCoef
-    .regressNames <- c(.regressNames, .covCoefNames)
   }
+  .regressNames <- c(.regressNames, .covCoefNames)
   .regressNames <- unique(.regressNames)
   if (length(.regressNames) > 0L) {
     .ri <- match(.regressNames, .thRows$name)
@@ -427,13 +446,6 @@ vaeCovariates <- function(data, warn = TRUE) {
     dataIn[i, seq_len(ni), 2L] <- (s$y - .dvMean) / .dvSd
   }
   covIn <- matrix(0, N, 0L)                     # encoder-head covariates (unused for now)
-
-  ## subject-level covariate discovery + encoding (shared with vaeCovariates())
-  .cov <- .vaeCovariateSearch(d, .ids)
-  if (length(.cov$tvExcl) > 0L) {
-    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
-            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
-  }
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
