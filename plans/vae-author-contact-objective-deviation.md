@@ -21,82 +21,103 @@ method, with matched default hyperparameters (`itersBurnIn = 100`,
 penalty ramp 2 -> 1).  Differences are mostly engineering: an Armadillo LSTM with
 analytic BPTT instead of Torch autograd, an `rxode2`-compiled ODE decoder instead
 of a hand-written per-case-study decoder, and exact branch-and-bound instead of a
-GUROBI MIQP for the L0 selection (same selected subset, no commercial solver).
+GUROBI MIQP for the L0 selection (same optimum, no commercial solver).
 
-## The deviation we want to flag
+## The question: parameters the encoder cannot reach
 
-One difference is **statistical, not engineering**, and we would value the
-authors' view.
+Our one statistical deviation is confined to a case the case studies do not
+exercise: a structural population parameter with **no random effect**.
 
-The reference trains and runs its M-step on the plain variational bound
+Such a parameter does not occupy the latent space, so the encoder never sees it
+and the ELBO M-step has no route to it.  In a pharmacometrics package this comes
+up constantly -- a fixed allometric exponent, a shared absorption parameter, an
+`Emax` estimated without IIV -- so we had to give those parameters an estimation
+path of their own, sitting alongside the variational machinery rather than inside
+it.
 
-    ELBO = p(x|z) + [ p(z) - q(z|x) ]
+We estimate them with a regression M-step scored against the **full FOCEi outer
+objective**: the frozen-eta joint likelihood *plus* the Laplace determinant,
+`0.5*log|Omega^-1|` and the DV-transform Jacobian.  Everything else -- the
+encoder, the ELBO training step, the covariate branch-and-bound criterion --
+follows your formulation exactly.
 
-(`Main/theophylline.py:129-136`, `Main/neonates.py`).  There is no
-Laplace/Hessian term in training, in the population M-step, or in the covariate
-selection regression -- the encoder entropy `q(z|x)` fills that role, which is
-exactly what a variational method is for.  `torch.linalg.slogdet` occurs once in
-the whole codebase (`functions.py:106`), inside `LogLikelihood_linearization`,
-which is evaluated only at the end to report the OFV/AIC/BIC.
+**The Laplace term is what makes a gradient available for these parameters.**
+That is the real reason we added it, and it is worth being explicit about.  We
+step them with an exact analytic outer gradient (Almquist 2015 sensitivity
+equations, shared with our FOCEi implementation), which differentiates the
+*marginal* (Laplace) likelihood.  Under the plain variational bound there is no
+Laplace term, so there is nothing for that gradient to differentiate: dropping
+the term does not merely change the target, it removes the gradient option and
+leaves only a derivative-free search.  With the term in place the gradient goes
+to the same Adam machinery that moves the encoder weights, so an unmatched theta
+is learned on the same schedule as the rest of the model -- which feels closer to
+the spirit of the method than pausing each M-step to run a separate optimizer to
+convergence.
 
-`nlmixr2` instead scores the population M-step against the **full FOCEi outer
-objective**: the Laplace determinant, `0.5*log|Omega^-1|`, and the DV-transform
-Jacobian.  Two reasons:
+It also keeps the optimized quantity equal to the objective the fit reports,
+which matters for us because `nlmixr2` reports the FOCEi objective across all of
+its estimation methods.
 
-1. **Ecosystem consistency.** The objective an `nlmixr2` fit reports is the FOCEi
-   objective.  Having the M-step optimize something else means the reported OFV
-   is not the quantity being optimized.
-2. **Internal consistency.** We added an option that steps the population
-   parameters with the exact analytic outer gradient (Almquist 2015 sensitivity
-   equations, shared with our FOCEi `fast=TRUE` path).  That gradient
-   differentiates the marginal (Laplace) likelihood; if the M-step optimized the
-   plain ELBO the two would be optimising different functionals.
+We have made this switchable: `vaeControl(mStepObjective = "elbo")` reproduces
+your plain-bound M-step (and correspondingly disables the gradient option).
 
-## Why we are writing
+## What we checked before writing -- and a correction to ourselves
 
-Covariate selection is scored by a BICc-ELBO criterion, so **changing the
-objective can change the selected covariate set.**  On Case Study 2 (neonatal
-weight, 189 neonates) we reproduce the canonical result -- gestational age on
-birth weight is selected -- but our fit also retains GA on `kin` and a small sex
-effect on birth weight, where the paper reports the single effect.  Indicative
-coefficients from our run (short demonstration schedule):
+We initially suspected this deviation was behind a difference in Case Study 2
+(neonatal weight, 189 neonates): we reproduce the canonical gestational-age
+effect on birth weight, but our run also retains GA on `kin` and a small sex
+effect on birth weight, where the paper reports the single effect.
 
-| coefficient | estimate |
+**That suspicion was wrong, and we would rather say so plainly than send you a
+false lead.**  Every structural parameter in the neonatal model is
+mu-referenced, so the model contains no unmatched theta and the objective option
+has nothing to act on.  Re-running the case study under
+`mStepObjective = "elbo"` reproduces our default run *bit for bit* -- identical
+population parameters, identical omegas, identical residual error, identical
+selected covariate set.  We have pinned that identity as a regression test.
+
+So the objective deviation is demonstrably **not** the cause of the covariate
+difference.  Our current best guess is the deliberately shortened schedule we use
+in the demonstration, and we are re-running at your full schedule before drawing
+any conclusion.  We mention it only for completeness; we are not attributing it
+to anything yet.
+
+Where the two objectives *do* differ is on a model that carries an unmatched
+theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
+`tv` = 3.4293), a short 80-iteration schedule gives:
+
+| M-step | `tv` |
 |---|---|
-| `beta_lW0_GA`   | 1.858 |
-| `beta_lkin_GA`  | 1.880 |
-| `beta_lW0_SEX`  | 0.090 |
+| full outer objective + analytic gradient | 3.4286 |
+| full outer objective + derivative-free   | 3.4360 |
+| plain variational bound (your M-step)    | 3.4214 |
 
-We do not claim this is a defect in the published method.  A variational
-objective legitimately has no Laplace term, and the paper's parsimony may well be
-the better behaviour.  But it does mean a reader comparing the two
-implementations on the same data can see different covariate sets, and we would
-rather that be documented and understood than discovered.
+## Questions for you
 
-## Questions for the authors
-
-1. Was scoring the L0 selection against the plain ELBO (rather than a
-   Laplace-corrected marginal) a deliberate choice?  If so, was the parsimony
-   difference something you observed?
-2. Do you have a view on which objective *should* score the BICc penalty term?
-   The penalty is `alpha * ln(N) * |S|` in both, but the goodness-of-fit term it
-   is traded against differs between our implementations.
-3. Would you be interested in a side-by-side on Case Study 2 -- same data, same
-   schedule, the two objectives -- to see how much of the difference is the
-   objective and how much is the stochastic trajectory?
+1. Did parameters without a random effect come up in your work?  If so, how did
+   you handle them -- fix them, give them a nominal IIV, or something else?  We
+   would rather match your intent than invent a convention.
+2. Do you see any objection to scoring *only* those parameters against the
+   Laplace-corrected marginal while the latent parameters keep the variational
+   bound?  Our concern is the obvious one: it is a mixed objective, and we would
+   value a second opinion on whether that is principled or merely convenient.
+3. Would a shared benchmark be of interest -- your Case Study 2 at the full
+   schedule, both objectives, same data -- so that any residual difference in the
+   selected covariate set can be pinned to something specific rather than
+   guessed at?
 
 ## Status in our documentation
 
-The deviation is documented for users in the `est = "vae"` article, under
-*Objective -- a deliberate deviation from the reference*, including the
-consequence for covariate selection, so nobody reproducing the paper is surprised
-by it.
+The deviation, its narrow scope, and the bit-for-bit neonatal check are all
+documented for users in the `est = "vae"` article, under *Objective -- a
+deliberate deviation from the reference*, so nobody reproducing the paper is
+surprised by it or misreads the covariate difference as caused by it.
 
 ## Before sending
 
 * Have a maintainer read and sign it -- it should go from a person, not a tool.
-* Re-run Case Study 2 at the paper's full schedule (not the shortened
-  demonstration settings) and quote those coefficients instead of the indicative
-  ones above; the sex effect in particular is small enough that it may not
-  survive a longer run, and it would be careless to raise it if it does not.
-* Confirm the reference-code line numbers still match the version being cited.
+* Re-run Case Study 2 at the paper's full schedule first.  If the extra
+  covariates disappear, drop that section entirely rather than raising a
+  difference that does not exist.
+* Confirm the reference-code line numbers and hyperparameters still match the
+  version being cited.

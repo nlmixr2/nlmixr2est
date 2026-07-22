@@ -39,14 +39,19 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
-- `est="vae"`'s population M-step is now scored against the full FOCEi outer
-  objective (Laplace determinant, `0.5*log|Omega^-1|` and the transform
-  Jacobian), so the quantity optimized matches the objective the fit reports and
-  is consistent with the analytic gradient used by `nonMuTheta="grad"`.  This is
-  a **deliberate deviation** from Rohleff et al. (2025), whose M-step uses the
-  plain variational bound; because covariate selection is scored by a BICc-ELBO
-  criterion it can select a different (typically less parsimonious) covariate set
-  than the reference.  See the `est="vae"` article for details.
+- `est="vae"` gains `vaeControl(mStepObjective=)`, selecting the objective the
+  M-step for a structural theta with no random effect is optimized against:
+  `"outer"` (default) uses the full FOCEi outer objective (the frozen-eta joint
+  likelihood plus the Laplace determinant, `0.5*log|Omega^-1|` and the transform
+  Jacobian), while `"elbo"` reproduces the plain variational bound of Rohleff et
+  al. (2025).  The default is a deliberate deviation from the reference: the
+  Laplace term is what makes an analytic gradient available for those parameters
+  (the gradient differentiates the marginal likelihood), so under `"elbo"`
+  `nonMuTheta="grad"` is downgraded to `"regress"` with a note in `$runInfo`.
+  The deviation is confined to that M-step -- it does not touch the encoder, the
+  ELBO training step or the covariate-selection criterion -- so a model whose
+  structural parameters are all mu-referenced fits identically under either
+  setting.
 
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
   covariates already written in the model.  When the model declares covariate

@@ -41,6 +41,22 @@ nmTest({
     ## strongest, canonical effect (Fig 4, VAE column)
     dimnames(fit$selected) <- list(c("W0", "kin", "TL", "koutmax", "T50"), fit$covNames)
     expect_true(fit$selected["W0", "GA"])
+
+    ## The reference M-step objective must reproduce this fit EXACTLY.  Every
+    ## structural parameter here is mu-referenced, so the model has no non-mu
+    ## theta for mStepObjective= to act on -- the option is out of the picture and
+    ## the two runs have to agree bit for bit.  That pins two things at once: the
+    ## deviation is confined to the non-mu theta M-step (it does NOT rescore the
+    ## covariate search or the encoder ELBO), and the covariate set this case
+    ## study selects is therefore NOT attributable to the objective choice.
+    ctlRef <- ctl
+    ctlRef$mStepObjective <- "elbo"
+    fitRef <- suppressMessages(suppressWarnings(
+      nlmixr2(neonatal, dat, est = "vae", control = ctlRef)))
+    expect_identical(fitRef$zPop, fit$zPop)
+    expect_identical(fitRef$selected, fit$selected)
+    expect_identical(fitRef$omega, fit$omega)
+    expect_identical(fitRef$a, fit$a)
   })
 
   test_that("est=vae builds a full neonatal fit object (objective + tables)", {

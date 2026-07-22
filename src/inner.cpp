@@ -13227,16 +13227,21 @@ static arma::mat gVaeRegEtaCentered; // last.mu - baseline  [N, zDim]
 static int gVaeRegCores;
 static int gVaeRegNMix;
 static arma::vec gVaeRegMixProb;
-// The bobyqa regression minimizes the FULL outer objective (Laplace determinant
-// + 0.5*log|Omega^-1| + the DV-transform Jacobian, i.e. LikInner2), not the
-// frozen-eta joint likelihood, for BOTH nonMuTheta="regress" and the "grad"
-// fallback.  Two reasons: it is the objective the analytic outer gradient
-// differentiates, so a mixed fit optimizes ONE functional; and it makes the two
-// modes' results directly comparable (same objective, different optimizer)
-// instead of differing by both estimator and target.  Only the non-mu thetas
-// vary -- every mu-referenced theta is held at its current M-step value in
-// gVaeRegThBase -- so this is the outer objective as a function of those thetas
-// alone.
+// Objective the non-mu theta M-step regression minimizes, set per run from
+// vaeControl(mStepObjective=).
+//
+//   true  ("outer", default) -- the FULL FOCEi outer objective (Laplace
+//     determinant + 0.5*log|Omega^-1| + the DV-transform Jacobian, i.e.
+//     LikInner2).  It is the objective the analytic outer gradient
+//     differentiates, so a nonMuTheta="grad" fit optimizes ONE functional, and
+//     it is the objective the fit reports.
+//   false ("elbo") -- the frozen-eta joint likelihood, reproducing Rohleff et
+//     al. (2025), whose M-step uses the plain variational bound.  The analytic
+//     gradient is not available in this mode (it differentiates the marginal).
+//
+// Either way only the non-mu thetas vary -- every mu-referenced theta is held at
+// its current M-step value in gVaeRegThBase -- so this is the chosen objective
+// as a function of those thetas alone.
 static bool gVaeRegAdjOuter = true;
 
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
@@ -13321,8 +13326,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // nonMuTheta="grad": step the regressed thetas with the exact analytic outer
   // gradient (one augmented solve per M-step) through their own Adam block,
   // falling back to the bobyqa regression whenever a gradient call declines.
-  const bool useGrad = control.containsElementNamed("nonMuTheta") &&
+  // The analytic outer gradient differentiates the OUTER objective, so it is only
+  // meaningful when the M-step targets that objective; under mStepObjective="elbo"
+  // it would step one functional while scoring another.  R downgrades to
+  // "regress" up front (with a warning); this is the C++-side guard.
+  const bool useGradReq = control.containsElementNamed("nonMuTheta") &&
     as<std::string>(control["nonMuTheta"]) == "grad" && regIdx.n_elem > 0;
+  const bool useGrad = useGradReq &&
+    !(control.containsElementNamed("mStepObjective") &&
+      as<std::string>(control["mStepObjective"]) == "elbo");
   arma::mat regP(regIdx.n_elem, 1, arma::fill::zeros);
   for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
   VaeAdamBlk aReg;
@@ -13366,6 +13378,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const bool parEncoderBackward = control.containsElementNamed("parEncoderBackward") ?
     as<bool>(control["parEncoderBackward"]) : false;
   const int printCtl = as<int>(control["print"]);
+  // mStepObjective: "outer" (default) scores the non-mu theta M-step against the
+  // full FOCEi outer objective; "elbo" reproduces the reference's plain
+  // variational bound (frozen-eta joint likelihood).  Missing field -> "outer",
+  // which is what control objects serialized before the option always did.
+  const bool mStepOuter = !(control.containsElementNamed("mStepObjective") &&
+                            as<std::string>(control["mStepObjective"]) == "elbo");
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
 
@@ -13614,7 +13632,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegOmega = omega;
       gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
-      gVaeRegAdjOuter = true;   // full outer objective for both regress and grad
+      gVaeRegAdjOuter = mStepOuter;  // outer objective, or the reference ELBO
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gVaeThetaObjR);

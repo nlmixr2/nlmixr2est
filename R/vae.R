@@ -65,13 +65,7 @@
 #'     injected; instead each such theta is estimated directly, re-optimized every
 #'     M-step by a bounded `bobyqa` regression against the full FOCEi outer
 #'     objective (bounds from the `ini()` lower/upper), blended with the M-step gain.
-#'     NOTE: scoring the M-step against the full outer objective (Laplace
-#'     determinant, `0.5*log|Omega^-1|`, transform Jacobian) is a DELIBERATE
-#'     deviation from Rohleff et al. (2025), whose M-step uses the plain
-#'     variational bound.  It keeps the optimized quantity equal to the reported
-#'     objective and consistent with `"grad"`, but because covariate selection is
-#'     scored by a BICc-ELBO criterion it can select a different covariate set
-#'     than the reference (typically less parsimonious).  This
+#'     `mStepObjective` selects which objective that regression targets.  This
 #'     recovers a no-random-effect population parameter without adding a spurious
 #'     random effect.  `nonMuEtaOmega` is unused in this mode.
 #'   * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
@@ -104,6 +98,30 @@
 #'     reported at its `ini()` value, marked fixed, with the injected eta dropped).
 #'   * `"none"`: leave non-mu-referenced thetas frozen at their `ini()` value (the
 #'     historic behavior).
+#' @param mStepObjective Objective the non-mu-referenced theta M-step
+#'   (`nonMuTheta = "regress"` or `"grad"`) is optimized against.  It has no
+#'   effect when there is no non-mu-referenced structural theta, and it never
+#'   changes the encoder/ELBO training step or the covariate branch-and-bound
+#'   criterion, both of which always follow the reference.
+#'
+#'   * `"outer"` (default): the full FOCEi outer objective -- the frozen-eta
+#'     joint likelihood PLUS the Laplace determinant, `0.5*log|Omega^-1|` and the
+#'     DV-transform Jacobian.  This is a deliberate deviation from Rohleff et al.
+#'     (2025): it keeps the quantity being optimized equal to the objective the
+#'     fit reports, and it is the functional the analytic outer gradient
+#'     differentiates, so `nonMuTheta = "grad"` optimizes one target rather than
+#'     stepping one and scoring another.
+#'   * `"elbo"`: the reference behavior -- the plain variational bound
+#'     (frozen-eta joint likelihood, no Laplace term), matching the M-step in
+#'     Rohleff et al. (2025).  Use it to reproduce the reference implementation.
+#'     The analytic outer gradient does not apply to this objective, so
+#'     `nonMuTheta = "grad"` is downgraded to `"regress"` with a note in
+#'     `$runInfo`.
+#'
+#'   The two objectives differ by terms that depend on the non-mu thetas through
+#'   the eta Hessian, so they can land on different estimates, and -- because
+#'   those estimates feed the latent means the covariate search regresses on --
+#'   on different covariate sets.
 #' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta
 #'   (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 #'   unused for `"regress"`).
@@ -191,6 +209,7 @@ vaeControl <- function(seed = 42L,
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
+                       mStepObjective = c("outer", "elbo"),
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
                        nIsSample = 3000L,
@@ -241,6 +260,7 @@ vaeControl <- function(seed = 42L,
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
+  mStepObjective <- match.arg(mStepObjective)
   checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertLogical(returnVae, len = 1, any.missing = FALSE)
@@ -331,6 +351,7 @@ vaeControl <- function(seed = 42L,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,
                nonMuEtaOmega = nonMuEtaOmega,
+               mStepObjective = mStepObjective,
                likelihood = likelihood,
                objf = objf,
                nIsSample = as.integer(nIsSample),
@@ -418,13 +439,20 @@ nlmixr2Est.vae <- function(env, ...) {
   ## nonMuTheta="grad" needs the analytic outer gradient; out of analytic scope it
   ## must not silently become a no-op, so downgrade to the bobyqa regression once,
   ## up front, and say so in $runInfo.
-  if (identical(env$vaeControl$nonMuTheta, "grad") && !.vaeGradInScope(.ui)) {
-    .ctl <- env$vaeControl
-    .ctl$nonMuTheta <- "regress"
-    assign("vaeControl", .ctl, envir = env)
-    assign("control", .ctl, envir = env)
-    assign("control", .ctl, envir = .ui)   # the ui copy .analyticGradCaller reads
-    warning("analytic gradient out of scope; used nonMuTheta=\"regress\"", call. = FALSE)
+  if (identical(env$vaeControl$nonMuTheta, "grad")) {
+    ## the analytic gradient differentiates the OUTER objective; under the
+    ## reference ELBO M-step it would step one functional and score another
+    .elbo <- identical(env$vaeControl$mStepObjective, "elbo")
+    if (.elbo || !.vaeGradInScope(.ui)) {
+      .ctl <- env$vaeControl
+      .ctl$nonMuTheta <- "regress"
+      assign("vaeControl", .ctl, envir = env)
+      assign("control", .ctl, envir = env)
+      assign("control", .ctl, envir = .ui)   # the ui copy .analyticGradCaller reads
+      warning(if (.elbo) "mStepObjective=\"elbo\": used nonMuTheta=\"regress\""
+              else "analytic gradient out of scope; used nonMuTheta=\"regress\"",
+              call. = FALSE)
+    }
   }
   ## Seed the ENTIRE estimation ONCE here (encoder init, Adam, reparam sampling,
   ## and any random draws in the model / residual-table simulation) and restore

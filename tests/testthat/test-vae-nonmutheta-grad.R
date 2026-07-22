@@ -58,6 +58,30 @@ nmTest({
     expect_false(.vaeGradInScope(rxode2::assertRxUi(.linMod())))
   })
 
+  test_that("vaeControl accepts mStepObjective and defaults to 'outer'", {
+    expect_equal(vaeControl()$mStepObjective, "outer")
+    expect_equal(vaeControl(mStepObjective = "elbo")$mStepObjective, "elbo")
+    expect_error(vaeControl(mStepObjective = "laplace"))
+  })
+
+  test_that("mStepObjective='elbo' downgrades 'grad' to 'regress' and says so", {
+    skip_on_cran()
+    ## The analytic outer gradient differentiates the MARGINAL (Laplace)
+    ## likelihood.  Under the reference ELBO M-step there is no Laplace term to
+    ## differentiate, so stepping with it would move one functional while scoring
+    ## another -- the downgrade is what keeps a run self-consistent.  The model is
+    ## fully in analytic scope, so only the objective can trigger this.
+    expect_true(.vaeGradInScope(rxode2::assertRxUi(.odeMod())))
+    f <- suppressWarnings(suppressMessages(
+      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "vae",
+              control = vaeControl(nonMuTheta = "grad", mStepObjective = "elbo",
+                                   print = 0L, calcTables = FALSE,
+                                   itersBurnIn = 10L, iters = 20L, klWarmup = 5L,
+                                   gammaIter = 15L))))
+    expect_equal(f$control$nonMuTheta, "regress")
+    expect_true(any(grepl("mStepObjective", f$runInfo)))
+  })
+
   test_that("an out-of-scope model downgrades to 'regress' and says so", {
     skip_on_cran()
     f <- suppressWarnings(suppressMessages(

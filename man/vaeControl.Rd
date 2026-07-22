@@ -23,6 +23,7 @@ vaeControl(
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
+  mStepObjective = c("outer", "elbo"),
   likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
   nIsSample = 3000L,
@@ -146,13 +147,7 @@ results.}
     injected; instead each such theta is estimated directly, re-optimized every
     M-step by a bounded `bobyqa` regression against the full FOCEi outer
     objective (bounds from the `ini()` lower/upper), blended with the M-step gain.
-    NOTE: scoring the M-step against the full outer objective (Laplace
-    determinant, `0.5*log|Omega^-1|`, transform Jacobian) is a DELIBERATE
-    deviation from Rohleff et al. (2025), whose M-step uses the plain
-    variational bound.  It keeps the optimized quantity equal to the reported
-    objective and consistent with `"grad"`, but because covariate selection is
-    scored by a BICc-ELBO criterion it can select a different covariate set
-    than the reference (typically less parsimonious).  This
+    `mStepObjective` selects which objective that regression targets.  This
     recovers a no-random-effect population parameter without adding a spurious
     random effect.  `nonMuEtaOmega` is unused in this mode.
   * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
@@ -189,6 +184,31 @@ results.}
 \item{nonMuEtaOmega}{Variance of the eta injected for a non-mu-referenced theta
 (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 unused for `"regress"`).}
+
+\item{mStepObjective}{Objective the non-mu-referenced theta M-step
+  (`nonMuTheta = "regress"` or `"grad"`) is optimized against.  It has no
+  effect when there is no non-mu-referenced structural theta, and it never
+  changes the encoder/ELBO training step or the covariate branch-and-bound
+  criterion, both of which always follow the reference.
+
+  * `"outer"` (default): the full FOCEi outer objective -- the frozen-eta
+    joint likelihood PLUS the Laplace determinant, `0.5*log|Omega^-1|` and the
+    DV-transform Jacobian.  This is a deliberate deviation from Rohleff et al.
+    (2025): it keeps the quantity being optimized equal to the objective the
+    fit reports, and it is the functional the analytic outer gradient
+    differentiates, so `nonMuTheta = "grad"` optimizes one target rather than
+    stepping one and scoring another.
+  * `"elbo"`: the reference behavior -- the plain variational bound
+    (frozen-eta joint likelihood, no Laplace term), matching the M-step in
+    Rohleff et al. (2025).  Use it to reproduce the reference implementation.
+    The analytic outer gradient does not apply to this objective, so
+    `nonMuTheta = "grad"` is downgraded to `"regress"` with a note in
+    `$runInfo`.
+
+  The two objectives differ by terms that depend on the non-mu thetas through
+  the eta Hessian, so they can land on different estimates, and -- because
+  those estimates feed the latent means the covariate search regresses on --
+  on different covariate sets.}
 
 \item{likelihood}{Inner likelihood used for the objective, EBEs, and
 gradients, all run through the same FOCEi inner interface: `"focei"`
