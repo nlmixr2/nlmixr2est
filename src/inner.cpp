@@ -13028,6 +13028,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
   arma::vec regLower = as<arma::vec>(prep["regressLower"]);
   arma::vec regUpper = as<arma::vec>(prep["regressUpper"]);
+  // pinCovariates: optional [zDim x nCov] 0/1 allow-mask restricting each latent
+  // dim's covariate candidates to the model-declared pairs.  Absent (or NULL) ->
+  // full search (every covariate against every dim), unchanged behavior.
+  const bool haveCovAllow = prep.containsElementNamed("covAllow") &&
+    !Rf_isNull(prep["covAllow"]);
+  arma::imat covAllow;
+  if (haveCovAllow) covAllow = as<arma::imat>(prep["covAllow"]);
   List yListR = prep["yList"];
   std::vector<std::vector<double> > yList(N);
   for (int i = 0; i < N; ++i) { NumericVector yi = yListR[i]; yList[i].assign(yi.begin(), yi.end()); }
@@ -13173,15 +13180,33 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         // fixed structural theta: hold the intercept at ini, add no covariates
         if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); continue; }
         arma::vec yk = last.mu.col(k);
-        VaeSubsetFit fit = vaeBestSubsetL0(yk, X, omega[k], covPenalty, bnbStrategy);
+        // pinCovariates: restrict this dim's candidate columns to its allowed
+        // (model-declared) covariates.  A reduced design [1 | covMat.cols(allowed)]
+        // is searched, then the chosen reduced indices are mapped back to global
+        // covariate columns.  No allowed columns -> intercept-only fit.
+        arma::uvec allowedG;
+        arma::mat Xk;
+        if (haveCovAllow) {
+          std::vector<arma::uword> av;
+          for (int j = 0; j < nCov; ++j) if (covAllow(k, j) == 1) av.push_back((arma::uword)j);
+          allowedG = arma::uvec(av);
+          Xk.set_size(N, 1 + allowedG.n_elem);
+          Xk.col(0).ones();
+          if (allowedG.n_elem > 0) Xk.cols(1, allowedG.n_elem) = covMat.cols(allowedG);
+        }
+        const arma::mat& Xuse = haveCovAllow ? Xk : X;
+        VaeSubsetFit fit = vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
         if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
         intercept[k] = ic; bestCoef[0] = ic;
         arma::uvec bestCols = vaeSubsetCols(fit.sel);
-        for (size_t s = 0; s < fit.sel.size(); ++s) { beta(k, fit.sel[s]) = bestCoef[s + 1]; selected(k, fit.sel[s]) = 1; }
-        zPopMat.col(k) = X.cols(bestCols) * bestCoef;
+        for (size_t s = 0; s < fit.sel.size(); ++s) {
+          int gj = haveCovAllow ? (int)allowedG[fit.sel[s]] : fit.sel[s];
+          beta(k, gj) = bestCoef[s + 1]; selected(k, gj) = 1;
+        }
+        zPopMat.col(k) = Xuse.cols(bestCols) * bestCoef;
       }
       arma::vec omegaCur(zDim);
       for (int k = 0; k < zDim; ++k) {
