@@ -213,6 +213,10 @@
 .vaeToFit <- function(env, fit) {
   .ui <- env$ui
   .control <- env$vaeControl
+  ## mu2/mu3 restore info staged by the preprocess hook: the focei covariance
+  ## recompute below re-runs preprocessing and clears it, so snapshot it here and
+  ## reinstate it just before the mu2 finalize restores the original model.
+  .savedMuRef <- .muRefTrans$cur
   .ui2 <- if (isTRUE(fit$prep$pinActive)) .vaeUpdateModelPinned(.ui, fit) else .vaeUpdateModel(.ui, fit)
   ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
   ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
@@ -258,10 +262,19 @@
   .vaeControlToFoceiControl(.ret)
   .fit <- nlmixr2CreateOutputFromUi(.ui2, data = env$data, control = .ret$control,
                                     table = env$table, env = .ret, est = "vae")
+  ## mu2/mu3/mu4 covariate rewriting: restore the original algebraic covariate
+  ## expression (nlmixrMuDerCov# -> e.g. wt.cl*(WT/70)) in the reported model and
+  ## drop the derived data columns.  VAE assembles its output outside the focei
+  ## path that normally runs this, so reinstate the restore info and invoke the
+  ## mu2 finalize hook directly.
+  .muRefTrans$cur <- .savedMuRef
+  .fit <- .uiFinalizeMu2hook(.fit)
   ## the ORIGINAL (pre-covariate-selection) model for $uiIni/$iniDf0; must be set
   ## AFTER assembly (.nlmixr2FitUpdateParams overwrites $iniDf0 with the global
-  ## iniDf data.frame, which cannot represent the structure change)
+  ## iniDf data.frame, which cannot represent the structure change).  Use the pure
+  ## input ui (pre-mu2-rewrite) when available so iniDf0 shows the user's model.
   .e <- .fit$env
-  .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
+  .origUi <- if (!is.null(env$nlmixrPureInputUi)) env$nlmixrPureInputUi else .ui
+  .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.origUi))
   .fit
 }

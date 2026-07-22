@@ -179,26 +179,26 @@ nmTest({
                       seed = 1L, print = 0L, covMethod = "")
     fit <- suppressWarnings(rxode2::rxWithSeed(1L, nlmixr2(ui, d, est = "vae", control = ctl)))
 
-    sel <- fit$vae$selected
-    cn <- fit$vae$covNames
-    jWT <- match("WT", cn); jNZ <- match("NZ", cn)
-    ## resolve the selected-matrix rows from the eta/theta map rather than
-    ## hard-coding an order, so the test is robust to ini/eta reordering
+    ## The centered covariates are mu2 references, so the search runs on the
+    ## derived nlmixrMuDerCov# columns; assert on the user-facing OUTPUT model
+    ## (robust to the internal column naming) rather than the selected matrix.
     thetaForEta <- .foceiEtaThetaMap(ui)$thetaForEta
-    kKa <- match("lka", thetaForEta); kKe <- match("lke", thetaForEta)
-    kV  <- match("lV",  thetaForEta)
-    ## restriction: V declares no covariate, so its row is all-FALSE; and each
-    ## covariate can only land on the parameter it was declared on.
-    expect_true(all(!sel[kV, ]))
-    expect_false(sel[kKa, jNZ])                      # NZ never on ka
-    expect_false(sel[kKe, jWT])                      # WT never on ke
-    ## strong WT kept on ka; noise NZ dropped on ke
-    expect_true(sel[kKa, jWT])
-    expect_false(sel[kKe, jNZ])
-    ## returned model: dropped coefficient is exactly 0, kept one is non-trivial
+    kV <- match("lV", thetaForEta)
+    ## restriction: V declares no covariate, so nothing is ever selected on its row
+    expect_true(all(!fit$vae$selected[kV, ]))
     idf <- fit$ui$iniDf
+    ## the noise covariate (NZ on ke) is dropped to exactly 0; the strong one
+    ## (WT on ka) is kept with a non-trivial coefficient
     expect_equal(idf$est[idf$name == "beta_lke_NZ"], 0)
     expect_gt(abs(idf$est[idf$name == "beta_lka_WT"]), 0.5)
+    ## pinning never adds an undeclared covariate: only the two declared beta_
+    ## coefficients exist in the model
+    expect_setequal(grep("^beta_", idf$name, value = TRUE), c("beta_lka_WT", "beta_lke_NZ"))
+    ## mu2 rewriting is undone: original centered forms restored, derived cols gone
+    mfun <- deparse(fit$ui$fun)
+    expect_true(any(grepl("log\\(WT/70\\)|log\\(WT / 70\\)", mfun)))
+    expect_false(any(grepl("nlmixrMuDerCov", mfun)))
+    expect_false(any(grepl("nlmixrMuDerCov", names(fit))))
     ## the pinned note reached $runInfo
     expect_true(any(grepl("pinned to model-specified", fit$runInfo)))
   })

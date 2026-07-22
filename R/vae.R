@@ -47,6 +47,13 @@
 #'   in `$runInfo`.  When the model declares no covariates there is nothing to
 #'   pin and the full search runs.  Has no effect when `covariateSelection` is
 #'   `FALSE`.
+#' @param muRefCovAlg When `TRUE` (default) an algebraic/centered covariate
+#'   effect written in the model (e.g. `wt.cl*(WT/70)` or `wt.cl*log(WT/70)`) is
+#'   handled as a mu2/mu3 reference: the covariate expression -- including its
+#'   centering -- is evaluated into an internal `nlmixrMuDerCov#` data column and
+#'   the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
+#'   VAE covariate search never re-centers it.  The original expression is
+#'   restored in the reported model.
 #' @param nonMuTheta How to treat a structural population `theta` that has no
 #'   random effect (is not mu-referenced) so it can still be estimated by the VAE
 #'   (which only estimates parameters that occupy the latent space).  For the
@@ -150,6 +157,7 @@ vaeControl <- function(seed = 42L,
                        sigma0 = NULL,
                        covariateSelection = TRUE,
                        pinCovariates = TRUE,
+                       muRefCovAlg = TRUE,
                        covSelectAlpha = 2,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
@@ -200,6 +208,7 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
   checkmate::assertLogical(pinCovariates, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(muRefCovAlg, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
@@ -288,6 +297,7 @@ vaeControl <- function(seed = 42L,
                sigma0 = sigma0,
                covariateSelection = covariateSelection,
                pinCovariates = pinCovariates,
+               muRefCovAlg = muRefCovAlg,
                covSelectAlpha = covSelectAlpha,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
@@ -393,3 +403,8 @@ attr(nlmixr2Est.vae, "unbounded") <- FALSE
 ## theta+eta expression (the ID-level eta the encoder learns) plus per-occasion
 ## deviations handled by the inner problem
 attr(nlmixr2Est.vae, "iov") <- TRUE
+## enable the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook, R/mu2.R) so a
+## centered/algebraic covariate (e.g. wt.cl*(WT/70) or wt.cl*log(WT/70)) is turned
+## into a linear nlmixrMuDerCov# data column -- the centering is carried by the
+## mu2/mu3 data, not re-applied by the VAE covariate search -- gated on muRefCovAlg
+attr(nlmixr2Est.vae, "mu") <- function(control) isTRUE(control$muRefCovAlg)

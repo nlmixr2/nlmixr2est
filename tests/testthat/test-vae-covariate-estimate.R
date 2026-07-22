@@ -150,6 +150,32 @@ nmTest({
     expect_true(any(grepl("pinCovariates=FALSE", w)))
   })
 
+  test_that("a mu2 centered covariate is pinned via its nlmixrMuDerCov# column", {
+    ## wt.cl*(WT/70) is a mu2 reference; the hook rewrites it to a linear
+    ## nlmixrMuDerCov# column (centering carried by the mu2 data).  After the
+    ## hook the covariate must be encoded LINEARLY (not log) and pinned in place.
+    mu2 <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wt.cl <- 0.1; add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + wt.cl * (WT / 70) + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    lst <- suppressWarnings(.uiModifyForCovs(rxode2::assertRxUi(mu2()), as.data.frame(d)))
+    p <- suppressWarnings(.vaeDataPrep(lst$ui, lst$data, vaeControl(pinCovariates = TRUE)))
+    ## the derived column is linear (categorical), never log-encoded
+    jMu <- grep("NLMIXRMUDERCOV", p$covNames)
+    expect_length(jMu, 1L)
+    expect_equal(p$covType[jMu], "categorical")
+    ## pinned to the cl dim, in place, with no VAE-applied center (mu2 data carries it)
+    expect_true(p$pinActive)
+    pr <- p$pinPairs
+    expect_equal(pr$coefName, "wt.cl")
+    expect_true(pr$inPool)
+    expect_equal(pr$userCenter, 0)
+    ## searched (not regressed) and zeroed in the training theta
+    expect_false("wt.cl" %in% p$regressNames)
+  })
+
   test_that("pinCovariates=TRUE with no model covariates is a null path (full search)", {
     noCov <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7; eta.cl ~ 0.1 })

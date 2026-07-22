@@ -15,6 +15,14 @@
   Each case is noted in `$runInfo`.  (Time-varying covariates are still reported
   as excluded from the search regardless of the setting.)
 
+- `est="vae"` now honors mu2/mu3 (algebraic/centered) covariate references, like
+  `saem` and the mu-focei family, via `vaeControl(muRefCovAlg=)` (default `TRUE`).
+  A centered covariate such as `wt.cl*(WT/70)` or `wt.cl*log(WT/70)` is evaluated
+  into an internal linear `nlmixrMuDerCov#` column -- the centering is carried by
+  the mu2/mu3 data rather than re-applied by the VAE covariate search -- so it can
+  be pinned and selected like any other covariate; the original expression is
+  restored in the reported model.
+
 - The optimization `sigdig` now sets both the ODE solver tolerances and every
   estimation method's optimizer convergence tolerance with one consistent formula,
   so the optimizer converges to exactly the precision the solve supports.  The ODE

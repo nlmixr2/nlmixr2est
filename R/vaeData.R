@@ -80,7 +80,11 @@
   .covMat <- matrix(0, N, length(.covNames), dimnames = list(NULL, .covNames))
   for (j in seq_along(.covNames)) {
     v <- .covVal[, j]
-    if (length(unique(v)) > 2L && all(v > 0)) {
+    ## mu2/mu3 covariates are pre-transformed by the hook into a linear
+    ## nlmixrMuDerCov# data column (the centering/transform is already baked in),
+    ## so encode them LINEARLY (mean-centered) -- never re-apply a log transform.
+    .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", .covNames[j], ignore.case = TRUE)
+    if (!.isMuDer && length(unique(v)) > 2L && all(v > 0)) {
       .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
     } else {
       .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
