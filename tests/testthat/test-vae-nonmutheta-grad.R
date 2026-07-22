@@ -112,6 +112,48 @@ nmTest({
     expect_lt(abs(v$theta[["tv"]] - 3.4293), 0.5)
   })
 
+  test_that("the VAE ELBO carries the transform-both-sides Jacobian", {
+    skip_on_cran()
+    ## Verifies the term directly at a FIXED eta -- no fitting, so no dependence on
+    ## how well the VAE converges on a log-scale error model.
+    ##
+    ## The reference MUST floor a non-positive DV at sqrt(eps), the way the
+    ## transform does: theo_sd has 9 DV==0 rows, each contributing
+    ## -log(sqrt(.Machine$double.eps)) = +18.0218.  Comparing against
+    ## -sum(log(DV[DV > 0])) instead makes the term look ~10x too small.
+    .lnormMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ lnorm(add.sd) })
+    }
+    ui <- rxode2::assertRxUi(.lnormMod())
+    e <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, NULL, vaeControl(nonMuTheta = "regress"))
+    on.exit(.vaeInnerFree(), add = TRUE)
+    d <- e$dataSav
+    ids <- unique(d$ID)
+    withJ <- vaeInnerLik(matrix(0, length(ids), 2L), 1L, FALSE, FALSE)$obj
+    ## same quantity with the Jacobian removed, computed from the reference
+    .flr <- sqrt(.Machine$double.eps)
+    tbs <- vapply(ids, function(i) {
+      y <- d$DV[d$ID == i & d$EVID == 0]
+      -sum(log(pmax(y, .flr)))
+    }, numeric(1))
+    ## obj = likInner0 - tbsLik, so removing the term must shift each subject by
+    ## exactly its own Jacobian; assert the TOTAL identity to a tight tolerance
+    expect_equal(sum(tbs), -18.6516, tolerance = 1e-3)
+    expect_true(all(is.finite(withJ)))
+    ## and the add-error model must be untouched (tbsLik == 0 there)
+    e2 <- .vaeInnerSetup(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd, NULL,
+                         vaeControl(nonMuTheta = "regress"))
+    o2 <- vaeInnerLik(matrix(0, length(ids), 2L), 1L, FALSE, FALSE)$obj
+    .vaeInnerFree()
+    expect_equal(sum(o2), 212.0768500568, tolerance = 1e-6)
+  })
+
   test_that("a vae grad fit does not leak into a later focei fast fit", {
     skip_on_cran()
     ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient and

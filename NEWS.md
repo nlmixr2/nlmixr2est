@@ -13,6 +13,11 @@
   model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
   `"regress"` with a note in `$runInfo`.
 
+- The `est="vae"` ELBO now includes the transform-both-sides Jacobian, so a model
+  with `lnorm()`/`boxCox()`/`yeoJohnson()` reports its objective on the DV scale
+  -- matching what `est="focei"` already does -- instead of the transformed
+  scale.  No effect on a model without a both-sides transform.
+
 - `est="vae"`'s non-mu theta M-step (both `nonMuTheta="regress"` and
   `"grad"`) now optimizes the FULL outer objective -- the Laplace determinant,
   `0.5*log|Omega^-1|` and the transform-both-sides Jacobian -- rather than the

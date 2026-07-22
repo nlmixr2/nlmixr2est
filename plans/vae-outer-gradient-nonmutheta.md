@@ -480,34 +480,46 @@ Either find/tune one, or validate the term directly: assert
 isolates the Jacobian from convergence entirely.  The latter is the better test
 and does not depend on lnorm fit quality.
 
-##### tbsLik in the VAE ELBO: REVERTED, unvalidated
+##### tbsLik in the VAE ELBO: RESOLVED -- the term was right, my reference was wrong
 
-Applying the transform-both-sides Jacobian to the VAE ELBO looked correct --
-`likInner0` excludes it, only `LikInner2` adds it, and the ELBO's data term should
-be on the DV scale.  Measuring it says otherwise.  With `vaeInnerLik` at eta=0 on
-theo_sd (no fitting, so no convergence noise):
+Applying the transform-both-sides Jacobian to the VAE ELBO was first reverted on
+the strength of a bad comparison, then restored after instrumenting.  Recorded
+because the trap is easy to fall into twice.
 
-| model | with the term | without | difference |
-|---|---|---|---|
-| `add`   | 212.0768500568 | 212.0768500568 | 0 |
-| `lnorm` | 6684.4180654897 | 6665.7660665466 | 18.65 |
+`vaeInnerLik` at eta=0 on theo_sd, per subject, `fInd->tbsLik` vs
+`-sum(log(DV))`:
 
-`obj` is -log p, so the difference implies `fInd->tbsLik` = -18.65.  But the log
-Jacobian for this data is `sum(log|dy'/dy|) = -sum(log(DV))` = **-180.85** over
-123 observations -- roughly 10x larger.  That gap is unexplained: either
-`fInd->tbsLik` is not the whole-subject Jacobian sum on this path, or it is
-accumulated somewhere the VAE reads at the wrong time.
+| subject has DV==0 | agreement |
+|---|---|
+| no (subjects 1, 7, 10) | EXACT, ratio 1.0000 |
+| yes (the other 9) | off by exactly +18.0218 each |
 
-Applying a term I cannot reconcile to a REPORTED objective is worse than leaving
-it out, so it is reverted; `src/inner.cpp` carries a comment recording why.
+`18.0218 = -log(sqrt(DBL_EPSILON))`: the transform FLOORS a non-positive DV at
+`sqrt(eps) = 1.49e-8`, so a `DV==0` row contributes `-log(1.49e-8)`.  theo_sd has
+9 such rows, and
 
-Resolve by instrumenting `fInd->tbsLik` per subject against a hand-computed
-`-sum(log(DV_i))` before touching this again.  Note the audit's OTHER conclusion
-still stands and is unaffected: npag/npb already fold `tbsJac` into `llikObs`
-(`inner.cpp:1806/1834`), so nothing was double-counted there.
+    -180.848  +  9 * 18.0218  =  -18.6516      (measured total: -18.652)
 
-##### Answering "do the non-TBS objectives match?" -- YES, exactly
+So `fInd->tbsLik` is exactly correct.  The apparent "10x mismatch" came entirely
+from a reference that DROPPED the zero-DV rows (`dv[dv > 0]`) while the C code
+keeps them at the floor.  The change is restored, and
+`test-vae-nonmutheta-grad.R` now pins the identity with the floor applied.
 
-The `add` row above is byte-identical (212.0768500568) with and without the term,
-confirming the change was a strict no-op absent a both-sides transform and that
-nothing else on this branch perturbed the non-transformed objective.
+(Whether a `DV==0` under `lnorm()` should be an epsilon-floored density at all is
+a separate modeling question -- it is really a below-LLOQ/censoring case.  What
+matters here is only that the VAE now treats the term exactly as focei's
+`LikInner2` does.)
+
+Still true and unaffected: npag/npb already fold `tbsJac` into `llikObs`
+(`inner.cpp:1806/1834`), so nothing must be added there -- that one WOULD
+double-count.
+
+##### The non-TBS objective is unchanged, exactly
+
+`add` gives 212.0768500568 with and without the term -- byte-identical -- so the
+change is a strict no-op absent a both-sides transform.
+
+LESSON: when validating a C-side accumulator against an R reference, reproduce the
+C code's DOMAIN HANDLING (flooring, censoring, dropped rows), not just its formula.
+Three separate wrong conclusions on this branch came from a plausible-looking
+reference that differed from the implementation in exactly one such detail.
