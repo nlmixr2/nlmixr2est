@@ -130,8 +130,19 @@ not exact equality.
 ### Phase 1 -- add the residual parameters to the existing regressor
 
 * Extend the `nonMuTheta = "regress"` parameter vector (`gVaeRegIdx`) to include
-  the `err`-tagged thetas with their `ini()` bounds, and switch the driver to
-  `newuoa` to match `saemControl(type=)`'s default.
+  the `err`-tagged thetas with their `ini()` bounds.
+* Optimizer choice needs a decision rather than a default: `saemControl(type=)`
+  now defaults to **newuoa**, which is unbounded (SAEM keeps its residual
+  parameters positive by optimizing their square roots), while npag uses bounded
+  **`minqa::bobyqa`** precisely because residual parameters carry `ini()` bounds,
+  which the VAE's regressor already honors.  Prefer bobyqa for the bounds and
+  offer newuoa as the alternative, rather than inheriting SAEM's default
+  unexamined.
+* Note npag's rationale for the `log(r)` term: it "keeps the residual from
+  drifting to zero on a flexible support (which the marginal likelihood would
+  reward), giving the saem/focei residual".  The VAE's encoder is a flexible
+  posterior in the same sense, so that term is load-bearing here too -- it is not
+  merely a normalizing constant to be dropped for speed.
 * **Every parameter in the set is informed by the optimization -- there is no
   closed-form assignment branch.**  A deliberate departure from SAEM, which
   assigns `ares(b) = sqrt(sig2)` for a single-parameter endpoint and optimizes
@@ -141,7 +152,24 @@ not exact equality.
   sufficient statistic and assign it" rule used for `omega`
   (`omegaUpdate = "suffStat"`) does NOT carry over here -- do not reintroduce it
   by analogy.
-* Delete `vaeUpdateErr` once the optimizer covers every error model it did.
+* **Keep `vaeUpdateErr`, do not delete it.**  npag keeps its moment estimator for
+  two jobs, and both apply here:
+
+  1. **Warm start.**  npag warm-starts each variance scale from the per-endpoint
+     moment (additive SD from `sqrt(mean(err^2))`, proportional from
+     `sqrt(mean((err/f)^2))`, on the transform-both-sides scale) before running
+     the optimizer.  That is what `vaeUpdateErr` already computes, and the VAE
+     needs it more than npag does, since the M-step runs at posterior means that
+     are poor early in training.
+  2. **A closed-form option for the single-additive-error case.**  With exactly
+     one additive error the ELS optimum IS `sqrt(SSE/n)`, so the optimizer buys
+     nothing: the option returns the identical answer without an optimizer call
+     per M-step.  Offer it as a control, defaulting to the optimizer for
+     uniformity, and pin the equivalence with the Phase 1 oracle test -- if the
+     two ever disagree on a pure-additive model, one of them is wrong.
+
+  It is a shortcut and a warm start, never a second estimator running beside the
+  optimizer on the same parameters.
 
 *Verification*: the closed form is an **oracle, not a code path**.  For a
 pure-additive endpoint the optimum is `sqrt(SSE/n)`, so the optimizer's answer
