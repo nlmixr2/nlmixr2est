@@ -1201,3 +1201,29 @@ Concrete candidates for the next attempt:
     teach `.uiFinalizeIov` to prefer `ret$env` over `.uiIovEnv` when present --
     the only option that removes the global-state dependence rather than working
     around it, and the most robust if a shared change is acceptable after all.
+
+##### Third attempt (per-fit handoff) ALSO failed -- and it regressed focei
+
+Tried option 3: `.vaeToFit` stashes `.ret$vaeIovVars <- .uiIovEnv$iovVars`, and
+`.uiFinalizeIov` resolves `.iovVars <- ret$env$vaeIovVars %||% .uiIovEnv$iovVars`,
+using `.iovVars` for its parFixedDf/parFixed indexing.  Intended to be purely
+additive (focei sets nothing, so it should keep using the global).
+
+    focei -> ERROR: subscript out of bounds        (REGRESSION -- was OK)
+    vae   -> ERROR: invalid second argument of length 0   (unchanged)
+
+Reverted; focei re-verified OK (tv = 3.42719), tree clean.
+
+I did not isolate WHY focei regressed.  The edit rewrote ~9 `.uiIovEnv$iovVars`
+references via scripted string replacement, so a partial/incorrect substitution is
+at least as likely as the design being wrong -- do not conclude from this that the
+per-fit-handoff idea is dead.  If retried: make the edit by hand, one reference at
+a time, and run focei after EACH change rather than at the end.
+
+Running total on this bug: root cause understood and the chain traced end to end,
+but THREE fix attempts have failed, two of them regressing focei.  Every attempt
+so far has touched `R/iov.R`, and every one has broken focei.  That is the
+strongest signal in the record: the next attempt should find a way to give the VAE
+what it needs WITHOUT editing that shared file at all -- e.g. a VAE-registered
+hook ordered around `.uiApplyIov`/`.uiFinalizeIov`, which is the one candidate
+from the previous section that has not been tried.
