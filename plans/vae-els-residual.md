@@ -296,10 +296,50 @@ plausible-looking regression was a bug in the objective, not a property of the
 model -- and that the tests written against the wrong objective passed 25/25 and
 would have locked it in.
 
-### Phase 5 -- multiple endpoints
+### Phase 5 -- multiple endpoints  [NOT A TASK]
 
-* Per-endpoint statistics and per-endpoint optimization throughout, so a model
-  with two endpoints and different error structures estimates both.
+There is nothing to wire.  The objective already runs across ALL residual
+contributors simultaneously: `likInner0` sums a subject's observations, each
+carrying its own endpoint's `r` from `rx_r_`, and every endpoint's residual
+parameters are in the one optimizer vector.  A model with two endpoints and
+different error structures estimates both without per-endpoint statistics.
+
+I had started threading a per-error-parameter endpoint index through the prep,
+which was solving a problem that does not exist; it has been reverted.
+
+### The stage-2 objective should use the existing ODE-freeze, not hand-rolled variance
+
+`gVaeElsObjR` currently recomputes `r` itself from the candidate parameters, with
+a hardcoded formula per error model (add, prop, combined1/2, pow, lnorm, and the
+TBS transform).  **That is a reimplementation of machinery that already exists**
+(`src/inner.cpp:10640-10713`):
+
+    npResidFreezeBuild()  normal solves fill a per-subject state cache, then set
+                          op_focei.freezeOde = true
+    npEvalCondLik()       reuses the cached states and recomputes ONLY r
+    npResidFreezeClear()
+
+with the comment already stating the principle: *"params are optimized, f does
+not change, so the states can be pinned and only r recomputed -- exactly like
+saem's ODE-freeze."*  `npResidELS` is the ELS objective built on it.
+
+Routing stage 2 through `likInner0` with the ODE frozen would be strictly better
+than the current hand-rolled form:
+
+* `r` comes from the model's own `rx_r_`, so EVERY error model works with no
+  per-form code -- including the ones not yet handled (`type 2`).
+* Multiple endpoints and censoring are handled by construction.
+* The transform-both-sides bug could not occur: the model applies the transform,
+  so there is no opportunity to transform `f` as well as `dv`.  That bug cost two
+  rounds here and passed a 25-assertion test suite.
+
+The np helpers are np-coupled (`npEvalCondLik`, `npMixCondLik`, `impNmix`), but
+the freeze MECHANISM is generic -- it operates on `op_focei` and the solve cache.
+The VAE analogue is to freeze the ODE and evaluate `vaeInnerLikCore` at the fixed
+posterior-mean etas over the residual parameters only.  Note this is NOT the
+joint solve that diverged: that failed because structural thetas moved at frozen
+etas, whereas here `f` is pinned and only `r` varies, which is exactly what npag
+does.
 
 ### Phase 6 -- control surface and documentation
 

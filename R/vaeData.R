@@ -572,15 +572,6 @@ vaeCovariates <- function(data, warn = TRUE) {
     as.integer(ifelse(is.na(.m), 0L, .m) - 1L)
   } else integer(0)
   .errThetaIdx <- as.integer(.errRow$ntheta)
-  ## Endpoint (0-based) of each error parameter.  iniDf$condition names the
-  ## endpoint it belongs to and predDf lists them in dvid order, so a
-  ## multi-endpoint model can keep its residual parameters apart instead of
-  ## pooling every observation into one variance.
-  .endpointNames <- as.character(ui$predDf$cond)
-  .errEndpoint0 <- if (nrow(.errRow) > 0L && length(.endpointNames) > 0L) {
-    .m <- match(as.character(.errRow$condition), .endpointNames)
-    as.integer(ifelse(is.na(.m), 1L, .m) - 1L)
-  } else integer(nrow(.errRow))
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
 
@@ -655,7 +646,6 @@ vaeCovariates <- function(data, warn = TRUE) {
        zPopFix = .zPopFix,
        zPopLower = .zPopLower, zPopUpper = .zPopUpper,
        errThetaIdx = .errThetaIdx, errType = .errType,
-       errEndpoint0 = .errEndpoint0, endpointNames = .endpointNames,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
        regressErrIdx0 = .regressErrIdx0,
