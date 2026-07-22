@@ -330,11 +330,12 @@ nlmeControl(
   the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
   sits three orders below, so `rtol = 10^-sigdig`,
   `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
-  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
-  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
-  Keying the optimizer to the same `10^-sigdig` means it converges to
-  exactly the precision the solve supports. At the default `sigdig = 4`
-  this is `atol = 1e-7`, `rtol = 1e-4`.
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) tolerances
+  match the main solve (the outer gradient and covariance are built from
+  them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
+  looser. Keying the optimizer to the same `10^-sigdig` means it
+  converges to exactly the precision the solve supports. At the default
+  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -707,10 +708,10 @@ nlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-07
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $ssAtolSens
 #> [1] 1e-06
@@ -1227,10 +1228,10 @@ nlmixr2NlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-07
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $ssAtolSens
 #> [1] 1e-06

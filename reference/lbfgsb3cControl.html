@@ -305,8 +305,10 @@ consistent formula, the inner/outer optimizer convergence tolerance
 and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
 <code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
 <code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>) and
-steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one
+order looser.
 Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
 exactly the precision the solve supports.  At the default <code>sigdig = 4</code>
 this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
@@ -396,9 +398,9 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3604424  1.51287    5.5e-06      0.046       0.006 0.025    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3710424 1.522589  6.392e-06      0.049       0.007 0.031    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1086824</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1173623</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

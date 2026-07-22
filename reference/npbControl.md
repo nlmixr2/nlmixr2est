@@ -164,13 +164,13 @@ npbControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+12
+#> [1] 4.5036e+11
 #> 
 #> $scaleTo
 #> [1] 1
 #> 
 #> $epsilon
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $derivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -230,16 +230,16 @@ npbControl()
 #> [1] 0.95
 #> 
 #> $sigdig
-#> [1] 3
+#> [1] 4
 #> 
 #> $sigdigTable
-#> [1] 3
+#> [1] 4
 #> 
 #> $scaleObjective
 #> [1] 0
 #> 
 #> $boundTol
-#> [1] 0.05
+#> [1] 0.005
 #> 
 #> $calcTables
 #> [1] TRUE
@@ -322,7 +322,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x555844be2ee0>
+#> <bytecode: 0x5594f52fa4a0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -335,10 +335,10 @@ npbControl()
 #> NULL
 #> 
 #> $rel.tol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $x.tol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $eval.max
 #> [1] 4000
@@ -350,13 +350,13 @@ npbControl()
 #> [1] 1
 #> 
 #> $abstol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $reltol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $derivSwitchTol
-#> [1] 0.002
+#> [1] 2e-04
 #> 
 #> $resetHessianAndEta
 #> [1] 0
@@ -529,10 +529,10 @@ npbControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-07
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -738,10 +738,10 @@ npbControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-06
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 0.001
 #> 
 #> $safeZero
 #> [1] 1
@@ -767,16 +767,16 @@ npbControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $rtolSens
-#> [1] 0.01
+#> [1] 1e-04
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-06
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 0.001
 #> 
 #> $simVariability
 #> [1] NA

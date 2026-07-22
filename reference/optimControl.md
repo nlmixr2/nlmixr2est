@@ -376,11 +376,12 @@ optimControl(
   the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
   sits three orders below, so `rtol = 10^-sigdig`,
   `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
-  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
-  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
-  Keying the optimizer to the same `10^-sigdig` means it converges to
-  exactly the precision the solve supports. At the default `sigdig = 4`
-  this is `atol = 1e-7`, `rtol = 1e-4`.
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) tolerances
+  match the main solve (the outer gradient and covariance are built from
+  them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
+  looser. Keying the optimizer to the same `10^-sigdig` means it
+  converges to exactly the precision the solve supports. At the default
+  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - sigdigTable:
 
@@ -472,9 +473,9 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3517865 0.5549574  5.841e-06      0.054       0.006 0.027    0.001
+#> elapsed 0.3609067 0.5573971  5.952e-06      0.052       0.006 0.025    0.001
 #>             other
-#> elapsed 0.1052503
+#> elapsed 0.1216902
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

@@ -6,7 +6,7 @@ the Laplace method (\`nAGQ=1\`); see \`foceiControl(muModel=)\`.
 ## Usage
 
 ``` r
-ilaplaceControl(sigdig = 3, ..., nAGQ = 1, muModel = c("irls", "lin", "none"))
+ilaplaceControl(sigdig = 4, ..., nAGQ = 1, muModel = c("irls", "lin", "none"))
 ```
 
 ## Arguments
@@ -19,11 +19,12 @@ ilaplaceControl(sigdig = 3, ..., nAGQ = 1, muModel = c("irls", "lin", "none"))
   the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
   sits three orders below, so `rtol = 10^-sigdig`,
   `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
-  auto-switching). The sensitivity (`atolSens`/`rtolSens`) and
-  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser.
-  Keying the optimizer to the same `10^-sigdig` means it converges to
-  exactly the precision the solve supports. At the default `sigdig = 4`
-  this is `atol = 1e-7`, `rtol = 1e-4`.
+  auto-switching). The sensitivity (`atolSens`/`rtolSens`) tolerances
+  match the main solve (the outer gradient and covariance are built from
+  them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
+  looser. Keying the optimizer to the same `10^-sigdig` means it
+  converges to exactly the precision the solve supports. At the default
+  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
 
 - ...:
 
@@ -90,13 +91,13 @@ ilaplaceControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+12
+#> [1] 4.5036e+11
 #> 
 #> $scaleTo
 #> [1] 1
 #> 
 #> $epsilon
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $derivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -156,16 +157,16 @@ ilaplaceControl()
 #> [1] 0.95
 #> 
 #> $sigdig
-#> [1] 3
+#> [1] 4
 #> 
 #> $sigdigTable
-#> [1] 3
+#> [1] 4
 #> 
 #> $scaleObjective
 #> [1] 0
 #> 
 #> $boundTol
-#> [1] 0.05
+#> [1] 0.005
 #> 
 #> $calcTables
 #> [1] TRUE
@@ -248,23 +249,23 @@ ilaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x555844be2ee0>
+#> <bytecode: 0x5594f52fa4a0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $npt
 #> NULL
 #> 
 #> $rel.tol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $x.tol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $eval.max
 #> [1] 4000
@@ -276,13 +277,13 @@ ilaplaceControl()
 #> [1] 1
 #> 
 #> $abstol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $reltol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $derivSwitchTol
-#> [1] 0.002
+#> [1] 2e-04
 #> 
 #> $resetHessianAndEta
 #> [1] 0
@@ -455,10 +456,10 @@ ilaplaceControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-07
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-04
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -664,10 +665,10 @@ ilaplaceControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-06
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 0.001
 #> 
 #> $safeZero
 #> [1] 1
@@ -693,16 +694,16 @@ ilaplaceControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $rtolSens
-#> [1] 0.01
+#> [1] 1e-04
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-06
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 0.001
 #> 
 #> $simVariability
 #> [1] NA

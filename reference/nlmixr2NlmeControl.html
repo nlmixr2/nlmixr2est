@@ -377,8 +377,10 @@ consistent formula, the inner/outer optimizer convergence tolerance
 and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
 <code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
 <code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>) and
-steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one
+order looser.
 Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
 exactly the precision the solve supports.  At the default <code>sigdig = 4</code>
 this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
@@ -755,10 +757,10 @@ and keep nlme's own standard errors.  When the recompute fails the
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $atolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-07</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rtolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-04</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssAtolSens</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
@@ -1275,10 +1277,10 @@ and keep nlme's own standard errors.  When the recompute fails the
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $atolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-07</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rtolSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-04</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ssAtolSens</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
