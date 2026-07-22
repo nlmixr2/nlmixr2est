@@ -145,7 +145,14 @@ results.}
   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
     injected; instead each such theta is estimated directly, re-optimized every
     M-step by a bounded `bobyqa` regression against the full FOCEi outer
-    objective (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+    objective (bounds from the `ini()` lower/upper), blended with the M-step gain.
+    NOTE: scoring the M-step against the full outer objective (Laplace
+    determinant, `0.5*log|Omega^-1|`, transform Jacobian) is a DELIBERATE
+    deviation from Rohleff et al. (2025), whose M-step uses the plain
+    variational bound.  It keeps the optimized quantity equal to the reported
+    objective and consistent with `"grad"`, but because covariate selection is
+    scored by a BICc-ELBO criterion it can select a different covariate set
+    than the reference (typically less parsimonious).  This
     recovers a no-random-effect population parameter without adding a spurious
     random effect.  `nonMuEtaOmega` is unused in this mode.
   * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic

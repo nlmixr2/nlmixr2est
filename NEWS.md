@@ -39,6 +39,15 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"`'s population M-step is now scored against the full FOCEi outer
+  objective (Laplace determinant, `0.5*log|Omega^-1|` and the transform
+  Jacobian), so the quantity optimized matches the objective the fit reports and
+  is consistent with the analytic gradient used by `nonMuTheta="grad"`.  This is
+  a **deliberate deviation** from Rohleff et al. (2025), whose M-step uses the
+  plain variational bound; because covariate selection is scored by a BICc-ELBO
+  criterion it can select a different (typically less parsimonious) covariate set
+  than the reference.  See the `est="vae"` article for details.
+
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
   covariates already written in the model.  When the model declares covariate
   effects, the automatic BICc covariate search is restricted to those
