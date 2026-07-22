@@ -13,7 +13,19 @@ nmTest({
     expect_s3_class(res, "data.frame")
     expect_equal(res$covariate, c("WT", "SEX"))
     expect_equal(res$type, c("continuous", "categorical"))
-    expect_equal(res$center, c(mean(c(70, 80, 60, 75)), 0.5))
+    ## WT is centered at its mean; SEX is a 0/1 indicator so it is left RAW
+    ## (center 0) -- its coefficient is the level-1 shift and the structural
+    ## theta stays the reference (SEX=0) value
+    expect_equal(res$center, c(mean(c(70, 80, 60, 75)), 0))
+  })
+
+  test_that("a non-0/1 two-level covariate is still mean-centered", {
+    d <- data.frame(
+      id = rep(1:4, each = 3), time = rep(0:2, 4), dv = 1:12,
+      grp = rep(c(1, 2, 1, 2), each = 3))       # 2 levels, but not 0/1
+    res <- vaeCovariates(d)
+    expect_equal(res$type, "categorical")
+    expect_equal(res$center, 1.5)
   })
 
   test_that("vaeCovariates matches what .vaeDataPrep explores (theo_sd)", {

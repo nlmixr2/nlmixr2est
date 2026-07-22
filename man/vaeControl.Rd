@@ -16,6 +16,8 @@ vaeControl(
   burnInLearningRate = 0.008,
   sigma0 = NULL,
   covariateSelection = TRUE,
+  pinCovariates = TRUE,
+  muRefCovAlg = TRUE,
   covSelectAlpha = 2,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
@@ -85,6 +87,25 @@ structure written in the model.  In the `FALSE` case the model-declared
 covariate coefficients (both linear `beta*WT` effects and transformed ones
 such as `beta*log(WT/70)`) are estimated in place by the regress M-step
 regardless of `nonMuTheta`; a `ini(... ~ fix())` coefficient stays fixed.}
+
+\item{pinCovariates}{When `TRUE` (default) and the model already declares
+covariate effects, restrict the automatic covariate selection to only the
+covariate/parameter pairs written in the model -- the branch-and-bound
+search may still drop a declared covariate, but can never add one the model
+did not specify.  A declared covariate that is not a valid search candidate
+(time-varying, or a raw-linear form that does not match the `log`/centered
+encoding) is estimated in place by the regress M-step instead, with a note
+in `$runInfo`.  When the model declares no covariates there is nothing to
+pin and the full search runs.  Has no effect when `covariateSelection` is
+`FALSE`.}
+
+\item{muRefCovAlg}{When `TRUE` (default) an algebraic/centered covariate
+effect written in the model (e.g. `wt.cl*(WT/70)` or `wt.cl*log(WT/70)`) is
+handled as a mu2/mu3 reference: the covariate expression -- including its
+centering -- is evaluated into an internal `nlmixrMuDerCov#` data column and
+the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
+VAE covariate search never re-centers it.  The original expression is
+restored in the reported model.}
 
 \item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
 penalty, ramped linearly from `covSelectAlpha` down to `1` over the

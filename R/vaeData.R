@@ -80,8 +80,19 @@
   .covMat <- matrix(0, N, length(.covNames), dimnames = list(NULL, .covNames))
   for (j in seq_along(.covNames)) {
     v <- .covVal[, j]
-    if (length(unique(v)) > 2L && all(v > 0)) {
+    ## mu2/mu3 covariates are pre-transformed by the hook into a linear
+    ## nlmixrMuDerCov# data column (the centering/transform is already baked in),
+    ## so encode them LINEARLY (mean-centered) -- never re-apply a log transform.
+    .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", .covNames[j], ignore.case = TRUE)
+    ## a 0/1 indicator column (e.g. SEXF) is already in its natural
+    ## parameterization: leave it RAW so its coefficient is the level-1 shift and
+    ## the structural theta stays the reference (0) value.  (`%in%` yields FALSE
+    ## for NA, so this is already a strict TRUE/FALSE; isTRUE makes that explicit.)
+    .isInd <- isTRUE(all(v %in% c(0, 1)))
+    if (!.isMuDer && !.isInd && length(unique(v)) > 2L && all(v > 0)) {
       .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
+    } else if (.isInd) {
+      .covType[j] <- "categorical"; .covPop[j] <- 0; .covMat[, j] <- v
     } else {
       .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
     }
@@ -129,6 +140,150 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   data.frame(covariate = .cov$covNames, type = .cov$covType,
              center = .cov$covPop, row.names = NULL)
+}
+
+#' Detect a clean `log(cov/center)` form for `cov` inside an expression.
+#'
+#' Walks the parse tree; returns the divisor `center` when `cov` occurs as
+#' `log(cov)` (center 1) or `log(cov/<numeric literal>)`.  Any other form
+#' (raw `cov`, `log(cov/expr)`, `log(a*cov)`) yields `inLog=FALSE` or a `NA`
+#' center so the caller can fall back to the in-place regress M-step.
+#' @noRd
+.vaeLogCenter <- function(e, cov) {
+  if (is.call(e)) {
+    if (identical(e[[1L]], as.name("log")) && length(e) == 2L &&
+          cov %in% all.vars(e[[2L]])) {
+      .a <- e[[2L]]
+      if (is.name(.a) && identical(as.character(.a), cov)) {
+        return(list(inLog = TRUE, center = 1))
+      }
+      if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L &&
+            is.name(.a[[2L]]) && identical(as.character(.a[[2L]]), cov) &&
+            is.numeric(.a[[3L]]) && length(.a[[3L]]) == 1L && is.finite(.a[[3L]])) {
+        return(list(inLog = TRUE, center = as.numeric(.a[[3L]])))
+      }
+      return(list(inLog = TRUE, center = NA_real_))
+    }
+    for (.i in seq_along(e)[-1L]) {
+      .r <- .vaeLogCenter(e[[.i]], cov)
+      if (isTRUE(.r$inLog)) return(.r)
+    }
+  }
+  list(inLog = FALSE, center = NA_real_)
+}
+
+#' Covariate that a coefficient multiplies, within an expression.
+#'
+#' Disambiguates which data covariate `coef` pairs with when a model line carries
+#' several covariate effects (e.g. `wt.cl*log(WT/70) + sex.cl*SEX`): walks to the
+#' `*` term containing `coef` and returns the single covariate on the other side.
+#' `NULL` when it cannot be resolved to exactly one covariate.
+#' @noRd
+.vaeCoefCov <- function(e, coef, covs) {
+  if (is.call(e)) {
+    if (identical(e[[1L]], as.name("*")) && length(e) == 3L) {
+      .lv <- all.vars(e[[2L]]); .rv <- all.vars(e[[3L]])
+      if (coef %in% .lv) { .c <- intersect(.rv, covs); if (length(.c) == 1L) return(.c) }
+      if (coef %in% .rv) { .c <- intersect(.lv, covs); if (length(.c) == 1L) return(.c) }
+    }
+    for (.i in seq_along(e)[-1L]) {
+      .r <- .vaeCoefCov(e[[.i]], coef, covs)
+      if (!is.null(.r)) return(.r)
+    }
+  }
+  NULL
+}
+
+#' Model-declared covariate/parameter pairs for pinned VAE selection.
+#'
+#' One row per model-written covariate coefficient, resolving which latent dim
+#' (eta) `k` it modifies, the data covariate, the user's coefficient theta, and
+#' whether the pair can be handled by the restricted branch-and-bound search
+#' (`inPool`) -- i.e. the covariate is in the subject-level search pool AND its
+#' written functional form matches the VAE encoding so the estimated slope
+#' transfers directly (continuous->`log(cov/center)`, categorical->linear).
+#' Pairs that are not `inPool` (out-of-pool covariate, or a form whose slope
+#' would not transfer) are estimated in place by the regress M-step instead.
+#' @param ui rxode2 ui
+#' @param covNames upper-cased search-pool covariate names (`prep$covNames`)
+#' @param covType per-pool encoding (`"continuous"`/`"categorical"`)
+#' @return data frame (k, covName, coefName, thetaName, covType, userCenter,
+#'   inPool), or `NULL` when the model declares no covariate effects
+#' @noRd
+.vaeModelCovariatePairs <- function(ui, covNames, covType) {
+  .coefThetas <- .vaeCovariateCoefThetas(ui)
+  if (length(.coefThetas) == 0L) return(NULL)
+  .thetaForEta <- .foceiEtaThetaMap(ui)$thetaForEta
+  .thetaPool <- .thetaForEta[!is.na(.thetaForEta)]
+  .allCov <- ui$allCovs
+  if (is.null(.allCov)) .allCov <- character(0)
+  .mrc <- ui$muRefCovariateDataFrame
+  .lst <- ui$lstExpr
+  .rows <- vector("list", 0L)
+  for (.coef in .coefThetas) {
+    .thName <- NA_character_; .covTok <- NA_character_; .linear <- FALSE
+    if (!is.null(.mrc) && nrow(.mrc) > 0L && .coef %in% .mrc$covariateParameter) {
+      .r <- .mrc[.mrc$covariateParameter == .coef, , drop = FALSE][1L, ]
+      .thName <- as.character(.r$theta)
+      ## rxode2 may record an ALGEBRAIC covariate expression here (mu2-style,
+      ## e.g. "log(0.0142857 * WT)") rather than a bare data column.  Only take
+      ## it as a plain linear effect when it names a pool covariate directly;
+      ## otherwise fall through to the model-line scan below.
+      .cand <- as.character(.r$covariate)
+      if (!is.na(match(toupper(.cand), covNames))) {
+        .covTok <- .cand
+        .linear <- TRUE
+      }
+    }
+    if (is.na(.covTok)) {
+      .lines <- Filter(function(e) .coef %in% all.vars(e), .lst)
+      if (length(.lines) == 0L) next
+      .vars <- all.vars(.lines[[1L]])
+      if (is.na(.thName)) {
+        .thHit <- intersect(.thetaPool, .vars)
+        if (length(.thHit) == 1L) .thName <- .thHit
+      }
+      ## a line may carry several covariate effects (e.g.
+      ## wt.cl*log(WT/70) + sex.cl*SEX): pick the covariate THIS coefficient
+      ## multiplies rather than skipping the coefficient (skipping could drop
+      ## pinning to the unrestricted full search).  Unresolved -> not pinnable.
+      .cc <- .vaeCoefCov(.lines[[1L]], .coef, .allCov)
+      if (!is.null(.cc)) .covTok <- .cc
+    }
+    ## Always emit a row for a detected coefficient so pinning stays restrictive;
+    ## a pair that cannot be resolved/transferred is marked not `inPool` and
+    ## estimated in place by the regress M-step.
+    .k <- match(.thName, .thetaForEta)
+    .j <- if (!is.na(.covTok)) match(toupper(.covTok), covNames) else NA_integer_
+    .inPool <- !is.na(.k) && !is.na(.j)
+    .ct <- if (.inPool) covType[.j] else NA_character_
+    .userCenter <- NA_real_
+    if (.inPool) {
+      if (identical(.ct, "categorical")) {
+        ## VAE centers a categorical covariate; a plain linear beta*cov transfers
+        ## (slope invariant to the shift).  A transformed categorical is unusual
+        ## and not slope-transferable -- route it to the regress M-step.
+        if (.linear) .userCenter <- 0 else .inPool <- FALSE
+      } else {
+        ## continuous: VAE uses log(cov/mean); only a written log(cov/center)
+        ## transfers.  A raw linear beta*cov on a continuous covariate does not.
+        .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
+        .lc <- if (length(.cl)) .vaeLogCenter(.cl[[1L]], .covTok)
+               else list(inLog = FALSE, center = NA_real_)
+        if (isTRUE(.lc$inLog) && is.finite(.lc$center)) .userCenter <- .lc$center
+        else .inPool <- FALSE
+      }
+    }
+    .rows[[length(.rows) + 1L]] <- data.frame(
+      k = if (is.na(.k)) NA_integer_ else as.integer(.k),
+      covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
+      coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
+      covType = if (is.na(.ct)) NA_character_ else .ct,
+      userCenter = .userCenter, inPool = .inPool,
+      stringsAsFactors = FALSE)
+  }
+  if (length(.rows) == 0L) return(NULL)
+  do.call(rbind, .rows)
 }
 
 #' Prepare VAE inputs from a ui + data
@@ -181,6 +336,117 @@ vaeCovariates <- function(data, warn = TRUE) {
   .zPopLower[!.isFree] <- as.numeric(.thRows$lower[.zPopThetaIdx[!.isFree]])
   .zPopUpper[!.isFree] <- as.numeric(.thRows$upper[.zPopThetaIdx[!.isFree]])
 
+  ## normalize data columns (needed early for covariate discovery + pinning)
+  d <- as.data.frame(data)
+  names(d) <- toupper(names(d))
+  ## no EVID: derive from AMT; with no AMT column either (dose-free data), all
+  ## rows are observations (d$AMT is NULL -> the ifelse would yield length 0).
+  if (is.null(d$EVID)) {
+    d$EVID <- if (is.null(d$AMT)) rep(0L, nrow(d)) else ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
+  }
+  .ids <- unique(d$ID)
+  N <- length(.ids)
+
+  ## subject-level covariate discovery + encoding (shared with vaeCovariates())
+  .cov <- .vaeCovariateSearch(d, .ids)
+  if (length(.cov$tvExcl) > 0L) {
+    ## keep the $runInfo note single-line even with many covariates
+    .tvPre <- "time-varying covariate(s) not searched: "
+    warning(.tvPre, .vaeTruncList(.cov$tvExcl, prefix = .tvPre), call. = FALSE)
+  }
+
+  ## pinCovariates=FALSE with a model that declares covariates: turn OFF the
+  ## automatic search and estimate every declared covariate in place by the
+  ## regress M-step (the covariateSelection=FALSE treatment).  Emptying the
+  ## search pool makes the C++ M-step skip covariate selection entirely.  With no
+  ## model-declared covariates there is nothing to switch off -- the full search
+  ## runs.  (Explicit covariateSelection=FALSE keeps its own path below.)
+  .declaredCoefs <- .vaeCovariateCoefThetas(ui)
+  .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L &&
+    !isFALSE(control$covariateSelection)
+  if (.searchOff) {
+    warning("pinCovariates=FALSE: model covariates estimated in place", call. = FALSE)
+    .cov$covNames <- character(0)
+    .cov$covMat <- matrix(0, N, 0L)
+    .cov$covType <- character(0)
+    .cov$covPop <- numeric(0)
+  }
+
+  ## pinned covariate selection: restrict the search to model-declared covariate
+  ## /parameter pairs.  Build the per-(eta k x covariate j) allow-mask from the
+  ## `inPool` declared pairs; zero those coefficients in the training theta so the
+  ## decoder stays covariate-free (the effect is recovered by the M-step prior
+  ## regression, exactly as in the unconstrained search) and injected back into
+  ## the model afterward.  Declared pairs that cannot be searched are routed to
+  ## the regress M-step below (`.pinCovCoef`).
+  .pinActive <- FALSE
+  .covAllow <- NULL
+  .pinPairs <- NULL
+  .pinCovCoef <- character(0)
+  if (isTRUE(control$pinCovariates) && !isFALSE(control$covariateSelection)) {
+    .pinPairs <- .vaeModelCovariatePairs(ui, .cov$covNames, .cov$covType)
+    if (!is.null(.pinPairs) && nrow(.pinPairs) > 0L) {
+      .pinActive <- TRUE
+      .nCov <- length(.cov$covNames)
+      if (.nCov > 0L) {
+        ## A covariate column carries ONE encoding.  Claim each column for the
+        ## first declared pair's center; if the same covariate is declared again
+        ## with a DIFFERENT center (e.g. log(WT/70) on CL and log(WT/80) on KA)
+        ## that pair cannot share the column, so demote it to the regress M-step.
+        .claim <- rep(NA_real_, .nCov)
+        for (.r in seq_len(nrow(.pinPairs))) {
+          if (!.pinPairs$inPool[.r]) next
+          .j <- match(.pinPairs$covName[.r], .cov$covNames)
+          if (is.na(.j)) {
+            .pinPairs$inPool[.r] <- FALSE
+          } else if (is.na(.claim[.j])) {
+            .claim[.j] <- .pinPairs$userCenter[.r]
+          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r]))) {
+            .pinPairs$inPool[.r] <- FALSE
+          }
+        }
+        .inRows <- .pinPairs[.pinPairs$inPool, , drop = FALSE]
+        ## restrict the search to the declared in-pool cells.  An all-zero row
+        ## means "no covariate may be selected on this dim" -- crucial when every
+        ## declared pair is out-of-pool, so a non-declared (or the out-of-pool)
+        ## covariate is never auto-selected under pinning.
+        .covAllow <- matrix(0L, .neta, .nCov)
+        for (.r in seq_len(nrow(.inRows))) {
+          .j <- match(.inRows$covName[.r], .cov$covNames)
+          if (!is.na(.j)) .covAllow[.inRows$k[.r], .j] <- 1L
+        }
+        ## decoder covariate-free during training: hold the declared (in-pool)
+        ## coefficient at 0 so the covariate enters only through the prior.
+        for (.cn in unique(.inRows$coefName)) {
+          .ti <- match(.cn, .thRows$name)
+          if (!is.na(.ti)) .th[.ti] <- 0
+        }
+        ## Retain ONLY the model's own centering (already carried by the mu2/mu3
+        ## nlmixrMuDerCov# column, or by the written log(cov/center)); do NOT add
+        ## the VAE's mean-centering.  Use each pinned covariate at its MODEL value
+        ## so zPop is the model intercept and no post-hoc correction is needed.
+        ## Centering a predictor in a regression WITH an intercept leaves the slope
+        ## and the selection unchanged -- this only relocates the intercept.
+        ## Each claimed column is adjusted EXACTLY once, off the original covPop.
+        for (.j in which(!is.na(.claim))) {
+          if (identical(.cov$covType[.j], "continuous")) {
+            ## log(v/mean) -> log(v/userCenter)
+            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.claim[.j])
+          } else {
+            ## (v - mean) -> raw v (mu2/mu3 already applied the model transform)
+            .cov$covMat[, .j] <- .cov$covMat[, .j] + .cov$covPop[.j]
+          }
+          .cov$covPop[.j] <- 0
+        }
+      }
+      .pinCovCoef <- unique(.pinPairs$coefName[!.pinPairs$inPool])
+      warning("covariate selection pinned to model-specified covariates", call. = FALSE)
+      if (length(.pinCovCoef) > 0L) {
+        warning("pinned covariate(s) outside search pool estimated in place", call. = FALSE)
+      }
+    }
+  }
+
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
   ## M-step (vs. the latent-space zPop update).  Two sources, unioned:
   ##  * nonMuTheta="regress"/"grad": non-mu-referenced structural thetas (no eta); and
@@ -197,9 +463,17 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   .covCoefNames <- character(0)
   if (isFALSE(control$covariateSelection)) {
-    .covCoefNames <- .vaeCovariateCoefThetas(ui)
-    .regressNames <- c(.regressNames, .covCoefNames)
+    .covCoefNames <- .declaredCoefs
+  } else if (.searchOff) {
+    ## pinCovariates=FALSE with model-declared covariates: all of them regress.
+    .covCoefNames <- .declaredCoefs
+  } else if (.pinActive && length(.pinCovCoef) > 0L) {
+    ## pinned selection: a declared covariate that cannot be handled by the
+    ## restricted search (out-of-pool, or a form whose slope will not transfer)
+    ## is estimated in place by the regress M-step, like covariateSelection=FALSE.
+    .covCoefNames <- .pinCovCoef
   }
+  .regressNames <- c(.regressNames, .covCoefNames)
   .regressNames <- unique(.regressNames)
   if (length(.regressNames) > 0L) {
     .ri <- match(.regressNames, .thRows$name)
@@ -233,17 +507,6 @@ vaeCovariates <- function(data, warn = TRUE) {
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
 
-  ## normalize data columns
-  d <- as.data.frame(data)
-  names(d) <- toupper(names(d))
-  ## no EVID: derive from AMT; with no AMT column either (dose-free data), all
-  ## rows are observations (d$AMT is NULL -> the ifelse would yield length 0).
-  if (is.null(d$EVID)) {
-    d$EVID <- if (is.null(d$AMT)) rep(0L, nrow(d)) else ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
-  }
-  .ids <- unique(d$ID)
-  N <- length(.ids)
-
   ## per-subject decoder inputs + gather all obs for standardization
   subj <- vector("list", N)
   .allTime <- numeric(0); .allDv <- numeric(0)
@@ -272,13 +535,6 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   covIn <- matrix(0, N, 0L)                     # encoder-head covariates (unused for now)
 
-  ## subject-level covariate discovery + encoding (shared with vaeCovariates())
-  .cov <- .vaeCovariateSearch(d, .ids)
-  if (length(.cov$tvExcl) > 0L) {
-    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
-            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
-  }
-
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
        zPopFix = .zPopFix,
@@ -291,5 +547,6 @@ vaeCovariates <- function(data, warn = TRUE) {
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
        covPop = .cov$covPop,
+       pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,
        tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
 }
