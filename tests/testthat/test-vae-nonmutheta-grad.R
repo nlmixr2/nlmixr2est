@@ -69,6 +69,49 @@ nmTest({
     expect_true(any(grepl("analytic gradient out of scope", f$runInfo)))
   })
 
+  ## same model with NO ini() bounds on the non-mu tv
+  .unboundedMod <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+      eta.ka ~ 0.6; eta.cl ~ 0.3 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) })
+  }
+
+  test_that("an unbounded non-mu theta gets a finite fallback interval", {
+    ## regression: with +-Inf bounds nothing constrained the M-step and an
+    ## unbounded tv ran away to ~1e68 (7.9e306 with a wider run).  The fallback is
+    ## ini(est) +- max(.vaeNonMuThetaBound, |est| * .vaeNonMuThetaRel).
+    p <- .vaeDataPrep(rxode2::assertRxUi(.unboundedMod()), nlmixr2data::theo_sd,
+                      vaeControl(nonMuTheta = "regress"))
+    i <- match("tv", p$regressNames)
+    expect_false(is.na(i))
+    expect_true(is.finite(p$regressLower[i]))
+    expect_true(is.finite(p$regressUpper[i]))
+    ## generous enough to contain the FOCEi MLE (3.4293), so it cannot bind here
+    expect_lt(p$regressLower[i], 3.4293)
+    expect_gt(p$regressUpper[i], 3.4293)
+    ## a user ini() bound still wins
+    p2 <- .vaeDataPrep(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd,
+                       vaeControl(nonMuTheta = "regress"))
+    j <- match("tv", p2$regressNames)
+    expect_equal(p2$regressLower[j], 2)
+    expect_equal(p2$regressUpper[j], 5)
+  })
+
+  test_that("an unbounded non-mu theta converges instead of diverging", {
+    skip_on_cran()
+    v <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
+      nlmixr2(.unboundedMod(), nlmixr2data::theo_sd, est = "vae",
+              control = vaeControl(nonMuTheta = "regress", print = 0L,
+                                   calcTables = FALSE)))))
+    ## before the fix this was ~1e68; the FOCEi MLE is 3.4293
+    expect_true(is.finite(v$theta[["tv"]]))
+    expect_lt(abs(v$theta[["tv"]] - 3.4293), 0.5)
+  })
+
   test_that("a vae grad fit does not leak into a later focei fast fit", {
     skip_on_cran()
     ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient and

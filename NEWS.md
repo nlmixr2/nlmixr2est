@@ -22,6 +22,16 @@
   comparable.  On `theo_sd` with a non-mu `tv` this moves `"regress"` from
   3.4175 to 3.4324 against a FOCEi maximum-likelihood value of 3.4299.
 
+- Fixed `est="vae"` diverging when a structural `theta` with no random effect
+  had no `ini()` bounds.  With infinite bounds nothing constrained the non-mu
+  theta M-step, and a parameter whose likelihood is flat in one direction ran
+  away (an unbounded `tv` on `theo_sd` reached ~1e68).  An unbounded such theta
+  now falls back to a generous finite window around its `ini()` estimate, chosen
+  wide enough not to bind at a sane optimum; a user `ini()` bound still wins.
+  The unbounded model now converges to the same value as the bounded one
+  (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
+  maximum-likelihood value of 3.4293).
+
 - The `est="vae"` ELBO now includes the transform-both-sides Jacobian, so a
   model with `lnorm()`/`boxCox()`/`yeoJohnson()` reports its objective on the
   DV scale (comparable to a FOCEi OFV) instead of the transformed scale.  No

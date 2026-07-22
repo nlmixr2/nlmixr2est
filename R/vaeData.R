@@ -14,6 +14,14 @@
 # ini() bound overrides it.
 .vaeCovCoefBound <- 10
 
+# Fallback bound half-width for an UNBOUNDED structural non-mu theta estimated by
+# the M-step: `ini() estimate +/- max(.vaeNonMuThetaBound, |est| * .vaeNonMuThetaRel)`.
+# Purely a divergence guard -- with +-Inf bounds a flat direction runs the estimate
+# away (~1e68 on an unbounded theo_sd `tv`).  Deliberately generous so it does not
+# bind at a sane optimum; a user `ini()` bound always wins.
+.vaeNonMuThetaBound <- 10
+.vaeNonMuThetaRel <- 3
+
 # Max plausible log-scale effect used to derive a SCALE-AWARE fallback bound for a
 # raw linear covariate coefficient (beta*COV): |beta*max|COV|| <= this, so the
 # bound shrinks as the covariate magnitude grows (a raw WT coefficient is ~1/WT).
@@ -485,8 +493,7 @@ vaeCovariates <- function(data, warn = TRUE) {
     ## optimize() branch of .boundedResidOpt, which searches the whole interval and
     ## overshoots a shallow interior optimum on a too-wide interval.  Give an
     ## unbounded coefficient a finite, scale-aware fallback interval (user ini()
-    ## bounds still win); structural regress thetas keep their bounds (bobyqa is
-    ## stable, so they are left alone).
+    ## bounds still win).
     .isCov <- .regressNames %in% .covCoefNames
     .noLo <- .isCov & !is.finite(.regressLower)
     .noHi <- .isCov & !is.finite(.regressUpper)
@@ -494,6 +501,26 @@ vaeCovariates <- function(data, warn = TRUE) {
       .bnd <- .vaeCovCoefBoundVec(ui, data, .regressNames[.isCov])
       .regressLower[.noLo] <- -.bnd[.regressNames[.noLo]]
       .regressUpper[.noHi] <- .bnd[.regressNames[.noHi]]
+    }
+    ## A STRUCTURAL non-mu theta needs the same guard.  With +-Inf bounds nothing
+    ## constrains the M-step (bobyqa's interval, or the "grad" Adam projection), and
+    ## a theta whose likelihood is flat in one direction runs away: an unbounded
+    ## `tv <- 3.45` on theo_sd reaches ~1e68 (an lnorm fit there reports an OFV of
+    ## 359315 against focei's 686), while the same model with `tv <- c(2, 3.45, 5)`
+    ## converges.  Fall back to a generous window around the ini() ESTIMATE, wide
+    ## enough not to bind at a sane optimum but finite so the search cannot diverge.
+    .isStruct <- !.isCov
+    .sLo <- .isStruct & !is.finite(.regressLower)
+    .sHi <- .isStruct & !is.finite(.regressUpper)
+    if (any(.sLo | .sHi)) {
+      .init <- as.numeric(.thRows$est[.ri])
+      .init[!is.finite(.init)] <- 0
+      ## scale-aware half-width: the absolute floor covers a log-scale parameter
+      ## (init ~ 3.45 -> +-10 is exp(+-10), ample), the relative term keeps a
+      ## large-magnitude natural-scale init (say 1000) from being over-constrained
+      .hw <- pmax(.vaeNonMuThetaBound, abs(.init) * .vaeNonMuThetaRel)
+      .regressLower[.sLo] <- (.init - .hw)[.sLo]
+      .regressUpper[.sHi] <- (.init + .hw)[.sHi]
     }
   }
 
