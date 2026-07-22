@@ -1571,3 +1571,17 @@ Before merging, still worth doing:
   * focei/saem/impmap suites on this branch -- the sigdig default change touches
     `adviControl` too, and `.vaeToFit`'s `.foceiPreProcessData` call is new;
   * the imp-family output-contract follow-up (recorded above).
+
+##### Cross-method validation on the wip branch
+
+    test-focei-fast-grad.R   47/47 PASS
+
+So the `sigdig=4` default change and `.vaeToFit`'s new `.foceiPreProcessData`
+call do not disturb focei's analytic-gradient path.
+
+`test-impmap.R` and `test-saem.R` were still running when this session ended;
+they are launched detached and their results land in `/tmp/other.out`
+(`grep '^X ' /tmp/other.out`).  Re-run them if that file is gone -- both are
+plain `test_file()` calls and need no state from this session.  impmap matters
+most of the three: it is the other `_impPoolModel` consumer and shares the
+output-assembly path being changed here.
