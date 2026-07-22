@@ -1070,3 +1070,38 @@ omega, cov, objective, metadata, then `.nlmixr2FitUpdateParams`).  They should,
 for consistency with saem/saemix and to avoid exactly the class of gap found here
 (a finalizer asking for a value no one supplied).  Do this as its own change with
 before/after fits, since it touches every imp-family fit.
+
+### COMPLETE MECHANISM: `.uiApplyIov` is not idempotent
+
+`.uiApplyIov` is registered as a PREPROCESS hook (`R/iov.R:578`
+`preProcessHooksAdd(".uiApplyIov", .uiApplyIov)`), so it runs again when
+`nlmixr2CreateOutputFromUi` re-runs preprocessing from inside `.vaeToFit`.
+
+On that SECOND pass it does (`R/iov.R:114` then `:125-127`):
+
+    .uiIovEnv$iovVars <- NULL                      # unconditional reset
+    ...
+    .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
+                                    .iniDf$condition != "id" & is.na(.iniDf$err))]
+    if (length(.lvls) > 0) { ...repopulate iovVars... }
+
+but the ui it is handed (`.ui2`) is ALREADY TRANSFORMED: the occasion etas are now
+`rx.iov.cl.1`/`rx.iov.cl.2` conditioned on "id", and `iov.cl` is a plain theta.  So
+`.lvls` is EMPTY, the repopulate block never runs, and `iovVars` stays NULL.
+
+`.uiFinalizeIov` then does `parFixedDf[NULL, <Back>]` -> zero-length ->
+`formatC(signif(numeric(0), ...))` -> "invalid second argument of length 0".
+
+That closes the chain end to end:
+  preprocess re-entry -> iovVars nulled -> empty row subscript -> formatC dies.
+
+PROPOSED FIX (unvalidated -- I ran out of budget before testing it): make the
+reset conditional so an already-transformed ui does not clobber the recorded
+state.  Either
+  * only null `iovVars` when the pass will actually repopulate it (move the reset
+    inside `if (length(.lvls) > 0)`), or
+  * detect the already-transformed ui (e.g. `!is.null(.uiIovEnv$ui)` plus
+    `rx.<v>.<occ>` etas present) and return early, leaving the recorded state
+    intact.
+The first is smaller; the second is more explicit about idempotency.  Either way
+verify a focei IOV fit and a saem IOV fit are unchanged -- they run the same hook.
