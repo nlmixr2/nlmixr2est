@@ -918,3 +918,49 @@ control object" because the builder depends on estimation-time global state.
 Only `.vaeToFit` replays cleanly.  And patching `collectErr = TRUE -> FALSE` at
 `R/nlmixr2Est.R:237` does not open up the error either; line 224 takes the live
 path and has no such argument.
+
+### THE TEMPLATE: ~/src/babelmixr2/R/saemix.R (lines ~337-435)
+
+This is the right reference -- a genuinely FOREIGN method (saemix, out of tree)
+building an nlmixr2 fit env from nothing.  Unlike SAEM it shares no in-package
+state, so it must construct every required item explicitly, and it does so as a
+numbered checklist:
+
+    # 1. fullTheta   all ui thetas (is.na(neta1)), then overwrite the estimated
+                     structural ones and the residual-error ones by errType
+    # 2. etaObf      data.frame: ID + one column per UI eta name + OBJI
+                     (ID taken from unique(.ret$dataSav$ID))
+    # 3. omega       matrix dimnamed by the ui eta names, filled via muRefTable
+    # 4. cov         dimnamed by the ESTIMATED (non-fix) theta names
+    # 5. objective   -2*ll
+    # 6. metadata    method, est, extra, message, model (= .ui$ebe), ofvType
+    then:
+      nlmixr2est::.nlmixr2FitUpdateParams(.ret)
+      nmObjHandleControlObject(.ret$saemixControl, .ret)
+      rm("control", envir=.ui)          # if present
+      .saemixControlToFoceiControl(.ret)
+      .ret$theta <- .ret$ui$saemThetaDataFrame
+      nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control,
+                                table=.ret$table, env=.ret, est="saemix")
+
+Compare `.vaeToFit`, which supplies NONE of items 1-5 (it sets only
+method/extra/est/adjObf/vae/parHistData/etaMat and leaves the rest to be derived).
+That is why the env diff showed 19 missing fields, and why adding only
+`idLvl`/`covLvl`/`dataSav`/`origData` was not enough -- those are prerequisites of
+the checklist, not the checklist.
+
+NOTE for IOV specifically -- item 3 in the template is instructive:
+
+    thetaI <- .ui$muRefTable$theta[.ui$muRefTable$eta == etaI]
+    if (length(thetaI) == 1) { ...fill omega... }
+
+An IOV eta (`rx.iov.cl.1`) has NO muRefTable row, so `thetaI` is ZERO-LENGTH and
+the template GUARDS on `length(thetaI) == 1`.  Anything doing the same lookup
+without that guard indexes with a zero-length subscript -- which is the shape of
+"invalid second argument of length 0".  Build items 2/3 for the VAE with the same
+guard and IOV etas fall through harmlessly instead of breaking.
+
+ACTION: rewrite `.vaeToFit`'s pre-call block against this checklist (fullTheta,
+etaObf, omega, cov, objective, metadata, then .nlmixr2FitUpdateParams), guarding
+every muRefTable lookup on `length(...) == 1`.  Regression guard: a non-IOV VAE
+fit must come out bit-identical.
