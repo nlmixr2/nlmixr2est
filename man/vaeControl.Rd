@@ -40,7 +40,7 @@ vaeControl(
   compress = FALSE,
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = NULL,
+  sigdig = 4,
   sigdigTable = NULL,
   rhoend = NULL,
   stickyRecalcN = 4,
@@ -154,7 +154,13 @@ results.}
     augmented sensitivity solve per M-step replaces the bobyqa sweep.  Both
     modes optimize the same full outer objective (with every mu-referenced
     theta held at its current M-step value), so this changes the optimizer,
-    not the target.  This is NOT a speed option -- it is measurably SLOWER than
+    not the target.  It is also the more natural fit for the method: the
+    gradient is handed to the SAME Adam machinery that moves the encoder
+    weights, so the parameter is learned alongside the rest of the model on a
+    shared schedule (same gain, same KL warmup gate), whereas `"regress"`
+    pauses each M-step to run a separate derivative-free optimizer to
+    convergence and adopts its answer.  This is NOT a speed option -- it is
+    measurably SLOWER than
     `"regress"` (on `theo_sd`, 1.47x with one non-mu theta and 1.13x with
     three; the gap narrows as the number grows, since bobyqa's cost scales in
     it and a single solve does not, but it does not close).  Choose it for
