@@ -1551,3 +1551,23 @@ showed vae-nonmutheta 43/43, vae-iov 9/9, vae-nonmutheta-grad 34/35 with one
 failure needing standalone triage), and add an IOV regression test asserting a
 `returnVae=FALSE` fit completes -- the existing `test-vae-iov.R` only exercises
 the raw object.
+
+### wip branch: ALL VAE SUITES GREEN
+
+    test-vae-iov.R               18/18   (was 9/9 -- +9 covering the real user path)
+    test-vae-nonmutheta-grad.R   35/35
+    test-vae-nonmutheta.R        43/43
+    test-vae-errmodel.R          11/11
+
+The earlier 34/35 on `vae-nonmutheta-grad` was cross-suite state leakage from
+running three files in ONE process; run separately it is 35/35, confirming the
+caution recorded above (test each in its own R process).
+
+So `wip/vae-iov-output-contract` is green on every VAE suite and carries three
+fixes: the IOV magnitude theta being estimated, `sigdig=4` defaults for
+vae/advi, and the foreign-method output contract in `.vaeToFit`.
+
+Before merging, still worth doing:
+  * focei/saem/impmap suites on this branch -- the sigdig default change touches
+    `adviControl` too, and `.vaeToFit`'s `.foceiPreProcessData` call is new;
+  * the imp-family output-contract follow-up (recorded above).
