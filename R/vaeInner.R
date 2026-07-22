@@ -41,6 +41,10 @@
   .env$est <- est
   .env$table <- NULL
   .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
+  ## nonMuTheta="grad": tell foceiSetup_ to stash the solve args so the M-step's
+  ## augmented solves can be undone with restoreFitSolve_.  Rides beside the
+  ## derived focei control, which carries no nonMuTheta of its own.
+  .env$vaeGradSolveArgs <- identical(control$nonMuTheta, "grad")
   ## fit-flow-derived control fields
   .env$control$est <- est
   .env$control$printTop <- FALSE

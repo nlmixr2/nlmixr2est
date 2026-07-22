@@ -208,6 +208,12 @@
   ## surface it as control$print for the C++ loop's final parHist print gate
   control$print <- as.integer(control$iterPrintControl$every)
 
+  ## nonMuTheta="grad": stash the per-fit context the analytic outer-gradient
+  ## M-step reads; the C++ loop then passes only theta/eta/omega per M-step
+  if (identical(control$nonMuTheta, "grad") && length(prep$regressNames)) {
+    .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames)
+  }
+
   .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),
                        .cores, .row0, names(.row0), control$iterPrintControl,
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
@@ -219,6 +225,7 @@
        covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
        mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
+       nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

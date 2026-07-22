@@ -4895,6 +4895,12 @@ static SEXP covSolveArgs_ = R_NilValue;
 // est="impmap": theta-sensitivity model that sizes the shared pool (the largest
 // structure), or R_NilValue to size for the inner model as usual.
 SEXP _impPoolModel = R_NilValue;
+// est="vae" nonMuTheta="grad": vaeInnerSetup_ sets this before foceiSetup_ so the
+// solve args get stashed.  The VAE reaches foceiSetup_ with a DERIVED focei
+// control (.vaeInnerFoceiControl), which carries no nonMuTheta, so the flag rides
+// beside it rather than through the foceiControl whitelist.  Consumed (reset) by
+// foceiSetup_, like _impPoolModel.
+static bool _vaeNeedSolveArgs = false;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -5337,10 +5343,14 @@ NumericVector foceiSetup_(const RObject &obj,
     // stash the solve args for covType="analytic" and fast (both replace the fit's
     // global solve with augmented-sensitivity solves and need restoreFitSolve_);
     // avoids retaining the model/dataset for the session on every plain FD fit
+    // est="vae" nonMuTheta="grad" runs the same augmented solves from its M-step
+    // (.vaeGradEval) and needs the same restoreFitSolve_ afterwards.
     bool _needSolveArgs =
       (foceiO.containsElementNamed("covType") &&
        as<std::string>(foceiO["covType"]) == "analytic") ||
-      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0);
+      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0) ||
+      _vaeNeedSolveArgs;
+    _vaeNeedSolveArgs = false;   // consumed
     if (_needSolveArgs) {
       storeCovSolveArgs_(obj, rxControl, params, data);
     }
@@ -10112,6 +10122,9 @@ RObject vaeInnerSetup_(Environment e) {
       if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
     }
   }
+  // nonMuTheta="grad" runs augmented-sensitivity solves from the M-step, which
+  // free the global solve -- stash the args so restoreFitSolve_ can put it back.
+  _vaeNeedSolveArgs = e.exists("vaeGradSolveArgs") && as<bool>(e["vaeGradSolveArgs"]);
   NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                                       _rxInv, _lower, _upper, _etaMat, _control);
   _impPoolModel = R_NilValue; // consumed by foceiSetup_
@@ -13028,6 +13041,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
   arma::vec regLower = as<arma::vec>(prep["regressLower"]);
   arma::vec regUpper = as<arma::vec>(prep["regressUpper"]);
+  // nonMuTheta="grad": step the regressed thetas with the exact analytic outer
+  // gradient (one augmented solve per M-step) through their own Adam block,
+  // falling back to the bobyqa regression whenever a gradient call declines.
+  const bool useGrad = control.containsElementNamed("nonMuTheta") &&
+    as<std::string>(control["nonMuTheta"]) == "grad" && regIdx.n_elem > 0;
+  arma::mat regP(regIdx.n_elem, 1, arma::fill::zeros);
+  for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
+  VaeAdamBlk aReg;
+  aReg.m = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
+  aReg.v = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
+  int regTStep = 0, nRegGrad = 0, nRegFallback = 0;
   // pinCovariates: optional [zDim x nCov] 0/1 allow-mask restricting each latent
   // dim's covariate candidates to the model-declared pairs.  Absent (or NULL) ->
   // full search (every covariate against every dim), unchanged behavior.
@@ -13250,6 +13274,64 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     // gamma and clamped to the ini bounds.  Runs once the KL warmup is over (the
     // encoder is informative), matching SAEM's kiter>=niter_phi0 gate.
     if (regIdx.n_elem > 0 && it > klWarmup) {
+    bool regDone = false;
+    // nonMuTheta="grad": one exact analytic outer-gradient solve instead of the
+    // bobyqa sweep.  Adam (not a raw step): at realistic encoder etas the
+    // gradient's DIRECTION is good but its magnitude is inflated by ~2 orders,
+    // and Adam's per-coordinate normalization absorbs that.
+    if (useGrad) {
+      arma::vec thvG = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
+      arma::mat etaG = last.mu; etaG.each_row() -= baseline.t();
+      RObject grR = R_NilValue;
+      try {
+        Rcpp::Environment nsG = Rcpp::Environment::namespace_env("nlmixr2est");
+        Rcpp::Function gEval = nsG[".vaeGradEval"];
+        grR = gEval(NumericVector(thvG.begin(), thvG.end()), wrap(etaG),
+                    NumericVector(omega.begin(), omega.end()));
+      } catch (Rcpp::internal::InterruptedException&) {
+        throw;
+      } catch (Rcpp::LongjumpException&) {
+        throw;
+      } catch (...) {
+        grR = R_NilValue;
+      }
+      // The augmented solve replaced the global solve; the next vaeInnerLikCore
+      // would read the last augmented subject.  A failed restore leaves nothing
+      // valid to fall back TO (bobyqa needs the same inner solve), so stop rather
+      // than let the rest of the fit run against a dangling solve.
+      if (!restoreFitSolve_())
+        stop("est=\"vae\": could not restore the inner solve after the analytic gradient");
+      if (!Rf_isNull(grR)) {
+        NumericVector gv(grR);
+        if ((int)gv.size() == (int)regIdx.n_elem) {
+          arma::mat gm(regIdx.n_elem, 1);
+          bool okG = true;
+          for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+            if (!R_FINITE(gv[j])) { okG = false; break; }
+            gm(j, 0) = gv[j];
+          }
+          if (okG) {
+            regTStep++;
+            arma::mat regPrev = regP;
+            vaeAdam(regP, gm, aReg, learningRate, regTStep);
+            for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+              double cur = th[regIdx[j]];
+              // blend with the M-step gain, then project onto the ini bounds --
+              // Adam has no notion of them
+              double upd = cur + gamma * (regP[j] - cur);
+              if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
+              if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
+              if (R_FINITE(upd)) { th[regIdx[j]] = upd; regP[j] = upd; }
+              else regP[j] = regPrev[j];
+            }
+            regDone = true;
+            nRegGrad++;
+          }
+        }
+      }
+      if (!regDone) nRegFallback++;
+    }
+    if (!regDone) {
       gVaeRegThBase = th;
       gVaeRegIdx = regIdx;
       gVaeRegZpopIdx0 = zPopThetaIdx0;
@@ -13277,6 +13359,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
         if (R_FINITE(upd)) th[regIdx[j]] = upd;
       }
+      // keep the Adam iterate aligned with th in case grad resumes next M-step
+      for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
+    }
     }
     double alphaKL = (it <= klWarmup) ? 0.01 + 0.99 * (it - 1) / std::max(1, klWarmup - 1) : 1.0;
     double esum = 0;
@@ -13320,7 +13405,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["a"] = a, _["intercept"] = intercept, _["beta"] = beta,
                       _["selected"] = selected, _["elboTrace"] = elboTrace,
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
-                      _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut);
+                      _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
+                      _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE
