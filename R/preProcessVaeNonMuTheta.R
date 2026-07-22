@@ -95,7 +95,18 @@
   ## covariate coefficients are estimated by the regress M-step (see .vaeDataPrep),
   ## not by nonMuTheta eta/fix injection -- exclude them here
   .covCoef <- .vaeCovariateCoefThetas(ui)
-  .cand <- setdiff(.th$name, c(.mu, .cov, .covCoef))
+  ## IOV magnitude thetas must NOT be excluded here.  `.uiApplyIov` gives each IOV
+  ## variable a theta carrying its magnitude (under iovXform) and pairs it with the
+  ## per-occasion etas `rx.<v>.<occ>`, which are FIXED at variance 1 -- they are
+  ## unit deviates.  That pairing puts the theta in `muRefDataFrame`, so it was
+  ## dropped as "mu-referenced", while `.vaeDataPrep` simultaneously marks those
+  ## etas FREE and forces their theta to 0.  The magnitude therefore fell through
+  ## BOTH paths and was never estimated, leaving `parFixedDf[iovVars, Back]`
+  ## empty and every est="vae" IOV fit dying in `.uiFinalizeIov` with
+  ## "invalid second argument of length 0".  Estimating it in the M-step is what
+  ## the omega-fixed-at-1 parameterization expects.
+  .iov <- if (is.null(.uiIovEnv$iovVars)) character(0) else .uiIovEnv$iovVars
+  .cand <- setdiff(.th$name, setdiff(c(.mu, .cov, .covCoef), .iov))
   if (length(.cand) == 0L) return(character(0))
   ## keep only thetas that actually appear in a model expression (so an eta can be
   ## attached to a structural line)
