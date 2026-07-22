@@ -1404,3 +1404,49 @@ cleanly via the trace-and-replay recipe recorded above), and find the exact line
 after which it becomes NULL.  That is a few minutes of work and ends the guessing
 -- six proposed mechanisms have now failed, every one of them reasoned rather than
 observed.
+
+### OBSERVED: `.uiIovEnv$iovVars` is NEVER cleared -- the whole premise was wrong
+
+Bisected by direct observation instead of reasoning (trace with `where =
+asNamespace("nlmixr2est")`; note plain `trace(fn, ...)` on a namespace object
+fails with "argument 'what' should be the name of a function" -- pass the NAME
+plus `where=`):
+
+    IOV enter .vaeToFit             [iov.cl]
+    IOV enter .vaeUpdateModel       [iov.cl]
+    IOV exit  .vaeUpdateModel       [iov.cl]
+    IOV enter CreateOutput          [iov.cl]
+    IOV enter postFinalHooks        [iov.cl]     <- STILL POPULATED
+
+`iovVars` is intact right up to the hook runner that invokes `.uiFinalizeIov`.
+It is NEVER cleared.
+
+So the premise behind FIVE fix attempts -- "something empties `.uiIovEnv$iovVars`
+before the finalizer reads it" -- is FALSE.  That is why every one of them only
+managed to break focei: they were defending a global that was never under attack.
+
+Combined with the earlier dump showing the table is fine --
+
+    PFDCOLS: Estimate|SE|%RSE|Back-transformed|CI Lower|CI Upper|BSV(CV% or SD)|Shrink(SD)%
+    PFDROWS: tka|tcl|tv|add.sd|iov.cl|rx.iov.cl.1|rx.iov.cl.2
+
+-- both the row subscript AND the table are correct at hook time, yet
+`formatC(signif(.valCharPrep, ...))` still receives something zero-length.
+
+Where to look next (all cheap, all OBSERVATION):
+  * `.uiFinalizeIov` re-reads `ret$env$parFixedDf` ITSELF.  The dump above was
+    taken in `.postFinalObjectHooksRun`; hooks run in `ls()` order and
+    `.uiFinalizeMu2` sorts AFTER `.uiFinalizeIov`, but confirm no earlier hook
+    replaces `parFixedDf` with a different object between the two points.
+  * Print `.bck`, `.bsv`, `.est` and `length(.valCharPrep)` from INSIDE
+    `.uiFinalizeIov` -- remember it cannot be traced through the namespace
+    binding (it is stored by value in `.postFinalObjectHooks`), so re-register a
+    printing copy with `postFinalObjectHooksAdd(".uiFinalizeIov", <copy>)`.
+  * The chained assignment
+    `.valCharPrep <- .parFixedDf[iovVars,.bsv] <- .parFixedDf[iovVars,.bck]`
+    takes its value from the inner assignment; check what that actually yields
+    when `.bsv`/`.bck` are the real indices on the real table.
+
+SEVEN proposed mechanisms have now been disproved.  Every one was reasoned; the
+two facts that actually constrain the bug (table is fine, iovVars is fine) both
+came from printing values.
