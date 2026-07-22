@@ -1335,3 +1335,42 @@ uncaught-replay trick with `writeLines` + `sys.calls()` produced a full stack wh
 `.traceback()` gave nothing.  For focei the equivalent is to catch inside
 `nlmixr2Est.output`/`.foceiFamilyReturn`.  Until that stack is in hand, every
 "fix" here is guesswork -- five data points say so.
+
+### THE DESIGN QUESTION: why is a nested `nlmixr2()` call there at all?
+
+It should not be, and the code already admits as much.  `R/cov.R:287-291`:
+
+    # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
+    .savedMuRef <- .muRefTrans$cur
+    on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+    .fit2 <- try(suppressMessages(suppressWarnings(
+      nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control))), silent = TRUE)
+
+A save/restore guard bolted onto a call is the signature of an inappropriate
+re-entry, not of a sound interface.  The same shape recurs:
+
+  * `R/cov.R:291`            covariance recompute on the base model
+  * `R/covRecompute.R:56`    `.covRecomputeNative` (sa/imp recompute)
+  * `R/addCwres.R:90`        residual addition re-fits with `est="focei"`
+  * `R/vaeOutput.R`          `.vaeToFit` carries the SAME `.muRefTrans$cur`
+                             snapshot/restore for exactly this reason
+
+Each of these wants "evaluate this model at these estimates and give me
+cov/residuals" -- NOT "start a new estimation".  Going through `nlmixr2()` drags
+in the whole front end: `.preProcessHooksRun`, global (re)initialisation, model
+re-parse.  Every package global then has to be defended one at a time --
+`nlmixrPureInputUi`, `uiUnfix`, `vaeNonMuEtas`, `preProcessHookWarnings`,
+`.muRefTrans$cur` (issue #741 is one of these; `.uiIovEnv` is simply the next one
+nobody has gotten to).
+
+THE RIGHT FIX is to stop making the nested call, not to add a sixth global to the
+defend-list: give these paths a lower-level entry that skips the front end (the
+model is already prepared and the estimates are already known -- `nlmixr2Est` /
+`nlmixr2CreateOutputFromUi` are already reached directly elsewhere).  Hooks would
+then run exactly once per estimation with cleanup afterwards, which is the stated
+contract.
+
+This reframes the IOV bug: it is a SYMPTOM.  Five attempts failed because they all
+defended a global against a re-entry that should not happen.  Fixing the re-entry
+removes this bug and the whole class -- and would let the accumulated
+snapshot/restore guards above be deleted rather than extended.
