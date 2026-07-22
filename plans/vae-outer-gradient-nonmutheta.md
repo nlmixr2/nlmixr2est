@@ -171,6 +171,46 @@ rxode2, sized to the augmented model's own width, and pass it to `calc_lhs` --
 per thread once parallel.  It also makes the column mapping inspectable, so a
 wrong offset shows up as a debuggable index rather than heap corruption.
 
+### Phase 2c -- OPEN CORRECTNESS ITEM: the inner objective needs the outer adjustment
+
+Mixing the inner and outer problems means they must be on the SAME objective, and
+right now they are not.  `likInner0` returns `fInd->llik`, the joint (data +
+prior) negative log density:
+
+```
+fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * omegaInv * etam));   // inner.cpp:1873
+```
+
+The FOCEi OUTER contribution `fInd->lik[0]` adds three terms the inner one does
+not (`src/inner.cpp:2194-2197`):
+
+```
+lik = log(slik) + logH0diag + op_focei.logDetOmegaInv5;   // Laplace determinant + 0.5 log|Omega^-1|
+lik += fInd->tbsLik;                                      // DV-transform Jacobian
+fInd->lik[0] = lik;
+```
+
+So the VAE ELBO (built from `vaeInnerLikCore`'s `obj`, i.e. `llik`) and the
+analytic outer gradient (which differentiates the Laplace/marginal objective)
+are DIFFERENT functionals.  The theta step and the encoder are currently training
+against different objectives.
+
+This is consistent with the measurement that motivated the work: `gA(eta*) ~ 0` at
+the FOCEi MLE (marginal), while the frozen-eta joint gradient was large there --
+the gap between them IS these terms.  So the observed accuracy win is real, but
+it comes from stepping theta on a different objective than the ELBO reports.
+
+Decide before Phase 2b lands:
+- **(a) Adjust the inner objective** -- add `logH0diag`, `logDetOmegaInv5` and
+  `tbsLik` to what the VAE consumes, so ELBO and theta step share one objective.
+  Correct, and the printed ELBO then means the marginal likelihood.
+- **(b) Keep them split deliberately** -- theta at its marginal MLE, encoder on
+  the ELBO -- and document that the reported ELBO is not the objective the non-mu
+  theta is optimizing.
+
+(a) is the coherent choice, and it also makes the reported ELBO comparable to a
+focei OFV.  Either way this must be settled explicitly, not left implicit.
+
 **Parallelize the outer solve.**  Per-subject writes are disjoint, so the loop
 parallelizes under the same discipline `vaeInnerLikCore` and the imp M-step use:
 `cores = min2(cores, getOpCores(op))`, `solveMethodThreadSafe(op)` gate,

@@ -64,6 +64,7 @@ void restoreFromEnvrionment(Environment e);
 #define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 #define thetaSensOde(id) ind_solve(rx, getRxId(id), rxThetaSens.dydt_liblsoda, rxThetaSens.dydt_lsoda_dum, rxThetaSens.jdum_lsoda, rxThetaSens.dydt, rxThetaSens.update_inis, rxThetaSens.global_jt)
+#define vaeOuterOde(id) ind_solve(rx, getRxId(id), rxVaeOuter.dydt_liblsoda, rxVaeOuter.dydt_lsoda_dum, rxVaeOuter.jdum_lsoda, rxVaeOuter.dydt, rxVaeOuter.update_inis, rxVaeOuter.global_jt)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
 #define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
 #define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
@@ -171,6 +172,12 @@ struct focei_options {
                               // per-thread pool lhs slice is sized for the inner model, so
                               // the theta-sens solve reads/writes a local buffer this wide
   int innerNeq = 0;           // inner model state count when the pool is sized larger (impmap)
+  // est="vae" nonMuTheta="grad": augmented outer-gradient model.  Like the impmap
+  // theta-sens model it sizes the shared pool, so vaeOuterNlhs is the width of the
+  // lhs buffer we allocate OURSELVES -- calc_lhs must never write into rxode2's
+  // per-thread slice, which is sized for the (narrower) inner model.
+  int vaeOuterNeq = 0;        // ODE state count of the augmented model
+  int vaeOuterNlhs = 0;       // lhs output count of the augmented model
 
   unsigned int neta;
   unsigned int ntheta;
@@ -723,6 +730,10 @@ void freeFocei(){
 rxSolveF rxInner;
 rxSolveF rxPred;
 rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
+rxSolveF rxVaeOuter;  // est="vae" nonMuTheta="grad": augmented outer-gradient model
+                      // (peer of rxInner/rxPred/rxThetaSens).  Sizes the shared solve
+                      // pool -- it is the LARGEST structure -- and the inner MAP then
+                      // runs under ind->neqOverride, exactly like the impmap pool.
 
 void rxUpdateFuns(SEXP trans, rxSolveF *inner){
   const char *lib, *s_dydt, *s_calc_jac, *s_calc_lhs, *s_inis, *s_dydt_lsoda_dum, *s_dydt_jdum_lsoda,
@@ -10177,6 +10188,23 @@ RObject vaeInnerSetup_(Environment e) {
     }
     if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
       impSetInnerNeqOverride();
+    }
+  }
+  // nonMuTheta="grad": register the augmented outer-gradient model as a peer
+  // solver.  It is the LARGEST structure, so it sized the shared pool
+  // (_impPoolModel) and the inner MAP runs under ind->neqOverride = innerNeq --
+  // the same arrangement est="advi" uses for its theta-sensitivity model above.
+  op_focei.vaeOuterNeq = 0;
+  op_focei.vaeOuterNlhs = 0;
+  if (model.containsElementNamed("vaeOuter")) {
+    RObject vo = model["vaeOuter"];
+    if (rxode2::rxIs(vo, "rxode2")) {
+      List mvvo = rxode2::rxModelVars_(vo);
+      rxUpdateFuns(as<SEXP>(mvvo["trans"]), &rxVaeOuter);
+      op_focei.vaeOuterNeq = as<CharacterVector>(mvvo["state"]).size();
+      rxVaeOuter.neq = op_focei.vaeOuterNeq;
+      op_focei.vaeOuterNlhs = as<CharacterVector>(mvvo["lhs"]).size();
+      if (op_focei.innerNeq > 0) impSetInnerNeqOverride();
     }
   }
   // populate the omega inverse + theta-dependent state for the inner solve
