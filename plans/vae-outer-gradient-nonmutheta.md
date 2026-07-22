@@ -1303,3 +1303,35 @@ ordering or on `.uiApplyIov`'s reset semantics at all.
 Also note: hooks "should only run once per estimation start, with cleanup
 afterward" -- if anything IS re-running them mid-estimation, that is itself a
 defect to fix rather than to accommodate.
+
+##### Fifth attempt (per-call stash, the #741 pattern) ALSO broke focei
+
+Followed the sanctioned in-repo pattern exactly: added
+`env$uiIovVars <- .uiIovEnv$iovVars` to `.preProcessHooksRun`'s existing stash
+block (beside `nlmixrPureInputUi`/`uiUnfix`/`vaeNonMuEtas`), and had
+`.uiFinalizeIov` prefer `ret$env$uiIovVars` with the global as fallback.
+
+    focei -> ERROR: subscript out of bounds   (baseline immediately before: OK 3.42719)
+    vae   -> unchanged error
+
+Reverted; focei re-verified OK; tree clean.
+
+**FIVE attempts, five focei regressions**, by five different mechanisms:
+  1. early return in `.uiApplyIov`
+  2. preserve only `iovVars` in `.uiApplyIov`
+  3. per-fit handoff via `ret$env$vaeIovVars` + finalizer preference
+  4. additive VAE-only post-final hook (`.aaVaeRestoreIovVars`), R/iov.R untouched
+  5. per-call stash in `.preProcessHooksRun` + finalizer preference (#741 pattern)
+
+Attempts 3-5 all merely ADD a fallback the finalizer prefers, and #4 did not even
+touch `R/iov.R`.  For all three to break focei identically means the failure is
+almost certainly NOT in the substitution logic -- something about touching this
+area at all perturbs focei's IOV path.
+
+STOP AND ANSWER THIS FIRST (do not attempt a sixth fix):
+Reproduce the focei "subscript out of bounds" and get its stack.  Use the working
+technique from earlier in this file -- `.vaeToFit` replays cleanly, and the
+uncaught-replay trick with `writeLines` + `sys.calls()` produced a full stack when
+`.traceback()` gave nothing.  For focei the equivalent is to catch inside
+`nlmixr2Est.output`/`.foceiFamilyReturn`.  Until that stack is in hand, every
+"fix" here is guesswork -- five data points say so.
