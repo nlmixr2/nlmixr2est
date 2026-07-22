@@ -1137,3 +1137,36 @@ Two cautions for whoever retries:
     decide deliberately which of the three should survive a second pass.
   * Test each estimator in its OWN R process.  Running focei/saem/vae fits of the
     same IOV model in one session gave a spurious failure that cost a revert.
+
+##### Idempotency fix: CONFIRMED to break focei -- early return is the wrong shape
+
+Re-tested cleanly, one estimator per fresh R process, as the caution above says:
+
+    fix APPLIED,  clean process:  focei -> ERROR: subscript out of bounds
+    fix REVERTED, clean process:  focei -> OK  tv = 3.42719
+
+So the early return really does break focei; my earlier "it was process
+contamination" correction was itself wrong, and the FIRST attribution was right.
+`R/iov.R` is reverted and focei is verified working.
+
+Why the shape is wrong: focei re-enters `.uiApplyIov` with an already-transformed
+ui and DEPENDS on the unconditional reset to clear stale `iovRename`/`muModel`
+before it re-transforms.  Returning early preserves all three globals, and the
+stale rename is then applied to a ui that no longer matches it -> subscript out of
+bounds.
+
+So the two callers want OPPOSITE things from the same second pass:
+  * focei needs the state CLEARED (it will rebuild it),
+  * the VAE needs `iovVars` PRESERVED (its finalizer reads it and nothing rebuilds
+    it).
+
+A correct fix therefore cannot be a blanket early return.  Options, in rough order
+of safety:
+  1. Preserve ONLY `iovVars` on an empty-`.lvls` pass, while still clearing
+     `iovRename`/`muModel` -- narrowest change, directly matches what
+     `.uiFinalizeIov` actually reads.
+  2. Have `.vaeToFit` snapshot `.uiIovEnv$iovVars` and reinstate it immediately
+     before `nlmixr2CreateOutputFromUi`, mirroring the existing `.muRefTrans$cur`
+     snapshot -- keeps the change entirely inside the VAE and cannot affect focei
+     or saem.
+  Option 2 is the lower-risk one and is where I would start.
