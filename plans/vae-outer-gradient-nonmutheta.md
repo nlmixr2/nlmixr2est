@@ -431,3 +431,31 @@ and that `active`/`outerCols` are cleared.
 
 Lesson for any future shared-entry-point branch here: gate on an ACTIVE-call
 flag, never on the presence of cached state.
+
+#### tbsLik: what was actually wrong, and what was NOT
+
+The earlier audit claimed npag/npb omit the DV-transform Jacobian.  That was
+WRONG, and checking before changing it avoided shipping a double-count:
+`likInner0` already folds `tbsJac` into `llikObs` per observation, gated on
+`op_focei.isNpag || op_focei.isNpb` (`src/inner.cpp:1806` and `:1834`), with a
+comment saying exactly why.  `npEvalCondLik` sums `llikObs`, so the Jacobian is
+already in it -- adding `fInd->tbsLik` there would count it twice.  No change
+made to npag/npb.
+
+The VAE ELBO path IS missing it (the same gate excludes it), so
+`vaeInnerLikCore(adjOuter=false)` now subtracts `fInd->tbsLik` from `obj` (which
+is -log p).  Zero for a model without a both-sides transform.
+
+##### An lnorm VAE fit is still far from focei -- but NOT because of this
+
+Checked, because a 500x OFV gap looks like a Jacobian bug: focei OFV 685.6 vs vae
+359315.7 on the same lnorm theo_sd model.  It is neither the Jacobian nor the
+objective change -- the fit DIVERGED, `tv` reaching 9.1e68.  For this data
+`sum(-log(DV))` over the 123 observations is only -180.8, three orders of
+magnitude too small to explain the gap.
+
+This is the SAME unbounded-`ini()` divergence recorded as Phase 6 (`tv <- 3.45`
+with no `ini()` bounds runs away; `tv <- c(2, 3.45, 5)` converges).  It is a
+pre-existing bug, independent of everything on this branch, and it is why an
+lnorm/focei OFV comparison cannot currently be used to validate the Jacobian.
+Fix Phase 6 first, then re-run this comparison as the real check.
