@@ -44,12 +44,12 @@ objective**: the Laplace determinant, `0.5*log|Omega^-1|`, and the DV-transform
 Jacobian.  Two reasons:
 
 1. **Ecosystem consistency.** The objective an `nlmixr2` fit reports is the FOCEi
-   objective.  Having the M-step optimise something else means the reported OFV
-   is not the quantity being optimised.
+   objective.  Having the M-step optimize something else means the reported OFV
+   is not the quantity being optimized.
 2. **Internal consistency.** We added an option that steps the population
    parameters with the exact analytic outer gradient (Almquist 2015 sensitivity
    equations, shared with our FOCEi `fast=TRUE` path).  That gradient
-   differentiates the marginal (Laplace) likelihood; if the M-step optimised the
+   differentiates the marginal (Laplace) likelihood; if the M-step optimized the
    plain ELBO the two would be optimising different functionals.
 
 ## Why we are writing
