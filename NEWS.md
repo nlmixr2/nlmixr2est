@@ -39,6 +39,12 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
+  encoder's initial posterior spread.  `"sd"` (default) makes the initial
+  posterior SD `sigma0`, as documented; `"reference"` makes it `sigma0` squared,
+  reproducing the reference implementation (which documents `sigma0` as a
+  standard deviation, so its squaring appears unintended).
+
 - `est="vae"`'s encoder is now conditioned on the covariates, as in Rohleff et
   al. (2025), which concatenates them to the LSTM's final hidden state before the
   head that emits the posterior (`torch.cat((hidden[-1], covariates), dim=1)`).

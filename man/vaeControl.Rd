@@ -21,6 +21,7 @@ vaeControl(
   covSelectAlpha = 2,
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
+  sigma0Interp = c("sd", "reference"),
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
@@ -139,6 +140,18 @@ closing tail.  `FALSE` regresses the current posterior means.}
     it continues rather than repeating a gain of 1, so the decay begins at
     `1/2`.  Select this to match the step-size convention of the other
     nlmixr2 estimation methods rather than the reference.}
+
+\item{sigma0Interp}{How `sigma0` is turned into the encoder's initial posterior
+  spread.  The encoder head emits `logSigma` and forms `diag(L) = exp(logSigma)`,
+  so `diag(L)` is the posterior standard deviation.
+
+  * `"sd"` (default): the bias is `log(sigma0)`, so the initial posterior SD is
+    `sigma0` -- what the argument says it is.
+  * `"reference"`: the bias is `log(sigma0^2)`, matching the reference
+    implementation, whose initial posterior SD is therefore `sigma0` SQUARED
+    (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
+    reference documents `sigma0` as a standard deviation, so this appears to be
+    unintended there; it is offered only to reproduce its published behavior.}
 
 \item{omegaUpdate}{How the population variances are updated in the covariate
 M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from

@@ -5,7 +5,9 @@
 
 #' Initialize encoder parameters (RNG seeded once by the caller under rxWithSeed)
 #' @noRd
-.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0) {
+.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0,
+                                  sigma0Interp = c("sd", "reference")) {
+  sigma0Interp <- match.arg(sigma0Interp)
   nOff <- as.integer(zDim * (zDim - 1L) / 2L)
   outDim <- 2L * zDim + nOff
   .sd <- 1 / sqrt(hDim)
@@ -15,7 +17,15 @@
     bih = numeric(4L * hDim),
     bhh = numeric(4L * hDim),
     fcW = matrix(stats::rnorm(outDim * (hDim + nCov), 0, 1e-2), outDim, hDim + nCov),
-    fcB = c(zPop, log(sigma0), numeric(nOff))
+    ## The head emits logSigma and the encoder forms diag(L) = exp(logSigma), so
+    ## diag(L) is the posterior SD (the entropy term uses 2*log(diag(L))).  Under
+    ## "sd" the bias is log(sigma0), making the initial posterior SD sigma0 --
+    ## what `sigma0` says it is.  Under "reference" it is log(sigma0^2), matching
+    ## the reference implementation, whose initial posterior SD is therefore
+    ## sigma0 SQUARED.
+    fcB = c(zPop,
+            if (sigma0Interp == "reference") log(sigma0^2) else log(sigma0),
+            numeric(nOff))
   )
 }
 
@@ -152,7 +162,8 @@
     invisible(TRUE)
   }
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0,
+                                  if (is.null(control$sigma0Interp)) "sd" else control$sigma0Interp)
   .vaeCheckEncoderDims(params)
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)

@@ -373,10 +373,6 @@ vaeCovariates <- function(data, warn = TRUE) {
   .declaredCoefs <- .vaeCovariateCoefThetas(ui)
   .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L &&
     !isFALSE(control$covariateSelection)
-  ## Encoder conditioning is independent of the SEARCH: even when the covariate
-  ## search is switched off the encoder is still conditioned on the covariates,
-  ## so keep the encoded matrix before it is cleared for selection purposes.
-  .covEnc <- .cov$covMat
   if (.searchOff) {
     warning("pinCovariates=FALSE: model covariates estimated in place", call. = FALSE)
     .cov$covNames <- character(0)
@@ -589,8 +585,21 @@ vaeCovariates <- function(data, warn = TRUE) {
   ## the covariates (smaller omega, more variance pushed into residual error) and
   ## weaker covariate effects.  Use the same encoded matrix the selection step
   ## uses (continuous -> log(cov/mean), categorical -> linear).
-  covIn <- if (ncol(.cov$covMat) > 0L) .cov$covMat else .covEnc
-  if (nrow(covIn) != N) covIn <- matrix(0, N, 0L)
+  ## Only the covariates actually in play are supplied.  With no covariate
+  ## search there is nothing for the encoder to condition on (the declared
+  ## coefficients are estimated in place by the regress M-step instead), and
+  ## under `pinCovariates` only the pinned candidates are; conditioning on a
+  ## covariate the search cannot select would let the posterior encode a
+  ## relationship the model never reports.
+  covIn <- if (isFALSE(control$covariateSelection) || .searchOff) {
+    matrix(0, N, 0L)
+  } else if (!is.null(.covAllow) && ncol(.cov$covMat) > 0L) {
+    .keep <- which(colSums(.covAllow) > 0L)
+    .cov$covMat[, .keep, drop = FALSE]
+  } else {
+    .cov$covMat
+  }
+  if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,

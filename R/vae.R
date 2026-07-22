@@ -150,6 +150,17 @@
 #'     it continues rather than repeating a gain of 1, so the decay begins at
 #'     `1/2`.  Select this to match the step-size convention of the other
 #'     nlmixr2 estimation methods rather than the reference.
+#' @param sigma0Interp How `sigma0` is turned into the encoder's initial posterior
+#'   spread.  The encoder head emits `logSigma` and forms `diag(L) = exp(logSigma)`,
+#'   so `diag(L)` is the posterior standard deviation.
+#'
+#'   * `"sd"` (default): the bias is `log(sigma0)`, so the initial posterior SD is
+#'     `sigma0` -- what the argument says it is.
+#'   * `"reference"`: the bias is `log(sigma0^2)`, matching the reference
+#'     implementation, whose initial posterior SD is therefore `sigma0` SQUARED
+#'     (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
+#'     reference documents `sigma0` as a standard deviation, so this appears to be
+#'     unintended there; it is offered only to reproduce its published behavior.
 #' @param omegaUpdate How the population variances are updated in the covariate
 #'   M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
 #'   the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
@@ -245,6 +256,7 @@ vaeControl <- function(seed = 42L,
                        covSelectAlpha = 2,
                        covSelectSmooth = TRUE,
                        gammaSeries = c("reference", "saem"),
+                       sigma0Interp = c("sd", "reference"),
                        omegaUpdate = c("suffStat", "blend"),
                        inputScale = c("reference", "observed"),
                        bnbStrategy = c("lifo", "fifo", "lc"),
@@ -301,6 +313,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
   gammaSeries <- match.arg(gammaSeries)
+  sigma0Interp <- match.arg(sigma0Interp)
   omegaUpdate <- match.arg(omegaUpdate)
   inputScale <- match.arg(inputScale)
   bnbStrategy <- match.arg(bnbStrategy)
@@ -395,6 +408,7 @@ vaeControl <- function(seed = 42L,
                covSelectAlpha = covSelectAlpha,
                covSelectSmooth = covSelectSmooth,
                gammaSeries = gammaSeries,
+               sigma0Interp = sigma0Interp,
                omegaUpdate = omegaUpdate,
                inputScale = inputScale,
                bnbStrategy = bnbStrategy,
