@@ -1006,6 +1006,16 @@
   is.null(ui$boundedTransforms) || length(ui$boundedTransforms) == 0L
 }
 
+#' Is the analytic outer gradient in scope for a VAE fit?
+#'
+#' Cheap direction-set probe -- no symengine/gcc pass -- covering every static
+#' gate: `linCmt()`, `fo`, the distribution/error-model scope, IOV, and a model
+#' with no eta.  A later build or solve failure still falls back at runtime.
+#' @noRd
+.vaeGradInScope <- function(ui) {
+  !is.null(tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL))
+}
+
 #' Direction set for the augmented outer-gradient model, computed from the UI
 #' alone (does not depend on theta/eta values): one direction per eta plus one per
 #' non-mu-referenced structural theta.  `NULL` if out of analytic scope.

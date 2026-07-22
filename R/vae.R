@@ -372,6 +372,17 @@ nlmixr2Est.vae <- function(env, ...) {
   } else {
     assign("vaeControl", vaeControl(), envir = env)
   }
+  ## nonMuTheta="grad" needs the analytic outer gradient; out of analytic scope it
+  ## must not silently become a no-op, so downgrade to the bobyqa regression once,
+  ## up front, and say so in $runInfo.
+  if (identical(env$vaeControl$nonMuTheta, "grad") && !.vaeGradInScope(.ui)) {
+    .ctl <- env$vaeControl
+    .ctl$nonMuTheta <- "regress"
+    assign("vaeControl", .ctl, envir = env)
+    assign("control", .ctl, envir = env)
+    assign("control", .ctl, envir = .ui)   # the ui copy .analyticGradCaller reads
+    warning("analytic gradient out of scope; used nonMuTheta=\"regress\"", call. = FALSE)
+  }
   ## Seed the ENTIRE estimation ONCE here (encoder init, Adam, reparam sampling,
   ## and any random draws in the model / residual-table simulation) and restore
   ## the caller's global RNG state afterward -- a fit never perturbs it, and a
