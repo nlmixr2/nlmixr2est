@@ -569,3 +569,36 @@ the re-raise frame.  Do not spend time on traceback tricks.
 To find the line, either instrument `.vaeToFit` directly (it is reachable
 standalone: fit with `returnVae=TRUE` to get the raw object, then call the
 assembly path on it), or temporarily bypass the catch in `nlmixr2Est0`.
+
+##### IOV: the actual failure site
+
+Stashing `.vaeToFit`'s arguments with `trace()` (no source edit) and replaying it
+at TOP LEVEL -- where `nlmixr2Est0`'s catch cannot swallow the condition -- gives:
+
+```
+MSG: invalid second argument of length 0
+1: some etas defaulted to non-mu referenced, possible parsing error: rx.iov.cl.2
+2: In foceiFitCpp_(.ret)
+```
+
+So `.vaeToFit` runs a FOCEi pass (`foceiFitCpp_`) to assemble the fit object, and
+in THAT pass the per-occasion expanded IOV etas are not paired with a theta --
+`rx.iov.cl.2` "defaulted to non-mu referenced" -- and something downstream then
+receives a zero-length argument.
+
+Note it names occasion **2**, not `.1`: the first occasion's eta apparently pairs
+and later ones do not, which points at the mu-reference map being built from the
+ui-level `iov.cl` (one entry) while the runtime has one eta per occasion.  This
+matches the mechanism described from memory: the IOV etas need to read as a
+`theta.iov + eta.iov` mu term (small held omega, `theta.iov` absorbing
+`mean(eta.iov)`), and that pairing is what is missing on the assembly path.
+
+Training is unaffected because `vaeTrainCpp_` treats the IOV etas as `isFree`
+(theta forced to 0) and never needs the mu map.
+
+Repro recipe (fast, no source edit):
+    trace(nlmixr2est:::.vaeToFit,
+          tracer=quote({assign("DBG_env", env, envir=globalenv())
+                        assign("DBG_fit", fit, envir=globalenv())}), print=FALSE)
+    <run the fit>          # error is caught and discarded as usual
+    nlmixr2est:::.vaeToFit(DBG_env, DBG_fit)   # replays it uncaught
