@@ -886,3 +886,35 @@ etaMat and the route were all fine because the problem is the ENV CONTENTS.
 NEXT: populate the VAE's `.ret` with the SAEM-equivalent fields (start with
 `idLvl`/`covLvl`, then `dataSav`/`origData`) and re-run the IOV fit.  A non-IOV
 VAE fit must stay bit-identical -- that is the regression guard.
+
+##### Tenth elimination: the missing env fields are REAL but NOT SUFFICIENT
+
+Follow-up to the env diff.  Measured facts:
+
+  * The estimation `env` handed to `.vaeToFit` carries ONLY `ui` -- it has none of
+    `idLvl`, `covLvl`, `dataSav`, `origData`, `theta`, `model`, `omega`, ...
+    (`.vaeInnerSetup`'s `.foceiPreProcessData` populates a DIFFERENT env, which
+    never reaches `.vaeToFit`).
+  * Adding `.foceiPreProcessData(env$data, .ret, .ui2, .ret$control$rxControl)`
+    just before `nlmixr2CreateOutputFromUi` DOES populate them correctly --
+    `idLvl` length 12 (the subjects), `covLvl` length 0 (correct: no factor
+    covariates), plus `dataSav` and `origData`.
+  * The IOV fit STILL fails with the same error.
+
+So `idLvl`/`covLvl`/`dataSav`/`origData` were genuinely absent, and supplying them
+is necessary-looking but NOT the fix.  Reverted -- it changes every VAE fit and
+cannot be justified unvalidated.
+
+Still absent after that change: `theta`, `model`, `omega`, `objective`,
+`fullTheta`, `etaObf`, `iniDf0`, `message`, `cov`, `covMethod`, `ui`.  SAEM sets
+`theta`/`model` explicitly and derives the rest from its fit.  Since NON-IOV VAE
+fits succeed without any of them, whatever `nlmixr2CreateOutputFromUi` derives
+internally works for the plain case and breaks only on the per-occasion
+structure.
+
+Tooling note (cost me time twice): replaying `nlmixr2CreateOutputFromUi` at top
+level does NOT reproduce the failure -- it dies with "cannot find vae related
+control object" because the builder depends on estimation-time global state.
+Only `.vaeToFit` replays cleanly.  And patching `collectErr = TRUE -> FALSE` at
+`R/nlmixr2Est.R:237` does not open up the error either; line 224 takes the live
+path and has no such argument.
