@@ -139,6 +139,17 @@
 #'   changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
 #'   equals the posterior mean for most of a run and is averaged only over the
 #'   closing tail.  `FALSE` regresses the current posterior means.
+#' @param gammaSeries Decaying step-size series used once the smoothing phase
+#'   starts (after `gammaIter`); the gain is 1 throughout the EM phase either way.
+#'
+#'   * `"reference"` (default): `1/(iter - gammaIter)`, the textbook
+#'     Kuhn-Lavielle series the reference implementation uses.  The first
+#'     smoothing step is still a full replacement, and the decay follows.
+#'   * `"saem"`: `1/(1 + iter - gammaIter)`, the CONTINUATION form
+#'     \code{\link{saemControl}()} uses -- nlmixr2est's SAEM builds its series so
+#'     it continues rather than repeating a gain of 1, so the decay begins at
+#'     `1/2`.  Select this to match the step-size convention of the other
+#'     nlmixr2 estimation methods rather than the reference.
 #' @param omegaUpdate How the population variances are updated in the covariate
 #'   M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
 #'   the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
@@ -227,6 +238,7 @@ vaeControl <- function(seed = 42L,
                        muRefCovAlg = TRUE,
                        covSelectAlpha = 2,
                        covSelectSmooth = TRUE,
+                       gammaSeries = c("reference", "saem"),
                        omegaUpdate = c("suffStat", "blend"),
                        inputScale = c("reference", "observed"),
                        bnbStrategy = c("lifo", "fifo", "lc"),
@@ -282,6 +294,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(muRefCovAlg, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
+  gammaSeries <- match.arg(gammaSeries)
   omegaUpdate <- match.arg(omegaUpdate)
   inputScale <- match.arg(inputScale)
   bnbStrategy <- match.arg(bnbStrategy)
@@ -375,6 +388,7 @@ vaeControl <- function(seed = 42L,
                muRefCovAlg = muRefCovAlg,
                covSelectAlpha = covSelectAlpha,
                covSelectSmooth = covSelectSmooth,
+               gammaSeries = gammaSeries,
                omegaUpdate = omegaUpdate,
                inputScale = inputScale,
                bnbStrategy = bnbStrategy,

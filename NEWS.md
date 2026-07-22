@@ -39,6 +39,13 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` gains `vaeControl(gammaSeries=)`, selecting the decaying step-size
+  series used in the smoothing phase: `"reference"` (default)
+  `1/(iter - gammaIter)`, the textbook Kuhn-Lavielle series the reference uses,
+  or `"saem"` `1/(1 + iter - gammaIter)`, the continuation form
+  `saemControl()` uses (its decay starts at `1/2` rather than repeating a gain
+  of 1).
+
 - `est="vae"` aligns three more details with Rohleff et al. (2025): the
   smoothing gain is now `1/(iter - gammaIter)` (it was `1/(1 + iter - gammaIter)`,
   smoothing a step harder than the reference throughout the tail); new

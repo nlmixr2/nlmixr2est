@@ -13411,6 +13411,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // inner FOCEi likelihood uses (vaeInner.R passes addProp to foceiControl).
   const bool errCombined1 = control.containsElementNamed("addProp") &&
     as<std::string>(control["addProp"]) == "combined1";
+  // gammaSeries: which decaying step-size series the smoothing phase uses.
+  const bool gammaSeriesSaem = control.containsElementNamed("gammaSeries") &&
+    as<std::string>(control["gammaSeries"]) == "saem";
   // mStepObjective: "outer" (default) scores the non-mu theta M-step against the
   // full FOCEi outer objective; "elbo" reproduces the reference's plain
   // variational bound (frozen-eta joint likelihood).  Missing field -> "outer",
@@ -13516,10 +13519,16 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::vec s2(zDim, arma::fill::zeros), s3(zDim, arma::fill::zeros);
 
   for (int it = 1; it <= iters; ++it) {
-    // Smoothing gain, matching the reference exactly: 1 during the EM phase,
-    // then 1/(iter - gamma_iter).  (This was 1/(1 + it - gammaIter), which
-    // smoothed a step harder than the reference all through the tail.)
-    double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (double)(it - gammaIter);
+    // Smoothing gain: 1 through the EM phase, then a decaying series.
+    //   "reference" (default) -- 1/(it - gammaIter), the textbook
+    //     Kuhn-Lavielle form the reference implementation uses, so the first
+    //     smoothing step is still a full replacement.
+    //   "saem" -- 1/(1 + it - gammaIter), the CONTINUATION form nlmixr2est's own
+    //     SAEM uses (R/saem_fit.R builds k1 = pas[end]^(-1/va) so the sequence
+    //     continues rather than repeating 1): decay starts at 1/2.
+    double gamma = (it <= gammaIter) ? 1.0
+      : (gammaSeriesSaem ? 1.0 / (1.0 + it - gammaIter)
+                         : 1.0 / (double)(it - gammaIter));
     arma::vec baseline;
     // L0-penalty warmup ramp: the per-covariate cost multiplier ramps linearly
     // from covSelectAlpha at it=1 toward 1, then holds at 1 for it>=klWarmup --
