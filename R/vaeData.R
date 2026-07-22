@@ -84,8 +84,14 @@
     ## nlmixrMuDerCov# data column (the centering/transform is already baked in),
     ## so encode them LINEARLY (mean-centered) -- never re-apply a log transform.
     .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", .covNames[j], ignore.case = TRUE)
-    if (!.isMuDer && length(unique(v)) > 2L && all(v > 0)) {
+    ## a 0/1 indicator column (e.g. SEXF) is already in its natural
+    ## parameterization: leave it RAW so its coefficient is the level-1 shift and
+    ## the structural theta stays the reference (0) value
+    .isInd <- all(v %in% c(0, 1))
+    if (!.isMuDer && !.isInd && length(unique(v)) > 2L && all(v > 0)) {
       .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
+    } else if (.isInd) {
+      .covType[j] <- "categorical"; .covPop[j] <- 0; .covMat[, j] <- v
     } else {
       .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
     }
@@ -332,8 +338,9 @@ vaeCovariates <- function(data, warn = TRUE) {
   ## subject-level covariate discovery + encoding (shared with vaeCovariates())
   .cov <- .vaeCovariateSearch(d, .ids)
   if (length(.cov$tvExcl) > 0L) {
-    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
-            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
+    ## keep the $runInfo note single-line even with many covariates
+    .tvPre <- "time-varying covariate(s) not searched: "
+    warning(.tvPre, .vaeTruncList(.cov$tvExcl, prefix = .tvPre), call. = FALSE)
   }
 
   ## pinCovariates=FALSE with a model that declares covariates: turn OFF the
@@ -385,6 +392,24 @@ vaeCovariates <- function(data, warn = TRUE) {
         for (.cn in unique(.inRows$coefName)) {
           .ti <- match(.cn, .thRows$name)
           if (!is.na(.ti)) .th[.ti] <- 0
+        }
+        ## Retain ONLY the model's own centering (already carried by the mu2/mu3
+        ## nlmixrMuDerCov# column, or by the written log(cov/center)); do NOT add
+        ## the VAE's mean-centering.  Use each pinned covariate at its MODEL value
+        ## so zPop is the model intercept and no post-hoc correction is needed.
+        ## Centering a predictor in a regression WITH an intercept leaves the slope
+        ## and the selection unchanged -- this only relocates the intercept.
+        for (.r in seq_len(nrow(.inRows))) {
+          .j <- match(.inRows$covName[.r], .cov$covNames)
+          if (is.na(.j)) next
+          if (identical(.inRows$covType[.r], "continuous")) {
+            ## log(v/mean) -> log(v/userCenter)
+            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.inRows$userCenter[.r])
+          } else {
+            ## (v - mean) -> raw v (mu2/mu3 already applied the model transform)
+            .cov$covMat[, .j] <- .cov$covMat[, .j] + .cov$covPop[.j]
+          }
+          .cov$covPop[.j] <- 0
         }
       }
       .pinCovCoef <- unique(.pinPairs$coefName[!.pinPairs$inPool])

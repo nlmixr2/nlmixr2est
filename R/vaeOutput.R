@@ -38,9 +38,14 @@
     for (j in sel) {
       bn <- paste0("beta_", thName, "_", covNames[j])
       center <- signif(prep$covPop[j], 12)
-      enc <- if (prep$covType[j] == "continuous")
+      ## an uncentered covariate (a 0/1 indicator) enters bare -- no "- 0" term
+      enc <- if (prep$covType[j] == "continuous") {
         paste0("log(", covNames[j], "/", center, ")")
-      else paste0("(", covNames[j], " - ", center, ")")
+      } else if (center == 0) {
+        covNames[j]
+      } else {
+        paste0("(", covNames[j], " - ", center, ")")
+      }
       terms <- c(terms, paste0(bn, " * ", enc))
       betaVals[[bn]] <- fit$beta[k, j]
     }
@@ -97,24 +102,24 @@
 #' -- their covariate terms, coefficient names and centers stay exactly as
 #' written -- and only writes ini() estimates.  A declared covariate the search
 #' selected gets its estimated slope; one it dropped is set to `0` (the term
-#' stays in the model).  In-pool slopes are estimated by the M-step prior
-#' regression in the VAE's mean-centered encoding, so the structural (intercept)
-#' theta absorbs the offset between the VAE center and the user's written center
-#' (the slope itself is center-invariant).  Out-of-pool declared covariates were
-#' estimated in place by the regress M-step and are written from `regressTheta`.
+#' stays in the model).  Pinned covariates are searched at their MODEL value (the
+#' model's own centering is retained, e.g. from mu2/mu3 `nlmixrMuDerCov#`, with no
+#' extra VAE mean-centering), so `zPop` is already the model intercept and the
+#' coefficient transfers directly with no correction.  Out-of-pool declared
+#' covariates were estimated in place by the regress M-step (`regressTheta`).
 #' @noRd
 .vaeUpdateModelPinned <- function(ui, fit) {
   prep <- fit$prep
   pairs <- prep$pinPairs
   thetaNames <- .foceiEtaThetaMap(ui)$thetaForEta   # mu-referenced theta per eta
   covNames <- fit$covNames
-  covPop <- prep$covPop
   ui2 <- ui
   .setIni <- function(u, expr) do.call(rxode2::ini, list(u, str2lang(expr)))
 
   ## 1. in-pool declared coefficients: selected -> estimated slope, dropped -> 0.
-  ## Accumulate each selected slope's center offset into its structural theta.
-  corr <- numeric(length(thetaNames))
+  ## The pinned covariates are searched at their MODEL value (no VAE re-centering,
+  ## the model's own centering is retained), so zPop is already the model
+  ## intercept -- the coefficient transfers directly with no correction.
   .inRows <- if (is.null(pairs)) NULL else pairs[pairs$inPool, , drop = FALSE]
   for (.r in seq_len(NROW(.inRows))) {
     .k <- .inRows$k[.r]
@@ -122,20 +127,12 @@
     .sel <- !is.null(fit$selected) && !is.na(.j) && isTRUE(fit$selected[.k, .j])
     .betaVal <- if (.sel) fit$beta[.k, .j] else 0
     ui2 <- .setIni(ui2, paste0(.inRows$coefName[.r], " <- ", signif(.betaVal, 12)))
-    if (.sel) {
-      .off <- if (identical(.inRows$covType[.r], "continuous")) {
-        .betaVal * log(.inRows$userCenter[.r] / covPop[.j])
-      } else {
-        .betaVal * (.inRows$userCenter[.r] - covPop[.j])
-      }
-      corr[.k] <- corr[.k] + .off
-    }
   }
 
-  ## 2. structural population thetas (center-corrected) + omega per eta
+  ## 2. structural population thetas + omega per eta
   for (k in seq_along(thetaNames)) {
     if (!is.na(thetaNames[k])) {
-      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k] + corr[k], 12)))
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
     }
     ui2 <- .setIni(ui2, paste0(prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
   }

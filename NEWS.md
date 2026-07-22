@@ -23,6 +23,14 @@
   be pinned and selected like any other covariate; the original expression is
   restored in the reported model.
 
+- The `est="vae"` covariate search no longer adds its own centering on top of the
+  model's.  A pinned covariate is searched at its MODEL value (the centering the
+  model specifies -- typically already applied by mu2/mu3 referencing -- is
+  retained), so the structural theta is the model's intercept directly.  A `0`/`1`
+  indicator covariate (e.g. `SEXF`) is never centered, since it is already in its
+  natural parameterization; other categorical covariates remain mean-centered and
+  continuous ones remain `log(cov/mean)`.
+
 - The optimization `sigdig` now sets both the ODE solver tolerances and every
   estimation method's optimizer convergence tolerance with one consistent formula,
   so the optimizer converges to exactly the precision the solve supports.  The ODE
