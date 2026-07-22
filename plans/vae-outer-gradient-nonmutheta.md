@@ -409,3 +409,25 @@ one hits the "already present" `continue`, nothing matches
 structural no-op for imp/advi.  Only the VAE's augmented model (whose parameter
 names ARE its sensitivity directions) has the underscore spelling that triggers
 it.  focei never sets a pool model at all, so it cannot reach the block.
+
+##### REGRESSION FOUND AND FIXED: the pooled branch leaked into focei
+
+`.foceiAnalyticSolveAll` is SHARED with focei's own fast gradient, and
+`.vaeGradEnv` is a package-level environment that lives for the whole session.
+Gating the pooled branch on `outerCols` alone meant any focei `fast=TRUE` fit
+AFTER a vae grad fit in the same session took the pooled path -- against a pool
+sized for ITS OWN inner model.  Caught by running the suites in one session:
+`test-focei-fast-grad.R` went 47/47 -> pass=24 fail=23.
+
+It only shows up in that ORDER, which is why the earlier standalone runs were
+green and why this needed a same-session test rather than more reasoning.
+
+Fix: the branch additionally requires `isTRUE(.vaeGradEnv$active)`, which
+`.vaeGradEval` sets around its own gradient call only (`on.exit` clears it), plus
+`.vaeGradReset()` on exit from `.vaeTrain` to drop the fit-specific state.
+Regression test added (`a vae grad fit does not leak into a later focei fast
+fit`): focei fast -> vae grad -> focei fast, asserting the two focei fits agree
+and that `active`/`outerCols` are cleared.
+
+Lesson for any future shared-entry-point branch here: gate on an ACTIVE-call
+flag, never on the presence of cached state.

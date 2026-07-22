@@ -70,7 +70,16 @@
 #' @param regNames names of the thetas the M-step regresses, in `regIdx` order
 #' @return invisible NULL
 #' @noRd
+.vaeGradReset <- function() {
+  .vaeGradEnv$active <- FALSE
+  .vaeGradEnv$outerCols <- NULL
+  .vaeGradEnv$am <- NULL
+  .vaeGradEnv$ui <- NULL
+  invisible(NULL)
+}
+
 .vaeGradInit <- function(ui, data, regNames) {
+  .vaeGradEnv$active <- FALSE
   ## .vaeInnerSetup replaced the ui's control with the DERIVED focei control, so
   ## .analyticGradCaller (which rxUiGet.foceiOuter consults) would resolve to NA.
   ## Re-mark it so the augmented model builds for this caller.
@@ -117,6 +126,10 @@
   if (isTRUE(.vaeGradEnv$failed)) return(NULL)
   .ui <- .vaeGradEnv$ui
   .reg <- .vaeGradEnv$regNames
+  ## Scope the pooled-solve branch in .foceiAnalyticSolveAll (SHARED with focei's
+  ## own fast gradient) to this call only -- see the comment there.
+  .vaeGradEnv$active <- TRUE
+  on.exit(.vaeGradEnv$active <- FALSE, add = TRUE)
   tryCatch({
     .Om <- diag(as.numeric(omegaDiag), nrow = length(omegaDiag))
     .st <- .foceiAnalyticGradSetup(.ui, thVals, .Om, caller = "vae")

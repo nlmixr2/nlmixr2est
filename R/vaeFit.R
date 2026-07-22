@@ -212,6 +212,9 @@
   ## M-step reads; the C++ loop then passes only theta/eta/omega per M-step
   if (identical(control$nonMuTheta, "grad") && length(prep$regressNames)) {
     .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames)
+    ## .vaeGradEnv lives for the SESSION; drop the fit-specific state when this
+    ## fit ends so a later focei fast fit cannot see it (see .foceiAnalyticSolveAll)
+    on.exit(.vaeGradReset(), add = TRUE)
   }
 
   .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),

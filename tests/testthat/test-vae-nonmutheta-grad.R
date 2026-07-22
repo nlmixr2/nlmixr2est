@@ -69,6 +69,31 @@ nmTest({
     expect_true(any(grepl("analytic gradient out of scope", f$runInfo)))
   })
 
+  test_that("a vae grad fit does not leak into a later focei fast fit", {
+    skip_on_cran()
+    ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient and
+    ## .vaeGradEnv lives for the whole session, so a vae grad fit must not leave
+    ## the pooled-solve branch armed.  Without the `active` guard this made 23 of
+    ## test-focei-fast-grad.R's assertions fail whenever the vae tests ran first.
+    .ref <- suppressMessages(
+      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                                     calcTables = FALSE)))
+    suppressWarnings(suppressMessages(
+      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "vae",
+              control = vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
+                                   itersBurnIn = 10L, iters = 25L, klWarmup = 5L,
+                                   gammaIter = 18L))))
+    expect_false(isTRUE(.vaeGradEnv$active))
+    expect_null(.vaeGradEnv$outerCols)
+    .after <- suppressMessages(
+      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                                     calcTables = FALSE)))
+    expect_equal(.after$objf, .ref$objf, tolerance = 1e-4)
+    expect_equal(unname(.after$theta), unname(.ref$theta), tolerance = 1e-4)
+  })
+
   test_that("in scope, the gradient path is actually taken", {
     skip_on_cran()
     r <- suppressWarnings(suppressMessages(

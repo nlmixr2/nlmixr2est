@@ -468,7 +468,14 @@
   ## pool (which it sized) and take the per-subject E structures straight from
   ## C++.  This avoids rxode2::rxSolve, which frees and rebuilds the global solve
   ## on every M-step.  A NULL from the solver falls through to the rxSolve path.
-  if (!is.null(.vaeGradEnv$outerCols)) {
+  ##
+  ## `active` is REQUIRED, not belt-and-braces: this function is SHARED with
+  ## focei's own fast gradient, and .vaeGradEnv persists for the whole session.
+  ## Keyed on outerCols alone, any focei fast fit AFTER a vae grad fit in the same
+  ## session takes this branch against a pool sized for ITS inner model -- which is
+  ## how 23 of test-focei-fast-grad.R's assertions failed.  .vaeGradEval sets
+  ## `active` only around its own gradient call.
+  if (isTRUE(.vaeGradEnv$active) && !is.null(.vaeGradEnv$outerCols)) {
     .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes),
                                    .vaeGradEnv$outerCols,
                                    as.integer(.vaeGradEnv$cores)),
