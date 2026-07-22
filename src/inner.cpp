@@ -10471,6 +10471,14 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
                             std::vector<std::vector<double> >* pr = NULL) {
   const int nid = (int)etaMat.n_rows;
   const int neta = (int)etaMat.n_cols;
+  // Every per-id branch below indexes inds_focei[id] for id in [0, nid).  In the
+  // VAE flow nid is N*(components) and inds_focei was sized the same way at
+  // setup, so this cannot exceed the allocation -- but a caller that passed more
+  // etas than the setup allocated would corrupt the heap silently.  Fail loud.
+  if (nid > nIndsFocei) {
+    stop("vaeInnerLikCore: %d etas exceed the %d allocated inner slots "
+         "(inner setup and the eta matrix disagree)", nid, nIndsFocei);
+  }
   obj.set_size(nid);
   if (grad) lp.set_size(nid, neta);
   if (preds) { pf.clear(); pf.resize(nid); if (pr != NULL) { pr->clear(); pr->resize(nid); } }

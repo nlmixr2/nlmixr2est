@@ -133,6 +133,27 @@ nmTest({
                  c(FALSE, FALSE, TRUE))
   })
 
+  test_that("a linCmt() parameter is never called ODE-free", {
+    ## linCmt() solves PK compartments from parameters read by NAME, which the
+    ## assignment-graph scan cannot trace.  In a mixed linCmt() + ODE model the
+    ## PK thetas (tcl, tv) must NOT be reported ODE-free, or stage 2 would
+    ## optimize them against a frozen PK solve.
+    ui <- suppressWarnings(rxode2::assertRxUi(function() {
+      ini({ tcl <- 1.1; tv <- 3.9; te0 <- 2.3; tkout <- -2.3; prop.err <- 0.1
+        eta.e0 ~ 0.1 })
+      model({
+        cl <- exp(tcl); v <- exp(tv)
+        cp <- linCmt()
+        e0 <- exp(te0 + eta.e0); kout <- exp(tkout); kin <- e0 * kout
+        d / dt(pd) <- kin - kout * pd
+        pd ~ prop(prop.err)
+      })
+    }))
+    ## the whole model bails to "nothing ODE-free" -- conservative and safe
+    expect_equal(.vaeOdeFreeThetas(ui, c("tcl", "tv", "tkout")),
+                 c(FALSE, FALSE, FALSE))
+  })
+
   test_that("stage-2 eligibility keeps every err parameter", {
     ## the historic half of the rule: an err parameter is always stage 2, and a
     ## structural theta that reaches d/dt is not

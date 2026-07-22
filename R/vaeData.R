@@ -351,6 +351,17 @@ vaeCovariates <- function(data, warn = TRUE) {
   if (is.null(.lst) || length(.lst) == 0L) return(.no)
   .states <- tryCatch(rxode2::rxState(ui), error = function(e) character(0))
   if (length(.states) == 0L) return(.no)
+  ## A linCmt() model solves compartments from parameters read by NAME (cl, v,
+  ## ka, ...) that are not syntactically connected to the linCmt() call, so the
+  ## assignment-graph scan cannot trace them.  When a linCmt() appears alongside
+  ## ODE states (e.g. linCmt PK + a PD compartment), classify NOTHING as ODE-free
+  ## -- everything stays in stage 1, and an error parameter is still stage-2
+  ## eligible via the err rule.  (predDf$linCmt is FALSE here because the endpoint
+  ## is the ODE state, so scan the expressions.)
+  .hasLinCmt <- any(vapply(.lst, function(.e)
+    grepl("(^|[^A-Za-z0-9._])linCmt[BAC]? *\\(",
+          paste(deparse(.e), collapse = " ")), logical(1)))
+  if (.hasLinCmt) return(.no)
   .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
     (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")) ||
        identical(.ex[[1]], as.name("~")))
