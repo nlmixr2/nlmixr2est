@@ -999,3 +999,32 @@ frozen at its `ini()` value with no estimate to report.
 THIS supersedes the earlier "missing env fields" framing: the wip branch's
 contract (fullTheta/etaObf/omega) is still a real gap worth closing, but it
 cannot help while the underlying quantity is never estimated.
+
+### PROGRESS: the IOV theta is now estimated; one gap remains
+
+With the `.vaeNonMuThetas` fix (wip branch):
+
+    regressNames: iov.cl
+    regressTheta: iov.cl = 0.0170952        <-- the magnitude IS now estimated
+
+So the "never estimated" root cause is CLOSED.  The fit still fails at the same
+place, so `parFixedDf[iovVars, <Back column>]` is STILL zero-length even with a
+real estimate.  Two possibilities remain, and they are cheap to separate:
+
+  (a) the `Back` COLUMN is absent from the VAE's `parFixedDf` -- the IOV theta
+      carries a `backTransform` (`nlmixr2iovSd`/`Var`/`Logsd`/`Logvar`), so a
+      table built without honouring `backTransform` would have no "Back..." column
+      at all; or
+  (b) the ROW is absent/misnamed -- `.uiIovEnv$iovVars` is `iov.cl`, so the
+      parFixedDf rowname must be exactly `iov.cl`.
+
+TOOLING WARNING: `.uiFinalizeIov` CANNOT be traced.  It is registered with
+`postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)` (`R/iov.R:579`), which
+stores the FUNCTION OBJECT at load time -- `trace()` rewrites the namespace
+binding and the stored copy is unaffected, so the tracer never fires (the stack
+shows it only as `.fun(.ret)`).  To inspect it, either re-register a traced copy
+or print from inside `.foceiFamilyReturn` before
+`.postFinalObjectHooksRun`.
+
+To separate (a)/(b), dump `names(parFixedDf)` and `rownames(parFixedDf)` from a
+VAE IOV fit and compare against a SAEM IOV fit (which works).
