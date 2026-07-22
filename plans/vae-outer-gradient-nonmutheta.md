@@ -103,6 +103,55 @@ scratchpad is needed.  If a later phase ever moves this inside the OpenMP region
 it would need the `op_focei.thetaSensNlhs`-style thread-local lhs buffer the imp
 M-step required -- explicitly out of scope here.
 
+### Phase 2b -- SUPERSEDES 2: pooled solve, no free/restore at all
+
+**Done as Phase 2, and it works, but it is the wrong mechanism.**  Going through
+`rxode2::rxSolve` for the augmented model calls `rxSolveFree()` and rebuilds the
+global solve, so every M-step pays a full `rxSolve_` setup (~48ms x 250 M-steps
+== the entire 12s regression measured against bobyqa on theo_sd).
+
+Swapping the solve state instead is NOT possible from nlmixr2est: subject records
+are views into the single process-global `_globals` (`ind->all_times =
+&_globals.gall_times[...]` rxData.cpp:4135, `ind->cov_ptr = &_globals.gcov[...]`
+:4264, `ind->solve = &_globals.gsolve[...]` :4816), and even the `indOwnAlloc`
+path keeps `ind->linH = &_globals.gLin[...]`.  Stashing `rx->subjects`/`rx->op`
+restores dangling views once the augmented solve reallocates `_globals`.
+
+The right mechanism is the one imp and advi already use here: **size the shared
+solve pool for the LARGER model (the augmented one) and swap FUNCTION POINTERS to
+solve the smaller inner model inside it.**  The solve buffer is a scratchpad; what
+matters is accumulated into the output vectors.  No second solve context, no free,
+no restore.  `vaeInnerSetup_` ALREADY does exactly this for `est="advi"`
+(`src/inner.cpp:10152-10170`), so this follows an in-file precedent, not a new
+pattern:
+
+1. **Pool sizing.** `.vaeInnerSetup` passes the augmented model as the pool model
+   (the `_impPoolModel` slot, `src/inner.cpp:4897`, consumed at :5359) so
+   `foceiSetup_`'s `rxSolve_` sizes every per-subject buffer for it.  Record the
+   inner model's state count in `op_focei.innerNeq` so inner solves run with
+   `ind->neqOverride` (`impSetInnerNeqOverride`, :9458) -- the existing call in
+   `vaeInnerSetup_` already fires when `innerNeq > 0`.
+2. **Function pointers.** Register the augmented model into a new `rxSolveF
+   rxVaeOuter` peer of `rxInner`/`rxPred`/`rxThetaSens` via `rxUpdateFuns`, and a
+   `vaeOuterOde(id)` macro alongside `thetaSensOde` (:66).  Record its `neq` and
+   its true lhs width.
+3. **The solve.** New export `vaeOuterSolve_()`: per subject, `IndNeqOverrideGuard
+   neqGuard(ind, vaeOuterNeq)`, `iniSubjectE(..., rxVaeOuter.update_inis)`, solve,
+   then `rxVaeOuter.calc_lhs(...)` into a **thread-local** buffer sized to the
+   augmented lhs width.  This buffer is mandatory, not an optimization: the imp
+   M-step bug was exactly `calc_lhs` overflowing the inner-sized per-thread lhs
+   slice (`op_focei.thetaSensNlhs`).
+4. **The seam.** `.foceiAnalyticSolveAll` already reduces the whole solve to one
+   column matrix up front ("Extract every sensitivity column from the WHOLE solve
+   as a matrix ONCE"); have it take that matrix from `vaeOuterSolve_()` instead of
+   `rxode2::rxSolve` for this caller.  Everything downstream in
+   `.foceiAnalyticGradCore` is untouched.
+5. Drop `storeCovSolveArgs_`/`restoreFitSolve_` from the VAE path (Phase 2's
+   `_vaeNeedSolveArgs` flag and the `restoreFitSolve_` call in the M-step go away).
+
+Bonus: this also removes the per-M-step R round-trip, and makes the solve
+parallelizable later under the same `_innerParallel` discipline imp uses.
+
 ### Phase 3 -- the M-step hook
 
 In `vaeTrainCpp_`, replace the `regIdx` bobyqa block (`src/inner.cpp:13222-13250`)
