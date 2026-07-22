@@ -708,6 +708,47 @@ binding, then work out why the focei setup chokes on it for an IOV model.
 Running tally of eliminated hypotheses (do NOT re-test): covariate selection,
 nonMuTheta mode, mu-structure, eta dimensions, `.uiIovEnv` lifetime, `etaMat`.
 
+### CORRECTION: the "assemble like SAEM" diagnosis was WRONG
+
+I claimed `.vaeToFit` drives `foceiFitCpp_` while SAEM uses
+`nlmixr2CreateOutputFromUi`, and called it confirmed.  It is false.  `.vaeToFit`
+ALREADY uses `nlmixr2CreateOutputFromUi` (`R/vaeOutput.R:262`; the file header at
+line 5 says so).  Both methods take the SAME route -- `foceiFitCpp_` is reached
+from inside that shared call, which is why tracing it caught the VAE path.
+
+What the eighth experiment DID establish, and what still stands:
+
+    SAEM+IOV (same model/data): OK  tv= 3.43682     vs  est="vae" -> error
+
+That is a real, useful control: same ui, same five expanded etas, same occasion
+column, same output entry point -- and SAEM succeeds.  So the difference is in
+WHAT EACH METHOD PUTS ON THE ENV before the shared call, not in which call.
+
+SAEM's pre-call sequence (`.saemFamilyFit`, R/saem.R:1208-1222):
+
+    .nlmixr2FitUpdateParams(.ret)
+    .saemMixFix(.ret, .ui)          # comment says: must run BEFORE the create call
+    .saemAddParHist(.ret)
+    .saemCalcLikelihood(.ret)
+    .ret$theta <- .ui$saemThetaDataFrame
+    .ret$model <- .ui$saemModelPred
+    .ret$est <- "saem"
+    .saemControlToFoceiControl(.ret)
+
+The VAE's (`R/vaeOutput.R`, ~250-262) sets method/extra/est/adjObf/vae/parHistData,
+`nmObjHandleControlObject`, `.vaeControlToFoceiControl` -- and does NOT call
+`.nlmixr2FitUpdateParams`, nor set `$theta`/`$model` the way SAEM does.
+
+NEXT (mechanical, and now genuinely narrow): diff the env contents at the
+`nlmixr2CreateOutputFromUi` call between a SAEM IOV fit and a VAE IOV fit -- trace
+`nlmixr2CreateOutputFromUi` and compare its `env` argument, exactly as was done
+for `foceiFitCpp_`.  `.nlmixr2FitUpdateParams` and `$theta`/`$model` are the
+first things to check.
+
+LESSON (ninth failed hypothesis): every wrong turn in this investigation came
+from asserting a mechanism before reading the code that implements it.  READ
+`.vaeToFit` END TO END before proposing the next cause.
+
 ### THE ACTUAL FIX DIRECTION: assemble like SAEM, not like focei
 
 Seventh elimination first: the remaining env-diff candidate (`ui` 39 vs 38) is
