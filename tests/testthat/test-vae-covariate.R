@@ -179,17 +179,22 @@ nmTest({
                       seed = 1L, print = 0L, covMethod = "")
     fit <- suppressWarnings(rxode2::rxWithSeed(1L, nlmixr2(ui, d, est = "vae", control = ctl)))
 
-    sel <- fit$vae$selected                          # rows: ka, ke, V ; cols: covNames
+    sel <- fit$vae$selected
     cn <- fit$vae$covNames
     jWT <- match("WT", cn); jNZ <- match("NZ", cn)
+    ## resolve the selected-matrix rows from the eta/theta map rather than
+    ## hard-coding an order, so the test is robust to ini/eta reordering
+    thetaForEta <- .foceiEtaThetaMap(ui)$thetaForEta
+    kKa <- match("lka", thetaForEta); kKe <- match("lke", thetaForEta)
+    kV  <- match("lV",  thetaForEta)
     ## restriction: V declares no covariate, so its row is all-FALSE; and each
     ## covariate can only land on the parameter it was declared on.
-    expect_true(all(!sel[3, ]))
-    expect_false(sel[1, jNZ])                        # NZ never on ka
-    expect_false(sel[2, jWT])                        # WT never on ke
+    expect_true(all(!sel[kV, ]))
+    expect_false(sel[kKa, jNZ])                      # NZ never on ka
+    expect_false(sel[kKe, jWT])                      # WT never on ke
     ## strong WT kept on ka; noise NZ dropped on ke
-    expect_true(sel[1, jWT])
-    expect_false(sel[2, jNZ])
+    expect_true(sel[kKa, jWT])
+    expect_false(sel[kKe, jNZ])
     ## returned model: dropped coefficient is exactly 0, kept one is non-trivial
     idf <- fit$ui$iniDf
     expect_equal(idf$est[idf$name == "beta_lke_NZ"], 0)
