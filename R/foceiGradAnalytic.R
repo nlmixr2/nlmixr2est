@@ -1249,22 +1249,16 @@
 #' gate: `linCmt()`, `fo`, the distribution/error-model scope, IOV, and a model
 #' with no eta.  A later build or solve failure still falls back at runtime.
 #'
-#' An `ll()`/generalized endpoint is NOT yet accepted here, even though every
-#' piece above it is ready: `.foceiLLGradInScope(ui, "vae")` is TRUE for such a
-#' model, `.foceiOuterDirsLL` builds its direction set, and
-#' `.foceiAnalyticGradSetup`/`.foceiAnalyticGradCore` already route it (on
-#' `ef$isLL`) to the direct-log-density core.  The blocker is one level down, in
-#' the SOLVE POOL: `nonMuTheta="grad"` makes `.vaeInnerSetup` size the shared
-#' pool with the augmented outer model (42 states / 34 lhs on a one-compartment
-#' `ll()` fit) and pin the inner MAP to `neqOverride = 4`.  That arrangement is
-#' correct for a Gaussian model but corrupts the heap for an `ll()` one -- the
-#' same fit runs clean under `nonMuTheta="regress"` (no `poolModel`), and with
-#' `"grad"` it faults before the first gradient solve even starts.  Accepting
-#' `ll()` here would hand users a segfault, so it stays out until the pool
-#' arrangement is fixed in `vaeInnerSetup_`.
+#' Two admissible shapes, the same pair `.foceiAnalyticGradSetup` dispatches on:
+#' a conditionally Gaussian endpoint (the `(f,R)` direction set) or a single
+#' non-Gaussian `ll()`/generalized endpoint (the direct-log-density set).  The
+#' VAE consumes either through the SAME `.foceiAnalyticGradCore` entry, which
+#' routes on `ef$isLL`.
 #' @noRd
 .vaeGradInScope <- function(ui) {
-  !is.null(tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL))
+  if (!is.null(tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL))) return(TRUE)
+  isTRUE(.foceiLLGradInScope(ui, "vae")) &&
+    !is.null(tryCatch(.foceiOuterDirsLL(ui), error = function(e) NULL))
 }
 
 #' Direction set for the augmented outer-gradient model, computed from the UI

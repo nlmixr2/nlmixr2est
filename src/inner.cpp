@@ -644,6 +644,12 @@ static inline bool etaInBound(double *eta) {
 }
 
 focei_ind *inds_focei = NULL;
+// Number of focei_ind slots inds_focei currently holds.  Any loop over
+// inds_focei must bound itself by THIS, not by a freshly-read subject count:
+// the two allocation sites below use different counts (getRxNsub vs
+// getRxNsubAndMix), and the global rx a later caller reads is not necessarily
+// the solve inds_focei was sized against.
+int nIndsFocei = 0;
 
 // FOCE eta=0 population-R cache.  rPop depends only on theta, so it is constant
 // across the whole inner optimization and only needs recomputing when theta
@@ -715,6 +721,7 @@ extern "C" void rxOptionsFreeFocei() {
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei=NULL;
+  nIndsFocei = 0;
 
   op_focei.alloc = false;
   op_focei.didPredSolve = false;
@@ -4748,6 +4755,7 @@ static inline void foceiSetupNoEta_(){
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
+  nIndsFocei = (int)getRxNsub(rx);
   op_focei.gEtaGTransN=(op_focei.neta)*getRxNsub(rx);
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
@@ -4805,6 +4813,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
+  nIndsFocei = (int)getRxNsubAndMix(rx);
   // Size the FOCE eta=0 population-R cache alongside inds_focei (single-threaded
   // here); gen = -1 forces a compute on each subject's first inner call.
   _foceRPopCache.assign(getRxNsubAndMix(rx), arma::vec());
@@ -10416,7 +10425,13 @@ static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omeg
   // likInner0 short-circuits on an unchanged eta (fInd->oldEta), which is only
   // safe while theta/omega are fixed -- force a re-solve (like impForceResolve)
   rx = getRxSolve_();
-  for (int id = getRxNsubAndMix(rx); id--;) inds_focei[id].setup = 0;
+  // Bound by the slots inds_focei actually has, NOT by a freshly-read
+  // getRxNsubAndMix(rx): those disagree when the current global solve is not the
+  // one inds_focei was sized against, and the difference was a write past the end
+  // of the array (valgrind: invalid write here, into an unrelated freed block).
+  int nInd = nIndsFocei;
+  if (nInd > (int)getRxNsubAndMix(rx)) nInd = (int)getRxNsubAndMix(rx);
+  for (int id = nInd; id--;) inds_focei[id].setup = 0;
 }
 
 //[[Rcpp::export]]

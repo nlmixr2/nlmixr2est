@@ -8,37 +8,43 @@ endpoint's log-density-only thetas reach stage 2, including in a multi-endpoint
 model that also has `err` rows.  `gVaeFreezeObjR` gained the theta write path.
 Verified by unit tests plus two fits (`test-vae-ll-grad-fit.R`).
 
-**Gap 1 (`nonMuTheta="grad"` for `ll()`) is BLOCKED, and the blocker is not what
-this plan assumed.**  Everything above the solve works: `.foceiLLGradInScope(ui,
-"vae")` is TRUE, `.foceiOuterDirsLL` builds the direction set,
-`.foceiAnalyticGradSetup` returns `ef$isLL`, and `.foceiAnalyticGradCore` routes
-to the log-density core.  Widening `.vaeGradInScope` to accept `ll()` makes the
-fit SEGFAULT.
+**Gap 1 (`nonMuTheta="grad"` for `ll()`) is DONE.**  The scope gate now accepts a
+single non-Gaussian endpoint through the log-density direction set.
 
-Measured, on a one-compartment `ll()` model:
+Getting there meant fixing a memory bug that the first attempt at the scope widen
+exposed as a segfault.  How it was found, since the symptom pointed nowhere near
+the cause:
 
-- The fault is heap corruption: R aborts inside its own byte-compiler
-  (`compiler:::tryCmpfun`) on entry to `.foceiAnalyticGradCore`, i.e. BEFORE any
-  gradient solve has run.
-- It is not the pooled column layout -- forcing `.vaeOuterCols` to `NULL` (the
-  plain `rxSolve` path) still faults.
-- It is not the `dH/dtheta` batch -- stubbing `.foceiAnalyticSolveConfigsLL` /
-  `.foceiAnalyticHess2ConfigsLL` to `NULL` still faults.
-- The SAME model and data fit cleanly under `nonMuTheta="regress"`.
+- The fault presented as heap corruption -- R aborting inside its own
+  byte-compiler on entry to `.foceiAnalyticGradCore`, i.e. before any gradient
+  solve ran.
+- Bisecting by stubbing showed it was NOT the pooled column layout, NOT the
+  `dH/dtheta` batch, and NOT the gradient at all: it still faulted with the
+  gradient never invoked, and a Gaussian model with the same single eta and the
+  same pool arrangement was clean.  So it was `ll()`-specific.
+- AddressSanitizer did NOT reproduce it (it only instruments this package, not
+  rxode2, and its redzones absorbed the write).  Valgrind named it exactly:
+  an invalid write at `vaeInnerUpdateParCore` (`inner.cpp`), past the end of
+  `inds_focei`.
 
-`"regress"` is the only one of those that does not set `poolModel`.  So the
-trigger is the `"grad"` pool arrangement itself: `.vaeInnerSetup` sizes the
-shared solve pool with the augmented outer model (42 states / 34 lhs here) and
-pins the inner MAP to `neqOverride = 4`.  That is correct for a Gaussian model
-and corrupts the heap for an `ll()` one.  The fix belongs in `vaeInnerSetup_`,
-not in the R scope gate.
+Two fixes, both correct on their own merits:
 
-`.vaeGradInScope` therefore still declines `ll()`, with the reasoning inline; the
-supporting work (caller-aware `.foceiLLGradInScope`, `startedEnv` reuse in
-`.vaeGradEval`, `.vaeGradReset` hygiene, and a `predHess2Offset` reset in
+1. `.vaeInnerSetup` now pairs `needOptimHess` with `interaction = 0`, which is
+   what the focei flow (`.foceiFitInternal`) has always done -- a non-Gaussian
+   endpoint has no eta-epsilon interaction term because `rx_pred_` IS the
+   log-density.  Leaving `interaction = 1` set the inner problem up for the
+   `(f,R)` kernel while the objective ran the exact-Hessian one.
+2. `inds_focei`'s slot count is recorded in `nIndsFocei` at both allocation sites
+   and the loop in `vaeInnerUpdateParCore` is bounded by it, instead of by a
+   freshly-read `getRxNsubAndMix(rx)`.  The two allocation sites use different
+   counts (`getRxNsub` vs `getRxNsubAndMix`), and the global `rx` a later caller
+   reads is not necessarily the solve `inds_focei` was sized against -- so this
+   class of overflow can no longer happen silently.
+
+Also carried: caller-aware `.foceiLLGradInScope`, `startedEnv`/`innerHess2` reuse
+in `.vaeGradEval`, `.vaeGradReset` hygiene, and a `predHess2Offset` reset in
 `vaeInnerSetup_` so a stale offset from an earlier focei `ll()` `fast=TRUE` fit
-cannot leak in) is in place and tested.  Re-enable the `ll()` branch and restore
-the two `"grad"` fit tests together once the pool arrangement is fixed.
+cannot leak in.
 
 
 Two gaps left open when PR #807 (analytic `fast=TRUE` for `ll()`/generalized

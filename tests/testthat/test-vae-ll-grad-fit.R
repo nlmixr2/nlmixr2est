@@ -1,14 +1,13 @@
 ## est="vae" with a log-likelihood endpoint: the two M-step gaps left open when
 ## the analytic fast=TRUE ll() gradient landed.
 ##
-## residOptimize="twoStage" stage 2 was gated on "has a slot in `a`", and an
-## ll() model has no error-parameter rows, so stage 2 never ran and "twoStage"
-## degraded to the joint "optimize" solve.  These fits assert stage 2 runs and
-## actually moves the log-density-only theta.
-##
-## (The nonMuTheta="grad" ll() fits that belong here are NOT present: that path is
-## gated off in .vaeGradInScope because the "grad" pool arrangement corrupts the
-## heap for an ll() model.  Add them when that is fixed.)
+## 1. nonMuTheta="grad" declined every ll() model -- .vaeGradInScope only probed
+##    the Gaussian (f,R) direction set -- so it silently ran the bobyqa
+##    regression instead.  These fits assert the gradient path is TAKEN.
+## 2. residOptimize="twoStage" stage 2 was gated on "has a slot in `a`", and an
+##    ll() model has no error-parameter rows, so stage 2 never ran and "twoStage"
+##    degraded to the joint "optimize" solve.  These fits assert stage 2 runs and
+##    actually moves the log-density-only theta.
 ##
 ## Fit-based and multi-iteration: weekly batch, not the push/PR subset.
 
@@ -48,6 +47,34 @@ nmTest({
                covariateSelection = FALSE, seed = 3L,
                itersBurnIn = 12L, iters = 34L, klWarmup = 6L, gammaIter = 24L, ...)
   }
+
+  test_that("nonMuTheta='grad' takes the gradient path on an ll() model", {
+    skip_on_cran()
+    .dat <- .mkDat()
+    .r <- suppressWarnings(suppressMessages(
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))))
+    ## the mechanism assertion: without the scope widen this is 0 gradient calls
+    ## and the fit silently runs bobyqa instead
+    expect_true(.r$nRegGrad > 0L)
+    expect_true(all(is.finite(.r$regressTheta)))
+  })
+
+  test_that("'grad' and 'regress' agree on the same ll() model", {
+    skip_on_cran()
+    .dat <- .mkDat()
+    .g <- suppressWarnings(suppressMessages(
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))))
+    .b <- suppressWarnings(suppressMessages(
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "regress"))))
+    ## the two M-steps target different functionals (the gradient differentiates
+    ## the marginal Laplace objective, bobyqa optimizes the joint at frozen etas),
+    ## so this is an agreement band, not an identity
+    for (.n in names(.g$regressTheta)) {
+      expect_equal(unname(.g$regressTheta[[.n]]), unname(.b$regressTheta[[.n]]),
+                   tolerance = 0.25)
+    }
+    expect_equal(unname(.g$zPop), unname(.b$zPop), tolerance = 0.25)
+  })
 
   test_that("twoStage stage 2 runs and moves the log-density-only theta", {
     skip_on_cran()

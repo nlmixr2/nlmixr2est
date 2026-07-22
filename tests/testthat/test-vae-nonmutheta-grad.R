@@ -71,22 +71,33 @@ nmTest({
     expect_false(.vaeGradInScope(rxode2::assertRxUi(.linMod())))
   })
 
-  test_that("the ll() gradient pieces are ready but the vae probe still declines", {
+  test_that("scope probe accepts an ll() model through the log-density set", {
     ui <- rxode2::assertRxUi(.llMod())
     ## the Gaussian (f,R) direction builder declines -- ErrFull is norm-only ...
     expect_null(.foceiOuterDirs(ui, "vae"))
-    ## ... while the log-density route is fully built: scope gate, direction set,
-    ## and the caller policy all accept this model
+    ## ... and the log-density route is what makes it in scope
     expect_true(.foceiLLGradInScope(ui, "vae"))
     expect_false(is.null(.foceiOuterDirsLL(ui)))
-    ## but the vae probe MUST still decline: nonMuTheta="grad" sizes the shared
-    ## solve pool with the augmented model and pins the inner MAP under
-    ## neqOverride, and that arrangement corrupts the heap for an ll() model (the
-    ## same fit is clean under "regress").  Until vaeInnerSetup_ is fixed,
-    ## accepting it here would be a segfault, not a feature.  Flip this assertion
-    ## and re-enable the ll() branch of .vaeGradInScope together.
-    expect_false(.vaeGradInScope(ui))
+    expect_true(.vaeGradInScope(ui))
+    ## an ll() linCmt() model is still out of scope on both routes
     expect_false(.vaeGradInScope(rxode2::assertRxUi(.linMod())))
+  })
+
+  test_that("an ll() inner problem pairs needOptimHess with interaction=0", {
+    ## A non-Gaussian endpoint has no eta-epsilon interaction term (rx_pred_ IS
+    ## the log-density).  The focei flow forces interaction=0 alongside
+    ## needOptimHess; .vaeInnerSetup must too.  Leaving interaction=1 set the
+    ## inner problem up for the (f,R) kernel while the objective ran the
+    ## exact-Hessian one, which wrote past the end of inds_focei.
+    ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.llMod()))
+    ctl <- vaeControl(nonMuTheta = "grad", print = 0L, covariateSelection = FALSE)
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(c(1, 4, 12), 2),
+                    DV = c(20, 30, 15, 22, 28, 16), EVID = 0L, AMT = 0)
+    prep <- .vaeDataPrep(ui, d, ctl)
+    env <- .vaeInnerSetup(ui, d, matrix(0, prep$N, prep$zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    expect_true(env$control$needOptimHess)
+    expect_equal(env$control$interaction, 0L)
   })
 
   test_that("the ll() bounded-transform gate follows the caller policy", {

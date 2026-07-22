@@ -86,9 +86,11 @@
 #'     it and a single solve does not, but it does not close).  Choose it for
 #'     accuracy: the exact gradient lands closer to the maximum-likelihood value
 #'     than the derivative-free search (`theo_sd` non-mu `tv`: 3.4294 vs 3.4324,
-#'     against a FOCEi MLE of 3.4293).  Falls back to `"regress"` when the model
-#'     is out of analytic scope (`ll()` endpoints, `linCmt()`, IOV, ...);
-#'     `nonMuEtaOmega` is unused.
+#'     against a FOCEi MLE of 3.4293).  Applies to a conditionally Gaussian model
+#'     and to a single non-Gaussian (`ll()`/generalized) endpoint, which
+#'     differentiates the log-density directly.  Falls back to `"regress"` when
+#'     the model is out of analytic scope (`linCmt()`, IOV, `fo`, a
+#'     multi-endpoint or censored `ll()` model, ...); `nonMuEtaOmega` is unused.
 #'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
 #'     `nonMuEtaOmega`); the typical value is estimated and appears in the
 #'     iteration table.

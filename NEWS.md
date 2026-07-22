@@ -11,9 +11,11 @@
   `theo_sd` with a non-mu-referenced `tv` it lands within 0.0005 of the FOCEi
   maximum-likelihood value against 0.0025 for `"regress"`.  It is chosen for that
   accuracy, not for speed -- it runs slower than `"regress"` (1.47x with one
-  non-mu theta, 1.13x with three).  A
-  model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
-  `"regress"` with a note in `$runInfo`.
+  non-mu theta, 1.13x with three).  It covers a conditionally Gaussian model and
+  a single non-Gaussian (`ll()`/generalized) endpoint, which differentiates the
+  log-density directly.  A model outside analytic scope (`linCmt()`, IOV, `fo`, a
+  multi-endpoint or censored `ll()` model) reverts to `"regress"` with a note in
+  `$runInfo`.
 
 - `est="vae"` `residOptimize="twoStage"` now applies to a log-likelihood
   (`ll()`) or generalized endpoint.  Stage two eligibility was "the parameter has
