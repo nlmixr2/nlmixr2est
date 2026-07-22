@@ -1039,3 +1039,34 @@ etas, so both modes are faster there; only the within-model ratio is meaningful.
     `test-impmap.R` **158/158** both pass -- impmap is the other `_impPoolModel`
     consumer, so that is the important one.  (`test-saem.R` does not exist; the
     saem tests live under other filenames.)
+
+### imp-family output contract: the premise needs checking first
+
+Requested follow-up was "the imp family does not implement this contract and
+should, to be consistent".  Looking at how imp actually returns a fit, that may
+not be the right characterisation:
+
+  * `.impmapFamilyFit` (`R/impmap.R:266-320`) ends at
+    `.foceiFamilyReturn(env, ui, ..., est = .est)` -- FOCEI's OWN return path,
+    the same one `est="focei"` uses.
+  * imp is not a foreign method at all: `op_focei.isImpmap` is set inside the C++
+    (`src/inner.cpp:5002` for `impmap`/`imp`/`qrpem`) and `foceiFitCpp_` runs
+    `impOuter()` in place of `foceiOuter()`.  The rest of the machinery -- inner
+    problem, env population, finalize -- is focei's.
+
+So imp/impmap/qrpem get `fullTheta`/`etaObf`/`omega`/`cov`/`objective` the way
+focei does: populated by the C++ and `.foceiFamilyReturn`, not assembled by hand.
+That is the CORRECT mechanism for a method that runs inside focei's own optimizer,
+and is a different situation from saem/saemix/vae, which compute results outside
+focei and must therefore construct the env themselves.
+
+`test-impmap.R` is 158/158 on the wip branch, which is consistent with the
+contract already being satisfied through that path.
+
+BEFORE implementing anything here, verify the premise: trace
+`nlmixr2CreateOutputFromUi` (or inspect the fit env) on an `est="impmap"` fit and
+diff the contract items against a focei fit -- the same technique that produced
+the short list for the VAE.  If items ARE missing, fix those specifically; if they
+are all present, the consistency concern is already met and the follow-up should
+be closed rather than built.  Writing a hand-rolled contract on top of a path that
+already populates it would duplicate state and risk the two disagreeing.
