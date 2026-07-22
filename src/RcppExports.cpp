@@ -1109,6 +1109,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeBestSubsetL0_
+List vaeBestSubsetL0_(NumericVector y, NumericMatrix X, double omega, double penalty, std::string strategy);
+RcppExport SEXP _nlmixr2est_vaeBestSubsetL0_(SEXP ySEXP, SEXP XSEXP, SEXP omegaSEXP, SEXP penaltySEXP, SEXP strategySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type X(XSEXP);
+    Rcpp::traits::input_parameter< double >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< double >::type penalty(penaltySEXP);
+    Rcpp::traits::input_parameter< std::string >::type strategy(strategySEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeBestSubsetL0_(y, X, omega, penalty, strategy));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeTrainCpp_
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR, int cores, NumericVector row0, CharacterVector parNames, List iterPrintControl, RObject xform, IntegerVector structIdx0);
 RcppExport SEXP _nlmixr2est_vaeTrainCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP controlSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP row0SEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP structIdx0SEXP) {

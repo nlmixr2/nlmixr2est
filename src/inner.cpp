@@ -13281,6 +13281,21 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
   return R_FINITE(v) ? v : 1e18;   // penalize a non-finite candidate
 }
 
+// Exposed for testing: run the exact L0 branch-and-bound the covariate M-step
+// uses, so its optimum can be checked against brute-force enumeration.
+//[[Rcpp::export]]
+List vaeBestSubsetL0_(NumericVector y, NumericMatrix X, double omega,
+                      double penalty, std::string strategy) {
+  arma::vec yv(y.begin(), y.size());
+  arma::mat Xm(X.begin(), X.nrow(), X.ncol());
+  VaeSubsetFit f = vaeBestSubsetL0(yv, Xm, omega, penalty, vaeParseBnbStrategy(strategy));
+  IntegerVector sel(f.sel.size());
+  for (size_t i = 0; i < f.sel.size(); ++i) sel[i] = f.sel[i] + 1; // 1-based
+  double rss = vaeOlsRss(Xm, vaeSubsetCols(f.sel), yv, nullptr);
+  return List::create(_["sel"] = sel, _["coef"] = NumericVector(f.coef.begin(), f.coef.end()),
+                      _["score"] = rss / omega + penalty * (double)f.sel.size());
+}
+
 //[[Rcpp::export]]
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
                   int cores, NumericVector row0, CharacterVector parNames,

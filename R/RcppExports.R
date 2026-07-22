@@ -289,6 +289,10 @@ vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, eps
     .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
 }
 
+vaeBestSubsetL0_ <- function(y, X, omega, penalty, strategy) {
+    .Call(`_nlmixr2est_vaeBestSubsetL0_`, y, X, omega, penalty, strategy)
+}
+
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
