@@ -1727,3 +1727,54 @@ TO RESOLVE:
 
 Until that is settled, treat the vignette's three-covariate commentary as
 provisional.
+
+### THE REFERENCE DOES **NOT** APPLY THE HESSIAN CORRECTION
+
+Checked `~/src/vae_nlme` directly.  Its training objective
+(`Main/theophylline.py:129-136`, same in `neonates.py`) is the plain variational
+bound:
+
+    p_x_z = p_x_z_compute(...)        # p(x|z)
+    p_z   = p_z_compute(...)          # p(z)
+    q_z   = q_z_x_compute(...)        # q(z|x)
+    DKL   = p_z - q_z
+    elbo  = p_x_z + DKL
+
+There is NO Laplace determinant / Hessian term anywhere in training or in the
+M-step.  The encoder entropy `q(z|x)` plays the role the Laplace determinant
+plays in a FOCEi objective -- that is the whole point of a variational method.
+
+`slogdet` appears **exactly once in the entire reference codebase**
+(`functions.py:106`), inside `LogLikelihood_linearization`, which is the FOCE-style
+linearized marginal computed ONCE AT THE END to report the OFV/AIC/BIC
+(`theophylline.py:168-174`).  It never touches training, the M-step, or covariate
+selection.  Covariate selection regresses the smoothed posterior means `s1` in
+latent space, with no Hessian term.
+
+CONSEQUENCE.  Adding the full outer objective (Laplace determinant +
+0.5*log|Omega^-1| + Jacobian) to the non-mu theta M-step is a DEPARTURE from the
+published method, not a correction of an omission.  Its FOCE implementation does
+not "leave the Hessian off" by oversight -- a variational objective does not have
+that term.
+
+That is very likely why the neonatal fit now selects three covariates instead of
+one: the selection criterion is scored against a different objective than the
+paper's.
+
+WHAT TO DO -- this needs a decision, not a patch:
+  * The change IS justified for `nonMuTheta="grad"`, where the analytic outer
+    gradient differentiates the marginal objective: there the M-step and the
+    gradient must agree or they optimize different functionals.
+  * It is NOT obviously justified for `"regress"` / the covariate-selection path,
+    which in the reference is a latent-space regression under the ELBO.  Applying
+    it there silently changes what `est="vae"` reports for the published case
+    study.
+  * Narrowest fix: apply the outer-objective adjustment ONLY on the `"grad"`
+    path (`gVaeRegAdjOuter <- useGrad`, which is what it was before it was made
+    unconditional), leaving `"regress"` on the reference's objective.  That keeps
+    the gradient self-consistent AND keeps the default path faithful to the
+    paper.
+
+Note the golden test passes either way -- `test-vae-neonatal.R` is 6/6 with the
+current code, because it only asserts GA-on-W0 is selected, not that it is the
+only selection.  It cannot adjudicate this.
