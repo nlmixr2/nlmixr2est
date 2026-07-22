@@ -545,6 +545,9 @@
 .foceiAnalyticGradCore <- function(ui, th, ebes, ids, data, Om, ef, .dir, dOiEst, tr28,
                                    omNames, solveTol, interaction = 1L, foceType = 0L,
                                    startedEnv = NULL, am = NULL, nAGQ = 1L) {
+  if (isTRUE(ef$isLL))                                # ll()/generalized: direct-log-density core
+    return(.foceiAnalyticGradCoreLL(ui, th, ebes, ids, data, Om, .dir, dOiEst, tr28,
+                                    omNames, solveTol, am = am, startedEnv = startedEnv))
   neta <- ncol(ebes); Oi <- solve(Om)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
   lamDir <- .dir$lamDir; lamNames <- .dir$lamNames; lamIdx <- .dir$lamIdx
@@ -848,6 +851,207 @@
   list(g = g, etaP = etaPList, ids = ids)
 }
 
+#' ll()/generalized-likelihood outer gradient core (Almquist Eq 23 with the EXACT
+#' inner Hessian).  For an ll() endpoint `rx_pred_` IS the per-observation
+#' log-density, so the reused augmented model's `rx_f1_`/`rx_f2_` are
+#' `d logLik/ddir` and `d2 logLik/ddir ddir'` (score + exact-Hessian blocks).
+#' `H = Omega^-1 - sum_obs A[eta,eta]`; `dH/dtheta` uses the fd2 route (directional
+#' central FD of the analytic 2nd-order A -- NO 3rd-order tensor).  Mu-referenced
+#' thetas difference along their eta coordinate (theta value HELD -- perturbing an
+#' ODE-entering theta goes non-finite); non-mu thetas perturb the theta value.
+#' Omega is on the estimation (Cholesky-of-Omega^-1) scale via `dOiEst`/`tr28`.
+#' Returns `list(g = <named natural theta + om.chol>, etaP, ids)` or `NULL` (FD).
+#' @noRd
+.foceiAnalyticGradCoreLL <- function(ui, th, ebes, ids, data, Om, .dir, dOiEst, tr28,
+                                     omNames, solveTol, am = NULL, startedEnv = NULL) {
+  neta <- ncol(ebes); Oi <- solve(Om)
+  dirs <- .dir$dirs; dirTh <- .dir$dirTh; thStruct <- .dir$thStruct; nth <- .dir$nth
+  nom <- length(dOiEst); hFD <- 1e-4
+  # censored (M2/M3/M4) obs enter the likelihood as -logPhi, a different contribution the
+  # log-density aug model does not carry -> FD fallback (mirror the Gaussian gate).
+  if ((!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
+        (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))) return(NULL)
+  if (is.null(am)) am <- .foceiAnalyticAugModelDirs(ui, dirs)
+  if (is.null(am) || am$ndir != length(dirs)) return(NULL)
+  .byId <- split(data, as.character(data$ID))
+  .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
+  .obsT <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0] })
+  nsub <- length(ids)
+  .thPos <- ui$iniDf$ntheta[match(thStruct, ui$iniDf$name)]   # ntheta position (== index in th) per struct theta
+  solveAll <- function(thv, eb) .foceiAnalyticSolveAll(am, thv, eb, .idCode, data, .obsT, solveTol)
+  .Hblock <- function(E) { H <- matrix(0, neta, neta)         # -sum_obs A[eta,eta]
+    for (l in seq_len(neta)) for (m in seq_len(neta)) H[l, m] <- -sum(E$A[, l, m]); H }
+  Es <- solveAll(th, ebes); if (is.null(Es)) return(NULL)
+  Hs <- vector("list", nsub); His <- vector("list", nsub)
+  for (i in seq_len(nsub)) {
+    H <- Oi + .Hblock(Es[[i]])
+    if (!all(is.finite(H)) || min(eigen(H, symmetric = TRUE, only.values = TRUE)$values) <= 0) return(NULL)
+    Hs[[i]] <- H; His[[i]] <- solve(H)
+  }
+  g <- numeric(nth + nom)
+  # dH/dp is a directional central FD of the analytic 2nd-order A: each parameter needs a (+,-)
+  # perturbed augmented solve.  BATCH all 2*(nth+nom) perturbations into ONE population solve
+  # (stacked pseudo-subjects) -- the per-call rxSolve overhead dominates, so this is ~n-fold
+  # fewer solves than the per-parameter loop.  The perturbation EBEs move along the analytic
+  # EBE-sensitivity direction etaP (Eq 46); the reader returns only A (the log-det FD needs it).
+  .cfgTh <- vector("list", 2L * (nth + nom)); .cfgEb <- vector("list", 2L * (nth + nom))
+  .dl <- numeric(nth); .dq <- numeric(nom); .dOiL <- vector("list", nom)
+  for (p in seq_len(nth)) {
+    s <- dirTh[p]; isMu <- s <= neta
+    dl <- 0; ebp <- ebes; ebm <- ebes
+    for (i in seq_len(nsub)) { E <- Es[[i]]; dl <- dl + sum(E$a[, s])
+      d2 <- numeric(neta); for (l in seq_len(neta)) d2[l] <- sum(E$A[, l, s])
+      sh <- as.numeric(His[[i]] %*% d2); if (isMu) sh[s] <- sh[s] + 1
+      ebp[i, ] <- ebes[i, ] + sh * hFD; ebm[i, ] <- ebes[i, ] - sh * hFD }
+    .dl[p] <- dl
+    thp <- th; thm <- th
+    if (!isMu) { .k <- .thPos[p]; thp[.k] <- th[.k] + hFD; thm[.k] <- th[.k] - hFD }
+    .cfgTh[[2L * p - 1L]] <- thp; .cfgTh[[2L * p]] <- thm
+    .cfgEb[[2L * p - 1L]] <- ebp; .cfgEb[[2L * p]] <- ebm
+  }
+  for (k in seq_len(nom)) {
+    dOi <- as.matrix(dOiEst[[k]]); .dOiL[[k]] <- dOi; dq <- 0; ebp <- ebes; ebm <- ebes
+    for (i in seq_len(nsub)) { eta <- ebes[i, ]; dq <- dq + as.numeric(t(eta) %*% dOi %*% eta)
+      etaP <- as.numeric(His[[i]] %*% (-as.numeric(dOi %*% eta)))
+      ebp[i, ] <- ebes[i, ] + etaP * hFD; ebm[i, ] <- ebes[i, ] - etaP * hFD }
+    .dq[k] <- dq
+    .cfgTh[[2L * nth + 2L * k - 1L]] <- th; .cfgTh[[2L * nth + 2L * k]] <- th
+    .cfgEb[[2L * nth + 2L * k - 1L]] <- ebp; .cfgEb[[2L * nth + 2L * k]] <- ebm
+  }
+  # The perturbation solves read ONLY the eta-eta A block (.Hblock).  Route them through the
+  # eta-only 2nd-order model `innerHess2` (built for the objective's exact Hessian, whose
+  # rx__d2pred_ == the outer model's eta-eta rx_f2_ to machine precision) -- it drops the
+  # non-mu theta direction sensitivities, so it has far fewer 2nd-order state-sensitivity
+  # compartments than the full outer model.  Fall back to the outer model when unavailable.
+  .h2 <- if (!is.null(startedEnv) && exists(".foceiGradHess2", startedEnv, inherits = FALSE))
+    get(".foceiGradHess2", startedEnv) else NULL
+  if (is.null(.h2)) {
+    .h2 <- tryCatch(ui$foceiModel$innerHess2, error = function(e) NULL)
+    if (!(!is.null(.h2) && inherits(.h2, "rxode2"))) .h2 <- FALSE
+    if (!is.null(startedEnv)) assign(".foceiGradHess2", .h2, envir = startedEnv)
+  }
+  .B <- if (!isFALSE(.h2))
+          .foceiAnalyticHess2ConfigsLL(.h2, .cfgTh, .cfgEb, ids, data, .obsT, solveTol, neta,
+                                       cores = if (is.null(am$cores)) 0L else am$cores)
+        else .foceiAnalyticSolveConfigsLL(am, .cfgTh, .cfgEb, ids, data, .obsT, solveTol)
+  if (is.null(.B)) return(NULL)
+  ## ---- theta gradient ----
+  for (p in seq_len(nth)) {
+    Ep <- .B[[2L * p - 1L]]; Em <- .B[[2L * p]]; gk <- 0
+    for (i in seq_len(nsub)) { if (is.null(Ep[[i]]) || is.null(Em[[i]])) return(NULL)
+      dH <- (.Hblock(Ep[[i]]) - .Hblock(Em[[i]])) / (2 * hFD)
+      if (!all(is.finite(dH))) return(NULL); gk <- gk + sum(His[[i]] * dH) }
+    g[p] <- -2 * .dl[p] + gk
+  }
+  ## ---- omega gradient (Cholesky-of-Omega^-1 scale) ----
+  for (k in seq_len(nom)) {
+    Ep <- .B[[2L * nth + 2L * k - 1L]]; Em <- .B[[2L * nth + 2L * k]]; gt <- 0
+    for (i in seq_len(nsub)) { if (is.null(Ep[[i]]) || is.null(Em[[i]])) return(NULL)
+      dH <- .dOiL[[k]] + (.Hblock(Ep[[i]]) - .Hblock(Em[[i]])) / (2 * hFD)
+      gt <- gt + sum(His[[i]] * dH) }
+    g[nth + k] <- .dq[k] - 2 * nsub * tr28[k] + gt   # -2*dprior(log|Om| per subject) + eta'dOi eta + tr(Hi dH)
+  }
+  if (!all(is.finite(g))) return(NULL)
+  names(g) <- c(thStruct, omNames)
+  list(g = g, etaP = vector("list", nsub), ids = ids)   # etaP left NULL -> C++ skips the Eq-48 warm start
+}
+
+#' Batched multi-configuration augmented solve for the ll() log-det gradient.  Solves
+#' `length(cfgEbes)` perturbation configurations -- each its own theta vector `cfgTh[[c]]`
+#' and per-subject eta matrix `cfgEbes[[c]]` -- in ONE rxode2 population solve by stacking
+#' them as pseudo-subjects (id `(c-1)*nsub + subject`), then splits back.  Returns a list
+#' (one per config) of per-subject `list(a, A)` (the pieces the log-det FD reads), or `NULL`
+#' on failure (the caller then returns `NULL` -> finite-difference gradient fallback).
+#' @noRd
+.foceiAnalyticSolveConfigsLL <- function(am, cfgTh, cfgEbes, ids, data, obsTimes, tol) {
+  tryCatch({
+    nc <- length(cfgEbes); nsub <- length(obsTimes); neta <- ncol(cfgEbes[[1]])
+    etav <- paste0("ETA_", seq_len(neta), "_")
+    subIdx <- match(as.character(data$ID), as.character(ids))    # data row -> subject index 1..nsub
+    if (anyNA(subIdx)) return(NULL)
+    pars <- do.call(rbind, lapply(seq_len(nc), function(.c) {
+      p <- data.frame(ID = (.c - 1L) * nsub + seq_len(nsub))
+      for (k in seq_len(neta)) p[[etav[k]]] <- cfgEbes[[.c]][, k]
+      for (.nm in names(cfgTh[[.c]])) p[[.nm]] <- cfgTh[[.c]][[.nm]]
+      p
+    }))
+    ev <- do.call(rbind, lapply(seq_len(nc), function(.c) { d <- data; d$ID <- (.c - 1L) * nsub + subIdx; d }))
+    .nc <- if (is.null(am$cores)) 0L else am$cores
+    .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L))
+      list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
+    sol <- withCallingHandlers(
+      as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = ev, cores = .nc,
+        returnType = "data.frame", atol = tol, rtol = tol, addDosing = FALSE), .ddeArgs))),
+      warning = function(w) invokeRestart("muffleWarning"))
+    .cm <- if (is.null(am$cols))
+      .foceiAnalyticCols(am$dirs, if (is.null(am$fDirs)) am$dirs else am$fDirs, am$P2,
+                         if (is.null(am$P2r)) am$P2 else am$P2r, am$sigTh) else am$cols
+    if (!all(c(.cm$f1, .cm$f2) %in% names(sol))) return(NULL)
+    np2 <- nrow(am$P2); nd <- length(am$dirs)
+    .M1 <- as.matrix(sol[, .cm$f1, drop = FALSE]); .M2 <- as.matrix(sol[, .cm$f2, drop = FALSE])
+    .tm <- sol$time; .idc <- if ("id" %in% names(sol)) sol$id else sol$ID
+    .byIdSol <- split(seq_len(nrow(sol)), as.character(.idc))
+    lapply(seq_len(nc), function(.c) lapply(seq_len(nsub), function(i) {
+      .ri <- .byIdSol[[as.character((.c - 1L) * nsub + i)]]
+      if (is.null(.ri)) return(NULL)
+      .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]; no <- length(.keep)
+      if (no != length(obsTimes[[i]])) return(NULL)
+      a <- matrix(0, no, nd); a[, .cm$fDirIdx] <- .M1[.keep, , drop = FALSE]; A <- array(0, c(no, nd, nd))
+      for (r in seq_len(np2)) { .v <- .M2[.keep, r]; A[, .cm$iiF[r], .cm$jjF[r]] <- .v; A[, .cm$jjF[r], .cm$iiF[r]] <- .v }
+      list(a = a, A = A)
+    }))
+  }, error = function(e) NULL)
+}
+
+#' Batched multi-configuration solve of the eta-only 2nd-order model `innerHess2` (built for
+#' the objective's exact Hessian) for the ll() log-det gradient perturbations.  Same
+#' pseudo-subject stacking as [.foceiAnalyticSolveConfigsLL] but reads the eta-eta second
+#' derivative `rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j` (i<=j) -- exactly the eta-eta A
+#' block `.Hblock` needs -- from a model with far fewer 2nd-order state-sensitivity compartments
+#' (no non-mu theta directions).  IMPORTANT: `innerHess2` is the (inner) FOCEi model, so its
+#' parameters use the BRACKET naming `ETA[k]`/`THETA[k]` (not the augmented model's `ETA_k_`);
+#' set them accordingly or the solve silently defaults the etas.  Perturbed thetas/covariate
+#' coefficients enter as ordinary parameters.  Returns a list (per config) of per-subject
+#' `list(A)` (`A` is neta x neta), or `NULL` on failure.
+#' @noRd
+.foceiAnalyticHess2ConfigsLL <- function(mod, cfgTh, cfgEbes, ids, data, obsTimes, tol, neta, cores = 0L) {
+  tryCatch({
+    nc <- length(cfgEbes); nsub <- length(obsTimes)
+    subIdx <- match(as.character(data$ID), as.character(ids))
+    if (anyNA(subIdx)) return(NULL)
+    pars <- do.call(rbind, lapply(seq_len(nc), function(.c) {
+      p <- data.frame(ID = (.c - 1L) * nsub + seq_len(nsub), check.names = FALSE)
+      for (k in seq_len(neta)) p[[paste0("ETA[", k, "]")]] <- cfgEbes[[.c]][, k]
+      .tv <- cfgTh[[.c]]                                   # named THETA_1_.. in ntheta order
+      for (k in seq_along(.tv)) p[[paste0("THETA[", k, "]")]] <- .tv[[k]]
+      p
+    }))
+    ev <- do.call(rbind, lapply(seq_len(nc), function(.c) { d <- data; d$ID <- (.c - 1L) * nsub + subIdx; d }))
+    .ij <- do.call(rbind, lapply(seq_len(neta), function(j) t(vapply(seq_len(j), function(i) c(i, j), integer(2)))))
+    .cols <- paste0("rx__d2pred_", .ij[, 1], "_", .ij[, 2], "__")
+    # DDE: force pure dop853 (dense, no Jacobian) for a delay model, matching the outer solve.
+    .ddeArgs <- if (isTRUE(rxode2::rxModelVars(mod)$flags[["hasDelay"]] == 1L))
+      list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
+    sol <- withCallingHandlers(
+      as.data.frame(do.call(rxode2::rxSolve, c(list(mod, params = pars, events = ev, cores = cores,
+        returnType = "data.frame", atol = tol, rtol = tol, addDosing = FALSE), .ddeArgs))),
+      warning = function(w) invokeRestart("muffleWarning"))
+    if (!all(.cols %in% names(sol))) return(NULL)
+    M <- as.matrix(sol[, .cols, drop = FALSE])
+    .tm <- sol$time; .idc <- if ("id" %in% names(sol)) sol$id else sol$ID
+    .byIdSol <- split(seq_len(nrow(sol)), as.character(.idc))
+    lapply(seq_len(nc), function(.c) lapply(seq_len(nsub), function(i) {
+      .ri <- .byIdSol[[as.character((.c - 1L) * nsub + i)]]
+      if (is.null(.ri)) return(NULL)
+      .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]; no <- length(.keep)
+      if (no != length(obsTimes[[i]])) return(NULL)
+      A <- array(0, c(no, neta, neta))
+      for (r in seq_len(nrow(.ij))) { .v <- M[.keep, r]; A[, .ij[r, 1], .ij[r, 2]] <- .v; A[, .ij[r, 2], .ij[r, 1]] <- .v }
+      list(A = A)
+    }))
+  }, error = function(e) NULL)
+}
+
 #' Common scope gates + error/direction/omega setup shared by the live and
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
@@ -863,6 +1067,17 @@
   # constants in the sensitivity expansion (.rxToSEDualVarFunction) -- they no
   # longer need to force the finite-difference fallback.
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
+  # ll()/generalized likelihood (needOptimHess -> interaction=0, EXACT inner
+  # Hessian): rx_pred_ is the log-density, so skip the Gaussian ErrFull and set up
+  # the direct-log-density core (.foceiAnalyticGradCoreLL).
+  if (.foceiLLGradInScope(ui)) {
+    .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
+    .dir <- .foceiOuterDirsLL(ui); if (is.null(.dir)) return(NULL)
+    .oe <- .foceiEstOmegaDeriv(ui, Om, e); if (is.null(.oe)) return(NULL)
+    return(list(ef = list(isLL = TRUE), dir = .dir, dOiEst = .oe$dOi, tr28 = .oe$tr28,
+                omNames = .oe$names, neta = neta, etaNames = .map$etaNames,
+                interaction = 0L, foceType = 0L, nAGQ = 1L))
+  }
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
   # foce+ (foceType=1, live conditional R) uses the same live-R kernel as the
@@ -997,6 +1212,49 @@
                            sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
 }
 
+#' Is a fit in scope for the ll()/generalized-likelihood analytic outer gradient?
+#' The ll() objective uses the EXACT inner Hessian (needOptimHess), so `rx_pred_`
+#' is the per-observation log-density and the gradient is assembled by
+#' `.foceiAnalyticGradCoreLL` (differentiating the log-density directly) rather than
+#' the Gaussian (f,R) path.  Phase 1 scope: a single non-Gaussian endpoint, no
+#' linCmt/bounded transform/IOV/FO, at least one eta.  (Multi-endpoint, censoring,
+#' and nAGQ are handled by falling back to the finite-difference gradient.)
+#' @noRd
+.foceiLLGradInScope <- function(ui) {
+  tryCatch({
+    if (!.hasRxSens()) return(FALSE)
+    .pd <- ui$predDfFocei
+    if (is.null(.pd) || nrow(.pd) != 1L) return(FALSE)                 # single endpoint (phase 1)
+    if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) return(FALSE)  # Gaussian -> (f,R) path
+    # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
+    # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2
+    # linCmtB), but the 2nd-order does NOT (rxFromSE cannot emit the nested linCmtB
+    # derivative), so .foceiAddHdEta2 fails and the fit falls back to the finite-difference
+    # Hessian/gradient at build time (see .foceiMaybeAddHdEta2).  A residual TRUE here marks
+    # a case the promotion cannot cover -- out of scope like the Gaussian path.
+    if (isTRUE(any(ui$predDfFocei$linCmt))) return(FALSE)
+    if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(FALSE)
+    if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(FALSE)
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(FALSE)
+    if (length(.uiIovEnv$iovVars) > 0L) return(FALSE)
+    length(.foceiEtaThetaMap(ui)$etaNames) > 0L
+  }, error = function(e) FALSE)
+}
+
+#' Direction set for the ll() analytic outer gradient: one direction per eta plus
+#' one per non-mu-referenced structural theta.  For an ll() endpoint there is no
+#' Gaussian residual-sigma set (add.sd et al. appear directly in the log-density),
+#' so every non-mu structural theta gets its own direction (`sgName = character(0)`).
+#' @noRd
+.foceiOuterDirsLL <- function(ui) {
+  .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
+  if (neta == 0L) return(NULL)
+  .d <- .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, character(0), neta,
+                                 sharedEta = unname(.foceiEtaOccurrence(ui) > 1L))
+  if (is.null(.d) || is.null(.d$dirs)) return(NULL)
+  .d
+}
+
 # Build the augmented outer-gradient sensitivity model (compiled model + `dirs` +
 # `P2`) for a UI.  This is the persistent `..outer` sibling of the inner model:
 # it depends only on the model + direction set (NOT theta/eta/omega), so it is
@@ -1014,7 +1272,13 @@ rxUiGet.foceiOuter <- function(x, ...) {
   # quadrature nodes are extra eta points on the same sensitivity solve, so the
   # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
   # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
-  .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
+  .dir <- .foceiOuterDirs(.ui)
+  # ll()/generalized endpoint (needOptimHess, interaction=0): the Gaussian (f,R)
+  # direction builder declines (ErrFull is norm-only), but rx_pred_ is the
+  # log-density and the same augmented model supplies its 1st/2nd-order eta/theta
+  # derivatives -- build over the ll() direction set instead.
+  if (is.null(.dir) && .foceiLLGradInScope(.ui)) .dir <- .foceiOuterDirsLL(.ui)
+  if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
 }
 attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()

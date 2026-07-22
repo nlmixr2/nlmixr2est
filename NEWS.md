@@ -244,6 +244,22 @@
   `interaction=TRUE`; a fit that cannot use it falls back to finite differences
   rather than failing.
 
+- FOCEi `fast=TRUE` (and the `*f` wrappers) now handle general log-likelihood
+  (`ll()`) and generalized (Poisson, binomial, ...) endpoints analytically, where
+  they previously fell back to finite differences.  For such an endpoint the
+  per-observation prediction is the log-density, so the inner Hessian is the exact
+  `H = Omega^-1 - sum d2(logLik)/deta2` assembled from a second-order sensitivity
+  model at the empirical Bayes estimate.  Both the objective's `log|H|` and the
+  Almquist outer gradient use it; the gradient's parameter derivative of `H` comes
+  from a batched central finite difference of the analytic second-order
+  sensitivities (no third-order tensor).  This is markedly faster than the
+  finite-difference outer gradient for models with many subjects.  Endpoints
+  outside the analytic gradient's scope (multiple endpoints, censored observations,
+  `linCmt()`, IOV, `nAGQ>1`, or a bounded parameter transform) fall back to the
+  finite-difference gradient, and a model whose second-order expansion is
+  unsupported keeps the finite-difference inner Hessian -- all transparently,
+  rather than failing.
+
 - `covType="analytic"` now covers `est="agq"` as well (it previously declined for
   `nAGQ > 1` and fell back to the finite-difference covariance).  The AGQ
   observed information is the FOCEi one with the same single term swapped, so the

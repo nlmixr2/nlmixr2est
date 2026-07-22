@@ -64,6 +64,7 @@ void restoreFromEnvrionment(Environment e);
 #define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 #define thetaSensOde(id) ind_solve(rx, getRxId(id), rxThetaSens.dydt_liblsoda, rxThetaSens.dydt_lsoda_dum, rxThetaSens.jdum_lsoda, rxThetaSens.dydt, rxThetaSens.update_inis, rxThetaSens.global_jt)
+#define hess2Ode(id) ind_solve(rx, getRxId(id), rxHess2.dydt_liblsoda, rxHess2.dydt_lsoda_dum, rxHess2.jdum_lsoda, rxHess2.dydt, rxHess2.update_inis, rxHess2.global_jt)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
 #define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
 #define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
@@ -162,6 +163,16 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+  // fast=TRUE log-likelihood/generalized endpoint: the inner model carries the exact
+  // second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j (upper triangle
+  // i<=j, j-outer/i-inner order).  Its lhs offset (first column, located by name at setup)
+  // is >=0 only for that model and ARMS the analytic inner-Hessian branch of calcEtaHessian
+  // (H = Omega^-1 - sum_obs d2), replacing the Shi21 finite difference.  It indexes the
+  // SEPARATE 2nd-order model's (rxHess2) lhs, re-solved per subject at eta* -- the cheap
+  // 1st-order inner model (rxInner) drives the Newton (neqOverride = innerNeq).
+  int predHess2Offset = -1;
+  int hess2Neq = 0;    // rxHess2 ODE state count (the full 2nd-order model)
+  int hess2Nlhs = 0;   // rxHess2 lhs width (sizes the thread-local read buffer)
   int thetaSensOffset = -1;   // lhs offset of the first d(f)/d(theta) output (impmap)
   int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
   int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
@@ -723,6 +734,7 @@ void freeFocei(){
 rxSolveF rxInner;
 rxSolveF rxPred;
 rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
+rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer of rxInner), re-solved at eta*
 
 void rxUpdateFuns(SEXP trans, rxSolveF *inner){
   const char *lib, *s_dydt, *s_calc_jac, *s_calc_lhs, *s_inis, *s_dydt_lsoda_dum, *s_dydt_jdum_lsoda,
@@ -1929,7 +1941,56 @@ bool calcEtaHessian(double *eta, int likId, int id,
   H.zeros();
   int k, l;
   // This is actually -H
-  if (op_focei.needOptimHess) {
+  if (op_focei.predHess2Offset >= 0) {
+    // Exact log-likelihood inner Hessian (fast=TRUE ll()/generalized): rx_pred_ is the
+    // per-observation log-density, so the inner model's rx__d2pred_i_j__ column is
+    // d2(logLik)/deta_i deta_j.  Assemble H = Omega^-1 - sum_obs d2 analytically (the exact
+    // inner Hessian), mirroring the Gaussian Gauss-Newton assembly (Omega^-1 added
+    // explicitly, unlike the finite-difference branch which folds it into the gradient).
+    // The n1qn1 Newton solved only the cheap 1st-order inner model, so re-solve the SEPARATE
+    // 2nd-order model (rxHess2) for THIS subject once at eta* and read rx__d2pred_ =
+    // d2(logLik)/deta2.  The shared pool is sized for rxHess2, so switch this subject's
+    // neqOverride to hess2Neq for the solve (restored on branch exit to the inner override).
+    // A thread-local lhs buffer (hess2Nlhs wide) keeps calc_lhs from overflowing the
+    // inner-sized shared per-thread slice under the parallel inner loop -- mirrors
+    // impThetaSensCollect.
+    rx = getRxSolve_();
+    int _rxId = getRxId(id);
+    rx_solving_options *op = getSolvingOptions(rx);
+    int ne = op_focei.neta;
+    // This re-solve overwrites ind->solve with the 2nd-order model; force the next likInner0
+    // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
+    // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
+    fInd->setup = 0;
+    IndNeqOverrideGuard _h2Guard(ind, op_focei.hess2Neq);
+    for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);
+    hess2Ode(_rxId);
+    if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
+    iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
+    std::vector<double> _h2LhsBuf((size_t)op_focei.hess2Nlhs);
+    double *lhs = _h2LhsBuf.data();
+    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+      setIndIdx(ind, jj);
+      int kk2 = getIndIx(ind, jj);
+      if (getIndEvid(ind, kk2) != 0) continue;              // observations only
+      double curT2 = getTime(kk2, ind);
+      rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
+      int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
+      for (int jc = 0; jc < ne; ++jc)
+        for (int ic = 0; ic <= jc; ++ic) {
+          H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
+          ++r;
+        }
+    }
+    for (int jc = 0; jc < ne; ++jc)
+      for (int ic = 0; ic <= jc; ++ic) {
+        H(ic, jc) += op_focei.omegaInv(ic, jc);
+        if (!R_finite(H(ic, jc))) return false;
+        H(jc, ic) = H(ic, jc);
+      }
+  } else if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
@@ -4069,6 +4130,7 @@ static inline double dUnscaleParDx(int i) {
 }
 
 static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
+void impSetInnerNeqOverride();     // defined below; re-pins the inner neqOverride after restore
 
 // Read the per-subject etaP (neta x npars x nsub) the R analytic gradient stashed
 // on the fit env (.foceiGradEtaP) into op_focei.getaP, converting each column to
@@ -4135,6 +4197,13 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // so the next foceiOfv0 (objective/inner solve) reads the fit, not the last
   // augmented subject.  A failed restore -> fall back to FD (which re-solves).
   bool _restored = restoreFitSolve_();
+  // fast=TRUE ll(): the aug solve + restore rebuild the global solve, dropping the inner
+  // neqOverride that pins the cheap 1st-order Newton (pool sized for the 2nd-order rxHess2).
+  // Re-pin it so the next objective eval's inner solves and calcEtaHessian rxHess2 re-solve
+  // see the right state counts.
+  if (_restored && op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
+    impSetInnerNeqOverride();
+  }
   if (Rf_isNull(_res) || !_restored) {
     if (!op_focei.warnedAnalyticFallback) {
       op_focei.warnedAnalyticFallback = 1;
@@ -4174,6 +4243,11 @@ void numericGrad(double *theta, double *g){
   if (analyticOuterGrad(theta, g)) {
     op_focei.curAnalytic=1;
     op_focei.nAnalyticGrad++;
+    // analyticOuterGrad set calcGrad=1 for its internal foceiOfv0; the finite-difference
+    // gradient paths below reset it to 0 before returning, so restore that invariant here
+    // (the objective-only evaluations that follow must run with calcGrad=0 -- the analytic
+    // ll() log|H| hook in foceiLik0 gates on it).
+    op_focei.calcGrad=0;
     return;
   }
   if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
@@ -4598,6 +4672,8 @@ static inline void foceiSetupTheta_(List mvi,
     for (int il = 0; il < innerLhs.size(); ++il) {
       if (as<std::string>(innerLhs[il]) == "rx_pred_") { op_focei.predOffset = il; break; }
     }
+    // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
+    // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
   } else if (!op_focei.alloc){
     stop("FOCEi problem not allocated\nThis can happen when symengine<->nlmixr2 interaction is not working correctly.");
   }
@@ -5341,12 +5417,15 @@ NumericVector foceiSetup_(const RObject &obj,
       (foceiO.containsElementNamed("covType") &&
        as<std::string>(foceiO["covType"]) == "analytic") ||
       (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0);
-    if (_needSolveArgs) {
-      storeCovSolveArgs_(obj, rxControl, params, data);
-    }
-    // est="impmap": size the shared solve pool for the theta-sensitivity model (the
-    // largest structure) when set; the inner MAP then uses ind->neqOverride.
+    // est="impmap"/fast ll(): size the shared solve pool for the LARGER model (the
+    // theta-sensitivity or 2nd-order Hessian model) when set; the inner MAP then uses
+    // ind->neqOverride.  restoreFitSolve_ must re-solve THIS same pool model (not the
+    // smaller inner model) or the pool shrinks and the larger per-subject re-solve
+    // (rxHess2 in calcEtaHessian) overflows -- so stash _poolObj, not obj.
     RObject _poolObj = (_impPoolModel != R_NilValue) ? RObject(_impPoolModel) : obj;
+    if (_needSolveArgs) {
+      storeCovSolveArgs_(_poolObj, rxControl, params, data);
+    }
     rxode2::rxSolve_(_poolObj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -9521,6 +9600,16 @@ Environment foceiFitCpp_(Environment e){
           if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
         }
       }
+      // fast=TRUE ll(): size the pool for the larger 2nd-order model (rxHess2) and pin the
+      // cheap 1st-order inner solves to innerNeq (same mechanism as impmap's thetaSens).
+      if (model.containsElementNamed("innerHess2")) {
+        RObject _h2m = model["innerHess2"];
+        if (rxode2::rxIs(_h2m, "rxode2")) {
+          int _h2Neq = as<CharacterVector>(rxode2::rxModelVars_(_h2m)["state"]).size();
+          int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
+          if (_h2Neq > _innNeq) { _impPoolModel = _h2m; op_focei.innerNeq = _innNeq; }
+        }
+      }
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
       _impPoolModel = R_NilValue; // consumed by foceiSetup_
@@ -9584,6 +9673,31 @@ Environment foceiFitCpp_(Environment e){
         // inner solves to the inner state count via ind->neqOverride.
         if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
           impSetInnerNeqOverride();
+        }
+      }
+      // fast=TRUE ll(): load the 2nd-order model (rxHess2, peer of rxInner) and record its
+      // ODE state count + lhs width + the lhs offset of the first exact-Hessian column
+      // rx__d2pred_1_1__.  calcEtaHessian re-solves it per subject at eta*; the cheap
+      // 1st-order inner Newton runs with ind->neqOverride = innerNeq (pool sized for rxHess2).
+      op_focei.predHess2Offset = -1;
+      op_focei.hess2Neq = 0;
+      op_focei.hess2Nlhs = 0;
+      if (model.containsElementNamed("innerHess2")) {
+        RObject h2 = model["innerHess2"];
+        if (rxode2::rxIs(h2, "rxode2")) {
+          List mvh2 = rxode2::rxModelVars_(h2);
+          rxUpdateFuns(as<SEXP>(mvh2["trans"]), &rxHess2);
+          op_focei.hess2Neq = as<CharacterVector>(mvh2["state"]).size();
+          rxHess2.neq = op_focei.hess2Neq;
+          CharacterVector h2Lhs = as<CharacterVector>(mvh2["lhs"]);
+          op_focei.hess2Nlhs = h2Lhs.size();
+          for (int il = 0; il < h2Lhs.size(); ++il) {
+            if (as<std::string>(h2Lhs[il]) == "rx__d2pred_1_1__") { op_focei.predHess2Offset = il; break; }
+          }
+          // pin the 1st-order inner Newton solves to innerNeq (pool sized for rxHess2)
+          if (op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
+            impSetInnerNeqOverride();
+          }
         }
       }
       // Now setup which ETAs need a finite difference

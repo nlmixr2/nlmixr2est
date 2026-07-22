@@ -825,6 +825,69 @@ rxUiGet.foceiHdEta <- function(x, ...) {
 attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO related methods"
 attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 
+#' Second-order eta sensitivities of the prediction for the exact log-likelihood
+#' (`ll()`/generalized) inner Hessian under `fast=TRUE`.
+#'
+#' For a generalized endpoint `rx_pred_` is the per-observation log-density, so its
+#' second eta-derivatives `d2(rx_pred_)/deta_i deta_j` let `calcEtaHessian` assemble
+#' the exact inner Hessian `H = Omega^-1 - sum_obs d2(logLik)/deta2` analytically --
+#' mirroring the Gaussian Gauss-Newton `sum(cHff*a*a)+Omega^-1` assembly -- instead of
+#' the Shi21 finite difference of the inner gradient.  Reuses the augmented-model
+#' second-order chain (`.g2`, see [.foceiAnalyticAugModelDirs]).  Stores on the
+#' symengine env `..HdEta2` (the `rx__d2pred_i_j__` lhs lines, upper triangle i<=j) and
+#' `..sens2` (the second-order state-sensitivity ODEs).  Only built for a fast
+#' generalized fit; the ordinary inner model is unchanged.
+#' @noRd
+rxUiGet.foceiHdEta2 <- function(x, ...) .foceiAddHdEta2(rxUiGet.foceiEtaS(x))
+attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
+
+#' Add `..HdEta2`/`..sens2` to a symengine env that already carries the first-order
+#' eta sensitivities (i.e. the output of [rxUiGet.foceiHdEta]/[rxUiGet.foceiEtaS]).
+#' @noRd
+.foceiAddHdEta2 <- function(.s) {
+  .neta <- .s$..maxEta
+  .etaVars <- paste0("ETA_", seq_len(.neta), "_")
+  .st <- rxode2::rxStateOde(.s)
+  .s2 <- rxode2::.rxSens(.s, .etaVars, .etaVars)   # 2nd-order state-sensitivity ODEs (rx__sens_<st>_BY_ETA_i__BY_ETA_j__)
+  .pred <- get("rx_pred_", .s)
+  .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
+  .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
+  .toRx <- function(.l) rxode2::rxFromSE(.l)
+  # eta directions are always model directions, so the aug-model .g1/.g2 direction guards
+  # are unconditionally true here.
+  .g1 <- function(.ex, .p) { .e <- .Dn(.ex, .p); for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
+  .g2 <- function(.ex, .p, .q) { .gq <- .g1(.ex, .q); .e <- .Dn(.gq, .p)
+    for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
+    for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
+  .lines <- character(0)                           # upper triangle i<=j (C++ mirrors H(j,i)=H(i,j))
+  for (.j in seq_len(.neta)) for (.i in seq_len(.j)) {
+    .lines <- c(.lines, paste0("rx__d2pred_", .i, "_", .j, "__=", .toRx(.g2(.pred, .etaVars[.i], .etaVars[.j]))))
+  }
+  .s$..HdEta2 <- .lines
+  .s$..sens2 <- .s2
+  .s
+}
+
+#' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
+#' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
+#' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
+#' inner Hessian analytically instead of a Shi21 finite difference.  No-op otherwise (the
+#' ordinary Gaussian / non-fast inner model is unchanged).  Used by both the FOCEi
+#' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
+#' @noRd
+.foceiMaybeAddHdEta2 <- function(x, .s) {
+  if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
+        .foceiLLGradInScope(x[[1]])) {
+    .malert("calculate d2(f)/d(eta) for the analytic log-likelihood inner Hessian")
+    # A model whose 2nd-order symengine expansion is unsupported (e.g. some linCmt() /
+    # special-function forms) leaves ..HdEta2/..sens2 unset -> no innerHess2 is built and
+    # the objective's log|H| falls back to the Shi21 finite-difference Hessian, rather than
+    # erroring the fit.
+    .s <- tryCatch(.foceiAddHdEta2(.s), error = function(e) .s)
+  }
+  .s
+}
+
 
 #' Finalize inner rxode2 based on symengine saved info
 #'
@@ -907,6 +970,37 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  # Exact log-likelihood inner Hessian (fast=TRUE generalized endpoint): a SEPARATE
+  # compiled model `..innerHess2` = the inner model plus the 2nd-order eta state-
+  # sensitivity ODEs (`..sens2`, riding with the 1st-order `.sens`) and the 2nd-order
+  # prediction lhs (`..HdEta2`, rx__d2pred_i_j__, APPENDED LAST so its columns follow the
+  # FOCEi block).  The cheap 1st-order `..inner` above drives the n1qn1 Newton; calcEtaHessian
+  # re-solves `..innerHess2` per subject at eta* for the exact Hessian.  NULL (no 2nd-order
+  # model) unless `.foceiMaybeAddHdEta2` populated `..sens2`/`..HdEta2`.
+  if (!is.null(.s$..HdEta2)) {
+    .s$..innerHess2 <- paste(c(
+      .preLhs,
+      .ddt,
+      .sens,
+      .s$..sens2,
+      .s$..pastLines,
+      .yj,
+      .lambda,
+      .hi,
+      .low,
+      .lagDefs,
+      .arEtaSens,
+      .prd,
+      .s$..HdEta,
+      .r,
+      .s$..REta,
+      .adjLhs,
+      .s$..HdEta2,
+      .s$..stateInfo["statef"],
+      .s$..stateInfo["dvid"],
+      ""
+    ), collapse = "\n")
+  }
   .s$..innerOeta <- paste(c(
     .preLhs,
     .ddt,
@@ -934,6 +1028,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .malert("stabilizing round off errors in inner problem...")
     .s$..inner <- rxode2::rxSumProdModel(.s$..inner)
     .s$..innerOeta <- rxode2::rxSumProdModel(.s$..innerOeta)
+    if (!is.null(.s$..innerHess2)) .s$..innerHess2 <- rxode2::rxSumProdModel(.s$..innerHess2)
     .msuccess("done")
   }
   if (optExpression) {
@@ -947,6 +1042,11 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
                                                                 "inner llik model",
                                                                 "inner model"),
                                                          parallel = cores))
+    if (!is.null(.s$..innerHess2)) {
+      suppressMessages(.s$..innerHess2 <- rxode2::rxOptExpr(.s$..innerHess2,
+                                                            "inner Hessian model",
+                                                            parallel = cores))
+    }
   }
 }
 
@@ -1004,6 +1104,13 @@ rxUiGet.foceiEnv <- function(x, ...) {
 
   .s$..REta <- .ret
   rxode2::rxProgressStop()
+  # fast=TRUE generalized (ll()) endpoint: add the second-order eta expansion so the
+  # inner model itself carries d2(logLik)/deta2 (rx__d2pred_i_j__) and calcEtaHessian
+  # assembles the EXACT inner Hessian analytically (parallel-safe, no separate solve),
+  # instead of the Shi21 finite difference.  Gated so the ordinary inner model is
+  # untouched; the model cache keys on `fast` (rxUiGet.foceiModelDigest) so a fast and a
+  # non-fast fit get distinct inner models.
+  .s <- .foceiMaybeAddHdEta2(x, .s)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .foceiInnerAdjSens(x, .s)
@@ -1020,6 +1127,7 @@ attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
+  .s <- .foceiMaybeAddHdEta2(x, .s)   # ll()/generalized (interaction=0) fast fits route through foce
   ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
   ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++
   ## (likInner0), not by rewriting the model here.  `foce = "nonmem"` freezes R at
@@ -1250,6 +1358,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
   inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens)
+  # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
+  innerHess2 <- if (!is.null(s$..innerHess2)) {
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens)
+  } else NULL
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
@@ -1300,6 +1412,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
+    innerHess2 = innerHess2,
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
@@ -2528,11 +2641,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
-    # a log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
-    # machinery (its inner Hessian is a finite-difference of the inner gradient), so
-    # the analytic outer gradient does not apply -- downgrade fast so the fit reports
-    # it and skips building the augmented `..outer` model.
-    if (isTRUE(.control$fast)) {
+    # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
+    # machinery (its inner Hessian is a finite-difference of the inner gradient).
+    # But rx_pred_ IS the per-observation log-density, so the analytic outer gradient
+    # differentiates it directly (.foceiAnalyticGradCoreLL, exact inner Hessian +
+    # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
+    # out-of-scope cases (multiple endpoints, censoring, nAGQ>1, IOV), where the
+    # augmented `..outer` model cannot supply the gradient and the fit uses finite
+    # differences.  (linCmt() passes the scope gate but its unsupported 2nd-order
+    # expansion makes it fall back to finite differences at build time.)
+    if (isTRUE(.control$fast) && !.foceiLLGradInScope(.ui)) {
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
       .control$fast <- FALSE
     }
