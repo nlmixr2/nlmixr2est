@@ -1008,20 +1008,25 @@ lambda are all supported.  Now states the real rule plus the genuine exclusions
 (ll(), linCmt(), fo, IOV, >1 estimated lambda, a theta mu-referenced by several
 etas).
 
-**IN FLIGHT -- grad vs regress cost crossover.**  The open question was whether
+**DONE -- grad vs regress cost crossover: there is NO crossover.**  The open question was whether
 `grad`'s single augmented solve beats bobyqa once more than one theta is
 regressed (bobyqa's cost scales with their number; one solve does not).  Measured
 so far on theo_sd, full default schedule:
 
-    1 non-mu theta   regress 20.9s      grad 30.8s (nGrad=250)
+    1 non-mu theta   regress 20.9s   grad 30.8s   (grad 1.47x slower)
+    3 non-mu thetas  regress 12.4s   grad 14.0s   (grad 1.13x slower)
 
-so at ONE theta bobyqa still wins, as expected -- that is its best case.  The
-3-non-mu-theta arm was still running at session end; results land in
-`/tmp/cost.out` (`grep '^COST '`), script `/tmp/cost.R`, self-contained and
-re-runnable.  If grad does not win there either, say so in the `nonMuTheta="grad"`
-docs -- it would then be a correctness/robustness option rather than a speed one,
-which is still a fair reason to offer it (it targets the marginal objective and
-does not inherit bobyqa's frozen-eta displacement).
+bobyqa wins in BOTH cases.  The gap narrows with more regressed thetas (1.47x ->
+1.13x), consistent with bobyqa's cost scaling in their number while one augmented
+solve does not, but it does not close at three -- so the hoped-for crossover is
+not reached at any size worth caring about here.
+
+CONSEQUENCE -- the `nonMuTheta="grad"` docs must NOT sell speed.  Its case is
+CORRECTNESS: it differentiates the marginal (Laplace) objective, so it does not
+inherit bobyqa's frozen-eta displacement (theo_sd: grad 3.4294 vs regress 3.4324
+against a FOCEi MLE of 3.4293).  It costs ~13-47% more wall time for that.  Note
+also the absolute times are not comparable ACROSS the two models -- m3 has fewer
+etas, so both modes are faster there; only the within-model ratio is meaningful.
 
 **STILL OPEN**
   * imp-family output contract (requested follow-up) -- `imp`/`impmap`/`qrpem`
@@ -1030,4 +1035,7 @@ does not inherit bobyqa's frozen-eta displacement).
   * IOV scope for the ANALYTIC GRADIENT (distinct from the IOV fit bug, which is
     fixed): the direction set is ui-level while the runtime etas are expanded per
     occasion, so `.foceiOuterDirs` still gates IOV out.
-  * `test-impmap.R` / `test-saem.R` on the wip branch (detached, `/tmp/other.out`).
+  * (RESOLVED) wip-branch cross-method suites: `test-focei-fast-grad.R` 47/47 and
+    `test-impmap.R` **158/158** both pass -- impmap is the other `_impPoolModel`
+    consumer, so that is the important one.  (`test-saem.R` does not exist; the
+    saem tests live under other filenames.)
