@@ -1374,3 +1374,33 @@ This reframes the IOV bug: it is a SYMPTOM.  Five attempts failed because they a
 defended a global against a re-entry that should not happen.  Fixing the re-entry
 removes this bug and the whole class -- and would let the accumulated
 snapshot/restore guards above be deleted rather than extended.
+
+##### The nested-call route is NOT confirmed either -- test it, do not assume it
+
+Disabling the covariance recompute does not help:
+
+    VAE covMethod=""     -> ERROR (unchanged)
+    VAE covMethod="r,s"  -> ERROR (unchanged)
+
+`covMethod=""` skips `.covRecompute` (R/cov.R:291) and these runs already used
+`calcTables=FALSE`, which skips the `addCwres` re-fit (R/addCwres.R:90).  So the
+two obvious nested-`nlmixr2()` sites are NOT executing in the failing fit, and
+"a nested nlmixr2() call wipes `.uiIovEnv`" is unproven as the mechanism HERE.
+
+The DESIGN point in the section above still stands on its own evidence (the
+save/restore guards in R/cov.R and .vaeToFit are real, and the growing
+defend-the-global list is real).  But it is not established as the cause of this
+particular failure.
+
+Mechanisms proposed and NOT confirmed so far: preprocess re-entry (disproved --
+output assembly bypasses .preProcessHooksRun), nested nlmixr2() via
+covariance/residuals (disproved above).  What actually empties
+`.uiIovEnv$iovVars` between `.vaeToFit` entry (traced: `iov.cl` present) and
+`.uiFinalizeIov` is STILL UNKNOWN.
+
+The cheap next step is direct observation rather than another hypothesis: bisect
+`.vaeToFit` by printing `.uiIovEnv$iovVars` after each statement (it replays
+cleanly via the trace-and-replay recipe recorded above), and find the exact line
+after which it becomes NULL.  That is a few minutes of work and ends the guessing
+-- six proposed mechanisms have now failed, every one of them reasoned rather than
+observed.
