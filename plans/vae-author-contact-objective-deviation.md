@@ -99,7 +99,12 @@ that is what the gain schedule implies -- `gamma` is exactly 1 until
 `gamma_iter` (250 of 300 iterations) in both implementations, so `s1` *equals*
 the posterior mean for most of a run and is averaged only over the closing tail.
 
-**So we cannot account for the difference.**  Three candidates tested, three
+We also varied the inner likelihood.  Since you report through a FOCE-style
+linearization, `likelihood = "foce"` (and `"focep"`) is a closer match to your
+pipeline than our `"focei"` default; all four of our settings select the same
+five terms, coefficients differing by at most ~0.03.
+
+**So we cannot account for the difference.**  Four candidates tested, four
 eliminated.  What we have not ruled out: how the candidate covariate columns are
 constructed (centering/transformation), the omega values in force at selection
 time, and the possibility that the published figure reports the headline effect
