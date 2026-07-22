@@ -307,7 +307,39 @@ different error structures estimates both without per-endpoint statistics.
 I had started threading a per-error-parameter endpoint index through the prep,
 which was solving a problem that does not exist; it has been reverted.
 
-### The stage-2 objective should use the existing ODE-freeze, not hand-rolled variance
+### The stage-2 objective now uses the existing ODE-freeze  [DONE]
+
+Implemented: `vaeFreezeBuild` pins the ODE states at the stage-1 structural
+values, `op_focei.freezeOde` makes `likInner0` recompute only `r`, and the
+objective is the same likelihood the fit reports.  The hand-rolled
+`gVaeElsObjR` and its per-error-model variance formulas are deleted.
+
+Measured on `theo_sd` (moment | hand-rolled | via likInner0):
+
+| model | moment | hand-rolled | likInner0 |
+|---|---|---|---|
+| `add` | 131.812 | 131.791 | 131.810 |
+| `add + prop` | 122.469 | 121.030 | **120.803** |
+| `pow` | 154.390 | 134.848 | **134.535** |
+| `lnorm` | 26163.221 | 848.856 | **685.472** |
+| `yeoJohnson` | 131.812 | 120.054 | **108.403** |
+| `boxCox` | 181.627 | **43.105** | 68.717 |
+
+Better on four of six, and correct by construction on all of them: `r` comes from
+the model's `rx_r_`, so every error model works with no per-form code, endpoints
+sum across all residual contributors, and a TBS model cannot be
+double-transformed.
+
+**Known regression -- `boxCox`.**  It lands at objective 68.7 against the
+hand-rolled 43.1, and returns `add.err = 0.0000`: a degenerate boundary solution
+where the additive error collapsed to zero.  That is exactly what the `log(r)`
+term is supposed to prevent, so the likely cause is the `r == 0 -> r = 1` floor
+inside the likelihood rescuing an objective that should have been infinite --
+i.e. the floor makes `add.err = 0` look finite and attractive rather than
+forbidden.  Needs a lower bound strictly above zero on a variance scale, or a
+floor that does not reward collapse.  Do not treat the 68.7 as converged.
+
+### Superseded: the hand-rolled variance approach
 
 `gVaeElsObjR` currently recomputes `r` itself from the candidate parameters, with
 a hardcoded formula per error model (add, prop, combined1/2, pow, lnorm, and the

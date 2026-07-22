@@ -13284,99 +13284,79 @@ static bool gVaeRegAdjOuter = true;
 // otherwise the objective is flat in every error parameter.
 static arma::ivec gVaeRegErrMap;
 
-// ---- stage-2 ELS objective: r varies, f is FIXED -------------------------
-// With the structural thetas settled in stage 1, f is determined, so the
-// residual parameters are estimated against the extended-least-squares
-// objective sum[(y-f)^2/r + log r] over CACHED (y, f) pairs -- no ODE re-solve,
-// which is how SAEM (cached _saemYptr/_saemFptr) and npag do it.  Routing this
-// through the full outer objective instead lets the Laplace terms move with the
-// residual at frozen etas, which is what walks a near-collinear add/prop pair
-// into a corner.
-static std::vector<double> gVaeElsY, gVaeElsF;
-// Structural transform metadata per cached observation: yj selects the
-// transform, low/hi are the logit bounds.  lambda is NOT cached -- it is an
-// estimated parameter, so it comes from the candidate vector.  The transform
-// itself and its log-Jacobian are rxode2's (_powerD / _powerL), the same pair
-// FOCEi uses through the tbs/tbsL macros; this problem is already solved and is
-// not reimplemented here.
-static std::vector<int> gVaeElsYj;
-static std::vector<double> gVaeElsLow, gVaeElsHi;
-// per error param: 0=add, 1=prop, 2=other/unhandled, 3=pow scale, 4=pow
-// exponent, 5=lnorm.  Indexed by position in `a`, NOT by position in the
-// optimizer's parameter vector -- gVaeElsMap relates the two.
-static arma::ivec gVaeElsType;
+// Candidate substitution for the residual optimizer: gVaeElsMap relates the
+// optimizer's parameter slots to positions in `a`, and gVaeElsA is the base `a`
+// so a FIXED residual parameter keeps its value.
 static arma::ivec gVaeElsMap;     // optimizer slot k -> index in `a`
 static arma::vec  gVaeElsA;       // base `a`; held params keep these values
-static bool gVaeElsCombined1 = false;
 
-static double gVaeElsObjR(Rcpp::NumericVector p) {
-  // substitute the candidates into a full copy of `a` -- a fixed residual
-  // parameter is absent from the optimizer vector but still enters the variance
+// ---- stage-2 objective through likInner0 with the ODE FROZEN ---------------
+// The residual parameters do not move f, so the ODE states are pinned once and
+// only r is recomputed -- the same trick npResidFreezeBuild/freezeOde already
+// provide for npag (inner.cpp: "params are optimized, f does not change, so the
+// states can be pinned and only r recomputed -- exactly like saem's ODE-freeze").
+//
+// Going through likInner0 rather than recomputing r here means r comes from the
+// model's own rx_r_, so EVERY error model works with no per-form code, multiple
+// endpoints are summed across all residual contributors by construction, and a
+// transform-both-sides model cannot be double-transformed: the model applies the
+// transform, we never touch dv or f.
+static std::vector<std::vector<double> > gVaeFreezeCache;
+static arma::mat gVaeFreezeEta;      // fixed posterior-mean etas [nid x neta]
+static int gVaeFreezeCores = 1;
+
+static void vaeFreezeClear() {
+  op_focei.freezeOde = false;
+  gVaeFreezeCache.clear();
+  gVaeFreezeCache.shrink_to_fit();
+}
+
+// Normal solves at the fixed etas fill ind->solve; cache them, then freeze.
+static void vaeFreezeBuild(const arma::mat& etaEval, int cores) {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  const int nid = (int)etaEval.n_rows;
+  op_focei.freezeOde = false;
+  arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(etaEval, cores, false, false, obj, lp, pf, false);
+  gVaeFreezeCache.assign((size_t)nid, std::vector<double>());
+  for (int id = 0; id < nid; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    double *sv = getIndSolve(ind);
+    gVaeFreezeCache[(size_t)id].assign(sv, sv + npIndSolveSize(op, ind));
+  }
+  gVaeFreezeEta = etaEval;
+  gVaeFreezeCores = cores;
+  op_focei.freezeOde = true;
+}
+
+static inline void vaeRestoreFrozen(int id) {
+  if (!op_focei.freezeOde || gVaeFreezeCache.empty()) return;
+  if ((size_t)id >= gVaeFreezeCache.size()) return;
+  const std::vector<double>& c = gVaeFreezeCache[(size_t)id];
+  if (c.empty()) return;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  std::copy(c.begin(), c.end(), getIndSolve(ind));
+}
+
+// Residual objective: push the candidate residual parameters, restore the pinned
+// states, and re-evaluate the SAME likelihood the fit reports.
+static double gVaeFreezeObjR(Rcpp::NumericVector p) {
   arma::vec ac = gVaeElsA;
   for (arma::uword k = 0; k < gVaeElsMap.n_elem && k < (arma::uword)p.size(); ++k)
     if (gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem) ac[gVaeElsMap[k]] = p[k];
-
-  double aAdd = 0, aProp = 0, aPow = 0, aPowExp = 1, aLnorm = 0, aLambda = 1;
-  bool hasAdd = false, hasProp = false, hasPow = false, hasLnorm = false, hasTbs = false;
-  for (arma::uword e = 0; e < gVaeElsType.n_elem && e < ac.n_elem; ++e) {
-    switch (gVaeElsType[e]) {
-    case 0: aAdd = ac[e];    hasAdd = true;   break;
-    case 1: aProp = ac[e];   hasProp = true;  break;
-    case 3: aPow = ac[e];    hasPow = true;   break;
-    case 4: aPowExp = ac[e];                  break;
-    case 5: aLnorm = ac[e];  hasLnorm = true; break;
-    case 6: aLambda = ac[e]; hasTbs = true;   break;  // boxCox / yeoJohnson
-    default: break;
-    }
-  }
-  const double yFloor = std::sqrt(DBL_EPSILON);
-  double sum = 0;
-  for (size_t i = 0; i < gVaeElsY.size(); ++i) {
-    double f = gVaeElsF[i], y = gVaeElsY[i], r;
-    double jac = 0;
-    if (hasTbs && i < gVaeElsYj.size()) {
-      // transform BOTH sides with rxode2's _powerD and carry the log-Jacobian
-      // from _powerL -- exactly what FOCEi does via tbs()/tbsL().  Unlike the
-      // lnorm case the Jacobian depends on lambda, which is being estimated, so
-      // it cannot be dropped as a constant.
-      int yj = gVaeElsYj[i]; double lo = gVaeElsLow[i], hi = gVaeElsHi[i];
-      jac = -2.0 * _powerL(y, aLambda, yj, lo, hi);
-      // ONLY dv is transformed.  f comes out of the solve ALREADY on the
-      // transformed scale (a TBS model predicts the transformed quantity), which
-      // is why FOCEi applies tbs() to dv0 and not to the prediction.  Applying
-      // it to f as well double-transforms and misfits.
-      y = _powerD(y, aLambda, yj, lo, hi);
-      r = (hasAdd ? aAdd * aAdd : 0.0) + (hasProp ? aProp * aProp * f * f : 0.0);
-      if (!(r > 0)) r = 1.0;
-      double d0 = y - f;
-      double c0 = d0 * d0 / r + std::log(r) + jac;
-      sum += R_FINITE(c0) ? c0 : 1e300;
-      continue;
-    }
-    if (hasLnorm) {
-      // residual is normal on the LOG scale: transform both sides.  The
-      // transform Jacobian does not depend on the residual scale, so it is a
-      // constant here and drops out of the optimization.
-      double yt = (y > yFloor) ? y : yFloor;
-      double ft = (f > yFloor) ? f : yFloor;
-      y = std::log(yt); f = std::log(ft);
-      r = aLnorm * aLnorm;
-    } else if (hasPow) {
-      double sd = aPow * std::pow(std::fabs(f), aPowExp);
-      r = sd * sd;
-      if (hasAdd) r = gVaeElsCombined1 ? (aAdd + sd) * (aAdd + sd) : aAdd * aAdd + r;
-    } else if (gVaeElsCombined1) {
-      double sd = (hasAdd ? aAdd : 0.0) + (hasProp ? aProp * std::fabs(f) : 0.0);
-      r = sd * sd;
-    } else {
-      r = (hasAdd ? aAdd * aAdd : 0.0) + (hasProp ? aProp * aProp * f * f : 0.0);
-    }
-    if (!(r > 0)) r = 1.0;          // the r == 0 rule (handleF's convention)
-    double d = y - f;
-    sum += d * d / r + std::log(r);
-  }
-  return R_FINITE(sum) ? sum : std::numeric_limits<double>::max();
+  arma::vec thv = vaeBuildTh(gVaeRegThBase, gVaeRegZpopIdx0, gVaeRegBaseline,
+                             gVaeRegErrIdx0, ac);
+  vaeInnerUpdateParCore(thv, gVaeRegOmega);
+  for (int id = 0; id < (int)gVaeFreezeEta.n_rows; ++id) vaeRestoreFrozen(id);
+  arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
+  vaeInnerLikCore(gVaeFreezeEta, gVaeFreezeCores, false, false, obj, lp, pf,
+                  gVaeRegAdjOuter);
+  double v = arma::accu(obj);
+  return R_FINITE(v) ? v : std::numeric_limits<double>::max();
 }
+
 
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
   arma::vec thc = gVaeRegThBase;
@@ -13937,27 +13917,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             sReg[k] = regIdx[j]; sMap[k] = regErrMapV[j];
             p2[k] = a[sMap[k]]; l2[k] = regLower[j]; u2[k] = regUpper[j];
           }
-          // cache (y, f) at the stage-1 structural values: f is FIXED from here
-          gVaeElsY.clear(); gVaeElsF.clear();
-          gVaeElsYj.clear(); gVaeElsLow.clear(); gVaeElsHi.clear();
-          for (size_t i2 = 0; i2 < last.preds.size() && i2 < yList.size(); ++i2) {
-            const std::vector<double>& fi = last.preds[i2];
-            const std::vector<double>& yi = yList[i2];
-            size_t n2 = std::min(fi.size(), yi.size());
-            rx_solving_options_ind* indI = getSolvingOptionsInd(getRxSolve_(), getRxId((int)i2));
-            for (size_t o = 0; o < n2; ++o)
-              if (R_FINITE(fi[o]) && R_FINITE(yi[o])) {
-                gVaeElsF.push_back(fi[o]); gVaeElsY.push_back(yi[o]);
-                gVaeElsYj.push_back((int)getIndLambdaYj(indI));
-                gVaeElsLow.push_back(getIndLogitLow(indI));
-                gVaeElsHi.push_back(getIndLogitHi(indI));
-              }
-          }
-          gVaeElsType = errTypeCode; gVaeElsCombined1 = errCombined1;
           gVaeElsA = a;
           gVaeElsMap.set_size(sIdx.n_elem);
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) gVaeElsMap[k] = sMap[k];
-          Rcpp::InternalFunction elsFn(&gVaeElsObjR);
+          // pin the ODE states at the stage-1 structural values, then optimize the
+          // residual parameters against the real likelihood with only r moving
+          gVaeRegThBase = th;
+          arma::mat etaFrozen = last.mu; etaFrozen.each_row() -= baseline.t();
+          vaeFreezeBuild(etaFrozen, cores);
+          Rcpp::InternalFunction elsFn(&gVaeFreezeObjR);
           Rcpp::List r2 = boundedOpt(Rcpp::_["par"] = p2, Rcpp::_["fn"] = elsFn,
                                      Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,
                                      Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
@@ -13971,6 +13939,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             if (!R_FINITE(upd)) continue;
             th[regIdx[j]] = upd; a[sMap[k]] = upd;
           }
+          vaeFreezeClear();
           gVaeRegIdx = regIdx; gVaeRegErrMap = regErrMapV;  // restore
         }
       }
