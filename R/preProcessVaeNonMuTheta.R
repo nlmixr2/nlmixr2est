@@ -70,6 +70,16 @@
   intersect(unique(c(.linear, .transformed)), .thNames)
 }
 
+#' Does this `nonMuTheta` mode estimate the theta in place (no injected eta)?
+#'
+#' `"regress"` and `"grad"` share ALL the plumbing -- no eta injection, the same
+#' `regIdx`/bounds carried through `.vaeDataPrep` -- and differ only in how the
+#' M-step moves the theta (bounded bobyqa vs the analytic outer gradient).
+#' @noRd
+.vaeNonMuIsRegress <- function(mode) {
+  isTRUE(mode %in% c("regress", "grad"))
+}
+
 #' Structural population thetas that are NOT mu-referenced (candidates for a
 #' VAE-injected eta): a theta that appears in the model, is not a residual-error
 #' or covariate-coefficient theta, is not fixed, and has no eta referencing it.
@@ -85,7 +95,18 @@
   ## covariate coefficients are estimated by the regress M-step (see .vaeDataPrep),
   ## not by nonMuTheta eta/fix injection -- exclude them here
   .covCoef <- .vaeCovariateCoefThetas(ui)
-  .cand <- setdiff(.th$name, c(.mu, .cov, .covCoef))
+  ## IOV magnitude thetas must NOT be excluded here.  `.uiApplyIov` gives each IOV
+  ## variable a theta carrying its magnitude (under iovXform) and pairs it with the
+  ## per-occasion etas `rx.<v>.<occ>`, which are FIXED at variance 1 -- they are
+  ## unit deviates.  That pairing puts the theta in `muRefDataFrame`, so it was
+  ## dropped as "mu-referenced", while `.vaeDataPrep` simultaneously marks those
+  ## etas FREE and forces their theta to 0.  The magnitude therefore fell through
+  ## BOTH paths and was never estimated, leaving `parFixedDf[iovVars, Back]`
+  ## empty and every est="vae" IOV fit dying in `.uiFinalizeIov` with
+  ## "invalid second argument of length 0".  Estimating it in the M-step is what
+  ## the omega-fixed-at-1 parameterization expects.
+  .iov <- if (is.null(.uiIovEnv$iovVars)) character(0) else .uiIovEnv$iovVars
+  .cand <- setdiff(.th$name, setdiff(c(.mu, .cov, .covCoef), .iov))
   if (length(.cand) == 0L) return(character(0))
   ## keep only thetas that actually appear in a model expression (so an eta can be
   ## attached to a structural line)
@@ -186,10 +207,10 @@ isTRUE2 <- function(x) !is.na(x) & x
   if (identical(.mode, "none")) return(NULL)
   .thetas <- .vaeNonMuThetas(ui)
   if (length(.thetas) == 0L) return(NULL)
-  if (identical(.mode, "regress")) {
-    ## "regress": no eta is injected -- the thetas stay plain fixed effects and are
-    ## estimated by a bounded bobyqa regression in the VAE M-step (see
-    ## .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI unchanged.
+  if (.vaeNonMuIsRegress(.mode)) {
+    ## "regress"/"grad": no eta is injected -- the thetas stay plain fixed effects
+    ## and are estimated in the VAE M-step (bobyqa or the analytic outer gradient;
+    ## see .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI alone.
     .pre <- "regressing non-mu theta(s): "
     warning(.pre, .vaeTruncList(.thetas, prefix = .pre), call. = FALSE)
     return(NULL)

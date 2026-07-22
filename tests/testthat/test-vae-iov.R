@@ -45,4 +45,38 @@ nmTest({
     expect_true(all(fit$omega[.iov] == 1))         # occasion-eta variance held at 1
     expect_true(all(fit$omega[!.iov] > 0))         # id-level omegas estimated
   })
+
+  test_that("est=vae builds a full IOV fit object (returnVae=FALSE)", {
+    skip_on_cran()
+    ## The test above asserts on the RAW VAE object (returnVae=TRUE) and so never
+    ## exercises .vaeToFit / the output assembly -- which is exactly how a broken
+    ## IOV fit stayed green.  This covers the real user path.
+    ## Two things had to be fixed for it: the IOV magnitude theta must be
+    ## ESTIMATED (it is non-mu by construction -- its occasion etas are fixed at
+    ## variance 1), and vaeControl() must supply a numeric `sigdig`, since
+    ## .uiFinalizeIov does signif(x, digits = control$sigdig) and a NULL there
+    ## raises "invalid second argument of length 0".
+    dat <- nlmixr2data::theo_md; dat$occ <- 1L; dat$occ[dat$TIME >= 144] <- 2L
+    ctl <- vaeControl(itersBurnIn = 8L, iters = 16L, klWarmup = 4L, gammaIter = 12L,
+                      covariateSelection = FALSE, print = 0L, calcTables = FALSE)
+    fit <- suppressMessages(suppressWarnings(nlmixr2(.vaeIovMod(), dat, est = "vae",
+                                                     control = ctl)))
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true(is.finite(fit$objf))
+    ## the occasion effects are reported under $iov, and the IOV magnitude theta is
+    ## deliberately dropped from $theta by .uiFinalizeIov -- assert both, since
+    ## indexing $theta by the IOV name is out of bounds BY DESIGN
+    expect_false("iov.ka" %in% names(fit$theta))
+    expect_false(is.null(fit$iov))
+    expect_true(all(is.finite(fit$theta)))
+  })
+
+  test_that("vaeControl supplies a numeric sigdig", {
+    ## regression: a NULL sigdig reached signif() in .uiFinalizeIov and killed
+    ## every IOV fit; adviControl had the same gap
+    expect_equal(length(vaeControl()$sigdig), 1L)
+    expect_true(is.finite(vaeControl()$sigdig))
+    expect_equal(length(adviControl()$sigdig), 1L)
+    expect_true(is.finite(adviControl()$sigdig))
+  })
 })

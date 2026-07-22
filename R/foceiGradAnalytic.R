@@ -461,9 +461,31 @@
 #' per-subject solve loop otherwise dominates the gradient (~87%).  Per-subject
 #' etas travel as an ID-keyed params data.frame.  Returns a per-subject list of
 #' `list(f, a, A)` (same shape as `.foceiAnalyticSolveFA`), or `NULL` on failure.
-#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject re-solve).
+#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject
+#' re-solve), EXCEPT for the `est="vae"` pooled branch below: when
+#' `.vaeGradEnv$active` is set, the solve runs in the shared FOCEi pool on behalf
+#' of `vaeControl(nonMuTheta="grad")` instead.  That branch is gated on an active
+#' call flag, not on cached state, so focei's own fast gradient is unaffected.
 #' @noRd
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
+  ## est="vae" nonMuTheta="grad": solve the augmented model IN THE SHARED FOCEi
+  ## pool (which it sized) and take the per-subject E structures straight from
+  ## C++.  This avoids rxode2::rxSolve, which frees and rebuilds the global solve
+  ## on every M-step.  A NULL from the solver falls through to the rxSolve path.
+  ##
+  ## `active` is REQUIRED, not belt-and-braces: this function is SHARED with
+  ## focei's own fast gradient, and .vaeGradEnv persists for the whole session.
+  ## Keyed on outerCols alone, any focei fast fit AFTER a vae grad fit in the same
+  ## session takes this branch against a pool sized for ITS inner model -- which is
+  ## how 23 of test-focei-fast-grad.R's assertions failed.  .vaeGradEval sets
+  ## `active` only around its own gradient call.
+  if (isTRUE(.vaeGradEnv$active) && !is.null(.vaeGradEnv$outerCols)) {
+    .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes),
+                                   .vaeGradEnv$outerCols,
+                                   as.integer(.vaeGradEnv$cores)),
+                    error = function(e) NULL)
+    if (!is.null(.Ec)) return(.Ec)
+  }
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
   etav <- paste0("ETA_", seq_len(neta), "_")
   pars <- data.frame(ID = ids)
@@ -1056,12 +1078,12 @@
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
 #' @noRd
-.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL) {
-  if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
+.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL,
+                                    caller = .analyticGradCaller(ui)) {
+  if (is.na(caller)) return(NULL)
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
-  # bounded parameter transforms are corrected on a different (natural) scale
-  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+  if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
   # only (no eta/theta dependence), so rxode2 treats them as zero-derivative
   # constants in the sensitivity expansion (.rxToSEDualVarFunction) -- they no
@@ -1195,14 +1217,50 @@
   }, error = function(e) NULL)
 }
 
+#' Which estimation method is asking for the analytic outer gradient:
+#' `"focei"` (`foceiControl(fast=TRUE)`), `"vae"`
+#' (`vaeControl(nonMuTheta="grad")`), or `NA` when nobody asked.  The two callers
+#' consume the gradient differently, so a couple of scope gates are per-caller
+#' (see `.analyticGradAllowsBoundedTr`); everything else is shared.
+#' @noRd
+.analyticGradCaller <- function(ui) {
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE)))) return("focei")
+  if (identical(as.character(rxode2::rxGetControl(ui, "nonMuTheta", "")), "grad")) return("vae")
+  NA_character_
+}
+
+#' Bounded-transform scope gate.
+#'
+#' `preProcessBoundedTransform` records the transforms on the ALREADY-REWRITTEN
+#' ui, so by the time the gradient sees them the model is on the unconstrained
+#' `rxBoundedTr.*` scale.  focei must still bail: it REPORTS a natural-scale
+#' gradient to the outer optimizer, which would need a Jacobian correction that is
+#' not applied.  The VAE consumes the gradient internally, on the same
+#' unconstrained scale it takes its M-step on, so no correction arises.
+#' @noRd
+.analyticGradAllowsBoundedTr <- function(ui, caller) {
+  if (identical(caller, "vae")) return(TRUE)
+  is.null(ui$boundedTransforms) || length(ui$boundedTransforms) == 0L
+}
+
+#' Is the analytic outer gradient in scope for a VAE fit?
+#'
+#' Cheap direction-set probe -- no symengine/gcc pass -- covering every static
+#' gate: `linCmt()`, `fo`, the distribution/error-model scope, IOV, and a model
+#' with no eta.  A later build or solve failure still falls back at runtime.
+#' @noRd
+.vaeGradInScope <- function(ui) {
+  !is.null(tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL))
+}
+
 #' Direction set for the augmented outer-gradient model, computed from the UI
 #' alone (does not depend on theta/eta values): one direction per eta plus one per
 #' non-mu-referenced structural theta.  `NULL` if out of analytic scope.
 #' @noRd
-.foceiOuterDirs <- function(ui) {
+.foceiOuterDirs <- function(ui, caller = .analyticGradCaller(ui)) {
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
-  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+  if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
   .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
@@ -1265,14 +1323,15 @@
 #' @export
 rxUiGet.foceiOuter <- function(x, ...) {
   .ui <- x[[1]]
-  if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
+  .caller <- .analyticGradCaller(.ui)
+  if (is.na(.caller)) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
   # nAGQ > 1 (adaptive Gaussian quadrature) uses the SAME augmented model at eta-hat: the
   # quadrature nodes are extra eta points on the same sensitivity solve, so the
   # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
   # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
-  .dir <- .foceiOuterDirs(.ui)
+  .dir <- .foceiOuterDirs(.ui, .caller)
   # ll()/generalized endpoint (needOptimHess, interaction=0): the Gaussian (f,R)
   # direction builder declines (ErrFull is norm-only), but rx_pred_ is the
   # log-density and the same augmented model supplies its 1st/2nd-order eta/theta

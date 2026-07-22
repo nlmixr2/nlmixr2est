@@ -19,10 +19,18 @@ vaeControl(
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
   covSelectAlpha = 2,
+  covSelectSmooth = TRUE,
+  gammaSeries = c("reference", "saem"),
+  sigma0Interp = c("sd", "reference"),
+  residOptimize = c("twoStage", "moment", "optimize"),
+  residRhoend = NULL,
+  omegaUpdate = c("suffStat", "blend"),
+  inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
-  nonMuTheta = c("regress", "eta", "fix", "none"),
+  nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
+  mStepObjective = c("outer", "elbo"),
   likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
   nIsSample = 3000L,
@@ -40,7 +48,7 @@ vaeControl(
   compress = FALSE,
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = NULL,
+  sigdig = 4,
   sigdigTable = NULL,
   rhoend = NULL,
   stickyRecalcN = 4,
@@ -114,6 +122,105 @@ reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 penalize covariate entry more heavily early in training; `1` disables the
 ramp.}
 
+\item{covSelectSmooth}{When `TRUE` (default) the covariate selection regresses
+the SAEM sufficient statistic -- an exponential moving average of the
+posterior means, updated with the same gain as the M-step -- rather than the
+current posterior means.  This matches the reference implementation
+(Rohleff et al. 2025), which is the reason for the default.  In practice it
+changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
+equals the posterior mean for most of a run and is averaged only over the
+closing tail.  `FALSE` regresses the current posterior means.}
+
+\item{gammaSeries}{Decaying step-size series used once the smoothing phase
+  starts (after `gammaIter`); the gain is 1 throughout the EM phase either way.
+
+  * `"reference"` (default): `1/(iter - gammaIter)`, the textbook
+    Kuhn-Lavielle series the reference implementation uses.  The first
+    smoothing step is still a full replacement, and the decay follows.
+  * `"saem"`: `1/(1 + iter - gammaIter)`, the CONTINUATION form
+    \code{\link{saemControl}()} uses -- nlmixr2est's SAEM builds its series so
+    it continues rather than repeating a gain of 1, so the decay begins at
+    `1/2`.  Select this to match the step-size convention of the other
+    nlmixr2 estimation methods rather than the reference.}
+
+\item{sigma0Interp}{How `sigma0` is turned into the encoder's initial posterior
+  spread.  The encoder head emits `logSigma` and forms `diag(L) = exp(logSigma)`,
+  so `diag(L)` is the posterior standard deviation.
+
+  * `"sd"` (default): the bias is `log(sigma0)`, so the initial posterior SD is
+    `sigma0` -- what the argument says it is.
+  * `"reference"`: the bias is `log(sigma0^2)`, matching the reference
+    implementation, whose initial posterior SD is therefore `sigma0` SQUARED
+    (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
+    reference documents `sigma0` as a standard deviation, so this appears to be
+    unintended there; it is offered only to reproduce its published behavior.}
+
+\item{residOptimize}{How the residual-error parameters are estimated.
+
+  Residual forms the optimizer estimates: `add`, `prop`, `add + prop`, `pow`,
+  `lnorm`, and a `boxCox` or `yeoJohnson` lambda (bounded to `(-2, 2)`).  For
+  a transform-both-sides model the objective transforms `dv` only and carries
+  the log-Jacobian, since `f` leaves the solve already on the transformed
+  scale.
+
+  `nonMuTheta = "grad"` bypasses this entirely: the analytic outer gradient
+  already carries a residual sigma and a transform lambda as its own
+  directions, so those parameters are stepped by the gradient through Adam and
+  the two-stage path never runs.  Which converges better is model-dependent.
+
+  * `"moment"`: the closed-form moment estimator.  For a model with
+    a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
+    any other error model it is either a different estimator or, for the forms
+    with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
+    the parameter stays at its `ini()` value.
+  * `"twoStage"` (default): block coordinate descent, as `npag`'s
+    `residOptimize = "alternate"` does.  Stage
+    one optimizes the non-mu-referenced structural thetas with the residual
+    parameters held, so it is driven by `(dv - f)`; stage two then holds those
+    and optimizes the residual parameters alone against the extended
+    least-squares objective `sum[(y-f)^2/r + log r]` over the CACHED `(y, f)`
+    pairs.  Because `f` is fixed by stage one, stage two needs no ODE re-solve
+    -- the same structure SAEM uses.  On `theo_sd` this beats the moment
+    estimator on both a pure-additive model (objective 131.79 vs 131.81) and a
+    combined one (121.03 vs 122.47).
+  * `"optimize"` (EXPERIMENTAL, diagnostic): a single JOINT solve over the
+    structural and residual parameters together, against the full outer
+    objective.  Fine with one free residual parameter, but with `add` and
+    `prop` both free it diverges -- they are near-collinear, and routing the
+    residual through the full outer objective lets the Laplace terms move with
+    it at frozen etas (objective 320.7 against the moment estimator's 122.5).
+    Retained for comparison; prefer `"twoStage"`.}
+
+\item{residRhoend}{Final trust-region radius (`rhoend`) of the bounded
+`bobyqa` that estimates the residual parameters -- its convergence
+tolerance.  `NULL` (default) derives it from `sigdig` (`10^(-sigdig)`), the
+same way every other optimizer tolerance in the package is derived, so
+`sigdig` stays the single knob that moves them together.  Set it explicitly
+when the residual step should converge tighter than the rest: it runs with
+the ODE frozen, so tightening it is far cheaper than tightening `rhoend`,
+which also tightens the structural regression that re-solves per candidate.}
+
+\item{omegaUpdate}{How the population variances are updated in the covariate
+M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+historic behavior, blending the freshly computed `omega` with the previous
+value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
+The residual error estimate is still EMA-smoothed on the standard-deviation
+scale, where the reference smooths the residual sum of squares and takes the
+root afterwards -- a known remaining difference.  Matching it would need
+per-endpoint sufficient statistics plus an optimizer branch for the error
+models with no closed form (`add + prop`, `add + pow`, Box-Cox /
+Yeo-Johnson), as \code{\link{saemControl}()} does.}
+
+\item{inputScale}{Which observations the encoder-input centering and scaling
+are computed over.  `"reference"` (default) matches the reference
+implementation, which takes the mean and SD across the whole padded
+observation matrix, so the zero padding of subjects with fewer observations
+enters both statistics.  On a ragged dataset that is a materially different
+scale from `"observed"`, which uses only the observed values (on the neonatal
+case study the SD is 1582 against 506).  Affects only the encoder's inputs,
+never the likelihood.}
+
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),
 `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -144,10 +251,32 @@ results.}
 
   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
     injected; instead each such theta is estimated directly, re-optimized every
-    M-step by a bounded `bobyqa` regression against the FOCEi inner likelihood
-    (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+    M-step by a bounded `bobyqa` regression against the full FOCEi outer
+    objective (bounds from the `ini()` lower/upper), blended with the M-step gain.
+    `mStepObjective` selects which objective that regression targets.  This
     recovers a no-random-effect population parameter without adding a spurious
     random effect.  `nonMuEtaOmega` is unused in this mode.
+  * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
+    outer gradient (Almquist sensitivity equations, the machinery behind
+    `foceiControl(fast=TRUE)`) instead of a derivative-free search: one
+    augmented sensitivity solve per M-step replaces the bobyqa sweep.  Both
+    modes optimize the same full outer objective (with every mu-referenced
+    theta held at its current M-step value), so this changes the optimizer,
+    not the target.  It is also the more natural fit for the method: the
+    gradient is handed to the SAME Adam machinery that moves the encoder
+    weights, so the parameter is learned alongside the rest of the model on a
+    shared schedule (same gain, same KL warmup gate), whereas `"regress"`
+    pauses each M-step to run a separate derivative-free optimizer to
+    convergence and adopts its answer.  This is NOT a speed option -- it is
+    measurably SLOWER than
+    `"regress"` (on `theo_sd`, 1.47x with one non-mu theta and 1.13x with
+    three; the gap narrows as the number grows, since bobyqa's cost scales in
+    it and a single solve does not, but it does not close).  Choose it for
+    accuracy: the exact gradient lands closer to the maximum-likelihood value
+    than the derivative-free search (`theo_sd` non-mu `tv`: 3.4294 vs 3.4324,
+    against a FOCEi MLE of 3.4293).  Falls back to `"regress"` when the model
+    is out of analytic scope (`ll()` endpoints, `linCmt()`, IOV, ...);
+    `nonMuEtaOmega` is unused.
   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
     `nonMuEtaOmega`); the typical value is estimated and appears in the
     iteration table.
@@ -161,6 +290,31 @@ results.}
 \item{nonMuEtaOmega}{Variance of the eta injected for a non-mu-referenced theta
 (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 unused for `"regress"`).}
+
+\item{mStepObjective}{Objective the non-mu-referenced theta M-step
+  (`nonMuTheta = "regress"` or `"grad"`) is optimized against.  It has no
+  effect when there is no non-mu-referenced structural theta, and it never
+  changes the encoder/ELBO training step or the covariate branch-and-bound
+  criterion, both of which always follow the reference.
+
+  * `"outer"` (default): the full FOCEi outer objective -- the frozen-eta
+    joint likelihood PLUS the Laplace determinant, `0.5*log|Omega^-1|` and the
+    DV-transform Jacobian.  This is a deliberate deviation from Rohleff et al.
+    (2025): it keeps the quantity being optimized equal to the objective the
+    fit reports, and it is the functional the analytic outer gradient
+    differentiates, so `nonMuTheta = "grad"` optimizes one target rather than
+    stepping one and scoring another.
+  * `"elbo"`: the reference behavior -- the plain variational bound
+    (frozen-eta joint likelihood, no Laplace term), matching the M-step in
+    Rohleff et al. (2025).  Use it to reproduce the reference implementation.
+    The analytic outer gradient does not apply to this objective, so
+    `nonMuTheta = "grad"` is downgraded to `"regress"` with a note in
+    `$runInfo`.
+
+  The two objectives differ by terms that depend on the non-mu thetas through
+  the eta Hessian, so they can land on different estimates, and -- because
+  those estimates feed the latent means the covariate search regresses on --
+  on different covariate sets.}
 
 \item{likelihood}{Inner likelihood used for the objective, EBEs, and
 gradients, all run through the same FOCEi inner interface: `"focei"`

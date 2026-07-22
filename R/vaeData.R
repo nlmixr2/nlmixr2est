@@ -14,6 +14,14 @@
 # ini() bound overrides it.
 .vaeCovCoefBound <- 10
 
+# Fallback bound half-width for an UNBOUNDED structural non-mu theta estimated by
+# the M-step: `ini() estimate +/- max(.vaeNonMuThetaBound, |est| * .vaeNonMuThetaRel)`.
+# Purely a divergence guard -- with +-Inf bounds a flat direction runs the estimate
+# away (~1e68 on an unbounded theo_sd `tv`).  Deliberately generous so it does not
+# bind at a sane optimum; a user `ini()` bound always wins.
+.vaeNonMuThetaBound <- 10
+.vaeNonMuThetaRel <- 3
+
 # Max plausible log-scale effect used to derive a SCALE-AWARE fallback bound for a
 # raw linear covariate coefficient (beta*COV): |beta*max|COV|| <= this, so the
 # bound shrinks as the covariate magnitude grows (a raw WT coefficient is ~1/WT).
@@ -292,6 +300,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' @return list of prepared VAE inputs
 #' @noRd
 .vaeDataPrep <- function(ui, data, control = NULL) {
+  .inputScale <- if (is.null(control$inputScale)) "reference" else control$inputScale
   .idf <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)
   .etaNames <- .map$etaNames
@@ -449,7 +458,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
   ## M-step (vs. the latent-space zPop update).  Two sources, unioned:
-  ##  * nonMuTheta="regress": non-mu-referenced structural thetas (no eta); and
+  ##  * nonMuTheta="regress"/"grad": non-mu-referenced structural thetas (no eta); and
   ##  * covariateSelection=FALSE: model-declared covariate coefficients -- always
   ##    estimated in place, independent of nonMuTheta, so the mu-referenced
   ##    covariate expression the user wrote is fit rather than held fixed.
@@ -458,7 +467,7 @@ vaeCovariates <- function(data, warn = TRUE) {
   .regressNames <- character(0)
   .regressThetaIdx0 <- integer(0)
   .regressLower <- numeric(0); .regressUpper <- numeric(0)
-  if (identical(control$nonMuTheta, "regress")) {
+  if (.vaeNonMuIsRegress(control$nonMuTheta)) {
     .regressNames <- .vaeNonMuThetas(ui)
   }
   .covCoefNames <- character(0)
@@ -475,18 +484,65 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   .regressNames <- c(.regressNames, .covCoefNames)
   .regressNames <- unique(.regressNames)
+  ## residOptimize="optimize": the residual-error thetas join the SAME optimizer
+  ## as the non-mu structural thetas, against the same full outer objective.  A
+  ## FIXED error parameter is excluded (nothing to estimate), as is one already
+  ## regressed for another reason.
+  .errRegressNames <- character(0)
+  if (!identical(control$residOptimize, "moment")) {
+    .errAll <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
+    if (nrow(.errAll) > 0L) {
+      .errFree <- .errAll[!(!is.na(.errAll$fix) & .errAll$fix), , drop = FALSE]
+      ## Every free residual parameter enters the optimizer.  The stage-2
+      ## objective evaluates the ordinary likelihood with the ODE frozen, so `r`
+      ## comes from the model's own rx_r_ and ANY error form is scored correctly
+      ## -- there is nothing left for a form-specific filter to protect against.
+      ## (It was needed only while the objective recomputed `r` itself from a
+      ## hardcoded per-form expression, which could silently ignore a parameter
+      ## and let the optimizer move it on noise.)
+      .errRegressNames <- setdiff(as.character(.errFree$name), .regressNames)
+    }
+  }
+  .regressNames <- c(.regressNames, .errRegressNames)
   if (length(.regressNames) > 0L) {
     .ri <- match(.regressNames, .thRows$name)
     .regressThetaIdx0 <- as.integer(.ri - 1L)
     .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
     .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
     .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+    ## A residual SCALE parameter must not be allowed to reach zero.  The
+    ## likelihood floors a zero variance (r == 0 -> r = 1) to stay finite, which
+    ## makes a collapsed residual look attractive rather than forbidden -- a
+    ## boxCox fit converged to add.err = 0 exactly this way.  Floor the scale
+    ## parameters strictly above zero: absolute forms (add, lnorm) relative to
+    ## the spread of the data, relative forms (prop, pow) at a small constant.
+    ## Exponents and lambdas are NOT scales and are left alone.
+    .errScaleAbs <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("add", "lnorm")])
+    .errScaleRel <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("prop", "pow")])
+    .dvObs <- suppressWarnings(as.numeric(d$DV[d$EVID == 0]))
+    .dvSpread <- stats::sd(.dvObs[is.finite(.dvObs)])
+    if (!is.finite(.dvSpread) || .dvSpread <= 0) .dvSpread <- 1
+    .isAbs <- .regressNames %in% .errScaleAbs
+    .isRel <- .regressNames %in% .errScaleRel
+    .regressLower[.isAbs] <- pmax(.regressLower[.isAbs], 1e-4 * .dvSpread)
+    .regressLower[.isRel] <- pmax(.regressLower[.isRel], 1e-6)
+    ## A transform-both-sides lambda (Box-Cox / Yeo-Johnson) is only meaningful
+    ## on a narrow interval, and it is unbounded in the ini() block, so the
+    ## optimizer would otherwise search a meaningless range.  Constrain it to
+    ## (-2, 2); SAEM does the same thing by mapping lambda through a bounded
+    ## transform (`toLambda`).  A tighter user bound still wins.
+    .lamNames <- as.character(.idf$name[!is.na(.idf$err) &
+                                        .idf$err %in% c("boxCox", "yeoJohnson")])
+    if (length(.lamNames) > 0L) {
+      .isLam <- .regressNames %in% .lamNames
+      .regressLower[.isLam] <- pmax(.regressLower[.isLam], -2)
+      .regressUpper[.isLam] <- pmin(.regressUpper[.isLam], 2)
+    }
     ## An UNBOUNDED covariate coefficient regressed alone routes through the 1-D
     ## optimize() branch of .boundedResidOpt, which searches the whole interval and
     ## overshoots a shallow interior optimum on a too-wide interval.  Give an
     ## unbounded coefficient a finite, scale-aware fallback interval (user ini()
-    ## bounds still win); structural regress thetas keep their bounds (bobyqa is
-    ## stable, so they are left alone).
+    ## bounds still win).
     .isCov <- .regressNames %in% .covCoefNames
     .noLo <- .isCov & !is.finite(.regressLower)
     .noHi <- .isCov & !is.finite(.regressUpper)
@@ -494,6 +550,26 @@ vaeCovariates <- function(data, warn = TRUE) {
       .bnd <- .vaeCovCoefBoundVec(ui, data, .regressNames[.isCov])
       .regressLower[.noLo] <- -.bnd[.regressNames[.noLo]]
       .regressUpper[.noHi] <- .bnd[.regressNames[.noHi]]
+    }
+    ## A STRUCTURAL non-mu theta needs the same guard.  With +-Inf bounds nothing
+    ## constrains the M-step (bobyqa's interval, or the "grad" Adam projection), and
+    ## a theta whose likelihood is flat in one direction runs away: an unbounded
+    ## `tv <- 3.45` on theo_sd reaches ~1e68 (an lnorm fit there reports an OFV of
+    ## 359315 against focei's 686), while the same model with `tv <- c(2, 3.45, 5)`
+    ## converges.  Fall back to a generous window around the ini() ESTIMATE, wide
+    ## enough not to bind at a sane optimum but finite so the search cannot diverge.
+    .isStruct <- !.isCov
+    .sLo <- .isStruct & !is.finite(.regressLower)
+    .sHi <- .isStruct & !is.finite(.regressUpper)
+    if (any(.sLo | .sHi)) {
+      .init <- as.numeric(.thRows$est[.ri])
+      .init[!is.finite(.init)] <- 0
+      ## scale-aware half-width: the absolute floor covers a log-scale parameter
+      ## (init ~ 3.45 -> +-10 is exp(+-10), ample), the relative term keeps a
+      ## large-magnitude natural-scale init (say 1000) from being over-constrained
+      .hw <- pmax(.vaeNonMuThetaBound, abs(.init) * .vaeNonMuThetaRel)
+      .regressLower[.sLo] <- (.init - .hw)[.sLo]
+      .regressUpper[.sHi] <- (.init + .hw)[.sHi]
     }
   }
 
@@ -503,6 +579,15 @@ vaeCovariates <- function(data, warn = TRUE) {
   .errRow <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
   .errRow <- .errRow[order(.errRow$ntheta), , drop = FALSE]
   .a <- if (nrow(.errRow) > 0) setNames(as.numeric(.errRow$est), .errRow$name) else numeric(0)
+  ## For each regressed parameter, its 0-based slot in `a` (the error-parameter
+  ## vector), or -1 when it is not an error parameter.  vaeBuildTh writes `a`
+  ## over the error theta positions, so the objective must substitute the
+  ## CANDIDATE value into `a`; without this map it would be flat in every error
+  ## parameter and the optimizer would never move one.
+  .regressErrIdx0 <- if (length(.regressNames) > 0L) {
+    .m <- match(.regressNames, names(.a))
+    as.integer(ifelse(is.na(.m), 0L, .m) - 1L)
+  } else integer(0)
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
@@ -522,10 +607,23 @@ vaeCovariates <- function(data, warn = TRUE) {
                       cens = .cens, limit = .limit)
     .allTime <- c(.allTime, .times); .allDv <- c(.allDv, .y)
   }
-  .tMax <- max(.allTime); .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)
+  Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
+  .tMax <- max(.allTime)
+  ## inputScale: which DV values the encoder-input centering/scaling is computed
+  ## over.  The reference takes mean/sd across the WHOLE padded [N, Tmax] matrix,
+  ## so the zero padding of short subjects enters both -- on a ragged dataset
+  ## that is a materially different scale from the observed-only statistics
+  ## (neonatal: sd 1582 vs 506).  "reference" reproduces it; "observed" uses the
+  ## observed values only.
+  if (identical(.inputScale, "reference")) {
+    .padded <- c(.allDv, rep(0, N * Tmax - length(.allDv)))
+    .dvMean <- mean(.padded); .dvSd <- stats::sd(.padded)
+  } else {
+    .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)
+  }
+  if (!is.finite(.dvSd) || .dvSd <= 0) .dvSd <- 1
 
   ## encoder inputs: [N, Tmax, 2] standardized (time, DV), padded; lengths
-  Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
   dataIn <- array(0, c(N, Tmax, 2L))
   lengths <- integer(N)
   for (i in seq_len(N)) {
@@ -533,7 +631,32 @@ vaeCovariates <- function(data, warn = TRUE) {
     dataIn[i, seq_len(ni), 1L] <- s$times / .tMax
     dataIn[i, seq_len(ni), 2L] <- (s$y - .dvMean) / .dvSd
   }
-  covIn <- matrix(0, N, 0L)                     # encoder-head covariates (unused for now)
+  ## Encoder-head covariates.  The reference concatenates them to the LSTM's
+  ## FINAL HIDDEN STATE before the linear head that emits (mu, logSigma, L)
+  ## -- `torch.cat((hidden[-1], covariates), dim=1)` in its encoder -- so the
+  ## approximate posterior q(z|x) is conditioned on the covariates.  That is
+  ## central to the method: it is how the encoder can express a covariate
+  ## relationship at all, and the M-step then only has to read it off the
+  ## posterior means.  Feeding zero columns here leaves the posterior
+  ## unconditioned, which shows up as less between-subject spread aligned with
+  ## the covariates (smaller omega, more variance pushed into residual error) and
+  ## weaker covariate effects.  Use the same encoded matrix the selection step
+  ## uses (continuous -> log(cov/mean), categorical -> linear).
+  ## Only the covariates actually in play are supplied.  With no covariate
+  ## search there is nothing for the encoder to condition on (the declared
+  ## coefficients are estimated in place by the regress M-step instead), and
+  ## under `pinCovariates` only the pinned candidates are; conditioning on a
+  ## covariate the search cannot select would let the posterior encode a
+  ## relationship the model never reports.
+  covIn <- if (isFALSE(control$covariateSelection) || .searchOff) {
+    matrix(0, N, 0L)
+  } else if (!is.null(.covAllow) && ncol(.cov$covMat) > 0L) {
+    .keep <- which(colSums(.covAllow) > 0L)
+    .cov$covMat[, .keep, drop = FALSE]
+  } else {
+    .cov$covMat
+  }
+  if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
@@ -542,6 +665,7 @@ vaeCovariates <- function(data, warn = TRUE) {
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
+       regressErrIdx0 = .regressErrIdx0,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,

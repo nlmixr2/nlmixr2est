@@ -5,7 +5,9 @@
 
 #' Initialize encoder parameters (RNG seeded once by the caller under rxWithSeed)
 #' @noRd
-.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0) {
+.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0,
+                                  sigma0Interp = c("sd", "reference")) {
+  sigma0Interp <- match.arg(sigma0Interp)
   nOff <- as.integer(zDim * (zDim - 1L) / 2L)
   outDim <- 2L * zDim + nOff
   .sd <- 1 / sqrt(hDim)
@@ -15,7 +17,15 @@
     bih = numeric(4L * hDim),
     bhh = numeric(4L * hDim),
     fcW = matrix(stats::rnorm(outDim * (hDim + nCov), 0, 1e-2), outDim, hDim + nCov),
-    fcB = c(zPop, log(sigma0), numeric(nOff))
+    ## The head emits logSigma and the encoder forms diag(L) = exp(logSigma), so
+    ## diag(L) is the posterior SD (the entropy term uses 2*log(diag(L))).  Under
+    ## "sd" the bias is log(sigma0), making the initial posterior SD sigma0 --
+    ## what `sigma0` says it is.  Under "reference" it is log(sigma0^2), matching
+    ## the reference implementation, whose initial posterior SD is therefore
+    ## sigma0 SQUARED.
+    fcB = c(zPop,
+            if (sigma0Interp == "reference") log(sigma0^2) else log(sigma0),
+            numeric(nOff))
   )
 }
 
@@ -124,9 +134,22 @@
 #' training loop's closed-form error M-step: 0 = additive, 1 = proportional,
 #' 2 = other (kept at its current value). Order matches `prep$errType`.
 #' @noRd
+## Error-model classification consumed by the C++ M-step and the two-stage ELS
+## objective.  0=add, 1=prop, 3=pow scale, 4=pow exponent, 5=lnorm; 2 is
+## "not handled", which leaves the parameter at its ini() value.
 .vaeErrTypeCode <- function(errType) {
-  vapply(errType, function(t) if (identical(t, "add")) 0L else if (identical(t, "prop")) 1L else 2L,
-         integer(1), USE.NAMES = FALSE)
+  vapply(errType, function(t) {
+    if (identical(t, "add")) 0L
+    else if (identical(t, "prop")) 1L
+    else if (identical(t, "pow")) 3L
+    else if (identical(t, "pow2")) 4L
+    else if (identical(t, "lnorm")) 5L
+    ## boxCox / yeoJohnson lambda: the stage-2 ELS objective transforms dv with
+    ## rxode2's _powerD and carries the log-Jacobian from _powerL.  f is NOT
+    ## transformed -- it leaves the solve already on the transformed scale.
+    else if (identical(t, "boxCox") || identical(t, "yeoJohnson")) 6L
+    else 2L
+  }, integer(1), USE.NAMES = FALSE)
 }
 
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
@@ -142,8 +165,19 @@
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
+  ## as a std::logic_error and aborts the session, so check it here
+  .vaeCheckEncoderDims <- function(params) {
+    if (ncol(params$fcW) != hDim + nCov) {
+      stop("vae encoder head is ", ncol(params$fcW), " wide but needs hiddenDim + ncol(covIn) = ",
+           hDim + nCov, call. = FALSE)
+    }
+    invisible(TRUE)
+  }
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0,
+                                  if (is.null(control$sigma0Interp)) "sd" else control$sigma0Interp)
+  .vaeCheckEncoderDims(params)
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
   ## via the shared iteration-print machinery (scale.h), so the walk prints like
@@ -178,6 +212,7 @@
   ## nonMuTheta="regress": 0-based full-theta indices + ini bounds of the fixed
   ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
+  prepC$regressErrIdx0 <- as.integer(prep$regressErrIdx0)
   prepC$regressLower <- as.numeric(prep$regressLower)
   prepC$regressUpper <- as.numeric(prep$regressUpper)
   ## latent dims whose structural theta is fixed (held at ini by the M-step)
@@ -208,6 +243,15 @@
   ## surface it as control$print for the C++ loop's final parHist print gate
   control$print <- as.integer(control$iterPrintControl$every)
 
+  ## nonMuTheta="grad": stash the per-fit context the analytic outer-gradient
+  ## M-step reads; the C++ loop then passes only theta/eta/omega per M-step
+  if (identical(control$nonMuTheta, "grad") && length(prep$regressNames)) {
+    .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames)
+    ## .vaeGradEnv lives for the SESSION; drop the fit-specific state when this
+    ## fit ends so a later focei fast fit cannot see it (see .foceiAnalyticSolveAll)
+    on.exit(.vaeGradReset(), add = TRUE)
+  }
+
   .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),
                        .cores, .row0, names(.row0), control$iterPrintControl,
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
@@ -219,6 +263,7 @@
        covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
        mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
+       nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

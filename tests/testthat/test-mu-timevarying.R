@@ -33,7 +33,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .testSeed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
     expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d),
-                   "time-varying covariate.*excluded from automatic covariate search: TVCOV")
+                   "time-varying covariate.*not searched: TVCOV")
     expect_false("TVCOV" %in% .p$covNames)            # excluded
     expect_true("WT" %in% .p$covNames)                # subject-constant kept
     # subject-constant only: no warning

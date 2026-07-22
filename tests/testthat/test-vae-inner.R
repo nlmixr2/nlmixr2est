@@ -191,7 +191,9 @@ nmTest({
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(1)
-    params <- .vaeEncoderInitParams(zDim, hDim, 0L, prep$zPop, rep(0.1, zDim))
+    ## nCov from the prep: the encoder head is [hDim + nCov] wide because the
+    ## encoder is conditioned on the covariates
+    params <- .vaeEncoderInitParams(zDim, hDim, ncol(prep$covIn), prep$zPop, rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
     st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)
 
