@@ -459,3 +459,23 @@ with no `ini()` bounds runs away; `tv <- c(2, 3.45, 5)` converges).  It is a
 pre-existing bug, independent of everything on this branch, and it is why an
 lnorm/focei OFV comparison cannot currently be used to validate the Jacobian.
 Fix Phase 6 first, then re-run this comparison as the real check.
+
+##### Phase 6 fixed -- and what it did NOT fix
+
+The fallback bounds stop the runaway on lnorm too: that fit went from OFV 359315
+(`tv` 9.1e68) to OFV 13412 (`tv` 2.446).  So the divergence is gone.
+
+But the lnorm VAE fit is still POOR -- focei gets OFV 685.6 at `tv` 3.857, the VAE
+13412 at `tv` 2.446, a 19.6x OFV gap.  That is NOT the transform Jacobian:
+`tbsLik` is -180.8 for this data, two orders of magnitude too small to account for
+a 12727 gap.  It is fit quality on a log-scale error model, a separate issue from
+anything on this branch.
+
+Consequence: **the tbsLik change is still not validated against a focei OFV.**  It
+is correct by construction (the term is present for focei/npag/npb and was absent
+only from the VAE ELBO path) and the suites are green, but the end-to-end
+"comparable to a focei OFV" claim needs a transformed model the VAE fits WELL.
+Either find/tune one, or validate the term directly: assert
+`ELBO_with - ELBO_without == sum(log|dy'/dy|)` at a fixed parameter vector, which
+isolates the Jacobian from convergence entirely.  The latter is the better test
+and does not depend on lnorm fit quality.
