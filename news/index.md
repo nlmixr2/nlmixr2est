@@ -4,6 +4,150 @@
 
 ### New features
 
+- `est="vae"` gains `vaeControl(nonMuTheta="grad")`, which estimates a
+  structural population `theta` with no random effect using the exact
+  analytic outer gradient (the machinery behind
+  `foceiControl(fast=TRUE)`) rather than the bounded `bobyqa` regression
+  `nonMuTheta="regress"` uses: one augmented sensitivity solve per
+  M-step replaces the derivative-free sweep. Both modes target the same
+  (full outer) objective, so this is an optimizer change: on `theo_sd`
+  with a non-mu-referenced `tv` it lands within 0.0005 of the FOCEi
+  maximum-likelihood value against 0.0025 for `"regress"`. It is chosen
+  for that accuracy, not for speed – it runs slower than `"regress"`
+  (1.47x with one non-mu theta, 1.13x with three). A model outside
+  analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
+  `"regress"` with a note in `$runInfo`.
+
+- The `est="vae"` ELBO now includes the transform-both-sides Jacobian,
+  so a model with
+  `lnorm()`/[`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  reports its objective on the DV scale – matching what `est="focei"`
+  already does – instead of the transformed scale. No effect on a model
+  without a both-sides transform.
+
+- `est="vae"`’s non-mu theta M-step (both `nonMuTheta="regress"` and
+  `"grad"`) now optimizes the FULL outer objective – the Laplace
+  determinant, `0.5*log|Omega^-1|` and the transform-both-sides Jacobian
+  – rather than the joint likelihood at frozen encoder etas. Every
+  mu-referenced theta is held at its current M-step value, so the two
+  modes now differ only in optimizer (exact analytic gradient vs
+  derivative-free `bobyqa`) and are directly comparable. On `theo_sd`
+  with a non-mu `tv` this moves `"regress"` from 3.4175 to 3.4324
+  against a FOCEi maximum-likelihood value of 3.4299.
+
+- Fixed `est="vae"` diverging when a structural `theta` with no random
+  effect had no
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) bounds.
+  With infinite bounds nothing constrained the non-mu theta M-step, and
+  a parameter whose likelihood is flat in one direction ran away (an
+  unbounded `tv` on `theo_sd` reached ~1e68). An unbounded such theta
+  now falls back to a generous finite window around its
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  estimate, chosen wide enough not to bind at a sane optimum; a user
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) bound
+  still wins. The unbounded model now converges to the same value as the
+  bounded one (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for
+  `"grad"`, against a FOCEi maximum-likelihood value of 3.4293).
+
+- `est="vae"` gains `vaeControl(residRhoend=)`, the convergence
+  tolerance of the bounded optimizer that estimates the residual
+  parameters (defaults to `rhoend`). Worth setting separately because
+  that step runs with the ODE frozen, so tightening it is far cheaper
+  than tightening `rhoend`, which also tightens the structural
+  regression.
+
+- `est="vae"` gains an experimental
+  `vaeControl(residOptimize="twoStage")`, which estimates the
+  residual-error parameters by block coordinate descent: the
+  non-mu-referenced structural thetas first (driven by `dv - f`), then
+  the residual parameters alone against the extended least-squares
+  objective over the cached `(y, f)` pairs, needing no ODE re-solve. It
+  is the only path that can estimate an error model with no closed form,
+  and it beats the moment estimator on both additive (131.79 vs 131.81)
+  and combined (121.03 vs 122.47) `theo_sd` fits. It is now the DEFAULT,
+  so an `est="vae"` fit with a residual-error parameter changes;
+  `residOptimize="moment"` restores the previous estimator. It is also
+  the only path that estimates an error model with no closed form.
+  `pow()` and `lnorm()` residuals were previously classified “other” and
+  left SILENTLY at their
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) values
+  – on `theo_sd`, `pow(prop.err, pw)` returned 0.300/0.800 unchanged
+  (objective 154.4 against 134.8 estimated) and `lnorm(add.err)`
+  returned 0.500 unchanged (objective 26163 against 849). A
+  transform-both-sides
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  lambda was frozen the same way and is now estimated too, bounded to
+  `(-2, 2)` (`boxCox` 181.6 -\> 43.1, `yeoJohnson` 131.8 -\> 108.4,
+  `boxCox` 181.6 -\> -29.2 on `theo_sd`). Residual scale parameters are
+  also floored strictly above zero, since the likelihood’s zero-variance
+  floor (`r == 0 -> r = 1`) would otherwise make a collapsed residual
+  look attractive to the optimizer.
+
+- `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes
+  the encoder’s initial posterior spread. `"sd"` (default) makes the
+  initial posterior SD `sigma0`, as documented; `"reference"` makes it
+  `sigma0` squared, reproducing the reference implementation (which
+  documents `sigma0` as a standard deviation, so its squaring appears
+  unintended).
+
+- `est="vae"`’s encoder is now conditioned on the covariates, as in
+  Rohleff et al. (2025), which concatenates them to the LSTM’s final
+  hidden state before the head that emits the posterior
+  (`torch.cat((hidden[-1], covariates), dim=1)`). The covariates were
+  previously not passed to the encoder at all, so the approximate
+  posterior could not express a covariate relationship and the covariate
+  M-step had a weaker signal to read off the posterior means. Fixing it
+  moves the neonatal case study’s covariate estimates close to the
+  reference’s (`kin ~ GA` 3.51 against its 3.45, previously 2.45) and
+  removes a spurious effect. This changes the results of any `est="vae"`
+  fit on a model with covariates.
+
+- `est="vae"` gains `vaeControl(gammaSeries=)`, selecting the decaying
+  step-size series used in the smoothing phase: `"reference"` (default)
+  `1/(iter - gammaIter)`, the textbook Kuhn-Lavielle series the
+  reference uses, or `"saem"` `1/(1 + iter - gammaIter)`, the
+  continuation form
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
+  uses (its decay starts at `1/2` rather than repeating a gain of 1).
+
+- `est="vae"` aligns three more details with Rohleff et al. (2025): the
+  smoothing gain is now `1/(iter - gammaIter)` (it was
+  `1/(1 + iter - gammaIter)`, smoothing a step harder than the reference
+  throughout the tail); new `vaeControl(omegaUpdate="suffStat")`
+  (default) forms the population variances from the EMA sufficient
+  statistics and assigns them instead of blending them a second time at
+  the M-step gain (`omega` only – the residual error is still smoothed
+  on the SD scale, a documented remaining difference); and new
+  `vaeControl(inputScale="reference")` (default) computes the
+  encoder-input centering/scaling across the whole padded observation
+  matrix as the reference does, rather than over the observed values
+  only – on a ragged dataset the two differ materially (neonatal SD 1582
+  vs 506). `omegaUpdate="blend"` and `inputScale="observed"` restore the
+  previous behavior.
+
+- `est="vae"` covariate selection now regresses the SAEM sufficient
+  statistic (an exponential moving average of the posterior means)
+  rather than the current posterior means, matching Rohleff et
+  al. (2025); `vaeControl(covSelectSmooth=)` restores the previous
+  behavior. The effect is small in practice, since the M-step gain is 1
+  until `gammaIter`.
+
+- `est="vae"` gains `vaeControl(mStepObjective=)`, selecting the
+  objective the M-step for a structural theta with no random effect is
+  optimized against: `"outer"` (default) uses the full FOCEi outer
+  objective (the frozen-eta joint likelihood plus the Laplace
+  determinant, `0.5*log|Omega^-1|` and the transform Jacobian), while
+  `"elbo"` reproduces the plain variational bound of Rohleff et
+  al. (2025). The default is a deliberate deviation from the reference:
+  the Laplace term is what makes an analytic gradient available for
+  those parameters (the gradient differentiates the marginal
+  likelihood), so under `"elbo"` `nonMuTheta="grad"` is downgraded to
+  `"regress"` with a note in `$runInfo`. The deviation is confined to
+  that M-step – it does not touch the encoder, the ELBO training step or
+  the covariate-selection criterion – so a model whose structural
+  parameters are all mu-referenced fits identically under either
+  setting.
+
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to
   respect the covariates already written in the model. When the model
   declares covariate effects, the automatic BICc covariate search is

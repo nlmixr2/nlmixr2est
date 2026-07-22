@@ -40,7 +40,7 @@ adviControl(
   compress = FALSE,
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = NULL,
+  sigdig = 4,
   sigdigTable = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,

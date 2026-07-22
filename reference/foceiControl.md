@@ -331,12 +331,17 @@ foceiControl(
   When `TRUE`, compute the outer (population) gradient analytically from
   Almquist (2015) sensitivity equations instead of by finite
   differences, and use the Eq-48 random-effect extrapolation for the
-  next inner-problem starting values. Requires an analytic-scope model
-  (single additive/proportional Gaussian endpoint); out-of-scope models
-  fall back to the finite-difference gradient with a message (linCmt()
-  and log-likelihood models downgrade to `fast=FALSE` up front). When
-  unspecified, the outer optimizer defaults to `"lbfgsb3c"` (vs
-  `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
+  next inner-problem starting values. Requires an analytic-scope model:
+  every endpoint conditionally Gaussian. That covers more than the plain
+  add/prop case – multiple endpoints, combined and power error,
+  both-sides transforms and a single estimated boxCox/yeoJohnson lambda
+  all route through the general (f,R) assembler. Out of scope are
+  non-normal `ll()` endpoints, `linCmt()`, `fo`, IOV, more than one
+  estimated lambda, and a theta mu-referenced by several random effects;
+  those fall back to the finite-difference gradient with a message
+  (linCmt() and log-likelihood models downgrade to `fast=FALSE` up
+  front). When unspecified, the outer optimizer defaults to `"lbfgsb3c"`
+  (vs `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
   (e.g. `foceif`) default this to `TRUE`.
 

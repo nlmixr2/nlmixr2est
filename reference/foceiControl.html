@@ -372,10 +372,16 @@ installs only the structural-theta block (the historical shape).</p></dd>
 <dd><p>When <code>TRUE</code>, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by
 finite differences, and use the Eq-48 random-effect extrapolation for the
-next inner-problem starting values.  Requires an analytic-scope model
-(single additive/proportional Gaussian endpoint); out-of-scope models fall
-back to the finite-difference gradient with a message (linCmt() and
-log-likelihood models downgrade to <code>fast=FALSE</code> up front).  When unspecified,
+next inner-problem starting values.  Requires an analytic-scope model:
+every endpoint conditionally Gaussian.  That covers more than the plain
+add/prop case – multiple endpoints, combined and power error, both-sides
+transforms and a single estimated boxCox/yeoJohnson lambda all route
+through the general (f,R) assembler.  Out of scope are non-normal
+<code>ll()</code> endpoints, <code>linCmt()</code>, <code>fo</code>, IOV, more than one
+estimated lambda, and a theta mu-referenced by several random effects;
+those fall back to the finite-difference gradient with a message
+(linCmt() and log-likelihood models downgrade to <code>fast=FALSE</code> up
+front).  When unspecified,
 the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"nlminb"</code> for
 <code>fast=FALSE</code>); pairing <code>fast=TRUE</code> with a derivative-free
 <code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
