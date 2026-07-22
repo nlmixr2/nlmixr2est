@@ -1227,3 +1227,40 @@ strongest signal in the record: the next attempt should find a way to give the V
 what it needs WITHOUT editing that shared file at all -- e.g. a VAE-registered
 hook ordered around `.uiApplyIov`/`.uiFinalizeIov`, which is the one candidate
 from the previous section that has not been tried.
+
+##### Fourth attempt (VAE-only post-final hook) ALSO broke focei
+
+Registered `.aaVaeRestoreIovVars` as a post-final-object hook -- `ls()` ordering
+confirmed it runs ahead of `.uiFinalizeIov`:
+
+    HOOKORDER: .aaVaeRestoreIovVars .uiFinalizeIov .uiFinalizeMu2
+
+`.vaeToFit` stashed `.ret$vaeIovVars`; the hook reinstates `.uiIovEnv$iovVars`
+from it and returns NULL (= "no change" per `.postFinalObjectHooksRun`).  R/iov.R
+untouched.  It should have been a strict no-op for focei, which never stashes
+anything.  It was not:
+
+    focei -> ERROR: subscript out of bounds     (baseline WITHOUT the hook: OK 3.42719)
+    vae   -> unchanged error
+
+Reverted; focei re-verified OK.  I did not isolate why merely REGISTERING an
+additional post-final hook perturbs focei -- that is itself worth understanding
+before a fifth attempt, because it suggests the hook chain is more
+order/state-sensitive than its interface implies.
+
+Four attempts, four focei regressions -- two in R/iov.R, one per-fit handoff, one
+purely additive hook.  Do not attempt a fifth without first answering: WHY does
+adding a no-op hook break focei on an IOV model?
+
+##### wip branch suite status (for the two parked fixes)
+
+    test-vae-nonmutheta.R        43/43 pass
+    test-vae-iov.R                9/9  pass
+    test-vae-nonmutheta-grad.R   34/35, 1 FAIL
+      ! "scope probe accepts an ODE model and rejects linCmt()"
+
+So the parked output-contract + IOV-theta fixes do NOT break the IOV or nonmutheta
+suites.  The single grad failure needs triage before merge -- it passed 35/35 on
+`feat/vae-outer-gradient`, so it is either a real interaction with the wip changes
+or cross-suite state leakage (these ran in ONE process; the recorded caution says
+run each in its own).  Re-run it standalone first.
