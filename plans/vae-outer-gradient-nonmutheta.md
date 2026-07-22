@@ -1512,3 +1512,42 @@ Progress this round is real and measurable: the original error
 ("invalid second argument of length 0") is fixed at its true root (NULL `sigdig`
 reaching `signif()`), `advi` was fixed at the same time, focei is unaffected
 (tv = 3.42719), and the IOV failure has moved strictly later in the pipeline.
+
+### RESOLVED: est="vae" + IOV WORKS
+
+    FIT OK  class = nlmixr2FitCore
+    theta names: tka, tcl, tv, add.sd
+    tv = 3.42547   objf = 387.45
+    fit$iov present: TRUE
+
+The remaining "subscript out of bounds" was MY TEST, not the package:
+`x$theta[["iov.cl"]]`.  `.uiFinalizeIov` deliberately drops the IOV rows from
+`$theta`/`parFixed` and reports the occasion effects under `$iov` -- so indexing
+`$theta` by the IOV name is out of bounds BY DESIGN.  Stage tracing showed every
+internal stage exiting cleanly (`nlmixr2Est0`, `.vaeToFit`,
+`.postFinalObjectHooksRun`, `.nlmixrEstUpdatesOrigModel`), which is what pointed
+at the accessor rather than the pipeline.
+
+That also retro-explains several "focei regressions" earlier in this file: those
+runs used the same `x$theta[["iov.cl"]]` probe.  Some of the five reverted fix
+attempts may never have broken focei at all -- the failures were at least partly
+my harness.  Treat the "5/5 focei regressions" claim as UNRELIABLE; only the
+sigdig finding and the two verified fixes below rest on sound measurement.
+
+WHAT ACTUALLY FIXED IT (both needed):
+  1. `.vaeNonMuThetas` no longer excludes the IOV magnitude theta, so the M-step
+     estimates it (it is non-mu by construction: its occasion etas are fixed at
+     variance 1).
+  2. `vaeControl()`/`adviControl()` default `sigdig = 4` instead of NULL, so
+     `signif(x, digits = .sigdig)` in `.uiFinalizeIov` no longer receives a
+     zero-length `digits`.
+
+Plus the foreign-method output contract in `.vaeToFit` (fullTheta/etaObf/omega/
+message + `.foceiPreProcessData`), which is on this branch and was a real gap even
+though it was not sufficient alone.
+
+STILL TO DO before merging: run the full suites on this branch (the earlier run
+showed vae-nonmutheta 43/43, vae-iov 9/9, vae-nonmutheta-grad 34/35 with one
+failure needing standalone triage), and add an IOV regression test asserting a
+`returnVae=FALSE` fit completes -- the existing `test-vae-iov.R` only exercises
+the raw object.
