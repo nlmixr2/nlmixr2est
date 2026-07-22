@@ -1105,3 +1105,35 @@ state.  Either
     intact.
 The first is smaller; the second is more explicit about idempotency.  Either way
 verify a focei IOV fit and a saem IOV fit are unchanged -- they run the same hook.
+
+### Idempotency fix ATTEMPTED and REVERTED -- and a mis-attribution
+
+Tried the smaller of the two proposals: compute `.lvls` first and `return(NULL)`
+early when it is empty, so an already-transformed ui cannot clobber the recorded
+state.  (NULL is what the empty-`.lvls` path returned anyway, so the contract is
+unchanged.)
+
+The very next FOCEI IOV fit failed with "subscript out of bounds", so I reverted
+immediately.  My stated reason -- that the early return also skips
+`.uiIovEnv$iovRename <- NULL`, leaving a stale rename -- is PLAUSIBLE BUT
+UNPROVEN, because after the revert the same FOCEI call still failed, and then in a
+fresh process BOTH focei variants passed:
+
+    focei default        OK tv = 3.42719
+    focei maxOuter=0     OK tv = 3.45
+
+So the failure was process-local contamination, not necessarily the change.  I
+could not separate the two before running out of budget.  Treat "the early return
+breaks focei" as UNVERIFIED -- re-test it in a clean process before discarding the
+approach.
+
+Current state: `R/iov.R` is UNMODIFIED (fix not applied).  The idempotency
+diagnosis in the section above still stands on its own evidence -- `.uiApplyIov`
+is a preProcess hook, it nulls `iovVars` unconditionally, and the second pass sees
+an already-transformed ui whose `.lvls` is empty.
+
+Two cautions for whoever retries:
+  * `iovRename` and `muModel` are reset alongside `iovVars`; any early return must
+    decide deliberately which of the three should survive a second pass.
+  * Test each estimator in its OWN R process.  Running focei/saem/vae fits of the
+    same IOV model in one session gave a spurious failure that cost a revert.
