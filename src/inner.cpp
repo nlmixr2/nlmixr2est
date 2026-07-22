@@ -10265,9 +10265,18 @@ RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag) {
 // passes nSub*nMix rows (id = component*nSub + subject) and combines.  The
 // arma-native core is shared with the C++ training loop (vaeTrainCpp_) so the
 // per-step evaluations allocate no R objects.
+// `adjOuter` puts `obj` on the FOCEi OUTER objective instead of the inner joint
+// one.  likInner0 returns only -log p(y_i, eta_i); the outer contribution
+// (fInd->lik[0]) additionally carries the Laplace determinant `logH0diag`, the
+// 0.5*log|Omega^-1| constant and the DV-transform Jacobian `tbsLik` -- LikInner2
+// is exactly likInner0 plus those three (it returns +log p, hence the negation).
+// Required whenever the inner and outer problems are mixed (nonMuTheta="grad"),
+// so the theta M-step and the analytic outer gradient optimize ONE functional.
+// It costs an eta-Hessian per subject per call (calcEtaHessian), so it is opt-in.
 static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool preds,
                             arma::vec& obj, arma::mat& lp,
-                            std::vector<std::vector<double> >& pf) {
+                            std::vector<std::vector<double> >& pf,
+                            bool adjOuter = false) {
   const int nid = (int)etaMat.n_rows;
   const int neta = (int)etaMat.n_cols;
   obj.set_size(nid);
@@ -10308,7 +10317,12 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
         lpInner(&eta[0], &g[0], id);
         for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
       }
-      obj[id] = likInner0(&eta[0], id);
+      if (adjOuter) {
+        double v = LikInner2(&eta[0], 0, id);
+        obj[id] = R_FINITE(v) ? -v : NA_REAL;   // LikInner2 returns +log p
+      } else {
+        obj[id] = likInner0(&eta[0], id);
+      }
       if (preds) {
         arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
         pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
@@ -12989,6 +13003,10 @@ static arma::mat gVaeRegEtaCentered; // last.mu - baseline  [N, zDim]
 static int gVaeRegCores;
 static int gVaeRegNMix;
 static arma::vec gVaeRegMixProb;
+// nonMuTheta="grad" mixes the inner and outer problems, so the bobyqa fallback
+// must minimize the SAME functional the analytic outer gradient differentiates
+// (the Laplace/marginal objective), not the frozen-eta joint one.
+static bool gVaeRegAdjOuter = false;
 
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
   arma::vec thc = gVaeRegThBase;
@@ -13003,7 +13021,7 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
     for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = gVaeRegEtaCentered;
   }
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
-  vaeInnerLikCore(etaEval, gVaeRegCores, false, false, obj, lp, pf);
+  vaeInnerLikCore(etaEval, gVaeRegCores, false, false, obj, lp, pf, gVaeRegAdjOuter);
   double v;
   if (nMix > 1) {
     // per-subject mixture -2LL via log-sum-exp (same as vaeElboStepCpp)
@@ -13369,6 +13387,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegOmega = omega;
       gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
+      gVaeRegAdjOuter = useGrad;   // match the gradient's functional when mixing
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gVaeThetaObjR);

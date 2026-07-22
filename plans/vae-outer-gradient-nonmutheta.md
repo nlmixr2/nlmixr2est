@@ -209,7 +209,41 @@ Decide before Phase 2b lands:
   theta is optimizing.
 
 (a) is the coherent choice, and it also makes the reported ELBO comparable to a
-focei OFV.  Either way this must be settled explicitly, not left implicit.
+focei OFV.  DECIDED: (a).
+
+#### Audit of the other FOCEi-inner consumers (imp family, npag/npb, advi)
+
+The three terms are NOT uniformly required -- which of them belongs depends on
+what the algorithm is doing with eta:
+
+| term | mode-based (focei, vae grad) | sampling/integrating (imp, advi) | fixed support point (npag/npb) |
+|---|---|---|---|
+| `logH0diag` (Laplace det) | REQUIRED | must NOT be there (double counts the integration) | must NOT be there (not a mode) |
+| `logDetOmegaInv5` | required | required, unless the method adds its own prior normalization | N/A (no prior by design) |
+| `tbsLik` (DV Jacobian) | required | **required** | **required** |
+
+So `logH0diag` is correctly absent from imp/advi/npag -- not a gap.  `npag`
+deliberately drops the prior too (`src/npag.cpp:538-540`: "npag ignores the prior
+-- it sums llikObs -- but likInner0 always forms it"), which is right for a
+nonparametric support point.
+
+**The real candidate gap is `tbsLik`.**  It is accumulated separately
+(`fInd->tbsLik += tbsJac`, `src/inner.cpp:1677`) and added ONLY inside
+`LikInner2` (`:2197`).  Every consumer that builds its objective from
+`likInner0`/`fInd->llikObs` instead therefore omits the DV-transform Jacobian:
+
+- `npEvalCondLik` sums `fInd->llikObs[kk]` -- no `tbsLik`.
+- the VAE ELBO path (`vaeInnerLikCore` with `adjOuter=false`) -- no `tbsLik`.
+- the imp/advi joint-likelihood paths -- to be confirmed per call site.
+
+This only bites a model with a both-sides transform (`tbsLik` is 0 otherwise), so
+it is bounded, but for boxCox/yeoJohnson/lnorm it makes those objectives wrong on
+the DV scale and non-comparable to a focei OFV -- and actively wrong when lambda
+is estimated, since the Jacobian then moves with the parameter.
+
+FOLLOW-UP (not this branch): add `tbsLik` to the imp/advi/npag objective
+assembly, with a transformed-model objective comparison against focei as the
+test.  Needs its own before/after baselines since it shifts reported OFVs.
 
 **Parallelize the outer solve.**  Per-subject writes are disjoint, so the loop
 parallelizes under the same discipline `vaeInnerLikCore` and the imp M-step use:
