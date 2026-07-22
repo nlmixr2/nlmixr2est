@@ -45,7 +45,7 @@ d <- data.frame(id = rep(1:3, each = 2), time = rep(0:1, 3), dv = rnorm(6),
                 wt = rep(c(70, 80, 60), each = 2),
                 sex = rep(c(0, 1, 0), each = 2))
 vaeCovariates(d)
-#>   covariate        type     center
-#> 1        WT  continuous 70.0000000
-#> 2       SEX categorical  0.3333333
+#>   covariate        type center
+#> 1        WT  continuous     70
+#> 2       SEX categorical      0
 ```
