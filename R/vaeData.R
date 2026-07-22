@@ -86,8 +86,9 @@
     .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", .covNames[j], ignore.case = TRUE)
     ## a 0/1 indicator column (e.g. SEXF) is already in its natural
     ## parameterization: leave it RAW so its coefficient is the level-1 shift and
-    ## the structural theta stays the reference (0) value
-    .isInd <- all(v %in% c(0, 1))
+    ## the structural theta stays the reference (0) value.  (`%in%` yields FALSE
+    ## for NA, so this is already a strict TRUE/FALSE; isTRUE makes that explicit.)
+    .isInd <- isTRUE(all(v %in% c(0, 1)))
     if (!.isMuDer && !.isInd && length(unique(v)) > 2L && all(v > 0)) {
       .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
     } else if (.isInd) {
@@ -223,14 +224,25 @@ vaeCovariates <- function(data, warn = TRUE) {
     .thName <- NA_character_; .covTok <- NA_character_; .linear <- FALSE
     if (!is.null(.mrc) && nrow(.mrc) > 0L && .coef %in% .mrc$covariateParameter) {
       .r <- .mrc[.mrc$covariateParameter == .coef, , drop = FALSE][1L, ]
-      .thName <- as.character(.r$theta); .covTok <- as.character(.r$covariate)
-      .linear <- TRUE
-    } else {
+      .thName <- as.character(.r$theta)
+      ## rxode2 may record an ALGEBRAIC covariate expression here (mu2-style,
+      ## e.g. "log(0.0142857 * WT)") rather than a bare data column.  Only take
+      ## it as a plain linear effect when it names a pool covariate directly;
+      ## otherwise fall through to the model-line scan below.
+      .cand <- as.character(.r$covariate)
+      if (!is.na(match(toupper(.cand), covNames))) {
+        .covTok <- .cand
+        .linear <- TRUE
+      }
+    }
+    if (is.na(.covTok)) {
       .lines <- Filter(function(e) .coef %in% all.vars(e), .lst)
       if (length(.lines) == 0L) next
       .vars <- all.vars(.lines[[1L]])
-      .thHit <- intersect(.thetaPool, .vars)
-      if (length(.thHit) == 1L) .thName <- .thHit
+      if (is.na(.thName)) {
+        .thHit <- intersect(.thetaPool, .vars)
+        if (length(.thHit) == 1L) .thName <- .thHit
+      }
       ## a line may carry several covariate effects (e.g.
       ## wt.cl*log(WT/70) + sex.cl*SEX): pick the covariate THIS coefficient
       ## multiplies rather than skipping the coefficient (skipping could drop
@@ -375,9 +387,25 @@ vaeCovariates <- function(data, warn = TRUE) {
     .pinPairs <- .vaeModelCovariatePairs(ui, .cov$covNames, .cov$covType)
     if (!is.null(.pinPairs) && nrow(.pinPairs) > 0L) {
       .pinActive <- TRUE
-      .inRows <- .pinPairs[.pinPairs$inPool, , drop = FALSE]
       .nCov <- length(.cov$covNames)
       if (.nCov > 0L) {
+        ## A covariate column carries ONE encoding.  Claim each column for the
+        ## first declared pair's center; if the same covariate is declared again
+        ## with a DIFFERENT center (e.g. log(WT/70) on CL and log(WT/80) on KA)
+        ## that pair cannot share the column, so demote it to the regress M-step.
+        .claim <- rep(NA_real_, .nCov)
+        for (.r in seq_len(nrow(.pinPairs))) {
+          if (!.pinPairs$inPool[.r]) next
+          .j <- match(.pinPairs$covName[.r], .cov$covNames)
+          if (is.na(.j)) {
+            .pinPairs$inPool[.r] <- FALSE
+          } else if (is.na(.claim[.j])) {
+            .claim[.j] <- .pinPairs$userCenter[.r]
+          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r]))) {
+            .pinPairs$inPool[.r] <- FALSE
+          }
+        }
+        .inRows <- .pinPairs[.pinPairs$inPool, , drop = FALSE]
         ## restrict the search to the declared in-pool cells.  An all-zero row
         ## means "no covariate may be selected on this dim" -- crucial when every
         ## declared pair is out-of-pool, so a non-declared (or the out-of-pool)
@@ -399,12 +427,11 @@ vaeCovariates <- function(data, warn = TRUE) {
         ## so zPop is the model intercept and no post-hoc correction is needed.
         ## Centering a predictor in a regression WITH an intercept leaves the slope
         ## and the selection unchanged -- this only relocates the intercept.
-        for (.r in seq_len(nrow(.inRows))) {
-          .j <- match(.inRows$covName[.r], .cov$covNames)
-          if (is.na(.j)) next
-          if (identical(.inRows$covType[.r], "continuous")) {
+        ## Each claimed column is adjusted EXACTLY once, off the original covPop.
+        for (.j in which(!is.na(.claim))) {
+          if (identical(.cov$covType[.j], "continuous")) {
             ## log(v/mean) -> log(v/userCenter)
-            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.inRows$userCenter[.r])
+            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.claim[.j])
           } else {
             ## (v - mean) -> raw v (mu2/mu3 already applied the model transform)
             .cov$covMat[, .j] <- .cov$covMat[, .j] + .cov$covPop[.j]

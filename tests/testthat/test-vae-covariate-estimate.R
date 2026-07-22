@@ -176,6 +176,30 @@ nmTest({
     expect_true(all(pr$inPool))                     # both are clean log forms
   })
 
+  test_that("one covariate pinned on two parameters adjusts its column only once", {
+    ## same covariate declared on two etas: the covariate column must be
+    ## un-centered exactly once (a second pass would take log(0) -> -Inf)
+    two <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wt.ka <- 0.1; wt.cl <- 0.1
+            add.err <- 0.7; eta.ka ~ 0.1; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka + wt.ka * log(WT / 70) + eta.ka)
+        cl <- exp(tcl + wt.cl * log(WT / 70) + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(two()), d,
+                                       vaeControl(pinCovariates = TRUE,
+                                                  muRefCovAlg = FALSE)))
+    jWT <- match("WT", p$covNames)
+    expect_true(all(is.finite(p$covMat[, jWT])))     # never -Inf
+    expect_equal(p$covPop[jWT], 0)                   # uncentered exactly once
+    ## column is log(WT/70) -- the model's centering, applied once
+    expect_equal(unname(p$covMat[1, jWT]), log(d$WT[1] / 70))
+    ## both coefficients pinned (same center, so no conflict/demotion)
+    expect_true(all(p$pinPairs$inPool))
+    expect_equal(sum(p$covAllow), 2L)
+  })
+
   test_that("a mu2 centered covariate is pinned via its nlmixrMuDerCov# column", {
     ## wt.cl*(WT/70) is a mu2 reference; the hook rewrites it to a linear
     ## nlmixrMuDerCov# column (centering carried by the mu2 data).  After the
