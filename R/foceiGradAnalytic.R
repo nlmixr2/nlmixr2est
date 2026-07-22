@@ -852,12 +852,12 @@
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
 #' @noRd
-.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL) {
-  if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
+.foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL,
+                                    caller = .analyticGradCaller(ui)) {
+  if (is.na(caller)) return(NULL)
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
-  # bounded parameter transforms are corrected on a different (natural) scale
-  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+  if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
   # only (no eta/theta dependence), so rxode2 treats them as zero-derivative
   # constants in the sensitivity expansion (.rxToSEDualVarFunction) -- they no
@@ -980,14 +980,40 @@
   }, error = function(e) NULL)
 }
 
+#' Which estimation method is asking for the analytic outer gradient:
+#' `"focei"` (`foceiControl(fast=TRUE)`), `"vae"`
+#' (`vaeControl(nonMuTheta="grad")`), or `NA` when nobody asked.  The two callers
+#' consume the gradient differently, so a couple of scope gates are per-caller
+#' (see `.analyticGradAllowsBoundedTr`); everything else is shared.
+#' @noRd
+.analyticGradCaller <- function(ui) {
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE)))) return("focei")
+  if (identical(as.character(rxode2::rxGetControl(ui, "nonMuTheta", "")), "grad")) return("vae")
+  NA_character_
+}
+
+#' Bounded-transform scope gate.
+#'
+#' `preProcessBoundedTransform` records the transforms on the ALREADY-REWRITTEN
+#' ui, so by the time the gradient sees them the model is on the unconstrained
+#' `rxBoundedTr.*` scale.  focei must still bail: it REPORTS a natural-scale
+#' gradient to the outer optimizer, which would need a Jacobian correction that is
+#' not applied.  The VAE consumes the gradient internally, on the same
+#' unconstrained scale it takes its M-step on, so no correction arises.
+#' @noRd
+.analyticGradAllowsBoundedTr <- function(ui, caller) {
+  if (identical(caller, "vae")) return(TRUE)
+  is.null(ui$boundedTransforms) || length(ui$boundedTransforms) == 0L
+}
+
 #' Direction set for the augmented outer-gradient model, computed from the UI
 #' alone (does not depend on theta/eta values): one direction per eta plus one per
 #' non-mu-referenced structural theta.  `NULL` if out of analytic scope.
 #' @noRd
-.foceiOuterDirs <- function(ui) {
+.foceiOuterDirs <- function(ui, caller = .analyticGradCaller(ui)) {
   if (!.hasRxSens()) return(NULL)
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
-  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+  if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
   .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
@@ -1007,14 +1033,15 @@
 #' @export
 rxUiGet.foceiOuter <- function(x, ...) {
   .ui <- x[[1]]
-  if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
+  .caller <- .analyticGradCaller(.ui)
+  if (is.na(.caller)) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
   # nAGQ > 1 (adaptive Gaussian quadrature) uses the SAME augmented model at eta-hat: the
   # quadrature nodes are extra eta points on the same sensitivity solve, so the
   # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
   # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
-  .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
+  .dir <- .foceiOuterDirs(.ui, .caller); if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
 }
 attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
