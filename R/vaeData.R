@@ -321,6 +321,14 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' @noRd
 .vaeRegressStage2 <- function(ui, regressNames, regressErrIdx0) {
   if (length(regressNames) == 0L) return(integer(0))
+  ## Recycling here would silently mis-mask: a structural theta labelled stage 2
+  ## gets optimized against a frozen ODE, which is wrong rather than merely slow.
+  ## The two are built together in .vaeDataPrep, so a mismatch is a caller bug --
+  ## fail loudly at prep time instead.
+  if (length(regressErrIdx0) != length(regressNames)) {
+    stop("vae: regressErrIdx0 (", length(regressErrIdx0), ") must match ",
+         "regressNames (", length(regressNames), ")", call. = FALSE)
+  }
   .isErr <- regressErrIdx0 >= 0L
   .odeFree <- tryCatch(.vaeOdeFreeThetas(ui, regressNames),
                        error = function(e) rep(FALSE, length(regressNames)))
@@ -334,11 +342,11 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' and therefore only ever answers FALSE where the truth is TRUE -- the safe
 #' direction (the theta stays in stage 1, as it is today).
 #' @param ui rxode2 ui object
-#' @param names candidate names
+#' @param thetaNames candidate names
 #' @return logical vector, `TRUE` when no solve-defining expression reaches the name
 #' @noRd
-.vaeOdeFreeThetas <- function(ui, names) {
-  .no <- rep(FALSE, length(names))
+.vaeOdeFreeThetas <- function(ui, thetaNames) {
+  .no <- rep(FALSE, length(thetaNames))
   .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
   if (is.null(.lst) || length(.lst) == 0L) return(.no)
   if (length(tryCatch(rxode2::rxState(ui), error = function(e) character(0))) == 0L) return(.no)
@@ -356,27 +364,36 @@ vaeCovariates <- function(data, warn = TRUE) {
       grepl("^[A-Za-z._][A-Za-z0-9._]* *\\( *0 *\\)$", .txt) ||
       grepl("^(f|alag|lag|rate|dur) *\\(", .txt)
   }
-  ## the observation model, which the SOLVE does not read: `ll(x) ~ <density>`
-  ## and the error-model endpoint lines (`x ~ add(...)`, `x ~ pois(...)`).  ONLY a
-  ## `~` line qualifies -- `cp <- center / v` defines a variable a `d/dt()` may
-  ## well read, and dropping it would hide a real dependency.
+  ## endpoint variables, used below to spot the observation-model lines
   .endpointVars <- tryCatch(as.character(ui$predDf$var), error = function(e) character(0))
   .seed <- character(0); .map <- list()
   for (.ex in .lst) {
     if (!.isAssign(.ex)) next
     .rhs <- .syms(.ex[[3]])
-    .txt <- paste(deparse(.ex[[2]]), collapse = "")
     .tilde <- identical(.ex[[1]], as.name("~"))
-    if (.solveLhs(.txt)) {
-      .seed <- c(.seed, .rhs)
-    } else if (.tilde && (grepl("^ll *\\(", .txt) || .txt %in% .endpointVars)) {
-      next                                   # likelihood only -- never reaches the solve
-    } else if (is.name(.ex[[2]])) {
-      .map[[.txt]] <- unique(c(.map[[.txt]], .rhs))
+    if (is.name(.ex[[2]])) {
+      ## Key a plain variable with as.character(), the SAME way .syms() renders a
+      ## reference to it.  deparse() is a rendering of the symbol rather than the
+      ## symbol itself, so keying on it makes the fixpoint depend on quoting
+      ## behavior; a key that failed to match a reference would drop an edge and
+      ## call a theta ODE-free -- the unsafe direction.
+      .nm <- as.character(.ex[[2]])
+      ## `x ~ add(...)` / `x ~ pois(...)`: the observation model, not the solve.
+      ## Only a `~` line qualifies -- `cp <- center / v` defines a variable a
+      ## `d/dt()` may well read, and dropping it would hide a real dependency.
+      if (.tilde && .nm %in% .endpointVars) next
+      .map[[.nm]] <- unique(c(.map[[.nm]], .rhs))
     } else {
-      ## an lhs shape not recognized above may still feed the solve -- take its
-      ## rhs as reachable rather than guess (the safe direction: stage 1)
-      .seed <- c(.seed, .rhs)
+      .txt <- paste(deparse(.ex[[2]]), collapse = "")
+      if (.solveLhs(.txt)) {
+        .seed <- c(.seed, .rhs)
+      } else if (.tilde && grepl("^ll *\\(", .txt)) {
+        next                                 # ll(x) ~ <density>: likelihood only
+      } else {
+        ## an lhs shape not recognized above may still feed the solve -- take its
+        ## rhs as reachable rather than guess (the safe direction: stage 1)
+        .seed <- c(.seed, .rhs)
+      }
     }
   }
   .seen <- unique(.seed); .todo <- .seen
@@ -385,7 +402,7 @@ vaeCovariates <- function(data, warn = TRUE) {
     .todo <- setdiff(.nxt, .seen)
     .seen <- c(.seen, .todo)
   }
-  !(as.character(names) %in% .seen)
+  !(as.character(thetaNames) %in% .seen)
 }
 
 #' Prepare VAE inputs from a ui + data

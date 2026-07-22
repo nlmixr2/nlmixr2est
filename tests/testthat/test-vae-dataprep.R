@@ -98,6 +98,14 @@ nmTest({
     expect_equal(.vaeRegressStage2(lui, character(0), integer(0)), integer(0))
   })
 
+  test_that("a mismatched err-index length is rejected, not recycled", {
+    ## Recycling would silently mis-mask: a structural theta labelled stage 2 is
+    ## then optimized against a frozen ODE, which is wrong rather than slow.
+    lui <- rxode2::assertRxUi(.llMod())
+    expect_error(.vaeRegressStage2(lui, c("lka", "lcl", "lsd"), c(-1L, -1L)),
+                 "must match")
+  })
+
   test_that("a model with BOTH err rows and an ll() endpoint gets both in stage 2", {
     ## The case a model-level "does this model have err parameters" short-circuit
     ## would get wrong: `add.sd` is flagged err, `lsd` is the ll() endpoint's
