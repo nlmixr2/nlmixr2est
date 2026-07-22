@@ -70,6 +70,16 @@
   intersect(unique(c(.linear, .transformed)), .thNames)
 }
 
+#' Does this `nonMuTheta` mode estimate the theta in place (no injected eta)?
+#'
+#' `"regress"` and `"grad"` share ALL the plumbing -- no eta injection, the same
+#' `regIdx`/bounds carried through `.vaeDataPrep` -- and differ only in how the
+#' M-step moves the theta (bounded bobyqa vs the analytic outer gradient).
+#' @noRd
+.vaeNonMuIsRegress <- function(mode) {
+  isTRUE(mode %in% c("regress", "grad"))
+}
+
 #' Structural population thetas that are NOT mu-referenced (candidates for a
 #' VAE-injected eta): a theta that appears in the model, is not a residual-error
 #' or covariate-coefficient theta, is not fixed, and has no eta referencing it.
@@ -186,10 +196,10 @@ isTRUE2 <- function(x) !is.na(x) & x
   if (identical(.mode, "none")) return(NULL)
   .thetas <- .vaeNonMuThetas(ui)
   if (length(.thetas) == 0L) return(NULL)
-  if (identical(.mode, "regress")) {
-    ## "regress": no eta is injected -- the thetas stay plain fixed effects and are
-    ## estimated by a bounded bobyqa regression in the VAE M-step (see
-    ## .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI unchanged.
+  if (.vaeNonMuIsRegress(.mode)) {
+    ## "regress"/"grad": no eta is injected -- the thetas stay plain fixed effects
+    ## and are estimated in the VAE M-step (bobyqa or the analytic outer gradient;
+    ## see .vaeDataPrep / vaeTrainCpp_).  Only surface a note; leave the UI alone.
     .pre <- "regressing non-mu theta(s): "
     warning(.pre, .vaeTruncList(.thetas, prefix = .pre), call. = FALSE)
     return(NULL)

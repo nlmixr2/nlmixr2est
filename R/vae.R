@@ -50,6 +50,14 @@
 #'     (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
 #'     recovers a no-random-effect population parameter without adding a spurious
 #'     random effect.  `nonMuEtaOmega` is unused in this mode.
+#'   * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
+#'     outer gradient (Almquist sensitivity equations, the machinery behind
+#'     `foceiControl(fast=TRUE)`) instead of a derivative-free search: one
+#'     augmented sensitivity solve per M-step replaces the bobyqa sweep.  Because
+#'     it differentiates the marginal (Laplace) objective rather than the joint
+#'     likelihood at frozen etas, it does not carry `"regress"`'s frozen-eta
+#'     displacement.  Falls back to `"regress"` when the model is out of analytic
+#'     scope (`ll()` endpoints, `linCmt()`, IOV, ...); `nonMuEtaOmega` is unused.
 #'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
 #'     `nonMuEtaOmega`); the typical value is estimated and appears in the
 #'     iteration table.
@@ -142,7 +150,7 @@ vaeControl <- function(seed = 42L,
                        covSelectAlpha = 2,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
-                       nonMuTheta = c("regress", "eta", "fix", "none"),
+                       nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),

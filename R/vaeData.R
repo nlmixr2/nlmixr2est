@@ -183,7 +183,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
   ## M-step (vs. the latent-space zPop update).  Two sources, unioned:
-  ##  * nonMuTheta="regress": non-mu-referenced structural thetas (no eta); and
+  ##  * nonMuTheta="regress"/"grad": non-mu-referenced structural thetas (no eta); and
   ##  * covariateSelection=FALSE: model-declared covariate coefficients -- always
   ##    estimated in place, independent of nonMuTheta, so the mu-referenced
   ##    covariate expression the user wrote is fit rather than held fixed.
@@ -192,7 +192,7 @@ vaeCovariates <- function(data, warn = TRUE) {
   .regressNames <- character(0)
   .regressThetaIdx0 <- integer(0)
   .regressLower <- numeric(0); .regressUpper <- numeric(0)
-  if (identical(control$nonMuTheta, "regress")) {
+  if (.vaeNonMuIsRegress(control$nonMuTheta)) {
     .regressNames <- .vaeNonMuThetas(ui)
   }
   .covCoefNames <- character(0)
