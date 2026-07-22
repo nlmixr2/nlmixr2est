@@ -117,7 +117,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8584
+#> → compress parHistData in nlmixr2 object, save 8592
 #> → compress phiM in nlmixr2 object, save 446912
 
 print(f)
@@ -128,10 +128,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize  covariance preprocess configure  saem
-#> elapsed 0.06104621 2.5027e-05 0.006004026      0.044     0.132 3.643
-#>         postprocess compress      other
-#> elapsed       0.227    0.081 0.07792473
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1006042 2.8452e-05 0.01100467      0.072     0.227 7.082       0.404
+#>         compress     other
+#> elapsed    0.134 0.1343627
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -139,7 +139,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.65e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -166,10 +166,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize  covariance preprocess configure  saem
-#> elapsed 0.06104621 2.5027e-05 0.006004026      0.044     0.132 3.643
-#>         postprocess compress      other
-#> elapsed       0.227    0.081 0.07792473
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1006042 2.8452e-05 0.01100467      0.072     0.227 7.082       0.404
+#>         compress     other
+#> elapsed    0.134 0.1343627
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -177,7 +177,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.65e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
