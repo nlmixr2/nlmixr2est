@@ -707,3 +707,43 @@ binding, then work out why the focei setup chokes on it for an IOV model.
 
 Running tally of eliminated hypotheses (do NOT re-test): covariate selection,
 nonMuTheta mode, mu-structure, eta dimensions, `.uiIovEnv` lifetime, `etaMat`.
+
+### THE ACTUAL FIX DIRECTION: assemble like SAEM, not like focei
+
+Seventh elimination first: the remaining env-diff candidate (`ui` 39 vs 38) is
+NOT structural.  Both uis are identical where it matters --
+
+    focei iniDf rows 10   vae iniDf rows 10
+    focei etas  eta.ka,eta.cl,eta.v,rx.iov.cl.1,rx.iov.cl.2
+    vae   etas  eta.ka,eta.cl,eta.v,rx.iov.cl.1,rx.iov.cl.2
+    focei thetas tka,tcl,tv,add.sd,iov.cl      (same for vae)
+    no extra meta bindings either way
+
+-- and `est="focei"` fits this very ui fine.  So nothing about the ui or the etas
+is wrong.
+
+**The problem is the assembly ROUTE.**  `.vaeToFit` calls `foceiFitCpp_`, which is
+focei's OWN fit path.  SAEM -- a foreign method with exactly the VAE's problem
+shape (it computes its own results, then has to produce an nlmixr2 fit, and it
+supports IOV) -- never calls `foceiFitCpp_`.  It ends `.saemFamilyFit` with
+
+    .nlmixr2FitUpdateParams(.ret)
+    .saemMixFix(.ret, .ui)          # must run before the create call
+    .saemAddParHist(.ret)
+    .saemCalcLikelihood(.ret)
+    .ret$theta <- ...; .ret$model <- ...; .ret$est <- "saem"
+    .saemControlToFoceiControl(.ret)
+    .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData,
+                                      control=.ret$control, table=.ret$table,
+                                      env=.ret, est="saem")
+
+`nlmixr2CreateOutputFromUi` is the supported output-construction entry point for a
+non-focei method, and it is what makes SAEM+IOV work.
+
+ACTION: rework `.vaeToFit` to follow that sequence instead of driving
+`foceiFitCpp_`.  This is an architectural change to the VAE output path, not a
+one-line patch, so it wants its own branch and a before/after on the non-IOV VAE
+fits (which currently work through the focei route and must not regress).
+
+Full eliminated list (do NOT re-test): covariate selection, nonMuTheta mode,
+mu-structure, eta dimensions, `.uiIovEnv` lifetime, `etaMat`, ui contents.
