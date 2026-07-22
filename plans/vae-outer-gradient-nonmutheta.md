@@ -1264,3 +1264,42 @@ suites.  The single grad failure needs triage before merge -- it passed 35/35 on
 `feat/vae-outer-gradient`, so it is either a real interaction with the wip changes
 or cross-suite state leakage (these ran in ONE process; the recorded caution says
 run each in its own).  Re-run it standalone first.
+
+### CORRECTION: the "preprocess re-entry" mechanism was WRONG
+
+`.preProcessHooksRun` is invoked in exactly ONE place -- `nlmixr2()` itself
+(`R/nlmixr2.R:256`, `nlmixrWithTiming("preprocess", ...)`), once per estimation,
+immediately before `nlmixr2Est0(.env)`.  Output assembly does NOT go through it:
+the stack is `nlmixr2CreateOutputFromUi` -> `nlmixr2Est(.env)` ->
+`nlmixr2Est.output(.env)` (frames F07-F09), which never calls the preProcess
+hooks.
+
+So `.uiApplyIov` is NOT re-run during output creation, and every fix I attempted
+was aimed at a re-entry that does not happen.  That also explains the otherwise
+baffling 4/4 focei regressions: I kept changing the behaviour of a code path that
+was not the one clearing the state.
+
+WHAT ACTUALLY CLEARS IT is already documented in the codebase
+(`R/nlmixr2Est.R:91-99`, issue #741):
+
+    # Prefer the per-call copies stashed on the estimation environment by
+    # .preProcessHooksRun(); the globals are wiped by any nested nlmixr2() call
+    # during estimation (setOfv/addCwres/...), which dropped zero etas from the
+    # final model (issue #741).
+
+A NESTED `nlmixr2()` call during estimation re-runs `.preProcessHooksRun` for the
+nested model and wipes the package globals -- `.uiIovEnv` among them.  The VAE
+makes such nested calls (covariance recompute / table + residual work), focei in
+this configuration does not.
+
+THE SANCTIONED FIX, already used for exactly this class of bug: have
+`.preProcessHooksRun` stash a per-call copy on the estimation env (the way it
+stashes `nlmixrPureInputUi`), and have `.uiFinalizeIov` prefer `env`'s copy over
+the global -- mirroring `.nlmixrEstUpdatesOrigModel`, which does precisely this
+for the pure-input ui.  This is a general fix (any method making nested calls
+benefits), matches an established in-repo pattern, and does not depend on hook
+ordering or on `.uiApplyIov`'s reset semantics at all.
+
+Also note: hooks "should only run once per estimation start, with cleanup
+afterward" -- if anything IS re-running them mid-estimation, that is itself a
+defect to fix rather than to accommodate.
