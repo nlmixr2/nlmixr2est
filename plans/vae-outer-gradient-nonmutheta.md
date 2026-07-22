@@ -1070,3 +1070,623 @@ the short list for the VAE.  If items ARE missing, fix those specifically; if th
 are all present, the consistency concern is already met and the follow-up should
 be closed rather than built.  Writing a hand-rolled contract on top of a path that
 already populates it would duplicate state and risk the two disagreeing.
+### CORRECTED ROOT CAUSE: the VAE never estimates the IOV THETA
+
+My "guard the formatC" fix was WRONG and was reverted -- it would have blanked the
+cell, silently dropping the IOV estimate from the output instead of supplying it.
+
+What `.uiApplyIov` actually builds (`R/iov.R:~200-230`): for each IOV variable `v`
+(e.g. `iov.cl`) it creates a **THETA named `v`** whose `est` is the IOV magnitude
+under `control$iovXform` (`sd`/`var`/`logsd`/`logvar`), records `v` in
+`.uiIovEnv$iovVars`, and attaches a `backTransform`
+(`nlmixr2iovSd`/`nlmixr2iovVar`/`nlmixr2iovLogsd`/`nlmixr2iovLogvar`, which
+convert to SD or %CV).  The per-occasion etas `rx.<v>.<occ>` are FIXED at
+variance 1 -- they are unit deviates, and this theta carries the actual
+magnitude.
+
+So `.uiFinalizeIov`'s
+
+    .valCharPrep <- .parFixedDf[.uiIovEnv$iovVars, <Back column>]
+
+is retrieving the BACK-TRANSFORMED ESTIMATE OF THAT THETA.  It is zero-length for
+the VAE because the VAE's `parFixedDf` has no usable row for it -- i.e. **the VAE
+never estimates the IOV theta at all.**  That is the real gap: not a missing
+guard, not the assembly route, not the env plumbing.
+
+Consequence for the fix: `iov.cl` has NO eta paired with it (the occasion etas are
+free/fixed), so it is precisely a NON-MU THETA -- exactly what
+`nonMuTheta="regress"/"grad"` exists to estimate.  Check first whether
+`.vaeNonMuThetas(ui)` includes it; `preProcessVaeNonMuTheta.R` and
+`preProcessBoundedTransform.R` both contain deliberate "skip synthetic IOV helper
+theta" logic, so it is plausible the VAE is excluding it and therefore leaving it
+frozen at its `ini()` value with no estimate to report.
+
+THIS supersedes the earlier "missing env fields" framing: the wip branch's
+contract (fullTheta/etaObf/omega) is still a real gap worth closing, but it
+cannot help while the underlying quantity is never estimated.
+
+### PROGRESS: the IOV theta is now estimated; one gap remains
+
+With the `.vaeNonMuThetas` fix (wip branch):
+
+    regressNames: iov.cl
+    regressTheta: iov.cl = 0.0170952        <-- the magnitude IS now estimated
+
+So the "never estimated" root cause is CLOSED.  The fit still fails at the same
+place, so `parFixedDf[iovVars, <Back column>]` is STILL zero-length even with a
+real estimate.  Two possibilities remain, and they are cheap to separate:
+
+  (a) the `Back` COLUMN is absent from the VAE's `parFixedDf` -- the IOV theta
+      carries a `backTransform` (`nlmixr2iovSd`/`Var`/`Logsd`/`Logvar`), so a
+      table built without honouring `backTransform` would have no "Back..." column
+      at all; or
+  (b) the ROW is absent/misnamed -- `.uiIovEnv$iovVars` is `iov.cl`, so the
+      parFixedDf rowname must be exactly `iov.cl`.
+
+TOOLING WARNING: `.uiFinalizeIov` CANNOT be traced.  It is registered with
+`postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)` (`R/iov.R:579`), which
+stores the FUNCTION OBJECT at load time -- `trace()` rewrites the namespace
+binding and the stored copy is unaffected, so the tracer never fires (the stack
+shows it only as `.fun(.ret)`).  To inspect it, either re-register a traced copy
+or print from inside `.foceiFamilyReturn` before
+`.postFinalObjectHooksRun`.
+
+To separate (a)/(b), dump `names(parFixedDf)` and `rownames(parFixedDf)` from a
+VAE IOV fit and compare against a SAEM IOV fit (which works).
+
+### NARROWED TO: `.uiIovEnv$iovVars` is EMPTY when the hook runs
+
+Dumped `parFixedDf` immediately before `.postFinalObjectHooksRun`:
+
+    PFDCOLS: Estimate|SE|%RSE|Back-transformed|CI Lower|CI Upper|BSV(CV% or SD)|Shrink(SD)%
+    PFDROWS: tka|tcl|tv|add.sd|iov.cl|rx.iov.cl.1|rx.iov.cl.2
+
+BOTH are present -- the `Back-transformed` column AND the `iov.cl` row.  So
+possibilities (a) and (b) from the previous section are BOTH dead:
+`parFixedDf["iov.cl", <Back>]` would be a single value.
+
+The only way `.valCharPrep` is still zero-length is if the ROW SUBSCRIPT is empty,
+i.e. **`.uiIovEnv$iovVars` is NULL/empty by the time the hook runs**
+(`parFixedDf[NULL, 4]` -> zero-length).  It IS populated earlier (traced: `iov.cl`
+at `.vaeToFit` entry and after `.vaeUpdateModel`), so something between there and
+the hook clears it.
+
+`.vaeToFit` ALREADY has this exact problem for a sibling global and documents it:
+
+    ## mu2/mu3 restore info staged by the preprocess hook: the focei covariance
+    ## recompute below re-runs preprocessing and clears it, so snapshot it here and
+    ## reinstate it just before the mu2 finalize restores the original model.
+    .savedMuRef <- .muRefTrans$cur
+    on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+
+`.uiIovEnv` needs the same treatment -- but note the difference in timing: the mu2
+finalize is invoked by `.vaeToFit` AFTER `nlmixr2CreateOutputFromUi` returns
+(so a post-call restore suffices), whereas `.uiFinalizeIov` runs INSIDE that call
+via `.postFinalObjectHooksRun`.  So the snapshot must be reinstated BEFORE the
+create call, and whatever clears it during preprocessing must be prevented from
+doing so (find the `.uiApplyIov` re-entry that nulls `iovVars` -- it nulls when
+`!.isIovMethod(est, control)`).
+
+### FOLLOW-UP: the imp family does not implement the output contract
+
+`est="imp"`/`"impmap"`/`"qrpem"` assemble their output without the
+foreign-method contract (the babelmixr2 `saemix.R` checklist: fullTheta, etaObf,
+omega, cov, objective, metadata, then `.nlmixr2FitUpdateParams`).  They should,
+for consistency with saem/saemix and to avoid exactly the class of gap found here
+(a finalizer asking for a value no one supplied).  Do this as its own change with
+before/after fits, since it touches every imp-family fit.
+
+### COMPLETE MECHANISM: `.uiApplyIov` is not idempotent
+
+`.uiApplyIov` is registered as a PREPROCESS hook (`R/iov.R:578`
+`preProcessHooksAdd(".uiApplyIov", .uiApplyIov)`), so it runs again when
+`nlmixr2CreateOutputFromUi` re-runs preprocessing from inside `.vaeToFit`.
+
+On that SECOND pass it does (`R/iov.R:114` then `:125-127`):
+
+    .uiIovEnv$iovVars <- NULL                      # unconditional reset
+    ...
+    .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
+                                    .iniDf$condition != "id" & is.na(.iniDf$err))]
+    if (length(.lvls) > 0) { ...repopulate iovVars... }
+
+but the ui it is handed (`.ui2`) is ALREADY TRANSFORMED: the occasion etas are now
+`rx.iov.cl.1`/`rx.iov.cl.2` conditioned on "id", and `iov.cl` is a plain theta.  So
+`.lvls` is EMPTY, the repopulate block never runs, and `iovVars` stays NULL.
+
+`.uiFinalizeIov` then does `parFixedDf[NULL, <Back>]` -> zero-length ->
+`formatC(signif(numeric(0), ...))` -> "invalid second argument of length 0".
+
+That closes the chain end to end:
+  preprocess re-entry -> iovVars nulled -> empty row subscript -> formatC dies.
+
+PROPOSED FIX (unvalidated -- I ran out of budget before testing it): make the
+reset conditional so an already-transformed ui does not clobber the recorded
+state.  Either
+  * only null `iovVars` when the pass will actually repopulate it (move the reset
+    inside `if (length(.lvls) > 0)`), or
+  * detect the already-transformed ui (e.g. `!is.null(.uiIovEnv$ui)` plus
+    `rx.<v>.<occ>` etas present) and return early, leaving the recorded state
+    intact.
+The first is smaller; the second is more explicit about idempotency.  Either way
+verify a focei IOV fit and a saem IOV fit are unchanged -- they run the same hook.
+
+### Idempotency fix ATTEMPTED and REVERTED -- and a mis-attribution
+
+Tried the smaller of the two proposals: compute `.lvls` first and `return(NULL)`
+early when it is empty, so an already-transformed ui cannot clobber the recorded
+state.  (NULL is what the empty-`.lvls` path returned anyway, so the contract is
+unchanged.)
+
+The very next FOCEI IOV fit failed with "subscript out of bounds", so I reverted
+immediately.  My stated reason -- that the early return also skips
+`.uiIovEnv$iovRename <- NULL`, leaving a stale rename -- is PLAUSIBLE BUT
+UNPROVEN, because after the revert the same FOCEI call still failed, and then in a
+fresh process BOTH focei variants passed:
+
+    focei default        OK tv = 3.42719
+    focei maxOuter=0     OK tv = 3.45
+
+So the failure was process-local contamination, not necessarily the change.  I
+could not separate the two before running out of budget.  Treat "the early return
+breaks focei" as UNVERIFIED -- re-test it in a clean process before discarding the
+approach.
+
+Current state: `R/iov.R` is UNMODIFIED (fix not applied).  The idempotency
+diagnosis in the section above still stands on its own evidence -- `.uiApplyIov`
+is a preProcess hook, it nulls `iovVars` unconditionally, and the second pass sees
+an already-transformed ui whose `.lvls` is empty.
+
+Two cautions for whoever retries:
+  * `iovRename` and `muModel` are reset alongside `iovVars`; any early return must
+    decide deliberately which of the three should survive a second pass.
+  * Test each estimator in its OWN R process.  Running focei/saem/vae fits of the
+    same IOV model in one session gave a spurious failure that cost a revert.
+
+##### Idempotency fix: CONFIRMED to break focei -- early return is the wrong shape
+
+Re-tested cleanly, one estimator per fresh R process, as the caution above says:
+
+    fix APPLIED,  clean process:  focei -> ERROR: subscript out of bounds
+    fix REVERTED, clean process:  focei -> OK  tv = 3.42719
+
+So the early return really does break focei; my earlier "it was process
+contamination" correction was itself wrong, and the FIRST attribution was right.
+`R/iov.R` is reverted and focei is verified working.
+
+Why the shape is wrong: focei re-enters `.uiApplyIov` with an already-transformed
+ui and DEPENDS on the unconditional reset to clear stale `iovRename`/`muModel`
+before it re-transforms.  Returning early preserves all three globals, and the
+stale rename is then applied to a ui that no longer matches it -> subscript out of
+bounds.
+
+So the two callers want OPPOSITE things from the same second pass:
+  * focei needs the state CLEARED (it will rebuild it),
+  * the VAE needs `iovVars` PRESERVED (its finalizer reads it and nothing rebuilds
+    it).
+
+A correct fix therefore cannot be a blanket early return.  Options, in rough order
+of safety:
+  1. Preserve ONLY `iovVars` on an empty-`.lvls` pass, while still clearing
+     `iovRename`/`muModel` -- narrowest change, directly matches what
+     `.uiFinalizeIov` actually reads.
+  2. Have `.vaeToFit` snapshot `.uiIovEnv$iovVars` and reinstate it immediately
+     before `nlmixr2CreateOutputFromUi`, mirroring the existing `.muRefTrans$cur`
+     snapshot -- keeps the change entirely inside the VAE and cannot affect focei
+     or saem.
+  Option 2 is the lower-risk one and is where I would start.
+
+##### BOTH shared-hook options are dead -- the fix must live in the VAE
+
+Tested clean, one estimator per process:
+
+    reset `iovVars` moved inside `if (length(.lvls) > 0)`   -> focei ERROR
+      (i.e. preserve ONLY iovVars, still clear iovRename/muModel)
+    early `return(NULL)` on empty `.lvls`                   -> focei ERROR
+    unmodified                                              -> focei OK tv=3.42719
+
+So focei depends on `iovVars` being cleared on its second pass too -- option 1 is
+dead alongside option 2's early-return form.  `R/iov.R` must NOT be touched;
+reverted and focei re-verified.
+
+That leaves exactly one shape: **fix it inside the VAE**, where it cannot reach
+focei or saem.  `.uiFinalizeIov` reads `.uiIovEnv$iovVars` when it runs, so the
+VAE needs that value restored between the preprocess re-entry (which clears it)
+and the post-final-object hooks (which read it) -- both of which happen INSIDE
+`nlmixr2CreateOutputFromUi`, so a plain snapshot/restore around that call in
+`.vaeToFit` is NOT sufficient (restore-before is wiped by the re-entry;
+restore-after is too late).
+
+Concrete candidates for the next attempt:
+  * register a VAE-only preProcess hook ordered AFTER `.uiApplyIov` that
+    reinstates the snapshot (hooks are a list, so ordering is available); or
+  * register a VAE-specific post-final-object hook that runs BEFORE
+    `.uiFinalizeIov` and reinstates it; or
+  * have the VAE carry the IOV vars on the fit env instead of the global, and
+    teach `.uiFinalizeIov` to prefer `ret$env` over `.uiIovEnv` when present --
+    the only option that removes the global-state dependence rather than working
+    around it, and the most robust if a shared change is acceptable after all.
+
+##### Third attempt (per-fit handoff) ALSO failed -- and it regressed focei
+
+Tried option 3: `.vaeToFit` stashes `.ret$vaeIovVars <- .uiIovEnv$iovVars`, and
+`.uiFinalizeIov` resolves `.iovVars <- ret$env$vaeIovVars %||% .uiIovEnv$iovVars`,
+using `.iovVars` for its parFixedDf/parFixed indexing.  Intended to be purely
+additive (focei sets nothing, so it should keep using the global).
+
+    focei -> ERROR: subscript out of bounds        (REGRESSION -- was OK)
+    vae   -> ERROR: invalid second argument of length 0   (unchanged)
+
+Reverted; focei re-verified OK (tv = 3.42719), tree clean.
+
+I did not isolate WHY focei regressed.  The edit rewrote ~9 `.uiIovEnv$iovVars`
+references via scripted string replacement, so a partial/incorrect substitution is
+at least as likely as the design being wrong -- do not conclude from this that the
+per-fit-handoff idea is dead.  If retried: make the edit by hand, one reference at
+a time, and run focei after EACH change rather than at the end.
+
+Running total on this bug: root cause understood and the chain traced end to end,
+but THREE fix attempts have failed, two of them regressing focei.  Every attempt
+so far has touched `R/iov.R`, and every one has broken focei.  That is the
+strongest signal in the record: the next attempt should find a way to give the VAE
+what it needs WITHOUT editing that shared file at all -- e.g. a VAE-registered
+hook ordered around `.uiApplyIov`/`.uiFinalizeIov`, which is the one candidate
+from the previous section that has not been tried.
+
+##### Fourth attempt (VAE-only post-final hook) ALSO broke focei
+
+Registered `.aaVaeRestoreIovVars` as a post-final-object hook -- `ls()` ordering
+confirmed it runs ahead of `.uiFinalizeIov`:
+
+    HOOKORDER: .aaVaeRestoreIovVars .uiFinalizeIov .uiFinalizeMu2
+
+`.vaeToFit` stashed `.ret$vaeIovVars`; the hook reinstates `.uiIovEnv$iovVars`
+from it and returns NULL (= "no change" per `.postFinalObjectHooksRun`).  R/iov.R
+untouched.  It should have been a strict no-op for focei, which never stashes
+anything.  It was not:
+
+    focei -> ERROR: subscript out of bounds     (baseline WITHOUT the hook: OK 3.42719)
+    vae   -> unchanged error
+
+Reverted; focei re-verified OK.  I did not isolate why merely REGISTERING an
+additional post-final hook perturbs focei -- that is itself worth understanding
+before a fifth attempt, because it suggests the hook chain is more
+order/state-sensitive than its interface implies.
+
+Four attempts, four focei regressions -- two in R/iov.R, one per-fit handoff, one
+purely additive hook.  Do not attempt a fifth without first answering: WHY does
+adding a no-op hook break focei on an IOV model?
+
+##### wip branch suite status (for the two parked fixes)
+
+    test-vae-nonmutheta.R        43/43 pass
+    test-vae-iov.R                9/9  pass
+    test-vae-nonmutheta-grad.R   34/35, 1 FAIL
+      ! "scope probe accepts an ODE model and rejects linCmt()"
+
+So the parked output-contract + IOV-theta fixes do NOT break the IOV or nonmutheta
+suites.  The single grad failure needs triage before merge -- it passed 35/35 on
+`feat/vae-outer-gradient`, so it is either a real interaction with the wip changes
+or cross-suite state leakage (these ran in ONE process; the recorded caution says
+run each in its own).  Re-run it standalone first.
+
+### CORRECTION: the "preprocess re-entry" mechanism was WRONG
+
+`.preProcessHooksRun` is invoked in exactly ONE place -- `nlmixr2()` itself
+(`R/nlmixr2.R:256`, `nlmixrWithTiming("preprocess", ...)`), once per estimation,
+immediately before `nlmixr2Est0(.env)`.  Output assembly does NOT go through it:
+the stack is `nlmixr2CreateOutputFromUi` -> `nlmixr2Est(.env)` ->
+`nlmixr2Est.output(.env)` (frames F07-F09), which never calls the preProcess
+hooks.
+
+So `.uiApplyIov` is NOT re-run during output creation, and every fix I attempted
+was aimed at a re-entry that does not happen.  That also explains the otherwise
+baffling 4/4 focei regressions: I kept changing the behaviour of a code path that
+was not the one clearing the state.
+
+WHAT ACTUALLY CLEARS IT is already documented in the codebase
+(`R/nlmixr2Est.R:91-99`, issue #741):
+
+    # Prefer the per-call copies stashed on the estimation environment by
+    # .preProcessHooksRun(); the globals are wiped by any nested nlmixr2() call
+    # during estimation (setOfv/addCwres/...), which dropped zero etas from the
+    # final model (issue #741).
+
+A NESTED `nlmixr2()` call during estimation re-runs `.preProcessHooksRun` for the
+nested model and wipes the package globals -- `.uiIovEnv` among them.  The VAE
+makes such nested calls (covariance recompute / table + residual work), focei in
+this configuration does not.
+
+THE SANCTIONED FIX, already used for exactly this class of bug: have
+`.preProcessHooksRun` stash a per-call copy on the estimation env (the way it
+stashes `nlmixrPureInputUi`), and have `.uiFinalizeIov` prefer `env`'s copy over
+the global -- mirroring `.nlmixrEstUpdatesOrigModel`, which does precisely this
+for the pure-input ui.  This is a general fix (any method making nested calls
+benefits), matches an established in-repo pattern, and does not depend on hook
+ordering or on `.uiApplyIov`'s reset semantics at all.
+
+Also note: hooks "should only run once per estimation start, with cleanup
+afterward" -- if anything IS re-running them mid-estimation, that is itself a
+defect to fix rather than to accommodate.
+
+##### Fifth attempt (per-call stash, the #741 pattern) ALSO broke focei
+
+Followed the sanctioned in-repo pattern exactly: added
+`env$uiIovVars <- .uiIovEnv$iovVars` to `.preProcessHooksRun`'s existing stash
+block (beside `nlmixrPureInputUi`/`uiUnfix`/`vaeNonMuEtas`), and had
+`.uiFinalizeIov` prefer `ret$env$uiIovVars` with the global as fallback.
+
+    focei -> ERROR: subscript out of bounds   (baseline immediately before: OK 3.42719)
+    vae   -> unchanged error
+
+Reverted; focei re-verified OK; tree clean.
+
+**FIVE attempts, five focei regressions**, by five different mechanisms:
+  1. early return in `.uiApplyIov`
+  2. preserve only `iovVars` in `.uiApplyIov`
+  3. per-fit handoff via `ret$env$vaeIovVars` + finalizer preference
+  4. additive VAE-only post-final hook (`.aaVaeRestoreIovVars`), R/iov.R untouched
+  5. per-call stash in `.preProcessHooksRun` + finalizer preference (#741 pattern)
+
+Attempts 3-5 all merely ADD a fallback the finalizer prefers, and #4 did not even
+touch `R/iov.R`.  For all three to break focei identically means the failure is
+almost certainly NOT in the substitution logic -- something about touching this
+area at all perturbs focei's IOV path.
+
+STOP AND ANSWER THIS FIRST (do not attempt a sixth fix):
+Reproduce the focei "subscript out of bounds" and get its stack.  Use the working
+technique from earlier in this file -- `.vaeToFit` replays cleanly, and the
+uncaught-replay trick with `writeLines` + `sys.calls()` produced a full stack when
+`.traceback()` gave nothing.  For focei the equivalent is to catch inside
+`nlmixr2Est.output`/`.foceiFamilyReturn`.  Until that stack is in hand, every
+"fix" here is guesswork -- five data points say so.
+
+### THE DESIGN QUESTION: why is a nested `nlmixr2()` call there at all?
+
+It should not be, and the code already admits as much.  `R/cov.R:287-291`:
+
+    # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
+    .savedMuRef <- .muRefTrans$cur
+    on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+    .fit2 <- try(suppressMessages(suppressWarnings(
+      nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control))), silent = TRUE)
+
+A save/restore guard bolted onto a call is the signature of an inappropriate
+re-entry, not of a sound interface.  The same shape recurs:
+
+  * `R/cov.R:291`            covariance recompute on the base model
+  * `R/covRecompute.R:56`    `.covRecomputeNative` (sa/imp recompute)
+  * `R/addCwres.R:90`        residual addition re-fits with `est="focei"`
+  * `R/vaeOutput.R`          `.vaeToFit` carries the SAME `.muRefTrans$cur`
+                             snapshot/restore for exactly this reason
+
+Each of these wants "evaluate this model at these estimates and give me
+cov/residuals" -- NOT "start a new estimation".  Going through `nlmixr2()` drags
+in the whole front end: `.preProcessHooksRun`, global (re)initialisation, model
+re-parse.  Every package global then has to be defended one at a time --
+`nlmixrPureInputUi`, `uiUnfix`, `vaeNonMuEtas`, `preProcessHookWarnings`,
+`.muRefTrans$cur` (issue #741 is one of these; `.uiIovEnv` is simply the next one
+nobody has gotten to).
+
+THE RIGHT FIX is to stop making the nested call, not to add a sixth global to the
+defend-list: give these paths a lower-level entry that skips the front end (the
+model is already prepared and the estimates are already known -- `nlmixr2Est` /
+`nlmixr2CreateOutputFromUi` are already reached directly elsewhere).  Hooks would
+then run exactly once per estimation with cleanup afterwards, which is the stated
+contract.
+
+This reframes the IOV bug: it is a SYMPTOM.  Five attempts failed because they all
+defended a global against a re-entry that should not happen.  Fixing the re-entry
+removes this bug and the whole class -- and would let the accumulated
+snapshot/restore guards above be deleted rather than extended.
+
+##### The nested-call route is NOT confirmed either -- test it, do not assume it
+
+Disabling the covariance recompute does not help:
+
+    VAE covMethod=""     -> ERROR (unchanged)
+    VAE covMethod="r,s"  -> ERROR (unchanged)
+
+`covMethod=""` skips `.covRecompute` (R/cov.R:291) and these runs already used
+`calcTables=FALSE`, which skips the `addCwres` re-fit (R/addCwres.R:90).  So the
+two obvious nested-`nlmixr2()` sites are NOT executing in the failing fit, and
+"a nested nlmixr2() call wipes `.uiIovEnv`" is unproven as the mechanism HERE.
+
+The DESIGN point in the section above still stands on its own evidence (the
+save/restore guards in R/cov.R and .vaeToFit are real, and the growing
+defend-the-global list is real).  But it is not established as the cause of this
+particular failure.
+
+Mechanisms proposed and NOT confirmed so far: preprocess re-entry (disproved --
+output assembly bypasses .preProcessHooksRun), nested nlmixr2() via
+covariance/residuals (disproved above).  What actually empties
+`.uiIovEnv$iovVars` between `.vaeToFit` entry (traced: `iov.cl` present) and
+`.uiFinalizeIov` is STILL UNKNOWN.
+
+The cheap next step is direct observation rather than another hypothesis: bisect
+`.vaeToFit` by printing `.uiIovEnv$iovVars` after each statement (it replays
+cleanly via the trace-and-replay recipe recorded above), and find the exact line
+after which it becomes NULL.  That is a few minutes of work and ends the guessing
+-- six proposed mechanisms have now failed, every one of them reasoned rather than
+observed.
+
+### OBSERVED: `.uiIovEnv$iovVars` is NEVER cleared -- the whole premise was wrong
+
+Bisected by direct observation instead of reasoning (trace with `where =
+asNamespace("nlmixr2est")`; note plain `trace(fn, ...)` on a namespace object
+fails with "argument 'what' should be the name of a function" -- pass the NAME
+plus `where=`):
+
+    IOV enter .vaeToFit             [iov.cl]
+    IOV enter .vaeUpdateModel       [iov.cl]
+    IOV exit  .vaeUpdateModel       [iov.cl]
+    IOV enter CreateOutput          [iov.cl]
+    IOV enter postFinalHooks        [iov.cl]     <- STILL POPULATED
+
+`iovVars` is intact right up to the hook runner that invokes `.uiFinalizeIov`.
+It is NEVER cleared.
+
+So the premise behind FIVE fix attempts -- "something empties `.uiIovEnv$iovVars`
+before the finalizer reads it" -- is FALSE.  That is why every one of them only
+managed to break focei: they were defending a global that was never under attack.
+
+Combined with the earlier dump showing the table is fine --
+
+    PFDCOLS: Estimate|SE|%RSE|Back-transformed|CI Lower|CI Upper|BSV(CV% or SD)|Shrink(SD)%
+    PFDROWS: tka|tcl|tv|add.sd|iov.cl|rx.iov.cl.1|rx.iov.cl.2
+
+-- both the row subscript AND the table are correct at hook time, yet
+`formatC(signif(.valCharPrep, ...))` still receives something zero-length.
+
+Where to look next (all cheap, all OBSERVATION):
+  * `.uiFinalizeIov` re-reads `ret$env$parFixedDf` ITSELF.  The dump above was
+    taken in `.postFinalObjectHooksRun`; hooks run in `ls()` order and
+    `.uiFinalizeMu2` sorts AFTER `.uiFinalizeIov`, but confirm no earlier hook
+    replaces `parFixedDf` with a different object between the two points.
+  * Print `.bck`, `.bsv`, `.est` and `length(.valCharPrep)` from INSIDE
+    `.uiFinalizeIov` -- remember it cannot be traced through the namespace
+    binding (it is stored by value in `.postFinalObjectHooks`), so re-register a
+    printing copy with `postFinalObjectHooksAdd(".uiFinalizeIov", <copy>)`.
+  * The chained assignment
+    `.valCharPrep <- .parFixedDf[iovVars,.bsv] <- .parFixedDf[iovVars,.bck]`
+    takes its value from the inner assignment; check what that actually yields
+    when `.bsv`/`.bck` are the real indices on the real table.
+
+SEVEN proposed mechanisms have now been disproved.  Every one was reasoned; the
+two facts that actually constrain the bug (table is fine, iovVars is fine) both
+came from printing values.
+
+### ROOT CAUSE FOUND (by measurement): `sigdig` was NULL, not anything about IOV
+
+Probing the exact values `.uiFinalizeIov` sees (via a printing hook re-registered
+ahead of it, since it cannot be traced through the namespace binding):
+
+    PROBE iovVars: iov.cl
+    PROBE bck=4 bsv=7 rowsMatch=TRUE
+    PROBE value=[1.709649] len=1 class=numeric      <-- the lookup is FINE
+
+So `.valCharPrep` was never zero-length.  The zero-length argument was the OTHER
+one:
+
+    formatC(signif(.valCharPrep, digits = .sigdig), digits = .sigdig, ...)
+    .sigdig <- ret$control$sigdig
+
+    SIGDIG (vae)   value=[NULL] len=0 class=NULL     CTLCLASS vaeControl
+    SIGDIG (focei) value=[4]    len=1 class=numeric  CTLCLASS foceiControl
+
+`signif`'s SECOND argument is `digits`, and `signif(x, digits = NULL)` raises
+exactly "invalid second argument of length 0".  Nothing to do with `iovVars`, the
+parFixedDf, hooks, nested calls, or idempotency -- all seven earlier mechanisms
+were wrong because none of them were ever measured.
+
+FIX: `vaeControl()` (and `adviControl()`, same gap) defaulted `sigdig = NULL`
+while `foceiControl()` defaults `sigdig = 4`.  The `feat/sigdig-tolerances` work
+is already merged here but did not cover these two controls.  Defaulted both to 4
+for consistency:
+
+    vaeControl sigdig: 4   adviControl sigdig: 4   foceiControl sigdig: 4
+
+RESULT: the "invalid second argument of length 0" is GONE.  The VAE IOV fit now
+fails LATER with "subscript out of bounds" -- a different, subsequent bug in the
+chain.  focei re-verified unaffected (OK tv = 3.42719).
+
+This is why the bug looked IOV-specific: `.uiFinalizeIov` is simply the first
+place a NULL `sigdig` reaches `signif()`.  Any other method with a NULL default
+would hit it in the same place, and `advi` was one bad IOV fit away from the same
+crash.
+
+##### After the sigdig fix: `.vaeToFit` REPLAYS CLEANLY
+
+Replaying `.vaeToFit(E, F)` at top level now completes with no error -- only
+warnings ("some etas defaulted to non-mu referenced ... rx.iov.cl.2", the known
+muffled one, and "gradient problems with covariance").
+
+But the real fit still ends in "subscript out of bounds".  Since `.vaeToFit`
+itself now succeeds, that error must come from AFTER it returns -- i.e. in the
+outer `nlmixr2()` flow (the post-estimation path: `.nlmixrEstUpdatesOrigModel`,
+the outer-level hook run, table/residual assembly), not from output construction.
+
+That is a different, later failure than everything chased so far, and the
+diagnostic tools now point somewhere new:
+  * the `.vaeToFit` replay is CLEAN, so stop probing inside it;
+  * catch instead around `nlmixr2Est0`/the post-estimation path in `nlmixr2()`,
+    or bisect the outer flow the same way `.vaeToFit` was bisected (print at each
+    stage; note `trace()` needs `where=asNamespace("nlmixr2est")`).
+
+Progress this round is real and measurable: the original error
+("invalid second argument of length 0") is fixed at its true root (NULL `sigdig`
+reaching `signif()`), `advi` was fixed at the same time, focei is unaffected
+(tv = 3.42719), and the IOV failure has moved strictly later in the pipeline.
+
+### RESOLVED: est="vae" + IOV WORKS
+
+    FIT OK  class = nlmixr2FitCore
+    theta names: tka, tcl, tv, add.sd
+    tv = 3.42547   objf = 387.45
+    fit$iov present: TRUE
+
+The remaining "subscript out of bounds" was MY TEST, not the package:
+`x$theta[["iov.cl"]]`.  `.uiFinalizeIov` deliberately drops the IOV rows from
+`$theta`/`parFixed` and reports the occasion effects under `$iov` -- so indexing
+`$theta` by the IOV name is out of bounds BY DESIGN.  Stage tracing showed every
+internal stage exiting cleanly (`nlmixr2Est0`, `.vaeToFit`,
+`.postFinalObjectHooksRun`, `.nlmixrEstUpdatesOrigModel`), which is what pointed
+at the accessor rather than the pipeline.
+
+That also retro-explains several "focei regressions" earlier in this file: those
+runs used the same `x$theta[["iov.cl"]]` probe.  Some of the five reverted fix
+attempts may never have broken focei at all -- the failures were at least partly
+my harness.  Treat the "5/5 focei regressions" claim as UNRELIABLE; only the
+sigdig finding and the two verified fixes below rest on sound measurement.
+
+WHAT ACTUALLY FIXED IT (both needed):
+  1. `.vaeNonMuThetas` no longer excludes the IOV magnitude theta, so the M-step
+     estimates it (it is non-mu by construction: its occasion etas are fixed at
+     variance 1).
+  2. `vaeControl()`/`adviControl()` default `sigdig = 4` instead of NULL, so
+     `signif(x, digits = .sigdig)` in `.uiFinalizeIov` no longer receives a
+     zero-length `digits`.
+
+Plus the foreign-method output contract in `.vaeToFit` (fullTheta/etaObf/omega/
+message + `.foceiPreProcessData`), which is on this branch and was a real gap even
+though it was not sufficient alone.
+
+STILL TO DO before merging: run the full suites on this branch (the earlier run
+showed vae-nonmutheta 43/43, vae-iov 9/9, vae-nonmutheta-grad 34/35 with one
+failure needing standalone triage), and add an IOV regression test asserting a
+`returnVae=FALSE` fit completes -- the existing `test-vae-iov.R` only exercises
+the raw object.
+
+### wip branch: ALL VAE SUITES GREEN
+
+    test-vae-iov.R               18/18   (was 9/9 -- +9 covering the real user path)
+    test-vae-nonmutheta-grad.R   35/35
+    test-vae-nonmutheta.R        43/43
+    test-vae-errmodel.R          11/11
+
+The earlier 34/35 on `vae-nonmutheta-grad` was cross-suite state leakage from
+running three files in ONE process; run separately it is 35/35, confirming the
+caution recorded above (test each in its own R process).
+
+So `wip/vae-iov-output-contract` is green on every VAE suite and carries three
+fixes: the IOV magnitude theta being estimated, `sigdig=4` defaults for
+vae/advi, and the foreign-method output contract in `.vaeToFit`.
+
+Before merging, still worth doing:
+  * focei/saem/impmap suites on this branch -- the sigdig default change touches
+    `adviControl` too, and `.vaeToFit`'s `.foceiPreProcessData` call is new;
+  * the imp-family output-contract follow-up (recorded above).
+
+##### Cross-method validation on the wip branch
+
+    test-focei-fast-grad.R   47/47 PASS
+
+So the `sigdig=4` default change and `.vaeToFit`'s new `.foceiPreProcessData`
+call do not disturb focei's analytic-gradient path.
+
+`test-impmap.R` and `test-saem.R` were still running when this session ended;
+they are launched detached and their results land in `/tmp/other.out`
+(`grep '^X ' /tmp/other.out`).  Re-run them if that file is gone -- both are
+plain `test_file()` calls and need no state from this session.  impmap matters
+most of the three: it is the other `_impPoolModel` consumer and shares the
+output-assembly path being changed here.

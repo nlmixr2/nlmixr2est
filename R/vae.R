@@ -197,7 +197,7 @@ vaeControl <- function(seed = 42L,
                        compress = FALSE,
                        adjObf = TRUE,
                        ci = 0.95,
-                       sigdig = NULL,
+                       sigdig = 4,
                        sigdigTable = NULL,
                        rhoend = NULL,
 
