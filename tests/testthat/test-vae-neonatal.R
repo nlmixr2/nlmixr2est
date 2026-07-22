@@ -54,7 +54,8 @@ nmTest({
     fitRef <- suppressMessages(suppressWarnings(
       nlmixr2(neonatal, dat, est = "vae", control = ctlRef)))
     expect_identical(fitRef$zPop, fit$zPop)
-    expect_identical(fitRef$selected, fit$selected)
+    ## fit$selected picked up dimnames above; compare the values
+    expect_identical(unname(fitRef$selected), unname(fit$selected))
     expect_identical(fitRef$omega, fit$omega)
     expect_identical(fitRef$a, fit$a)
   })
