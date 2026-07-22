@@ -51,7 +51,8 @@
   smoothing a step harder than the reference throughout the tail); new
   `vaeControl(omegaUpdate="suffStat")` (default) forms the population variances
   from the EMA sufficient statistics and assigns them instead of blending them a
-  second time at the M-step gain; and new `vaeControl(inputScale="reference")`
+  second time at the M-step gain (`omega` only -- the residual error is still
+  smoothed on the SD scale, a documented remaining difference); and new `vaeControl(inputScale="reference")`
   (default) computes the encoder-input centering/scaling across the whole padded
   observation matrix as the reference does, rather than over the observed values
   only -- on a ragged dataset the two differ materially (neonatal SD 1582 vs

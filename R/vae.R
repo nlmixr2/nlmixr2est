@@ -154,10 +154,13 @@
 #'   M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
 #'   the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
 #'   historic behavior, blending the freshly computed `omega` with the previous
-#'   value at the M-step gain (so it is smoothed twice).  `"suffStat"` applies the
-#'   same principle to an additive residual error: the EMA is carried on the
-#'   residual sum of squares and the square root taken afterwards
-#'   (`a = sqrt(s4/nobs)`) rather than blending `a` itself on the SD scale.
+#'   value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
+#'   The residual error estimate is still EMA-smoothed on the standard-deviation
+#'   scale, where the reference smooths the residual sum of squares and takes the
+#'   root afterwards -- a known remaining difference.  Matching it would need
+#'   per-endpoint sufficient statistics plus an optimizer branch for the error
+#'   models with no closed form (`add + prop`, `add + pow`, Box-Cox /
+#'   Yeo-Johnson), as \code{\link{saemControl}()} does.
 #' @param inputScale Which observations the encoder-input centering and scaling
 #'   are computed over.  `"reference"` (default) matches the reference
 #'   implementation, which takes the mean and SD across the whole padded

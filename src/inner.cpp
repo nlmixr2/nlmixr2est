@@ -13517,30 +13517,6 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   //   s2[k] = EMA of sum_i mu_i[k]^2,  s3[k] = EMA of sum_i (L_i L_i')[k,k]
   //   omega[k] = (s2[k] - 2*sum_i Cz_i[k]*s1_i[k] + sum_i Cz_i[k]^2 + s3[k]) / N
   arma::vec s2(zDim, arma::fill::zeros), s3(zDim, arma::fill::zeros);
-  // s4: EMA of the residual sum of squares, the reference's residual-error
-  // sufficient statistic (`s4 += gamma*(SSE - s4)`; `a = sqrt(s4/N_obs)`).  The
-  // EMA is on the VARIANCE scale and the sqrt is taken after, where the historic
-  // path computed sqrt(SSE/m) first and then blended `a` itself -- different by
-  // Jensen, since sqrt is concave.  Only meaningful when the residual model is
-  // additive-only (the reference fixes its proportional term at 0).
-  double s4 = 0.0; bool s4Init = false;
-  arma::uword iAddErr = 0; bool addOnlyErr = false;
-  {
-    arma::uword nAddE = 0, nPropE = 0;
-    for (arma::uword e = 0; e < errTypeCode.n_elem; ++e) {
-      if (errTypeCode[e] == 0 && nAddE == 0) { iAddErr = e; nAddE = 1; }
-      if (errTypeCode[e] == 1) nPropE++;
-    }
-    // a fixed proportional term contributes nothing, so it still counts as additive-only
-    if (nAddE == 1) {
-      bool propFree = false;
-      for (arma::uword e = 0; e < errTypeCode.n_elem; ++e)
-        if (errTypeCode[e] == 1 && !(errLower[e] == errUpper[e])) propFree = true;
-      addOnlyErr = (nPropE == 0) || !propFree;
-    }
-  }
-  size_t nObsTot = 0;
-  for (size_t i = 0; i < yList.size(); ++i) nObsTot += yList[i].size();
 
   for (int it = 1; it <= iters; ++it) {
     // Smoothing gain: 1 through the EM phase, then a decaying series.
@@ -13582,22 +13558,6 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       else {
         s1 += gamma * (last.mu - s1);
         if (omegaSuffStat) { s2 += gamma * (s2Cur - s2); s3 += gamma * (s3Cur - s3); }
-      }
-    }
-    // residual-error sufficient statistic (reference form)
-    if (omegaSuffStat && addOnlyErr && nObsTot > 0) {
-      double sse = 0;
-      for (size_t i = 0; i < last.preds.size() && i < yList.size(); ++i) {
-        const std::vector<double>& fi = last.preds[i];
-        const std::vector<double>& yi = yList[i];
-        size_t n = std::min(fi.size(), yi.size());
-        for (size_t o = 0; o < n; ++o) {
-          double r = yi[o] - fi[o];
-          if (R_FINITE(r)) sse += r * r;
-        }
-      }
-      if (R_FINITE(sse)) {
-        if (!s4Init) { s4 = sse; s4Init = true; } else s4 += gamma * (sse - s4);
       }
     }
     if (doCov) {
@@ -13670,10 +13630,6 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // the reference assigns omega outright; the historic path blends it
       omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
       a = a + gamma * (aCur - a);
-      if (omegaSuffStat && addOnlyErr && s4Init && nObsTot > 0 && !(errLower[iAddErr] == errUpper[iAddErr])) {
-        double aS = std::sqrt(s4 / (double)nObsTot);
-        if (R_FINITE(aS)) a[iAddErr] = std::min(std::max(aS, errLower[iAddErr]), errUpper[iAddErr]);
-      }
       isCovStep = true;
       baseline = arma::mean(zPopMat, 0).t();
     } else {
@@ -13691,12 +13647,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
-      omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
+      omega = omega + gamma * (omegaCur - omega);
       a = a + gamma * (aCur - a);
-      if (omegaSuffStat && addOnlyErr && s4Init && nObsTot > 0 && !(errLower[iAddErr] == errUpper[iAddErr])) {
-        double aS = std::sqrt(s4 / (double)nObsTot);
-        if (R_FINITE(aS)) a[iAddErr] = std::min(std::max(aS, errLower[iAddErr]), errUpper[iAddErr]);
-      }
       zPopArg.each_row() = zPop.t();
       isCovStep = false;
       baseline = zPop;
