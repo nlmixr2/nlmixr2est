@@ -9,7 +9,9 @@
   sensitivity solve per M-step replaces the derivative-free sweep.  Both modes
   target the same (full outer) objective, so this is an optimizer change: on
   `theo_sd` with a non-mu-referenced `tv` it lands within 0.0005 of the FOCEi
-  maximum-likelihood value against 0.0025 for `"regress"`.  A
+  maximum-likelihood value against 0.0025 for `"regress"`.  It is chosen for that
+  accuracy, not for speed -- it runs slower than `"regress"` (1.47x with one
+  non-mu theta, 1.13x with three).  A
   model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
   `"regress"` with a note in `$runInfo`.
 
