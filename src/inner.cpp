@@ -4906,10 +4906,6 @@ static SEXP covSolveArgs_ = R_NilValue;
 // est="impmap": theta-sensitivity model that sizes the shared pool (the largest
 // structure), or R_NilValue to size for the inner model as usual.
 SEXP _impPoolModel = R_NilValue;
-// est="vae" nonMuTheta="grad" on the (current) rxSolve path: stash the solve args
-// so restoreFitSolve_ can put the inner solve back after the augmented solve.
-// Goes away once the pooled vaeOuterSolve_ path is enabled.
-static bool _vaeNeedSolveArgs = false;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -5341,6 +5337,54 @@ NumericVector foceiSetup_(const RObject &obj,
       }
     }
   }
+  // A pool model (_impPoolModel) may spell the SAME parameters differently: the
+  // augmented outer-gradient model declares THETA_1_/ETA_1_ because those names
+  // ARE its sensitivity directions, while `params` above is built as
+  // THETA[1]/ETA[1].  rxSolve_ binds by NAME, so sizing the pool with that model
+  // otherwise fails with "The following parameter(s) are required for solving".
+  // The two orders are identical, so alias: for every pool-model parameter not
+  // already present, add a column carrying its bracket spelling's values.
+  // Renaming either model is not an option -- the augmented model's body AND all
+  // of its output column names are built from the underscore form.
+  if (_impPoolModel != R_NilValue) {
+    List poolMv = rxode2::rxModelVars_(RObject(_impPoolModel));
+    CharacterVector poolPars = as<CharacterVector>(poolMv["params"]);
+    std::vector<std::string> have;
+    for (int q = 0; q < paramsNames.size(); ++q) have.push_back(as<std::string>(paramsNames[q]));
+    std::vector<std::string> addNm; std::vector<int> addFrom;
+    const char* pres[2] = {"THETA", "ETA"};
+    for (int q = 0; q < poolPars.size(); ++q) {
+      std::string pn = as<std::string>(poolPars[q]);
+      if (std::find(have.begin(), have.end(), pn) != have.end()) continue;
+      std::string alias;
+      for (int pi = 0; pi < 2; ++pi) {
+        std::string p(pres[pi]);
+        if (pn.size() > p.size() + 2 && pn.compare(0, p.size(), p) == 0 &&
+            pn[p.size()] == '_' && pn[pn.size() - 1] == '_') {
+          std::string num = pn.substr(p.size() + 1, pn.size() - p.size() - 2);
+          if (!num.empty() && num.find_first_not_of("0123456789") == std::string::npos)
+            alias = p + "[" + num + "]";
+          break;
+        }
+      }
+      if (alias.empty()) continue;
+      std::vector<std::string>::iterator it = std::find(have.begin(), have.end(), alias);
+      if (it == have.end()) continue;
+      addNm.push_back(pn);
+      addFrom.push_back((int)(it - have.begin()));
+    }
+    if (!addNm.empty()) {
+      int n0 = params.size();
+      List p2(n0 + (int)addNm.size());
+      CharacterVector n2(n0 + (int)addNm.size());
+      for (int q = 0; q < n0; ++q) { p2[q] = params[q]; n2[q] = paramsNames[q]; }
+      for (size_t q = 0; q < addNm.size(); ++q) {
+        p2[n0 + (int)q] = params[addFrom[q]];
+        n2[n0 + (int)q] = addNm[q];
+      }
+      params = p2; paramsNames = n2;
+    }
+  }
   params.names() = paramsNames;
   params.attr("class") = "data.frame";
   params.attr("row.names") = IntegerVector::create(NA_INTEGER,-expected_nsub);
@@ -5355,9 +5399,7 @@ NumericVector foceiSetup_(const RObject &obj,
     bool _needSolveArgs =
       (foceiO.containsElementNamed("covType") &&
        as<std::string>(foceiO["covType"]) == "analytic") ||
-      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0) ||
-      _vaeNeedSolveArgs;
-    _vaeNeedSolveArgs = false;   // consumed
+      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0);
     if (_needSolveArgs) {
       storeCovSolveArgs_(obj, rxControl, params, data);
     }
@@ -10140,7 +10182,6 @@ RObject vaeInnerSetup_(Environment e) {
       if (e.exists("innerNeq")) op_focei.innerNeq = as<int>(e["innerNeq"]);
     }
   }
-  _vaeNeedSolveArgs = e.exists("vaeGradSolveArgs") && as<bool>(e["vaeGradSolveArgs"]);
   NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                                       _rxInv, _lower, _upper, _etaMat, _control);
   _impPoolModel = R_NilValue; // consumed by foceiSetup_
@@ -13509,10 +13550,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       } catch (...) {
         grR = R_NilValue;
       }
-      // The rxSolve path replaced the global solve; restore before the next
-      // vaeInnerLikCore.  (Goes away with the pooled vaeOuterSolve_ path.)
-      if (!restoreFitSolve_())
-        stop("est=\"vae\": could not restore the inner solve after the analytic gradient");
+      // No restore: vaeOuterSolve_ runs in the SHARED pool and frees nothing, so
+      // the inner problem is still live for the next vaeInnerLikCore.
       if (!Rf_isNull(grR)) {
         NumericVector gv(grR);
         if ((int)gv.size() == (int)regIdx.n_elem) {

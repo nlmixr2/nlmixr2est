@@ -92,10 +92,11 @@
   .am <- tryCatch(ui$foceiOuter, error = function(e) NULL)
   if (!is.null(.am) && inherits(.am$augMod, "rxode2")) {
     .vaeGradEnv$am <- .am
-    ## outerCols stays NULL until the augmented model actually SIZES the shared
-    ## pool (blocked on the parameter-name mismatch -- see .vaeInnerSetup).
-    ## Enabling vaeOuterSolve_ against an inner-sized pool writes 26 states / 29
-    ## lhs into buffers sized for 6 / 6: "double free or corruption", not an error.
+    ## Enables the pooled vaeOuterSolve_ path.  Valid ONLY because the augmented
+    ## model also SIZED the pool (.vaeInnerSetup sets poolModel) -- against an
+    ## inner-sized pool this writes 26 states / 29 lhs into 6 / 6 buffers and dies
+    ## with "double free or corruption".  The two switches move together.
+    .vaeGradEnv$outerCols <- tryCatch(.vaeOuterCols(.am), error = function(e) NULL)
     .vaeGradEnv$cores <- tryCatch({
       .c <- .am$cores
       if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c)

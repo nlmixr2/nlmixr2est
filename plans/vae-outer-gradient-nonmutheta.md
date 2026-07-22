@@ -372,3 +372,24 @@ is a contained `foceiSetup_` change and leaves both models untouched.
 Until then: `.env$poolModel` and `.vaeGradEnv$outerCols` stay OFF and the M-step
 keeps the rxSolve + `restoreFitSolve_` path.  Enabling either alone is fatal
 (26 states / 29 lhs into 6 / 6 buffers -> "double free or corruption").
+
+#### Attempted fix 2 -- alias the params in `foceiSetup_`: WORKS
+
+Neither model is touched.  `foceiSetup_` builds `params` as `THETA[1]`/`ETA[1]`
+just before the pool `rxSolve_`; when `_impPoolModel` is set, every pool-model
+parameter not already present and matching `THETA_n_`/`ETA_n_` gets an extra
+column aliasing the corresponding bracket column (same SEXP, so no copy).  The
+orders were already verified identical, and the alias is name-driven, so a pool
+model whose names already match is a no-op (imp/advi unaffected).
+
+Result on theo_sd: the pooled path runs every M-step (`nRegGrad=250`,
+`nRegFallback=0`) and gives `tv = 3.429396` -- BIT-IDENTICAL to the rxSolve path
+it replaces, which is the correctness check that matters: same gradient, different
+solve plumbing.  `restoreFitSolve_` and the `_vaeNeedSolveArgs` stash are gone
+from the VAE path.
+
+Cost: grad 43.4s -> 36.4s (regress 26.6s), so roughly half the rebuild overhead is
+recovered.  The rest is the augmented solve itself (26 states vs 6), which is real
+work, not setup.  With one regressed theta on 12 subjects bobyqa is at its most
+favorable; the crossover should move with more regressed thetas, since bobyqa's
+cost scales with their number and one augmented solve does not.  Not yet measured.

@@ -72,21 +72,14 @@
     .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
     if (!is.null(.am) && inherits(.am$augMod, "rxode2") && !is.null(.env$model)) {
       .env$model$vaeOuter <- .am$augMod
-      ## NOT YET: pool sizing is blocked on a parameter-NAME mismatch.  The
-      ## augmented model declares THETA_1_/ETA_1_ (the generated-model convention)
-      ## while foceiSetup_ supplies the inner model's THETA[1]/ETA[1], and
-      ## rxSolve_ matches by name -- "The following parameter(s) are required for
-      ## solving: ETA_1_, THETA_1_, ...".  The positional layout already agrees
-      ## (verified: same count, same order), so this needs the augmented model
-      ## emitted with the inner model's parameter SPELLING (as
-      ## .impmapThetaSensModel does for the imp pool), not a layout change.
-      ## Until then the M-step keeps the rxSolve path + restoreFitSolve_.
-      ## .env$poolModel <- .am$augMod
-      ## .env$innerNeq <- length(rxode2::rxModelVars(.env$model$inner)$state)
+      ## The augmented model SIZES the shared pool (26 states / 29 lhs vs the
+      ## inner model's 6 / 6); the inner MAP then runs under ind->neqOverride.
+      ## foceiSetup_ aliases its THETA_1_/ETA_1_ spelling onto the THETA[1]/ETA[1]
+      ## columns so rxSolve_ can bind it.
+      .env$poolModel <- .am$augMod
+      .env$innerNeq <- length(rxode2::rxModelVars(.env$model$inner)$state)
     }
   }
-  ## the rxSolve path frees the global solve, so stash the args for restoreFitSolve_
-  .env$vaeGradSolveArgs <- identical(control$nonMuTheta, "grad")
   vaeInnerSetup_(.env)
   .env
 }
