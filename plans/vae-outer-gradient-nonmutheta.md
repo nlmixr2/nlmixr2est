@@ -557,3 +557,15 @@ red herring here; `isFree` is already respected by the covariate B&B
 
 Follow-up: add a `returnVae=FALSE` case to `test-vae-iov.R` so the assembly path
 is covered.
+
+##### Why the IOV error has no usable traceback
+
+`nlmixr2Est0` catches the estimation error and re-raises it with
+`stop(paste(ret$error, collapse="\n"), call.=FALSE)` (`R/nlmixr2Est.R:296`), so by
+the time it reaches the caller the original call and stack are gone --
+`conditionCall` is NULL and `sys.calls()` under `withCallingHandlers` shows only
+the re-raise frame.  Do not spend time on traceback tricks.
+
+To find the line, either instrument `.vaeToFit` directly (it is reachable
+standalone: fit with `returnVae=TRUE` to get the raw object, then call the
+assembly path on it), or temporarily bypass the catch in `nlmixr2Est0`.
