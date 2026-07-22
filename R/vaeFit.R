@@ -134,9 +134,18 @@
 #' training loop's closed-form error M-step: 0 = additive, 1 = proportional,
 #' 2 = other (kept at its current value). Order matches `prep$errType`.
 #' @noRd
+## Error-model classification consumed by the C++ M-step and the two-stage ELS
+## objective.  0=add, 1=prop, 3=pow scale, 4=pow exponent, 5=lnorm; 2 is
+## "not handled", which leaves the parameter at its ini() value.
 .vaeErrTypeCode <- function(errType) {
-  vapply(errType, function(t) if (identical(t, "add")) 0L else if (identical(t, "prop")) 1L else 2L,
-         integer(1), USE.NAMES = FALSE)
+  vapply(errType, function(t) {
+    if (identical(t, "add")) 0L
+    else if (identical(t, "prop")) 1L
+    else if (identical(t, "pow")) 3L
+    else if (identical(t, "pow2")) 4L
+    else if (identical(t, "lnorm")) 5L
+    else 2L
+  }, integer(1), USE.NAMES = FALSE)
 }
 
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)

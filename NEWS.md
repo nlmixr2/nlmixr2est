@@ -48,8 +48,12 @@
   on both additive (131.79 vs 131.81) and combined (121.03 vs 122.47) `theo_sd`
   fits.  It is now the DEFAULT, so an `est="vae"` fit with a residual-error
   parameter changes; `residOptimize="moment"` restores the previous estimator.
-  It is also the only path that estimates an error model with no closed form,
-  which the moment estimator left silently at its `ini()` value.
+  It is also the only path that estimates an error model with no closed form.
+  `pow()` and `lnorm()` residuals were previously classified "other" and left
+  SILENTLY at their `ini()` values -- on `theo_sd`, `pow(prop.err, pw)` returned
+  0.300/0.800 unchanged (objective 154.4 against 134.8 estimated) and
+  `lnorm(add.err)` returned 0.500 unchanged (objective 26163 against 849).  Both
+  are now estimated.
 
 - `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
   encoder's initial posterior spread.  `"sd"` (default) makes the initial

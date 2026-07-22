@@ -13293,25 +13293,54 @@ static arma::ivec gVaeRegErrMap;
 // residual at frozen etas, which is what walks a near-collinear add/prop pair
 // into a corner.
 static std::vector<double> gVaeElsY, gVaeElsF;
-static arma::ivec gVaeElsType;    // per error param: 0=add, 1=prop, 2=other
+// per error param: 0=add, 1=prop, 2=other/unhandled, 3=pow scale, 4=pow
+// exponent, 5=lnorm.  Indexed by position in `a`, NOT by position in the
+// optimizer's parameter vector -- gVaeElsMap relates the two.
+static arma::ivec gVaeElsType;
+static arma::ivec gVaeElsMap;     // optimizer slot k -> index in `a`
+static arma::vec  gVaeElsA;       // base `a`; held params keep these values
 static bool gVaeElsCombined1 = false;
 
 static double gVaeElsObjR(Rcpp::NumericVector p) {
-  double aAdd = 0, aProp = 0;
-  bool hasAdd = false, hasProp = false;
-  for (arma::uword e = 0; e < gVaeElsType.n_elem && e < (arma::uword)p.size(); ++e) {
-    if (gVaeElsType[e] == 0) { aAdd = p[e]; hasAdd = true; }
-    else if (gVaeElsType[e] == 1) { aProp = p[e]; hasProp = true; }
+  // substitute the candidates into a full copy of `a` -- a fixed residual
+  // parameter is absent from the optimizer vector but still enters the variance
+  arma::vec ac = gVaeElsA;
+  for (arma::uword k = 0; k < gVaeElsMap.n_elem && k < (arma::uword)p.size(); ++k)
+    if (gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem) ac[gVaeElsMap[k]] = p[k];
+
+  double aAdd = 0, aProp = 0, aPow = 0, aPowExp = 1, aLnorm = 0;
+  bool hasAdd = false, hasProp = false, hasPow = false, hasLnorm = false;
+  for (arma::uword e = 0; e < gVaeElsType.n_elem && e < ac.n_elem; ++e) {
+    switch (gVaeElsType[e]) {
+    case 0: aAdd = ac[e];    hasAdd = true;   break;
+    case 1: aProp = ac[e];   hasProp = true;  break;
+    case 3: aPow = ac[e];    hasPow = true;   break;
+    case 4: aPowExp = ac[e];                  break;
+    case 5: aLnorm = ac[e];  hasLnorm = true; break;
+    default: break;
+    }
   }
+  const double yFloor = std::sqrt(DBL_EPSILON);
   double sum = 0;
   for (size_t i = 0; i < gVaeElsY.size(); ++i) {
     double f = gVaeElsF[i], y = gVaeElsY[i], r;
-    if (gVaeElsCombined1) {
+    if (hasLnorm) {
+      // residual is normal on the LOG scale: transform both sides.  The
+      // transform Jacobian does not depend on the residual scale, so it is a
+      // constant here and drops out of the optimization.
+      double yt = (y > yFloor) ? y : yFloor;
+      double ft = (f > yFloor) ? f : yFloor;
+      y = std::log(yt); f = std::log(ft);
+      r = aLnorm * aLnorm;
+    } else if (hasPow) {
+      double sd = aPow * std::pow(std::fabs(f), aPowExp);
+      r = sd * sd;
+      if (hasAdd) r = gVaeElsCombined1 ? (aAdd + sd) * (aAdd + sd) : aAdd * aAdd + r;
+    } else if (gVaeElsCombined1) {
       double sd = (hasAdd ? aAdd : 0.0) + (hasProp ? aProp * std::fabs(f) : 0.0);
       r = sd * sd;
     } else {
-      r = (hasAdd ? aAdd * aAdd : 0.0) +
-          (hasProp ? aProp * aProp * f * f : 0.0);
+      r = (hasAdd ? aAdd * aAdd : 0.0) + (hasProp ? aProp * aProp * f * f : 0.0);
     }
     if (!(r > 0)) r = 1.0;          // the r == 0 rule (handleF's convention)
     double d = y - f;
@@ -13889,6 +13918,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               if (R_FINITE(fi[o]) && R_FINITE(yi[o])) { gVaeElsF.push_back(fi[o]); gVaeElsY.push_back(yi[o]); }
           }
           gVaeElsType = errTypeCode; gVaeElsCombined1 = errCombined1;
+          gVaeElsA = a;
+          gVaeElsMap.set_size(sIdx.n_elem);
+          for (arma::uword k = 0; k < sIdx.n_elem; ++k) gVaeElsMap[k] = sMap[k];
           Rcpp::InternalFunction elsFn(&gVaeElsObjR);
           Rcpp::List r2 = boundedOpt(Rcpp::_["par"] = p2, Rcpp::_["fn"] = elsFn,
                                      Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,

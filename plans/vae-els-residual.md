@@ -239,9 +239,31 @@ did.  Expect changed results -- this is the phase that needs release notes.
   With the ELS objective in place these are new cases in the switch, not new
   machinery.
 
-*Verification*: a fit that recovers a known `pow` exponent from simulated data;
-a regression test that the parameter actually moves off its `ini()` value (the
-current silent-freeze bug would pass any test that only checks finiteness).
+*Verification*: a regression test that the parameter actually moves off its
+`ini()` value (the silent-freeze bug would pass any test that only checks
+finiteness).
+
+#### Phase 3 outcome (measured, `theo_sd`)
+
+Done for `pow` and `lnorm`, and it did fall out of Phase 1 -- the work was
+extending the type classification (`.vaeErrTypeCode`: `pow` -> 3, `pow2` -> 4,
+`lnorm` -> 5) and the variance computation inside the stage-2 ELS objective.  No
+new machinery.
+
+| model | moment | twoStage |
+|---|---|---|
+| `pow(prop.err, pw)` | 0.30000 / 0.80000 (= `ini()`), objf 154.390 | 0.41511 / 0.44626, objf 134.848 |
+| `lnorm(add.err)` | 0.50000 (= `ini()`), objf 26163.221 | 3.78183, objf 848.856 |
+
+The moment column is the bug: exactly the starting values, untouched.  For
+`lnorm` the frozen value is badly wrong for a log-scale residual, hence the 30x
+objective difference.
+
+`lnorm` transforms both sides to the log scale inside the objective.  Its
+Jacobian does not depend on the residual scale, so it is constant under this
+optimization and drops -- which is why `lnorm` lands in Phase 3 rather than
+Phase 4.  A Box-Cox/Yeo-Johnson `lambda` that is ESTIMATED does move the
+Jacobian, so it must be carried; that is what makes Phase 4 a separate step.
 
 ### Phase 4 -- transform-both-sides
 
