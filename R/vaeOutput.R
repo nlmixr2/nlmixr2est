@@ -115,7 +115,7 @@
   ## 1. in-pool declared coefficients: selected -> estimated slope, dropped -> 0.
   ## Accumulate each selected slope's center offset into its structural theta.
   corr <- numeric(length(thetaNames))
-  .inRows <- if (is.null(pairs)) pairs[0, ] else pairs[pairs$inPool, , drop = FALSE]
+  .inRows <- if (is.null(pairs)) NULL else pairs[pairs$inPool, , drop = FALSE]
   for (.r in seq_len(NROW(.inRows))) {
     .k <- .inRows$k[.r]
     .j <- match(.inRows$covName[.r], covNames)

@@ -217,9 +217,9 @@ vaeCovariates <- function(data, warn = TRUE) {
       } else {
         ## continuous: VAE uses log(cov/mean); only a written log(cov/center)
         ## transfers.  A raw linear beta*cov on a continuous covariate does not.
-        .lc <- .vaeLogCenter(
-          if (length(.lst)) Filter(function(e) .coef %in% all.vars(e), .lst)[[1L]] else NULL,
-          .covTok)
+        .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
+        .lc <- if (length(.cl)) .vaeLogCenter(.cl[[1L]], .covTok)
+               else list(inLog = FALSE, center = NA_real_)
         if (isTRUE(.lc$inLog) && is.finite(.lc$center)) .userCenter <- .lc$center
         else .inPool <- FALSE
       }
