@@ -628,3 +628,36 @@ what `.vaeToFit` puts on `.ret` versus what the focei path builds).
 
 Remaining budget note: I disproved covariateSelection, the nonMuTheta mode, the
 mu-structure, and the dimension mismatch.  Do NOT re-test those.
+
+##### Fifth elimination: `.uiIovEnv` is NOT cleared
+
+`.vaeToFit` snapshots/restores `.muRefTrans$cur` because the focei covariance
+recompute re-runs preprocessing and clears staged hook state, so `.uiIovEnv`
+(staged by the IOV preprocess hook, consumed by the `.uiFinalizeIov` post-hook)
+looked like the same bug.  It is not -- traced:
+
+    AT .vaeToFit ENTRY     iovVars=[iov.cl] ui=TRUE
+    AFTER .vaeUpdateModel  iovVars=[iov.cl] ui=TRUE
+
+State is live throughout.
+
+### STOP GUESSING -- change approach
+
+Five hypotheses eliminated by black-box experiment: covariate selection, the
+nonMuTheta mode, the mu-structure, eta dimensions, `.uiIovEnv` lifetime.  Each
+cost a full fit cycle.  `.vaeToFit` demonstrably hands `foceiFitCpp_` a
+self-consistent 5-eta problem with live IOV state, and it still throws
+`invalid second argument of length 0` inside that call.
+
+Further black-box guessing is not converging.  The next person should bisect
+INSIDE the call instead:
+
+1. `est="focei"` fits this exact IOV model fine.  Dump both envs
+   (`.ret` from `.vaeToFit` vs the focei fit env) and diff field by field --
+   `names()`, then class/length/dim of every shared name.  The difference is a
+   field `.vaeToFit` sets differently or omits, not anything ruled out above.
+2. Failing that, the message is R-level ("invalid second argument of length 0" is
+   not an Rcpp stop), so it comes from an R callback invoked by the C++ during
+   setup/finalize.  Grep the R functions `foceiFitCpp_` calls back into and look
+   for a two-argument primitive (`seq_len`/`rep`/`match`/`%in%`/matrix indexing)
+   fed a zero-length IOV-derived vector.
