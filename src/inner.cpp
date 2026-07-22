@@ -648,8 +648,19 @@ focei_ind *inds_focei = NULL;
 // inds_focei must bound itself by THIS, not by a freshly-read subject count:
 // the two allocation sites below use different counts (getRxNsub vs
 // getRxNsubAndMix), and the global rx a later caller reads is not necessarily
-// the solve inds_focei was sized against.
+// the solve inds_focei was sized against.  getRxNsubAndMix() is
+// getRxNsub(rx) * (mixIdxN + 1) -- BOTH factors are mutable globals that a later
+// caller can read back different from what was in effect at setup.
 int nIndsFocei = 0;
+
+// Slots it is safe to touch in inds_focei.  Used by the "force a re-solve"
+// loops, which run long after setup from entry points (VAE M-step, the general
+// likelihood API) that may have swapped the global solve underneath.  Shared so
+// the two call sites cannot drift apart.
+static inline int foceiIndSetupN(rx_solve* rxl) {
+  int cur = (int)getRxNsubAndMix(rxl);
+  return (nIndsFocei < cur) ? nIndsFocei : cur;
+}
 
 // FOCE eta=0 population-R cache.  rPop depends only on theta, so it is constant
 // across the whole inner optimization and only needs recomputing when theta
@@ -10429,9 +10440,7 @@ static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omeg
   // getRxNsubAndMix(rx): those disagree when the current global solve is not the
   // one inds_focei was sized against, and the difference was a write past the end
   // of the array (valgrind: invalid write here, into an unrelated freed block).
-  int nInd = nIndsFocei;
-  if (nInd > (int)getRxNsubAndMix(rx)) nInd = (int)getRxNsubAndMix(rx);
-  for (int id = nInd; id--;) inds_focei[id].setup = 0;
+  for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
 }
 
 //[[Rcpp::export]]
@@ -12620,7 +12629,9 @@ RObject foceiLikSetTheta_(NumericVector theta) {
   // likInner0 short-circuits on an unchanged eta (fInd->oldEta), only safe while
   // theta/omega are fixed -- force a re-solve after a theta change.
   rx = getRxSolve_();
-  for (int id = getRxNsubAndMix(rx); id--;) inds_focei[id].setup = 0;
+  // Same bound as vaeInnerUpdateParCore: this entry point is called long after
+  // setup, so getRxNsubAndMix(rx) can exceed what inds_focei was allocated for.
+  for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
   return R_NilValue;
 }
 

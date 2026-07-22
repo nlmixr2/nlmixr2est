@@ -84,6 +84,55 @@ nmTest({
                  c(FALSE, FALSE, TRUE))
   })
 
+  ## Three ways a theta can reach the solve that a top-level, assignment-only
+  ## scan misses.  Each misclassified the theta as ODE-free -- the UNSAFE
+  ## direction, since stage 2 would then optimize it against a frozen solve.
+  test_that("a state_0 initial condition is a solve dependency", {
+    ui <- rxode2::assertRxUi(function() {
+      ini({ lcl <- -1; linit <- 1; lsd <- 0; eta.b ~ 0.1 })
+      model({
+        cl <- exp(lcl)
+        central_0 <- exp(linit)          # rxode2's other spelling of central(0)
+        d / dt(central) <- -cl * central
+        sd <- exp(lsd)
+        ll(cp) ~ -log(sd) - 0.5 * ((DV - central * exp(eta.b)) / sd)^2
+      })
+    })
+    expect_equal(.vaeOdeFreeThetas(ui, c("lcl", "linit", "lsd")),
+                 c(FALSE, FALSE, TRUE))
+  })
+
+  test_that("an assignment inside if/else is a solve dependency", {
+    ui <- rxode2::assertRxUi(function() {
+      ini({ lcl <- -1; lsd <- 0; eta.b ~ 0.1 })
+      model({
+        if (TIME > 0) { cl <- exp(lcl) } else { cl <- exp(lcl) }
+        d / dt(central) <- -cl * central
+        sd <- exp(lsd)
+        ll(cp) ~ -log(sd) - 0.5 * ((DV - central * exp(eta.b)) / sd)^2
+      })
+    })
+    expect_equal(.vaeOdeFreeThetas(ui, c("lcl", "lsd")), c(FALSE, TRUE))
+  })
+
+  test_that("a `~` defined variable feeding d/dt is a solve dependency", {
+    ## `conc` is both the endpoint variable and a d/dt input; skipping the `~`
+    ## line because the name is an endpoint would drop the edge to `lv`.
+    ui <- suppressWarnings(rxode2::assertRxUi(function() {
+      ini({ lk <- -1; lv <- 1; lsd <- 0; eta.b ~ 0.1 })
+      model({
+        k <- exp(lk); v <- exp(lv)
+        conc ~ central / v
+        d / dt(central) <- -k * central
+        d / dt(effect) <- 1 - conc * effect
+        sd <- exp(lsd)
+        ll(conc) ~ -log(sd) - 0.5 * ((DV - conc * exp(eta.b)) / sd)^2
+      })
+    }))
+    expect_equal(.vaeOdeFreeThetas(ui, c("lk", "lv", "lsd")),
+                 c(FALSE, FALSE, TRUE))
+  })
+
   test_that("stage-2 eligibility keeps every err parameter", {
     ## the historic half of the rule: an err parameter is always stage 2, and a
     ## structural theta that reaches d/dt is not
