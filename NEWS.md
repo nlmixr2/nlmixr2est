@@ -52,8 +52,10 @@
   `pow()` and `lnorm()` residuals were previously classified "other" and left
   SILENTLY at their `ini()` values -- on `theo_sd`, `pow(prop.err, pw)` returned
   0.300/0.800 unchanged (objective 154.4 against 134.8 estimated) and
-  `lnorm(add.err)` returned 0.500 unchanged (objective 26163 against 849).  Both
-  are now estimated.
+  `lnorm(add.err)` returned 0.500 unchanged (objective 26163 against 849).  A
+  transform-both-sides `boxCox()`/`yeoJohnson()` lambda was frozen the same way
+  and is now estimated too, bounded to `(-2, 2)` (`boxCox` 181.6 -> 43.1,
+  `yeoJohnson` 131.8 -> 120.1 on `theo_sd`).
 
 - `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
   encoder's initial posterior spread.  `"sd"` (default) makes the initial

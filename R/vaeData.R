@@ -493,6 +493,12 @@ vaeCovariates <- function(data, warn = TRUE) {
     .errAll <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
     if (nrow(.errAll) > 0L) {
       .errFree <- .errAll[!(!is.na(.errAll$fix) & .errAll$fix), , drop = FALSE]
+      ## Only parameters the stage-2 objective can actually SCORE may enter the
+      ## optimizer.  An error form it does not handle (type code 2) would
+      ## otherwise be optimized against an objective that ignores it -- the
+      ## optimizer would move it on noise alone.  Those stay at their ini()
+      ## value, which is what the moment estimator did with them anyway.
+      .errFree <- .errFree[.vaeErrTypeCode(as.character(.errFree$err)) != 2L, , drop = FALSE]
       .errRegressNames <- setdiff(as.character(.errFree$name), .regressNames)
     }
   }
@@ -503,6 +509,18 @@ vaeCovariates <- function(data, warn = TRUE) {
     .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
     .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
     .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+    ## A transform-both-sides lambda (Box-Cox / Yeo-Johnson) is only meaningful
+    ## on a narrow interval, and it is unbounded in the ini() block, so the
+    ## optimizer would otherwise search a meaningless range.  Constrain it to
+    ## (-2, 2); SAEM does the same thing by mapping lambda through a bounded
+    ## transform (`toLambda`).  A tighter user bound still wins.
+    .lamNames <- as.character(.idf$name[!is.na(.idf$err) &
+                                        .idf$err %in% c("boxCox", "yeoJohnson")])
+    if (length(.lamNames) > 0L) {
+      .isLam <- .regressNames %in% .lamNames
+      .regressLower[.isLam] <- pmax(.regressLower[.isLam], -2)
+      .regressUpper[.isLam] <- pmin(.regressUpper[.isLam], 2)
+    }
     ## An UNBOUNDED covariate coefficient regressed alone routes through the 1-D
     ## optimize() branch of .boundedResidOpt, which searches the whole interval and
     ## overshoots a shallow interior optimum on a too-wide interval.  Give an
@@ -554,6 +572,15 @@ vaeCovariates <- function(data, warn = TRUE) {
     as.integer(ifelse(is.na(.m), 0L, .m) - 1L)
   } else integer(0)
   .errThetaIdx <- as.integer(.errRow$ntheta)
+  ## Endpoint (0-based) of each error parameter.  iniDf$condition names the
+  ## endpoint it belongs to and predDf lists them in dvid order, so a
+  ## multi-endpoint model can keep its residual parameters apart instead of
+  ## pooling every observation into one variance.
+  .endpointNames <- as.character(ui$predDf$cond)
+  .errEndpoint0 <- if (nrow(.errRow) > 0L && length(.endpointNames) > 0L) {
+    .m <- match(as.character(.errRow$condition), .endpointNames)
+    as.integer(ifelse(is.na(.m), 1L, .m) - 1L)
+  } else integer(nrow(.errRow))
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
 
@@ -628,6 +655,7 @@ vaeCovariates <- function(data, warn = TRUE) {
        zPopFix = .zPopFix,
        zPopLower = .zPopLower, zPopUpper = .zPopUpper,
        errThetaIdx = .errThetaIdx, errType = .errType,
+       errEndpoint0 = .errEndpoint0, endpointNames = .endpointNames,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
        regressErrIdx0 = .regressErrIdx0,

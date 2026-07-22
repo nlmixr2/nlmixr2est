@@ -163,6 +163,12 @@
 #'     unintended there; it is offered only to reproduce its published behavior.
 #' @param residOptimize How the residual-error parameters are estimated.
 #'
+#'   Residual forms the optimizer estimates: `add`, `prop`, `add + prop`, `pow`,
+#'   `lnorm`, and a `boxCox` or `yeoJohnson` lambda (bounded to `(-2, 2)`).  For
+#'   a transform-both-sides model the objective transforms `dv` only and carries
+#'   the log-Jacobian, since `f` leaves the solve already on the transformed
+#'   scale.
+#'
 #'   * `"moment"`: the closed-form moment estimator.  For a model with
 #'     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
 #'     any other error model it is either a different estimator or, for the forms

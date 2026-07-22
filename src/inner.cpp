@@ -13293,6 +13293,14 @@ static arma::ivec gVaeRegErrMap;
 // residual at frozen etas, which is what walks a near-collinear add/prop pair
 // into a corner.
 static std::vector<double> gVaeElsY, gVaeElsF;
+// Structural transform metadata per cached observation: yj selects the
+// transform, low/hi are the logit bounds.  lambda is NOT cached -- it is an
+// estimated parameter, so it comes from the candidate vector.  The transform
+// itself and its log-Jacobian are rxode2's (_powerD / _powerL), the same pair
+// FOCEi uses through the tbs/tbsL macros; this problem is already solved and is
+// not reimplemented here.
+static std::vector<int> gVaeElsYj;
+static std::vector<double> gVaeElsLow, gVaeElsHi;
 // per error param: 0=add, 1=prop, 2=other/unhandled, 3=pow scale, 4=pow
 // exponent, 5=lnorm.  Indexed by position in `a`, NOT by position in the
 // optimizer's parameter vector -- gVaeElsMap relates the two.
@@ -13308,8 +13316,8 @@ static double gVaeElsObjR(Rcpp::NumericVector p) {
   for (arma::uword k = 0; k < gVaeElsMap.n_elem && k < (arma::uword)p.size(); ++k)
     if (gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem) ac[gVaeElsMap[k]] = p[k];
 
-  double aAdd = 0, aProp = 0, aPow = 0, aPowExp = 1, aLnorm = 0;
-  bool hasAdd = false, hasProp = false, hasPow = false, hasLnorm = false;
+  double aAdd = 0, aProp = 0, aPow = 0, aPowExp = 1, aLnorm = 0, aLambda = 1;
+  bool hasAdd = false, hasProp = false, hasPow = false, hasLnorm = false, hasTbs = false;
   for (arma::uword e = 0; e < gVaeElsType.n_elem && e < ac.n_elem; ++e) {
     switch (gVaeElsType[e]) {
     case 0: aAdd = ac[e];    hasAdd = true;   break;
@@ -13317,6 +13325,7 @@ static double gVaeElsObjR(Rcpp::NumericVector p) {
     case 3: aPow = ac[e];    hasPow = true;   break;
     case 4: aPowExp = ac[e];                  break;
     case 5: aLnorm = ac[e];  hasLnorm = true; break;
+    case 6: aLambda = ac[e]; hasTbs = true;   break;  // boxCox / yeoJohnson
     default: break;
     }
   }
@@ -13324,6 +13333,26 @@ static double gVaeElsObjR(Rcpp::NumericVector p) {
   double sum = 0;
   for (size_t i = 0; i < gVaeElsY.size(); ++i) {
     double f = gVaeElsF[i], y = gVaeElsY[i], r;
+    double jac = 0;
+    if (hasTbs && i < gVaeElsYj.size()) {
+      // transform BOTH sides with rxode2's _powerD and carry the log-Jacobian
+      // from _powerL -- exactly what FOCEi does via tbs()/tbsL().  Unlike the
+      // lnorm case the Jacobian depends on lambda, which is being estimated, so
+      // it cannot be dropped as a constant.
+      int yj = gVaeElsYj[i]; double lo = gVaeElsLow[i], hi = gVaeElsHi[i];
+      jac = -2.0 * _powerL(y, aLambda, yj, lo, hi);
+      // ONLY dv is transformed.  f comes out of the solve ALREADY on the
+      // transformed scale (a TBS model predicts the transformed quantity), which
+      // is why FOCEi applies tbs() to dv0 and not to the prediction.  Applying
+      // it to f as well double-transforms and misfits.
+      y = _powerD(y, aLambda, yj, lo, hi);
+      r = (hasAdd ? aAdd * aAdd : 0.0) + (hasProp ? aProp * aProp * f * f : 0.0);
+      if (!(r > 0)) r = 1.0;
+      double d0 = y - f;
+      double c0 = d0 * d0 / r + std::log(r) + jac;
+      sum += R_FINITE(c0) ? c0 : 1e300;
+      continue;
+    }
     if (hasLnorm) {
       // residual is normal on the LOG scale: transform both sides.  The
       // transform Jacobian does not depend on the residual scale, so it is a
@@ -13910,12 +13939,19 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           }
           // cache (y, f) at the stage-1 structural values: f is FIXED from here
           gVaeElsY.clear(); gVaeElsF.clear();
+          gVaeElsYj.clear(); gVaeElsLow.clear(); gVaeElsHi.clear();
           for (size_t i2 = 0; i2 < last.preds.size() && i2 < yList.size(); ++i2) {
             const std::vector<double>& fi = last.preds[i2];
             const std::vector<double>& yi = yList[i2];
             size_t n2 = std::min(fi.size(), yi.size());
+            rx_solving_options_ind* indI = getSolvingOptionsInd(getRxSolve_(), getRxId((int)i2));
             for (size_t o = 0; o < n2; ++o)
-              if (R_FINITE(fi[o]) && R_FINITE(yi[o])) { gVaeElsF.push_back(fi[o]); gVaeElsY.push_back(yi[o]); }
+              if (R_FINITE(fi[o]) && R_FINITE(yi[o])) {
+                gVaeElsF.push_back(fi[o]); gVaeElsY.push_back(yi[o]);
+                gVaeElsYj.push_back((int)getIndLambdaYj(indI));
+                gVaeElsLow.push_back(getIndLogitLow(indI));
+                gVaeElsHi.push_back(getIndLogitHi(indI));
+              }
           }
           gVaeElsType = errTypeCode; gVaeElsCombined1 = errCombined1;
           gVaeElsA = a;

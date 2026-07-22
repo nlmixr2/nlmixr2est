@@ -75,6 +75,61 @@ nmTest({
     expect_lt(o$objf, 0.5 * m$objf)
   })
 
+  .bcMod <- function() {
+    ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.err <- 0.7; lam <- 1 })
+    model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.err) + boxCox(lam) })
+  }
+  .yjMod <- function() {
+    ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.err <- 0.7; lam <- 1 })
+    model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.err) + yeoJohnson(lam) })
+  }
+
+  test_that("a boxCox lambda is bounded to (-2, 2)", {
+    ## unbounded in the ini() block, and only meaningful on a narrow interval;
+    ## SAEM likewise maps lambda through a bounded transform
+    p <- .vaeDataPrep(rxode2::assertRxUi(.bcMod()), nlmixr2data::theo_sd, vaeControl())
+    i <- match("lam", p$regressNames)
+    expect_false(is.na(i))
+    expect_equal(p$regressLower[i], -2)
+    expect_equal(p$regressUpper[i], 2)
+  })
+
+  test_that("a boxCox lambda is estimated and improves the fit", {
+    skip_on_cran()
+    m <- .fit(.bcMod(), "moment")
+    o <- .fit(.bcMod(), "twoStage")
+    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8)   # frozen without the optimizer
+    expect_gt(abs(o$theta[["lam"]] - 1), 1e-3)
+    expect_gte(o$theta[["lam"]], -2)
+    expect_lte(o$theta[["lam"]], 2)
+    expect_lt(o$objf, m$objf)
+  })
+
+  test_that("a yeoJohnson lambda is estimated and improves the fit", {
+    skip_on_cran()
+    ## Only dv is transformed in the objective: f leaves the solve ALREADY on the
+    ## transformed scale.  Transforming both double-transforms and misfits badly
+    ## -- it regressed this model from 131.8 to 383.6 before that was corrected,
+    ## which is what makes it worth a test rather than a comment.
+    m <- .fit(.yjMod(), "moment")
+    o <- .fit(.yjMod(), "twoStage")
+    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8)
+    expect_gt(abs(o$theta[["lam"]] - 1), 1e-3)
+    expect_gte(o$theta[["lam"]], -2)
+    expect_lte(o$theta[["lam"]], 2)
+    expect_lt(o$objf, m$objf)
+  })
+
   test_that("two-stage beats the moment estimator on a combined model", {
     skip_on_cran()
     ## add and prop are near-collinear; a single JOINT solve against the full

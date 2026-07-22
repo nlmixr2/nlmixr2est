@@ -144,6 +144,10 @@
     else if (identical(t, "pow")) 3L
     else if (identical(t, "pow2")) 4L
     else if (identical(t, "lnorm")) 5L
+    ## boxCox / yeoJohnson lambda: the stage-2 ELS objective transforms dv with
+    ## rxode2's _powerD and carries the log-Jacobian from _powerL.  f is NOT
+    ## transformed -- it leaves the solve already on the transformed scale.
+    else if (identical(t, "boxCox") || identical(t, "yeoJohnson")) 6L
     else 2L
   }, integer(1), USE.NAMES = FALSE)
 }

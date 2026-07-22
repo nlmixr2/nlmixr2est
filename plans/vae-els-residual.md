@@ -265,11 +265,36 @@ optimization and drops -- which is why `lnorm` lands in Phase 3 rather than
 Phase 4.  A Box-Cox/Yeo-Johnson `lambda` that is ESTIMATED does move the
 Jacobian, so it must be carried; that is what makes Phase 4 a separate step.
 
-### Phase 4 -- transform-both-sides
+### Phase 4 -- transform-both-sides  [DONE]
 
-* Box-Cox / Yeo-Johnson `lambda` estimated jointly with the scale parameters,
-  as SAEM's `*Lam` variants do.  Needs `_powerD`-equivalent handling inside the
-  objective so `ft`/`ytr` are on the transform scale.
+Box-Cox and Yeo-Johnson `lambda` are estimated alongside the scale parameters, in
+stage 2 (a lambda is an `err`-tagged theta, so it is a residual parameter and
+belongs in the residual block).  Nothing was reimplemented: the transform is
+rxode2's `_powerD` and the log-Jacobian is `_powerL`, the same pair FOCEi uses
+through its `tbs()`/`tbsL()` macros.  Lambda is bounded to `(-2, 2)`; it is
+unbounded in `ini()` and only meaningful on a narrow interval, and SAEM likewise
+maps it through a bounded transform.
+
+**The objective transforms `dv` ONLY:**
+
+    (tbs(dv) - f)^2 / r + log(r) + jacobian
+
+`f` leaves the solve ALREADY on the transformed scale, because a TBS model
+predicts the transformed quantity -- which is why FOCEi applies `tbs()` to `dv0`
+and never to the prediction.  Transforming both double-transforms and misfits
+badly:
+
+| model | double-transform (wrong) | dv only (correct) | moment |
+|---|---|---|---|
+| `boxCox` | 158.453 | **43.105** | 181.627 |
+| `yeoJohnson` | 383.647 | **120.054** | 131.812 |
+
+Yeo-Johnson under the double transform regressed so far that it looked like a
+feature that could not work, and was briefly gated out on a guess about `DV == 0`
+handling.  The guess was wrong; the transform was.  Worth remembering that a
+plausible-looking regression was a bug in the objective, not a property of the
+model -- and that the tests written against the wrong objective passed 25/25 and
+would have locked it in.
 
 ### Phase 5 -- multiple endpoints
 
