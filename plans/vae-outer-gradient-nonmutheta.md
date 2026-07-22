@@ -1489,3 +1489,26 @@ This is why the bug looked IOV-specific: `.uiFinalizeIov` is simply the first
 place a NULL `sigdig` reaches `signif()`.  Any other method with a NULL default
 would hit it in the same place, and `advi` was one bad IOV fit away from the same
 crash.
+
+##### After the sigdig fix: `.vaeToFit` REPLAYS CLEANLY
+
+Replaying `.vaeToFit(E, F)` at top level now completes with no error -- only
+warnings ("some etas defaulted to non-mu referenced ... rx.iov.cl.2", the known
+muffled one, and "gradient problems with covariance").
+
+But the real fit still ends in "subscript out of bounds".  Since `.vaeToFit`
+itself now succeeds, that error must come from AFTER it returns -- i.e. in the
+outer `nlmixr2()` flow (the post-estimation path: `.nlmixrEstUpdatesOrigModel`,
+the outer-level hook run, table/residual assembly), not from output construction.
+
+That is a different, later failure than everything chased so far, and the
+diagnostic tools now point somewhere new:
+  * the `.vaeToFit` replay is CLEAN, so stop probing inside it;
+  * catch instead around `nlmixr2Est0`/the post-estimation path in `nlmixr2()`,
+    or bisect the outer flow the same way `.vaeToFit` was bisected (print at each
+    stage; note `trace()` needs `where=asNamespace("nlmixr2est")`).
+
+Progress this round is real and measurable: the original error
+("invalid second argument of length 0") is fixed at its true root (NULL `sigdig`
+reaching `signif()`), `advi` was fixed at the same time, focei is unaffected
+(tv = 3.42719), and the IOV failure has moved strictly later in the pipeline.
