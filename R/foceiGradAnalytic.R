@@ -464,6 +464,17 @@
 #' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject re-solve).
 #' @noRd
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
+  ## est="vae" nonMuTheta="grad": solve the augmented model IN THE SHARED FOCEi
+  ## pool (which it sized) and take the per-subject E structures straight from
+  ## C++.  This avoids rxode2::rxSolve, which frees and rebuilds the global solve
+  ## on every M-step.  A NULL from the solver falls through to the rxSolve path.
+  if (!is.null(.vaeGradEnv$outerCols)) {
+    .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes),
+                                   .vaeGradEnv$outerCols,
+                                   as.integer(.vaeGradEnv$cores)),
+                    error = function(e) NULL)
+    if (!is.null(.Ec)) return(.Ec)
+  }
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
   etav <- paste0("ETA_", seq_len(neta), "_")
   pars <- data.frame(ID = ids)

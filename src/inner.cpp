@@ -4906,11 +4906,9 @@ static SEXP covSolveArgs_ = R_NilValue;
 // est="impmap": theta-sensitivity model that sizes the shared pool (the largest
 // structure), or R_NilValue to size for the inner model as usual.
 SEXP _impPoolModel = R_NilValue;
-// est="vae" nonMuTheta="grad": vaeInnerSetup_ sets this before foceiSetup_ so the
-// solve args get stashed.  The VAE reaches foceiSetup_ with a DERIVED focei
-// control (.vaeInnerFoceiControl), which carries no nonMuTheta, so the flag rides
-// beside it rather than through the foceiControl whitelist.  Consumed (reset) by
-// foceiSetup_, like _impPoolModel.
+// est="vae" nonMuTheta="grad" on the (current) rxSolve path: stash the solve args
+// so restoreFitSolve_ can put the inner solve back after the augmented solve.
+// Goes away once the pooled vaeOuterSolve_ path is enabled.
 static bool _vaeNeedSolveArgs = false;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
@@ -5354,8 +5352,6 @@ NumericVector foceiSetup_(const RObject &obj,
     // stash the solve args for covType="analytic" and fast (both replace the fit's
     // global solve with augmented-sensitivity solves and need restoreFitSolve_);
     // avoids retaining the model/dataset for the session on every plain FD fit
-    // est="vae" nonMuTheta="grad" runs the same augmented solves from its M-step
-    // (.vaeGradEval) and needs the same restoreFitSolve_ afterwards.
     bool _needSolveArgs =
       (foceiO.containsElementNamed("covType") &&
        as<std::string>(foceiO["covType"]) == "analytic") ||
@@ -10133,8 +10129,17 @@ RObject vaeInnerSetup_(Environment e) {
       if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
     }
   }
-  // nonMuTheta="grad" runs augmented-sensitivity solves from the M-step, which
-  // free the global solve -- stash the args so restoreFitSolve_ can put it back.
+  // nonMuTheta="grad": the augmented model is the LARGEST structure, so it sizes
+  // the shared solve pool and the inner MAP runs under ind->neqOverride -- the
+  // same arrangement est="impmap" uses.  Nothing is freed by the M-step, so there
+  // is no solve-arg stash and no restore.
+  if (e.exists("poolModel")) {
+    RObject pm = e["poolModel"];
+    if (rxode2::rxIs(pm, "rxode2")) {
+      _impPoolModel = pm;
+      if (e.exists("innerNeq")) op_focei.innerNeq = as<int>(e["innerNeq"]);
+    }
+  }
   _vaeNeedSolveArgs = e.exists("vaeGradSolveArgs") && as<bool>(e["vaeGradSolveArgs"]);
   NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                                       _rxInv, _lower, _upper, _etaMat, _control);
@@ -10353,6 +10358,169 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
   List fl(preds ? nid : 0);
   if (preds) for (int id = 0; id < nid; ++id) fl[id] = NumericVector(pf[id].begin(), pf[id].end());
   return List::create(_["obj"] = objR, _["lp"] = lpR, _["f"] = fl);
+}
+
+// ---------------------------------------------------------------------------
+// nonMuTheta="grad": solve the augmented outer-gradient model IN THE SHARED POOL.
+//
+// The pool is sized for this model (it is the largest structure -- 26 states /
+// 29 lhs vs the inner model's 6 / 6 on a one-compartment fit), and the inner MAP
+// runs under ind->neqOverride, exactly the arrangement impmap uses for its
+// theta-sensitivity model.  Both models present the SAME positional parameter
+// layout (THETA[1..n], ETA[1..k] vs THETA_1_.., ETA_1_..: different spelling,
+// identical order), so op_focei.thetaTrans / etaTrans address both.
+//
+// This replaces routing the augmented model through rxode2::rxSolve, which calls
+// rxSolveFree() and rebuilds the global solve on every M-step.  Nothing is freed
+// here, so there is no restore.
+//
+// The lhs buffer is OURS, sized to the augmented model's own width: rxode2's
+// per-thread slice is sized for the inner model, so calc_lhs through it would
+// overflow (the impmap M-step bug).  Per-subject writes are disjoint, so the loop
+// parallelizes under the vaeInnerLikCore discipline.
+//
+// Returns the per-subject `E` list .foceiAnalyticGradCore consumes directly --
+// no intermediate column matrix for R to re-slice.
+struct VaeOuterE {
+  arma::vec f, R;
+  arma::mat a, aR, Rsig;
+  arma::cube A, AR, RsigDir, Rsig2;
+  arma::mat trans;              // [no, 4] yj/lambda/low/hi when the model has one
+  int nobs = 0;
+  bool ok = false;
+};
+
+//[[Rcpp::export]]
+List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
+  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
+      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  const int nsub = (int)getRxNsub(rx);
+  if (ebes.nrow() != nsub) return R_NilValue;
+  const int neta = (int)op_focei.neta;
+  // 0-based lhs offsets, resolved in R from .foceiAnalyticCols against this
+  // model's own lhs names (a rename there surfaces as a clean R-side error
+  // rather than a silent wrong column here).
+  IntegerVector f1 = cols["f1"], f2 = cols["f2"], iiF = cols["iiF"], jjF = cols["jjF"];
+  IntegerVector fDirIdx = cols["fDirIdx"];
+  const int predf = as<int>(cols["predf"]);
+  const int nd = as<int>(cols["nd"]);
+  const bool hasR = as<bool>(cols["hasR"]);
+  const bool hasT = as<bool>(cols["hasT"]);
+  IntegerVector rvar1, rvar2, ii, jj, rsig, rsig2, sigA, sigB, tr;
+  int rvarf = -1; int nsig = 0;
+  if (hasR) {
+    rvarf = as<int>(cols["rvarf"]);
+    rvar1 = cols["rvar1"]; rvar2 = cols["rvar2"]; ii = cols["ii"]; jj = cols["jj"];
+    rsig = cols["rsig"]; rsig2 = cols["rsig2"]; sigA = cols["sigA"]; sigB = cols["sigB"];
+    nsig = rsig.size();
+  }
+  List rsig1 = hasR && cols.containsElementNamed("rsig1") ? as<List>(cols["rsig1"]) : List();
+  if (hasT) tr = cols["trans"];
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  cores = min2(cores, getOpCores(op));
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    int id = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    int _rxId = getRxId(id);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+    VaeOuterE& E = Es[(size_t)id];
+    // theta + eta into this subject's par_ptr (shared positional layout)
+    for (int t = 0; t < (int)op_focei.ntheta && t < thVals.size(); ++t)
+      setIndParPtr(ind, op_focei.thetaTrans[t], thVals[t]);
+    for (int j = 0; j < neta; ++j)
+      setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
+    // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
+    IndNeqOverrideGuard neqGuard(ind, op_focei.vaeOuterNeq);
+    iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
+    vaeOuterOde(id);
+    double *solve0 = getIndSolve(ind);
+    if (getOpNeq(op) > 0 && ISNA(solve0[0])) { E.ok = false; continue; }
+    int nobs = 0;
+    for (int q = 0; q < getIndNallTimes(ind); ++q)
+      if (getIndEvid(ind, getIndIx(ind, q)) == 0) nobs++;
+    E.nobs = nobs;
+    E.f.set_size(nobs); E.a.zeros(nobs, nd); E.A.zeros(nobs, nd, nd);
+    if (hasR) {
+      E.R.set_size(nobs); E.aR.zeros(nobs, nd); E.AR.zeros(nobs, nd, nd);
+      if (nsig > 0) {
+        E.Rsig.zeros(nobs, nsig); E.RsigDir.zeros(nobs, nd, nsig);
+        E.Rsig2.zeros(nobs, nsig, nsig);
+      }
+    }
+    if (hasT) E.trans.zeros(nobs, 4);
+    // OUR lhs buffer, this model's width -- never rxode2's inner-sized slice
+    std::vector<double> lhsBuf((size_t)op_focei.vaeOuterNlhs);
+    double *lhs = lhsBuf.data();
+    iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
+    int ko = 0;
+    for (int q = 0; q < getIndNallTimes(ind) && ko < nobs; ++q) {
+      setIndIdx(ind, q);
+      int kk = getIndIx(ind, q);
+      double curT = getTime(kk, ind);
+      rxVaeOuter.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
+      if (getIndEvid(ind, kk) != 0) continue;   // dose rows: solve advanced, no output
+      E.f[ko] = lhs[predf];
+      for (int d = 0; d < f1.size(); ++d) E.a(ko, fDirIdx[d]) = lhs[f1[d]];
+      for (int r = 0; r < f2.size(); ++r) {
+        double v = lhs[f2[r]];
+        E.A(ko, iiF[r], jjF[r]) = v; E.A(ko, jjF[r], iiF[r]) = v;
+      }
+      if (hasR) {
+        E.R[ko] = lhs[rvarf];
+        for (int d = 0; d < rvar1.size(); ++d) E.aR(ko, d) = lhs[rvar1[d]];
+        for (int r = 0; r < rvar2.size(); ++r) {
+          double v = lhs[rvar2[r]];
+          E.AR(ko, ii[r], jj[r]) = v; E.AR(ko, jj[r], ii[r]) = v;
+        }
+        for (int s = 0; s < nsig; ++s) {
+          E.Rsig(ko, s) = lhs[rsig[s]];
+          IntegerVector r1 = as<IntegerVector>(rsig1[s]);
+          for (int d = 0; d < r1.size(); ++d) E.RsigDir(ko, d, s) = lhs[r1[d]];
+        }
+        for (int r = 0; r < rsig2.size(); ++r) {
+          double v = lhs[rsig2[r]];
+          E.Rsig2(ko, sigA[r], sigB[r]) = v; E.Rsig2(ko, sigB[r], sigA[r]) = v;
+        }
+      }
+      if (hasT) for (int c = 0; c < 4; ++c) E.trans(ko, c) = lhs[tr[c]];
+      ko++;
+    }
+    E.ok = (ko == nobs);
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // R objects are built OUTSIDE the parallel region
+  List out(nsub);
+  for (int i = 0; i < nsub; ++i) {
+    VaeOuterE& E = Es[(size_t)i];
+    if (!E.ok) return R_NilValue;              // any failed subject -> caller falls back
+    List Ei = List::create(_["f"] = wrap(E.f), _["a"] = wrap(E.a), _["A"] = wrap(E.A));
+    if (hasR) {
+      Ei["R"] = wrap(E.R); Ei["aR"] = wrap(E.aR); Ei["AR"] = wrap(E.AR);
+      if (nsig > 0) {
+        Ei["Rsig"] = wrap(E.Rsig); Ei["RsigDir"] = wrap(E.RsigDir);
+        Ei["Rsig2"] = wrap(E.Rsig2);
+      }
+    }
+    if (hasT) {
+      NumericMatrix tm = wrap(E.trans);
+      Ei["trans"] = List::create(_["yj"] = tm(_, 0), _["lambda"] = tm(_, 1),
+                                 _["low"] = tm(_, 2), _["hi"] = tm(_, 3));
+    }
+    out[i] = Ei;
+  }
+  return out;
 }
 
 // ===========================================================================
@@ -13341,10 +13509,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       } catch (...) {
         grR = R_NilValue;
       }
-      // The augmented solve replaced the global solve; the next vaeInnerLikCore
-      // would read the last augmented subject.  A failed restore leaves nothing
-      // valid to fall back TO (bobyqa needs the same inner solve), so stop rather
-      // than let the rest of the fit run against a dangling solve.
+      // The rxSolve path replaced the global solve; restore before the next
+      // vaeInnerLikCore.  (Goes away with the pooled vaeOuterSolve_ path.)
       if (!restoreFitSolve_())
         stop("est=\"vae\": could not restore the inner solve after the analytic gradient");
       if (!Rf_isNull(grR)) {

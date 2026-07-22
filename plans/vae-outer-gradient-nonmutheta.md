@@ -307,3 +307,36 @@ bounded transforms in).  Remaining:
 2. **Cost** -- one augmented solve per M-step vs dozens of full inner sweeps for
    bobyqa should be a clear win; measure rather than assume, since the augmented
    model is larger per solve.
+
+### Phase 2b status -- BLOCKED on a parameter-NAME mismatch
+
+`vaeOuterSolve_` is written, compiles, registered in `src/init.c`, and its column
+resolution (`.vaeOuterCols`) verifies against the augmented model's real lhs
+(`predf=0, f1=1,2,3, f2=4..9, rvarf=10`, 29 lhs).  The `.foceiAnalyticSolveAll`
+branch is written.  What blocks it is pool sizing:
+
+```
+Error: The following parameter(s) are required for solving:
+       ETA_2_, ETA_1_, THETA_4_, THETA_3_, THETA_2_, THETA_1_
+```
+
+`foceiSetup_`'s `rxSolve_` matches parameters BY NAME, and supplies the inner
+model's `THETA[1]`/`ETA[1]`, while the augmented model declares `THETA_1_`/`ETA_1_`
+(the generated-model convention in CLAUDE.md).  The positional LAYOUT already
+agrees -- verified: same count, same order, only the spelling differs -- so this
+needs the augmented model emitted with the inner model's parameter spelling, the
+way `.impmapThetaSensModel` does for the imp pool.  It is not a layout change.
+
+Until that lands both the pool wiring (`.env$poolModel`) and the
+`.foceiAnalyticSolveAll` branch (`.vaeGradEnv$outerCols`) are deliberately left
+OFF, and the M-step keeps the rxSolve + `restoreFitSolve_` path.
+
+**Do not enable one without the other.**  Running `vaeOuterSolve_` against an
+inner-sized pool writes 26 states / 29 lhs into buffers sized for 6 / 6 and dies
+with `double free or corruption (!prev)` -- observed, not hypothetical.  That is
+the same class of failure the plan warns about for the lhs buffer, and it is why
+the buffer is ours; the STATE array is still rxode2's and is sized by the pool.
+
+Next step: emit the augmented model with `THETA[n]`/`ETA[n]` parameter names (or
+teach `foceiSetup_` to supply both spellings), then flip both switches together
+and re-run the theo_sd comparison -- expect the ~15s gap over `regress` to close.

@@ -750,6 +750,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeOuterSolve_
+List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores);
+RcppExport SEXP _nlmixr2est_vaeOuterSolve_(SEXP thValsSEXP, SEXP ebesSEXP, SEXP colsSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thVals(thValsSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type ebes(ebesSEXP);
+    Rcpp::traits::input_parameter< List >::type cols(colsSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeOuterSolve_(thVals, ebes, cols, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npBuildPsi
 NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores);
 RcppExport SEXP _nlmixr2est_npBuildPsi(SEXP etaPointsSEXP, SEXP coresSEXP) {

@@ -41,10 +41,6 @@
   .env$est <- est
   .env$table <- NULL
   .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
-  ## nonMuTheta="grad": tell foceiSetup_ to stash the solve args so the M-step's
-  ## augmented solves can be undone with restoreFitSolve_.  Rides beside the
-  ## derived focei control, which carries no nonMuTheta of its own.
-  .env$vaeGradSolveArgs <- identical(control$nonMuTheta, "grad")
   ## fit-flow-derived control fields
   .env$control$est <- est
   .env$control$printTop <- FALSE
@@ -61,6 +57,36 @@
   .om <- diag(diag(.om), nrow(.om))
   dimnames(.om) <- dimnames(.ui$omega)
   .env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
+  ## nonMuTheta="grad": the augmented outer-gradient model is solved in the SHARED
+  ## pool, so it must SIZE that pool -- it is the larger structure (26 states / 29
+  ## lhs vs 6 / 6 on a one-compartment fit).  The inner MAP then runs under
+  ## ind->neqOverride, exactly as est="impmap" does with its theta-sens model.
+  ## Nothing is freed by the M-step, so no solve-arg stash is needed.
+  if (identical(control$nonMuTheta, "grad")) {
+    ## .ui$control was replaced with the DERIVED focei control above, so
+    ## .analyticGradCaller (which rxUiGet.foceiOuter consults) would resolve to NA.
+    ## Re-mark it before asking for the augmented model.
+    .fcg <- .ui$control
+    .fcg$nonMuTheta <- "grad"
+    assign("control", .fcg, envir = .ui)
+    .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
+    if (!is.null(.am) && inherits(.am$augMod, "rxode2") && !is.null(.env$model)) {
+      .env$model$vaeOuter <- .am$augMod
+      ## NOT YET: pool sizing is blocked on a parameter-NAME mismatch.  The
+      ## augmented model declares THETA_1_/ETA_1_ (the generated-model convention)
+      ## while foceiSetup_ supplies the inner model's THETA[1]/ETA[1], and
+      ## rxSolve_ matches by name -- "The following parameter(s) are required for
+      ## solving: ETA_1_, THETA_1_, ...".  The positional layout already agrees
+      ## (verified: same count, same order), so this needs the augmented model
+      ## emitted with the inner model's parameter SPELLING (as
+      ## .impmapThetaSensModel does for the imp pool), not a layout change.
+      ## Until then the M-step keeps the rxSolve path + restoreFitSolve_.
+      ## .env$poolModel <- .am$augMod
+      ## .env$innerNeq <- length(rxode2::rxModelVars(.env$model$inner)$state)
+    }
+  }
+  ## the rxSolve path frees the global solve, so stash the args for restoreFitSolve_
+  .env$vaeGradSolveArgs <- identical(control$nonMuTheta, "grad")
   vaeInnerSetup_(.env)
   .env
 }
