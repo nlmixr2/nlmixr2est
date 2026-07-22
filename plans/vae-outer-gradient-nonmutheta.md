@@ -523,3 +523,37 @@ LESSON: when validating a C-side accumulator against an R reference, reproduce t
 C code's DOMAIN HANDLING (flooring, censoring, dropped rows), not just its formula.
 Three separate wrong conclusions on this branch came from a plausible-looking
 reference that differed from the implementation in exactly one such detail.
+
+### est="vae" + IOV: localized to .vaeToFit, NOT to nonMuTheta
+
+An earlier note on this branch said "est=vae + IOV is broken on main for every
+nonMuTheta mode".  That was too broad and the mechanism was wrong.  Measured:
+
+| configuration | result |
+|---|---|
+| `test-vae-iov.R` (all-mu, `covariateSelection=FALSE`, `returnVae=TRUE`) | **9/9 PASS** |
+| all-mu, `covSel=TRUE`, `returnVae=FALSE` | ERROR |
+| all-mu, `covSel=FALSE`, `returnVae=FALSE` | ERROR |
+| non-mu `tv`, `covSel=TRUE/FALSE`, `returnVae=FALSE` | ERROR |
+| all-mu, `covSel=FALSE`, **`returnVae=TRUE`** | **OK** |
+
+So it is NOT the `nonMuTheta` mode (`eta`/`fix` fail too), NOT the mu-structure
+(all-mu fails), and NOT covariate selection (fails with it off).  The single
+discriminator is `returnVae`: with `TRUE` the raw VAE object is returned and the
+run succeeds; with `FALSE` the fit-object assembly `.vaeToFit` runs and throws
+`invalid second argument of length 0`.
+
+**TRAINING WITH IOV WORKS.**  The bug is in building the nlmixr2 fit object from
+an IOV VAE result.  That is also why `test-vae-iov.R` is green -- it asserts on
+the raw object (`fit$zPop`, `fit$omega`, `fit$prep`) and never exercises
+`.vaeToFit`, so the whole fit-assembly path is untested for IOV.
+
+The error carries no call (`conditionCall` is NULL), so bisect `.vaeToFit`
+directly: the per-occasion expanded etas (`rx.iov.cl.1/.2`) are the obvious
+suspect -- the eta-collapse/output code paths are written against ui-level etas,
+and the runtime vector is longer.  Note `.vaeNonMuThetas`/`isFree` handling is a
+red herring here; `isFree` is already respected by the covariate B&B
+(`inner.cpp:13480`).
+
+Follow-up: add a `returnVae=FALSE` case to `test-vae-iov.R` so the assembly path
+is covered.
