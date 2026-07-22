@@ -61,65 +61,26 @@ its estimation methods.
 We have made this switchable: `vaeControl(mStepObjective = "elbo")` reproduces
 your plain-bound M-step (and correspondingly disables the gradient option).
 
-## What we checked before writing -- and a correction to ourselves
+## A comparison we withdrew
 
-We initially suspected this deviation was behind a difference in Case Study 2
-(neonatal weight, 189 neonates): we reproduce the canonical gestational-age
-effect on birth weight, but our run also retains GA on `kin` and a small sex
-effect on birth weight, where the paper reports the single effect.
+An earlier draft of this note raised a covariate-selection difference on Case
+Study 2: our fit selects several effects where the paper reports fewer.  **We
+have withdrawn that entirely, because the comparison was invalid.**
 
-**That suspicion was wrong, and we would rather say so plainly than send you a
-false lead.**  Every structural parameter in the neonatal model is
-mu-referenced, so the model contains no unmatched theta and the objective option
-has nothing to act on.  Re-running the case study under
-`mStepObjective = "elbo"` reproduces our default run *bit for bit* -- identical
-population parameters, identical omegas, identical residual error, identical
-selected covariate set.  We have pinned that identity as a regression test.
+The repository ships *simulated* neonatal data (189 subjects, 1120 observations)
+because, as the README states, the real data cannot be shared.  The paper's
+Case Study 2 results are from the real cohort of N = 2425.  We were comparing a
+fit on the 189-subject simulated set against a figure produced from 2425 real
+neonates -- different data, so there was never anything to reconcile.  We are
+recording this here only so that the omission is deliberate rather than
+accidental.
 
-We also ruled out the obvious second explanation, a too-short schedule.  At your
-full schedule (`itersBurnIn = 100`, `klWarmup = 50`, `gammaIter = 250`,
-`iters = 300`) our run selects *more* terms, not fewer -- five: GA on birth
-weight (1.88), GA on `kin` (2.59), sex on birth weight (0.09), mother's age on
-`kin` (-0.27) and parity on `kin` (0.12).
-
-Reading your `pop_parameter` source we found a third candidate and tested that
-too: **what the L0 selection regresses.**  The penalized criterion itself is
-identical on both sides -- you minimize
-`sum_squares(y - X beta) + alpha_pen * ln(nbatch) * sum(z)` with `y` and `X` both
-scaled by `1/sqrt(omega_pop[k])`, which is exactly our
-`RSS_S/omega + alpha*ln(N)*|S|`.  But your `y` is the SAEM sufficient statistic
-`s1`, an exponential moving average of the posterior means
-(`s1 <- s1 + gamma*(mu - s1)`), where ours was the current posterior mean.  We
-have since switched to the smoothed statistic to match you (it is now our
-default, independently of this question).
-
-It makes essentially no difference: the same five terms at the full schedule, the
-same three at the short one, coefficients agreeing to about 0.05.  In hindsight
-that is what the gain schedule implies -- `gamma` is exactly 1 until
-`gamma_iter` (250 of 300 iterations) in both implementations, so `s1` *equals*
-the posterior mean for most of a run and is averaged only over the closing tail.
-
-We also varied the inner likelihood.  Since you report through a FOCE-style
-linearization, `likelihood = "foce"` (and `"focep"`) is a closer match to your
-pipeline than our `"focei"` default; all four of our settings select the same
-five terms, coefficients differing by at most ~0.03.
-
-**So we cannot account for the difference.**  Four candidates tested, four
-eliminated.  What we have not ruled out: how the candidate covariate columns are
-constructed (centering/transformation), the omega values in force at selection
-time, and the possibility that the published figure reports the headline effect
-rather than the complete selected set -- which would mean there is no discrepancy
-at all.
-
-Where the two objectives *do* differ is on a model that carries an unmatched
-theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
-`tv` = 3.4293), a short 80-iteration schedule gives:
-
-| M-step | `tv` |
-|---|---|
-| full outer objective + analytic gradient | 3.4286 |
-| full outer objective + derivative-free   | 3.4360 |
-| plain variational bound (your M-step)    | 3.4214 |
+For what it is worth, the exercise was still useful to us: chasing the
+non-difference turned up several genuine mismatches on our side that we have
+since fixed (an off-by-one in our smoothing gain, an omega update we smoothed
+twice, encoder-input standardization computed over the observed values rather
+than the padded matrix, and a residual model that estimated a proportional term
+where yours fixes it at zero).
 
 ## One thing we would like your read on: the padded encoder inputs
 
@@ -164,18 +125,15 @@ reasoning; if it is incidental, it may be worth a note for reimplementers.
    Laplace-corrected marginal while the latent parameters keep the variational
    bound?  Our concern is the obvious one: it is a mixed objective, and we would
    value a second opinion on whether that is principled or merely convenient.
-3. For Case Study 2, does your reported result reflect the *complete* selected
-   set, or the effect you chose to highlight?  If additional terms were selected
-   and not shown, there may be no discrepancy here at all, and we would like to
-   stop looking for one.
-4. If it is the complete set: can you see what we are doing differently?  We are
-   happy to share our run.  Our remaining suspects are the construction of the
-   candidate covariate columns and the omega values in force at selection time,
-   but we are guessing at this point.
-5. Is the padded-matrix encoder standardization above intended?
-6. Would a shared benchmark be of interest -- your Case Study 2 at the full
-   schedule, same data -- so that the difference can be pinned to something
-   specific rather than guessed at?
+3. Is the padded-matrix encoder standardization above intended?
+4. Both `alpha_KL` and `alpha_pen` are built as `linspace(..., kl_iter)` and then
+   indexed as `alpha_KL[iter]` with `iter` running from 1.  That skips element 0
+   and reaches the final value one iteration early -- the first ramp value is
+   never used.  Is that intended, or an off-by-one?
+5. Would you be willing to share the *selected covariate set* from the simulated
+   neonatal data in the repository (not the real cohort)?  That is the one
+   artifact that would let anyone reimplementing check themselves against you
+   end to end, and it involves no confidential data.
 
 ## Status in our documentation
 
