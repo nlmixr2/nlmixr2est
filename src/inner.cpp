@@ -13351,8 +13351,14 @@ static double gVaeFreezeObjR(Rcpp::NumericVector p) {
   vaeInnerUpdateParCore(thv, gVaeRegOmega);
   for (int id = 0; id < (int)gVaeFreezeEta.n_rows; ++id) vaeRestoreFrozen(id);
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
-  vaeInnerLikCore(gVaeFreezeEta, gVaeFreezeCores, false, false, obj, lp, pf,
-                  gVaeRegAdjOuter);
+  // ALWAYS the full outer objective, never mStepObjective.  A residual scale at
+  // fixed etas is estimated against the marginal likelihood; the reference has
+  // no plain-bound analogue for it (it uses a closed-form moment estimator, which
+  // is what residOptimize="moment" reproduces).  Threading mStepObjective in here
+  // would also silently widen its documented scope, which is the non-mu
+  // structural theta M-step -- and it broke the neonatal model's outer/elbo
+  // identity, since that model's only optimized parameter is the residual.
+  vaeInnerLikCore(gVaeFreezeEta, gVaeFreezeCores, false, false, obj, lp, pf, true);
   double v = arma::accu(obj);
   return R_FINITE(v) ? v : std::numeric_limits<double>::max();
 }
@@ -13842,12 +13848,16 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         std::vector<arma::uword> keep;
         for (int j = 0; j < m; ++j)
           if (!(j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0)) keep.push_back((arma::uword)j);
-        if (!keep.empty() && (int)keep.size() < m) {
-          arma::uvec kI(keep);
-          stage1Idx.set_size(kI.n_elem); stage1Map.set_size(kI.n_elem);
-          for (arma::uword k = 0; k < kI.n_elem; ++k) {
-            stage1Idx[k] = regIdx[kI[k]]; stage1Map[k] = -1;
-          }
+        // Restrict stage 1 to the structural thetas whenever ANY parameter is
+        // residual.  When `keep` is EMPTY the set is residual-only (the common
+        // case: every structural parameter mu-referenced, so only the error
+        // parameters are optimized) -- stage 1 then has nothing to do and must
+        // be skipped, or it would optimize the residuals itself and stage 2
+        // would never see them.
+        arma::uvec kI(keep);
+        stage1Idx.set_size(kI.n_elem); stage1Map.set_size(kI.n_elem);
+        for (arma::uword k = 0; k < kI.n_elem; ++k) {
+          stage1Idx[k] = regIdx[kI[k]]; stage1Map[k] = -1;
         }
       }
       // closed-form moment estimate at the current posterior means: the warm
@@ -13878,10 +13888,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         if (R_FINITE(hi[jj]) && par0[jj] > hi[jj]) par0[jj] = hi[jj];
       }
       double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-4;
-      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                                  Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
-                                  Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
-      Rcpp::NumericVector rx = ret["x"];
+      Rcpp::NumericVector rx(m1);
+      if (m1 > 0) {
+        Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
+                                    Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
+                                    Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
+        rx = ret["x"];
+      }
       for (int jj = 0; jj < m1; ++jj) {
         int j = s1Src[jj];
         int e = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
@@ -13905,7 +13918,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         std::vector<arma::uword> sub;
         for (int j = 0; j < m; ++j)
           if (j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0) sub.push_back((arma::uword)j);
-        if (!sub.empty() && (int)sub.size() < m) {
+        if (!sub.empty()) {   // NOT `sub.size() < m`: a residual-only set is stage 2's job
           arma::uvec sIdx(sub);
           // re-publish the base with stage-1's structural values baked in
           gVaeRegThBase = th;

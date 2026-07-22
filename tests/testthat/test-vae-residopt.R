@@ -145,6 +145,84 @@ nmTest({
     expect_lt(o$objf, m$objf)
   })
 
+  ## Systematic sweep: for every supported residual form, assert the THREE
+  ## things an objective comparison alone does not -- the parameters moved off
+  ## ini(), none of them rests on a bound, and (where a closed form exists) the
+  ## optimizer reproduces it.  See helper-vae-resid.R for why.
+  .sweep <- list(
+    list(nm = "add",        mod = NULL, pars = "add.err",              closed = "add.err"),
+    list(nm = "combined",   mod = NULL, pars = c("add.err","prop.err"), closed = NULL),
+    list(nm = "pow",        mod = NULL, pars = c("prop.err","pw"),      closed = NULL),
+    list(nm = "lnorm",      mod = NULL, pars = "add.err",               closed = NULL),
+    list(nm = "boxCox",     mod = NULL, pars = c("add.err","lam"),      closed = NULL),
+    list(nm = "yeoJohnson", mod = NULL, pars = c("add.err","lam"),      closed = NULL))
+  .sweep[[1]]$mod <- .addOnlyMod <- function() {
+    ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.err <- 0.7 })
+    model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v; cp ~ add(add.err) })
+  }
+  .sweep[[2]]$mod <- .combMod
+  .sweep[[3]]$mod <- .powMod
+  .sweep[[4]]$mod <- .lnMod
+  .sweep[[5]]$mod <- .bcMod
+  .sweep[[6]]$mod <- .yjMod
+
+  for (.case in .sweep) {
+    local({
+      cs <- .case
+      test_that(paste0("residual estimation is healthy for ", cs$nm), {
+        skip_on_cran()
+        ui <- rxode2::assertRxUi(cs$mod())
+        prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, vaeControl())
+        m <- .fit(cs$mod(), "moment")
+        o <- .fit(cs$mod(), "twoStage")
+        ## 1. every estimated residual parameter actually moved
+        expectMovedFromIni(o, ui, cs$pars)
+        ## 2. none of them is resting on a bound (the zero-collapse signature)
+        expectResidInterior(o, prep)
+        ## 3. where a closed form exists, the optimizer must reproduce it
+        if (!is.null(cs$closed)) expectMatchesClosedForm(o, m, cs$closed)
+        ## 4. and only then, the objective comparison
+        expect_lte(o$objf, m$objf + 1e-6)
+      })
+    })
+  }
+
+  test_that("a residual-ONLY parameter set still reaches stage 2", {
+    skip_on_cran()
+    ## Boundary case, and the common one: every structural parameter is
+    ## mu-referenced, so the ONLY optimized parameter is the residual.  Stage 1
+    ## then has an empty set and must be skipped; stage 2 must still run.  When
+    ## the guards read `keep.size() < m` / `sub.size() < m` this configuration
+    ## silently bypassed the two-stage path entirely -- stage 1 optimized the
+    ## residual against the full outer objective and stage 2 never executed.
+    ##
+    ## Nothing in the sweep above catches it: every model there carries a non-mu
+    ## structural theta (`lv` or `lcl`), so both stages always ran.
+    mod <- function() {
+      ini({ lka <- 0.45; lcl <- 1; lv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mod())
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, vaeControl())
+    ## the premise: the regress set is residual-only
+    expect_true(all(prep$regressErrIdx0 >= 0))
+    expect_gt(length(prep$regressNames), 0)
+    m <- .fit(mod(), "moment")
+    o <- .fit(mod(), "twoStage")
+    expectMovedFromIni(o, ui, "add.err")
+    expectResidInterior(o, prep)
+    ## pure additive: the optimizer must still land on the closed form
+    expectMatchesClosedForm(o, m, "add.err")
+  })
+
   test_that("two-stage beats the moment estimator on a combined model", {
     skip_on_cran()
     ## add and prop are near-collinear; a single JOINT solve against the full

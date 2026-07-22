@@ -493,12 +493,13 @@ vaeCovariates <- function(data, warn = TRUE) {
     .errAll <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
     if (nrow(.errAll) > 0L) {
       .errFree <- .errAll[!(!is.na(.errAll$fix) & .errAll$fix), , drop = FALSE]
-      ## Only parameters the stage-2 objective can actually SCORE may enter the
-      ## optimizer.  An error form it does not handle (type code 2) would
-      ## otherwise be optimized against an objective that ignores it -- the
-      ## optimizer would move it on noise alone.  Those stay at their ini()
-      ## value, which is what the moment estimator did with them anyway.
-      .errFree <- .errFree[.vaeErrTypeCode(as.character(.errFree$err)) != 2L, , drop = FALSE]
+      ## Every free residual parameter enters the optimizer.  The stage-2
+      ## objective evaluates the ordinary likelihood with the ODE frozen, so `r`
+      ## comes from the model's own rx_r_ and ANY error form is scored correctly
+      ## -- there is nothing left for a form-specific filter to protect against.
+      ## (It was needed only while the objective recomputed `r` itself from a
+      ## hardcoded per-form expression, which could silently ignore a parameter
+      ## and let the optimizer move it on noise.)
       .errRegressNames <- setdiff(as.character(.errFree$name), .regressNames)
     }
   }

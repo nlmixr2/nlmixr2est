@@ -381,6 +381,23 @@ joint solve that diverged: that failed because structural thetas moved at frozen
 etas, whereas here `f` is pinned and only `r` varies, which is exactly what npag
 does.
 
+### Boundary case: a residual-ONLY parameter set
+
+The two-stage guards were written as `keep.size() < m` and `sub.size() < m`,
+which silently bypassed the whole path when EVERY optimized parameter is
+residual -- stage 1 optimized the residuals itself (against the full outer
+objective, so `mStepObjective` leaked into them) and stage 2 never ran.
+
+That is the COMMON configuration, not an edge case: it is what you get whenever
+all structural parameters are mu-referenced, including the neonatal case study.
+Stage 1 now runs only over the structural parameters (empty set -> skipped,
+guarded so bobyqa is never called with zero parameters) and stage 2 runs whenever
+any residual parameter exists.
+
+Worth noting how it hid: the `theo_sd` sweep passes 78/78 and never touched this,
+because every model in it carries a non-mu structural theta (`lv` or `lcl`) so
+both stages always ran.  A residual-only model is now in the suite.
+
 ### Phase 6 -- control surface and documentation  [DONE]
 
 * `vaeControl(residOptimize=)` exists: `"twoStage"` (default), `"moment"`,
