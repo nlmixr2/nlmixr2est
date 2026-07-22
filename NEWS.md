@@ -2,6 +2,18 @@
 
 ## New features
 
+- `est="vae"` gains `vaeControl(nonMuTheta="grad")`, which estimates a structural
+  population `theta` with no random effect using the exact analytic outer
+  gradient (the machinery behind `foceiControl(fast=TRUE)`) rather than the
+  bounded `bobyqa` regression `nonMuTheta="regress"` uses: one augmented
+  sensitivity solve per M-step replaces the derivative-free sweep.  Because it
+  differentiates the marginal (Laplace) objective instead of the joint likelihood
+  at frozen encoder etas, it does not inherit `"regress"`'s frozen-eta
+  displacement -- on `theo_sd` with a non-mu-referenced `tv` it lands within
+  0.0005 of the FOCEi maximum-likelihood value against 0.012 for `"regress"`.  A
+  model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
+  `"regress"` with a note in `$runInfo`.
+
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
   covariates already written in the model.  When the model declares covariate
   effects, the automatic BICc covariate search is restricted to those
