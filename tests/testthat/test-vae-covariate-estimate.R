@@ -150,6 +150,32 @@ nmTest({
     expect_true(any(grepl("pinCovariates=FALSE", w)))
   })
 
+  test_that("a multi-covariate transformed line still pins (never falls back to full search)", {
+    ## two covariate effects in one parameter line; with muRefCovAlg off they stay
+    ## as transformed effects.  Each coefficient must be paired with ITS covariate
+    ## (not skipped), so pinning stays restrictive.
+    multi <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wt.cl <- 0.1; age.cl <- 0.1
+            add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka)
+        cl <- exp(tcl + wt.cl * log(WT / 70) + age.cl * log(AGE / 40) + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    dd <- as.data.frame(d); names(dd) <- toupper(names(dd))
+    .ageById <- stats::setNames(rep(c(30, 40, 55), length.out = length(unique(dd$ID))),
+                                as.character(unique(dd$ID)))
+    dd$AGE <- .ageById[as.character(dd$ID)]          # subject-constant
+    ui <- rxode2::assertRxUi(multi())
+    cov <- .vaeCovariateSearch(dd, unique(dd$ID))
+    pr <- .vaeModelCovariatePairs(ui, cov$covNames, cov$covType)
+    ## both coefficients detected and paired with their own covariate
+    expect_setequal(pr$coefName, c("wt.cl", "age.cl"))
+    expect_equal(pr$covName[pr$coefName == "wt.cl"], "WT")
+    expect_equal(pr$covName[pr$coefName == "age.cl"], "AGE")
+    expect_true(all(pr$inPool))                     # both are clean log forms
+  })
+
   test_that("a mu2 centered covariate is pinned via its nlmixrMuDerCov# column", {
     ## wt.cl*(WT/70) is a mu2 reference; the hook rewrites it to a linear
     ## nlmixrMuDerCov# column (centering carried by the mu2 data).  After the

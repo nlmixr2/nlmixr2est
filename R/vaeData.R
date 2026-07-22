@@ -165,6 +165,28 @@ vaeCovariates <- function(data, warn = TRUE) {
   list(inLog = FALSE, center = NA_real_)
 }
 
+#' Covariate that a coefficient multiplies, within an expression.
+#'
+#' Disambiguates which data covariate `coef` pairs with when a model line carries
+#' several covariate effects (e.g. `wt.cl*log(WT/70) + sex.cl*SEX`): walks to the
+#' `*` term containing `coef` and returns the single covariate on the other side.
+#' `NULL` when it cannot be resolved to exactly one covariate.
+#' @noRd
+.vaeCoefCov <- function(e, coef, covs) {
+  if (is.call(e)) {
+    if (identical(e[[1L]], as.name("*")) && length(e) == 3L) {
+      .lv <- all.vars(e[[2L]]); .rv <- all.vars(e[[3L]])
+      if (coef %in% .lv) { .c <- intersect(.rv, covs); if (length(.c) == 1L) return(.c) }
+      if (coef %in% .rv) { .c <- intersect(.lv, covs); if (length(.c) == 1L) return(.c) }
+    }
+    for (.i in seq_along(e)[-1L]) {
+      .r <- .vaeCoefCov(e[[.i]], coef, covs)
+      if (!is.null(.r)) return(.r)
+    }
+  }
+  NULL
+}
+
 #' Model-declared covariate/parameter pairs for pinned VAE selection.
 #'
 #' One row per model-written covariate coefficient, resolving which latent dim
@@ -202,14 +224,20 @@ vaeCovariates <- function(data, warn = TRUE) {
       if (length(.lines) == 0L) next
       .vars <- all.vars(.lines[[1L]])
       .thHit <- intersect(.thetaPool, .vars)
-      .covHit <- intersect(.allCov, .vars)
-      if (length(.thHit) != 1L || length(.covHit) != 1L) next
-      .thName <- .thHit; .covTok <- .covHit
+      if (length(.thHit) == 1L) .thName <- .thHit
+      ## a line may carry several covariate effects (e.g.
+      ## wt.cl*log(WT/70) + sex.cl*SEX): pick the covariate THIS coefficient
+      ## multiplies rather than skipping the coefficient (skipping could drop
+      ## pinning to the unrestricted full search).  Unresolved -> not pinnable.
+      .cc <- .vaeCoefCov(.lines[[1L]], .coef, .allCov)
+      if (!is.null(.cc)) .covTok <- .cc
     }
+    ## Always emit a row for a detected coefficient so pinning stays restrictive;
+    ## a pair that cannot be resolved/transferred is marked not `inPool` and
+    ## estimated in place by the regress M-step.
     .k <- match(.thName, .thetaForEta)
-    if (is.na(.k)) next
-    .j <- match(toupper(.covTok), covNames)
-    .inPool <- !is.na(.j)
+    .j <- if (!is.na(.covTok)) match(toupper(.covTok), covNames) else NA_integer_
+    .inPool <- !is.na(.k) && !is.na(.j)
     .ct <- if (.inPool) covType[.j] else NA_character_
     .userCenter <- NA_real_
     if (.inPool) {
@@ -229,9 +257,9 @@ vaeCovariates <- function(data, warn = TRUE) {
       }
     }
     .rows[[length(.rows) + 1L]] <- data.frame(
-      k = as.integer(.k),
-      covName = if (.inPool) covNames[.j] else toupper(.covTok),
-      coefName = .coef, thetaName = .thName,
+      k = if (is.na(.k)) NA_integer_ else as.integer(.k),
+      covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
+      coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
       covType = if (is.na(.ct)) NA_character_ else .ct,
       userCenter = .userCenter, inPool = .inPool,
       stringsAsFactors = FALSE)

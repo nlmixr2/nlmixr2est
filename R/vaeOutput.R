@@ -215,8 +215,10 @@
   .control <- env$vaeControl
   ## mu2/mu3 restore info staged by the preprocess hook: the focei covariance
   ## recompute below re-runs preprocessing and clears it, so snapshot it here and
-  ## reinstate it just before the mu2 finalize restores the original model.
+  ## reinstate it just before the mu2 finalize restores the original model.  The
+  ## on.exit guard keeps the global consistent even if assembly errors out.
   .savedMuRef <- .muRefTrans$cur
+  on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
   .ui2 <- if (isTRUE(fit$prep$pinActive)) .vaeUpdateModelPinned(.ui, fit) else .vaeUpdateModel(.ui, fit)
   ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
   ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
