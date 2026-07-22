@@ -849,3 +849,9 @@ NEXT EXPERIMENT (do this, do not theorize further): trace
 VAE IOV fit, and diff `ls()` + per-field class/length/dim -- the same method that
 produced the short list at `foceiFitCpp_`.  Nine hypotheses have died here; the
 next claim should come from that diff, not from reading.
+
+LAUNCHED: the script is `/tmp/creatediff.R`, output `/tmp/creatediff.out`
+(`grep '^RES' /tmp/creatediff.out`).  It traces `nlmixr2CreateOutputFromUi`,
+grabs its `env` from a SAEM IOV fit and a VAE IOV fit of the same model/data, and
+prints ONLY-IN-SAEM / ONLY-IN-VAE / per-field shape DIFFs.  If it did not finish,
+re-run it -- it is self-contained and needs no state from this session.
