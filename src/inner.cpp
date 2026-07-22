@@ -12603,7 +12603,8 @@ static inline arma::vec vaeBuildTh(const arma::vec& th, const arma::ivec& zPopTh
 static arma::vec vaeUpdateErr(const std::vector<std::vector<double> >& preds,
                               const std::vector<std::vector<double> >& yList,
                               const arma::ivec& errTypeCode, const arma::vec& a,
-                              const arma::vec& errLower, const arma::vec& errUpper) {
+                              const arma::vec& errLower, const arma::vec& errUpper,
+                              bool combined1 = false) {
   if (a.n_elem == 0) return a;
   std::vector<double> res, f;
   for (size_t i = 0; i < preds.size(); ++i) {
@@ -12623,8 +12624,27 @@ static arma::vec vaeUpdateErr(const std::vector<std::vector<double> >& preds,
     if (errTypeCode[e] == 1 && nProp == 0) { iProp = e; nProp = 1; }
   }
   const size_t m = res.size();
-  if (nAdd && nProp) {
-    // combined: res^2 ~ a^2 + b^2 f^2 via 2-col least squares (normal equations)
+  if (nAdd && nProp && combined1) {
+    // combined1: sigma = a + b*f (the reference's `sigma = a + b*x_mean`), so
+    // sigma is LINEAR in (a, b).  E|res| = sigma*sqrt(2/pi) for a normal, so
+    // regress |res| on [1, f] and undo that factor -- closed form, and the
+    // direct analogue of the res^2 fit used for combined2 below.
+    const double c = std::sqrt(2.0 / M_PI);
+    double s0 = m, s1 = 0, s11 = 0, b0 = 0, b1 = 0;
+    for (size_t o = 0; o < m; ++o) {
+      double x1 = f[o], y = std::fabs(res[o]);
+      s1 += x1; s11 += x1 * x1; b0 += y; b1 += x1 * y;
+    }
+    double det = s0 * s11 - s1 * s1;
+    if (std::fabs(det) > 0) {
+      double v0 = (s11 * b0 - s1 * b1) / det / c;
+      double v1 = (s0 * b1 - s1 * b0) / det / c;
+      v0 = std::max(v0, DBL_EPSILON); v1 = std::max(v1, DBL_EPSILON);
+      if (R_FINITE(v0)) aNew[iAdd] = v0;
+      if (R_FINITE(v1)) aNew[iProp] = v1;
+    }
+  } else if (nAdd && nProp) {
+    // combined2: res^2 ~ a^2 + b^2 f^2 via 2-col least squares (normal equations)
     double s0 = m, s1 = 0, s11 = 0, b0 = 0, b1 = 0;
     for (size_t o = 0; o < m; ++o) {
       double x1 = f[o] * f[o], y = res[o] * res[o];
@@ -13387,6 +13407,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // assigns it; "blend" is the historic gain-blended update.  Missing -> blend.
   const bool omegaSuffStat = control.containsElementNamed("omegaUpdate") &&
     as<std::string>(control["omegaUpdate"]) == "suffStat";
+  // addProp: the VAE error M-step must estimate on the SAME sigma scale the
+  // inner FOCEi likelihood uses (vaeInner.R passes addProp to foceiControl).
+  const bool errCombined1 = control.containsElementNamed("addProp") &&
+    as<std::string>(control["addProp"]) == "combined1";
   // mStepObjective: "outer" (default) scores the non-mu theta M-step against the
   // full FOCEi outer objective; "elbo" reproduces the reference's plain
   // variational bound (frozen-eta joint likelihood).  Missing field -> "outer",
@@ -13455,7 +13479,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         for (int i = 0; i < N; ++i) { double d = st.mu(i, k) - zPopCur[k]; v += d * d + arma::accu(arma::square(st.L.slice(i).row(k))); }
         omegaCur[k] = v / N;
       }
-      arma::vec aCur = vaeUpdateErr(st.preds, yList, errTypeCode, a, errLower, errUpper);
+      arma::vec aCur = vaeUpdateErr(st.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
@@ -13589,7 +13613,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         }
         omegaCur[k] = v / N;
       }
-      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
+      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
       for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPop = intercept;
@@ -13608,7 +13632,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopCur[k]; v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
         omegaCur[k] = v / N;
       }
-      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
+      arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
