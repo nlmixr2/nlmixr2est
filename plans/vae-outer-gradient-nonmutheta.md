@@ -1690,3 +1690,40 @@ they are launched detached and their results land in `/tmp/other.out`
 plain `test_file()` calls and need no state from this session.  impmap matters
 most of the three: it is the other `_impPoolModel` consumer and shares the
 output-assembly path being changed here.
+
+### OPEN RISK: the objective change may move the neonatal covariate selection
+
+The regenerated vignette fit selects THREE covariates (`beta_lW0_GA` 1.858,
+`beta_lkin_GA` 1.880, `beta_lW0_SEX` 0.090) where the article previously
+described one.  The likely cause is this branch's objective change: the non-mu
+theta M-step now optimizes the FULL outer objective, which includes the Laplace
+determinant (the Hessian term) that the previous objective left off.  Covariate
+selection is scored by a BICc-ELBO criterion, so a shifted objective can shift
+which effects clear the `log(N)` penalty.
+
+That matters more than a cosmetic doc change: the neonatal case study's canonical
+result (Rohleff et al. 2025, Fig 4 VAE column) is that GA drives birth weight, and
+this branch must not quietly change what the method reports for it.
+
+STATUS: `tests/testthat/test-vae-neonatal.R` is the golden reference.  Its
+assertion is
+
+    expect_true(fit$selected["W0", "GA"])
+
+which the regenerated fit DOES satisfy -- GA on W0 is still selected.  But note
+the test only checks that the canonical effect is PRESENT; it does not assert
+that it is the ONLY one, so it cannot by itself detect the extra `lkin`/`SEX`
+selections.  A run against the current code was still in flight at session end
+(`/tmp/gold.out`, `grep '^GOLDEN'`).
+
+TO RESOLVE:
+  * finish the golden run and confirm it passes;
+  * then decide whether the extra selections are a real improvement (the fuller
+    objective is the more correct one, so more supported effects surviving is
+    plausible) or an artifact of the short demonstration schedule -- compare
+    against a longer run before the article's headline claim is rewritten;
+  * consider tightening the golden test to pin the SELECTED SET, not just the
+    presence of GA-on-W0, so a future objective change cannot move it unnoticed.
+
+Until that is settled, treat the vignette's three-covariate commentary as
+provisional.
