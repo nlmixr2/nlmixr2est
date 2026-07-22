@@ -10,8 +10,12 @@
 # at frozen encoder etas, whose optimum is displaced from the marginal one, while
 # this differentiates the marginal (Laplace) objective.
 #
-# The augmented solve calls rxSolveFree() and replaces rxode2's global solve, so
-# the C++ caller MUST restoreFitSolve_() before touching the inner problem again.
+# Solve plumbing: the augmented model is solved IN THE SHARED FOCEi pool by
+# vaeOuterSolve_ (function-pointer swap + ind->neqOverride), which frees nothing
+# and leaves rxode2's global solve in place -- so there is NO rxSolveFree() and
+# the C++ caller must NOT restoreFitSolve_(); the inner problem is still live for
+# the next vaeInnerLikCore.  (An earlier revision did call rxSolveFree() and
+# required a restore; that is no longer how this works.)
 
 .vaeGradEnv <- new.env(parent = emptyenv())
 
@@ -70,11 +74,21 @@
 #' @param regNames names of the thetas the M-step regresses, in `regIdx` order
 #' @return invisible NULL
 #' @noRd
+## Clear EVERY per-fit field.  .vaeGradEnv has session lifetime, so anything left
+## here (notably `data` and `ids`) is retained until the next grad fit -- the
+## dataset can be large.  .vaeGradInit does overwrite all of these, so this is
+## memory hygiene rather than stale-state correctness, but a completed fit should
+## not hold its data hostage for the rest of the session.
 .vaeGradReset <- function() {
   .vaeGradEnv$active <- FALSE
   .vaeGradEnv$outerCols <- NULL
   .vaeGradEnv$am <- NULL
   .vaeGradEnv$ui <- NULL
+  .vaeGradEnv$data <- NULL
+  .vaeGradEnv$ids <- NULL
+  .vaeGradEnv$regNames <- NULL
+  .vaeGradEnv$cores <- NULL
+  .vaeGradEnv$failed <- NULL
   invisible(NULL)
 }
 

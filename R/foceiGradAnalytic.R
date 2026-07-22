@@ -461,7 +461,11 @@
 #' per-subject solve loop otherwise dominates the gradient (~87%).  Per-subject
 #' etas travel as an ID-keyed params data.frame.  Returns a per-subject list of
 #' `list(f, a, A)` (same shape as `.foceiAnalyticSolveFA`), or `NULL` on failure.
-#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject re-solve).
+#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject
+#' re-solve), EXCEPT for the `est="vae"` pooled branch below: when
+#' `.vaeGradEnv$active` is set, the solve runs in the shared FOCEi pool on behalf
+#' of `vaeControl(nonMuTheta="grad")` instead.  That branch is gated on an active
+#' call flag, not on cached state, so focei's own fast gradient is unaffected.
 #' @noRd
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
   ## est="vae" nonMuTheta="grad": solve the augmented model IN THE SHARED FOCEi
