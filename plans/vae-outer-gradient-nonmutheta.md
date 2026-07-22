@@ -964,3 +964,35 @@ ACTION: rewrite `.vaeToFit`'s pre-call block against this checklist (fullTheta,
 etaObf, omega, cov, objective, metadata, then .nlmixr2FitUpdateParams), guarding
 every muRefTable lookup on `length(...) == 1`.  Regression guard: a non-IOV VAE
 fit must come out bit-identical.
+
+### Checklist IMPLEMENTED (branch wip/vae-iov-output-contract) -- still not enough
+
+`.vaeToFit` now supplies the babelmixr2 saemix.R contract.  Parked on
+`wip/vae-iov-output-contract`, NOT on the feature branch, because it changes the
+output path for every VAE fit and the suites were not run.
+
+Implemented: `.foceiPreProcessData` for the data-derived state
+(dataSav/origData/idLvl/covLvl), then 1 `fullTheta`, 2 `etaObf`, 3 `omega`,
+6 `message`.  Every eta->theta lookup guarded on `length()==1` so an IOV eta
+falls through.
+
+Items 4/5 (`cov`, `objective`) are deliberately LEFT DERIVED, and that is
+CORRECT, not a shortcut: **the VAE objective IS the FOCEi objective** (confirmed)
+-- the builder computes it from the FOCEi inner pass at the VAE estimates, which
+is exactly what the VAE reports.  Setting `objective` here would override the
+real one on every fit.  Do not "complete" the checklist by filling those in.
+
+Verified populated on the IOV model:
+
+    fullTheta, message, idLvl, dataSav, origData
+    etaObf  12x7   ID + eta.ka,eta.cl,eta.v,rx.iov.cl.1,rx.iov.cl.2 + OBJI
+    omega   5x5    diag 0.0161, 0.048, 0.0171, 1, 1   (occasion etas fixed at 1)
+
+Nothing missing -- and the IOV fit STILL fails with the same error.  So the
+contract was genuinely unimplemented (a real gap, worth landing on its own once
+validated), but the remaining fault is DOWNSTREAM inside
+`nlmixr2CreateOutputFromUi` with all of these present.
+
+That is where the next session should bisect, and it is now a much smaller
+surface: the builder, given a complete and correct env, on a model whose only
+distinguishing feature is per-occasion etas.
