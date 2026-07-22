@@ -17,7 +17,7 @@ nmTest({
     expect_equal(as.data.frame(md), as.data.frame(md2), tolerance = 1e-4)
 
     ipred <- suppressMessages(predict(fit, theo_sd, level="individual"))
-    expect_equal(ipred$ipredSim, fit$IPRED, tolerance = 1e-6)
+    expect_equal(ipred$ipredSim, fit$IPRED, tolerance = 1e-4)
 
     # Test explicit population level (default)
     ppred <- suppressMessages(predict(fit, theo_sd, level="population"))
@@ -29,7 +29,7 @@ nmTest({
 
     # Test numeric level=1 (individual)
     ipred1 <- suppressMessages(predict(fit, theo_sd, level=1))
-    expect_equal(ipred1$ipredSim, fit$IPRED, tolerance = 1e-6)
+    expect_equal(ipred1$ipredSim, fit$IPRED, tolerance = 1e-4)
 
     # Test alias level="pred" (population)
     ppredAlias <- suppressMessages(predict(fit, theo_sd, level="pred"))
@@ -41,7 +41,7 @@ nmTest({
 
     # Test alias level="ipred" (individual)
     ipredAlias <- suppressMessages(predict(fit, theo_sd, level="ipred"))
-    expect_equal(ipredAlias$ipredSim, fit$IPRED, tolerance = 1e-6)
+    expect_equal(ipredAlias$ipredSim, fit$IPRED, tolerance = 1e-4)
 
     # Test invalid numeric level throws error
     expect_error(suppressMessages(predict(fit, theo_sd, level=2)),

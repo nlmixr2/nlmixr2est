@@ -188,7 +188,11 @@ nmTest({
     .datMM  <- .mkData(odeMM,  c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
 
     .cmp <- function(ode, mat, dat, est, ctlFun, seTol = 1e-2) {
-      .ctl <- ctlFun(print = 0, fast = TRUE, covMethod = "analytic")
+      # matExp/indLin are exact for these linear/pseudo-linear systems, so the ODE
+      # form needs an accurate solve to match; sigdig=6 keeps the ODE error well
+      # below the objf/cov comparison tolerances (the sigdig=4 default leaves ~0.7
+      # objf of ODE discretization error at the converged optimum).
+      .ctl <- ctlFun(print = 0, fast = TRUE, covMethod = "analytic", sigdig = 6)
       .fO <- .nlmixr(ode, dat, est = est, control = .ctl)
       .fM <- .nlmixr(mat, dat, est = est, control = .ctl)
       # the matExp/indLin fit walks the SAME covariance path as its ODE

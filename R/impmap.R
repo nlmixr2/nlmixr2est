@@ -88,7 +88,7 @@
 #' @examples
 #'
 #' impmapControl()
-impmapControl <- function(sigdig=3,
+impmapControl <- function(sigdig=4,
                           ...,
                           isample=300L,
                           nIter=100L,

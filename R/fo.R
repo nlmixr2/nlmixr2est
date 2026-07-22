@@ -17,7 +17,7 @@
 #' @examples
 #'
 #' foControl()
-foControl <- function(sigdig=3,
+foControl <- function(sigdig=4,
                       ...,
                       posthoc=TRUE,
                       interaction=NULL,

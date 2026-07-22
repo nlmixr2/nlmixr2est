@@ -157,7 +157,7 @@
 #'
 #' }
 #'
-agqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+agqControl <- function(sigdig=4, nAGQ=2, ..., interaction=TRUE,
                        agqLow=-Inf,
                        agqHi=Inf) {
   # interaction forces the calculation of the hessian, which is needed
