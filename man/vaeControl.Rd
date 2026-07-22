@@ -23,6 +23,7 @@ vaeControl(
   gammaSeries = c("reference", "saem"),
   sigma0Interp = c("sd", "reference"),
   residOptimize = c("twoStage", "moment", "optimize"),
+  residRhoend = NULL,
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
@@ -184,6 +185,14 @@ closing tail.  `FALSE` regresses the current posterior means.}
     residual through the full outer objective lets the Laplace terms move with
     it at frozen etas (objective 320.7 against the moment estimator's 122.5).
     Retained for comparison; prefer `"twoStage"`.}
+
+\item{residRhoend}{Final trust-region radius (`rhoend`) of the bounded
+`bobyqa` that estimates the residual parameters -- its convergence
+tolerance.  `NULL` (default) uses `rhoend`, which is itself derived from
+`sigdig`.  Set it separately when the residual step needs to converge
+tighter or looser than the non-mu structural regression: the residual step
+runs with the ODE frozen, so a tighter tolerance there is much cheaper than
+a tighter `rhoend` everywhere.}
 
 \item{omegaUpdate}{How the population variances are updated in the covariate
 M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from

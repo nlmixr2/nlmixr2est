@@ -381,14 +381,35 @@ joint solve that diverged: that failed because structural thetas moved at frozen
 etas, whereas here `f` is pinned and only `r` varies, which is exactly what npag
 does.
 
-### Phase 6 -- control surface and documentation
+### Phase 6 -- control surface and documentation  [DONE]
 
-* `vaeControl(residOptimize=)` mirroring npag's `"alternate"`/`"none"`/`"final"`,
-  and a `type=` for the optimizer choice mirroring `saemControl()`.
-* Update the `est = "vae"` article: the residual-error section currently
-  documents the smoothing-order difference and says matching SAEM would need
-  per-endpoint statistics plus an optimizer branch.  That text is the
-  specification for this work and should be replaced by what was built.
+* `vaeControl(residOptimize=)` exists: `"twoStage"` (default), `"moment"`,
+  `"optimize"` (diagnostic joint solve).
+* The `est = "vae"` article's residual section is rewritten.  It had described
+  the smoothing-order difference as the open gap and said matching SAEM would
+  need per-endpoint statistics plus an optimizer branch -- that text was the
+  specification for this work and is replaced by what was built.
+
+**A `type=` optimizer control was considered and deliberately NOT added.**
+`saemControl(type=)` defaults to `newuoa`, which is UNBOUNDED -- SAEM keeps its
+residual parameters positive by optimizing their square roots.  The VAE's
+residual step depends on BOUNDS: `ini()` bounds are honored, a Box-Cox lambda is
+constrained to `(-2, 2)`, and residual scale parameters are floored strictly
+above zero to stop the collapse described above.  An unbounded optimizer would
+silently discard all three and reintroduce the degeneracy.  `minqa::bobyqa`
+(bounded, via `.boundedResidOpt`) is the right and only choice here; offering
+`newuoa` would be a footgun rather than a feature.  npag reached the same
+conclusion -- it uses bounded bobyqa for exactly this step.
+
+`vaeControl(residRhoend=)` exposes the residual optimizer's convergence
+tolerance separately from `rhoend`, defaulting to it.  Worth having as its own
+knob because the residual step runs with the ODE frozen -- tightening it costs
+almost nothing, whereas tightening `rhoend` also tightens the structural
+regression, which re-solves the ODE per candidate.
+
+npag's `"none"`/`"final"` modes are not ported either: `"none"` is already
+expressible (fix the parameters in `ini()`), and `"final"` is a
+converged-support notion that does not map onto a VAE training schedule.
 
 ## Risks
 

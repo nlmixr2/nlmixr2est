@@ -39,6 +39,12 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` gains `vaeControl(residRhoend=)`, the convergence tolerance of the
+  bounded optimizer that estimates the residual parameters (defaults to
+  `rhoend`).  Worth setting separately because that step runs with the ODE
+  frozen, so tightening it is far cheaper than tightening `rhoend`, which also
+  tightens the structural regression.
+
 - `est="vae"` gains an experimental `vaeControl(residOptimize="twoStage")`, which
   estimates the residual-error parameters by block coordinate descent: the
   non-mu-referenced structural thetas first (driven by `dv - f`), then the

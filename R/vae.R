@@ -161,6 +161,13 @@
 #'     (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
 #'     reference documents `sigma0` as a standard deviation, so this appears to be
 #'     unintended there; it is offered only to reproduce its published behavior.
+#' @param residRhoend Final trust-region radius (`rhoend`) of the bounded
+#'   `bobyqa` that estimates the residual parameters -- its convergence
+#'   tolerance.  `NULL` (default) uses `rhoend`, which is itself derived from
+#'   `sigdig`.  Set it separately when the residual step needs to converge
+#'   tighter or looser than the non-mu structural regression: the residual step
+#'   runs with the ODE frozen, so a tighter tolerance there is much cheaper than
+#'   a tighter `rhoend` everywhere.
 #' @param residOptimize How the residual-error parameters are estimated.
 #'
 #'   Residual forms the optimizer estimates: `add`, `prop`, `add + prop`, `pow`,
@@ -288,6 +295,7 @@ vaeControl <- function(seed = 42L,
                        gammaSeries = c("reference", "saem"),
                        sigma0Interp = c("sd", "reference"),
                        residOptimize = c("twoStage", "moment", "optimize"),
+                       residRhoend = NULL,
                        omegaUpdate = c("suffStat", "blend"),
                        inputScale = c("reference", "observed"),
                        bnbStrategy = c("lifo", "fifo", "lc"),
@@ -423,8 +431,12 @@ vaeControl <- function(seed = 42L,
   # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
   if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
+  ## convergence tolerance of the RESIDUAL optimizer; defaults to rhoend
+  if (is.null(residRhoend)) residRhoend <- rhoend
+  checkmate::assertNumeric(residRhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ret <- list(seed = as.integer(seed),
                rhoend = as.numeric(rhoend),
+               residRhoend = as.numeric(residRhoend),
                itersBurnIn = as.integer(itersBurnIn),
                klWarmup = as.integer(klWarmup),
                gammaIter = as.integer(gammaIter),

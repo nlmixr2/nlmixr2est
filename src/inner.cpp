@@ -13926,9 +13926,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           arma::mat etaFrozen = last.mu; etaFrozen.each_row() -= baseline.t();
           vaeFreezeBuild(etaFrozen, cores);
           Rcpp::InternalFunction elsFn(&gVaeFreezeObjR);
+          // the residual step may converge to its own tolerance: it runs with the
+          // ODE frozen, so tightening it here is far cheaper than tightening the
+          // structural regression, which re-solves per candidate
+          double vaeResidRhoend = control.containsElementNamed("residRhoend") ?
+            as<double>(control["residRhoend"]) : vaeRhoend;
           Rcpp::List r2 = boundedOpt(Rcpp::_["par"] = p2, Rcpp::_["fn"] = elsFn,
                                      Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,
-                                     Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
+                                     Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeResidRhoend));
           Rcpp::NumericVector x2 = r2["x"];
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
             arma::uword j = sIdx[k];
