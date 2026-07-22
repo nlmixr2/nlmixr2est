@@ -393,3 +393,19 @@ recovered.  The rest is the augmented solve itself (26 states vs 6), which is re
 work, not setup.  With one regressed theta on 12 subjects bobyqa is at its most
 favorable; the crossover should move with more regressed thetas, since bobyqa's
 cost scales with their number and one augmented solve does not.  Not yet measured.
+
+##### Blast radius of the `foceiSetup_` alias -- verified no-op for imp/advi
+
+The alias block runs for any `_impPoolModel`, so imp/advi reach it too.  Checked
+directly rather than inferred: `.impmapThetaSensModel` emits params
+
+```
+THETA[1], THETA[2], THETA[3], THETA[4], ETA[1], ETA[2]
+```
+
+i.e. the bracket spelling, which is exactly what `params` already carries.  Every
+one hits the "already present" `continue`, nothing matches
+`^(THETA|ETA)_[0-9]+_$`, `addNm` stays empty, and no column is added -- a
+structural no-op for imp/advi.  Only the VAE's augmented model (whose parameter
+names ARE its sensitivity directions) has the underscore spelling that triggers
+it.  focei never sets a pool model at all, so it cannot reach the block.
