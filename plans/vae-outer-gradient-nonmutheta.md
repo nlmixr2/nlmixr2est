@@ -964,3 +964,38 @@ ACTION: rewrite `.vaeToFit`'s pre-call block against this checklist (fullTheta,
 etaObf, omega, cov, objective, metadata, then .nlmixr2FitUpdateParams), guarding
 every muRefTable lookup on `length(...) == 1`.  Regression guard: a non-IOV VAE
 fit must come out bit-identical.
+
+### CORRECTED ROOT CAUSE: the VAE never estimates the IOV THETA
+
+My "guard the formatC" fix was WRONG and was reverted -- it would have blanked the
+cell, silently dropping the IOV estimate from the output instead of supplying it.
+
+What `.uiApplyIov` actually builds (`R/iov.R:~200-230`): for each IOV variable `v`
+(e.g. `iov.cl`) it creates a **THETA named `v`** whose `est` is the IOV magnitude
+under `control$iovXform` (`sd`/`var`/`logsd`/`logvar`), records `v` in
+`.uiIovEnv$iovVars`, and attaches a `backTransform`
+(`nlmixr2iovSd`/`nlmixr2iovVar`/`nlmixr2iovLogsd`/`nlmixr2iovLogvar`, which
+convert to SD or %CV).  The per-occasion etas `rx.<v>.<occ>` are FIXED at
+variance 1 -- they are unit deviates, and this theta carries the actual
+magnitude.
+
+So `.uiFinalizeIov`'s
+
+    .valCharPrep <- .parFixedDf[.uiIovEnv$iovVars, <Back column>]
+
+is retrieving the BACK-TRANSFORMED ESTIMATE OF THAT THETA.  It is zero-length for
+the VAE because the VAE's `parFixedDf` has no usable row for it -- i.e. **the VAE
+never estimates the IOV theta at all.**  That is the real gap: not a missing
+guard, not the assembly route, not the env plumbing.
+
+Consequence for the fix: `iov.cl` has NO eta paired with it (the occasion etas are
+free/fixed), so it is precisely a NON-MU THETA -- exactly what
+`nonMuTheta="regress"/"grad"` exists to estimate.  Check first whether
+`.vaeNonMuThetas(ui)` includes it; `preProcessVaeNonMuTheta.R` and
+`preProcessBoundedTransform.R` both contain deliberate "skip synthetic IOV helper
+theta" logic, so it is plausible the VAE is excluding it and therefore leaving it
+frozen at its `ini()` value with no estimate to report.
+
+THIS supersedes the earlier "missing env fields" framing: the wip branch's
+contract (fullTheta/etaObf/omega) is still a real gap worth closing, but it
+cannot help while the underlying quantity is never estimated.
