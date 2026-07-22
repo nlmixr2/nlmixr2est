@@ -144,7 +144,10 @@ closing tail.  `FALSE` regresses the current posterior means.}
 M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
 the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
 historic behavior, blending the freshly computed `omega` with the previous
-value at the M-step gain (so it is smoothed twice).}
+value at the M-step gain (so it is smoothed twice).  `"suffStat"` applies the
+same principle to an additive residual error: the EMA is carried on the
+residual sum of squares and the square root taken afterwards
+(`a = sqrt(s4/nobs)`) rather than blending `a` itself on the SD scale.}
 
 \item{inputScale}{Which observations the encoder-input centering and scaling
 are computed over.  `"reference"` (default) matches the reference
