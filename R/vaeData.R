@@ -373,6 +373,10 @@ vaeCovariates <- function(data, warn = TRUE) {
   .declaredCoefs <- .vaeCovariateCoefThetas(ui)
   .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L &&
     !isFALSE(control$covariateSelection)
+  ## Encoder conditioning is independent of the SEARCH: even when the covariate
+  ## search is switched off the encoder is still conditioned on the covariates,
+  ## so keep the encoded matrix before it is cleared for selection purposes.
+  .covEnc <- .cov$covMat
   if (.searchOff) {
     warning("pinCovariates=FALSE: model covariates estimated in place", call. = FALSE)
     .cov$covNames <- character(0)
@@ -574,7 +578,19 @@ vaeCovariates <- function(data, warn = TRUE) {
     dataIn[i, seq_len(ni), 1L] <- s$times / .tMax
     dataIn[i, seq_len(ni), 2L] <- (s$y - .dvMean) / .dvSd
   }
-  covIn <- matrix(0, N, 0L)                     # encoder-head covariates (unused for now)
+  ## Encoder-head covariates.  The reference concatenates them to the LSTM's
+  ## FINAL HIDDEN STATE before the linear head that emits (mu, logSigma, L)
+  ## -- `torch.cat((hidden[-1], covariates), dim=1)` in its encoder -- so the
+  ## approximate posterior q(z|x) is conditioned on the covariates.  That is
+  ## central to the method: it is how the encoder can express a covariate
+  ## relationship at all, and the M-step then only has to read it off the
+  ## posterior means.  Feeding zero columns here leaves the posterior
+  ## unconditioned, which shows up as less between-subject spread aligned with
+  ## the covariates (smaller omega, more variance pushed into residual error) and
+  ## weaker covariate effects.  Use the same encoded matrix the selection step
+  ## uses (continuous -> log(cov/mean), categorical -> linear).
+  covIn <- if (ncol(.cov$covMat) > 0L) .cov$covMat else .covEnc
+  if (nrow(covIn) != N) covIn <- matrix(0, N, 0L)
 
   list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
        th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,

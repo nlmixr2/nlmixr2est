@@ -39,6 +39,17 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"`'s encoder is now conditioned on the covariates, as in Rohleff et
+  al. (2025), which concatenates them to the LSTM's final hidden state before the
+  head that emits the posterior (`torch.cat((hidden[-1], covariates), dim=1)`).
+  The covariates were previously not passed to the encoder at all, so the
+  approximate posterior could not express a covariate relationship and the
+  covariate M-step had a weaker signal to read off the posterior means.  Fixing
+  it moves the neonatal case study's covariate estimates close to the reference's
+  (`kin ~ GA` 3.51 against its 3.45, previously 2.45) and removes a spurious
+  effect.  This changes the results of any `est="vae"` fit on a model with
+  covariates.
+
 - `est="vae"` gains `vaeControl(gammaSeries=)`, selecting the decaying step-size
   series used in the smoothing phase: `"reference"` (default)
   `1/(iter - gammaIter)`, the textbook Kuhn-Lavielle series the reference uses,

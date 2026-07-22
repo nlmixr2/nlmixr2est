@@ -142,8 +142,18 @@
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
+  ## as a std::logic_error and aborts the session, so check it here
+  .vaeCheckEncoderDims <- function(params) {
+    if (ncol(params$fcW) != hDim + nCov) {
+      stop("vae encoder head is ", ncol(params$fcW), " wide but needs hiddenDim + ncol(covIn) = ",
+           hDim + nCov, call. = FALSE)
+    }
+    invisible(TRUE)
+  }
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
   params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
+  .vaeCheckEncoderDims(params)
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
   ## via the shared iteration-print machinery (scale.h), so the walk prints like
