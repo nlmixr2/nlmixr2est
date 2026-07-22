@@ -10322,12 +10322,13 @@ RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag) {
 static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool preds,
                             arma::vec& obj, arma::mat& lp,
                             std::vector<std::vector<double> >& pf,
-                            bool adjOuter = false) {
+                            bool adjOuter = false,
+                            std::vector<std::vector<double> >* pr = NULL) {
   const int nid = (int)etaMat.n_rows;
   const int neta = (int)etaMat.n_cols;
   obj.set_size(nid);
   if (grad) lp.set_size(nid, neta);
-  if (preds) { pf.clear(); pf.resize(nid); }
+  if (preds) { pf.clear(); pf.resize(nid); if (pr != NULL) { pr->clear(); pr->resize(nid); } }
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   // rxode2 sizes every per-thread solve buffer by op->cores (1 for models it
@@ -10383,6 +10384,10 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
       if (preds) {
         arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
         pf[id].assign(rf.colptr(0), rf.colptr(0) + rf.n_rows);
+        // column 1 is the residual VARIANCE r (rx_r_ = sigma^2); it is already
+        // computed by the call above, so carrying it costs no extra solve.  The
+        // ELS residual step needs (f, r) per observation, not f alone.
+        if (pr != NULL) (*pr)[id].assign(rf.colptr(1), rf.colptr(1) + rf.n_rows);
       }
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(-1);
@@ -12678,6 +12683,7 @@ struct VaeStepOut {
   arma::cube L;         // [zDim, zDim, N]
   arma::mat lp;         // [N, zDim] decoder eta-gradient (best mixture component)
   std::vector<std::vector<double> > preds;  // per-subject predictions f
+  std::vector<std::vector<double> > rvar;   // per-subject residual variance r (sigma^2)
   arma::ivec mixnum;    // [N] selected mixture component (1-based)
   // encoder parameter gradients
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
@@ -12715,7 +12721,8 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   arma::mat etaEval = eta;
   if (nMix > 1) { etaEval.set_size(nMix * N, zDim); for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = eta; }
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
-  vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf);
+  std::vector<std::vector<double> > prv;
+  vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf, false, &prv);
 
   const double ln2pi = std::log(2 * M_PI);
   arma::vec pzI(N);
@@ -12726,6 +12733,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   double jointTot;
   arma::mat lpBest(N, zDim);
   S.preds.resize(N);
+  S.rvar.resize(N);
   S.mixnum.set_size(N); S.mixnum.fill(1);
   if (nMix > 1) {
     jointTot = 0;
@@ -12743,12 +12751,16 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
       }
       lpBest.row(i) = lp.row(best * N + i);
       S.preds[i] = pf[best * N + i];
+      if (!prv.empty()) S.rvar[i] = prv[best * N + i];
       S.mixnum[i] = best + 1;
     }
   } else {
     jointTot = arma::accu(obj);
     lpBest = lp;
-    for (int i = 0; i < N; ++i) S.preds[i] = pf[i];
+    for (int i = 0; i < N; ++i) {
+      S.preds[i] = pf[i];
+      if (!prv.empty()) S.rvar[i] = prv[i];
+    }
   }
   double pxz = jointTot - arma::accu(pzI);
   double pz = 0, qz = 0;
@@ -12834,11 +12846,14 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
                                      _["bhh"] = S.gbhh, _["fcW"] = S.gFcW, _["fcB"] = S.gFcB);
   List preds(N);
   for (int i = 0; i < N; ++i) preds[i] = NumericVector(S.preds[i].begin(), S.preds[i].end());
+  // residual variance r (rx_r_ = sigma^2) per observation, alongside f
+  List rvar(N);
+  for (int i = 0; i < N; ++i) rvar[i] = NumericVector(S.rvar[i].begin(), S.rvar[i].end());
   IntegerVector mixnum(N);
   for (int i = 0; i < N; ++i) mixnum[i] = S.mixnum[i];
   return List::create(_["loss"] = S.pxz + alphaKL * S.DKL, _["pxz"] = S.pxz, _["DKL"] = S.DKL,
                       _["grads"] = grads, _["mu"] = S.mu, _["L"] = S.L, _["z"] = S.z,
-                      _["preds"] = preds, _["mixnum"] = mixnum);
+                      _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum);
 }
 
 // ---------------------------------------------------------------------------

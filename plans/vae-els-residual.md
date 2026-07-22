@@ -28,6 +28,36 @@ SAEM already solves exactly this: per-endpoint sufficient statistic, a switch on
 `cur = (ytr-ft)/g; sum += cur*cur + 2*log(g)` -- the ELS objective -- otherwise.
 npag reached the same design independently (`residOptimize = "alternate"`).
 
+## The parameter set, and what this actually is
+
+**Optimized:** every parameter that is NOT mu-referenced --
+(a) structural thetas with no associated eta, and (b) the residual error
+parameters.  All of them, uniformly, through the optimizer.
+
+**Left alone:** mu-referenced thetas and the omegas.  Those are what the encoder
+and the closed-form M-step exist to estimate; nothing here touches them.
+
+That framing makes this **not a separate ELS step**.  The VAE already optimizes
+set (a) -- `nonMuTheta = "regress"` runs a bounded optimizer over exactly those
+thetas against the full FOCEi outer objective, re-solving per candidate.  The
+work is to **extend that same optimizer to set (b)** and delete `vaeUpdateErr`,
+rather than to build a second estimator beside it.
+
+This dissolves the npag concern quoted below rather than working around it.  Its
+warning is against mixing *objectives* -- an ELS objective at fixed etas for
+residuals against a marginal objective for structural shifts.  Here both sets are
+scored by the SAME full outer objective, which already accounts for residual
+parameters correctly (it is the FOCEi objective).  One objective, one optimizer,
+a larger parameter vector.
+
+It also means `nonMuTheta = "grad"` covers residual parameters for free: the
+analytic outer gradient is already defined over "structural theta + residual
+sigma + Omega", and `.foceiAnalyticSubjectGradFR` treats a residual sigma as a
+pseudo-direction with `df/dsigma = 0` and `dR/dsigma = E$Rsig`, noting that the
+`rho(f,R,y)` partials are model-independent closed forms so "ANY variance
+structure works".  So the gradient path gets `pow`/Box-Cox/Yeo-Johnson residual
+estimation with no new sensitivity columns -- the same models frozen today.
+
 ## What is NOT in scope, and why
 
 **This will not close the residual gap against the reference on the neonatal case
@@ -46,10 +76,13 @@ fixing that.
 > etas) ... Kept SEPARATE from the residual (ELS) set -- mixing the two
 > objectives mis-identifies both.
 
-So: the ELS set (`err`-tagged parameters, at fixed etas) and the regressor set
-(structural non-mu thetas, against the outer objective) stay separate.  The VAE
-already honors this -- `nonMuTheta = "regress"`/`"grad"` is a distinct mechanism.
-Do not merge them.
+Read carefully, this warns about mixing OBJECTIVES, not about optimizing the two
+parameter sets together.  npag's residual step uses an ELS objective at fixed
+etas while a structural shift needs the marginal likelihood; scoring both with
+the residual objective mis-identifies the structural parameter.  The design above
+avoids that by scoring BOTH sets with the full outer objective, so the hazard
+does not arise.  What must not happen is reintroducing a separate residual-only
+objective alongside it.
 
 npag also needed **warm starts**, because an ELS step evaluated at fixed etas
 wanders when the posterior is still poor.  The VAE has that structure by
@@ -75,22 +108,55 @@ Each phase is independently committable and leaves the package working.
 `r` matches `(add.err)^2` for an additive model and `(f*prop.err)^2` for a
 proportional one.
 
-### Phase 1 -- ELS objective + optimizer driver, proven as a no-op
+*Constraint found while doing this*: the stored `r` column is **exactly zero**
+wherever `f` is zero (12 of 132 observations on `theo_sd`, the predose records).
+The f-throttle that keeps the likelihood finite (`handleF`) is applied when the
+likelihood is EVALUATED, not baked into `rx_r_`.  So the ELS objective must apply
+the throttle itself rather than consume the column raw, or it divides by zero and
+takes `log(0)` at every predose record of a proportional model.
 
-* Implement the ELS objective `sum[(y-f)^2/r + log r]` over an endpoint's
-  observations, and a `newuoa` driver (mirroring `_saemOpt`, whose default is
-  now `newuoa`; keep bobyqa/nelder as fallbacks the way SAEM does).
-* Apply it **only** to pure-additive and pure-proportional endpoints, where the
-  ELS optimum is known in closed form.
+**The rule is `if (r == 0) r = 1`** -- the same convention `handleF` uses for a
+zero prediction (`if (adjustF && fa == 0.0) fa = 1.0`).  A unit variance leaves
+`(y-f)^2/r + log r` equal to the plain squared residual at that observation,
+which is the intended degenerate behavior: the record contributes, but with no
+scale information.  Pinned by `test-vae-rvar.R`.
 
-*Verification*: this is the de-risking step.  The optimizer must reproduce
-`sqrt(SSE/n)` (additive) and the proportional analogue to optimizer tolerance on
-real fits.  If it does not, the objective or the `r` plumbing is wrong, and that
-is far cheaper to find here than in Phase 2.
+Also measured: the residual parameter round-trips through the inner problem's
+scaling with a ~2e-5 ABSOLUTE offset on the SD (0.7 -> 0.7000153, 2.5 ->
+2.500021), which roughly doubles in the variance.  Irrelevant numerically, but it
+means Phase 1's "reproduces the closed form" check needs a tolerance near 1e-3,
+not exact equality.
+
+### Phase 1 -- add the residual parameters to the existing regressor
+
+* Extend the `nonMuTheta = "regress"` parameter vector (`gVaeRegIdx`) to include
+  the `err`-tagged thetas with their `ini()` bounds, and switch the driver to
+  `newuoa` to match `saemControl(type=)`'s default.
+* **Every parameter in the set is informed by the optimization -- there is no
+  closed-form assignment branch.**  A deliberate departure from SAEM, which
+  assigns `ares(b) = sqrt(sig2)` for a single-parameter endpoint and optimizes
+  only the multi-parameter ones.  One code path, every error model.
+* It follows that every residual parameter takes the stochastic-approximation
+  step, the way SAEM treats only its optimized cases.  The "form it from the
+  sufficient statistic and assign it" rule used for `omega`
+  (`omegaUpdate = "suffStat"`) does NOT carry over here -- do not reintroduce it
+  by analogy.
+* Delete `vaeUpdateErr` once the optimizer covers every error model it did.
+
+*Verification*: the closed form is an **oracle, not a code path**.  For a
+pure-additive endpoint the optimum is `sqrt(SSE/n)`, so the optimizer's answer
+must agree to tolerance (~1e-3, per the round-trip note above); a proportional
+endpoint gives a second oracle.  If they disagree the objective or the parameter
+plumbing is wrong, and that is far cheaper to find here than in Phase 2.
+Separately, assert that `nonMuTheta = "grad"` moves a residual parameter, which
+exercises the pseudo-direction path.
 
 ### Phase 2 -- combined models (first real behavior change)
 
-* Route `add + prop` through ELS instead of the OLS-on-squares normal equations.
+* `add + prop` needs no new code once Phase 1 lands -- it is another set of
+  bounded parameters in the same optimizer, which is the point of not
+  special-casing the single-parameter cases.  What changes is the RESULT: the
+  OLS-on-squares moment estimator is replaced by the objective's own optimum.
 * Add warm starts (previous iteration's estimate as the start) and a
   burn-in gate, following SAEM's `nb_fixResid` and `warmStartResid`.
 * Honor `addProp` (`combined1` vs `combined2`) inside the objective rather than
