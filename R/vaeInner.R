@@ -46,6 +46,12 @@
   .env$control$printTop <- FALSE
   if (is.null(.env$control$nF)) .env$control$nF <- 0L
   .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
+  ## A non-Gaussian endpoint has no eta-epsilon interaction term to carry: rx_pred_
+  ## IS the log-density.  The focei flow pairs needOptimHess with interaction=0 for
+  ## that reason (.foceiFitInternal); this entry must do the same, or the inner
+  ## problem is set up for the FOCEi (f,R) kernel while the objective runs the
+  ## exact-Hessian one.
+  if (isTRUE(.env$control$needOptimHess)) .env$control$interaction <- 0L
   ## AGQ off
   .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
   .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L

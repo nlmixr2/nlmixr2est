@@ -213,6 +213,8 @@
   ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
   prepC$regressErrIdx0 <- as.integer(prep$regressErrIdx0)
+  ## residOptimize="twoStage": which of those go to stage 2 (the frozen-ODE block)
+  prepC$regressStage2 <- as.integer(prep$regressStage2)
   prepC$regressLower <- as.numeric(prep$regressLower)
   prepC$regressUpper <- as.numeric(prep$regressUpper)
   ## latent dims whose structural theta is fixed (held at ini by the M-step)
@@ -264,6 +266,7 @@
        mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
+       nStage2 = as.integer(.fit$nStage2),
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

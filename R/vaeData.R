@@ -294,6 +294,143 @@ vaeCovariates <- function(data, warn = TRUE) {
   do.call(rbind, .rows)
 }
 
+#' Which regressed thetas may be optimized in `residOptimize="twoStage"` stage 2.
+#'
+#' Stage 2 pins the ODE states from stage 1 and re-optimizes with only the
+#' candidate moving, so a parameter is eligible exactly when the state trajectory
+#' cannot depend on it.  The rule is PER PARAMETER:
+#'
+#'   eligible = it is an `err` parameter, OR no solve-defining expression reaches it
+#'
+#' The `err` half is the historic rule and keeps every error parameter in stage 2
+#' exactly as before.  The second half is what an `ll()`/generalized endpoint
+#' needs: its residual-like parameters are plain thetas with no `err` row, so on
+#' the old rule stage 2 was empty and `"twoStage"` silently degraded to the joint
+#' `"optimize"` solve.
+#'
+#' A model-level "does this model have error parameters" short-circuit would NOT
+#' do -- a multi-endpoint model with one Gaussian and one `ll()` endpoint has
+#' `err` rows AND log-density-only thetas, and both belong in stage 2.
+#'
+#' Deliberately conservative in the risky direction: an unparsable model, or one
+#' with no ODE states to pin, contributes nothing beyond the `err` set.
+#' @param ui rxode2 ui object
+#' @param regressNames regressed theta names, in `regressThetaIdx0` order
+#' @param regressErrIdx0 0-based slot in `a` per regressed name, -1 when not one
+#' @return integer 0/1 per regressed name
+#' @noRd
+.vaeRegressStage2 <- function(ui, regressNames, regressErrIdx0) {
+  if (length(regressNames) == 0L) return(integer(0))
+  ## Recycling here would silently mis-mask: a structural theta labelled stage 2
+  ## gets optimized against a frozen ODE, which is wrong rather than merely slow.
+  ## The two are built together in .vaeDataPrep, so a mismatch is a caller bug --
+  ## fail loudly at prep time instead.
+  if (length(regressErrIdx0) != length(regressNames)) {
+    stop("vae: regressErrIdx0 (", length(regressErrIdx0), ") must match ",
+         "regressNames (", length(regressNames), ")", call. = FALSE)
+  }
+  .isErr <- regressErrIdx0 >= 0L
+  .odeFree <- tryCatch(.vaeOdeFreeThetas(ui, regressNames),
+                       error = function(e) rep(FALSE, length(regressNames)))
+  as.integer(.isErr | .odeFree)
+}
+
+#' Names the ODE state trajectory provably cannot depend on.
+#'
+#' Fixpoint over the model assignments, seeded from every expression that feeds
+#' the solve.  Assignment ORDER is ignored, which can only over-collect symbols
+#' and therefore only ever answers FALSE where the truth is TRUE -- the safe
+#' direction (the theta stays in stage 1, as it is today).
+#' @param ui rxode2 ui object
+#' @param thetaNames candidate names
+#' @return logical vector, `TRUE` when no solve-defining expression reaches the name
+#' @noRd
+.vaeOdeFreeThetas <- function(ui, thetaNames) {
+  .no <- rep(FALSE, length(thetaNames))
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  if (is.null(.lst) || length(.lst) == 0L) return(.no)
+  .states <- tryCatch(rxode2::rxState(ui), error = function(e) character(0))
+  if (length(.states) == 0L) return(.no)
+  ## A linCmt() model solves compartments from parameters read by NAME (cl, v,
+  ## ka, ...) that are not syntactically connected to the linCmt() call, so the
+  ## assignment-graph scan cannot trace them.  When a linCmt() appears alongside
+  ## ODE states (e.g. linCmt PK + a PD compartment), classify NOTHING as ODE-free
+  ## -- everything stays in stage 1, and an error parameter is still stage-2
+  ## eligible via the err rule.  (predDf$linCmt is FALSE here because the endpoint
+  ## is the ODE state, so scan the expressions.)
+  .hasLinCmt <- any(vapply(.lst, function(.e)
+    grepl("(^|[^A-Za-z0-9._])linCmt[BAC]? *\\(",
+          paste(deparse(.e), collapse = " ")), logical(1)))
+  if (.hasLinCmt) return(.no)
+  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
+    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")) ||
+       identical(.ex[[1]], as.name("~")))
+  .syms <- function(.e) {
+    if (is.name(.e)) return(as.character(.e))
+    if (is.call(.e)) return(unlist(lapply(as.list(.e)[-1L], .syms), use.names = FALSE))
+    character(0)
+  }
+  ## a solve-defining left-hand side: d/dt(x), x(0), and the dosing modifiers
+  .solveLhs <- function(.txt) {
+    grepl("^d */ *dt *\\(", .txt) ||
+      grepl("^[A-Za-z._][A-Za-z0-9._]* *\\( *0 *\\)$", .txt) ||
+      grepl("^(f|alag|lag|rate|dur) *\\(", .txt)
+  }
+  ## `x_0 <- ...` is rxode2's other spelling of the `x(0) <- ...` initial
+  ## condition.  It is a plain NAME, so without this it would look like an
+  ## ordinary intermediate and its rhs would never seed the solve.
+  .initNames <- paste0(.states, "_0")
+  .seed <- character(0); .map <- list()
+  .add <- function(.ex) {
+    .rhs <- .syms(.ex[[3]])
+    if (is.name(.ex[[2]])) {
+      ## Key by as.character(), the SAME way .syms() renders a reference, so the
+      ## fixpoint does not depend on deparse quoting.
+      .nm <- as.character(.ex[[2]])
+      if (.nm %in% .initNames) { .seed <<- c(.seed, .rhs); return(invisible()) }
+      ## Every other name assignment -- including a `~` endpoint line -- becomes a
+      ## map edge.  Do NOT special-case the endpoint variable: `conc ~ central / v`
+      ## can define a variable that a `d/dt()` also reads, and dropping it would
+      ## hide the dependency.  Keeping the edge is at worst conservative (an error
+      ## parameter reached this way stays in stage 1, and it is stage-2 eligible
+      ## via the err rule anyway).
+      .map[[.nm]] <<- unique(c(.map[[.nm]], .rhs))
+      return(invisible())
+    }
+    .txt <- paste(deparse(.ex[[2]]), collapse = "")
+    ## `ll(x) ~ <density>` is the likelihood; seeding it would make every
+    ## log-density symbol look solve-reachable and defeat the whole scan.
+    if (identical(.ex[[1]], as.name("~")) && grepl("^ll *\\(", .txt)) return(invisible())
+    ## solve-defining, or an lhs shape not recognized here: treat the rhs as
+    ## reachable rather than guess (the safe direction: stage 1)
+    .seed <<- c(.seed, .rhs)
+    invisible()
+  }
+  ## Walk into control flow: rxode2 models may wrap assignments in `if`/`else`
+  ## blocks, and an assignment feeding a d/dt inside one must still be collected.
+  ## A gating CONDITION is seeded too -- it decides whether a d/dt runs, so the
+  ## solve depends on it.
+  .walk <- function(.ex) {
+    if (!is.call(.ex)) return(invisible())
+    if (.isAssign(.ex)) return(.add(.ex))
+    if (identical(.ex[[1]], as.name("if")) || identical(.ex[[1]], as.name("while"))) {
+      .seed <<- c(.seed, .syms(.ex[[2]]))
+      for (.k in seq_along(.ex)[-(1:2)]) .walk(.ex[[.k]])
+      return(invisible())
+    }
+    for (.k in seq_along(.ex)[-1L]) .walk(.ex[[.k]])
+    invisible()
+  }
+  for (.ex in .lst) .walk(.ex)
+  .seen <- unique(.seed); .todo <- .seen
+  while (length(.todo) > 0L) {
+    .nxt <- unique(unlist(.map[intersect(.todo, names(.map))], use.names = FALSE))
+    .todo <- setdiff(.nxt, .seen)
+    .seen <- c(.seen, .todo)
+  }
+  !(as.character(thetaNames) %in% .seen)
+}
+
 #' Prepare VAE inputs from a ui + data
 #' @param ui rxode2 ui object
 #' @param data estimation data (ID/TIME/DV/EVID/... columns)
@@ -591,6 +728,8 @@ vaeCovariates <- function(data, warn = TRUE) {
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
+  ## residOptimize="twoStage" stage-2 eligibility (see .vaeRegressStage2)
+  .regressStage2 <- .vaeRegressStage2(ui, .regressNames, .regressErrIdx0)
 
   ## per-subject decoder inputs + gather all obs for standardization
   subj <- vector("list", N)
@@ -665,7 +804,7 @@ vaeCovariates <- function(data, warn = TRUE) {
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
-       regressErrIdx0 = .regressErrIdx0,
+       regressErrIdx0 = .regressErrIdx0, regressStage2 = .regressStage2,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,

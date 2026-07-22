@@ -172,7 +172,9 @@ closing tail.  `FALSE` regresses the current posterior means.}
     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
     any other error model it is either a different estimator or, for the forms
     with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
-    the parameter stays at its `ini()` value.
+    the parameter stays at its `ini()` value.  There is no moment estimator for
+    a log-likelihood (`ll()`) parameter either, so those also stay at `ini()`;
+    use `"twoStage"` for such a model.
   * `"twoStage"` (default): block coordinate descent, as `npag`'s
     `residOptimize = "alternate"` does.  Stage
     one optimizes the non-mu-referenced structural thetas with the residual
@@ -183,6 +185,15 @@ closing tail.  `FALSE` regresses the current posterior means.}
     -- the same structure SAEM uses.  On `theo_sd` this beats the moment
     estimator on both a pure-additive model (objective 131.79 vs 131.81) and a
     combined one (121.03 vs 122.47).
+
+    Which parameters stage two owns is decided per parameter: an error
+    parameter, or one that no `d/dt()` right-hand side, initial condition or
+    dosing modifier can reach.  The second case is what a log-likelihood
+    (`ll()`) or generalized endpoint needs -- its residual-like parameters are
+    plain thetas with no error row, and on the error-only rule stage two was
+    empty for such a model, silently making `"twoStage"` behave like
+    `"optimize"`.  When no regressed theta qualifies (every one feeds the
+    solve) stage two has nothing to do and `residOptimize` has no effect.
   * `"optimize"` (EXPERIMENTAL, diagnostic): a single JOINT solve over the
     structural and residual parameters together, against the full outer
     objective.  Fine with one free residual parameter, but with `add` and
@@ -274,9 +285,11 @@ results.}
     it and a single solve does not, but it does not close).  Choose it for
     accuracy: the exact gradient lands closer to the maximum-likelihood value
     than the derivative-free search (`theo_sd` non-mu `tv`: 3.4294 vs 3.4324,
-    against a FOCEi MLE of 3.4293).  Falls back to `"regress"` when the model
-    is out of analytic scope (`ll()` endpoints, `linCmt()`, IOV, ...);
-    `nonMuEtaOmega` is unused.
+    against a FOCEi MLE of 3.4293).  Applies to a conditionally Gaussian model
+    and to a single non-Gaussian (`ll()`/generalized) endpoint, which
+    differentiates the log-density directly.  Falls back to `"regress"` when
+    the model is out of analytic scope (`linCmt()`, IOV, `fo`, a
+    multi-endpoint or censored `ll()` model, ...); `nonMuEtaOmega` is unused.
   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
     `nonMuEtaOmega`); the typical value is estimated and appears in the
     iteration table.
