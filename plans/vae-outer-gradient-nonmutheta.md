@@ -1450,3 +1450,42 @@ Where to look next (all cheap, all OBSERVATION):
 SEVEN proposed mechanisms have now been disproved.  Every one was reasoned; the
 two facts that actually constrain the bug (table is fine, iovVars is fine) both
 came from printing values.
+
+### ROOT CAUSE FOUND (by measurement): `sigdig` was NULL, not anything about IOV
+
+Probing the exact values `.uiFinalizeIov` sees (via a printing hook re-registered
+ahead of it, since it cannot be traced through the namespace binding):
+
+    PROBE iovVars: iov.cl
+    PROBE bck=4 bsv=7 rowsMatch=TRUE
+    PROBE value=[1.709649] len=1 class=numeric      <-- the lookup is FINE
+
+So `.valCharPrep` was never zero-length.  The zero-length argument was the OTHER
+one:
+
+    formatC(signif(.valCharPrep, digits = .sigdig), digits = .sigdig, ...)
+    .sigdig <- ret$control$sigdig
+
+    SIGDIG (vae)   value=[NULL] len=0 class=NULL     CTLCLASS vaeControl
+    SIGDIG (focei) value=[4]    len=1 class=numeric  CTLCLASS foceiControl
+
+`signif`'s SECOND argument is `digits`, and `signif(x, digits = NULL)` raises
+exactly "invalid second argument of length 0".  Nothing to do with `iovVars`, the
+parFixedDf, hooks, nested calls, or idempotency -- all seven earlier mechanisms
+were wrong because none of them were ever measured.
+
+FIX: `vaeControl()` (and `adviControl()`, same gap) defaulted `sigdig = NULL`
+while `foceiControl()` defaults `sigdig = 4`.  The `feat/sigdig-tolerances` work
+is already merged here but did not cover these two controls.  Defaulted both to 4
+for consistency:
+
+    vaeControl sigdig: 4   adviControl sigdig: 4   foceiControl sigdig: 4
+
+RESULT: the "invalid second argument of length 0" is GONE.  The VAE IOV fit now
+fails LATER with "subscript out of bounds" -- a different, subsequent bug in the
+chain.  focei re-verified unaffected (OK tv = 3.42719).
+
+This is why the bug looked IOV-specific: `.uiFinalizeIov` is simply the first
+place a NULL `sigdig` reaches `signif()`.  Any other method with a NULL default
+would hit it in the same place, and `advi` was one bad IOV fit away from the same
+crash.
