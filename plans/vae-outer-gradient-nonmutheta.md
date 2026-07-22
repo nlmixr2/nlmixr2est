@@ -340,3 +340,35 @@ the buffer is ours; the STATE array is still rxode2's and is sized by the pool.
 Next step: emit the augmented model with `THETA[n]`/`ETA[n]` parameter names (or
 teach `foceiSetup_` to supply both spellings), then flip both switches together
 and re-run the theo_sd comparison -- expect the ~15s gap over `regress` to close.
+
+#### Attempted fix 1 -- rename only the `param()` line: FAILED
+
+`.foceiAnalyticAugModelDirs` (`R/foceiCovAnalytic.R:1367`) deliberately rewrites
+the declaration `params(THETA[1], .., ETA[1], ..)` to `THETA_1_`/`ETA_1_`.  Making
+that rewrite optional (`innerParamNames=`) and having `rxUiGet.foceiOuter` request
+the inner spelling for the vae caller does NOT work -- the same error comes back:
+
+```
+Error: The following parameter(s) are required for solving:
+       THETA_4_, THETA_3_, THETA_2_, ETA_2_, THETA_1_, ETA_1_
+```
+
+Reason: the augmented model's BODY genuinely uses `THETA_1_`/`ETA_1_` as
+variables -- they are the sensitivity DIRECTION names (`dirs` is
+`ETA_1_|ETA_2_|THETA_3_`), so every generated expression and every generated
+column name (`rx_f1_ETA_1_`, `rx_rsig1_4_THETA_3_`, ...) is built from them.
+Declaring `param(THETA[1])` does not rebind a body variable called `THETA_1_`.
+Renaming the body too would rename the output columns and break
+`.vaeOuterCols` / `.foceiAnalyticCols`, so this is the wrong lever.
+
+#### Remaining option: alias the parameters at pool setup
+
+Do not touch the augmented model.  Instead, when `_impPoolModel` is set and its
+parameter names differ from the inner model's, have `foceiSetup_` add the pool
+model's names as ADDITIONAL columns of the `params` it hands `rxSolve_`, aliasing
+the same values positionally (the orders are already verified identical).  That
+is a contained `foceiSetup_` change and leaves both models untouched.
+
+Until then: `.env$poolModel` and `.vaeGradEnv$outerCols` stay OFF and the M-step
+keeps the rxSolve + `restoreFitSolve_` path.  Enabling either alone is fatal
+(26 states / 29 lhs into 6 / 6 buffers -> "double free or corruption").
