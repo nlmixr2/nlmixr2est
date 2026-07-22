@@ -602,3 +602,29 @@ Repro recipe (fast, no source edit):
                         assign("DBG_fit", fit, envir=globalenv())}), print=FALSE)
     <run the fit>          # error is caught and discarded as usual
     nlmixr2est:::.vaeToFit(DBG_env, DBG_fit)   # replays it uncaught
+
+##### IOV assembly: two more hypotheses DISPROVEN
+
+1. **The "traceback" I first reported was the deferred WARNING list**, not a call
+   stack (`In foceiFitCpp_(.ret) :` is a warning prefix).  The
+   "some etas defaulted to non-mu referenced ... rx.iov.cl.2" line is therefore
+   EXPECTED noise -- `preProcessBoundedTransform.R` already has
+   `.isSyntheticIovMuWarning` / `.filterSyntheticIovMuWarnings` /
+   `.getSyntheticIovEtaNames` precisely to muffle it.  It is not the fault.
+
+2. **It is not an eta count/dimension mismatch.**  After `.vaeUpdateModel`, with
+   the stashed objects:
+
+       prep$etaNames / ui2 eta rows : eta.ka, eta.cl, eta.v, rx.iov.cl.1, rx.iov.cl.2
+       ui2 nEta 5   vs etaMat cols 5   vs ncol(mu) 5   vs omega 5x5
+
+   Everything lines up -- the updated model DOES declare both per-occasion etas.
+
+So `.vaeToFit` hands `foceiFitCpp_` a self-consistent 5-eta problem and the
+length-0 error happens INSIDE that call.  Next step is to bisect within
+`foceiFitCpp_`/`foceiSetup_` for the IOV case (compare against a working
+`est="focei"` IOV fit on the same model, which succeeds -- so the difference is in
+what `.vaeToFit` puts on `.ret` versus what the focei path builds).
+
+Remaining budget note: I disproved covariateSelection, the nonMuTheta mode, the
+mu-structure, and the dimension mismatch.  Do NOT re-test those.
