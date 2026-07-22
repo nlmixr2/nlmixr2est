@@ -661,3 +661,31 @@ INSIDE the call instead:
    setup/finalize.  Grep the R functions `foceiFitCpp_` calls back into and look
    for a two-argument primitive (`seq_len`/`rep`/`match`/`%in%`/matrix indexing)
    fed a zero-length IOV-derived vector.
+
+##### The env diff -- candidate list is now SHORT
+
+Stashing `foceiFitCpp_`'s argument from both paths (its argument IS the `.ret`
+env) and diffing:
+
+    ONLY-IN-FOCEI:  (nothing)
+    ONLY-IN-VAE  :  method, vaeControl, parHistData, vae, adjObf, extra
+    DIFF etaMat     focei=NULL:0        vae=matrix:12x5
+    DIFF ui         focei=rxUi:38       vae=rxUi:39
+
+The VAE-only fields are cosmetic (labels/history that `.vaeToFit` presets to stop
+the C++ finalize writing focei labels).  Two substantive differences remain:
+
+1. **`etaMat`** -- focei passes NULL, the VAE passes a 12x5 matrix whose column
+   names are the RUNTIME etas `eta.ka, eta.cl, eta.v, rx.iov.cl.1, rx.iov.cl.2`.
+   The ui declares `iov.cl` as ONE eta, so any focei-side code that matches
+   etaMat columns against ui-level eta names gets no hit for the expanded pair --
+   the obvious source of a zero-length second argument.  PRIME SUSPECT.
+2. **`ui`** -- one extra binding in the VAE's ui (39 vs 38); worth diffing
+   `ls()` on both if (1) does not pan out.
+
+Test in flight when this was written: null out `etaMat` in a `trace()` tracer on
+`foceiFitCpp_` (the arg is an environment, so the tracer can mutate it) and see
+whether the fit completes.  Baseline reproduced the error in the same script, so
+the comparison is valid.  If nulling etaMat fixes it, the real fix is to map the
+expanded IOV columns to what the focei setup expects (or drop them from the
+starting-eta matrix), NOT to stop passing starting etas.
