@@ -13383,6 +13383,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // the option always did.
   const bool covSelectSmooth = control.containsElementNamed("covSelectSmooth") &&
     as<bool>(control["covSelectSmooth"]);
+  // omegaUpdate: "suffStat" (reference) builds omega from the EMA statistics and
+  // assigns it; "blend" is the historic gain-blended update.  Missing -> blend.
+  const bool omegaSuffStat = control.containsElementNamed("omegaUpdate") &&
+    as<std::string>(control["omegaUpdate"]) == "suffStat";
   // mStepObjective: "outer" (default) scores the non-mu theta M-step against the
   // full FOCEi outer objective; "elbo" reproduces the reference's plain
   // variational bound (frozen-eta joint likelihood).  Missing field -> "outer",
@@ -13480,9 +13484,18 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // penalty and fewer covariates clear it.
   arma::mat s1(N, zDim, arma::fill::zeros);
   bool s1Init = false;
+  // omegaUpdate="suffStat": the reference forms omega from EMA sufficient
+  // statistics and ASSIGNS it, rather than blending the freshly computed omega
+  // with the previous one.  Only the diagonals are needed:
+  //   s2[k] = EMA of sum_i mu_i[k]^2,  s3[k] = EMA of sum_i (L_i L_i')[k,k]
+  //   omega[k] = (s2[k] - 2*sum_i Cz_i[k]*s1_i[k] + sum_i Cz_i[k]^2 + s3[k]) / N
+  arma::vec s2(zDim, arma::fill::zeros), s3(zDim, arma::fill::zeros);
 
   for (int it = 1; it <= iters; ++it) {
-    double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
+    // Smoothing gain, matching the reference exactly: 1 during the EM phase,
+    // then 1/(iter - gamma_iter).  (This was 1/(1 + it - gammaIter), which
+    // smoothed a step harder than the reference all through the tail.)
+    double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (double)(it - gammaIter);
     arma::vec baseline;
     // L0-penalty warmup ramp: the per-covariate cost multiplier ramps linearly
     // from covSelectAlpha at it=1 toward 1, then holds at 1 for it>=klWarmup --
@@ -13496,9 +13509,23 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     }
     // sufficient-statistic EMA, updated with the same gain as the M-step and
     // seeded (not blended) on the first pass so it starts AT the posterior means
-    if (covSelectSmooth) {
-      if (!s1Init) { s1 = last.mu; s1Init = true; }
-      else s1 += gamma * (last.mu - s1);
+    if (covSelectSmooth || omegaSuffStat) {
+      arma::vec s2Cur(zDim, arma::fill::zeros), s3Cur(zDim, arma::fill::zeros);
+      if (omegaSuffStat) {
+        for (int k = 0; k < zDim; ++k) {
+          double a2 = 0, a3 = 0;
+          for (int i = 0; i < N; ++i) {
+            a2 += last.mu(i, k) * last.mu(i, k);
+            a3 += arma::accu(arma::square(last.L.slice(i).row(k)));
+          }
+          s2Cur[k] = a2; s3Cur[k] = a3;
+        }
+      }
+      if (!s1Init) { s1 = last.mu; s2 = s2Cur; s3 = s3Cur; s1Init = true; }
+      else {
+        s1 += gamma * (last.mu - s1);
+        if (omegaSuffStat) { s2 += gamma * (s2Cur - s2); s3 += gamma * (s3Cur - s3); }
+      }
     }
     if (doCov) {
       // BICc-ELBO covariate M-step
@@ -13549,7 +13576,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::vec omegaCur(zDim);
       for (int k = 0; k < zDim; ++k) {
         double v = 0;
-        for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopMat(i, k); v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
+        if (omegaSuffStat) {
+          // reference form: EMA statistics, cross terms against the smoothed s1
+          double cross = 0;
+          for (int i = 0; i < N; ++i) {
+            double cz = zPopMat(i, k);
+            cross += -2.0 * cz * s1(i, k) + cz * cz;
+          }
+          v = s2[k] + cross + s3[k];
+        } else {
+          for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopMat(i, k); v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
+        }
         omegaCur[k] = v / N;
       }
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper);
@@ -13557,7 +13594,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPop = intercept;
       zPopArg = zPopMat;
-      omega = omega + gamma * (omegaCur - omega);
+      // the reference assigns omega outright; the historic path blends it
+      omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
       a = a + gamma * (aCur - a);
       isCovStep = true;
       baseline = arma::mean(zPopMat, 0).t();

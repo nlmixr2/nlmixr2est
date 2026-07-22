@@ -20,6 +20,8 @@ vaeControl(
   muRefCovAlg = TRUE,
   covSelectAlpha = 2,
   covSelectSmooth = TRUE,
+  omegaUpdate = c("suffStat", "blend"),
+  inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -124,6 +126,21 @@ current posterior means.  This matches the reference implementation
 changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
 equals the posterior mean for most of a run and is averaged only over the
 closing tail.  `FALSE` regresses the current posterior means.}
+
+\item{omegaUpdate}{How the population variances are updated in the covariate
+M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+historic behavior, blending the freshly computed `omega` with the previous
+value at the M-step gain (so it is smoothed twice).}
+
+\item{inputScale}{Which observations the encoder-input centering and scaling
+are computed over.  `"reference"` (default) matches the reference
+implementation, which takes the mean and SD across the whole padded
+observation matrix, so the zero padding of subjects with fewer observations
+enters both statistics.  On a ragged dataset that is a materially different
+scale from `"observed"`, which uses only the observed values (on the neonatal
+case study the SD is 1582 against 506).  Affects only the encoder's inputs,
+never the likelihood.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

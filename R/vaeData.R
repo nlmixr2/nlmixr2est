@@ -300,6 +300,7 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' @return list of prepared VAE inputs
 #' @noRd
 .vaeDataPrep <- function(ui, data, control = NULL) {
+  .inputScale <- if (is.null(control$inputScale)) "reference" else control$inputScale
   .idf <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)
   .etaNames <- .map$etaNames
@@ -549,10 +550,23 @@ vaeCovariates <- function(data, warn = TRUE) {
                       cens = .cens, limit = .limit)
     .allTime <- c(.allTime, .times); .allDv <- c(.allDv, .y)
   }
-  .tMax <- max(.allTime); .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)
+  Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
+  .tMax <- max(.allTime)
+  ## inputScale: which DV values the encoder-input centering/scaling is computed
+  ## over.  The reference takes mean/sd across the WHOLE padded [N, Tmax] matrix,
+  ## so the zero padding of short subjects enters both -- on a ragged dataset
+  ## that is a materially different scale from the observed-only statistics
+  ## (neonatal: sd 1582 vs 506).  "reference" reproduces it; "observed" uses the
+  ## observed values only.
+  if (identical(.inputScale, "reference")) {
+    .padded <- c(.allDv, rep(0, N * Tmax - length(.allDv)))
+    .dvMean <- mean(.padded); .dvSd <- stats::sd(.padded)
+  } else {
+    .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)
+  }
+  if (!is.finite(.dvSd) || .dvSd <= 0) .dvSd <- 1
 
   ## encoder inputs: [N, Tmax, 2] standardized (time, DV), padded; lengths
-  Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
   dataIn <- array(0, c(N, Tmax, 2L))
   lengths <- integer(N)
   for (i in seq_len(N)) {

@@ -39,6 +39,18 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` aligns three more details with Rohleff et al. (2025): the
+  smoothing gain is now `1/(iter - gammaIter)` (it was `1/(1 + iter - gammaIter)`,
+  smoothing a step harder than the reference throughout the tail); new
+  `vaeControl(omegaUpdate="suffStat")` (default) forms the population variances
+  from the EMA sufficient statistics and assigns them instead of blending them a
+  second time at the M-step gain; and new `vaeControl(inputScale="reference")`
+  (default) computes the encoder-input centering/scaling across the whole padded
+  observation matrix as the reference does, rather than over the observed values
+  only -- on a ragged dataset the two differ materially (neonatal SD 1582 vs
+  506).  `omegaUpdate="blend"` and `inputScale="observed"` restore the previous
+  behavior.
+
 - `est="vae"` covariate selection now regresses the SAEM sufficient statistic (an
   exponential moving average of the posterior means) rather than the current
   posterior means, matching Rohleff et al. (2025); `vaeControl(covSelectSmooth=)`

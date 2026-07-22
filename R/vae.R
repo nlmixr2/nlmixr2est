@@ -139,6 +139,19 @@
 #'   changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
 #'   equals the posterior mean for most of a run and is averaged only over the
 #'   closing tail.  `FALSE` regresses the current posterior means.
+#' @param omegaUpdate How the population variances are updated in the covariate
+#'   M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+#'   the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+#'   historic behavior, blending the freshly computed `omega` with the previous
+#'   value at the M-step gain (so it is smoothed twice).
+#' @param inputScale Which observations the encoder-input centering and scaling
+#'   are computed over.  `"reference"` (default) matches the reference
+#'   implementation, which takes the mean and SD across the whole padded
+#'   observation matrix, so the zero padding of subjects with fewer observations
+#'   enters both statistics.  On a ragged dataset that is a materially different
+#'   scale from `"observed"`, which uses only the observed values (on the neonatal
+#'   case study the SD is 1582 against 506).  Affects only the encoder's inputs,
+#'   never the likelihood.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -214,6 +227,8 @@ vaeControl <- function(seed = 42L,
                        muRefCovAlg = TRUE,
                        covSelectAlpha = 2,
                        covSelectSmooth = TRUE,
+                       omegaUpdate = c("suffStat", "blend"),
+                       inputScale = c("reference", "observed"),
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -267,6 +282,8 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(muRefCovAlg, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
+  omegaUpdate <- match.arg(omegaUpdate)
+  inputScale <- match.arg(inputScale)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -358,6 +375,8 @@ vaeControl <- function(seed = 42L,
                muRefCovAlg = muRefCovAlg,
                covSelectAlpha = covSelectAlpha,
                covSelectSmooth = covSelectSmooth,
+               omegaUpdate = omegaUpdate,
+               inputScale = inputScale,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,

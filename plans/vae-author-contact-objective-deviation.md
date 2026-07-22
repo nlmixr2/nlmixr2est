@@ -121,6 +121,40 @@ theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
 | full outer objective + derivative-free   | 3.4360 |
 | plain variational bound (your M-step)    | 3.4214 |
 
+## One thing we would like your read on: the padded encoder inputs
+
+While aligning our implementation to yours we found that the encoder-input
+standardization is computed across the **whole padded observation matrix**:
+
+```python
+data_mean = data[:,:,1].mean()
+data_std  = data[:,:,1].std()
+data_in[:,:,1] = (data_in[:,:,1] - data_mean)/data_std
+```
+
+Because `data` is padded to the longest subject, every zero-padded cell of a
+short subject enters both statistics.  On the neonatal data that is 1512 cells
+against 1120 real observations, so the padding is the majority of the tensor and
+moves the scale substantially:
+
+| statistic | across padded matrix | across observed values only |
+|---|---|---|
+| mean | 2570.6 | 3470.3 |
+| SD   | 1582.4 |  505.9 |
+
+The SD differs by roughly a factor of three.  We had originally used the
+observed-only statistics; we have since made the padded form the default so we
+match you, and kept the other available as an option.
+
+Our question is simply whether that is intended.  It is defensible -- it is a
+fixed, deterministic rescaling of the encoder's inputs, the LSTM is masked by
+`lengths` so the padded steps do not reach the likelihood, and the encoder can
+absorb an input scaling into its first-layer weights.  But it does make the input
+scale depend on how ragged the dataset happens to be, which is a property of the
+sampling design rather than of the data, and it would change if the same study
+were padded differently.  If it is deliberate we would like to understand the
+reasoning; if it is incidental, it may be worth a note for reimplementers.
+
 ## Questions for you
 
 1. Did parameters without a random effect come up in your work?  If so, how did
@@ -138,7 +172,8 @@ theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
    happy to share our run.  Our remaining suspects are the construction of the
    candidate covariate columns and the omega values in force at selection time,
    but we are guessing at this point.
-5. Would a shared benchmark be of interest -- your Case Study 2 at the full
+5. Is the padded-matrix encoder standardization above intended?
+6. Would a shared benchmark be of interest -- your Case Study 2 at the full
    schedule, same data -- so that the difference can be pinned to something
    specific rather than guessed at?
 
