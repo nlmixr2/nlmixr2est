@@ -996,3 +996,38 @@ validated), but the remaining fault is DOWNSTREAM inside
 That is where the next session should bisect, and it is now a much smaller
 surface: the builder, given a complete and correct env, on a model whose only
 distinguishing feature is per-occasion etas.
+
+### Non-IOV items: status
+
+**DONE -- `foceiControl(fast=)` scope doc corrected** (on `feat/vae-outer-gradient`).
+It claimed fast=TRUE "requires ... (single additive/proportional Gaussian
+endpoint)", which understated the real scope: `.foceiAnalyticErrFull` gates on
+DISTRIBUTION (norm/dnorm), not endpoint count or error form, so multiple
+endpoints, combined/power error, both-sides transforms and a single estimated
+lambda are all supported.  Now states the real rule plus the genuine exclusions
+(ll(), linCmt(), fo, IOV, >1 estimated lambda, a theta mu-referenced by several
+etas).
+
+**IN FLIGHT -- grad vs regress cost crossover.**  The open question was whether
+`grad`'s single augmented solve beats bobyqa once more than one theta is
+regressed (bobyqa's cost scales with their number; one solve does not).  Measured
+so far on theo_sd, full default schedule:
+
+    1 non-mu theta   regress 20.9s      grad 30.8s (nGrad=250)
+
+so at ONE theta bobyqa still wins, as expected -- that is its best case.  The
+3-non-mu-theta arm was still running at session end; results land in
+`/tmp/cost.out` (`grep '^COST '`), script `/tmp/cost.R`, self-contained and
+re-runnable.  If grad does not win there either, say so in the `nonMuTheta="grad"`
+docs -- it would then be a correctness/robustness option rather than a speed one,
+which is still a fair reason to offer it (it targets the marginal objective and
+does not inherit bobyqa's frozen-eta displacement).
+
+**STILL OPEN**
+  * imp-family output contract (requested follow-up) -- `imp`/`impmap`/`qrpem`
+    do not implement the babelmixr2 checklist; doing so would also pre-empt the
+    class of bug found here.
+  * IOV scope for the ANALYTIC GRADIENT (distinct from the IOV fit bug, which is
+    fixed): the direction set is ui-level while the runtime etas are expanded per
+    occasion, so `.foceiOuterDirs` still gates IOV out.
+  * `test-impmap.R` / `test-saem.R` on the wip branch (detached, `/tmp/other.out`).
