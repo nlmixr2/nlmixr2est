@@ -38,9 +38,14 @@
     for (j in sel) {
       bn <- paste0("beta_", thName, "_", covNames[j])
       center <- signif(prep$covPop[j], 12)
-      enc <- if (prep$covType[j] == "continuous")
+      ## an uncentered covariate (a 0/1 indicator) enters bare -- no "- 0" term
+      enc <- if (prep$covType[j] == "continuous") {
         paste0("log(", covNames[j], "/", center, ")")
-      else paste0("(", covNames[j], " - ", center, ")")
+      } else if (center == 0) {
+        covNames[j]
+      } else {
+        paste0("(", covNames[j], " - ", center, ")")
+      }
       terms <- c(terms, paste0(bn, " * ", enc))
       betaVals[[bn]] <- fit$beta[k, j]
     }
@@ -87,6 +92,67 @@
   ## phantom data covariate, and fails ("required for solving: beta_...").
   ## Re-parsing the accumulated model function yields a consistent theta/covariate
   ## classification (verified: only the true data covariates remain).
+  rxode2::assertRxUi(ui2$fun)
+}
+
+#' Update a PINNED VAE fit's model with the estimates.
+#'
+#' Unlike `.vaeUpdateModel` (which injects fresh `beta_<par>_<cov>` terms into a
+#' covariate-free base model), the pinned path keeps the user's ORIGINAL model
+#' -- their covariate terms, coefficient names and centers stay exactly as
+#' written -- and only writes ini() estimates.  A declared covariate the search
+#' selected gets its estimated slope; one it dropped is set to `0` (the term
+#' stays in the model).  Pinned covariates are searched at their MODEL value (the
+#' model's own centering is retained, e.g. from mu2/mu3 `nlmixrMuDerCov#`, with no
+#' extra VAE mean-centering), so `zPop` is already the model intercept and the
+#' coefficient transfers directly with no correction.  Out-of-pool declared
+#' covariates were estimated in place by the regress M-step (`regressTheta`).
+#' @noRd
+.vaeUpdateModelPinned <- function(ui, fit) {
+  prep <- fit$prep
+  pairs <- prep$pinPairs
+  thetaNames <- .foceiEtaThetaMap(ui)$thetaForEta   # mu-referenced theta per eta
+  covNames <- fit$covNames
+  ui2 <- ui
+  .setIni <- function(u, expr) do.call(rxode2::ini, list(u, str2lang(expr)))
+
+  ## 1. in-pool declared coefficients: selected -> estimated slope, dropped -> 0.
+  ## The pinned covariates are searched at their MODEL value (no VAE re-centering,
+  ## the model's own centering is retained), so zPop is already the model
+  ## intercept -- the coefficient transfers directly with no correction.
+  .inRows <- if (is.null(pairs)) NULL else pairs[pairs$inPool, , drop = FALSE]
+  for (.r in seq_len(NROW(.inRows))) {
+    .k <- .inRows$k[.r]
+    .j <- match(.inRows$covName[.r], covNames)
+    .sel <- !is.null(fit$selected) && !is.na(.j) && isTRUE(fit$selected[.k, .j])
+    .betaVal <- if (.sel) fit$beta[.k, .j] else 0
+    ui2 <- .setIni(ui2, paste0(.inRows$coefName[.r], " <- ", signif(.betaVal, 12)))
+  }
+
+  ## 2. structural population thetas + omega per eta
+  for (k in seq_along(thetaNames)) {
+    if (!is.na(thetaNames[k])) {
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
+    }
+    ui2 <- .setIni(ui2, paste0(prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
+  }
+
+  ## 3. residual error params
+  .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
+  for (en in .errRow$name) {
+    .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
+    ui2 <- .setIni(ui2, paste0(en, " <- ", signif(.v, 12)))
+  }
+
+  ## 4. out-of-pool declared covariates + non-mu thetas estimated by the regress
+  ## M-step (written straight into their ini() est)
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
+        !is.null(names(fit$regressTheta))) {
+    for (rn in names(fit$regressTheta)) {
+      .rv <- fit$regressTheta[[rn]]
+      if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
+    }
+  }
   rxode2::assertRxUi(ui2$fun)
 }
 
@@ -144,7 +210,13 @@
 .vaeToFit <- function(env, fit) {
   .ui <- env$ui
   .control <- env$vaeControl
-  .ui2 <- .vaeUpdateModel(.ui, fit)
+  ## mu2/mu3 restore info staged by the preprocess hook: the focei covariance
+  ## recompute below re-runs preprocessing and clears it, so snapshot it here and
+  ## reinstate it just before the mu2 finalize restores the original model.  The
+  ## on.exit guard keeps the global consistent even if assembly errors out.
+  .savedMuRef <- .muRefTrans$cur
+  on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+  .ui2 <- if (isTRUE(fit$prep$pinActive)) .vaeUpdateModelPinned(.ui, fit) else .vaeUpdateModel(.ui, fit)
   ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
   ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
   ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
@@ -189,10 +261,19 @@
   .vaeControlToFoceiControl(.ret)
   .fit <- nlmixr2CreateOutputFromUi(.ui2, data = env$data, control = .ret$control,
                                     table = env$table, env = .ret, est = "vae")
+  ## mu2/mu3/mu4 covariate rewriting: restore the original algebraic covariate
+  ## expression (nlmixrMuDerCov# -> e.g. wt.cl*(WT/70)) in the reported model and
+  ## drop the derived data columns.  VAE assembles its output outside the focei
+  ## path that normally runs this, so reinstate the restore info and invoke the
+  ## mu2 finalize hook directly.
+  .muRefTrans$cur <- .savedMuRef
+  .fit <- .uiFinalizeMu2hook(.fit)
   ## the ORIGINAL (pre-covariate-selection) model for $uiIni/$iniDf0; must be set
   ## AFTER assembly (.nlmixr2FitUpdateParams overwrites $iniDf0 with the global
-  ## iniDf data.frame, which cannot represent the structure change)
+  ## iniDf data.frame, which cannot represent the structure change).  Use the pure
+  ## input ui (pre-mu2-rewrite) when available so iniDf0 shows the user's model.
   .e <- .fit$env
-  .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.ui))
+  .origUi <- if (!is.null(env$nlmixrPureInputUi)) env$nlmixrPureInputUi else .ui
+  .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.origUi))
   .fit
 }
