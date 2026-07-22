@@ -802,3 +802,50 @@ CONFIRMED empirically: `est="saem"` fits the SAME IOV model on the SAME data --
 -- where `est="vae"` throws `invalid second argument of length 0`.  Same ui, same
 five expanded etas, same occasion column.  The ONLY difference left standing is
 the output-assembly route, so the rework below is the fix, not a guess.
+
+##### The two pre-call sequences, read in full (facts, no hypothesis)
+
+Both methods end at the SAME call.  What differs is the env handed to it.
+
+SAEM (`R/saem.R:1208-1222`), `.ret` is the full estimation env:
+
+    .nlmixr2FitUpdateParams(.ret)
+    .saemMixFix(.ret, .ui)            # "must run before nlmixr2CreateOutputFromUi"
+    .saemAddParHist(.ret)
+    .saemCalcLikelihood(.ret)
+    .ret$theta <- .ui$saemThetaDataFrame
+    .ret$model <- .ui$saemModelPred
+    .ret$message <- ""
+    .ret$est   <- "saem"
+    .saemControlToFoceiControl(.ret)
+    nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control,
+                              table=.ret$table, env=.ret, est="saem")
+
+VAE (`R/vaeOutput.R:242-263`), `.ret` is a FRESH `new.env(parent=emptyenv())`:
+
+    .ret$table   <- env$table
+    .ret$etaMat  <- fit$mu - fit$zPopMat        # cols = runtime etas (incl. rx.iov.*)
+    .ret$method  <- "vae"; .ret$extra <- ""; .ret$est <- "vae"
+    .ret$adjObf  <- .control$adjObf
+    .ret$vae     <- list(...)
+    .ret$parHistData <- fit$parHist
+    nmObjHandleControlObject(.control, .ret)
+    .vaeControlToFoceiControl(.ret)
+    nlmixr2CreateOutputFromUi(.ui2, data=env$data, control=.ret$control,
+                              table=env$table, env=.ret, est="vae")
+
+Differences, stated as facts only:
+  * SAEM calls `.nlmixr2FitUpdateParams`, `.saemMixFix`, `.saemAddParHist`,
+    `.saemCalcLikelihood` first; the VAE calls none of them.
+  * SAEM sets `$theta` and `$model`; the VAE sets neither.
+  * SAEM's env is the full estimation env (carries `origData`, `dataSav`, `ui`,
+    ...); the VAE's is a fresh minimal env.
+  * Relevant to IOV: `iov.cl` is a THETA in this ui
+    (thetas = tka, tcl, tv, add.sd, iov.cl), and SAEM supplies `$theta`
+    explicitly while the VAE leaves it to be derived.
+
+NEXT EXPERIMENT (do this, do not theorize further): trace
+`nlmixr2CreateOutputFromUi`, capture its `env` argument from a SAEM IOV fit and a
+VAE IOV fit, and diff `ls()` + per-field class/length/dim -- the same method that
+produced the short list at `foceiFitCpp_`.  Nine hypotheses have died here; the
+next claim should come from that diff, not from reading.
