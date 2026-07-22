@@ -11,7 +11,13 @@ nmTest({
       ini({
         lW0 <- log(3000); lkin <- log(30); lTL <- log(2); lkoutmax <- log(0.05); lT50 <- log(1)
         eta.W0 ~ 0.001; eta.kin ~ 0.01; eta.TL ~ 0.05; eta.koutmax ~ 0.05; eta.T50 ~ 0.05
-        add.err <- 30; prop.err <- 0.02
+        ## The reference's residual model is sigma = a + b*f with b FIXED at 0
+        ## (functions.py: `b = torch.tensor(0)`, never updated) -- a combined
+        ## model whose proportional term is fixed, not an additive-only model.
+        ## nlmixr2's add()/prop() are on the SD scale, and `sigma = a + b*f` is
+        ## combined1; the vaeControl() default is combined2 (a^2 + b^2 f^2), so
+        ## the control below pins the scale as well as the value.
+        add.err <- 30; prop.err <- fix(0)
       })
       model({
         W0 <- exp(lW0 + eta.W0); kin <- exp(lkin + eta.kin); TL <- exp(lTL + eta.TL)
@@ -26,6 +32,7 @@ nmTest({
     dat <- nlmixr2data::neonatal_wt
     ctl <- vaeControl(itersBurnIn = 60L, iters = 120L, klWarmup = 40L, gammaIter = 90L,
                       nGradStep = 4L, covariateSelection = TRUE, print = 0L,
+                      addProp = "combined1",
                       sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1), returnVae = TRUE)
     fit <- suppressMessages(suppressWarnings(nlmixr2(neonatal, dat, est = "vae", control = ctl)))
 
@@ -41,6 +48,23 @@ nmTest({
     ## strongest, canonical effect (Fig 4, VAE column)
     dimnames(fit$selected) <- list(c("W0", "kin", "TL", "koutmax", "T50"), fit$covNames)
     expect_true(fit$selected["W0", "GA"])
+
+    ## The reference M-step objective must reproduce this fit EXACTLY.  Every
+    ## structural parameter here is mu-referenced, so the model has no non-mu
+    ## theta for mStepObjective= to act on -- the option is out of the picture and
+    ## the two runs have to agree bit for bit.  That pins two things at once: the
+    ## deviation is confined to the non-mu theta M-step (it does NOT rescore the
+    ## covariate search or the encoder ELBO), and the covariate set this case
+    ## study selects is therefore NOT attributable to the objective choice.
+    ctlRef <- ctl
+    ctlRef$mStepObjective <- "elbo"
+    fitRef <- suppressMessages(suppressWarnings(
+      nlmixr2(neonatal, dat, est = "vae", control = ctlRef)))
+    expect_identical(fitRef$zPop, fit$zPop)
+    ## fit$selected picked up dimnames above; compare the values
+    expect_identical(unname(fitRef$selected), unname(fit$selected))
+    expect_identical(fitRef$omega, fit$omega)
+    expect_identical(fitRef$a, fit$a)
   })
 
   test_that("est=vae builds a full neonatal fit object (objective + tables)", {
@@ -51,7 +75,13 @@ nmTest({
       ini({
         lW0 <- log(3000); lkin <- log(30); lTL <- log(2); lkoutmax <- log(0.05); lT50 <- log(1)
         eta.W0 ~ 0.001; eta.kin ~ 0.01; eta.TL ~ 0.05; eta.koutmax ~ 0.05; eta.T50 ~ 0.05
-        add.err <- 30; prop.err <- 0.02
+        ## The reference's residual model is sigma = a + b*f with b FIXED at 0
+        ## (functions.py: `b = torch.tensor(0)`, never updated) -- a combined
+        ## model whose proportional term is fixed, not an additive-only model.
+        ## nlmixr2's add()/prop() are on the SD scale, and `sigma = a + b*f` is
+        ## combined1; the vaeControl() default is combined2 (a^2 + b^2 f^2), so
+        ## the control below pins the scale as well as the value.
+        add.err <- 30; prop.err <- fix(0)
       })
       model({
         W0 <- exp(lW0 + eta.W0); kin <- exp(lkin + eta.kin); TL <- exp(lTL + eta.TL)
@@ -63,6 +93,7 @@ nmTest({
     }
     ctl <- vaeControl(itersBurnIn = 60L, iters = 120L, klWarmup = 40L, gammaIter = 90L,
                       nGradStep = 4L, covariateSelection = TRUE, print = 0L,
+                      addProp = "combined1",
                       sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1))
     fit <- suppressMessages(suppressWarnings(nlmixr2(neonatal, nlmixr2data::neonatal_wt, est = "vae", control = ctl)))
     expect_s3_class(fit, "nlmixr2FitData")

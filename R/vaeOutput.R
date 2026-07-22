@@ -259,6 +259,52 @@
   if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist
   nmObjHandleControlObject(.control, .ret) # stores $vaeControl for nmObjGetControl.vae
   .vaeControlToFoceiControl(.ret)
+  ## ---- foreign-method output contract -------------------------------------
+  ## `.ret` is a fresh env, so it carries none of the state the output builder
+  ## needs.  Supply it the way an out-of-tree method must (the reference is
+  ## babelmixr2's R/saemix.R): first the data-derived state, then the fit items.
+  ## Leaving these to be derived works for a plain model but breaks on IOV -- the
+  ## derivation looks a theta up per eta via muRefTable, and an IOV eta
+  ## (rx.iov.<v>.<occ>) has NO muRefTable row, so the lookup is zero-length
+  ## ("invalid second argument of length 0").  Every lookup below is guarded on
+  ## length()==1 so occasion etas fall through harmlessly.
+  if (!exists("dataSav", envir = .ret, inherits = FALSE)) {
+    .foceiPreProcessData(env$data, .ret, .ui2, .ret$control$rxControl)
+  }
+  .idf2 <- .ui2$iniDf
+  .etaU <- .idf2$name[!is.na(.idf2$neta1) & .idf2$neta1 == .idf2$neta2]
+  ## 1. fullTheta -- every non-eta ini() entry, already carrying the VAE estimates
+  ##    (.vaeUpdateModel wrote them into .ui2)
+  if (!exists("fullTheta", envir = .ret, inherits = FALSE)) {
+    .ret$fullTheta <- setNames(.idf2$est[is.na(.idf2$neta1)], .idf2$name[is.na(.idf2$neta1)])
+  }
+  ## 2. etaObf -- ID + one column per UI eta + OBJI, in eta order
+  if (!exists("etaObf", envir = .ret, inherits = FALSE)) {
+    .ids <- unique(.ret$dataSav$ID)
+    .em <- .etaMat[, intersect(.etaU, colnames(.etaMat)), drop = FALSE]
+    if (nrow(.em) == length(.ids)) {
+      .eo <- as.data.frame(.em)
+      .eo$ID <- .ids
+      .eo <- .eo[, c("ID", colnames(.em)), drop = FALSE]
+      .eo$OBJI <- NA_real_
+      .ret$etaObf <- .eo
+    }
+  }
+  ## 3. omega -- dimnamed by the UI eta names; the VAE estimates a diagonal, and an
+  ##    occasion eta keeps whatever the model fixed it at
+  if (!exists("omega", envir = .ret, inherits = FALSE)) {
+    .om <- matrix(0, length(.etaU), length(.etaU), dimnames = list(.etaU, .etaU))
+    for (.e in .etaU) {
+      .v <- .idf2$est[!is.na(.idf2$neta1) & .idf2$neta1 == .idf2$neta2 & .idf2$name == .e]
+      if (length(.v) == 1L && is.finite(.v)) .om[.e, .e] <- .v
+    }
+    .ret$omega <- .om
+  }
+  ## 4/5. cov + objective are deliberately NOT set: the builder derives them from
+  ##      the FOCEi inner pass at the VAE estimates, which is how the VAE reports
+  ##      its objective today.  Setting them here would change every fit.
+  ## 6. remaining metadata ($method/$extra/$est set above)
+  if (!exists("message", envir = .ret, inherits = FALSE)) .ret$message <- ""
   .fit <- nlmixr2CreateOutputFromUi(.ui2, data = env$data, control = .ret$control,
                                     table = env$table, env = .ret, est = "vae")
   ## mu2/mu3/mu4 covariate rewriting: restore the original algebraic covariate

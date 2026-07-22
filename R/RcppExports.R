@@ -192,6 +192,10 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
+    .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
+}
+
 #' Build the nonparametric Psi (conditional-likelihood) matrix
 #'
 #' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
