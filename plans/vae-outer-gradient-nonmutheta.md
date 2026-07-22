@@ -748,19 +748,16 @@ fits (which currently work through the focei route and must not regress).
 Full eliminated list (do NOT re-test): covariate selection, nonMuTheta mode,
 mu-structure, eta dimensions, `.uiIovEnv` lifetime, `etaMat`, ui contents.
 
-##### Caveat on the SAEM route: code evidence strong, empirical check INCOMPLETE
+##### SAEM route: CONFIRMED
 
 The route argument rests on code reading -- `.saemFamilyFit` uses
 `nlmixr2CreateOutputFromUi` and never `foceiFitCpp_`, and `nlmixr2Est.saem`
 carries `attr(..., "iov") <- TRUE`.  That is solid.
 
-What was NOT confirmed before this session ended: an actual `est="saem"` fit of
-the SAME IOV model/data succeeding.  The run was still going when work stopped.
-Do that first -- it is one fit, and it decides whether the route hypothesis holds:
+CONFIRMED empirically: `est="saem"` fits the SAME IOV model on the SAME data --
 
-  * SAEM fits it        -> route confirmed, rework `.vaeToFit` onto the SAEM
-                           sequence.
-  * SAEM fails too      -> the bug is upstream of the assembly route entirely and
-                           this eighth hypothesis dies with the other seven.
+    SAEM+IOV (same model/data): OK  tv= 3.43682
 
-Treat the section above as a lead, not a verdict, until that runs.
+-- where `est="vae"` throws `invalid second argument of length 0`.  Same ui, same
+five expanded etas, same occasion column.  The ONLY difference left standing is
+the output-assembly route, so the rework below is the fix, not a guess.
