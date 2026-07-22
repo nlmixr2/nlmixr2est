@@ -46,7 +46,10 @@
   cached `(y, f)` pairs, needing no ODE re-solve.  It is the only path that can
   estimate an error model with no closed form, and it beats the moment estimator
   on both additive (131.79 vs 131.81) and combined (121.03 vs 122.47) `theo_sd`
-  fits.  The default remains `"moment"` pending wider testing.
+  fits.  It is now the DEFAULT, so an `est="vae"` fit with a residual-error
+  parameter changes; `residOptimize="moment"` restores the previous estimator.
+  It is also the only path that estimates an error model with no closed form,
+  which the moment estimator left silently at its `ini()` value.
 
 - `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
   encoder's initial posterior spread.  `"sd"` (default) makes the initial

@@ -22,7 +22,7 @@ vaeControl(
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
   sigma0Interp = c("sd", "reference"),
-  residOptimize = c("moment", "optimize", "twoStage"),
+  residOptimize = c("twoStage", "moment", "optimize"),
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
@@ -156,13 +156,13 @@ closing tail.  `FALSE` regresses the current posterior means.}
 
 \item{residOptimize}{How the residual-error parameters are estimated.
 
-  * `"moment"` (default): the closed-form moment estimator.  For a model with
+  * `"moment"`: the closed-form moment estimator.  For a model with
     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
     any other error model it is either a different estimator or, for the forms
     with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
     the parameter stays at its `ini()` value.
-  * `"twoStage"` (EXPERIMENTAL, the recommended optimization path): block
-    coordinate descent, as `npag`'s `residOptimize = "alternate"` does.  Stage
+  * `"twoStage"` (default): block coordinate descent, as `npag`'s
+    `residOptimize = "alternate"` does.  Stage
     one optimizes the non-mu-referenced structural thetas with the residual
     parameters held, so it is driven by `(dv - f)`; stage two then holds those
     and optimizes the residual parameters alone against the extended
