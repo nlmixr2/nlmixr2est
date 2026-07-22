@@ -141,16 +141,42 @@ pattern:
    augmented lhs width.  This buffer is mandatory, not an optimization: the imp
    M-step bug was exactly `calc_lhs` overflowing the inner-sized per-thread lhs
    slice (`op_focei.thetaSensNlhs`).
-4. **The seam.** `.foceiAnalyticSolveAll` already reduces the whole solve to one
-   column matrix up front ("Extract every sensitivity column from the WHOLE solve
-   as a matrix ONCE"); have it take that matrix from `vaeOuterSolve_()` instead of
-   `rxode2::rxSolve` for this caller.  Everything downstream in
-   `.foceiAnalyticGradCore` is untouched.
+4. **The seam -- return the per-subject `E` list directly.**  Do NOT rebuild
+   `.foceiAnalyticSolveAll`'s intermediate column matrix and re-slice it in R;
+   `vaeOuterSolve_()` emits the `E` structures its loop produces and
+   `.foceiAnalyticGradCore` consumes unchanged, dropping a whole representation.
+   Per subject (`no` = n obs, `nd` = ndir, `nsig` = length(am$sigTh)):
+
+   | field | shape | when |
+   |---|---|---|
+   | `f` | `no` | always |
+   | `a` | `no x nd` | always (1st-order pred sens) |
+   | `A` | `no x nd x nd` | always (2nd-order, symmetric) |
+   | `R`, `aR` | `no`, `no x nd` | `am$hasRvar` |
+   | `AR` | `no x nd x nd` | `am$hasRvar` (symmetric) |
+   | `Rsig` | `no x nsig` | `hasRvar && nsig > 0` |
+   | `RsigDir` | `no x nd x nsig` | as above |
+   | `Rsig2` | `no x nsig x nsig` | as above (symmetric) |
+   | `trans` | list of 4 vectors | `am$hasTrans` |
+
+   `E$y` is attached by `.foceiAnalyticGradCore`, not here.
 5. Drop `storeCovSolveArgs_`/`restoreFitSolve_` from the VAE path (Phase 2's
    `_vaeNeedSolveArgs` flag and the `restoreFitSolve_` call in the M-step go away).
 
-Bonus: this also removes the per-M-step R round-trip, and makes the solve
-parallelizable later under the same `_innerParallel` discipline imp uses.
+**The lhs buffer is ours, not rxode2's.**  The augmented model's lhs width does
+NOT match the inner model's, so `calc_lhs` must never write into rxode2's
+per-thread lhs slice (that is precisely the imp M-step bug: theta-sens `calc_lhs`
+overflowing an inner-sized slice on `dV`).  Allocate the lhs vector outside
+rxode2, sized to the augmented model's own width, and pass it to `calc_lhs` --
+per thread once parallel.  It also makes the column mapping inspectable, so a
+wrong offset shows up as a debuggable index rather than heap corruption.
+
+**Parallelize the outer solve.**  Per-subject writes are disjoint, so the loop
+parallelizes under the same discipline `vaeInnerLikCore` and the imp M-step use:
+`cores = min2(cores, getOpCores(op))`, `solveMethodThreadSafe(op)` gate,
+`sortIds(rx, 2)` + `_innerParallel` bracket, `setRxThreadId(omp_get_thread_num())`
+inside, one lhs buffer per thread.  Deterministic for a fixed core count (disjoint
+writes, no cross-subject fold).
 
 ### Phase 3 -- the M-step hook
 
