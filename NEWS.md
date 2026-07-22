@@ -2,6 +2,39 @@
 
 ## New features
 
+- The optimization `sigdig` now sets both the ODE solver tolerances and every
+  estimation method's optimizer convergence tolerance with one consistent formula,
+  so the optimizer converges to exactly the precision the solve supports.  The ODE
+  `rtol` exponent IS `sigdig` and `atol` sits three orders below --
+  `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)` -- the same for every solver (stiff,
+  non-stiff, auto-switching); sensitivity (`atolSens`/`rtolSens`) and steady-state
+  (`ssAtol`/`ssRtol`) solves run one order looser.  Every optimizer's convergence
+  tolerance is `10^-sigdig` to match (`n1qn1` `epsilon`; `bobyqa`/`newuoa`/`uobyqa`
+  `rhoend`; `nlminb` `rel.tol`/`x.tol`; `lbfgsb3c`/`optim` `factr` as
+  `10^-sigdig/eps`; the FOCEi outer optimizer; `saem`'s inner residual `tol`; the
+  standalone `nlm` and `optim`).  At the default `sigdig = 4` this is ODE
+  `atol = 1e-7, rtol = 1e-4` and optimizer tolerance `1e-4` (previously a symmetric
+  ODE `5e-7` with optimizer `1e-5`).  `sigdig` is routed through all of
+  focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and the nlm family.  `est="nls"`
+  keeps a tighter ODE (three orders below the shared target) because its
+  Levenberg-Marquardt step is sensitive to solver noise.  An explicit `atol`/`rtol`
+  passed through `rxControl` still overrides the `sigdig`-derived value.
+
+- Added sugar aliases for the `optim()` methods so `est = "neldermead"`,
+  `"bfgs"`, `"cg"`, `"lbfgsb"`, `"sann"` and `"brent"` stand in for
+  `est = "optim"` with `optimControl(method = ...)`.  Any other `optimControl()`
+  options still apply; the alias only sets the method (and its bounded/unbounded
+  handling, so `"brent"`/`"lbfgsb"` honor bounds).
+
+- The inner bounded-`bobyqa` optimizer that fits the residual-error thetas in
+  `est="npag"`, `est="npb"` and the `est="vae"` regress M-step now takes a
+  configurable `rhoend` (final trust-region radius) via `npagControl(rhoend=)`,
+  `npbControl(rhoend=)` and `vaeControl(rhoend=)`, threaded to the C++ engine.  It
+  defaults to `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)`
+  at the default `sigdig=4`; `vaeControl` derives it from `sigdig` when set
+  (`npag`/`npb` have no `sigdig`, so they use the fixed default).  (`est="saem"`
+  already routes its inner tolerance through `saemControl(tol=)`.)
+
 - FOCEi guards each `theta`'s scaling constant per transform, keeping the
   derivative-based `scaleC` where it is well-behaved and falling back only in that
   transform's singular / out-of-range region.  Each parameter keeps `1/|init|`
@@ -16,6 +49,17 @@
   special handling this subsumes), `log()` at init `1`, `logit` at the interval
   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the well-scaled
   common case, and its results, unchanged.
+
+- The bounded-transform (`logit`/`expit`/`probit`/`probitInv`) `scaleC` band is now
+  built from each parameter's OWN low and high bound instead of a fixed cutoff.  The
+  derivative-based `scaleC` factors as `N * M`, where `N` is a per-parameter scale
+  using the distance to each bound (`(x-low)(hi-x)/(hi-low)` for `logit`/`probit`,
+  `E/(hi-low)` for `expit`/`probitInv`) and `M` is a bounds-invariant factor that
+  carries the singularity.  Guarding `scaleC` to `N * [lo, hi]` applies the same
+  dimensionless band at every bound, so `logit(x, 0, 1)` and `logit(x, 1, 100)` are
+  guarded identically at equal fractional position.  Previously a wide interval
+  (e.g. `logit(x, 1, 100)`) had its healthy large `scaleC` clipped by the fixed
+  `c(1e-4, 10)` band and slammed to the midpoint; `(0, 1)` results are unchanged.
 
 - Fixed FOCEi `scaleC` for a `gamma()`-transformed population parameter: rxode2
   reports it as `curEval="lgammafn"`, which the scaling setup did not recognize, so
@@ -660,6 +704,19 @@
 ## Bug fixes
 
 ### Estimation
+
+- `est="nlme"` now honors `sigdig` for the ODE solver tolerances.  A reversed
+  condition made `nlmeControl()` fall back to `atol=rtol=1e-4` whenever `sigdig`
+  was set (i.e. always, since it defaults to `4`) and only pass `sigdig` through
+  when it was `NULL`; the tolerances are now derived from `sigdig` like every other
+  method.
+
+- Fixed the FOCEi `scaleC` band guard corrupting `est="vae"` covariate selection.
+  The guard only rescues a genuinely-computed derivative-based scaling constant
+  (`> 0`) now; an uninitialized `scaleC` of exactly `0` is left for the usual
+  min/max clamp instead of being overwritten with `|init|`.  The overwrite had
+  broken VAE covariate discovery on theophylline (no covariates selected, betas
+  collapsed to `0`).
 
 - `est="vae"` with `covariateSelection=FALSE` now estimates the covariate
   coefficients written into the model -- both linear (`beta*WT`) and transformed

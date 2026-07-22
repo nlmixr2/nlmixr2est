@@ -40,6 +40,7 @@ vaeControl(
   ci = 0.95,
   sigdig = NULL,
   sigdigTable = NULL,
+  rhoend = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -221,6 +222,11 @@ this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+
+\item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
+`bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
+derives it from `sigdig` (`10^(-sigdig)`, matching the optimizer convergence
+tolerance), or `1e-4` when `sigdig` is `NULL`.}
 
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}

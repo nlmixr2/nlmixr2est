@@ -1816,20 +1816,50 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
           # single global band would wrongly clip transforms whose healthy range
           # differs (e.g. logit is legitimately small, expit legitimately large).
           if (!is.na(.scaleC[.j])) {
-            .band <- switch(.curEval,
-              "exp"       = c(0, Inf),      # always 1; never guarded
-              "log"       = c(0.1, 10),     # excludes init <= 1 (scaleC <= 0) and the large tail
-              "logit"     = c(1e-4, 10),    # bounded param: small scaleC is valid; excludes the midpoint (0)
-              "probit"    = c(1e-4, 10),
-              "expit"     = c(0.1, 100),    # unbounded -> bounded: large scaleC is valid; excludes over-scaling
-              "probitInv" = c(0.1, 100),
-              "factorial" = c(0.1, 10),     # excludes the digamma-zero pole (-> Inf)
-              "gamma"     = c(0.1, 10),
-              "lgammafn"  = c(0.1, 10),     # rxode2 reports gamma() as "lgammafn"
-              c(.scLo, .scHi))              # fallback: the linear scaleCband
-            # midpoint fallback only for bounded transforms (bounded safe range)
+            # A bounded transform's derivative-based scaleC factors as N * M, where
+            # N is a PER-PARAMETER natural scale built from this parameter's OWN
+            # distance to the low AND high bound (not the composite width hi-low),
+            # and M is a bounds-INVARIANT factor that goes singular in the
+            # transform's bad region.  Guarding scaleC to N * [lo, hi] therefore
+            # applies the SAME dimensionless M-band at every bound: logit(x,0,1) and
+            # logit(x,1,100) are guarded identically at equal fractional position,
+            # and a wide interval keeps its healthy (large) scaleC instead of being
+            # clipped by a fixed band.
+            #  * logit()/probit(): the parameter LIVES in (low, hi); its local scale
+            #    is the harmonic distance to the two bounds N=(x-low)(hi-x)/(hi-low)
+            #    (small near EITHER bound), and M is the log-odds, singular (-> 0) at
+            #    the midpoint.
+            #  * expit()/probitInv(): an UNBOUNDED parameter maps into (low, hi);
+            #    N = E/(hi-low) with E the transformed value, and M = 1/(s(1-s)),
+            #    singular (-> large) at saturation.
+            .lo <- .muRefCurEval$low[.i]; .hi <- .muRefCurEval$hi[.i]
+            .x  <- .ini$est[.j]; .wd <- .hi - .lo
+            .N <- NA_real_; .frac <- NULL
+            if (.curEval %in% c("logit", "probit")) {
+              .N <- (.x - .lo) * (.hi - .x) / .wd
+              .frac <- c(4e-4, 40)          # excludes the midpoint (M -> 0)
+            } else if (.curEval %in% c("expit", "probitInv")) {
+              .E <- if (.curEval == "expit") .lo + .wd / (1 + exp(-.x))
+                    else .lo + 0.5 * .wd * (1 + rxode2::erf(.x / sqrt(2)))
+              .N <- .E / .wd
+              .frac <- c(1, 100)            # excludes saturation (M -> large)
+            }
+            if (!is.null(.frac) && isTRUE(.N > 0)) {
+              .band <- .N * .frac
+            } else {
+              # non-bounded transforms keep their own fixed bands (M is already
+              # dimensionless for them); a degenerate N (<= 0) falls through here too
+              .band <- switch(.curEval,
+                "exp"       = c(0, Inf),   # always 1; never guarded
+                "log"       = c(0.1, 10),  # excludes init <= 1 (scaleC <= 0) and the large tail
+                "factorial" = c(0.1, 10),  # excludes the digamma-zero pole (-> Inf)
+                "gamma"     = c(0.1, 10),
+                "lgammafn"  = c(0.1, 10),  # rxode2 reports gamma() as "lgammafn"
+                c(.scLo, .scHi))           # fallback: the linear scaleCband
+            }
+            # midpoint / saturation fallback only for bounded transforms
             .mid <- .curEval %in% c("logit", "probit", "expit", "probitInv")
-            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .ini$est[.j], .band[1], .band[2], mid = .mid)
+            .scaleC[.j] <- .guardScaleC(.scaleC[.j], .x, .band[1], .band[2], mid = .mid)
           }
           # Additive / linear thetas are set below to the derivative-based
           # 1/|init|, guarded to the linear scaleCband.

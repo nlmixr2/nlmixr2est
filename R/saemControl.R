@@ -266,11 +266,11 @@
 #' @param lbfgsFactr Convergence tolerance on the relative reduction in the
 #'   objective for that L-BFGS-B refinement (the `factr` control, in units of
 #'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-#'   same way as `foceiControl()` (`10^(-sigdig - 1) / .Machine$double.eps`).
+#'   same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).
 #'
 #' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
 #'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-#'   derived from `sigdig` (`10^(-sigdig - 1)`).
+#'   derived from `sigdig` (`10^(-sigdig)`).
 #'
 #' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
 #'   refinement.  Default 20.
@@ -312,7 +312,7 @@ saemControl <- function(seed = 99,
                         adjObf = TRUE,
                         sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
-                        tol = 1e-6,
+                        tol = NULL,
                         itmax = 30,
                         type = c("newuoa", "nelder-mead"),
                         powRange = 10,
@@ -391,6 +391,10 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
   checkmate::assertLogical(adjObf, any.missing=FALSE, len=1)
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
+  # `tol` is the rhoend/tolerance of saem's inner residual-regression optimizer
+  # (bounded bobyqa / newuoa / nelder-mead); tie it to sigdig with the FOCEi
+  # mechanism.  A user value wins, sigdig=NULL keeps the historic default.
+  if (is.null(tol)) tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
   checkmate::assertNumeric(tol, any.missing=FALSE, len=1, finite=TRUE)
   checkmate::assertIntegerish(itmax, any.missing=FALSE, len=1, lower=1)
   checkmate::assertNumeric(powRange, any.missing=FALSE, len=1, lower=0)
@@ -440,10 +444,10 @@ saemControl <- function(seed = 99,
     # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
     # derived from sigdig the same way foceiControl() does (factr = tol/eps)
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
     }
     if (is.null(lbfgsPgtol)) {
-      lbfgsPgtol <- 10^(-sigdig - 1)
+      lbfgsPgtol <- 10^(-sigdig)
     }
   }
   # defaults when sigdig is not supplied (~4 significant digits)
@@ -466,11 +470,11 @@ saemControl <- function(seed = 99,
     .env <- parent.frame(1)
   }
   if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
+    rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig, envir=.env), sigdig)
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)

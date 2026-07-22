@@ -81,6 +81,9 @@ newuoaControl <- function(npt=NULL,
                           eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
+  # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
+  # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
+  if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(iprint, any.missing=FALSE, lower=0, len=1)
@@ -117,14 +120,14 @@ newuoaControl <- function(npt=NULL,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

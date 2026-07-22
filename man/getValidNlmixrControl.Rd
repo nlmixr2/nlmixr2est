@@ -51,6 +51,12 @@
 \alias{getValidNlmixrCtl.npag}
 \alias{getValidNlmixrCtl.npb}
 \alias{getValidNlmixrCtl.optim}
+\alias{getValidNlmixrCtl.neldermead}
+\alias{getValidNlmixrCtl.bfgs}
+\alias{getValidNlmixrCtl.cg}
+\alias{getValidNlmixrCtl.lbfgsb}
+\alias{getValidNlmixrCtl.sann}
+\alias{getValidNlmixrCtl.brent}
 \alias{getValidNlmixrCtl.posthoc}
 \alias{getValidNlmixrCtl.qrpem}
 \alias{getValidNlmixrControl}
@@ -157,6 +163,18 @@
 \method{getValidNlmixrCtl}{npb}(control)
 
 \method{getValidNlmixrCtl}{optim}(control)
+
+\method{getValidNlmixrCtl}{neldermead}(control)
+
+\method{getValidNlmixrCtl}{bfgs}(control)
+
+\method{getValidNlmixrCtl}{cg}(control)
+
+\method{getValidNlmixrCtl}{lbfgsb}(control)
+
+\method{getValidNlmixrCtl}{sann}(control)
+
+\method{getValidNlmixrCtl}{brent}(control)
 
 \method{getValidNlmixrCtl}{posthoc}(control)
 

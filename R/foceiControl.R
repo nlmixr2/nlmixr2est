@@ -26,11 +26,17 @@
 
 #' Control Options for FOCEi
 #'
-#' @param sigdig Optimization significant digits; controls the inner/outer
-#'   optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
-#'   (\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
-#'   sensitivity/steady-state with liblsoda), and boundary check tolerance
-#'   (\code{5*10^(-sigdig+1)}).
+#' @param sigdig Optimization significant digits.  One value drives, with a single
+#'   consistent formula, the inner/outer optimizer convergence tolerance
+#'   (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+#'   and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+#'   \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+#'   \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+#'   auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
+#'   steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+#'   Keying the optimizer to the same \code{10^-sigdig} means it converges to
+#'   exactly the precision the solve supports.  At the default \code{sigdig = 4}
+#'   this is \code{atol = 1e-7}, \code{rtol = 1e-4}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
 #'   If not specified, then it matches the significant digits in the
@@ -342,7 +348,7 @@
 #'     `abs(upper-lower)/2`. (bobyqa)
 #'
 #' @param rhoend Final trust region radius. If not defined,
-#'     `10^(-sigdig-1)` is used. (bobyqa)
+#'     `10^(-sigdig)` is used. (bobyqa)
 #'
 #' @param npt Number of points for bobyqa's quadratic approximation to the
 #'     objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
@@ -841,28 +847,28 @@ foceiControl <- function(sigdig = 4, #
       boundTol <- 5 * 10^(-sigdig + 1)
     }
     if (is.null(epsilon)) {
-      epsilon <- 10^(-sigdig - 1)
+      epsilon <- 10^(-sigdig)
     }
     if (is.null(abstol)) {
-      abstol <- 10^(-sigdig - 1)
+      abstol <- 10^(-sigdig)
     }
     if (is.null(reltol)) {
-      reltol <- 10^(-sigdig - 1)
+      reltol <- 10^(-sigdig)
     }
     if (is.null(rhoend)) {
-      rhoend <- 10^(-sigdig - 1)
+      rhoend <- 10^(-sigdig)
     }
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
     }
     if (is.null(rel.tol)) {
-      rel.tol <- 10^(-sigdig - 1)
+      rel.tol <- 10^(-sigdig)
     }
     if (is.null(x.tol)) {
-      x.tol <- 10^(-sigdig - 1)
+      x.tol <- 10^(-sigdig)
     }
     if (is.null(derivSwitchTol)) {
-      derivSwitchTol <- 2 * 10^(-sigdig - 1)
+      derivSwitchTol <- 2 * 10^(-sigdig)
     }
   }
   if (is.null(sigdigTable)) {
@@ -1242,11 +1248,14 @@ foceiControl <- function(sigdig = 4, #
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig,
-                                     maxsteps=500000L)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig,
+                                                           maxsteps=500000L), sigdig)
       genRxControl <- TRUE
+    } else if (inherits(rxControl, "rxControl")) {
+      # a fully-formed rxControl object is the user's explicit solving spec; leave
+      # it untouched so any atol/rtol it carries is respected
     } else if (is.list(rxControl)) {
-      rxControl <- do.call(rxode2::rxControl, rxControl)
+      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()",

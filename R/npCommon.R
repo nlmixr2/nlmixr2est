@@ -205,6 +205,10 @@
   # 2 = correlation in (-1,1) (ar), 0 = free (lambda/exponent).
   .errOpt <- !is.na(.thOrd$err) & !.isFix
   .control$npResidOptIdx <- as.integer(which(.errOpt) - 1L)
+  # inner bounded-bobyqa final trust-region radius for the residual step
+  # (npagControl/npbControl `rhoend`); default 1e-4 matches the optimizer
+  # convergence tolerance 10^-sigdig at the default sigdig=4
+  .control$npResidRhoend <- if (is.null(.control$rhoend)) 1e-4 else as.numeric(.control$rhoend)
   .optType <- .errType[.errOpt]
   .kind <- rep(1L, length(.optType))
   .kind[.optType %in% c("ar")] <- 2L

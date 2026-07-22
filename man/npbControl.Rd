@@ -17,6 +17,7 @@ npbControl(
   gammaOptimize = FALSE,
   muExpand = FALSE,
   cores = NULL,
+  rhoend = 1e-04,
   ...
 )
 }
@@ -63,6 +64,11 @@ likelihood solves in the Gibbs sweeps.  `NULL` (default) uses the current
 `rxode2` thread count (`rxode2::getRxThreads()`); an integer sets the thread
 count for the fit (restored afterwards).  With a fixed `seed` the fit is
 bit-for-bit identical regardless of the thread count.}
+
+\item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
+`bobyqa` that fits the residual-error thetas.  A fixed default of `1e-4`,
+matching the optimizer convergence tolerance `10^(-sigdig)` at the default
+`sigdig = 4` (npb has no `sigdig`, so this is not derived from it).}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }

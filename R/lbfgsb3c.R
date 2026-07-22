@@ -70,7 +70,7 @@
 #' # extra components and name the parameters
 #' }
 lbfgsb3cControl <- function(trace=0,
-                            factr=1e7,
+                            factr=NULL,
                             pgtol=0,
                             abstol=0,
                             reltol=0,
@@ -106,6 +106,9 @@ lbfgsb3cControl <- function(trace=0,
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
+  # L-BFGS-B factr from sigdig (FOCEi mechanism, matches foceiControl lbfgsFactr);
+  # a user value wins, sigdig=NULL keeps the historic default
+  if (is.null(factr)) factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   checkmate::assertNumeric(factr, len=1, any.missing=FALSE, lower=10)
   checkmate::assertNumeric(pgtol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(abstol, len=1, any.missing=FALSE, lower=0)
@@ -142,14 +145,14 @@ lbfgsb3cControl <- function(trace=0,
 
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

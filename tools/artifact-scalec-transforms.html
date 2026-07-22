@@ -1,0 +1,352 @@
+<title>FOCEi scaleC across transforms</title>
+<style>
+  :root{
+    --bg:#f5f8fa; --panel:#ffffff; --ink:#152230; --muted:#5c6d7c; --line:#dbe4ec;
+    --accent:#0b7285; --stable:#2f9e6f; --danger:#d9480f;
+    --band:rgba(47,158,111,.12); --grid:#eef3f7;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0c1117; --panel:#141c25; --ink:#e6eef5; --muted:#8494a2; --line:#233140;
+      --accent:#3bb4c6; --stable:#4ec18a; --danger:#ff7a45;
+      --band:rgba(78,193,138,.13); --grid:#1a2530;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f5f8fa; --panel:#ffffff; --ink:#152230; --muted:#5c6d7c; --line:#dbe4ec;
+    --accent:#0b7285; --stable:#2f9e6f; --danger:#d9480f; --band:rgba(47,158,111,.12); --grid:#eef3f7;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c1117; --panel:#141c25; --ink:#e6eef5; --muted:#8494a2; --line:#233140;
+    --accent:#3bb4c6; --stable:#4ec18a; --danger:#ff7a45; --band:rgba(78,193,138,.13); --grid:#1a2530;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;
+    -webkit-font-smoothing:antialiased;margin:0}
+  .wrap{max-width:1120px;margin:0 auto;padding:clamp(20px,4vw,56px) clamp(16px,4vw,32px)}
+  header.hero{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:32px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 14px}
+  h1{font-size:clamp(26px,4.4vw,40px);line-height:1.1;margin:0 0 14px;text-wrap:balance;
+    letter-spacing:-.01em;font-weight:650}
+  .lede{max-width:70ch;color:var(--muted);font-size:clamp(15px,1.6vw,17px);margin:0}
+  .lede + .lede{margin-top:14px}
+  .lede b{color:var(--ink);font-weight:600}
+  code,.mono{font-family:var(--mono)}
+  h2{font-size:14px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:44px 0 16px;font-weight:600}
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td.f{font-family:var(--mono);font-size:12.5px;color:var(--ink);white-space:nowrap}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;
+    font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .tag::before{content:"";width:7px;height:7px;border-radius:50%}
+  .ok{color:var(--stable);background:color-mix(in srgb,var(--stable) 14%,transparent)}
+  .ok::before{background:var(--stable)}
+  .new{color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent)}
+  .new::before{background:var(--accent)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px 22px;font-size:12.5px;color:var(--muted);
+    font-family:var(--mono);margin:0 0 18px;align-items:center}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:16px;height:3px;border-radius:2px;display:inline-block}
+  .sw.b{width:13px;height:11px;border-radius:2px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 12px;
+    display:flex;flex-direction:column;gap:8px}
+  .card.pair{outline:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:3px}
+  .card h3{margin:0;font-size:15px;font-weight:620;letter-spacing:-.005em;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .card h3 .bnd{font-family:var(--mono);font-size:11.5px;color:var(--accent);font-weight:600;white-space:nowrap}
+  .card .note{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:0;min-height:3.6em;line-height:1.4}
+  .card canvas{width:100%;height:auto;display:block}
+  .groupnote{font-size:13px;color:var(--muted);margin:-4px 0 14px;max-width:74ch}
+  .groupnote b{color:var(--ink);font-weight:600}
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);
+    font-size:12.5px;font-family:var(--mono);line-height:1.6}
+  .num{font-variant-numeric:tabular-nums}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">FOCEi &middot; parameter scaling diagnostics</p>
+    <h1>Guarding each transform's scaleC &mdash; per parameter, per bound</h1>
+    <p class="lede">FOCEi rescales every population parameter by a constant <code>scaleC</code> so the optimizer
+      sees order-unity variables. Each transform has its own derivative-based formula, and FOCEi <b>guards</b> it:
+      inside a healthy band the formula is kept (results preserved); in the transform's <b>singular</b> region &mdash;
+      where <code>scaleC</code> collapses to 0, diverges, or flips sign &mdash; it falls back to the native magnitude
+      <code>|init|</code>, and for a bounded transform, if <code>|init|</code> is also out of range, to the band's
+      geometric middle.</p>
+    <p class="lede">For a <b>bounded</b> transform the band is <b>not a fixed cutoff</b> &mdash; it is built from
+      <b>this parameter's own low and high bound</b>. A derivative-based <code>scaleC</code> factors as
+      <code>N &middot; M</code>: a per-parameter natural scale <code>N</code> that uses the distance to <em>each</em>
+      bound, times a bounds-invariant factor <code>M</code> that carries the singularity. Guarding
+      <code>scaleC</code> to <code>N &middot; [lo, hi]</code> applies the <b>same</b> dimensionless band at every
+      bound &mdash; so <code>logit(x,0,1)</code> and <code>logit(x,1,100)</code> are guarded identically at equal
+      fractional position, and a wide interval keeps its healthy (large) <code>scaleC</code> instead of being
+      clipped by a one-size band.</p>
+  </header>
+
+  <h2>Stability summary</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Transform</th><th>scaleC = N &middot; M</th><th>Band on scaleC</th><th>Out-of-band fallback</th></tr></thead>
+      <tbody>
+        <tr><td>exp / log-normal</td><td class="f">1</td><td class="f">&mdash;</td><td>never guarded</td></tr>
+        <tr><td>linear / additive</td><td class="f">1/|init|</td><td class="f">[0.1, 10]</td><td><b>|init|</b> (any magnitude; preserves #641)</td></tr>
+        <tr><td>log()</td><td class="f">log(|init|)&middot;|init|</td><td class="f">[0.1, 10]</td><td>|init| &mdash; <b>= 0 at init 1</b>, negative below</td></tr>
+        <tr><td>logit(a,b) <span class="tag new">per-bound</span></td>
+            <td class="f">N=(x&minus;a)(b&minus;x)/(b&minus;a)</td>
+            <td class="f">N &middot; [4e-4, 40]</td>
+            <td>|init|, then midpoint &mdash; <b>M=log-odds = 0 at midpoint</b></td></tr>
+        <tr><td>probit(a,b) <span class="tag new">per-bound</span></td>
+            <td class="f">N=(x&minus;a)(b&minus;x)/(b&minus;a)</td>
+            <td class="f">N &middot; [4e-4, 40]</td>
+            <td>|init|, then midpoint (bounded)</td></tr>
+        <tr><td>expit(a,b) <span class="tag new">per-bound</span></td>
+            <td class="f">N=E/(b&minus;a), E=expit</td>
+            <td class="f">N &middot; [1, 100]</td>
+            <td>|init|, then midpoint &mdash; <b>M=1/(s(1&minus;s)) large at saturation</b></td></tr>
+        <tr><td>probitInv(a,b) <span class="tag new">per-bound</span></td>
+            <td class="f">N=E/(b&minus;a), E=probitInv</td>
+            <td class="f">N &middot; [1, 100]</td>
+            <td>|init|, then midpoint (bounded)</td></tr>
+        <tr><td>gamma <span class="tag ok">fixed</span></td><td class="f">1/&psi;(init)</td><td class="f">[0.1, 10]</td><td>|init| &mdash; <b>&psi; &lt; 0 for init &lt; 1.462</b></td></tr>
+        <tr><td>factorial <span class="tag ok">fixed</span></td><td class="f">1/&psi;(init+1)</td><td class="f">[0.1, 10]</td><td>|init| &mdash; <b>wrong sign for init &lt; 0.462</b></td></tr>
+        <tr><td>residual (add/prop)</td><td class="f">0.5&middot;|init|</td><td class="f">&mdash;</td><td>not guarded</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>scaleC across the parameter range</h2>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--stable)"></span>in band (kept)</span>
+    <span><span class="sw" style="background:var(--danger)"></span>out of band / &le; 0 / wrong sign &rarr; fallback</span>
+    <span><span class="sw b" style="background:var(--band);border:1px solid var(--stable)"></span>guard band <code>N&middot;[lo,hi]</code></span>
+    <span>&#9478; singularity</span>
+  </div>
+
+  <p class="groupnote" id="gn-bounded"><b>Bounded transforms &mdash; the band tracks the bounds.</b>
+    Each pair below is the <em>same</em> transform at a narrow and a wide/offset interval. The green band is a
+    <b>curve</b> now (<code>N(x)&middot;[lo,hi]</code>), not a flat line: it lifts with the interval so the healthy
+    <code>scaleC</code> stays inside it at every bound. A fixed band would clip the wide interval's legitimate large
+    values and slam them to the midpoint.</p>
+  <div class="grid" id="grid-bounded"></div>
+
+  <p class="groupnote" style="margin-top:32px"><b>Unbounded / structural transforms &mdash; fixed bands.</b>
+    These parameters have no interval; <code>M</code> is already dimensionless, so the band is a constant. Shown for
+    reference (unchanged).</p>
+  <div class="grid" id="grid-fixed"></div>
+
+  <footer>Formulas and per-transform bands from <code>.foceiOptEnvSetupScaleC()</code> / <code>getScaleC()</code>
+    (R/focei.R, src/inner.cpp) &middot; bounded bands are <code>N&middot;[lo,hi]</code> with N built from the
+    parameter's own low/high; linear band = <code>foceiControl(scaleCband)</code> &middot; y-axis is
+    log&#8321;&#8320;|scaleC|, clamped to <code>[scaleCmin 1e-5, scaleCmax 1e5]</code>.</footer>
+</div>
+
+<script>
+"use strict";
+const SQRT2 = Math.SQRT2, SPI = Math.sqrt(Math.PI);
+// --- special functions -------------------------------------------------------
+function erf(x){
+  const s = Math.sign(x); x = Math.abs(x);
+  const t = 1/(1+0.3275911*x);
+  const y = 1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return s*y;
+}
+function erfinv(x){
+  const a = 0.147, ln = Math.log(1-x*x), t = 2/(Math.PI*a)+ln/2;
+  return Math.sign(x)*Math.sqrt(Math.sqrt(t*t-ln/a)-t);
+}
+function digamma(x){
+  let r = 0;
+  while (x < 6){ r -= 1/x; x += 1; }
+  const f = 1/(x*x);
+  return r + Math.log(x) - 0.5/x + f*(-1/12 + f*(1/120 + f*(-1/252)));
+}
+// --- derivative-based scaleC formulas (mirror .foceiOptEnvSetupScaleC) --------
+const scaleC = {
+  exp:   () => 1,
+  linear:(x) => x === 0 ? Infinity : 1/Math.abs(x),
+  log:   (x) => Math.log(Math.abs(x))*Math.abs(x),
+  gamma: (x) => 1/digamma(x),
+  factorial:(x) => 1/digamma(x+1),
+  logit: (x,a,b) => -1.0*Math.pow(-a+x,2)*(-1.0+ (-a+b)/(-a+x))*Math.log(Math.abs(-1.0+(-a+b)/(-a+x)))/(-a+b),
+  expit: (x,a,b) => Math.exp(x)*Math.pow(1.0+Math.exp(-x),2)*(a+(-a+b)/(1.0+Math.exp(-x)))/(-a+b),
+  probitInv:(x,a,b) => SQRT2*Math.exp(0.5*x*x)*SPI*(a+0.5*(-a+b)*(1.0+erf(x/SQRT2)))/(-a+b),
+  probit:(x,a,b) => { const e = erfinv(-1+2*(-a+x)/(-a+b)); return SQRT2*(-a+b)*e/SPI/2*Math.exp(e*e); }
+};
+// per-parameter natural scale N (bounded transforms); null -> fixed band
+const Nfun = {
+  logit:(x,a,b) => (x-a)*(b-x)/(b-a),
+  probit:(x,a,b) => (x-a)*(b-x)/(b-a),
+  expit:(x,a,b) => (a + (b-a)/(1+Math.exp(-x)))/(b-a),
+  probitInv:(x,a,b) => (a + 0.5*(b-a)*(1+erf(x/SQRT2)))/(b-a)
+};
+const FRAC = { logit:[4e-4,40], probit:[4e-4,40], expit:[1,100], probitInv:[1,100] };
+const SCMIN = 1e-5, SCMAX = 1e5;
+
+// --- card specifications -----------------------------------------------------
+const BOUNDED = [
+  {kind:"logit", a:0, b:1,   title:"logit", xr:[0.02,0.98], sing:0.5,
+   note:"Param lives in (0,1). scaleC = N&middot;log-odds; = 0 at the midpoint, wrong sign below."},
+  {kind:"logit", a:1, b:100, title:"logit", xr:[2,99], sing:50.5,
+   note:"Same shape, wide interval: N &asymp;100&times; larger, so the band lifts and the healthy scaleC (&asymp;22) stays IN band instead of being clipped."},
+  {kind:"expit", a:0, b:1,   title:"expit", xr:[-6,6], sing:null,
+   note:"Unbounded param &rarr; (0,1). scaleC = N&middot;1/(s(1&minus;s)); grows at saturation, guarded above."},
+  {kind:"expit", a:1000, b:1001, xr:[-6,6], title:"expit", sing:null,
+   note:"Far-offset interval: N&asymp;1000, so healthy scaleC is &asymp;4000 &mdash; the lifted band keeps it, a fixed [0.1,100] band would reject it."},
+  {kind:"probit", a:0, b:1, title:"probit", xr:[0.03,0.97], sing:0.5,
+   note:"Normal analogue of logit; same per-bound N=(x&minus;a)(b&minus;x)/(b&minus;a)."},
+  {kind:"probitInv", a:0, b:1, title:"probitInv", xr:[-2.6,2.6], sing:null,
+   note:"Normal analogue of expit; per-bound N=E/(b&minus;a)."}
+];
+const FIXED = [
+  {kind:"exp", title:"exp / log-normal", xr:[0.01,100], logx:true, band:null, sing:null,
+   note:"scaleC = 1 &mdash; flat, never guarded."},
+  {kind:"linear", title:"linear / additive", xr:[1e-3,1e3], logx:true, band:[0.1,10], sing:null,
+   note:"1/|init|; out of band &rarr; |init| (any magnitude, preserves #641)."},
+  {kind:"log", title:"log()", xr:[0.1,120], logx:true, band:[0.1,10], sing:1,
+   note:"log(|init|)&middot;|init|; = 0 at init 1, negative below &rarr; |init|."},
+  {kind:"gamma", title:"gamma", tag:"fixed", xr:[0.2,12], logx:true, band:[0.1,10], sing:1.4616,
+   note:"1/&psi;(init); &psi; &lt; 0 (wrong sign) for init &lt; 1.462, pole at 1.462 &rarr; |init|."},
+  {kind:"factorial", title:"factorial", tag:"fixed", xr:[0.05,8], logx:true, band:[0.1,10], sing:0.4616,
+   note:"1/&psi;(init+1); wrong sign for init &lt; 0.462 &rarr; |init|."}
+];
+
+// --- rendering ---------------------------------------------------------------
+const CSS = getComputedStyle(document.documentElement);
+function col(n){ return CSS.getPropertyValue(n).trim(); }
+function clampAbs(v){ const a = Math.min(Math.max(Math.abs(v), SCMIN), SCMAX); return a; }
+
+function sample(spec){
+  const {kind, a, b, xr, logx} = spec;
+  const N = 260, pts = [];
+  for (let i=0;i<N;i++){
+    const t = i/(N-1);
+    const x = logx ? Math.exp(Math.log(xr[0]) + t*(Math.log(xr[1])-Math.log(xr[0])))
+                   : xr[0] + t*(xr[1]-xr[0]);
+    let sc = (a===undefined) ? scaleC[kind](x) : scaleC[kind](x,a,b);
+    let lo, hi;
+    if (Nfun[kind]){
+      const n = Nfun[kind](x,a,b), fr = FRAC[kind];
+      lo = n*fr[0]; hi = n*fr[1];
+    } else if (spec.band){ lo = spec.band[0]; hi = spec.band[1]; }
+    else { lo = 0; hi = Infinity; }
+    // guard decision: kept iff scaleC positive and within [lo,hi]
+    const inband = Number.isFinite(sc) && sc > 0 && sc >= lo && sc <= hi;
+    pts.push({x, sc, lo, hi, inband});
+  }
+  return pts;
+}
+
+function draw(canvas, spec){
+  const pts = sample(spec);
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const W = canvas.clientWidth || 300, H = 176;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  const g = canvas.getContext("2d"); g.scale(dpr,dpr);
+  const padL = 40, padR = 10, padT = 12, padB = 24;
+  const x0 = spec.xr[0], x1 = spec.xr[1], logx = !!spec.logx;
+  const xToPx = (x) => {
+    const t = logx ? (Math.log(x)-Math.log(x0))/(Math.log(x1)-Math.log(x0)) : (x-x0)/(x1-x0);
+    return padL + t*(W-padL-padR);
+  };
+  // y in log10|.|, auto-fit to data + band, clamped
+  let lg = [];
+  for (const p of pts){
+    lg.push(Math.log10(clampAbs(p.sc)));
+    if (Number.isFinite(p.lo) && p.lo>0) lg.push(Math.log10(clampAbs(p.lo)));
+    if (Number.isFinite(p.hi)) lg.push(Math.log10(clampAbs(p.hi)));
+  }
+  let yMin = Math.min(...lg), yMax = Math.max(...lg);
+  if (yMax-yMin < 1){ const c=(yMax+yMin)/2; yMin=c-0.6; yMax=c+0.6; }
+  yMin -= 0.25; yMax += 0.25;
+  const yToPx = (ly) => padT + (1-(ly-yMin)/(yMax-yMin))*(H-padT-padB);
+
+  // gridlines at integer decades
+  g.strokeStyle = col("--grid"); g.lineWidth = 1; g.fillStyle = col("--muted");
+  g.font = "10px "+col("--mono").split(",").slice(0,2).join(",");
+  for (let d=Math.ceil(yMin); d<=Math.floor(yMax); d++){
+    const y = yToPx(d);
+    g.beginPath(); g.moveTo(padL,y); g.lineTo(W-padR,y); g.stroke();
+    g.fillText("1e"+d, 4, y+3);
+  }
+
+  // band ribbon: fill between log10(lo) and log10(hi) across x
+  g.fillStyle = col("--band");
+  g.beginPath();
+  let started = false;
+  for (const p of pts){
+    if (!(Number.isFinite(p.hi))) continue;
+    const px = xToPx(p.x), py = yToPx(Math.log10(clampAbs(p.hi)));
+    if (!started){ g.moveTo(px,py); started=true; } else g.lineTo(px,py);
+  }
+  for (let i=pts.length-1;i>=0;i--){
+    const p = pts[i]; if (!(p.lo>0)) { const px=xToPx(p.x); g.lineTo(px, yToPx(yMin)); continue; }
+    g.lineTo(xToPx(p.x), yToPx(Math.log10(clampAbs(p.lo))));
+  }
+  g.closePath(); g.fill();
+  // band edges
+  g.strokeStyle = col("--stable"); g.globalAlpha = .5; g.lineWidth = 1; g.setLineDash([3,3]);
+  for (const edge of ["hi","lo"]){
+    g.beginPath(); let st=false;
+    for (const p of pts){ const v=p[edge]; if(!(v>0&&Number.isFinite(v)))continue;
+      const px=xToPx(p.x), py=yToPx(Math.log10(clampAbs(v)));
+      if(!st){g.moveTo(px,py);st=true;}else g.lineTo(px,py);}
+    g.stroke();
+  }
+  g.setLineDash([]); g.globalAlpha = 1;
+
+  // singularity marker
+  if (spec.sing != null){
+    const px = xToPx(spec.sing);
+    g.strokeStyle = col("--muted"); g.globalAlpha=.55; g.setLineDash([2,3]);
+    g.beginPath(); g.moveTo(px,padT); g.lineTo(px,H-padB); g.stroke();
+    g.setLineDash([]); g.globalAlpha=1;
+  }
+
+  // scaleC curve, colored by in/out of band
+  g.lineWidth = 2; g.lineJoin="round";
+  for (let i=1;i<pts.length;i++){
+    const p=pts[i-1], q=pts[i];
+    g.strokeStyle = (p.inband && q.inband) ? col("--stable") : col("--danger");
+    g.beginPath();
+    g.moveTo(xToPx(p.x), yToPx(Math.log10(clampAbs(p.sc))));
+    g.lineTo(xToPx(q.x), yToPx(Math.log10(clampAbs(q.sc))));
+    g.stroke();
+  }
+}
+
+function makeCard(spec, paired){
+  const el = document.createElement("div");
+  el.className = "card" + (paired ? " pair" : "");
+  const bnd = (spec.a!==undefined) ? `(${spec.a}, ${spec.b})` : "";
+  el.innerHTML =
+    `<h3><span>${spec.title||spec.kind}</span>${bnd?`<span class="bnd">${bnd}</span>`:""}</h3>`+
+    `<p class="note">${spec.note||""}</p>`+
+    `<canvas></canvas>`;
+  return el;
+}
+
+function render(){
+  const gb = document.getElementById("grid-bounded");
+  const gf = document.getElementById("grid-fixed");
+  gb.innerHTML=""; gf.innerHTML="";
+  const mk = (list, host, paired) => list.forEach(spec=>{
+    const c = makeCard(spec, paired); host.appendChild(c);
+    requestAnimationFrame(()=>draw(c.querySelector("canvas"), spec));
+  });
+  // mark the same-transform pairs so the co-scaling comparison reads at a glance
+  BOUNDED.forEach((s,i)=> s._pair = (BOUNDED[i-1]&&BOUNDED[i-1].kind===s.kind)||(BOUNDED[i+1]&&BOUNDED[i+1].kind===s.kind));
+  BOUNDED.forEach(spec=>{ const c=makeCard(spec, spec._pair); gb.appendChild(c);
+    requestAnimationFrame(()=>draw(c.querySelector("canvas"), spec)); });
+  mk(FIXED, gf, false);
+}
+render();
+let rt; addEventListener("resize", ()=>{ clearTimeout(rt); rt=setTimeout(render,150); });
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+</script>

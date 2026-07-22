@@ -9,8 +9,8 @@ nlminbControl(
   iter.max = 150,
   trace = 0,
   abs.tol = 0,
-  rel.tol = 1e-10,
-  x.tol = 1.5e-08,
+  rel.tol = NULL,
+  x.tol = NULL,
   xf.tol = 2.2e-14,
   step.min = 1,
   step.max = 1,
@@ -74,9 +74,11 @@ convergence test is not used.  If the objective function is known
 to be non-negative, the previous default of `1e-20` would be more
 appropriate}
 
-\item{rel.tol}{Relative tolerance.  Defaults to `1e-10`.}
+\item{rel.tol}{Relative tolerance.  When `NULL` (default) it is derived from
+`sigdig` the way `foceiControl()` does (`10^(-sigdig)`).}
 
-\item{x.tol}{X tolerance.  Defaults to `1.5e-8`.}
+\item{x.tol}{X tolerance.  When `NULL` (default) it is derived from `sigdig`
+(`10^(-sigdig)`).}
 
 \item{xf.tol}{false convergence tolerance.  Defaults to `2.2e-14`.}
 
@@ -244,11 +246,17 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Optimization significant digits; controls the inner/outer
-optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
-(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
-sensitivity/steady-state with liblsoda), and boundary check tolerance
-(\code{5*10^(-sigdig+1)}).}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 4}
+this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
