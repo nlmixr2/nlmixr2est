@@ -1170,3 +1170,34 @@ of safety:
      snapshot -- keeps the change entirely inside the VAE and cannot affect focei
      or saem.
   Option 2 is the lower-risk one and is where I would start.
+
+##### BOTH shared-hook options are dead -- the fix must live in the VAE
+
+Tested clean, one estimator per process:
+
+    reset `iovVars` moved inside `if (length(.lvls) > 0)`   -> focei ERROR
+      (i.e. preserve ONLY iovVars, still clear iovRename/muModel)
+    early `return(NULL)` on empty `.lvls`                   -> focei ERROR
+    unmodified                                              -> focei OK tv=3.42719
+
+So focei depends on `iovVars` being cleared on its second pass too -- option 1 is
+dead alongside option 2's early-return form.  `R/iov.R` must NOT be touched;
+reverted and focei re-verified.
+
+That leaves exactly one shape: **fix it inside the VAE**, where it cannot reach
+focei or saem.  `.uiFinalizeIov` reads `.uiIovEnv$iovVars` when it runs, so the
+VAE needs that value restored between the preprocess re-entry (which clears it)
+and the post-final-object hooks (which read it) -- both of which happen INSIDE
+`nlmixr2CreateOutputFromUi`, so a plain snapshot/restore around that call in
+`.vaeToFit` is NOT sufficient (restore-before is wiped by the re-entry;
+restore-after is too late).
+
+Concrete candidates for the next attempt:
+  * register a VAE-only preProcess hook ordered AFTER `.uiApplyIov` that
+    reinstates the snapshot (hooks are a list, so ordering is available); or
+  * register a VAE-specific post-final-object hook that runs BEFORE
+    `.uiFinalizeIov` and reinstates it; or
+  * have the VAE carry the IOV vars on the fit env instead of the global, and
+    teach `.uiFinalizeIov` to prefer `ret$env` over `.uiIovEnv` when present --
+    the only option that removes the global-state dependence rather than working
+    around it, and the most robust if a shared change is acceptable after all.
