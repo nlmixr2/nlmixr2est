@@ -34,14 +34,28 @@ solve.  Measured on theo_sd (`v <- exp(tv)`, tv non-mu; scripts in
 
 In scope for the VAE caller, beyond what focei allows today:
 
-- **IOV.** `.foceiAnalyticGradSetup` returns NULL on `.uiIovEnv$iovVars`; that is a
-  FOCEi-inner concern.  The VAE handles IOV outside the inner problem, so the gate
-  does not apply.  NEEDS A SPIKE (see risks) -- the gate's removal is only correct
-  if `rxUiGet.foceiOuter` actually emits directions for the IOV etas.
-- **Bounded transforms.** `preProcessBoundedTransform.R` rewrites the model before
-  estimation, so the model reaching the gradient is already on the unbounded scale.
-  The `ui$boundedTransforms` gate is bookkeeping, not a real restriction, for this
-  caller.
+- **Bounded transforms -- IN (spike done).** `preProcessBoundedTransform.R` sets
+  `boundedTransforms` on the ALREADY-REWRITTEN ui
+  (`.newUi$boundedTransforms <- transforms`, `R/preProcessBoundedTransform.R:280`);
+  by then the model is on the unconstrained `rxBoundedTr.*` scale.  The field is a
+  record for the post-estimation back-transform hook, not a live constraint.
+  focei gates on it because it REPORTS a natural-scale gradient that would need a
+  Jacobian correction; the VAE consumes the gradient internally on the same
+  unconstrained scale it optimizes, so no correction arises.  Droppable here.
+
+- **IOV -- OUT (spike done, was risk 1).** Not a gate lift.  Two blockers:
+  1. `.foceiAnalyticDirections` DOES yield a direction set
+     (`ETA_1_|ETA_2_|ETA_3_|THETA_3_` on a 2-eta + 1-IOV model), but `ETA_3_` is
+     the SINGLE ui-level `iov.cl`.
+  2. The RUNTIME eta vector is expanded per occasion: a refit reports `etaMat`
+     columns `eta.ka, eta.cl, rx.iov.cl.1, rx.iov.cl.2` -- 4 etas against the
+     direction set's 3.  The augmented model would emit `df/d(iov.cl)` where the
+     assembly needs per-occasion `df/d(rx.iov.cl.k)`, which differ (each applies
+     only on its own occasion's records).
+
+  Making IOV work needs the direction set expanded per occasion AND the augmented
+  model taught the occasion structure -- real work in the builder, not a policy
+  change.  Deferred; the IOV gate STAYS for both callers.
 
 Still out of scope (unchanged): non-normal `ll()` endpoints, `linCmt()`, `fo`,
 multiple estimated boxCox/yeoJohnson lambdas, a theta mu-referenced by more than
@@ -54,9 +68,12 @@ assembler.  Fix that doc while here.
 
 ### Phase 0 -- split the scope gate
 
-`.foceiAnalyticGradSetup` hard-gates on `rxGetControl(ui,"fast")`, IOV and
-`boundedTransforms`.  Add a caller policy argument (`caller = c("focei","vae")`)
-so the VAE can opt in without loosening focei.  Keep every other gate shared.
+There are TWO gate sites, and both must be threaded or the model never builds:
+`.foceiAnalyticGradSetup` (`R/foceiGradAnalytic.R:856-895`) and `.foceiOuterDirs`
+(`R/foceiGradAnalytic.R:987-998`, which `rxUiGet.foceiOuter` calls).  Add a caller
+policy resolved from the ui's controls -- `fast=TRUE` -> "focei",
+`nonMuTheta="grad"` -> "vae" -- and skip only the `boundedTransforms` gate for
+"vae".  Every other gate stays shared, IOV included.
 
 ### Phase 1 -- build the augmented model at VAE setup
 
@@ -131,18 +148,13 @@ silent fallback to bobyqa must be loud.  Multi-iteration fit comparisons go into
 
 ## Risks
 
-1. **IOV in the augmented model** -- the biggest unknown.  Spike BEFORE committing
-   to Phase 0: build the augmented model on an IOV model and confirm the direction
-   set covers the IOV etas and the assembled gradient matches an FD reference.  If
-   it does not, IOV stays gated and this becomes a follow-up.
-2. **Bounded transforms** -- verify what `ui$boundedTransforms` actually holds at
-   the point the VAE reaches the setup.  If the hook leaves the field populated as
-   a record while the model is already unbounded, the gate is stale and droppable;
-   if it signals a live untransformed parameter, it must stay.
-3. **Re-baselining.** The gradient converges to the marginal fixed point, not the
+Risks 1 and 2 were spikes and are now RESOLVED in the Scope section above (IOV out,
+bounded transforms in).  Remaining:
+
+1. **Re-baselining.** The gradient converges to the marginal fixed point, not the
    frozen-eta one, so existing `nonMuTheta="regress"` expectations will shift by
    roughly the displacement measured above.  Expect to re-baseline, and do it
    deliberately rather than loosening tolerances.
-4. **Cost** -- one augmented solve per M-step vs dozens of full inner sweeps for
+2. **Cost** -- one augmented solve per M-step vs dozens of full inner sweeps for
    bobyqa should be a clear win; measure rather than assume, since the augmented
    model is larger per solve.
