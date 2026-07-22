@@ -330,14 +330,22 @@ the model's `rx_r_`, so every error model works with no per-form code, endpoints
 sum across all residual contributors, and a TBS model cannot be
 double-transformed.
 
-**Known regression -- `boxCox`.**  It lands at objective 68.7 against the
-hand-rolled 43.1, and returns `add.err = 0.0000`: a degenerate boundary solution
-where the additive error collapsed to zero.  That is exactly what the `log(r)`
-term is supposed to prevent, so the likely cause is the `r == 0 -> r = 1` floor
-inside the likelihood rescuing an objective that should have been infinite --
-i.e. the floor makes `add.err = 0` look finite and attractive rather than
-forbidden.  Needs a lower bound strictly above zero on a variance scale, or a
-floor that does not reward collapse.  Do not treat the 68.7 as converged.
+**The `boxCox` regression was a degeneracy, now fixed.**  It returned
+`add.err = 0.0000` -- a collapsed residual.  The cause was as suspected: the
+likelihood floors a zero variance (`r == 0 -> r = 1`) to stay finite, which makes
+a collapsed residual look attractive rather than forbidden.
+
+Fixed by flooring residual SCALE parameters strictly above zero: absolute forms
+(`add`, `lnorm`) at `1e-4 * sd(DV)`, relative forms (`prop`, `pow`) at `1e-6`.
+Exponents and lambdas are not scales and are untouched.  `boxCox` then lands at
+objective **-29.211** with `add.err = 0.4219` -- better than the hand-rolled 43.1
+as well as the degenerate 68.7, so the `likInner0` rework wins on all six error
+models once the collapse is closed.
+
+Worth noting how nearly this escaped: the degenerate fit still BEAT the moment
+estimator (68.7 against 181.6), so an objective-only assertion passed on a model
+with zero residual error.  The test now asserts the scale itself and the bound
+that enforces it.
 
 ### Superseded: the hand-rolled variance approach
 

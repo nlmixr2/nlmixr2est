@@ -509,6 +509,22 @@ vaeCovariates <- function(data, warn = TRUE) {
     .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
     .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
     .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
+    ## A residual SCALE parameter must not be allowed to reach zero.  The
+    ## likelihood floors a zero variance (r == 0 -> r = 1) to stay finite, which
+    ## makes a collapsed residual look attractive rather than forbidden -- a
+    ## boxCox fit converged to add.err = 0 exactly this way.  Floor the scale
+    ## parameters strictly above zero: absolute forms (add, lnorm) relative to
+    ## the spread of the data, relative forms (prop, pow) at a small constant.
+    ## Exponents and lambdas are NOT scales and are left alone.
+    .errScaleAbs <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("add", "lnorm")])
+    .errScaleRel <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("prop", "pow")])
+    .dvObs <- suppressWarnings(as.numeric(d$DV[d$EVID == 0]))
+    .dvSpread <- stats::sd(.dvObs[is.finite(.dvObs)])
+    if (!is.finite(.dvSpread) || .dvSpread <= 0) .dvSpread <- 1
+    .isAbs <- .regressNames %in% .errScaleAbs
+    .isRel <- .regressNames %in% .errScaleRel
+    .regressLower[.isAbs] <- pmax(.regressLower[.isAbs], 1e-4 * .dvSpread)
+    .regressLower[.isRel] <- pmax(.regressLower[.isRel], 1e-6)
     ## A transform-both-sides lambda (Box-Cox / Yeo-Johnson) is only meaningful
     ## on a narrow interval, and it is unbounded in the ini() block, so the
     ## optimizer would otherwise search a meaningless range.  Constrain it to

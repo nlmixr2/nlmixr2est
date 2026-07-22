@@ -113,6 +113,21 @@ nmTest({
     expect_gte(o$theta[["lam"]], -2)
     expect_lte(o$theta[["lam"]], 2)
     expect_lt(o$objf, m$objf)
+    ## NON-DEGENERACY.  This model previously converged to add.err = 0: the
+    ## likelihood floors a zero variance (r == 0 -> r = 1) to stay finite, which
+    ## makes a collapsed residual look attractive instead of forbidden.  An
+    ## objective-only check does NOT catch it -- the degenerate fit still beat the
+    ## moment estimator (68.7 against 181.6) -- so assert the scale itself.
+    expect_gt(o$theta[["add.err"]], 0.01)
+  })
+
+  test_that("a residual scale parameter cannot reach zero", {
+    ## the bound that makes the above hold: absolute scales are floored relative
+    ## to the spread of the data, so bobyqa can never propose a zero variance
+    p <- .vaeDataPrep(rxode2::assertRxUi(.bcMod()), nlmixr2data::theo_sd, vaeControl())
+    lo <- p$regressLower[match("add.err", p$regressNames)]
+    expect_gt(lo, 0)
+    expect_lt(lo, 0.01)   # far below any plausible estimate
   })
 
   test_that("a yeoJohnson lambda is estimated and improves the fit", {

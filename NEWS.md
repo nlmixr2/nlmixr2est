@@ -55,7 +55,10 @@
   `lnorm(add.err)` returned 0.500 unchanged (objective 26163 against 849).  A
   transform-both-sides `boxCox()`/`yeoJohnson()` lambda was frozen the same way
   and is now estimated too, bounded to `(-2, 2)` (`boxCox` 181.6 -> 43.1,
-  `yeoJohnson` 131.8 -> 120.1 on `theo_sd`).
+  `yeoJohnson` 131.8 -> 108.4, `boxCox` 181.6 -> -29.2 on `theo_sd`).  Residual
+  scale parameters are also floored strictly above zero, since the likelihood's
+  zero-variance floor (`r == 0 -> r = 1`) would otherwise make a collapsed
+  residual look attractive to the optimizer.
 
 - `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
   encoder's initial posterior spread.  `"sd"` (default) makes the initial
