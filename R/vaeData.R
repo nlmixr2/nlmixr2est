@@ -484,6 +484,19 @@ vaeCovariates <- function(data, warn = TRUE) {
   }
   .regressNames <- c(.regressNames, .covCoefNames)
   .regressNames <- unique(.regressNames)
+  ## residOptimize="optimize": the residual-error thetas join the SAME optimizer
+  ## as the non-mu structural thetas, against the same full outer objective.  A
+  ## FIXED error parameter is excluded (nothing to estimate), as is one already
+  ## regressed for another reason.
+  .errRegressNames <- character(0)
+  if (!identical(control$residOptimize, "moment")) {
+    .errAll <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
+    if (nrow(.errAll) > 0L) {
+      .errFree <- .errAll[!(!is.na(.errAll$fix) & .errAll$fix), , drop = FALSE]
+      .errRegressNames <- setdiff(as.character(.errFree$name), .regressNames)
+    }
+  }
+  .regressNames <- c(.regressNames, .errRegressNames)
   if (length(.regressNames) > 0L) {
     .ri <- match(.regressNames, .thRows$name)
     .regressThetaIdx0 <- as.integer(.ri - 1L)
@@ -531,6 +544,15 @@ vaeCovariates <- function(data, warn = TRUE) {
   .errRow <- .idf[!is.na(.idf$err) & !is.na(.idf$ntheta), , drop = FALSE]
   .errRow <- .errRow[order(.errRow$ntheta), , drop = FALSE]
   .a <- if (nrow(.errRow) > 0) setNames(as.numeric(.errRow$est), .errRow$name) else numeric(0)
+  ## For each regressed parameter, its 0-based slot in `a` (the error-parameter
+  ## vector), or -1 when it is not an error parameter.  vaeBuildTh writes `a`
+  ## over the error theta positions, so the objective must substitute the
+  ## CANDIDATE value into `a`; without this map it would be flat in every error
+  ## parameter and the optimizer would never move one.
+  .regressErrIdx0 <- if (length(.regressNames) > 0L) {
+    .m <- match(.regressNames, names(.a))
+    as.integer(ifelse(is.na(.m), 0L, .m) - 1L)
+  } else integer(0)
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
@@ -608,6 +630,7 @@ vaeCovariates <- function(data, warn = TRUE) {
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
+       regressErrIdx0 = .regressErrIdx0,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,

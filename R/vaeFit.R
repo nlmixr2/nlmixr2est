@@ -199,6 +199,7 @@
   ## nonMuTheta="regress": 0-based full-theta indices + ini bounds of the fixed
   ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
+  prepC$regressErrIdx0 <- as.integer(prep$regressErrIdx0)
   prepC$regressLower <- as.numeric(prep$regressLower)
   prepC$regressUpper <- as.numeric(prep$regressUpper)
   ## latent dims whose structural theta is fixed (held at ini by the M-step)

@@ -39,6 +39,15 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` gains an experimental `vaeControl(residOptimize="optimize")`, which
+  estimates the residual-error parameters with the same bounded optimizer that
+  already handles the non-mu-referenced structural thetas, against the full FOCEi
+  outer objective and warm-started from the moment estimate.  It is the only path
+  that can estimate an error model with no closed form.  The default remains
+  `"moment"`: with a single free residual parameter the optimizer is a clear
+  improvement, but with `add` and `prop` both free it currently diverges (they
+  are near-collinear and the M-step adopts the frozen-eta optimum undamped).
+
 - `est="vae"` gains `vaeControl(sigma0Interp=)` for how `sigma0` becomes the
   encoder's initial posterior spread.  `"sd"` (default) makes the initial
   posterior SD `sigma0`, as documented; `"reference"` makes it `sigma0` squared,

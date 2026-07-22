@@ -13278,11 +13278,20 @@ static arma::vec gVaeRegMixProb;
 // its current M-step value in gVaeRegThBase -- so this is the chosen objective
 // as a function of those thetas alone.
 static bool gVaeRegAdjOuter = true;
+// For each regressed parameter, its index in the error vector `a`, or -1.
+// vaeBuildTh writes `a` over the error theta positions, so a candidate error
+// value must be substituted into `a` as well as into the theta vector --
+// otherwise the objective is flat in every error parameter.
+static arma::ivec gVaeRegErrMap;
 
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
   arma::vec thc = gVaeRegThBase;
-  for (arma::uword j = 0; j < gVaeRegIdx.n_elem; ++j) thc[gVaeRegIdx[j]] = r[j];
-  arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline, gVaeRegErrIdx0, gVaeRegA);
+  arma::vec aCand = gVaeRegA;
+  for (arma::uword j = 0; j < gVaeRegIdx.n_elem; ++j) {
+    thc[gVaeRegIdx[j]] = r[j];
+    if (j < gVaeRegErrMap.n_elem && gVaeRegErrMap[j] >= 0) aCand[gVaeRegErrMap[j]] = r[j];
+  }
+  arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline, gVaeRegErrIdx0, aCand);
   vaeInnerUpdateParCore(thv, gVaeRegOmega);
   const int N = (int)gVaeRegEtaCentered.n_rows;
   const int nMix = gVaeRegNMix;
@@ -13354,6 +13363,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // fixed-effect thetas re-optimized each M-step by the bounded bobyqa regression
   // (empty in every other mode -> the regression block is skipped).
   arma::ivec regThetaIdx0v = vaeToIvec(prep["regressThetaIdx0"]);
+  arma::ivec regErrMapV = prep.containsElementNamed("regressErrIdx0") ?
+    vaeToIvec(prep["regressErrIdx0"]) : arma::ivec(regThetaIdx0v.n_elem, arma::fill::value(-1));
+  // residOptimize="optimize": the error parameters are owned by the regress
+  // optimizer, so the closed-form M-step must NOT also update them -- otherwise
+  // each iteration moves them twice, by two different estimators.
+  bool residByOpt = false;
+  for (arma::uword j = 0; j < regErrMapV.n_elem; ++j) if (regErrMapV[j] >= 0) residByOpt = true;
   arma::uvec regIdx(regThetaIdx0v.n_elem);
   for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
   arma::vec regLower = as<arma::vec>(prep["regressLower"]);
@@ -13644,7 +13660,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       zPopArg = zPopMat;
       // the reference assigns omega outright; the historic path blends it
       omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
-      a = a + gamma * (aCur - a);
+      if (!residByOpt) a = a + gamma * (aCur - a);
       isCovStep = true;
       baseline = arma::mean(zPopMat, 0).t();
     } else {
@@ -13663,7 +13679,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
       omega = omega + gamma * (omegaCur - omega);
-      a = a + gamma * (aCur - a);
+      if (!residByOpt) a = a + gamma * (aCur - a);
       zPopArg.each_row() = zPop.t();
       isCovStep = false;
       baseline = zPop;
@@ -13730,6 +13746,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     if (!regDone) {
       gVaeRegThBase = th;
       gVaeRegIdx = regIdx;
+      gVaeRegErrMap = regErrMapV;
       gVaeRegZpopIdx0 = zPopThetaIdx0;
       gVaeRegErrIdx0 = errThetaIdx0;
       gVaeRegBaseline = baseline;
@@ -13742,19 +13759,40 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gVaeThetaObjR);
       int m = (int)regIdx.n_elem;
+      // closed-form moment estimate at the current posterior means: the warm
+      // start for any error parameter in the set (npag does the same)
+      arma::vec aWarm = residByOpt ?
+        vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1) : a;
       Rcpp::NumericVector par0(m), lo(m), hi(m);
-      for (int j = 0; j < m; ++j) { par0[j] = th[regIdx[j]]; lo[j] = regLower[j]; hi[j] = regUpper[j]; }
+      for (int j = 0; j < m; ++j) {
+        // An error parameter's live value is `a`, not the (stale) theta slot, and
+        // it is WARM-STARTED from this iteration's closed-form moment estimate
+        // (aCur) the way npag warm-starts each variance scale before optimizing.
+        // The M-step runs at posterior means that are poor early in training, so
+        // this matters more here than it does for npag.
+        int e = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
+        par0[j] = (e >= 0) ? aWarm[e] : th[regIdx[j]];
+        if (!R_FINITE(par0[j])) par0[j] = (e >= 0) ? a[e] : th[regIdx[j]];
+        lo[j] = regLower[j]; hi[j] = regUpper[j];
+        if (R_FINITE(lo[j]) && par0[j] < lo[j]) par0[j] = lo[j];
+        if (R_FINITE(hi[j]) && par0[j] > hi[j]) par0[j] = hi[j];
+      }
       double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-4;
       Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
                                   Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
                                   Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
       Rcpp::NumericVector rx = ret["x"];
       for (int j = 0; j < m; ++j) {
-        double cur = th[regIdx[j]];
+        int e = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
+        double cur = (e >= 0) ? a[e] : th[regIdx[j]];
         double upd = cur + gamma * (rx[j] - cur);
         if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
         if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
-        if (R_FINITE(upd)) th[regIdx[j]] = upd;
+        if (!R_FINITE(upd)) continue;
+        th[regIdx[j]] = upd;
+        // an error parameter also has to land in `a`: vaeBuildTh writes `a` over
+        // the theta slot, so a theta-only update would be silently discarded
+        if (e >= 0) a[e] = upd;
       }
       // keep the Adam iterate aligned with th in case grad resumes next M-step
       for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];

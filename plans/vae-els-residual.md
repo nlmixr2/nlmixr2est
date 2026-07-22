@@ -179,6 +179,29 @@ plumbing is wrong, and that is far cheaper to find here than in Phase 2.
 Separately, assert that `nonMuTheta = "grad"` moves a residual parameter, which
 exercises the pseudo-direction path.
 
+#### Phase 1 outcome (measured)
+
+Implemented and **opt-in only** (`residOptimize = "optimize"`; the default stays
+`"moment"`).  The oracle did its job and found a real limit.
+
+With ONE free residual parameter the optimizer is a clear improvement -- on
+`theo_sd` with a combined model and `prop.err` fixed, the objective drops from
+143.6 (moment) to 122.6 (optimize), and on a pure-additive model it lands on the
+closed form as required (0.79845 against 0.80222, objective 131.757 against
+131.812).
+
+With `add` and `prop` BOTH free it diverges: 0.062 / 0.402 at objective 320.7,
+against the moment estimator's 0.520 / 0.113 at 122.5.  The two parameters are
+near-collinear, and because the M-step gain is 1 until `gammaIter` (60 of 80
+iterations in that run) the optimum found at FROZEN etas is adopted undamped and
+walks to a corner.  This is not a plumbing bug -- the single-parameter case
+proves the objective, the substitution into `a` and the write-back are all
+correct.
+
+So Phase 2 is not optional polish; it is what makes the multi-parameter case
+usable.  Damping (respect the gain, or floor it), a burn-in gate, and possibly
+optimizing on a decorrelated scale the way SAEM optimizes square roots.
+
 ### Phase 2 -- combined models (first real behavior change)
 
 * `add + prop` needs no new code once Phase 1 lands -- it is another set of

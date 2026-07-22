@@ -161,6 +161,28 @@
 #'     (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
 #'     reference documents `sigma0` as a standard deviation, so this appears to be
 #'     unintended there; it is offered only to reproduce its published behavior.
+#' @param residOptimize How the residual-error parameters are estimated.
+#'
+#'   * `"moment"` (default): the closed-form moment estimator.  For a model with
+#'     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
+#'     any other error model it is either a different estimator or, for the forms
+#'     with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
+#'     the parameter stays at its `ini()` value.
+#'   * `"optimize"` (EXPERIMENTAL): the residual parameters join the same bounded
+#'     optimizer that already estimates the non-mu-referenced structural thetas,
+#'     scored against the full FOCEi outer objective at the encoder's current
+#'     posterior means and warm-started each M-step from the moment estimate --
+#'     the way `npag` and SAEM estimate residuals.
+#'
+#'     With ONE free residual parameter this is a clear improvement (on
+#'     `theo_sd` with a combined model and the proportional term fixed, the
+#'     objective drops from 143.6 to 122.6).  With `add` and `prop` BOTH free it
+#'     currently diverges: the two are near-collinear, and because the M-step
+#'     gain is 1 until `gammaIter` the optimum found at frozen etas is adopted
+#'     undamped and runs to a corner (objective 320.7 against the moment
+#'     estimator's 122.5).  Damping and a burn-in gate are needed before this can
+#'     be the default; until then use it only where a single residual parameter
+#'     is free.
 #' @param omegaUpdate How the population variances are updated in the covariate
 #'   M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
 #'   the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
@@ -257,6 +279,7 @@ vaeControl <- function(seed = 42L,
                        covSelectSmooth = TRUE,
                        gammaSeries = c("reference", "saem"),
                        sigma0Interp = c("sd", "reference"),
+                       residOptimize = c("moment", "optimize"),
                        omegaUpdate = c("suffStat", "blend"),
                        inputScale = c("reference", "observed"),
                        bnbStrategy = c("lifo", "fifo", "lc"),
@@ -314,6 +337,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
   gammaSeries <- match.arg(gammaSeries)
   sigma0Interp <- match.arg(sigma0Interp)
+  residOptimize <- match.arg(residOptimize)
   omegaUpdate <- match.arg(omegaUpdate)
   inputScale <- match.arg(inputScale)
   bnbStrategy <- match.arg(bnbStrategy)
@@ -409,6 +433,7 @@ vaeControl <- function(seed = 42L,
                covSelectSmooth = covSelectSmooth,
                gammaSeries = gammaSeries,
                sigma0Interp = sigma0Interp,
+               residOptimize = residOptimize,
                omegaUpdate = omegaUpdate,
                inputScale = inputScale,
                bnbStrategy = bnbStrategy,
