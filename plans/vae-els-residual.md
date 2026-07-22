@@ -198,9 +198,24 @@ walks to a corner.  This is not a plumbing bug -- the single-parameter case
 proves the objective, the substitution into `a` and the write-back are all
 correct.
 
-So Phase 2 is not optional polish; it is what makes the multi-parameter case
-usable.  Damping (respect the gain, or floor it), a burn-in gate, and possibly
-optimizing on a decorrelated scale the way SAEM optimizes square roots.
+**Resolved by a two-stage split** (`residOptimize = "twoStage"`), which is what
+npag's `residOptimize = "alternate"` does:
+
+* **Stage 1** optimizes the non-mu-referenced structural thetas with the residual
+  parameters HELD, so it is driven by `(dv - f)` and the residual does not enter.
+* **Stage 2** holds those and optimizes the residual parameters alone against the
+  extended least-squares objective `sum[(y-f)^2/r + log r]` over the CACHED
+  `(y, f)` pairs.  Since stage 1 fixes `f`, stage 2 needs **no ODE re-solve** --
+  the same structure SAEM uses with its cached `_saemYptr`/`_saemFptr`.
+
+Measured on `theo_sd`: the combined model goes from diverging (320.7) to the best
+of the three (121.03, against the moment estimator's 122.47), and the additive
+model still lands on the closed form (131.79 against 131.81).
+
+The diagnosis was that routing stage 2 through the full OUTER objective lets the
+Laplace terms move with the residual at frozen etas; the pure ELS objective at
+fixed `f` does not, which is why the near-collinear add/prop pair stops walking
+to a corner.  Damping was not needed after all.
 
 ### Phase 2 -- combined models (first real behavior change)
 

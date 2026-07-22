@@ -22,7 +22,7 @@ vaeControl(
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
   sigma0Interp = c("sd", "reference"),
-  residOptimize = c("moment", "optimize"),
+  residOptimize = c("moment", "optimize", "twoStage"),
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
   bnbStrategy = c("lifo", "fifo", "lc"),
@@ -161,21 +161,23 @@ closing tail.  `FALSE` regresses the current posterior means.}
     any other error model it is either a different estimator or, for the forms
     with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
     the parameter stays at its `ini()` value.
-  * `"optimize"` (EXPERIMENTAL): the residual parameters join the same bounded
-    optimizer that already estimates the non-mu-referenced structural thetas,
-    scored against the full FOCEi outer objective at the encoder's current
-    posterior means and warm-started each M-step from the moment estimate --
-    the way `npag` and SAEM estimate residuals.
-
-    With ONE free residual parameter this is a clear improvement (on
-    `theo_sd` with a combined model and the proportional term fixed, the
-    objective drops from 143.6 to 122.6).  With `add` and `prop` BOTH free it
-    currently diverges: the two are near-collinear, and because the M-step
-    gain is 1 until `gammaIter` the optimum found at frozen etas is adopted
-    undamped and runs to a corner (objective 320.7 against the moment
-    estimator's 122.5).  Damping and a burn-in gate are needed before this can
-    be the default; until then use it only where a single residual parameter
-    is free.}
+  * `"twoStage"` (EXPERIMENTAL, the recommended optimization path): block
+    coordinate descent, as `npag`'s `residOptimize = "alternate"` does.  Stage
+    one optimizes the non-mu-referenced structural thetas with the residual
+    parameters held, so it is driven by `(dv - f)`; stage two then holds those
+    and optimizes the residual parameters alone against the extended
+    least-squares objective `sum[(y-f)^2/r + log r]` over the CACHED `(y, f)`
+    pairs.  Because `f` is fixed by stage one, stage two needs no ODE re-solve
+    -- the same structure SAEM uses.  On `theo_sd` this beats the moment
+    estimator on both a pure-additive model (objective 131.79 vs 131.81) and a
+    combined one (121.03 vs 122.47).
+  * `"optimize"` (EXPERIMENTAL, diagnostic): a single JOINT solve over the
+    structural and residual parameters together, against the full outer
+    objective.  Fine with one free residual parameter, but with `add` and
+    `prop` both free it diverges -- they are near-collinear, and routing the
+    residual through the full outer objective lets the Laplace terms move with
+    it at frozen etas (objective 320.7 against the moment estimator's 122.5).
+    Retained for comparison; prefer `"twoStage"`.}
 
 \item{omegaUpdate}{How the population variances are updated in the covariate
 M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from

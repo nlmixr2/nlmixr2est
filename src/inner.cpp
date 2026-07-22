@@ -13284,6 +13284,42 @@ static bool gVaeRegAdjOuter = true;
 // otherwise the objective is flat in every error parameter.
 static arma::ivec gVaeRegErrMap;
 
+// ---- stage-2 ELS objective: r varies, f is FIXED -------------------------
+// With the structural thetas settled in stage 1, f is determined, so the
+// residual parameters are estimated against the extended-least-squares
+// objective sum[(y-f)^2/r + log r] over CACHED (y, f) pairs -- no ODE re-solve,
+// which is how SAEM (cached _saemYptr/_saemFptr) and npag do it.  Routing this
+// through the full outer objective instead lets the Laplace terms move with the
+// residual at frozen etas, which is what walks a near-collinear add/prop pair
+// into a corner.
+static std::vector<double> gVaeElsY, gVaeElsF;
+static arma::ivec gVaeElsType;    // per error param: 0=add, 1=prop, 2=other
+static bool gVaeElsCombined1 = false;
+
+static double gVaeElsObjR(Rcpp::NumericVector p) {
+  double aAdd = 0, aProp = 0;
+  bool hasAdd = false, hasProp = false;
+  for (arma::uword e = 0; e < gVaeElsType.n_elem && e < (arma::uword)p.size(); ++e) {
+    if (gVaeElsType[e] == 0) { aAdd = p[e]; hasAdd = true; }
+    else if (gVaeElsType[e] == 1) { aProp = p[e]; hasProp = true; }
+  }
+  double sum = 0;
+  for (size_t i = 0; i < gVaeElsY.size(); ++i) {
+    double f = gVaeElsF[i], y = gVaeElsY[i], r;
+    if (gVaeElsCombined1) {
+      double sd = (hasAdd ? aAdd : 0.0) + (hasProp ? aProp * std::fabs(f) : 0.0);
+      r = sd * sd;
+    } else {
+      r = (hasAdd ? aAdd * aAdd : 0.0) +
+          (hasProp ? aProp * aProp * f * f : 0.0);
+    }
+    if (!(r > 0)) r = 1.0;          // the r == 0 rule (handleF's convention)
+    double d = y - f;
+    sum += d * d / r + std::log(r);
+  }
+  return R_FINITE(sum) ? sum : std::numeric_limits<double>::max();
+}
+
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
   arma::vec thc = gVaeRegThBase;
   arma::vec aCand = gVaeRegA;
@@ -13370,6 +13406,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // each iteration moves them twice, by two different estimators.
   bool residByOpt = false;
   for (arma::uword j = 0; j < regErrMapV.n_elem; ++j) if (regErrMapV[j] >= 0) residByOpt = true;
+  const bool residTwoStage = control.containsElementNamed("residOptimize") &&
+    as<std::string>(control["residOptimize"]) == "twoStage";
   arma::uvec regIdx(regThetaIdx0v.n_elem);
   for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
   arma::vec regLower = as<arma::vec>(prep["regressLower"]);
@@ -13759,33 +13797,59 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gVaeThetaObjR);
       int m = (int)regIdx.n_elem;
+      // two-stage: stage 1 optimizes the structural thetas with the residuals
+      // held, so restrict the active set here and do the residuals in stage 2
+      arma::uvec stage1Idx = regIdx; arma::ivec stage1Map = regErrMapV;
+      if (residTwoStage && residByOpt) {
+        std::vector<arma::uword> keep;
+        for (int j = 0; j < m; ++j)
+          if (!(j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0)) keep.push_back((arma::uword)j);
+        if (!keep.empty() && (int)keep.size() < m) {
+          arma::uvec kI(keep);
+          stage1Idx.set_size(kI.n_elem); stage1Map.set_size(kI.n_elem);
+          for (arma::uword k = 0; k < kI.n_elem; ++k) {
+            stage1Idx[k] = regIdx[kI[k]]; stage1Map[k] = -1;
+          }
+        }
+      }
       // closed-form moment estimate at the current posterior means: the warm
       // start for any error parameter in the set (npag does the same)
       arma::vec aWarm = residByOpt ?
         vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1) : a;
-      Rcpp::NumericVector par0(m), lo(m), hi(m);
-      for (int j = 0; j < m; ++j) {
+      const int m1 = (int)stage1Idx.n_elem;
+      gVaeRegIdx = stage1Idx; gVaeRegErrMap = stage1Map;
+      Rcpp::NumericVector par0(m1), lo(m1), hi(m1);
+      // map stage-1 slot -> original regIdx slot (identity unless restricted)
+      std::vector<int> s1Src(m1);
+      { int c2 = 0;
+        for (int j = 0; j < m; ++j)
+          if (m1 == m || !(j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0)) s1Src[c2++] = j; }
+      for (int jj = 0; jj < m1; ++jj) {
+        int j = s1Src[jj];
         // An error parameter's live value is `a`, not the (stale) theta slot, and
         // it is WARM-STARTED from this iteration's closed-form moment estimate
         // (aCur) the way npag warm-starts each variance scale before optimizing.
         // The M-step runs at posterior means that are poor early in training, so
         // this matters more here than it does for npag.
         int e = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
-        par0[j] = (e >= 0) ? aWarm[e] : th[regIdx[j]];
-        if (!R_FINITE(par0[j])) par0[j] = (e >= 0) ? a[e] : th[regIdx[j]];
-        lo[j] = regLower[j]; hi[j] = regUpper[j];
-        if (R_FINITE(lo[j]) && par0[j] < lo[j]) par0[j] = lo[j];
-        if (R_FINITE(hi[j]) && par0[j] > hi[j]) par0[j] = hi[j];
+        if (m1 != m) e = -1;   // stage 1 holds the residuals
+        par0[jj] = (e >= 0) ? aWarm[e] : th[regIdx[j]];
+        if (!R_FINITE(par0[jj])) par0[jj] = (e >= 0) ? a[e] : th[regIdx[j]];
+        lo[jj] = regLower[j]; hi[jj] = regUpper[j];
+        if (R_FINITE(lo[jj]) && par0[jj] < lo[jj]) par0[jj] = lo[jj];
+        if (R_FINITE(hi[jj]) && par0[jj] > hi[jj]) par0[jj] = hi[jj];
       }
       double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-4;
       Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
                                   Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
                                   Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
       Rcpp::NumericVector rx = ret["x"];
-      for (int j = 0; j < m; ++j) {
+      for (int jj = 0; jj < m1; ++jj) {
+        int j = s1Src[jj];
         int e = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
+        if (m1 != m) e = -1;
         double cur = (e >= 0) ? a[e] : th[regIdx[j]];
-        double upd = cur + gamma * (rx[j] - cur);
+        double upd = cur + gamma * (rx[jj] - cur);
         if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
         if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
         if (!R_FINITE(upd)) continue;
@@ -13793,6 +13857,54 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         // an error parameter also has to land in `a`: vaeBuildTh writes `a` over
         // the theta slot, so a theta-only update would be silently discarded
         if (e >= 0) a[e] = upd;
+      }
+      // ---- stage 2 (residTwoStage): residuals alone, structural thetas now held
+      // Block-coordinate descent, as npag's residOptimize="alternate" does.  A
+      // joint solve over near-collinear parameters at frozen etas is what walks
+      // to a corner; splitting the blocks shrinks each solve and removes the
+      // structural/residual coupling from it.
+      if (residTwoStage && residByOpt) {
+        std::vector<arma::uword> sub;
+        for (int j = 0; j < m; ++j)
+          if (j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0) sub.push_back((arma::uword)j);
+        if (!sub.empty() && (int)sub.size() < m) {
+          arma::uvec sIdx(sub);
+          // re-publish the base with stage-1's structural values baked in
+          gVaeRegThBase = th;
+          gVaeRegA = a;
+          arma::uvec sReg(sIdx.n_elem); arma::ivec sMap(sIdx.n_elem);
+          Rcpp::NumericVector p2(sIdx.n_elem), l2(sIdx.n_elem), u2(sIdx.n_elem);
+          for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
+            arma::uword j = sIdx[k];
+            sReg[k] = regIdx[j]; sMap[k] = regErrMapV[j];
+            p2[k] = a[sMap[k]]; l2[k] = regLower[j]; u2[k] = regUpper[j];
+          }
+          // cache (y, f) at the stage-1 structural values: f is FIXED from here
+          gVaeElsY.clear(); gVaeElsF.clear();
+          for (size_t i2 = 0; i2 < last.preds.size() && i2 < yList.size(); ++i2) {
+            const std::vector<double>& fi = last.preds[i2];
+            const std::vector<double>& yi = yList[i2];
+            size_t n2 = std::min(fi.size(), yi.size());
+            for (size_t o = 0; o < n2; ++o)
+              if (R_FINITE(fi[o]) && R_FINITE(yi[o])) { gVaeElsF.push_back(fi[o]); gVaeElsY.push_back(yi[o]); }
+          }
+          gVaeElsType = errTypeCode; gVaeElsCombined1 = errCombined1;
+          Rcpp::InternalFunction elsFn(&gVaeElsObjR);
+          Rcpp::List r2 = boundedOpt(Rcpp::_["par"] = p2, Rcpp::_["fn"] = elsFn,
+                                     Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,
+                                     Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
+          Rcpp::NumericVector x2 = r2["x"];
+          for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
+            arma::uword j = sIdx[k];
+            double cur = a[sMap[k]];
+            double upd = cur + gamma * (x2[k] - cur);
+            if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
+            if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
+            if (!R_FINITE(upd)) continue;
+            th[regIdx[j]] = upd; a[sMap[k]] = upd;
+          }
+          gVaeRegIdx = regIdx; gVaeRegErrMap = regErrMapV;  // restore
+        }
       }
       // keep the Adam iterate aligned with th in case grad resumes next M-step
       for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
