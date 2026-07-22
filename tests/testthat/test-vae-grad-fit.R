@@ -1,11 +1,11 @@
 ## Slow (weekly batch): full grad-vs-regress fits on theo_sd.
 ##
-## nonMuTheta="regress" minimizes the JOINT likelihood at frozen encoder etas,
-## whose optimum is displaced from the marginal one (the classic joint-vs-marginal
-## inconsistency).  nonMuTheta="grad" differentiates the marginal (Laplace)
-## objective instead, so it should land materially closer to the FOCEi MLE for the
-## same non-mu theta.  Measured displacement on this model: regress ~-0.012,
-## grad ~-0.0005 against a FOCEi MLE of tv = 3.4299.
+## Both modes now optimize the SAME (full outer) objective -- the Laplace
+## determinant + 0.5*log|Omega^-1| + the DV-transform Jacobian -- with every
+## mu-referenced theta held at its current M-step value, so this compares
+## OPTIMIZERS rather than objectives: an exact analytic gradient ("grad") against
+## a derivative-free bounded bobyqa search ("regress").  Measured on this model
+## against a FOCEi MLE of tv = 3.4299: regress ~3.4324, grad ~3.4294.
 
 nmTest({
   .mod <- function() {

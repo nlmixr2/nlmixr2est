@@ -10367,7 +10367,10 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
         double v = LikInner2(&eta[0], 0, id);
         obj[id] = R_FINITE(v) ? -v : NA_REAL;   // LikInner2 returns +log p
       } else {
-        obj[id] = likInner0(&eta[0], id);
+        // likInner0 omits the transform-both-sides Jacobian (only LikInner2 adds
+        // it), so the ELBO would be on the TRANSFORMED scale for a both-sides
+        // model.  obj is -log p, hence minus.  Zero without a transform.
+        obj[id] = likInner0(&eta[0], id) - inds_focei[id].tbsLik;
       }
       if (preds) {
         arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
@@ -10610,6 +10613,10 @@ double npEvalCondLik(double *eta, int id) {
     if (ISNAN(v) || !std::isfinite(v)) return R_NegInf;
     s += v;
   }
+  // NB: do NOT add fInd->tbsLik here.  likInner0 already folds tbsJac into
+  // llikObs per observation for npag/npb (inner.cpp:1806/1834), so the
+  // transform-both-sides Jacobian is in `s` already; adding it again
+  // double-counts it.
   return s;
 }
 
@@ -13212,10 +13219,17 @@ static arma::mat gVaeRegEtaCentered; // last.mu - baseline  [N, zDim]
 static int gVaeRegCores;
 static int gVaeRegNMix;
 static arma::vec gVaeRegMixProb;
-// nonMuTheta="grad" mixes the inner and outer problems, so the bobyqa fallback
-// must minimize the SAME functional the analytic outer gradient differentiates
-// (the Laplace/marginal objective), not the frozen-eta joint one.
-static bool gVaeRegAdjOuter = false;
+// The bobyqa regression minimizes the FULL outer objective (Laplace determinant
+// + 0.5*log|Omega^-1| + the DV-transform Jacobian, i.e. LikInner2), not the
+// frozen-eta joint likelihood, for BOTH nonMuTheta="regress" and the "grad"
+// fallback.  Two reasons: it is the objective the analytic outer gradient
+// differentiates, so a mixed fit optimizes ONE functional; and it makes the two
+// modes' results directly comparable (same objective, different optimizer)
+// instead of differing by both estimator and target.  Only the non-mu thetas
+// vary -- every mu-referenced theta is held at its current M-step value in
+// gVaeRegThBase -- so this is the outer objective as a function of those thetas
+// alone.
+static bool gVaeRegAdjOuter = true;
 
 static double gVaeThetaObjR(Rcpp::NumericVector r) {
   arma::vec thc = gVaeRegThBase;
@@ -13592,7 +13606,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegOmega = omega;
       gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
-      gVaeRegAdjOuter = useGrad;   // match the gradient's functional when mixing
+      gVaeRegAdjOuter = true;   // full outer objective for both regress and grad
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
       Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
       Rcpp::InternalFunction fn(&gVaeThetaObjR);

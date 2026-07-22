@@ -6,13 +6,26 @@
   population `theta` with no random effect using the exact analytic outer
   gradient (the machinery behind `foceiControl(fast=TRUE)`) rather than the
   bounded `bobyqa` regression `nonMuTheta="regress"` uses: one augmented
-  sensitivity solve per M-step replaces the derivative-free sweep.  Because it
-  differentiates the marginal (Laplace) objective instead of the joint likelihood
-  at frozen encoder etas, it does not inherit `"regress"`'s frozen-eta
-  displacement -- on `theo_sd` with a non-mu-referenced `tv` it lands within
-  0.0005 of the FOCEi maximum-likelihood value against 0.012 for `"regress"`.  A
+  sensitivity solve per M-step replaces the derivative-free sweep.  Both modes
+  target the same (full outer) objective, so this is an optimizer change: on
+  `theo_sd` with a non-mu-referenced `tv` it lands within 0.0005 of the FOCEi
+  maximum-likelihood value against 0.0025 for `"regress"`.  A
   model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
   `"regress"` with a note in `$runInfo`.
+
+- `est="vae"`'s non-mu theta M-step (both `nonMuTheta="regress"` and
+  `"grad"`) now optimizes the FULL outer objective -- the Laplace determinant,
+  `0.5*log|Omega^-1|` and the transform-both-sides Jacobian -- rather than the
+  joint likelihood at frozen encoder etas.  Every mu-referenced theta is held
+  at its current M-step value, so the two modes now differ only in optimizer
+  (exact analytic gradient vs derivative-free `bobyqa`) and are directly
+  comparable.  On `theo_sd` with a non-mu `tv` this moves `"regress"` from
+  3.4175 to 3.4324 against a FOCEi maximum-likelihood value of 3.4299.
+
+- The `est="vae"` ELBO now includes the transform-both-sides Jacobian, so a
+  model with `lnorm()`/`boxCox()`/`yeoJohnson()` reports its objective on the
+  DV scale (comparable to a FOCEi OFV) instead of the transformed scale.  No
+  effect on a model without a both-sides transform.
 
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
   covariates already written in the model.  When the model declares covariate

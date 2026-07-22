@@ -63,18 +63,19 @@
 #'
 #'   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
 #'     injected; instead each such theta is estimated directly, re-optimized every
-#'     M-step by a bounded `bobyqa` regression against the FOCEi inner likelihood
-#'     (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+#'     M-step by a bounded `bobyqa` regression against the full FOCEi outer
+#'     objective (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
 #'     recovers a no-random-effect population parameter without adding a spurious
 #'     random effect.  `nonMuEtaOmega` is unused in this mode.
 #'   * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
 #'     outer gradient (Almquist sensitivity equations, the machinery behind
 #'     `foceiControl(fast=TRUE)`) instead of a derivative-free search: one
-#'     augmented sensitivity solve per M-step replaces the bobyqa sweep.  Because
-#'     it differentiates the marginal (Laplace) objective rather than the joint
-#'     likelihood at frozen etas, it does not carry `"regress"`'s frozen-eta
-#'     displacement.  Falls back to `"regress"` when the model is out of analytic
-#'     scope (`ll()` endpoints, `linCmt()`, IOV, ...); `nonMuEtaOmega` is unused.
+#'     augmented sensitivity solve per M-step replaces the bobyqa sweep.  Both
+#'     modes optimize the same full outer objective (with every mu-referenced
+#'     theta held at its current M-step value), so this changes the optimizer,
+#'     not the target.  Falls back to `"regress"` when the model is out of
+#'     analytic scope (`ll()` endpoints, `linCmt()`, IOV, ...); `nonMuEtaOmega`
+#'     is unused.
 #'   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
 #'     `nonMuEtaOmega`); the typical value is estimated and appears in the
 #'     iteration table.
