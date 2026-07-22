@@ -855,3 +855,34 @@ LAUNCHED: the script is `/tmp/creatediff.R`, output `/tmp/creatediff.out`
 grabs its `env` from a SAEM IOV fit and a VAE IOV fit of the same model/data, and
 prints ONLY-IN-SAEM / ONLY-IN-VAE / per-field shape DIFFs.  If it did not finish,
 re-run it -- it is self-contained and needs no state from this session.
+
+##### RESULT of the nlmixr2CreateOutputFromUi env diff
+
+    RES captured saem: TRUE  vae: TRUE
+    RES ONLY-IN-SAEM: tolFactor, saem, phiM, etaObf, covLvl, covMethod, cov,
+                      fullTheta, objective, omega, origData, ui, theta, message,
+                      iniDf0, model, idLvl, saemControl, dataSav
+    RES ONLY-IN-VAE : extra, method, vaeControl, vae, etaMat
+    RES DIFF parHistData   saem=data.frame:40x10   vae=data.frame:36x13
+    RES DIFF control       saem=foceiControl:143   vae=foceiControl:142
+
+The VAE hands `nlmixr2CreateOutputFromUi` a nearly EMPTY env: SAEM supplies 19
+fields the VAE does not.  The ones most likely to matter for IOV, in priority
+order:
+
+  * `idLvl` / `covLvl` -- ID and covariate LEVEL vectors.  IOV keys off an
+    occasion column, and level vectors are exactly the kind of thing that comes
+    back zero-length when absent -> "invalid second argument of length 0".
+    CHECK THESE FIRST.
+  * `dataSav` / `origData` -- the preprocessed and original data.  Anything
+    reconstructing per-occasion structure needs them.
+  * `theta`, `model`, `omega`, `fullTheta`, `objective`, `etaObf`, `iniDf0` --
+    SAEM sets these before the call (see the sequence above); the VAE leaves them
+    to be derived.
+
+This is consistent with every earlier elimination: the ui, the etas, the omega,
+etaMat and the route were all fine because the problem is the ENV CONTENTS.
+
+NEXT: populate the VAE's `.ret` with the SAEM-equivalent fields (start with
+`idLvl`/`covLvl`, then `dataSav`/`origData`) and re-run the IOV fit.  A non-IOV
+VAE fit must stay bit-identical -- that is the regression guard.
