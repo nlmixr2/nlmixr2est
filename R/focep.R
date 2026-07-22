@@ -19,7 +19,7 @@
 #' @examples
 #'
 #' focepControl()
-focepControl <- function(sigdig=3,
+focepControl <- function(sigdig=4,
                          ...,
                          interaction=FALSE,
                          foce="foce+") {

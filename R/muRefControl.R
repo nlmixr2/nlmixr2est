@@ -32,7 +32,7 @@
 #' @examples
 #'
 #' mfoceiControl()
-mfoceiControl <- function(sigdig=3,
+mfoceiControl <- function(sigdig=4,
                            ...,
                            muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., muModel="lin")
@@ -115,7 +115,7 @@ nmObjGetFoceiControl.mfocei <- function(x, ...) {
 #' @examples
 #'
 #' ifoceiControl()
-ifoceiControl <- function(sigdig=3,
+ifoceiControl <- function(sigdig=4,
                              ...,
                              muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., muModel="irls")
@@ -200,7 +200,7 @@ nmObjGetFoceiControl.ifocei <- function(x, ...) {
 #' @examples
 #'
 #' mfoceControl()
-mfoceControl <- function(sigdig=3,
+mfoceControl <- function(sigdig=4,
                           ...,
                           interaction=FALSE,
                           muModel=c("lin", "irls", "none")) {
@@ -292,7 +292,7 @@ nmObjGetFoceiControl.mfoce <- function(x, ...) {
 #' @examples
 #'
 #' ifoceControl()
-ifoceControl <- function(sigdig=3,
+ifoceControl <- function(sigdig=4,
                             ...,
                             interaction=FALSE,
                             muModel=c("irls", "lin", "none")) {
@@ -381,7 +381,7 @@ nmObjGetFoceiControl.ifoce <- function(x, ...) {
 #' @examples
 #'
 #' magqControl()
-magqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+magqControl <- function(sigdig=4, nAGQ=2, ..., interaction=TRUE,
                          agqLow=-Inf, agqHi=Inf,
                          muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ...,
@@ -471,7 +471,7 @@ nmObjGetFoceiControl.magq <- function(x, ...) {
 #' @examples
 #'
 #' iagqControl()
-iagqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+iagqControl <- function(sigdig=4, nAGQ=2, ..., interaction=TRUE,
                            agqLow=-Inf, agqHi=Inf,
                            muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ...,
@@ -561,7 +561,7 @@ nmObjGetFoceiControl.iagq <- function(x, ...) {
 #' @examples
 #'
 #' mlaplaceControl()
-mlaplaceControl <- function(sigdig=3, ..., nAGQ=1,
+mlaplaceControl <- function(sigdig=4, ..., nAGQ=1,
                              muModel=c("lin", "irls", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., nAGQ=nAGQ, muModel="lin")
   class(.control) <- "mlaplaceControl"
@@ -642,7 +642,7 @@ nmObjGetFoceiControl.mlaplace <- function(x, ...) {
 #' @examples
 #'
 #' ilaplaceControl()
-ilaplaceControl <- function(sigdig=3, ..., nAGQ=1,
+ilaplaceControl <- function(sigdig=4, ..., nAGQ=1,
                                muModel=c("irls", "lin", "none")) {
   .control <- foceiControl(sigdig=sigdig, ..., nAGQ=nAGQ, muModel="irls")
   class(.control) <- "ilaplaceControl"

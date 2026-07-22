@@ -4,7 +4,7 @@
 \alias{posthocControl}
 \title{Control options for the posthoc estimation method}
 \usage{
-posthocControl(sigdig = 3, ..., interaction = FALSE, maxOuterIterations = NULL)
+posthocControl(sigdig = 4, ..., interaction = FALSE, maxOuterIterations = NULL)
 }
 \arguments{
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
@@ -13,8 +13,10 @@ consistent formula, the inner/outer optimizer convergence tolerance
 and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
 \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
 \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
-steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
+order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
 exactly the precision the solve supports.  At the default \code{sigdig = 4}
 this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}

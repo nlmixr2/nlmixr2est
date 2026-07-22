@@ -205,7 +205,8 @@ getValidNlmixrCtl.default <- function(control) {
 #' simple and consistent with the optimizer:
 #'   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`
 #' The `rtol` exponent IS `sigdig`, and `atol` sits three orders below.  Sensitivity
-#' and steady-state solves run one order looser.  `tighten` shifts every exponent
+#' solves match the main solve (the gradient/covariance are built from them);
+#' steady-state solves run one order looser.  `tighten` shifts every exponent
 #' down by that many orders for a method that needs a tighter solve than the
 #' optimizer target (e.g. `est="nls"`, whose LM step is sensitive to solver noise).
 #' This mirrors the mapping moved into `rxode2::rxControl(sigdig=)` (rxode2 PR
@@ -223,15 +224,18 @@ getValidNlmixrCtl.default <- function(control) {
   if (is.null(sigdig) || is.null(rxControl)) return(rxControl)
   .rtol <- 10^(-(sigdig + tighten))
   .atol <- 10^(-(sigdig + 3 + tighten))
-  # only set a tolerance the user did not pass explicitly (skip); sensitivity +
-  # steady-state solves run one order looser than the main solve
+  # only set a tolerance the user did not pass explicitly (skip).  Sensitivity
+  # solves match the main solve: the outer gradient and covariance are built from
+  # them, so a looser sens tolerance degrades analytic gradient/covariance
+  # accuracy (and leaves the optimizer's gradient less accurate than its
+  # objective).  Steady-state solves stay one order looser than the main solve.
   .set <- function(field, value) {
     if (!(field %in% skip)) rxControl[[field]] <<- rep_len(value, length(rxControl[[field]]))
   }
   .set("rtol", .rtol)
   .set("atol", .atol)
-  .set("rtolSens", 10 * .rtol)
-  .set("atolSens", 10 * .atol)
+  .set("rtolSens", .rtol)
+  .set("atolSens", .atol)
   .set("ssRtol", 10 * .rtol)
   .set("ssAtol", 10 * .atol)
   if (!is.null(rxControl$ssRtolSens)) .set("ssRtolSens", 10 * .rtol)

@@ -13,7 +13,7 @@
 #' @examples
 #'
 #' foceControl()
-foceControl <- function(sigdig=3,
+foceControl <- function(sigdig=4,
                         ...,
                         interaction=FALSE) {
   .control <- foceiControl(sigdig=sigdig, ...,

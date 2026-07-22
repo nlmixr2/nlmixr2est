@@ -36,8 +36,10 @@
   so the optimizer converges to exactly the precision the solve supports.  The ODE
   `rtol` exponent IS `sigdig` and `atol` sits three orders below --
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)` -- the same for every solver (stiff,
-  non-stiff, auto-switching); sensitivity (`atolSens`/`rtolSens`) and steady-state
-  (`ssAtol`/`ssRtol`) solves run one order looser.  Every optimizer's convergence
+  non-stiff, auto-switching); the sensitivity (`atolSens`/`rtolSens`) solves match
+  the main solve (the outer gradient and covariance are built from them, so a looser
+  sensitivity tolerance would degrade analytic gradient/covariance accuracy), while
+  steady-state (`ssAtol`/`ssRtol`) solves run one order looser.  Every optimizer's convergence
   tolerance is `10^-sigdig` to match (`n1qn1` `epsilon`; `bobyqa`/`newuoa`/`uobyqa`
   `rhoend`; `nlminb` `rel.tol`/`x.tol`; `lbfgsb3c`/`optim` `factr` as
   `10^-sigdig/eps`; the FOCEi outer optimizer; `saem`'s inner residual `tol`; the
@@ -48,6 +50,12 @@
   keeps a tighter ODE (three orders below the shared target) because its
   Levenberg-Marquardt step is sensitive to solver noise.  An explicit `atol`/`rtol`
   passed through `rxControl` still overrides the `sigdig`-derived value.
+
+- The default `sigdig` is now `4` for every estimation method.  The FOCE family
+  (`foce`/`fo`/`foi`/`focep`), `agq`/`laplace`, `impmap`, `posthoc`, and the
+  mu-referenced / IRLS variants previously defaulted to `sigdig = 3`; with `sigdig`
+  now driving the ODE tolerances, that inconsistency solved those methods a decimal
+  looser than `focei`.  A single default keeps every method at `rtol = 1e-4`.
 
 - Added sugar aliases for the `optim()` methods so `est = "neldermead"`,
   `"bfgs"`, `"cg"`, `"lbfgsb"`, `"sann"` and `"brent"` stand in for

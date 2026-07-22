@@ -393,11 +393,16 @@ nmTest({
     .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
                   .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
     .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
+    # this ill-conditioned 2-endpoint model (more structural thetas than etas) has a
+    # residual sigma sensitive to solve accuracy, so pin sigdig=6 on both fits to
+    # compare the methods at a converged tolerance (the sigdig=4 default leaves the
+    # FOCEI add.sd ~25% off, which is solve noise, not a method difference).
     rxode2::rxSetSeed(42)
-    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei", foceiControl(print = 0L, covMethod = "")))
+    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei",
+                                    foceiControl(print = 0L, covMethod = "", sigdig = 6)))
     rxode2::rxSetSeed(42)
     .fi <- suppressWarnings(nlmixr2(mpkpd, .dat, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 300L)))
+                                    impmapControl(print = 0L, nIter = 20L, isample = 300L, sigdig = 6)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # This fit runs after a prior parallel FOCEI fit.  Two bugs used to degrade it
     # non-deterministically: the within-fit pool-sizing thread race (fixed by forcing
