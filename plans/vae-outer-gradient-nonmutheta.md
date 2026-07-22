@@ -1028,3 +1028,45 @@ or print from inside `.foceiFamilyReturn` before
 
 To separate (a)/(b), dump `names(parFixedDf)` and `rownames(parFixedDf)` from a
 VAE IOV fit and compare against a SAEM IOV fit (which works).
+
+### NARROWED TO: `.uiIovEnv$iovVars` is EMPTY when the hook runs
+
+Dumped `parFixedDf` immediately before `.postFinalObjectHooksRun`:
+
+    PFDCOLS: Estimate|SE|%RSE|Back-transformed|CI Lower|CI Upper|BSV(CV% or SD)|Shrink(SD)%
+    PFDROWS: tka|tcl|tv|add.sd|iov.cl|rx.iov.cl.1|rx.iov.cl.2
+
+BOTH are present -- the `Back-transformed` column AND the `iov.cl` row.  So
+possibilities (a) and (b) from the previous section are BOTH dead:
+`parFixedDf["iov.cl", <Back>]` would be a single value.
+
+The only way `.valCharPrep` is still zero-length is if the ROW SUBSCRIPT is empty,
+i.e. **`.uiIovEnv$iovVars` is NULL/empty by the time the hook runs**
+(`parFixedDf[NULL, 4]` -> zero-length).  It IS populated earlier (traced: `iov.cl`
+at `.vaeToFit` entry and after `.vaeUpdateModel`), so something between there and
+the hook clears it.
+
+`.vaeToFit` ALREADY has this exact problem for a sibling global and documents it:
+
+    ## mu2/mu3 restore info staged by the preprocess hook: the focei covariance
+    ## recompute below re-runs preprocessing and clears it, so snapshot it here and
+    ## reinstate it just before the mu2 finalize restores the original model.
+    .savedMuRef <- .muRefTrans$cur
+    on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+
+`.uiIovEnv` needs the same treatment -- but note the difference in timing: the mu2
+finalize is invoked by `.vaeToFit` AFTER `nlmixr2CreateOutputFromUi` returns
+(so a post-call restore suffices), whereas `.uiFinalizeIov` runs INSIDE that call
+via `.postFinalObjectHooksRun`.  So the snapshot must be reinstated BEFORE the
+create call, and whatever clears it during preprocessing must be prevented from
+doing so (find the `.uiApplyIov` re-entry that nulls `iovVars` -- it nulls when
+`!.isIovMethod(est, control)`).
+
+### FOLLOW-UP: the imp family does not implement the output contract
+
+`est="imp"`/`"impmap"`/`"qrpem"` assemble their output without the
+foreign-method contract (the babelmixr2 `saemix.R` checklist: fullTheta, etaObf,
+omega, cov, objective, metadata, then `.nlmixr2FitUpdateParams`).  They should,
+for consistency with saem/saemix and to avoid exactly the class of gap found here
+(a finalizer asking for a value no one supplied).  Do this as its own change with
+before/after fits, since it touches every imp-family fit.
