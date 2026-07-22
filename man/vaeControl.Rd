@@ -188,11 +188,12 @@ closing tail.  `FALSE` regresses the current posterior means.}
 
 \item{residRhoend}{Final trust-region radius (`rhoend`) of the bounded
 `bobyqa` that estimates the residual parameters -- its convergence
-tolerance.  `NULL` (default) uses `rhoend`, which is itself derived from
-`sigdig`.  Set it separately when the residual step needs to converge
-tighter or looser than the non-mu structural regression: the residual step
-runs with the ODE frozen, so a tighter tolerance there is much cheaper than
-a tighter `rhoend` everywhere.}
+tolerance.  `NULL` (default) derives it from `sigdig` (`10^(-sigdig)`), the
+same way every other optimizer tolerance in the package is derived, so
+`sigdig` stays the single knob that moves them together.  Set it explicitly
+when the residual step should converge tighter than the rest: it runs with
+the ODE frozen, so tightening it is far cheaper than tightening `rhoend`,
+which also tightens the structural regression that re-solves per candidate.}
 
 \item{omegaUpdate}{How the population variances are updated in the covariate
 M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from

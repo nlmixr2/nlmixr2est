@@ -163,11 +163,12 @@
 #'     unintended there; it is offered only to reproduce its published behavior.
 #' @param residRhoend Final trust-region radius (`rhoend`) of the bounded
 #'   `bobyqa` that estimates the residual parameters -- its convergence
-#'   tolerance.  `NULL` (default) uses `rhoend`, which is itself derived from
-#'   `sigdig`.  Set it separately when the residual step needs to converge
-#'   tighter or looser than the non-mu structural regression: the residual step
-#'   runs with the ODE frozen, so a tighter tolerance there is much cheaper than
-#'   a tighter `rhoend` everywhere.
+#'   tolerance.  `NULL` (default) derives it from `sigdig` (`10^(-sigdig)`), the
+#'   same way every other optimizer tolerance in the package is derived, so
+#'   `sigdig` stays the single knob that moves them together.  Set it explicitly
+#'   when the residual step should converge tighter than the rest: it runs with
+#'   the ODE frozen, so tightening it is far cheaper than tightening `rhoend`,
+#'   which also tightens the structural regression that re-solves per candidate.
 #' @param residOptimize How the residual-error parameters are estimated.
 #'
 #'   Residual forms the optimizer estimates: `add`, `prop`, `add + prop`, `pow`,
@@ -431,8 +432,13 @@ vaeControl <- function(seed = 42L,
   # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
   if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
-  ## convergence tolerance of the RESIDUAL optimizer; defaults to rhoend
-  if (is.null(residRhoend)) residRhoend <- rhoend
+  ## Convergence tolerance of the RESIDUAL optimizer.  Derived from `sigdig` the
+  ## same way every other optimizer tolerance in the package is (10^-sigdig), not
+  ## inherited from an explicitly-set `rhoend` -- so `sigdig` remains the single
+  ## knob that moves all of them together.
+  if (is.null(residRhoend)) {
+    residRhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
+  }
   checkmate::assertNumeric(residRhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ret <- list(seed = as.integer(seed),
                rhoend = as.numeric(rhoend),
