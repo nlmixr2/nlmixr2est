@@ -32,11 +32,6 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
-- The `est="vae"` ELBO now includes the transform-both-sides Jacobian, so a
-  model with `lnorm()`/`boxCox()`/`yeoJohnson()` reports its objective on the
-  DV scale (comparable to a FOCEi OFV) instead of the transformed scale.  No
-  effect on a model without a both-sides transform.
-
 - `est="vae"` gains `vaeControl(pinCovariates=)` (default `TRUE`) to respect the
   covariates already written in the model.  When the model declares covariate
   effects, the automatic BICc covariate search is restricted to those

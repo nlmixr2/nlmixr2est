@@ -479,3 +479,35 @@ Either find/tune one, or validate the term directly: assert
 `ELBO_with - ELBO_without == sum(log|dy'/dy|)` at a fixed parameter vector, which
 isolates the Jacobian from convergence entirely.  The latter is the better test
 and does not depend on lnorm fit quality.
+
+##### tbsLik in the VAE ELBO: REVERTED, unvalidated
+
+Applying the transform-both-sides Jacobian to the VAE ELBO looked correct --
+`likInner0` excludes it, only `LikInner2` adds it, and the ELBO's data term should
+be on the DV scale.  Measuring it says otherwise.  With `vaeInnerLik` at eta=0 on
+theo_sd (no fitting, so no convergence noise):
+
+| model | with the term | without | difference |
+|---|---|---|---|
+| `add`   | 212.0768500568 | 212.0768500568 | 0 |
+| `lnorm` | 6684.4180654897 | 6665.7660665466 | 18.65 |
+
+`obj` is -log p, so the difference implies `fInd->tbsLik` = -18.65.  But the log
+Jacobian for this data is `sum(log|dy'/dy|) = -sum(log(DV))` = **-180.85** over
+123 observations -- roughly 10x larger.  That gap is unexplained: either
+`fInd->tbsLik` is not the whole-subject Jacobian sum on this path, or it is
+accumulated somewhere the VAE reads at the wrong time.
+
+Applying a term I cannot reconcile to a REPORTED objective is worse than leaving
+it out, so it is reverted; `src/inner.cpp` carries a comment recording why.
+
+Resolve by instrumenting `fInd->tbsLik` per subject against a hand-computed
+`-sum(log(DV_i))` before touching this again.  Note the audit's OTHER conclusion
+still stands and is unaffected: npag/npb already fold `tbsJac` into `llikObs`
+(`inner.cpp:1806/1834`), so nothing was double-counted there.
+
+##### Answering "do the non-TBS objectives match?" -- YES, exactly
+
+The `add` row above is byte-identical (212.0768500568) with and without the term,
+confirming the change was a strict no-op absent a both-sides transform and that
+nothing else on this branch perturbed the non-transformed objective.

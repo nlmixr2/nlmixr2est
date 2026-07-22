@@ -10367,10 +10367,13 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
         double v = LikInner2(&eta[0], 0, id);
         obj[id] = R_FINITE(v) ? -v : NA_REAL;   // LikInner2 returns +log p
       } else {
-        // likInner0 omits the transform-both-sides Jacobian (only LikInner2 adds
-        // it), so the ELBO would be on the TRANSFORMED scale for a both-sides
-        // model.  obj is -log p, hence minus.  Zero without a transform.
-        obj[id] = likInner0(&eta[0], id) - inds_focei[id].tbsLik;
+        // NB: the transform-both-sides Jacobian is deliberately NOT applied here.
+        // It looks like it belongs (likInner0 excludes it; only LikInner2 adds it),
+        // but measuring fInd->tbsLik on an lnorm theo_sd fit gives -18.65 where the
+        // log-transform Jacobian sum(log|dy'/dy|) = -sum(log(DV)) is -180.85 -- a
+        // ~10x mismatch that is unexplained, so applying it would be an unvalidated
+        // change to a reported objective.  See plans/vae-outer-gradient-nonmutheta.md.
+        obj[id] = likInner0(&eta[0], id);
       }
       if (preds) {
         arma::mat rf = grabRFmatFromInner(id, false); // F,R for the solved component
