@@ -13378,6 +13378,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const bool parEncoderBackward = control.containsElementNamed("parEncoderBackward") ?
     as<bool>(control["parEncoderBackward"]) : false;
   const int printCtl = as<int>(control["print"]);
+  // Regress the smoothed sufficient statistic in the covariate M-step (reference
+  // behavior).  Missing field -> false, what control objects serialized before
+  // the option always did.
+  const bool covSelectSmooth = control.containsElementNamed("covSelectSmooth") &&
+    as<bool>(control["covSelectSmooth"]);
   // mStepObjective: "outer" (default) scores the non-mu theta M-step against the
   // full FOCEi outer objective; "elbo" reproduces the reference's plain
   // variational bound (frozen-eta joint likelihood).  Missing field -> "outer",
@@ -13467,6 +13472,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   bool isCovStep = false;
   arma::vec elboTrace(iters, arma::fill::zeros);
   const double logN = std::log((double)N);
+  // covSelectSmooth: regress the SAEM sufficient statistic s1 -- an EMA of the
+  // posterior means, s1 += gamma*(mu - s1) -- instead of the current posterior
+  // means, matching the reference (pop_parameter: y = s1[:,k]/sqrt(omega)).
+  // A smoothed response has less iteration-to-iteration variance, so the RSS
+  // gain from admitting a covariate is smaller against the same fixed ln(N)
+  // penalty and fewer covariates clear it.
+  arma::mat s1(N, zDim, arma::fill::zeros);
+  bool s1Init = false;
 
   for (int it = 1; it <= iters; ++it) {
     double gamma = (it <= gammaIter) ? 1.0 : 1.0 / (1.0 + it - gammaIter);
@@ -13480,6 +13493,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     if (klWarmup > 1 && it < klWarmup && covSelectAlpha != 1.0) {
       covPenCoef = covSelectAlpha + (1.0 - covSelectAlpha) * (double)(it - 1) / (double)(klWarmup - 1);
       covRamp = true;
+    }
+    // sufficient-statistic EMA, updated with the same gain as the M-step and
+    // seeded (not blended) on the first pass so it starts AT the posterior means
+    if (covSelectSmooth) {
+      if (!s1Init) { s1 = last.mu; s1Init = true; }
+      else s1 += gamma * (last.mu - s1);
     }
     if (doCov) {
       // BICc-ELBO covariate M-step
@@ -13498,7 +13517,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         if (isFreeR[k]) continue;
         // fixed structural theta: hold the intercept at ini, add no covariates
         if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); continue; }
-        arma::vec yk = last.mu.col(k);
+        arma::vec yk = covSelectSmooth ? s1.col(k) : last.mu.col(k);
         // pinCovariates: restrict this dim's candidate columns to its allowed
         // (model-declared) covariates.  A reduced design [1 | covMat.cols(allowed)]
         // is searched, then the chosen reduced indices are mapped back to global

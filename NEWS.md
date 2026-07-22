@@ -39,6 +39,12 @@
   (`tv` 3.4324 for `nonMuTheta="regress"`, 3.4294 for `"grad"`, against a FOCEi
   maximum-likelihood value of 3.4293).
 
+- `est="vae"` covariate selection now regresses the SAEM sufficient statistic (an
+  exponential moving average of the posterior means) rather than the current
+  posterior means, matching Rohleff et al. (2025); `vaeControl(covSelectSmooth=)`
+  restores the previous behavior.  The effect is small in practice, since the
+  M-step gain is 1 until `gammaIter`.
+
 - `est="vae"` gains `vaeControl(mStepObjective=)`, selecting the objective the
   M-step for a structural theta with no random effect is optimized against:
   `"outer"` (default) uses the full FOCEi outer objective (the frozen-eta joint

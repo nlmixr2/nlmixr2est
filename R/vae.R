@@ -131,6 +131,14 @@
 #'   reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 #'   penalize covariate entry more heavily early in training; `1` disables the
 #'   ramp.
+#' @param covSelectSmooth When `TRUE` (default) the covariate selection regresses
+#'   the SAEM sufficient statistic -- an exponential moving average of the
+#'   posterior means, updated with the same gain as the M-step -- rather than the
+#'   current posterior means.  This matches the reference implementation
+#'   (Rohleff et al. 2025), which is the reason for the default.  In practice it
+#'   changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
+#'   equals the posterior mean for most of a run and is averaged only over the
+#'   closing tail.  `FALSE` regresses the current posterior means.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -205,6 +213,7 @@ vaeControl <- function(seed = 42L,
                        pinCovariates = TRUE,
                        muRefCovAlg = TRUE,
                        covSelectAlpha = 2,
+                       covSelectSmooth = TRUE,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -257,6 +266,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(pinCovariates, len = 1, any.missing = FALSE)
   checkmate::assertLogical(muRefCovAlg, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -347,6 +357,7 @@ vaeControl <- function(seed = 42L,
                pinCovariates = pinCovariates,
                muRefCovAlg = muRefCovAlg,
                covSelectAlpha = covSelectAlpha,
+               covSelectSmooth = covSelectSmooth,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,

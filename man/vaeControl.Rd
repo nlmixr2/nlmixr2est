@@ -19,6 +19,7 @@ vaeControl(
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
   covSelectAlpha = 2,
+  covSelectSmooth = TRUE,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -114,6 +115,15 @@ penalty, ramped linearly from `covSelectAlpha` down to `1` over the
 reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 penalize covariate entry more heavily early in training; `1` disables the
 ramp.}
+
+\item{covSelectSmooth}{When `TRUE` (default) the covariate selection regresses
+the SAEM sufficient statistic -- an exponential moving average of the
+posterior means, updated with the same gain as the M-step -- rather than the
+current posterior means.  This matches the reference implementation
+(Rohleff et al. 2025), which is the reason for the default.  In practice it
+changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
+equals the posterior mean for most of a run and is averaged only over the
+closing tail.  `FALSE` regresses the current posterior means.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

@@ -76,11 +76,35 @@ has nothing to act on.  Re-running the case study under
 population parameters, identical omegas, identical residual error, identical
 selected covariate set.  We have pinned that identity as a regression test.
 
-So the objective deviation is demonstrably **not** the cause of the covariate
-difference.  Our current best guess is the deliberately shortened schedule we use
-in the demonstration, and we are re-running at your full schedule before drawing
-any conclusion.  We mention it only for completeness; we are not attributing it
-to anything yet.
+We also ruled out the obvious second explanation, a too-short schedule.  At your
+full schedule (`itersBurnIn = 100`, `klWarmup = 50`, `gammaIter = 250`,
+`iters = 300`) our run selects *more* terms, not fewer -- five: GA on birth
+weight (1.88), GA on `kin` (2.59), sex on birth weight (0.09), mother's age on
+`kin` (-0.27) and parity on `kin` (0.12).
+
+Reading your `pop_parameter` source we found a third candidate and tested that
+too: **what the L0 selection regresses.**  The penalized criterion itself is
+identical on both sides -- you minimize
+`sum_squares(y - X beta) + alpha_pen * ln(nbatch) * sum(z)` with `y` and `X` both
+scaled by `1/sqrt(omega_pop[k])`, which is exactly our
+`RSS_S/omega + alpha*ln(N)*|S|`.  But your `y` is the SAEM sufficient statistic
+`s1`, an exponential moving average of the posterior means
+(`s1 <- s1 + gamma*(mu - s1)`), where ours was the current posterior mean.  We
+have since switched to the smoothed statistic to match you (it is now our
+default, independently of this question).
+
+It makes essentially no difference: the same five terms at the full schedule, the
+same three at the short one, coefficients agreeing to about 0.05.  In hindsight
+that is what the gain schedule implies -- `gamma` is exactly 1 until
+`gamma_iter` (250 of 300 iterations) in both implementations, so `s1` *equals*
+the posterior mean for most of a run and is averaged only over the closing tail.
+
+**So we cannot account for the difference.**  Three candidates tested, three
+eliminated.  What we have not ruled out: how the candidate covariate columns are
+constructed (centering/transformation), the omega values in force at selection
+time, and the possibility that the published figure reports the headline effect
+rather than the complete selected set -- which would mean there is no discrepancy
+at all.
 
 Where the two objectives *do* differ is on a model that carries an unmatched
 theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
@@ -101,10 +125,17 @@ theta.  On `theo_sd` with `tv` written without a random effect (FOCEi MLE
    Laplace-corrected marginal while the latent parameters keep the variational
    bound?  Our concern is the obvious one: it is a mixed objective, and we would
    value a second opinion on whether that is principled or merely convenient.
-3. Would a shared benchmark be of interest -- your Case Study 2 at the full
-   schedule, both objectives, same data -- so that any residual difference in the
-   selected covariate set can be pinned to something specific rather than
-   guessed at?
+3. For Case Study 2, does your reported result reflect the *complete* selected
+   set, or the effect you chose to highlight?  If additional terms were selected
+   and not shown, there may be no discrepancy here at all, and we would like to
+   stop looking for one.
+4. If it is the complete set: can you see what we are doing differently?  We are
+   happy to share our run.  Our remaining suspects are the construction of the
+   candidate covariate columns and the omega values in force at selection time,
+   but we are guessing at this point.
+5. Would a shared benchmark be of interest -- your Case Study 2 at the full
+   schedule, same data -- so that the difference can be pinned to something
+   specific rather than guessed at?
 
 ## Status in our documentation
 
@@ -116,8 +147,9 @@ surprised by it or misreads the covariate difference as caused by it.
 ## Before sending
 
 * Have a maintainer read and sign it -- it should go from a person, not a tool.
-* Re-run Case Study 2 at the paper's full schedule first.  If the extra
-  covariates disappear, drop that section entirely rather than raising a
-  difference that does not exist.
+* Question 3 is the cheapest one to resolve and may dissolve the whole covariate
+  section -- consider leading with it, or asking it alone first.  There is no
+  point presenting an elimination trail if the premise (that they selected
+  exactly one covariate) is not what the paper claims.
 * Confirm the reference-code line numbers and hyperparameters still match the
   version being cited.
