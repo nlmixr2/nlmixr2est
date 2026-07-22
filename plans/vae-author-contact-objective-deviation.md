@@ -116,6 +116,60 @@ sampling design rather than of the data, and it would change if the same study
 were padded differently.  If it is deliberate we would like to understand the
 reasoning; if it is incidental, it may be worth a note for reimplementers.
 
+## What we have tried, to align with your Case Study 2
+
+Working from your repository's simulated neonatal data (the real cohort is not
+distributed), we have gone through the implementation line by line looking for
+places we differ.  Several were genuine defects on our side, now fixed:
+
+* **Encoder covariate conditioning.**  We were not passing the covariates to the
+  encoder at all -- your `torch.cat((hidden[-1], covariates), dim=1)` had no
+  counterpart, so our posterior could not express a covariate relationship.  This
+  was the single largest error; fixing it moved `kin ~ GA` from 2.45 to 3.51
+  against your 3.45, and removed a spurious effect.
+* **Smoothing gain.**  Ours was `1/(1 + iter - gamma_iter)` against your
+  `1/(iter - gamma_iter)` -- a step harder throughout the tail.
+* **Omega update.**  You form omega from the EMA sufficient statistics and assign
+  it; we additionally blended it at the M-step gain, smoothing twice.
+* **Encoder-input standardization.**  Yours is computed across the whole padded
+  matrix (the question above); ours used the observed values only, a ~3x
+  difference in SD on this dataset.
+* **Residual model.**  Ours estimated a proportional term where you fix `b = 0`,
+  and on the variance scale where `sigma = a + b*f` is SD-additive.
+* **`sigma0`.**  Your bias initialization is `log(sigma0^2)`, so the initial
+  posterior SD is `sigma0` SQUARED; ours was `sigma0`.  Both are now available.
+* **Per-case-study settings.**  We now match `neonates.py` explicitly
+  (`alpha = 5`, `L_iter = 10`, `h_dim = 50`), rather than using the theophylline
+  values as though they were method defaults.
+
+We also validated the two heavy components directly against your code rather than
+by inspection: our C++ LSTM reproduces your torch encoder's forward pass AND
+analytic backward to 1e-5 (all six gradient tensors), and our `rxode2` decoder
+reproduces your `Decoder_neonates` torchode solve to 1e-8 relative over all 1120
+observations, using your data and your padded `t_eval`.  Adam's betas/eps, the L0
+criterion (`RSS/omega + alpha*ln(N)*|S|`), and the covariate encoding
+(`log(cov/mean)`) all match.
+
+**Where that leaves us.**  The residual error still differs and we cannot close
+it.  Against your `a = 27.899`:
+
+| our residual estimator | a |
+|---|---|
+| closed-form moment | 34.892 |
+| two-stage ELS | 33.235 |
+| analytic outer gradient | 32.459 |
+
+Each refinement moves toward you and none arrives.  `lW0` agrees to ~1e-3 on the
+log scale and `omega[W0]` to ~0.5%; the disagreement is concentrated in the
+weakly-identified parameters (`T50`, `TL`).  Our run selects five covariates
+where yours selects eight ON THE SAME SIMULATED DATA, and the residual estimator
+does not change that -- selection is stable across all three rows above.
+
+Since every component we can isolate now agrees, our working assumption is that
+the remainder is trajectory divergence: different RNG streams for the
+reparameterization noise, compounded over 3000 gradient steps in a non-convex
+problem.  We would be glad to be told otherwise.
+
 ## Questions for you
 
 1. Did parameters without a random effect come up in your work?  If so, how did

@@ -163,6 +163,11 @@ closing tail.  `FALSE` regresses the current posterior means.}
   the log-Jacobian, since `f` leaves the solve already on the transformed
   scale.
 
+  `nonMuTheta = "grad"` bypasses this entirely: the analytic outer gradient
+  already carries a residual sigma and a transform lambda as its own
+  directions, so those parameters are stepped by the gradient through Adam and
+  the two-stage path never runs.  Which converges better is model-dependent.
+
   * `"moment"`: the closed-form moment estimator.  For a model with
     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
     any other error model it is either a different estimator or, for the forms
