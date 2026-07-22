@@ -152,7 +152,7 @@ vaeCovariates <- function(data, warn = TRUE) {
       }
       if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L &&
             is.name(.a[[2L]]) && identical(as.character(.a[[2L]]), cov) &&
-            is.numeric(.a[[3L]])) {
+            is.numeric(.a[[3L]]) && length(.a[[3L]]) == 1L && is.finite(.a[[3L]])) {
         return(list(inLog = TRUE, center = as.numeric(.a[[3L]])))
       }
       return(list(inLog = TRUE, center = NA_real_))
