@@ -163,13 +163,13 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
-  // fast=TRUE log-likelihood/generalized endpoint: the inner model carries the exact
-  // second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j (upper triangle
-  // i<=j, j-outer/i-inner order).  Its lhs offset (first column, located by name at setup)
-  // is >=0 only for that model and ARMS the analytic inner-Hessian branch of calcEtaHessian
-  // (H = Omega^-1 - sum_obs d2), replacing the Shi21 finite difference.  It indexes the
-  // SEPARATE 2nd-order model's (rxHess2) lhs, re-solved per subject at eta* -- the cheap
-  // 1st-order inner model (rxInner) drives the Newton (neqOverride = innerNeq).
+  // fast=TRUE log-likelihood/generalized endpoint: a SEPARATE compiled model (rxHess2)
+  // carries the exact second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j
+  // (upper triangle i<=j, j-outer/i-inner order).  This offset is the lhs index of its first
+  // column (located by name at setup); it is >=0 only when that model is present and ARMS the
+  // analytic inner-Hessian branch of calcEtaHessian (H = Omega^-1 - sum_obs d2), replacing the
+  // Shi21 finite difference.  rxHess2 is re-solved per subject at eta* -- the cheap 1st-order
+  // inner model (rxInner) drives the Newton (neqOverride = innerNeq).
   int predHess2Offset = -1;
   int hess2Neq = 0;    // rxHess2 ODE state count (the full 2nd-order model)
   int hess2Nlhs = 0;   // rxHess2 lhs width (sizes the thread-local read buffer)

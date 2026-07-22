@@ -953,7 +953,7 @@
   }
   if (!all(is.finite(g))) return(NULL)
   names(g) <- c(thStruct, omNames)
-  list(g = g, etaP = vector("list", nsub), ids = ids)   # etaP left NULL -> C++ skips the Eq-48 warm start
+  list(g = g, etaP = NULL, ids = ids)   # etaP NULL -> the caller's length()>0 guard skips the Eq-48 warm start
 }
 
 #' Batched multi-configuration augmented solve for the ll() log-det gradient.  Solves

@@ -1104,12 +1104,12 @@ rxUiGet.foceiEnv <- function(x, ...) {
 
   .s$..REta <- .ret
   rxode2::rxProgressStop()
-  # fast=TRUE generalized (ll()) endpoint: add the second-order eta expansion so the
-  # inner model itself carries d2(logLik)/deta2 (rx__d2pred_i_j__) and calcEtaHessian
-  # assembles the EXACT inner Hessian analytically (parallel-safe, no separate solve),
-  # instead of the Shi21 finite difference.  Gated so the ordinary inner model is
-  # untouched; the model cache keys on `fast` (rxUiGet.foceiModelDigest) so a fast and a
-  # non-fast fit get distinct inner models.
+  # fast=TRUE generalized (ll()) endpoint: add the second-order eta expansion.  The exact
+  # d2(logLik)/deta2 (rx__d2pred_i_j__) is compiled into a SEPARATE model (..innerHess2),
+  # which calcEtaHessian re-solves per subject at eta* to assemble the EXACT inner Hessian
+  # analytically (H = Omega^-1 - sum d2), instead of the Shi21 finite difference.  Gated so
+  # the ordinary inner model is untouched; the model cache keys on `fast`
+  # (rxUiGet.foceiModelDigest) so a fast and a non-fast fit get distinct model bundles.
   .s <- .foceiMaybeAddHdEta2(x, .s)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
@@ -2642,9 +2642,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (.control$needOptimHess) {
     .control$interaction <- 0L
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
-    # machinery (its inner Hessian is a finite-difference of the inner gradient).
-    # But rx_pred_ IS the per-observation log-density, so the analytic outer gradient
-    # differentiates it directly (.foceiAnalyticGradCoreLL, exact inner Hessian +
+    # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
+    # gradient differentiates it directly (.foceiAnalyticGradCoreLL, exact inner Hessian +
     # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
     # out-of-scope cases (multiple endpoints, censoring, nAGQ>1, IOV), where the
     # augmented `..outer` model cannot supply the gradient and the fit uses finite

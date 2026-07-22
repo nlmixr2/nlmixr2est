@@ -30,7 +30,7 @@ nmTest({
   }
 
   test_that("ll() analytic-gradient scope gates", {
-    is <- function(m) .foceiLLGradInScope(rxode2::rxUiDecompress(m()))
+    is <- function(m) .foceiLLGradInScope(rxode2::rxUiDecompress(rxode2::rxode2(m)))
     expect_true(is(.ll_ode))                 # ODE log-likelihood endpoint -> in scope
     expect_false(is(.gauss_ode))             # Gaussian -> the (f,R) analytic path, not the ll path
     expect_true(is(.ll_lincmt))              # linCmt() passes the coarse gate (falls back to FD at build)
