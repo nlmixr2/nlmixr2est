@@ -15,6 +15,17 @@
   model outside analytic scope (`ll()` endpoints, `linCmt()`, IOV) reverts to
   `"regress"` with a note in `$runInfo`.
 
+- `est="vae"` `residOptimize="twoStage"` now applies to a log-likelihood
+  (`ll()`) or generalized endpoint.  Stage two eligibility was "the parameter has
+  a slot in the error-parameter vector", and such a model has none, so stage two
+  never ran and `"twoStage"` silently behaved like the experimental joint
+  `"optimize"` solve.  Eligibility is now decided per parameter -- an error
+  parameter (as before), OR a parameter no `d/dt()` right-hand side, initial
+  condition or dosing modifier can reach -- so a theta read only by the
+  log-density is optimized in its own frozen-ODE block as intended.  A
+  multi-endpoint model with one Gaussian and one `ll()` endpoint gets both its
+  error parameter and its log-density-only theta into stage two.
+
 - The `est="vae"` ELBO now includes the transform-both-sides Jacobian, so a model
   with `lnorm()`/`boxCox()`/`yeoJohnson()` reports its objective on the DV scale
   -- matching what `est="focei"` already does -- instead of the transformed

@@ -186,7 +186,9 @@
 #'     a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
 #'     any other error model it is either a different estimator or, for the forms
 #'     with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
-#'     the parameter stays at its `ini()` value.
+#'     the parameter stays at its `ini()` value.  There is no moment estimator for
+#'     a log-likelihood (`ll()`) parameter either, so those also stay at `ini()`;
+#'     use `"twoStage"` for such a model.
 #'   * `"twoStage"` (default): block coordinate descent, as `npag`'s
 #'     `residOptimize = "alternate"` does.  Stage
 #'     one optimizes the non-mu-referenced structural thetas with the residual
@@ -197,6 +199,15 @@
 #'     -- the same structure SAEM uses.  On `theo_sd` this beats the moment
 #'     estimator on both a pure-additive model (objective 131.79 vs 131.81) and a
 #'     combined one (121.03 vs 122.47).
+#'
+#'     Which parameters stage two owns is decided per parameter: an error
+#'     parameter, or one that no `d/dt()` right-hand side, initial condition or
+#'     dosing modifier can reach.  The second case is what a log-likelihood
+#'     (`ll()`) or generalized endpoint needs -- its residual-like parameters are
+#'     plain thetas with no error row, and on the error-only rule stage two was
+#'     empty for such a model, silently making `"twoStage"` behave like
+#'     `"optimize"`.  When no regressed theta qualifies (every one feeds the
+#'     solve) stage two has nothing to do and `residOptimize` has no effect.
 #'   * `"optimize"` (EXPERIMENTAL, diagnostic): a single JOINT solve over the
 #'     structural and residual parameters together, against the full outer
 #'     objective.  Fine with one free residual parameter, but with `add` and

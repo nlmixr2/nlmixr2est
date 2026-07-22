@@ -1,5 +1,46 @@
 # VAE + log-likelihood endpoints: `nonMuTheta="grad"` and the two-stage regress
 
+## STATUS
+
+**Gap 2 (two-stage regress) is DONE.**  Eligibility is decided per parameter --
+an `err` parameter, or one no solve-defining expression reaches -- so an `ll()`
+endpoint's log-density-only thetas reach stage 2, including in a multi-endpoint
+model that also has `err` rows.  `gVaeFreezeObjR` gained the theta write path.
+Verified by unit tests plus two fits (`test-vae-ll-grad-fit.R`).
+
+**Gap 1 (`nonMuTheta="grad"` for `ll()`) is BLOCKED, and the blocker is not what
+this plan assumed.**  Everything above the solve works: `.foceiLLGradInScope(ui,
+"vae")` is TRUE, `.foceiOuterDirsLL` builds the direction set,
+`.foceiAnalyticGradSetup` returns `ef$isLL`, and `.foceiAnalyticGradCore` routes
+to the log-density core.  Widening `.vaeGradInScope` to accept `ll()` makes the
+fit SEGFAULT.
+
+Measured, on a one-compartment `ll()` model:
+
+- The fault is heap corruption: R aborts inside its own byte-compiler
+  (`compiler:::tryCmpfun`) on entry to `.foceiAnalyticGradCore`, i.e. BEFORE any
+  gradient solve has run.
+- It is not the pooled column layout -- forcing `.vaeOuterCols` to `NULL` (the
+  plain `rxSolve` path) still faults.
+- It is not the `dH/dtheta` batch -- stubbing `.foceiAnalyticSolveConfigsLL` /
+  `.foceiAnalyticHess2ConfigsLL` to `NULL` still faults.
+- The SAME model and data fit cleanly under `nonMuTheta="regress"`.
+
+`"regress"` is the only one of those that does not set `poolModel`.  So the
+trigger is the `"grad"` pool arrangement itself: `.vaeInnerSetup` sizes the
+shared solve pool with the augmented outer model (42 states / 34 lhs here) and
+pins the inner MAP to `neqOverride = 4`.  That is correct for a Gaussian model
+and corrupts the heap for an `ll()` one.  The fix belongs in `vaeInnerSetup_`,
+not in the R scope gate.
+
+`.vaeGradInScope` therefore still declines `ll()`, with the reasoning inline; the
+supporting work (caller-aware `.foceiLLGradInScope`, `startedEnv` reuse in
+`.vaeGradEval`, `.vaeGradReset` hygiene, and a `predHess2Offset` reset in
+`vaeInnerSetup_` so a stale offset from an earlier focei `ll()` `fast=TRUE` fit
+cannot leak in) is in place and tested.  Re-enable the `ll()` branch and restore
+the two `"grad"` fit tests together once the pool arrangement is fixed.
+
+
 Two gaps left open when PR #807 (analytic `fast=TRUE` for `ll()`/generalized
 endpoints) merged.  Both are about the VAE M-step, which #807 did not touch.
 

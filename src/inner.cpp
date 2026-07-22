@@ -10258,6 +10258,13 @@ static NumericVector _vaeInitPar;
 RObject vaeInnerSetup_(Environment e) {
   op_focei.canDoFD = false;
   op_focei.nEstOmega = e.exists("nEstOmega") ? as<int>(e["nEstOmega"]) : 0;
+  // op_focei persists across fits and this path never loads rxHess2, so a stale
+  // offset left by an earlier focei ll() fast=TRUE fit would send calcEtaHessian
+  // into the exact-Hessian branch against a model that is not loaded here.
+  // foceiFitCpp_ resets this for the same reason; do it on this entry too.
+  op_focei.predHess2Offset = -1;
+  op_focei.hess2Neq = 0;
+  op_focei.hess2Nlhs = 0;
   setupAq0_(e);
   List model = e["model"];
   RObject inner = model.containsElementNamed("innerLlik") ? model["innerLlik"] : model["inner"];
@@ -13401,7 +13408,8 @@ static arma::ivec gVaeRegErrMap;
 // Candidate substitution for the residual optimizer: gVaeElsMap relates the
 // optimizer's parameter slots to positions in `a`, and gVaeElsA is the base `a`
 // so a FIXED residual parameter keeps its value.
-static arma::ivec gVaeElsMap;     // optimizer slot k -> index in `a`
+static arma::ivec gVaeElsMap;     // optimizer slot k -> index in `a`, or -1
+static arma::ivec gVaeElsTh;      // optimizer slot k -> index in the full theta
 static arma::vec  gVaeElsA;       // base `a`; held params keep these values
 
 // ---- stage-2 objective through likInner0 with the ODE FROZEN ---------------
@@ -13458,9 +13466,19 @@ static inline void vaeRestoreFrozen(int id) {
 // states, and re-evaluate the SAME likelihood the fit reports.
 static double gVaeFreezeObjR(Rcpp::NumericVector p) {
   arma::vec ac = gVaeElsA;
-  for (arma::uword k = 0; k < gVaeElsMap.n_elem && k < (arma::uword)p.size(); ++k)
-    if (gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem) ac[gVaeElsMap[k]] = p[k];
-  arma::vec thv = vaeBuildTh(gVaeRegThBase, gVaeRegZpopIdx0, gVaeRegBaseline,
+  arma::vec thc = gVaeRegThBase;
+  // Dual write, exactly as gVaeThetaObjR does: the theta slot ALWAYS, plus the
+  // `a` slot when the parameter is an error parameter (vaeBuildTh writes `a` back
+  // over the error theta positions, so for those the `a` write is what survives).
+  // A plain ll() theta has no `a` slot at all -- without the theta write the
+  // objective is flat in it and bobyqa never moves it.
+  for (arma::uword k = 0; k < (arma::uword)p.size(); ++k) {
+    if (k < gVaeElsTh.n_elem && gVaeElsTh[k] >= 0 && gVaeElsTh[k] < (int)thc.n_elem)
+      thc[gVaeElsTh[k]] = p[k];
+    if (k < gVaeElsMap.n_elem && gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem)
+      ac[gVaeElsMap[k]] = p[k];
+  }
+  arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline,
                              gVaeRegErrIdx0, ac);
   vaeInnerUpdateParCore(thv, gVaeRegOmega);
   for (int id = 0; id < (int)gVaeFreezeEta.n_rows; ++id) vaeRestoreFrozen(id);
@@ -13566,6 +13584,23 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   for (arma::uword j = 0; j < regErrMapV.n_elem; ++j) if (regErrMapV[j] >= 0) residByOpt = true;
   const bool residTwoStage = control.containsElementNamed("residOptimize") &&
     as<std::string>(control["residOptimize"]) == "twoStage";
+  // Stage-2 (frozen-ODE block) eligibility, classified per parameter in R by
+  // .vaeRegressStage2: an err parameter (the historic rule -- every one of those
+  // is still stage 2), or one no d/dt right-hand side, initial condition or
+  // dosing modifier can reach.  The second half is what an ll()/generalized
+  // endpoint needs: it has NO err rows, so on the old rule stage 2 was always
+  // empty there and "twoStage" silently degraded to the joint "optimize" solve.
+  // Falls back to the err-only set when R sent no mask.
+  arma::ivec regStage2V = prep.containsElementNamed("regressStage2") ?
+    vaeToIvec(prep["regressStage2"]) : arma::ivec();
+  if (regStage2V.n_elem != regThetaIdx0v.n_elem) {
+    regStage2V.set_size(regThetaIdx0v.n_elem);
+    for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j)
+      regStage2V[j] = (j < regErrMapV.n_elem && regErrMapV[j] >= 0) ? 1 : 0;
+  }
+  bool stage2Any = false;
+  for (arma::uword j = 0; j < regStage2V.n_elem; ++j) if (regStage2V[j] > 0) stage2Any = true;
+  int nStage2 = 0;   // stage-2 solves actually run (mechanism evidence for the tests)
   arma::uvec regIdx(regThetaIdx0v.n_elem);
   for (arma::uword j = 0; j < regThetaIdx0v.n_elem; ++j) regIdx[j] = (arma::uword)regThetaIdx0v[j];
   arma::vec regLower = as<arma::vec>(prep["regressLower"]);
@@ -13958,10 +13993,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // two-stage: stage 1 optimizes the structural thetas with the residuals
       // held, so restrict the active set here and do the residuals in stage 2
       arma::uvec stage1Idx = regIdx; arma::ivec stage1Map = regErrMapV;
-      if (residTwoStage && residByOpt) {
+      if (residTwoStage && stage2Any) {
         std::vector<arma::uword> keep;
         for (int j = 0; j < m; ++j)
-          if (!(j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0)) keep.push_back((arma::uword)j);
+          if (!(j < (int)regStage2V.n_elem && regStage2V[j] > 0)) keep.push_back((arma::uword)j);
         // Restrict stage 1 to the structural thetas whenever ANY parameter is
         // residual.  When `keep` is EMPTY the set is residual-only (the common
         // case: every structural parameter mu-referenced, so only the error
@@ -13985,7 +14020,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       std::vector<int> s1Src(m1);
       { int c2 = 0;
         for (int j = 0; j < m; ++j)
-          if (m1 == m || !(j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0)) s1Src[c2++] = j; }
+          if (m1 == m || !(j < (int)regStage2V.n_elem && regStage2V[j] > 0)) s1Src[c2++] = j; }
       for (int jj = 0; jj < m1; ++jj) {
         int j = s1Src[jj];
         // An error parameter's live value is `a`, not the (stale) theta slot, and
@@ -14028,10 +14063,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // joint solve over near-collinear parameters at frozen etas is what walks
       // to a corner; splitting the blocks shrinks each solve and removes the
       // structural/residual coupling from it.
-      if (residTwoStage && residByOpt) {
+      if (residTwoStage && stage2Any) {
         std::vector<arma::uword> sub;
         for (int j = 0; j < m; ++j)
-          if (j < (int)regErrMapV.n_elem && regErrMapV[j] >= 0) sub.push_back((arma::uword)j);
+          if (j < (int)regStage2V.n_elem && regStage2V[j] > 0) sub.push_back((arma::uword)j);
         if (!sub.empty()) {   // NOT `sub.size() < m`: a residual-only set is stage 2's job
           arma::uvec sIdx(sub);
           // re-publish the base with stage-1's structural values baked in
@@ -14041,12 +14076,21 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           Rcpp::NumericVector p2(sIdx.n_elem), l2(sIdx.n_elem), u2(sIdx.n_elem);
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
             arma::uword j = sIdx[k];
-            sReg[k] = regIdx[j]; sMap[k] = regErrMapV[j];
-            p2[k] = a[sMap[k]]; l2[k] = regLower[j]; u2[k] = regUpper[j];
+            sReg[k] = regIdx[j]; sMap[k] = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
+            // an err parameter's live value is `a`; a plain (ll()) theta's is the
+            // theta slot, which is also where its candidate has to be written
+            p2[k] = (sMap[k] >= 0) ? a[sMap[k]] : th[regIdx[j]];
+            l2[k] = regLower[j]; u2[k] = regUpper[j];
+            if (R_FINITE(l2[k]) && p2[k] < l2[k]) p2[k] = l2[k];
+            if (R_FINITE(u2[k]) && p2[k] > u2[k]) p2[k] = u2[k];
           }
           gVaeElsA = a;
           gVaeElsMap.set_size(sIdx.n_elem);
-          for (arma::uword k = 0; k < sIdx.n_elem; ++k) gVaeElsMap[k] = sMap[k];
+          gVaeElsTh.set_size(sIdx.n_elem);
+          for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
+            gVaeElsMap[k] = sMap[k];
+            gVaeElsTh[k] = (int)sReg[k];
+          }
           // pin the ODE states at the stage-1 structural values, then optimize the
           // residual parameters against the real likelihood with only r moving
           gVaeRegThBase = th;
@@ -14062,16 +14106,19 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                                      Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,
                                      Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeResidRhoend));
           Rcpp::NumericVector x2 = r2["x"];
+          nStage2++;
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
             arma::uword j = sIdx[k];
-            double cur = a[sMap[k]];
+            double cur = (sMap[k] >= 0) ? a[sMap[k]] : th[regIdx[j]];
             double upd = cur + gamma * (x2[k] - cur);
             if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
             if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
             if (!R_FINITE(upd)) continue;
-            th[regIdx[j]] = upd; a[sMap[k]] = upd;
+            th[regIdx[j]] = upd;
+            if (sMap[k] >= 0) a[sMap[k]] = upd;
           }
           vaeFreezeClear();
+          gVaeElsTh.reset();
           gVaeRegIdx = regIdx; gVaeRegErrMap = regErrMapV;  // restore
         }
       }
@@ -14122,7 +14169,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["selected"] = selected, _["elboTrace"] = elboTrace,
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
-                      _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback);
+                      _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
+                      _["nStage2"] = nStage2);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

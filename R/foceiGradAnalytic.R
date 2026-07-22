@@ -1092,7 +1092,7 @@
   # ll()/generalized likelihood (needOptimHess -> interaction=0, EXACT inner
   # Hessian): rx_pred_ is the log-density, so skip the Gaussian ErrFull and set up
   # the direct-log-density core (.foceiAnalyticGradCoreLL).
-  if (.foceiLLGradInScope(ui)) {
+  if (.foceiLLGradInScope(ui, caller)) {
     .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
     .dir <- .foceiOuterDirsLL(ui); if (is.null(.dir)) return(NULL)
     .oe <- .foceiEstOmegaDeriv(ui, Om, e); if (is.null(.oe)) return(NULL)
@@ -1248,6 +1248,20 @@
 #' Cheap direction-set probe -- no symengine/gcc pass -- covering every static
 #' gate: `linCmt()`, `fo`, the distribution/error-model scope, IOV, and a model
 #' with no eta.  A later build or solve failure still falls back at runtime.
+#'
+#' An `ll()`/generalized endpoint is NOT yet accepted here, even though every
+#' piece above it is ready: `.foceiLLGradInScope(ui, "vae")` is TRUE for such a
+#' model, `.foceiOuterDirsLL` builds its direction set, and
+#' `.foceiAnalyticGradSetup`/`.foceiAnalyticGradCore` already route it (on
+#' `ef$isLL`) to the direct-log-density core.  The blocker is one level down, in
+#' the SOLVE POOL: `nonMuTheta="grad"` makes `.vaeInnerSetup` size the shared
+#' pool with the augmented outer model (42 states / 34 lhs on a one-compartment
+#' `ll()` fit) and pin the inner MAP to `neqOverride = 4`.  That arrangement is
+#' correct for a Gaussian model but corrupts the heap for an `ll()` one -- the
+#' same fit runs clean under `nonMuTheta="regress"` (no `poolModel`), and with
+#' `"grad"` it faults before the first gradient solve even starts.  Accepting
+#' `ll()` here would hand users a segfault, so it stays out until the pool
+#' arrangement is fixed in `vaeInnerSetup_`.
 #' @noRd
 .vaeGradInScope <- function(ui) {
   !is.null(tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL))
@@ -1277,8 +1291,12 @@
 #' the Gaussian (f,R) path.  Phase 1 scope: a single non-Gaussian endpoint, no
 #' linCmt/bounded transform/IOV/FO, at least one eta.  (Multi-endpoint, censoring,
 #' and nAGQ are handled by falling back to the finite-difference gradient.)
+#'
+#' `caller` only reaches the bounded-transform gate, which focei must fail and
+#' the VAE need not -- see `.analyticGradAllowsBoundedTr`.  Defaulted, so the
+#' focei callers keep their exact behavior.
 #' @noRd
-.foceiLLGradInScope <- function(ui) {
+.foceiLLGradInScope <- function(ui, caller = .analyticGradCaller(ui)) {
   tryCatch({
     if (!.hasRxSens()) return(FALSE)
     .pd <- ui$predDfFocei
@@ -1291,7 +1309,7 @@
     # Hessian/gradient at build time (see .foceiMaybeAddHdEta2).  A residual TRUE here marks
     # a case the promotion cannot cover -- out of scope like the Gaussian path.
     if (isTRUE(any(ui$predDfFocei$linCmt))) return(FALSE)
-    if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(FALSE)
+    if (!.analyticGradAllowsBoundedTr(ui, caller)) return(FALSE)
     if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(FALSE)
     if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(FALSE)
     if (length(.uiIovEnv$iovVars) > 0L) return(FALSE)
@@ -1336,7 +1354,7 @@ rxUiGet.foceiOuter <- function(x, ...) {
   # direction builder declines (ErrFull is norm-only), but rx_pred_ is the
   # log-density and the same augmented model supplies its 1st/2nd-order eta/theta
   # derivatives -- build over the ll() direction set instead.
-  if (is.null(.dir) && .foceiLLGradInScope(.ui)) .dir <- .foceiOuterDirsLL(.ui)
+  if (is.null(.dir) && .foceiLLGradInScope(.ui, .caller)) .dir <- .foceiOuterDirsLL(.ui)
   if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
 }

@@ -89,6 +89,13 @@
   .vaeGradEnv$regNames <- NULL
   .vaeGradEnv$cores <- NULL
   .vaeGradEnv$failed <- NULL
+  ## .vaeGradEval passes this env to .foceiAnalyticGradCore as `startedEnv`, which
+  ## caches compiled models in it (.foceiGradHess2 for the ll() core, and for the
+  ## Gaussian core .foceiGradAugNode / .analyticStarted).  Those are per-fit and
+  ## hold compiled models, so drop them with the rest.
+  rm(list = intersect(c(".foceiGradHess2", ".foceiGradAugNode", ".analyticStarted"),
+                      ls(.vaeGradEnv, all.names = TRUE)),
+     envir = .vaeGradEnv)
   invisible(NULL)
 }
 
@@ -161,12 +168,17 @@
       .vaeGradEnv$am <- .am
     }
     .th <- setNames(as.numeric(thVals), paste0("THETA_", seq_along(thVals), "_"))
+    ## startedEnv: the ll() core caches the eta-only 2nd-order model (innerHess2)
+    ## there and reuses it for the dH/dtheta perturbation batch.  Without it every
+    ## M-step re-resolves it and then solves the FULL outer model 2*(nth+nom)
+    ## times instead of the much smaller eta-only one.  .vaeGradEnv is per-fit
+    ## (.vaeGradReset clears the slot), which is the lifetime focei gives it too.
     .r <- .foceiAnalyticGradCore(.ui, .th, ebes, .vaeGradEnv$ids, .vaeGradEnv$data,
                                  .Om, .st$ef, .st$dir, .st$dOiEst, .st$tr28,
                                  .st$omNames, .foceiAnalyticSolveTol(.ui),
                                  interaction = .st$interaction,
                                  foceType = .st$foceType, am = .vaeGradEnv$am,
-                                 nAGQ = .st$nAGQ)
+                                 nAGQ = .st$nAGQ, startedEnv = .vaeGradEnv)
     if (is.null(.r) || is.null(.r$g)) return(NULL)
     .g <- .r$g[.reg]
     ## a regressed theta the gradient does not carry (not in thStruct) means the

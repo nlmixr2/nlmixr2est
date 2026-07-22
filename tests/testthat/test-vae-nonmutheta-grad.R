@@ -16,6 +16,19 @@ nmTest({
       cp <- center / v
       cp ~ add(add.sd) })
   }
+  ## a log-likelihood endpoint: no `err` rows at all, so `lsd` is a PLAIN theta
+  ## reachable only from the log-density.  lka/lcl feed d/dt.
+  .llMod <- function() {
+    ini({ lka <- 0.4; lcl <- -0.9; lb <- log(3); lsd <- log(1.2); eta.b ~ 0.1 })
+    model({
+      ka <- exp(lka); cl <- exp(lcl)
+      d / dt(depot) <- -ka * depot
+      d / dt(central) <- ka * depot - cl * central
+      mu <- exp(lb + eta.b) * central
+      sd <- exp(lsd)
+      ll(cp) ~ -0.5 * log(2 * pi) - log(sd) - 0.5 * ((DV - mu) / sd)^2
+    })
+  }
   ## same model through linCmt(): no symbolic state sensitivities -> out of scope
   .linMod <- function() {
     ini({ tka <- 0.45; tcl <- 1; tv <- c(2, 3.45, 5); add.sd <- c(0, 0.7, 5)
@@ -56,6 +69,33 @@ nmTest({
   test_that("scope probe accepts an ODE model and rejects linCmt()", {
     expect_true(.vaeGradInScope(rxode2::assertRxUi(.odeMod())))
     expect_false(.vaeGradInScope(rxode2::assertRxUi(.linMod())))
+  })
+
+  test_that("the ll() gradient pieces are ready but the vae probe still declines", {
+    ui <- rxode2::assertRxUi(.llMod())
+    ## the Gaussian (f,R) direction builder declines -- ErrFull is norm-only ...
+    expect_null(.foceiOuterDirs(ui, "vae"))
+    ## ... while the log-density route is fully built: scope gate, direction set,
+    ## and the caller policy all accept this model
+    expect_true(.foceiLLGradInScope(ui, "vae"))
+    expect_false(is.null(.foceiOuterDirsLL(ui)))
+    ## but the vae probe MUST still decline: nonMuTheta="grad" sizes the shared
+    ## solve pool with the augmented model and pins the inner MAP under
+    ## neqOverride, and that arrangement corrupts the heap for an ll() model (the
+    ## same fit is clean under "regress").  Until vaeInnerSetup_ is fixed,
+    ## accepting it here would be a segfault, not a feature.  Flip this assertion
+    ## and re-enable the ll() branch of .vaeGradInScope together.
+    expect_false(.vaeGradInScope(ui))
+    expect_false(.vaeGradInScope(rxode2::assertRxUi(.linMod())))
+  })
+
+  test_that("the ll() bounded-transform gate follows the caller policy", {
+    ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.llMod()))
+    ui$boundedTransforms <- list(list(name = "lsd"))
+    ## focei reports a natural-scale gradient (needs a Jacobian correction it does
+    ## not apply); the vae consumes the unconstrained scale it steps on
+    expect_false(.foceiLLGradInScope(ui, "focei"))
+    expect_true(.foceiLLGradInScope(ui, "vae"))
   })
 
   test_that("vaeControl accepts mStepObjective and defaults to 'outer'", {

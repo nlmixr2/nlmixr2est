@@ -294,6 +294,100 @@ vaeCovariates <- function(data, warn = TRUE) {
   do.call(rbind, .rows)
 }
 
+#' Which regressed thetas may be optimized in `residOptimize="twoStage"` stage 2.
+#'
+#' Stage 2 pins the ODE states from stage 1 and re-optimizes with only the
+#' candidate moving, so a parameter is eligible exactly when the state trajectory
+#' cannot depend on it.  The rule is PER PARAMETER:
+#'
+#'   eligible = it is an `err` parameter, OR no solve-defining expression reaches it
+#'
+#' The `err` half is the historic rule and keeps every error parameter in stage 2
+#' exactly as before.  The second half is what an `ll()`/generalized endpoint
+#' needs: its residual-like parameters are plain thetas with no `err` row, so on
+#' the old rule stage 2 was empty and `"twoStage"` silently degraded to the joint
+#' `"optimize"` solve.
+#'
+#' A model-level "does this model have error parameters" short-circuit would NOT
+#' do -- a multi-endpoint model with one Gaussian and one `ll()` endpoint has
+#' `err` rows AND log-density-only thetas, and both belong in stage 2.
+#'
+#' Deliberately conservative in the risky direction: an unparsable model, or one
+#' with no ODE states to pin, contributes nothing beyond the `err` set.
+#' @param ui rxode2 ui object
+#' @param regressNames regressed theta names, in `regressThetaIdx0` order
+#' @param regressErrIdx0 0-based slot in `a` per regressed name, -1 when not one
+#' @return integer 0/1 per regressed name
+#' @noRd
+.vaeRegressStage2 <- function(ui, regressNames, regressErrIdx0) {
+  if (length(regressNames) == 0L) return(integer(0))
+  .isErr <- regressErrIdx0 >= 0L
+  .odeFree <- tryCatch(.vaeOdeFreeThetas(ui, regressNames),
+                       error = function(e) rep(FALSE, length(regressNames)))
+  as.integer(.isErr | .odeFree)
+}
+
+#' Names the ODE state trajectory provably cannot depend on.
+#'
+#' Fixpoint over the model assignments, seeded from every expression that feeds
+#' the solve.  Assignment ORDER is ignored, which can only over-collect symbols
+#' and therefore only ever answers FALSE where the truth is TRUE -- the safe
+#' direction (the theta stays in stage 1, as it is today).
+#' @param ui rxode2 ui object
+#' @param names candidate names
+#' @return logical vector, `TRUE` when no solve-defining expression reaches the name
+#' @noRd
+.vaeOdeFreeThetas <- function(ui, names) {
+  .no <- rep(FALSE, length(names))
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  if (is.null(.lst) || length(.lst) == 0L) return(.no)
+  if (length(tryCatch(rxode2::rxState(ui), error = function(e) character(0))) == 0L) return(.no)
+  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
+    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")) ||
+       identical(.ex[[1]], as.name("~")))
+  .syms <- function(.e) {
+    if (is.name(.e)) return(as.character(.e))
+    if (is.call(.e)) return(unlist(lapply(as.list(.e)[-1L], .syms), use.names = FALSE))
+    character(0)
+  }
+  ## a solve-defining left-hand side: d/dt(x), x(0), and the dosing modifiers
+  .solveLhs <- function(.txt) {
+    grepl("^d */ *dt *\\(", .txt) ||
+      grepl("^[A-Za-z._][A-Za-z0-9._]* *\\( *0 *\\)$", .txt) ||
+      grepl("^(f|alag|lag|rate|dur) *\\(", .txt)
+  }
+  ## the observation model, which the SOLVE does not read: `ll(x) ~ <density>`
+  ## and the error-model endpoint lines (`x ~ add(...)`, `x ~ pois(...)`).  ONLY a
+  ## `~` line qualifies -- `cp <- center / v` defines a variable a `d/dt()` may
+  ## well read, and dropping it would hide a real dependency.
+  .endpointVars <- tryCatch(as.character(ui$predDf$var), error = function(e) character(0))
+  .seed <- character(0); .map <- list()
+  for (.ex in .lst) {
+    if (!.isAssign(.ex)) next
+    .rhs <- .syms(.ex[[3]])
+    .txt <- paste(deparse(.ex[[2]]), collapse = "")
+    .tilde <- identical(.ex[[1]], as.name("~"))
+    if (.solveLhs(.txt)) {
+      .seed <- c(.seed, .rhs)
+    } else if (.tilde && (grepl("^ll *\\(", .txt) || .txt %in% .endpointVars)) {
+      next                                   # likelihood only -- never reaches the solve
+    } else if (is.name(.ex[[2]])) {
+      .map[[.txt]] <- unique(c(.map[[.txt]], .rhs))
+    } else {
+      ## an lhs shape not recognized above may still feed the solve -- take its
+      ## rhs as reachable rather than guess (the safe direction: stage 1)
+      .seed <- c(.seed, .rhs)
+    }
+  }
+  .seen <- unique(.seed); .todo <- .seen
+  while (length(.todo) > 0L) {
+    .nxt <- unique(unlist(.map[intersect(.todo, names(.map))], use.names = FALSE))
+    .todo <- setdiff(.nxt, .seen)
+    .seen <- c(.seen, .todo)
+  }
+  !(as.character(names) %in% .seen)
+}
+
 #' Prepare VAE inputs from a ui + data
 #' @param ui rxode2 ui object
 #' @param data estimation data (ID/TIME/DV/EVID/... columns)
@@ -591,6 +685,8 @@ vaeCovariates <- function(data, warn = TRUE) {
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
   .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
+  ## residOptimize="twoStage" stage-2 eligibility (see .vaeRegressStage2)
+  .regressStage2 <- .vaeRegressStage2(ui, .regressNames, .regressErrIdx0)
 
   ## per-subject decoder inputs + gather all obs for standardization
   subj <- vector("list", N)
@@ -665,7 +761,7 @@ vaeCovariates <- function(data, warn = TRUE) {
        errThetaIdx = .errThetaIdx, errType = .errType,
        errLower = .errLower, errUpper = .errUpper,
        regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
-       regressErrIdx0 = .regressErrIdx0,
+       regressErrIdx0 = .regressErrIdx0, regressStage2 = .regressStage2,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
