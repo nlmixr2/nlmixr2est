@@ -689,3 +689,21 @@ whether the fit completes.  Baseline reproduced the error in the same script, so
 the comparison is valid.  If nulling etaMat fixes it, the real fix is to map the
 expanded IOV columns to what the focei setup expects (or drop them from the
 starting-eta matrix), NOT to stop passing starting etas.
+
+##### etaMat DISPROVEN too (sixth elimination) -- read this, not the note above
+
+The `etaMat` "prime suspect" call in the preceding section is WRONG.  Nulling it
+out at the `foceiFitCpp_` call changes nothing:
+
+    BASELINE          : ERROR: invalid second argument of length 0
+    WITH etaMat=NULL  : ERROR: invalid second argument of length 0
+
+(Same script, so the baseline is a valid control.)
+
+That leaves exactly ONE substantive candidate from the env diff: **`ui`, which has
+39 bindings on the VAE path vs 38 on the focei path.**  Next step is mechanical --
+`setdiff(ls(vaeUi), ls(foceiUi))` on the two stashed envs to name the extra
+binding, then work out why the focei setup chokes on it for an IOV model.
+
+Running tally of eliminated hypotheses (do NOT re-test): covariate selection,
+nonMuTheta mode, mu-structure, eta dimensions, `.uiIovEnv` lifetime, `etaMat`.
