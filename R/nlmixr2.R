@@ -222,6 +222,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
+  ## extra named arguments (e.g. `nn=` for nlmixr2nn) are stashed on the env so
+  ## an estimation interceptor can read them; standard estimation ignores them.
+  .env$.nlmixr2Dots <- list(...)
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")

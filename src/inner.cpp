@@ -37,6 +37,132 @@
 // to avoid a TSan-flagged data race on worker threads' reads.
 static std::atomic<int> _innerParallel{0};
 
+// --- external likelihood-contribution registry (nlmixr2estLikContrib.h) ------
+// Contributor packages register bundles of plain-C hooks; likInner0 cycles them
+// in series inside the per-observation loop.  Registration happens single-
+// threaded before solving; the arrays are read-only during the parallel solve.
+#include "../inst/include/nlmixr2estLikContrib.h"
+#define NLMIXR_MAX_CONTRIB 16
+static const nlmixrLikContrib* _nlmixrContrib[NLMIXR_MAX_CONTRIB] = {NULL};
+static int _nlmixrNContrib = 0;
+static nlmixrEmLik_fn _nlmixrEmLik[NLMIXR_MAX_CONTRIB] = {NULL};
+static int _nlmixrNEmLik = 0;
+
+extern "C" void nlmixrRegisterLikContrib(const nlmixrLikContrib *c) {
+  if (c == NULL || c->obs == NULL) return;
+  for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) return;
+  if (_nlmixrNContrib < NLMIXR_MAX_CONTRIB) _nlmixrContrib[_nlmixrNContrib++] = c;
+}
+extern "C" void nlmixrRemoveLikContrib(const nlmixrLikContrib *c) {
+  for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) {
+    for (int k = i; k < _nlmixrNContrib - 1; ++k) _nlmixrContrib[k] = _nlmixrContrib[k + 1];
+    _nlmixrContrib[--_nlmixrNContrib] = NULL; return;
+  }
+}
+extern "C" void nlmixrRegisterEmLik(nlmixrEmLik_fn fn) {
+  if (fn == NULL) return;
+  for (int i = 0; i < _nlmixrNEmLik; ++i) if (_nlmixrEmLik[i] == fn) return;
+  if (_nlmixrNEmLik < NLMIXR_MAX_CONTRIB) _nlmixrEmLik[_nlmixrNEmLik++] = fn;
+}
+extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
+  for (int i = 0; i < _nlmixrNEmLik; ++i) if (_nlmixrEmLik[i] == fn) {
+    for (int k = i; k < _nlmixrNEmLik - 1; ++k) _nlmixrEmLik[k] = _nlmixrEmLik[k + 1];
+    _nlmixrEmLik[--_nlmixrNEmLik] = NULL; return;
+  }
+}
+extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
+
+// Cross-TU dispatch: drive the (static, inner.cpp-private) registry from another
+// translation unit (nlm.cpp's population objective).  Same series semantics as
+// the inline likInner0 hook.  No-ops when nothing is registered.
+extern "C" void nlmixrLikContribBegin(const nlmixrLikSubj *s) {
+  for (int i = 0; i < _nlmixrNContrib; ++i)
+    if (_nlmixrContrib[i]->beginSubject) _nlmixrContrib[i]->beginSubject(s);
+}
+extern "C" void nlmixrLikContribObs(nlmixrLikObs *o) {
+  for (int i = 0; i < _nlmixrNContrib; ++i) _nlmixrContrib[i]->obs(o);
+}
+extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
+  for (int i = 0; i < _nlmixrNContrib; ++i)
+    if (_nlmixrContrib[i]->endSubject) _nlmixrContrib[i]->endSubject(s);
+}
+
+// Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
+// a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
+// downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
+extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
+  const char *nm[5] = {"registerLikContrib", "removeLikContrib",
+                       "registerEmLik", "removeEmLik", "hasLikContrib"};
+  DL_FUNC fn[5] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
+                   (DL_FUNC) &nlmixrRegisterEmLik, (DL_FUNC) &nlmixrRemoveEmLik,
+                   (DL_FUNC) &nlmixrHasLikContrib};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 5));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 5));
+  for (int i = 0; i < 5; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
+// test-only contributor (tests/testthat/test-lik-contrib.R): records per-obs
+// values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
+// accumulators, so the test runs single-threaded.
+static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL;
+static int _testNObs, _testNBegin, _testNEnd;
+static void _testBegin(const nlmixrLikSubj *s) { (void)s; _testNBegin++; }
+static void _testEnd(const nlmixrLikSubj *s) { (void)s; _testNEnd++; }
+static void _testObs(nlmixrLikObs *o) {
+  _testNObs++;
+  _testSumDLLdf += o->dLL_df;
+  _testSumErr += (o->f - o->dv);
+  _testSumF += o->f;
+  if (_testAddLL != 0.0) *o->llik += _testAddLL;   // constant LL shift per obs
+}
+extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
+  _testAddLL = Rf_asReal(v);
+  return R_NilValue;
+}
+static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
+extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
+  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = 0.0;
+  _testNObs = _testNBegin = _testNEnd = 0;
+  nlmixrRegisterLikContrib(&_testContribBundle);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_removeTestContrib(void) {
+  nlmixrRemoveLikContrib(&_testContribBundle);
+  return R_NilValue;
+}
+extern "C" SEXP _nlmixr2est_getTestContrib(void) {
+  SEXP r = PROTECT(Rf_allocVector(REALSXP, 6));
+  REAL(r)[0] = (double) _testNObs;   REAL(r)[1] = _testSumDLLdf;
+  REAL(r)[2] = _testSumErr;          REAL(r)[3] = _testSumF;
+  REAL(r)[4] = (double) _testNBegin; REAL(r)[5] = (double) _testNEnd;
+  UNPROTECT(1);
+  return r;
+}
+
+// --- outer-problem NN training hook ------------------------------------------
+// A downstream package (nlmixr2nn) registers an R function that receives, once
+// per real outer objective evaluation, a method-agnostic matrix with one row per
+// observation: [f, <every solved state>, <every calc_lhs value>] -- the predicted
+// value, the full ODE state vector (which carries the NN-weight forward-
+// sensitivity states rx_sw), and the full per-observation lhs row.  The callback
+// assembles d(f)/d(w) from the states, combines it with the
+// method's own d(LL)/d(f) cotangent, steps the torch optimizer and injects the
+// updated weights (via the rxode2 par-loader) for the next evaluation.  Called
+// single-threaded from foceiOfv0 with calcGrad == 0 (the real objective, not a
+// finite-difference perturbation), where every subject's inner solve is current.
+static SEXP _nnOuterFn = NULL;
+extern "C" SEXP _nlmixr2est_setNnOuterFn(SEXP fn) {
+  if (_nnOuterFn != NULL) { R_ReleaseObject(_nnOuterFn); _nnOuterFn = NULL; }
+  if (fn != R_NilValue && TYPEOF(fn) == CLOSXP) { _nnOuterFn = fn; R_PreserveObject(_nnOuterFn); }
+  return R_NilValue;
+}
+
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
   iniLbfgsb3
@@ -1191,6 +1317,64 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   return ret;
 }
 
+// Assemble the outer-problem NN matrix: one row per observation across all
+// subjects, columns [f, s0..s(neq-1)] -- ONLY the predicted value f and the ODE
+// state vector (which carries the rx_sw forward-sensitivity states).  These are
+// the two quantities every estimation method produces, so the NN interface is
+// method-agnostic; the method-specific likelihood cotangent d(LL)/d(f) is
+// supplied separately by each method's per-observation contribution hook.
+// Mirrors grabRFmatFromInner's per-subject calc_lhs walk.
+// Per-observation snapshot handed to the NN weight step (setNnOuterFn), one row
+// per observation (evid==0), in canonical subject/record order:
+//   col 0                      : rx_pred_ (the inner predicted value f)
+//   cols 1 .. neq              : ODE states (incl. the rx_sw forward-sensitivity
+//                                states of the augmented model)
+//   cols neq+1 .. neq+nlhs     : the full calc_lhs row (lhs_vars) -- the NN
+//                                output g, output transforms, rx_drdg, error
+//                                pieces, AND any covariates the augmented model
+//                                chooses to emit as rx_<cov>_ lhs outputs (so a
+//                                covariate-NN term's inputs appear here without
+//                                fragile per-record covariate plumbing in C).
+// Method-agnostic: every estimator produces a prediction + states + lhs; the
+// method-specific dLL/d(rx_pred_) comes from the per-obs contribution hook.
+static Rcpp::NumericMatrix assembleNnOuterMatrix() {
+  rx_solving_options *op = getSolvingOptions(rx);
+  int neq = getOpNeq(op);
+  int nlhs = getRxNlhs(rx);
+  int nsub = (int) getRxNsubAndMix(rx);
+  // count observations (evid == 0)
+  int nobs = 0;
+  for (int id = 0; id < nsub; id++) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) == 0) nobs++;
+    }
+  }
+  const int ncFixed = 1; // f (predicted value)
+  Rcpp::NumericMatrix mat(nobs, ncFixed + neq + nlhs);
+  int row = 0;
+  for (int id = 0; id < nsub; id++) {
+    int _rxId = getRxId(id);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+    iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      double curT = getTime(kk, ind);
+      double *lhs = getIndLhs(ind);
+      double *st = getOpIndSolve(op, ind, j);
+      rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
+      if (getIndEvid(ind, kk) != 0) continue;
+      mat(row, 0) = lhs[op_focei.predOffset];             // rx_pred_ (predicted f)
+      for (int s = 0; s < neq; ++s) mat(row, ncFixed + s) = st[s]; // ODE states
+      for (int l = 0; l < nlhs; ++l) mat(row, ncFixed + neq + l) = lhs[l]; // lhs_vars
+      row++;
+    }
+  }
+  return mat;
+}
+
 // This is needed for shi21 h optimization
 arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   EtaRestoreGuard etaGuard(id); // restores ind->par_ptr on any exit path
@@ -1201,6 +1385,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
   IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq); // switches this subject's neq to predNeq
+  setIndSolve(ind, -1); // reset the solve index before predOde (matches shi21ThetaGeneral)
   predOde(_rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1215,7 +1400,11 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
       continue;
     }
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-    ret(k) = lhs[w];
+    // rx_pred_ (w=0) / rx_r_ (w=1) may be preceded by other lhs outputs in the
+    // pred model (AR(1) lag defs, etc.), so index from predNoLhsOffset -- matching
+    // shi21ThetaGeneral.  Reading lhs[w] instead read a wrong column and produced a
+    // garbage FD eta-sensitivity whenever predNoLhsOffset != 0.
+    ret(k) = lhs[op_focei.predNoLhsOffset + w];
     k++;
     if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
@@ -1620,6 +1809,19 @@ double likInner0(double *eta, int id) {
       fInd->nNonNormal = 0;
       fInd->nObs = 0;
       fInd->tbsLik=0.0;
+      // external likelihood contributions (cycled in series); zero overhead when none
+      const int _nContrib = _nlmixrNContrib;
+      std::vector<double> _cDeta, _cDfdeta;
+      if (_nContrib > 0) {
+        _cDeta.assign(op_focei.neta, 0.0);
+        _cDfdeta.assign(op_focei.neta, 0.0);
+        nlmixrLikSubj _subj;
+        _subj.id = id; _subj.neta = op_focei.neta;
+        _subj.nobs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+        _subj.eta = eta;
+        for (int _ci = 0; _ci < _nContrib; ++_ci)
+          if (_nlmixrContrib[_ci]->beginSubject) _nlmixrContrib[_ci]->beginSubject(&_subj);
+      }
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       double tbsJac = 0.0;   // per-obs transform-both-sides Jacobian (npag/npb only)
       int cens = 0;
@@ -1872,6 +2074,42 @@ double likInner0(double *eta, int id) {
               }
             }
           }
+          // external per-observation contributions (this record was evid==0).
+          // Base outputs f/dv/r and cotangents dLL/df, dLL/dr are read-only; the
+          // contributor may add extra LL and dLL/deta (folded into fInd->llik/lp).
+          if (_nContrib > 0 && getIndEvid(ind, kk) == 0) {
+            double _dLLdf, _dLLdr;
+            if (dist == rxDistributionNorm) {
+              double _rz = _safe_zero(r);
+              // honor censoring exactly as the base objective does: dCensNormal1
+              // chains the uncensored score dll through (df/dtheta, dr/dtheta), so
+              // (df=1, dr=0) yields d(LL)/df and (df=0, dr=1) yields d(LL)/dr.  For
+              // an uncensored record it returns the uncensored slope unchanged; M2
+              // adds the censored adjustment, M3/M4 replace it.
+              _dLLdf = dCensNormal1((double) cens, dv, limit, -err / _rz, f, r, 1.0, 0.0);
+              _dLLdr = dCensNormal1((double) cens, dv, limit,
+                                    0.5 * err * err / (_rz * _rz) - 0.5 / _rz, f, r, 0.0, 1.0);
+            } else { _dLLdf = 1.0; _dLLdr = 0.0; }
+            const double *_dfp = NULL;
+            if (op_focei.neta > 0) {
+              for (int _q = 0; _q < op_focei.neta; ++_q) { _cDfdeta[_q] = a(k, _q); _cDeta[_q] = 0.0; }
+              _dfp = _cDfdeta.data();
+            }
+            double _llAdd = 0.0;
+            nlmixrLikObs _o;
+            _o.id = id; _o.k = k; _o.neta = op_focei.neta;
+            _o.f = f; _o.dv = dv; _o.r = r; _o.dLL_df = _dLLdf; _o.dLL_dr = _dLLdr;
+            _o.df_deta = _dfp; _o.llik = &_llAdd; _o.dLL_deta = _cDeta.data();
+            for (int _ci = 0; _ci < _nContrib; ++_ci) _nlmixrContrib[_ci]->obs(&_o);
+            fInd->llik += _llAdd;
+            // npag/npb build the conditional likelihood by summing llikObs (not
+            // fInd->llik), so fold the extra per-obs LL in here too -- otherwise a
+            // contributor's added likelihood would reach focei/foce/vae/advi but be
+            // silently dropped for the nonparametric methods.  Zero when the
+            // contributor only records cotangents (e.g. nn weight-grad capture).
+            llikObs[kk] += _llAdd;
+            for (int _q = 0; _q < op_focei.neta; ++_q) lp(_q, 0) += _cDeta[_q];
+          }
           // k--;
           k++;
           if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
@@ -1879,6 +2117,12 @@ double likInner0(double *eta, int id) {
             break;
           }
         }
+      }
+      if (_nContrib > 0) {
+        nlmixrLikSubj _subj;
+        _subj.id = id; _subj.neta = op_focei.neta; _subj.nobs = fInd->nObs; _subj.eta = eta;
+        for (int _ci = 0; _ci < _nContrib; ++_ci)
+          if (_nlmixrContrib[_ci]->endSubject) _nlmixrContrib[_ci]->endSubject(&_subj);
       }
       if (op_focei.neta == 0) {
         if (fInd->nNonNormal && op_focei.adjLik) {
@@ -3635,6 +3879,15 @@ static inline double foceiOfv0(double *theta){
       op_focei.checkTheta=0;
     }
     op_focei.lastOfv = ret;
+  }
+  // outer-problem NN training: hand the current per-observation prediction +
+  // state matrix to the registered callback (nlmixr2nn) so it can step the
+  // network weights.  Only on real objective evaluations (not gradient FD) and
+  // when the solve is finite.
+  if (_nnOuterFn != NULL && !op_focei.calcGrad && std::isfinite(ret)) {
+    Rcpp::NumericMatrix _nnMat = assembleNnOuterMatrix();
+    Rcpp::Function _fn(_nnOuterFn);
+    _fn(_nnMat);
   }
   return ret;
 }
@@ -13021,9 +13274,14 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
 // The solve itself is passed in as an R callback (`solveFn`) invoked per attempt.
 
 // p(x|z) and d(pxz)/deta for one subject from f, R, df/deta (aMat), dR/deta (aRMat).
+// `id` (>= 0) and `etaPtr` thread the calling subject's context to the external
+// likelihood-contribution registry -- the SAME registry likInner0 cycles -- so
+// the analytic-decoder VAE path carries any nn/plugin contribution just like the
+// focei/foce inner engine.  id < 0 (the bare vaeDecoderPxz_ primitive) skips it.
 static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
                               const arma::mat& aMat, const arma::mat& aRMat,
-                              const arma::vec& y, double& pxz, arma::vec& gEta) {
+                              const arma::vec& y, double& pxz, arma::vec& gEta,
+                              int id = -1, const double* etaPtr = NULL) {
   const int no = (int)f.n_elem, neta = (int)aMat.n_cols;
   const double ln2pi = std::log(2 * M_PI);
   arma::vec rf(no), rR(no);
@@ -13039,6 +13297,32 @@ static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
     double s = 0;
     for (int o = 0; o < no; ++o) s += rf[o] * aMat(o, k) + rR[o] * aRMat(o, k);
     gEta[k] = s;
+  }
+  // external likelihood contributions (cycled in series); zero overhead when
+  // none registered.  pxz is the per-subject NEGATIVE log-likelihood and
+  // gEta = d(pxz)/d(eta), so the contributor LL adds -llik to pxz and the
+  // contributor d(LL)/d(eta) adds -dLL/deta to gEta.  rf = -dLL/df, rR = -dLL/dr
+  // (this path assumes the uncensored Gaussian p(x|z), matching vaeDecoderPxz).
+  if (_nlmixrNContrib > 0 && id >= 0) {
+    std::vector<double> cDeta(neta > 0 ? neta : 1, 0.0), cDfdeta(neta > 0 ? neta : 1, 0.0);
+    nlmixrLikSubj subj; subj.id = id; subj.neta = neta; subj.nobs = no; subj.eta = etaPtr;
+    for (int ci = 0; ci < _nlmixrNContrib; ++ci)
+      if (_nlmixrContrib[ci]->beginSubject) _nlmixrContrib[ci]->beginSubject(&subj);
+    for (int o = 0; o < no; ++o) {
+      for (int k = 0; k < neta; ++k) { cDfdeta[k] = aMat(o, k); cDeta[k] = 0.0; }
+      double llAdd = 0.0;
+      nlmixrLikObs oo;
+      oo.id = id; oo.k = o; oo.neta = neta;
+      oo.f = f[o]; oo.dv = y[o]; oo.r = R[o];
+      oo.dLL_df = -rf[o]; oo.dLL_dr = -rR[o];
+      oo.df_deta = (neta > 0 ? cDfdeta.data() : NULL);
+      oo.llik = &llAdd; oo.dLL_deta = cDeta.data();
+      for (int ci = 0; ci < _nlmixrNContrib; ++ci) _nlmixrContrib[ci]->obs(&oo);
+      pxz -= llAdd;
+      for (int k = 0; k < neta; ++k) gEta[k] -= cDeta[k];
+    }
+    for (int ci = 0; ci < _nlmixrNContrib; ++ci)
+      if (_nlmixrContrib[ci]->endSubject) _nlmixrContrib[ci]->endSubject(&subj);
   }
 }
 
@@ -13152,7 +13436,7 @@ List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector om
     if (!s.ok) { failed = true; break; }
     arma::vec yi = as<arma::vec>(yListR[i]);
     double pxi; arma::vec gEta;
-    vaeDecoderPxzCore(s.f, s.R, s.a, s.aR, yi, pxi, gEta);
+    vaeDecoderPxzCore(s.f, s.R, s.a, s.aR, yi, pxi, gEta, i, etai.memptr());
     pxz += pxi; gZdec.row(i) = gEta.t();
     preds[i] = NumericVector(s.f.begin(), s.f.end());
   }

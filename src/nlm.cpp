@@ -8,7 +8,9 @@
 #include "shi21.h"
 #include "inner.h"
 #include "rxomp.h"
+#include "../inst/include/nlmixr2estLikContrib.h"
 #include <atomic>
+#include <limits>
 
 #define _(String) (String)
 
@@ -402,6 +404,16 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
+  // external likelihood-contribution capture for the population (eta-free) nlm
+  // objective: fire the SAME registry likInner0 cycles so a plugin (nlmixr2nn)
+  // records the EXACT per-obs error-model cotangent d(LL)/d(f) here in C++ --
+  // instead of re-deriving a Gaussian approximation in R.  neta == 0 (no random
+  // effects).  Guarded so nlm is bit-identical when nothing is registered.
+  const int _hasContrib = nlmixrHasLikContrib();
+  if (_hasContrib) {
+    nlmixrLikSubj _subj; _subj.id = id; _subj.neta = 0; _subj.nobs = nobs; _subj.eta = NULL;
+    nlmixrLikContribBegin(&_subj);
+  }
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
@@ -439,8 +451,41 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         }
       }
       ret(k) = val;
+      if (_hasContrib) {
+        int yjC = getIndYj(ind), distC = 0, yj0C = 0;
+        _splitYj(&yjC, &distC, &yj0C);
+        double dvi = getIndDv(ind, kk);
+        double fO = val, rO = 1.0, dLLdf = 1.0, dLLdr = 0.0;
+        // Gaussian endpoint with rx_pred_f_/rx_r_ available: exact cotangents,
+        // honoring censoring exactly as the objective's doCensNormal1 does.  A
+        // general ll() endpoint keeps d(LL)/d(f)=1 (f is itself the log-density),
+        // matching likInner0's non-normal branch.
+        if (nlmOp.hasFR && (distC == rxDistributionNorm || distC == rxDistributionDnorm)) {
+          fO = lhs[po + 1]; rO = lhs[po + 2];
+          double rz = (rO == 0.0) ? sqrt(std::numeric_limits<double>::epsilon()) : rO;
+          double err = fO - dvi;
+          int censi = 0;
+          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
+          double limiti = R_NegInf;
+          if (hasRxLimit(rx)) { limiti = getIndLimit(ind, kk); if (ISNA(limiti)) limiti = R_NegInf; }
+          dLLdf = dCensNormal1((double)censi, dvi, limiti, -err / rz, fO, rO, 1.0, 0.0);
+          dLLdr = dCensNormal1((double)censi, dvi, limiti,
+                               0.5 * err * err / (rz * rz) - 0.5 / rz, fO, rO, 0.0, 1.0);
+        }
+        double _llAdd = 0.0;
+        nlmixrLikObs _o;
+        _o.id = id; _o.k = k; _o.neta = 0;
+        _o.f = fO; _o.dv = dvi; _o.r = rO; _o.dLL_df = dLLdf; _o.dLL_dr = dLLdr;
+        _o.df_deta = NULL; _o.llik = &_llAdd; _o.dLL_deta = NULL;
+        nlmixrLikContribObs(&_o);
+        ret(k) -= _llAdd;  // objective is -LL; a contributor LL lowers it
+      }
       k++;
     }
+  }
+  if (_hasContrib) {
+    nlmixrLikSubj _subj; _subj.id = id; _subj.neta = 0; _subj.nobs = k; _subj.eta = NULL;
+    nlmixrLikContribEnd(&_subj);
   }
 }
 

@@ -180,7 +180,20 @@ SEXP _nlmixr2est_npagCycle_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_npObjAtGamma_(SEXP, SEXP, SEXP);
 SEXP _rxode2rxFixRes(SEXP, SEXP);
 
+SEXP _nlmixr2est_registerTestContrib(void);
+SEXP _nlmixr2est_removeTestContrib(void);
+SEXP _nlmixr2est_getTestContrib(void);
+SEXP _nlmixr2est_setTestContribAddLL(SEXP);
+SEXP _nlmixr2est_setNnOuterFn(SEXP);
+SEXP _nlmixr2est_likContribPtrs(void);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
+  {"_nlmixr2est_registerTestContrib", (DL_FUNC) &_nlmixr2est_registerTestContrib, 0},
+  {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
+  {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
+  {"_nlmixr2est_setTestContribAddLL", (DL_FUNC) &_nlmixr2est_setTestContribAddLL, 1},
+  {"_nlmixr2est_setNnOuterFn", (DL_FUNC) &_nlmixr2est_setNnOuterFn, 1},
   {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 3},
   {"_nlmixr2est_impSirIndex_", (DL_FUNC) &_nlmixr2est_impSirIndex_, 3},
   {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},

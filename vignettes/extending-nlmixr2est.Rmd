@@ -1,0 +1,151 @@
+---
+title: "Extending nlmixr2est: custom estimation methods and behavior hooks"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Extending nlmixr2est: custom estimation methods and behavior hooks}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`nlmixr2est` provides the estimation routines for the `nlmixr2` ecosystem.  This
+vignette is for **package developers** who want to plug their own behavior into
+that machinery.  There are three extension points, from highest-level to lowest:
+
+1. **Add a new estimation method** (`est = "myMethod"`) via S3 dispatch.
+2. **Intercept an estimation** so a *standard* method transparently does something
+   extra, without a new `est` name.
+3. **Contribute to the objective function** from compiled code (C
+   function-pointer linkage), e.g. to add likelihood terms during a FOCEi/SAEM fit.
+
+The lowest-level solve hooks (injecting parameters or derivative forcing into the
+`rxode2` solve itself) live in `rxode2`; see its *"Solve-time hooks for package
+developers"* article.
+
+## 1. Adding a new estimation method
+
+`nlmixr2()` dispatches on the `est` string through the `nlmixr2Est()` S3 generic:
+the estimation *environment* is given the class `c(est, "nlmixr2Est")`, so
+`est = "myMethod"` calls `nlmixr2Est.myMethod()`.  A method needs three pieces:
+
+* **A control constructor** `myMethodControl(...)` returning a classed list.
+* **`getValidNlmixrCtl.myMethod(control)`** -- validate/coerce the user's control
+  (called before dispatch).
+* **`nlmixr2Est.myMethod(env, ...)`** -- do the fit and return an `nlmixr2FitData`.
+
+By the time your method runs, the estimation environment `env` carries everything
+you need:
+
+| `env` slot          | contents                                             |
+|---------------------|------------------------------------------------------|
+| `env$ui`            | the model (an `rxUi`); `env$ui$iniDf` has the estimates |
+| `env$data`          | the (validated) data.frame                           |
+| `env$control`       | your validated control                               |
+| `env$table`         | the `tableControl()` for output tables               |
+| `class(env)[1]`     | the est name (`"myMethod"`)                           |
+| `env$.nlmixr2Dots`  | any extra named `nlmixr2()` arguments (see section 2) |
+
+The existing methods are the best templates -- a population optimizer such as
+`bobyqa` (`R/bobyqa.R`) is the simplest, and `saem`/`focei` show the full pattern.
+Skeleton:
+
+```{r, eval = FALSE}
+myMethodControl <- function(maxeval = 1000L, ...) {
+  .ctl <- list(maxeval = as.integer(maxeval), ...)
+  class(.ctl) <- "myMethodControl"
+  .ctl
+}
+
+#' @exportS3Method nlmixr2est::getValidNlmixrCtl
+getValidNlmixrCtl.myMethod <- function(control) {
+  .ctl <- control[[1]]
+  if (is.null(.ctl)) .ctl <- myMethodControl()
+  if (!inherits(.ctl, "myMethodControl")) {
+    stop("est = 'myMethod' needs control = myMethodControl(...)", call. = FALSE)
+  }
+  .ctl
+}
+
+#' @exportS3Method nlmixr2est::nlmixr2Est
+nlmixr2Est.myMethod <- function(env, ...) {
+  .ui   <- env$ui
+  .data <- env$data
+  .ctl  <- env$control
+  ## ... run the fit, build the result ...
+  ## return an nlmixr2FitData (see nlmixr2CreateOutputFromUi / the existing methods)
+}
+```
+
+Optional method attributes (mirroring the built-ins) advertise capabilities to the
+dispatcher, e.g. `attr(nlmixr2Est.myMethod, "covPresent") <- TRUE`.
+
+`nlmixr2AllEst()` lists every registered method, so once your package is loaded
+`est = "myMethod"` is available like any built-in.
+
+## 2. Intercepting an estimation
+
+Sometimes you do not want a *new* `est`; you want a model fit with a **standard**
+estimator to transparently do something extra.  For example, `nlmixr2nn` lets a
+model that contains a neural-network term be fit with `est = "focei"` and trains the
+network as a side effect -- with no `est = "nn"`.
+
+Register an **interceptor** -- a `function(env)` consulted at the top of
+`nlmixr2Est()`, *before* the standard method dispatches:
+
+```{r, eval = FALSE}
+nlmixr2est::registerEstInterceptor("myPkg", function(env) {
+  if (!shouldClaim(env$ui)) return(NULL)         # decline -> normal fit proceeds
+  ## claim it: do the work and return a finalized nlmixr2FitData
+  runMyThing(env)
+})
+```
+
+* Returning **`NULL`** *declines* -- the next interceptor, then the ordinary
+  method, runs.  Returning a fit **claims** the estimation.
+* Interceptors are **re-entrancy guarded**: while a claimed interceptor runs,
+  interceptors are suppressed, so it may call `nlmixr2()` internally (e.g. with the
+  requested est) and get the ordinary method.
+* Register in your package's `.onLoad()` and `removeEstInterceptor("myPkg")` in
+  `.onUnload()`.
+
+### Passing options to your interceptor
+
+Any *extra named argument* to `nlmixr2()` is stashed on `env$.nlmixr2Dots`, so an
+interceptor can be configured without wrapping the standard control.  `nlmixr2nn`
+uses this so `nn = nnControl(...)` rides alongside the ordinary `est`/`control`:
+
+```{r, eval = FALSE}
+nlmixr2(model, data, "focei", foceiControl(), nn = nnControl(...))
+#                                             ^ arrives as env$.nlmixr2Dots$nn
+```
+
+## 3. Contributing to the objective (compiled linkage)
+
+The deepest hook lets a compiled plugin add terms to the FOCEi/SAEM objective
+during the fit -- per observation, inside the parallel subject loop, with **no R
+callback** (R is not thread-safe).  This is how `nlmixr2nn` feeds a network's
+objective cotangents into a running FOCEi fit.
+
+`nlmixr2est` exposes a registry of C callables via a function-pointer table
+(`nlmixr2est::.nlmixr2estLikContribPtrs()`), consumed downstream through the header
+`inst/include/nlmixr2estLikContrib.h`.  A contributor supplies plain-C entry points
+(a per-subject begin/obs/end bundle and/or an EM per-subject log-likelihood) that
+read the per-observation prediction `f`, residual variance `R`, and `dv`, and add
+into the accumulators (`llik`, `dLL/deta`, ...).  Registration is via
+`nlmixrRegisterLikContrib()` / `nlmixrRegisterEmLik()`; the registry is *cycled in
+series*, so several packages can contribute at once.
+
+This is a C-linkage API rather than an R one -- see `inst/include/nlmixr2estLikContrib.h`
+for the exact struct and the `nlmixr2nn` package (`src/*Contrib.c`) for a worked
+consumer.  The mechanism follows `rxode2`'s function-pointer-table convention
+described in the `rxode2` hooks article.
+
+## See also
+
+* `rxode2`: *"Solve-time hooks for package developers"* -- the par-loader hook,
+  `rxForcedPars()`, and the dydt forcing hook used to change what the ODE solve
+  sees.
+* `nlmixr2AllEst()` -- the current dispatch table of estimation methods.
