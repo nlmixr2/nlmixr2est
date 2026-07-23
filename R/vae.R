@@ -396,9 +396,13 @@ vaeControl <- function(seed = 42L,
   covSelectMethod <- match.arg(covSelectMethod)
   ## Inf is allowed: it forces the exact branch-and-bound everywhere (the
   ## threshold is never reached), so keep it numeric rather than coercing (which
-  ## would make it NA)
+  ## would make it NA).  A finite value must be a whole number -- reject 17.9
+  ## rather than silently truncating it to 17.
   checkmate::assertNumeric(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
-  if (is.finite(covSelectMaxExact)) covSelectMaxExact <- as.integer(covSelectMaxExact)
+  if (is.finite(covSelectMaxExact)) {
+    checkmate::assertIntegerish(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
+    covSelectMaxExact <- as.integer(covSelectMaxExact)
+  }
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)

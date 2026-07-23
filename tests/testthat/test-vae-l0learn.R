@@ -114,6 +114,19 @@ nmTest({
     expect_identical(m$mode, c(0L, 1L))
   })
 
+  test_that("vaeControl validates covSelectMaxExact", {
+    ## Inf and whole numbers pass through
+    expect_identical(vaeControl(covSelectMaxExact = Inf)$covSelectMaxExact, Inf)
+    expect_identical(vaeControl(covSelectMaxExact = 20L)$covSelectMaxExact, 20L)
+    expect_identical(vaeControl(covSelectMaxExact = 20)$covSelectMaxExact, 20L)
+    ## a finite non-integer is rejected, not silently truncated to 17
+    expect_error(vaeControl(covSelectMaxExact = 17.9))
+    ## out-of-range / bad values are rejected
+    expect_error(vaeControl(covSelectMaxExact = 0))
+    expect_error(vaeControl(covSelectMaxExact = -5))
+    expect_error(vaeControl(covSelectMethod = "bogus"))
+  })
+
   test_that("the run-time message stays inside the runInfo one-line budget", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     ctl <- list(covSelectMethod = "auto", covSelectMaxExact = 25L)
