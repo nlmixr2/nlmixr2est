@@ -100,16 +100,14 @@
 #' @param allowed list of 0-based allowed covariate columns per dimension, or
 #'   `NULL` when every covariate is a candidate
 #' @return list of length `ncol(y)`; each element is a list of candidate supports
-#'   as 0-based GLOBAL covariate indices, or `NULL` for a branch-and-bound
-#'   dimension
+#'   indexed into that dimension's REDUCED design (the caller already maps those
+#'   back to global covariate columns), or `NULL` for a branch-and-bound dimension
 #' @noRd
 .vaeL0Candidates <- function(y, covMat, mode, allowed = NULL) {
   lapply(seq_len(ncol(y)), function(k) {
     if (mode[k] != 1L) return(NULL)
     .cols <- if (is.null(allowed)) seq_len(ncol(covMat)) - 1L else allowed[[k]]
     if (!length(.cols)) return(list(integer(0)))
-    .sup <- .vaeL0Supports(covMat[, .cols + 1L, drop = FALSE], y[, k])
-    # map the reduced-design indices back to global covariate columns
-    lapply(.sup, function(s) as.integer(.cols[s + 1L]))
+    .vaeL0Supports(covMat[, .cols + 1L, drop = FALSE], y[, k])
   })
 }

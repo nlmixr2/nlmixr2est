@@ -208,7 +208,7 @@ nmTest({
     }
   })
 
-  test_that(".vaeL0Candidates maps reduced supports back to global columns", {
+  test_that(".vaeL0Candidates proposes per dimension in the reduced design", {
     skip_if_not_installed("L0Learn")
     .testSeed(3L)
     N <- 100L; p <- 10L
@@ -220,12 +220,14 @@ nmTest({
     cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 0L))
     expect_length(cand, 2L)
     expect_null(cand[[2]])
+    ## no pinning: reduced design == full design, so column 4 is index 3
     expect_true(any(vapply(cand[[1]], function(e) identical(e, 3L), logical(1))))
 
-    ## restricted (pinCovariates) candidate columns: only allowed globals appear
+    ## pinCovariates: indices are into the REDUCED design, so they stay in
+    ## 0..(length(allowed)-1) -- the C++ caller maps them back to global columns
     allowed <- list(c(3L, 8L), integer(0))
     cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 1L), allowed = allowed)
-    expect_true(all(unlist(cand[[1]]) %in% c(3L, 8L)))
+    expect_true(all(unlist(cand[[1]]) %in% c(0L, 1L)))
     expect_identical(cand[[2]], list(integer(0)))
   })
 })

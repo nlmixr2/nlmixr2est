@@ -13755,6 +13755,18 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !Rf_isNull(prep["covAllow"]);
   arma::imat covAllow;
   if (haveCovAllow) covAllow = as<arma::imat>(prep["covAllow"]);
+  // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
+  // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
+  // Resolved in R (that is where the suggested-package check and the $runInfo
+  // message live) and handed down with the closure that generates them.
+  arma::ivec covSelMode;
+  if (prep.containsElementNamed("covSelectMode") && !Rf_isNull(prep["covSelectMode"])) {
+    covSelMode = as<arma::ivec>(prep["covSelectMode"]);
+  }
+  const bool haveL0 = prep.containsElementNamed("l0Fn") && !Rf_isNull(prep["l0Fn"]) &&
+    covSelMode.n_elem > 0 && arma::any(covSelMode == 1);
+  Rcpp::Function l0Fn = haveL0 ? as<Rcpp::Function>(prep["l0Fn"]) :
+    Rcpp::Function("identity");
   List yListR = prep["yList"];
   std::vector<std::vector<double> > yList(N);
   for (int i = 0; i < N; ++i) { NumericVector yi = yListR[i]; yList[i].assign(yi.begin(), yi.end()); }
@@ -13953,6 +13965,28 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
+      // L0Learn candidate generation: ONE R crossing per iteration, on the main
+      // thread, because an Rcpp::Function cannot be called from inside the
+      // OpenMP loop below.  Supports come back indexed into each dim's REDUCED
+      // design, which is what the loop's Xuse already is.
+      std::vector<std::vector<std::vector<int> > > cands;
+      if (haveL0) {
+        arma::mat yAll(N, zDim);
+        for (int k = 0; k < zDim; ++k) {
+          yAll.col(k) = covSelectSmooth ? s1.col(k) : last.mu.col(k);
+        }
+        List cl = as<List>(l0Fn(yAll));
+        cands.resize((size_t)zDim);
+        for (int k = 0; k < zDim && k < cl.size(); ++k) {
+          if (Rf_isNull(cl[k])) continue;
+          List ck = as<List>(cl[k]);
+          cands[(size_t)k].resize((size_t)ck.size());
+          for (int i = 0; i < ck.size(); ++i) {
+            IntegerVector s = as<IntegerVector>(ck[i]);
+            cands[(size_t)k][(size_t)i].assign(s.begin(), s.end());
+          }
+        }
+      }
       // Each latent dim k runs an independent exact L0 branch-and-bound and writes
       // only disjoint cells (intercept[k], beta.row(k), selected.row(k),
       // zPopMat.col(k)); vaeBestSubsetL0 keeps all state in a per-call VaeBnbCtx
@@ -13980,7 +14014,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           if (allowedG.n_elem > 0) Xk.cols(1, allowedG.n_elem) = covMat.cols(allowedG);
         }
         const arma::mat& Xuse = haveCovAllow ? Xk : X;
-        VaeSubsetFit fit = vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
+        VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
+          ? vaeCandidateSubsetL0(yk, Xuse, omega[k], covPenalty, cands[(size_t)k], true)
+          : vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
