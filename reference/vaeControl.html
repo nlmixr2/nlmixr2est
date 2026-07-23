@@ -69,6 +69,8 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  residRhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  omegaUpdate <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"suffStat"</span>, <span class="st">"blend"</span><span class="op">)</span>,</span>
 <span>  inputScale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"reference"</span>, <span class="st">"observed"</span><span class="op">)</span>,</span>
+<span>  covSelectMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"bnb"</span>, <span class="st">"l0learn"</span><span class="op">)</span>,</span>
+<span>  covSelectMaxExact <span class="op">=</span> <span class="fl">17L</span>,</span>
 <span>  bnbStrategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lifo"</span>, <span class="st">"fifo"</span>, <span class="st">"lc"</span><span class="op">)</span>,</span>
 <span>  parEncoderBackward <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/Logic.html" class="external-link">isTRUE</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"nlmixr2.identical"</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"grad"</span>, <span class="st">"eta"</span>, <span class="st">"fix"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -313,6 +315,28 @@ enters both statistics.  On a ragged dataset that is a materially different
 scale from `"observed"`, which uses only the observed values (on the neonatal
 case study the SD is 1582 against 506).  Affects only the encoder's inputs,
 never the likelihood.</p></dd>
+
+
+<dt id="arg-covselectmethod">covSelectMethod<a class="anchor" aria-label="anchor" href="#arg-covselectmethod"></a></dt>
+<dd><p>How the covariate M-step searches subsets.  `"bnb"` is
+the exact branch-and-bound; it becomes impractical past a few dozen candidate
+covariates.  `"l0learn"` has the suggested `L0Learn` package propose supports,
+which are then scored and polished with the same exact objective – so the
+search is approximate but the scoring is not.  `"auto"` (default) uses
+`"l0learn"` for a latent dimension with at least `covSelectMaxExact` candidate
+covariates and `"bnb"` otherwise.  If `L0Learn` is not installed when the
+exact search would be impractical (`"auto"` at or over the threshold, or an
+explicit `"l0learn"`) this errors rather than run the slow exact search
+silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
+exact search everywhere.</p></dd>
+
+
+<dt id="arg-covselectmaxexact">covSelectMaxExact<a class="anchor" aria-label="anchor" href="#arg-covselectmaxexact"></a></dt>
+<dd><p>Candidate-covariate count at or above which
+`covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
+`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
+trimming, so it is the size of the search actually run.  `Inf` forces the
+exact branch-and-bound for every dimension.</p></dd>
 
 
 <dt id="arg-bnbstrategy">bnbStrategy<a class="anchor" aria-label="anchor" href="#arg-bnbstrategy"></a></dt>

@@ -4,6 +4,26 @@
 
 ### New features
 
+- `est="vae"` gains `vaeControl(covSelectMethod=)` and
+  `vaeControl(covSelectMaxExact=)`, which make covariate selection
+  practical on large candidate sets. The exact branch-and-bound blows up
+  past a few dozen covariates (a single 30-covariate latent dimension
+  takes ~43s, and the M-step runs one per dimension per iteration). With
+  the suggested `L0Learn` package installed, `covSelectMethod="auto"`
+  (the default) has `L0Learn` propose candidate supports for any latent
+  dimension holding at least `covSelectMaxExact` (default 17, the
+  measured wall-clock crossover) candidates, counted after
+  `pinCovariates` trimming. Those are candidates only: each is scored
+  with the same exact `RSS/omega + penalty*|S|` objective, the same OLS
+  and the same tie-break the branch-and-bound uses, then improved by an
+  add/drop/swap local search – so `L0Learn`’s own objective and scaling
+  cannot shift a selection. Below the threshold the search stays exact
+  and unchanged. When the exact search would be impractical but
+  `L0Learn` is not installed, the fit errors rather than run it
+  silently; `covSelectMaxExact = Inf` forces the exact branch-and-bound
+  everywhere. A fit that used the approximate search says so in
+  `$runInfo` and records it in `fit$vae$covSelectMethodUsed`.
+
 - `est="vae"` gains `vaeControl(nonMuTheta="grad")`, which estimates a
   structural population `theta` with no random effect using the exact
   analytic outer gradient (the machinery behind
