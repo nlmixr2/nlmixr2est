@@ -2,17 +2,19 @@
 ##
 ## Both modes drive the SAME (full outer) objective -- the Laplace determinant +
 ## 0.5*log|Omega^-1| + the DV-transform Jacobian -- with every mu-referenced theta
-## held at its current M-step value.  They differ in the M-step update they take:
-## "regress" fully re-solves the regressed thetas with a derivative-free bounded
-## bobyqa search each M-step, while "grad" takes ONE Adam step along the exact
-## analytic gradient each M-step.  So this is a comparison of two training
-## dynamics, not two optimizers converging to one point.
+## held at its current M-step value.  "regress" fully re-solves the regressed
+## thetas with a bounded bobyqa search each M-step; "grad" takes one Adam step
+## along the exact analytic gradient.  The invariant is that grad reaches an
+## objective at least as good as regress: they optimize the same thing, and grad
+## has the exact derivative.  Distance to the FOCEi MLE is a sanity check, not
+## the invariant -- the VAE objective is not the FOCEi objective, so either mode
+## can sit marginally closer to the FOCEi optimum.
 ##
-## Measured on this model against a FOCEi MLE of tv = 3.4293: regress ~3.4291
-## (d ~ 2e-4), grad ~3.4268 (d ~ 2.5e-3).  Both land within 5e-3 of the MLE, so
-## the durable invariant is "the grad mechanism ran and produced a fit close to
-## the MLE" -- NOT a strict ordering between the two (regress fully re-solving each
-## M-step can, and here does, land marginally closer than grad's single step).
+## The residual (add.sd) is asserted on purpose.  An error parameter's live value
+## is the `a` vector, NOT its theta slot (vaeBuildTh rebuilds that slot from `a`
+## on every evaluation), so a grad update written only to the theta slot is
+## silently discarded: the fit still converges and reports a plausible tv while
+## add.sd and the objective are badly wrong.  A tv-only assertion cannot see it.
 
 nmTest({
   .mod <- function() {
@@ -24,8 +26,8 @@ nmTest({
       cp <- center / v
       cp ~ add(add.sd) })
   }
-  .ctl <- function(m) {
-    vaeControl(nonMuTheta = m, print = 0L, calcTables = FALSE, returnVae = TRUE)
+  .ctl <- function(m, ...) {
+    vaeControl(nonMuTheta = m, print = 0L, calcTables = FALSE, ...)
   }
 
   test_that("nonMuTheta='grad' runs the analytic-gradient M-step and fits near the FOCEi MLE", {
@@ -35,9 +37,11 @@ nmTest({
               control = foceiControl(print = 0L, covMethod = "", calcTables = FALSE)))$theta[["tv"]]
 
     .reg <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl("regress")))))
+      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae",
+              control = .ctl("regress", returnVae = TRUE)))))
     .grd <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl("grad")))))
+      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae",
+              control = .ctl("grad", returnVae = TRUE)))))
 
     ## the mechanism actually ran (a silent bobyqa fallback would still produce a
     ## plausible number, so assert the path, not just the value)
@@ -45,13 +49,28 @@ nmTest({
     expect_true(.grd$nRegGrad > 0L)
     expect_equal(.grd$nRegFallback, 0L)
 
-    .dReg <- abs(.reg$regressTheta[["tv"]] - .mle)
-    .dGrd <- abs(.grd$regressTheta[["tv"]] - .mle)
-    ## both training schemes land near the MLE; assert the durable invariant
-    ## (each is close) rather than a fragile strict ordering between two heuristic
-    ## M-step updates -- the analytic-gradient step is competitive with, not
-    ## strictly better than, fully re-solving each M-step.
-    expect_true(.dGrd < 0.005)
-    expect_true(.dReg < 0.005)
+    ## grad lands close to the FOCEi MLE (measured ~4e-4 here)
+    expect_true(abs(.grd$regressTheta[["tv"]] - .mle) < 0.001)
+    expect_true(abs(.reg$regressTheta[["tv"]] - .mle) < 0.005)
+  })
+
+  test_that("nonMuTheta='grad' estimates the residual and beats 'regress' on the objective", {
+    skip_on_cran()
+    ## Regression guard for the discarded-error-parameter bug: when the grad
+    ## M-step failed to write an error parameter back to `a`, add.sd converged to
+    ## ~1.70 against ~0.80 for "regress" and the objective was ~86 units worse,
+    ## while tv stayed within 3e-3 of the MLE -- invisible to a tv-only check.
+    .fitFor <- function(m) {
+      suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
+        nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl(m)))))
+    }
+    .reg <- .fitFor("regress")
+    .grd <- .fitFor("grad")
+
+    ## the residual is actually estimated: both modes agree (measured ~0.004 apart)
+    expect_equal(.grd$theta[["add.sd"]], .reg$theta[["add.sd"]], tolerance = 0.05)
+    ## same objective, exact gradient: grad must not do worse than the
+    ## derivative-free search (measured: grad ~0.22 better)
+    expect_lte(.grd$objf, .reg$objf + 1)
   })
 })

@@ -13652,7 +13652,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !(control.containsElementNamed("mStepObjective") &&
       as<std::string>(control["mStepObjective"]) == "elbo");
   arma::mat regP(regIdx.n_elem, 1, arma::fill::zeros);
-  for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
+  // seed the Adam iterate from each parameter's LIVE value -- an error
+  // parameter lives in `a`, not in its (vaeBuildTh-overwritten) theta slot
+  for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+    int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+    regP[j] = (e >= 0) ? a[e] : th[regIdx[j]];
+  }
   VaeAdamBlk aReg;
   aReg.m = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
   aReg.v = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
@@ -13992,14 +13997,22 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             arma::mat regPrev = regP;
             vaeAdam(regP, gm, aReg, learningRate, regTStep);
             for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
-              double cur = th[regIdx[j]];
+              // an error parameter's LIVE value is `a`, not the theta slot:
+              // vaeBuildTh rebuilds that slot from `a` every evaluation, so both
+              // the starting point and the write-back have to go through `a` or
+              // the update is silently discarded (the bobyqa path does the same)
+              int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+              double cur = (e >= 0) ? a[e] : th[regIdx[j]];
               // blend with the M-step gain, then project onto the ini bounds --
               // Adam has no notion of them
               double upd = cur + gamma * (regP[j] - cur);
               if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
               if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
-              if (R_FINITE(upd)) { th[regIdx[j]] = upd; regP[j] = upd; }
-              else regP[j] = regPrev[j];
+              if (R_FINITE(upd)) {
+                th[regIdx[j]] = upd;
+                if (e >= 0) a[e] = upd;
+                regP[j] = upd;
+              } else regP[j] = regPrev[j];
             }
             regDone = true;
             nRegGrad++;
