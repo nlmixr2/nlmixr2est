@@ -13966,6 +13966,26 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     // gradient's DIRECTION is good but its magnitude is inflated by ~2 orders,
     // and Adam's per-coordinate normalization absorbs that.
     if (useGrad) {
+      // Closed-form moment warm start for the error parameters, once, on the
+      // first gradient step.  While the regress optimizer owns them
+      // (residByOpt) the closed-form M-step does NOT update `a`, so a residual
+      // sits at its ini() value for the whole KL warmup; without this the Adam
+      // steps have to crawl there from ini() and a badly-initialized residual
+      // never arrives (it gets worse the longer klWarmup is).  The bobyqa path
+      // re-warm-starts every M-step (aWarm below); Adam carries state across
+      // steps, so seed it only once.
+      if (residByOpt && regTStep == 0) {
+        arma::vec aW = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower,
+                                    errUpper, errCombined1);
+        for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+          int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+          if (e < 0 || !R_FINITE(aW[e])) continue;
+          double w = aW[e];
+          if (R_FINITE(regLower[j]) && w < regLower[j]) w = regLower[j];
+          if (R_FINITE(regUpper[j]) && w > regUpper[j]) w = regUpper[j];
+          a[e] = w; th[regIdx[j]] = w; regP[j] = w;
+        }
+      }
       arma::vec thvG = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
       arma::mat etaG = last.mu; etaG.each_row() -= baseline.t();
       RObject grR = R_NilValue;

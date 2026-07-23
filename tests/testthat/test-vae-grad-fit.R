@@ -73,4 +73,36 @@ nmTest({
     ## derivative-free search (measured: grad ~0.22 better)
     expect_lte(.grd$objf, .reg$objf + 1)
   })
+
+  test_that("nonMuTheta='grad' recovers a residual initialized far from the optimum", {
+    skip_on_cran()
+    ## While the regress optimizer owns the error parameters the closed-form
+    ## M-step does not update `a`, so the residual holds its ini() value for the
+    ## whole KL warmup.  Without the closed-form moment warm start on the first
+    ## gradient step, Adam has to crawl from ini() and never arrives -- and it
+    ## gets WORSE the longer the warmup is (measured add.sd 1.99 at klWarmup=50,
+    ## 2.50 at klWarmup=150, against 0.80 for "regress").  A near-optimal ini()
+    ## hides this entirely, so start deliberately far away.
+    .modFar <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- c(2, 3.45, 5); add.sd <- c(0, 3.0, 10)
+        eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .fitFar <- function(m, kw) {
+      suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
+        nlmixr2(.modFar(), nlmixr2data::theo_sd, est = "vae",
+                control = .ctl(m, klWarmup = kw)))))
+    }
+    .reg <- .fitFar("regress", 50L)
+    .grd <- .fitFar("grad", 50L)
+    expect_equal(.grd$theta[["add.sd"]], .reg$theta[["add.sd"]], tolerance = 0.05)
+    expect_lte(.grd$objf, .reg$objf + 1)
+    ## and a longer warmup must not make it worse (the pre-fix failure mode)
+    .grdLong <- .fitFar("grad", 150L)
+    expect_equal(.grdLong$theta[["add.sd"]], .reg$theta[["add.sd"]], tolerance = 0.05)
+  })
 })

@@ -902,6 +902,15 @@
   still looked correct.  The gradient step now writes the error parameter back to
   `a`, and `"grad"` reaches a slightly better objective than `"regress"`.
 
+- `est="vae"` with `vaeControl(nonMuTheta="grad")` now warm-starts a residual
+  parameter from the closed-form moment estimate on its first gradient step, as
+  the `"regress"` path already did.  While the regress optimizer owns the error
+  parameters the closed-form M-step leaves them alone, so a residual held its
+  `ini()` value for the whole KL warmup and the gradient steps had to reach the
+  optimum from there -- a residual started far from it never arrived, and the
+  result got worse the longer `klWarmup` was (on `theo_sd` starting `add.sd` at
+  3.0: 1.99 at `klWarmup=50` and 2.50 at 150, against 0.80 for `"regress"`).
+
 - `est="nlme"` now honors `sigdig` for the ODE solver tolerances.  A reversed
   condition made `nlmeControl()` fall back to `atol=rtol=1e-4` whenever `sigdig`
   was set (i.e. always, since it defaults to `4`) and only pass `sigdig` through
