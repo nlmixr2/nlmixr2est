@@ -111,6 +111,103 @@ nmTest({
     expect_true(all(nchar(msgs) <= 75L))
   })
 
+  ## ---- candidate-scoring kernel (vaeScoreSupports_) -------------------------
+
+  ## exact objective, recomputed in-test so the kernel is checked against a
+  ## reference that does not call it
+  scoreOf <- function(sel, y, X, omega, penalty) {
+    Xs <- cbind(1, X[, sel, drop = FALSE])
+    coef <- qr.solve(Xs, y)
+    sum((y - Xs %*% coef)^2) / omega + penalty * length(sel)
+  }
+  ## every subset of 0..(nCov-1), 0-based, as vaeScoreSupports_ wants them
+  allSupports <- function(nCov) {
+    lapply(0:(2^nCov - 1), function(m) which(bitwAnd(m, bitwShiftL(1L, 0:(nCov - 1))) > 0) - 1L)
+  }
+
+  test_that("scoring the full enumeration reproduces the exact search", {
+    ## the candidate path must differ from the branch-and-bound ONLY in which
+    ## subsets it looks at -- same OLS, same score, same tie-break
+    .testSeed(21L)
+    for (rep in 1:6) {
+      N <- 80L; nCov <- sample(4:9, 1L)
+      X <- matrix(rnorm(N * nCov), N, nCov)
+      k <- sample(0:3, 1L)
+      sel <- if (k > 0) sort(sample.int(nCov, k)) else integer(0)
+      y <- as.numeric(0.7 + (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) +
+                        rnorm(N, sd = 0.5))
+      omega <- 0.4; penalty <- log(N)
+      ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
+      got <- vaeScoreSupports_(y, X, omega, penalty, allSupports(nCov), polish = FALSE)
+      expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]),
+                       info = paste0("rep ", rep))
+      expect_equal(got$intercept, as.numeric(ref$intercept[1]), tolerance = 1e-10)
+      expect_equal(as.numeric(got$beta), as.numeric(ref$beta[1, ]), tolerance = 1e-10)
+    }
+  })
+
+  test_that("candidate scoring ignores malformed support indices", {
+    .testSeed(22L)
+    N <- 60L; nCov <- 5L
+    X <- matrix(rnorm(N * nCov), N, nCov)
+    y <- as.numeric(X[, 2] * 2 + rnorm(N, sd = 0.3))
+    omega <- 0.5; penalty <- log(N)
+    clean <- vaeScoreSupports_(y, X, omega, penalty, list(integer(0), 1L), polish = FALSE)
+    ## duplicated, out-of-range and negative entries collapse to the same support
+    dirty <- vaeScoreSupports_(y, X, omega, penalty,
+                               list(integer(0), c(1L, 1L, 99L, -3L)), polish = FALSE)
+    expect_identical(dirty$selected, clean$selected)
+    expect_equal(dirty$beta, clean$beta, tolerance = 1e-12)
+  })
+
+  test_that("the local search never worsens the incumbent and reaches the optimum", {
+    .testSeed(23L)
+    for (rep in 1:8) {
+      N <- 90L; nCov <- sample(5:10, 1L)
+      X <- matrix(rnorm(N * nCov), N, nCov)
+      k <- sample(1:3, 1L)
+      sel <- sort(sample.int(nCov, k))
+      y <- as.numeric(0.3 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) + rnorm(N, sd = 0.4))
+      omega <- 0.5; penalty <- log(N)
+      ## deliberately useless candidate set: only the intercept-only model
+      bare <- list(integer(0))
+      noPolish <- vaeScoreSupports_(y, X, omega, penalty, bare, polish = FALSE)
+      polished <- vaeScoreSupports_(y, X, omega, penalty, bare, polish = TRUE)
+      sNo <- scoreOf(which(noPolish$selected == 1L), y, X, omega, penalty)
+      sYes <- scoreOf(which(polished$selected == 1L), y, X, omega, penalty)
+      expect_lte(sYes, sNo)
+      ## and from that bare start it still lands on the exact optimum here
+      ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
+      expect_identical(as.integer(polished$selected), as.integer(ref$selected[1, ]),
+                       info = paste0("rep ", rep))
+    }
+  })
+
+  test_that("L0Learn candidates plus polish match the exact optimum", {
+    skip_if_not_installed("L0Learn")
+    .testSeed(24L)
+    N <- 120L
+    for (rep in 1:10) {
+      nCov <- sample(8:14, 1L)
+      corr <- rep %% 2L == 0L          # half correlated, half independent
+      X <- matrix(rnorm(N * nCov), N, nCov)
+      if (corr) {                      # rho ~ 0.7 common factor
+        f <- rnorm(N)
+        X <- sqrt(0.7) * matrix(f, N, nCov) + sqrt(0.3) * X
+      }
+      k <- sample(1:4, 1L)
+      sel <- sort(sample.int(nCov, k))
+      y <- as.numeric(0.5 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) *
+                        sample(c(-1, 1), k, TRUE) + rnorm(N, sd = 0.6))
+      omega <- 0.5; penalty <- log(N)
+      cand <- nlmixr2est:::.vaeL0Supports(X, y)
+      got <- vaeScoreSupports_(y, X, omega, penalty, cand, polish = TRUE)
+      ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
+      expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]),
+                       info = paste0("rep ", rep, " nCov ", nCov, " corr ", corr))
+    }
+  })
+
   test_that(".vaeL0Candidates maps reduced supports back to global columns", {
     skip_if_not_installed("L0Learn")
     .testSeed(3L)
