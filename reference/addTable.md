@@ -128,10 +128,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1006042 2.8452e-05 0.01100467      0.072     0.227 7.082       0.404
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1147641 3.254e-05 0.01200577      0.081     0.247 6.399       0.439
 #>         compress     other
-#> elapsed    0.134 0.1343627
+#> elapsed    0.132 0.1431976
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -139,7 +139,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.67e-310 6.67e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
@@ -166,10 +166,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1006042 2.8452e-05 0.01100467      0.072     0.227 7.082       0.404
+#>             setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1147641 3.254e-05 0.01200577      0.081     0.247 6.399       0.439
 #>         compress     other
-#> elapsed    0.134 0.1343627
+#> elapsed    0.132 0.1431976
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -177,7 +177,7 @@ print(f)
 #> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
 #> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
 #> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.66e-308    0.700 (0.700, 0.700)         
+#> add.sd           0.700 4.67e-310 6.67e-308    0.700 (0.700, 0.700)         
 #>        Shrink(SD)%
 #> tka         -1.53 
 #> tcl          3.98 
