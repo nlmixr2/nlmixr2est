@@ -27,7 +27,7 @@ vaeControl(
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
-  covSelectMaxExact = 25L,
+  covSelectMaxExact = 17L,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -244,8 +244,9 @@ covariates and `"bnb"` otherwise; without `L0Learn` installed it stays exact
 and warns.}
 
 \item{covSelectMaxExact}{Candidate-covariate count at or above which
-`covSelectMethod = "auto"` switches a latent dimension to `L0Learn`.  Counted
-after `pinCovariates` trimming, so it is the size of the search actually run.}
+`covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
+`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
+trimming, so it is the size of the search actually run.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

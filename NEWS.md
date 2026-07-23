@@ -9,7 +9,8 @@
   runs one per dimension per iteration).  With the suggested `L0Learn` package
   installed, `covSelectMethod="auto"` (the default) has `L0Learn` propose
   candidate supports for any latent dimension holding at least
-  `covSelectMaxExact` (25) candidates, counted after `pinCovariates` trimming.
+  `covSelectMaxExact` (default 17, the measured wall-clock crossover) candidates,
+  counted after `pinCovariates` trimming.
   Those are candidates only: each is scored with the same exact
   `RSS/omega + penalty*|S|` objective, the same OLS and the same tie-break the
   branch-and-bound uses, then improved by an add/drop/swap local search -- so
