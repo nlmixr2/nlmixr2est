@@ -13662,6 +13662,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   aReg.m = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
   aReg.v = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
   int regTStep = 0, nRegGrad = 0, nRegFallback = 0;
+  // the grad path's one-shot residual warm start (below); NOT keyed on regTStep,
+  // which only counts SUCCESSFUL gradient steps -- a gradient failure falls back
+  // to bobyqa, and re-seeding on the next M-step would discard its work
+  bool gradWarmDone = false;
   // pinCovariates: optional [zDim x nCov] 0/1 allow-mask restricting each latent
   // dim's covariate candidates to the model-declared pairs.  Absent (or NULL) ->
   // full search (every covariate against every dim), unchanged behavior.
@@ -13974,9 +13978,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // never arrives (it gets worse the longer klWarmup is).  The bobyqa path
       // re-warm-starts every M-step (aWarm below); Adam carries state across
       // steps, so seed it only once.
-      if (residByOpt && regTStep == 0) {
+      // `last` is assigned at the END of an iteration, so it is still empty here
+      // when there is no burn-in (itersBurnIn=0) and klWarmup=0.  vaeUpdateErr
+      // would then return `a` unchanged; skip and seed on a later M-step instead
+      // of burning the one-shot on a no-op.
+      if (residByOpt && !gradWarmDone && !last.preds.empty()) {
         arma::vec aW = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower,
                                     errUpper, errCombined1);
+        gradWarmDone = true;
         for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
           int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
           if (e < 0 || !R_FINITE(aW[e])) continue;
