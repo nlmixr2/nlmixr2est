@@ -13356,27 +13356,10 @@ static void vaeBnbSearch(VaeBnbCtx& c, const std::vector<int>& freeSet0) {
   }
 }
 
-static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
-                                    double omega, double penalty,
-                                    VaeBnbStrategy strategy = VAE_BNB_LIFO) {
-  const int nCov = (int)X.n_cols - 1;
-  VaeBnbCtx c;
-  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty; c.strategy = strategy;
-  c.bestScore = std::numeric_limits<double>::infinity();
-  // order covariates by univariate strength (RSS of [intercept, x_j] ascending
-  // -> stronger last) so the branch order finds good incumbents early.
-  std::vector<std::pair<double,int> > strength(nCov);
-  for (int j = 0; j < nCov; ++j) {
-    std::vector<int> one(1, j);
-    strength[j] = std::make_pair(vaeOlsRss(X, vaeSubsetCols(one), y, nullptr), j);
-  }
-  std::sort(strength.begin(), strength.end(),
-            [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
-              return a.first > b.first;  // weakest first, strongest at back()
-            });
-  std::vector<int> freeSet(nCov);
-  for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
-  vaeBnbSearch(c, freeSet);
+// Shape the incumbent into the returned fit: support ascending, coefficients
+// reordered to match.  Shared by the exact search and the candidate-scoring path
+// so both return the identical layout.
+static VaeSubsetFit vaeFinishSubset(VaeBnbCtx& c, const arma::vec& y) {
   VaeSubsetFit out;
   // No finite-scoring model was ever recorded (e.g. non-positive omega or a
   // non-finite y made every score NaN/inf).  Fall back to the intercept-only
@@ -13399,6 +13382,105 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
     out.coef[s + 1] = c.bestCoef[order[s] + 1];
   }
   return out;
+}
+
+static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
+                                    double omega, double penalty,
+                                    VaeBnbStrategy strategy = VAE_BNB_LIFO) {
+  const int nCov = (int)X.n_cols - 1;
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty; c.strategy = strategy;
+  c.bestScore = std::numeric_limits<double>::infinity();
+  // order covariates by univariate strength (RSS of [intercept, x_j] ascending
+  // -> stronger last) so the branch order finds good incumbents early.
+  std::vector<std::pair<double,int> > strength(nCov);
+  for (int j = 0; j < nCov; ++j) {
+    std::vector<int> one(1, j);
+    strength[j] = std::make_pair(vaeOlsRss(X, vaeSubsetCols(one), y, nullptr), j);
+  }
+  std::sort(strength.begin(), strength.end(),
+            [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
+              return a.first > b.first;  // weakest first, strongest at back()
+            });
+  std::vector<int> freeSet(nCov);
+  for (int j = 0; j < nCov; ++j) freeSet[j] = strength[j].second;
+  vaeBnbSearch(c, freeSet);
+  return vaeFinishSubset(c, y);
+}
+
+// ---- approximate path: score externally supplied candidate supports ---------
+// The exact branch-and-bound above is unusable past ~25 covariates (its node
+// count explodes).  The alternative is to have an L0 solver PROPOSE supports and
+// keep every scoring decision here: candidates go through the same vaeBnbLeaf --
+// same OLS, same score, same lexicographic tie-break -- so the proposer's own
+// objective, scaling and lambda grid can never shift a selection.  It only
+// decides which subsets get looked at.
+
+// Score each candidate support against the incumbent.  Out-of-range and repeated
+// indices are dropped so a malformed proposal cannot index past the design.
+static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
+                               const std::vector<std::vector<int> >& cands) {
+  for (size_t i = 0; i < cands.size(); ++i) {
+    std::vector<int> s;
+    s.reserve(cands[i].size());
+    for (size_t j = 0; j < cands[i].size(); ++j) {
+      int v = cands[i][j];
+      if (v >= 0 && v < nCov) s.push_back(v);
+    }
+    std::sort(s.begin(), s.end());
+    s.erase(std::unique(s.begin(), s.end()), s.end());
+    vaeBnbLeaf(c, s);
+  }
+}
+
+// Add / drop / swap local search from the incumbent, accepting only STRICT score
+// improvements, until a pass finds none.  Recovers the optimum in the cases a
+// coordinate-descent proposer walks past.  Deterministic: the neighborhood is
+// enumerated in a fixed order and vaeBnbLeaf's tie-break is order-independent.
+static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
+  for (int pass = 0; pass < maxPass; ++pass) {
+    const std::vector<int> cur = c.bestSel;
+    const double before = c.bestScore;
+    std::vector<char> inSet((size_t)nCov, 0);
+    for (size_t s = 0; s < cur.size(); ++s) inSet[(size_t)cur[s]] = 1;
+    for (int j = 0; j < nCov; ++j) {                     // add
+      if (inSet[(size_t)j]) continue;
+      std::vector<int> t = cur; t.push_back(j);
+      std::sort(t.begin(), t.end());
+      vaeBnbLeaf(c, t);
+    }
+    for (size_t d = 0; d < cur.size(); ++d) {            // drop
+      std::vector<int> t = cur; t.erase(t.begin() + d);
+      vaeBnbLeaf(c, t);
+    }
+    for (size_t d = 0; d < cur.size(); ++d) {            // swap
+      for (int j = 0; j < nCov; ++j) {
+        if (inSet[(size_t)j]) continue;
+        std::vector<int> t = cur; t[d] = j;
+        std::sort(t.begin(), t.end());
+        vaeBnbLeaf(c, t);
+      }
+    }
+    if (!(c.bestScore < before)) break;                  // local optimum
+  }
+}
+
+// Candidate-scoring counterpart of vaeBestSubsetL0: identical objective and
+// return layout, but the subsets come from `cands` (plus the local search)
+// instead of an exhaustive branch-and-bound.
+static VaeSubsetFit vaeCandidateSubsetL0(const arma::vec& y, const arma::mat& X,
+                                         double omega, double penalty,
+                                         const std::vector<std::vector<int> >& cands,
+                                         bool polish) {
+  const int nCov = (int)X.n_cols - 1;
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
+  c.strategy = VAE_BNB_LIFO;  // unused here; the frontier discipline has no role
+  c.bestScore = std::numeric_limits<double>::infinity();
+  vaeBnbLeaf(c, std::vector<int>());   // the intercept-only model is always in play
+  vaeScoreCandidates(c, nCov, cands);
+  if (polish) vaeLocalSearchL0(c, nCov);
+  return vaeFinishSubset(c, y);
 }
 
 // nonMuTheta="regress": bounded bobyqa regression of the non-mu fixed-effect
@@ -13673,6 +13755,18 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !Rf_isNull(prep["covAllow"]);
   arma::imat covAllow;
   if (haveCovAllow) covAllow = as<arma::imat>(prep["covAllow"]);
+  // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
+  // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
+  // Resolved in R (that is where the suggested-package check and the $runInfo
+  // message live) and handed down with the closure that generates them.
+  arma::ivec covSelMode;
+  if (prep.containsElementNamed("covSelectMode") && !Rf_isNull(prep["covSelectMode"])) {
+    covSelMode = as<arma::ivec>(prep["covSelectMode"]);
+  }
+  const bool haveL0 = prep.containsElementNamed("l0Fn") && !Rf_isNull(prep["l0Fn"]) &&
+    covSelMode.n_elem > 0 && arma::any(covSelMode == 1);
+  Rcpp::Function l0Fn = haveL0 ? as<Rcpp::Function>(prep["l0Fn"]) :
+    Rcpp::Function("identity");
   List yListR = prep["yList"];
   std::vector<std::vector<double> > yList(N);
   for (int i = 0; i < N; ++i) { NumericVector yi = yListR[i]; yList[i].assign(yi.begin(), yi.end()); }
@@ -13871,6 +13965,28 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
+      // L0Learn candidate generation: ONE R crossing per iteration, on the main
+      // thread, because an Rcpp::Function cannot be called from inside the
+      // OpenMP loop below.  Supports come back indexed into each dim's REDUCED
+      // design, which is what the loop's Xuse already is.
+      std::vector<std::vector<std::vector<int> > > cands;
+      if (haveL0) {
+        arma::mat yAll(N, zDim);
+        for (int k = 0; k < zDim; ++k) {
+          yAll.col(k) = covSelectSmooth ? s1.col(k) : last.mu.col(k);
+        }
+        List cl = as<List>(l0Fn(yAll));
+        cands.resize((size_t)zDim);
+        for (int k = 0; k < zDim && k < cl.size(); ++k) {
+          if (Rf_isNull(cl[k])) continue;
+          List ck = as<List>(cl[k]);
+          cands[(size_t)k].resize((size_t)ck.size());
+          for (int i = 0; i < ck.size(); ++i) {
+            IntegerVector s = as<IntegerVector>(ck[i]);
+            cands[(size_t)k][(size_t)i].assign(s.begin(), s.end());
+          }
+        }
+      }
       // Each latent dim k runs an independent exact L0 branch-and-bound and writes
       // only disjoint cells (intercept[k], beta.row(k), selected.row(k),
       // zPopMat.col(k)); vaeBestSubsetL0 keeps all state in a per-call VaeBnbCtx
@@ -13898,7 +14014,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           if (allowedG.n_elem > 0) Xk.cols(1, allowedG.n_elem) = covMat.cols(allowedG);
         }
         const arma::mat& Xuse = haveCovAllow ? Xk : X;
-        VaeSubsetFit fit = vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
+        VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
+          ? vaeCandidateSubsetL0(yk, Xuse, omega[k], covPenalty, cands[(size_t)k], true)
+          : vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
@@ -14283,6 +14401,33 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
   }
   return List::create(_["intercept"] = intercept, _["beta"] = beta,
                       _["selected"] = selected);
+}
+
+// Test-facing entry point for the candidate-scoring path: score `supports` (a
+// list of 0-based integer vectors, e.g. from .vaeL0Supports) with the exact
+// objective and optionally polish.  One latent dimension per call.
+//[[Rcpp::export]]
+List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega,
+                       double penaltyPerCov, List supports, bool polish = true) {
+  const int N = (int)covMat.n_rows;
+  const int nCov = (int)covMat.n_cols;
+  if ((int)y.n_elem != N) Rcpp::stop("'y' must have length nrow(covMat) (%d)", N);
+  arma::mat X(N, 1 + nCov); X.col(0).ones();
+  if (nCov > 0) X.cols(1, nCov) = covMat;
+  std::vector<std::vector<int> > cands((size_t)supports.size());
+  for (int i = 0; i < supports.size(); ++i) {
+    IntegerVector s = as<IntegerVector>(supports[i]);
+    cands[(size_t)i].assign(s.begin(), s.end());
+  }
+  VaeSubsetFit fit = vaeCandidateSubsetL0(y, X, omega, penaltyPerCov, cands, polish);
+  NumericVector beta(nCov);
+  IntegerVector selected(nCov);
+  for (size_t s = 0; s < fit.sel.size(); ++s) {
+    beta[fit.sel[s]] = fit.coef[s + 1];
+    selected[fit.sel[s]] = 1;
+  }
+  return List::create(_["intercept"] = fit.coef.n_elem ? fit.coef[0] : 0.0,
+                      _["beta"] = beta, _["selected"] = selected);
 }
 
 //[[Rcpp::export]]

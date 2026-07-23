@@ -1146,6 +1146,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeScoreSupports_
+List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega, double penaltyPerCov, List supports, bool polish);
+RcppExport SEXP _nlmixr2est_vaeScoreSupports_(SEXP ySEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP penaltyPerCovSEXP, SEXP supportsSEXP, SEXP polishSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type y(ySEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type covMat(covMatSEXP);
+    Rcpp::traits::input_parameter< double >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
+    Rcpp::traits::input_parameter< List >::type supports(supportsSEXP);
+    Rcpp::traits::input_parameter< bool >::type polish(polishSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeScoreSupports_(y, covMat, omega, penaltyPerCov, supports, polish));
+    return rcpp_result_gen;
+END_RCPP
+}
 // boxCox_
 NumericVector boxCox_(NumericVector x, double lambda, int yj);
 RcppExport SEXP _nlmixr2est_boxCox_(SEXP xSEXP, SEXP lambdaSEXP, SEXP yjSEXP) {

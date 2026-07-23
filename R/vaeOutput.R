@@ -254,6 +254,7 @@
   ## the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
   .ret$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
                    covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
+                   covSelectMethodUsed = fit$covSelectMethodUsed,
                    seed = .control$seed)
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
   if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist

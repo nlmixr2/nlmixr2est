@@ -228,6 +228,32 @@
     prepC$covAllow <- matrix(as.integer(prep$covAllow), prep$zDim, ncol(prep$covMat))
   }
 
+  ## covSelectMethod: pick the search per latent dimension from the number of
+  ## candidates that dimension actually has (after any pinCovariates trimming),
+  ## then hand the C++ M-step a closure proposing supports for the L0Learn
+  ## dimensions.  Those are candidates only -- C++ scores every one of them
+  ## against the same exact objective the branch-and-bound uses.
+  .nCov <- ncol(prep$covMat)
+  .allowed <- NULL
+  .nCand <- rep(as.integer(.nCov), prep$zDim)
+  if (!is.null(prepC$covAllow)) {
+    .allowed <- lapply(seq_len(prep$zDim), function(k) which(prepC$covAllow[k, ] == 1L) - 1L)
+    .nCand <- vapply(.allowed, length, integer(1))
+  }
+  ## a free (mixture) or fixed dimension never runs the search
+  .nCand[as.logical(prep$isFree) | as.logical(prep$zPopFix)] <- 0L
+  if (!isTRUE(control$covariateSelection) || .nCov == 0L) .nCand[] <- 0L
+  .modes <- .vaeCovSelectModes(.nCand, control)
+  for (.m in .modes$msg) warning(.m, call. = FALSE)
+  prepC$covSelectMode <- .modes$mode
+  prepC$l0Fn <- NULL
+  if (any(.modes$mode == 1L)) {
+    .covMat <- prep$covMat
+    .mode <- .modes$mode
+    .allow <- .allowed
+    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow)
+  }
+
   .cores <- tryCatch({
     .c <- control$rxControl$cores
     if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
@@ -267,6 +293,7 @@
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
+       covSelectMethodUsed = .modes$used,
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

@@ -297,6 +297,10 @@ vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov, strategy = 
     .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov, strategy)
 }
 
+vaeScoreSupports_ <- function(y, covMat, omega, penaltyPerCov, supports, polish = TRUE) {
+    .Call(`_nlmixr2est_vaeScoreSupports_`, y, covMat, omega, penaltyPerCov, supports, polish)
+}
+
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }

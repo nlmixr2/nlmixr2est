@@ -26,6 +26,8 @@ vaeControl(
   residRhoend = NULL,
   omegaUpdate = c("suffStat", "blend"),
   inputScale = c("reference", "observed"),
+  covSelectMethod = c("auto", "bnb", "l0learn"),
+  covSelectMaxExact = 17L,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -231,6 +233,24 @@ enters both statistics.  On a ragged dataset that is a materially different
 scale from `"observed"`, which uses only the observed values (on the neonatal
 case study the SD is 1582 against 506).  Affects only the encoder's inputs,
 never the likelihood.}
+
+\item{covSelectMethod}{How the covariate M-step searches subsets.  `"bnb"` is
+the exact branch-and-bound; it becomes impractical past a few dozen candidate
+covariates.  `"l0learn"` has the suggested `L0Learn` package propose supports,
+which are then scored and polished with the same exact objective -- so the
+search is approximate but the scoring is not.  `"auto"` (default) uses
+`"l0learn"` for a latent dimension with at least `covSelectMaxExact` candidate
+covariates and `"bnb"` otherwise.  If `L0Learn` is not installed when the
+exact search would be impractical (`"auto"` at or over the threshold, or an
+explicit `"l0learn"`) this errors rather than run the slow exact search
+silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
+exact search everywhere.}
+
+\item{covSelectMaxExact}{Candidate-covariate count at or above which
+`covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
+`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
+trimming, so it is the size of the search actually run.  `Inf` forces the
+exact branch-and-bound for every dimension.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),
