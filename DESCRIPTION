@@ -84,7 +84,8 @@ Suggests:
     rmarkdown,
     rlang,
     numDeriv,
-    rstan
+    rstan,
+    L0Learn
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
