@@ -8,10 +8,10 @@
   bounded `bobyqa` regression `nonMuTheta="regress"` uses: one augmented
   sensitivity solve per M-step replaces the derivative-free sweep.  Both modes
   target the same (full outer) objective, so this is an optimizer change: on
-  `theo_sd` with a non-mu-referenced `tv` it lands within 0.0005 of the FOCEi
-  maximum-likelihood value against 0.0025 for `"regress"`.  It is chosen for that
-  accuracy, not for speed -- it runs slower than `"regress"` (1.47x with one
-  non-mu theta, 1.13x with three).  It covers a conditionally Gaussian model and
+  `theo_sd` with a non-mu-referenced `tv` it reaches a slightly better objective
+  than `"regress"` and lands within 0.0005 of the FOCEi maximum-likelihood value.
+  It is chosen for that accuracy, not for speed -- it runs slower than
+  `"regress"` (1.47x with one non-mu theta, 1.13x with three).  It covers a conditionally Gaussian model and
   a single non-Gaussian (`ll()`/generalized) endpoint, which differentiates the
   log-density directly.  A model outside analytic scope (`linCmt()`, IOV, `fo`, a
   multi-endpoint or censored `ll()` model) reverts to `"regress"` with a note in
@@ -891,6 +891,25 @@
 ## Bug fixes
 
 ### Estimation
+
+- Fixed `est="vae"` with `vaeControl(nonMuTheta="grad")` silently discarding
+  every update to a residual-error parameter.  An error parameter's live value is
+  the internal `a` vector, and the theta slot is rebuilt from it on each
+  evaluation, so the gradient M-step's theta-only write was overwritten before it
+  was read (the `"regress"` path already wrote both).  The residual was left near
+  its starting value -- on `theo_sd`, `add.sd` converged to 1.70 against 0.80 for
+  `"regress"`, with an objective ~86 units worse -- while the structural theta
+  still looked correct.  The gradient step now writes the error parameter back to
+  `a`, and `"grad"` reaches a slightly better objective than `"regress"`.
+
+- `est="vae"` with `vaeControl(nonMuTheta="grad")` now warm-starts a residual
+  parameter from the closed-form moment estimate on its first gradient step, as
+  the `"regress"` path already did.  While the regress optimizer owns the error
+  parameters the closed-form M-step leaves them alone, so a residual held its
+  `ini()` value for the whole KL warmup and the gradient steps had to reach the
+  optimum from there -- a residual started far from it never arrived, and the
+  result got worse the longer `klWarmup` was (on `theo_sd` starting `add.sd` at
+  3.0: 1.99 at `klWarmup=50` and 2.50 at 150, against 0.80 for `"regress"`).
 
 - `est="nlme"` now honors `sigdig` for the ODE solver tolerances.  A reversed
   condition made `nlmeControl()` fall back to `atol=rtol=1e-4` whenever `sigdig`

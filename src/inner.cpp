@@ -13652,11 +13652,20 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !(control.containsElementNamed("mStepObjective") &&
       as<std::string>(control["mStepObjective"]) == "elbo");
   arma::mat regP(regIdx.n_elem, 1, arma::fill::zeros);
-  for (arma::uword j = 0; j < regIdx.n_elem; ++j) regP[j] = th[regIdx[j]];
+  // seed the Adam iterate from each parameter's LIVE value -- an error
+  // parameter lives in `a`, not in its (vaeBuildTh-overwritten) theta slot
+  for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+    int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+    regP[j] = (e >= 0) ? a[e] : th[regIdx[j]];
+  }
   VaeAdamBlk aReg;
   aReg.m = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
   aReg.v = arma::mat(regIdx.n_elem, 1, arma::fill::zeros);
   int regTStep = 0, nRegGrad = 0, nRegFallback = 0;
+  // the grad path's one-shot residual warm start (below); NOT keyed on regTStep,
+  // which only counts SUCCESSFUL gradient steps -- a gradient failure falls back
+  // to bobyqa, and re-seeding on the next M-step would discard its work
+  bool gradWarmDone = false;
   // pinCovariates: optional [zDim x nCov] 0/1 allow-mask restricting each latent
   // dim's covariate candidates to the model-declared pairs.  Absent (or NULL) ->
   // full search (every covariate against every dim), unchanged behavior.
@@ -13961,6 +13970,31 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     // gradient's DIRECTION is good but its magnitude is inflated by ~2 orders,
     // and Adam's per-coordinate normalization absorbs that.
     if (useGrad) {
+      // Closed-form moment warm start for the error parameters, once, on the
+      // first gradient step.  While the regress optimizer owns them
+      // (residByOpt) the closed-form M-step does NOT update `a`, so a residual
+      // sits at its ini() value for the whole KL warmup; without this the Adam
+      // steps have to crawl there from ini() and a badly-initialized residual
+      // never arrives (it gets worse the longer klWarmup is).  The bobyqa path
+      // re-warm-starts every M-step (aWarm below); Adam carries state across
+      // steps, so seed it only once.
+      // `last` is assigned at the END of an iteration, so it is still empty here
+      // when there is no burn-in (itersBurnIn=0) and klWarmup=0.  vaeUpdateErr
+      // would then return `a` unchanged; skip and seed on a later M-step instead
+      // of burning the one-shot on a no-op.
+      if (residByOpt && !gradWarmDone && !last.preds.empty()) {
+        arma::vec aW = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower,
+                                    errUpper, errCombined1);
+        gradWarmDone = true;
+        for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
+          int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+          if (e < 0 || !R_FINITE(aW[e])) continue;
+          double w = aW[e];
+          if (R_FINITE(regLower[j]) && w < regLower[j]) w = regLower[j];
+          if (R_FINITE(regUpper[j]) && w > regUpper[j]) w = regUpper[j];
+          a[e] = w; th[regIdx[j]] = w; regP[j] = w;
+        }
+      }
       arma::vec thvG = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
       arma::mat etaG = last.mu; etaG.each_row() -= baseline.t();
       RObject grR = R_NilValue;
@@ -13992,14 +14026,22 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             arma::mat regPrev = regP;
             vaeAdam(regP, gm, aReg, learningRate, regTStep);
             for (arma::uword j = 0; j < regIdx.n_elem; ++j) {
-              double cur = th[regIdx[j]];
+              // an error parameter's LIVE value is `a`, not the theta slot:
+              // vaeBuildTh rebuilds that slot from `a` every evaluation, so both
+              // the starting point and the write-back have to go through `a` or
+              // the update is silently discarded (the bobyqa path does the same)
+              int e = (j < regErrMapV.n_elem) ? regErrMapV[j] : -1;
+              double cur = (e >= 0) ? a[e] : th[regIdx[j]];
               // blend with the M-step gain, then project onto the ini bounds --
               // Adam has no notion of them
               double upd = cur + gamma * (regP[j] - cur);
               if (R_FINITE(regLower[j]) && upd < regLower[j]) upd = regLower[j];
               if (R_FINITE(regUpper[j]) && upd > regUpper[j]) upd = regUpper[j];
-              if (R_FINITE(upd)) { th[regIdx[j]] = upd; regP[j] = upd; }
-              else regP[j] = regPrev[j];
+              if (R_FINITE(upd)) {
+                th[regIdx[j]] = upd;
+                if (e >= 0) a[e] = upd;
+                regP[j] = upd;
+              } else regP[j] = regPrev[j];
             }
             regDone = true;
             nRegGrad++;
