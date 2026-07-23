@@ -69,17 +69,22 @@
   .mode <- integer(length(nCand))
   if (.method == "l0learn") {
     if (!.avail) {
-      stop("covSelectMethod=\"l0learn\" needs the L0Learn package; install it",
-           call. = FALSE)
+      stop("covSelectMethod=\"l0learn\" needs the L0Learn package; install it ",
+           "or use covSelectMethod=\"bnb\"", call. = FALSE)
     }
     .mode[nCand > 0L] <- 1L
   } else if (.method == "auto") {
-    .big <- nCand >= as.integer(control$covSelectMaxExact)
+    # covSelectMaxExact may be Inf (force the exact search everywhere), so compare
+    # against the raw value rather than coercing it to integer (as.integer(Inf) is
+    # NA).  At/over the threshold the exact search is impractical, so a missing
+    # L0Learn is an error, not a silent slow fallback.
+    .big <- nCand >= control$covSelectMaxExact
     if (any(.big)) {
       if (.avail) {
         .mode[.big] <- 1L
       } else {
-        .msg <- c(.msg, "exact covariate search is slow here; install L0Learn")
+        stop("covariate search needs L0Learn; install it, or force the exact ",
+             "search with covSelectMaxExact=Inf", call. = FALSE)
       }
     }
   }

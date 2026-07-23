@@ -240,13 +240,17 @@ covariates.  `"l0learn"` has the suggested `L0Learn` package propose supports,
 which are then scored and polished with the same exact objective -- so the
 search is approximate but the scoring is not.  `"auto"` (default) uses
 `"l0learn"` for a latent dimension with at least `covSelectMaxExact` candidate
-covariates and `"bnb"` otherwise; without `L0Learn` installed it stays exact
-and warns.}
+covariates and `"bnb"` otherwise.  If `L0Learn` is not installed when the
+exact search would be impractical (`"auto"` at or over the threshold, or an
+explicit `"l0learn"`) this errors rather than run the slow exact search
+silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
+exact search everywhere.}
 
 \item{covSelectMaxExact}{Candidate-covariate count at or above which
 `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
 `17`, the measured wall-clock crossover).  Counted after `pinCovariates`
-trimming, so it is the size of the search actually run.}
+trimming, so it is the size of the search actually run.  `Inf` forces the
+exact branch-and-bound for every dimension.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

@@ -15,8 +15,10 @@
   `RSS/omega + penalty*|S|` objective, the same OLS and the same tie-break the
   branch-and-bound uses, then improved by an add/drop/swap local search -- so
   `L0Learn`'s own objective and scaling cannot shift a selection.  Below the
-  threshold, and whenever `L0Learn` is not installed, the search stays exact and
-  unchanged.  A fit that used the approximate search says so in `$runInfo` and
+  threshold the search stays exact and unchanged.  When the exact search would be
+  impractical but `L0Learn` is not installed, the fit errors rather than run it
+  silently; `covSelectMaxExact = Inf` forces the exact branch-and-bound
+  everywhere.  A fit that used the approximate search says so in `$runInfo` and
   records it in `fit$vae$covSelectMethodUsed`.
 
 - `est="vae"` gains `vaeControl(nonMuTheta="grad")`, which estimates a structural

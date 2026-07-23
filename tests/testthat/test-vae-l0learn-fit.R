@@ -76,6 +76,10 @@ nmTest({
     f <- suppressMessages(
       nlmixr2(wideModel, d30, est = "vae", control = shortCtl(covSelectMaxExact = 100L)))
     expect_identical(f$covSelectMethodUsed, "bnb")
+    ## covSelectMaxExact=Inf forces the exact search everywhere
+    f <- suppressMessages(
+      nlmixr2(wideModel, d30, est = "vae", control = shortCtl(covSelectMaxExact = Inf)))
+    expect_identical(f$covSelectMethodUsed, "bnb")
   })
 
   test_that("the approximate search reports itself in runInfo", {

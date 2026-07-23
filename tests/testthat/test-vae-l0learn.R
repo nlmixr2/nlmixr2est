@@ -82,11 +82,23 @@ nmTest({
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
-    ## "auto" over the threshold but L0Learn missing: exact search anyway, warned
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"), avail = FALSE)
+    ## "auto" over the threshold but L0Learn missing: error, not a slow fallback,
+    ## and it names the covSelectMaxExact=Inf escape hatch
+    expect_error(nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"), avail = FALSE),
+                 "covSelectMaxExact=Inf")
+
+    ## "auto" below the threshold with L0Learn missing: exact search, no error
+    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"), avail = FALSE)
+    expect_identical(m$mode, c(0L, 0L))
+    expect_identical(m$used, "bnb")
+
+    ## covSelectMaxExact=Inf forces the exact search even for a wide problem, so a
+    ## missing L0Learn is fine
+    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf), avail = FALSE)
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
-    expect_match(m$msg, "install L0Learn", all = FALSE)
+    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf), avail = TRUE)
+    expect_identical(m$mode, c(0L, 0L, 0L))  # Inf beats availability
 
     ## explicit "l0learn": every dimension with candidates switches
     m <- nlmixr2est:::.vaeCovSelectModes(c(3L, 0L), ctl("l0learn"), avail = TRUE)
@@ -102,11 +114,10 @@ nmTest({
     expect_identical(m$mode, c(0L, 1L))
   })
 
-  test_that("every run-time message stays inside the runInfo one-line budget", {
+  test_that("the run-time message stays inside the runInfo one-line budget", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     ctl <- list(covSelectMethod = "auto", covSelectMaxExact = 25L)
-    msgs <- c(nlmixr2est:::.vaeCovSelectModes(30L, ctl, avail = TRUE)$msg,
-              nlmixr2est:::.vaeCovSelectModes(30L, ctl, avail = FALSE)$msg)
+    msgs <- nlmixr2est:::.vaeCovSelectModes(30L, ctl, avail = TRUE)$msg
     expect_gt(length(msgs), 0L)
     expect_true(all(nchar(msgs) <= 75L))
   })
