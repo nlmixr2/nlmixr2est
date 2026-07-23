@@ -18,8 +18,15 @@ nmTest({
               stop("test-capture-exit")
             }),
             print = FALSE, where = asNamespace("nlmixr2est"))
-      withr::defer(suppressMessages(untrace(".configsaem", where = asNamespace("nlmixr2est"))),
-                   envir = parent.frame())
+      # .captureCfg() is called once per fit (twice below), so untrace is
+      # deferred twice; guard it so the second cleanup is a no-op instead of
+      # erroring on an already-untraced function ("could not find function").
+      withr::defer(
+        if (methods::is(get(".configsaem", envir = asNamespace("nlmixr2est")),
+                        "functionWithTrace")) {
+          suppressMessages(untrace(".configsaem", where = asNamespace("nlmixr2est")))
+        },
+        envir = parent.frame())
     }
 
     d <- do.call(rbind, lapply(1:8, function(i) {
