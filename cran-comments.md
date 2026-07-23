@@ -1,4 +1,8 @@
-# nlmixr2est 7.0.0
+# nlmixr2est 7.0.1
+
+Why are we resubmitting -- There was a feature that we sped up vae covariate selection
+1648.9x.  Since CRAN is still not in a working state, and this improvement is so vast
+we are resubmitting with a different number
 
 ## Windows lazy-loading failure on the incoming checks
 

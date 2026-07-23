@@ -1,4 +1,4 @@
-# nlmixr2est 7.0.0
+# nlmixr2est 7.0.1
 
 ## New features
 
