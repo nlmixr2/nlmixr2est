@@ -837,7 +837,15 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 #' symengine env `..HdEta2` (the `rx__d2pred_i_j__` lhs lines, upper triangle i<=j) and
 #' `..sens2` (the second-order state-sensitivity ODEs).  Only built for a fast
 #' generalized fit; the ordinary inner model is unchanged.
-#' @noRd
+#'
+#' @param x list of rxode2 UI
+#' @param ... ignored
+#'
+#' @keywords internal
+#'
+#' @return symengine env with `..HdEta2` and `..sens2` added
+#'
+#' @export
 rxUiGet.foceiHdEta2 <- function(x, ...) .foceiAddHdEta2(rxUiGet.foceiEtaS(x))
 attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 
