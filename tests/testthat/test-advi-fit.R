@@ -87,12 +87,26 @@ nmTest({
     expect_equal(unname(diag(r$popOmegaMat)), unname(r$popOmega), tolerance = 1e-12)
     expect_true(all(r$popOmega > 0))
 
-    ## the adaptEta search must score candidates on the UNTEMPERED objective, so
-    ## turning tempering on must not change the step size it selects
+    ## The adaptEta search must score candidates on the UNTEMPERED objective.
+    ##
+    ## Assert the per-candidate SCORES, not the selected etaScale: the winner is
+    ## one of five discrete values, so equality of the winner can hold while the
+    ## scoring is tempered (both reviewers showed the earlier version of this
+    ## assertion passing against the bug it was meant to catch).  The scores are
+    ## continuous and every one of them moves under tempering.
+    ##
+    ## klWarmup must also EXCEED nAdapt (= min(iters, 75)); candidates are scored
+    ## on their last nAdapt/3 iterations, so a smaller klWarmup leaves that
+    ## window past the warm-up and untempered even without the fix.
     .fit <- function(kl) suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 60L, klWarmup = kl, seed = 7L,
-                                    print = 0L, returnAdvi = TRUE, tol = 0))))
-    expect_equal(.fit(0L)$etaScale, .fit(40L)$etaScale)
+              control = adviControl(iters = 60L, klWarmup = kl, temperInit = 100,
+                                    seed = 7L, print = 0L, returnAdvi = TRUE,
+                                    tol = 0))))
+    .a <- .fit(0L); .b <- .fit(80L)
+    expect_equal(length(.a$etaScores), 5L)          # the search actually ran
+    expect_true(all(is.finite(.a$etaScores)))
+    expect_equal(.a$etaScores, .b$etaScores)        # untempered either way
+    expect_equal(.a$etaScale, .b$etaScale)
   })
 })

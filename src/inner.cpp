@@ -10513,7 +10513,12 @@ static arma::mat vaeOmegaAsMat(RObject om) {
     return arma::diagmat(d);
   }
   arma::mat m = as<arma::mat>(om);
-  if (!_vaeOmHasOff && m.n_rows == m.n_cols && m.n_rows > 1) {
+  // A rectangular matrix would otherwise slip past both this off-diagonal check
+  // and the diagonal branch's guard (which compares only n_rows to omegan), and
+  // then be read one element at a time as Om(q,q) with the rest ignored.
+  if (m.n_rows != m.n_cols)
+    stop("omega matrix must be square, got %dx%d", (int)m.n_rows, (int)m.n_cols);
+  if (!_vaeOmHasOff && m.n_rows > 1) {
     // BOTH triangles: a caller passing only the lower one would otherwise be
     // silently collapsed to the diagonal rather than rejected
     arma::mat off = m;
@@ -12892,11 +12897,16 @@ List adviOptimize_(List args) {
                      parNames, ipc, xform, phase, ipStart, ipEnd);
   };
 
+  // per-candidate adaptEta scores, returned so the search is inspectable (and so
+  // "the candidates were scored untempered" is a testable claim rather than one
+  // that can only be checked by reading the code)
+  NumericVector etaScores(0);
   double eta;
   if (R_finite(etaResume)) {
     eta = etaResume;                          // resumed run keeps its step-size scale
   } else if (adapt && cands.size() > 1) {
     double best = R_NegInf, bestEta = cands[0];
+    etaScores = NumericVector(cands.size(), R_NegInf);
     for (int c = 0; c < (int)cands.size(); ++c) {
       double e = cands[c];
       List r = run1(e, nAdapt, 0, 1, std::string("srch ") + adviSignif3(e), 0);
@@ -12927,6 +12937,7 @@ List adviOptimize_(List args) {
         for (int i = lo - 1; i < len; ++i) s += el[i];
         score = (double)(s / (len - lo + 1));
       }
+      etaScores[c] = score;
       if (score > best) { best = score; bestEta = e; }
     }
     eta = bestEta;
@@ -12945,6 +12956,7 @@ List adviOptimize_(List args) {
   // must therefore stay ABOVE the result-building block.
   adviResetTemper();
   res["etaScale"] = eta;
+  res["etaScores"] = etaScores;
   res["seed"] = seed;
   // an early ELBO-convergence stop leaves the tail of the trace zero-padded;
   // hand back only the iterations actually run so the reported ELBO trajectory
