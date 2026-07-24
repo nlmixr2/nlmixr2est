@@ -8477,11 +8477,42 @@ void foceiFinalizeTables(Environment e){
   std::fill_n(&cv[0], theta.size(), NA_REAL);
   int j=0, k=0, l=0;
   if (covExists){
-    for (int k = 0; k < se.size(); k++){
-      if (k >= skipCov.size()) break;
-      if (!skipCov[k]){
-        se[k] = se1[j++];
-        cv[k] = std::fabs(se[k]/theta[k])*100;
+    // The cov may not span every non-skipped theta (e.g. SAEM installs a
+    // structural-theta block here; the full theta+Omega+residual matrix is
+    // swapped in after the fit is built).  When the cov carries dimnames, map
+    // SEs by name; otherwise fill positionally without reading past the end of
+    // the diagonal (issue #816: the overrun surfaced uninitialized memory as
+    // the residual-error SE).
+    CharacterVector covNames;
+    bool covHasNames = false;
+    RObject covDimnames = as<RObject>(e["cov"]).attr("dimnames");
+    if (!covDimnames.isNULL()) {
+      List dn = as<List>(covDimnames);
+      if (dn.size() == 2 && !Rf_isNull(dn[0])) {
+        covNames = as<CharacterVector>(dn[0]);
+        covHasNames = true;
+      }
+    }
+    if (covHasNames) {
+      for (int k = 0; k < se.size(); k++){
+        if (k >= skipCov.size() || k >= thetaNames.size()) break;
+        if (skipCov[k]) continue;
+        for (int m = 0; m < covNames.size(); m++){
+          if (!strcmp(CHAR(STRING_ELT(covNames, m)), CHAR(STRING_ELT(thetaNames, k)))) {
+            se[k] = se1[m];
+            cv[k] = std::fabs(se[k]/theta[k])*100;
+            break;
+          }
+        }
+      }
+    } else {
+      for (int k = 0; k < se.size(); k++){
+        if (k >= skipCov.size()) break;
+        if (j >= (int)se1.n_elem) break;
+        if (!skipCov[k]){
+          se[k] = se1[j++];
+          cv[k] = std::fabs(se[k]/theta[k])*100;
+        }
       }
     }
   }
@@ -8668,8 +8699,12 @@ void foceiFinalizeTables(Environment e){
       }
     }
     List thetaDim = List::create(thetaCovN,thetaCovN);
-    tmpNM.attr("dimnames") = thetaDim;
-    e["cov"]=tmpNM;
+    // an R-side cov (e.g. SAEM) already carries correct dimnames; only stamp
+    // positional theta names on the native (unnamed) C++ cov
+    if (Rf_isNull(tmpNM.attr("dimnames"))) {
+      tmpNM.attr("dimnames") = thetaDim;
+      e["cov"]=tmpNM;
+    }
     if (e.exists("Rinv") && rxode2::rxIs(e["Rinv"], "matrix")){
       tmpNM = as<NumericMatrix>(e["Rinv"]);
       tmpNM.attr("dimnames") = thetaDim;
