@@ -2,6 +2,12 @@
 
 ## New features
 
+- `qs2` is no longer required (dropped from `Suggests`).  It pulled in
+  `stringfish`, whose CRAN binary can fail to load on some runners and broke the
+  test suite.  The FOCEi model cache now uses base R `saveRDS`/`readRDS`, and
+  objects serialized with `qs2`/`qdata` are still read back when `qs2` happens to
+  be installed (runtime-conditional, like the legacy `qs` path).
+
 - `est="vae"` gains `vaeControl(covSelectMethod=)` and
   `vaeControl(covSelectMaxExact=)`, which make covariate selection practical on
   large candidate sets.  The exact branch-and-bound blows up past a few dozen
@@ -910,6 +916,19 @@
 ## Bug fixes
 
 ### Estimation
+
+- Fixed `est="vae"` freezing a declared covariate effect when the covariate
+  reaches its coefficient's model line only through an intermediate variable
+  (e.g. `wt70 <- WT/70; ka <- exp(lka + beta*log(wt70) + eta.ka)`).  The
+  coefficient was mis-classified as a plain non-mu-referenced structural theta:
+  frozen at its initial value under `nonMuTheta="none"` and, under
+  `nonMuTheta="eta"`/`"fix"`, an eta was injected into the mu-referenced
+  expression, erroring the fit ("2+ single population parameters in a single
+  mu-referenced expression").  Covariate-coefficient detection now reads rxode2's
+  own `mu2RefCovariateReplaceDataFrame` (the same table `.uiModifyForCovs` folds
+  into an `nlmixrMuDerCov#` column), which already recognizes the coefficient
+  through the intermediate, so the declared effect is estimated in every
+  `nonMuTheta` mode (issue #801).
 
 - Fixed `est="vae"` with `vaeControl(nonMuTheta="grad")` silently discarding
   every update to a residual-error parameter.  An error parameter's live value is

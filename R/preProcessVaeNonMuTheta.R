@@ -31,16 +31,17 @@
 
 #' Covariate-coefficient thetas of a VAE model (the parameters that multiply a
 #' data covariate in a mu-referenced expression).  Read-only over the SHARED
-#' `muRefCovariateDataFrame`/`allCovs` UI fields -- the same covariate identity
-#' SAEM (saemMuRefCovariateDataFrame) and FOCEI (muRefClassify groups) consume --
-#' so nothing here mutates the shared covariate representation.
+#' rxode2 covariate classification -- nothing here mutates it.
 #'
-#' Two categories are returned:
-#'  (a) linear effects rxode2 records in `muRefCovariateDataFrame` (`beta*WT`);
-#'  (b) transformed effects it does NOT (`beta*log(WT/70)`) -- detected as a
-#'      non-mu, non-error theta whose EVERY referencing model line also mentions
-#'      a data covariate (a plain structural theta appears in at least one
-#'      covariate-free line, so it is not mis-caught).
+#' Uses rxode2's own authoritative covariate-coefficient tables so a coefficient
+#' is recognized exactly when (and identically to how) rxode2/SAEM/FOCEI see it:
+#'  (a) `muRefCovariateDataFrame` -- linear mu-ref covariates (`beta*WT`);
+#'  (b) `mu2RefCovariateReplaceDataFrame` -- algebraic/centered mu2/mu3/mu4
+#'      covariates (`beta*log(WT/70)`), INCLUDING a covariate reached through an
+#'      intermediate model variable (`wt70 <- WT/70; ... beta*log(wt70)`).  This
+#'      is the same table `.uiModifyForCovs` folds into an `nlmixrMuDerCov#`
+#'      column, so an indirect covariate coefficient is classified here rather
+#'      than being mistaken for a plain non-mu structural theta.
 #' User-fixed coefficients (`fix=TRUE`) are dropped.
 #' @param ui rxode2 ui
 #' @return character vector of theta names (possibly empty)
@@ -50,24 +51,13 @@
   .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
   if (nrow(.th) == 0L) return(character(0))
   .thNames <- .th$name
-  .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
-  ## (a) rxode2-recognized linear mu-ref covariate coefficients
+  ## (a) linear mu-ref covariate coefficients
   .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
              else as.character(ui$muRefCovariateDataFrame$covariateParameter)
-  ## (b) transformed covariate effects: a non-mu theta whose referencing lines
-  ## ALL reference a data covariate
-  .covData <- ui$allCovs
-  .transformed <- character(0)
-  if (length(.covData) > 0L) {
-    for (.p in setdiff(.thNames, .mu)) {
-      .lines <- Filter(function(e) .p %in% all.vars(e), ui$lstExpr)
-      if (length(.lines) == 0L) next
-      if (all(vapply(.lines, function(e) any(.covData %in% all.vars(e)), logical(1)))) {
-        .transformed <- c(.transformed, .p)
-      }
-    }
-  }
-  intersect(unique(c(.linear, .transformed)), .thNames)
+  ## (b) algebraic/centered (mu2/mu3/mu4) covariate coefficients
+  .alg <- if (is.null(ui$mu2RefCovariateReplaceDataFrame)) character(0)
+          else as.character(ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+  intersect(unique(c(.linear, .alg)), .thNames)
 }
 
 #' Does this `nonMuTheta` mode estimate the theta in place (no injected eta)?

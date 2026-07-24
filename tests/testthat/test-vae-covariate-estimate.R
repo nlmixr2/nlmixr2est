@@ -226,6 +226,84 @@ nmTest({
     expect_false("wt.cl" %in% p$regressNames)
   })
 
+  ## ---- issue #801: a covariate reaching the coefficient line only through an
+  ## intermediate model variable must still be treated as a covariate coefficient
+  ## (estimated, never frozen), not mis-classified as a non-mu structural theta. ----
+  .ind <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7; eta.cl ~ 0.1 })
+    model({ wt70 <- WT / 70
+      ka <- exp(tka); cl <- exp(tcl + cl.wt * log(wt70) + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v; cp ~ add(add.err) })
+  }
+
+  test_that(".vaeCovariateCoefThetas detects a coefficient behind an intermediate var", {
+    ## rxode2 records the coefficient in mu2RefCovariateReplaceDataFrame even when
+    ## the covariate reaches the line via an intermediate (`wt70 <- WT/70`), so it
+    ## is classified as a covariate coefficient, not a plain non-mu structural theta.
+    ui <- rxode2::assertRxUi(.ind())
+    expect_true("cl.wt" %in% ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+    expect_equal(.vaeCovariateCoefThetas(ui), "cl.wt")
+    ## and it is NOT offered to the nonMuTheta eta/fix injection (it errored before)
+    expect_false("cl.wt" %in% .vaeNonMuThetas(ui))
+  })
+
+  test_that("a structural theta on/after a covariate line is not a covariate coef", {
+    ## Two structural (non-random-effect) thetas that must NOT be swept into the
+    ## covariate-coefficient set: `tka`, an additive intercept sharing beta.ka's
+    ## covariate line; and `tlag`, a downstream multiplier of the (covariate-
+    ## bearing) `ka`.  rxode2 classifies only `beta.ka` as the covariate
+    ## coefficient (mu2RefCovariateReplaceDataFrame), so neither structural theta
+    ## is mis-detected.
+    struct <- function() {
+      ini({ tka <- 0.45; beta.ka <- 0.1; tcl <- 1; tv <- 3.45; tlag <- 0.5
+            add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ wt70 <- WT / 70
+        ka <- exp(tka + beta.ka * log(wt70)); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        klag <- tlag * ka
+        d/dt(depot) <- -klag * depot; d/dt(center) <- klag * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(struct())
+    expect_equal(.vaeCovariateCoefThetas(ui), "beta.ka")   # only the real coefficient
+    expect_true(all(c("tka", "tlag") %in% .vaeNonMuThetas(ui)))  # structural thetas kept
+  })
+
+  test_that("exotic covariate transforms are classified via the mu2 derivative check", {
+    ## rxode2's mu2/mu3 classifier records a coefficient whenever the derivative
+    ## of its additive linear-predictor term is free of the coefficient (the
+    ## derivative becomes the nlmixrMuDerCov# column).  This covers arbitrary
+    ## transforms, so reading mu2RefCovariateReplaceDataFrame needs no special
+    ## cases -- confirm exotic forms are detected, and a non-mu form (a multiplier
+    ## outside the transform, whose slope cannot transfer) is correctly excluded.
+    mk <- function(clexpr) {
+      eval(parse(text = sprintf(
+        "function(){ ini({ tcl<-1; tv<-3.45; b<-0.1; eta.cl~0.1; add.err<-0.7 })\n model({ %s; v<-exp(tv)\n d/dt(depot) <- -cl*depot; cp<-depot/v; cp~add(add.err) }) }",
+        clexpr)))
+    }
+    for (e in c("cl <- exp(tcl + b*sqrt(WT) + eta.cl)",
+                "cl <- exp(tcl + b*(WT/70)^2 + eta.cl)",
+                "cl <- exp(tcl + b*exp(WT/100) + eta.cl)",
+                "cl <- exp(tcl + b*(WT - 70) + eta.cl)")) {
+      expect_equal(.vaeCovariateCoefThetas(rxode2::assertRxUi(mk(e))), "b", info = e)
+    }
+    ## multiplier outside the transform: not a mu reference, correctly not a coef
+    expect_equal(
+      .vaeCovariateCoefThetas(rxode2::assertRxUi(mk("cl <- exp(tcl + eta.cl)*(1 + b*WT)"))),
+      character(0))
+  })
+
+  test_that("an indirect covariate coefficient is estimated in every nonMuTheta mode", {
+    ## the #801 guarantee: declared covariate effects are never frozen, regardless
+    ## of nonMuTheta.  Before the fix it was regressed only under "regress"/"grad",
+    ## frozen under "none", and errored under "eta"/"fix".
+    for (m in c("regress", "none", "eta", "fix")) {
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.ind()), d,
+                                         vaeControl(nonMuTheta = m)))
+      expect_true("cl.wt" %in% p$regressNames, info = m)
+    }
+  })
+
   test_that("pinCovariates=TRUE with no model covariates is a null path (full search)", {
     noCov <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7; eta.cl ~ 0.1 })

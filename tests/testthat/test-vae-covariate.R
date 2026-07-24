@@ -202,4 +202,42 @@ nmTest({
     ## the pinned note reached $runInfo
     expect_true(any(grepl("pinned to model-specified", fit$runInfo)))
   })
+
+  ## issue #801: a covariate reaching the coefficient line only through an
+  ## intermediate model variable (wt70 <- WT/70) was mis-classified as a plain
+  ## non-mu structural theta -- frozen under nonMuTheta="none" and, under "eta",
+  ## an eta was injected into the mu-referenced expression, ERRORING the fit with
+  ## "2+ single population parameters in a single mu-referenced expression".  It
+  ## must now estimate the declared coefficient in every nonMuTheta mode.
+  test_that("est=vae estimates a covariate behind an intermediate var (nonMuTheta=eta)", {
+    skip_on_cran()
+    indirect <- function() {
+      ini({
+        lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        beta.ka <- 0.1
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03
+        add.err <- 0.7
+      })
+      model({
+        wt70 <- WT / 70
+        ka <- exp(lka + beta.ka * log(wt70) + eta.ka)
+        ke <- exp(lke + eta.ke)
+        V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V
+        cp ~ add(add.err)
+      })
+    }
+    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L, iters = 160L,
+                      seed = 1L, print = 0L, covMethod = "", nonMuTheta = "eta")
+    fit <- suppressWarnings(rxode2::rxWithSeed(1L,
+      nlmixr2(indirect, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    bk <- fit$ui$iniDf$est[fit$ui$iniDf$name == "beta.ka"]
+    ## not frozen at the 0.1 ini value; pulled to the theophylline WT-on-ka effect
+    expect_gt(abs(bk - 0.1), 0.5)
+    expect_gt(bk, 1)
+    ## the coefficient stays in the reported model (no injected eta collapsed it)
+    expect_true("beta.ka" %in% fit$ui$iniDf$name)
+  })
 })

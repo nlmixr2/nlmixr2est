@@ -71,7 +71,6 @@ Suggests:
     dplyr (>= 1.1.0),
     generics,
     nloptr,
-    qs2,
     sys,
     testthat,
     tibble,
