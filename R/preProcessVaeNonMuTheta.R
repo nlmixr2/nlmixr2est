@@ -40,7 +40,10 @@
 #'  (b) transformed effects it does NOT (`beta*log(WT/70)`) -- detected as a
 #'      non-mu, non-error theta whose EVERY referencing model line also mentions
 #'      a data covariate (a plain structural theta appears in at least one
-#'      covariate-free line, so it is not mis-caught).
+#'      covariate-free line, so it is not mis-caught).  A covariate reaching the
+#'      coefficient's line only through an intermediate model variable (e.g.
+#'      `wt70 <- WT/70; ... beta*log(wt70)`) still counts, via the covariate's
+#'      transitive dependents (`.vaeCovDerivedVars`).
 #' User-fixed coefficients (`fix=TRUE`) are dropped.
 #' @param ui rxode2 ui
 #' @return character vector of theta names (possibly empty)
@@ -55,8 +58,8 @@
   .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
              else as.character(ui$muRefCovariateDataFrame$covariateParameter)
   ## (b) transformed covariate effects: a non-mu theta whose referencing lines
-  ## ALL reference a data covariate
-  .covData <- ui$allCovs
+  ## ALL reference a data covariate (directly, or via a covariate-derived var)
+  .covData <- .vaeCovDerivedVars(ui)
   .transformed <- character(0)
   if (length(.covData) > 0L) {
     for (.p in setdiff(.thNames, .mu)) {
@@ -68,6 +71,41 @@
     }
   }
   intersect(unique(c(.linear, .transformed)), .thNames)
+}
+
+#' Data covariates plus the model variables transitively derived from them.
+#'
+#' A covariate effect may reach its coefficient's model line through an
+#' intermediate assignment (`wt70 <- WT/70; ka <- exp(lka + beta*log(wt70))`).
+#' Detecting the coefficient then needs the covariate's dependents, not just the
+#' covariate name.  Iterates model assignments with a plain-name LHS to a fixed
+#' point: a variable is covariate-derived when its defining RHS mentions any
+#' already covariate-derived variable.  Only plain `name <- expr` assignments
+#' propagate (ODE `d/dt(state)` and error `~` lines are not intermediates a
+#' covariate coefficient multiplies), keeping the closure tight.
+#' @param ui rxode2 ui
+#' @return character vector: `ui$allCovs` plus derived variable names
+#' @noRd
+.vaeCovDerivedVars <- function(ui) {
+  .derived <- ui$allCovs
+  if (length(.derived) == 0L) return(character(0))
+  .asn <- Filter(function(e) {
+    is.call(e) && length(e) >= 3L && is.name(e[[2L]]) &&
+      (identical(e[[1L]], quote(`<-`)) || identical(e[[1L]], quote(`=`)))
+  }, ui$lstExpr)
+  repeat {
+    .added <- FALSE
+    for (.e in .asn) {
+      .lhs <- as.character(.e[[2L]])
+      if (.lhs %in% .derived) next
+      if (any(all.vars(.e[[3L]]) %in% .derived)) {
+        .derived <- c(.derived, .lhs)
+        .added <- TRUE
+      }
+    }
+    if (!.added) break
+  }
+  unique(.derived)
 }
 
 #' Does this `nonMuTheta` mode estimate the theta in place (no injected eta)?

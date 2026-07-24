@@ -911,6 +911,17 @@
 
 ### Estimation
 
+- Fixed `est="vae"` freezing a declared covariate effect when the covariate
+  reaches its coefficient's model line only through an intermediate variable
+  (e.g. `wt70 <- WT/70; ka <- exp(lka + beta*log(wt70) + eta.ka)`).  The
+  coefficient was mis-classified as a plain non-mu-referenced structural theta:
+  frozen at its initial value under `nonMuTheta="none"` and, under
+  `nonMuTheta="eta"`/`"fix"`, an eta was injected into the mu-referenced
+  expression, erroring the fit ("2+ single population parameters in a single
+  mu-referenced expression").  Covariate-coefficient detection now follows the
+  covariate through intermediate assignments, so the declared effect is estimated
+  in every `nonMuTheta` mode (issue #801).
+
 - Fixed `est="vae"` with `vaeControl(nonMuTheta="grad")` silently discarding
   every update to a residual-error parameter.  An error parameter's live value is
   the internal `a` vector, and the theta slot is rebuilt from it on each

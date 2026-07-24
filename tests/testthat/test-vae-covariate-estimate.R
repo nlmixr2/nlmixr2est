@@ -226,6 +226,49 @@ nmTest({
     expect_false("wt.cl" %in% p$regressNames)
   })
 
+  ## ---- issue #801: a covariate reaching the coefficient line only through an
+  ## intermediate model variable must still be treated as a covariate coefficient
+  ## (estimated, never frozen), not mis-classified as a non-mu structural theta. ----
+  .ind <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7; eta.cl ~ 0.1 })
+    model({ wt70 <- WT / 70
+      ka <- exp(tka); cl <- exp(tcl + cl.wt * log(wt70) + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v; cp ~ add(add.err) })
+  }
+
+  test_that(".vaeCovDerivedVars propagates a covariate through an intermediate var", {
+    ## WT -> wt70 -> cl (cl's RHS uses wt70); propagation stops at the ODE d/dt
+    ## line, so `center`/`cp` are not pulled in and the closure stays bounded.
+    dv <- .vaeCovDerivedVars(rxode2::assertRxUi(.ind()))
+    expect_true(all(c("WT", "wt70") %in% dv))
+    expect_false(any(c("center", "cp", "v", "ka") %in% dv))
+    ## no covariate -> empty (nothing derived)
+    noCov <- function() {
+      ini({ tka <- 0.45; add.err <- 0.7; eta.ka ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); d/dt(depot) <- -ka * depot
+        cp <- depot; cp ~ add(add.err) })
+    }
+    expect_equal(.vaeCovDerivedVars(rxode2::assertRxUi(noCov)), character(0))
+  })
+
+  test_that(".vaeCovariateCoefThetas detects a coefficient behind an intermediate var", {
+    expect_equal(.vaeCovariateCoefThetas(rxode2::assertRxUi(.ind())), "cl.wt")
+    ## and it is NOT offered to the nonMuTheta eta/fix injection (it errored before)
+    expect_false("cl.wt" %in% .vaeNonMuThetas(rxode2::assertRxUi(.ind())))
+  })
+
+  test_that("an indirect covariate coefficient is estimated in every nonMuTheta mode", {
+    ## the #801 guarantee: declared covariate effects are never frozen, regardless
+    ## of nonMuTheta.  Before the fix it was regressed only under "regress"/"grad",
+    ## frozen under "none", and errored under "eta"/"fix".
+    for (m in c("regress", "none", "eta", "fix")) {
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.ind()), d,
+                                         vaeControl(nonMuTheta = m)))
+      expect_true("cl.wt" %in% p$regressNames, info = m)
+    }
+  })
+
   test_that("pinCovariates=TRUE with no model covariates is a null path (full search)", {
     noCov <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7; eta.cl ~ 0.1 })
