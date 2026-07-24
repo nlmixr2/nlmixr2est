@@ -269,6 +269,30 @@ nmTest({
     expect_true(all(c("tka", "tlag") %in% .vaeNonMuThetas(ui)))  # structural thetas kept
   })
 
+  test_that("exotic covariate transforms are classified via the mu2 derivative check", {
+    ## rxode2's mu2/mu3 classifier records a coefficient whenever the derivative
+    ## of its additive linear-predictor term is free of the coefficient (the
+    ## derivative becomes the nlmixrMuDerCov# column).  This covers arbitrary
+    ## transforms, so reading mu2RefCovariateReplaceDataFrame needs no special
+    ## cases -- confirm exotic forms are detected, and a non-mu form (a multiplier
+    ## outside the transform, whose slope cannot transfer) is correctly excluded.
+    mk <- function(clexpr) {
+      eval(parse(text = sprintf(
+        "function(){ ini({ tcl<-1; tv<-3.45; b<-0.1; eta.cl~0.1; add.err<-0.7 })\n model({ %s; v<-exp(tv)\n d/dt(depot) <- -cl*depot; cp<-depot/v; cp~add(add.err) }) }",
+        clexpr)))
+    }
+    for (e in c("cl <- exp(tcl + b*sqrt(WT) + eta.cl)",
+                "cl <- exp(tcl + b*(WT/70)^2 + eta.cl)",
+                "cl <- exp(tcl + b*exp(WT/100) + eta.cl)",
+                "cl <- exp(tcl + b*(WT - 70) + eta.cl)")) {
+      expect_equal(.vaeCovariateCoefThetas(rxode2::assertRxUi(mk(e))), "b", info = e)
+    }
+    ## multiplier outside the transform: not a mu reference, correctly not a coef
+    expect_equal(
+      .vaeCovariateCoefThetas(rxode2::assertRxUi(mk("cl <- exp(tcl + eta.cl)*(1 + b*WT)"))),
+      character(0))
+  })
+
   test_that("an indirect covariate coefficient is estimated in every nonMuTheta mode", {
     ## the #801 guarantee: declared covariate effects are never frozen, regardless
     ## of nonMuTheta.  Before the fix it was regressed only under "regress"/"grad",
