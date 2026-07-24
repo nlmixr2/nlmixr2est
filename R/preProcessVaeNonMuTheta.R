@@ -57,15 +57,20 @@
   ## (a) rxode2-recognized linear mu-ref covariate coefficients
   .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
              else as.character(ui$muRefCovariateDataFrame$covariateParameter)
-  ## (b) transformed covariate effects: a non-mu theta whose referencing lines
-  ## ALL reference a data covariate (directly, or via a covariate-derived var)
+  ## (b) transformed covariate effects: a non-mu theta that, in EVERY line
+  ## referencing it, appears as a multiplicative coefficient of a data covariate
+  ## (directly, or via a covariate-derived variable -- `.vaeCovDerivedVars`).
+  ## Requiring the multiplicative form -- not mere co-occurrence on a covariate
+  ## line -- keeps an additive structural intercept sharing a covariate line
+  ## (e.g. `tka` in `exp(tka + beta*log(wt70))`) from being mis-detected.
   .covData <- .vaeCovDerivedVars(ui)
   .transformed <- character(0)
   if (length(.covData) > 0L) {
     for (.p in setdiff(.thNames, .mu)) {
       .lines <- Filter(function(e) .p %in% all.vars(e), ui$lstExpr)
       if (length(.lines) == 0L) next
-      if (all(vapply(.lines, function(e) any(.covData %in% all.vars(e)), logical(1)))) {
+      if (all(vapply(.lines, function(e) !is.null(.vaeCoefCov(e, .p, .covData)),
+                     logical(1)))) {
         .transformed <- c(.transformed, .p)
       }
     }
@@ -79,10 +84,16 @@
 #' intermediate assignment (`wt70 <- WT/70; ka <- exp(lka + beta*log(wt70))`).
 #' Detecting the coefficient then needs the covariate's dependents, not just the
 #' covariate name.  Iterates model assignments with a plain-name LHS to a fixed
-#' point: a variable is covariate-derived when its defining RHS mentions any
-#' already covariate-derived variable.  Only plain `name <- expr` assignments
-#' propagate (ODE `d/dt(state)` and error `~` lines are not intermediates a
-#' covariate coefficient multiplies), keeping the closure tight.
+#' point: a variable is covariate-derived when its defining RHS is a PURE
+#' covariate transform -- every variable it references is already covariate-
+#' derived (a unit conversion / log / centering, e.g. `wt70 <- WT/70`).  An
+#' assignment that mixes a covariate with a model parameter (e.g. a structural
+#' `theta`, as in `cl <- exp(tcl + beta*log(wt70) + eta.cl)`) is NOT propagated:
+#' the covariate's effect there is already carried by that line's own
+#' coefficient, and propagating would let a downstream structural theta that
+#' merely multiplies `cl` be mis-detected as a covariate coefficient.  Only plain
+#' `name <- expr` assignments are considered (ODE `d/dt(state)` and error `~`
+#' lines are not intermediates a covariate coefficient multiplies).
 #' @param ui rxode2 ui
 #' @return character vector: `ui$allCovs` plus derived variable names
 #' @noRd
@@ -98,7 +109,10 @@
     for (.e in .asn) {
       .lhs <- as.character(.e[[2L]])
       if (.lhs %in% .derived) next
-      if (any(all.vars(.e[[3L]]) %in% .derived)) {
+      .rv <- all.vars(.e[[3L]])
+      ## pure covariate transform: references at least one variable, and every
+      ## variable it references is already covariate-derived
+      if (length(.rv) > 0L && all(.rv %in% .derived)) {
         .derived <- c(.derived, .lhs)
         .added <- TRUE
       }
