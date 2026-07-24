@@ -228,6 +228,11 @@
 #'   per-endpoint sufficient statistics plus an optimizer branch for the error
 #'   models with no closed form (`add + prop`, `add + pow`, Box-Cox /
 #'   Yeo-Johnson), as \code{\link{saemControl}()} does.
+#' @param perNoCor Fraction of the EM phase (`gammaIter` iterations) over which a
+#'   declared correlated `omega` block is held at zero correlation, letting the
+#'   variances settle before the correlations are estimated.  This is
+#'   \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
+#'   effect on a model with no declared off-diagonals.
 #' @param inputScale Which observations the encoder-input centering and scaling
 #'   are computed over.  `"reference"` (default) matches the reference
 #'   implementation, which takes the mean and SD across the whole padded
@@ -332,6 +337,7 @@ vaeControl <- function(seed = 42L,
                        residOptimize = c("twoStage", "moment", "optimize"),
                        residRhoend = NULL,
                        omegaUpdate = c("suffStat", "blend"),
+                       perNoCor = 0.75,
                        inputScale = c("reference", "observed"),
                        covSelectMethod = c("auto", "bnb", "l0learn"),
                        covSelectMaxExact = 17L,
@@ -392,6 +398,7 @@ vaeControl <- function(seed = 42L,
   sigma0Interp <- match.arg(sigma0Interp)
   residOptimize <- match.arg(residOptimize)
   omegaUpdate <- match.arg(omegaUpdate)
+  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, upper = 1, len = 1)
   inputScale <- match.arg(inputScale)
   covSelectMethod <- match.arg(covSelectMethod)
   ## Inf is allowed: it forces the exact branch-and-bound everywhere (the
@@ -507,6 +514,7 @@ vaeControl <- function(seed = 42L,
                sigma0Interp = sigma0Interp,
                residOptimize = residOptimize,
                omegaUpdate = omegaUpdate,
+               perNoCor = perNoCor,
                inputScale = inputScale,
                covSelectMethod = covSelectMethod,
                covSelectMaxExact = covSelectMaxExact,

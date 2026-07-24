@@ -57,6 +57,24 @@
   ## full ini omega block (declared off-diagonals included) + per-entry fix
   .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
 
+  ## constraining-transform Jacobian map (full Bayes only; see adviJacLogDet).
+  ## The bounded-transform hook has already rewritten each bounded theta to an
+  ## unconstrained `rxBoundedTr.<name>`, so match on that internal name.
+  ##   1 = exp   (one-sided bound)   2 = logit (two-sided)
+  .jacType <- integer(nrow(.thRows))
+  .jacRange <- numeric(nrow(.thRows))
+  .bt <- tryCatch(ui$boundedTransforms, error = function(e) NULL)
+  for (.t in .bt) {
+    .i <- match(.t$internalName, .thRows$name)
+    if (is.na(.i)) next
+    if (identical(.t$type, "logit")) {
+      .jacType[.i] <- 2L
+      .jacRange[.i] <- .t$upper - .t$lower
+    } else {
+      .jacType[.i] <- 1L                    # lower_exp / upper_exp: log|J| = u
+    }
+  }
+
   ## which thetas are FIXED (held at ini, never gradient-updated)
   .thetaFix <- as.logical(.thRows$fix); .thetaFix[is.na(.thetaFix)] <- FALSE
 
@@ -91,6 +109,7 @@
        structIdx = .cls$struct, sigmaIdx = .cls$sigma, thetaSensIdx = .cls$thetaSensIdx,
        omega = .omega, omegaFix = .omegaFix,
        omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
+       jacType = .jacType, jacRange = .jacRange,
        errThetaIdx = .errThetaIdx, errType = .errType, a = .a,
        subj = subj, Nobs = .nobs)
 }

@@ -122,4 +122,63 @@ nmTest({
       expect_true(relOk(a$gTheta[p], gfd))
     }
   })
+
+  test_that("adviElboGrad_ gradient matches FD with a CORRELATED population omega", {
+    ## With a declared eta block the population prior is the full quadratic form
+    ## plus logdet(Omega), and gPopLogOmega becomes
+    ##   0.5 w_k (Omega^-1 eta)_k^2 - 0.5 w_k (Omega^-1)_kk.
+    ## FD-check that the returned ELBO and gradient stay mutually consistent --
+    ## the diagonal tests above cannot see an error in either term.
+    mod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka + eta.cl ~ c(0.6,
+                            0.1, 0.3)
+        add.err <- 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mod)
+    ctl <- adviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    dat <- nlmixr2data::theo_sd
+    prep <- .adviDataPrep(ui, dat)
+    expect_true(.omegaHasOffDiag(prep$omegaMat))       # the block reached the prep
+    N <- prep$N; neta <- 2L
+    muRefIdx <- as.integer(prep$muRefThetaIdx); ntheta <- prep$ntheta
+
+    .testSeed(7)
+    mu <- matrix(rnorm(N * neta, 0, 0.2), N, neta)
+    omega <- matrix(rnorm(N * neta, -0.7, 0.1), N, neta)     # log-sd
+    theta <- prep$theta
+    logPopOmega <- log(diag(prep$omegaMat))
+    eps <- matrix(rnorm(N * neta), N, neta)
+
+    .adviInnerSetup(ui, dat, mu, ctl)
+    on.exit(.adviInnerFree(), add = TRUE)
+    elboFun <- function(mu, omega, theta, lpo)
+      adviElboGrad_(mu, omega, theta, lpo, eps, muRefIdx)$elbo
+    a <- adviElboGrad_(mu, omega, theta, logPopOmega, eps, muRefIdx)
+    h <- 1e-4
+    fd1 <- function(f, x, i) {
+      xp <- x; xm <- x; xp[i] <- x[i] + h; xm[i] <- x[i] - h
+      (f(xp) - f(xm)) / (2 * h)
+    }
+    relOk <- function(x, fd, tol = 2e-3) abs(x - fd) < tol * (1 + abs(x))
+
+    ## the population log-variance gradient under a correlated Omega
+    for (k in seq_len(neta)) {
+      gfd <- fd1(function(z) elboFun(mu, omega, theta, z), logPopOmega, k)
+      expect_true(relOk(a$gPopLogOmega[k], gfd))
+    }
+    ## and the variational / theta gradients, which now see Omega^-1
+    for (i in c(1L, 5L)) {
+      gfd <- fd1(function(z) { m <- mu; m[i, 1] <- z[1]
+        elboFun(m, omega, theta, logPopOmega) }, mu[i, 1, drop = FALSE], 1L)
+      expect_true(relOk(a$gMu[i, 1], gfd))
+    }
+    for (p in seq_len(ntheta)) {
+      gfd <- fd1(function(z) elboFun(mu, omega, z, logPopOmega), theta, p)
+      expect_true(relOk(a$gTheta[p], gfd))
+    }
+  })
 })

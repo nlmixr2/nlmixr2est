@@ -49,4 +49,28 @@ nmTest({
     ## the finalize reuses the loop's compiled models (no symengine rebuild)
     expect_false(is.null(fit$env$foceiModel))
   })
+
+  test_that("adviControl(tol=) stops early on ELBO convergence", {
+    ## The mechanism must be OBSERVABLE, not just "the fit still works": with a
+    ## loose tolerance the loop must stop before `iters`, and with tol=0 it must
+    ## run every iteration.  Before this was wired up, `tol` was documented but
+    ## never reached the C++ loop, so both runs were identical -- a test that
+    ## only checked the fit succeeded would not have caught that.
+    .base <- function(tol) adviControl(iters = 400L, seed = 7L, print = 0L,
+                                       returnAdvi = TRUE, tol = tol,
+                                       evalElbo = 25L)
+    rOff <- suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = .base(0))))
+    expect_equal(rOff$itRun, 400L)
+    expect_false(isTRUE(rOff$tolStopped))
+    expect_equal(length(rOff$elbo), 400L)
+
+    rOn <- suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = .base(1))))
+    expect_true(isTRUE(rOn$tolStopped))      # rel change < 1 always -> first check
+    expect_lt(rOn$itRun, 400L)
+    ## the reported trace is truncated to what actually ran, not zero-padded
+    expect_equal(length(rOn$elbo), rOn$itRun)
+    expect_true(all(is.finite(rOn$elbo)))
+  })
 })

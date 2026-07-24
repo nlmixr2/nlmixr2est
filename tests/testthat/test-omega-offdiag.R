@@ -7,10 +7,7 @@
 ## Real fits -> weekly slow batch.
 
 nmTest({
-  ## simulation truth: rho = 0.75 on omega diag 0.09
-  .omTrue <- matrix(c(0.09, 0.0675, 0.0675, 0.09), 2, 2,
-                    dimnames = list(c("eta.cl", "eta.v"), c("eta.cl", "eta.v")))
-
+  ## simulation truth: rho = 0.75 (0.0675 on a 0.09 variance)
   .omSimMod <- function() {
     ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
       eta.cl + eta.v ~ c(0.09,
@@ -92,6 +89,54 @@ nmTest({
     .offRow <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2, , drop = FALSE]
     expect_equal(nrow(.offRow), 1L)
     expect_equal(as.numeric(.offRow$est), f$omega[1L, 2L], tolerance = 1e-8)
+  })
+
+  ## a FIXED block must come back exactly at its ini values: the M-step holds
+  ## fixed entries, so a regression that estimates them anyway is caught here
+  .omFixedMod <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl + eta.v ~ fixed(0.1,
+                             0.01, 0.1)
+      add.sd <- 0.7 })
+    model({ ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) })
+  }
+
+  test_that("perNoCor holds the correlation, and releasing it estimates one", {
+    ## The hold must ENGAGE (perNoCor = 1 -> the off-diagonal never moves off
+    ## ini) and RELEASE (perNoCor = 0 -> it is estimated from the first M-step).
+    ## Without both halves a regression that never lifts the hold would look
+    ## exactly like "this model has no correlation".
+    .ctl <- function(p) vaeControl(itersBurnIn = 20L, iters = 60L, gammaIter = 40L,
+                                   perNoCor = p, covariateSelection = FALSE,
+                                   print = 0L)
+    fHold <- nlmixr2(.omCorMod, .omData, est = "vae", control = .ctl(1))
+    expect_equal(unname(fHold$omega[1L, 2L]), 0.01, tolerance = 1e-10)
+    fFree <- nlmixr2(.omCorMod, .omData, est = "vae", control = .ctl(0))
+    expect_gt(abs(fFree$omega[1L, 2L] - 0.01), 1e-6)
+    ## and the default hold still leaves room to estimate on a short run
+    ## (nbCorrel is a fraction of min(gammaIter, iters), not of gammaIter)
+    fDef <- nlmixr2(.omCorMod, .omData, est = "vae",
+                    control = vaeControl(itersBurnIn = 20L, iters = 60L,
+                                         covariateSelection = FALSE, print = 0L))
+    expect_gt(abs(fDef$omega[1L, 2L] - 0.01), 1e-6)
+  })
+
+  test_that("a FIXED omega block is held by vae and advi", {
+    fV <- nlmixr2(.omFixedMod, .omData, est = "vae",
+                  control = vaeControl(itersBurnIn = 20L, iters = 40L,
+                                       covariateSelection = FALSE, print = 0L))
+    expect_equal(unname(fV$omega[1L, 2L]), 0.01, tolerance = 1e-10)
+    expect_equal(unname(diag(fV$omega)), c(0.1, 0.1), tolerance = 1e-10)
+    fA <- nlmixr2(.omFixedMod, .omData, est = "advi",
+                  control = adviControl(iters = 50L, print = 0L))
+    expect_equal(unname(fA$omega[1L, 2L]), 0.01, tolerance = 1e-10)
+    expect_equal(unname(diag(fA$omega)), c(0.1, 0.1), tolerance = 1e-10)
   })
 
   test_that("est='npag' estimates the omega off-diagonal", {

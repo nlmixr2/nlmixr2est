@@ -59,6 +59,11 @@
   .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
   .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
+  ## declared population omega structure: installs the off-diagonal mask so the
+  ## ELBO/gradient entry points see it without going through adviOptimize_
+  .ob <- .omegaBlockFromIniDf(.ui$iniDf, .foceiEtaThetaMap(.ui)$etaNames)
+  .env$adviOmegaMat <- .ob$mat
+  .env$adviOmegaFixMat <- .ob$fixMat
   vaeInnerSetup_(.env)
   .env
 }
@@ -130,6 +135,10 @@
     N = as.integer(N),
     theta = as.numeric(.prep$theta), omega = as.numeric(.prep$omega),
     omegaMat = .prep$omegaMat, omegaFixMat = .prep$omegaFixMat,
+    perNoCor = as.numeric(control$perNoCor),
+    tol = as.numeric(control$tol), evalElbo = as.integer(control$evalElbo),
+    jacType = as.integer(.prep$jacType), jacRange = as.numeric(.prep$jacRange),
+    klWarmup = as.integer(control$klWarmup), temperInit = as.numeric(control$temperInit),
     muRefThetaIdx = as.integer(.prep$muRefThetaIdx),
     thetaFix = as.logical(.prep$thetaFix), omegaFix = as.logical(.prep$omegaFix),
     iters = as.integer(control$iters), seed = as.numeric(control$seed),
@@ -243,6 +252,13 @@
   ## ADVI artifacts + warm-resume state on the fit env
   .e <- .fit$env
   .e$adviElbo <- res$elbo
+  ## an early ELBO-convergence stop is a real difference from the requested
+  ## `iters`; say so rather than leaving a short trace to be noticed
+  if (isTRUE(res$tolStopped)) {
+    warning(sprintf("ELBO converged at iteration %d of %d (adviControl(tol=))",
+                    length(res$elbo), as.integer(.control$iters)),
+            call. = FALSE)
+  }
   .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
               popOmegaMat = res$popOmegaMat,
               it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
