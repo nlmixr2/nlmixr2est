@@ -216,15 +216,14 @@ nmObjGet.default <- function(x, ...) {
     if (inherits(.ret, "raw")) {
       .type <- rxode2::rxGetSerialType_(.ret)
       if (.type == "qs2") {
-        .ret <- try(qs2::qs_deserialize(.ret), silent=TRUE)
+        .ret <- try(.qs2Fn("qs_deserialize")(.ret), silent=TRUE)
         if (inherits(.ret, "try-error")) {
           warning("cannot deserialize object '", .arg, "' (qs2)", call.=FALSE)
           .ret <- NULL
         }
       } else if (.type == "qdata") {
         .ret <- try({
-          rxode2::rxReq("qs2")
-          qs2::qd_deserialize(.ret)
+          .qs2Fn("qd_deserialize")(.ret)
         })
         if (inherits(.ret, "try-error")) {
           warning("cannot deserialize object '", .arg, "' (qdata)", call.=FALSE)

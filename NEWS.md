@@ -2,6 +2,12 @@
 
 ## New features
 
+- `qs2` is no longer required (dropped from `Suggests`).  It pulled in
+  `stringfish`, whose CRAN binary can fail to load on some runners and broke the
+  test suite.  The FOCEi model cache now uses base R `saveRDS`/`readRDS`, and
+  objects serialized with `qs2`/`qdata` are still read back when `qs2` happens to
+  be installed (runtime-conditional, like the legacy `qs` path).
+
 - `est="vae"` gains `vaeControl(covSelectMethod=)` and
   `vaeControl(covSelectMaxExact=)`, which make covariate selection practical on
   large candidate sets.  The exact branch-and-bound blows up past a few dozen

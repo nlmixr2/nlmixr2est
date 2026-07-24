@@ -1586,7 +1586,7 @@ attr(rxUiGet.foceiModelDigest, "rstudio") <- "hash"
 #' @export
 rxUiGet.foceiModelCache <- function(x, ...) {
   file.path(rxode2::rxTempDir(),
-            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs2"))
+            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".rds"))
 }
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
@@ -1595,7 +1595,7 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
-    .ret <- qs2::qs_read(.cacheFile)
+    .ret <- readRDS(.cacheFile)
     lapply(seq_along(.ret), function(i) {
       if (inherits(.ret[[i]], "rxode2")) {
         rxode2::rxLoad(.ret[[i]])
@@ -1614,7 +1614,7 @@ rxUiGet.foceiModel <- function(x, ...) {
       .ret <- rxUiGet.foce(x, ...)
     }
   }
-  qs2::qs_save(.ret, .cacheFile)
+  saveRDS(.ret, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -3068,10 +3068,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           .type <- rxode2::rxGetDefaultSerialize()
           .objC <- switch(.type,
                  qs2 = {
-                   qs2::qs_serialize(.obj)
+                   .qs2Fn("qs_serialize")(.obj)
                  },
                  qdata = {
-                   qs2::qd_serialize(.obj)
+                   .qs2Fn("qd_serialize")(.obj)
                  },
                  bzip2 = {
                    memCompress(serialize(.obj, NULL), type="bzip2")
