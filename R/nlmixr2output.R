@@ -365,10 +365,18 @@
     if ("%RSE" %in% names(.pf)) {
       .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
     }
-    if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-          isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-      .pf[.n, "CI Lower"] <- .e - .qn * .s
-      .pf[.n, "CI Upper"] <- .e + .qn * .s
+    if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf))) {
+      # recompute the CI when the default back-transform (identity/exp/expit/
+      # probitInv) reproduces the stored back-transformed value; rows with a
+      # manual backTransform keep their existing CI
+      .btf <- function(.v) {
+        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v),
+                 error = function(e) .v)
+      }
+      if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
+        .pf[.n, "CI Lower"] <- .btf(.e - .qn * .s)
+        .pf[.n, "CI Upper"] <- .btf(.e + .qn * .s)
+      }
     }
     .changed <- TRUE
   }

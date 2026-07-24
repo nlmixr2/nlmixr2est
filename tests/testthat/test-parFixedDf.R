@@ -35,6 +35,19 @@ nmTest({
   })
 
   test_that(".updateParFixedRefreshSeFromCov updates parFixedDf and the formatted parFixed (#816)", {
+    .uiMod816 <- function() {
+      ini({
+        tcl <- 1; tfix <- fix(2); add.sd <- 0.7
+        eta.cl ~ 0.3
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- tfix
+        d/dt(center) <- -cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
     .pf <- data.frame(
       Parameter = c("", "", ""),
       Estimate = c(1, 2, 0.7),
@@ -46,6 +59,7 @@ nmTest({
       check.names = FALSE,
       row.names = c("tcl", "tfix", "add.sd"))
     env <- new.env(parent = emptyenv())
+    env$ui <- rxode2::assertRxUi(.uiMod816)
     env$parFixedDf <- .pf
     env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.95, "tfix")
     class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
@@ -65,10 +79,15 @@ nmTest({
     expect_equal(as.numeric(env$parFixed["add.sd", "SE"]), 0.05)
     expect_equal(env$parFixed["tfix", "SE"], "FIXED")
 
-    # onlyMissing = FALSE overwrites the structural SE from the cov
+    # onlyMissing = FALSE overwrites the structural SE from the cov, and the
+    # CI of a log-scale theta is recomputed through its default back-transform
     .updateParFixedRefreshSeFromCov(env, .cov)
     expect_equal(unname(env$parFixedDf["tcl", "SE"]), 0.2)
     expect_equal(as.numeric(env$parFixed["tcl", "SE"]), 0.2)
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
+                 exp(1 - qnorm(0.975) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]),
+                 exp(1 + qnorm(0.975) * 0.2))
 
     # a denormal (uninitialized-memory signature) counts as missing
     env$parFixedDf["add.sd", "SE"] <- 9.39e-323
