@@ -13253,7 +13253,56 @@ struct VaeBnbCtx {
   double bestScore;
   std::vector<int> bestSel;
   arma::vec bestCoef;
+  // Mutual-exclusion groups: grp[j] is the group of covariate column j, and at
+  // most one column per group may be selected.  This is how alternate SHAPES of
+  // one covariate (log(cov/ctr) vs cov-ctr) compete without both entering.  A
+  // null pointer, or a negative id, leaves a column unconstrained -- so the
+  // default is the historic unconstrained best-subset search.
+  const std::vector<int>* grp;
 };
+
+// May covariate j join `inSet` without taking a group twice?
+static inline bool vaeGroupFree(const VaeBnbCtx& c, const std::vector<int>& inSet,
+                                int j) {
+  if (c.grp == nullptr) return true;
+  const int gj = (*c.grp)[(size_t)j];
+  if (gj < 0) return true;
+  for (size_t s = 0; s < inSet.size(); ++s) {
+    if ((*c.grp)[(size_t)inSet[s]] == gj) return false;
+  }
+  return true;
+}
+
+// Validate and unpack an optional R group vector into the per-column form the
+// search uses.  An empty result means "no constraint", which is the historic
+// unconstrained best-subset behavior.
+static std::vector<int> vaeGroupVec(Rcpp::Nullable<Rcpp::IntegerVector> group,
+                                    int nCov) {
+  std::vector<int> grp;
+  if (group.isNull()) return grp;
+  Rcpp::IntegerVector g(group);
+  if ((int)g.size() != nCov) {
+    Rcpp::stop("'group' must have one entry per covariate column (%d)", nCov);
+  }
+  grp.assign(g.begin(), g.end());
+  for (size_t j = 0; j < grp.size(); ++j) {
+    if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) grp[j] = -1;
+  }
+  return grp;
+}
+
+// Is `s` a feasible support (no group used twice)?
+static bool vaeGroupOk(const VaeBnbCtx& c, const std::vector<int>& s) {
+  if (c.grp == nullptr) return true;
+  for (size_t a = 0; a < s.size(); ++a) {
+    const int ga = (*c.grp)[(size_t)s[a]];
+    if (ga < 0) continue;
+    for (size_t b = a + 1; b < s.size(); ++b) {
+      if ((*c.grp)[(size_t)s[b]] == ga) return false;
+    }
+  }
+  return true;
+}
 
 // Order-independent tie-break: on an exact score tie prefer the lexicographically
 // smaller sorted support so the incumbent is deterministic regardless of the frontier
@@ -13267,6 +13316,7 @@ static bool vaeSelLess(std::vector<int> a, std::vector<int> b) {
 
 // Evaluate the model whose support is exactly `inSet`; update the incumbent.
 static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
+  if (!vaeGroupOk(c, inSet)) return;   // infeasible: two shapes of one covariate
   arma::uvec cols = vaeSubsetCols(inSet);
   arma::vec coef;
   double rss = vaeOlsRss(*c.X, cols, *c.y, &coef);
@@ -13293,7 +13343,9 @@ struct VaeBnbNode {
 // Subtree lower bound: no superset of inSet (adding any free covariates) can beat the
 // OLS fit that uses ALL of them, and each committed covariate already costs `penalty`.
 // Adding columns only lowers RSS, so this bounds the whole subtree.  The free set is
-// freeSet0[0, freeSize).
+// freeSet0[0, freeSize).  Under mutual-exclusion groups the all-free fit may itself be
+// infeasible, which only makes the bound a looser relaxation -- still admissible, so
+// the search stays exact.
 static double vaeBnbLowerBound(VaeBnbCtx& c, const std::vector<int>& inSet,
                                const std::vector<int>& freeSet0, int freeSize) {
   std::vector<int> all = inSet;
@@ -13342,16 +13394,26 @@ static void vaeBnbSearch(VaeBnbCtx& c, const std::vector<int>& freeSet0) {
     if (node.lb >= c.bestScore) continue;
     int j = freeSet0[node.freeSize - 1];       // strongest remaining free covariate
     int childFree = node.freeSize - 1;
-    VaeBnbNode inc;  inc.inSet = node.inSet; inc.inSet.push_back(j);
-    inc.freeSize = childFree; inc.evalSelf = true;
-    inc.lb = vaeBnbLowerBound(c, inc.inSet, freeSet0, childFree);
+    // The include child is generated only when j's group is still free, so every
+    // reachable leaf is feasible and the leaves enumerate exactly the feasible
+    // supports.  The exclude child is always generated, so no feasible support is
+    // lost -- completeness (hence exactness) is preserved.
+    const bool canInclude = vaeGroupFree(c, node.inSet, j);
+    VaeBnbNode inc;
+    if (canInclude) {
+      inc.inSet = node.inSet; inc.inSet.push_back(j);
+      inc.freeSize = childFree; inc.evalSelf = true;
+      inc.lb = vaeBnbLowerBound(c, inc.inSet, freeSet0, childFree);
+    }
     VaeBnbNode exc;  exc.inSet = node.inSet; exc.freeSize = childFree;
     exc.evalSelf = false;  // inSet already evaluated by the parent; bound tightens as j drops out
     exc.lb = vaeBnbLowerBound(c, exc.inSet, freeSet0, childFree);
     switch (c.strategy) {
-    case VAE_BNB_FIFO: queue.push_back(inc); queue.push_back(exc); break;
-    case VAE_BNB_LC:   pq.push(inc); pq.push(exc); break;
-    default:           stack.push_back(exc); stack.push_back(inc); break;  // include pops first
+    case VAE_BNB_FIFO: if (canInclude) queue.push_back(inc); queue.push_back(exc); break;
+    case VAE_BNB_LC:   if (canInclude) pq.push(inc); pq.push(exc); break;
+    default:           stack.push_back(exc);                        // include pops first
+      if (canInclude) stack.push_back(inc);
+      break;
     }
   }
 }
@@ -13386,10 +13448,12 @@ static VaeSubsetFit vaeFinishSubset(VaeBnbCtx& c, const arma::vec& y) {
 
 static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
                                     double omega, double penalty,
-                                    VaeBnbStrategy strategy = VAE_BNB_LIFO) {
+                                    VaeBnbStrategy strategy = VAE_BNB_LIFO,
+                                    const std::vector<int>* grp = nullptr) {
   const int nCov = (int)X.n_cols - 1;
   VaeBnbCtx c;
   c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty; c.strategy = strategy;
+  c.grp = grp;
   c.bestScore = std::numeric_limits<double>::infinity();
   // order covariates by univariate strength (RSS of [intercept, x_j] ascending
   // -> stronger last) so the branch order finds good incumbents early.
@@ -13418,8 +13482,15 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
 
 // Score each candidate support against the incumbent.  Out-of-range and repeated
 // indices are dropped so a malformed proposal cannot index past the design.
+//
+// The external proposer (L0Learn) knows nothing about mutual-exclusion groups, so
+// an infeasible proposal is REPAIRED rather than discarded: within each doubled-up
+// group the univariately strongest column is kept.  Discarding instead would throw
+// away the proposer's information about which covariates matter; the local-search
+// polish then fixes a shape that was chosen suboptimally.
 static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
                                const std::vector<std::vector<int> >& cands) {
+  std::vector<double> uni;   // univariate RSS per column, built on first repair
   for (size_t i = 0; i < cands.size(); ++i) {
     std::vector<int> s;
     s.reserve(cands[i].size());
@@ -13429,6 +13500,28 @@ static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
     }
     std::sort(s.begin(), s.end());
     s.erase(std::unique(s.begin(), s.end()), s.end());
+    if (!vaeGroupOk(c, s)) {
+      if (uni.empty()) {
+        uni.resize((size_t)nCov);
+        for (int j = 0; j < nCov; ++j) {
+          std::vector<int> one(1, j);
+          uni[(size_t)j] = vaeOlsRss(*c.X, vaeSubsetCols(one), *c.y, nullptr);
+        }
+      }
+      std::vector<int> keep;
+      for (size_t a = 0; a < s.size(); ++a) {
+        const int ga = (*c.grp)[(size_t)s[a]];
+        if (ga < 0) { keep.push_back(s[a]); continue; }
+        size_t held = keep.size();
+        for (size_t b = 0; b < keep.size(); ++b) {
+          if ((*c.grp)[(size_t)keep[b]] == ga) { held = b; break; }
+        }
+        if (held == keep.size()) keep.push_back(s[a]);
+        else if (uni[(size_t)s[a]] < uni[(size_t)keep[held]]) keep[held] = s[a];
+      }
+      std::sort(keep.begin(), keep.end());
+      s.swap(keep);
+    }
     vaeBnbLeaf(c, s);
   }
 }
@@ -13445,6 +13538,7 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
     for (size_t s = 0; s < cur.size(); ++s) inSet[(size_t)cur[s]] = 1;
     for (int j = 0; j < nCov; ++j) {                     // add
       if (inSet[(size_t)j]) continue;
+      if (!vaeGroupFree(c, cur, j)) continue;            // group already taken
       std::vector<int> t = cur; t.push_back(j);
       std::sort(t.begin(), t.end());
       vaeBnbLeaf(c, t);
@@ -13454,8 +13548,12 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
       vaeBnbLeaf(c, t);
     }
     for (size_t d = 0; d < cur.size(); ++d) {            // swap
+      // the swap vacates cur[d], so feasibility is judged against the REST of the
+      // support -- swapping one shape of a covariate for another must stay legal
+      std::vector<int> rest = cur; rest.erase(rest.begin() + d);
       for (int j = 0; j < nCov; ++j) {
         if (inSet[(size_t)j]) continue;
+        if (!vaeGroupFree(c, rest, j)) continue;
         std::vector<int> t = cur; t[d] = j;
         std::sort(t.begin(), t.end());
         vaeBnbLeaf(c, t);
@@ -13471,11 +13569,13 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
 static VaeSubsetFit vaeCandidateSubsetL0(const arma::vec& y, const arma::mat& X,
                                          double omega, double penalty,
                                          const std::vector<std::vector<int> >& cands,
-                                         bool polish) {
+                                         bool polish,
+                                         const std::vector<int>* grp = nullptr) {
   const int nCov = (int)X.n_cols - 1;
   VaeBnbCtx c;
   c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
   c.strategy = VAE_BNB_LIFO;  // unused here; the frontier discipline has no role
+  c.grp = grp;
   c.bestScore = std::numeric_limits<double>::infinity();
   vaeBnbLeaf(c, std::vector<int>());   // the intercept-only model is always in play
   vaeScoreCandidates(c, nCov, cands);
@@ -13755,6 +13855,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !Rf_isNull(prep["covAllow"]);
   arma::imat covAllow;
   if (haveCovAllow) covAllow = as<arma::imat>(prep["covAllow"]);
+  // covGroup: mutual-exclusion group per covariate column, so alternate SHAPES of
+  // one covariate compete for a single slot.  Absent (older serialized preps, or a
+  // single-shape search) leaves every column unconstrained.
+  std::vector<int> covGroup;
+  if (prep.containsElementNamed("covGroup") && !Rf_isNull(prep["covGroup"])) {
+    Rcpp::IntegerVector g = as<Rcpp::IntegerVector>(prep["covGroup"]);
+    covGroup.assign(g.begin(), g.end());
+    for (size_t j = 0; j < covGroup.size(); ++j) {
+      if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covGroup[j] = -1;
+    }
+  }
   // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
   // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
   // Resolved in R (that is where the suggested-package check and the $runInfo
@@ -14014,9 +14125,21 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           if (allowedG.n_elem > 0) Xk.cols(1, allowedG.n_elem) = covMat.cols(allowedG);
         }
         const arma::mat& Xuse = haveCovAllow ? Xk : X;
+        // the group ids must follow the design actually searched, so subset them
+        // to the allowed columns alongside Xk
+        std::vector<int> grpK;
+        if (!covGroup.empty()) {
+          if (haveCovAllow) {
+            grpK.resize(allowedG.n_elem);
+            for (size_t s = 0; s < allowedG.n_elem; ++s) grpK[s] = covGroup[(size_t)allowedG[s]];
+          } else {
+            grpK = covGroup;
+          }
+        }
+        const std::vector<int>* grpP = grpK.empty() ? nullptr : &grpK;
         VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
-          ? vaeCandidateSubsetL0(yk, Xuse, omega[k], covPenalty, cands[(size_t)k], true)
-          : vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
+          ? vaeCandidateSubsetL0(yk, Xuse, omega[k], covPenalty, cands[(size_t)k], true, grpP)
+          : vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy, grpP);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
@@ -14374,11 +14497,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 //[[Rcpp::export]]
 List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
                     LogicalVector isFree, double penaltyPerCov,
-                    std::string strategy = "lifo") {
+                    std::string strategy = "lifo",
+                    Rcpp::Nullable<Rcpp::IntegerVector> group = R_NilValue) {
   const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(strategy);
   const int zDim = (int)mu.n_cols;
   const int N = (int)mu.n_rows;
   const int nCov = (int)covMat.n_cols;
+  std::vector<int> grp = vaeGroupVec(group, nCov);
   // recycle length-1 omega/isFree to zDim (mirrors the caller-side rep_len);
   // otherwise require an exact per-eta length so we never index out of bounds.
   if (omega.n_elem == 1) omega = arma::vec(zDim, arma::fill::value(omega[0]));
@@ -14392,7 +14517,8 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
   arma::umat selected(zDim, nCov, arma::fill::zeros);
   for (int k = 0; k < zDim; ++k) {
     if (isFree[k]) continue;
-    VaeSubsetFit fit = vaeBestSubsetL0(mu.col(k), X, omega[k], penaltyPerCov, bnbStrategy);
+    VaeSubsetFit fit = vaeBestSubsetL0(mu.col(k), X, omega[k], penaltyPerCov, bnbStrategy,
+                                       grp.empty() ? nullptr : &grp);
     intercept[k] = fit.coef.n_elem ? fit.coef[0] : 0.0;
     for (size_t s = 0; s < fit.sel.size(); ++s) {
       beta(k, fit.sel[s]) = fit.coef[s + 1];
@@ -14408,10 +14534,12 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
 // objective and optionally polish.  One latent dimension per call.
 //[[Rcpp::export]]
 List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega,
-                       double penaltyPerCov, List supports, bool polish = true) {
+                       double penaltyPerCov, List supports, bool polish = true,
+                       Rcpp::Nullable<Rcpp::IntegerVector> group = R_NilValue) {
   const int N = (int)covMat.n_rows;
   const int nCov = (int)covMat.n_cols;
   if ((int)y.n_elem != N) Rcpp::stop("'y' must have length nrow(covMat) (%d)", N);
+  std::vector<int> grp = vaeGroupVec(group, nCov);
   arma::mat X(N, 1 + nCov); X.col(0).ones();
   if (nCov > 0) X.cols(1, nCov) = covMat;
   std::vector<std::vector<int> > cands((size_t)supports.size());
@@ -14419,7 +14547,8 @@ List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega,
     IntegerVector s = as<IntegerVector>(supports[i]);
     cands[(size_t)i].assign(s.begin(), s.end());
   }
-  VaeSubsetFit fit = vaeCandidateSubsetL0(y, X, omega, penaltyPerCov, cands, polish);
+  VaeSubsetFit fit = vaeCandidateSubsetL0(y, X, omega, penaltyPerCov, cands, polish,
+                                          grp.empty() ? nullptr : &grp);
   NumericVector beta(nCov);
   IntegerVector selected(nCov);
   for (size_t s = 0; s < fit.sel.size(); ++s) {
