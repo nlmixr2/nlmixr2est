@@ -18,6 +18,10 @@ vaeControl(
   covariateSelection = TRUE,
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
   covSelectAlpha = 2,
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
@@ -116,6 +120,33 @@ centering -- is evaluated into an internal `nlmixrMuDerCov#` data column and
 the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
 VAE covariate search never re-centers it.  The original expression is
 restored in the reported model.}
+
+\item{shapes}{Which parameterizations ("shapes") of a continuous covariate
+the automatic search may consider, using the same vocabulary as
+`nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+(`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+and `"center"` (`beta*(COV/ctr)`).  At most one shape of a covariate may
+enter a given parameter.  Because the selection objective is an ordinary
+least squares fit with a free intercept, `"power"`/`"log"` span the same
+model, as do `"lin"`/`"identity"`/`"center"`; the shape therefore decides
+how an accepted relationship is written back, and when several eligible
+shapes span the same model the one listed first wins.  May also be a list
+named by covariate (`list(WT = "power")`) or a list of
+`list(var=, covar=, shapes=)` items to restrict a single
+parameter/covariate pair; anything not named keeps every shape.  Which
+covariates are searched is controlled by `pinCovariates`, not here.
+Categorical covariates always enter as indicators and ignore this setting.}
+
+\item{covCenterType}{Statistic used to center a continuous covariate,
+`"median"` (default) or `"mean"`, computed over subjects rather than rows.}
+
+\item{covCenter}{Named numeric vector of centering values overriding
+`covCenterType` for those covariates, e.g. `c(WT = 70)`.  Names are matched
+case-insensitively.}
+
+\item{catCutoff}{Minimum proportion of subjects a non-reference level must
+hold to get its own indicator.  Rarer levels are lumped with the reference.
+Default `0.05`; `0` tests every level.}
 
 \item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
 penalty, ramped linearly from `covSelectAlpha` down to `1` over the

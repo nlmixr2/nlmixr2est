@@ -47,6 +47,29 @@
 #'   in `$runInfo`.  When the model declares no covariates there is nothing to
 #'   pin and the full search runs.  Has no effect when `covariateSelection` is
 #'   `FALSE`.
+#' @param shapes Which parameterizations ("shapes") of a continuous covariate
+#'   the automatic search may consider, using the same vocabulary as
+#'   `nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+#'   (`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+#'   and `"center"` (`beta*(COV/ctr)`).  At most one shape of a covariate may
+#'   enter a given parameter.  Because the selection objective is an ordinary
+#'   least squares fit with a free intercept, `"power"`/`"log"` span the same
+#'   model, as do `"lin"`/`"identity"`/`"center"`; the shape therefore decides
+#'   how an accepted relationship is written back, and when several eligible
+#'   shapes span the same model the one listed first wins.  May also be a list
+#'   named by covariate (`list(WT = "power")`) or a list of
+#'   `list(var=, covar=, shapes=)` items to restrict a single
+#'   parameter/covariate pair; anything not named keeps every shape.  Which
+#'   covariates are searched is controlled by `pinCovariates`, not here.
+#'   Categorical covariates always enter as indicators and ignore this setting.
+#' @param covCenterType Statistic used to center a continuous covariate,
+#'   `"median"` (default) or `"mean"`, computed over subjects rather than rows.
+#' @param covCenter Named numeric vector of centering values overriding
+#'   `covCenterType` for those covariates, e.g. `c(WT = 70)`.  Names are matched
+#'   case-insensitively.
+#' @param catCutoff Minimum proportion of subjects a non-reference level must
+#'   hold to get its own indicator.  Rarer levels are lumped with the reference.
+#'   Default `0.05`; `0` tests every level.
 #' @param muRefCovAlg When `TRUE` (default) an algebraic/centered covariate
 #'   effect written in the model (e.g. `wt.cl*(WT/70)` or `wt.cl*log(WT/70)`) is
 #'   handled as a mu2/mu3 reference: the covariate expression -- including its
@@ -325,6 +348,10 @@ vaeControl <- function(seed = 42L,
                        covariateSelection = TRUE,
                        pinCovariates = TRUE,
                        muRefCovAlg = TRUE,
+                       shapes = c("power", "lin", "log", "identity", "center"),
+                       covCenterType = c("median", "mean"),
+                       covCenter = NULL,
+                       catCutoff = 0.05,
                        covSelectAlpha = 2,
                        covSelectSmooth = TRUE,
                        gammaSeries = c("reference", "saem"),
@@ -386,6 +413,17 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(covariateSelection, len = 1, any.missing = FALSE)
   checkmate::assertLogical(pinCovariates, len = 1, any.missing = FALSE)
   checkmate::assertLogical(muRefCovAlg, len = 1, any.missing = FALSE)
+  ## validated here so a bad shape fails at vaeControl() rather than partway
+  ## through a fit; the rules themselves are rebuilt at data-prep time so the
+  ## control round-trips through do.call(vaeControl, .ctl)
+  .vaeResolveShapes(shapes)
+  covCenterType <- match.arg(covCenterType)
+  if (!is.null(covCenter)) {
+    checkmate::assertNumeric(covCenter, finite = TRUE, any.missing = FALSE,
+                             min.len = 1, names = "unique")
+  }
+  checkmate::assertNumeric(catCutoff, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
   gammaSeries <- match.arg(gammaSeries)
@@ -501,6 +539,10 @@ vaeControl <- function(seed = 42L,
                covariateSelection = covariateSelection,
                pinCovariates = pinCovariates,
                muRefCovAlg = muRefCovAlg,
+               shapes = shapes,
+               covCenterType = covCenterType,
+               covCenter = covCenter,
+               catCutoff = catCutoff,
                covSelectAlpha = covSelectAlpha,
                covSelectSmooth = covSelectSmooth,
                gammaSeries = gammaSeries,
