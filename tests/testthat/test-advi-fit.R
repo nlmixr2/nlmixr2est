@@ -73,4 +73,26 @@ nmTest({
     expect_equal(length(rOn$elbo), rOn$itRun)
     expect_true(all(is.finite(rOn$elbo)))
   })
+
+  test_that("prior tempering does not leak into the reported omega or eta search", {
+    ## A run that ENDS INSIDE the warm-up never reaches the iteration that
+    ## restores the tempering scale.  Because the reported population omega is
+    ## built through the same helper that applies that scale, the fit would
+    ## otherwise report an INFLATED omega -- silently, and only for short runs.
+    r <- suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
+              control = adviControl(iters = 10L, klWarmup = 50L, temperInit = 10,
+                                    seed = 7L, print = 0L, returnAdvi = TRUE,
+                                    tol = 0))))
+    expect_equal(unname(diag(r$popOmegaMat)), unname(r$popOmega), tolerance = 1e-12)
+    expect_true(all(r$popOmega > 0))
+
+    ## the adaptEta search must score candidates on the UNTEMPERED objective, so
+    ## turning tempering on must not change the step size it selects
+    .fit <- function(kl) suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
+              control = adviControl(iters = 60L, klWarmup = kl, seed = 7L,
+                                    print = 0L, returnAdvi = TRUE, tol = 0))))
+    expect_equal(.fit(0L)$etaScale, .fit(40L)$etaScale)
+  })
 })

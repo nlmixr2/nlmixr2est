@@ -10513,9 +10513,14 @@ static arma::mat vaeOmegaAsMat(RObject om) {
     return arma::diagmat(d);
   }
   arma::mat m = as<arma::mat>(om);
-  if (!_vaeOmHasOff && m.n_rows == m.n_cols && m.n_rows > 1 &&
-      arma::any(arma::vectorise(arma::trimatu(m, 1)) != 0.0))
-    stop("omega has off-diagonals but the inner problem was set up diagonal");
+  if (!_vaeOmHasOff && m.n_rows == m.n_cols && m.n_rows > 1) {
+    // BOTH triangles: a caller passing only the lower one would otherwise be
+    // silently collapsed to the diagonal rather than rejected
+    arma::mat off = m;
+    off.diag().zeros();
+    if (arma::any(arma::vectorise(off) != 0.0))
+      stop("omega has off-diagonals but the inner problem was set up diagonal");
+  }
   return m;
 }
 
@@ -12106,7 +12111,11 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;                            // global iteration index
-    adviTemperSet(gi);   // prior tempering warm-up (no-op when off)
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gOmAcc.begin(), gOmAcc.end(), 0.0);
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
@@ -12388,7 +12397,11 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
-    adviTemperSet(gi);   // prior tempering warm-up (no-op when off)
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gLAcc.begin(), gLAcc.end(), 0.0);
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
@@ -12546,7 +12559,11 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
-    adviTemperSet(gi);   // prior tempering warm-up (no-op when off)
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gScaleAcc.begin(), gScaleAcc.end(), 0.0);
     std::fill(gmPopAcc.begin(), gmPopAcc.end(), 0.0);
@@ -12920,6 +12937,13 @@ List adviOptimize_(List args) {
   }
 
   List res = run1(eta, iters, it0, 0, "SGA", 1);
+  // A run that ENDS INSIDE the warm-up (iters < klWarmup, or an early break)
+  // never reaches the gi >= klWarmup iteration that restores the scale, so the
+  // inflation would outlive the optimization: it would silently temper a later
+  // direct adviElboGrad_ call, and -- because adviPopOmFull applies the scale --
+  // the popOmegaMat materialized BELOW would be returned inflated.  This reset
+  // must therefore stay ABOVE the result-building block.
+  adviResetTemper();
   res["etaScale"] = eta;
   res["seed"] = seed;
   // an early ELBO-convergence stop leaves the tail of the trace zero-padded;
