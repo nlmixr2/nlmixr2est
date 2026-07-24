@@ -2,6 +2,15 @@
 
 ## New features
 
+- `est="vae"` and `est="advi"` now estimate the omega off-diagonals of a
+  correlated random-effect block (`eta.cl + eta.v ~ c(0.1, 0.01, 0.1)`), like
+  `saem` and the `focei` family.  Both previously kept only the variances and
+  reported the ini correlation unchanged.  The estimated block appears in
+  `fit$omega` and in the updated model's `ini()`.  Only the declared
+  off-diagonals are estimated -- a diagonal model is unchanged, and
+  `adviControl(pointEstimate=FALSE)` (full Bayes) errors on a correlated block
+  rather than silently dropping it.
+
 - `est="vae"` gains `vaeControl(covSelectMethod=)` and
   `vaeControl(covSelectMaxExact=)`, which make covariate selection practical on
   large candidate sets.  The exact branch-and-bound blows up past a few dozen

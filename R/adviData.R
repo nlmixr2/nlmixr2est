@@ -54,6 +54,8 @@
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     isTRUE(as.logical(.r$fix[1]))
   }, logical(1))
+  ## full ini omega block (declared off-diagonals included) + per-entry fix
+  .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
 
   ## which thetas are FIXED (held at ini, never gradient-updated)
   .thetaFix <- as.logical(.thRows$fix); .thetaFix[is.na(.thetaFix)] <- FALSE
@@ -88,6 +90,7 @@
        muRefThetaIdx = .cls$muRefThetaIdx, isFree = is.na(.cls$muRefThetaIdx),
        structIdx = .cls$struct, sigmaIdx = .cls$sigma, thetaSensIdx = .cls$thetaSensIdx,
        omega = .omega, omegaFix = .omegaFix,
+       omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
        errThetaIdx = .errThetaIdx, errType = .errType, a = .a,
        subj = subj, Nobs = .nobs)
 }

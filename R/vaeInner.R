@@ -56,13 +56,16 @@
   .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
   .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
-  ## force a diagonal "sqrt"-xform rxInv (the training parameterization): the
-  ## per-step C++ fast path (vaeInnerUpdatePar_) maps eta variances onto the
-  ## omega block of the reduced par vector, which requires omegan == neta
+  ## "sqrt"-xform rxInv on the model's DECLARED omega structure (diagonal plus
+  ## any correlated blocks): the per-step C++ fast path (vaeInnerUpdatePar_)
+  ## packs chol(Omega^-1) onto the omega block of the reduced par vector, using
+  ## the 0-based position list stashed here (column-major upper-tri restricted
+  ## to the structure -- rxSymInvCholCreate's parameter order)
   .om <- .ui$omega
-  .om <- diag(diag(.om), nrow(.om))
-  dimnames(.om) <- dimnames(.ui$omega)
   .env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
+  .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
+  diag(.selMat) <- TRUE
+  .env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
   ## nonMuTheta="grad": the augmented outer-gradient model is solved in the SHARED
   ## pool, so it must SIZE that pool -- it is the larger structure (26 states / 29
   ## lhs vs 6 / 6 on a one-compartment fit).  The inner MAP then runs under
@@ -111,15 +114,19 @@
 #' @param env the setup env from .vaeInnerSetup
 #' @param theta full theta vector (ntheta order): structural intercepts, error,
 #'   covariate betas, mixture probs
-#' @param omega diagonal random-effect variances (eta order)
+#' @param omega random-effect variances: full matrix, or a vector taken as the
+#'   diagonal (eta order)
 #' @param etaMat starting etas [nsub, neta]
 #' @noRd
 .vaeInnerUpdate <- function(env, theta, omega, etaMat, diagXform = "sqrt") {
   env$thetaIni <- setNames(as.numeric(theta), paste0("THETA[", seq_along(theta), "]"))
-  .om <- diag(omega, length(omega))
+  .om <- if (is.matrix(omega)) omega else diag(omega, length(omega))
   .nm <- env$etaNames
   if (!is.null(.nm) && length(.nm) == nrow(.om)) dimnames(.om) <- list(.nm, .nm)
   env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = diagXform)
+  .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
+  diag(.selMat) <- TRUE
+  env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
   env$etaMat <- etaMat
   vaeInnerSetup_(env)
   invisible(env)
@@ -140,7 +147,9 @@
     .c <- control$rxControl$cores
     if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
   }, error = function(e) 1L)
-  vaeElboStepCpp_(params, prep, zPop, as.numeric(omega), as.numeric(a),
+  vaeElboStepCpp_(params, prep, zPop,
+                  if (is.matrix(omega)) omega else as.numeric(omega),
+                  as.numeric(a),
                   as.numeric(alphaKL), as.matrix(eps), as.integer(nMix),
                   as.numeric(mixProb), .cores, isTRUE(withGrad))
 }

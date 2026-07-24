@@ -118,10 +118,18 @@
   ## everything else -- state init/resume, the mu-ref and full-Bayes phi maps,
   ## the adaptEta search, the main loop, and the derived result fields -- runs
   ## in one C++ call (a resumed seed/etaScale is picked up from `resume`)
+  ## correlated etas: the point-estimate families estimate the full omega block;
+  ## the full-Bayes path (pointEstimate=FALSE) parameterizes phi with per-eta
+  ## log-variances only, so it cannot carry an off-diagonal yet
+  if (.omegaHasOffDiag(.prep$omegaMat) && !isTRUE(control$pointEstimate)) {
+    stop("adviControl(pointEstimate=FALSE) does not support correlated etas",
+         call. = FALSE)
+  }
   .res <- adviOptimize_(list(
     pointEstimate = isTRUE(control$pointEstimate), fr = as.integer(.fr),
     N = as.integer(N),
     theta = as.numeric(.prep$theta), omega = as.numeric(.prep$omega),
+    omegaMat = .prep$omegaMat, omegaFixMat = .prep$omegaFixMat,
     muRefThetaIdx = as.integer(.prep$muRefThetaIdx),
     thetaFix = as.logical(.prep$thetaFix), omegaFix = as.logical(.prep$omegaFix),
     iters = as.integer(control$iters), seed = as.numeric(control$seed),
@@ -166,6 +174,18 @@
   .popOm <- stats::setNames(res$popOmega, .prep$etaNames)
   .etaRow <- !is.na(.idf$neta1) & .idf$neta1 == .idf$neta2
   .idf$est[.etaRow] <- .popOm[.idf$name[.etaRow]]
+  ## estimated off-diagonals (full omega block), keyed by the iniDf neta indices
+  .omM <- if (is.null(res$popOmegaMat)) diag(res$popOmega, .prep$neta) else res$popOmegaMat
+  dimnames(.omM) <- list(.prep$etaNames, .prep$etaNames)
+  .diagRow <- .idf[.etaRow, , drop = FALSE]
+  .etaIdx <- stats::setNames(match(.diagRow$name, .prep$etaNames),
+                             as.character(.diagRow$neta1))
+  .offRow <- which(!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2)
+  for (.r in .offRow) {
+    .i <- .etaIdx[as.character(.idf$neta1[.r])]
+    .j <- .etaIdx[as.character(.idf$neta2[.r])]
+    if (!is.na(.i) && !is.na(.j)) .idf$est[.r] <- .omM[.i, .j]
+  }
   assign("iniDf", .idf, envir = .uiD)
   .ui2 <- rxode2::rxUiCompress(.uiD)
 
@@ -177,9 +197,7 @@
   .ret$etaObf <- data.frame(ID = seq_len(nrow(.eb)),
                             stats::setNames(as.data.frame(.eb), .prep$etaNames),
                             OBJI = NA)
-  .om <- diag(res$popOmega, .prep$neta)
-  dimnames(.om) <- list(.prep$etaNames, .prep$etaNames)
-  .ret$omega <- .om
+  .ret$omega <- .omM
   .ret$ui <- .ui2
   .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
@@ -226,6 +244,7 @@
   .e <- .fit$env
   .e$adviElbo <- res$elbo
   .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
+              popOmegaMat = res$popOmegaMat,
               it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
               sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale,
               family = res$family, pointEstimate = res$pointEstimate)

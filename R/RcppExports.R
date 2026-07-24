@@ -184,8 +184,8 @@ vaeInnerSetup_ <- function(e) {
     .Call(`_nlmixr2est_vaeInnerSetup_`, e)
 }
 
-vaeInnerUpdatePar_ <- function(thFull, omegaDiag) {
-    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omegaDiag)
+vaeInnerUpdatePar_ <- function(thFull, omega) {
+    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omega)
 }
 
 vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {

@@ -139,11 +139,11 @@
 #'
 #' @param thVals full natural-scale theta vector, ntheta order
 #' @param ebes current encoder etas, `N x neta` (already centered on the baseline)
-#' @param omegaDiag current M-step omega diagonal
+#' @param omega current M-step omega: full matrix, or a vector taken as diagonal
 #' @return numeric gradient over `regNames` (same order), or `NULL` to make the
 #'   caller fall back to the bobyqa regression for this M-step
 #' @noRd
-.vaeGradEval <- function(thVals, ebes, omegaDiag) {
+.vaeGradEval <- function(thVals, ebes, omega) {
   if (isTRUE(.vaeGradEnv$failed)) return(NULL)
   .ui <- .vaeGradEnv$ui
   .reg <- .vaeGradEnv$regNames
@@ -152,7 +152,7 @@
   .vaeGradEnv$active <- TRUE
   on.exit(.vaeGradEnv$active <- FALSE, add = TRUE)
   tryCatch({
-    .Om <- diag(as.numeric(omegaDiag), nrow = length(omegaDiag))
+    .Om <- if (is.matrix(omega)) omega else diag(as.numeric(omega), nrow = length(omega))
     .st <- .foceiAnalyticGradSetup(.ui, thVals, .Om, caller = "vae")
     if (is.null(.st)) { .vaeGradEnv$failed <- TRUE; return(NULL) }
     if (ncol(ebes) != .st$neta) { .vaeGradEnv$failed <- TRUE; return(NULL) }

@@ -68,8 +68,8 @@
     if (!is.na(thetaNames[k])) {
       ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
     }
-    ui2 <- .setIni(ui2, paste0(fit$prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
   }
+  ui2 <- .omegaWriteIni(ui2, .omegaFitMat(fit, fit$prep$etaNames))
   for (bn in names(betaVals)) ui2 <- .setIni(ui2, paste0(bn, " <- ", signif(betaVals[[bn]], 12)))
   .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (en in .errRow$name) {
@@ -129,13 +129,13 @@
     ui2 <- .setIni(ui2, paste0(.inRows$coefName[.r], " <- ", signif(.betaVal, 12)))
   }
 
-  ## 2. structural population thetas + omega per eta
+  ## 2. structural population thetas + omega (block-aware)
   for (k in seq_along(thetaNames)) {
     if (!is.na(thetaNames[k])) {
       ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
     }
-    ui2 <- .setIni(ui2, paste0(prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
   }
+  ui2 <- .omegaWriteIni(ui2, .omegaFitMat(fit, prep$etaNames))
 
   ## 3. residual error params
   .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
@@ -253,7 +253,8 @@
   .ret$adjObf <- .control$adjObf
   ## the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
   .ret$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
-                   covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega, a = fit$a,
+                   covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega,
+                   omegaMat = fit$omegaMat, a = fit$a,
                    covSelectMethodUsed = fit$covSelectMethodUsed,
                    seed = .control$seed)
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
@@ -291,14 +292,12 @@
       .ret$etaObf <- .eo
     }
   }
-  ## 3. omega -- dimnamed by the UI eta names; the VAE estimates a diagonal, and an
-  ##    occasion eta keeps whatever the model fixed it at
+  ## 3. omega -- dimnamed by the UI eta names, from the updated iniDf: the VAE
+  ##    estimates the full modeled block (diagonal + declared off-diagonals);
+  ##    an occasion eta keeps whatever the model fixed it at
   if (!exists("omega", envir = .ret, inherits = FALSE)) {
-    .om <- matrix(0, length(.etaU), length(.etaU), dimnames = list(.etaU, .etaU))
-    for (.e in .etaU) {
-      .v <- .idf2$est[!is.na(.idf2$neta1) & .idf2$neta1 == .idf2$neta2 & .idf2$name == .e]
-      if (length(.v) == 1L && is.finite(.v)) .om[.e, .e] <- .v
-    }
+    .om <- .omegaBlockFromIniDf(.idf2, .etaU)$mat
+    .om[!is.finite(.om)] <- 0
     .ret$omega <- .om
   }
   ## 4/5. cov + objective are deliberately NOT set: the builder derives them from
