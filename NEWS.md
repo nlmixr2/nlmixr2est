@@ -918,9 +918,11 @@
   frozen at its initial value under `nonMuTheta="none"` and, under
   `nonMuTheta="eta"`/`"fix"`, an eta was injected into the mu-referenced
   expression, erroring the fit ("2+ single population parameters in a single
-  mu-referenced expression").  Covariate-coefficient detection now follows the
-  covariate through intermediate assignments, so the declared effect is estimated
-  in every `nonMuTheta` mode (issue #801).
+  mu-referenced expression").  Covariate-coefficient detection now reads rxode2's
+  own `mu2RefCovariateReplaceDataFrame` (the same table `.uiModifyForCovs` folds
+  into an `nlmixrMuDerCov#` column), which already recognizes the coefficient
+  through the intermediate, so the declared effect is estimated in every
+  `nonMuTheta` mode (issue #801).
 
 - Fixed `est="vae"` with `vaeControl(nonMuTheta="grad")` silently discarding
   every update to a residual-error parameter.  An error parameter's live value is

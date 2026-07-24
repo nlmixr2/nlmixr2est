@@ -237,37 +237,24 @@ nmTest({
       cp <- center / v; cp ~ add(add.err) })
   }
 
-  test_that(".vaeCovDerivedVars propagates a covariate through an intermediate var", {
-    ## WT -> wt70 (pure covariate transform).  Propagation stops at `cl`: its RHS
-    ## mixes the covariate with model parameters (tcl, cl.wt, eta.cl), so cl is
-    ## NOT covariate-derived -- otherwise a downstream structural theta merely
-    ## multiplying cl would be mis-detected as a covariate coefficient.
-    dv <- .vaeCovDerivedVars(rxode2::assertRxUi(.ind()))
-    expect_true(all(c("WT", "wt70") %in% dv))
-    expect_false(any(c("cl", "center", "cp", "v", "ka") %in% dv))
-    ## no covariate -> empty (nothing derived)
-    noCov <- function() {
-      ini({ tka <- 0.45; add.err <- 0.7; eta.ka ~ 0.1 })
-      model({ ka <- exp(tka + eta.ka); d/dt(depot) <- -ka * depot
-        cp <- depot; cp ~ add(add.err) })
-    }
-    expect_equal(.vaeCovDerivedVars(rxode2::assertRxUi(noCov)), character(0))
-  })
-
   test_that(".vaeCovariateCoefThetas detects a coefficient behind an intermediate var", {
-    expect_equal(.vaeCovariateCoefThetas(rxode2::assertRxUi(.ind())), "cl.wt")
+    ## rxode2 records the coefficient in mu2RefCovariateReplaceDataFrame even when
+    ## the covariate reaches the line via an intermediate (`wt70 <- WT/70`), so it
+    ## is classified as a covariate coefficient, not a plain non-mu structural theta.
+    ui <- rxode2::assertRxUi(.ind())
+    expect_true("cl.wt" %in% ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+    expect_equal(.vaeCovariateCoefThetas(ui), "cl.wt")
     ## and it is NOT offered to the nonMuTheta eta/fix injection (it errored before)
-    expect_false("cl.wt" %in% .vaeNonMuThetas(rxode2::assertRxUi(.ind())))
+    expect_false("cl.wt" %in% .vaeNonMuThetas(ui))
   })
 
   test_that("a structural theta on/after a covariate line is not a covariate coef", {
     ## Two structural (non-random-effect) thetas that must NOT be swept into the
     ## covariate-coefficient set: `tka`, an additive intercept sharing beta.ka's
     ## covariate line; and `tlag`, a downstream multiplier of the (covariate-
-    ## bearing) `ka`.  Only `beta.ka` -- the multiplicative coefficient of the
-    ## covariate term -- is a coefficient.  Detection requires the multiplicative
-    ## form, so neither structural theta is mis-detected (and `ka` is not swept
-    ## into the covariate-derived set, since its RHS mixes in parameters).
+    ## bearing) `ka`.  rxode2 classifies only `beta.ka` as the covariate
+    ## coefficient (mu2RefCovariateReplaceDataFrame), so neither structural theta
+    ## is mis-detected.
     struct <- function() {
       ini({ tka <- 0.45; beta.ka <- 0.1; tcl <- 1; tv <- 3.45; tlag <- 0.5
             add.err <- 0.7; eta.cl ~ 0.1 })
@@ -278,7 +265,6 @@ nmTest({
         cp <- center / v; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(struct())
-    expect_false("ka" %in% .vaeCovDerivedVars(ui))         # parameter line not propagated
     expect_equal(.vaeCovariateCoefThetas(ui), "beta.ka")   # only the real coefficient
     expect_true(all(c("tka", "tlag") %in% .vaeNonMuThetas(ui)))  # structural thetas kept
   })

@@ -31,19 +31,17 @@
 
 #' Covariate-coefficient thetas of a VAE model (the parameters that multiply a
 #' data covariate in a mu-referenced expression).  Read-only over the SHARED
-#' `muRefCovariateDataFrame`/`allCovs` UI fields -- the same covariate identity
-#' SAEM (saemMuRefCovariateDataFrame) and FOCEI (muRefClassify groups) consume --
-#' so nothing here mutates the shared covariate representation.
+#' rxode2 covariate classification -- nothing here mutates it.
 #'
-#' Two categories are returned:
-#'  (a) linear effects rxode2 records in `muRefCovariateDataFrame` (`beta*WT`);
-#'  (b) transformed effects it does NOT (`beta*log(WT/70)`) -- detected as a
-#'      non-mu, non-error theta whose EVERY referencing model line also mentions
-#'      a data covariate (a plain structural theta appears in at least one
-#'      covariate-free line, so it is not mis-caught).  A covariate reaching the
-#'      coefficient's line only through an intermediate model variable (e.g.
-#'      `wt70 <- WT/70; ... beta*log(wt70)`) still counts, via the covariate's
-#'      transitive dependents (`.vaeCovDerivedVars`).
+#' Uses rxode2's own authoritative covariate-coefficient tables so a coefficient
+#' is recognized exactly when (and identically to how) rxode2/SAEM/FOCEI see it:
+#'  (a) `muRefCovariateDataFrame` -- linear mu-ref covariates (`beta*WT`);
+#'  (b) `mu2RefCovariateReplaceDataFrame` -- algebraic/centered mu2/mu3/mu4
+#'      covariates (`beta*log(WT/70)`), INCLUDING a covariate reached through an
+#'      intermediate model variable (`wt70 <- WT/70; ... beta*log(wt70)`).  This
+#'      is the same table `.uiModifyForCovs` folds into an `nlmixrMuDerCov#`
+#'      column, so an indirect covariate coefficient is classified here rather
+#'      than being mistaken for a plain non-mu structural theta.
 #' User-fixed coefficients (`fix=TRUE`) are dropped.
 #' @param ui rxode2 ui
 #' @return character vector of theta names (possibly empty)
@@ -53,73 +51,13 @@
   .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
   if (nrow(.th) == 0L) return(character(0))
   .thNames <- .th$name
-  .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
-  ## (a) rxode2-recognized linear mu-ref covariate coefficients
+  ## (a) linear mu-ref covariate coefficients
   .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
              else as.character(ui$muRefCovariateDataFrame$covariateParameter)
-  ## (b) transformed covariate effects: a non-mu theta that, in EVERY line
-  ## referencing it, appears as a multiplicative coefficient of a data covariate
-  ## (directly, or via a covariate-derived variable -- `.vaeCovDerivedVars`).
-  ## Requiring the multiplicative form -- not mere co-occurrence on a covariate
-  ## line -- keeps an additive structural intercept sharing a covariate line
-  ## (e.g. `tka` in `exp(tka + beta*log(wt70))`) from being mis-detected.
-  .covData <- .vaeCovDerivedVars(ui)
-  .transformed <- character(0)
-  if (length(.covData) > 0L) {
-    for (.p in setdiff(.thNames, .mu)) {
-      .lines <- Filter(function(e) .p %in% all.vars(e), ui$lstExpr)
-      if (length(.lines) == 0L) next
-      if (all(vapply(.lines, function(e) !is.null(.vaeCoefCov(e, .p, .covData)),
-                     logical(1)))) {
-        .transformed <- c(.transformed, .p)
-      }
-    }
-  }
-  intersect(unique(c(.linear, .transformed)), .thNames)
-}
-
-#' Data covariates plus the model variables transitively derived from them.
-#'
-#' A covariate effect may reach its coefficient's model line through an
-#' intermediate assignment (`wt70 <- WT/70; ka <- exp(lka + beta*log(wt70))`).
-#' Detecting the coefficient then needs the covariate's dependents, not just the
-#' covariate name.  Iterates model assignments with a plain-name LHS to a fixed
-#' point: a variable is covariate-derived when its defining RHS is a PURE
-#' covariate transform -- every variable it references is already covariate-
-#' derived (a unit conversion / log / centering, e.g. `wt70 <- WT/70`).  An
-#' assignment that mixes a covariate with a model parameter (e.g. a structural
-#' `theta`, as in `cl <- exp(tcl + beta*log(wt70) + eta.cl)`) is NOT propagated:
-#' the covariate's effect there is already carried by that line's own
-#' coefficient, and propagating would let a downstream structural theta that
-#' merely multiplies `cl` be mis-detected as a covariate coefficient.  Only plain
-#' `name <- expr` assignments are considered (ODE `d/dt(state)` and error `~`
-#' lines are not intermediates a covariate coefficient multiplies).
-#' @param ui rxode2 ui
-#' @return character vector: `ui$allCovs` plus derived variable names
-#' @noRd
-.vaeCovDerivedVars <- function(ui) {
-  .derived <- ui$allCovs
-  if (length(.derived) == 0L) return(character(0))
-  .asn <- Filter(function(e) {
-    is.call(e) && length(e) >= 3L && is.name(e[[2L]]) &&
-      (identical(e[[1L]], quote(`<-`)) || identical(e[[1L]], quote(`=`)))
-  }, ui$lstExpr)
-  repeat {
-    .added <- FALSE
-    for (.e in .asn) {
-      .lhs <- as.character(.e[[2L]])
-      if (.lhs %in% .derived) next
-      .rv <- all.vars(.e[[3L]])
-      ## pure covariate transform: references at least one variable, and every
-      ## variable it references is already covariate-derived
-      if (length(.rv) > 0L && all(.rv %in% .derived)) {
-        .derived <- c(.derived, .lhs)
-        .added <- TRUE
-      }
-    }
-    if (!.added) break
-  }
-  unique(.derived)
+  ## (b) algebraic/centered (mu2/mu3/mu4) covariate coefficients
+  .alg <- if (is.null(ui$mu2RefCovariateReplaceDataFrame)) character(0)
+          else as.character(ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+  intersect(unique(c(.linear, .alg)), .thNames)
 }
 
 #' Does this `nonMuTheta` mode estimate the theta in place (no injected eta)?
