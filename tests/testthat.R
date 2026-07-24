@@ -78,9 +78,10 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
     "vae-l0learn-fit", "split", "unary-mu", "timing"),
-  # batch 7 -- advi (variational inference) multi-iteration fits
+  # batch 7 -- advi (variational inference) multi-iteration fits, plus the
+  # cross-method omega off-diagonal fit checks (vae/advi/npag/npb)
   c("advi-repro", "advi-focei-agreement", "advi-neonatal", "advi-fullrank",
-    "advi-fullbayes"),
+    "advi-fullbayes", "omega-offdiag"),
   # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
