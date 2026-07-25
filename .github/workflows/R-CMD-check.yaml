@@ -54,6 +54,11 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # cache-version 2: drop caches holding qs2/stringfish binaries built
+          # against RcppParallel < 6.0.0 (pre-oneTBB); those fail to load with
+          # undefined tbb::internal symbols.  qs2/stringfish are forced to
+          # source so they always link the installed RcppParallel.
+          cache-version: 2
           extra-packages: |
             any::rcmdcheck
             nlmixr2/lbfgsb3c
@@ -64,6 +69,8 @@ jobs:
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             qs=?ignore
+            qs2=?source
+            stringfish=?source
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
