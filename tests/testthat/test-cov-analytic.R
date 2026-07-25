@@ -119,6 +119,14 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(setCov(fit, "analytic")))
     expect_identical(fit$covMethod, "analytic")
     expect_true(all(is.finite(sqrt(diag(fit$cov)))))
+    # issue #816: the displayed $parFixed must track the installed covariance,
+    # not just the numeric $parFixedDf
+    expect_equal(unname(fit$parFixedDf["add.sd", "SE"]),
+                 unname(sqrt(diag(fit$cov))["add.sd"]))
+    .seNum <- suppressWarnings(as.numeric(fit$parFixed["add.sd", "SE"]))
+    expect_true(is.finite(.seNum))
+    expect_equal(.seNum, signif(unname(fit$parFixedDf["add.sd", "SE"]), 3),
+                 tolerance = 1e-2)
   })
 
   test_that("finite-difference covMethod='r,s' covFull=TRUE installs the true full FD sandwich", {
