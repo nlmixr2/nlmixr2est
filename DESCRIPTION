@@ -57,7 +57,7 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (>= 5.1.3),
+    rxode2 (>= 5.1.5),
     stats,
     symengine,
     utils
@@ -71,7 +71,6 @@ Suggests:
     dplyr (>= 1.1.0),
     generics,
     nloptr,
-    qs2,
     sys,
     testthat,
     tibble,

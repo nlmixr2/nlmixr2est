@@ -1,3 +1,20 @@
+# nlmixr2est 7.0.2
+
+## Breaking changes
+
+- Dropped the `qs2` dependency (and with it `stringfish`, which no longer
+  loads against RcppParallel >= 6.0.0): the focei model disk cache now uses
+  RDS files and compressed fit components use base R serialization
+  (`rxode2::rxGetDefaultSerialize()`, "bzip2" by default).  Old fits holding
+  qs2-serialized components can still be read when the `qs2` package is
+  installed; otherwise accessing them warns and returns `NULL`.  Requires
+  rxode2 (>= 5.1.5) for `rxDeserialize()`.
+
+## Bug fixes
+
+- `nlmixr2fix()` now actually repairs serialized fit components: it previously
+  tested the component name (not the object) for rawness, so the repair loop
+  never ran, and a successful qs2 read was discarded.
 # nlmixr2est (development version)
 
 ## New features
