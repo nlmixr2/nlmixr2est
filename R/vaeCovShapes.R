@@ -157,6 +157,55 @@
   do.call(rbind, .out)
 }
 
+#' Is a shape usable at this centering value?
+#'
+#' `center` divides by the centering value and `log` takes its logarithm, so
+#' neither is expressible when the center is zero (or negative).  Without this
+#' guard a zero-centered covariate would be written as `beta*(COV/0)` with the
+#' coefficient rescaled to exactly 0 -- silently erasing a selected effect.
+#' @param shape shape name(s)
+#' @param center centering value
+#' @return logical, one per shape
+#' @noRd
+.vaeShapeUsable <- function(shape, center) {
+  vapply(shape, function(.s) {
+    switch(.s,
+           center = is.finite(center) && center != 0,
+           log = is.finite(center) && center > 0,
+           power = is.finite(center) && center > 0,
+           TRUE)
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+#' Per-(latent dim, column) mask of shapes the user allows
+#'
+#' `shapes=` may restrict a single (parameter, covariate) pair, but the design
+#' matrix is shared across latent dimensions, so the restriction has to be
+#' enforced as a mask rather than by omitting columns.  Categorical columns are
+#' never restricted -- `shapes=` governs continuous parameterizations only.
+#' @param cov output of `.vaeCovariateSearch`
+#' @param rules output of `.vaeResolveShapes`
+#' @param etaNames per-latent-dim random-effect names
+#' @keywords internal
+#' @param thetaForEta per-latent-dim mu-referenced theta names (may be NA)
+#' @return integer 0/1 matrix, `length(etaNames)` by `ncol(cov$covMat)`
+#' @noRd
+.vaeShapeAllowMask <- function(cov, rules, etaNames, thetaForEta) {
+  .nCov <- length(cov$covNames)
+  .m <- matrix(1L, length(etaNames), .nCov)
+  if (.nCov == 0L || is.null(rules)) return(.m)
+  for (.k in seq_along(etaNames)) {
+    .al <- c(etaNames[.k], thetaForEta[.k], sub("^eta\\.", "", etaNames[.k]))
+    .al <- unique(.al[!is.na(.al)])
+    for (.j in seq_len(.nCov)) {
+      if (identical(cov$covFamily[.j], "cat")) next
+      .ok <- .vaeShapesFor(rules, .al, cov$covRaw[.j])
+      if (!(cov$covFamily[.j] %in% .vaeShapeFamily(.ok))) .m[.k, .j] <- 0L
+    }
+  }
+  .m
+}
+
 #' Shapes allowed for one (parameter, covariate) pair
 #'
 #' The most specific matching rule wins: (var, cov) beats cov-only, which beats

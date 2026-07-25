@@ -98,17 +98,32 @@
 #' @return character vector of families, canonical order, plus the representative
 #'   shape naming each one
 #' @noRd
-.vaeCovFamilies <- function(shapeRules, cov) {
+.vaeCovFamilies <- function(shapeRules, cov, center = NA_real_) {
   .sh <- unique(unlist(lapply(seq_len(nrow(shapeRules)), function(.i) {
     if (is.na(shapeRules$cov[.i]) || identical(shapeRules$cov[.i], toupper(cov))) {
       shapeRules$shapes[[.i]]
     } else character(0)
   })))
   if (length(.sh) == 0L) .sh <- .vaeContShapes
+  ## Drop shapes that cannot be written at this center before choosing which one
+  ## names each family, so a usable sibling (e.g. "lin" for "center") wins.  When
+  ## NOTHING requested is writable, substitute each family's plain form rather
+  ## than dropping the covariate from the search -- the caller reports it.
+  .sub <- FALSE
+  if (!is.na(center)) {
+    .u <- .sh[.vaeShapeUsable(.sh, center)]
+    if (length(.u) > 0L) {
+      .sh <- .u
+    } else {
+      .sh <- unname(c(log = "power", lin = "lin")[unique(.vaeShapeFamily(.sh))])
+      .sub <- TRUE
+    }
+  }
   .fam <- .vaeShapeFamily(.sh)
   .u <- unique(.fam)
-  list(family = .u, repShape = vapply(.u, function(.f) .sh[which(.fam == .f)[1L]],
-                                      character(1), USE.NAMES = FALSE))
+  list(family = .u, substituted = .sub,
+       repShape = vapply(.u, function(.f) .sh[which(.fam == .f)[1L]],
+                         character(1), USE.NAMES = FALSE))
 }
 
 #' Discover + encode subject-level covariates for the VAE search
@@ -159,7 +174,9 @@
   .cols <- list()
   .catDropped <- character(0)
   .logDrop <- character(0)
-  .grp <- 0L
+  .shapeSub <- character(0)
+  ## `group` is a KEY here (columns sharing it are alternate forms of one
+  ## relationship); it becomes an integer id once every column is known
   .add <- function(name, raw, shape, family, level, group, values, type,
                    center, expr) {
     .cols[[length(.cols) + 1L]] <<-
@@ -181,18 +198,21 @@
     ## the structural theta stays the reference (0) value.  (`%in%` yields FALSE
     ## for NA, so this is already a strict TRUE/FALSE; isTRUE makes that explicit.)
     .isInd <- .isNum && isTRUE(all(v %in% c(0, 1)))
-    .grp <- .grp + 1L
     if (.isMuDer) {
       .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
-      .add(nm, nm, "lin", "lin", NA_character_, .grp, v - .ctr, "categorical",
+      .add(nm, nm, "lin", "lin", NA_character_, nm, v - .ctr, "categorical",
            .ctr, .vaeShapeExpr("lin", nm, .ctr))
     } else if (.isInd) {
-      .add(nm, nm, "cat", "cat", NA_character_, .grp, v, "categorical", 0,
+      .add(nm, nm, "cat", "cat", NA_character_, nm, v, "categorical", 0,
            .vaeShapeExpr("cat", nm, raw = TRUE))
     } else if (.isNum && length(unique(v)) > 2L) {
       ## continuous: one column per eligible shape family
-      .fam <- .vaeCovFamilies(shapeRules, nm)
       .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
+      ## a shape that cannot be expressed at this center (e.g. "center" when the
+      ## center is 0) must not name a column -- it would be written back as a
+      ## division by zero with the coefficient rescaled to nothing
+      .fam <- .vaeCovFamilies(shapeRules, nm, .ctr)
+      if (isTRUE(.fam$substituted)) .shapeSub <- c(.shapeSub, nm)
       .canLog <- all(v > 0) && .ctr > 0
       .f <- .fam$family; .r <- .fam$repShape
       .keep <- .f != "log" | .canLog
@@ -208,7 +228,9 @@
       }
       for (.i in seq_along(.f)) {
         .val <- if (.f[.i] == "log") log(v / .ctr) else v - .ctr
-        .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, .grp,
+        ## every shape family of this covariate shares the covariate's key, so
+        ## the search may take at most one of them
+        .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, nm,
              .val, "continuous", .ctr, .vaeShapeExpr(.r[.i], nm, .ctr))
       }
     } else {
@@ -221,12 +243,11 @@
       }
       .s <- as.character(v)
       for (.l in .lv$levels) {
-        .add(paste0(nm, "_", .l), nm, "cat", "cat", .l, .grp,
+        ## a distinct key per level, so levels never exclude one another
+        .add(paste0(nm, "_", .l), nm, "cat", "cat", .l, paste0(nm, "|", .l),
              as.numeric(!is.na(.s) & .s == .l), "categorical", 0,
              .vaeShapeExpr("cat", nm, level = .vaeCovLevelValue(v, .l)))
-        .grp <- .grp + 1L
       }
-      .grp <- .grp - 1L
     }
   }
 
@@ -234,7 +255,10 @@
   .covNames <- vapply(.cols, `[[`, character(1), "name")
   .covMat <- matrix(0, N, .nc, dimnames = list(NULL, .covNames))
   for (.i in seq_len(.nc)) .covMat[, .i] <- .cols[[.i]]$values
-  .covGroup <- vapply(.cols, `[[`, integer(1), "group")
+  ## group ids are derived from the keys rather than counted as columns are
+  ## emitted, so a covariate that contributes NO column cannot shift them
+  .key <- vapply(.cols, `[[`, character(1), "group")
+  .covGroup <- match(.key, unique(.key))
   list(covNames = .covNames,
        covRaw = vapply(.cols, `[[`, character(1), "raw"),
        covShape = vapply(.cols, `[[`, character(1), "shape"),
@@ -248,7 +272,8 @@
        ## the encoder head takes one column per GROUP: alternate shapes are
        ## near-collinear copies, but distinct factor levels are not
        covCanon = !duplicated(.covGroup),
-       tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop))
+       tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
+       shapeSub = unique(.shapeSub))
 }
 
 #' Search column a model-declared covariate pair pins to
@@ -704,6 +729,10 @@ vaeCovariates <- function(data, warn = TRUE,
     .ldPre <- "non-positive covariate(s), log shapes skipped: "
     warning(.ldPre, .vaeTruncList(.cov$logDrop, prefix = .ldPre), call. = FALSE)
   }
+  if (length(.cov$shapeSub) > 0L) {
+    .ssPre <- "shape unwritable at center, plain form used: "
+    warning(.ssPre, .vaeTruncList(.cov$shapeSub, prefix = .ssPre), call. = FALSE)
+  }
 
   ## pinCovariates=FALSE with a model that declares covariates: turn OFF the
   ## automatic search and estimate every declared covariate in place by the
@@ -803,6 +832,21 @@ vaeCovariates <- function(data, warn = TRUE,
       if (length(.pinCovCoef) > 0L) {
         warning("pinned covariate(s) outside search pool estimated in place", call. = FALSE)
       }
+    }
+  }
+
+  ## `shapes=` may restrict a single (parameter, covariate) pair, but the design
+  ## matrix is shared across latent dimensions, so a per-pair restriction has to
+  ## be enforced as a mask -- omitting the column would remove that shape from
+  ## every parameter.  Intersect it with any pin mask; if nothing is restricted
+  ## the mask stays NULL and C++ runs the unrestricted search.
+  if (!.searchOff && length(.cov$covNames) > 0L) {
+    .shapeMask <- .vaeShapeAllowMask(.cov, .vaeResolveShapes(.csh), .etaNames,
+                                     .foceiEtaThetaMap(ui)$thetaForEta)
+    if (is.null(.covAllow)) {
+      if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
+    } else {
+      .covAllow <- .covAllow * .shapeMask
     }
   }
 
@@ -1003,15 +1047,18 @@ vaeCovariates <- function(data, warn = TRUE,
   ## One column per exclusion GROUP: alternate shapes of a covariate are
   ## near-collinear copies, so feeding all of them would widen the encoder head
   ## for no information.  Distinct factor levels are separate groups and all go in.
-  covIn <- if (isFALSE(control$covariateSelection) || .searchOff) {
+  ## Dedupe among the SELECTABLE columns, not against a fixed canonical column:
+  ## the allowed column of a group need not be the group's first one (a pinned
+  ## log(cov/center) pair takes the log column even when `shapes=` lists a linear
+  ## shape first), and intersecting the two would drop the covariate entirely.
+  covIn <- if (isFALSE(control$covariateSelection) || .searchOff ||
+                 ncol(.cov$covMat) == 0L) {
     matrix(0, N, 0L)
-  } else if (!is.null(.covAllow) && ncol(.cov$covMat) > 0L) {
-    .keep <- which(colSums(.covAllow) > 0L & .cov$covCanon)
-    .cov$covMat[, .keep, drop = FALSE]
-  } else if (ncol(.cov$covMat) > 0L) {
-    .cov$covMat[, .cov$covCanon, drop = FALSE]
   } else {
-    .cov$covMat
+    .sel <- if (is.null(.covAllow)) seq_len(ncol(.cov$covMat)) else
+      which(colSums(.covAllow) > 0L)
+    .keep <- .sel[!duplicated(.cov$covGroup[.sel])]
+    .cov$covMat[, .keep, drop = FALSE]
   }
   if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
 

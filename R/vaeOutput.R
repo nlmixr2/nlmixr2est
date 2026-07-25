@@ -24,8 +24,12 @@
   .own <- prep$covShape[j]
   if (identical(.own, "cat") || is.null(prep$shapeRules)) return(.own)
   .ok <- .vaeShapesFor(prep$shapeRules, parAliases, prep$covRaw[j])
+  ## never write a shape that is not expressible at this center
+  .ok <- .ok[.vaeShapeUsable(.ok, prep$covPop[j])]
   if (length(.ok) == 0L) return(.own)
   .m <- .ok[.vaeShapeFamily(.ok) == prep$covFamily[j]]
+  ## the covAllow shape mask makes an empty match unreachable in a real fit;
+  ## the column's own shape is a valid parameterization of the same family
   if (length(.m) == 0L) .own else .m[1L]
 }
 

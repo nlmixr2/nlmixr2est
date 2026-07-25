@@ -105,3 +105,78 @@ nmTest({
     expect_error(.vaeResolveShapes("cat"), "unknown covariate shape")
   })
 })
+
+## Regressions for three bugs found in independent review of this feature.
+nmTest({
+  .pinLog <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wt.cl <- 0.1; add.err <- 0.7
+      eta.cl ~ 0.1 })
+    model({ ka <- exp(tka); cl <- exp(tcl + wt.cl * log(WT / 70) + eta.cl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v; cp ~ add(add.err) })
+  }
+
+  test_that("a per-parameter shapes= rule is enforced, not just widened", {
+    ## WT is power-only on cl and lin-only on v.  Both columns must exist (the
+    ## design is shared), so the restriction has to land in the covAllow mask --
+    ## otherwise cl could be given the linear column it forbids.
+    ctl <- vaeControl(shapes = list(list(var = "cl", covar = "wt", shapes = "power"),
+                                    list(var = "v", covar = "wt", shapes = "lin")),
+                      muRefCovAlg = FALSE)
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7
+        eta.cl ~ 0.1; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), nlmixr2data::theo_sd, ctl))
+    expect_setequal(p$covShape, c("power", "lin"))
+    expect_false(is.null(p$covAllow))
+    .k <- match("eta.cl", p$etaNames)
+    .kv <- match("eta.v", p$etaNames)
+    .jp <- match("power", p$covShape)
+    .jl <- match("lin", p$covShape)
+    ## cl may only take the log family, v may only take the linear one
+    expect_equal(p$covAllow[.k, .jp], 1L)
+    expect_equal(p$covAllow[.k, .jl], 0L)
+    expect_equal(p$covAllow[.kv, .jp], 0L)
+    expect_equal(p$covAllow[.kv, .jl], 1L)
+  })
+
+  test_that("a pinned column that is not its group's first still reaches the encoder", {
+    ## shapes= lists lin first, so WT_lin is the group's leading column while the
+    ## pinned log(WT/70) pair takes WT_power -- deduping the encoder input against
+    ## a fixed canonical column would drop WT from the encoder entirely
+    ctl <- vaeControl(shapes = c("lin", "power"), muRefCovAlg = FALSE)
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.pinLog()),
+                                       nlmixr2data::theo_sd, ctl))
+    expect_equal(p$covNames, c("WT_lin", "WT_power"))
+    expect_equal(which(colSums(p$covAllow) > 0L), 2L)
+    expect_equal(ncol(p$covIn), 1L)
+    expect_equal(unname(p$covIn[, 1]), unname(p$covMat[, 2]))
+  })
+
+  test_that("a shape that cannot be written at its center is not used", {
+    ## "center" would emit beta*(COV/0) and rescale the coefficient to exactly 0
+    expect_false(.vaeShapeUsable("center", 0))
+    expect_false(.vaeShapeUsable("log", 0))
+    expect_true(.vaeShapeUsable("lin", 0))
+    expect_true(.vaeShapeUsable("identity", 0))
+    ## a covariate whose center is 0 falls back to a writable sibling shape
+    d <- data.frame(id = rep(1:4, each = 3), time = rep(0:2, 4), dv = 1:12,
+                    score = rep(c(-3, -1, 1, 3), each = 3))
+    res <- vaeCovariates(d, shapes = c("center", "lin"))
+    expect_equal(unique(res$center), 0)
+    expect_false(any(res$shape == "center"))
+    expect_true(all(res$shape == "lin"))
+    ## when NOTHING requested is writable the plain form of the family is
+    ## substituted, so the covariate stays searchable rather than vanishing
+    res0 <- vaeCovariates(d, shapes = "center", covCenter = c(score = 0))
+    expect_equal(res0$shape, "lin")
+    expect_equal(nrow(res0), 1L)
+  })
+})
