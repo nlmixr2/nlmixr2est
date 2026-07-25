@@ -1131,8 +1131,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeBestSubset_
-List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov, std::string strategy);
-RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP, SEXP strategySEXP) {
+List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov, std::string strategy, Rcpp::Nullable<Rcpp::IntegerVector> group);
+RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP, SEXP strategySEXP, SEXP groupSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1142,13 +1142,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< LogicalVector >::type isFree(isFreeSEXP);
     Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
     Rcpp::traits::input_parameter< std::string >::type strategy(strategySEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov, strategy));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::IntegerVector> >::type group(groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov, strategy, group));
     return rcpp_result_gen;
 END_RCPP
 }
 // vaeScoreSupports_
-List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega, double penaltyPerCov, List supports, bool polish);
-RcppExport SEXP _nlmixr2est_vaeScoreSupports_(SEXP ySEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP penaltyPerCovSEXP, SEXP supportsSEXP, SEXP polishSEXP) {
+List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega, double penaltyPerCov, List supports, bool polish, Rcpp::Nullable<Rcpp::IntegerVector> group);
+RcppExport SEXP _nlmixr2est_vaeScoreSupports_(SEXP ySEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP penaltyPerCovSEXP, SEXP supportsSEXP, SEXP polishSEXP, SEXP groupSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1158,7 +1159,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
     Rcpp::traits::input_parameter< List >::type supports(supportsSEXP);
     Rcpp::traits::input_parameter< bool >::type polish(polishSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeScoreSupports_(y, covMat, omega, penaltyPerCov, supports, polish));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::IntegerVector> >::type group(groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeScoreSupports_(y, covMat, omega, penaltyPerCov, supports, polish, group));
     return rcpp_result_gen;
 END_RCPP
 }
