@@ -182,21 +182,61 @@
 #'
 #' A model line may carry several covariate effects, so the shape has to be read
 #' off the factor THIS coefficient multiplies rather than off the whole line.
-#' @param e expression to walk
+#'
+#' The walk is restricted to ADDITIVE context -- the assignment, one
+#' mu-referencing transform, then only `+`/`-` and parentheses.  It deliberately
+#' does not descend into an arbitrary call or a nested product, because the term
+#' must be a standalone additive `coef * <expr>` for its slope to transfer.
+#' Searching everywhere would return `WT` for `sqrt(coef * WT)` or for the
+#' interaction `coef * WT * AGE`, and the pinned fit would then silently replace
+#' the user's term with a plain linear WT effect.
+#' @param e expression to walk (a model line)
 #' @param coef coefficient (theta) name
-#' @return the multiplied expression, or `NULL`
+#' @return the multiplied expression, or `NULL` when there is no such term
 #' @noRd
 .vaeCoefFactor <- function(e, coef) {
-  if (!is.call(e)) return(NULL)
-  if (identical(e[[1L]], as.name("*")) && length(e) == 3L) {
-    if (is.name(e[[2L]]) && identical(as.character(e[[2L]]), coef)) return(e[[3L]])
-    if (is.name(e[[3L]]) && identical(as.character(e[[3L]]), coef)) return(e[[2L]])
+  .unwrap <- function(x) {
+    while (is.call(x) && identical(x[[1L]], as.name("(")) && length(x) == 2L) {
+      x <- x[[2L]]
+    }
+    x
   }
-  for (.i in seq_along(e)[-1L]) {
-    .r <- .vaeCoefFactor(e[[.i]], coef)
-    if (!is.null(.r)) return(.r)
+  ## a standalone `coef * <expr>` (either order), else NULL
+  .term <- function(x) {
+    x <- .unwrap(x)
+    if (is.call(x) && identical(x[[1L]], as.name("*")) && length(x) == 3L) {
+      if (is.name(x[[2L]]) && identical(as.character(x[[2L]]), coef)) return(x[[3L]])
+      if (is.name(x[[3L]]) && identical(as.character(x[[3L]]), coef)) return(x[[2L]])
+    }
+    NULL
   }
-  NULL
+  .walk <- function(x) {
+    x <- .unwrap(x)
+    if (!is.call(x)) return(NULL)
+    .op <- if (is.name(x[[1L]])) as.character(x[[1L]]) else ""
+    if (.op %in% c("+", "-")) {
+      if (length(x) == 2L) return(.walk(x[[2L]]))          # unary sign
+      if (length(x) == 3L) {
+        .r <- .walk(x[[2L]])
+        if (!is.null(.r)) return(.r)
+        return(.walk(x[[3L]]))
+      }
+    }
+    .term(x)
+  }
+  .e <- e
+  if (is.call(.e) && is.name(.e[[1L]]) &&
+        as.character(.e[[1L]]) %in% c("<-", "=", "~") && length(.e) == 3L) {
+    .e <- .e[[3L]]
+  }
+  ## a single mu-referencing transform wrapper, e.g. exp(theta + beta*cov + eta)
+  .e <- .unwrap(.e)
+  if (is.call(.e) && is.name(.e[[1L]]) && length(.e) == 2L &&
+        as.character(.e[[1L]]) %in% c("exp", "log", "logit", "expit",
+                                      "probit", "probitInv")) {
+    .e <- .e[[2L]]
+  }
+  .walk(.e)
 }
 
 #' Which shape a written covariate expression is in
@@ -296,7 +336,15 @@
     for (.j in seq_len(.nCov)) {
       if (identical(cov$covFamily[.j], "cat")) next
       .ok <- .vaeShapesFor(rules, .al, cov$covRaw[.j])
-      if (!(cov$covFamily[.j] %in% .vaeShapeFamily(.ok))) .m[.k, .j] <- 0L
+      .want <- .vaeShapeFamily(.ok)
+      ## A covariate whose requested family is unavailable (log shapes on
+      ## non-positive data) is carried by a FALLBACK column of another family.
+      ## Masking that column would block the covariate from the search entirely
+      ## and defeat the fallback, so when none of the requested families exist
+      ## for this covariate, leave whatever does exist selectable.
+      .have <- setdiff(unique(cov$covFamily[cov$covRaw == cov$covRaw[.j]]), "cat")
+      if (length(intersect(.want, .have)) == 0L) next
+      if (!(cov$covFamily[.j] %in% .want)) .m[.k, .j] <- 0L
     }
   }
   .m

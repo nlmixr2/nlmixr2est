@@ -300,6 +300,12 @@
     if (identical(pair$family, "cat")) c("cat", "lin") else pair$family
   } else if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
   .m <- .w[cov$covFamily[.w] %in% .want]
+  ## a written level comparison pins to THAT level's indicator, not merely to the
+  ## covariate's first one
+  if (length(.m) > 1L && !is.null(pair$level) && !is.na(pair$level)) {
+    .lm <- .m[!is.na(cov$covLevel[.m]) & cov$covLevel[.m] == pair$level]
+    if (length(.lm) > 0L) .m <- .lm
+  }
   if (length(.m) == 0L) NA_integer_ else .m[1L]
 }
 
@@ -491,12 +497,28 @@ vaeCovariates <- function(data, warn = TRUE,
     .ct <- if (.inPool) covType[.j] else NA_character_
     .userCenter <- NA_real_
     .shape <- NA_character_
+    .level <- NA_character_
     if (.inPool) {
       if (identical(.ct, "categorical")) {
-        ## VAE centers a categorical covariate; a plain linear beta*cov transfers
-        ## (slope invariant to the shift).  A transformed categorical is unusual
-        ## and not slope-transferable -- route it to the regress M-step.
-        if (.linear) { .userCenter <- 0; .shape <- "cat" } else .inPool <- FALSE
+        ## A plain linear beta*cov transfers (the slope is invariant to the
+        ## shift).  An explicit level comparison -- which is what the VAE itself
+        ## writes for a factor -- transfers too, and must pin to THAT level's
+        ## indicator column.  Anything else is not slope-transferable.
+        .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
+        .dc <- if (length(.cl)) {
+          .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
+        } else list(shape = NA_character_, level = NULL)
+        if (.linear) {
+          .userCenter <- 0; .shape <- "cat"
+        } else if (identical(.dc$shape, "cat")) {
+          .userCenter <- 0; .shape <- "cat"
+          if (!is.null(.dc$level)) {
+            .level <- as.character(if (is.character(.dc$level)) .dc$level
+                                   else deparse(.dc$level))
+          }
+        } else {
+          .inPool <- FALSE
+        }
       } else {
         ## Continuous: read the SHAPE the coefficient was written in, so a model
         ## the VAE itself wrote (any of power/lin/log/identity/center) pipes back
@@ -520,7 +542,7 @@ vaeCovariates <- function(data, warn = TRUE,
       k = if (is.na(.k)) NA_integer_ else as.integer(.k),
       covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
       coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
-      shape = .shape,
+      shape = .shape, level = .level,
       family = if (is.na(.shape)) NA_character_ else .vaeShapeFamily(.shape),
       covType = if (is.na(.ct)) NA_character_ else .ct,
       userCenter = .userCenter, inPool = .inPool,
@@ -869,16 +891,19 @@ vaeCovariates <- function(data, warn = TRUE,
   ## `shapes=` may restrict a single (parameter, covariate) pair, but the design
   ## matrix is shared across latent dimensions, so a per-pair restriction has to
   ## be enforced as a mask -- omitting the column would remove that shape from
-  ## every parameter.  Intersect it with any pin mask; if nothing is restricted
-  ## the mask stays NULL and C++ runs the unrestricted search.
-  if (!.searchOff && length(.cov$covNames) > 0L) {
+  ## every parameter.  When nothing is restricted the mask stays NULL and C++
+  ## runs the unrestricted search.
+  ##
+  ## Deliberately NOT applied while pinning is active: `shapes=` governs the
+  ## automatic search, whereas a pinned cell is an effect the user wrote in the
+  ## model.  Intersecting the two can empty a pinned row -- a declared effect
+  ## that is then neither searched nor regressed, and so written back as exactly
+  ## 0, silently deleting it.  Under pinning the declaration wins; a declared
+  ## shape with no column to pin to already falls back to the regress M-step.
+  if (!.searchOff && !.pinActive && length(.cov$covNames) > 0L) {
     .shapeMask <- .vaeShapeAllowMask(.cov, .vaeResolveShapes(.csh), .etaNames,
                                      .foceiEtaThetaMap(ui)$thetaForEta)
-    if (is.null(.covAllow)) {
-      if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
-    } else {
-      .covAllow <- .covAllow * .shapeMask
-    }
+    if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
   }
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the

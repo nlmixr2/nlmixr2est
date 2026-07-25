@@ -259,3 +259,156 @@ nmTest({
     expect_true("b1" %in% p$regressNames)
   })
 })
+
+nmTest({
+  test_that("a shapes= rule never silently deletes a declared covariate effect", {
+    ## The model declares a LINEAR WT effect on cl while shapes= allows lin only
+    ## on v.  Intersecting the search restriction with the pin mask would empty
+    ## cl's row, leaving the declared coefficient neither searched nor regressed
+    ## -- it would then be written back as exactly 0.  Pinning must win.
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + cl.wt * (WT - 70) + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(m), d,
+      vaeControl(shapes = list(list(var = "cl", covar = "wt", shapes = "power"),
+                               list(var = "v", covar = "wt", shapes = "lin")),
+                 muRefCovAlg = FALSE)))
+    expect_true(p$pinActive)
+    expect_equal(p$pinPairs$shape, "lin")
+    ## the declared effect is still reachable: searched on its own column ...
+    expect_true(all(p$pinPairs$inPool))
+    expect_equal(sum(p$covAllow), 1L)
+    .j <- which(colSums(p$covAllow) > 0L)
+    expect_equal(p$covFamily[.j], "lin")
+    ## ... or, failing that, estimated in place -- never both dropped
+    expect_true(sum(p$covAllow) > 0L || "cl.wt" %in% p$regressNames)
+  })
+
+  test_that("a declared shape with no column to pin to falls back to regress", {
+    ## shapes="power" builds only the log column, so a declared linear effect has
+    ## nothing to pin to and must be estimated in place rather than vanish
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + cl.wt * (WT - 70) + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
+                                       vaeControl(shapes = "power",
+                                                  muRefCovAlg = FALSE)))
+    expect_equal(p$covNames, "WT_power")
+    expect_false(any(p$pinPairs$inPool))
+    expect_true("cl.wt" %in% p$regressNames)
+  })
+})
+
+## Regressions for the second independent-review pass.
+nmTest({
+  .d <- as.data.frame(nlmixr2data::theo_sd)
+
+  test_that("a coefficient must multiply a standalone additive term", {
+    ## searching anywhere in the line returns WT for both of these, which would
+    ## pin a slope that does not transfer and silently replace the user's term
+    .sq <- quote(cl <- exp(tcl + sqrt(b1 * WT) + eta.cl))
+    expect_null(.vaeCoefFactor(.sq, "b1"))
+    .ix <- quote(cl <- exp(tcl + b1 * WT * AGE + eta.cl))
+    expect_null(.vaeCoefFactor(.ix, "b1"))
+    ## the legitimate additive forms still resolve, in either factor order
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * log(WT/70) + eta.cl)), "b1"),
+                 quote(log(WT/70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + log(WT/70) * b1 + eta.cl)), "b1"),
+                 quote(log(WT/70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) + eta.cl)), "b1"),
+                 quote((WT - 70)))
+  })
+
+  test_that("an interaction or wrapped term regresses instead of pinning", {
+    mk <- function(term) {
+      eval(parse(text = paste0(
+        "function() {\n",
+        "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7\n",
+        "        eta.cl ~ 0.1 })\n",
+        "  model({ ka <- exp(tka)\n",
+        "    cl <- exp(tcl + ", term, " + eta.cl)\n",
+        "    v <- exp(tv)\n",
+        "    d/dt(depot) <- -ka * depot\n",
+        "    d/dt(center) <- ka * depot - cl / v * center\n",
+        "    cp <- center / v; cp ~ add(add.err) })\n}")))
+    }
+    for (.t in c("sqrt(cl.wt * WT)", "cl.wt * WT * AGE")) {
+      d2 <- .d
+      d2$AGE <- 40 + (as.integer(d2$ID) %% 5)
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(mk(.t)), d2,
+                                         vaeControl(muRefCovAlg = FALSE)))
+      expect_false(any(p$pinPairs$inPool), info = .t)
+      expect_true("cl.wt" %in% p$regressNames, info = .t)
+    }
+  })
+
+  test_that("a written factor level pins to that level's indicator", {
+    d2 <- .d
+    ids <- unique(d2$ID)
+    lv <- c("W", "W", "W", "W", "W", "B", "B", "B", "U", "U", "U", "U")
+    d2$RACE <- lv[match(d2$ID, ids)]
+    mk <- function(term) {
+      eval(parse(text = paste0(
+        "function() {\n",
+        "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; r1 <- 0.1; add.err <- 0.7\n",
+        "        eta.cl ~ 0.1 })\n",
+        "  model({ ka <- exp(tka)\n",
+        "    cl <- exp(tcl + r1 * ", term, " + eta.cl)\n",
+        "    v <- exp(tv)\n",
+        "    d/dt(depot) <- -ka * depot\n",
+        "    d/dt(center) <- ka * depot - cl / v * center\n",
+        "    cp <- center / v; cp ~ add(add.err) })\n}")))
+    }
+    for (.l in c("B", "U")) {
+      p <- suppressWarnings(.vaeDataPrep(
+        rxode2::assertRxUi(mk(paste0('(RACE == "', .l, '")'))), d2,
+        vaeControl(muRefCovAlg = FALSE)))
+      ## the indicator round-trips: recognized, pinned, and searched
+      expect_equal(p$pinPairs$shape, "cat", info = .l)
+      expect_true(all(p$pinPairs$inPool), info = .l)
+      expect_false("r1" %in% p$regressNames, info = .l)
+      ## and pinned to the column for THAT level, not the covariate's first one
+      .j <- which(colSums(p$covAllow) > 0L)
+      expect_equal(length(.j), 1L, info = .l)
+      expect_equal(p$covLevel[.j], .l, info = .l)
+    }
+  })
+
+  test_that("a fallback column is not masked away by shapes=", {
+    ## WT has non-positive values so no log-family column can be built; the
+    ## linear fallback keeps it searchable and must not then be masked out
+    d2 <- data.frame(id = rep(1:6, each = 3), time = rep(0:2, 6), dv = 1:18,
+                     wt = rep(c(-10, 0, 10, 20, 30, 40), each = 3))
+    res <- suppressWarnings(vaeCovariates(d2, shapes = "power"))
+    expect_equal(nrow(res), 1L)
+    expect_equal(res$shape, "lin")
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    names(d2) <- toupper(names(d2))
+    d2$AMT <- 0
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d2,
+                                       vaeControl(shapes = "power")))
+    ## the fallback column stays selectable rather than being zeroed everywhere
+    expect_true(is.null(p$covAllow) || sum(p$covAllow) > 0L)
+  })
+})
