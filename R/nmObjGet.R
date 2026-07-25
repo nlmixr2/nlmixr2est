@@ -215,42 +215,11 @@ nmObjGet.default <- function(x, ...) {
     .ret <- get(.arg, envir = .env)
     if (inherits(.ret, "raw")) {
       .type <- rxode2::rxGetSerialType_(.ret)
-      if (.type == "qs2") {
-        .ret <- try(.legacyQs2(.ret, "qs_deserialize"), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (qs2)", call.=FALSE)
-          .ret <- NULL
-        }
-      } else if (.type == "qdata") {
-        .ret <- try(.legacyQs2(.ret, "qd_deserialize"), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (qdata)", call.=FALSE)
-          .ret <- NULL
-        }
-      } else if (.type == "qs") {
-        .ret <- try(rxode2::rxDeserialize(.ret), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (qs)", call.=FALSE)
-          .ret <- NULL
-        }
-      } else if (.type == "xz") {
-        .ret <- try(unserialize(memDecompress(.ret, type="xz")), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (xz)", call.=FALSE)
-          .ret <- NULL
-        }
-      } else if (.type == "bzip2") {
-        .ret <- try(unserialize(memDecompress(.ret, type="bzip2")), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (bzip2)", call.=FALSE)
-          .ret <- NULL
-        }
-      } else if (.type == "base") {
-        .ret <- try(unserialize(.ret), silent=TRUE)
-        if (inherits(.ret, "try-error")) {
-          warning("cannot deserialize object '", .arg, "' (base)", call.=FALSE)
-          .ret <- NULL
-        }
+      .ret <- try(.deserializeRaw(.ret, .type), silent=TRUE)
+      if (inherits(.ret, "try-error")) {
+        warning("cannot deserialize object '", .arg, "' (", .type, ")",
+                call.=FALSE)
+        .ret <- NULL
       }
     }
     return(.ret)
