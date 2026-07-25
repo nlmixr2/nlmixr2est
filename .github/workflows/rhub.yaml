@@ -60,7 +60,11 @@ jobs:
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
-          extra-packages: nlmixr2/rxode2
+          # See R-CMD-check.yaml: qs2/stringfish must link RcppParallel >= 6.0.0
+          extra-packages: |
+            nlmixr2/rxode2
+            qs2=?source
+            stringfish=?source
       - uses: r-hub/actions/run-check@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
@@ -97,7 +101,11 @@ jobs:
         with:
           job-config: ${{ matrix.config.job-config }}
           token: ${{ secrets.RHUB_TOKEN }}
-          extra-packages: nlmixr2/rxode2
+          # See R-CMD-check.yaml: qs2/stringfish must link RcppParallel >= 6.0.0
+          extra-packages: |
+            nlmixr2/rxode2
+            qs2=?source
+            stringfish=?source
       - uses: r-hub/actions/run-check@v1
         with:
           job-config: ${{ matrix.config.job-config }}

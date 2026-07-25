@@ -34,6 +34,67 @@ nmTest({
                  signif(sqrt(fit$omega[1, 1]), foceiControl()$sigdig))
   })
 
+  test_that(".updateParFixedRefreshSeFromCov updates parFixedDf and the formatted parFixed (#816)", {
+    .uiMod816 <- function() {
+      ini({
+        tcl <- 1; tfix <- fix(2); add.sd <- 0.7
+        eta.cl ~ 0.3
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- tfix
+        d/dt(center) <- -cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .pf <- data.frame(
+      Parameter = c("", "", ""),
+      Estimate = c(1, 2, 0.7),
+      SE = c(0.1, NA_real_, NA_real_),
+      "%RSE" = c(10, NA_real_, NA_real_),
+      "Back-transformed" = c(exp(1), 2, 0.7),
+      "CI Lower" = c(exp(1 - qnorm(0.975) * 0.1), NA_real_, NA_real_),
+      "CI Upper" = c(exp(1 + qnorm(0.975) * 0.1), NA_real_, NA_real_),
+      check.names = FALSE,
+      row.names = c("tcl", "tfix", "add.sd"))
+    env <- new.env(parent = emptyenv())
+    env$ui <- rxode2::assertRxUi(.uiMod816)
+    env$parFixedDf <- .pf
+    env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.95, "tfix")
+    class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
+    .cov <- matrix(c(0.04, 0, 0, 0.0025), 2, 2,
+                   dimnames = list(c("tcl", "add.sd"), c("tcl", "add.sd")))
+
+    .updateParFixedRefreshSeFromCov(env, .cov, onlyMissing = TRUE)
+
+    # add.sd filled from sqrt(diag(cov)); tcl kept (onlyMissing = TRUE)
+    expect_equal(unname(env$parFixedDf["add.sd", "SE"]), 0.05)
+    expect_equal(unname(env$parFixedDf["add.sd", "%RSE"]), 0.05 / 0.7 * 100)
+    expect_equal(unname(env$parFixedDf["tcl", "SE"]), 0.1)
+    # CI recomputed on the natural scale (Back-transformed == Estimate)
+    expect_equal(unname(env$parFixedDf["add.sd", "CI Lower"]),
+                 0.7 - qnorm(0.975) * 0.05)
+    # formatted table regenerated; FIXED decoration preserved
+    expect_equal(as.numeric(env$parFixed["add.sd", "SE"]), 0.05)
+    expect_equal(env$parFixed["tfix", "SE"], "FIXED")
+
+    # onlyMissing = FALSE overwrites the structural SE from the cov, and the
+    # CI of a log-scale theta is recomputed through its default back-transform
+    .updateParFixedRefreshSeFromCov(env, .cov)
+    expect_equal(unname(env$parFixedDf["tcl", "SE"]), 0.2)
+    expect_equal(as.numeric(env$parFixed["tcl", "SE"]), 0.2)
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
+                 exp(1 - qnorm(0.975) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]),
+                 exp(1 + qnorm(0.975) * 0.2))
+
+    # a denormal (uninitialized-memory signature) counts as missing
+    env$parFixedDf["add.sd", "SE"] <- 9.39e-323
+    .updateParFixedRefreshSeFromCov(env, .cov, onlyMissing = TRUE)
+    expect_equal(unname(env$parFixedDf["add.sd", "SE"]), 0.05)
+  })
+
   ## Literally-fixed thetas are re-inserted into $popDf after the C++ step, so
   ## the default (exp/expit/probitInv) back-transform must be applied in R;
   ## previously they printed on the raw (log/logit) scale.

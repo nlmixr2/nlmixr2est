@@ -26,6 +26,12 @@
     if (.keep <= 1L || nchar(.txt) <= .avail) break
     .keep <- .keep - 1L
   }
+  ## Dropping items bottoms out at one, so a single long name (a wide factor
+  ## level, say) can still blow the budget; clip it so the note really is
+  ## bounded rather than merely usually bounded.
+  if (nchar(.txt) > .avail && .avail > 3L) {
+    .txt <- paste0(substr(.txt, 1L, .avail - 3L), "...")
+  }
   .txt
 }
 

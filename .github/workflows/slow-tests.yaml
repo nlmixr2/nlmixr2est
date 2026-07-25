@@ -49,6 +49,8 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # See R-CMD-check.yaml: qs2/stringfish must link RcppParallel >= 6.0.0
+          cache-version: 2
           extra-packages: |
             any::rcmdcheck
             nlmixr2/lbfgsb3c
@@ -59,6 +61,8 @@ jobs:
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             qs=?ignore
+            qs2=?source
+            stringfish=?source
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

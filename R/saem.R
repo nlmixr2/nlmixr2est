@@ -1068,26 +1068,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   # surface the residual (error-model theta) SEs in the parameter table from the full
   # cov -- these are theta rows with a missing SE (Omega variances are reported as BSV,
   # with their SEs available in $cov).
-  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
-    .pf <- .env$parFixedDf
-    .se <- sqrt(diag(.full))
-    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)), error = function(e) 0.95)
-    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
-    for (.n in rownames(.pf)) {
-      if (.n %in% names(.se) && "SE" %in% names(.pf) &&
-            (is.na(.pf[.n, "SE"]) || !is.finite(.pf[.n, "SE"]) || .pf[.n, "SE"] < 1e-100)) {
-        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
-        .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
-        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-          .pf[.n, "CI Lower"] <- .e - .qn * .s
-          .pf[.n, "CI Upper"] <- .e + .qn * .s
-        }
-      }
-    }
-    .env$parFixedDf <- .pf
-  }
+  .updateParFixedRefreshSeFromCov(.env, .full, onlyMissing = TRUE)
   invisible()
 }
 
@@ -1135,26 +1116,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .env$covMethod <- "analytic"
   assign(".covAnalytic", .r, envir = .env)                 # getVarCov()/$cov reuse it
   # overwrite the parameter-table SEs from the analytic covariance
-  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
-    .pf <- .env$parFixedDf
-    .se <- sqrt(diag(.cov))
-    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)),
-                    error = function(e) 0.95)
-    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
-    for (.n in rownames(.pf)) {
-      if (.n %in% names(.se) && "SE" %in% names(.pf)) {
-        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
-        .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
-        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-          .pf[.n, "CI Lower"] <- .e - .qn * .s
-          .pf[.n, "CI Upper"] <- .e + .qn * .s
-        }
-      }
-    }
-    .env$parFixedDf <- .pf
-  }
+  .updateParFixedRefreshSeFromCov(.env, .cov)
   .nlmixr2CovConditionUpdate(.env)
   invisible()
 }
