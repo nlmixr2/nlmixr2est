@@ -113,5 +113,144 @@ nmTest({
     expect_error(
       vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", 1:3),
       "one entry per covariate column")
+    expect_error(
+      vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", NULL, 1:3),
+      "one entry per covariate column")
+  })
+
+  ## ---- atomic blocks (the hockey stick's two arms) ---------------------------
+
+  ## WT's linear column beside its two hockey arms.  The arms sum to the linear
+  ## column, so this is exactly the collinear case blocks exist to resolve.
+  .hockeyDesign <- function(N, seed) {
+    set.seed(seed)
+    wt <- runif(N, 40, 140)
+    ctr <- stats::median(wt)
+    cbind(lin = wt - ctr,
+          armLow = (wt < ctr) * (wt - ctr),
+          armHi = (wt >= ctr) * (wt - ctr))
+  }
+
+  test_that("singleton blocks reproduce the unconstrained search exactly", {
+    ## the zero-drift guarantee: saying "every column is its own block" must not
+    ## change the tree, the branch order or the tie-break for anyone
+    set.seed(31)
+    for (rep in 1:8) {
+      N <- 70L; nCov <- sample(4:9, 1L)
+      X <- matrix(rnorm(N * nCov), N, nCov)
+      k <- sample(0:3, 1L)
+      sel <- if (k > 0) sort(sample.int(nCov, k)) else integer(0)
+      y <- as.numeric(0.7 +
+                        (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) +
+                        rnorm(N, sd = 0.5))
+      grp <- sample(rep(seq_len(ceiling(nCov / 2)), each = 2), nCov)
+      for (g in list(NULL, grp)) {
+        a <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", g)
+        b <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", g,
+                            seq_len(nCov))
+        expect_equal(a, b, info = paste0("rep ", rep))
+      }
+    }
+  })
+
+  test_that("a block is selected whole, or not at all", {
+    ## The motivating case.  span{1, armLow, armHi} == span{1, lin, armLow} at the
+    ## same column count and so the same penalty -- an exact tie.  Without blocks
+    ## the tie-break lands on a form that does not read as a hockey stick.
+    N <- 80L
+    X <- .hockeyDesign(N, 5)
+    set.seed(5)
+    y <- as.numeric(1 + X[, "armLow"] * (-0.03) + X[, "armHi"] * 0.06 +
+                      rnorm(N, sd = 0.2))
+    grp <- c(1L, 1L, 1L)
+    ## unconstrained: lin + one arm, the tie-equivalent parameterization
+    free <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo")
+    expect_equal(which(free$selected[1, ] == 1L), c(1L, 2L))
+    ## group only: at most ONE column, so two slopes are unreachable
+    gOnly <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", grp)
+    expect_length(which(gOnly$selected[1, ] == 1L), 1L)
+    ## group + block: both arms, never one, never lin beside an arm
+    blk <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
+                          grp, c(1L, 2L, 2L))
+    expect_equal(which(blk$selected[1, ] == 1L), c(2L, 3L))
+  })
+
+  test_that("the blocked search equals brute force over feasible supports", {
+    ## exactness against an oracle that never calls the search: enumerate every
+    ## support that is block-complete AND takes at most one block per group
+    .oracleBlk <- function(y, X, group, block, omega, penalty) {
+      nCov <- ncol(X)
+      best <- integer(0); bestScore <- Inf
+      for (m in 0:(2^nCov - 1)) {
+        sel <- which(bitwAnd(m, 2^(seq_len(nCov) - 1L)) > 0L)
+        if (any(vapply(unique(block[sel]),
+                       function(b) !all(which(block == b) %in% sel),
+                       logical(1)))) next
+        bl <- unique(block[sel])
+        if (anyDuplicated(vapply(bl, function(b) group[which(block == b)[1L]],
+                                 integer(1)))) next
+        s <- .score(y, X, sel, omega, penalty)
+        if (s < bestScore - 1e-12) { bestScore <- s; best <- sel }
+      }
+      best
+    }
+    N <- 80L
+    group <- c(1L, 1L, 1L, 2L, 2L, 3L)
+    block <- c(1L, 2L, 2L, 3L, 4L, 5L)
+    for (rep in 1:8) {
+      X <- cbind(.hockeyDesign(N, 200 + rep),
+                 log(runif(N, 20, 80) / 50), runif(N, 20, 80) - 50,
+                 rbinom(N, 1, 0.4))
+      ## rotate the truth so hockey wins, lin wins, a plain covariate wins and
+      ## nothing wins -- the last two are the no-false-positive cases
+      y <- switch(1L + (rep %% 4L),
+                  as.numeric(1 + X[, 2] * (-0.02) + X[, 3] * 0.05 + rnorm(N, sd = 0.3)),
+                  as.numeric(1 + X[, 1] * 0.02 + rnorm(N, sd = 0.3)),
+                  as.numeric(1 + X[, 6] * 0.8 + rnorm(N, sd = 0.3)),
+                  as.numeric(1 + rnorm(N, sd = 0.3)))
+      got <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
+                            group, block)
+      expect_equal(which(got$selected[1, ] == 1L),
+                   .oracleBlk(y, X, group, block, 0.25, log(N)),
+                   info = paste0("rep ", rep))
+    }
+  })
+
+  test_that("the frontier discipline does not change a blocked selection", {
+    ## the prune stays admissible with blocks, so the search is still exact and
+    ## the strategy only reorders visitation
+    N <- 60L
+    X <- cbind(.hockeyDesign(N, 3), matrix(rnorm(N * 2L), N, 2L))
+    set.seed(3)
+    y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
+    g <- c(1L, 1L, 1L, 2L, 3L); b <- c(1L, 2L, 2L, 3L, 4L)
+    r <- lapply(c("lifo", "fifo", "lc"), function(s) {
+      vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), s, g, b)
+    })
+    expect_equal(r[[1]], r[[2]])
+    expect_equal(r[[1]], r[[3]])
+  })
+
+  test_that("a half-block proposal is completed, not discarded", {
+    ## L0Learn knows nothing about blocks, so it can propose one arm.  Dropping
+    ## it would make hockey unreachable on the approximate path entirely.
+    N <- 80L
+    X <- .hockeyDesign(N, 5)
+    set.seed(5)
+    y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
+    g <- c(1L, 1L, 1L); b <- c(1L, 2L, 2L)
+    half <- list(integer(0), 1L)             # 0-based: the low arm alone
+    got <- vaeScoreSupports_(y, X, 0.25, log(N), half, polish = FALSE, g, b)
+    expect_equal(which(got$selected == 1L), c(2L, 3L))
+    ## without blocks the same proposal is never completed: the pair is simply
+    ## not reachable, so the lone arm is scored on its own (and here loses to the
+    ## intercept-only model)
+    plain <- vaeScoreSupports_(y, X, 0.25, log(N), half, polish = FALSE, g)
+    expect_lte(length(which(plain$selected == 1L)), 1L)
+    ## the polish moves whole blocks, so it reaches the exact optimum from empty
+    pol <- vaeScoreSupports_(y, X, 0.25, log(N), list(integer(0)), polish = TRUE, g, b)
+    ref <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", g, b)
+    expect_equal(which(pol$selected == 1L), which(ref$selected[1, ] == 1L))
+    expect_equal(which(pol$selected == 1L), c(2L, 3L))
   })
 })
