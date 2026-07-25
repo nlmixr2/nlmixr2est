@@ -107,6 +107,33 @@ nmTest({
     expect_silent(vaeCovariates(hkData(), shapes = c("lin", "hockey")))
   })
 
+  test_that("an empty arm is dropped even when catCutoff admits it", {
+    ## catCutoff = 0 is documented as "test every level", and against a bare
+    ## proportion `0 >= 0` is TRUE -- so a knot outside the data range would
+    ## emit an all-zero arm and make the least-squares M-step singular
+    expect_warning(res <- vaeCovariates(hkData(), shapes = "hockey",
+                                        covCenter = c(WT = 200),
+                                        catCutoff = 0),
+                   "hockey skipped")
+    expect_equal(res$covariate, "WT_lin")
+    ## catCutoff still sets the threshold above that floor: 10 subjects, 2 below
+    ## a knot of 70 -- kept at 20%, dropped at 30%
+    expect_silent(vaeCovariates(hkData(), shapes = c("lin", "hockey"),
+                                covCenter = c(WT = 70), catCutoff = 0.2))
+    expect_warning(vaeCovariates(hkData(), shapes = c("lin", "hockey"),
+                                 covCenter = c(WT = 70), catCutoff = 0.3),
+                   "hockey skipped")
+  })
+
+  test_that("a list-format shapes= may ask for hockey", {
+    res <- vaeCovariates(hkData(), shapes = list(WT = c("lin", "hockey")))
+    expect_equal(res$shape, c("lin", "hockeyLow", "hockeyHi"))
+    res <- vaeCovariates(hkData(),
+                         shapes = list(list(var = "ka", covar = "wt",
+                                            shapes = "hockey")))
+    expect_equal(res$shape, c("hockeyLow", "hockeyHi"))
+  })
+
   test_that("the hockey runInfo note fits on one line", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     d <- hkData()

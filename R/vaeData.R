@@ -272,7 +272,10 @@
       ## of zeros, which makes the least-squares M-step singular.  The median
       ## splits the subjects in half by construction, so this only bites a
       ## covCenter= override; either way the arms are dropped rather than fitted.
-      .canHockey <- min(sum(v < .ctr), sum(v >= .ctr)) >= catCutoff * N
+      ## the floor of 1 is not the same rule as catCutoff: `catCutoff = 0` is a
+      ## documented setting ("test every level"), and against a bare proportion a
+      ## knot outside the data range would pass with an EMPTY side
+      .canHockey <- min(sum(v < .ctr), sum(v >= .ctr)) >= max(1, catCutoff * N)
       .f <- .fam$family; .r <- .fam$repShape
       .keep <- (.f != "log" | .canLog) & (.f != "hockey" | .canHockey)
       if (any(.f == "hockey" & !.canHockey)) .hockeyDrop <- c(.hockeyDrop, nm)
