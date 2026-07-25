@@ -355,7 +355,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55b7537ad618>
+#> <bytecode: 0x564300f9e940>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

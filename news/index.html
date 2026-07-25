@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.0.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,6 +31,13 @@
       <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="7.0.2" id="nlmixr2est-702">nlmixr2est 7.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-702"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-7-0-2">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-7-0-2"></a></h3>
+<ul><li>Fixed <code>$parFixed</code> reporting an uninitialized-memory denormal (e.g. <code>9.4e-323</code>) as a residual-error parameter’s <code>SE</code>/<code>%RSE</code> for SAEM fits (<a href="https://github.com/nlmixr2/nlmixr2est/issues/816" class="external-link">#816</a>). The finalization filled theta SEs positionally from a covariance that does not span the residual thetas, reading past the end of its diagonal; the SE fill now maps by the covariance dimnames. Post-fit covariance installs also refresh the displayed <code>$parFixed</code> (previously only <code>$parFixedDf</code> was updated), so the residual <code>SE</code>, <code>%RSE</code>, and confidence interval now carry <code>sqrt(diag(fit$cov))</code>; a theta with no covariance row gets a blank <code>SE</code> instead of garbage.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.0.1" id="nlmixr2est-701">nlmixr2est 7.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-701"></a></h2>
 <div class="section level3">

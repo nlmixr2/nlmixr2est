@@ -81,7 +81,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> rxode2 5.1.4 using 2 threads (see ?getRxThreads)
+#> rxode2 5.1.5 using 2 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
 #> 
 #> Attaching package: ‘rxode2’
@@ -114,23 +114,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9741097 3.0925e-05 0.01401123       0.07     1.025 6.813       0.949
+#>           setup optimize covariance preprocess configure  saem postprocess
+#> elapsed 1.02824 3.41e-05 0.01401592       0.08     1.095 7.058       0.999
 #>         table compress     other
-#> elapsed 0.062    0.134 0.4968481
+#> elapsed 0.058    0.141 0.5137101
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
-#> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
-#> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.65e-308    0.700 (0.700, 0.700)         
-#>        Shrink(SD)%
-#> tka         -1.53 
-#> tcl          3.98 
-#> tv           9.72 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.454  0.192 42.3       1.57 (1.08, 2.29)     69.6      -1.53 
+#> tcl               1.01 0.0851 8.40       2.75 (2.33, 3.25)     27.5       3.98 
+#> tv         log V  3.45 0.0451 1.31       31.6 (28.9, 34.5)     13.2       9.72 
+#> add.sd           0.700 0.0502 7.18    0.700 (0.601, 0.798)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -188,23 +183,18 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9741097 3.0925e-05 0.01401123       0.07     1.025 6.813       0.949
+#>           setup optimize covariance preprocess configure  saem postprocess
+#> elapsed 1.02824 3.41e-05 0.01401592       0.08     1.095 7.058       0.999
 #>         table compress     other
-#> elapsed 0.062    0.134 0.4968481
+#> elapsed 0.058    0.141 0.5137101
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
-#>        Parameter  Est.        SE      %RSE Back-transformed(95%CI) BSV(CV%)
-#> tka              0.454     0.192      42.3       1.57 (1.08, 2.29)     69.6
-#> tcl               1.01    0.0851      8.40       2.75 (2.33, 3.25)     27.5
-#> tv         log V  3.45    0.0451      1.31       31.6 (28.9, 34.5)     13.2
-#> add.sd           0.700 4.66e-310 6.65e-308    0.700 (0.700, 0.700)         
-#>        Shrink(SD)%
-#> tka         -1.53 
-#> tcl          3.98 
-#> tv           9.72 
-#> add.sd            
+#>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> tka              0.454  0.192 42.3       1.57 (1.08, 2.29)     69.6      -1.53 
+#> tcl               1.01 0.0851 8.40       2.75 (2.33, 3.25)     27.5       3.98 
+#> tv         log V  3.45 0.0451 1.31       31.6 (28.9, 34.5)     13.2       9.72 
+#> add.sd           0.700 0.0502 7.18    0.700 (0.601, 0.798)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
