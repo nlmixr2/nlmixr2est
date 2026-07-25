@@ -233,6 +233,9 @@
 #'   variances settle before the correlations are estimated.  This is
 #'   \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
 #'   effect on a model with no declared off-diagonals.
+#'
+#'    A value greater than 1 is an ABSOLUTE iteration
+#'   count rather than a fraction.
 #' @param inputScale Which observations the encoder-input centering and scaling
 #'   are computed over.  `"reference"` (default) matches the reference
 #'   implementation, which takes the mean and SD across the whole padded
@@ -398,7 +401,10 @@ vaeControl <- function(seed = 42L,
   sigma0Interp <- match.arg(sigma0Interp)
   residOptimize <- match.arg(residOptimize)
   omegaUpdate <- match.arg(omegaUpdate)
-  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  ## no upper bound: <= 1 is a fraction of the phase, > 1 is an ABSOLUTE
+  ## iteration count (the only form under which a resumed fit can reproduce a
+  ## single run -- a fraction of a shorter leg is a different schedule)
+  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, finite = TRUE, len = 1)
   inputScale <- match.arg(inputScale)
   covSelectMethod <- match.arg(covSelectMethod)
   ## Inf is allowed: it forces the exact branch-and-bound everywhere (the

@@ -131,4 +131,49 @@ nmTest({
     ## a single candidate means no search ran, so there is no edge to report
     expect_false(any(grepl("etaCandidates", .info(0.05))))
   })
+
+  test_that("a resumed correlated fit reproduces the single long run", {
+    ## adviControl(resume=) promises a resumed run is identical to one fresh run
+    ## of the combined length.  perNoCor broke that: nbCorrel was recomputed from
+    ## the RESUMED call's iters and compared against a CONTINUING global index, so
+    ## the resumed run re-applied a hold the first run had already passed and
+    ## restarted the off-diagonal gain in the wrong place.
+    ##
+    ## Assert the OMEGA BLOCK, not just the thetas: the thetas can agree while the
+    ## correlation schedule differs, which is exactly the failure being guarded.
+    .cor <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka + eta.cl ~ c(0.6,
+                            0.05, 0.3)
+        add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.sd) })
+    }
+    ## perNoCor is given ABSOLUTELY (90 iterations).  A FRACTION cannot satisfy
+    ## this: 0.75 of a 120-iteration run releases at 90, while 0.75 of the first
+    ## 60-iteration leg releases at 45, so the two schedules genuinely differ and
+    ## no amount of state-passing can reconcile them.  That is the whole reason
+    ## the absolute form exists -- a restartable fit needs its schedule points
+    ## pinned to absolute iterations rather than to a share of whatever slice is
+    ## being run.
+    .ctl <- function(n, res = NULL)
+      adviControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
+                  perNoCor = 90, adaptEta = FALSE, etaCandidates = 0.05)
+
+    one <- suppressMessages(suppressWarnings(
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi", control = .ctl(120L))))
+    half <- suppressMessages(suppressWarnings(
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi", control = .ctl(60L))))
+    cont <- suppressMessages(suppressWarnings(
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi",
+              control = .ctl(60L, res = half$env$adviState))))
+
+    expect_equal(unname(cont$omega), unname(one$omega), tolerance = 1e-8)
+    expect_equal(unname(cont$theta), unname(one$theta), tolerance = 1e-8)
+    ## the release point travelled with the state rather than being recomputed
+    expect_equal(half$env$adviState$nbCorrel, cont$env$adviState$nbCorrel)
+    expect_equal(one$env$adviState$nbCorrel, 90)   # absolute, not 0.75 * iters
+  })
 })

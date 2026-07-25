@@ -93,6 +93,11 @@
 #'   before the correlations are estimated.  This is
 #'   \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
 #'   effect on a model with no declared off-diagonals.
+#'
+#'    The resolved absolute iteration is stored with the fit and
+#'   reused by `resume=`, so a resumed run releases the correlations at the same
+#'   global iteration a single long run would -- recomputing the fraction from the
+#'   resumed call's `iters` would re-apply a hold the original run had passed.
 #' @param tau Stabilizing constant `tau > 0` in the step-size denominator
 #'   (paper Eq 10); the step-size is insensitive to it.
 #' @param alpha Weighting `alpha` in (0, 1) of new vs old gradient information in
@@ -139,6 +144,14 @@
 #'   `$env$adviState`).  The optimization continues from that state for `iters`
 #'   more iterations, bit-for-bit identical to a single fresh run of the combined
 #'   length (the counter-based RNG is keyed by the global iteration index).
+#'
+#'   That equivalence requires every schedule point to be an ABSOLUTE iteration.
+#'   A FRACTIONAL `perNoCor` cannot provide it, and not because of any bookkeeping
+#'   that could be fixed: `perNoCor = 0.75` of one 120-iteration run releases the
+#'   correlations at iteration 90, while 0.75 of a first 60-iteration leg releases
+#'   at 45.  Those are different schedules, and the resulting correlation estimates
+#'   genuinely differ.  Pin the schedule (`perNoCor = 90`) whenever a fit may be
+#'   resumed; the resolved value is then stored with the fit and reused.
 #'
 #' @return advi control structure (class `adviControl`)
 #' @export
@@ -194,7 +207,10 @@ adviControl <- function(seed = 42L,
   checkmate::assertLogical(adaptEta, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(etaCandidates, lower = 0, finite = TRUE, any.missing = FALSE, min.len = 1)
   checkmate::assertNumeric(tau, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  ## no upper bound: <= 1 is a fraction of the phase, > 1 is an ABSOLUTE
+  ## iteration count (the only form under which a resumed fit can reproduce a
+  ## single run -- a fraction of a shorter leg is a different schedule)
+  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, finite = TRUE, len = 1)
   checkmate::assertNumeric(alpha, lower = 0, upper = 1, any.missing = FALSE, len = 1)
   ## tol follows the package-wide sigdig convention (10^-sigdig), the same
   ## derivation saemControl()/foceiControl() use for their optimizer tolerances,

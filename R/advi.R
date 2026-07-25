@@ -281,7 +281,7 @@
     }
   }
   .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
-              popOmegaMat = res$popOmegaMat,
+              popOmegaMat = res$popOmegaMat, nbCorrel = res$nbCorrel,
               it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
               sLpo = res$sLpo, seed = res$seed, etaScale = res$etaScale,
               family = res$family, pointEstimate = res$pointEstimate)

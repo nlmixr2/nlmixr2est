@@ -12784,11 +12784,20 @@ List adviOptimize_(List args) {
                         args.containsElementNamed("omegaFixMat") ? args["omegaFixMat"] : R_NilValue,
                         (int)omegaIni.size());
   const int iters = as<int>(args["iters"]);
-  // saem's perNoCor rule.  ADVI has no separate burn-in phase, so the fraction
-  // is of the whole run rather than of a burn-in.
+  // saem's perNoCor rule.  ADVI has no separate burn-in phase, so a FRACTION is
+  // of the whole run.  Resolved to an ABSOLUTE iteration here and persisted in
+  // the result, because every schedule point has to be an absolute global
+  // iteration for a resumed run to reproduce a single run: recomputing
+  // perNoCor * iters from the RESUMED call's iters would re-apply a hold the
+  // original run had already passed, and would restart the off-diagonal gain at
+  // the wrong place.  perNoCor > 1 is taken as that absolute count directly.
   {
     double pnc = args.containsElementNamed("perNoCor") ? as<double>(args["perNoCor"]) : 0.75;
-    _adviNbCorrel = (int)std::lround(pnc * (double)iters);
+    if (pnc > 1.0) {
+      _adviNbCorrel = (int)std::lround(pnc);            // absolute iterations
+    } else {
+      _adviNbCorrel = (int)std::lround(pnc * (double)iters);
+    }
   }
   // adviControl(tol=) / evalElbo: the ELBO-convergence early stop
   _adviTolRelObj = args.containsElementNamed("tol") ? as<double>(args["tol"]) : 0.0;
@@ -12923,6 +12932,14 @@ List adviOptimize_(List args) {
     }
   }
 
+  // A resumed run must keep the ORIGINAL absolute release iteration: recomputing
+  // perNoCor * iters from this call's iters would re-apply a hold the first run
+  // had already passed and restart the off-diagonal gain in the wrong place, so
+  // the resumed fit would not reproduce a single run of the combined length.
+  if (hasResume && resume.containsElementNamed("nbCorrel") &&
+      !Rf_isNull(resume["nbCorrel"])) {
+    _adviNbCorrel = as<int>(resume["nbCorrel"]);
+  }
   // a resumed run restarts from the prior fit's off-diagonals (fixed entries
   // still restore to the model ini values, which a fixed entry never left)
   if (_adviOmOff && hasResume && resume.containsElementNamed("popOmegaMat")) {
@@ -13021,6 +13038,7 @@ List adviOptimize_(List args) {
   adviResetTemper();
   res["etaScale"] = eta;
   res["etaScores"] = etaScores;
+  res["nbCorrel"] = _adviNbCorrel;   // absolute release iteration, for resume
   res["seed"] = seed;
   // an early ELBO-convergence stop leaves the tail of the trace zero-padded;
   // hand back only the iterations actually run so the reported ELBO trajectory
@@ -14438,7 +14456,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // for every iteration and silently report none.
   const double perNoCor = control.containsElementNamed("perNoCor")
     ? as<double>(control["perNoCor"]) : 0.75;
-  const int nbCorrel = (int)std::lround(perNoCor * (double)std::min(gammaIter, iters));
+  // perNoCor > 1 is an ABSOLUTE iteration count, used verbatim; <= 1 is a
+  // fraction of the effective EM phase.  Stating it absolutely makes the
+  // release point independent of how the run is sliced.
+  const int nbCorrel = (perNoCor > 1.0)
+    ? (int)std::lround(perNoCor)
+    : (int)std::lround(perNoCor * (double)std::min(gammaIter, iters));
   const int Lg = as<int>(control["nGradStep"]);
   const double learningRate = as<double>(control["learningRate"]);
   const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
