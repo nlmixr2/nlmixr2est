@@ -272,7 +272,9 @@
 #'   exact search everywhere.
 #' @param covSelectMaxExact Search size at or above which
 #'   `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
-#'   `17`, the measured wall-clock crossover).  Measured in bits of
+#'   `17`, just above the measured wall-clock crossover of roughly 16 bits --
+#'   see `tools/benchVaeCovSelect.R`, which finds the same crossover in bits
+#'   whether a covariate carries one shape or two).  Measured in bits of
 #'   feasible-support space -- `sum over covariates of log2(1 + shapes tried)` --
 #'   after `pinCovariates` trimming, so it is the size of the search actually
 #'   run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a

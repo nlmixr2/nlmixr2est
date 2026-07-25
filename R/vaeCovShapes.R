@@ -76,14 +76,16 @@
 #' Literal for a factor level inside generated model text
 #'
 #' A numeric level code compares numerically; anything else is quoted so
-#' rxode2's string-comparison path handles it.
-#' @param level the level, as stored in the data
+#' rxode2's string-comparison path handles it.  Whether the level IS numeric is
+#' decided upstream by `.vaeCovLevelValue` from the covariate's own type -- do
+#' not re-coerce here, or a character level that merely looks numeric (`"01"`)
+#' would be emitted as `== 1`, comparing against the wrong thing and no longer
+#' matching its own column when the model is piped back.
+#' @param level the level, already typed by `.vaeCovLevelValue`
 #' @return length-one character string
 #' @noRd
 .vaeLevelLit <- function(level) {
   if (is.numeric(level)) return(as.character(signif(level, 12)))
-  .n <- suppressWarnings(as.numeric(as.character(level)))
-  if (!is.na(.n)) return(as.character(signif(.n, 12)))
   paste0("\"", as.character(level), "\"")
 }
 
@@ -210,20 +212,36 @@
     }
     NULL
   }
+  ## Only POSITIVE additive position: the right operand of a binary `-`, and
+  ## anything under a unary `-`, carries a negation the pinned slope would not
+  ## see -- writing the fitted beta back into `theta - beta*cov` would flip the
+  ## sign of the effect.  Those are left unmatched so the coefficient regresses.
   .walk <- function(x) {
     x <- .unwrap(x)
     if (!is.call(x)) return(NULL)
     .op <- if (is.name(x[[1L]])) as.character(x[[1L]]) else ""
-    if (.op %in% c("+", "-")) {
-      if (length(x) == 2L) return(.walk(x[[2L]]))          # unary sign
+    if (.op == "+") {
+      if (length(x) == 2L) return(.walk(x[[2L]]))          # unary plus
       if (length(x) == 3L) {
         .r <- .walk(x[[2L]])
         if (!is.null(.r)) return(.r)
         return(.walk(x[[3L]]))
       }
     }
+    if (.op == "-" && length(x) == 3L) return(.walk(x[[2L]]))
     .term(x)
   }
+  ## The whole line must mention the coefficient exactly once.  `b*x1 + b*x2`
+  ## would otherwise be fitted on x1 alone and then written back to both terms,
+  ## and a coefficient reused inside another call would escape the walk entirely.
+  .count <- function(x) {
+    if (is.name(x)) return(as.integer(identical(as.character(x), coef)))
+    if (is.call(x)) {
+      return(sum(vapply(as.list(x)[-1L], .count, integer(1))))
+    }
+    0L
+  }
+  if (.count(e) != 1L) return(NULL)
   .e <- e
   if (is.call(.e) && is.name(.e[[1L]]) &&
         as.character(.e[[1L]]) %in% c("<-", "=", "~") && length(.e) == 3L) {

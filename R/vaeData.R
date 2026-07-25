@@ -300,11 +300,12 @@
     if (identical(pair$family, "cat")) c("cat", "lin") else pair$family
   } else if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
   .m <- .w[cov$covFamily[.w] %in% .want]
-  ## a written level comparison pins to THAT level's indicator, not merely to the
-  ## covariate's first one
-  if (length(.m) > 1L && !is.null(pair$level) && !is.na(pair$level)) {
-    .lm <- .m[!is.na(cov$covLevel[.m]) & cov$covLevel[.m] == pair$level]
-    if (length(.lm) > 0L) .m <- .lm
+  ## A written level comparison pins to THAT level's indicator.  If the level has
+  ## no column -- it was lumped into the reference by catCutoff, or is absent from
+  ## the data -- there is nothing to pin to, so fail rather than fall back to some
+  ## other level's column and fit the wrong indicator.
+  if (!is.null(pair$level) && !is.na(pair$level)) {
+    .m <- .m[!is.na(cov$covLevel[.m]) & cov$covLevel[.m] == pair$level]
   }
   if (length(.m) == 0L) NA_integer_ else .m[1L]
 }

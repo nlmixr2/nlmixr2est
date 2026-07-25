@@ -19,8 +19,14 @@ nmTest({
   test_that("categorical expressions compare against the level", {
     expect_equal(.vaeShapeExpr("cat", "SEX", level = "F"), "(SEX == \"F\")")
     expect_equal(.vaeShapeExpr("cat", "GRP", level = 2), "(GRP == 2)")
-    ## a level stored as the character "2" still compares numerically
-    expect_equal(.vaeShapeExpr("cat", "GRP", level = "2"), "(GRP == 2)")
+    ## a CHARACTER level is quoted even when it looks numeric -- comparing a
+    ## character covariate against a bare number would test the wrong thing and
+    ## would not match its own column when the model is piped back
+    expect_equal(.vaeShapeExpr("cat", "GRP", level = "2"), "(GRP == \"2\")")
+    expect_equal(.vaeShapeExpr("cat", "GRP", level = "01"), "(GRP == \"01\")")
+    ## the numeric/character decision comes from the COVARIATE's type
+    expect_identical(.vaeCovLevelValue(c(1, 2, 3), "2"), 2)
+    expect_identical(.vaeCovLevelValue(c("A", "01"), "01"), "01")
     ## a bare 0/1 indicator keeps its natural parameterization
     expect_equal(.vaeShapeExpr("cat", "SEXF", raw = TRUE), "SEXF")
   })
@@ -410,5 +416,100 @@ nmTest({
                                        vaeControl(shapes = "power")))
     ## the fallback column stays selectable rather than being zeroed everywhere
     expect_true(is.null(p$covAllow) || sum(p$covAllow) > 0L)
+  })
+})
+
+## Regressions for the third independent-review pass.
+nmTest({
+  test_that("a subtracted coefficient is not pinned with a flipped sign", {
+    ## `theta - beta*cov` fits beta for +cov, and writing that beta back into the
+    ## model applies it as -beta*cov: the covariate effect inverts
+    expect_null(.vaeCoefFactor(quote(cl <- exp(tcl - b1 * (WT - 70) + eta.cl)), "b1"))
+    expect_null(.vaeCoefFactor(quote(cl <- exp(tcl + -(b1 * (WT - 70)) + eta.cl)), "b1"))
+    ## a positive term is still found when something else is subtracted
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) - eta.cl)), "b1"),
+                 quote((WT - 70)))
+  })
+
+  test_that("a coefficient used more than once is not pinned", {
+    ## fitting on the first term and writing the estimate back to both corrupts
+    ## the prediction, so this must regress instead
+    expect_null(.vaeCoefFactor(
+      quote(cl <- exp(tcl + b1 * (WT - 70) + b1 * (AGE - 40) + eta.cl)), "b1"))
+    ## and a coefficient reused inside another call escapes the additive walk
+    expect_null(.vaeCoefFactor(
+      quote(cl <- exp(tcl + b1 * (WT - 70) + sqrt(b1) + eta.cl)), "b1"))
+  })
+
+  test_that("a subtracted or duplicated coefficient regresses end-to-end", {
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; b1 <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl - b1 * (WT - 70) + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
+                                       vaeControl(muRefCovAlg = FALSE)))
+    expect_false(any(p$pinPairs$inPool))
+    expect_true("b1" %in% p$regressNames)
+    expect_equal(sum(p$covAllow), 0L)
+  })
+
+  test_that("a written level with no column regresses instead of mis-pinning", {
+    ## "Asian" is held by 1/12 subjects, below catCutoff, so it is lumped into the
+    ## reference and has no indicator column.  Pinning it to some OTHER level's
+    ## column would fit the wrong indicator entirely.
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    ids <- unique(d$ID)
+    d$RACE <- c(rep("W", 10), "B", "Asian")[match(d$ID, ids)]
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; r1 <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + r1 * (RACE == "Asian") + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
+                                       vaeControl(muRefCovAlg = FALSE,
+                                                  catCutoff = 0.10)))
+    ## no RACE_Asian column exists
+    expect_false("Asian" %in% p$covLevel)
+    ## so the declared effect is estimated in place, not pinned to RACE_B
+    expect_false(any(p$pinPairs$inPool))
+    expect_true("r1" %in% p$regressNames)
+    expect_equal(sum(p$covAllow), 0L)
+  })
+})
+
+nmTest({
+  test_that("a numeric-looking character level round-trips", {
+    ## level "01" must be written as == "01" and pin back to its own column
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    ids <- unique(d$ID)
+    ## "A" must be clearly modal, else a frequency tie makes "01" the reference
+    d$GRP <- c(rep("A", 6), rep("01", 3), rep("02", 3))[match(d$ID, ids)]
+    res <- vaeCovariates(d)
+    expect_true("01" %in% res$level)
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; g1 <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + g1 * (GRP == "01") + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
+                                       vaeControl(muRefCovAlg = FALSE)))
+    expect_true(all(p$pinPairs$inPool))
+    .j <- which(colSums(p$covAllow) > 0L)
+    expect_equal(p$covLevel[.j], "01")
+    expect_false("g1" %in% p$regressNames)
   })
 })

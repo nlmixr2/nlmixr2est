@@ -43,7 +43,10 @@
   space (`sum over covariates of log2(1 + shapes tried)`) rather than a plain
   candidate count, so the exact branch-and-bound keeps the same worst-case node
   budget whether a covariate carries one shape or several.  With a single shape
-  per covariate the setting means exactly what it did before.
+  per covariate the setting means exactly what it did before.  The default stays
+  `17`: re-measuring with `tools/benchVaeCovSelect.R` puts the exact-vs-L0Learn
+  crossover at roughly 16 bits in BOTH regimes (one shape per covariate and two),
+  which is what makes a single threshold in these units meaningful.
 
 # nlmixr2est 7.0.1
 
