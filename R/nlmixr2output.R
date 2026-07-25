@@ -444,7 +444,7 @@
         check.rows = FALSE
       )
     # Keep estimated thetas absent from the (pre-literal-fix) model -- e.g. the
-    # covariate-coefficient thetas (beta_<par>_<cov>) est="vae" injects after
+    # covariate-coefficient thetas (beta.<par>.<cov>) est="vae" injects after
     # covariate selection.  They live in $theta/$cov but not in uiUnfix, so the
     # reindex below would silently drop them (leaving a covariate-free table).
     # Append them after the original theta order.

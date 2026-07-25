@@ -59,7 +59,7 @@ nmTest({
   ## End-to-end regression for the two covariate-output bugs, exercised together
   ## via a fixed residual parameter (literalFix=TRUE default), which is what
   ## triggered the parFixedDf drop:
-  ##   Bug 1 -- the selected covariate coefficients (beta_*) must appear in the
+  ##   Bug 1 -- the selected covariate coefficients (beta.*) must appear in the
   ##            population-parameter table, not just in $theta/$cov.
   ##   Bug 2 -- covariate-bearing mu-parameters must back-transform (exp) rather
   ##            than print the raw log-scale estimate.
@@ -92,7 +92,7 @@ nmTest({
     ## Bug 1: covariate coefficients present in the population-parameter table
     ## (WT selected on ka and V for theophylline).  Coefficients carry the shape
     ## they were written in.
-    expect_true(all(c("beta_lka_WT_power", "beta_lV_WT_power") %in% rownames(pf)))
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% rownames(pf)))
     expect_true(all(rownames(pf) %in% rownames(fit$cov) |
                       rownames(pf) == "add.err"))
 
@@ -108,8 +108,8 @@ nmTest({
     ## the fixed residual parameter is on the natural scale (no exp)
     expect_equal(pf["add.err", "Estimate"], 0.7, tolerance = 1e-6)
     ## covariate coefficients are reported raw (not back-transformed)
-    expect_equal(pf["beta_lka_WT_power", "Back-transformed"],
-                 pf["beta_lka_WT_power", "Estimate"], tolerance = 1e-6)
+    expect_equal(pf["beta.lka.WT.power", "Back-transformed"],
+                 pf["beta.lka.WT.power", "Estimate"], tolerance = 1e-6)
   })
 
   ## The multi-shape default: BICc now arbitrates between the log and linear
@@ -142,9 +142,9 @@ nmTest({
     ## exclusivity: never two shapes of one covariate on one parameter
     for (k in seq_len(nrow(sel))) expect_lte(sum(sel[k, ]), 1L)
     ## exactly one coefficient per selected parameter, named for the shape used
-    bn <- grep("^beta_", fit$ui$iniDf$name, value = TRUE)
+    bn <- grep("^beta\\.", fit$ui$iniDf$name, value = TRUE)
     expect_equal(length(bn), sum(sel))
-    expect_true(all(grepl("_(power|lin|log|identity|center)$", bn)))
+    expect_true(all(grepl("\\.(power|lin|log|identity|center)$", bn)))
     ## and the emitted model still re-parses with the mu-ref exp() intact
     expect_equal(fit$ui$muRefCurEval$curEval[fit$ui$muRefCurEval$parameter == "lka"],
                  "exp")

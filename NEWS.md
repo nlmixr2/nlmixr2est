@@ -10,6 +10,17 @@
   installed; otherwise accessing them warns and returns `NULL`.  Requires
   rxode2 (>= 5.1.5) for `rxDeserialize()`.
 
+## New features
+
+- The covariate coefficients `est="vae"` injects after covariate selection are
+  now named with `.` separators instead of `_`: `beta.tka.WT.lin` rather than
+  `beta_tka_WT_lin`.  This matches the separator the rest of `nlmixr2` uses for
+  generated and conventional parameter names (`eta.cl`, `add.sd`, `prop.sd`).
+  A categorical coefficient is built from the covariate and its level directly
+  (`beta.tka.SEX.M`), so the separator is consistent there too.  Coefficients you
+  write yourself are untouched -- with `vaeControl(pinCovariates=TRUE)` (the
+  default) the model keeps your names exactly as written.
+
 ## Bug fixes
 
 - `nlmixr2fix()` now actually repairs serialized fit components: it previously
@@ -18,6 +29,7 @@
 # nlmixr2est (development version)
 
 ## New features
+
 
 - The `est="vae"` automatic covariate search now explores several
   parameterizations ("shapes") of each covariate rather than the single
