@@ -11823,6 +11823,16 @@ static arma::mat adviPopOmFull(NumericVector logPopOmega) {
       ok = arma::chol(ch, arma::symmatu(Om));
     }
     if (!ok) {
+      // Last resort before giving up: ZERO the free off-diagonals (keeping the
+      // fixed ones) and retest.  Only if THAT is still indefinite is the fixed
+      // block itself impossible -- erroring before trying this would fail a
+      // valid model whose free entries merely needed more than 8 halvings.
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+          if (i != j && !_adviOmFixM(i, j)) Om(i, j) = 0.0;
+      ok = arma::chol(ch, arma::symmatu(Om));
+    }
+    if (!ok) {
       if (anyFixed)
         stop("fixed omega block is not positive definite at the current variances");
       Om.zeros();
@@ -14312,6 +14322,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           if (i != j && !omFixM(i, j)) o(i, j) *= 0.5;
       if (arma::chol(ch, arma::symmatu(o))) return o;
     }
+    // Last resort before giving up: ZERO the free off-diagonals (keeping the
+    // fixed ones) and retest.  Only if THAT is still indefinite is the fixed
+    // block itself impossible -- erroring before trying this would fail a valid
+    // model whose free entries merely needed more than 8 halvings.
+    for (int i = 0; i < zDim; ++i)
+      for (int j = 0; j < zDim; ++j)
+        if (i != j && !omFixM(i, j)) o(i, j) = 0.0;
+    if (arma::chol(ch, arma::symmatu(o))) return o;
     if (anyFixed)
       stop("fixed omega block is not positive definite at the current variances");
     return arma::diagmat(omega);
