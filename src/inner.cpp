@@ -11809,13 +11809,22 @@ static arma::mat adviPopOmFull(NumericVector logPopOmega) {
   for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
   arma::mat ch;
   if (!arma::chol(ch, arma::symmatu(Om))) {
-    bool ok = false;
+    // Shrink only the FREE off-diagonals.  A fixed covariance is a constraint
+    // the user set, not a value to be quietly walked down -- and the diagonal
+    // fallback would zero it outright, which is worse.
+    bool ok = false, anyFixed = false;
+    for (int i = 0; i < n && !anyFixed; ++i)
+      for (int j = i + 1; j < n; ++j)
+        if (_adviOmFixM(i, j)) { anyFixed = true; break; }
     for (int t = 0; t < 8 && !ok; ++t) {
       for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) if (i != j) Om(i, j) *= 0.5;
+        for (int j = 0; j < n; ++j)
+          if (i != j && !_adviOmFixM(i, j)) Om(i, j) *= 0.5;
       ok = arma::chol(ch, arma::symmatu(Om));
     }
     if (!ok) {
+      if (anyFixed)
+        stop("fixed omega block is not positive definite at the current variances");
       Om.zeros();
       for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
     }
@@ -14291,11 +14300,20 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     o.diag() = omega;
     arma::mat ch;
     if (arma::chol(ch, arma::symmatu(o))) return o;
+    // Shrink only the FREE off-diagonals: a fixed covariance is a user
+    // constraint, and the diagonal fallback below would zero it outright.
+    bool anyFixed = false;
+    for (int i = 0; i < zDim && !anyFixed; ++i)
+      for (int j = i + 1; j < zDim; ++j)
+        if (omFixM(i, j)) { anyFixed = true; break; }
     for (int t = 0; t < 8; ++t) {
       for (int i = 0; i < zDim; ++i)
-        for (int j = 0; j < zDim; ++j) if (i != j) o(i, j) *= 0.5;
+        for (int j = 0; j < zDim; ++j)
+          if (i != j && !omFixM(i, j)) o(i, j) *= 0.5;
       if (arma::chol(ch, arma::symmatu(o))) return o;
     }
+    if (anyFixed)
+      stop("fixed omega block is not positive definite at the current variances");
     return arma::diagmat(omega);
   };
   arma::vec a = as<arma::vec>(prep["a"]);
