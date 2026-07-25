@@ -86,7 +86,9 @@
 #' @noRd
 .vaeLevelLit <- function(level) {
   if (is.numeric(level)) return(as.character(signif(level, 12)))
-  paste0("\"", as.character(level), "\"")
+  ## encodeString escapes embedded quotes and backslashes; pasting raw quotes
+  ## around a level like `A"B` emits model text that does not even parse
+  encodeString(as.character(level), quote = "\"")
 }
 
 #' Re-express a family coefficient in a chosen shape's parameterization
@@ -247,9 +249,13 @@
         as.character(.e[[1L]]) %in% c("<-", "=", "~") && length(.e) == 3L) {
     .e <- .e[[3L]]
   }
-  ## a single mu-referencing transform wrapper, e.g. exp(theta + beta*cov + eta)
+  ## A single mu-referencing transform wrapper, e.g. exp(theta + beta*cov + eta).
+  ## Matched by NAME and always walking the first argument: the bounded forms
+  ## take limits too (expit(x, 0, 1), logit(x, lo, hi)), and requiring a
+  ## single-argument call would demote a perfectly ordinary bounded parameter to
+  ## the regress M-step.
   .e <- .unwrap(.e)
-  if (is.call(.e) && is.name(.e[[1L]]) && length(.e) == 2L &&
+  if (is.call(.e) && is.name(.e[[1L]]) && length(.e) >= 2L &&
         as.character(.e[[1L]]) %in% c("exp", "log", "logit", "expit",
                                       "probit", "probitInv")) {
     .e <- .e[[2L]]

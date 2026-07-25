@@ -513,3 +513,31 @@ nmTest({
     expect_false("g1" %in% p$regressNames)
   })
 })
+
+## Regressions for the fourth independent-review pass.
+nmTest({
+  test_that("a bounded mu transform is still walked", {
+    ## expit/logit/probit take limit arguments, so requiring a one-argument call
+    ## demoted an ordinary bounded parameter to the regress M-step
+    p <- function(s) parse(text = s)[[1]]
+    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"),
+                 quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- probitInv(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"),
+                 quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- logit(tf1 + b1 * log(WT/70) + eta.f1, 0, 10)"), "b1"),
+                 quote(log(WT/70)))
+    ## the unbounded spellings keep working
+    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1)"), "b1"),
+                 quote((WT - 70)))
+  })
+
+  test_that("a level containing quotes or backslashes emits parseable text", {
+    for (.l in c("A\"B", "A\\B", "A B", "A'B")) {
+      .txt <- .vaeShapeExpr("cat", "GRP", level = .l)
+      .e <- tryCatch(parse(text = .txt)[[1]], error = function(e) NULL)
+      expect_false(is.null(.e), info = .l)
+      ## and it round-trips: the level reads back exactly as written
+      expect_equal(.vaeDetectShape(.e, "GRP")$level, .l, info = .l)
+    }
+  })
+})
