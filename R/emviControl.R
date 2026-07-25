@@ -172,10 +172,10 @@
 #'   genuinely differ.  Pin the schedule (`perNoCor = 90`) whenever a fit may be
 #'   resumed; the resolved value is then stored with the fit and reused.
 #'
-#' @return variational-inference control structure (class `viControl`)
+#' @return variational-inference control structure (class `emviControl`)
 #' @export
 #' @author Matthew L. Fidler
-viControl <- function(seed = 42L,
+emviControl <- function(seed = 42L,
                         iters = 300L,
                         nMc = 1L,
                         viFamily = c("fullRank", "meanField"),
@@ -246,7 +246,7 @@ viControl <- function(seed = 42L,
   ## sigdig's own assertion permits NA, which would make 10^-sigdig NA and fail
   ## the tol assertion below with an unhelpful message -- fall back instead.
   ## The derivation runs BEFORE sigdig's own assertion further down, so guard on
-  ## the type here too: without it viControl(sigdig = "bad") reports a base
+  ## the type here too: without it emviControl(sigdig = "bad") reports a base
   ## arithmetic error from 10^-sigdig rather than the intended checkmate message.
   if (is.null(tol)) {
     .sdOk <- !is.null(sigdig) && is.numeric(sigdig) && length(sigdig) == 1L &&
@@ -361,13 +361,13 @@ viControl <- function(seed = 42L,
                iterPrintControl = .iterPrintControl,
                rxControl = rxControl,
                genRxControl = .genRxControl)
-  class(.ret) <- "viControl"
+  class(.ret) <- "emviControl"
   .ret
 }
 
 #' @export
-rxUiDeparse.viControl <- function(object, var) {
-  .default <- viControl()
+rxUiDeparse.emviControl <- function(object, var) {
+  .default <- emviControl()
   object$resume <- NULL                     # not deparsable (may be a whole fit)
   .w <- .deparseDifferent(.default, object, "genRxControl")
   .deparseFinal(.default, object, .w, var)
@@ -375,21 +375,21 @@ rxUiDeparse.viControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.viControl <- function(control, env) {
-  assign("viControl", control, envir = env)
+nmObjHandleControlObject.emviControl <- function(control, env) {
+  assign("emviControl", control, envir = env)
 }
 
 #' Shared control lookup for the two variational methods.
 #' @noRd
 .viGetControl <- function(x) {
   .env <- x[[1]]
-  if (exists("viControl", .env)) {
-    .control <- get("viControl", .env)
-    if (inherits(.control, "viControl")) return(.control)
+  if (exists("emviControl", .env)) {
+    .control <- get("emviControl", .env)
+    if (inherits(.control, "emviControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "viControl")) return(.control)
+    if (inherits(.control, "emviControl")) return(.control)
   }
   stop("cannot find variational inference related control object", call. = FALSE)
 }
@@ -398,11 +398,7 @@ nmObjHandleControlObject.viControl <- function(control, env) {
 #' @export
 nmObjGetControl.emvi <- function(x, ...) .viGetControl(x)
 
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
-
-#' Validate/normalize a viControl and resolve `pointEstimate` from `est`.
+#' Validate/normalize a emviControl and resolve `pointEstimate` from `est`.
 #'
 #' `pointEstimate` is the axis the two methods differ on, so `est` decides it and
 #' a contradicting control value loses -- the same way `est="imp"` forces
@@ -415,13 +411,13 @@ nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
 #' @noRd
 .viValidCtl <- function(control, pe, est) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- viControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("viControl", .ctl)
-  if (!inherits(.ctl, "viControl")) {
+  if (is.null(.ctl)) .ctl <- emviControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("emviControl", .ctl)
+  if (!inherits(.ctl, "emviControl")) {
     .minfo(paste0("invalid control for `est=\"", est, "\"`, using default"))
-    .ctl <- viControl()
+    .ctl <- emviControl()
   } else {
-    .ctl <- do.call(viControl, .ctl)
+    .ctl <- do.call(emviControl, .ctl)
   }
   .viSetPe(.ctl, pe, est)
 }
@@ -440,10 +436,6 @@ nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
 #' @export
 getValidNlmixrCtl.emvi <- function(control) .viValidCtl(control, TRUE, "emvi")
 
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.fbvi <- function(control) .viValidCtl(control, FALSE, "fbvi")
-
 #' Shared dispatch body for est="emvi" / est="fbvi".
 #' @noRd
 .viEst <- function(env, pe, est) {
@@ -455,21 +447,21 @@ getValidNlmixrCtl.fbvi <- function(control) .viValidCtl(control, FALSE, "fbvi")
   ## tables with a cryptic "probabilities in a mixture ... sum to 0".
   rxode2::assertRxUiNoMix(.ui, .what, .var.name = .ui$modelName)
   ## absorb the validated control (set by getValidNlmixrControl before dispatch)
-  if (exists("control", envir = env) && inherits(env$control, "viControl")) {
-    assign("viControl", env$control, envir = env)
+  if (exists("control", envir = env) && inherits(env$control, "emviControl")) {
+    assign("emviControl", env$control, envir = env)
   } else {
-    assign("viControl", viControl(), envir = env)
+    assign("emviControl", emviControl(), envir = env)
   }
   ## getValidNlmixrCtl already resolved pointEstimate, but nlmixr2Est.emvi/.fbvi
   ## are also a direct entry point (extensions, tests), so pin it here too --
   ## UNCONDITIONALLY, or a hand-built contradicting control runs the other
   ## algorithm under this method's name
-  env$viControl <- .viSetPe(env$viControl, pe, est)
+  env$emviControl <- .viSetPe(env$emviControl, pe, est)
   env$est <- est
   ## Seed the ENTIRE estimation ONCE here and restore the caller's global RNG
   ## state afterward; the counter-based reparameterization stream inside the loop
   ## makes a shorter run a bit-for-bit prefix of a longer one.
-  rxode2::rxWithSeed(env$viControl$seed, {
+  rxode2::rxWithSeed(env$emviControl$seed, {
     .adviFitModel(env)
   })
 }
@@ -481,10 +473,3 @@ attr(nlmixr2Est.emvi, "covPresent") <- TRUE
 ## optimization runs in the unconstrained real coordinate space
 attr(nlmixr2Est.emvi, "unbounded") <- TRUE
 attr(nlmixr2Est.emvi, "iov") <- TRUE
-
-#' @rdname nlmixr2Est
-#' @export
-nlmixr2Est.fbvi <- function(env, ...) .viEst(env, FALSE, "fbvi")
-attr(nlmixr2Est.fbvi, "covPresent") <- TRUE
-attr(nlmixr2Est.fbvi, "unbounded") <- TRUE
-attr(nlmixr2Est.fbvi, "iov") <- TRUE

@@ -83,7 +83,7 @@ nmTest({
 
   test_that("est='advi' estimates the omega off-diagonal", {
     f <- nlmixr2(.omCorMod, .omData, est = "emvi",
-                 control = viControl(iters = 300L, print = 0L))
+                 control = emviControl(iters = 300L, print = 0L))
     .expectOffDiagEstimated(f)
     .idf <- f$iniDf
     .offRow <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2, , drop = FALSE]
@@ -141,7 +141,7 @@ nmTest({
     expect_equal(unname(fV$omega[1L, 2L]), 0.01, tolerance = 1e-10)
     expect_equal(unname(diag(fV$omega)), c(0.1, 0.1), tolerance = 1e-10)
     fA <- nlmixr2(.omFixedMod, .omData, est = "emvi",
-                  control = viControl(iters = 50L, print = 0L))
+                  control = emviControl(iters = 50L, print = 0L))
     expect_equal(unname(fA$omega[1L, 2L]), 0.01, tolerance = 1e-10)
     expect_equal(unname(diag(fA$omega)), c(0.1, 0.1), tolerance = 1e-10)
   })

@@ -67,7 +67,9 @@
 
 - The variational inference method previously called `est="advi"` is now two
   methods, `est="emvi"` (variational EM) and `est="fbvi"` (full Bayes), sharing
-  one control, `viControl()` (was `adviControl()`).  The old name was wrong on
+  a shared control -- `emviControl()` with `fbviControl()` as its thin wrapper,
+  the way `impmapControl()`/`impControl()` already work (was `adviControl()`).
+  The old name was wrong on
   both halves: there is no automatic differentiation in the implementation (the
   gradients come from the FOCEi forward sensitivities), and the default mode was
   never the published algorithm but a variational-EM hybrid.  The two modes were
@@ -861,7 +863,7 @@
 
 ### New estimation methods
 
-- `est = "emvi"` and `est = "fbvi"` (both `viControl()`): variational inference
+- `est = "emvi"` and `est = "fbvi"` (`emviControl()` / `fbviControl()`): variational inference
   in the style of Kucukelbir et al. (2017), mean-field or block full-rank
   family.  `emvi` is variational EM (variational posterior over the etas,
   population parameters point-estimated by an M-step); `fbvi` adds the

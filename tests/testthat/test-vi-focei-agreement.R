@@ -18,7 +18,7 @@ nmTest({
               control = foceiControl(print = 0L))))
     fA <- suppressMessages(suppressWarnings(
       nlmixr2(mod, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 600L, print = 0L, returnVi = TRUE))))
+              control = emviControl(iters = 600L, print = 0L, returnVi = TRUE))))
 
     ## typical values (log scale): mu-ref tka/tcl, non-mu tv, sigma add.sd
     expect_equal(unname(fA$theta), unname(fF$theta), tolerance = 0.1)
@@ -39,7 +39,7 @@ nmTest({
               control = foceiControl(print = 0L))))
     fA <- suppressMessages(suppressWarnings(
       nlmixr2(mod, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 600L, print = 0L))))
+              control = emviControl(iters = 600L, print = 0L))))
     expect_s3_class(fA, "nlmixr2FitData")
     ## the FOCEi objective at the ADVI estimates is within a few points of FOCEI's
     expect_lt(abs(fA$objf - fF$objf), 15)

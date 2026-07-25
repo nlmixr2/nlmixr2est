@@ -26,7 +26,7 @@ nmTest({
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(neonatal, dat, est = "emvi",
-              control = viControl(iters = 400L, print = 0L, returnVi = TRUE))))
+              control = emviControl(iters = 400L, print = 0L, returnVi = TRUE))))
 
     ## all five structural typical values + the two error params estimated finite
     expect_true(all(is.finite(fit$theta)))
@@ -55,7 +55,7 @@ nmTest({
     }
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "emvi", control = viControl(iters = 400L, print = 0L))))
+      nlmixr2(neonatal, dat, est = "emvi", control = emviControl(iters = 400L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))

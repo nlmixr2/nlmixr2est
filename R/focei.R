@@ -2208,7 +2208,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
     # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
     # The control class is checked too: at .impmapFamilyFit's foceiOptEnv
-    # build the ui control (impmapControl/viControl) does not carry est yet
+    # build the ui control (impmapControl/emviControl) does not carry est yet
     # (env$est is set after .foceiFamilyControl in the est methods).
     .ctlClass <- ""
     if (exists("control", envir = .x, inherits = FALSE)) {
@@ -2217,7 +2217,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
                     c("impmap", "imp", "qrpem", "advi",
                       "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) &&
-      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "viControl"))
+      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "emviControl"))
     # muModel != "none" is the clamped family: bounded mu parameters stay
     # grouped and updateMuGroups() clamps their regression update
     .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain, clamp = TRUE)

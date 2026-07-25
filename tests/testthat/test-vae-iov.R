@@ -73,10 +73,10 @@ nmTest({
 
   test_that("vaeControl supplies a numeric sigdig", {
     ## regression: a NULL sigdig reached signif() in .uiFinalizeIov and killed
-    ## every IOV fit; viControl had the same gap
+    ## every IOV fit; emviControl had the same gap
     expect_equal(length(vaeControl()$sigdig), 1L)
     expect_true(is.finite(vaeControl()$sigdig))
-    expect_equal(length(viControl()$sigdig), 1L)
-    expect_true(is.finite(viControl()$sigdig))
+    expect_equal(length(emviControl()$sigdig), 1L)
+    expect_true(is.finite(emviControl()$sigdig))
   })
 })

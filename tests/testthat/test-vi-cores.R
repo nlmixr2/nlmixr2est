@@ -12,7 +12,7 @@ nmTest({
   }
 
   .runVi <- function(cores, family = "meanField", est = "emvi") {
-    ctl <- viControl(iters = 120L, seed = 7L, print = 0L, returnVi = TRUE,
+    ctl <- emviControl(iters = 120L, seed = 7L, print = 0L, returnVi = TRUE,
                        viFamily = family,
                        rxControl = rxode2::rxControl(cores = cores))
     suppressMessages(suppressWarnings(

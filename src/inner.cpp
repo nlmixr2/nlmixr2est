@@ -14949,8 +14949,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       zPopArg = zPopMat;
       // the reference assigns omega outright; the historic path blends it
       omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
-      // off-diagonals: matrix M-step against the covariate centers (the raw
-      // posterior mu/L, gamma-blended -- the reference has no off-diag analogue)
+      // off-diagonals: matrix M-step against the covariate centers, following
+      // the SAME omegaUpdate= path the diagonal just took (suffStat statistics
+      // assigned outright, or raw posterior moments gain-blended).  Mixing the
+      // two would estimate the block with two different estimators.
       omOffStep(last.mu, last.L, zPopMat, gamma, it <= nbCorrel, omegaSuffStat);
       if (!residByOpt) a = a + gamma * (aCur - a);
       isCovStep = true;

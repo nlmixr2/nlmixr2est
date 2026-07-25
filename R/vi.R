@@ -1,6 +1,6 @@
 # vi.R -- orchestration for est="emvi" (variational EM) and est="fbvi" (full
 # Bayes VI), in the style of Kucukelbir et al. 2017 but not the published
-# algorithm (see viControl()).  Sets up the FOCEi inner problem (reused for the
+# algorithm (see emviControl()).  Sets up the FOCEi inner problem (reused for the
 # per-subject log-joint and eta-gradient) plus, when non-mu structural thetas are
 # present, the impmap theta-sensitivity model (reused for the outer population
 # gradient), then drives the optimization loop in C++.
@@ -38,7 +38,7 @@
 #' @param ui rxode2 ui object (already bounded-transformed by the dispatch hook)
 #' @param data estimation data
 #' @param etaMat starting etas [nsub, neta]
-#' @param control viControl
+#' @param control emviControl
 #' @return the setup env (keep alive until .adviInnerFree())
 #' @noRd
 .adviInnerSetup <- function(ui, data, etaMat, control) {
@@ -94,7 +94,7 @@
 #' search + the main loop) in one C++ call (adviOptimize_).
 #' @param ui bounded-transformed rxode2 ui
 #' @param data estimation data
-#' @param control viControl
+#' @param control emviControl
 #' @param resume optional list from a previous fit's `$viState` for warm resume
 #' @return the raw result list (variational params, estimates, elbo, parHist)
 #' @noRd
@@ -133,7 +133,7 @@
   ## before getting here.  An unresolved NULL would slip through isTRUE() as
   ## FALSE and quietly run full Bayes under est="emvi", so refuse instead.
   if (!isTRUE(control$pointEstimate) && !isFALSE(control$pointEstimate)) {
-    stop("viControl(pointEstimate=) was never resolved from `est`", call. = FALSE)
+    stop("emviControl(pointEstimate=) was never resolved from `est`", call. = FALSE)
   }
   ## correlated etas: the point-estimate families estimate the full omega block;
   ## the full-Bayes path (pointEstimate=FALSE) parameterizes phi with per-eta
@@ -178,7 +178,7 @@
 #' @noRd
 .adviToFit <- function(env, res) {
   .ui <- env$ui
-  .control <- env$viControl
+  .control <- env$emviControl
   ## which of the two methods produced this fit; env$est is set by .viEst, but
   ## fall back to pointEstimate so a directly-called .adviFitModel still labels
   ## the fit with a real method name rather than NULL
@@ -255,7 +255,7 @@
   .ret$adjObf <- .control$adjObf
   ## the optimization walk (standard parHistData -> $parHist accessor)
   if (!is.null(res$parHistData)) .ret$parHistData <- res$parHistData
-  nmObjHandleControlObject(.control, .ret)   # store viControl for nmObjGetControl.advi
+  nmObjHandleControlObject(.control, .ret)   # store emviControl for nmObjGetControl.advi
   ## reuse the models compiled for the variational loop (inner/EBE/pred + thetaSens):
   ## with $model present the eval-only finalize skips its own symengine rebuild
   ## (the finalize reads only the foce-prefix columns of the inner model, so the
@@ -273,7 +273,7 @@
   ## an early ELBO-convergence stop is a real difference from the requested
   ## `iters`; say so rather than leaving a short trace to be noticed
   if (isTRUE(res$tolStopped)) {
-    warning(sprintf("ELBO converged at iteration %d of %d (viControl(tol=))",
+    warning(sprintf("ELBO converged at iteration %d of %d (emviControl(tol=))",
                     length(res$elbo), as.integer(.control$iters)),
             call. = FALSE)
   }
@@ -387,11 +387,11 @@
 }
 
 #' Fit an emvi/fbvi model: set up the inner/outer problems and run the C++ loop.
-#' @param env estimation environment (holds ui, data, viControl)
+#' @param env estimation environment (holds ui, data, emviControl)
 #' @noRd
 .adviFitModel <- function(env) {
   .ui <- env$ui
-  .control <- env$viControl
+  .control <- env$emviControl
   ## warm resume: accept a prior emvi/fbvi fit or its viState
   .resume <- .control$resume
   if (!is.null(.resume)) {

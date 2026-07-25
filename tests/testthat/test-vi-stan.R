@@ -30,7 +30,7 @@ test_that("est='advi' population posterior agrees with rstan::vb()", {
   }
   fA <- suppressMessages(suppressWarnings(
     nlmixr2(linmod, dat, est = "fbvi",
-            control = viControl(iters = 800L, print = 0L, returnVi = TRUE))))
+            control = fbviControl(iters = 800L, print = 0L, returnVi = TRUE))))
 
   ## Stan ADVI (mean-field vb) on the identical generative model
   stanCode <- "

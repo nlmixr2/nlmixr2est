@@ -11,7 +11,7 @@ nmTest({
   }
 
   test_that("est='emvi' raw loop: ELBO increases and is reproducible", {
-    ctl <- viControl(iters = 150L, seed = 7L, print = 0L, returnVi = TRUE)
+    ctl <- emviControl(iters = 150L, seed = 7L, print = 0L, returnVi = TRUE)
     res <- suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
     expect_s3_class(res, "nlmixr2vi")
@@ -31,7 +31,7 @@ nmTest({
   test_that("est='advi' assembles a full nlmixr2FitData (objf + tables + cov)", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 120L, print = 0L))))
+              control = emviControl(iters = 120L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
@@ -50,13 +50,13 @@ nmTest({
     expect_false(is.null(fit$env$foceiModel))
   })
 
-  test_that("viControl(tol=) stops early on ELBO convergence", {
+  test_that("emviControl(tol=) stops early on ELBO convergence", {
     ## The mechanism must be OBSERVABLE, not just "the fit still works": with a
     ## loose tolerance the loop must stop before `iters`, and with tol=0 it must
     ## run every iteration.  Before this was wired up, `tol` was documented but
     ## never reached the C++ loop, so both runs were identical -- a test that
     ## only checked the fit succeeded would not have caught that.
-    .base <- function(tol) viControl(iters = 400L, seed = 7L, print = 0L,
+    .base <- function(tol) emviControl(iters = 400L, seed = 7L, print = 0L,
                                        returnVi = TRUE, tol = tol,
                                        evalElbo = 25L)
     rOff <- suppressMessages(suppressWarnings(
@@ -81,7 +81,7 @@ nmTest({
     ## otherwise report an INFLATED omega -- silently, and only for short runs.
     r <- suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 10L, klWarmup = 50L, temperInit = 10,
+              control = emviControl(iters = 10L, klWarmup = 50L, temperInit = 10,
                                     seed = 7L, print = 0L, returnVi = TRUE,
                                     tol = 0))))
     expect_equal(unname(diag(r$popOmegaMat)), unname(r$popOmega), tolerance = 1e-12)
@@ -100,7 +100,7 @@ nmTest({
     ## window past the warm-up and untempered even without the fix.
     .fit <- function(kl) suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 60L, klWarmup = kl, temperInit = 100,
+              control = emviControl(iters = 60L, klWarmup = kl, temperInit = 100,
                                     seed = 7L, print = 0L, returnVi = TRUE,
                                     tol = 0))))
     .a <- .fit(0L); .b <- .fit(80L)
@@ -122,7 +122,7 @@ nmTest({
     .info <- function(cand) {
       .f <- suppressMessages(suppressWarnings(
         nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-                control = viControl(iters = 60L, seed = 7L, print = 0L,
+                control = emviControl(iters = 60L, seed = 7L, print = 0L,
                                       tol = 0, etaCandidates = cand))))
       as.character(.f$runInfo)
     }
@@ -133,7 +133,7 @@ nmTest({
   })
 
   test_that("a resumed correlated fit reproduces the single long run", {
-    ## viControl(resume=) promises a resumed run is identical to one fresh run
+    ## emviControl(resume=) promises a resumed run is identical to one fresh run
     ## of the combined length.  perNoCor broke that: nbCorrel was recomputed from
     ## the RESUMED call's iters and compared against a CONTINUING global index, so
     ## the resumed run re-applied a hold the first run had already passed and
@@ -159,7 +159,7 @@ nmTest({
     ## pinned to absolute iterations rather than to a share of whatever slice is
     ## being run.
     .ctl <- function(n, res = NULL)
-      viControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
+      emviControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
                   perNoCor = 90, adaptEta = FALSE, etaCandidates = 0.05)
 
     one <- suppressMessages(suppressWarnings(
@@ -182,7 +182,7 @@ nmTest({
     ## $est misdescribes the algorithm that ran.  This is the direct-dispatch
     ## path (nlmixr2Est.emvi), which does not go through getValidNlmixrCtl.
     .run <- function(est, pe) {
-      ctl <- viControl(iters = 40L, seed = 7L, print = 0L, returnVi = TRUE,
+      ctl <- emviControl(iters = 40L, seed = 7L, print = 0L, returnVi = TRUE,
                        pointEstimate = pe)
       suppressMessages(suppressWarnings(
         nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)))
@@ -197,15 +197,15 @@ nmTest({
     ## Rcpp NULL conversion instead of naming the problem
     fE <- suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 40L, seed = 7L, print = 0L))))
+              control = emviControl(iters = 40L, seed = 7L, print = 0L))))
     expect_error(suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fbvi",
-              control = viControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
+              control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
       "cannot resume")
     ## the same-method resume still works
     expect_s3_class(suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = viControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
+              control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
       "nlmixr2FitData")
   })
 })

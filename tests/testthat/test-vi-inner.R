@@ -13,7 +13,7 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(theo)
-    ctl <- viControl()
+    ctl <- emviControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
     .testSeed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
 
@@ -38,7 +38,7 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mixedMu)
-    ctl <- viControl()
+    ctl <- emviControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
     env <- .adviInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, 1L), ctl)
     on.exit(.adviInnerFree(), add = TRUE)

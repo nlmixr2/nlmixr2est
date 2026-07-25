@@ -20,7 +20,7 @@ nmTest({
         nlmixr2(mod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0L))))
       fA <- suppressMessages(suppressWarnings(
         nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-                control = viControl(iters = 500L, print = 0L, returnVi = TRUE,
+                control = fbviControl(iters = 500L, print = 0L, returnVi = TRUE,
                                       viFamily = fam))))
       expect_false(fA$pointEstimate)
       ## posterior MEANS agree with FOCEI
@@ -44,7 +44,7 @@ nmTest({
     ## the fit's SE source
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-              control = viControl(iters = 400L, print = 0L))))
+              control = fbviControl(iters = 400L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
@@ -62,7 +62,7 @@ nmTest({
     ## variational covariance
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-              control = viControl(iters = 400L, print = 0L,
+              control = fbviControl(iters = 400L, print = 0L,
                                     covMethod = "analytic"))))
     expect_false(identical(fit$covMethod, "vi"))
     expect_false(is.null(fit$env$viCov))          # the variational cov is still kept as an artifact
