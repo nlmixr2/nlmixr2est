@@ -100,6 +100,21 @@ test_that("fbviControl() is emviControl() with pointEstimate = FALSE", {
   ## pointEstimate is a NAMED formal, so passing it explicitly binds rather than
   ## colliding as a duplicate argument (the qrpemControl(qr=) shape)
   expect_true(fbviControl(pointEstimate = TRUE)$pointEstimate)
+  expect_error(fbviControl(pointEstimate = "yes"))
+
+  ## POSITIONAL arguments must land on the same formals they would in
+  ## emviControl().  Passing pointEstimate= into emviControl() from the shim
+  ## would bind formal #5 by name, dropping it out of positional matching and
+  ## shifting every later positional argument one slot -- "adam" would arrive at
+  ## adaptEta.  seed/iters/nMc/viFamily/pointEstimate/optim are formals 1-6.
+  p <- fbviControl(42L, 300L, 1L, "fullRank", FALSE, "adam")
+  expect_identical(p$seed, 42L)
+  expect_identical(p$iters, 300L)
+  expect_identical(p$nMc, 1L)
+  expect_identical(p$viFamily, "fullRank")
+  expect_identical(p$optim, "adam")
+  expect_true(p$adaptEta)                 # NOT "adam"
+  expect_false(p$pointEstimate)
 
   ## defaults differ ONLY on that axis
   .drop <- function(x) { x$pointEstimate <- NULL; x }

@@ -21,7 +21,16 @@
 #'
 #' fbviControl()
 fbviControl <- function(..., pointEstimate = FALSE) {
-  emviControl(..., pointEstimate = pointEstimate)
+  ## Construct then mutate, exactly as impControl() does over impmapControl().
+  ## Passing `pointEstimate = ` INTO emviControl() instead would bind formal #5
+  ## by name and drop it out of positional matching, so a caller supplying five
+  ## or more positional arguments would have every later one shifted a slot
+  ## (fbviControl(42, 300, 1, "fullRank", FALSE, "adam") landing "adam" on
+  ## adaptEta).  Mutating afterwards leaves emviControl()'s own matching intact.
+  checkmate::assertLogical(pointEstimate, len = 1, any.missing = FALSE)
+  .ctl <- emviControl(...)
+  .ctl$pointEstimate <- pointEstimate
+  .ctl
 }
 
 #' @rdname getValidNlmixrControl
