@@ -45,12 +45,18 @@ test_that("getValidNlmixrCtl.emvi/.fbvi normalize control and resolve pointEstim
   expect_true(getValidNlmixrCtl.emvi(list(viControl(pointEstimate = TRUE)))$pointEstimate)
   expect_false(getValidNlmixrCtl.fbvi(list(viControl(pointEstimate = FALSE)))$pointEstimate)
 
-  ## one that CONTRADICTS it is an error rather than a silent override -- the
-  ## fit would otherwise report an $est that misdescribes the algorithm it ran
-  expect_error(getValidNlmixrCtl.emvi(list(viControl(pointEstimate = FALSE))),
-               "contradicts")
-  expect_error(getValidNlmixrCtl.fbvi(list(viControl(pointEstimate = TRUE))),
-               "contradicts")
+  ## one that CONTRADICTS it loses to `est` -- but is ANNOUNCED, not silent.
+  ## `est` has to win rather than error because the two methods share one control
+  ## class, so re-estimating a fit with the other method pipes the completed
+  ## fit's control (carrying the old pointEstimate) forward.
+  expect_message(v3 <- getValidNlmixrCtl.emvi(list(viControl(pointEstimate = FALSE))),
+                 "pointEstimate=TRUE")
+  expect_true(v3$pointEstimate)
+  expect_message(v4 <- getValidNlmixrCtl.fbvi(list(viControl(pointEstimate = TRUE))),
+                 "pointEstimate=FALSE")
+  expect_false(v4$pointEstimate)
+  ## an agreeing value says nothing
+  expect_silent(getValidNlmixrCtl.emvi(list(viControl(pointEstimate = TRUE))))
 })
 
 test_that("rxUiDeparse.viControl round-trips changed args", {

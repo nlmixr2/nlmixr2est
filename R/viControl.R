@@ -19,8 +19,8 @@
 #' }
 #'
 #' `pointEstimate` is the switch between them and defaults to whichever the
-#' chosen `est` implies; setting it to contradict `est` is an error rather than a
-#' silent override.
+#' chosen `est` implies.  `est` decides: a control that contradicts it is
+#' overridden, with a message saying so.
 #'
 #' Neither method is the published ADVI algorithm, which is why neither is named
 #' for it.  Two deviations matter.  First, even `fbvi` parameterizes the
@@ -54,8 +54,10 @@
 #'   underestimate marginal variances.
 #' @param pointEstimate Which of the two methods to run, normally left at its
 #'   `NULL` default so it follows `est`: `est="emvi"` implies `TRUE` and
-#'   `est="fbvi"` implies `FALSE`.  Setting it to contradict the requested `est`
-#'   is an error.  `TRUE` runs the variational-EM hybrid: the variational
+#'   `est="fbvi"` implies `FALSE`.  `est` wins over a contradicting value, and
+#'   says so -- it has to, because re-estimating a fit with the other method
+#'   pipes the completed fit's control forward.  `TRUE` runs the variational-EM
+#'   hybrid: the variational
 #'   posterior covers the per-subject etas only, and the population parameters
 #'   (thetas / omega / residual error) are point estimates maximized by the ELBO
 #'   gradient; output semantics match FOCEi/SAEM.  `FALSE` runs full Bayes: the
@@ -402,12 +404,14 @@ nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
 
 #' Validate/normalize a viControl and resolve `pointEstimate` from `est`.
 #'
-#' `pointEstimate` is the axis the two methods differ on, so it is derived from
-#' `est` rather than defaulted independently.  An explicit value that contradicts
-#' the requested method is an ERROR, not a silent override: a
-#' `viControl(pointEstimate=FALSE)` passed to `est="emvi"` says two different
-#' things about which algorithm to run, and quietly honoring either one gives a
-#' fit whose `$est` misdescribes it.
+#' `pointEstimate` is the axis the two methods differ on, so `est` decides it and
+#' a contradicting control value loses -- the same way `est="imp"` forces
+#' `mapIter=0` on the impmapControl it shares.  `est` has to win rather than
+#' error, because the two methods share ONE control class: re-estimating a fit
+#' with the other method (`nlmixr2(fitEmvi, est="fbvi")`) pipes the completed
+#' fit's control forward, which would otherwise always look like a contradiction.
+#' The override is announced rather than silent, since the alternative is a fit
+#' whose `$est` misdescribes the algorithm that ran.
 #' @noRd
 .viValidCtl <- function(control, pe, est) {
   .ctl <- control[[1]]
@@ -419,15 +423,17 @@ nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
   } else {
     .ctl <- do.call(viControl, .ctl)
   }
-  if (is.null(.ctl$pointEstimate)) {
-    .ctl$pointEstimate <- pe
-  } else if (!identical(isTRUE(.ctl$pointEstimate), pe)) {
-    stop("viControl(pointEstimate=", isTRUE(.ctl$pointEstimate),
-         ") contradicts `est=\"", est, "\"`; use est=\"",
-         if (isTRUE(.ctl$pointEstimate)) "emvi" else "fbvi", "\" or drop pointEstimate",
-         call. = FALSE)
+  .viSetPe(.ctl, pe, est)
+}
+
+#' Force `pointEstimate` to what `est` implies, announcing a real override.
+#' @noRd
+.viSetPe <- function(ctl, pe, est) {
+  if (!is.null(ctl$pointEstimate) && !identical(isTRUE(ctl$pointEstimate), pe)) {
+    .minfo(paste0("`est=\"", est, "\"` sets pointEstimate=", pe))
   }
-  .ctl
+  ctl$pointEstimate <- pe
+  ctl
 }
 
 #' @rdname getValidNlmixrControl
@@ -454,11 +460,11 @@ getValidNlmixrCtl.fbvi <- function(control) .viValidCtl(control, FALSE, "fbvi")
   } else {
     assign("viControl", viControl(), envir = env)
   }
-  ## getValidNlmixrCtl resolves pointEstimate from est, but nlmixr2Est can also
-  ## be reached with a hand-built control, so pin it here too
-  if (is.null(env$viControl$pointEstimate)) {
-    env$viControl$pointEstimate <- pe
-  }
+  ## getValidNlmixrCtl already resolved pointEstimate, but nlmixr2Est.emvi/.fbvi
+  ## are also a direct entry point (extensions, tests), so pin it here too --
+  ## UNCONDITIONALLY, or a hand-built contradicting control runs the other
+  ## algorithm under this method's name
+  env$viControl <- .viSetPe(env$viControl, pe, est)
   env$est <- est
   ## Seed the ENTIRE estimation ONCE here and restore the caller's global RNG
   ## state afterward; the counter-based reparameterization stream inside the loop

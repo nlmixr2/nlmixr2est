@@ -10,7 +10,7 @@ nmTest({
       cp <- center/v; cp ~ add(add.sd) })
   }
 
-  test_that("est='advi' raw loop: ELBO increases and is reproducible", {
+  test_that("est='emvi' raw loop: ELBO increases and is reproducible", {
     ctl <- viControl(iters = 150L, seed = 7L, print = 0L, returnVi = TRUE)
     res <- suppressMessages(suppressWarnings(
       nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
@@ -175,5 +175,37 @@ nmTest({
     ## the release point travelled with the state rather than being recomputed
     expect_equal(half$env$viState$nbCorrel, cont$env$viState$nbCorrel)
     expect_equal(one$env$viState$nbCorrel, 90)   # absolute, not 0.75 * iters
+  })
+
+  test_that("est decides the algorithm, whatever the control says", {
+    ## a control whose pointEstimate contradicts est must not produce a fit whose
+    ## $est misdescribes the algorithm that ran.  This is the direct-dispatch
+    ## path (nlmixr2Est.emvi), which does not go through getValidNlmixrCtl.
+    .run <- function(est, pe) {
+      ctl <- viControl(iters = 40L, seed = 7L, print = 0L, returnVi = TRUE,
+                       pointEstimate = pe)
+      suppressMessages(suppressWarnings(
+        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)))
+    }
+    expect_true(.run("emvi", FALSE)$pointEstimate)
+    expect_false(.run("fbvi", TRUE)$pointEstimate)
+  })
+
+  test_that("a fit resumed under the OTHER method is refused", {
+    ## emvi state carries sTheta/sLpo, fbvi carries mPop/Lpop; crossing them
+    ## reaches adviOptimize_ with the wrong half missing and used to die on an
+    ## Rcpp NULL conversion instead of naming the problem
+    fE <- suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+              control = viControl(iters = 40L, seed = 7L, print = 0L))))
+    expect_error(suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fbvi",
+              control = viControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
+      "cannot resume")
+    ## the same-method resume still works
+    expect_s3_class(suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+              control = viControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
+      "nlmixr2FitData")
   })
 })

@@ -9,8 +9,8 @@
   gradients come from the FOCEi forward sensitivities), and the default mode was
   never the published algorithm but a variational-EM hybrid.  The two modes were
   previously selected by `pointEstimate=`, which is kept but now defaults to
-  whichever the chosen `est` implies; passing one that contradicts `est` is an
-  error rather than a silent override.  `covMethod="advi"` is likewise now
+  whichever the chosen `est` implies; `est` wins over a contradicting value and
+  says so.  `covMethod="advi"` is likewise now
   `covMethod="vi"`.  `est="advi"` never appeared in a released version, so no
   deprecation shim is provided.
 

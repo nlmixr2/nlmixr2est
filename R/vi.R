@@ -129,6 +129,12 @@
   ## everything else -- state init/resume, the mu-ref and full-Bayes phi maps,
   ## the adaptEta search, the main loop, and the derived result fields -- runs
   ## in one C++ call (a resumed seed/etaScale is picked up from `resume`)
+  ## pointEstimate picks the ALGORITHM, and every caller resolves it from `est`
+  ## before getting here.  An unresolved NULL would slip through isTRUE() as
+  ## FALSE and quietly run full Bayes under est="emvi", so refuse instead.
+  if (!isTRUE(control$pointEstimate) && !isFALSE(control$pointEstimate)) {
+    stop("viControl(pointEstimate=) was never resolved from `est`", call. = FALSE)
+  }
   ## correlated etas: the point-estimate families estimate the full omega block;
   ## the full-Bayes path (pointEstimate=FALSE) parameterizes phi with per-eta
   ## log-variances only, so it cannot carry an off-diagonal yet
@@ -393,6 +399,16 @@
     else if (is.environment(.resume) && exists("viState", .resume)) .resume <- .resume$viState
     if (!is.list(.resume) || is.null(.resume$it0))
       stop("'resume' must be a prior emvi/fbvi fit or its $env$viState", call. = FALSE)
+    ## the two methods carry DIFFERENT state: emvi saves sTheta/sLpo, fbvi saves
+    ## mPop/Lpop/smPop/sLpop.  Resuming across them reaches adviOptimize_ with the
+    ## wrong half missing and dies on an Rcpp NULL conversion, so say what is
+    ## actually wrong instead.
+    if (!is.null(.resume$pointEstimate) &&
+          !identical(isTRUE(.resume$pointEstimate), isTRUE(.control$pointEstimate))) {
+      stop("cannot resume an ", if (isTRUE(.resume$pointEstimate)) "emvi" else "fbvi",
+           " fit under est=\"", if (isTRUE(.control$pointEstimate)) "emvi" else "fbvi",
+           "\"", call. = FALSE)
+    }
   }
   .res <- .adviOptimize(.ui, env$data, .control, resume = .resume)
   if (isTRUE(.control$returnVi)) return(.res)

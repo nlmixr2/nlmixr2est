@@ -69,8 +69,10 @@ underestimate marginal variances.}
 
 \item{pointEstimate}{Which of the two methods to run, normally left at its
   `NULL` default so it follows `est`: `est="emvi"` implies `TRUE` and
-  `est="fbvi"` implies `FALSE`.  Setting it to contradict the requested `est`
-  is an error.  `TRUE` runs the variational-EM hybrid: the variational
+  `est="fbvi"` implies `FALSE`.  `est` wins over a contradicting value, and
+  says so -- it has to, because re-estimating a fit with the other method
+  pipes the completed fit's control forward.  `TRUE` runs the variational-EM
+  hybrid: the variational
   posterior covers the per-subject etas only, and the population parameters
   (thetas / omega / residual error) are point estimates maximized by the ELBO
   gradient; output semantics match FOCEi/SAEM.  `FALSE` runs full Bayes: the
@@ -352,8 +354,8 @@ posterior covers:
 }
 
 `pointEstimate` is the switch between them and defaults to whichever the
-chosen `est` implies; setting it to contradict `est` is an error rather than a
-silent override.
+chosen `est` implies.  `est` decides: a control that contradicts it is
+overridden, with a message saying so.
 
 Neither method is the published ADVI algorithm, which is why neither is named
 for it.  Two deviations matter.  First, even `fbvi` parameterizes the
