@@ -1,3 +1,17 @@
+# nlmixr2est 7.0.2
+
+## Bug fixes
+
+- Fixed `$parFixed` reporting an uninitialized-memory denormal (e.g.
+  `9.4e-323`) as a residual-error parameter's `SE`/`%RSE` for SAEM fits
+  (#816).  The finalization filled theta SEs positionally from a covariance
+  that does not span the residual thetas, reading past the end of its
+  diagonal; the SE fill now maps by the covariance dimnames.  Post-fit
+  covariance installs also refresh the displayed `$parFixed` (previously only
+  `$parFixedDf` was updated), so the residual `SE`, `%RSE`, and confidence
+  interval now carry `sqrt(diag(fit$cov))`; a theta with no covariance row
+  gets a blank `SE` instead of garbage.
+
 # nlmixr2est 7.0.1
 
 ## New features

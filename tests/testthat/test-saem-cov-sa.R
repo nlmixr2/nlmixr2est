@@ -45,6 +45,27 @@ nmTest({
     # residual SE surfaced in the parameter table
     expect_true(is.finite(fS$parFixedDf["add.sd", "SE"]))
     expect_gt(fS$parFixedDf["add.sd", "SE"], 0)
+
+    # issue #816: the FORMATTED $parFixed must carry the same residual SE as
+    # $parFixedDf / sqrt(diag($cov)) -- it previously printed uninitialized
+    # memory (a denormal like 9.4e-323).  A theta with no covariance row must
+    # be blank, never garbage.
+    for (.f in list(fS, fL)) {
+      if ("add.sd" %in% rownames(.f$cov)) {
+        expect_equal(unname(.f$parFixedDf["add.sd", "SE"]),
+                     unname(sqrt(diag(.f$cov))["add.sd"]))
+        .seNum <- suppressWarnings(as.numeric(.f$parFixed["add.sd", "SE"]))
+        expect_true(is.finite(.seNum))
+        expect_gt(.seNum, 1e-100)
+        expect_equal(.seNum, signif(unname(.f$parFixedDf["add.sd", "SE"]), 3),
+                     tolerance = 1e-2)
+        .rseNum <- suppressWarnings(as.numeric(.f$parFixed["add.sd", "%RSE"]))
+        expect_true(is.finite(.rseNum))
+        expect_gt(.rseNum, 1e-100)
+      } else {
+        expect_identical(unname(.f$parFixed["add.sd", "SE"]), "")
+      }
+    }
   })
 
   test_that("SAEM covMethod='fim' inverts the (mu-block-corrected) estimation-phase FIM", {
