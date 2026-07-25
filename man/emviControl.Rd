@@ -120,10 +120,22 @@ the surrounding method is not; `"adam"` uses Adam.}
   \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
   effect on a model with no declared off-diagonals.
 
-   The resolved absolute iteration is stored with the fit and
-  reused by `resume=`, so a resumed run releases the correlations at the same
-  global iteration a single long run would -- recomputing the fraction from the
-  resumed call's `iters` would re-apply a hold the original run had passed.}
+  Held at ZERO, following saem, not at the `ini()` value: retaining an initial
+  covariance while the variances shrink around it can leave the block
+  non-positive-definite.  A `fixed()` covariance is exempt -- it is not being
+  estimated, so it keeps its value through the hold and out the other side.
+  When the correlations are released the off-diagonal gain restarts rather
+  than continuing the decayed schedule, so they are still estimable at the
+  point they are unfrozen.
+
+  A value greater than 1 is an ABSOLUTE iteration count rather than a
+  fraction, and must be a whole number.  The resolved absolute iteration is
+  stored with the fit and reused by `resume=`, so a resumed run releases the
+  correlations at the same global iteration a single long run would --
+  recomputing the fraction from the resumed call's `iters` would re-apply a
+  hold the original run had passed.  Only `est="emvi"` estimates the block at
+  all; `est="fbvi"` carries `omega` as per-eta log-variances and errors on a
+  correlated model rather than dropping the off-diagonal.}
 
 \item{etaCandidates}{Candidate step-size scales searched when `adaptEta` is
 `TRUE`.  The default is narrower and smaller-valued than the paper's
