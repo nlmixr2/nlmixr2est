@@ -10316,6 +10316,7 @@ static bool _vaeOmHasOff = false;
 // est="advi" population omega structure (defined with the ADVI block below)
 static void adviSetOmegaStructure(RObject omegaMatR, RObject fixMatR, int neta);
 static void adviResetTemper();
+static void adviResetStatics();
 
 //[[Rcpp::export]]
 RObject vaeInnerSetup_(Environment e) {
@@ -10437,18 +10438,15 @@ RObject vaeInnerSetup_(Environment e) {
       if (op_focei.innerNeq > 0) impSetInnerNeqOverride();
     }
   }
-  // population omega structure for est="advi" (adviOptimize_ re-installs the
-  // same thing from its own args; setting it here keeps a direct
-  // adviElboGrad_/adviElboGradFR_ call deterministic instead of inheriting
-  // whatever the last optimization left behind)
+  // Drop EVERY advi run static before installing this run's, so a direct
+  // adviElboGrad_/adviElboGradFR_ call (what the FD tests use), or any fit that
+  // follows another in the same session, cannot inherit the previous run's
+  // tempering scale, omega mask, or convergence state.  adviOptimize_ resets
+  // again and re-installs from its own args.
+  adviResetStatics();
   adviSetOmegaStructure(e.exists("adviOmegaMat") ? e["adviOmegaMat"] : R_NilValue,
                         e.exists("adviOmegaFixMat") ? e["adviOmegaFixMat"] : R_NilValue,
                         (int)op_focei.neta);
-  // Tempering is only ever written by adviTemperSet inside the optimization
-  // loops, so a DIRECT adviElboGrad_/adviElboGradFR_ call (what the FD tests
-  // use) would otherwise inherit whatever scale the last fit left behind.
-  // Reset at setup so those entry points are deterministic.
-  adviResetTemper();
   // omega-block position list for the fast re-parameterization path
   _vaeOmSel.reset();
   _vaeOmHasOff = false;
@@ -11727,22 +11725,32 @@ static void adviSetTheta(NumericVector theta) {
 }
 
 // Full population omega block for correlated etas (point-estimate families):
-// _adviPopOm carries the off-diagonals (its diagonal is refreshed from
+// _advi.popOm carries the off-diagonals (its diagonal is refreshed from
 // logPopOmega, which remains the per-eta log-variance state everywhere else);
 // the mask/fix/ini matrices drive the off-diagonal M-step.  Set by
-// adviOptimize_; _adviOmOff false leaves the historic diagonal path untouched.
-static bool _adviOmOff = false;
-static arma::mat _adviPopOm;
-static arma::mat _adviOmIni;                     // model ini: fixed-entry values
-static arma::mat _adviOmStart;                   // per-run restart state
-static arma::umat _adviOmMaskOff;
-static arma::umat _adviOmFixM;
-// saem's perNoCor rule: hold correlations at zero for the first _adviNbCorrel
+// adviOptimize_; _advi.omOff false leaves the historic diagonal path untouched.
+// ALL of these live in ONE struct with member initializers, and the ONLY way
+// they are cleared is `_advi = adviStatics();`.  That is not tidiness: three
+// separate bugs have been shipped by adding a static here and forgetting to add
+// it to a hand-written reset (_advi.omOff/_advi.popOm inherited across fits,
+// _advi.temperScale left inflated by an aborted search, and a reset placed after
+// the result block).  Grouping them makes the default constructor the reset, so
+// a NEW member cannot be forgotten -- add it here with its default and it is
+// reset everywhere for free.  Nothing outside this struct may hold advi run
+// state.
+struct adviStatics {
+  bool omOff = false;
+  arma::mat popOm;
+  arma::mat omIni;                               // model ini: fixed-entry values
+  arma::mat omStart;                             // per-run restart state
+  arma::umat omMaskOff;
+  arma::umat omFixM;
+// saem's perNoCor rule: hold correlations at zero for the first _advi.nbCorrel
 // iterations so the variances settle first.  A file static rather than a loop
 // argument so the three adviLoop* .Call arities (and src/init.c) are untouched.
-static int _adviNbCorrel = 0;
+  int nbCorrel = 0;
 // ELBO convergence check (adviControl(tol=)); same file-static reasoning.
-// _adviTemper is set while a tempering warm-up is active -- a tempered ELBO is
+// _advi.temper is set while a tempering warm-up is active -- a tempered ELBO is
 // not comparable across iterations, so the check must not run during one.
 // Constraining-transform Jacobian for the FULL-BAYES path.  The bounded
 // transform rewrites a bounded theta to an unconstrained u, so a flat prior on
@@ -11754,50 +11762,59 @@ static int _adviNbCorrel = 0;
 //   type 2: log|J| = log(hi-lo) + log s + log(1-s), s=expit(u)   d/du = 1 - 2s
 // NEVER applied when pointEstimate=TRUE: an MLE must stay reparameterization
 // invariant (Stan's own optimize defaults to jacobian=0 for this reason).
-static IntegerVector _adviJacType;
-static NumericVector _adviJacRange;              // (hi-lo) for type 2, else 0
+  IntegerVector jacType;
+  NumericVector jacRange;                        // (hi-lo) for type 2, else 0
+
+
+  int klWarmup = 0;
+  double temperInit = 1.0;
+  bool temper = false;             // a warm-up is currently active
+  double temperScale = 1.0;        // prior inflation factor (1 = none)
+
+
+  double tolRelObj = 0.0;
+  int evalElbo = 0;
+  bool tolStopped = false;
+};
+
+static adviStatics _advi;
+
+// The one and only reset.  Called at EVERY entry point into the advi/vae inner
+// machinery, so no run can inherit another run's state.
+static void adviResetStatics() { _advi = adviStatics(); }
 
 static double adviJacLogDet(const NumericVector& theta, NumericVector* grad) {
   double lj = 0.0;
-  const int n = _adviJacType.size();
+  const int n = _advi.jacType.size();
   for (int p = 0; p < n && p < theta.size(); ++p) {
-    if (_adviJacType[p] == 1) {
+    if (_advi.jacType[p] == 1) {
       lj += theta[p];
       if (grad) (*grad)[p] += 1.0;
-    } else if (_adviJacType[p] == 2) {
+    } else if (_advi.jacType[p] == 2) {
       double s = 1.0 / (1.0 + std::exp(-theta[p]));
       if (s <= 0 || s >= 1) continue;            // saturated: contributes nothing usable
-      lj += std::log(_adviJacRange[p]) + std::log(s) + std::log(1.0 - s);
+      lj += std::log(_advi.jacRange[p]) + std::log(s) + std::log(1.0 - s);
       if (grad) (*grad)[p] += 1.0 - 2.0 * s;
     }
   }
   return lj;
 }
 
-static int _adviKlWarmup = 0;
-static double _adviTemperInit = 1.0;
-static bool _adviTemper = false;   // a warm-up is currently active
-static double _adviTemperScale = 1.0;  // prior inflation factor (1 = none)
-
 // Set the tempering scale for global iteration gi: ramps geometrically from
-// _adviTemperInit down to 1 across _adviKlWarmup iterations, then stays 1.
-// Also flags _adviTemper so the ELBO convergence test stays off while the
+// _advi.temperInit down to 1 across _advi.klWarmup iterations, then stays 1.
+// Also flags _advi.temper so the ELBO convergence test stays off while the
 // objective is still moving underneath it.
-static void adviResetTemper() { _adviTemperScale = 1.0; _adviTemper = false; }
+static void adviResetTemper() { _advi.temperScale = 1.0; _advi.temper = false; }
 
 static void adviTemperSet(int gi) {
-  if (_adviKlWarmup <= 0 || _adviTemperInit <= 1.0) {
-    _adviTemperScale = 1.0; _adviTemper = false; return;
+  if (_advi.klWarmup <= 0 || _advi.temperInit <= 1.0) {
+    _advi.temperScale = 1.0; _advi.temper = false; return;
   }
-  if (gi >= _adviKlWarmup) { _adviTemperScale = 1.0; _adviTemper = false; return; }
-  double f = (double)gi / (double)_adviKlWarmup;      // 0 -> 1 over the warm-up
-  _adviTemperScale = std::exp(std::log(_adviTemperInit) * (1.0 - f));
-  _adviTemper = true;
+  if (gi >= _advi.klWarmup) { _advi.temperScale = 1.0; _advi.temper = false; return; }
+  double f = (double)gi / (double)_advi.klWarmup;      // 0 -> 1 over the warm-up
+  _advi.temperScale = std::exp(std::log(_advi.temperInit) * (1.0 - f));
+  _advi.temper = true;
 }
-
-static double _adviTolRelObj = 0.0;
-static int _adviEvalElbo = 0;
-static bool _adviTolStopped = false;
 
 // Relative-change convergence test on the ELBO trace.  The per-iteration ELBO is
 // an nMc-sample Monte-Carlo estimate and therefore noisy, so this compares the
@@ -11809,8 +11826,8 @@ static bool _adviTolStopped = false;
 // candidate.
 static bool adviElboConverged(const NumericVector& elboTrace, int it,
                               int divergeStop, int iters) {
-  if (divergeStop != 0 || _adviTolRelObj <= 0 || _adviTemper) return false;
-  int W = _adviEvalElbo > 0 ? _adviEvalElbo : 100;
+  if (divergeStop != 0 || _advi.tolRelObj <= 0 || _advi.temper) return false;
+  int W = _advi.evalElbo > 0 ? _advi.evalElbo : 100;
   W = std::max(5, std::min(W, iters / 6));       // let short runs converge too
   if ((it + 1) % W != 0 || it + 1 < 2 * W) return false;
   double m1 = 0, m2 = 0;
@@ -11818,12 +11835,12 @@ static bool adviElboConverged(const NumericVector& elboTrace, int it,
   for (int i = it - W + 1; i <= it; ++i) m2 += elboTrace[i];
   m1 /= (double)W; m2 /= (double)W;
   if (!R_finite(m1) || !R_finite(m2)) return false;
-  return std::fabs(m2 - m1) / std::max(std::fabs(m2), 1e-8) < _adviTolRelObj;
+  return std::fabs(m2 - m1) / std::max(std::fabs(m2), 1e-8) < _advi.tolRelObj;
 }
 
 // Prior tempering (adviControl(klWarmup=)).  The VI analogue of saem's
 // simulated-annealing phase: during warm-up the population prior is INFLATED by
-// _adviTemperScale, which down-weights the prior term of the ELBO and keeps the
+// _advi.temperScale, which down-weights the prior term of the ELBO and keeps the
 // variational posterior from collapsing before the encoder-equivalent (the
 // per-subject q) is informative.  Tempering the prior rather than a separately
 // weighted KL is what this code structure allows cleanly -- likInner0 returns
@@ -11832,15 +11849,15 @@ static bool adviElboConverged(const NumericVector& elboTrace, int it,
 // target is NOT tempered; only the objective the gradient sees is.
 // Current full population omega: diagonal from logPopOmega, off-diagonals from
 // state, times any active tempering inflation.
-// The diagonal (logPopOmega) and the off-diagonals (_adviPopOm) are updated by
+// The diagonal (logPopOmega) and the off-diagonals (_advi.popOm) are updated by
 // SEPARATE M-steps, so gluing the newest diagonal onto the retained
 // off-diagonals is not guaranteed positive definite: once a variance falls
 // below its own covariance the block is indefinite and the prior inverse fails.
 // Shrink the off-diagonals toward zero until it is usable; a diagonal matrix
 // with positive variances always is, so this terminates.
 static arma::mat adviPopOmFull(NumericVector logPopOmega) {
-  const int n = (int)_adviPopOm.n_rows;
-  arma::mat Om = _adviPopOm;
+  const int n = (int)_advi.popOm.n_rows;
+  arma::mat Om = _advi.popOm;
   for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
   arma::mat ch;
   if (!arma::chol(ch, arma::symmatu(Om))) {
@@ -11850,11 +11867,11 @@ static arma::mat adviPopOmFull(NumericVector logPopOmega) {
     bool ok = false, anyFixed = false;
     for (int i = 0; i < n && !anyFixed; ++i)
       for (int j = i + 1; j < n; ++j)
-        if (_adviOmFixM(i, j)) { anyFixed = true; break; }
+        if (_advi.omFixM(i, j)) { anyFixed = true; break; }
     for (int t = 0; t < 8 && !ok; ++t) {
       for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-          if (i != j && !_adviOmFixM(i, j)) Om(i, j) *= 0.5;
+          if (i != j && !_advi.omFixM(i, j)) Om(i, j) *= 0.5;
       ok = arma::chol(ch, arma::symmatu(Om));
     }
     if (!ok) {
@@ -11864,7 +11881,7 @@ static arma::mat adviPopOmFull(NumericVector logPopOmega) {
       // valid model whose free entries merely needed more than 8 halvings.
       for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-          if (i != j && !_adviOmFixM(i, j)) Om(i, j) = 0.0;
+          if (i != j && !_advi.omFixM(i, j)) Om(i, j) = 0.0;
       ok = arma::chol(ch, arma::symmatu(Om));
     }
     if (!ok) {
@@ -11874,63 +11891,63 @@ static arma::mat adviPopOmFull(NumericVector logPopOmega) {
       for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
     }
   }
-  if (_adviTemperScale != 1.0) Om *= _adviTemperScale;
+  if (_advi.temperScale != 1.0) Om *= _advi.temperScale;
   return Om;
 }
 
 // Install the declared population omega structure: `omegaMat` sets the modeled
 // off-diagonal mask and their initial values, `fixMat` which entries the M-step
 // must hold.  A NULL/absent/diagonal omegaMat leaves the historic diagonal
-// path (_adviOmOff false).  Called from both vaeInnerSetup_ (so a direct
+// path (_advi.omOff false).  Called from both vaeInnerSetup_ (so a direct
 // gradient call is deterministic) and adviOptimize_.
 static void adviSetOmegaStructure(RObject omegaMatR, RObject fixMatR, int neta) {
-  _adviOmOff = false;
-  if (neta <= 0) { _adviPopOm.reset(); _adviOmIni.reset(); _adviOmStart.reset(); return; }
-  _adviPopOm.eye(neta, neta);
-  _adviOmMaskOff.zeros(neta, neta);
-  _adviOmFixM.zeros(neta, neta);
+  _advi.omOff = false;
+  if (neta <= 0) { _advi.popOm.reset(); _advi.omIni.reset(); _advi.omStart.reset(); return; }
+  _advi.popOm.eye(neta, neta);
+  _advi.omMaskOff.zeros(neta, neta);
+  _advi.omFixM.zeros(neta, neta);
   if (!omegaMatR.isNULL()) {
     arma::mat om = as<arma::mat>(omegaMatR);
     if ((int)om.n_rows == neta && (int)om.n_cols == neta) {
       for (int i = 0; i < neta; ++i)
         for (int j = 0; j < neta; ++j)
-          if (i != j && om(i, j) != 0) { _adviOmMaskOff(i, j) = 1; _adviOmOff = true; }
-      if (_adviOmOff) {
-        _adviPopOm = om;
+          if (i != j && om(i, j) != 0) { _advi.omMaskOff(i, j) = 1; _advi.omOff = true; }
+      if (_advi.omOff) {
+        _advi.popOm = om;
         if (!fixMatR.isNULL()) {
           LogicalMatrix fm = as<LogicalMatrix>(fixMatR);
           if (fm.nrow() == neta && fm.ncol() == neta) {
             for (int i = 0; i < neta; ++i)
-              for (int j = 0; j < neta; ++j) if (fm(i, j)) _adviOmFixM(i, j) = 1;
+              for (int j = 0; j < neta; ++j) if (fm(i, j)) _advi.omFixM(i, j) = 1;
           }
         }
       }
     }
   }
-  _adviOmIni = _adviPopOm;
-  _adviOmStart = _adviPopOm;
+  _advi.omIni = _advi.popOm;
+  _advi.omStart = _advi.popOm;
 }
 
 // logdet(Omega) for the ELBO prior normalization (sum of the log-variances
 // when Omega is diagonal)
 static double adviPopLogDet(NumericVector logPopOmega) {
   const int neta = (int)logPopOmega.size();
-  if (_adviOmOff && (int)_adviPopOm.n_rows == neta) {
+  if (_advi.omOff && (int)_advi.popOm.n_rows == neta) {
     double ld, sgn;
     arma::log_det(ld, sgn, arma::symmatu(adviPopOmFull(logPopOmega)));
     return ld;
   }
   double s = 0;
-  for (int k = 0; k < neta; ++k) s += logPopOmega[k] + std::log(_adviTemperScale);
+  for (int k = 0; k < neta; ++k) s += logPopOmega[k] + std::log(_advi.temperScale);
   return s;
 }
 
 // Set the population Omega used by the inner prior term (likInner0 reads
 // op_focei.omegaInv only; the logdet normalization is added in the ELBO).
-// Diagonal unless the model declares correlated etas (_adviOmOff).
+// Diagonal unless the model declares correlated etas (_advi.omOff).
 static void adviSetPopOmega(NumericVector logPopOmega) {
   int neta = (int)op_focei.neta;
-  if (_adviOmOff && (int)_adviPopOm.n_rows == neta) {
+  if (_advi.omOff && (int)_advi.popOm.n_rows == neta) {
     arma::mat Om = adviPopOmFull(logPopOmega);
     arma::mat oi;
     if (!arma::inv_sympd(oi, arma::symmatu(Om)))
@@ -11940,7 +11957,7 @@ static void adviSetPopOmega(NumericVector logPopOmega) {
   }
   arma::mat oi(neta, neta, arma::fill::zeros);
   for (int k = 0; k < neta; ++k)
-    oi(k, k) = std::exp(-logPopOmega[k]) / _adviTemperScale;
+    oi(k, k) = std::exp(-logPopOmega[k]) / _advi.temperScale;
   op_focei.omegaInv = oi;
 }
 
@@ -11950,34 +11967,34 @@ static void adviSetPopOmega(NumericVector logPopOmega) {
 // candidate keeps the previous off-diagonals.
 static void adviOmOffStep(const arma::mat& target, NumericVector logPopOmega,
                           double gam, bool hold) {
-  if (!_adviOmOff) return;
-  const int neta = (int)_adviPopOm.n_rows;
+  if (!_advi.omOff) return;
+  const int neta = (int)_advi.popOm.n_rows;
   if (hold) {
     // perNoCor: correlations held at ZERO while the variances settle, as saem
     // does with diagmat() -- NOT held at their ini value, which can leave the
     // block indefinite once a variance drops below its own covariance.  A FIXED
     // covariance is exempt: it is not estimated, so it keeps its ini value.
-    _adviPopOm.zeros();
-    for (int k = 0; k < neta; ++k) _adviPopOm(k, k) = std::exp(logPopOmega[k]);
+    _advi.popOm.zeros();
+    for (int k = 0; k < neta; ++k) _advi.popOm(k, k) = std::exp(logPopOmega[k]);
     for (int i = 0; i < neta; ++i)
       for (int j = i + 1; j < neta; ++j)
-        if (_adviOmMaskOff(i, j) && _adviOmFixM(i, j))
-          _adviPopOm(i, j) = _adviPopOm(j, i) = _adviOmIni(i, j);
+        if (_advi.omMaskOff(i, j) && _advi.omFixM(i, j))
+          _advi.popOm(i, j) = _advi.popOm(j, i) = _advi.omIni(i, j);
     return;
   }
   arma::mat cand = adviPopOmFull(logPopOmega);
   for (int i = 0; i < neta; ++i)
     for (int j = i + 1; j < neta; ++j) {
-      if (!_adviOmMaskOff(i, j)) continue;
-      double v = _adviOmFixM(i, j) ? _adviOmIni(i, j)
-        : (1.0 - gam) * _adviPopOm(i, j) + gam * target(i, j);
+      if (!_advi.omMaskOff(i, j)) continue;
+      double v = _advi.omFixM(i, j) ? _advi.omIni(i, j)
+        : (1.0 - gam) * _advi.popOm(i, j) + gam * target(i, j);
       cand(i, j) = cand(j, i) = v;
     }
   arma::mat cchol;
   if (cand.is_finite() && arma::chol(cchol, arma::symmatu(cand)))
-    _adviPopOm = cand;
+    _advi.popOm = cand;
   else
-    for (int k = 0; k < neta; ++k) _adviPopOm(k, k) = std::exp(logPopOmega[k]);
+    for (int k = 0; k < neta; ++k) _advi.popOm(k, k) = std::exp(logPopOmega[k]);
 }
 
 // Diagnostic: report the wired theta-sensitivity offsets after setup.
@@ -12279,7 +12296,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     }
     // modeled off-diagonals, same damped M-step.  The mean-field posterior is
     // independent across etas, so the cross target is mean_i(mu_ik mu_ij) only.
-    if (_adviOmOff) {
+    if (_advi.omOff) {
       arma::mat target(neta, neta, arma::fill::zeros);
       for (int i = 0; i < N; ++i) {
         arma::vec m(neta);
@@ -12294,8 +12311,8 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       // the step has become too small to travel (measured: rho 0.16 vs a true
       // 0.75).  Restarting the counter gives them the same 1/10 opening gain
       // the variances had.
-      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _adviNbCorrel));
-      adviOmOffStep(target, logPopOmega, gamOff, gi < _adviNbCorrel);
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _advi.nbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _advi.nbCorrel);
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
@@ -12309,7 +12326,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     }
     // adviControl(tol=): stop once the ELBO stops improving materially
     if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
-      itRun = it + 1; _adviTolStopped = true; break;
+      itRun = it + 1; _advi.tolStopped = true; break;
     }
   }
   RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
@@ -12563,7 +12580,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     // modeled off-diagonals: the full-rank posterior HAS cross-covariance, so
     // the target carries (L_i L_i')_kj alongside mu_ik mu_ij
-    if (_adviOmOff) {
+    if (_advi.omOff) {
       arma::mat target(neta, neta, arma::fill::zeros);
       for (int i = 0; i < N; ++i) {
         arma::mat L(neta, neta, arma::fill::zeros);
@@ -12581,8 +12598,8 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       // the step has become too small to travel (measured: rho 0.16 vs a true
       // 0.75).  Restarting the counter gives them the same 1/10 opening gain
       // the variances had.
-      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _adviNbCorrel));
-      adviOmOffStep(target, logPopOmega, gamOff, gi < _adviNbCorrel);
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _advi.nbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _advi.nbCorrel);
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
@@ -12592,7 +12609,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     // adviControl(tol=): stop once the ELBO stops improving materially
     if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
-      itRun = it + 1; _adviTolStopped = true; break;
+      itRun = it + 1; _advi.tolStopped = true; break;
     }
   }
   RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
@@ -12764,7 +12781,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     }
     // adviControl(tol=): stop once the ELBO stops improving materially
     if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
-      itRun = it + 1; _adviTolStopped = true; break;
+      itRun = it + 1; _advi.tolStopped = true; break;
     }
   }
   // final theta / logPopOmega at the population posterior mean
@@ -12812,6 +12829,9 @@ List adviOptimize_(List args) {
   IntegerVector muRefThetaIdx = as<IntegerVector>(args["muRefThetaIdx"]);
   LogicalVector thetaFix = as<LogicalVector>(args["thetaFix"]);
   LogicalVector omegaFix = as<LogicalVector>(args["omegaFix"]);
+  // clear every advi run static, then install this run's from args -- an
+  // aborted candidate search or a previous fit must not leak into this one
+  adviResetStatics();
   // declared omega structure: off-diagonals are estimated by the damped matrix
   // M-step alongside the per-eta log-variances (diagonal-only models keep the
   // historic scalar path, bit-for-bit)
@@ -12829,28 +12849,28 @@ List adviOptimize_(List args) {
   {
     double pnc = args.containsElementNamed("perNoCor") ? as<double>(args["perNoCor"]) : 0.75;
     if (pnc > 1.0) {
-      _adviNbCorrel = (int)std::lround(pnc);            // absolute iterations
+      _advi.nbCorrel = (int)std::lround(pnc);            // absolute iterations
     } else {
-      _adviNbCorrel = (int)std::lround(pnc * (double)iters);
+      _advi.nbCorrel = (int)std::lround(pnc * (double)iters);
     }
   }
   // adviControl(tol=) / evalElbo: the ELBO-convergence early stop
-  _adviTolRelObj = args.containsElementNamed("tol") ? as<double>(args["tol"]) : 0.0;
-  _adviEvalElbo = args.containsElementNamed("evalElbo") ? as<int>(args["evalElbo"]) : 100;
-  _adviTolStopped = false;
-  _adviTemper = false;
-  _adviTemperScale = 1.0;
-  _adviKlWarmup = args.containsElementNamed("klWarmup") ? as<int>(args["klWarmup"]) : 0;
-  _adviTemperInit = args.containsElementNamed("temperInit")
+  _advi.tolRelObj = args.containsElementNamed("tol") ? as<double>(args["tol"]) : 0.0;
+  _advi.evalElbo = args.containsElementNamed("evalElbo") ? as<int>(args["evalElbo"]) : 100;
+  _advi.tolStopped = false;
+  _advi.temper = false;
+  _advi.temperScale = 1.0;
+  _advi.klWarmup = args.containsElementNamed("klWarmup") ? as<int>(args["klWarmup"]) : 0;
+  _advi.temperInit = args.containsElementNamed("temperInit")
     ? as<double>(args["temperInit"]) : 1.0;
   // constraining-transform Jacobian map (consumed by the full-Bayes loop only)
   if (args.containsElementNamed("jacType")) {
-    _adviJacType = as<IntegerVector>(args["jacType"]);
-    _adviJacRange = args.containsElementNamed("jacRange")
-      ? as<NumericVector>(args["jacRange"]) : NumericVector(_adviJacType.size());
+    _advi.jacType = as<IntegerVector>(args["jacType"]);
+    _advi.jacRange = args.containsElementNamed("jacRange")
+      ? as<NumericVector>(args["jacRange"]) : NumericVector(_advi.jacType.size());
   } else {
-    _adviJacType = IntegerVector(0);
-    _adviJacRange = NumericVector(0);
+    _advi.jacType = IntegerVector(0);
+    _advi.jacRange = NumericVector(0);
   }
   const double tau = as<double>(args["tau"]);
   const double alpha = as<double>(args["alpha"]);
@@ -12973,15 +12993,15 @@ List adviOptimize_(List args) {
   // the resumed fit would not reproduce a single run of the combined length.
   if (hasResume && resume.containsElementNamed("nbCorrel") &&
       !Rf_isNull(resume["nbCorrel"])) {
-    _adviNbCorrel = as<int>(resume["nbCorrel"]);
+    _advi.nbCorrel = as<int>(resume["nbCorrel"]);
   }
   // a resumed run restarts from the prior fit's off-diagonals (fixed entries
   // still restore to the model ini values, which a fixed entry never left)
-  if (_adviOmOff && hasResume && resume.containsElementNamed("popOmegaMat")) {
+  if (_advi.omOff && hasResume && resume.containsElementNamed("popOmegaMat")) {
     RObject pm = resume["popOmegaMat"];
     if (!pm.isNULL()) {
       arma::mat om = as<arma::mat>(pm);
-      if (om.n_rows == _adviPopOm.n_rows && om.n_cols == _adviPopOm.n_cols) _adviOmStart = om;
+      if (om.n_rows == _advi.popOm.n_rows && om.n_cols == _advi.popOm.n_cols) _advi.omStart = om;
     }
   }
   bool ipStarted = false;
@@ -12991,7 +13011,7 @@ List adviOptimize_(List args) {
     ipStarted = true;
     // every run (each adaptEta candidate and the main one) restarts from the
     // same initial population state, so the off-diagonals must reset too
-    _adviPopOm = _adviOmStart;
+    _advi.popOm = _advi.omStart;
     if (!pe) {
       return adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, Lpop0,
                          phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, frInt,
@@ -13070,19 +13090,22 @@ List adviOptimize_(List args) {
   // direct adviElboGrad_ call, and -- because adviPopOmFull applies the scale --
   // the popOmegaMat materialized BELOW would be returned inflated.  This reset
   // must therefore stay ABOVE the result-building block.
+  // NOT adviResetStatics(): nbCorrel and tolStopped are read into `res` below,
+  // and a full reset here would return zeros for both.  Only the tempering scale
+  // must not outlive the loop.
   adviResetTemper();
   res["etaScale"] = eta;
   res["etaScores"] = etaScores;
-  res["nbCorrel"] = _adviNbCorrel;   // absolute release iteration, for resume
+  res["nbCorrel"] = _advi.nbCorrel;   // absolute release iteration, for resume
   res["seed"] = seed;
   // an early ELBO-convergence stop leaves the tail of the trace zero-padded;
   // hand back only the iterations actually run so the reported ELBO trajectory
   // is the real one (the adaptEta candidate runs are untouched)
-  res["tolStopped"] = _adviTolStopped;
+  res["tolStopped"] = _advi.tolStopped;
   {
     int nRun = as<int>(res["itRun"]);
     NumericVector el = res["elbo"];
-    if (_adviTolStopped && nRun > 0 && nRun < (int)el.size()) {
+    if (_advi.tolStopped && nRun > 0 && nRun < (int)el.size()) {
       res["elbo"] = NumericVector(el.begin(), el.begin() + nRun);
     }
   }
