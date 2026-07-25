@@ -405,6 +405,10 @@ vaeControl <- function(seed = 42L,
   ## iteration count (the only form under which a resumed fit can reproduce a
   ## single run -- a fraction of a shorter leg is a different schedule)
   checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, finite = TRUE, len = 1)
+  if (perNoCor > 1) {
+    checkmate::assertIntegerish(perNoCor, lower = 2, len = 1, any.missing = FALSE,
+                                .var.name = "perNoCor (absolute iteration count)")
+  }
   inputScale <- match.arg(inputScale)
   covSelectMethod <- match.arg(covSelectMethod)
   ## Inf is allowed: it forces the exact branch-and-bound everywhere (the

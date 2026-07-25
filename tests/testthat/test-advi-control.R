@@ -42,3 +42,18 @@ test_that("rxUiDeparse.adviControl round-trips changed args", {
   expect_true(any(grepl("adviControl", as.character(dp))))
   expect_true(any(grepl("meanField", as.character(dp))))
 })
+
+test_that("perNoCor takes a fraction or an absolute iteration count", {
+  ## <= 1 is a fraction of the run
+  expect_equal(adviControl(perNoCor = 0.5)$perNoCor, 0.5)
+  expect_equal(adviControl(perNoCor = 1)$perNoCor, 1)
+  ## > 1 is an ABSOLUTE iteration count -- the only form a resumed fit can
+  ## reproduce, so it has to survive the control (it used to be capped at 1)
+  expect_equal(adviControl(perNoCor = 90)$perNoCor, 90)
+  expect_equal(vaeControl(perNoCor = 90)$perNoCor, 90)
+  ## a fractional absolute count is rejected rather than silently rounded to a
+  ## schedule the user did not ask for
+  expect_error(adviControl(perNoCor = 2.5), "perNoCor")
+  expect_error(vaeControl(perNoCor = 2.5), "perNoCor")
+  expect_error(adviControl(perNoCor = -1), "perNoCor")
+})

@@ -211,6 +211,12 @@ adviControl <- function(seed = 42L,
   ## iteration count (the only form under which a resumed fit can reproduce a
   ## single run -- a fraction of a shorter leg is a different schedule)
   checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, finite = TRUE, len = 1)
+  ## >1 is an absolute iteration count; reject a fractional one rather than
+  ## silently rounding it to a schedule the user did not ask for
+  if (perNoCor > 1) {
+    checkmate::assertIntegerish(perNoCor, lower = 2, len = 1, any.missing = FALSE,
+                                .var.name = "perNoCor (absolute iteration count)")
+  }
   checkmate::assertNumeric(alpha, lower = 0, upper = 1, any.missing = FALSE, len = 1)
   ## tol follows the package-wide sigdig convention (10^-sigdig), the same
   ## derivation saemControl()/foceiControl() use for their optimizer tolerances,
