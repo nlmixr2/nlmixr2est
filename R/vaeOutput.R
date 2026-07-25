@@ -13,6 +13,81 @@
 #' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
 #' line. Returns the updated ui.
 #' @noRd
+#' Would a corrected structural theta still respect its ini() bounds?
+#' @param ui rxode2 ui carrying the ini() bounds
+#' @param thName structural theta name
+#' @param value the corrected estimate
+#' @return TRUE when the value is finite and within the declared bounds
+#' @noRd
+.vaeIcAdjInBounds <- function(ui, thName, value) {
+  if (!is.finite(value)) return(FALSE)
+  .idf <- tryCatch(ui$iniDf, error = function(e) NULL)
+  if (is.null(.idf)) return(TRUE)
+  .i <- match(thName, .idf$name)
+  if (is.na(.i)) return(TRUE)
+  .lo <- if (is.null(.idf$lower)) -Inf else .idf$lower[.i]
+  .hi <- if (is.null(.idf$upper)) Inf else .idf$upper[.i]
+  if (is.na(.lo)) .lo <- -Inf
+  if (is.na(.hi)) .hi <- Inf
+  value > .lo && value < .hi
+}
+
+#' Make a generated coefficient name unique against those already emitted
+#' @noRd
+.vaeUniqueName <- function(nm, used) {
+  if (!(nm %in% used)) return(nm)
+  .i <- 2L
+  while (paste0(nm, .i) %in% used) .i <- .i + 1L
+  paste0(nm, .i)
+}
+
+#' Inject covariate terms beside the mu-referenced structural theta
+#'
+#' Structural rather than textual.  A `gsub` over the deparsed line replaces
+#' EVERY occurrence of the theta, so a model that mentions it again in the same
+#' line -- `ka <- exp(lka + eta.ka) + 0 * lka` -- has the covariate terms
+#' injected twice, the second time in a position operator precedence turns into
+#' an extra additive effect.  The theta is replaced only where it sits in the
+#' same additive group as its eta, which is the mu-referenced occurrence.
+#' @param line model line (language object)
+#' @param thName structural theta name
+#' @param etaName that parameter's eta name
+#' @param termsTxt covariate terms to add, already collapsed with `+`
+#' @return the rewritten line, or `NULL` when no mu-referenced occurrence is found
+#' @noRd
+.vaeInjectCov <- function(line, thName, etaName, termsTxt) {
+  .repl <- str2lang(paste0(thName, " + ", termsTxt))
+  .done <- FALSE
+  .isAdd <- function(e) is.call(e) && is.name(e[[1L]]) &&
+    as.character(e[[1L]]) %in% c("+", "-")
+  ## names reachable through a flattened +/- chain
+  .addVars <- function(e) {
+    if (is.name(e)) return(as.character(e))
+    if (.isAdd(e)) return(unlist(lapply(as.list(e)[-1L], .addVars), use.names = FALSE))
+    character(0)
+  }
+  .sub <- function(x) {
+    if (.done) return(x)
+    if (is.name(x) && identical(as.character(x), thName)) {
+      .done <<- TRUE
+      return(.repl)
+    }
+    if (.isAdd(x)) for (.i in seq_along(x)[-1L]) x[[.i]] <- .sub(x[[.i]])
+    x
+  }
+  .rec <- function(e) {
+    if (.done || !is.call(e)) return(e)
+    if (.isAdd(e)) {
+      .v <- .addVars(e)
+      if (thName %in% .v && etaName %in% .v) return(.sub(e))
+    }
+    for (.i in seq_along(e)[-1L]) e[[.i]] <- .rec(e[[.i]])
+    e
+  }
+  .out <- .rec(line)
+  if (!.done) NULL else .out
+}
+
 #' Which shape to write for a selected covariate column
 #'
 #' The search picks a FAMILY (column); shapes within a family span the same
@@ -67,12 +142,27 @@
       .shp <- .vaeSelectedShape(prep, .aliases, j)
       .ctr <- prep$covPop[j]
       .raw <- prep$covRaw[j]
+      .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
+      ## An uncentered parameterization moves part of the effect into the
+      ## intercept, which the C++ M-step has already clamped to the theta's
+      ## ini() bounds -- so the corrected value can land outside them.  Clamping
+      ## it here would change the prediction, so fall back to the family's
+      ## CENTERED shape instead: same fit, no intercept correction needed.
+      if (.r$interceptAdj != 0 &&
+            !.vaeIcAdjInBounds(ui, thName, fit$zPop[k] + icAdj[k] + .r$interceptAdj)) {
+        .shp <- if (identical(prep$covFamily[j], "log")) "power" else "lin"
+        .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
+      }
       .bn <- if (identical(prep$covType[j], "continuous")) {
         paste0("beta_", thName, "_", .raw, "_", .shp)
       } else {
         paste0("beta_", thName, "_", covNames[j])
       }
-      .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
+      ## names are built from user-facing pieces, so two distinct columns can in
+      ## principle collide (a continuous WT written as "log" beside a 0/1 data
+      ## column literally named WT_log); keep them distinct rather than letting
+      ## one silently overwrite the other in betaVals
+      .bn <- .vaeUniqueName(.bn, names(betaVals))
       icAdj[k] <- icAdj[k] + .r$interceptAdj
       .enc <- if (identical(prep$covShape[j], "cat")) {
         ## an indicator enters as written in the data (bare 0/1 column) or as an
@@ -90,9 +180,16 @@
     ## a mu-referenced exp() parameter.  Wrapping in parens -- `exp((theta +
     ## beta*cov) + eta)` -- hides the exp() back-transform from muRefCurEval, so
     ## the theta prints on the raw log scale instead of back-transformed.
-    repl <- paste0(thName, " + ", paste(terms, collapse = " + "))
-    newTxt <- gsub(paste0("\\b", thName, "\\b"), repl, deparse1(.lines[[.idx]]))
-    ui2 <- do.call(rxode2::model, list(ui2, str2lang(newTxt)))
+    .termTxt <- paste(terms, collapse = " + ")
+    .new <- .vaeInjectCov(.lines[[.idx]], thName, prep$etaNames[k], .termTxt)
+    if (is.null(.new)) {
+      ## no mu-referenced occurrence found (an unusual line shape); fall back to
+      ## the FIRST textual occurrence rather than every one of them
+      .new <- str2lang(sub(paste0("\\b", thName, "\\b"),
+                           paste0(thName, " + ", .termTxt),
+                           deparse1(.lines[[.idx]])))
+    }
+    ui2 <- do.call(rxode2::model, list(ui2, .new))
   }
 
   ## 2. set ini() estimates to the VAE solution

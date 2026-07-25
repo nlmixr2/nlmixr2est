@@ -137,3 +137,80 @@ nmTest({
     expect_false(any(grepl("beta_.*_ke|beta_NA", thetaNames)))
   })
 })
+
+## Regressions for the fifth independent-review pass (write-back path).
+nmTest({
+  .theo <- function() {
+    ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+      eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+    model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+      d/dt(depot) = -ka * depot
+      d/dt(central) = ka * depot - ke * central
+      cp <- central / V; cp ~ add(add.err) })
+  }
+  .fake <- function(ui, shape = "power", control = vaeControl()) {
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, control)
+    .j <- match(shape, prep$covShape)
+    sel <- matrix(FALSE, 3, length(prep$covNames))
+    beta <- matrix(0, 3, length(prep$covNames))
+    sel[1, .j] <- TRUE; beta[1, .j] <- 2.5
+    list(prep = prep, covNames = prep$covNames, selected = sel, beta = beta,
+         zPop = c(log(1.8), log(0.086), log(32)),
+         omega = c(0.3, 0.03, 0.03), a = c(add.err = 0.7))
+  }
+
+  test_that("a theta named twice in its line gets the covariate injected once", {
+    ## a textual gsub replaces EVERY occurrence, and operator precedence turns
+    ## the second one into a spurious extra additive covariate effect
+    dup <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka) + 0 * lka
+        ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(dup)
+    ui2 <- suppressMessages(.vaeUpdateModel(ui, .fake(ui)))
+    .line <- deparse1(ui2$lstExpr[[1]])
+    expect_equal(lengths(regmatches(.line, gregexpr("beta_lka_WT_power", .line))), 1L)
+    ## still the flat mu-referenced form, so the exp() back-transform survives
+    expect_match(.line, "exp(lka + beta_lka_WT_power * log(WT/", fixed = TRUE)
+    expect_equal(ui2$muRefCurEval$curEval[ui2$muRefCurEval$parameter == "lka"], "exp")
+  })
+
+  test_that("an intercept correction never writes a theta out of bounds", {
+    ## "identity" moves beta*center into the intercept; with a bounded theta the
+    ## corrected value can leave the bounds, and clamping it would change the
+    ## prediction -- so the centered parameterization is written instead
+    bnd <- function() {
+      ini({ lka <- c(0.5, log(1.8), 0.7); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(bnd)
+    ctl <- vaeControl(shapes = c("identity", "power"))
+    ui2 <- suppressMessages(.vaeUpdateModel(ui, .fake(ui, "identity", ctl)))
+    .idf <- ui2$iniDf
+    .est <- .idf$est[.idf$name == "lka"]
+    ## the written estimate respects the declared bounds
+    expect_gt(.est, 0.5)
+    expect_lt(.est, 0.7)
+    ## and it stayed exact by writing the centered form rather than clamping
+    expect_true(any(grepl("beta_lka_WT_lin", .idf$name)))
+    expect_equal(.est, log(1.8))
+  })
+
+  test_that("generated coefficient names stay distinct", {
+    expect_equal(.vaeUniqueName("beta_lka_WT_log", character(0)), "beta_lka_WT_log")
+    expect_equal(.vaeUniqueName("beta_lka_WT_log", "beta_lka_WT_log"),
+                 "beta_lka_WT_log2")
+    expect_equal(.vaeUniqueName("beta_lka_WT_log",
+                                c("beta_lka_WT_log", "beta_lka_WT_log2")),
+                 "beta_lka_WT_log3")
+  })
+})
