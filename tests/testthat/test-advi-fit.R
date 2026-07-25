@@ -109,4 +109,26 @@ nmTest({
     expect_equal(.a$etaScores, .b$etaScores)        # untempered either way
     expect_equal(.a$etaScale, .b$etaScale)
   })
+
+  test_that("a step-size search at the etaCandidates edge is reported", {
+    ## Read $runInfo, NOT a warning handler: warnings raised during estimation
+    ## are COLLECTED into the fit's $runInfo rather than propagated, so
+    ## withCallingHandlers(warning=) sees nothing and would pass whatever the
+    ## code did.
+    ##
+    ## The message must appear when the winner is at an EDGE and be absent when
+    ## no search runs -- a report that always appears is as useless as one that
+    ## never does.
+    .info <- function(cand) {
+      .f <- suppressMessages(suppressWarnings(
+        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
+                control = adviControl(iters = 60L, seed = 7L, print = 0L,
+                                      tol = 0, etaCandidates = cand))))
+      as.character(.f$runInfo)
+    }
+    ## every entry of this grid is tiny, so the search runs to its top edge
+    expect_true(any(grepl("top of etaCandidates", .info(c(1e-4, 5e-4, 1e-3)))))
+    ## a single candidate means no search ran, so there is no edge to report
+    expect_false(any(grepl("etaCandidates", .info(0.05))))
+  })
 })

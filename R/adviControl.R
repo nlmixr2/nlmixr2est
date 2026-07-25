@@ -78,7 +78,16 @@
 #'   `eta` by a short search over `etaCandidates` before the main loop; when
 #'   `FALSE` use a fixed `eta` (the first `etaCandidates` entry).
 #' @param etaCandidates Candidate step-size scales searched when `adaptEta` is
-#'   `TRUE` (the paper searches `c(0.01, 0.1, 1, 10, 100)`).
+#'   `TRUE`.  The default is narrower and smaller-valued than the paper's
+#'   `c(0.01, 0.1, 1, 10, 100)` because these gradients come from FOCEi
+#'   sensitivities on the model's own scale rather than from AD through a Stan
+#'   program, so the useful step sizes sit lower; the paper's grid can be passed
+#'   verbatim if wanted.  Each candidate costs `min(iters, 75)` iterations
+#'   (a diverging one aborts early and is cheap), so the search is a substantial
+#'   share of a fit -- widen it deliberately.  When the search selects the
+#'   largest or smallest candidate the grid may be the binding constraint, and
+#'   the fit says so in `$runInfo`; `$etaScores` reports the per-candidate
+#'   scores behind the choice.
 #' @param perNoCor Fraction of the run over which a declared correlated `omega`
 #'   block is held at zero correlation, letting the population variances settle
 #'   before the correlations are estimated.  This is

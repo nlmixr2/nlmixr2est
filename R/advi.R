@@ -259,6 +259,22 @@
                     length(res$elbo), as.integer(.control$iters)),
             call. = FALSE)
   }
+  ## The adaptEta search picking the largest (or smallest) candidate is the one
+  ## case where the grid itself is plausibly the binding constraint -- the model
+  ## may want a step outside it and cannot say so.  Surface that instead of
+  ## letting it look like a converged choice; $etaScores shows the full search.
+  .cand <- as.numeric(.control$etaCandidates)
+  if (length(res$etaScores) > 1L && length(.cand) > 1L &&
+        any(is.finite(res$etaScores))) {
+    .sel <- as.numeric(res$etaScale)
+    if (isTRUE(all.equal(.sel, max(.cand)))) {
+      warning("step-size search hit the top of etaCandidates; consider widening",
+              call. = FALSE)
+    } else if (isTRUE(all.equal(.sel, min(.cand)))) {
+      warning("step-size search hit the bottom of etaCandidates; consider widening",
+              call. = FALSE)
+    }
+  }
   .st <- list(mu = res$mu, theta = res$theta, logPopOmega = res$logPopOmega,
               popOmegaMat = res$popOmegaMat,
               it0 = res$it0, sMu = res$sMu, sScale = res$sScale, sTheta = res$sTheta,
