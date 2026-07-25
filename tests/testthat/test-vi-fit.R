@@ -208,4 +208,35 @@ nmTest({
               control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
       "nlmixr2FitData")
   })
+
+  test_that("a fit does not depend on what ran before it in the same session", {
+    ## The advi run state lives in file statics, and forgetting to reset a NEW
+    ## one has now shipped three times.  This pins the invariant those bugs each
+    ## broke: the same fit must give the same answer whatever preceded it.
+    ##
+    ## It is a REGRESSION GUARD, not a demonstration of a current bug -- as of
+    ## this commit adviOptimize_ happens to rewrite every static from its args,
+    ## so the leak is only reachable through the direct-gradient entry points.
+    ## The guard is the point: it fails the next time a static is added without
+    ## a default, which is exactly how the previous three got in.
+    .runB <- function() {
+      suppressMessages(suppressWarnings(
+        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+                control = emviControl(iters = 60L, seed = 3L, print = 0L,
+                                      returnVi = TRUE))))
+    }
+    b1 <- .runB()
+    ## dirty every static a run can touch: tempering on, an early ELBO stop, a
+    ## non-default correlation schedule, and the full-Bayes Jacobian tables
+    suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fbvi",
+              control = fbviControl(iters = 60L, seed = 11L, print = 0L,
+                                    returnVi = TRUE, klWarmup = 40L,
+                                    temperInit = 10, tol = 1e-1, evalElbo = 10L,
+                                    perNoCor = 5))))
+    b2 <- .runB()
+    expect_identical(b1$theta, b2$theta)
+    expect_identical(b1$popOmega, b2$popOmega)
+    expect_identical(b1$elbo, b2$elbo)
+  })
 })
