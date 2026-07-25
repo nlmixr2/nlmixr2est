@@ -1,6 +1,6 @@
 # vaeOutput.R -- build the fitted nlmixr2 output from a trained VAE. The model is
 # updated with the selected covariate effects (exact centered expressions, e.g.
-# ka <- exp(lka + beta_lka_WT*log(WT/79.6) + eta.ka)) and the ini() estimates are
+# ka <- exp(lka + beta.lka.WT.log*log(WT/79.6) + eta.ka)) and the ini() estimates are
 # set to the VAE solution. The standard nlmixr2FitData (objective, parFixed/SEs,
 # EBEs, residuals, tables) is then assembled with nlmixr2CreateOutputFromUi
 # driving the FOCEi inner problem at the VAE estimates (no outer optimizer),
@@ -153,10 +153,17 @@
         .shp <- if (identical(prep$covFamily[j], "log")) "power" else "lin"
         .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
       }
+      ## "." separates the pieces, matching the rest of nlmixr2's generated and
+      ## conventional parameter names (eta.cl, add.sd, prop.sd) rather than "_".
+      ## The categorical branch is built from the raw covariate and its level
+      ## directly instead of reusing the design column name (which glues them
+      ## with "_"), so the separator is consistent across both branches.
       .bn <- if (identical(prep$covType[j], "continuous")) {
-        paste0("beta_", thName, "_", .raw, "_", .shp)
+        paste0("beta.", thName, ".", .raw, ".", .shp)
+      } else if (!is.na(prep$covLevel[j]) && nzchar(prep$covLevel[j])) {
+        paste0("beta.", thName, ".", prep$covRaw[j], ".", prep$covLevel[j])
       } else {
-        paste0("beta_", thName, "_", covNames[j])
+        paste0("beta.", thName, ".", covNames[j])
       }
       ## names are built from user-facing pieces, so two distinct columns can in
       ## principle collide (a continuous WT written as "log" beside a 0/1 data
@@ -219,10 +226,10 @@
     }
   }
   ## The incremental model()/ini() edits above leave the ui's cached `covariates`
-  ## stale: an injected covariate-coefficient theta (beta_<par>_<cov>) is added to
+  ## stale: an injected covariate-coefficient theta (beta.<par>.<cov>) is added to
   ## the iniDf as a theta but ALSO stays listed as a covariate.  The augmented
-  ## covariance solve then declares that beta_ both as its THETA[k] and as a
-  ## phantom data covariate, and fails ("required for solving: beta_...").
+  ## covariance solve then declares that beta. both as its THETA[k] and as a
+  ## phantom data covariate, and fails ("required for solving: beta....").
   ## Re-parsing the accumulated model function yields a consistent theta/covariate
   ## classification (verified: only the true data covariates remain).
   rxode2::assertRxUi(ui2$fun)
@@ -230,7 +237,7 @@
 
 #' Update a PINNED VAE fit's model with the estimates.
 #'
-#' Unlike `.vaeUpdateModel` (which injects fresh `beta_<par>_<cov>` terms into a
+#' Unlike `.vaeUpdateModel` (which injects fresh `beta.<par>.<cov>` terms into a
 #' covariate-free base model), the pinned path keeps the user's ORIGINAL model
 #' -- their covariate terms, coefficient names and centers stay exactly as
 #' written -- and only writes ini() estimates.  A declared covariate the search

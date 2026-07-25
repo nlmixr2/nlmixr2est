@@ -10,14 +10,16 @@
   installed; otherwise accessing them warns and returns `NULL`.  Requires
   rxode2 (>= 5.1.5) for `rxDeserialize()`.
 
-## Bug fixes
-
-- `nlmixr2fix()` now actually repairs serialized fit components: it previously
-  tested the component name (not the object) for rawness, so the repair loop
-  never ran, and a successful qs2 read was discarded.
-# nlmixr2est (development version)
-
 ## New features
+
+- The covariate coefficients `est="vae"` injects after covariate selection are
+  now named with `.` separators instead of `_`: `beta.tka.WT.lin` rather than
+  `beta_tka_WT_lin`.  This matches the separator the rest of `nlmixr2` uses for
+  generated and conventional parameter names (`eta.cl`, `add.sd`, `prop.sd`).
+  A categorical coefficient is built from the covariate and its level directly
+  (`beta.tka.SEX.M`), so the separator is consistent there too.  Coefficients you
+  write yourself are untouched -- with `vaeControl(pinCovariates=TRUE)` (the
+  default) the model keeps your names exactly as written.
 
 - The `est="vae"` automatic covariate search now explores several
   parameterizations ("shapes") of each covariate rather than the single
@@ -64,9 +66,12 @@
   `17`: re-measuring with `tools/benchVaeCovSelect.R` puts the exact-vs-L0Learn
   crossover at roughly 16 bits in BOTH regimes (one shape per covariate and two),
   which is what makes a single threshold in these units meaningful.
-# nlmixr2est 7.0.2
 
 ## Bug fixes
+
+- `nlmixr2fix()` now actually repairs serialized fit components: it previously
+  tested the component name (not the object) for rawness, so the repair loop
+  never ran, and a successful qs2 read was discarded.
 
 - Fixed `$parFixed` reporting an uninitialized-memory denormal (e.g.
   `9.4e-323`) as a residual-error parameter's `SE`/`%RSE` for SAEM fits

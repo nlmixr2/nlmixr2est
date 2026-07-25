@@ -1,6 +1,6 @@
 ## Fast regression guards for two est="vae" covariate-output bugs (no training):
 ##
-## Bug 1 -- injected covariate-coefficient thetas (beta_<par>_<cov>) must survive
+## Bug 1 -- injected covariate-coefficient thetas (beta.<par>.<cov>) must survive
 ##   into the population-parameter table; they were dropped from parFixedDf when a
 ##   population parameter was fixed (literalFix reindex, see the slow end-to-end
 ##   test in test-vae-covariate.R).  Here we assert the precondition: .vaeUpdateModel
@@ -49,8 +49,8 @@ nmTest({
     ## covariate-bearing lines are the additive mu-referenced form
     kaLine <- deparse1(ui2$lstExpr[[1]])
     vLine <- deparse1(ui2$lstExpr[[3]])
-    expect_match(kaLine, "exp(lka + beta_lka_WT_power * log(WT/", fixed = TRUE)
-    expect_match(vLine, "exp(lV + beta_lV_WT_power * log(WT/", fixed = TRUE)
+    expect_match(kaLine, "exp(lka + beta.lka.WT.power * log(WT/", fixed = TRUE)
+    expect_match(vLine, "exp(lV + beta.lV.WT.power * log(WT/", fixed = TRUE)
     ## NOT the wrapped form exp((theta + beta*cov) + eta) that breaks detection
     expect_false(grepl("exp((", kaLine, fixed = TRUE))
     expect_false(grepl("exp((", vLine, fixed = TRUE))
@@ -67,9 +67,9 @@ nmTest({
     ui <- rxode2::assertRxUi(.theoCov)
     ui2 <- suppressMessages(.vaeUpdateModel(ui, .fakeVaeFit(ui)))
     thetaNames <- ui2$iniDf$name[!is.na(ui2$iniDf$ntheta)]
-    expect_true(all(c("beta_lka_WT_power", "beta_lV_WT_power") %in% thetaNames))
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% thetaNames))
     ## the un-selected ke gets no coefficient
-    expect_false("beta_lke_WT_power" %in% thetaNames)
+    expect_false("beta.lke.WT.power" %in% thetaNames)
   })
 
   test_that("the selected shape family decides the written parameterization", {
@@ -77,11 +77,11 @@ nmTest({
     ui2 <- suppressMessages(.vaeUpdateModel(ui, .fakeVaeFit(ui, "lin")))
     kaLine <- deparse1(ui2$lstExpr[[1]])
     ## the linear family writes (WT - ctr), never the log form
-    expect_match(kaLine, "beta_lka_WT_lin * (WT - ", fixed = TRUE)
+    expect_match(kaLine, "beta.lka.WT.lin * (WT - ", fixed = TRUE)
     expect_false(grepl("log(WT", kaLine, fixed = TRUE))
     thetaNames <- ui2$iniDf$name[!is.na(ui2$iniDf$ntheta)]
-    expect_true("beta_lka_WT_lin" %in% thetaNames)
-    expect_false("beta_lka_WT_power" %in% thetaNames)
+    expect_true("beta.lka.WT.lin" %in% thetaNames)
+    expect_false("beta.lka.WT.power" %in% thetaNames)
   })
 
   test_that("shapes= picks the parameterization within the selected family", {
@@ -92,13 +92,13 @@ nmTest({
     fit <- .fakeVaeFit(ui, "center", ctl)
     ui2 <- suppressMessages(.vaeUpdateModel(ui, fit))
     kaLine <- deparse1(ui2$lstExpr[[1]])
-    expect_match(kaLine, "beta_lka_WT_center * (WT/", fixed = TRUE)
+    expect_match(kaLine, "beta.lka.WT.center * (WT/", fixed = TRUE)
     ## center's coefficient is the linear one times the centering value, and the
     ## structural theta absorbs the difference so the prediction is unchanged
     .j <- match("center", fit$prep$covShape)
     .ctr <- fit$prep$covPop[.j]
     .idf <- ui2$iniDf
-    expect_equal(.idf$est[.idf$name == "beta_lka_WT_center"], 2.5 * .ctr)
+    expect_equal(.idf$est[.idf$name == "beta.lka.WT.center"], 2.5 * .ctr)
     expect_equal(.idf$est[.idf$name == "lka"], log(1.8) - 2.5 * .ctr)
   })
 
@@ -132,9 +132,9 @@ nmTest({
     expect_error(ui2 <- suppressMessages(.vaeUpdateModel(uiF, fit)), NA)
     ## covariate coefficients still injected on the non-fixed params
     thetaNames <- ui2$iniDf$name[!is.na(ui2$iniDf$ntheta)]
-    expect_true(all(c("beta_lka_WT_power", "beta_lV_WT_power") %in% thetaNames))
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% thetaNames))
     ## no coefficient invented for the fixed-theta eta
-    expect_false(any(grepl("beta_.*_ke|beta_NA", thetaNames)))
+    expect_false(any(grepl("beta\\..*\\.ke|beta\\.NA", thetaNames)))
   })
 })
 
@@ -174,9 +174,9 @@ nmTest({
     ui <- rxode2::assertRxUi(dup)
     ui2 <- suppressMessages(.vaeUpdateModel(ui, .fake(ui)))
     .line <- deparse1(ui2$lstExpr[[1]])
-    expect_equal(lengths(regmatches(.line, gregexpr("beta_lka_WT_power", .line))), 1L)
+    expect_equal(lengths(regmatches(.line, gregexpr("beta.lka.WT.power", .line))), 1L)
     ## still the flat mu-referenced form, so the exp() back-transform survives
-    expect_match(.line, "exp(lka + beta_lka_WT_power * log(WT/", fixed = TRUE)
+    expect_match(.line, "exp(lka + beta.lka.WT.power * log(WT/", fixed = TRUE)
     expect_equal(ui2$muRefCurEval$curEval[ui2$muRefCurEval$parameter == "lka"], "exp")
   })
 
@@ -201,16 +201,16 @@ nmTest({
     expect_gt(.est, 0.5)
     expect_lt(.est, 0.7)
     ## and it stayed exact by writing the centered form rather than clamping
-    expect_true(any(grepl("beta_lka_WT_lin", .idf$name)))
+    expect_true(any(grepl("beta.lka.WT.lin", .idf$name)))
     expect_equal(.est, log(1.8))
   })
 
   test_that("generated coefficient names stay distinct", {
-    expect_equal(.vaeUniqueName("beta_lka_WT_log", character(0)), "beta_lka_WT_log")
-    expect_equal(.vaeUniqueName("beta_lka_WT_log", "beta_lka_WT_log"),
-                 "beta_lka_WT_log2")
-    expect_equal(.vaeUniqueName("beta_lka_WT_log",
-                                c("beta_lka_WT_log", "beta_lka_WT_log2")),
-                 "beta_lka_WT_log3")
+    expect_equal(.vaeUniqueName("beta.lka.WT.log", character(0)), "beta.lka.WT.log")
+    expect_equal(.vaeUniqueName("beta.lka.WT.log", "beta.lka.WT.log"),
+                 "beta.lka.WT.log2")
+    expect_equal(.vaeUniqueName("beta.lka.WT.log",
+                                c("beta.lka.WT.log", "beta.lka.WT.log2")),
+                 "beta.lka.WT.log3")
   })
 })
