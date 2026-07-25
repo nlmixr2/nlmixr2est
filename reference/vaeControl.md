@@ -34,6 +34,7 @@ vaeControl(
   residOptimize = c("twoStage", "moment", "optimize"),
   residRhoend = NULL,
   omegaUpdate = c("suffStat", "blend"),
+  perNoCor = 0.75,
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
   covSelectMaxExact = 17L,
@@ -323,6 +324,19 @@ vaeControl(
   [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
   does.
 
+- perNoCor:
+
+  Fraction of the EM phase (\`gammaIter\` iterations) over which a
+  declared correlated \`omega\` block is held at zero correlation,
+  letting the variances settle before the correlations are estimated.
+  This is
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)'s
+  \`perNoCor\` rule (0.75 there as well); it has no effect on a model
+  with no declared off-diagonals.
+
+  A value greater than 1 is an ABSOLUTE iteration count rather than a
+  fraction.
+
 - inputScale:
 
   Which observations the encoder-input centering and scaling are
@@ -573,43 +587,15 @@ vaeControl(
 
 - sigdig:
 
-  Specifies the "significant digits" that the ODE solving requests. This
-  is `NULL` by default, and while it is `NULL` it has no effect at all:
-  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
-  uses the standard `atol`/`rtol` (and the standard sensitivity and
-  steady-state tolerances). `sigdig` only changes a tolerance when you
-  ask for it explicitly.
-
-  When it is supplied, the tolerances are derived with one
-  solver-independent formula – the same for stiff, non-stiff and
-  auto-switching solvers. The `rtol` exponent IS `sigdig` and `atol`
-  sits three orders below it:
-
-  - `rtol = 10^(-sigdig)`, `atol = 10^(-sigdig-3)`
-
-  - the sensitivity tolerances match the main solve, so
-    `rtolSens = rtol` and `atolSens = atol` (gradients and covariances
-    are built from them)
-
-  - the steady-state tolerances run one order looser than the
-    corresponding main tolerance, so `ssRtol = ssRtolSens = 10*rtol` and
-    `ssAtol = ssAtolSens = 10*atol`
-
-  Each of these is set only when you did not pass that tolerance
-  yourself; a tolerance you supply always wins. Because they are
-  resolved independently, an explicit `atol`/`rtol` overrides the main
-  solve but does *not* propagate to the sensitivity or steady-state
-  tolerances – set those directly if you need them changed too.
-
-  This mapping matches how `nlmixr2est` derives solver tolerances from
-  its optimization `sigdig`, so a `sigdig` used for estimation and the
-  same `sigdig` used for a plain
-  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
-  mean the same thing. Note it is keyed to `sigdig` as a request for
-  that many significant digits, and is looser than the `atol`/`rtol`
-  defaults for small `sigdig` – at `sigdig = 4` it gives `rtol = 1e-4`
-  against a default `rtol = 1e-6`. Raise `sigdig`, or set `atol`/`rtol`
-  directly, when you want a tighter solve.
+  Specifies the "significant digits" that the ode solving requests. When
+  specified this controls the relative and absolute tolerances of the
+  ODE solvers. By default the tolerance is `0.5*10^(-sigdig-2)` for
+  regular ODEs. For the sensitivity equations the default is
+  `0.5*10\^(-sigdig-1.5)` (sensitivity changes only applicable for
+  liblsoda). This also controls the `atol`/`rtol` of the steady state
+  solutions. The `ssAtol`/`ssRtol` is `0.5*10\^(-sigdig)` and for the
+  sensitivities `0.5*10\^(-sigdig+0.625)`. By default this is
+  unspecified (`NULL`) and uses the standard `atol`/`rtol`.
 
 - sigdigTable:
 

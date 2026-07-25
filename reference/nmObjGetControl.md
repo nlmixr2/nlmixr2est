@@ -5,13 +5,16 @@ Get control object from fit
 ## Usage
 
 ``` r
-# S3 method for class 'advi'
-nmObjGetControl(x, ...)
-
 # S3 method for class 'agq'
 nmObjGetControl(x, ...)
 
 # S3 method for class 'bobyqa'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'emvi'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'fbvi'
 nmObjGetControl(x, ...)
 
 # S3 method for class 'fo'

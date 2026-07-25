@@ -10,7 +10,6 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addCwres.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addNpde.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addTable.html</loc></url>
-<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/adviControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/agqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc></url>
@@ -59,6 +58,8 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-sensEtaOrTheta.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiFinalizeMu2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/emviControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/fbviControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc></url>
@@ -162,6 +163,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.foceiHdEta2.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxode2stateOde.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc></url>

@@ -149,9 +149,6 @@ plot(fit)
   : NPDE calculation for nlmixr2
 - [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
   : Add table information to nlmixr2 fit object without tables
-- [`adviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/adviControl.md)
-  : Control for advi (automatic differentiation variational inference)
-  in nlmixr2
 - [`agqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/agqControl.md)
   : Control options for the agq estimation method
 - [`assertNlmixrFit()`](https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.md)
@@ -192,6 +189,11 @@ plot(fit)
   : Preprocess the zero omegas
 - [`.preProcessZeroTheta()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroTheta.md)
   : Nudge exactly-zero theta initial estimates off zero (FOCEi family)
+- [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
+  : Control for the variational inference methods emvi and fbvi in
+  nlmixr2
+- [`fbviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/fbviControl.md)
+  : Control for the fbvi (full-Bayes variational inference) method
 - [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)
   : Control options for the FO estimation method
 - [`foceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceControl.md)

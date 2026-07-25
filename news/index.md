@@ -1,8 +1,31 @@
 # Changelog
 
-## nlmixr2est (development version)
+## nlmixr2est 7.0.2
+
+### Breaking changes
+
+- Dropped the `qs2` dependency (and with it `stringfish`, which no
+  longer loads against RcppParallel \>= 6.0.0): the focei model disk
+  cache now uses RDS files and compressed fit components use base R
+  serialization
+  ([`rxode2::rxGetDefaultSerialize()`](https://nlmixr2.github.io/rxode2/reference/rxGetDefaultSerialize.html),
+  “bzip2” by default). Old fits holding qs2-serialized components can
+  still be read when the `qs2` package is installed; otherwise accessing
+  them warns and returns `NULL`. Requires rxode2 (\>= 5.1.5) for
+  `rxDeserialize()`.
 
 ### New features
+
+- The covariate coefficients `est="vae"` injects after covariate
+  selection are now named with `.` separators instead of `_`:
+  `beta.tka.WT.lin` rather than `beta_tka_WT_lin`. This matches the
+  separator the rest of `nlmixr2` uses for generated and conventional
+  parameter names (`eta.cl`, `add.sd`, `prop.sd`). A categorical
+  coefficient is built from the covariate and its level directly
+  (`beta.tka.SEX.M`), so the separator is consistent there too.
+  Coefficients you write yourself are untouched – with
+  `vaeControl(pinCovariates=TRUE)` (the default) the model keeps your
+  names exactly as written.
 
 - The `est="vae"` automatic covariate search now explores several
   parameterizations (“shapes”) of each covariate rather than the single
@@ -54,10 +77,14 @@
   what it did before. The default stays `17`: re-measuring with
   `tools/benchVaeCovSelect.R` puts the exact-vs-L0Learn crossover at
   roughly 16 bits in BOTH regimes (one shape per covariate and two),
-  which is what makes a single threshold in these units meaningful. \#
-  nlmixr2est 7.0.2
+  which is what makes a single threshold in these units meaningful.
 
 ### Bug fixes
+
+- [`nlmixr2fix()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2fix.md)
+  now actually repairs serialized fit components: it previously tested
+  the component name (not the object) for rawness, so the repair loop
+  never ran, and a successful qs2 read was discarded.
 
 - Fixed `$parFixed` reporting an uninitialized-memory denormal (e.g.
   `9.4e-323`) as a residual-error parameter’s `SE`/`%RSE` for SAEM fits
@@ -73,6 +100,34 @@
 ## nlmixr2est 7.0.1
 
 ### New features
+
+- The variational inference method previously called `est="advi"` is now
+  two methods, `est="emvi"` (variational EM) and `est="fbvi"` (full
+  Bayes), sharing a shared control –
+  [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
+  with
+  [`fbviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/fbviControl.md)
+  as its thin wrapper, the way
+  [`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md)/[`impControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impControl.md)
+  already work (was `adviControl()`). The old name was wrong on both
+  halves: there is no automatic differentiation in the implementation
+  (the gradients come from the FOCEi forward sensitivities), and the
+  default mode was never the published algorithm but a variational-EM
+  hybrid. The two modes were previously selected by `pointEstimate=`,
+  which is kept but now defaults to whichever the chosen `est` implies;
+  `est` wins over a contradicting value and says so. `covMethod="advi"`
+  is likewise now `covMethod="vi"`. `est="advi"` never appeared in a
+  released version, so no deprecation shim is provided.
+
+- `est="vae"` and `est="emvi"` now estimate the omega off-diagonals of a
+  correlated random-effect block (`eta.cl + eta.v ~ c(0.1, 0.01, 0.1)`),
+  like `saem` and the `focei` family. Both previously kept only the
+  variances and reported the ini correlation unchanged. The estimated
+  block appears in `fit$omega` and in the updated model’s
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html). Only
+  the declared off-diagonals are estimated – a diagonal model is
+  unchanged, and `est="fbvi"` (full Bayes) errors on a correlated block
+  rather than silently dropping it.
 
 - `est="vae"` gains `vaeControl(covSelectMethod=)` and
   `vaeControl(covSelectMaxExact=)`, which make covariate selection
@@ -304,11 +359,11 @@
   `optim`). At the default `sigdig = 4` this is ODE
   `atol = 1e-7, rtol = 1e-4` and optimizer tolerance `1e-4` (previously
   a symmetric ODE `5e-7` with optimizer `1e-5`). `sigdig` is routed
-  through all of focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and
-  the nlm family. `est="nls"` keeps a tighter ODE (three orders below
-  the shared target) because its Levenberg-Marquardt step is sensitive
-  to solver noise. An explicit `atol`/`rtol` passed through `rxControl`
-  still overrides the `sigdig`-derived value.
+  through all of focei/foce/fo/laplace, saem, emvi/fbvi, vae, nlme, nls,
+  and the nlm family. `est="nls"` keeps a tighter ODE (three orders
+  below the shared target) because its Levenberg-Marquardt step is
+  sensitive to solver noise. An explicit `atol`/`rtol` passed through
+  `rxControl` still overrides the `sigdig`-derived value.
 
 - The default `sigdig` is now `4` for every estimation method. The FOCE
   family (`foce`/`fo`/`foi`/`focep`), `agq`/`laplace`, `impmap`,
@@ -443,8 +498,8 @@
   - the nonparametric family (`npag`/`npb`) now defaults to the
     importance-sampling covariance (`"imp"`). `est="saem"` (`"sa"`), the
     importance-sampling family (`"imp"`), the NLM family
-    (`"r"`/optimizer Hessian), `est="advi"` (`"advi"`) and `fo`/`foi`
-    (no covariance) keep their previous defaults.
+    (`"r"`/optimizer Hessian), `est="emvi"`/`est="fbvi"` (`"vi"`) and
+    `fo`/`foi` (no covariance) keep their previous defaults.
 
 - `vaeControl(bnbStrategy=)` selects the frontier discipline for the
   exact branch-and-bound covariate selection in `est="vae"`: `"lifo"`
@@ -500,9 +555,10 @@
     `"imp"` is the Monte-Carlo importance-sampling covariance that the
     old `impCov=TRUE` selected (the `impCov` argument is removed); the
     other tokens compute the post-fit FOCEI covariance.
-  - `est="advi"` keeps its variational covariance (`"advi"`) as the
-    default but now honors an explicit `covMethod` (e.g. `"analytic"`)
-    without overwriting it with the variational covariance.
+  - `est="emvi"`/`est="fbvi"` keep their variational covariance (`"vi"`)
+    as the default but now honors an explicit `covMethod`
+    (e.g. `"analytic"`) without overwriting it with the variational
+    covariance.
   - [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)/[`getVarCov()`](https://rdrr.io/pkg/nlme/man/getVarCov.html)
     accept `covMethod="analytic"` post-fit.
 
@@ -1007,13 +1063,20 @@
 
 #### New estimation methods
 
-- `est = "advi"`
-  ([`adviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/adviControl.md)):
-  automatic differentiation variational inference (Kucukelbir et
-  al. 2017), mean-field or block full-rank family, point-estimate or
-  full-Bayes mode. The variational gradient comes from the FOCEi forward
-  sensitivities and the whole optimization runs in one C++ call,
-  reproducibly and independent of the thread count.
+- `est = "emvi"` and `est = "fbvi"`
+  ([`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
+  /
+  [`fbviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/fbviControl.md)):
+  variational inference in the style of Kucukelbir et al. (2017),
+  mean-field or block full-rank family. `emvi` is variational EM
+  (variational posterior over the etas, population parameters
+  point-estimated by an M-step); `fbvi` adds the population vector to
+  the variational posterior under flat priors. Neither is the published
+  ADVI algorithm and neither is named for it: the gradient comes from
+  the FOCEi forward sensitivities rather than automatic differentiation,
+  and even `fbvi` carries omega as per-eta log-variances rather than
+  freely. The whole optimization runs in one C++ call, reproducibly and
+  independent of the thread count.
 
 - `est = "impmap"` and `est = "imp"`
   ([`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md)
@@ -1400,8 +1463,8 @@
   endpoint for (issue
   [\#579](https://github.com/nlmixr2/nlmixr2est/issues/579)).
 
-- `est="advi"` now rejects a mixture (`mix()`) model up front with a
-  clear message
+- `est="emvi"`/`est="fbvi"` now reject a mixture (`mix()`) model up
+  front with a clear message
   ([`rxode2::assertRxUiNoMix`](https://nlmixr2.github.io/rxode2/reference/assertRxUi.html))
   instead of running a wrong fit that ignored the mixture structure and
   then failed late in the output tables with a cryptic “the

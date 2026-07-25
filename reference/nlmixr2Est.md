@@ -5,13 +5,16 @@ Generic for nlmixr2 estimation methods
 ## Usage
 
 ``` r
-# S3 method for class 'advi'
-nlmixr2Est(env, ...)
-
 # S3 method for class 'agq'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'bobyqa'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'emvi'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'fbvi'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'fo'

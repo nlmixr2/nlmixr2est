@@ -72,6 +72,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  residOptimize <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"twoStage"</span>, <span class="st">"moment"</span>, <span class="st">"optimize"</span><span class="op">)</span>,</span>
 <span>  residRhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  omegaUpdate <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"suffStat"</span>, <span class="st">"blend"</span><span class="op">)</span>,</span>
+<span>  perNoCor <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  inputScale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"reference"</span>, <span class="st">"observed"</span><span class="op">)</span>,</span>
 <span>  covSelectMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"bnb"</span>, <span class="st">"l0learn"</span><span class="op">)</span>,</span>
 <span>  covSelectMaxExact <span class="op">=</span> <span class="fl">17L</span>,</span>
@@ -345,6 +346,16 @@ models with no closed form (`add + prop`, `add + pow`, Box-Cox /
 Yeo-Johnson), as <code><a href="saemControl.html">saemControl()</a></code> does.</p></dd>
 
 
+<dt id="arg-pernocor">perNoCor<a class="anchor" aria-label="anchor" href="#arg-pernocor"></a></dt>
+<dd><p>Fraction of the EM phase (`gammaIter` iterations) over which a
+  declared correlated `omega` block is held at zero correlation, letting the
+  variances settle before the correlations are estimated.  This is
+  <code><a href="saemControl.html">saemControl()</a></code>'s `perNoCor` rule (0.75 there as well); it has no
+  effect on a model with no declared off-diagonals.</p>
+<p>A value greater than 1 is an ABSOLUTE iteration
+  count rather than a fraction.</p></dd>
+
+
 <dt id="arg-inputscale">inputScale<a class="anchor" aria-label="anchor" href="#arg-inputscale"></a></dt>
 <dd><p>Which observations the encoder-input centering and scaling
 are computed over.  `"reference"` (default) matches the reference
@@ -590,36 +601,16 @@ function.  By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
-<dd><p>Specifies the "significant digits" that the ODE
-solving requests.  This is <code>NULL</code> by default, and while it is
-<code>NULL</code> it has no effect at all: <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxSolve()</a></code> uses the standard
-<code>atol</code>/<code>rtol</code> (and the standard sensitivity and steady-state
-tolerances).  <code>sigdig</code> only changes a tolerance when you ask for
-it explicitly.</p>
-<p>When it is supplied, the tolerances are derived with one
-solver-independent formula – the same for stiff, non-stiff and
-auto-switching solvers.  The <code>rtol</code> exponent IS <code>sigdig</code> and
-<code>atol</code> sits three orders below it:</p><ul><li><p><code>rtol = 10^(-sigdig)</code>, <code>atol = 10^(-sigdig-3)</code></p></li>
-<li><p>the sensitivity tolerances match the main solve, so
-<code>rtolSens = rtol</code> and <code>atolSens = atol</code> (gradients and
-covariances are built from them)</p></li>
-<li><p>the steady-state tolerances run one order looser than the
-corresponding main tolerance, so <code>ssRtol = ssRtolSens = 10*rtol</code>
-and <code>ssAtol = ssAtolSens = 10*atol</code></p></li>
-</ul><p>Each of these is set only when you did not pass that tolerance
-yourself; a tolerance you supply always wins.  Because they are
-resolved independently, an explicit <code>atol</code>/<code>rtol</code> overrides the
-main solve but does <em>not</em> propagate to the sensitivity or
-steady-state tolerances – set those directly if you need them
-changed too.</p>
-<p>This mapping matches how <code>nlmixr2est</code> derives solver tolerances
-from its optimization <code>sigdig</code>, so a <code>sigdig</code> used for estimation
-and the same <code>sigdig</code> used for a plain <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxSolve()</a></code> mean the same
-thing.  Note it is keyed to <code>sigdig</code> as a request for that many
-significant digits, and is looser than the <code>atol</code>/<code>rtol</code> defaults
-for small <code>sigdig</code> – at <code>sigdig = 4</code> it gives <code>rtol = 1e-4</code>
-against a default <code>rtol = 1e-6</code>.  Raise <code>sigdig</code>, or set
-<code>atol</code>/<code>rtol</code> directly, when you want a tighter solve.</p></dd>
+<dd><p>Specifies the "significant digits" that the ode
+solving requests.  When specified this controls the relative and
+absolute tolerances of the ODE solvers.  By default the tolerance
+is <code>0.5*10^(-sigdig-2)</code> for regular ODEs. For the
+sensitivity equations the default is <code>0.5*10\^(-sigdig-1.5)</code>
+(sensitivity changes only applicable for liblsoda).  This also
+controls the <code>atol</code>/<code>rtol</code> of the steady state solutions. The
+<code>ssAtol</code>/<code>ssRtol</code> is <code>0.5*10\^(-sigdig)</code> and for the sensitivities
+<code>0.5*10\^(-sigdig+0.625)</code>.  By default
+this is unspecified (<code>NULL</code>) and uses the standard <code>atol</code>/<code>rtol</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
