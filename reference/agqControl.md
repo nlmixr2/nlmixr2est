@@ -268,7 +268,7 @@ agqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55e5361388a8>
+#> <bytecode: 0x55671385d528>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

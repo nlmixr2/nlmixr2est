@@ -334,16 +334,30 @@ which also tightens the structural regression that re-solves per candidate.</p><
 
 <dt id="arg-omegaupdate">omegaUpdate<a class="anchor" aria-label="anchor" href="#arg-omegaupdate"></a></dt>
 <dd><p>How the population variances are updated in the covariate
-M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
-the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
-historic behavior, blending the freshly computed `omega` with the previous
-value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
-The residual error estimate is still EMA-smoothed on the standard-deviation
-scale, where the reference smooths the residual sum of squares and takes the
-root afterwards – a known remaining difference.  Matching it would need
-per-endpoint sufficient statistics plus an optimizer branch for the error
-models with no closed form (`add + prop`, `add + pow`, Box-Cox /
-Yeo-Johnson), as <code><a href="saemControl.html">saemControl()</a></code> does.</p></dd>
+  M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+  the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+  historic behavior, blending the freshly computed `omega` with the previous
+  value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.</p>
+<p>Note this option reaches only ONE of the two omega M-steps.  Which one runs
+  is decided by `covariateSelection`: with `TRUE` the covariate M-step runs and
+  honors `omegaUpdate`; with `FALSE` the plain closed-form M-step runs, whose
+  variances are always raw posterior moments blended at the gain.  A declared
+  correlated block's OFF-diagonals always follow whichever estimator that
+  branch's diagonal used – estimating the two halves of one block by different
+  estimators need not even give a positive-definite result.</p>
+<p>The two settings are the SAME update while the gain is 1, which it is
+  throughout burn-in and the EM phase (assigning a value and blending it in
+  with weight 1 are the same operation); they differ only once `gammaIter`
+  decays the gain.  A short run at default settings will show no difference.</p>
+<p>`mStepObjective` does not enter the omega update at all – it scores the
+  non-mu theta M-step.  Omega has a closed-form EM update from the variational
+  posterior either way.</p>
+<p>The residual error estimate is still EMA-smoothed on the standard-deviation
+  scale, where the reference smooths the residual sum of squares and takes the
+  root afterwards – a known remaining difference.  Matching it would need
+  per-endpoint sufficient statistics plus an optimizer branch for the error
+  models with no closed form (`add + prop`, `add + pow`, Box-Cox /
+  Yeo-Johnson), as <code><a href="saemControl.html">saemControl()</a></code> does.</p></dd>
 
 
 <dt id="arg-pernocor">perNoCor<a class="anchor" aria-label="anchor" href="#arg-pernocor"></a></dt>
@@ -352,8 +366,20 @@ Yeo-Johnson), as <code><a href="saemControl.html">saemControl()</a></code> does.
   variances settle before the correlations are estimated.  This is
   <code><a href="saemControl.html">saemControl()</a></code>'s `perNoCor` rule (0.75 there as well); it has no
   effect on a model with no declared off-diagonals.</p>
-<p>A value greater than 1 is an ABSOLUTE iteration
-  count rather than a fraction.</p></dd>
+<p>Held at ZERO, following saem, not at the `ini()` value: retaining an initial
+  covariance while the variances shrink around it can leave the block
+  non-positive-definite.  A `fixed()` covariance is exempt – it is not being
+  estimated, so it keeps its value through the hold and out the other side.</p>
+<p>The fraction is of the EM phase, `min(gammaIter, iters)`, not of the whole
+  run.  That matters: the gain is 1 for `it &lt;= gammaIter`, so the release
+  point falls while the gain is still 1 and the correlations are estimable the
+  moment they are unfrozen.  (This is why no gain restart is needed here,
+  whereas <code><a href="emviControl.html">emviControl()</a></code> – whose run has no separate unit-gain
+  phase – has to restart the off-diagonal gain at release.)</p>
+<p>A value greater than 1 is an ABSOLUTE iteration count rather than a fraction,
+  and must be a whole number.  Prefer the absolute form whenever a run may be
+  resumed or reproduced at a different length: a fraction of a shorter run is a
+  different schedule, not the same one truncated.</p></dd>
 
 
 <dt id="arg-inputscale">inputScale<a class="anchor" aria-label="anchor" href="#arg-inputscale"></a></dt>
