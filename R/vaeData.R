@@ -165,10 +165,14 @@
   .subjVal <- function(nm) {
     .v <- d[[nm]][.first]
     if (anyNA(.v)) {
+      ## one match() over the non-missing rows rather than a scan per subject,
+      ## so this stays linear in the data even when many first rows are blank
       .all <- d[[nm]]
-      for (.b in which(is.na(.v))) {
-        .i <- which(d$ID == ids[.b] & !is.na(.all))
-        if (length(.i) > 0L) .v[.b] <- .all[.i[1L]]
+      .ok <- which(!is.na(.all))
+      if (length(.ok) > 0L) {
+        .hit <- .ok[match(ids, d$ID[.ok])]
+        .w <- which(is.na(.v) & !is.na(.hit))
+        if (length(.w) > 0L) .v[.w] <- .all[.hit[.w]]
       }
     }
     .v
