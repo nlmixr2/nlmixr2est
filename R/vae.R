@@ -51,12 +51,18 @@
 #'   the automatic search may consider, using the same vocabulary as
 #'   `nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
 #'   (`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
-#'   and `"center"` (`beta*(COV/ctr)`).  At most one shape of a covariate may
-#'   enter a given parameter.  Because the selection objective is an ordinary
-#'   least squares fit with a free intercept, `"power"`/`"log"` span the same
-#'   model, as do `"lin"`/`"identity"`/`"center"`; the shape therefore decides
-#'   how an accepted relationship is written back, and when several eligible
-#'   shapes span the same model the one listed first wins.  May also be a list
+#'   and `"center"` (`beta*(COV/ctr)`).  `"hockey"` is a two-armed piecewise
+#'   linear relationship knotted at the centering value, written as
+#'   `beta.low*(COV < ctr)*(COV - ctr) + beta.hi*(COV >= ctr)*(COV - ctr)`; both
+#'   arms enter or neither does, and it is skipped for a covariate with fewer
+#'   than `catCutoff` of the subjects on one side of the knot.  At most one shape
+#'   of a covariate may enter a given parameter.  Because the selection objective
+#'   is an ordinary least squares fit with a free intercept, `"power"`/`"log"`
+#'   span the same model, as do `"lin"`/`"identity"`/`"center"`; the shape
+#'   therefore decides how an accepted relationship is written back, and when
+#'   several eligible shapes span the same model the one listed first wins.
+#'   `"hockey"` spans a strictly larger model than the linear shapes and costs
+#'   two coefficients rather than one.  May also be a list
 #'   named by covariate (`list(WT = "power")`) or a list of
 #'   `list(var=, covar=, shapes=)` items to restrict a single
 #'   parameter/covariate pair; anything not named keeps every shape.  Which

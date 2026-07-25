@@ -27,7 +27,9 @@ which shapes are explored and how covariates are centered}
 a data frame with one row per candidate search column and columns
   `covariate` (the column name), `raw` (upper-cased data column it comes
   from), `shape`, `level` (for categorical indicators), `group` (mutual
-  exclusion group), `type` and `center`; zero rows when nothing qualifies
+  exclusion group), `block` (columns selected all-or-none, i.e. the two arms
+  of a `"hockey"` relationship), `type` and `center`; zero rows when nothing
+  qualifies
 }
 \description{
 Returns the candidate columns that `nlmixr2(..., est = "vae")` would explore

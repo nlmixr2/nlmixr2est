@@ -24,6 +24,101 @@ nmTest({
     expect_equal(res$group, c(1L, 1L, 2L))
   })
 
+  ## ---- hockey stick ---------------------------------------------------------
+
+  ## UPPER-CASE names: .vaeCovariateSearch is called below directly, and it
+  ## expects the normalized frame its caller builds -- with lower-case names it
+  ## finds no ID column and silently discovers no covariates at all
+  hkData <- function(wt = c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140)) {
+    data.frame(ID = rep(seq_along(wt), each = 2), TIME = rep(0:1, length(wt)),
+               DV = seq_len(2 * length(wt)), WT = rep(wt, each = 2))
+  }
+
+  test_that("hockey emits one column per arm, blocked together", {
+    res <- vaeCovariates(hkData(), shapes = c("lin", "hockey"))
+    expect_equal(res$covariate, c("WT_lin", "WT_hockeyLow", "WT_hockeyHi"))
+    expect_equal(res$shape, c("lin", "hockeyLow", "hockeyHi"))
+    ## all three compete for one slot (one GROUP), but the two arms are one
+    ## all-or-none BLOCK -- that pairing is what stops the search selecting
+    ## `lin + one arm`, which spans the same space for the same penalty
+    expect_equal(res$group, c(1L, 1L, 1L))
+    expect_equal(res$block, c(1L, 2L, 2L))
+    ## the knot is the covariate's centering value, nothing new
+    expect_equal(res$center, rep(stats::median(hkData()$WT), 3))
+  })
+
+  test_that("the arms partition the subjects and sum to the lin column", {
+    d <- hkData()
+    s <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(c("lin", "hockey")))
+    m <- s$covMat
+    expect_equal(unname(m[, "WT_hockeyLow"] + m[, "WT_hockeyHi"]),
+                 unname(m[, "WT_lin"]))
+    ## disjoint: no subject contributes to both arms
+    expect_true(all(m[, "WT_hockeyLow"] == 0 | m[, "WT_hockeyHi"] == 0))
+    ## the design column is exactly what the written text evaluates to
+    WT <- unique(d$WT)
+    for (arm in c("hockeyLow", "hockeyHi")) {
+      .j <- match(paste0("WT_", arm), s$covNames)
+      expect_equal(eval(str2lang(s$covExpr[.j])), unname(m[, .j]), info = arm)
+    }
+  })
+
+  test_that("hockey is nameable but is not searched unless asked for", {
+    ## the default set is unchanged, so no existing fit gains hockey columns
+    expect_false(any(grepl("hockey", vaeCovariates(hkData())$covariate)))
+    expect_false("hockey" %in% .vaeDefaultShapes)
+    expect_true("hockey" %in% .vaeContShapes)
+    expect_silent(.vaeAssertContShapes(c("lin", "hockey")))
+    ## the literal defaults in the exported signatures must not drift from
+    ## .vaeDefaultShapes -- they are three copies of one decision
+    expect_equal(eval(formals(vaeControl)$shapes), .vaeDefaultShapes)
+    expect_equal(eval(formals(vaeCovariates)$shapes), .vaeDefaultShapes)
+  })
+
+  test_that("every non-hockey column is its own block", {
+    ## block ids must reduce to the historic per-column search when nothing asks
+    ## for a multi-column shape, or the search changes for everyone
+    d <- data.frame(id = rep(1:6, each = 2), time = rep(0:1, 6), dv = 1:12,
+                    wt = rep(c(70, 80, 60, 75, 90, 65), each = 2),
+                    sex = rep(c(0, 1, 0, 1, 1, 0), each = 2))
+    res <- vaeCovariates(d)
+    expect_equal(res$block, seq_len(nrow(res)))
+  })
+
+  test_that("a knot with (almost) nothing on one side drops hockey", {
+    ## the arm would be a column of zeros, making the least-squares M-step
+    ## singular.  The median splits the subjects in half, so this needs a
+    ## covCenter= override to reach.
+    expect_warning(res <- vaeCovariates(hkData(), shapes = c("lin", "hockey"),
+                                        covCenter = c(WT = 200)),
+                   "hockey skipped")
+    expect_equal(res$covariate, "WT_lin")
+    ## a knot below every subject is the same failure on the other arm
+    expect_warning(vaeCovariates(hkData(), shapes = c("lin", "hockey"),
+                                 covCenter = c(WT = 10)), "hockey skipped")
+    ## asking for hockey ALONE falls back to the linear family rather than
+    ## dropping the covariate from the search entirely
+    expect_warning(res <- vaeCovariates(hkData(), shapes = "hockey",
+                                        covCenter = c(WT = 200)),
+                   "hockey skipped")
+    expect_equal(res$covariate, "WT_lin")
+    expect_equal(res$shape, "lin")
+    ## a usable knot warns about nothing
+    expect_silent(vaeCovariates(hkData(), shapes = c("lin", "hockey")))
+  })
+
+  test_that("the hockey runInfo note fits on one line", {
+    ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
+    d <- hkData()
+    .cov <- .vaeCovariateSearch(d, unique(d$ID),
+                                .vaeResolveShapes(c("lin", "hockey")),
+                                covCenter = c(WT = 200))
+    expect_equal(.cov$hockeyDrop, "WT")
+    .pre <- "<5% of subjects one side of knot, hockey skipped: "
+    expect_lte(nchar(paste0(.pre, .vaeTruncList(.cov$hockeyDrop, prefix = .pre))),
+               75L)
+  })
+
   test_that("restricting shapes= restricts the candidate columns", {
     d <- data.frame(
       id = rep(1:4, each = 3), time = rep(0:2, 4), dv = 1:12,
@@ -139,7 +234,7 @@ nmTest({
     res <- vaeCovariates(d)
     expect_equal(nrow(res), 0L)
     expect_equal(names(res), c("covariate", "raw", "shape", "level", "group",
-                               "type", "center"))
+                               "block", "type", "center"))
   })
 
   test_that("vaeCovariates requires an ID column", {

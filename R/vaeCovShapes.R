@@ -15,11 +15,8 @@
 ## "hockey" and both arms come with it, all-or-none, which is what keeps the
 ## written form well defined (see plans/vae-hockey-shape.md).
 
-## every shape a user may NAME in `shapes=`, in canonical order.  "hockey" is
-## deliberately absent until the design-matrix layer can build its arm columns:
-## a shape that is nameable but not buildable is accepted by vaeControl() and
-## then dies inside the search.
-.vaeContShapes <- c("power", "lin", "log", "identity", "center")
+## every shape a user may NAME in `shapes=`, in canonical order
+.vaeContShapes <- c("power", "lin", "log", "identity", "center", "hockey")
 ## the shapes actually TRIED when `shapes=` is not given.  Deliberately a
 ## separate vector even while it matches the one above: the two roles diverge,
 ## and conflating them makes any newly-nameable shape a default in the same

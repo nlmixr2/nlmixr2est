@@ -15,18 +15,14 @@ nmTest({
     expect_identical(.vaeHockeyArms, c("hockeyLow", "hockeyHi"))
   })
 
-  test_that("hockey is not yet nameable, and is not a default", {
-    ## The arm helpers exist but the design-matrix layer cannot build their
-    ## columns yet, so `shapes=` must NOT accept "hockey" -- accepting a shape
-    ## the search cannot build turns it into an error thrown from deep inside
-    ## data preparation instead of a rejected control value.
-    expect_false("hockey" %in% .vaeContShapes)
-    expect_error(.vaeAssertContShapes("hockey"), "unknown covariate shape")
-    expect_error(vaeControl(shapes = c("lin", "hockey")), "unknown covariate shape")
-    ## the arms are internal and are never nameable
+  test_that("hockey is nameable but the arms are internal", {
+    ## `shapes=` takes the RELATIONSHIP; the arms are how it is built, and
+    ## naming one on its own would ask for half a hockey stick
+    expect_true("hockey" %in% .vaeContShapes)
+    expect_silent(.vaeAssertContShapes("hockey"))
     expect_error(.vaeAssertContShapes("hockeyLow"), "unknown covariate shape")
     expect_error(.vaeAssertContShapes("hockeyHi"), "unknown covariate shape")
-    ## naming a shape and defaulting to it are now separate decisions
+    ## naming a shape and defaulting to it are separate decisions
     expect_false("hockey" %in% .vaeDefaultShapes)
     expect_true(all(.vaeDefaultShapes %in% .vaeContShapes))
   })
