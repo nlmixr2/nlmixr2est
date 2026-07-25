@@ -40,7 +40,7 @@ Compiles the inner (FOCEi sensitivity) model from an rxode2 UI model,
 preprocesses the data, and sets up the FOCEi inner problem in memory so that
 individual log-likelihoods can be evaluated repeatedly (in parallel per
 subject) at supplied etas without recompiling -- the setup used internally by
-`est="advi"`, `est="vae"` and the f-SAEM fast kernel, exposed here for
+`est="emvi"`/`est="fbvi"`, `est="vae"` and the f-SAEM fast kernel, exposed here for
 MCMC/SAMBA-style callers (issue #414).
 }
 \details{

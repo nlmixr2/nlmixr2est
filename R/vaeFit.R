@@ -304,7 +304,10 @@
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  .omMat <- .fit$omegaMat
+  dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
+       omegaMat = .omMat,
        a = setNames(as.numeric(.fit$a), names(prep$a)),
        intercept = as.numeric(.fit$intercept), beta = .fit$beta, selected = .selected,
        covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,

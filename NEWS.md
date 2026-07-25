@@ -65,6 +65,29 @@
 
 ## New features
 
+- The variational inference method previously called `est="advi"` is now two
+  methods, `est="emvi"` (variational EM) and `est="fbvi"` (full Bayes), sharing
+  a shared control -- `emviControl()` with `fbviControl()` as its thin wrapper,
+  the way `impmapControl()`/`impControl()` already work (was `adviControl()`).
+  The old name was wrong on
+  both halves: there is no automatic differentiation in the implementation (the
+  gradients come from the FOCEi forward sensitivities), and the default mode was
+  never the published algorithm but a variational-EM hybrid.  The two modes were
+  previously selected by `pointEstimate=`, which is kept but now defaults to
+  whichever the chosen `est` implies; `est` wins over a contradicting value and
+  says so.  `covMethod="advi"` is likewise now
+  `covMethod="vi"`.  `est="advi"` never appeared in a released version, so no
+  deprecation shim is provided.
+
+- `est="vae"` and `est="emvi"` now estimate the omega off-diagonals of a
+  correlated random-effect block (`eta.cl + eta.v ~ c(0.1, 0.01, 0.1)`), like
+  `saem` and the `focei` family.  Both previously kept only the variances and
+  reported the ini correlation unchanged.  The estimated block appears in
+  `fit$omega` and in the updated model's `ini()`.  Only the declared
+  off-diagonals are estimated -- a diagonal model is unchanged, and
+  `est="fbvi"` (full Bayes) errors on a correlated block
+  rather than silently dropping it.
+
 - `est="vae"` gains `vaeControl(covSelectMethod=)` and
   `vaeControl(covSelectMaxExact=)`, which make covariate selection practical on
   large candidate sets.  The exact branch-and-bound blows up past a few dozen
@@ -262,7 +285,7 @@
   standalone `nlm` and `optim`).  At the default `sigdig = 4` this is ODE
   `atol = 1e-7, rtol = 1e-4` and optimizer tolerance `1e-4` (previously a symmetric
   ODE `5e-7` with optimizer `1e-5`).  `sigdig` is routed through all of
-  focei/foce/fo/laplace, saem, advi, vae, nlme, nls, and the nlm family.  `est="nls"`
+  focei/foce/fo/laplace, saem, emvi/fbvi, vae, nlme, nls, and the nlm family.  `est="nls"`
   keeps a tighter ODE (three orders below the shared target) because its
   Levenberg-Marquardt step is sensitive to solver noise.  An explicit `atol`/`rtol`
   passed through `rxControl` still overrides the `sigdig`-derived value.
@@ -377,7 +400,7 @@
     - the nonparametric family (`npag`/`npb`) now defaults to the
       importance-sampling covariance (`"imp"`).
   `est="saem"` (`"sa"`), the importance-sampling family (`"imp"`), the NLM family
-  (`"r"`/optimizer Hessian), `est="advi"` (`"advi"`) and `fo`/`foi` (no
+  (`"r"`/optimizer Hessian), `est="emvi"`/`est="fbvi"` (`"vi"`) and `fo`/`foi` (no
   covariance) keep their previous defaults.
 
 - `vaeControl(bnbStrategy=)` selects the frontier discipline for the exact
@@ -423,7 +446,7 @@
       is the Monte-Carlo importance-sampling covariance that the old
       `impCov=TRUE` selected (the `impCov` argument is removed); the other
       tokens compute the post-fit FOCEI covariance.
-    - `est="advi"` keeps its variational covariance (`"advi"`) as the default but
+    - `est="emvi"`/`est="fbvi"` keep their variational covariance (`"vi"`) as the default but
       now honors an explicit `covMethod` (e.g. `"analytic"`) without overwriting
       it with the variational covariance.
     - `setCov()`/`getVarCov()` accept `covMethod="analytic"` post-fit.
@@ -840,11 +863,16 @@
 
 ### New estimation methods
 
-- `est = "advi"` (`adviControl()`): automatic differentiation variational
-  inference (Kucukelbir et al. 2017), mean-field or block full-rank family,
-  point-estimate or full-Bayes mode.  The variational gradient comes from the
-  FOCEi forward sensitivities and the whole optimization runs in one C++ call,
-  reproducibly and independent of the thread count.
+- `est = "emvi"` and `est = "fbvi"` (`emviControl()` / `fbviControl()`): variational inference
+  in the style of Kucukelbir et al. (2017), mean-field or block full-rank
+  family.  `emvi` is variational EM (variational posterior over the etas,
+  population parameters point-estimated by an M-step); `fbvi` adds the
+  population vector to the variational posterior under flat priors.  Neither is
+  the published ADVI algorithm and neither is named for it: the gradient comes
+  from the FOCEi forward sensitivities rather than automatic differentiation,
+  and even `fbvi` carries omega as per-eta log-variances rather than freely.
+  The whole optimization runs in one C++ call, reproducibly and independent of
+  the thread count.
 
 - `est = "impmap"` and `est = "imp"` (`impmapControl()` / `impControl()`):
   importance-sampling EM in the style of NONMEM `METHOD=IMP`, with the E-step
@@ -1151,7 +1179,7 @@
   terms).  This is the common case of a dataset with extra `DVID` levels that
   the model has no matching endpoint for (issue #579).
 
-- `est="advi"` now rejects a mixture (`mix()`) model up front with a clear
+- `est="emvi"`/`est="fbvi"` now reject a mixture (`mix()`) model up front with a clear
   message (`rxode2::assertRxUiNoMix`) instead of running a wrong fit that ignored
   the mixture structure and then failed late in the output tables with a cryptic
   "the probabilities in a mixture must sum to a number between 0 and 1, they sum

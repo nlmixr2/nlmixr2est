@@ -154,7 +154,7 @@
 #' @noRd
 .covGetDeferred <- function(fit) {
   # fit$control is the uniform per-method control accessor (nmObjGetControl);
-  # families that finalize through .foceiFamilyReturn (vae/advi/impmap/np) carry
+  # families that finalize through .foceiFamilyReturn (vae/vi/impmap/np) carry
   # the deferred request on the internal foceiControl instead.
   for (.acc in c("control", "foceiControl")) {
     .ctl <- tryCatch(do.call("$", list(fit, .acc)), error = function(e) NULL)

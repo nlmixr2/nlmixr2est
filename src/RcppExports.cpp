@@ -725,14 +725,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeInnerUpdatePar_
-RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag);
-RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaDiagSEXP) {
+RObject vaeInnerUpdatePar_(NumericVector thFull, RObject omega);
+RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type thFull(thFullSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaDiag(omegaDiagSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omegaDiag));
+    Rcpp::traits::input_parameter< RObject >::type omega(omegaSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omega));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1037,7 +1037,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeElboStepCpp_
-List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
+List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
 RcppExport SEXP _nlmixr2est_vaeElboStepCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP withGradSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -1045,7 +1045,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
     Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
     Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< RObject >::type omegaR(omegaRSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type aR(aRSEXP);
     Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);
@@ -1086,7 +1086,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeDecoderElboStep_
-List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aVecR, double alphaKL, NumericMatrix epsR, Function solveFn, List yListR, bool withGrad, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
+List vaeDecoderElboStep_(List params, List prep, RObject zPopR, RObject omegaR, NumericVector aVecR, double alphaKL, NumericMatrix epsR, Function solveFn, List yListR, bool withGrad, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
 RcppExport SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aVecRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP solveFnSEXP, SEXP yListRSEXP, SEXP withGradSEXP, SEXP tolSEXP, SEXP maxRecalcSEXP, SEXP recalcFactorSEXP, SEXP fdFallbackSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -1094,7 +1094,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
     Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
     Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< RObject >::type omegaR(omegaRSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type aVecR(aVecRSEXP);
     Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);

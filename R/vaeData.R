@@ -782,6 +782,9 @@ vaeCovariates <- function(data, warn = TRUE,
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     isTRUE(as.logical(.r$fix[1]))
   }, logical(1))
+  ## full ini omega block (declared off-diagonals included) + per-entry fix; the
+  ## M-step estimates every nonzero entry of this structure
+  .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
   ## structural-theta bounds per eta (Inf/-Inf when unbounded or free): the M-step
   ## clamps the population estimate to [lower, upper], giving the constrained
   ## estimate (at the bound when the unconstrained optimum is outside).
@@ -1181,6 +1184,7 @@ vaeCovariates <- function(data, warn = TRUE,
        regressErrIdx0 = .regressErrIdx0, regressStage2 = .regressStage2,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
+       omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
        covPop = .cov$covPop, covRaw = .cov$covRaw, covShape = .cov$covShape,

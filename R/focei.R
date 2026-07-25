@@ -2157,6 +2157,8 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # impmap: add the dedicated theta-sensitivity model (d(f)/d(theta)) used by the
   # importance-sampling EM to update the non-mu structural thetas.  Built here,
   # after the inner model, in the symengine pipeline context.
+  # "advi" here is the INNER engine marker set by .adviInnerSetup, not a user
+  # `est=` value (est="emvi"/"fbvi" both set it); do not "modernize" it.
   if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") &&
         is.null(env$model$thetaSens)) {
     env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
@@ -2206,7 +2208,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
     # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
     # The control class is checked too: at .impmapFamilyFit's foceiOptEnv
-    # build the ui control (impmapControl/adviControl) does not carry est yet
+    # build the ui control (impmapControl/emviControl) does not carry est yet
     # (env$est is set after .foceiFamilyControl in the est methods).
     .ctlClass <- ""
     if (exists("control", envir = .x, inherits = FALSE)) {
@@ -2215,7 +2217,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
                     c("impmap", "imp", "qrpem", "advi",
                       "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) &&
-      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
+      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "emviControl"))
     # muModel != "none" is the clamped family: bounded mu parameters stay
     # grouped and updateMuGroups() clamps their regression update
     .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain, clamp = TRUE)
