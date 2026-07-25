@@ -343,9 +343,13 @@ nmTest({
     expect_false(p$pinActive)
     expect_null(p$covAllow)                         # no mask -> unrestricted search
     ## WT still discovered from data, now as one search column per shape family
+    ## (and one per ARM for the hockey family)
     expect_equal(unique(p$covRaw), "WT")
-    expect_equal(p$covNames, c("WT_power", "WT_lin"))
-    ## the two shapes share an exclusion group, so only one can ever be selected
+    expect_equal(p$covNames,
+                 c("WT_power", "WT_lin", "WT_hockeyLow", "WT_hockeyHi"))
+    ## every shape shares an exclusion group, so only one can ever be selected
     expect_equal(length(unique(p$covGroup)), 1L)
+    ## and the two hockey arms are one block inside that group
+    expect_equal(p$covBlock, c(1L, 2L, 3L, 3L))
   })
 })

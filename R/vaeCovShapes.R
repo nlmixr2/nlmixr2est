@@ -21,7 +21,7 @@
 ## separate vector even while it matches the one above: the two roles diverge,
 ## and conflating them makes any newly-nameable shape a default in the same
 ## stroke -- which is a behavior change nobody asked for.
-.vaeDefaultShapes <- c("power", "lin", "log", "identity", "center")
+.vaeDefaultShapes <- c("power", "lin", "log", "identity", "center", "hockey")
 ## the two design columns a requested "hockey" expands into, low arm first
 .vaeHockeyArms <- c("hockeyLow", "hockeyHi")
 ## every shape name, including the categorical one (never user-selectable)

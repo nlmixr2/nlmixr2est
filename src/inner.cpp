@@ -13871,6 +13871,11 @@ struct VaeBnbCtx {
   // historic per-column search.
   std::vector<std::vector<int> > blocks;
   std::vector<int> blockOf;
+  // does ANY block hold more than one column?  When it does not, the block
+  // constraint is vacuous and the per-leaf feasibility check can be skipped.
+  // Defaulted here so a context built without vaeBnbSetBlocks is unconstrained
+  // rather than reading an uninitialized flag.
+  bool anyMultiBlock = false;
 };
 
 // Group the columns into atomic blocks.  A null `blk`, or a negative id, makes a
@@ -13897,6 +13902,10 @@ static void vaeBnbSetBlocks(VaeBnbCtx& c, const std::vector<int>* blk, int nCov)
     }
     c.blocks[(size_t)b].push_back(j);
     c.blockOf[(size_t)j] = b;
+  }
+  c.anyMultiBlock = false;
+  for (size_t b = 0; b < c.blocks.size(); ++b) {
+    if (c.blocks[b].size() > 1) { c.anyMultiBlock = true; break; }
   }
 }
 
@@ -13945,7 +13954,7 @@ static bool vaeGroupOk(const VaeBnbCtx& c, const std::vector<int>& s) {
       // Two columns of ONE block share the covariate's group by construction --
       // they are arms of the same relationship, not competing shapes, so this is
       // not a double-take.  Without this a hockey block could never be selected.
-      if (!c.blockOf.empty() &&
+      if (c.anyMultiBlock &&
           c.blockOf[(size_t)s[a]] == c.blockOf[(size_t)s[b]]) continue;
       return false;
     }
@@ -13957,7 +13966,11 @@ static bool vaeGroupOk(const VaeBnbCtx& c, const std::vector<int>& s) {
 // whole blocks so its leaves always are, but externally proposed supports (the
 // L0Learn path) and the local search have to be checked.
 static bool vaeBlockOk(const VaeBnbCtx& c, const std::vector<int>& s) {
-  if (c.blocks.empty()) return true;
+  // Fast path for the overwhelmingly common design, where every column is its
+  // own block and no support can be half-selected.  This runs once per LEAF, so
+  // without the early-out the scratch allocation below would be pure overhead on
+  // every search that never asked for a multi-column shape.
+  if (!c.anyMultiBlock) return true;
   std::vector<char> in(c.blockOf.size(), 0);
   for (size_t t = 0; t < s.size(); ++t) in[(size_t)s[t]] = 1;
   for (size_t t = 0; t < s.size(); ++t) {

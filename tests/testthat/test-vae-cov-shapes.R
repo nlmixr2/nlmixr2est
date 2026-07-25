@@ -22,8 +22,8 @@ nmTest({
     expect_silent(.vaeAssertContShapes("hockey"))
     expect_error(.vaeAssertContShapes("hockeyLow"), "unknown covariate shape")
     expect_error(.vaeAssertContShapes("hockeyHi"), "unknown covariate shape")
-    ## naming a shape and defaulting to it are separate decisions
-    expect_false("hockey" %in% .vaeDefaultShapes)
+    ## naming a shape and defaulting to it stay separate decisions, even though
+    ## hockey now happens to be both
     expect_true(all(.vaeDefaultShapes %in% .vaeContShapes))
   })
 

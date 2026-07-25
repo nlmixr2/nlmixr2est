@@ -28,9 +28,18 @@ nmTest({
            linCmt() ~ add(add.sd)})
   }
 
+  ## shapes="power" pins ONE search column per covariate.  This file is about
+  ## which ENGINE runs (exact branch-and-bound against L0Learn-proposed
+  ## candidates), so the design size must be the test's own variable rather than
+  ## whatever the default shape set happens to be -- and several tests below
+  ## deliberately force the EXACT search on all 30 covariates, whose cost is
+  ## exponential in the number of feasible states each covariate offers.  The
+  ## interaction between multi-column shapes and the candidate path is covered
+  ## at kernel level, for pennies, by test-vae-cov-groups.R (block completion)
+  ## and test-vae-l0learn.R (group repair).
   shortCtl <- function(...) {
     vaeControl(itersBurnIn = 5L, iters = 8L, klWarmup = 4L, gammaIter = 6L,
-               nGradStep = 2L, print = 0L, returnVae = TRUE, ...)
+               nGradStep = 2L, print = 0L, returnVae = TRUE, shapes = "power", ...)
   }
 
   test_that("auto engages L0Learn past the threshold and agrees with the exact search", {
@@ -87,6 +96,7 @@ nmTest({
                                   control = vaeControl(itersBurnIn = 4L, iters = 5L,
                                                        klWarmup = 3L, gammaIter = 4L,
                                                        nGradStep = 2L, print = 0L,
+                                                       shapes = "power",
                                                        calcTables = FALSE)))
     expect_identical(f$vae$covSelectMethodUsed, "l0learn")
     ## a non-exact selection must never arrive silently

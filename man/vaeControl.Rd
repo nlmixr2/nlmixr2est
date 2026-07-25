@@ -18,7 +18,7 @@ vaeControl(
   covariateSelection = TRUE,
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
-  shapes = c("power", "lin", "log", "identity", "center"),
+  shapes = c("power", "lin", "log", "identity", "center", "hockey"),
   covCenterType = c("median", "mean"),
   covCenter = NULL,
   catCutoff = 0.05,

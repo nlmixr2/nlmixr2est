@@ -1,7 +1,8 @@
 nmTest({
   test_that("vaeControl exposes the covariate shape settings", {
     .c <- vaeControl()
-    expect_equal(.c$shapes, c("power", "lin", "log", "identity", "center"))
+    expect_equal(.c$shapes,
+                 c("power", "lin", "log", "identity", "center", "hockey"))
     expect_equal(.c$covCenterType, "median")
     expect_null(.c$covCenter)
     expect_equal(.c$catCutoff, 0.05)

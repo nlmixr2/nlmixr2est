@@ -141,9 +141,11 @@ nmTest({
     expect_equal(hkOnly$covShape, c("hockeyLow", "hockeyHi"))
     expect_equal(hkOnly$covBlock, c(1L, 1L))
     expect_equal(ncol(hkOnly$covIn), 2L)
-    ## and with no hockey anywhere every column is its own block, as before
+    ## and with no hockey requested every column is its own block, as before
     plain <- .vaeDataPrep(ui, nlmixr2data::theo_sd,
-                          vaeControl(print = 0L, covMethod = ""))
+                          vaeControl(shapes = c("power", "lin"), print = 0L,
+                                     covMethod = ""))
+    expect_false(any(grepl("hockey", plain$covShape)))
     expect_equal(plain$covBlock, seq_along(plain$covShape))
   })
 
@@ -161,10 +163,12 @@ nmTest({
                       iters = 160L, hiddenDim = 25L, seed = 1L,
                       covariateSelection = TRUE, print = 0L, covMethod = "")
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
-    ## WT contributes both shape families, sharing one exclusion group
+    ## WT contributes every shape family, all sharing one exclusion group; the
+    ## hockey arms are two columns of one block within it
     expect_equal(unique(prep$covRaw), "WT")
-    expect_equal(prep$covShape, c("power", "lin"))
+    expect_equal(prep$covShape, c("power", "lin", "hockeyLow", "hockeyHi"))
     expect_equal(length(unique(prep$covGroup)), 1L)
+    expect_equal(length(unique(prep$covBlock)), 3L)
 
     fit <- suppressWarnings(rxode2::rxWithSeed(
       1L, nlmixr2(ui, nlmixr2data::theo_sd, est = "vae", control = ctl)))

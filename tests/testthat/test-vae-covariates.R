@@ -11,17 +11,21 @@ nmTest({
       sex = rep(c(0, 1, 0, 1), each = 3))
     res <- vaeCovariates(d)
     expect_s3_class(res, "data.frame")
-    ## a continuous covariate contributes one column per shape family
-    expect_equal(res$covariate, c("WT_power", "WT_lin", "SEX"))
-    expect_equal(res$raw, c("WT", "WT", "SEX"))
-    expect_equal(res$shape, c("power", "lin", "cat"))
-    expect_equal(res$type, c("continuous", "continuous", "categorical"))
+    ## a continuous covariate contributes one column per shape family, and the
+    ## hockey family contributes one per ARM
+    expect_equal(res$covariate,
+                 c("WT_power", "WT_lin", "WT_hockeyLow", "WT_hockeyHi", "SEX"))
+    expect_equal(res$raw, c("WT", "WT", "WT", "WT", "SEX"))
+    expect_equal(res$shape, c("power", "lin", "hockeyLow", "hockeyHi", "cat"))
+    expect_equal(res$type, c(rep("continuous", 4), "categorical"))
     ## WT is centered at its median; SEX is a 0/1 indicator so it is left RAW
     ## (center 0) -- its coefficient is the level-1 shift and the structural
     ## theta stays the reference (SEX=0) value
-    expect_equal(res$center, c(rep(stats::median(c(70, 80, 60, 75)), 2), 0))
-    ## the two WT shapes compete for one slot; SEX is its own group
-    expect_equal(res$group, c(1L, 1L, 2L))
+    expect_equal(res$center, c(rep(stats::median(c(70, 80, 60, 75)), 4), 0))
+    ## every WT shape competes for one slot; SEX is its own group
+    expect_equal(res$group, c(1L, 1L, 1L, 1L, 2L))
+    ## but the two arms are ONE block, so they enter together or not at all
+    expect_equal(res$block, c(1L, 2L, 3L, 3L, 4L))
   })
 
   ## ---- hockey stick ---------------------------------------------------------
@@ -63,12 +67,14 @@ nmTest({
     }
   })
 
-  test_that("hockey is nameable but is not searched unless asked for", {
-    ## the default set is unchanged, so no existing fit gains hockey columns
-    expect_false(any(grepl("hockey", vaeCovariates(hkData())$covariate)))
-    expect_false("hockey" %in% .vaeDefaultShapes)
+  test_that("hockey is searched by default and can be turned off", {
+    expect_true(any(grepl("hockey", vaeCovariates(hkData())$covariate)))
+    expect_true("hockey" %in% .vaeDefaultShapes)
     expect_true("hockey" %in% .vaeContShapes)
     expect_silent(.vaeAssertContShapes(c("lin", "hockey")))
+    ## naming shapes without it is how a user opts out
+    expect_false(any(grepl("hockey",
+                           vaeCovariates(hkData(), shapes = c("power", "lin"))$covariate)))
     ## the literal defaults in the exported signatures must not drift from
     ## .vaeDefaultShapes -- they are three copies of one decision
     expect_equal(eval(formals(vaeControl)$shapes), .vaeDefaultShapes)
@@ -81,7 +87,8 @@ nmTest({
     d <- data.frame(id = rep(1:6, each = 2), time = rep(0:1, 6), dv = 1:12,
                     wt = rep(c(70, 80, 60, 75, 90, 65), each = 2),
                     sex = rep(c(0, 1, 0, 1, 1, 0), each = 2))
-    res <- vaeCovariates(d)
+    res <- vaeCovariates(d, shapes = c("power", "lin", "log", "identity", "center"))
+    expect_false(any(grepl("hockey", res$covariate)))
     expect_equal(res$block, seq_len(nrow(res)))
   })
 
@@ -222,8 +229,8 @@ nmTest({
 
   test_that("vaeCovariates matches what .vaeDataPrep explores (theo_sd)", {
     res <- vaeCovariates(nlmixr2data::theo_sd)
-    expect_equal(res$raw, c("WT", "WT"))
-    expect_equal(res$type, c("continuous", "continuous"))
+    expect_equal(res$raw, rep("WT", 4L))
+    expect_equal(res$type, rep("continuous", 4L))
     ## the exported view must agree with the pool the fit actually searches --
     ## asserting only on vaeCovariates() would miss any divergence
     mod <- function() {

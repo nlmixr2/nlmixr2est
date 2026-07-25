@@ -77,7 +77,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "split", "unary-mu", "timing"),
+    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing"),
   # batch 7 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c("vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
