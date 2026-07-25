@@ -180,3 +180,82 @@ nmTest({
     expect_equal(nrow(res0), 1L)
   })
 })
+
+## Piping: a model the VAE wrote must feed back into another fit with every
+## covariate form recognized and pinned to the shape it was written in.
+nmTest({
+  .mk <- function(term) {
+    .txt <- paste0(
+      "function() {\n",
+      "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; b1 <- 0.1; add.err <- 0.7\n",
+      "        eta.cl ~ 0.1 })\n",
+      "  model({ ka <- exp(tka)\n",
+      "    cl <- exp(tcl + b1 * ", term, " + eta.cl)\n",
+      "    v <- exp(tv)\n",
+      "    d/dt(depot) <- -ka * depot\n",
+      "    d/dt(center) <- ka * depot - cl / v * center\n",
+      "    cp <- center / v; cp ~ add(add.err) })\n}")
+    eval(parse(text = .txt))
+  }
+
+  test_that("every written shape is detected with its center", {
+    expect_equal(.vaeDetectShape(quote(log(WT/70)), "WT")[c("shape", "center")],
+                 list(shape = "power", center = 70))
+    expect_equal(.vaeDetectShape(quote(log(WT)), "WT")[c("shape", "center")],
+                 list(shape = "log", center = 1))
+    expect_equal(.vaeDetectShape(quote((WT - 70)), "WT")[c("shape", "center")],
+                 list(shape = "lin", center = 70))
+    expect_equal(.vaeDetectShape(quote(WT), "WT")[c("shape", "center")],
+                 list(shape = "identity", center = 0))
+    expect_equal(.vaeDetectShape(quote((WT/70)), "WT")[c("shape", "center")],
+                 list(shape = "center", center = 70))
+    expect_equal(.vaeDetectShape(quote((SEX == "F")), "SEX")$shape, "cat")
+    ## an untransferable form stays unrecognized
+    expect_true(is.na(.vaeDetectShape(quote(log(WT/AGE)), "WT")$shape))
+    expect_true(is.na(.vaeDetectShape(quote(sqrt(WT)), "WT")$shape))
+  })
+
+  test_that("the coefficient's own factor is what is read", {
+    .l <- quote(cl <- exp(tcl + b1 * log(WT/70) + b2 * (AGE - 40) + eta.cl))
+    expect_equal(.vaeDetectShape(.vaeCoefFactor(.l, "b1"), "WT")$shape, "power")
+    expect_equal(.vaeDetectShape(.vaeCoefFactor(.l, "b2"), "AGE")$shape, "lin")
+  })
+
+  test_that("each written shape pins to its own column and transfers directly", {
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    .wt <- vapply(unique(d$ID), function(i) d$WT[d$ID == i][1], numeric(1))
+    .cases <- list(power = list("log(WT/70)", function(v) log(v / 70)),
+                   log = list("log(WT)", function(v) log(v)),
+                   lin = list("(WT - 70)", function(v) v - 70),
+                   identity = list("WT", function(v) v),
+                   center = list("(WT/70)", function(v) v / 70))
+    for (.s in names(.cases)) {
+      .term <- .cases[[.s]][[1]]
+      .val <- .cases[[.s]][[2]]
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk(.term)), d,
+                                         vaeControl(muRefCovAlg = FALSE)))
+      expect_true(p$pinActive, info = .s)
+      ## detected as the shape it was written in, and pinned
+      expect_equal(p$pinPairs$shape, .s, info = .s)
+      expect_true(all(p$pinPairs$inPool), info = .s)
+      ## exactly one cell allowed, on the column of that shape's family
+      expect_equal(sum(p$covAllow), 1L, info = .s)
+      .j <- which(colSums(p$covAllow) > 0L)
+      expect_equal(p$covFamily[.j], .vaeShapeFamily(.s), info = .s)
+      ## the column IS the model's own expression, so the slope transfers with
+      ## no correction (this is the pinned contract)
+      expect_equal(unname(p$covMat[, .j]), unname(.val(.wt)), info = .s)
+      expect_equal(p$covPop[.j], 0, info = .s)
+      ## and the coefficient is searched, not routed to the regress M-step
+      expect_false("b1" %in% p$regressNames, info = .s)
+    }
+  })
+
+  test_that("an unrecognized form still falls back to the regress M-step", {
+    d <- as.data.frame(nlmixr2data::theo_sd)
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk("sqrt(WT)")), d,
+                                       vaeControl(muRefCovAlg = FALSE)))
+    expect_false(any(p$pinPairs$inPool))
+    expect_true("b1" %in% p$regressNames)
+  })
+})

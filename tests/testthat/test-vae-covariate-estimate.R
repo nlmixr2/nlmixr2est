@@ -127,14 +127,42 @@ nmTest({
     expect_false("cl.wt" %in% p$regressNames)
   })
 
-  test_that("a raw-linear effect on a continuous covariate is not pinnable (regresses)", {
+  test_that("a raw-linear effect on a continuous covariate pins as the identity shape", {
+    ## Previously untransferable (the search only understood log(cov/center)),
+    ## so this was routed to the regress M-step.  `beta*WT` is now the identity
+    ## shape, so it pins to the linear-family column and IS searched.
     ui <- rxode2::assertRxUi(.lin())              # cl.wt * WT (linear on continuous WT)
     p <- suppressWarnings(.vaeDataPrep(ui, d, vaeControl(pinCovariates = TRUE)))
     expect_true(p$pinActive)
-    expect_false(any(p$pinPairs$inPool))          # linear-on-continuous is not transferable
-    expect_true("cl.wt" %in% p$regressNames)       # routed to the regress M-step
-    ## mask exists and forbids every cell, so the search selects nothing
-    expect_false(is.null(p$covAllow))
+    expect_equal(p$pinPairs$shape, "identity")
+    expect_true(all(p$pinPairs$inPool))
+    expect_false("cl.wt" %in% p$regressNames)      # searched, not regressed
+    ## exactly one cell allowed, on the linear-family column
+    expect_equal(sum(p$covAllow), 1L)
+    .j <- which(colSums(p$covAllow) > 0L)
+    expect_equal(p$covFamily[.j], "lin")
+    ## identity means the column is the raw covariate, so the slope transfers
+    .wt <- vapply(unique(d$ID), function(i) d$WT[d$ID == i][1], numeric(1))
+    expect_equal(unname(p$covMat[, .j]), unname(.wt))
+    expect_equal(p$covPop[.j], 0)
+  })
+
+  test_that("a genuinely untransferable form still regresses", {
+    ## sqrt(WT) is not one of the shapes the search can write back, so it must
+    ## NOT be mistaken for the identity shape just because WT appears in it
+    sq <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7
+        eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + cl.wt * sqrt(WT) + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(sq()), d,
+                                       vaeControl(pinCovariates = TRUE)))
+    expect_false(any(p$pinPairs$inPool))
+    expect_true("cl.wt" %in% p$regressNames)
     expect_equal(sum(p$covAllow), 0L)
   })
 

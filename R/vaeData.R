@@ -172,6 +172,7 @@
   .tvExcl <- setdiff(.allCand, .raw)
 
   .cols <- list()
+  .rawVals <- list()
   .catDropped <- character(0)
   .logDrop <- character(0)
   .shapeSub <- character(0)
@@ -187,6 +188,8 @@
 
   for (nm in .raw) {
     v <- d[[nm]][.first]
+    ## kept so a pinned column can be rebuilt as the model's OWN expression
+    .rawVals[[nm]] <- v
     ## mu2/mu3 covariates are pre-transformed by the hook into a linear
     ## nlmixrMuDerCov# data column (the centering/transform is already baked in),
     ## so encode them LINEARLY -- never re-apply a log transform, and never split
@@ -271,7 +274,7 @@
        covExpr = vapply(.cols, `[[`, character(1), "expr"),
        ## the encoder head takes one column per GROUP: alternate shapes are
        ## near-collinear copies, but distinct factor levels are not
-       covCanon = !duplicated(.covGroup),
+       covCanon = !duplicated(.covGroup), covRawVal = .rawVals,
        tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
        shapeSub = unique(.shapeSub))
 }
@@ -289,7 +292,13 @@
 .vaePinColumn <- function(cov, pair) {
   .w <- which(cov$covRaw == pair$covName)
   if (length(.w) == 0L) return(NA_integer_)
-  .want <- if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
+  ## the family the coefficient was WRITTEN in, so `beta*(WT - 70)` pins to the
+  ## linear column just as `beta*log(WT/70)` pins to the log one
+  ## A bare linear multiplier fits either an indicator column or a mu2/mu3
+  ## pre-transformed one, which the search stores as the linear family.
+  .want <- if (!is.null(pair$family) && !is.na(pair$family)) {
+    if (identical(pair$family, "cat")) c("cat", "lin") else pair$family
+  } else if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
   .m <- .w[cov$covFamily[.w] %in% .want]
   if (length(.m) == 0L) NA_integer_ else .m[1L]
 }
@@ -481,26 +490,38 @@ vaeCovariates <- function(data, warn = TRUE,
     .inPool <- !is.na(.k) && !is.na(.j)
     .ct <- if (.inPool) covType[.j] else NA_character_
     .userCenter <- NA_real_
+    .shape <- NA_character_
     if (.inPool) {
       if (identical(.ct, "categorical")) {
         ## VAE centers a categorical covariate; a plain linear beta*cov transfers
         ## (slope invariant to the shift).  A transformed categorical is unusual
         ## and not slope-transferable -- route it to the regress M-step.
-        if (.linear) .userCenter <- 0 else .inPool <- FALSE
+        if (.linear) { .userCenter <- 0; .shape <- "cat" } else .inPool <- FALSE
       } else {
-        ## continuous: VAE uses log(cov/mean); only a written log(cov/center)
-        ## transfers.  A raw linear beta*cov on a continuous covariate does not.
+        ## Continuous: read the SHAPE the coefficient was written in, so a model
+        ## the VAE itself wrote (any of power/lin/log/identity/center) pipes back
+        ## into another fit and pins to that same shape.  Anything unrecognized
+        ## is not slope-transferable and goes to the regress M-step.
         .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
-        .lc <- if (length(.cl)) .vaeLogCenter(.cl[[1L]], .covTok)
-               else list(inLog = FALSE, center = NA_real_)
-        if (isTRUE(.lc$inLog) && is.finite(.lc$center)) .userCenter <- .lc$center
-        else .inPool <- FALSE
+        ## no `coef * <expr>` factor -> unresolved -> not pinnable (the safe
+        ## direction: the coefficient is estimated in place instead)
+        .ds <- if (length(.cl)) {
+          .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
+        } else list(shape = NA_character_, center = NA_real_)
+        if (!is.na(.ds$shape) && is.finite(.ds$center)) {
+          .shape <- .ds$shape
+          .userCenter <- .ds$center
+        } else {
+          .inPool <- FALSE
+        }
       }
     }
     .rows[[length(.rows) + 1L]] <- data.frame(
       k = if (is.na(.k)) NA_integer_ else as.integer(.k),
       covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
       coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
+      shape = .shape,
+      family = if (is.na(.shape)) NA_character_ else .vaeShapeFamily(.shape),
       covType = if (is.na(.ct)) NA_character_ else .ct,
       userCenter = .userCenter, inPool = .inPool,
       stringsAsFactors = FALSE)
@@ -780,6 +801,7 @@ vaeCovariates <- function(data, warn = TRUE,
         ## with a DIFFERENT center (e.g. log(WT/70) on CL and log(WT/80) on KA)
         ## that pair cannot share the column, so demote it to the regress M-step.
         .claim <- rep(NA_real_, .nCov)
+        .claimShape <- rep(NA_character_, .nCov)
         for (.r in seq_len(nrow(.pinPairs))) {
           if (!.pinPairs$inPool[.r]) next
           .j <- .vaePinColumn(.cov, .pinPairs[.r, , drop = FALSE])
@@ -787,7 +809,11 @@ vaeCovariates <- function(data, warn = TRUE,
             .pinPairs$inPool[.r] <- FALSE
           } else if (is.na(.claim[.j])) {
             .claim[.j] <- .pinPairs$userCenter[.r]
-          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r]))) {
+            .claimShape[.j] <- .pinPairs$shape[.r]
+          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r])) ||
+                       !identical(.claimShape[.j], .pinPairs$shape[.r])) {
+            ## same column, different center OR different written shape: only one
+            ## of them can own the column, so the rest go to the regress M-step
             .pinPairs$inPool[.r] <- FALSE
           }
         }
@@ -817,11 +843,16 @@ vaeCovariates <- function(data, warn = TRUE,
         ## and the selection unchanged -- this only relocates the intercept.
         ## Each claimed column is adjusted EXACTLY once, off the original covPop.
         for (.j in which(!is.na(.claim))) {
-          if (identical(.cov$covFamily[.j], "log")) {
-            ## log(v/center) -> log(v/userCenter)
-            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.claim[.j])
+          .sh <- .claimShape[.j]
+          .rv <- .cov$covRawVal[[.cov$covRaw[.j]]]
+          if (!is.na(.sh) && !identical(.sh, "cat") && !is.null(.rv) &&
+                is.numeric(.rv)) {
+            ## Rebuild the column as the model's OWN expression, so the estimated
+            ## slope transfers back with no correction whatever shape was written.
+            .cov$covMat[, .j] <- .vaeShapeValue(.sh, .rv, .claim[.j])
           } else {
-            ## (v - center) -> raw v (mu2/mu3 already applied the model transform)
+            ## categorical / mu2-derived: strip the VAE centering, leaving the
+            ## column the model's linear term already multiplies
             .cov$covMat[, .j] <- .cov$covMat[, .j] + .cov$covPop[.j]
           }
           .cov$covPop[.j] <- 0

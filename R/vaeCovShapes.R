@@ -157,6 +157,102 @@
   do.call(rbind, .out)
 }
 
+#' Numeric column a shape's model text evaluates to
+#'
+#' The inverse of `.vaeShapeExpr`: given the raw per-subject covariate values it
+#' returns exactly what the written expression computes.  Used to rebuild a
+#' pinned column as the model's OWN expression, so an estimated slope transfers
+#' back with no correction whatever shape the user wrote.
+#' @param shape shape name
+#' @param v raw per-subject covariate values
+#' @param center centering value written in the model
+#' @return numeric vector, same length as `v`
+#' @noRd
+.vaeShapeValue <- function(shape, v, center) {
+  switch(shape,
+         power = log(v / center),
+         log = log(v),
+         lin = v - center,
+         identity = v,
+         center = v / center,
+         stop("unknown covariate shape: ", shape, call. = FALSE))
+}
+
+#' The sub-expression a coefficient multiplies
+#'
+#' A model line may carry several covariate effects, so the shape has to be read
+#' off the factor THIS coefficient multiplies rather than off the whole line.
+#' @param e expression to walk
+#' @param coef coefficient (theta) name
+#' @return the multiplied expression, or `NULL`
+#' @noRd
+.vaeCoefFactor <- function(e, coef) {
+  if (!is.call(e)) return(NULL)
+  if (identical(e[[1L]], as.name("*")) && length(e) == 3L) {
+    if (is.name(e[[2L]]) && identical(as.character(e[[2L]]), coef)) return(e[[3L]])
+    if (is.name(e[[3L]]) && identical(as.character(e[[3L]]), coef)) return(e[[2L]])
+  }
+  for (.i in seq_along(e)[-1L]) {
+    .r <- .vaeCoefFactor(e[[.i]], coef)
+    if (!is.null(.r)) return(.r)
+  }
+  NULL
+}
+
+#' Which shape a written covariate expression is in
+#'
+#' Recognizes every form `.vaeShapeExpr` emits, so a model written (or written
+#' BACK) by the VAE can be piped into another fit and have each covariate
+#' effect pinned to the shape it was written in.  Anything else is unrecognized
+#' and the caller routes that coefficient to the regress M-step.
+#' Classification is STRICT: the expression must be one of the emitted forms
+#' (bare, or wrapped in parentheses).  It deliberately does not search inside an
+#' unrecognized call -- `sqrt(WT)` must not be read as the identity shape just
+#' because `WT` appears in it, or a slope that does not transfer would be pinned
+#' as though it did.
+#' @param e expression the coefficient multiplies (see `.vaeCoefFactor`)
+#' @param cov raw covariate (data column) name
+#' @return list(shape, center, level); `shape` is `NA` when unrecognized
+#' @noRd
+.vaeDetectShape <- function(e, cov) {
+  .no <- list(shape = NA_character_, center = NA_real_, level = NULL)
+  if (is.null(e)) return(.no)
+  .isCov <- function(x) is.name(x) && identical(as.character(x), cov)
+  .num <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
+  ## strip redundant parentheses -- "(WT - 70)" is a call to `(`
+  while (is.call(e) && identical(e[[1L]], as.name("(")) && length(e) == 2L) {
+    e <- e[[2L]]
+  }
+  if (!is.call(e)) {
+    ## a bare covariate multiplied by the coefficient is the identity shape
+    if (.isCov(e)) return(list(shape = "identity", center = 0, level = NULL))
+    return(.no)
+  }
+  .op <- if (is.name(e[[1L]])) as.character(e[[1L]]) else ""
+  if (.op == "log" && length(e) == 2L) {
+    .a <- e[[2L]]
+    while (is.call(.a) && identical(.a[[1L]], as.name("(")) && length(.a) == 2L) {
+      .a <- .a[[2L]]
+    }
+    if (.isCov(.a)) return(list(shape = "log", center = 1, level = NULL))
+    if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L &&
+          .isCov(.a[[2L]]) && .num(.a[[3L]])) {
+      return(list(shape = "power", center = as.numeric(.a[[3L]]), level = NULL))
+    }
+    return(.no)          # log() of something not transferable
+  }
+  if (.op == "/" && length(e) == 3L && .isCov(e[[2L]]) && .num(e[[3L]])) {
+    return(list(shape = "center", center = as.numeric(e[[3L]]), level = NULL))
+  }
+  if (.op == "-" && length(e) == 3L && .isCov(e[[2L]]) && .num(e[[3L]])) {
+    return(list(shape = "lin", center = as.numeric(e[[3L]]), level = NULL))
+  }
+  if (.op == "==" && length(e) == 3L && .isCov(e[[2L]])) {
+    return(list(shape = "cat", center = 0, level = e[[3L]]))
+  }
+  .no
+}
+
 #' Is a shape usable at this centering value?
 #'
 #' `center` divides by the centering value and `log` takes its logarithm, so
