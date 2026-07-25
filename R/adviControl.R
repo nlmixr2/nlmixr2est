@@ -89,8 +89,11 @@
 #' @param alpha Weighting `alpha` in (0, 1) of new vs old gradient information in
 #'   the step-size memory recursion (paper Eq 11).
 #' @param tol Convergence tolerance on the relative change in the ELBO: the loop
-#'   stops early once the change falls below this.  `0` disables early stopping
-#'   (run all `iters`).  Because the per-iteration ELBO is an `nMc`-sample
+#'   stops early once the change falls below this.  `NULL` (default) derives it
+#'   from `sigdig` as `10^(-sigdig)`, the same rule `saemControl()` and
+#'   `foceiControl()` use for their optimizer tolerances, so it tightens with
+#'   `sigdig` instead of staying pinned.  `0` disables early stopping (run all
+#'   `iters`).  Because the per-iteration ELBO is an `nMc`-sample
 #'   Monte-Carlo estimate and therefore noisy, the test compares the MEAN over
 #'   the last `evalElbo` iterations against the mean over the window before it,
 #'   rather than consecutive iterations.  The `adaptEta` step-size search never
@@ -142,7 +145,7 @@ adviControl <- function(seed = 42L,
                         etaCandidates = c(0.01, 0.025, 0.05, 0.1, 0.25),
                         tau = 1.0,
                         alpha = 0.1,
-                        tol = 1e-4,
+                        tol = NULL,
                         evalElbo = 100L,
                         klWarmup = 0L,
                         temperInit = 10,
@@ -184,6 +187,15 @@ adviControl <- function(seed = 42L,
   checkmate::assertNumeric(tau, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, upper = 1, len = 1)
   checkmate::assertNumeric(alpha, lower = 0, upper = 1, any.missing = FALSE, len = 1)
+  ## tol follows the package-wide sigdig convention (10^-sigdig), the same
+  ## derivation saemControl()/foceiControl() use for their optimizer tolerances,
+  ## so raising sigdig tightens the ELBO convergence test with everything else
+  ## rather than leaving it pinned at a value that silently stops matching.
+  ## sigdig's own assertion permits NA, which would make 10^-sigdig NA and fail
+  ## the tol assertion below with an unhelpful message -- fall back instead.
+  if (is.null(tol)) {
+    tol <- if (!is.null(sigdig) && !is.na(sigdig)) .sigdigOptTol(sigdig) else 1e-4
+  }
   checkmate::assertNumeric(tol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(evalElbo, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(klWarmup, lower = 0, any.missing = FALSE, len = 1)
