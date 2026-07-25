@@ -286,6 +286,13 @@ which also tightens the structural regression that re-solves per candidate.}
   non-positive-definite.  A `fixed()` covariance is exempt -- it is not being
   estimated, so it keeps its value through the hold and out the other side.
 
+  The fraction is of the EM phase, `min(gammaIter, iters)`, not of the whole
+  run.  That matters: the gain is 1 for `it <= gammaIter`, so the release
+  point falls while the gain is still 1 and the correlations are estimable the
+  moment they are unfrozen.  (This is why no gain restart is needed here,
+  whereas \code{\link{emviControl}()} -- whose run has no separate unit-gain
+  phase -- has to restart the off-diagonal gain at release.)
+
   A value greater than 1 is an ABSOLUTE iteration count rather than a fraction,
   and must be a whole number.  Prefer the absolute form whenever a run may be
   resumed or reproduced at a different length: a fraction of a shorter run is a

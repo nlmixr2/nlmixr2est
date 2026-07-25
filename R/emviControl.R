@@ -119,7 +119,10 @@
 #'   estimated, so it keeps its value through the hold and out the other side.
 #'   When the correlations are released the off-diagonal gain restarts rather
 #'   than continuing the decayed schedule, so they are still estimable at the
-#'   point they are unfrozen.
+#'   point they are unfrozen.  This is needed here and not in
+#'   \code{\link{vaeControl}()}: there the fraction is of the EM phase, where the
+#'   gain is still 1 at release, whereas this run has no such phase and the
+#'   fraction lands in the decayed schedule.
 #'
 #'   A value greater than 1 is an ABSOLUTE iteration count rather than a
 #'   fraction, and must be a whole number.  The resolved absolute iteration is
