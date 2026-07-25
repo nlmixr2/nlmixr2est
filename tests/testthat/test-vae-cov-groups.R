@@ -253,4 +253,34 @@ nmTest({
     expect_equal(which(pol$selected == 1L), which(ref$selected[1, ] == 1L))
     expect_equal(which(pol$selected == 1L), c(2L, 3L))
   })
+
+  test_that("a group collision is repaired by dropping whole blocks", {
+    ## a proposal naming BOTH the linear column and a hockey arm doubles up on
+    ## the covariate's group.  The repair has to resolve it by keeping one whole
+    ## RELATIONSHIP -- splitting a block would leave half a hockey stick, which
+    ## the leaf then rejects, silently losing the candidate.
+    N <- 80L
+    X <- .hockeyDesign(N, 5)
+    set.seed(5)
+    y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
+    g <- c(1L, 1L, 1L); b <- c(1L, 2L, 2L)
+    got <- vaeScoreSupports_(y, X, 0.25, log(N), list(c(0L, 1L)), polish = FALSE,
+                             g, b)
+    sel <- which(got$selected == 1L)
+    ## whatever survives is a whole block, never a mixture of the two
+    expect_true(identical(sel, 1L) || identical(sel, c(2L, 3L)) ||
+                  identical(sel, integer(0)))
+  })
+
+  test_that("an NA block id makes a column its own block", {
+    ## NA is the "no constraint" marker on the R side, matching group
+    N <- 60L
+    X <- .hockeyDesign(N, 3)
+    set.seed(3)
+    y <- as.numeric(1 + X[, 1] * 0.03 + rnorm(N, sd = 0.2))
+    free <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo")
+    naBlk <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
+                            NULL, c(NA_integer_, NA_integer_, NA_integer_))
+    expect_equal(free, naBlk)
+  })
 })

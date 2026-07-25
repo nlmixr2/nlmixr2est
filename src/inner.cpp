@@ -14798,6 +14798,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                             as<std::string>(control["mStepObjective"]) == "elbo");
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
+  // Both are indexed by covariate column throughout the M-step (including under
+  // the covAllow mask, which indexes them by ORIGINAL column), so a short vector
+  // reads past the end rather than merely constraining the wrong column.  R
+  // always sends them column-aligned; a hand-built or stale serialized prep may
+  // not, and that must be an error rather than undefined behavior.
+  if (!covGroup.empty() && (int)covGroup.size() != nCov) {
+    Rcpp::stop("prep$covGroup must have one entry per covariate column (%d)", nCov);
+  }
+  if (!covBlock.empty() && (int)covBlock.size() != nCov) {
+    Rcpp::stop("prep$covBlock must have one entry per covariate column (%d)", nCov);
+  }
 
   // ---- Adam state (zeros, per block) ----
   VaeAdamBlk aWih{arma::zeros(Wih.n_rows, Wih.n_cols), arma::zeros(Wih.n_rows, Wih.n_cols)};
