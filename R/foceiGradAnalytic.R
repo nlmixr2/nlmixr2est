@@ -673,7 +673,7 @@
     # 26 ODE states -> 8.  They are nAGQ^neta solves per gradient and dominate once the
     # grid grows, so this is worth 1.07x-1.91x on the gradient.
     #
-    # Prefer the `outerNode` sibling built at model setup and qs2-cached in foceiModel
+    # Prefer the `outerNode` sibling built at model setup and disk-cached in foceiModel
     # (same treatment as `outer`); fall back to building it.  Cached on the fit env either
     # way, with a FALSE sentinel so a model that cannot build one does not re-attempt the
     # symengine pass every gradient call.
@@ -1193,7 +1193,7 @@
     data <- get("dataSav", e)
     # censored obs handled in .foceiAnalyticGradCore (FOCE-censored gates to FD there)
     # The augmented model is the persistent `..outer` sibling of the inner model.
-    # Prefer the copy built at model-setup time and qs2-cached in foceiModel$outer
+    # Prefer the copy built at model-setup time and disk-cached in foceiModel$outer
     # (reconstruct am from the top-level compiled model + outerMeta); fall back to
     # building it via rxUiGet.foceiOuter.  Cached on the fit env either way.
     am <- if (exists(".foceiGradAug", e, inherits = FALSE)) get(".foceiGradAug", e) else NULL
@@ -1329,7 +1329,7 @@
 # `P2`) for a UI.  This is the persistent `..outer` sibling of the inner model:
 # it depends only on the model + direction set (NOT theta/eta/omega), so it is
 # built once during model setup (via `rxUiGet.foceiModel`/`foceModel`, which
-# qs2-cache the whole model list) and reused across every outer-gradient call.
+# disk-cache the whole model list) and reused across every outer-gradient call.
 # Callable independently as `ui$foceiOuter`.  `NULL` when out of analytic scope
 # (the gradient then falls back to finite differences).
 #' @export
@@ -1365,7 +1365,7 @@ attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 #' to 1.91x (neta=5, nAGQ=3) on the whole gradient.
 #'
 #' Only built for nAGQ > 1; every other fast fit gets NULL and pays no extra build.  Like
-#' `foceiOuter` this rides in the qs2-cached `foceiModel` list, so the extra symengine+gcc
+#' `foceiOuter` this rides in the disk-cached `foceiModel` list, so the extra symengine+gcc
 #' pass is paid once per model, not once per session.
 #' @noRd
 #' @export

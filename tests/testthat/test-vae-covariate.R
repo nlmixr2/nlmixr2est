@@ -21,13 +21,23 @@ nmTest({
       })
     }
     ui <- rxode2::assertRxUi(theo)
-    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
-    expect_equal(prep$covNames, "WT")
-    expect_equal(prep$covType, "continuous")
-
+    ## Pin the 7.0.1 search explicitly (one shape family, mean centering) so the
+    ## paper-matching numbers below keep their original meaning; the multi-shape
+    ## default is covered separately.
     ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
                       iters = 160L, hiddenDim = 25L, seed = 1L, covariateSelection = TRUE,
-                      print = 0L)
+                      print = 0L, shapes = "power", covCenterType = "mean")
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
+    expect_equal(prep$covNames, "WT_power")
+    expect_equal(prep$covRaw, "WT")
+    expect_equal(prep$covType, "continuous")
+    ## the design is the historic log(WT/mean(WT)) column
+    .wt <- vapply(unique(nlmixr2data::theo_sd$ID),
+                  function(i) nlmixr2data::theo_sd$WT[nlmixr2data::theo_sd$ID == i][1],
+                  numeric(1))
+    expect_equal(prep$covPop, mean(.wt))
+    expect_equal(unname(prep$covMat[, 1]), unname(log(.wt / mean(.wt))))
+
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd,
                                matrix(0, prep$N, prep$zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -49,7 +59,7 @@ nmTest({
   ## End-to-end regression for the two covariate-output bugs, exercised together
   ## via a fixed residual parameter (literalFix=TRUE default), which is what
   ## triggered the parFixedDf drop:
-  ##   Bug 1 -- the selected covariate coefficients (beta_*) must appear in the
+  ##   Bug 1 -- the selected covariate coefficients (beta.*) must appear in the
   ##            population-parameter table, not just in $theta/$cov.
   ##   Bug 2 -- covariate-bearing mu-parameters must back-transform (exp) rather
   ##            than print the raw log-scale estimate.
@@ -69,16 +79,20 @@ nmTest({
         cp ~ add(add.err)
       })
     }
+    ## the 7.0.1 search, so this stays a test of the OUTPUT bugs rather than of
+    ## which shape the expanded search happens to pick
     ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
                       iters = 160L, hiddenDim = 25L, seed = 1L,
-                      covariateSelection = TRUE, print = 0L)
+                      covariateSelection = TRUE, print = 0L,
+                      shapes = "power", covCenterType = "mean")
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(theoFix, nlmixr2data::theo_sd, est = "vae", control = ctl)))
 
     pf <- fit$parFixedDf
     ## Bug 1: covariate coefficients present in the population-parameter table
-    ## (WT selected on ka and V for theophylline)
-    expect_true(all(c("beta_lka_WT", "beta_lV_WT") %in% rownames(pf)))
+    ## (WT selected on ka and V for theophylline).  Coefficients carry the shape
+    ## they were written in.
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% rownames(pf)))
     expect_true(all(rownames(pf) %in% rownames(fit$cov) |
                       rownames(pf) == "add.err"))
 
@@ -94,8 +108,46 @@ nmTest({
     ## the fixed residual parameter is on the natural scale (no exp)
     expect_equal(pf["add.err", "Estimate"], 0.7, tolerance = 1e-6)
     ## covariate coefficients are reported raw (not back-transformed)
-    expect_equal(pf["beta_lka_WT", "Back-transformed"],
-                 pf["beta_lka_WT", "Estimate"], tolerance = 1e-6)
+    expect_equal(pf["beta.lka.WT.power", "Back-transformed"],
+                 pf["beta.lka.WT.power", "Estimate"], tolerance = 1e-6)
+  })
+
+  ## The multi-shape default: BICc now arbitrates between the log and linear
+  ## families rather than being forced into log(cov/center).  Assert on the
+  ## COVARIATE and on exclusivity, not on which family happens to win.
+  test_that("the default search picks one shape per covariate end-to-end", {
+    skip_on_cran()
+    theo <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(theo)
+    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
+                      iters = 160L, hiddenDim = 25L, seed = 1L,
+                      covariateSelection = TRUE, print = 0L, covMethod = "")
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
+    ## WT contributes both shape families, sharing one exclusion group
+    expect_equal(unique(prep$covRaw), "WT")
+    expect_equal(prep$covShape, c("power", "lin"))
+    expect_equal(length(unique(prep$covGroup)), 1L)
+
+    fit <- suppressWarnings(rxode2::rxWithSeed(
+      1L, nlmixr2(ui, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    sel <- fit$vae$selected
+    ## WT still lands on ka and V but not ke, whichever shape won
+    expect_true(any(sel[1, ]));  expect_false(any(sel[2, ])); expect_true(any(sel[3, ]))
+    ## exclusivity: never two shapes of one covariate on one parameter
+    for (k in seq_len(nrow(sel))) expect_lte(sum(sel[k, ]), 1L)
+    ## exactly one coefficient per selected parameter, named for the shape used
+    bn <- grep("^beta\\.", fit$ui$iniDf$name, value = TRUE)
+    expect_equal(length(bn), sum(sel))
+    expect_true(all(grepl("\\.(power|lin|log|identity|center)$", bn)))
+    ## and the emitted model still re-parses with the mu-ref exp() intact
+    expect_equal(fit$ui$muRefCurEval$curEval[fit$ui$muRefCurEval$parameter == "lka"],
+                 "exp")
   })
 
   ## The L0-penalty warmup ramp (covSelectAlpha) is a distinct step in the

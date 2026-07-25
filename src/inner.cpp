@@ -8477,11 +8477,42 @@ void foceiFinalizeTables(Environment e){
   std::fill_n(&cv[0], theta.size(), NA_REAL);
   int j=0, k=0, l=0;
   if (covExists){
-    for (int k = 0; k < se.size(); k++){
-      if (k >= skipCov.size()) break;
-      if (!skipCov[k]){
-        se[k] = se1[j++];
-        cv[k] = std::fabs(se[k]/theta[k])*100;
+    // The cov may not span every non-skipped theta (e.g. SAEM installs a
+    // structural-theta block here; the full theta+Omega+residual matrix is
+    // swapped in after the fit is built).  When the cov carries dimnames, map
+    // SEs by name; otherwise fill positionally without reading past the end of
+    // the diagonal (issue #816: the overrun surfaced uninitialized memory as
+    // the residual-error SE).
+    CharacterVector covNames;
+    bool covHasNames = false;
+    RObject covDimnames = as<RObject>(e["cov"]).attr("dimnames");
+    if (!covDimnames.isNULL()) {
+      List dn = as<List>(covDimnames);
+      if (dn.size() == 2 && !Rf_isNull(dn[0])) {
+        covNames = as<CharacterVector>(dn[0]);
+        covHasNames = true;
+      }
+    }
+    if (covHasNames) {
+      for (int k = 0; k < se.size(); k++){
+        if (k >= skipCov.size() || k >= thetaNames.size()) break;
+        if (skipCov[k]) continue;
+        for (int m = 0; m < covNames.size(); m++){
+          if (!strcmp(CHAR(STRING_ELT(covNames, m)), CHAR(STRING_ELT(thetaNames, k)))) {
+            se[k] = se1[m];
+            cv[k] = std::fabs(se[k]/theta[k])*100;
+            break;
+          }
+        }
+      }
+    } else {
+      for (int k = 0; k < se.size(); k++){
+        if (k >= skipCov.size()) break;
+        if (j >= (int)se1.n_elem) break;
+        if (!skipCov[k]){
+          se[k] = se1[j++];
+          cv[k] = std::fabs(se[k]/theta[k])*100;
+        }
       }
     }
   }
@@ -8668,8 +8699,12 @@ void foceiFinalizeTables(Environment e){
       }
     }
     List thetaDim = List::create(thetaCovN,thetaCovN);
-    tmpNM.attr("dimnames") = thetaDim;
-    e["cov"]=tmpNM;
+    // an R-side cov (e.g. SAEM) already carries correct dimnames; only stamp
+    // positional theta names on the native (unnamed) C++ cov
+    if (Rf_isNull(tmpNM.attr("dimnames"))) {
+      tmpNM.attr("dimnames") = thetaDim;
+      e["cov"]=tmpNM;
+    }
     if (e.exists("Rinv") && rxode2::rxIs(e["Rinv"], "matrix")){
       tmpNM = as<NumericMatrix>(e["Rinv"]);
       tmpNM.attr("dimnames") = thetaDim;
@@ -10273,6 +10308,15 @@ Environment foceiFitCpp_(Environment e){
 // in R). updateTheta() populates op_focei's omega inverse + theta state that the
 // inner solve needs (normally done inside the outer objective evaluation).
 static NumericVector _vaeInitPar;
+// omega-block parameter positions (0-based i,j; rxSymInvCholCreate order =
+// column-major upper-tri restricted to the declared structure) + whether the
+// model declares any off-diagonal; set by vaeInnerSetup_ from env$vaeOmegaSel
+static arma::imat _vaeOmSel;
+static bool _vaeOmHasOff = false;
+// est="advi" population omega structure (defined with the ADVI block below)
+static void adviSetOmegaStructure(RObject omegaMatR, RObject fixMatR, int neta);
+static void adviResetTemper();
+static void adviResetStatics();
 
 //[[Rcpp::export]]
 RObject vaeInnerSetup_(Environment e) {
@@ -10394,6 +10438,30 @@ RObject vaeInnerSetup_(Environment e) {
       if (op_focei.innerNeq > 0) impSetInnerNeqOverride();
     }
   }
+  // Drop EVERY advi run static before installing this run's, so a direct
+  // adviElboGrad_/adviElboGradFR_ call (what the FD tests use), or any fit that
+  // follows another in the same session, cannot inherit the previous run's
+  // tempering scale, omega mask, or convergence state.  adviOptimize_ resets
+  // again and re-installs from its own args.
+  adviResetStatics();
+  adviSetOmegaStructure(e.exists("adviOmegaMat") ? e["adviOmegaMat"] : R_NilValue,
+                        e.exists("adviOmegaFixMat") ? e["adviOmegaFixMat"] : R_NilValue,
+                        (int)op_focei.neta);
+  // omega-block position list for the fast re-parameterization path
+  _vaeOmSel.reset();
+  _vaeOmHasOff = false;
+  if (e.exists("vaeOmegaSel")) {
+    IntegerMatrix sel = as<IntegerMatrix>(e["vaeOmegaSel"]);
+    _vaeOmSel.set_size(sel.nrow(), 2);
+    for (int r = 0; r < sel.nrow(); ++r) {
+      _vaeOmSel(r, 0) = sel(r, 0);
+      _vaeOmSel(r, 1) = sel(r, 1);
+      if (sel(r, 0) != sel(r, 1)) _vaeOmHasOff = true;
+    }
+    if (_vaeOmHasOff && (int)_vaeOmSel.n_rows != (int)op_focei.omegan)
+      stop("vaeInnerSetup_: omega position list (%d) != omegan (%d)",
+           (int)_vaeOmSel.n_rows, (int)op_focei.omegan);
+  }
   // populate the omega inverse + theta-dependent state for the inner solve
   _vaeInitPar = clone(initPar);
   updateTheta(&_vaeInitPar[0]);
@@ -10405,31 +10473,56 @@ RObject vaeInnerSetup_(Environment e) {
 // fast path.  Each non-fixed parameter goes through scalePar() into the
 // reduced par vector and updateTheta() rebuilds fullTheta, the per-id solve
 // parameters and the omega inverse (exactly what focei's outer objective does
-// per evaluation).  The omega block requires the setup's diagonal rxInv with
-// diag.xform="sqrt", whose parameter for a diagonal omega is omega_kk^(-1/4)
-// (the square root of the chol(Omega^-1) diagonal).
-static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omegaDiag) {
+// per evaluation).  The omega block uses the setup's "sqrt"-xform rxInv on the
+// model's DECLARED structure: parameters are chol(Omega^-1) entries in
+// _vaeOmSel order, sqrt-ed on the diagonal.  For a diagonal omega that is
+// omega_kk^(-1/4); that closed form is kept so diagonal models stay
+// bit-identical to the historic path.
+static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::mat& Om) {
   if ((int)_vaeInitPar.size() != (int)op_focei.npars)
     stop("vaeInnerUpdatePar_ requires vaeInnerSetup_ to be run first");
   if ((int)thFull.n_elem != (int)op_focei.ntheta)
     stop("vaeInnerUpdatePar_: theta size %d != ntheta %d",
          (int)thFull.n_elem, (int)op_focei.ntheta);
-  if ((int)omegaDiag.n_elem != (int)op_focei.omegan)
+  if (!_vaeOmHasOff && (int)Om.n_rows != (int)op_focei.omegan)
     stop("vaeInnerUpdatePar_: omega size %d != omegan %d (setup needs a diagonal rxInv)",
-         (int)omegaDiag.n_elem, (int)op_focei.omegan);
+         (int)Om.n_rows, (int)op_focei.omegan);
+  arma::mat U;
+  if (_vaeOmHasOff) {
+    if ((int)_vaeOmSel.n_rows != (int)op_focei.omegan)
+      stop("vaeInnerUpdatePar_: omega position list (%d) != omegan (%d)",
+           (int)_vaeOmSel.n_rows, (int)op_focei.omegan);
+    // Om must span every selector position: the packing loop indexes U by those
+    // (i,j) and arma is compiled with NDEBUG, so a short matrix reads out of bounds
+    if ((int)Om.n_rows != (int)op_focei.neta || (int)Om.n_cols != (int)op_focei.neta)
+      stop("vaeInnerUpdatePar_: omega is %dx%d, expected %dx%d",
+           (int)Om.n_rows, (int)Om.n_cols, (int)op_focei.neta, (int)op_focei.neta);
+    arma::mat OmInv;
+    if (!arma::inv_sympd(OmInv, arma::symmatu(Om)) || !arma::chol(U, OmInv))
+      stop("omega is not positive definite");
+  }
   // Reproduce vaeInnerSetup_'s tail EXACTLY without the full foceiSetup_:
   // foceiSetupTheta_ sets op_focei.initPar[k] to the natural parameter value and
   // then vaeInnerSetup_ calls updateTheta(initPar).  updateTheta()'s unscale is
   // relative to op_focei.initPar, so initPar MUST be refreshed to the new values
   // first (a stale initPar makes the unscaled fullTheta wrong).  Natural theta
-  // for the theta block, omega_kk^(-1/4) for the diagonal "sqrt"-xform omega
+  // for the theta block, chol(Omega^-1) entries for the "sqrt"-xform omega
   // block.  Fixed thetas are absent from fixedTrans and stay at their setup
   // values (which is what the VAE wants for a held theta).
   std::vector<double> par(op_focei.npars);
   for (unsigned int k = 0; k < op_focei.npars; ++k) {
     int j = op_focei.fixedTrans[k];
-    par[k] = (j < (int)op_focei.ntheta) ? thFull[j] :
-      pow(omegaDiag[j - op_focei.ntheta], -0.25);
+    if (j < (int)op_focei.ntheta) {
+      par[k] = thFull[j];
+    } else {
+      int q = j - (int)op_focei.ntheta;
+      if (_vaeOmHasOff) {
+        int oi = (int)_vaeOmSel(q, 0), oj = (int)_vaeOmSel(q, 1);
+        par[k] = (oi == oj) ? std::sqrt(U(oi, oi)) : U(oi, oj);
+      } else {
+        par[k] = pow(Om(q, q), -0.25);
+      }
+    }
     op_focei.initPar[k] = par[k];
   }
   updateTheta(par.data());
@@ -10443,11 +10536,36 @@ static void vaeInnerUpdateParCore(const arma::vec& thFull, const arma::vec& omeg
   for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
 }
 
+// omega as a full (block) matrix, or a length-neta vector taken as its diagonal.
+// The off-diagonal path is driven by the structure recorded at setup, so a
+// correlated matrix supplied against a diagonal setup would be silently reduced
+// to its diagonal -- reject it instead.
+static arma::mat vaeOmegaAsMat(RObject om) {
+  if (!Rf_isMatrix(om)) {
+    arma::vec d = as<arma::vec>(om);
+    return arma::diagmat(d);
+  }
+  arma::mat m = as<arma::mat>(om);
+  // A rectangular matrix would otherwise slip past both this off-diagonal check
+  // and the diagonal branch's guard (which compares only n_rows to omegan), and
+  // then be read one element at a time as Om(q,q) with the rest ignored.
+  if (m.n_rows != m.n_cols)
+    stop("omega matrix must be square, got %dx%d", (int)m.n_rows, (int)m.n_cols);
+  if (!_vaeOmHasOff && m.n_rows > 1) {
+    // BOTH triangles: a caller passing only the lower one would otherwise be
+    // silently collapsed to the diagonal rather than rejected
+    arma::mat off = m;
+    off.diag().zeros();
+    if (arma::any(arma::vectorise(off) != 0.0))
+      stop("omega has off-diagonals but the inner problem was set up diagonal");
+  }
+  return m;
+}
+
 //[[Rcpp::export]]
-RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag) {
+RObject vaeInnerUpdatePar_(NumericVector thFull, RObject omega) {
   arma::vec th(thFull.begin(), thFull.size());
-  arma::vec om(omegaDiag.begin(), omegaDiag.size());
-  vaeInnerUpdateParCore(th, om);
+  vaeInnerUpdateParCore(th, vaeOmegaAsMat(omega));
   return R_NilValue;
 }
 
@@ -11606,13 +11724,277 @@ static void adviSetTheta(NumericVector theta) {
   }
 }
 
-// Set the diagonal population Omega used by the inner prior term (likInner0 reads
+// Full population omega block for correlated etas (point-estimate families):
+// _advi.popOm carries the off-diagonals (its diagonal is refreshed from
+// logPopOmega, which remains the per-eta log-variance state everywhere else);
+// the mask/fix/ini matrices drive the off-diagonal M-step.  Set by
+// adviOptimize_; _advi.omOff false leaves the historic diagonal path untouched.
+// ALL of these live in ONE struct with member initializers, and the ONLY way
+// they are cleared is `_advi = adviStatics();`.  That is not tidiness: three
+// separate bugs have been shipped by adding a static here and forgetting to add
+// it to a hand-written reset (_advi.omOff/_advi.popOm inherited across fits,
+// _advi.temperScale left inflated by an aborted search, and a reset placed after
+// the result block).  Grouping them makes the default constructor the reset, so
+// a NEW member cannot be forgotten -- add it here with its default and it is
+// reset everywhere for free.  Nothing outside this struct may hold advi run
+// state.
+struct adviStatics {
+  bool omOff = false;
+  arma::mat popOm;
+  arma::mat omIni;                               // model ini: fixed-entry values
+  arma::mat omStart;                             // per-run restart state
+  arma::umat omMaskOff;
+  arma::umat omFixM;
+// saem's perNoCor rule: hold correlations at zero for the first _advi.nbCorrel
+// iterations so the variances settle first.  A file static rather than a loop
+// argument so the three adviLoop* .Call arities (and src/init.c) are untouched.
+  int nbCorrel = 0;
+// ELBO convergence check (adviControl(tol=)); same file-static reasoning.
+// _advi.temper is set while a tempering warm-up is active -- a tempered ELBO is
+// not comparable across iterations, so the check must not run during one.
+// Constraining-transform Jacobian for the FULL-BAYES path.  The bounded
+// transform rewrites a bounded theta to an unconstrained u, so a flat prior on
+// u is NOT a flat prior on the natural parameter; Stan adds log|det J| to the
+// target for exactly this reason.  Per-theta type: 0 = untransformed,
+// 1 = exp (one-sided bound: theta = lo + exp(u) or hi - exp(u)),
+// 2 = logit (two-sided: theta = lo + (hi-lo)*expit(u)).
+//   type 1: log|J| = u                                     d/du = 1
+//   type 2: log|J| = log(hi-lo) + log s + log(1-s), s=expit(u)   d/du = 1 - 2s
+// NEVER applied when pointEstimate=TRUE: an MLE must stay reparameterization
+// invariant (Stan's own optimize defaults to jacobian=0 for this reason).
+  IntegerVector jacType;
+  NumericVector jacRange;                        // (hi-lo) for type 2, else 0
+
+
+  int klWarmup = 0;
+  double temperInit = 1.0;
+  bool temper = false;             // a warm-up is currently active
+  double temperScale = 1.0;        // prior inflation factor (1 = none)
+
+
+  double tolRelObj = 0.0;
+  int evalElbo = 0;
+  bool tolStopped = false;
+};
+
+static adviStatics _advi;
+
+// The one and only reset.  Called at EVERY entry point into the advi/vae inner
+// machinery, so no run can inherit another run's state.
+static void adviResetStatics() { _advi = adviStatics(); }
+
+static double adviJacLogDet(const NumericVector& theta, NumericVector* grad) {
+  double lj = 0.0;
+  const int n = _advi.jacType.size();
+  for (int p = 0; p < n && p < theta.size(); ++p) {
+    if (_advi.jacType[p] == 1) {
+      lj += theta[p];
+      if (grad) (*grad)[p] += 1.0;
+    } else if (_advi.jacType[p] == 2) {
+      double s = 1.0 / (1.0 + std::exp(-theta[p]));
+      if (s <= 0 || s >= 1) continue;            // saturated: contributes nothing usable
+      lj += std::log(_advi.jacRange[p]) + std::log(s) + std::log(1.0 - s);
+      if (grad) (*grad)[p] += 1.0 - 2.0 * s;
+    }
+  }
+  return lj;
+}
+
+// Set the tempering scale for global iteration gi: ramps geometrically from
+// _advi.temperInit down to 1 across _advi.klWarmup iterations, then stays 1.
+// Also flags _advi.temper so the ELBO convergence test stays off while the
+// objective is still moving underneath it.
+static void adviResetTemper() { _advi.temperScale = 1.0; _advi.temper = false; }
+
+static void adviTemperSet(int gi) {
+  if (_advi.klWarmup <= 0 || _advi.temperInit <= 1.0) {
+    _advi.temperScale = 1.0; _advi.temper = false; return;
+  }
+  if (gi >= _advi.klWarmup) { _advi.temperScale = 1.0; _advi.temper = false; return; }
+  double f = (double)gi / (double)_advi.klWarmup;      // 0 -> 1 over the warm-up
+  _advi.temperScale = std::exp(std::log(_advi.temperInit) * (1.0 - f));
+  _advi.temper = true;
+}
+
+// Relative-change convergence test on the ELBO trace.  The per-iteration ELBO is
+// an nMc-sample Monte-Carlo estimate and therefore noisy, so this compares the
+// MEAN over the last window with the mean over the window before it rather than
+// consecutive iterations (Stan instead re-evaluates the ELBO with 100 fresh
+// draws; averaging the draws we already have is the cheaper equivalent).
+// NEVER fires for an adaptEta candidate run: that scorer treats itRun < nAdapt
+// as divergence, so an early convergence stop would silently reject a good
+// candidate.
+static bool adviElboConverged(const NumericVector& elboTrace, int it,
+                              int divergeStop, int iters) {
+  if (divergeStop != 0 || _advi.tolRelObj <= 0 || _advi.temper) return false;
+  int W = _advi.evalElbo > 0 ? _advi.evalElbo : 100;
+  W = std::max(5, std::min(W, iters / 6));       // let short runs converge too
+  if ((it + 1) % W != 0 || it + 1 < 2 * W) return false;
+  double m1 = 0, m2 = 0;
+  for (int i = it - 2 * W + 1; i <= it - W; ++i) m1 += elboTrace[i];
+  for (int i = it - W + 1; i <= it; ++i) m2 += elboTrace[i];
+  m1 /= (double)W; m2 /= (double)W;
+  if (!R_finite(m1) || !R_finite(m2)) return false;
+  return std::fabs(m2 - m1) / std::max(std::fabs(m2), 1e-8) < _advi.tolRelObj;
+}
+
+// Prior tempering (adviControl(klWarmup=)).  The VI analogue of saem's
+// simulated-annealing phase: during warm-up the population prior is INFLATED by
+// _advi.temperScale, which down-weights the prior term of the ELBO and keeps the
+// variational posterior from collapsing before the encoder-equivalent (the
+// per-subject q) is informative.  Tempering the prior rather than a separately
+// weighted KL is what this code structure allows cleanly -- likInner0 returns
+// the data and prior terms bundled in one objective, so they cannot be
+// re-weighted independently without re-deriving its constants.  The M-step
+// target is NOT tempered; only the objective the gradient sees is.
+// Current full population omega: diagonal from logPopOmega, off-diagonals from
+// state, times any active tempering inflation.
+// The diagonal (logPopOmega) and the off-diagonals (_advi.popOm) are updated by
+// SEPARATE M-steps, so gluing the newest diagonal onto the retained
+// off-diagonals is not guaranteed positive definite: once a variance falls
+// below its own covariance the block is indefinite and the prior inverse fails.
+// Shrink the off-diagonals toward zero until it is usable; a diagonal matrix
+// with positive variances always is, so this terminates.
+static arma::mat adviPopOmFull(NumericVector logPopOmega) {
+  const int n = (int)_advi.popOm.n_rows;
+  arma::mat Om = _advi.popOm;
+  for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
+  arma::mat ch;
+  if (!arma::chol(ch, arma::symmatu(Om))) {
+    // Shrink only the FREE off-diagonals.  A fixed covariance is a constraint
+    // the user set, not a value to be quietly walked down -- and the diagonal
+    // fallback would zero it outright, which is worse.
+    bool ok = false, anyFixed = false;
+    for (int i = 0; i < n && !anyFixed; ++i)
+      for (int j = i + 1; j < n; ++j)
+        if (_advi.omFixM(i, j)) { anyFixed = true; break; }
+    for (int t = 0; t < 8 && !ok; ++t) {
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+          if (i != j && !_advi.omFixM(i, j)) Om(i, j) *= 0.5;
+      ok = arma::chol(ch, arma::symmatu(Om));
+    }
+    if (!ok) {
+      // Last resort before giving up: ZERO the free off-diagonals (keeping the
+      // fixed ones) and retest.  Only if THAT is still indefinite is the fixed
+      // block itself impossible -- erroring before trying this would fail a
+      // valid model whose free entries merely needed more than 8 halvings.
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+          if (i != j && !_advi.omFixM(i, j)) Om(i, j) = 0.0;
+      ok = arma::chol(ch, arma::symmatu(Om));
+    }
+    if (!ok) {
+      if (anyFixed)
+        stop("fixed omega block is not positive definite at the current variances");
+      Om.zeros();
+      for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
+    }
+  }
+  if (_advi.temperScale != 1.0) Om *= _advi.temperScale;
+  return Om;
+}
+
+// Install the declared population omega structure: `omegaMat` sets the modeled
+// off-diagonal mask and their initial values, `fixMat` which entries the M-step
+// must hold.  A NULL/absent/diagonal omegaMat leaves the historic diagonal
+// path (_advi.omOff false).  Called from both vaeInnerSetup_ (so a direct
+// gradient call is deterministic) and adviOptimize_.
+static void adviSetOmegaStructure(RObject omegaMatR, RObject fixMatR, int neta) {
+  _advi.omOff = false;
+  if (neta <= 0) { _advi.popOm.reset(); _advi.omIni.reset(); _advi.omStart.reset(); return; }
+  _advi.popOm.eye(neta, neta);
+  _advi.omMaskOff.zeros(neta, neta);
+  _advi.omFixM.zeros(neta, neta);
+  if (!omegaMatR.isNULL()) {
+    arma::mat om = as<arma::mat>(omegaMatR);
+    if ((int)om.n_rows == neta && (int)om.n_cols == neta) {
+      for (int i = 0; i < neta; ++i)
+        for (int j = 0; j < neta; ++j)
+          if (i != j && om(i, j) != 0) { _advi.omMaskOff(i, j) = 1; _advi.omOff = true; }
+      if (_advi.omOff) {
+        _advi.popOm = om;
+        if (!fixMatR.isNULL()) {
+          LogicalMatrix fm = as<LogicalMatrix>(fixMatR);
+          if (fm.nrow() == neta && fm.ncol() == neta) {
+            for (int i = 0; i < neta; ++i)
+              for (int j = 0; j < neta; ++j) if (fm(i, j)) _advi.omFixM(i, j) = 1;
+          }
+        }
+      }
+    }
+  }
+  _advi.omIni = _advi.popOm;
+  _advi.omStart = _advi.popOm;
+}
+
+// logdet(Omega) for the ELBO prior normalization (sum of the log-variances
+// when Omega is diagonal)
+static double adviPopLogDet(NumericVector logPopOmega) {
+  const int neta = (int)logPopOmega.size();
+  if (_advi.omOff && (int)_advi.popOm.n_rows == neta) {
+    double ld, sgn;
+    arma::log_det(ld, sgn, arma::symmatu(adviPopOmFull(logPopOmega)));
+    return ld;
+  }
+  double s = 0;
+  for (int k = 0; k < neta; ++k) s += logPopOmega[k] + std::log(_advi.temperScale);
+  return s;
+}
+
+// Set the population Omega used by the inner prior term (likInner0 reads
 // op_focei.omegaInv only; the logdet normalization is added in the ELBO).
+// Diagonal unless the model declares correlated etas (_advi.omOff).
 static void adviSetPopOmega(NumericVector logPopOmega) {
   int neta = (int)op_focei.neta;
+  if (_advi.omOff && (int)_advi.popOm.n_rows == neta) {
+    arma::mat Om = adviPopOmFull(logPopOmega);
+    arma::mat oi;
+    if (!arma::inv_sympd(oi, arma::symmatu(Om)))
+      stop("omega is not positive definite");
+    op_focei.omegaInv = oi;
+    return;
+  }
   arma::mat oi(neta, neta, arma::fill::zeros);
-  for (int k = 0; k < neta; ++k) oi(k, k) = std::exp(-logPopOmega[k]);
+  for (int k = 0; k < neta; ++k)
+    oi(k, k) = std::exp(-logPopOmega[k]) / _advi.temperScale;
   op_focei.omegaInv = oi;
+}
+
+// off-diagonal M-step shared by the mean-field and full-rank loops: blend the
+// masked off-diagonals toward `target` (the posterior second-moment matrix /
+// N) with gain gam; fixed entries stay at ini; a non-finite or non-PD
+// candidate keeps the previous off-diagonals.
+static void adviOmOffStep(const arma::mat& target, NumericVector logPopOmega,
+                          double gam, bool hold) {
+  if (!_advi.omOff) return;
+  const int neta = (int)_advi.popOm.n_rows;
+  if (hold) {
+    // perNoCor: correlations held at ZERO while the variances settle, as saem
+    // does with diagmat() -- NOT held at their ini value, which can leave the
+    // block indefinite once a variance drops below its own covariance.  A FIXED
+    // covariance is exempt: it is not estimated, so it keeps its ini value.
+    _advi.popOm.zeros();
+    for (int k = 0; k < neta; ++k) _advi.popOm(k, k) = std::exp(logPopOmega[k]);
+    for (int i = 0; i < neta; ++i)
+      for (int j = i + 1; j < neta; ++j)
+        if (_advi.omMaskOff(i, j) && _advi.omFixM(i, j))
+          _advi.popOm(i, j) = _advi.popOm(j, i) = _advi.omIni(i, j);
+    return;
+  }
+  arma::mat cand = adviPopOmFull(logPopOmega);
+  for (int i = 0; i < neta; ++i)
+    for (int j = i + 1; j < neta; ++j) {
+      if (!_advi.omMaskOff(i, j)) continue;
+      double v = _advi.omFixM(i, j) ? _advi.omIni(i, j)
+        : (1.0 - gam) * _advi.popOm(i, j) + gam * target(i, j);
+      cand(i, j) = cand(j, i) = v;
+    }
+  arma::mat cchol;
+  if (cand.is_finite() && arma::chol(cchol, arma::symmatu(cand)))
+    _advi.popOm = cand;
+  else
+    for (int k = 0; k < neta; ++k) _advi.popOm(k, k) = std::exp(logPopOmega[k]);
 }
 
 // Diagnostic: report the wired theta-sensitivity offsets after setup.
@@ -11727,16 +12109,19 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
       gOmega(i, k) = -lp[k] * std::exp(omega(i, k)) * eps(i, k) + 1.0;
     }
 
-    // population between-subject log-variance gradient (per-subject):
-    //   0.5 (eta_ik^2)/w_k - 0.5   with var absorbed via the reparam draw
-    for (int k = 0; k < neta; ++k) {
-      double wk = std::exp(logPopOmega[k]);
-      gLpoBuf(i, k) = 0.5 * (eta[k] * eta[k]) / wk - 0.5;
-    }
-
     // OUTER population theta gradient
     // mu-referenced thetas: data-term eta score (Omega^-1 eta - lp)
     arma::vec dataScore = omegaInv * etav - lp;
+
+    // population between-subject log-variance gradient (per-subject):
+    //   0.5 w_k (Omega^-1 eta)_k^2 - 0.5 w_k (Omega^-1)_kk   with var absorbed
+    // via the reparam draw; for a diagonal Omega that is 0.5 eta_k^2/w_k - 0.5
+    for (int k = 0; k < neta; ++k) {
+      double wk = std::exp(logPopOmega[k]);
+      double oe = dataScore[k] + lp[k];          // (Omega^-1 eta)_k
+      gLpoBuf(i, k) = 0.5 * wk * oe * oe - 0.5 * wk * omegaInv(k, k);
+    }
+
     for (int k = 0; k < neta; ++k) {
       int p = muRefThetaIdx[k];                  // 1-based ntheta, NA_INTEGER if free
       if (p != NA_INTEGER && p >= 1 && p <= ntheta) gThetaBuf(i, p - 1) += dataScore[k];
@@ -11766,8 +12151,9 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
     for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
   }
-  // population prior logdet: -0.5 N sum_k logPopOmega_k
-  for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
+  // population prior logdet: -0.5 N logdet(Omega) (= -0.5 N sum_k logPopOmega_k
+  // when Omega is diagonal)
+  elbo += -0.5 * N * adviPopLogDet(logPopOmega);
   return elbo;
 }
 
@@ -11830,6 +12216,11 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;                            // global iteration index
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gOmAcc.begin(), gOmAcc.end(), 0.0);
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
@@ -11903,6 +12294,26 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       double wTarget = s / N, wCur = std::exp(logPopOmega[k]);
       logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
     }
+    // modeled off-diagonals, same damped M-step.  The mean-field posterior is
+    // independent across etas, so the cross target is mean_i(mu_ik mu_ij) only.
+    if (_advi.omOff) {
+      arma::mat target(neta, neta, arma::fill::zeros);
+      for (int i = 0; i < N; ++i) {
+        arma::vec m(neta);
+        for (int k = 0; k < neta; ++k) m[k] = mu(i, k);
+        target += m * m.t();
+      }
+      target /= (double)N;
+      // Off-diagonal gain RESTARTS at release.  saem's nb_correl sits inside the
+      // burn-in, where the gain is still 1, so correlations are freed while the
+      // M-step can still move them; advi's gain decays as 1/(10+gi) over the
+      // whole run, so releasing at 0.75*iters would unfreeze them exactly when
+      // the step has become too small to travel (measured: rho 0.16 vs a true
+      // 0.75).  Restarting the counter gives them the same 1/10 opening gain
+      // the variances had.
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _advi.nbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _advi.nbCorrel);
+    }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
     if (doIp) adviIterPrintRow(parHist, it, ntheta + neta, elboAcc, ipPhase);
@@ -11912,6 +12323,10 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // divergeStop == 0 and is bit-for-bit unchanged.
     if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
       itRun = it + 1; break;
+    }
+    // adviControl(tol=): stop once the ELBO stops improving materially
+    if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
+      itRun = it + 1; _advi.tolStopped = true; break;
     }
   }
   RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
@@ -12008,11 +12423,12 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
         gL(s, i * (i + 1) / 2 + j) = g;
       }
     }
+    arma::vec dataScore = omegaInv * etav - lp;
     for (int k = 0; k < neta; ++k) {
       double wk = std::exp(logPopOmega[k]);
-      gLpoBuf(s, k) = 0.5 * (eta[k] * eta[k]) / wk - 0.5;
+      double oe = dataScore[k] + lp[k];          // (Omega^-1 eta)_k
+      gLpoBuf(s, k) = 0.5 * wk * oe * oe - 0.5 * wk * omegaInv(k, k);
     }
-    arma::vec dataScore = omegaInv * etav - lp;
     for (int k = 0; k < neta; ++k) {
       int p = muRefThetaIdx[k];
       if (p != NA_INTEGER && p >= 1 && p <= ntheta) gThetaBuf(s, p - 1) += dataScore[k];
@@ -12040,7 +12456,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
     for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
   }
-  for (int k = 0; k < neta; ++k) elbo += -0.5 * N * logPopOmega[k];
+  elbo += -0.5 * N * adviPopLogDet(logPopOmega);
   return elbo;
 }
 
@@ -12094,6 +12510,11 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gLAcc.begin(), gLAcc.end(), 0.0);
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
@@ -12157,11 +12578,38 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       double wTarget = sAcc / N, wCur = std::exp(logPopOmega[k]);
       logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
     }
+    // modeled off-diagonals: the full-rank posterior HAS cross-covariance, so
+    // the target carries (L_i L_i')_kj alongside mu_ik mu_ij
+    if (_advi.omOff) {
+      arma::mat target(neta, neta, arma::fill::zeros);
+      for (int i = 0; i < N; ++i) {
+        arma::mat L(neta, neta, arma::fill::zeros);
+        for (int r = 0; r < neta; ++r)
+          for (int c = 0; c <= r; ++c) L(r, c) = Lpack(i, r * (r + 1) / 2 + c);
+        arma::vec m(neta);
+        for (int k = 0; k < neta; ++k) m[k] = mu(i, k);
+        target += m * m.t() + L * L.t();
+      }
+      target /= (double)N;
+      // Off-diagonal gain RESTARTS at release.  saem's nb_correl sits inside the
+      // burn-in, where the gain is still 1, so correlations are freed while the
+      // M-step can still move them; advi's gain decays as 1/(10+gi) over the
+      // whole run, so releasing at 0.75*iters would unfreeze them exactly when
+      // the step has become too small to travel (measured: rho 0.16 vs a true
+      // 0.75).  Restarting the counter gives them the same 1/10 opening gain
+      // the variances had.
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _advi.nbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _advi.nbCorrel);
+    }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
     if (doIp) adviIterPrintRow(parHist, it, ntheta + neta, elboAcc, ipPhase);
     if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
       itRun = it + 1; break;
+    }
+    // adviControl(tol=): stop once the ELBO stops improving materially
+    if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
+      itRun = it + 1; _advi.tolStopped = true; break;
     }
   }
   RObject parHistData = (doIp && ipEnd) ? vaeIterPrintGet_(_vaeScale.every != 0) : RObject(R_NilValue);
@@ -12232,6 +12680,11 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
 
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
+    // prior tempering warm-up (no-op when off).  adaptEta candidate runs
+    // (divergeStop != 0) are scored on the UNTEMPERED objective: the step size
+    // they pick is used for the whole run, most of which is untempered, and a
+    // tempered score is not comparable across candidates.
+    if (divergeStop == 0) adviTemperSet(gi); else adviResetTemper();
     std::fill(gMuAcc.begin(), gMuAcc.end(), 0.0);
     std::fill(gScaleAcc.begin(), gScaleAcc.end(), 0.0);
     std::fill(gmPopAcc.begin(), gmPopAcc.end(), 0.0);
@@ -12259,6 +12712,10 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
         : adviElboGradCore  (mu, scale, theta, logPopOmega, eps, muRefThetaIdx, gMu, gScale, gTheta, gPopLogOmega, cores);
       // population entropy: sum log|Lpop_kk|
       for (int k = 0; k < npop; ++k) e += std::log(std::fabs(Lpop[k * (k + 1) / 2 + k]));
+      // constraining-transform Jacobian: makes the flat prior flat on the
+      // NATURAL parameter rather than on the unconstrained one (full Bayes
+      // only -- this loop is the pointEstimate=FALSE path)
+      e += adviJacLogDet(theta, &gTheta);
       elboAcc += e;
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nScale; ++j) gScaleAcc[j] += gScale[j];
@@ -12322,6 +12779,10 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     if (divergeStop != 0 && adviDiverged(elboAcc, parHist, it, ntheta + neta)) {
       itRun = it + 1; break;
     }
+    // adviControl(tol=): stop once the ELBO stops improving materially
+    if (adviElboConverged(elboTrace, it, divergeStop, iters)) {
+      itRun = it + 1; _advi.tolStopped = true; break;
+    }
   }
   // final theta / logPopOmega at the population posterior mean
   for (int j = 0; j < npop; ++j) {
@@ -12368,7 +12829,49 @@ List adviOptimize_(List args) {
   IntegerVector muRefThetaIdx = as<IntegerVector>(args["muRefThetaIdx"]);
   LogicalVector thetaFix = as<LogicalVector>(args["thetaFix"]);
   LogicalVector omegaFix = as<LogicalVector>(args["omegaFix"]);
+  // clear every advi run static, then install this run's from args -- an
+  // aborted candidate search or a previous fit must not leak into this one
+  adviResetStatics();
+  // declared omega structure: off-diagonals are estimated by the damped matrix
+  // M-step alongside the per-eta log-variances (diagonal-only models keep the
+  // historic scalar path, bit-for-bit)
+  adviSetOmegaStructure(args.containsElementNamed("omegaMat") ? args["omegaMat"] : R_NilValue,
+                        args.containsElementNamed("omegaFixMat") ? args["omegaFixMat"] : R_NilValue,
+                        (int)omegaIni.size());
   const int iters = as<int>(args["iters"]);
+  // saem's perNoCor rule.  ADVI has no separate burn-in phase, so a FRACTION is
+  // of the whole run.  Resolved to an ABSOLUTE iteration here and persisted in
+  // the result, because every schedule point has to be an absolute global
+  // iteration for a resumed run to reproduce a single run: recomputing
+  // perNoCor * iters from the RESUMED call's iters would re-apply a hold the
+  // original run had already passed, and would restart the off-diagonal gain at
+  // the wrong place.  perNoCor > 1 is taken as that absolute count directly.
+  {
+    double pnc = args.containsElementNamed("perNoCor") ? as<double>(args["perNoCor"]) : 0.75;
+    if (pnc > 1.0) {
+      _advi.nbCorrel = (int)std::lround(pnc);            // absolute iterations
+    } else {
+      _advi.nbCorrel = (int)std::lround(pnc * (double)iters);
+    }
+  }
+  // adviControl(tol=) / evalElbo: the ELBO-convergence early stop
+  _advi.tolRelObj = args.containsElementNamed("tol") ? as<double>(args["tol"]) : 0.0;
+  _advi.evalElbo = args.containsElementNamed("evalElbo") ? as<int>(args["evalElbo"]) : 100;
+  _advi.tolStopped = false;
+  _advi.temper = false;
+  _advi.temperScale = 1.0;
+  _advi.klWarmup = args.containsElementNamed("klWarmup") ? as<int>(args["klWarmup"]) : 0;
+  _advi.temperInit = args.containsElementNamed("temperInit")
+    ? as<double>(args["temperInit"]) : 1.0;
+  // constraining-transform Jacobian map (consumed by the full-Bayes loop only)
+  if (args.containsElementNamed("jacType")) {
+    _advi.jacType = as<IntegerVector>(args["jacType"]);
+    _advi.jacRange = args.containsElementNamed("jacRange")
+      ? as<NumericVector>(args["jacRange"]) : NumericVector(_advi.jacType.size());
+  } else {
+    _advi.jacType = IntegerVector(0);
+    _advi.jacRange = NumericVector(0);
+  }
   const double tau = as<double>(args["tau"]);
   const double alpha = as<double>(args["alpha"]);
   const int nMc = as<int>(args["nMc"]);
@@ -12484,11 +12987,31 @@ List adviOptimize_(List args) {
     }
   }
 
+  // A resumed run must keep the ORIGINAL absolute release iteration: recomputing
+  // perNoCor * iters from this call's iters would re-apply a hold the first run
+  // had already passed and restart the off-diagonal gain in the wrong place, so
+  // the resumed fit would not reproduce a single run of the combined length.
+  if (hasResume && resume.containsElementNamed("nbCorrel") &&
+      !Rf_isNull(resume["nbCorrel"])) {
+    _advi.nbCorrel = as<int>(resume["nbCorrel"]);
+  }
+  // a resumed run restarts from the prior fit's off-diagonals (fixed entries
+  // still restore to the model ini values, which a fixed entry never left)
+  if (_advi.omOff && hasResume && resume.containsElementNamed("popOmegaMat")) {
+    RObject pm = resume["popOmegaMat"];
+    if (!pm.isNULL()) {
+      arma::mat om = as<arma::mat>(pm);
+      if (om.n_rows == _advi.popOm.n_rows && om.n_cols == _advi.popOm.n_cols) _advi.omStart = om;
+    }
+  }
   bool ipStarted = false;
   auto run1 = [&](double eta, int itersRun, int itRun0, int divergeStop,
                   const std::string &phase, int ipEnd) -> List {
     int ipStart = ipStarted ? 0 : 1;
     ipStarted = true;
+    // every run (each adaptEta candidate and the main one) restarts from the
+    // same initial population state, so the off-diagonals must reset too
+    _advi.popOm = _advi.omStart;
     if (!pe) {
       return adviLoopFB_(mu0, scale0, theta0, logPopOmega0, mPop0, Lpop0,
                          phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, frInt,
@@ -12510,11 +13033,16 @@ List adviOptimize_(List args) {
                      parNames, ipc, xform, phase, ipStart, ipEnd);
   };
 
+  // per-candidate adaptEta scores, returned so the search is inspectable (and so
+  // "the candidates were scored untempered" is a testable claim rather than one
+  // that can only be checked by reading the code)
+  NumericVector etaScores(0);
   double eta;
   if (R_finite(etaResume)) {
     eta = etaResume;                          // resumed run keeps its step-size scale
   } else if (adapt && cands.size() > 1) {
     double best = R_NegInf, bestEta = cands[0];
+    etaScores = NumericVector(cands.size(), R_NegInf);
     for (int c = 0; c < (int)cands.size(); ++c) {
       double e = cands[c];
       List r = run1(e, nAdapt, 0, 1, std::string("srch ") + adviSignif3(e), 0);
@@ -12545,6 +13073,7 @@ List adviOptimize_(List args) {
         for (int i = lo - 1; i < len; ++i) s += el[i];
         score = (double)(s / (len - lo + 1));
       }
+      etaScores[c] = score;
       if (score > best) { best = score; bestEta = e; }
     }
     eta = bestEta;
@@ -12555,12 +13084,36 @@ List adviOptimize_(List args) {
   }
 
   List res = run1(eta, iters, it0, 0, "SGA", 1);
+  // A run that ENDS INSIDE the warm-up (iters < klWarmup, or an early break)
+  // never reaches the gi >= klWarmup iteration that restores the scale, so the
+  // inflation would outlive the optimization: it would silently temper a later
+  // direct adviElboGrad_ call, and -- because adviPopOmFull applies the scale --
+  // the popOmegaMat materialized BELOW would be returned inflated.  This reset
+  // must therefore stay ABOVE the result-building block.
+  // NOT adviResetStatics(): nbCorrel and tolStopped are read into `res` below,
+  // and a full reset here would return zeros for both.  Only the tempering scale
+  // must not outlive the loop.
+  adviResetTemper();
   res["etaScale"] = eta;
+  res["etaScores"] = etaScores;
+  res["nbCorrel"] = _advi.nbCorrel;   // absolute release iteration, for resume
   res["seed"] = seed;
+  // an early ELBO-convergence stop leaves the tail of the trace zero-padded;
+  // hand back only the iterations actually run so the reported ELBO trajectory
+  // is the real one (the adaptEta candidate runs are untouched)
+  res["tolStopped"] = _advi.tolStopped;
+  {
+    int nRun = as<int>(res["itRun"]);
+    NumericVector el = res["elbo"];
+    if (_advi.tolStopped && nRun > 0 && nRun < (int)el.size()) {
+      res["elbo"] = NumericVector(el.begin(), el.begin() + nRun);
+    }
+  }
   NumericVector lpo = res["logPopOmega"];
   NumericVector popOmega((int)lpo.size());
   for (int k = 0; k < (int)lpo.size(); ++k) popOmega[k] = std::exp(lpo[k]);
   res["popOmega"] = popOmega;
+  res["popOmegaMat"] = wrap(adviPopOmFull(lpo));
   if (pe) {
     res["pointEstimate"] = true;
     // normalize the per-subject scale field name (Lpack for full-rank, omega else)
@@ -12587,7 +13140,7 @@ List adviOptimize_(List args) {
         cov(i, j) = (double)sAcc;
       }
     }
-    res["adviCov"] = cov;
+    res["viCov"] = cov;
   }
   return res;
 }
@@ -12855,11 +13408,21 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
                                  const arma::vec& th, const arma::ivec& zPopThetaIdx0,
                                  const arma::ivec& errThetaIdx0,
                                  const arma::mat& zPopMat, const arma::vec& baseline,
-                                 const arma::vec& omega, const arma::vec& a, double alphaKL,
+                                 const arma::mat& Om, const arma::vec& a, double alphaKL,
                                  int nMix, const arma::vec& mixProb, int cores,
                                  bool withGrad = true, bool parEncoderBackward = false) {
   VaeStepOut S; S.ok = true;
   const int N = dataIn.n_rows;
+  // full-omega prior pieces; the diagonal path below is kept verbatim so
+  // diagonal models are bit-identical to the historic code
+  const arma::vec omega = Om.diag();
+  const bool omOff = _vaeOmHasOff;
+  arma::mat OmInv; double logdetOm = 0;
+  if (omOff) {
+    if (!arma::inv_sympd(OmInv, arma::symmatu(Om)))
+      stop("omega is not positive definite");
+    double sgn; arma::log_det(logdetOm, sgn, arma::symmatu(Om));
+  }
   // encoder forward (no backward yet -- need z to form gZ first)
   arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
   arma::cube Lout(zDim, zDim, N);
@@ -12872,7 +13435,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   eta.each_row() -= baseline.t();                       // z - baseline
   // inner-problem re-parameterization + evaluation
   arma::vec thv = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
-  vaeInnerUpdateParCore(thv, omega);
+  vaeInnerUpdateParCore(thv, Om);
   arma::mat etaEval = eta;
   if (nMix > 1) { etaEval.set_size(nMix * N, zDim); for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = eta; }
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
@@ -12882,7 +13445,13 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   const double ln2pi = std::log(2 * M_PI);
   arma::vec pzI(N);
   for (int i = 0; i < N; ++i) {
-    double s = 0; for (int k = 0; k < zDim; ++k) s += eta(i, k) * eta(i, k) / omega[k] + std::log(omega[k]) + ln2pi;
+    double s;
+    if (omOff) {
+      arma::vec ei = eta.row(i).t();
+      s = arma::dot(ei, OmInv * ei) + logdetOm + zDim * ln2pi;
+    } else {
+      s = 0; for (int k = 0; k < zDim; ++k) s += eta(i, k) * eta(i, k) / omega[k] + std::log(omega[k]) + ln2pi;
+    }
     pzI[i] = 0.5 * s;
   }
   double jointTot;
@@ -12920,21 +13489,36 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   double pxz = jointTot - arma::accu(pzI);
   double pz = 0, qz = 0;
   for (int i = 0; i < N; ++i) {
+    if (omOff) {
+      arma::vec d = (zOut.row(i) - zPopMat.row(i)).t();
+      pz += 0.5 * (arma::dot(d, OmInv * d) + logdetOm + zDim * ln2pi);
+    }
     for (int k = 0; k < zDim; ++k) {
-      double d = zOut(i, k) - zPopMat(i, k);
-      pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      if (!omOff) {
+        double d = zOut(i, k) - zPopMat(i, k);
+        pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      }
       qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
     }
   }
   double DKL = pz - qz;
   if (withGrad) {
-    // encoder upstream: d(pxz)/dz = lp - eta/omega; KL adds alphaKL*(z-zPopMat)/omega
+    // encoder upstream: d(pxz)/dz = lp - Omega^-1 eta; KL adds
+    // alphaKL * Omega^-1 (z - zPopMat)
     arma::mat gZ = lpBest;
-    for (int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i) {
+      arma::vec pri(zDim), klg(zDim);
+      if (omOff) {
+        pri = OmInv * eta.row(i).t();
+        klg = OmInv * (zOut.row(i) - zPopMat.row(i)).t();
+      }
       for (int k = 0; k < zDim; ++k) {
-        double g = gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+        double g = omOff
+          ? gZ(i, k) - pri[k] + alphaKL * klg[k]
+          : gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
         gZ(i, k) = R_FINITE(g) ? g : 0.0;
       }
+    }
     arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
     arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
     vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
@@ -12955,7 +13539,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
 // an N x zDim matrix (subject-specific covariate centers).  Returns the same list
 // the former R .vaeElboStepInner produced.
 //[[Rcpp::export]]
-List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR,
+List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
                      NumericVector aR, double alphaKL, NumericMatrix epsR,
                      int nMix, NumericVector mixProbR, int cores, bool withGrad = true) {
   arma::mat Wih = as<arma::mat>(params["Wih"]);
@@ -12979,7 +13563,7 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
   IntegerVector eti = prep["errThetaIdx"];
   arma::ivec errThetaIdx0(eti.size());
   for (int e = 0; e < eti.size(); ++e) errThetaIdx0[e] = (int)eti[e] - 1;
-  arma::vec omega(omegaR.begin(), omegaR.size());
+  arma::mat Om = vaeOmegaAsMat(omegaR);
   arma::vec a(aR.begin(), aR.size());
   arma::mat eps(epsR.begin(), N, zDim, false, true);
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
@@ -12995,7 +13579,7 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR
   }
   VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
                                 eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, baseline,
-                                omega, a, alphaKL, nMix, mixProb, cores, withGrad);
+                                Om, a, alphaKL, nMix, mixProb, cores, withGrad);
   RObject grads = R_NilValue;
   if (withGrad) grads = List::create(_["Wih"] = S.gWih, _["Whh"] = S.gWhh, _["bih"] = S.gbih,
                                      _["bhh"] = S.gbhh, _["fcW"] = S.gFcW, _["fcB"] = S.gFcB);
@@ -13112,7 +13696,7 @@ RObject vaeDecoderSolveSubject_(Function solveFn, NumericVector eta, double tol,
 // per-subject decoder solve + p(x|z), KL, encoder backward.  `solveFn(i, eta,
 // tol)` solves physical subject i (0-based) in R; `yList` is the per-subject DV.
 //[[Rcpp::export]]
-List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector omegaR,
+List vaeDecoderElboStep_(List params, List prep, RObject zPopR, RObject omegaR,
                          NumericVector aVecR, double alphaKL, NumericMatrix epsR,
                          Function solveFn, List yListR, bool withGrad,
                          double tol, int maxRecalc, double recalcFactor, bool fdFallback) {
@@ -13127,7 +13711,15 @@ List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector om
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
-  arma::vec omega(omegaR.begin(), omegaR.size());
+  arma::mat Om = vaeOmegaAsMat(omegaR);
+  arma::vec omega = Om.diag();
+  const bool omOff = _vaeOmHasOff;
+  arma::mat OmInv; double logdetOm = 0;
+  if (omOff) {
+    if (!arma::inv_sympd(OmInv, arma::symmatu(Om)))
+      stop("omega is not positive definite");
+    double sgn; arma::log_det(logdetOm, sgn, arma::symmatu(Om));
+  }
   arma::mat eps(epsR.begin(), N, zDim, false, true);
   arma::mat zPopMat(N, zDim); arma::vec baseline;
   if (Rf_isMatrix(zPopR)) { zPopMat = as<arma::mat>(zPopR); baseline = arma::mean(zPopMat, 0).t(); }
@@ -13160,18 +13752,30 @@ List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector om
 
   const double ln2pi = std::log(2 * M_PI);
   double pz = 0, qz = 0;
-  for (int i = 0; i < N; ++i)
+  for (int i = 0; i < N; ++i) {
+    if (omOff) {
+      arma::vec d = (zOut.row(i) - zPopMat.row(i)).t();
+      pz += 0.5 * (arma::dot(d, OmInv * d) + logdetOm + zDim * ln2pi);
+    }
     for (int k = 0; k < zDim; ++k) {
-      double d = zOut(i, k) - zPopMat(i, k);
-      pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      if (!omOff) {
+        double d = zOut(i, k) - zPopMat(i, k);
+        pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
+      }
       qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
     }
+  }
   double DKL = pz - qz, loss = pxz + alphaKL * DKL;
   RObject grads = R_NilValue;
   if (withGrad) {
     arma::mat gZ = gZdec;
-    for (int i = 0; i < N; ++i)
-      for (int k = 0; k < zDim; ++k) gZ(i, k) += alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+    for (int i = 0; i < N; ++i) {
+      if (omOff) {
+        gZ.row(i) += alphaKL * (OmInv * (zOut.row(i) - zPopMat.row(i)).t()).t();
+      } else {
+        for (int k = 0; k < zDim; ++k) gZ(i, k) += alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
+      }
+    }
     arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
     arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
     arma::mat gWih2, gWhh2, gFcW2; arma::vec gbih2, gbhh2, gFcB2;
@@ -13253,7 +13857,56 @@ struct VaeBnbCtx {
   double bestScore;
   std::vector<int> bestSel;
   arma::vec bestCoef;
+  // Mutual-exclusion groups: grp[j] is the group of covariate column j, and at
+  // most one column per group may be selected.  This is how alternate SHAPES of
+  // one covariate (log(cov/ctr) vs cov-ctr) compete without both entering.  A
+  // null pointer, or a negative id, leaves a column unconstrained -- so the
+  // default is the historic unconstrained best-subset search.
+  const std::vector<int>* grp;
 };
+
+// May covariate j join `inSet` without taking a group twice?
+static inline bool vaeGroupFree(const VaeBnbCtx& c, const std::vector<int>& inSet,
+                                int j) {
+  if (c.grp == nullptr) return true;
+  const int gj = (*c.grp)[(size_t)j];
+  if (gj < 0) return true;
+  for (size_t s = 0; s < inSet.size(); ++s) {
+    if ((*c.grp)[(size_t)inSet[s]] == gj) return false;
+  }
+  return true;
+}
+
+// Validate and unpack an optional R group vector into the per-column form the
+// search uses.  An empty result means "no constraint", which is the historic
+// unconstrained best-subset behavior.
+static std::vector<int> vaeGroupVec(Rcpp::Nullable<Rcpp::IntegerVector> group,
+                                    int nCov) {
+  std::vector<int> grp;
+  if (group.isNull()) return grp;
+  Rcpp::IntegerVector g(group);
+  if ((int)g.size() != nCov) {
+    Rcpp::stop("'group' must have one entry per covariate column (%d)", nCov);
+  }
+  grp.assign(g.begin(), g.end());
+  for (size_t j = 0; j < grp.size(); ++j) {
+    if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) grp[j] = -1;
+  }
+  return grp;
+}
+
+// Is `s` a feasible support (no group used twice)?
+static bool vaeGroupOk(const VaeBnbCtx& c, const std::vector<int>& s) {
+  if (c.grp == nullptr) return true;
+  for (size_t a = 0; a < s.size(); ++a) {
+    const int ga = (*c.grp)[(size_t)s[a]];
+    if (ga < 0) continue;
+    for (size_t b = a + 1; b < s.size(); ++b) {
+      if ((*c.grp)[(size_t)s[b]] == ga) return false;
+    }
+  }
+  return true;
+}
 
 // Order-independent tie-break: on an exact score tie prefer the lexicographically
 // smaller sorted support so the incumbent is deterministic regardless of the frontier
@@ -13267,6 +13920,7 @@ static bool vaeSelLess(std::vector<int> a, std::vector<int> b) {
 
 // Evaluate the model whose support is exactly `inSet`; update the incumbent.
 static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
+  if (!vaeGroupOk(c, inSet)) return;   // infeasible: two shapes of one covariate
   arma::uvec cols = vaeSubsetCols(inSet);
   arma::vec coef;
   double rss = vaeOlsRss(*c.X, cols, *c.y, &coef);
@@ -13293,7 +13947,9 @@ struct VaeBnbNode {
 // Subtree lower bound: no superset of inSet (adding any free covariates) can beat the
 // OLS fit that uses ALL of them, and each committed covariate already costs `penalty`.
 // Adding columns only lowers RSS, so this bounds the whole subtree.  The free set is
-// freeSet0[0, freeSize).
+// freeSet0[0, freeSize).  Under mutual-exclusion groups the all-free fit may itself be
+// infeasible, which only makes the bound a looser relaxation -- still admissible, so
+// the search stays exact.
 static double vaeBnbLowerBound(VaeBnbCtx& c, const std::vector<int>& inSet,
                                const std::vector<int>& freeSet0, int freeSize) {
   std::vector<int> all = inSet;
@@ -13342,16 +13998,26 @@ static void vaeBnbSearch(VaeBnbCtx& c, const std::vector<int>& freeSet0) {
     if (node.lb >= c.bestScore) continue;
     int j = freeSet0[node.freeSize - 1];       // strongest remaining free covariate
     int childFree = node.freeSize - 1;
-    VaeBnbNode inc;  inc.inSet = node.inSet; inc.inSet.push_back(j);
-    inc.freeSize = childFree; inc.evalSelf = true;
-    inc.lb = vaeBnbLowerBound(c, inc.inSet, freeSet0, childFree);
+    // The include child is generated only when j's group is still free, so every
+    // reachable leaf is feasible and the leaves enumerate exactly the feasible
+    // supports.  The exclude child is always generated, so no feasible support is
+    // lost -- completeness (hence exactness) is preserved.
+    const bool canInclude = vaeGroupFree(c, node.inSet, j);
+    VaeBnbNode inc;
+    if (canInclude) {
+      inc.inSet = node.inSet; inc.inSet.push_back(j);
+      inc.freeSize = childFree; inc.evalSelf = true;
+      inc.lb = vaeBnbLowerBound(c, inc.inSet, freeSet0, childFree);
+    }
     VaeBnbNode exc;  exc.inSet = node.inSet; exc.freeSize = childFree;
     exc.evalSelf = false;  // inSet already evaluated by the parent; bound tightens as j drops out
     exc.lb = vaeBnbLowerBound(c, exc.inSet, freeSet0, childFree);
     switch (c.strategy) {
-    case VAE_BNB_FIFO: queue.push_back(inc); queue.push_back(exc); break;
-    case VAE_BNB_LC:   pq.push(inc); pq.push(exc); break;
-    default:           stack.push_back(exc); stack.push_back(inc); break;  // include pops first
+    case VAE_BNB_FIFO: if (canInclude) queue.push_back(inc); queue.push_back(exc); break;
+    case VAE_BNB_LC:   if (canInclude) pq.push(inc); pq.push(exc); break;
+    default:           stack.push_back(exc);                        // include pops first
+      if (canInclude) stack.push_back(inc);
+      break;
     }
   }
 }
@@ -13386,10 +14052,12 @@ static VaeSubsetFit vaeFinishSubset(VaeBnbCtx& c, const arma::vec& y) {
 
 static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
                                     double omega, double penalty,
-                                    VaeBnbStrategy strategy = VAE_BNB_LIFO) {
+                                    VaeBnbStrategy strategy = VAE_BNB_LIFO,
+                                    const std::vector<int>* grp = nullptr) {
   const int nCov = (int)X.n_cols - 1;
   VaeBnbCtx c;
   c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty; c.strategy = strategy;
+  c.grp = grp;
   c.bestScore = std::numeric_limits<double>::infinity();
   // order covariates by univariate strength (RSS of [intercept, x_j] ascending
   // -> stronger last) so the branch order finds good incumbents early.
@@ -13418,8 +14086,15 @@ static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
 
 // Score each candidate support against the incumbent.  Out-of-range and repeated
 // indices are dropped so a malformed proposal cannot index past the design.
+//
+// The external proposer (L0Learn) knows nothing about mutual-exclusion groups, so
+// an infeasible proposal is REPAIRED rather than discarded: within each doubled-up
+// group the univariately strongest column is kept.  Discarding instead would throw
+// away the proposer's information about which covariates matter; the local-search
+// polish then fixes a shape that was chosen suboptimally.
 static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
                                const std::vector<std::vector<int> >& cands) {
+  std::vector<double> uni;   // univariate RSS per column, built on first repair
   for (size_t i = 0; i < cands.size(); ++i) {
     std::vector<int> s;
     s.reserve(cands[i].size());
@@ -13429,6 +14104,28 @@ static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
     }
     std::sort(s.begin(), s.end());
     s.erase(std::unique(s.begin(), s.end()), s.end());
+    if (!vaeGroupOk(c, s)) {
+      if (uni.empty()) {
+        uni.resize((size_t)nCov);
+        for (int j = 0; j < nCov; ++j) {
+          std::vector<int> one(1, j);
+          uni[(size_t)j] = vaeOlsRss(*c.X, vaeSubsetCols(one), *c.y, nullptr);
+        }
+      }
+      std::vector<int> keep;
+      for (size_t a = 0; a < s.size(); ++a) {
+        const int ga = (*c.grp)[(size_t)s[a]];
+        if (ga < 0) { keep.push_back(s[a]); continue; }
+        size_t held = keep.size();
+        for (size_t b = 0; b < keep.size(); ++b) {
+          if ((*c.grp)[(size_t)keep[b]] == ga) { held = b; break; }
+        }
+        if (held == keep.size()) keep.push_back(s[a]);
+        else if (uni[(size_t)s[a]] < uni[(size_t)keep[held]]) keep[held] = s[a];
+      }
+      std::sort(keep.begin(), keep.end());
+      s.swap(keep);
+    }
     vaeBnbLeaf(c, s);
   }
 }
@@ -13445,6 +14142,7 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
     for (size_t s = 0; s < cur.size(); ++s) inSet[(size_t)cur[s]] = 1;
     for (int j = 0; j < nCov; ++j) {                     // add
       if (inSet[(size_t)j]) continue;
+      if (!vaeGroupFree(c, cur, j)) continue;            // group already taken
       std::vector<int> t = cur; t.push_back(j);
       std::sort(t.begin(), t.end());
       vaeBnbLeaf(c, t);
@@ -13454,8 +14152,12 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
       vaeBnbLeaf(c, t);
     }
     for (size_t d = 0; d < cur.size(); ++d) {            // swap
+      // the swap vacates cur[d], so feasibility is judged against the REST of the
+      // support -- swapping one shape of a covariate for another must stay legal
+      std::vector<int> rest = cur; rest.erase(rest.begin() + d);
       for (int j = 0; j < nCov; ++j) {
         if (inSet[(size_t)j]) continue;
+        if (!vaeGroupFree(c, rest, j)) continue;
         std::vector<int> t = cur; t[d] = j;
         std::sort(t.begin(), t.end());
         vaeBnbLeaf(c, t);
@@ -13471,11 +14173,13 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
 static VaeSubsetFit vaeCandidateSubsetL0(const arma::vec& y, const arma::mat& X,
                                          double omega, double penalty,
                                          const std::vector<std::vector<int> >& cands,
-                                         bool polish) {
+                                         bool polish,
+                                         const std::vector<int>* grp = nullptr) {
   const int nCov = (int)X.n_cols - 1;
   VaeBnbCtx c;
   c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
   c.strategy = VAE_BNB_LIFO;  // unused here; the frontier discipline has no role
+  c.grp = grp;
   c.bestScore = std::numeric_limits<double>::infinity();
   vaeBnbLeaf(c, std::vector<int>());   // the intercept-only model is always in play
   vaeScoreCandidates(c, nCov, cands);
@@ -13494,7 +14198,7 @@ static arma::ivec gVaeRegZpopIdx0;   // zPopThetaIdx0 for vaeBuildTh
 static arma::ivec gVaeRegErrIdx0;    // errThetaIdx0 for vaeBuildTh
 static arma::vec gVaeRegBaseline;    // population center (zDim) -- inner eta offset
 static arma::vec gVaeRegA;           // residual-error params
-static arma::vec gVaeRegOmega;       // omega diagonal
+static arma::mat gVaeRegOmega;       // omega (full block matrix)
 static arma::mat gVaeRegEtaCentered; // last.mu - baseline  [N, zDim]
 static int gVaeRegCores;
 static int gVaeRegNMix;
@@ -13681,6 +14385,131 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   LogicalVector zPopFixR = prep["zPopFix"];
   arma::vec zPop = as<arma::vec>(prep["zPop"]);
   arma::vec omega = as<arma::vec>(prep["omega"]);
+  // full omega block: `omega` above stays the DIAGONAL (covariate selection,
+  // printing and the historic diagonal M-step read it); `Om` carries the
+  // declared off-diagonals, updated by the matrix M-step when the model has
+  // correlated etas (omOff) and kept diag-synced with `omega`.
+  const bool omOff = _vaeOmHasOff;
+  arma::mat Om = (omOff && prep.containsElementNamed("omegaMat"))
+    ? as<arma::mat>(prep["omegaMat"]) : arma::diagmat(omega);
+  const arma::mat omIni = Om;                     // fixed-entry restore values
+  arma::umat omMaskOff(zDim, zDim, arma::fill::zeros);
+  arma::umat omFixM(zDim, zDim, arma::fill::zeros);
+  if (omOff) {
+    for (int oi = 0; oi < zDim; ++oi)
+      for (int oj = 0; oj < zDim; ++oj)
+        if (oi != oj && Om(oi, oj) != 0) omMaskOff(oi, oj) = 1;
+    if (prep.containsElementNamed("omegaFixMat")) {
+      LogicalMatrix fm = prep["omegaFixMat"];
+      for (int oi = 0; oi < zDim; ++oi)
+        for (int oj = 0; oj < zDim; ++oj)
+          if (fm(oi, oj)) omFixM(oi, oj) = 1;
+    }
+  }
+  // SAEM sufficient statistics (declared here so the omega M-step below can
+  // read them): s1 = EMA of the posterior means, s2/s3 their scalar second
+  // moments, s2M/s3M the same as FULL matrices for the correlated case.  The
+  // reference accumulates exactly s2M/s3M and then discards the off-diagonals
+  // with a trailing `.diag()`; keeping them is the whole change.
+  arma::mat s1(N, zDim, arma::fill::zeros);
+  bool s1Init = false;
+  arma::vec s2(zDim, arma::fill::zeros), s3(zDim, arma::fill::zeros);
+  arma::mat s2M(zDim, zDim, arma::fill::zeros), s3M(zDim, zDim, arma::fill::zeros);
+  // Matrix M-step for the modeled off-diagonals, the same second-moment form
+  // saem uses for the whole block
+  //   G1 = (statphi12 + m'm - s'm - m's)/N,  Gamma2_phi1 = G1 % covstruct1
+  // -- a full second moment, then masked ELEMENTWISE to the declared structure.
+  // `omegaUpdate="suffStat"` takes it from the EMA statistics (s2M/crossM/s3M),
+  // exactly the reference's `(s2 + omega_pop + s3)` before its `.diag()`;
+  // otherwise from the current posterior moments, blended with gain `gam`.
+  // A non-finite or non-PD candidate keeps the previous off-diagonals.
+  auto omOffStep = [&](const arma::mat& muM, const arma::cube& L,
+                       const arma::mat& centers, double gam, bool hold,
+                       bool useSuffStat) {
+    if (!omOff) return;
+    arma::mat cand = Om;
+    cand.diag() = omega;
+    if (hold) {
+      // saem's rule is Gamma2_phi1 = diagmat(Gamma2_phi1): the correlations are
+      // held at ZERO, not at their ini value.  Retaining the ini covariance
+      // while the variances shrink can leave the block non-PD (a 0.01
+      // covariance against variances that have fallen below it).
+      // A FIXED covariance is exempt -- it is not being estimated at all, so it
+      // keeps its ini value through the hold and out the other side.
+      Om = arma::diagmat(omega);
+      for (int oi = 0; oi < zDim; ++oi)
+        for (int oj = oi + 1; oj < zDim; ++oj)
+          if (omMaskOff(oi, oj) && omFixM(oi, oj))
+            Om(oi, oj) = Om(oj, oi) = omIni(oi, oj);
+      return;
+    }
+    const int N_ = (int)muM.n_rows;
+    arma::mat cur(zDim, zDim, arma::fill::zeros);
+    if (useSuffStat) {
+      // reference form on the SMOOTHED statistics: s2M + cross + s3M, where
+      // cross = sum_i (-Cz_i s1_i' - s1_i Cz_i' + Cz_i Cz_i')
+      arma::mat cross(zDim, zDim, arma::fill::zeros);
+      for (int n = 0; n < N_; ++n) {
+        arma::vec cz = centers.row(n).t(), sm = s1.row(n).t();
+        cross += -cz * sm.t() - sm * cz.t() + cz * cz.t();
+      }
+      cur = (s2M + cross + s3M) / (double)N_;
+    } else {
+      for (int n = 0; n < N_; ++n) {
+        arma::vec d = (muM.row(n) - centers.row(n)).t();
+        cur += d * d.t() + L.slice(n) * L.slice(n).t();
+      }
+      cur /= (double)N_;
+    }
+    for (int oi = 0; oi < zDim; ++oi)
+      for (int oj = oi + 1; oj < zDim; ++oj) {
+        if (!omMaskOff(oi, oj)) continue;         // the covstruct1 mask
+        double v = omFixM(oi, oj) ? omIni(oi, oj)
+          : (useSuffStat ? cur(oi, oj) : Om(oi, oj) + gam * (cur(oi, oj) - Om(oi, oj)));
+        cand(oi, oj) = cand(oj, oi) = v;
+      }
+    arma::mat cchol;
+    if (cand.is_finite() && arma::chol(cchol, arma::symmatu(cand))) Om = cand;
+    else Om.diag() = omega;                       // keep previous off-diagonals
+  };
+  // Current full omega for the ELBO/inner evaluations and the regress path.
+  // The diagonal and the off-diagonals are updated by SEPARATE M-steps, so
+  // gluing the newest diagonal onto the retained off-diagonals is not
+  // guaranteed positive definite -- once a variance falls below its own
+  // covariance the block is indefinite, and the inner re-parameterization
+  // (rightly) refuses it.  Shrink the off-diagonals toward zero until the
+  // glued matrix is usable; a diagonal matrix with positive variances always
+  // is, so this terminates.
+  auto omFull = [&]() -> arma::mat {
+    if (!omOff) return arma::diagmat(omega);
+    arma::mat o = Om;
+    o.diag() = omega;
+    arma::mat ch;
+    if (arma::chol(ch, arma::symmatu(o))) return o;
+    // Shrink only the FREE off-diagonals: a fixed covariance is a user
+    // constraint, and the diagonal fallback below would zero it outright.
+    bool anyFixed = false;
+    for (int i = 0; i < zDim && !anyFixed; ++i)
+      for (int j = i + 1; j < zDim; ++j)
+        if (omFixM(i, j)) { anyFixed = true; break; }
+    for (int t = 0; t < 8; ++t) {
+      for (int i = 0; i < zDim; ++i)
+        for (int j = 0; j < zDim; ++j)
+          if (i != j && !omFixM(i, j)) o(i, j) *= 0.5;
+      if (arma::chol(ch, arma::symmatu(o))) return o;
+    }
+    // Last resort before giving up: ZERO the free off-diagonals (keeping the
+    // fixed ones) and retest.  Only if THAT is still indefinite is the fixed
+    // block itself impossible -- erroring before trying this would fail a valid
+    // model whose free entries merely needed more than 8 halvings.
+    for (int i = 0; i < zDim; ++i)
+      for (int j = 0; j < zDim; ++j)
+        if (i != j && !omFixM(i, j)) o(i, j) = 0.0;
+    if (arma::chol(ch, arma::symmatu(o))) return o;
+    if (anyFixed)
+      stop("fixed omega block is not positive definite at the current variances");
+    return arma::diagmat(omega);
+  };
   arma::vec a = as<arma::vec>(prep["a"]);
   arma::vec zPopLower = as<arma::vec>(prep["zPopLower"]);
   arma::vec zPopUpper = as<arma::vec>(prep["zPopUpper"]);
@@ -13755,6 +14584,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     !Rf_isNull(prep["covAllow"]);
   arma::imat covAllow;
   if (haveCovAllow) covAllow = as<arma::imat>(prep["covAllow"]);
+  // covGroup: mutual-exclusion group per covariate column, so alternate SHAPES of
+  // one covariate compete for a single slot.  Absent (older serialized preps, or a
+  // single-shape search) leaves every column unconstrained.
+  std::vector<int> covGroup;
+  if (prep.containsElementNamed("covGroup") && !Rf_isNull(prep["covGroup"])) {
+    Rcpp::IntegerVector g = as<Rcpp::IntegerVector>(prep["covGroup"]);
+    covGroup.assign(g.begin(), g.end());
+    for (size_t j = 0; j < covGroup.size(); ++j) {
+      if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covGroup[j] = -1;
+    }
+  }
   // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
   // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
   // Resolved in R (that is where the suggested-package check and the $runInfo
@@ -13776,6 +14616,21 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   const int klWarmup = as<int>(control["klWarmup"]);
   const int gammaIter = as<int>(control["gammaIter"]);
   const int iters = as<int>(control["iters"]);
+  // saem's perNoCor rule: correlations are held at zero for the first
+  // perNoCor * (burn-in) iterations, then estimated.  saem's burn-in is
+  // mcmc$niter[1]; the vae analogue is gammaIter (where the gain leaves 1).
+  // gammaIter can EXCEED iters (a shortened run against the default
+  // gammaIter=250), and then the whole run is the EM phase -- take the
+  // EFFECTIVE phase length, or a short fit would hold the correlations at zero
+  // for every iteration and silently report none.
+  const double perNoCor = control.containsElementNamed("perNoCor")
+    ? as<double>(control["perNoCor"]) : 0.75;
+  // perNoCor > 1 is an ABSOLUTE iteration count, used verbatim; <= 1 is a
+  // fraction of the effective EM phase.  Stating it absolutely makes the
+  // release point independent of how the run is sliced.
+  const int nbCorrel = (perNoCor > 1.0)
+    ? (int)std::lround(perNoCor)
+    : (int)std::lround(perNoCor * (double)std::min(gammaIter, iters));
   const int Lg = as<int>(control["nGradStep"]);
   const double learningRate = as<double>(control["learningRate"]);
   const double burnInLearningRate = as<double>(control["burnInLearningRate"]);
@@ -13864,7 +14719,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat zPopMat(N, zDim); zPopMat.each_row() = zPop.t();
       VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, zPop,
-                                     omega, a, 0.001, nMix, mixProb, cores, true, parEncoderBackward);
+                                     omFull(), a, 0.001, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
       bihM = bih; bhhM = bhh; fcBM = fcB;
       vaeAdam(Wih, st.gWih, aWih, burnInLearningRate, tstep);
@@ -13887,6 +14742,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (!omegaCur.is_finite()) omegaCur = omega;
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
+      if (omOff) {
+        arma::mat C(N, zDim); C.each_row() = zPop.t();
+        omOffStep(st.mu, st.L, C, 1.0, true, false);   // burn-in: hold
+      }
       last = st;
     }
     vaeIterPrintRow_(parRow(zPop, omega, a), last.pxz + last.DKL, "Burn in");
@@ -13908,14 +14767,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // A smoothed response has less iteration-to-iteration variance, so the RSS
   // gain from admitting a covariate is smaller against the same fixed ln(N)
   // penalty and fewer covariates clear it.
-  arma::mat s1(N, zDim, arma::fill::zeros);
-  bool s1Init = false;
-  // omegaUpdate="suffStat": the reference forms omega from EMA sufficient
-  // statistics and ASSIGNS it, rather than blending the freshly computed omega
-  // with the previous one.  Only the diagonals are needed:
+  // omegaUpdate="suffStat": the reference forms omega from the EMA sufficient
+  // statistics declared above and ASSIGNS it, rather than blending the freshly
+  // computed omega with the previous one:
   //   s2[k] = EMA of sum_i mu_i[k]^2,  s3[k] = EMA of sum_i (L_i L_i')[k,k]
   //   omega[k] = (s2[k] - 2*sum_i Cz_i[k]*s1_i[k] + sum_i Cz_i[k]^2 + s3[k]) / N
-  arma::vec s2(zDim, arma::fill::zeros), s3(zDim, arma::fill::zeros);
 
   for (int it = 1; it <= iters; ++it) {
     // Smoothing gain: 1 through the EM phase, then a decaying series.
@@ -13943,6 +14799,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     // seeded (not blended) on the first pass so it starts AT the posterior means
     if (covSelectSmooth || omegaSuffStat) {
       arma::vec s2Cur(zDim, arma::fill::zeros), s3Cur(zDim, arma::fill::zeros);
+      arma::mat s2MCur(zDim, zDim, arma::fill::zeros), s3MCur(zDim, zDim, arma::fill::zeros);
       if (omegaSuffStat) {
         for (int k = 0; k < zDim; ++k) {
           double a2 = 0, a3 = 0;
@@ -13952,11 +14809,23 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           }
           s2Cur[k] = a2; s3Cur[k] = a3;
         }
+        if (omOff) {
+          for (int i = 0; i < N; ++i) {
+            arma::vec m = last.mu.row(i).t();
+            s2MCur += m * m.t();
+            s3MCur += last.L.slice(i) * last.L.slice(i).t();
+          }
+        }
       }
-      if (!s1Init) { s1 = last.mu; s2 = s2Cur; s3 = s3Cur; s1Init = true; }
-      else {
+      if (!s1Init) {
+        s1 = last.mu; s2 = s2Cur; s3 = s3Cur;
+        s2M = s2MCur; s3M = s3MCur; s1Init = true;
+      } else {
         s1 += gamma * (last.mu - s1);
-        if (omegaSuffStat) { s2 += gamma * (s2Cur - s2); s3 += gamma * (s3Cur - s3); }
+        if (omegaSuffStat) {
+          s2 += gamma * (s2Cur - s2); s3 += gamma * (s3Cur - s3);
+          if (omOff) { s2M += gamma * (s2MCur - s2M); s3M += gamma * (s3MCur - s3M); }
+        }
       }
     }
     if (doCov) {
@@ -13965,6 +14834,39 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
+      // Correlated etas: the covariate regression is a GLS in the FULL Omega,
+      // not zDim independent weighted fits.  The reference whitens dim k by the
+      // scalar 1/sqrt(omega_k) (`X = 1/omega_pop[k].sqrt()*C_regression[k]`),
+      // which is only the right metric when Omega is diagonal -- with a block
+      // the residuals across dims are correlated and that scoring is wrong.
+      //
+      // Minimizing sum_i r_i' P r_i (P = Omega^-1) over dim k's coefficients,
+      // holding the other dims' fits, is a plain weighted least squares on an
+      // OFFSET response:
+      //   P_kk [ (r_ik + c_ik)^2 - c_ik^2 ],  c_ik = (1/P_kk) sum_{j!=k} P_kj r_ij
+      // so dim k keeps its own exact L0 search (covariate interpretability is
+      // preserved) with response y_ik + c_ik and variance 1/P_kk.  The other
+      // dims' residuals come from the PREVIOUS iteration's centers, making this
+      // a Gauss-Seidel sweep that converges over the EM iterations.  For a
+      // diagonal Omega c_ik = 0 and 1/P_kk = omega_k -- exactly the old code.
+      arma::mat covOffset(N, zDim, arma::fill::zeros);
+      arma::vec covVar = omega;
+      if (omOff) {
+        arma::mat P;
+        if (arma::inv_sympd(P, arma::symmatu(omFull()))) {
+          arma::mat resp = covSelectSmooth ? s1 : last.mu;
+          arma::mat rPrev = resp - zPopArg;       // previous-iteration residuals
+          for (int k = 0; k < zDim; ++k) {
+            if (P(k, k) <= 0) continue;
+            covVar[k] = 1.0 / P(k, k);
+            for (int i = 0; i < N; ++i) {
+              double c = 0;
+              for (int j = 0; j < zDim; ++j) if (j != k) c += P(k, j) * rPrev(i, j);
+              covOffset(i, k) = c / P(k, k);
+            }
+          }
+        }
+      }
       // L0Learn candidate generation: ONE R crossing per iteration, on the main
       // thread, because an Rcpp::Function cannot be called from inside the
       // OpenMP loop below.  Supports come back indexed into each dim's REDUCED
@@ -13973,7 +14875,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (haveL0) {
         arma::mat yAll(N, zDim);
         for (int k = 0; k < zDim; ++k) {
-          yAll.col(k) = covSelectSmooth ? s1.col(k) : last.mu.col(k);
+          // the same GLS-adjusted response the exact search scores, so proposed
+          // supports are not generated under a different metric
+          yAll.col(k) = (covSelectSmooth ? s1.col(k) : last.mu.col(k)) + covOffset.col(k);
         }
         List cl = as<List>(l0Fn(yAll));
         cands.resize((size_t)zDim);
@@ -13998,7 +14902,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         if (isFreeR[k]) continue;
         // fixed structural theta: hold the intercept at ini, add no covariates
         if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); continue; }
-        arma::vec yk = covSelectSmooth ? s1.col(k) : last.mu.col(k);
+        // GLS offset response + conditional variance (both no-ops when diagonal)
+        arma::vec yk = (covSelectSmooth ? s1.col(k) : last.mu.col(k)) + covOffset.col(k);
         // pinCovariates: restrict this dim's candidate columns to its allowed
         // (model-declared) covariates.  A reduced design [1 | covMat.cols(allowed)]
         // is searched, then the chosen reduced indices are mapped back to global
@@ -14014,9 +14919,24 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           if (allowedG.n_elem > 0) Xk.cols(1, allowedG.n_elem) = covMat.cols(allowedG);
         }
         const arma::mat& Xuse = haveCovAllow ? Xk : X;
+        // the group ids must follow the design actually searched, so subset them
+        // to the allowed columns alongside Xk
+        std::vector<int> grpK;
+        if (!covGroup.empty()) {
+          if (haveCovAllow) {
+            grpK.resize(allowedG.n_elem);
+            for (size_t s = 0; s < allowedG.n_elem; ++s) grpK[s] = covGroup[(size_t)allowedG[s]];
+          } else {
+            grpK = covGroup;
+          }
+        }
+        const std::vector<int>* grpP = grpK.empty() ? nullptr : &grpK;
         VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
-          ? vaeCandidateSubsetL0(yk, Xuse, omega[k], covPenalty, cands[(size_t)k], true)
-          : vaeBestSubsetL0(yk, Xuse, omega[k], covPenalty, bnbStrategy);
+          // covVar[k] (not omega[k]): the GLS conditional variance 1/P_kk for a
+          // correlated block, which reduces to omega[k] when Omega is diagonal.
+          // grpP is main's mutual-exclusion grouping -- both are wanted here.
+          ? vaeCandidateSubsetL0(yk, Xuse, covVar[k], covPenalty, cands[(size_t)k], true, grpP)
+          : vaeBestSubsetL0(yk, Xuse, covVar[k], covPenalty, bnbStrategy, grpP);
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
@@ -14052,6 +14972,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       zPopArg = zPopMat;
       // the reference assigns omega outright; the historic path blends it
       omega = omegaSuffStat ? omegaCur : (omega + gamma * (omegaCur - omega));
+      // off-diagonals: matrix M-step against the covariate centers, following
+      // the SAME omegaUpdate= path the diagonal just took (suffStat statistics
+      // assigned outright, or raw posterior moments gain-blended).  Mixing the
+      // two would estimate the block with two different estimators.
+      omOffStep(last.mu, last.L, zPopMat, gamma, it <= nbCorrel, omegaSuffStat);
       if (!residByOpt) a = a + gamma * (aCur - a);
       isCovStep = true;
       baseline = arma::mean(zPopMat, 0).t();
@@ -14071,6 +14996,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
       omega = omega + gamma * (omegaCur - omega);
+      if (omOff) {
+        // this branch's DIAGONAL always blends raw posterior moments (it never
+        // reads the suffStat statistics), so its off-diagonals must match
+        arma::mat C(N, zDim); C.each_row() = zPopCur.t();
+        omOffStep(last.mu, last.L, C, gamma, it <= nbCorrel, false);
+      }
       if (!residByOpt) a = a + gamma * (aCur - a);
       zPopArg.each_row() = zPop.t();
       isCovStep = false;
@@ -14120,7 +15051,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         Rcpp::Environment nsG = Rcpp::Environment::namespace_env("nlmixr2est");
         Rcpp::Function gEval = nsG[".vaeGradEval"];
         grR = gEval(NumericVector(thvG.begin(), thvG.end()), wrap(etaG),
-                    NumericVector(omega.begin(), omega.end()));
+                    wrap(omFull()));
       } catch (Rcpp::internal::InterruptedException&) {
         throw;
       } catch (Rcpp::LongjumpException&) {
@@ -14176,7 +15107,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegErrIdx0 = errThetaIdx0;
       gVaeRegBaseline = baseline;
       gVaeRegA = a;
-      gVaeRegOmega = omega;
+      gVaeRegOmega = omFull();
       gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
       gVaeRegAdjOuter = mStepOuter;  // outer objective, or the reference ELBO
@@ -14327,7 +15258,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       vaeDrawEps(eps, (uint32_t)(seed + 1000003 + (it - 1) * Lg + l));
       VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopArg, baseline,
-                                     omega, a, alphaKL, nMix, mixProb, cores, true, parEncoderBackward);
+                                     omFull(), a, alphaKL, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
       bihM = bih; bhhM = bhh; fcBM = fcB;
       vaeAdam(Wih, st.gWih, aWih, learningRate, tstep);
@@ -14359,6 +15290,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   for (int i = 0; i < N; ++i) mixnumOut[i] = last.mixnum[i];
   arma::vec regressThetaOut = (regIdx.n_elem > 0) ? arma::vec(th.elem(regIdx)) : arma::vec();
   return List::create(_["params"] = paramsOut, _["zPop"] = zPop, _["omega"] = omega,
+                      _["omegaMat"] = omFull(),
                       _["a"] = a, _["intercept"] = intercept, _["beta"] = beta,
                       _["selected"] = selected, _["elboTrace"] = elboTrace,
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
@@ -14374,11 +15306,13 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 //[[Rcpp::export]]
 List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
                     LogicalVector isFree, double penaltyPerCov,
-                    std::string strategy = "lifo") {
+                    std::string strategy = "lifo",
+                    Rcpp::Nullable<Rcpp::IntegerVector> group = R_NilValue) {
   const VaeBnbStrategy bnbStrategy = vaeParseBnbStrategy(strategy);
   const int zDim = (int)mu.n_cols;
   const int N = (int)mu.n_rows;
   const int nCov = (int)covMat.n_cols;
+  std::vector<int> grp = vaeGroupVec(group, nCov);
   // recycle length-1 omega/isFree to zDim (mirrors the caller-side rep_len);
   // otherwise require an exact per-eta length so we never index out of bounds.
   if (omega.n_elem == 1) omega = arma::vec(zDim, arma::fill::value(omega[0]));
@@ -14392,7 +15326,8 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
   arma::umat selected(zDim, nCov, arma::fill::zeros);
   for (int k = 0; k < zDim; ++k) {
     if (isFree[k]) continue;
-    VaeSubsetFit fit = vaeBestSubsetL0(mu.col(k), X, omega[k], penaltyPerCov, bnbStrategy);
+    VaeSubsetFit fit = vaeBestSubsetL0(mu.col(k), X, omega[k], penaltyPerCov, bnbStrategy,
+                                       grp.empty() ? nullptr : &grp);
     intercept[k] = fit.coef.n_elem ? fit.coef[0] : 0.0;
     for (size_t s = 0; s < fit.sel.size(); ++s) {
       beta(k, fit.sel[s]) = fit.coef[s + 1];
@@ -14408,10 +15343,12 @@ List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega,
 // objective and optionally polish.  One latent dimension per call.
 //[[Rcpp::export]]
 List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega,
-                       double penaltyPerCov, List supports, bool polish = true) {
+                       double penaltyPerCov, List supports, bool polish = true,
+                       Rcpp::Nullable<Rcpp::IntegerVector> group = R_NilValue) {
   const int N = (int)covMat.n_rows;
   const int nCov = (int)covMat.n_cols;
   if ((int)y.n_elem != N) Rcpp::stop("'y' must have length nrow(covMat) (%d)", N);
+  std::vector<int> grp = vaeGroupVec(group, nCov);
   arma::mat X(N, 1 + nCov); X.col(0).ones();
   if (nCov > 0) X.cols(1, nCov) = covMat;
   std::vector<std::vector<int> > cands((size_t)supports.size());
@@ -14419,7 +15356,8 @@ List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega,
     IntegerVector s = as<IntegerVector>(supports[i]);
     cands[(size_t)i].assign(s.begin(), s.end());
   }
-  VaeSubsetFit fit = vaeCandidateSubsetL0(y, X, omega, penaltyPerCov, cands, polish);
+  VaeSubsetFit fit = vaeCandidateSubsetL0(y, X, omega, penaltyPerCov, cands, polish,
+                                          grp.empty() ? nullptr : &grp);
   NumericVector beta(nCov);
   IntegerVector selected(nCov);
   for (size_t s = 0; s < fit.sel.size(); ++s) {

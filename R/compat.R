@@ -1,18 +1,3 @@
-#' Resolve a `qs2` function at runtime without a hard dependency.
-#'
-#' `qs2` (via `stringfish`) is not always installable, so it is not declared in
-#' DESCRIPTION.  Objects serialized with `qs2`/`qdata` (an off-default choice)
-#' can still be read back when the package happens to be installed; this resolves
-#' the function indirectly so `R CMD check` sees no undeclared dependency.  Same
-#' pattern rxode2 uses for the off-CRAN legacy `qs` package.
-#' @param fun character function name in the `qs2` namespace
-#' @return the function
-#' @noRd
-.qs2Fn <- function(fun) {
-  rxode2::rxReq("qs2")
-  getExportedValue("qs2", fun)
-}
-
 #' Try to fix a nlmixr2 fit
 #'
 #' Re-evaluates the model function against the current version of rxode2, for
@@ -39,19 +24,52 @@ nlmixr2fix <- function(fit) {
   print(fit$env$sessioninfo)
   message("\n")
   message("# If all else fails you can try to install the version of nlmixr2 used to create the fit\n")
-  .ui <- fit$env$ui$fun
-  .ui <- suppressMessages(.ui())
-  assign("ui", .ui, envir = fit$env)
+  # repair raw slots first; `ui` itself may be serialized in an old fit
   for (.v in ls(fit$env, all.names=TRUE)) {
-    if (inherits(.v, "raw")) {
-      ## Try reading in with qs2 if it doesn't work try with qs
-      .c <- try(.qs2Fn("qs_deserialize")(get(.v, envir=fit$env)))
-      if (inherits(.c, "try-error")) {
-        rxode2::rxReq("qs")
-        .c <- rxode2::rxOldQsDes(get(.v, envir=fit$env))
+    .raw <- get(.v, envir=fit$env)
+    if (inherits(.raw, "raw")) {
+      .c <- try(.deserializeRaw(.raw), silent=TRUE)
+      if (!inherits(.c, "try-error")) {
         assign(.v, .c, envir=fit$env)
       }
     }
   }
+  .ui <- fit$env$ui$fun
+  .ui <- suppressMessages(.ui())
+  assign("ui", .ui, envir = fit$env)
   fit
+}
+
+#' Deserialize a raw fit component by its serialization tag
+#'
+#' Fits saved by nlmixr2est <= 7.0.1 may hold qs2-, qdata- or qs-serialized
+#' objects; neither qs2 nor qs is a dependency any more, so look them up
+#' dynamically when installed.
+#'
+#' @param raw raw vector to deserialize
+#' @param type serialization tag (from `rxode2::rxGetSerialType_()`)
+#' @return the deserialized object; errors when the format needs a package
+#'   that is not installed
+#' @noRd
+.deserializeRaw <- function(raw, type=rxode2::rxGetSerialType_(raw)) {
+  switch(type,
+         qs2 = .legacyQsFn("qs2", "qs_deserialize")(raw),
+         qdata = .legacyQsFn("qs2", "qd_deserialize")(raw),
+         qs = .legacyQsFn("qs", "qdeserialize")(raw),
+         xz = unserialize(memDecompress(raw, type="xz")),
+         bzip2 = unserialize(memDecompress(raw, type="bzip2")),
+         base = unserialize(raw),
+         stop("unknown serialization type '", type, "'", call.=FALSE))
+}
+
+#' @param pkg legacy serialization package ("qs2" or "qs")
+#' @param fun function name to look up in `pkg`
+#' @return the function, when `pkg` is installed
+#' @noRd
+.legacyQsFn <- function(pkg, fun) {
+  if (!requireNamespace(pkg, quietly=TRUE)) {
+    stop("this object was saved with '", pkg, "'; install ", pkg,
+         " to read it", call.=FALSE)
+  }
+  getExportedValue(pkg, fun)
 }

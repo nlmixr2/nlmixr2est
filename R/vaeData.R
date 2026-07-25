@@ -55,78 +55,340 @@
   .b
 }
 
+#' Centering value for one continuous covariate
+#'
+#' A `covCenter` entry (matched case-insensitively) overrides the statistic.
+#' Both statistics are computed over SUBJECTS, so a subject with many
+#' observations does not pull the center.
+#' @noRd
+.vaeCovCenterValue <- function(nm, v, covCenterType, covCenter) {
+  if (!is.null(covCenter)) {
+    .i <- match(toupper(nm), toupper(names(covCenter)))
+    if (!is.na(.i)) return(unname(covCenter[[.i]]))
+  }
+  if (covCenterType == "median") stats::median(v) else mean(v)
+}
+
+#' Reference level and testable levels of a categorical covariate
+#'
+#' The reference is the most frequent level counted per subject (matching
+#' nlmixr2scm); levels held by fewer than `catCutoff` of subjects are lumped
+#' into it rather than getting a near-singular indicator of their own.
+#' @return list(ref, levels, dropped)
+#' @noRd
+.vaeCovLevels <- function(v, catCutoff) {
+  .s <- as.character(v)
+  .s <- .s[!is.na(.s)]
+  if (length(.s) == 0L) return(list(ref = NA_character_, levels = character(0),
+                                    dropped = character(0)))
+  ## table() orders alphabetically and sort() is stable, so a frequency tie
+  ## resolves to the alphabetically first level -- deterministic either way
+  .t <- sort(table(.s), decreasing = TRUE)
+  .p <- .t / sum(.t)
+  .ref <- names(.t)[1L]
+  .keep <- names(.p)[.p >= catCutoff & names(.p) != .ref]
+  list(ref = .ref, levels = .keep,
+       dropped = setdiff(names(.p), c(.ref, .keep)))
+}
+
+#' Families a covariate's columns must span, given the shape rules
+#'
+#' Over-approximates on purpose: a family requested by ANY rule gets a column,
+#' and the per-parameter restriction is applied later through the covAllow mask.
+#' @return character vector of families, canonical order, plus the representative
+#'   shape naming each one
+#' @noRd
+.vaeCovFamilies <- function(shapeRules, cov, center = NA_real_) {
+  .sh <- unique(unlist(lapply(seq_len(nrow(shapeRules)), function(.i) {
+    if (is.na(shapeRules$cov[.i]) || identical(shapeRules$cov[.i], toupper(cov))) {
+      shapeRules$shapes[[.i]]
+    } else character(0)
+  })))
+  if (length(.sh) == 0L) .sh <- .vaeContShapes
+  ## Drop shapes that cannot be written at this center before choosing which one
+  ## names each family, so a usable sibling (e.g. "lin" for "center") wins.  When
+  ## NOTHING requested is writable, substitute each family's plain form rather
+  ## than dropping the covariate from the search -- the caller reports it.
+  .sub <- FALSE
+  if (!is.na(center)) {
+    .u <- .sh[.vaeShapeUsable(.sh, center)]
+    if (length(.u) > 0L) {
+      .sh <- .u
+    } else {
+      .sh <- unname(c(log = "power", lin = "lin")[unique(.vaeShapeFamily(.sh))])
+      .sub <- TRUE
+    }
+  }
+  .fam <- .vaeShapeFamily(.sh)
+  .u <- unique(.fam)
+  list(family = .u, substituted = .sub,
+       repShape = vapply(.u, function(.f) .sh[which(.fam == .f)[1L]],
+                         character(1), USE.NAMES = FALSE))
+}
+
 #' Discover + encode subject-level covariates for the VAE search
+#'
+#' Returns one row per SEARCH COLUMN, not one per covariate: a continuous
+#' covariate contributes one column per eligible shape family, and a categorical
+#' one contributes an indicator per testable level.  `covGroup` marks columns
+#' that compete for a single slot -- the alternate shapes of one covariate --
+#' so at most one of them can be selected for a given parameter.
 #' @param d normalized data.frame (upper-case column names)
 #' @param ids unique subject ids in estimation order
-#' @return list(covNames, covMat, covType, covPop, tvExcl)
+#' @param shapeRules resolved `shapes=` rules (see `.vaeResolveShapes`)
+#' @param covCenterType `"median"` or `"mean"`
+#' @param covCenter named numeric of per-covariate centering overrides
+#' @param catCutoff minimum subject proportion for a level to be testable
+#' @return list(covNames, covRaw, covShape, covFamily, covLevel, covGroup,
+#'   covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped, logDrop,
+#'   shapeSub, naExcl)
 #' @noRd
-.vaeCovariateSearch <- function(d, ids) {
+.vaeCovariateSearch <- function(d, ids, shapeRules = NULL,
+                                covCenterType = c("median", "mean"),
+                                covCenter = NULL, catCutoff = 0.05) {
+  covCenterType <- match.arg(covCenterType)
+  if (is.null(shapeRules)) shapeRules <- .vaeResolveShapes(NULL)
   N <- length(ids)
   ## auto-discover subject-level covariate candidates (constant within ID),
-  ## excluding reserved data columns. Paper encoding: continuous -> log(v/mean),
-  ## categorical (<=2 levels) -> centered.
+  ## excluding reserved data columns
   .cand <- setdiff(names(d), .vaeReservedCols)
-  .isSubjConst <- vapply(.cand, function(nm) {
+  .usable <- function(nm) {
+    v <- d[[nm]]
+    is.numeric(v) || is.character(v) || is.factor(v)
+  }
+  .allCand <- .cand[vapply(.cand, .usable, logical(1))]
+  ## First row of each subject, in estimation order.  A subject's value is read
+  ## from its first NON-missing row: a covariate is often blank on dose records,
+  ## and taking the literal first row would call it missing (or, before,
+  ## time-varying) when it is neither.
+  .first <- match(ids, d$ID)
+  .subjVal <- function(nm) {
+    .v <- d[[nm]][.first]
+    if (anyNA(.v)) {
+      ## one match() over the non-missing rows rather than a scan per subject,
+      ## so this stays linear in the data even when many first rows are blank
+      .all <- d[[nm]]
+      .ok <- which(!is.na(.all))
+      if (length(.ok) > 0L) {
+        .hit <- .ok[match(ids, d$ID[.ok])]
+        .w <- which(is.na(.v) & !is.na(.hit))
+        if (length(.w) > 0L) .v[.w] <- .all[.hit[.w]]
+      }
+    }
+    .v
+  }
+  ## Constant WITHIN a subject, ignoring missing entries -- an NA on one row does
+  ## not make an otherwise fixed covariate time-varying.
+  .isSubjConst <- vapply(.allCand, function(nm) {
     all(vapply(ids, function(id) {
-      v <- d[[nm]][d$ID == id]; length(unique(v)) == 1L
-    }, logical(1))) && is.numeric(d[[nm]])
+      .u <- unique(d[[nm]][d$ID == id])
+      length(.u[!is.na(.u)]) <= 1L
+    }, logical(1)))
   }, logical(1))
   # The VAE covariate search absorbs covariates as subject-level (time-invariant)
   # effects, so a covariate that varies within a subject (time-varying) cannot be
   # searched.  Unlike saem/mu-focei (whose covariates are declared in the model,
   # detectable via .nlmixrTimeVaryingCovariates), the VAE search scans every
-  # numeric data column, so time-varying ones are those that are not
+  # eligible data column, so time-varying ones are those that are not
   # subject-constant.  They are reported back (tvExcl) so callers can warn.
-  .covNames <- .cand[.isSubjConst]
-  .numCand <- .cand[vapply(.cand, function(nm) is.numeric(d[[nm]]), logical(1))]
-  .tvExcl <- setdiff(.numCand, .covNames)
-  .covVal <- vapply(.covNames, function(nm) {
-    vapply(ids, function(id) d[[nm]][d$ID == id][1], numeric(1))
-  }, numeric(N))
-  if (length(.covNames) == 1L) .covVal <- matrix(.covVal, N, 1L, dimnames = list(NULL, .covNames))
-  .covType <- character(length(.covNames)); .covPop <- numeric(length(.covNames))
-  .covMat <- matrix(0, N, length(.covNames), dimnames = list(NULL, .covNames))
-  for (j in seq_along(.covNames)) {
-    v <- .covVal[, j]
+  .raw <- .allCand[.isSubjConst]
+  .tvExcl <- setdiff(.allCand, .raw)
+  ## The design matrix feeds an ordinary least squares M-step, so every column
+  ## must be complete and finite.  A covariate missing for even one subject
+  ## cannot be searched: silently imputing it would invent data, and the written
+  ## model has no ifelse() guard to carry an imputation to solve time.  (An NA
+  ## also used to reach `all(v > 0)` and abort the whole fit with "missing value
+  ## where TRUE/FALSE needed".)
+  .complete <- vapply(.raw, function(nm) {
+    v <- .subjVal(nm)
+    !anyNA(v) && (!is.numeric(v) || all(is.finite(v)))
+  }, logical(1))
+  .naExcl <- .raw[!.complete]
+  .raw <- .raw[.complete]
+  ## A covariate with a single distinct value carries no information, and as a
+  ## constant 0/1 indicator it would enter the design as a column of ones --
+  ## duplicating the intercept and making the least-squares M-step singular.
+  .raw <- .raw[vapply(.raw, function(nm) length(unique(.subjVal(nm))) > 1L,
+                      logical(1))]
+
+  .cols <- list()
+  .rawVals <- list()
+  .catDropped <- character(0)
+  .logDrop <- character(0)
+  .shapeSub <- character(0)
+  ## `group` is a KEY here (columns sharing it are alternate forms of one
+  ## relationship); it becomes an integer id once every column is known
+  .add <- function(name, raw, shape, family, level, group, values, type,
+                   center, expr) {
+    ## a level containing "_" can collide with another covariate's column name
+    ## (covariate WT level "A_B" vs covariate WT_A level "B"), and a duplicate
+    ## name makes the second column unreachable through match()
+    name <- .vaeUniqueName(name, vapply(.cols, `[[`, character(1), "name"))
+    .cols[[length(.cols) + 1L]] <<-
+      list(name = name, raw = raw, shape = shape, family = family,
+           level = level, group = group, values = values, type = type,
+           center = center, expr = expr)
+  }
+
+  for (nm in .raw) {
+    v <- .subjVal(nm)
+    ## kept so a pinned column can be rebuilt as the model's OWN expression
+    .rawVals[[nm]] <- v
     ## mu2/mu3 covariates are pre-transformed by the hook into a linear
     ## nlmixrMuDerCov# data column (the centering/transform is already baked in),
-    ## so encode them LINEARLY (mean-centered) -- never re-apply a log transform.
-    .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", .covNames[j], ignore.case = TRUE)
+    ## so encode them LINEARLY -- never re-apply a log transform, and never split
+    ## them into shape families.
+    .isMuDer <- grepl("^NLMIXRMUDERCOV[0-9]+$", nm, ignore.case = TRUE)
+    .isNum <- is.numeric(v)
     ## a 0/1 indicator column (e.g. SEXF) is already in its natural
     ## parameterization: leave it RAW so its coefficient is the level-1 shift and
     ## the structural theta stays the reference (0) value.  (`%in%` yields FALSE
     ## for NA, so this is already a strict TRUE/FALSE; isTRUE makes that explicit.)
-    .isInd <- isTRUE(all(v %in% c(0, 1)))
-    if (!.isMuDer && !.isInd && length(unique(v)) > 2L && all(v > 0)) {
-      .covType[j] <- "continuous"; .covPop[j] <- mean(v); .covMat[, j] <- log(v / .covPop[j])
+    .isInd <- .isNum && isTRUE(all(v %in% c(0, 1)))
+    if (.isMuDer) {
+      .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
+      .add(nm, nm, "lin", "lin", NA_character_, nm, v - .ctr, "categorical",
+           .ctr, .vaeShapeExpr("lin", nm, .ctr))
     } else if (.isInd) {
-      .covType[j] <- "categorical"; .covPop[j] <- 0; .covMat[, j] <- v
+      .add(nm, nm, "cat", "cat", NA_character_, nm, v, "categorical", 0,
+           .vaeShapeExpr("cat", nm, raw = TRUE))
+    } else if (.isNum && length(unique(v)) > 2L) {
+      ## continuous: one column per eligible shape family
+      .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
+      ## a shape that cannot be expressed at this center (e.g. "center" when the
+      ## center is 0) must not name a column -- it would be written back as a
+      ## division by zero with the coefficient rescaled to nothing
+      .fam <- .vaeCovFamilies(shapeRules, nm, .ctr)
+      if (isTRUE(.fam$substituted)) .shapeSub <- c(.shapeSub, nm)
+      .canLog <- all(v > 0) && .ctr > 0
+      .f <- .fam$family; .r <- .fam$repShape
+      .keep <- .f != "log" | .canLog
+      if (!any(.keep)) {
+        ## every requested family is undefined here (log shapes on a covariate
+        ## with non-positive values); fall back to the linear family rather than
+        ## silently dropping the covariate from the search
+        .logDrop <- c(.logDrop, nm)
+        .f <- "lin"; .r <- "lin"
+      } else {
+        if (any(!.keep)) .logDrop <- c(.logDrop, nm)
+        .f <- .f[.keep]; .r <- .r[.keep]
+      }
+      for (.i in seq_along(.f)) {
+        .val <- if (.f[.i] == "log") log(v / .ctr) else v - .ctr
+        ## every shape family of this covariate shares the covariate's key, so
+        ## the search may take at most one of them
+        .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, nm,
+             .val, "continuous", .ctr, .vaeShapeExpr(.r[.i], nm, .ctr))
+      }
     } else {
-      .covType[j] <- "categorical"; .covPop[j] <- mean(v); .covMat[, j] <- v - .covPop[j]
+      ## categorical: an indicator per testable level, reference = modal level.
+      ## Each level is its OWN group -- several levels of one factor may enter a
+      ## parameter together, they are not alternate forms of one relationship.
+      .lv <- .vaeCovLevels(v, catCutoff)
+      if (length(.lv$dropped) > 0L) {
+        .catDropped <- c(.catDropped, paste0(nm, "=", .lv$dropped))
+      }
+      .s <- as.character(v)
+      for (.l in .lv$levels) {
+        ## a distinct key per level, so levels never exclude one another
+        .add(paste0(nm, "_", .l), nm, "cat", "cat", .l, paste0(nm, "|", .l),
+             as.numeric(!is.na(.s) & .s == .l), "categorical", 0,
+             .vaeShapeExpr("cat", nm, level = .vaeCovLevelValue(v, .l)))
+      }
     }
   }
-  list(covNames = .covNames, covMat = .covMat, covType = .covType,
-       covPop = .covPop, tvExcl = .tvExcl)
+
+  .nc <- length(.cols)
+  .covNames <- vapply(.cols, `[[`, character(1), "name")
+  .covMat <- matrix(0, N, .nc, dimnames = list(NULL, .covNames))
+  for (.i in seq_len(.nc)) .covMat[, .i] <- .cols[[.i]]$values
+  ## group ids are derived from the keys rather than counted as columns are
+  ## emitted, so a covariate that contributes NO column cannot shift them
+  .key <- vapply(.cols, `[[`, character(1), "group")
+  .covGroup <- match(.key, unique(.key))
+  list(covNames = .covNames,
+       covRaw = vapply(.cols, `[[`, character(1), "raw"),
+       covShape = vapply(.cols, `[[`, character(1), "shape"),
+       covFamily = vapply(.cols, `[[`, character(1), "family"),
+       covLevel = vapply(.cols, `[[`, character(1), "level"),
+       covGroup = .covGroup,
+       covMat = .covMat,
+       covType = vapply(.cols, `[[`, character(1), "type"),
+       covPop = vapply(.cols, `[[`, numeric(1), "center"),
+       covExpr = vapply(.cols, `[[`, character(1), "expr"),
+       ## the encoder head takes one column per GROUP: alternate shapes are
+       ## near-collinear copies, but distinct factor levels are not
+       covCanon = !duplicated(.covGroup), covRawVal = .rawVals,
+       tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
+       shapeSub = unique(.shapeSub), naExcl = .naExcl)
+}
+
+#' Search column a model-declared covariate pair pins to
+#'
+#' Pinning keeps the user's model text verbatim, so a declared pair may only
+#' occupy the column whose family matches the form it was WRITTEN in: a
+#' `log(cov/center)` effect takes the log-family column, anything else (a linear
+#' effect, a mu2/mu3 pre-transformed column, an indicator) takes the linear or
+#' indicator column.  Returns `NA` when the covariate has no such column.
+#' @param cov output of `.vaeCovariateSearch`
+#' @param pair one row of the declared-pair table
+#' @noRd
+.vaePinColumn <- function(cov, pair) {
+  .w <- which(cov$covRaw == pair$covName)
+  if (length(.w) == 0L) return(NA_integer_)
+  ## the family the coefficient was WRITTEN in, so `beta*(WT - 70)` pins to the
+  ## linear column just as `beta*log(WT/70)` pins to the log one
+  ## A bare linear multiplier fits either an indicator column or a mu2/mu3
+  ## pre-transformed one, which the search stores as the linear family.
+  .want <- if (!is.null(pair$family) && !is.na(pair$family)) {
+    if (identical(pair$family, "cat")) c("cat", "lin") else pair$family
+  } else if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
+  .m <- .w[cov$covFamily[.w] %in% .want]
+  ## A written level comparison pins to THAT level's indicator.  If the level has
+  ## no column -- it was lumped into the reference by catCutoff, or is absent from
+  ## the data -- there is nothing to pin to, so fail rather than fall back to some
+  ## other level's column and fit the wrong indicator.
+  if (!is.null(pair$level) && !is.na(pair$level)) {
+    .m <- .m[!is.na(cov$covLevel[.m]) & cov$covLevel[.m] == pair$level]
+  }
+  if (length(.m) == 0L) NA_integer_ else .m[1L]
+}
+
+#' The level value to compare against in generated model text
+#'
+#' Keeps a numeric code numeric so the emitted comparison is numeric, while a
+#' character/factor level is compared as a string.
+#' @noRd
+.vaeCovLevelValue <- function(v, level) {
+  if (is.numeric(v)) {
+    .n <- suppressWarnings(as.numeric(level))
+    if (!is.na(.n)) return(.n)
+  }
+  level
 }
 
 #' Covariates explored by the VAE covariate search
 #'
-#' Returns the subject-level covariates that `nlmixr2(..., est = "vae")` would
-#' explore during automated covariate selection, using the same discovery rules
-#' as the fit: every non-reserved numeric data column that is constant within
-#' each subject is a candidate; a candidate with more than two unique values
-#' (all positive) is treated as continuous (encoded `log(value/mean)`),
-#' anything else as categorical (mean-centered).  Time-varying numeric columns
-#' cannot be searched and are excluded with a warning.
+#' Returns the candidate columns that `nlmixr2(..., est = "vae")` would explore
+#' during automated covariate selection, using the same discovery rules as the
+#' fit: every non-reserved data column that is constant within each subject is a
+#' candidate.  A numeric candidate with more than two unique values is
+#' continuous and contributes one column per eligible shape; anything else is
+#' categorical and contributes an indicator per testable level.  Columns sharing
+#' a `group` are alternate shapes of one covariate, so at most one of them can
+#' enter a given parameter.  Time-varying columns cannot be searched and are
+#' excluded with a warning.
 #'
 #' @param data estimation dataset containing at least an `ID` column; column
 #'   names are matched case-insensitively, as in the VAE fit
-#' @param warn when `TRUE` (default) warn about time-varying numeric columns
-#'   excluded from the search; when `FALSE` exclude them silently
-#' @return a data frame with one row per explored covariate and columns
-#'   `covariate` (upper-cased column name), `type` (`"continuous"` or
-#'   `"categorical"`) and `center` (the population value the covariate is
-#'   centered at); zero rows when no covariates qualify
+#' @param warn when `TRUE` (default) warn about time-varying columns excluded
+#'   from the search; when `FALSE` exclude them silently
+#' @param shapes,covCenterType,covCenter,catCutoff as in [vaeControl()]; control
+#'   which shapes are explored and how covariates are centered
+#' @return a data frame with one row per candidate search column and columns
+#'   `covariate` (the column name), `raw` (upper-cased data column it comes
+#'   from), `shape`, `level` (for categorical indicators), `group` (mutual
+#'   exclusion group), `type` and `center`; zero rows when nothing qualifies
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -134,19 +396,31 @@
 #'                 wt = rep(c(70, 80, 60), each = 2),
 #'                 sex = rep(c(0, 1, 0), each = 2))
 #' vaeCovariates(d)
-vaeCovariates <- function(data, warn = TRUE) {
+#'
+#' # restrict the explored shapes
+#' vaeCovariates(d, shapes = "power")
+vaeCovariates <- function(data, warn = TRUE,
+                          shapes = c("power", "lin", "log", "identity", "center"),
+                          covCenterType = c("median", "mean"),
+                          covCenter = NULL, catCutoff = 0.05) {
   checkmate::assertLogical(warn, len = 1, any.missing = FALSE)
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
   if (is.null(d$ID)) {
     stop("'data' must contain an ID column", call. = FALSE)
   }
-  .cov <- .vaeCovariateSearch(d, unique(d$ID))
+  .cov <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(shapes),
+                              match.arg(covCenterType), covCenter, catCutoff)
   if (warn && length(.cov$tvExcl) > 0L) {
     warning("time-varying covariate(s) were excluded from automatic covariate search: ",
             paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
   }
-  data.frame(covariate = .cov$covNames, type = .cov$covType,
+  if (warn && length(.cov$naExcl) > 0L) {
+    warning("covariate(s) with missing values were excluded from automatic covariate search: ",
+            paste(.cov$naExcl, collapse = ", "), call. = FALSE)
+  }
+  data.frame(covariate = .cov$covNames, raw = .cov$covRaw, shape = .cov$covShape,
+             level = .cov$covLevel, group = .cov$covGroup, type = .cov$covType,
              center = .cov$covPop, row.names = NULL)
 }
 
@@ -213,14 +487,19 @@ vaeCovariates <- function(data, warn = TRUE) {
 #' Pairs that are not `inPool` (out-of-pool covariate, or a form whose slope
 #' would not transfer) are estimated in place by the regress M-step instead.
 #' @param ui rxode2 ui
-#' @param covNames upper-cased search-pool covariate names (`prep$covNames`)
-#' @param covType per-pool encoding (`"continuous"`/`"categorical"`)
+#' @param cov output of `.vaeCovariateSearch`; `covName` below is the RAW data
+#'   column, resolved to a specific search column later by `.vaePinColumn`
 #' @return data frame (k, covName, coefName, thetaName, covType, userCenter,
 #'   inPool), or `NULL` when the model declares no covariate effects
 #' @noRd
-.vaeModelCovariatePairs <- function(ui, covNames, covType) {
+.vaeModelCovariatePairs <- function(ui, cov) {
   .coefThetas <- .vaeCovariateCoefThetas(ui)
   if (length(.coefThetas) == 0L) return(NULL)
+  ## A declared pair names a RAW data column, while the search pool holds one
+  ## column per shape/level.  Resolve against the raw names here and let
+  ## .vaePinColumn pick the column matching the written form.
+  covNames <- unique(cov$covRaw)
+  covType <- cov$covType[match(covNames, cov$covRaw)]
   .thetaForEta <- .foceiEtaThetaMap(ui)$thetaForEta
   .thetaPool <- .thetaForEta[!is.na(.thetaForEta)]
   .allCov <- ui$allCovs
@@ -266,26 +545,54 @@ vaeCovariates <- function(data, warn = TRUE) {
     .inPool <- !is.na(.k) && !is.na(.j)
     .ct <- if (.inPool) covType[.j] else NA_character_
     .userCenter <- NA_real_
+    .shape <- NA_character_
+    .level <- NA_character_
     if (.inPool) {
       if (identical(.ct, "categorical")) {
-        ## VAE centers a categorical covariate; a plain linear beta*cov transfers
-        ## (slope invariant to the shift).  A transformed categorical is unusual
-        ## and not slope-transferable -- route it to the regress M-step.
-        if (.linear) .userCenter <- 0 else .inPool <- FALSE
-      } else {
-        ## continuous: VAE uses log(cov/mean); only a written log(cov/center)
-        ## transfers.  A raw linear beta*cov on a continuous covariate does not.
+        ## A plain linear beta*cov transfers (the slope is invariant to the
+        ## shift).  An explicit level comparison -- which is what the VAE itself
+        ## writes for a factor -- transfers too, and must pin to THAT level's
+        ## indicator column.  Anything else is not slope-transferable.
         .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
-        .lc <- if (length(.cl)) .vaeLogCenter(.cl[[1L]], .covTok)
-               else list(inLog = FALSE, center = NA_real_)
-        if (isTRUE(.lc$inLog) && is.finite(.lc$center)) .userCenter <- .lc$center
-        else .inPool <- FALSE
+        .dc <- if (length(.cl)) {
+          .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
+        } else list(shape = NA_character_, level = NULL)
+        if (.linear) {
+          .userCenter <- 0; .shape <- "cat"
+        } else if (identical(.dc$shape, "cat")) {
+          .userCenter <- 0; .shape <- "cat"
+          if (!is.null(.dc$level)) {
+            .level <- as.character(if (is.character(.dc$level)) .dc$level
+                                   else deparse(.dc$level))
+          }
+        } else {
+          .inPool <- FALSE
+        }
+      } else {
+        ## Continuous: read the SHAPE the coefficient was written in, so a model
+        ## the VAE itself wrote (any of power/lin/log/identity/center) pipes back
+        ## into another fit and pins to that same shape.  Anything unrecognized
+        ## is not slope-transferable and goes to the regress M-step.
+        .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
+        ## no `coef * <expr>` factor -> unresolved -> not pinnable (the safe
+        ## direction: the coefficient is estimated in place instead)
+        .ds <- if (length(.cl)) {
+          .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
+        } else list(shape = NA_character_, center = NA_real_)
+        if (!is.na(.ds$shape) && is.finite(.ds$center)) {
+          .shape <- .ds$shape
+          .userCenter <- .ds$center
+        } else {
+          .inPool <- FALSE
+        }
       }
     }
     .rows[[length(.rows) + 1L]] <- data.frame(
       k = if (is.na(.k)) NA_integer_ else as.integer(.k),
       covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
       coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
+      shape = .shape, level = .level,
+      family = if (is.na(.shape)) NA_character_ else .vaeShapeFamily(.shape),
       covType = if (is.na(.ct)) NA_character_ else .ct,
       userCenter = .userCenter, inPool = .inPool,
       stringsAsFactors = FALSE)
@@ -475,6 +782,9 @@ vaeCovariates <- function(data, warn = TRUE) {
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     isTRUE(as.logical(.r$fix[1]))
   }, logical(1))
+  ## full ini omega block (declared off-diagonals included) + per-entry fix; the
+  ## M-step estimates every nonzero entry of this structure
+  .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
   ## structural-theta bounds per eta (Inf/-Inf when unbounded or free): the M-step
   ## clamps the population estimate to [lower, upper], giving the constrained
   ## estimate (at the bound when the unconstrained optimum is outside).
@@ -494,11 +804,33 @@ vaeCovariates <- function(data, warn = TRUE) {
   N <- length(.ids)
 
   ## subject-level covariate discovery + encoding (shared with vaeCovariates())
-  .cov <- .vaeCovariateSearch(d, .ids)
+  ## tolerate control lists that predate the shape settings (older serialized
+  ## objects), which then reproduce the historic single-shape search
+  .cct <- if (is.null(control$covCenterType)) "mean" else control$covCenterType
+  .cco <- if (is.null(control$catCutoff)) 0.05 else control$catCutoff
+  .csh <- if (is.null(control$shapes)) "power" else control$shapes
+  .cov <- .vaeCovariateSearch(d, .ids, .vaeResolveShapes(.csh), .cct,
+                              control$covCenter, .cco)
   if (length(.cov$tvExcl) > 0L) {
     ## keep the $runInfo note single-line even with many covariates
     .tvPre <- "time-varying covariate(s) not searched: "
     warning(.tvPre, .vaeTruncList(.cov$tvExcl, prefix = .tvPre), call. = FALSE)
+  }
+  if (length(.cov$catDropped) > 0L) {
+    .cdPre <- "level(s) below catCutoff lumped with reference: "
+    warning(.cdPre, .vaeTruncList(.cov$catDropped, prefix = .cdPre), call. = FALSE)
+  }
+  if (length(.cov$logDrop) > 0L) {
+    .ldPre <- "non-positive covariate(s), log shapes skipped: "
+    warning(.ldPre, .vaeTruncList(.cov$logDrop, prefix = .ldPre), call. = FALSE)
+  }
+  if (length(.cov$shapeSub) > 0L) {
+    .ssPre <- "shape unwritable at center, plain form used: "
+    warning(.ssPre, .vaeTruncList(.cov$shapeSub, prefix = .ssPre), call. = FALSE)
+  }
+  if (length(.cov$naExcl) > 0L) {
+    .naPre <- "covariate(s) with missing values not searched: "
+    warning(.naPre, .vaeTruncList(.cov$naExcl, prefix = .naPre), call. = FALSE)
   }
 
   ## pinCovariates=FALSE with a model that declares covariates: turn OFF the
@@ -516,6 +848,13 @@ vaeCovariates <- function(data, warn = TRUE) {
     .cov$covMat <- matrix(0, N, 0L)
     .cov$covType <- character(0)
     .cov$covPop <- numeric(0)
+    .cov$covRaw <- character(0)
+    .cov$covShape <- character(0)
+    .cov$covFamily <- character(0)
+    .cov$covLevel <- character(0)
+    .cov$covGroup <- integer(0)
+    .cov$covExpr <- character(0)
+    .cov$covCanon <- logical(0)
   }
 
   ## pinned covariate selection: restrict the search to model-declared covariate
@@ -530,7 +869,7 @@ vaeCovariates <- function(data, warn = TRUE) {
   .pinPairs <- NULL
   .pinCovCoef <- character(0)
   if (isTRUE(control$pinCovariates) && !isFALSE(control$covariateSelection)) {
-    .pinPairs <- .vaeModelCovariatePairs(ui, .cov$covNames, .cov$covType)
+    .pinPairs <- .vaeModelCovariatePairs(ui, .cov)
     if (!is.null(.pinPairs) && nrow(.pinPairs) > 0L) {
       .pinActive <- TRUE
       .nCov <- length(.cov$covNames)
@@ -540,14 +879,19 @@ vaeCovariates <- function(data, warn = TRUE) {
         ## with a DIFFERENT center (e.g. log(WT/70) on CL and log(WT/80) on KA)
         ## that pair cannot share the column, so demote it to the regress M-step.
         .claim <- rep(NA_real_, .nCov)
+        .claimShape <- rep(NA_character_, .nCov)
         for (.r in seq_len(nrow(.pinPairs))) {
           if (!.pinPairs$inPool[.r]) next
-          .j <- match(.pinPairs$covName[.r], .cov$covNames)
+          .j <- .vaePinColumn(.cov, .pinPairs[.r, , drop = FALSE])
           if (is.na(.j)) {
             .pinPairs$inPool[.r] <- FALSE
           } else if (is.na(.claim[.j])) {
             .claim[.j] <- .pinPairs$userCenter[.r]
-          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r]))) {
+            .claimShape[.j] <- .pinPairs$shape[.r]
+          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r])) ||
+                       !identical(.claimShape[.j], .pinPairs$shape[.r])) {
+            ## same column, different center OR different written shape: only one
+            ## of them can own the column, so the rest go to the regress M-step
             .pinPairs$inPool[.r] <- FALSE
           }
         }
@@ -555,10 +899,12 @@ vaeCovariates <- function(data, warn = TRUE) {
         ## restrict the search to the declared in-pool cells.  An all-zero row
         ## means "no covariate may be selected on this dim" -- crucial when every
         ## declared pair is out-of-pool, so a non-declared (or the out-of-pool)
-        ## covariate is never auto-selected under pinning.
+        ## covariate is never auto-selected under pinning.  A pinned pair allows
+        ## ONLY the column matching the shape the user wrote, so pinning never
+        ## rewrites the model line it promised to keep verbatim.
         .covAllow <- matrix(0L, .neta, .nCov)
         for (.r in seq_len(nrow(.inRows))) {
-          .j <- match(.inRows$covName[.r], .cov$covNames)
+          .j <- .vaePinColumn(.cov, .inRows[.r, , drop = FALSE])
           if (!is.na(.j)) .covAllow[.inRows$k[.r], .j] <- 1L
         }
         ## decoder covariate-free during training: hold the declared (in-pool)
@@ -575,11 +921,16 @@ vaeCovariates <- function(data, warn = TRUE) {
         ## and the selection unchanged -- this only relocates the intercept.
         ## Each claimed column is adjusted EXACTLY once, off the original covPop.
         for (.j in which(!is.na(.claim))) {
-          if (identical(.cov$covType[.j], "continuous")) {
-            ## log(v/mean) -> log(v/userCenter)
-            .cov$covMat[, .j] <- .cov$covMat[, .j] + log(.cov$covPop[.j]) - log(.claim[.j])
+          .sh <- .claimShape[.j]
+          .rv <- .cov$covRawVal[[.cov$covRaw[.j]]]
+          if (!is.na(.sh) && !identical(.sh, "cat") && !is.null(.rv) &&
+                is.numeric(.rv)) {
+            ## Rebuild the column as the model's OWN expression, so the estimated
+            ## slope transfers back with no correction whatever shape was written.
+            .cov$covMat[, .j] <- .vaeShapeValue(.sh, .rv, .claim[.j])
           } else {
-            ## (v - mean) -> raw v (mu2/mu3 already applied the model transform)
+            ## categorical / mu2-derived: strip the VAE centering, leaving the
+            ## column the model's linear term already multiplies
             .cov$covMat[, .j] <- .cov$covMat[, .j] + .cov$covPop[.j]
           }
           .cov$covPop[.j] <- 0
@@ -591,6 +942,24 @@ vaeCovariates <- function(data, warn = TRUE) {
         warning("pinned covariate(s) outside search pool estimated in place", call. = FALSE)
       }
     }
+  }
+
+  ## `shapes=` may restrict a single (parameter, covariate) pair, but the design
+  ## matrix is shared across latent dimensions, so a per-pair restriction has to
+  ## be enforced as a mask -- omitting the column would remove that shape from
+  ## every parameter.  When nothing is restricted the mask stays NULL and C++
+  ## runs the unrestricted search.
+  ##
+  ## Deliberately NOT applied while pinning is active: `shapes=` governs the
+  ## automatic search, whereas a pinned cell is an effect the user wrote in the
+  ## model.  Intersecting the two can empty a pinned row -- a declared effect
+  ## that is then neither searched nor regressed, and so written back as exactly
+  ## 0, silently deleting it.  Under pinning the declaration wins; a declared
+  ## shape with no column to pin to already falls back to the regress M-step.
+  if (!.searchOff && !.pinActive && length(.cov$covNames) > 0L) {
+    .shapeMask <- .vaeShapeAllowMask(.cov, .vaeResolveShapes(.csh), .etaNames,
+                                     .foceiEtaThetaMap(ui)$thetaForEta)
+    if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
   }
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
@@ -787,13 +1156,21 @@ vaeCovariates <- function(data, warn = TRUE) {
   ## under `pinCovariates` only the pinned candidates are; conditioning on a
   ## covariate the search cannot select would let the posterior encode a
   ## relationship the model never reports.
-  covIn <- if (isFALSE(control$covariateSelection) || .searchOff) {
+  ## One column per exclusion GROUP: alternate shapes of a covariate are
+  ## near-collinear copies, so feeding all of them would widen the encoder head
+  ## for no information.  Distinct factor levels are separate groups and all go in.
+  ## Dedupe among the SELECTABLE columns, not against a fixed canonical column:
+  ## the allowed column of a group need not be the group's first one (a pinned
+  ## log(cov/center) pair takes the log column even when `shapes=` lists a linear
+  ## shape first), and intersecting the two would drop the covariate entirely.
+  covIn <- if (isFALSE(control$covariateSelection) || .searchOff ||
+                 ncol(.cov$covMat) == 0L) {
     matrix(0, N, 0L)
-  } else if (!is.null(.covAllow) && ncol(.cov$covMat) > 0L) {
-    .keep <- which(colSums(.covAllow) > 0L)
-    .cov$covMat[, .keep, drop = FALSE]
   } else {
-    .cov$covMat
+    .sel <- if (is.null(.covAllow)) seq_len(ncol(.cov$covMat)) else
+      which(colSums(.covAllow) > 0L)
+    .keep <- .sel[!duplicated(.cov$covGroup[.sel])]
+    .cov$covMat[, .keep, drop = FALSE]
   }
   if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
 
@@ -807,9 +1184,13 @@ vaeCovariates <- function(data, warn = TRUE) {
        regressErrIdx0 = .regressErrIdx0, regressStage2 = .regressStage2,
        regressLower = .regressLower, regressUpper = .regressUpper,
        zPop = .zPop, omega = .omega, a = .a,
+       omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
        subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
        covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
-       covPop = .cov$covPop,
+       covPop = .cov$covPop, covRaw = .cov$covRaw, covShape = .cov$covShape,
+       covFamily = .cov$covFamily, covLevel = .cov$covLevel,
+       covGroup = .cov$covGroup, covExpr = .cov$covExpr,
+       covCanon = .cov$covCanon, shapeRules = .vaeResolveShapes(.csh),
        pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,
        tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
 }

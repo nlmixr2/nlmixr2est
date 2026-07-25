@@ -37,6 +37,17 @@ nmTest({
     expect_true(.isPdFinite(.fi$cov))
   })
 
+  # the formatted $parFixed must track the installed cov (issue #816: only
+  # $parFixedDf was refreshed, leaving the displayed SE stale)
+  .expectParFixedTracksCov <- function(.f, .n = "add.sd") {
+    expect_equal(unname(.f$parFixedDf[.n, "SE"]),
+                 unname(sqrt(diag(.f$cov))[.n]))
+    .seNum <- suppressWarnings(as.numeric(.f$parFixed[.n, "SE"]))
+    expect_true(is.finite(.seNum))
+    expect_equal(.seNum, signif(unname(.f$parFixedDf[.n, "SE"]), 3),
+                 tolerance = 1e-2)
+  }
+
   test_that("setCov() switches any completed fit to sa/imp", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
                                    control = foceiControl(print = 0L)))
@@ -44,8 +55,10 @@ nmTest({
     suppressMessages(setCov(.f, "sa"))
     expect_equal(.f$covMethod, "sa")
     expect_true(.isPdFinite(.f$cov))
+    .expectParFixedTracksCov(.f)
     suppressMessages(setCov(.f, "imp"))
     expect_equal(.f$covMethod, "imp")
+    .expectParFixedTracksCov(.f)
     # the original r,s covariance stays recoverable from the cache
     suppressMessages(setCov(.f, "r,s"))
     expect_equal(.f$covMethod, "r,s")

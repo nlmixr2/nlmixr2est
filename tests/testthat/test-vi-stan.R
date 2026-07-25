@@ -1,4 +1,4 @@
-## Optional external cross-check of est="advi" against Stan's own ADVI
+## Optional external cross-check of est="emvi" against Stan's own ADVI
 ## (rstan::vb()).  Uses a simple linear random-intercept model
 ##   y_ij = theta + eta_i + err,  eta_i ~ N(0, omega^2), err ~ N(0, sigma^2)
 ## which has the SAME variational objective in both tools, so the population
@@ -23,15 +23,14 @@ test_that("est='advi' population posterior agrees with rstan::vb()", {
                EVID = 0, AMT = 0)
   }))
 
-  ## est="advi" (full-Bayes) on the same model
+  ## est="emvi" (full-Bayes) on the same model
   linmod <- function() {
     ini({ theta <- 4; eta ~ 1; add.sd <- 1 })
     model({ pred <- theta + eta; pred ~ add(add.sd) })
   }
   fA <- suppressMessages(suppressWarnings(
-    nlmixr2(linmod, dat, est = "advi",
-            control = adviControl(iters = 800L, print = 0L, returnAdvi = TRUE,
-                                  pointEstimate = FALSE))))
+    nlmixr2(linmod, dat, est = "fbvi",
+            control = fbviControl(iters = 800L, print = 0L, returnVi = TRUE))))
 
   ## Stan ADVI (mean-field vb) on the identical generative model
   stanCode <- "

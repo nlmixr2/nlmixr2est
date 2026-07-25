@@ -19,15 +19,15 @@ nmTest({
       fF <- suppressMessages(suppressWarnings(
         nlmixr2(mod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0L))))
       fA <- suppressMessages(suppressWarnings(
-        nlmixr2(mod, nlmixr2data::theo_sd, est = "advi",
-                control = adviControl(iters = 500L, print = 0L, returnAdvi = TRUE,
-                                      pointEstimate = FALSE, adviFamily = fam))))
+        nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
+                control = fbviControl(iters = 500L, print = 0L, returnVi = TRUE,
+                                      viFamily = fam))))
       expect_false(fA$pointEstimate)
       ## posterior MEANS agree with FOCEI
       expect_equal(unname(fA$theta), unname(fF$theta), tolerance = 0.15)
       expect_equal(unname(fA$popOmega), unname(diag(fF$omega)), tolerance = 0.3)
       ## population variational covariance: symmetric PSD, sane theta SEs
-      cov <- fA$adviCov
+      cov <- fA$viCov
       expect_equal(dim(cov), rep(length(fA$prep$theta) + fA$prep$neta -
                                  sum(fA$prep$thetaFix) - sum(fA$prep$omegaFix), 2L)[c(1, 1)])
       sds <- sqrt(diag(cov))
@@ -40,32 +40,32 @@ nmTest({
 
   test_that("full-Bayes ADVI assembles a full nlmixr2FitData", {
     skip_on_cran()
-    ## the default covMethod is "advi": the population variational covariance is
+    ## the default covMethod is "vi": the population variational covariance is
     ## the fit's SE source
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 400L, print = 0L, pointEstimate = FALSE))))
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
+              control = fbviControl(iters = 400L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
-    expect_false(is.null(fit$env$adviCov))
+    expect_false(is.null(fit$env$viCov))
     ## the population variational covariance is the fit's SE source
-    expect_identical(fit$covMethod, "advi")
+    expect_identical(fit$covMethod, "vi")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
   })
 
   test_that("full-Bayes ADVI covMethod='analytic' is not clobbered to advi", {
     skip_on_cran()
-    ## an explicit non-"advi" covMethod runs the FOCEi covariance chain on the
+    ## an explicit non-"vi" covMethod runs the FOCEi covariance chain on the
     ## full inner model; the full-Bayes path must NOT overwrite it with the
     ## variational covariance
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 400L, print = 0L, pointEstimate = FALSE,
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
+              control = fbviControl(iters = 400L, print = 0L,
                                     covMethod = "analytic"))))
-    expect_false(identical(fit$covMethod, "advi"))
-    expect_false(is.null(fit$env$adviCov))          # the variational cov is still kept as an artifact
+    expect_false(identical(fit$covMethod, "vi"))
+    expect_false(is.null(fit$env$viCov))          # the variational cov is still kept as an artifact
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
   })

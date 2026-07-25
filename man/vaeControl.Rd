@@ -18,6 +18,10 @@ vaeControl(
   covariateSelection = TRUE,
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
   covSelectAlpha = 2,
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
@@ -25,6 +29,7 @@ vaeControl(
   residOptimize = c("twoStage", "moment", "optimize"),
   residRhoend = NULL,
   omegaUpdate = c("suffStat", "blend"),
+  perNoCor = 0.75,
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
   covSelectMaxExact = 17L,
@@ -116,6 +121,33 @@ centering -- is evaluated into an internal `nlmixrMuDerCov#` data column and
 the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
 VAE covariate search never re-centers it.  The original expression is
 restored in the reported model.}
+
+\item{shapes}{Which parameterizations ("shapes") of a continuous covariate
+the automatic search may consider, using the same vocabulary as
+`nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+(`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+and `"center"` (`beta*(COV/ctr)`).  At most one shape of a covariate may
+enter a given parameter.  Because the selection objective is an ordinary
+least squares fit with a free intercept, `"power"`/`"log"` span the same
+model, as do `"lin"`/`"identity"`/`"center"`; the shape therefore decides
+how an accepted relationship is written back, and when several eligible
+shapes span the same model the one listed first wins.  May also be a list
+named by covariate (`list(WT = "power")`) or a list of
+`list(var=, covar=, shapes=)` items to restrict a single
+parameter/covariate pair; anything not named keeps every shape.  Which
+covariates are searched is controlled by `pinCovariates`, not here.
+Categorical covariates always enter as indicators and ignore this setting.}
+
+\item{covCenterType}{Statistic used to center a continuous covariate,
+`"median"` (default) or `"mean"`, computed over subjects rather than rows.}
+
+\item{covCenter}{Named numeric vector of centering values overriding
+`covCenterType` for those covariates, e.g. `c(WT = 70)`.  Names are matched
+case-insensitively.}
+
+\item{catCutoff}{Minimum proportion of subjects a non-reference level must
+hold to get its own indicator.  Rarer levels are lumped with the reference.
+Default `0.05`; `0` tests every level.}
 
 \item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
 penalty, ramped linearly from `covSelectAlpha` down to `1` over the
@@ -214,16 +246,57 @@ the ODE frozen, so tightening it is far cheaper than tightening `rhoend`,
 which also tightens the structural regression that re-solves per candidate.}
 
 \item{omegaUpdate}{How the population variances are updated in the covariate
-M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
-the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
-historic behavior, blending the freshly computed `omega` with the previous
-value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
-The residual error estimate is still EMA-smoothed on the standard-deviation
-scale, where the reference smooths the residual sum of squares and takes the
-root afterwards -- a known remaining difference.  Matching it would need
-per-endpoint sufficient statistics plus an optimizer branch for the error
-models with no closed form (`add + prop`, `add + pow`, Box-Cox /
-Yeo-Johnson), as \code{\link{saemControl}()} does.}
+  M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+  the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+  historic behavior, blending the freshly computed `omega` with the previous
+  value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
+
+  Note this option reaches only ONE of the two omega M-steps.  Which one runs
+  is decided by `covariateSelection`: with `TRUE` the covariate M-step runs and
+  honors `omegaUpdate`; with `FALSE` the plain closed-form M-step runs, whose
+  variances are always raw posterior moments blended at the gain.  A declared
+  correlated block's OFF-diagonals always follow whichever estimator that
+  branch's diagonal used -- estimating the two halves of one block by different
+  estimators need not even give a positive-definite result.
+
+  The two settings are the SAME update while the gain is 1, which it is
+  throughout burn-in and the EM phase (assigning a value and blending it in
+  with weight 1 are the same operation); they differ only once `gammaIter`
+  decays the gain.  A short run at default settings will show no difference.
+
+  `mStepObjective` does not enter the omega update at all -- it scores the
+  non-mu theta M-step.  Omega has a closed-form EM update from the variational
+  posterior either way.
+
+  The residual error estimate is still EMA-smoothed on the standard-deviation
+  scale, where the reference smooths the residual sum of squares and takes the
+  root afterwards -- a known remaining difference.  Matching it would need
+  per-endpoint sufficient statistics plus an optimizer branch for the error
+  models with no closed form (`add + prop`, `add + pow`, Box-Cox /
+  Yeo-Johnson), as \code{\link{saemControl}()} does.}
+
+\item{perNoCor}{Fraction of the EM phase (`gammaIter` iterations) over which a
+  declared correlated `omega` block is held at zero correlation, letting the
+  variances settle before the correlations are estimated.  This is
+  \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
+  effect on a model with no declared off-diagonals.
+
+  Held at ZERO, following saem, not at the `ini()` value: retaining an initial
+  covariance while the variances shrink around it can leave the block
+  non-positive-definite.  A `fixed()` covariance is exempt -- it is not being
+  estimated, so it keeps its value through the hold and out the other side.
+
+  The fraction is of the EM phase, `min(gammaIter, iters)`, not of the whole
+  run.  That matters: the gain is 1 for `it <= gammaIter`, so the release
+  point falls while the gain is still 1 and the correlations are estimable the
+  moment they are unfrozen.  (This is why no gain restart is needed here,
+  whereas \code{\link{emviControl}()} -- whose run has no separate unit-gain
+  phase -- has to restart the off-diagonal gain at release.)
+
+  A value greater than 1 is an ABSOLUTE iteration count rather than a fraction,
+  and must be a whole number.  Prefer the absolute form whenever a run may be
+  resumed or reproduced at a different length: a fraction of a shorter run is a
+  different schedule, not the same one truncated.}
 
 \item{inputScale}{Which observations the encoder-input centering and scaling
 are computed over.  `"reference"` (default) matches the reference
@@ -246,11 +319,17 @@ explicit `"l0learn"`) this errors rather than run the slow exact search
 silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
 exact search everywhere.}
 
-\item{covSelectMaxExact}{Candidate-covariate count at or above which
+\item{covSelectMaxExact}{Search size at or above which
 `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
-`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
-trimming, so it is the size of the search actually run.  `Inf` forces the
-exact branch-and-bound for every dimension.}
+`17`, just above the measured wall-clock crossover of roughly 16 bits --
+see `tools/benchVaeCovSelect.R`, which finds the same crossover in bits
+whether a covariate carries one shape or two).  Measured in bits of
+feasible-support space -- `sum over covariates of log2(1 + shapes tried)` --
+after `pinCovariates` trimming, so it is the size of the search actually
+run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
+single shape this is a plain candidate count; two shape families of one
+covariate cost `log2(3)`, keeping the exact search's worst-case node budget
+the same either way.  `Inf` forces the exact branch-and-bound everywhere.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

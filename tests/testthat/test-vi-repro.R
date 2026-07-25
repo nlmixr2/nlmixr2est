@@ -11,11 +11,11 @@ nmTest({
       cp <- center/v; cp ~ add(add.sd) })
   }
   runAdvi <- function(ctl) suppressMessages(suppressWarnings(
-    nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = ctl)))
+    nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
 
   test_that("iters=100 is a bit-for-bit prefix of iters=200", {
-    r100 <- runAdvi(adviControl(iters = 100L, seed = 3L, print = 0L, returnAdvi = TRUE))
-    r200 <- runAdvi(adviControl(iters = 200L, seed = 3L, print = 0L, returnAdvi = TRUE))
+    r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE))
+    r200 <- runAdvi(emviControl(iters = 200L, seed = 3L, print = 0L, returnVi = TRUE))
     expect_identical(r100$elbo, r200$elbo[1:100])
     expect_identical(r100$parHist, r200$parHist[1:100, , drop = FALSE])
   })
@@ -28,10 +28,10 @@ nmTest({
     ## depends on the solve history: fresh reached iteration 100 via 100 solves,
     ## resume via a cold set-up.  The continued trajectory tracks the fresh one to
     ## solver-tolerance precision.
-    r100 <- runAdvi(adviControl(iters = 100L, seed = 3L, print = 0L, returnAdvi = TRUE))
-    rResume <- runAdvi(adviControl(iters = 100L, seed = 3L, print = 0L,
-                                   returnAdvi = TRUE, resume = r100))
-    rFresh <- runAdvi(adviControl(iters = 200L, seed = 3L, print = 0L, returnAdvi = TRUE))
+    r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE))
+    rResume <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L,
+                                   returnVi = TRUE, resume = r100))
+    rFresh <- runAdvi(emviControl(iters = 200L, seed = 3L, print = 0L, returnVi = TRUE))
     expect_equal(rResume$it0, 200L)
     expect_equal(rResume$theta, rFresh$theta, tolerance = 5e-2)
     expect_equal(rResume$logPopOmega, rFresh$logPopOmega, tolerance = 5e-2)
@@ -40,9 +40,9 @@ nmTest({
   })
 
   test_that("results are independent of the thread count", {
-    c1 <- adviControl(iters = 60L, seed = 5L, print = 0L, returnAdvi = TRUE,
+    c1 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE,
                       rxControl = rxode2::rxControl(cores = 1L))
-    c4 <- adviControl(iters = 60L, seed = 5L, print = 0L, returnAdvi = TRUE,
+    c4 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE,
                       rxControl = rxode2::rxControl(cores = 4L))
     r1 <- runAdvi(c1); r4 <- runAdvi(c4)
     expect_identical(r1$theta, r4$theta)

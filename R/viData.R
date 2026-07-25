@@ -1,15 +1,15 @@
-# adviData.R -- ADVI data preparation.  Builds, from the rxode2 ui + data:
+# viData.R -- data preparation for est="emvi"/"fbvi".  Builds, from the rxode2 ui + data:
 #  - the eta<->theta (population) map and initial theta / omega from ini()
 #  - per-subject observation/event inputs (times, DV, censoring)
 #  - the latent-parameter classification that drives the gradient path:
 #      * mu-referenced structural thetas    -> gradient via d/dtheta = d/deta
 #      * non-mu structural thetas           -> theta-sensitivity ODE (impThetaScore)
 #      * residual-error (sigma) thetas      -> algebraic d(V)/d(theta) (impThetaScore)
-# ADVI dispatches with attr `unbounded=TRUE`, so bounded population parameters are
+# Both methods dispatch with attr `unbounded=TRUE`, so bounded population parameters are
 # already on the unconstrained real scale by the time this runs (the variational
 # family lives in that real coordinate space, per Kucukelbir 2017 Sec 2.3).
 
-#' Classify the population parameters for the ADVI gradient path.
+#' Classify the population parameters for the variational gradient path.
 #' @param ui rxode2 ui object
 #' @return list(muRefThetaIdx (per eta, 1-based ntheta or NA), struct, sigma, all)
 #'   where `struct`/`sigma`/`all` are the non-mu theta-sensitivity indices from
@@ -25,16 +25,16 @@
        struct = .sens$struct, sigma = .sens$sigma, thetaSensIdx = .sens$all)
 }
 
-#' Prepare ADVI inputs from a ui + data.
+#' Prepare variational inputs from a ui + data.
 #' @param ui rxode2 ui object
 #' @param data estimation data (ID/TIME/DV/EVID/... columns)
-#' @return list of prepared ADVI inputs (see field comments below)
+#' @return list of prepared variational inputs (see field comments below)
 #' @noRd
 .adviDataPrep <- function(ui, data) {
   .map <- .foceiEtaThetaMap(ui)
   .etaNames <- .map$etaNames
   .neta <- length(.etaNames)
-  if (.neta == 0L) stop("est=\"advi\" requires at least one random effect", call. = FALSE)
+  if (.neta == 0L) stop("variational inference requires at least one random effect", call. = FALSE)
   .idf <- ui$iniDf
 
   ## full theta vector (THETA_i_ in ntheta order), from ini estimates
@@ -54,6 +54,26 @@
     .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
     isTRUE(as.logical(.r$fix[1]))
   }, logical(1))
+  ## full ini omega block (declared off-diagonals included) + per-entry fix
+  .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
+
+  ## constraining-transform Jacobian map (full Bayes only; see adviJacLogDet).
+  ## The bounded-transform hook has already rewritten each bounded theta to an
+  ## unconstrained `rxBoundedTr.<name>`, so match on that internal name.
+  ##   1 = exp   (one-sided bound)   2 = logit (two-sided)
+  .jacType <- integer(nrow(.thRows))
+  .jacRange <- numeric(nrow(.thRows))
+  .bt <- tryCatch(ui$boundedTransforms, error = function(e) NULL)
+  for (.t in .bt) {
+    .i <- match(.t$internalName, .thRows$name)
+    if (is.na(.i)) next
+    if (identical(.t$type, "logit")) {
+      .jacType[.i] <- 2L
+      .jacRange[.i] <- .t$upper - .t$lower
+    } else {
+      .jacType[.i] <- 1L                    # lower_exp / upper_exp: log|J| = u
+    }
+  }
 
   ## which thetas are FIXED (held at ini, never gradient-updated)
   .thetaFix <- as.logical(.thRows$fix); .thetaFix[is.na(.thetaFix)] <- FALSE
@@ -88,6 +108,8 @@
        muRefThetaIdx = .cls$muRefThetaIdx, isFree = is.na(.cls$muRefThetaIdx),
        structIdx = .cls$struct, sigmaIdx = .cls$sigma, thetaSensIdx = .cls$thetaSensIdx,
        omega = .omega, omegaFix = .omegaFix,
+       omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
+       jacType = .jacType, jacRange = .jacRange,
        errThetaIdx = .errThetaIdx, errType = .errType, a = .a,
        subj = subj, Nobs = .nobs)
 }

@@ -26,6 +26,12 @@
     if (.keep <= 1L || nchar(.txt) <= .avail) break
     .keep <- .keep - 1L
   }
+  ## Dropping items bottoms out at one, so a single long name (a wide factor
+  ## level, say) can still blow the budget; clip it so the note really is
+  ## bounded rather than merely usually bounded.
+  if (nchar(.txt) > .avail && .avail > 3L) {
+    .txt <- paste0(substr(.txt, 1L, .avail - 3L), "...")
+  }
   .txt
 }
 
@@ -150,7 +156,7 @@ isTRUE2 <- function(x) !is.na(x) & x
     ## flag directly (read by .vaeDataPrep's omegaFix); also fix the paired theta
     ## rows (read by .vaeDataPrep's zPopFix -> the M-step holds the typical value
     ## at ini and drops it from the iteration print).  Rebuild via the compress
-    ## round-trip (as in advi.R) so derived UI fields re-sync.
+    ## round-trip (as in vi.R) so derived UI fields re-sync.
     .ui <- rxode2::rxUiDecompress(.ui)
     .df <- .ui$iniDf
     .df$fix[!is.na(.df$neta1) & .df$neta1 == .df$neta2 & .df$name %in% .etas] <- TRUE

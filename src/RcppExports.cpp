@@ -725,14 +725,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeInnerUpdatePar_
-RObject vaeInnerUpdatePar_(NumericVector thFull, NumericVector omegaDiag);
-RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaDiagSEXP) {
+RObject vaeInnerUpdatePar_(NumericVector thFull, RObject omega);
+RcppExport SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP thFullSEXP, SEXP omegaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type thFull(thFullSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaDiag(omegaDiagSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omegaDiag));
+    Rcpp::traits::input_parameter< RObject >::type omega(omegaSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeInnerUpdatePar_(thFull, omega));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1037,7 +1037,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeElboStepCpp_
-List vaeElboStepCpp_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
+List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
 RcppExport SEXP _nlmixr2est_vaeElboStepCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP withGradSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -1045,7 +1045,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
     Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
     Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< RObject >::type omegaR(omegaRSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type aR(aRSEXP);
     Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);
@@ -1086,7 +1086,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeDecoderElboStep_
-List vaeDecoderElboStep_(List params, List prep, RObject zPopR, NumericVector omegaR, NumericVector aVecR, double alphaKL, NumericMatrix epsR, Function solveFn, List yListR, bool withGrad, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
+List vaeDecoderElboStep_(List params, List prep, RObject zPopR, RObject omegaR, NumericVector aVecR, double alphaKL, NumericMatrix epsR, Function solveFn, List yListR, bool withGrad, double tol, int maxRecalc, double recalcFactor, bool fdFallback);
 RcppExport SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aVecRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP solveFnSEXP, SEXP yListRSEXP, SEXP withGradSEXP, SEXP tolSEXP, SEXP maxRecalcSEXP, SEXP recalcFactorSEXP, SEXP fdFallbackSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -1094,7 +1094,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
     Rcpp::traits::input_parameter< List >::type prep(prepSEXP);
     Rcpp::traits::input_parameter< RObject >::type zPopR(zPopRSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type omegaR(omegaRSEXP);
+    Rcpp::traits::input_parameter< RObject >::type omegaR(omegaRSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type aVecR(aVecRSEXP);
     Rcpp::traits::input_parameter< double >::type alphaKL(alphaKLSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type epsR(epsRSEXP);
@@ -1131,8 +1131,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeBestSubset_
-List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov, std::string strategy);
-RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP, SEXP strategySEXP) {
+List vaeBestSubset_(arma::mat mu, arma::mat covMat, arma::vec omega, LogicalVector isFree, double penaltyPerCov, std::string strategy, Rcpp::Nullable<Rcpp::IntegerVector> group);
+RcppExport SEXP _nlmixr2est_vaeBestSubset_(SEXP muSEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP isFreeSEXP, SEXP penaltyPerCovSEXP, SEXP strategySEXP, SEXP groupSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1142,13 +1142,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< LogicalVector >::type isFree(isFreeSEXP);
     Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
     Rcpp::traits::input_parameter< std::string >::type strategy(strategySEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov, strategy));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::IntegerVector> >::type group(groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeBestSubset_(mu, covMat, omega, isFree, penaltyPerCov, strategy, group));
     return rcpp_result_gen;
 END_RCPP
 }
 // vaeScoreSupports_
-List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega, double penaltyPerCov, List supports, bool polish);
-RcppExport SEXP _nlmixr2est_vaeScoreSupports_(SEXP ySEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP penaltyPerCovSEXP, SEXP supportsSEXP, SEXP polishSEXP) {
+List vaeScoreSupports_(arma::vec y, arma::mat covMat, double omega, double penaltyPerCov, List supports, bool polish, Rcpp::Nullable<Rcpp::IntegerVector> group);
+RcppExport SEXP _nlmixr2est_vaeScoreSupports_(SEXP ySEXP, SEXP covMatSEXP, SEXP omegaSEXP, SEXP penaltyPerCovSEXP, SEXP supportsSEXP, SEXP polishSEXP, SEXP groupSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1158,7 +1159,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type penaltyPerCov(penaltyPerCovSEXP);
     Rcpp::traits::input_parameter< List >::type supports(supportsSEXP);
     Rcpp::traits::input_parameter< bool >::type polish(polishSEXP);
-    rcpp_result_gen = Rcpp::wrap(vaeScoreSupports_(y, covMat, omega, penaltyPerCov, supports, polish));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::IntegerVector> >::type group(groupSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeScoreSupports_(y, covMat, omega, penaltyPerCov, supports, polish, group));
     return rcpp_result_gen;
 END_RCPP
 }

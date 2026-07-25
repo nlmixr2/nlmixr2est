@@ -52,8 +52,12 @@
 #'
 #' Pure: it emits nothing.  The caller raises the returned messages so they land
 #' in the fit's `$runInfo`, which is how run-time notes reach the user.
-#' @param nCand integer vector of candidate covariate counts, one per latent
-#'   dimension (after `pinCovariates` trimming -- the real search size)
+#' @param nCand search size per latent dimension, in BITS of feasible-support
+#'   space: `sum over allowed groups of log2(1 + columns in that group)` after
+#'   `pinCovariates` trimming.  One column per group costs exactly 1 bit, so a
+#'   single-shape search reads as a plain candidate count (its historic meaning),
+#'   while two shape families of one covariate cost `log2(3)` -- the exact search
+#'   then gets the same worst-case node budget either way.
 #' @param control a `vaeControl()` list
 #' @param avail is L0Learn usable (an argument so the fallback branches are
 #'   testable without installing/uninstalling the package)
@@ -61,7 +65,9 @@
 #'   dimension), `used` (`"bnb"`, `"l0learn"` or `"mixed"`) and `msg`
 #' @noRd
 .vaeCovSelectModes <- function(nCand, control, avail = .vaeL0Available()) {
-  nCand <- as.integer(nCand)
+  ## kept numeric: a bit budget is fractional once a covariate carries more than
+  ## one shape, and truncating it would quietly widen the exact-search region
+  nCand <- as.numeric(nCand)
   .method <- control$covSelectMethod
   if (is.null(.method)) .method <- "auto"
   .avail <- avail
@@ -72,7 +78,7 @@
       stop("covSelectMethod=\"l0learn\" needs the L0Learn package; install it ",
            "or use covSelectMethod=\"bnb\"", call. = FALSE)
     }
-    .mode[nCand > 0L] <- 1L
+    .mode[nCand > 0] <- 1L
   } else if (.method == "auto") {
     # covSelectMaxExact may be Inf (force the exact search everywhere), so compare
     # against the raw value rather than coercing it to integer (as.integer(Inf) is

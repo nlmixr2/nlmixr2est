@@ -184,8 +184,8 @@ vaeInnerSetup_ <- function(e) {
     .Call(`_nlmixr2est_vaeInnerSetup_`, e)
 }
 
-vaeInnerUpdatePar_ <- function(thFull, omegaDiag) {
-    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omegaDiag)
+vaeInnerUpdatePar_ <- function(thFull, omega) {
+    .Call(`_nlmixr2est_vaeInnerUpdatePar_`, thFull, omega)
 }
 
 vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
@@ -293,12 +293,12 @@ vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, par
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
 
-vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov, strategy = "lifo") {
-    .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov, strategy)
+vaeBestSubset_ <- function(mu, covMat, omega, isFree, penaltyPerCov, strategy = "lifo", group = NULL) {
+    .Call(`_nlmixr2est_vaeBestSubset_`, mu, covMat, omega, isFree, penaltyPerCov, strategy, group)
 }
 
-vaeScoreSupports_ <- function(y, covMat, omega, penaltyPerCov, supports, polish = TRUE) {
-    .Call(`_nlmixr2est_vaeScoreSupports_`, y, covMat, omega, penaltyPerCov, supports, polish)
+vaeScoreSupports_ <- function(y, covMat, omega, penaltyPerCov, supports, polish = TRUE, group = NULL) {
+    .Call(`_nlmixr2est_vaeScoreSupports_`, y, covMat, omega, penaltyPerCov, supports, polish, group)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
