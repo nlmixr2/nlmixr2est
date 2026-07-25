@@ -14240,8 +14240,7 @@ static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
 // Moves are per BLOCK, not per column: a single-column add or drop inside a
 // hockey block only ever produces a half-selected support, which vaeBnbLeaf
 // rejects -- so a column-wise polish could never move a blocked relationship.
-static void vaeLocalSearchL0(VaeBnbCtx& c, int nCov, int maxPass = 100) {
-  (void)nCov;
+static void vaeLocalSearchL0(VaeBnbCtx& c, int maxPass = 100) {
   const int nBlk = (int)c.blocks.size();
   // append block b's columns to `t`, keeping it sorted
   auto addBlock = [&](std::vector<int>& t, int b) {
@@ -14307,7 +14306,7 @@ static VaeSubsetFit vaeCandidateSubsetL0(const arma::vec& y, const arma::mat& X,
   c.bestScore = std::numeric_limits<double>::infinity();
   vaeBnbLeaf(c, std::vector<int>());   // the intercept-only model is always in play
   vaeScoreCandidates(c, nCov, cands);
-  if (polish) vaeLocalSearchL0(c, nCov);
+  if (polish) vaeLocalSearchL0(c);
   return vaeFinishSubset(c, y);
 }
 
