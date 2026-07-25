@@ -266,11 +266,16 @@
   .cand <- as.numeric(.control$etaCandidates)
   if (length(res$etaScores) > 1L && length(.cand) > 1L &&
         any(is.finite(res$etaScores))) {
+    ## EXACT comparison, not all.equal: etaScale is assigned straight from an
+    ## element of etaCandidates in C++, so it is bit-identical, and all.equal's
+    ## relative tolerance would call two genuinely distinct neighbouring
+    ## candidates equal -- c(0.1, 0.1 + 1e-9) selecting the bottom would be
+    ## reported as the top.
     .sel <- as.numeric(res$etaScale)
-    if (isTRUE(all.equal(.sel, max(.cand)))) {
+    if (isTRUE(.sel == max(.cand))) {
       warning("step-size search hit the top of etaCandidates; consider widening",
               call. = FALSE)
-    } else if (isTRUE(all.equal(.sel, min(.cand)))) {
+    } else if (isTRUE(.sel == min(.cand))) {
       warning("step-size search hit the bottom of etaCandidates; consider widening",
               call. = FALSE)
     }

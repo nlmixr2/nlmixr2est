@@ -11795,11 +11795,31 @@ static bool adviElboConverged(const NumericVector& elboTrace, int it,
 // the data and prior terms bundled in one objective, so they cannot be
 // re-weighted independently without re-deriving its constants.  The M-step
 // target is NOT tempered; only the objective the gradient sees is.
-// current full population omega (diag from logPopOmega, off-diags from state),
-// including any active tempering inflation
+// Current full population omega: diagonal from logPopOmega, off-diagonals from
+// state, times any active tempering inflation.
+// The diagonal (logPopOmega) and the off-diagonals (_adviPopOm) are updated by
+// SEPARATE M-steps, so gluing the newest diagonal onto the retained
+// off-diagonals is not guaranteed positive definite: once a variance falls
+// below its own covariance the block is indefinite and the prior inverse fails.
+// Shrink the off-diagonals toward zero until it is usable; a diagonal matrix
+// with positive variances always is, so this terminates.
 static arma::mat adviPopOmFull(NumericVector logPopOmega) {
+  const int n = (int)_adviPopOm.n_rows;
   arma::mat Om = _adviPopOm;
-  for (int k = 0; k < (int)Om.n_rows; ++k) Om(k, k) = std::exp(logPopOmega[k]);
+  for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
+  arma::mat ch;
+  if (!arma::chol(ch, arma::symmatu(Om))) {
+    bool ok = false;
+    for (int t = 0; t < 8 && !ok; ++t) {
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) if (i != j) Om(i, j) *= 0.5;
+      ok = arma::chol(ch, arma::symmatu(Om));
+    }
+    if (!ok) {
+      Om.zeros();
+      for (int k = 0; k < n; ++k) Om(k, k) = std::exp(logPopOmega[k]);
+    }
+  }
   if (_adviTemperScale != 1.0) Om *= _adviTemperScale;
   return Om;
 }
@@ -11878,8 +11898,17 @@ static void adviOmOffStep(const arma::mat& target, NumericVector logPopOmega,
                           double gam, bool hold) {
   if (!_adviOmOff) return;
   const int neta = (int)_adviPopOm.n_rows;
-  if (hold) {                                   // perNoCor: variances settle first
+  if (hold) {
+    // perNoCor: correlations held at ZERO while the variances settle, as saem
+    // does with diagmat() -- NOT held at their ini value, which can leave the
+    // block indefinite once a variance drops below its own covariance.  A FIXED
+    // covariance is exempt: it is not estimated, so it keeps its ini value.
+    _adviPopOm.zeros();
     for (int k = 0; k < neta; ++k) _adviPopOm(k, k) = std::exp(logPopOmega[k]);
+    for (int i = 0; i < neta; ++i)
+      for (int j = i + 1; j < neta; ++j)
+        if (_adviOmMaskOff(i, j) && _adviOmFixM(i, j))
+          _adviPopOm(i, j) = _adviPopOm(j, i) = _adviOmIni(i, j);
     return;
   }
   arma::mat cand = adviPopOmFull(logPopOmega);
@@ -12204,7 +12233,15 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
         target += m * m.t();
       }
       target /= (double)N;
-      adviOmOffStep(target, logPopOmega, gam, gi < _adviNbCorrel);
+      // Off-diagonal gain RESTARTS at release.  saem's nb_correl sits inside the
+      // burn-in, where the gain is still 1, so correlations are freed while the
+      // M-step can still move them; advi's gain decays as 1/(10+gi) over the
+      // whole run, so releasing at 0.75*iters would unfreeze them exactly when
+      // the step has become too small to travel (measured: rho 0.16 vs a true
+      // 0.75).  Restarting the counter gives them the same 1/10 opening gain
+      // the variances had.
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _adviNbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _adviNbCorrel);
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
@@ -12483,7 +12520,15 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
         target += m * m.t() + L * L.t();
       }
       target /= (double)N;
-      adviOmOffStep(target, logPopOmega, gam, gi < _adviNbCorrel);
+      // Off-diagonal gain RESTARTS at release.  saem's nb_correl sits inside the
+      // burn-in, where the gain is still 1, so correlations are freed while the
+      // M-step can still move them; advi's gain decays as 1/(10+gi) over the
+      // whole run, so releasing at 0.75*iters would unfreeze them exactly when
+      // the step has become too small to travel (measured: rho 0.16 vs a true
+      // 0.75).  Restarting the counter gives them the same 1/10 opening gain
+      // the variances had.
+      double gamOff = 1.0 / (10.0 + (double)std::max(0, gi - _adviNbCorrel));
+      adviOmOffStep(target, logPopOmega, gamOff, gi < _adviNbCorrel);
     }
     for (int p = 0; p < ntheta; ++p) parHist(it, p) = theta[p];
     for (int k = 0; k < neta; ++k) parHist(it, ntheta + k) = std::exp(logPopOmega[k]);
@@ -14189,7 +14234,20 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     if (!omOff) return;
     arma::mat cand = Om;
     cand.diag() = omega;
-    if (hold) { Om = cand; return; }              // correlation hold (perNoCor)
+    if (hold) {
+      // saem's rule is Gamma2_phi1 = diagmat(Gamma2_phi1): the correlations are
+      // held at ZERO, not at their ini value.  Retaining the ini covariance
+      // while the variances shrink can leave the block non-PD (a 0.01
+      // covariance against variances that have fallen below it).
+      // A FIXED covariance is exempt -- it is not being estimated at all, so it
+      // keeps its ini value through the hold and out the other side.
+      Om = arma::diagmat(omega);
+      for (int oi = 0; oi < zDim; ++oi)
+        for (int oj = oi + 1; oj < zDim; ++oj)
+          if (omMaskOff(oi, oj) && omFixM(oi, oj))
+            Om(oi, oj) = Om(oj, oi) = omIni(oi, oj);
+      return;
+    }
     const int N_ = (int)muM.n_rows;
     arma::mat cur(zDim, zDim, arma::fill::zeros);
     if (useSuffStat) {
@@ -14219,9 +14277,25 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     if (cand.is_finite() && arma::chol(cchol, arma::symmatu(cand))) Om = cand;
     else Om.diag() = omega;                       // keep previous off-diagonals
   };
-  // current full omega for the ELBO/inner evaluations and the regress path
+  // Current full omega for the ELBO/inner evaluations and the regress path.
+  // The diagonal and the off-diagonals are updated by SEPARATE M-steps, so
+  // gluing the newest diagonal onto the retained off-diagonals is not
+  // guaranteed positive definite -- once a variance falls below its own
+  // covariance the block is indefinite, and the inner re-parameterization
+  // (rightly) refuses it.  Shrink the off-diagonals toward zero until the
+  // glued matrix is usable; a diagonal matrix with positive variances always
+  // is, so this terminates.
   auto omFull = [&]() -> arma::mat {
-    if (omOff) { arma::mat o = Om; o.diag() = omega; return o; }
+    if (!omOff) return arma::diagmat(omega);
+    arma::mat o = Om;
+    o.diag() = omega;
+    arma::mat ch;
+    if (arma::chol(ch, arma::symmatu(o))) return o;
+    for (int t = 0; t < 8; ++t) {
+      for (int i = 0; i < zDim; ++i)
+        for (int j = 0; j < zDim; ++j) if (i != j) o(i, j) *= 0.5;
+      if (arma::chol(ch, arma::symmatu(o))) return o;
+    }
     return arma::diagmat(omega);
   };
   arma::vec a = as<arma::vec>(prep["a"]);

@@ -38,12 +38,22 @@
 #'
 #' Uncorrelated etas are written `eta ~ v`; each correlated block is written
 #' with the block syntax `e1 + e2 ~ c(v11, v21, v22)` (lower-tri row-major).
-#' Blocks are the connected components of the matrix's nonzero structure.
+#' Blocks are the connected components of the model's DECLARED structure unioned
+#' with the fitted matrix's nonzeros, so a covariance estimated at exactly 0 is
+#' still written into its block rather than silently left at its ini value.
 #' @noRd
 .omegaWriteIni <- function(u, omegaMat) {
   .nm <- colnames(omegaMat)
   .n <- nrow(omegaMat)
-  .adj <- omegaMat != 0
+  ## Block on the model's DECLARED structure, not on which fitted values happen
+  ## to be non-zero.  An estimated covariance of exactly 0 (the correlation hold
+  ## running to the end of a short fit) would otherwise disconnect the etas, emit
+  ## them as separate singletons, and leave the existing covariance row sitting
+  ## at its ini value -- so the reported omega would disagree with the omega the
+  ## fit actually used.
+  .decl <- tryCatch(.omegaBlockFromIniDf(rxode2::rxUiDecompress(u)$iniDf, .nm)$mat,
+                    error = function(e) NULL)
+  .adj <- if (is.null(.decl)) omegaMat != 0 else (.decl != 0 | omegaMat != 0)
   diag(.adj) <- TRUE
   .comp <- integer(.n)
   .c <- 0L

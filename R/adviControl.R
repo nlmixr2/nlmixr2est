@@ -202,8 +202,13 @@ adviControl <- function(seed = 42L,
   ## rather than leaving it pinned at a value that silently stops matching.
   ## sigdig's own assertion permits NA, which would make 10^-sigdig NA and fail
   ## the tol assertion below with an unhelpful message -- fall back instead.
+  ## The derivation runs BEFORE sigdig's own assertion further down, so guard on
+  ## the type here too: without it adviControl(sigdig = "bad") reports a base
+  ## arithmetic error from 10^-sigdig rather than the intended checkmate message.
   if (is.null(tol)) {
-    tol <- if (!is.null(sigdig) && !is.na(sigdig)) .sigdigOptTol(sigdig) else 1e-4
+    .sdOk <- !is.null(sigdig) && is.numeric(sigdig) && length(sigdig) == 1L &&
+      !is.na(sigdig)
+    tol <- if (.sdOk) .sigdigOptTol(sigdig) else 1e-4
   }
   checkmate::assertNumeric(tol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(evalElbo, lower = 1, any.missing = FALSE, len = 1)

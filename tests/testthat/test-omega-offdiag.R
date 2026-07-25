@@ -112,11 +112,18 @@ nmTest({
     ## ini) and RELEASE (perNoCor = 0 -> it is estimated from the first M-step).
     ## Without both halves a regression that never lifts the hold would look
     ## exactly like "this model has no correlation".
-    .ctl <- function(p) vaeControl(itersBurnIn = 20L, iters = 60L, gammaIter = 40L,
+    ## gammaIter >= iters ON PURPOSE: the hold is
+    ## round(perNoCor * min(gammaIter, iters)) iterations, so with a SMALLER
+    ## gammaIter even perNoCor = 1 leaves a tail that estimates the correlation
+    ## (gammaIter = 40 of 60 iterations left 20 free and returned 0.0485, not 0).
+    .ctl <- function(p) vaeControl(itersBurnIn = 20L, iters = 60L, gammaIter = 60L,
                                    perNoCor = p, covariateSelection = FALSE,
                                    print = 0L)
+    ## perNoCor = 1 holds throughout: a FREE correlation is held at ZERO (saem's
+    ## diagmat() rule), NOT at its ini value.  Holding it at ini while the
+    ## variances move is what left the block non-positive-definite.
     fHold <- nlmixr2(.omCorMod, .omData, est = "vae", control = .ctl(1))
-    expect_equal(unname(fHold$omega[1L, 2L]), 0.01, tolerance = 1e-10)
+    expect_equal(unname(fHold$omega[1L, 2L]), 0, tolerance = 1e-10)
     fFree <- nlmixr2(.omCorMod, .omData, est = "vae", control = .ctl(0))
     expect_gt(abs(fFree$omega[1L, 2L] - 0.01), 1e-6)
     ## and the default hold still leaves room to estimate on a short run
