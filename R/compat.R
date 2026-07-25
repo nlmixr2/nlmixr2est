@@ -28,15 +28,37 @@ nlmixr2fix <- function(fit) {
   .ui <- suppressMessages(.ui())
   assign("ui", .ui, envir = fit$env)
   for (.v in ls(fit$env, all.names=TRUE)) {
-    if (inherits(.v, "raw")) {
-      ## Try reading in with qs2 if it doesn't work try with qs
-      .c <- try(qs2::qs_deserialize(get(.v, envir=fit$env)))
-      if (inherits(.c, "try-error")) {
-        rxode2::rxReq("qs")
-        .c <- rxode2::rxOldQsDes(get(.v, envir=fit$env))
+    .raw <- get(.v, envir=fit$env)
+    if (inherits(.raw, "raw")) {
+      .type <- rxode2::rxGetSerialType_(.raw)
+      .c <- if (.type == "qs2") {
+        try(.legacyQs2(.raw, "qs_deserialize"), silent=TRUE)
+      } else if (.type == "qdata") {
+        try(.legacyQs2(.raw, "qd_deserialize"), silent=TRUE)
+      } else {
+        try(rxode2::rxDeserialize(.raw), silent=TRUE)
+      }
+      if (!inherits(.c, "try-error")) {
         assign(.v, .c, envir=fit$env)
       }
     }
   }
   fit
+}
+
+#' Deserialize a legacy qs2/qdata blob from an old fit
+#'
+#' Fits saved by nlmixr2est <= 7.0.1 may hold qs2- or qdata-serialized
+#' objects; qs2 is no longer a dependency, so look it up dynamically.
+#'
+#' @param raw raw vector to deserialize
+#' @param fun qs2 function name to use
+#' @return the deserialized object
+#' @noRd
+.legacyQs2 <- function(raw, fun) {
+  if (!requireNamespace("qs2", quietly=TRUE)) {
+    stop("this object was saved with 'qs2'; install qs2 to read it",
+         call.=FALSE)
+  }
+  getExportedValue("qs2", fun)(raw)
 }

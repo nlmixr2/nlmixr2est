@@ -1412,11 +1412,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
                            "compiling EBE model..."))
   }
   # Augmented outer-gradient model (fast=TRUE): built here, once, with the compiled
-  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
+  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's rxLoad reloads
   # it; the direction metadata travels separately in `outerMeta`.
   .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
   # AGQ (nAGQ>1) only: the 1st-order model the nodes solve on, built here so it rides in the
-  # qs2 cache next to `outer` rather than re-paying the symengine+gcc pass each session.
+  # disk cache next to `outer` rather than re-paying the symengine+gcc pass each session.
   .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
@@ -1430,7 +1430,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
-    # top level so the qs2 rxLoad reloads it, metadata separately.
+    # top level so the rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
     outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
@@ -1568,7 +1568,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## The augmented outer model (foceiModelList$outer) also depends on which covariates
   ## are subject-constant (analytic covariate-coefficient reuse scales those out of the
   ## symbolic sensitivity build) and on the sigma-skip toggle -- both change the outer model
-  ## text, so they must key the persisted (qs2) cache too, else two fits of the same model
+  ## text, so they must key the persisted cache too, else two fits of the same model
   ## whose datasets differ only in covariate-constancy would collide.
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   digest::digest(c(all(is.na(.iniDf$neta1)),
@@ -1586,7 +1586,7 @@ attr(rxUiGet.foceiModelDigest, "rstudio") <- "hash"
 #' @export
 rxUiGet.foceiModelCache <- function(x, ...) {
   file.path(rxode2::rxTempDir(),
-            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs2"))
+            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".rds"))
 }
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
@@ -1595,7 +1595,7 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
-    .ret <- qs2::qs_read(.cacheFile)
+    .ret <- readRDS(.cacheFile)
     lapply(seq_along(.ret), function(i) {
       if (inherits(.ret[[i]], "rxode2")) {
         rxode2::rxLoad(.ret[[i]])
@@ -1614,7 +1614,7 @@ rxUiGet.foceiModel <- function(x, ...) {
       .ret <- rxUiGet.foce(x, ...)
     }
   }
-  qs2::qs_save(.ret, .cacheFile)
+  saveRDS(.ret, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -3066,13 +3066,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
           .type <- rxode2::rxGetDefaultSerialize()
+          # older rxode2 could return qs2/qdata here; those formats are no
+          # longer written (stringfish/qs2 dependency dropped)
+          if (!(.type %in% c("base", "bzip2", "xz"))) .type <- "bzip2"
           .objC <- switch(.type,
-                 qs2 = {
-                   qs2::qs_serialize(.obj)
-                 },
-                 qdata = {
-                   qs2::qd_serialize(.obj)
-                 },
                  bzip2 = {
                    memCompress(serialize(.obj, NULL), type="bzip2")
                  },
@@ -3081,9 +3078,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                  },
                  base = {
                    serialize(.obj, NULL)
-                 },
-                 stop("unknown serialization type") # nocov
-                 )
+                 })
           .size2 <- utils::object.size(.objC)
           if (.size2 < .size) {
             .size0 <- (.size - .size2)
