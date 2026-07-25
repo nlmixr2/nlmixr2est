@@ -1,4 +1,4 @@
-## est="advi" end-to-end (mean-field, point-estimate): the raw C++ loop (ELBO
+## est="emvi" end-to-end (mean-field, point-estimate): the raw C++ loop (ELBO
 ## trend, reproducibility) and the finalized nlmixr2FitData (objective, tables,
 ## covariance) assembled via nlmixr2CreateOutputFromUi at the ADVI estimates.
 
@@ -11,10 +11,10 @@ nmTest({
   }
 
   test_that("est='advi' raw loop: ELBO increases and is reproducible", {
-    ctl <- adviControl(iters = 150L, seed = 7L, print = 0L, returnAdvi = TRUE)
+    ctl <- viControl(iters = 150L, seed = 7L, print = 0L, returnVi = TRUE)
     res <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = ctl)))
-    expect_s3_class(res, "nlmixr2advi")
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
+    expect_s3_class(res, "nlmixr2vi")
     e <- res$elbo; n <- length(e); d <- max(1L, n %/% 10L)
     expect_gt(mean(e[(n - d + 1L):n]), mean(e[1:d]))   # ELBO trend up
     expect_true(all(is.finite(res$theta)))
@@ -22,7 +22,7 @@ nmTest({
 
     ## same seed -> identical
     res2 <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = ctl)))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
     expect_identical(res$theta, res2$theta)
     expect_identical(res$elbo, res2$elbo)
     expect_identical(res$mu, res2$mu)
@@ -30,8 +30,8 @@ nmTest({
 
   test_that("est='advi' assembles a full nlmixr2FitData (objf + tables + cov)", {
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 120L, print = 0L))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+              control = viControl(iters = 120L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
@@ -39,8 +39,8 @@ nmTest({
     expect_true(is.data.frame(fit$parFixedDf))
     expect_true(all(is.finite(fit$parFixedDf$Estimate)))
     ## ADVI artifacts carried on the fit env
-    expect_false(is.null(fit$env$adviElbo))
-    expect_false(is.null(fit$env$adviState))
+    expect_false(is.null(fit$env$viElbo))
+    expect_false(is.null(fit$env$viState))
     ## the optimization walk is standard parHistData (captured even with print=0)
     .ph <- fit$parHist
     expect_true(is.data.frame(.ph))
@@ -50,23 +50,23 @@ nmTest({
     expect_false(is.null(fit$env$foceiModel))
   })
 
-  test_that("adviControl(tol=) stops early on ELBO convergence", {
+  test_that("viControl(tol=) stops early on ELBO convergence", {
     ## The mechanism must be OBSERVABLE, not just "the fit still works": with a
     ## loose tolerance the loop must stop before `iters`, and with tol=0 it must
     ## run every iteration.  Before this was wired up, `tol` was documented but
     ## never reached the C++ loop, so both runs were identical -- a test that
     ## only checked the fit succeeded would not have caught that.
-    .base <- function(tol) adviControl(iters = 400L, seed = 7L, print = 0L,
-                                       returnAdvi = TRUE, tol = tol,
+    .base <- function(tol) viControl(iters = 400L, seed = 7L, print = 0L,
+                                       returnVi = TRUE, tol = tol,
                                        evalElbo = 25L)
     rOff <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = .base(0))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(0))))
     expect_equal(rOff$itRun, 400L)
     expect_false(isTRUE(rOff$tolStopped))
     expect_equal(length(rOff$elbo), 400L)
 
     rOn <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi", control = .base(1))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(1))))
     expect_true(isTRUE(rOn$tolStopped))      # rel change < 1 always -> first check
     expect_lt(rOn$itRun, 400L)
     ## the reported trace is truncated to what actually ran, not zero-padded
@@ -80,9 +80,9 @@ nmTest({
     ## built through the same helper that applies that scale, the fit would
     ## otherwise report an INFLATED omega -- silently, and only for short runs.
     r <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 10L, klWarmup = 50L, temperInit = 10,
-                                    seed = 7L, print = 0L, returnAdvi = TRUE,
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+              control = viControl(iters = 10L, klWarmup = 50L, temperInit = 10,
+                                    seed = 7L, print = 0L, returnVi = TRUE,
                                     tol = 0))))
     expect_equal(unname(diag(r$popOmegaMat)), unname(r$popOmega), tolerance = 1e-12)
     expect_true(all(r$popOmega > 0))
@@ -99,9 +99,9 @@ nmTest({
     ## on their last nAdapt/3 iterations, so a smaller klWarmup leaves that
     ## window past the warm-up and untempered even without the fix.
     .fit <- function(kl) suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
-              control = adviControl(iters = 60L, klWarmup = kl, temperInit = 100,
-                                    seed = 7L, print = 0L, returnAdvi = TRUE,
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+              control = viControl(iters = 60L, klWarmup = kl, temperInit = 100,
+                                    seed = 7L, print = 0L, returnVi = TRUE,
                                     tol = 0))))
     .a <- .fit(0L); .b <- .fit(80L)
     expect_equal(length(.a$etaScores), 5L)          # the search actually ran
@@ -121,8 +121,8 @@ nmTest({
     ## never does.
     .info <- function(cand) {
       .f <- suppressMessages(suppressWarnings(
-        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
-                control = adviControl(iters = 60L, seed = 7L, print = 0L,
+        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
+                control = viControl(iters = 60L, seed = 7L, print = 0L,
                                       tol = 0, etaCandidates = cand))))
       as.character(.f$runInfo)
     }
@@ -133,7 +133,7 @@ nmTest({
   })
 
   test_that("a resumed correlated fit reproduces the single long run", {
-    ## adviControl(resume=) promises a resumed run is identical to one fresh run
+    ## viControl(resume=) promises a resumed run is identical to one fresh run
     ## of the combined length.  perNoCor broke that: nbCorrel was recomputed from
     ## the RESUMED call's iters and compared against a CONTINUING global index, so
     ## the resumed run re-applied a hold the first run had already passed and
@@ -159,21 +159,21 @@ nmTest({
     ## pinned to absolute iterations rather than to a share of whatever slice is
     ## being run.
     .ctl <- function(n, res = NULL)
-      adviControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
+      viControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
                   perNoCor = 90, adaptEta = FALSE, etaCandidates = 0.05)
 
     one <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi", control = .ctl(120L))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(120L))))
     half <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi", control = .ctl(60L))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(60L))))
     cont <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "advi",
-              control = .ctl(60L, res = half$env$adviState))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi",
+              control = .ctl(60L, res = half$env$viState))))
 
     expect_equal(unname(cont$omega), unname(one$omega), tolerance = 1e-8)
     expect_equal(unname(cont$theta), unname(one$theta), tolerance = 1e-8)
     ## the release point travelled with the state rather than being recomputed
-    expect_equal(half$env$adviState$nbCorrel, cont$env$adviState$nbCorrel)
-    expect_equal(one$env$adviState$nbCorrel, 90)   # absolute, not 0.75 * iters
+    expect_equal(half$env$viState$nbCorrel, cont$env$viState$nbCorrel)
+    expect_equal(one$env$viState$nbCorrel, 90)   # absolute, not 0.75 * iters
   })
 })

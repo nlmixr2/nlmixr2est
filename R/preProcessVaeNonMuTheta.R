@@ -160,7 +160,7 @@ isTRUE2 <- function(x) !is.na(x) & x
     ## flag directly (read by .vaeDataPrep's omegaFix); also fix the paired theta
     ## rows (read by .vaeDataPrep's zPopFix -> the M-step holds the typical value
     ## at ini and drops it from the iteration print).  Rebuild via the compress
-    ## round-trip (as in advi.R) so derived UI fields re-sync.
+    ## round-trip (as in vi.R) so derived UI fields re-sync.
     .ui <- rxode2::rxUiDecompress(.ui)
     .df <- .ui$iniDf
     .df$fix[!is.na(.df$neta1) & .df$neta1 == .df$neta2 & .df$name %in% .etas] <- TRUE

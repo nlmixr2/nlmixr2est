@@ -1,51 +1,66 @@
-#' Control for advi (automatic differentiation variational inference) in nlmixr2
+#' Control for the variational inference methods emvi and fbvi in nlmixr2
 #'
 #' Variational-inference NLME estimation in the style of Kucukelbir et al.
 #' (2017): the latent variables are transformed to an unconstrained real
 #' coordinate space, a Gaussian variational family is posited there, and the ELBO
 #' is maximized by stochastic gradient ascent using the reparameterization trick.
 #'
-#' `est="advi"` is a VARIATION of that algorithm, not the published one, in two
-#' respects.  First, by default (`pointEstimate=TRUE`) it is a variational-EM
-#' HYBRID: the variational family covers only the per-subject etas, while the
-#' population parameters (thetas, omega, residual error) are point estimates
-#' updated by an M-step.  Published ADVI puts EVERY parameter -- including the
-#' covariance parameters -- in the variational family, so a full-rank family
-#' there yields a joint posterior covariance over the whole parameter vector.
-#' `pointEstimate=FALSE` is the closer analogue, adding the population vector to
-#' the variational posterior under flat priors, though the between-subject omega
-#' is still parameterized as per-eta log-variances rather than freely.  Second,
-#' the gradient of the log-joint comes from the FOCEi forward sensitivities
-#' (inner per-subject eta gradient plus the outer population sensitivity
-#' contraction) rather than from automatic differentiation, so "AD" in the name
-#' describes the algorithm family, not the derivative source.  Results should
-#' therefore not be read as reproducing a Stan `vb()` fit except on models where
-#' the two objectives coincide.  The whole optimization loop runs in C++.
+#' One control serves both methods, which differ only in what the variational
+#' posterior covers:
+#'
+#' \itemize{
+#'   \item `est="emvi"` -- variational EM.  The variational family covers the
+#'     per-subject etas only; the population parameters (thetas, omega, residual
+#'     error) are point estimates updated by an M-step, so the output semantics
+#'     match FOCEi/SAEM.
+#'   \item `est="fbvi"` -- full-Bayes variational inference.  The variational
+#'     posterior additionally covers the unconstrained population vector under
+#'     flat priors, which is the closer analogue of the published algorithm.
+#' }
+#'
+#' `pointEstimate` is the switch between them and defaults to whichever the
+#' chosen `est` implies; setting it to contradict `est` is an error rather than a
+#' silent override.
+#'
+#' Neither method is the published ADVI algorithm, which is why neither is named
+#' for it.  Two deviations matter.  First, even `fbvi` parameterizes the
+#' between-subject omega as per-eta log-variances rather than freely, so a
+#' full-rank family does not yield the joint posterior covariance over the whole
+#' parameter vector that published ADVI gives.  Second, the gradient of the
+#' log-joint comes from the FOCEi forward sensitivities (inner per-subject eta
+#' gradient plus the outer population sensitivity contraction) rather than from
+#' automatic differentiation -- there is no AD in this implementation, which is
+#' why "advi" would misname it.  Results should therefore not be read as
+#' reproducing a Stan `vb()` fit except on models where the two objectives
+#' coincide.  The whole optimization loop runs in C++.
 #'
 #' @inheritParams saemControl
 #' @inheritParams foceiControl
 #'
-#' @param seed Random seed for the ADVI optimization (reparameterization
+#' @param seed Random seed for the variational optimization (reparameterization
 #'   sampling); default 42.  The Monte-Carlo gradient is stochastic, so a fixed
 #'   seed makes every fit reproducible.  Reparameterization noise is drawn from a
 #'   counter-based stream keyed by the global iteration index, so a shorter run
 #'   is a bit-for-bit prefix of a longer one and results are independent of the
 #'   number of cores.
-#' @param iters Total number of ADVI (stochastic gradient ascent) iterations.
+#' @param iters Total number of stochastic gradient ascent iterations.
 #' @param nMc Number of Monte-Carlo samples used to approximate the ELBO
 #'   gradient at each iteration (the paper's `M`; typically 1-10).
-#' @param adviFamily Variational family in the unconstrained space.
+#' @param viFamily Variational family in the unconstrained space.
 #'   `"fullRank"` (default) uses a block full-rank Gaussian: a dense
 #'   `neta x neta` Cholesky factor per subject plus a dense block over the
 #'   population vector (mean-field across blocks).  `"meanField"` uses a fully
 #'   factorized (diagonal) Gaussian.  Mean-field is faster but is known to
 #'   underestimate marginal variances.
-#' @param pointEstimate When `TRUE` (default) run a variational-EM hybrid: the
-#'   variational posterior covers the per-subject etas only, and the population
-#'   parameters (thetas / omega / residual error) are point estimates maximized
-#'   by the ELBO gradient; output semantics match FOCEi/SAEM.  When `FALSE` run
-#'   full Bayes: the variational posterior also covers the unconstrained
-#'   population vector, with flat priors.
+#' @param pointEstimate Which of the two methods to run, normally left at its
+#'   `NULL` default so it follows `est`: `est="emvi"` implies `TRUE` and
+#'   `est="fbvi"` implies `FALSE`.  Setting it to contradict the requested `est`
+#'   is an error.  `TRUE` runs the variational-EM hybrid: the variational
+#'   posterior covers the per-subject etas only, and the population parameters
+#'   (thetas / omega / residual error) are point estimates maximized by the ELBO
+#'   gradient; output semantics match FOCEi/SAEM.  `FALSE` runs full Bayes: the
+#'   variational posterior also covers the unconstrained population vector, with
+#'   flat priors.
 #'
 #'   Two things about "flat" are worth being explicit about, because they define
 #'   the prior rather than merely describe the implementation.  (1) A BOUNDED
@@ -67,13 +82,15 @@
 #'   direction: a variational family that understates posterior spread makes the
 #'   omega M-step, `Omega = mean_i(mu_i mu_i' + Sigma_i)`, inherit that
 #'   understatement, so between-subject variability is biased DOWNWARD.  The bias
-#'   is worst for `adviFamily="meanField"`, which cannot represent within-subject
+#'   is worst for `viFamily="meanField"`, which cannot represent within-subject
 #'   posterior correlation at all; `"fullRank"` can, which is why it is the
 #'   default.  Structural (typical-value) parameters are far less affected.  If
 #'   the between-subject variances are themselves the quantity of interest,
 #'   prefer `"fullRank"` and cross-check against `est="focei"` or `est="saem"`.
-#' @param optim Stochastic optimizer.  `"advi"` (default) uses the paper's
-#'   adaptive step-size sequence (Eqs 10-11); `"adam"` uses Adam.
+#' @param optim Stochastic optimizer.  `"advi"` (default) uses the adaptive
+#'   step-size sequence from the ADVI paper (Eqs 10-11) -- the value keeps that
+#'   name because the step-size rule really is the published one, even though
+#'   the surrounding method is not; `"adam"` uses Adam.
 #' @param adaptEta When `TRUE` (default) adaptively choose the step-size scale
 #'   `eta` by a short search over `etaCandidates` before the main loop; when
 #'   `FALSE` use a fixed `eta` (the first `etaCandidates` entry).
@@ -138,10 +155,10 @@
 #' @param likelihood Inner likelihood used for the per-subject objective and
 #'   gradient, run through the FOCEi inner interface: `"focei"` (default),
 #'   `"foce"`, `"focep"`, or `"laplace"`.
-#' @param returnAdvi When `TRUE` return the raw ADVI optimization object instead
-#'   of the nlmixr2 fit.
-#' @param resume Optional warm-resume state: a previous `est="advi"` fit (or its
-#'   `$env$adviState`).  The optimization continues from that state for `iters`
+#' @param returnVi When `TRUE` return the raw variational optimization object
+#'   instead of the nlmixr2 fit.
+#' @param resume Optional warm-resume state: a previous `emvi`/`fbvi` fit (or its
+#'   `$env$viState`).  The optimization continues from that state for `iters`
 #'   more iterations, bit-for-bit identical to a single fresh run of the combined
 #'   length (the counter-based RNG is keyed by the global iteration index).
 #'
@@ -153,14 +170,14 @@
 #'   genuinely differ.  Pin the schedule (`perNoCor = 90`) whenever a fit may be
 #'   resumed; the resolved value is then stored with the fit and reused.
 #'
-#' @return advi control structure (class `adviControl`)
+#' @return variational-inference control structure (class `viControl`)
 #' @export
 #' @author Matthew L. Fidler
-adviControl <- function(seed = 42L,
+viControl <- function(seed = 42L,
                         iters = 300L,
                         nMc = 1L,
-                        adviFamily = c("fullRank", "meanField"),
-                        pointEstimate = TRUE,
+                        viFamily = c("fullRank", "meanField"),
+                        pointEstimate = NULL,
                         optim = c("advi", "adam"),
                         adaptEta = TRUE,
                         perNoCor = 0.75,
@@ -172,14 +189,14 @@ adviControl <- function(seed = 42L,
                         klWarmup = 0L,
                         temperInit = 10,
                         likelihood = c("focei", "foce", "focep", "laplace"),
-                        returnAdvi = FALSE,
+                        returnVi = FALSE,
                         resume = NULL,
 
                         print = 1L,
                         useColor = NULL,
                         printNcol = NULL,
 
-                        covMethod = c("advi", "analytic", "r,s", "r", "s", ""),
+                        covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
                         optExpression = TRUE,
                         sumProd = FALSE,
                         literalFix = TRUE,
@@ -203,7 +220,9 @@ adviControl <- function(seed = 42L,
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(iters, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nMc, lower = 1, any.missing = FALSE, len = 1)
-  checkmate::assertLogical(pointEstimate, len = 1, any.missing = FALSE)
+  if (!is.null(pointEstimate)) {
+    checkmate::assertLogical(pointEstimate, len = 1, any.missing = FALSE)
+  }
   checkmate::assertLogical(adaptEta, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(etaCandidates, lower = 0, finite = TRUE, any.missing = FALSE, min.len = 1)
   checkmate::assertNumeric(tau, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -225,7 +244,7 @@ adviControl <- function(seed = 42L,
   ## sigdig's own assertion permits NA, which would make 10^-sigdig NA and fail
   ## the tol assertion below with an unhelpful message -- fall back instead.
   ## The derivation runs BEFORE sigdig's own assertion further down, so guard on
-  ## the type here too: without it adviControl(sigdig = "bad") reports a base
+  ## the type here too: without it viControl(sigdig = "bad") reports a base
   ## arithmetic error from 10^-sigdig rather than the intended checkmate message.
   if (is.null(tol)) {
     .sdOk <- !is.null(sigdig) && is.numeric(sigdig) && length(sigdig) == 1L &&
@@ -236,7 +255,7 @@ adviControl <- function(seed = 42L,
   checkmate::assertIntegerish(evalElbo, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(klWarmup, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(temperInit, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
-  checkmate::assertLogical(returnAdvi, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnVi, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -248,7 +267,7 @@ adviControl <- function(seed = 42L,
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
-  adviFamily <- match.arg(adviFamily)
+  viFamily <- match.arg(viFamily)
   optim <- match.arg(optim)
   likelihood <- match.arg(likelihood)
   # match.arg cannot match ""; treat it (skip covariance) like foceiControl does
@@ -305,7 +324,7 @@ adviControl <- function(seed = 42L,
   .ret <- list(seed = as.integer(seed),
                iters = as.integer(iters),
                nMc = as.integer(nMc),
-               adviFamily = adviFamily,
+               viFamily = viFamily,
                pointEstimate = pointEstimate,
                optim = optim,
                adaptEta = adaptEta,
@@ -318,7 +337,7 @@ adviControl <- function(seed = 42L,
                klWarmup = as.integer(klWarmup),
                temperInit = as.numeric(temperInit),
                likelihood = likelihood,
-               returnAdvi = returnAdvi,
+               returnVi = returnVi,
                resume = resume,
                covMethod = covMethod,
                optExpression = optExpression,
@@ -340,13 +359,13 @@ adviControl <- function(seed = 42L,
                iterPrintControl = .iterPrintControl,
                rxControl = rxControl,
                genRxControl = .genRxControl)
-  class(.ret) <- "adviControl"
+  class(.ret) <- "viControl"
   .ret
 }
 
 #' @export
-rxUiDeparse.adviControl <- function(object, var) {
-  .default <- adviControl()
+rxUiDeparse.viControl <- function(object, var) {
+  .default <- viControl()
   object$resume <- NULL                     # not deparsable (may be a whole fit)
   .w <- .deparseDifferent(.default, object, "genRxControl")
   .deparseFinal(.default, object, .w, var)
@@ -354,63 +373,112 @@ rxUiDeparse.adviControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.adviControl <- function(control, env) {
-  assign("adviControl", control, envir = env)
+nmObjHandleControlObject.viControl <- function(control, env) {
+  assign("viControl", control, envir = env)
+}
+
+#' Shared control lookup for the two variational methods.
+#' @noRd
+.viGetControl <- function(x) {
+  .env <- x[[1]]
+  if (exists("viControl", .env)) {
+    .control <- get("viControl", .env)
+    if (inherits(.control, "viControl")) return(.control)
+  }
+  if (exists("control", .env)) {
+    .control <- get("control", .env)
+    if (inherits(.control, "viControl")) return(.control)
+  }
+  stop("cannot find variational inference related control object", call. = FALSE)
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.advi <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("adviControl", .env)) {
-    .control <- get("adviControl", .env)
-    if (inherits(.control, "adviControl")) return(.control)
-  }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "adviControl")) return(.control)
-  }
-  stop("cannot find advi related control object", call. = FALSE)
-}
+nmObjGetControl.emvi <- function(x, ...) .viGetControl(x)
 
-#' @rdname getValidNlmixrControl
+#' @rdname nmObjGetControl
 #' @export
-getValidNlmixrCtl.advi <- function(control) {
+nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
+
+#' Validate/normalize a viControl and resolve `pointEstimate` from `est`.
+#'
+#' `pointEstimate` is the axis the two methods differ on, so it is derived from
+#' `est` rather than defaulted independently.  An explicit value that contradicts
+#' the requested method is an ERROR, not a silent override: a
+#' `viControl(pointEstimate=FALSE)` passed to `est="emvi"` says two different
+#' things about which algorithm to run, and quietly honoring either one gives a
+#' fit whose `$est` misdescribes it.
+#' @noRd
+.viValidCtl <- function(control, pe, est) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- adviControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("adviControl", .ctl)
-  if (!inherits(.ctl, "adviControl")) {
-    .minfo("invalid control for `est=\"advi\"`, using default")
-    .ctl <- adviControl()
+  if (is.null(.ctl)) .ctl <- viControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("viControl", .ctl)
+  if (!inherits(.ctl, "viControl")) {
+    .minfo(paste0("invalid control for `est=\"", est, "\"`, using default"))
+    .ctl <- viControl()
   } else {
-    .ctl <- do.call(adviControl, .ctl)
+    .ctl <- do.call(viControl, .ctl)
+  }
+  if (is.null(.ctl$pointEstimate)) {
+    .ctl$pointEstimate <- pe
+  } else if (!identical(isTRUE(.ctl$pointEstimate), pe)) {
+    stop("viControl(pointEstimate=", isTRUE(.ctl$pointEstimate),
+         ") contradicts `est=\"", est, "\"`; use est=\"",
+         if (isTRUE(.ctl$pointEstimate)) "emvi" else "fbvi", "\" or drop pointEstimate",
+         call. = FALSE)
   }
   .ctl
 }
 
-#' @rdname nlmixr2Est
+#' @rdname getValidNlmixrControl
 #' @export
-nlmixr2Est.advi <- function(env, ...) {
+getValidNlmixrCtl.emvi <- function(control) .viValidCtl(control, TRUE, "emvi")
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.fbvi <- function(control) .viValidCtl(control, FALSE, "fbvi")
+
+#' Shared dispatch body for est="emvi" / est="fbvi".
+#' @noRd
+.viEst <- function(env, pe, est) {
   .ui <- env$ui
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'advi'", .var.name = .ui$modelName)
-  ## advi has no mixture support (mean-field VI on the theta-sensitivity model);
-  ## reject mix() up front instead of running a wrong fit that fails late in the
-  ## output tables with a cryptic "probabilities in a mixture ... sum to 0".
-  rxode2::assertRxUiNoMix(.ui, " for the estimation routine 'advi'", .var.name = .ui$modelName)
+  .what <- paste0(" for the estimation routine '", est, "'")
+  rxode2::assertRxUiRandomOnIdOnly(.ui, .what, .var.name = .ui$modelName)
+  ## no mixture support (mean-field VI on the theta-sensitivity model); reject
+  ## mix() up front instead of running a wrong fit that fails late in the output
+  ## tables with a cryptic "probabilities in a mixture ... sum to 0".
+  rxode2::assertRxUiNoMix(.ui, .what, .var.name = .ui$modelName)
   ## absorb the validated control (set by getValidNlmixrControl before dispatch)
-  if (exists("control", envir = env) && inherits(env$control, "adviControl")) {
-    assign("adviControl", env$control, envir = env)
+  if (exists("control", envir = env) && inherits(env$control, "viControl")) {
+    assign("viControl", env$control, envir = env)
   } else {
-    assign("adviControl", adviControl(), envir = env)
+    assign("viControl", viControl(), envir = env)
   }
+  ## getValidNlmixrCtl resolves pointEstimate from est, but nlmixr2Est can also
+  ## be reached with a hand-built control, so pin it here too
+  if (is.null(env$viControl$pointEstimate)) {
+    env$viControl$pointEstimate <- pe
+  }
+  env$est <- est
   ## Seed the ENTIRE estimation ONCE here and restore the caller's global RNG
   ## state afterward; the counter-based reparameterization stream inside the loop
   ## makes a shorter run a bit-for-bit prefix of a longer one.
-  rxode2::rxWithSeed(env$adviControl$seed, {
+  rxode2::rxWithSeed(env$viControl$seed, {
     .adviFitModel(env)
   })
 }
-attr(nlmixr2Est.advi, "covPresent") <- TRUE
-## ADVI optimizes in the unconstrained real coordinate space
-attr(nlmixr2Est.advi, "unbounded") <- TRUE
-attr(nlmixr2Est.advi, "iov") <- TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.emvi <- function(env, ...) .viEst(env, TRUE, "emvi")
+attr(nlmixr2Est.emvi, "covPresent") <- TRUE
+## optimization runs in the unconstrained real coordinate space
+attr(nlmixr2Est.emvi, "unbounded") <- TRUE
+attr(nlmixr2Est.emvi, "iov") <- TRUE
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.fbvi <- function(env, ...) .viEst(env, FALSE, "fbvi")
+attr(nlmixr2Est.fbvi, "covPresent") <- TRUE
+attr(nlmixr2Est.fbvi, "unbounded") <- TRUE
+attr(nlmixr2Est.fbvi, "iov") <- TRUE

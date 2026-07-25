@@ -1,10 +1,16 @@
-# advi.R -- orchestration for est="advi" (automatic differentiation variational
-# inference, Kucukelbir et al. 2017).  Sets up the FOCEi inner problem (reused
-# for the per-subject log-joint and eta-gradient) plus, when non-mu structural
-# thetas are present, the impmap theta-sensitivity model (reused for the outer
-# population gradient), then drives the ADVI optimization loop in C++.
+# vi.R -- orchestration for est="emvi" (variational EM) and est="fbvi" (full
+# Bayes VI), in the style of Kucukelbir et al. 2017 but not the published
+# algorithm (see viControl()).  Sets up the FOCEi inner problem (reused for the
+# per-subject log-joint and eta-gradient) plus, when non-mu structural thetas are
+# present, the impmap theta-sensitivity model (reused for the outer population
+# gradient), then drives the optimization loop in C++.
+#
+# The internal names keep the historical `advi` spelling -- the C++ entry point
+# is still adviOptimize_ and the FOCEi inner marker is still est="advi" -- so
+# only the user-facing surface moved.  The inner marker in particular is load
+# bearing: .foceiOptEnvLik selects the theta-sensitivity model build on it.
 
-#' A foceiControl carrying ADVI's chosen inner likelihood + solving options.
+#' A foceiControl carrying the chosen inner likelihood + solving options.
 #' Mirrors .vaeInnerFoceiControl: focei -> interaction=1; foce/focep ->
 #' interaction=0 (focep = FOCE+, R at the live conditional eta); laplace -> the
 #' Laplace method.
@@ -32,7 +38,7 @@
 #' @param ui rxode2 ui object (already bounded-transformed by the dispatch hook)
 #' @param data estimation data
 #' @param etaMat starting etas [nsub, neta]
-#' @param control adviControl
+#' @param control viControl
 #' @return the setup env (keep alive until .adviInnerFree())
 #' @noRd
 .adviInnerSetup <- function(ui, data, etaMat, control) {
@@ -83,21 +89,21 @@
   vaeInnerLik(as.matrix(etaMat), .cores, isTRUE(grad), isTRUE(preds))
 }
 
-#' Run the ADVI optimization: prep, inner setup, initialize the variational +
+#' Run the variational optimization: prep, inner setup, initialize the variational +
 #' population state, and drive the whole optimization (the adaptive step-size
 #' search + the main loop) in one C++ call (adviOptimize_).
 #' @param ui bounded-transformed rxode2 ui
 #' @param data estimation data
-#' @param control adviControl
-#' @param resume optional list from a previous fit's `$adviState` for warm resume
-#' @return the raw ADVI result list (variational params, estimates, elbo, parHist)
+#' @param control viControl
+#' @param resume optional list from a previous fit's `$viState` for warm resume
+#' @return the raw result list (variational params, estimates, elbo, parHist)
 #' @noRd
 .adviOptimize <- function(ui, data, control, resume = NULL) {
   .prep <- .adviDataPrep(ui, data)
   N <- .prep$N; neta <- .prep$neta
   ## a resumed run keeps its original family; otherwise use the control's
   .fr <- if (!is.null(resume) && !is.null(resume$family))
-    identical(resume$family, "fullRank") else identical(control$adviFamily, "fullRank")
+    identical(resume$family, "fullRank") else identical(control$viFamily, "fullRank")
 
   ## the FOCEi inner setup starts at the variational means (resumed or 0); the
   ## optimization state itself is initialized/resumed inside adviOptimize_
@@ -127,8 +133,7 @@
   ## the full-Bayes path (pointEstimate=FALSE) parameterizes phi with per-eta
   ## log-variances only, so it cannot carry an off-diagonal yet
   if (.omegaHasOffDiag(.prep$omegaMat) && !isTRUE(control$pointEstimate)) {
-    stop("adviControl(pointEstimate=FALSE) does not support correlated etas",
-         call. = FALSE)
+    stop("est=\"fbvi\" does not support correlated etas", call. = FALSE)
   }
   .res <- adviOptimize_(list(
     pointEstimate = isTRUE(control$pointEstimate), fr = as.integer(.fr),
@@ -149,25 +154,32 @@
     nAdapt = as.integer(min(control$iters, 75L)),
     parNames = .ipNames, iterPrintControl = control$iterPrintControl,
     xform = .ipXform, resume = resume))
-  .res$family <- control$adviFamily
+  .res$family <- control$viFamily
   .res$prep <- .prep
   .res$etaNames <- .prep$etaNames
   .res$thetaNames <- names(.prep$th)
   .res$model <- .setup$model
-  class(.res) <- "nlmixr2advi"
+  class(.res) <- "nlmixr2vi"
   .res
 }
 
-#' Assemble the standard nlmixr2FitData from an ADVI result: seed the ui iniDf
-#' with the ADVI estimates (population thetas + between-subject omega diagonal),
-#' supply the variational posterior means as the FOCEi inner EBE start (etaMat),
-#' and run the eval-only FOCEi finalize (maxOuterIterations=0) which reuses
-#' inner.cpp for the objective, EBEs, residual tables, and the covariance step.
-#' No outer optimizer is run; the ADVI estimates are final.  Mirrors .vaeToFit.
+#' Assemble the standard nlmixr2FitData from a variational result: seed the ui
+#' iniDf with the estimates (population thetas + between-subject omega), supply
+#' the variational posterior means as the FOCEi inner EBE start (etaMat), and run
+#' the eval-only FOCEi finalize (maxOuterIterations=0) which reuses inner.cpp for
+#' the objective, EBEs, residual tables, and the covariance step.  No outer
+#' optimizer is run; the variational estimates are final.  Mirrors .vaeToFit.
 #' @noRd
 .adviToFit <- function(env, res) {
   .ui <- env$ui
-  .control <- env$adviControl
+  .control <- env$viControl
+  ## which of the two methods produced this fit; env$est is set by .viEst, but
+  ## fall back to pointEstimate so a directly-called .adviFitModel still labels
+  ## the fit with a real method name rather than NULL
+  .est <- env$est
+  if (!is.character(.est) || length(.est) != 1L || !(.est %in% c("emvi", "fbvi"))) {
+    .est <- if (isTRUE(res$pointEstimate)) "emvi" else "fbvi"
+  }
   .prep <- res$prep
   .rxControl <- .control$rxControl
 
@@ -175,7 +187,7 @@
   .ret$table <- env$table
   .foceiPreProcessData(env$data, .ret, .ui, .rxControl)
 
-  ## seed the ui iniDf with the ADVI estimates so the eval reports them
+  ## seed the ui iniDf with the variational estimates so the eval reports them
   .uiD <- rxode2::rxUiDecompress(.ui)
   .idf <- .uiD$iniDf
   .thRow <- !is.na(.idf$ntheta)
@@ -210,10 +222,10 @@
   .ret$ui <- .ui2
   .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
-  ## covMethod="advi": for full-Bayes the SEs come from the population variational
+  ## covMethod="vi": for full-Bayes the SEs come from the population variational
   ## covariance (installed below, so skip the FOCEi cov step); for point-estimate
   ## there is no population variational block, so fall back to the FOCEi "r,s".
-  .covM <- if (identical(.control$covMethod, "advi"))
+  .covM <- if (identical(.control$covMethod, "vi"))
     (if (isTRUE(res$pointEstimate)) "r,s" else "") else .control$covMethod
   .lik <- .control$likelihood
   .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
@@ -230,15 +242,15 @@
                       indTolRelax = .control$indTolRelax, eventSens = .control$eventSens,
                       fast = FALSE, print = 0L)
   .ret$control <- .fc
-  .ret$method <- "advi"
+  .ret$method <- .est
   .ret$extra <- ""
-  .ret$est <- "advi"
-  .ret$ofvType <- "advi"
+  .ret$est <- .est
+  .ret$ofvType <- .est
   .ret$adjObf <- .control$adjObf
-  ## the ADVI optimization walk (standard parHistData -> $parHist accessor)
+  ## the optimization walk (standard parHistData -> $parHist accessor)
   if (!is.null(res$parHistData)) .ret$parHistData <- res$parHistData
-  nmObjHandleControlObject(.control, .ret)   # store adviControl for nmObjGetControl.advi
-  ## reuse the models compiled for the ADVI loop (inner/EBE/pred + thetaSens):
+  nmObjHandleControlObject(.control, .ret)   # store viControl for nmObjGetControl.advi
+  ## reuse the models compiled for the variational loop (inner/EBE/pred + thetaSens):
   ## with $model present the eval-only finalize skips its own symengine rebuild
   ## (the finalize reads only the foce-prefix columns of the inner model, so the
   ## interaction-model column layout is compatible)
@@ -248,14 +260,14 @@
     .ret$foceiModel <- .ui2$focei
   }
   .fit <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData, control = .fc,
-                                    table = .ret$table, env = .ret, est = "advi")
-  ## ADVI artifacts + warm-resume state on the fit env
+                                    table = .ret$table, env = .ret, est = .est)
+  ## variational artifacts + warm-resume state on the fit env
   .e <- .fit$env
-  .e$adviElbo <- res$elbo
+  .e$viElbo <- res$elbo
   ## an early ELBO-convergence stop is a real difference from the requested
   ## `iters`; say so rather than leaving a short trace to be noticed
   if (isTRUE(res$tolStopped)) {
-    warning(sprintf("ELBO converged at iteration %d of %d (adviControl(tol=))",
+    warning(sprintf("ELBO converged at iteration %d of %d (viControl(tol=))",
                     length(res$elbo), as.integer(.control$iters)),
             call. = FALSE)
   }
@@ -292,28 +304,34 @@
     .st$scale <- res$scale; .st$mPop <- res$mPop; .st$Lpop <- res$Lpop
     .st$smPop <- res$smPop; .st$sLpop <- res$sLpop
     ## population variational covariance -> named phi-space cov on the fit env
-    .cov <- res$adviCov
+    .cov <- res$viCov
+    ## adviOptimize_ always returns viCov on the full-Bayes branch; a missing one
+    ## means the C++ result contract and this reader have drifted apart, which
+    ## otherwise surfaces as `nrow(NULL)` -> "argument is of length zero"
+    if (!is.matrix(.cov)) {
+      stop("full Bayes returned no variational covariance ('viCov')", call. = FALSE)
+    }
     .thNm <- res$prep$thetaRealNames[res$phiThetaIdx[res$phiThetaIdx >= 0] + 1L]
     .nm <- c(.thNm, paste0("omega.", res$etaNames[res$phiOmIdx[res$phiOmIdx >= 0] + 1L]))
     if (nrow(.cov) == length(.nm)) dimnames(.cov) <- list(.nm, .nm)
-    .e$adviCov <- .cov
-    ## covMethod="advi": install the population variational covariance as the
+    .e$viCov <- .cov
+    ## covMethod="vi": install the population variational covariance as the
     ## fit's SE source (the theta block maps directly to parFixedDf's
     ## population/residual parameters).  For any other covMethod the FOCEi
     ## covariance step (analytic/r,s/...) already ran on the full inner model;
     ## only fall back to the variational covariance if that chain came up empty.
     .cmDone <- tryCatch(as.character(.e$covMethod), error = function(e) "")
-    if (identical(.control$covMethod, "advi")) {
+    if (identical(.control$covMethod, "vi")) {
       .adviInstallVarCov(.fit, res)
     } else if (is.null(.e$cov) || !is.matrix(.e$cov) ||
                  length(.cmDone) != 1L || !nzchar(.cmDone) ||
                  identical(.cmDone, "failed")) {
       message("covMethod=\"", .control$covMethod,
-              "\" covariance was not available; using the ADVI variational covariance")
+              "\" covariance was not available; using the variational covariance")
       .adviInstallVarCov(.fit, res)
     }
   }
-  .e$adviState <- .st
+  .e$viState <- .st
   .fit
 }
 
@@ -345,38 +363,38 @@
   invisible()
 }
 
-#' Install the ADVI population variational covariance (Lpop Lpop^T) as the fit's
+#' Install the population variational covariance (Lpop Lpop^T) as the fit's
 #' covariance + parFixedDf SEs -- the natural full-Bayes uncertainty.  The theta
 #' block of the phi-space covariance maps directly to the population / residual
-#' parameters (by name); the log-variance block is retained on $env$adviCov.
+#' parameters (by name); the log-variance block is retained on $env$viCov.
 #' @noRd
 .adviInstallVarCov <- function(fit, res) {
   .thComp <- which(res$phiThetaIdx >= 0)
   if (length(.thComp) == 0L) return(invisible())
   .thNames <- res$prep$thetaRealNames[res$phiThetaIdx[.thComp] + 1L]
-  .thetaCov <- res$adviCov[.thComp, .thComp, drop = FALSE]
+  .thetaCov <- res$viCov[.thComp, .thComp, drop = FALSE]
   dimnames(.thetaCov) <- list(.thNames, .thNames)
   .adviInstallThetaCov(fit, .thetaCov)
   .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
-  if (is.environment(.env)) .env$covMethod <- "advi"
+  if (is.environment(.env)) .env$covMethod <- "vi"
   invisible()
 }
 
-#' Fit an ADVI model: set up the inner/outer problems and run the C++ loop.
-#' @param env estimation environment (holds ui, data, adviControl)
+#' Fit an emvi/fbvi model: set up the inner/outer problems and run the C++ loop.
+#' @param env estimation environment (holds ui, data, viControl)
 #' @noRd
 .adviFitModel <- function(env) {
   .ui <- env$ui
-  .control <- env$adviControl
-  ## warm resume: accept a prior advi fit or its adviState
+  .control <- env$viControl
+  ## warm resume: accept a prior emvi/fbvi fit or its viState
   .resume <- .control$resume
   if (!is.null(.resume)) {
-    if (rxode2::rxIs(.resume, "nlmixr2FitData")) .resume <- .resume$env$adviState
-    else if (is.environment(.resume) && exists("adviState", .resume)) .resume <- .resume$adviState
+    if (rxode2::rxIs(.resume, "nlmixr2FitData")) .resume <- .resume$env$viState
+    else if (is.environment(.resume) && exists("viState", .resume)) .resume <- .resume$viState
     if (!is.list(.resume) || is.null(.resume$it0))
-      stop("est=\"advi\" 'resume' must be a prior advi fit or its $env$adviState", call. = FALSE)
+      stop("'resume' must be a prior emvi/fbvi fit or its $env$viState", call. = FALSE)
   }
   .res <- .adviOptimize(.ui, env$data, .control, resume = .resume)
-  if (isTRUE(.control$returnAdvi)) return(.res)
+  if (isTRUE(.control$returnVi)) return(.res)
   .adviToFit(env, .res)
 }

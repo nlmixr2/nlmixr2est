@@ -25,6 +25,7 @@ vaeControl(
   residOptimize = c("twoStage", "moment", "optimize"),
   residRhoend = NULL,
   omegaUpdate = c("suffStat", "blend"),
+  perNoCor = 0.75,
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
   covSelectMaxExact = 17L,
@@ -224,6 +225,15 @@ root afterwards -- a known remaining difference.  Matching it would need
 per-endpoint sufficient statistics plus an optimizer branch for the error
 models with no closed form (`add + prop`, `add + pow`, Box-Cox /
 Yeo-Johnson), as \code{\link{saemControl}()} does.}
+
+\item{perNoCor}{Fraction of the EM phase (`gammaIter` iterations) over which a
+  declared correlated `omega` block is held at zero correlation, letting the
+  variances settle before the correlations are estimated.  This is
+  \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
+  effect on a model with no declared off-diagonals.
+
+   A value greater than 1 is an ABSOLUTE iteration
+  count rather than a fraction.}
 
 \item{inputScale}{Which observations the encoder-input centering and scaling
 are computed over.  `"reference"` (default) matches the reference

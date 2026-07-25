@@ -1,4 +1,4 @@
-## Cross-check est="advi" against the neonatal weight-progression case study
+## Cross-check est="emvi" against the neonatal weight-progression case study
 ## (Rohleff et al. 2025) used for est="vae": a 5-parameter turnover growth model
 ## (log-linked W0/kin/TL/koutmax/T50, an ODE, W(0)=W0, combined error) over 189
 ## neonates.  ADVI is run WITHOUT covariate selection (unlike the vae example),
@@ -25,8 +25,8 @@ nmTest({
     }
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "advi",
-              control = adviControl(iters = 400L, print = 0L, returnAdvi = TRUE))))
+      nlmixr2(neonatal, dat, est = "emvi",
+              control = viControl(iters = 400L, print = 0L, returnVi = TRUE))))
 
     ## all five structural typical values + the two error params estimated finite
     expect_true(all(is.finite(fit$theta)))
@@ -55,7 +55,7 @@ nmTest({
     }
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "advi", control = adviControl(iters = 400L, print = 0L))))
+      nlmixr2(neonatal, dat, est = "emvi", control = viControl(iters = 400L, print = 0L))))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))

@@ -13082,7 +13082,7 @@ List adviOptimize_(List args) {
         cov(i, j) = (double)sAcc;
       }
     }
-    res["adviCov"] = cov;
+    res["viCov"] = cov;
   }
   return res;
 }

@@ -1,6 +1,6 @@
 # omegaBlock.R -- shared helper: build the full ini omega block matrix (and the
 # per-entry FIXED status) from an iniDf, in a given eta order.  Used by the
-# est="vae" and est="advi" data preps, which estimate the full modeled omega
+# est="vae" and est="emvi"/"fbvi" data preps, which estimate the full modeled omega
 # (diagonal + declared off-diagonals); the estimation mask is the matrix's
 # nonzero structure, matching rxSymInvCholCreate (a correlation initialized at
 # exactly 0 is structurally absent, as in focei).
@@ -88,7 +88,7 @@
   u
 }
 
-#' The fitted omega as a dimnamed matrix from a vae/advi fit list: the full
+#' The fitted omega as a dimnamed matrix from a vae/vi fit list: the full
 #' `omegaMat` when present, else the diagonal vector.
 #' @noRd
 .omegaFitMat <- function(fit, etaNames) {

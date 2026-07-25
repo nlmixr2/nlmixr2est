@@ -19,7 +19,7 @@ nmTest({
     ui <- rxode2::assertRxUi(mod)
     ## moderate ODE tolerance: tight enough for an accurate FD reference, but not
     ## so tight the 6-state sensitivity system trips the bad-solve tol relaxation.
-    ctl <- adviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    ctl <- viControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
     dat <- nlmixr2data::theo_sd
     N <- length(unique(dat$ID)); neta <- 1L
 
@@ -85,7 +85,7 @@ nmTest({
         cp <- central / v; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mod)
-    ctl <- adviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    ctl <- viControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
     dat <- nlmixr2data::theo_sd
     prep <- .adviDataPrep(ui, dat)
     N <- prep$N; neta <- 2L; nL <- neta * (neta + 1L) / 2L
@@ -139,7 +139,7 @@ nmTest({
         cp <- central / v; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mod)
-    ctl <- adviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    ctl <- viControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
     dat <- nlmixr2data::theo_sd
     prep <- .adviDataPrep(ui, dat)
     expect_true(.omegaHasOffDiag(prep$omegaMat))       # the block reached the prep
