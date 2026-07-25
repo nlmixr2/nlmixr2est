@@ -301,15 +301,12 @@
 #'   never the likelihood.
 #' @param covSelectMethod How the covariate M-step searches subsets.  `"bnb"` is
 #'   the exact branch-and-bound; it becomes impractical past a few dozen candidate
-#'   covariates.  `"l0learn"` has the suggested `L0Learn` package propose supports,
-#'   which are then scored and polished with the same exact objective -- so the
-#'   search is approximate but the scoring is not.  `"auto"` (default) uses
-#'   `"l0learn"` for a latent dimension with at least `covSelectMaxExact` candidate
-#'   covariates and `"bnb"` otherwise.  If `L0Learn` is not installed when the
-#'   exact search would be impractical (`"auto"` at or over the threshold, or an
-#'   explicit `"l0learn"`) this errors rather than run the slow exact search
-#'   silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
-#'   exact search everywhere.
+#'   covariates.  `"l0learn"` has the `L0Learn` package propose supports, which
+#'   are then scored and polished with the same exact objective -- so the search
+#'   is approximate but the scoring is not.  `"auto"` (default) uses `"l0learn"`
+#'   for a latent dimension with at least `covSelectMaxExact` candidate
+#'   covariates and `"bnb"` otherwise.  Set `covSelectMaxExact = Inf` to force
+#'   the exact search everywhere.
 #' @param covSelectMaxExact Search size at or above which
 #'   `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
 #'   `17`, just above the measured wall-clock crossover of roughly 16 bits --

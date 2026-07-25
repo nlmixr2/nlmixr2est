@@ -35,7 +35,6 @@ nmTest({
 
   test_that("auto engages L0Learn past the threshold and agrees with the exact search", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
 
@@ -55,7 +54,6 @@ nmTest({
 
   test_that("below the threshold nothing switches and nothing is said", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(6L)
     f <- suppressMessages(nlmixr2(wideModel, d, est = "vae", control = shortCtl()))
@@ -64,7 +62,6 @@ nmTest({
 
   test_that("an explicit covSelectMethod overrides the threshold both ways", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(6L)
     ## forced on below the threshold
@@ -84,7 +81,6 @@ nmTest({
 
   test_that("the approximate search reports itself in runInfo", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
     f <- suppressMessages(nlmixr2(wideModel, d, est = "vae",
@@ -99,7 +95,6 @@ nmTest({
 
   test_that("the L0Learn path is reproducible", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
     a <- suppressWarnings(suppressMessages(
@@ -113,7 +108,6 @@ nmTest({
 
   test_that("L0Learn candidates plus polish reproduce the exact optimum at scale", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     ## wider version of the essential-suite parity check: more replicates, more
     ## covariates, and both independent and rho=0.7 correlated designs
     .testSeed(2026L)
