@@ -23,6 +23,10 @@ vaeControl(
   covariateSelection = TRUE,
   pinCovariates = TRUE,
   muRefCovAlg = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
   covSelectAlpha = 2,
   covSelectSmooth = TRUE,
   gammaSeries = c("reference", "saem"),
@@ -150,6 +154,43 @@ vaeControl(
   column and the model uses the linear \`wt.cl\*nlmixrMuDerCov#\` form
   during fitting, so the VAE covariate search never re-centers it. The
   original expression is restored in the reported model.
+
+- shapes:
+
+  Which parameterizations ("shapes") of a continuous covariate the
+  automatic search may consider, using the same vocabulary as
+  \`nlmixr2scm::runSCM()\`: \`"power"\` (\`beta\*log(COV/ctr)\`),
+  \`"lin"\` (\`beta\*(COV - ctr)\`), \`"log"\` (\`beta\*log(COV)\`),
+  \`"identity"\` (\`beta\*COV\`) and \`"center"\` (\`beta\*(COV/ctr)\`).
+  At most one shape of a covariate may enter a given parameter. Because
+  the selection objective is an ordinary least squares fit with a free
+  intercept, \`"power"\`/\`"log"\` span the same model, as do
+  \`"lin"\`/\`"identity"\`/\`"center"\`; the shape therefore decides how
+  an accepted relationship is written back, and when several eligible
+  shapes span the same model the one listed first wins. May also be a
+  list named by covariate (\`list(WT = "power")\`) or a list of
+  \`list(var=, covar=, shapes=)\` items to restrict a single
+  parameter/covariate pair; anything not named keeps every shape. Which
+  covariates are searched is controlled by \`pinCovariates\`, not here.
+  Categorical covariates always enter as indicators and ignore this
+  setting.
+
+- covCenterType:
+
+  Statistic used to center a continuous covariate, \`"median"\`
+  (default) or \`"mean"\`, computed over subjects rather than rows.
+
+- covCenter:
+
+  Named numeric vector of centering values overriding \`covCenterType\`
+  for those covariates, e.g. \`c(WT = 70)\`. Names are matched
+  case-insensitively.
+
+- catCutoff:
+
+  Minimum proportion of subjects a non-reference level must hold to get
+  its own indicator. Rarer levels are lumped with the reference. Default
+  \`0.05\`; \`0\` tests every level.
 
 - covSelectAlpha:
 
@@ -310,11 +351,18 @@ vaeControl(
 
 - covSelectMaxExact:
 
-  Candidate-covariate count at or above which \`covSelectMethod =
-  "auto"\` switches a latent dimension to \`L0Learn\` (default \`17\`,
-  the measured wall-clock crossover). Counted after \`pinCovariates\`
-  trimming, so it is the size of the search actually run. \`Inf\` forces
-  the exact branch-and-bound for every dimension.
+  Search size at or above which \`covSelectMethod = "auto"\` switches a
+  latent dimension to \`L0Learn\` (default \`17\`, just above the
+  measured wall-clock crossover of roughly 16 bits – see
+  \`tools/benchVaeCovSelect.R\`, which finds the same crossover in bits
+  whether a covariate carries one shape or two). Measured in bits of
+  feasible-support space – \`sum over covariates of log2(1 + shapes
+  tried)\` – after \`pinCovariates\` trimming, so it is the size of the
+  search actually run. One shape per covariate costs exactly 1 bit, so
+  with \`shapes\` set to a single shape this is a plain candidate count;
+  two shape families of one covariate cost \`log2(3)\`, keeping the
+  exact search's worst-case node budget the same either way. \`Inf\`
+  forces the exact branch-and-bound everywhere.
 
 - bnbStrategy:
 
@@ -525,15 +573,43 @@ vaeControl(
 
 - sigdig:
 
-  Specifies the "significant digits" that the ode solving requests. When
-  specified this controls the relative and absolute tolerances of the
-  ODE solvers. By default the tolerance is `0.5*10^(-sigdig-2)` for
-  regular ODEs. For the sensitivity equations the default is
-  `0.5*10\^(-sigdig-1.5)` (sensitivity changes only applicable for
-  liblsoda). This also controls the `atol`/`rtol` of the steady state
-  solutions. The `ssAtol`/`ssRtol` is `0.5*10\^(-sigdig)` and for the
-  sensitivities `0.5*10\^(-sigdig+0.625)`. By default this is
-  unspecified (`NULL`) and uses the standard `atol`/`rtol`.
+  Specifies the "significant digits" that the ODE solving requests. This
+  is `NULL` by default, and while it is `NULL` it has no effect at all:
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  uses the standard `atol`/`rtol` (and the standard sensitivity and
+  steady-state tolerances). `sigdig` only changes a tolerance when you
+  ask for it explicitly.
+
+  When it is supplied, the tolerances are derived with one
+  solver-independent formula – the same for stiff, non-stiff and
+  auto-switching solvers. The `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below it:
+
+  - `rtol = 10^(-sigdig)`, `atol = 10^(-sigdig-3)`
+
+  - the sensitivity tolerances match the main solve, so
+    `rtolSens = rtol` and `atolSens = atol` (gradients and covariances
+    are built from them)
+
+  - the steady-state tolerances run one order looser than the
+    corresponding main tolerance, so `ssRtol = ssRtolSens = 10*rtol` and
+    `ssAtol = ssAtolSens = 10*atol`
+
+  Each of these is set only when you did not pass that tolerance
+  yourself; a tolerance you supply always wins. Because they are
+  resolved independently, an explicit `atol`/`rtol` overrides the main
+  solve but does *not* propagate to the sensitivity or steady-state
+  tolerances – set those directly if you need them changed too.
+
+  This mapping matches how `nlmixr2est` derives solver tolerances from
+  its optimization `sigdig`, so a `sigdig` used for estimation and the
+  same `sigdig` used for a plain
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  mean the same thing. Note it is keyed to `sigdig` as a request for
+  that many significant digits, and is looser than the `atol`/`rtol`
+  defaults for small `sigdig` – at `sigdig = 4` it gives `rtol = 1e-4`
+  against a default `rtol = 1e-6`. Raise `sigdig`, or set `atol`/`rtol`
+  directly, when you want a tighter solve.
 
 - sigdigTable:
 

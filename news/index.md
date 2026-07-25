@@ -1,6 +1,61 @@
 # Changelog
 
-## nlmixr2est 7.0.2
+## nlmixr2est (development version)
+
+### New features
+
+- The `est="vae"` automatic covariate search now explores several
+  parameterizations (“shapes”) of each covariate rather than the single
+  hard-coded `log(cov/mean)` form. `vaeControl(shapes=)` takes the same
+  vocabulary as `nlmixr2scm::runSCM()` – `"power"`
+  (`beta*log(COV/ctr)`), `"lin"` (`beta*(COV - ctr)`), `"log"`
+  (`beta*log(COV)`), `"identity"` (`beta*COV`) – plus a new `"center"`
+  (`beta*(COV/ctr)`). At most one shape of a covariate may enter a given
+  parameter, as in a stepwise covariate search. `shapes=` also accepts a
+  list named by covariate, or a list of `list(var=, covar=, shapes=)`
+  items restricting a single parameter/covariate pair; which covariates
+  are searched is still governed by `pinCovariates`. Because the
+  selection objective is a least-squares fit with a free intercept,
+  `"power"` and `"log"` span the same model, as do `"lin"`, `"identity"`
+  and `"center"`; the search chooses between the two families and
+  `shapes=` chooses how the winner is written back, with the coefficient
+  and the structural parameter adjusted together so the prediction is
+  unchanged.
+
+- `est="vae"` gains `vaeControl(covCenterType=)` (`"median"`, the new
+  default, or `"mean"`), `vaeControl(covCenter=)` for per-covariate
+  centering values such as `c(WT = 70)`, and `vaeControl(catCutoff=)`.
+
+- The `est="vae"` covariate search now considers factor and character
+  data columns, which were previously dropped without comment. Each
+  becomes a set of 0/1 indicators against the most frequent level per
+  subject, with levels held by fewer than `catCutoff` (default 5%) of
+  subjects lumped into that reference. Several levels of one factor may
+  enter a parameter together; only alternate shapes of one covariate are
+  mutually exclusive.
+
+- [`vaeCovariates()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeCovariates.md)
+  now returns one row per candidate search column, adding `raw`,
+  `shape`, `level` and `group` columns, and takes the same `shapes`,
+  `covCenterType`, `covCenter` and `catCutoff` arguments as the fit.
+
+  Together these change the default `est="vae"` covariate search: more
+  candidate forms are considered and centering moves from the mean to
+  the median, so selected covariates and estimates may differ from
+  7.0.1. Setting `vaeControl(shapes="power", covCenterType="mean")`
+  reproduces the previous search.
+
+- `vaeControl(covSelectMaxExact=)` is now measured in bits of
+  feasible-support space
+  (`sum over covariates of log2(1 + shapes tried)`) rather than a plain
+  candidate count, so the exact branch-and-bound keeps the same
+  worst-case node budget whether a covariate carries one shape or
+  several. With a single shape per covariate the setting means exactly
+  what it did before. The default stays `17`: re-measuring with
+  `tools/benchVaeCovSelect.R` puts the exact-vs-L0Learn crossover at
+  roughly 16 bits in BOTH regimes (one shape per covariate and two),
+  which is what makes a single threshold in these units meaningful. \#
+  nlmixr2est 7.0.2
 
 ### Bug fixes
 

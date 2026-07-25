@@ -61,6 +61,10 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  covariateSelection <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  pinCovariates <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  shapes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"power"</span>, <span class="st">"lin"</span>, <span class="st">"log"</span>, <span class="st">"identity"</span>, <span class="st">"center"</span><span class="op">)</span>,</span>
+<span>  covCenterType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"median"</span>, <span class="st">"mean"</span><span class="op">)</span>,</span>
+<span>  covCenter <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  catCutoff <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  covSelectAlpha <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  covSelectSmooth <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  gammaSeries <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"reference"</span>, <span class="st">"saem"</span><span class="op">)</span>,</span>
@@ -188,6 +192,41 @@ centering – is evaluated into an internal `nlmixrMuDerCov#` data column and
 the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
 VAE covariate search never re-centers it.  The original expression is
 restored in the reported model.</p></dd>
+
+
+<dt id="arg-shapes">shapes<a class="anchor" aria-label="anchor" href="#arg-shapes"></a></dt>
+<dd><p>Which parameterizations ("shapes") of a continuous covariate
+the automatic search may consider, using the same vocabulary as
+`nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+(`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+and `"center"` (`beta*(COV/ctr)`).  At most one shape of a covariate may
+enter a given parameter.  Because the selection objective is an ordinary
+least squares fit with a free intercept, `"power"`/`"log"` span the same
+model, as do `"lin"`/`"identity"`/`"center"`; the shape therefore decides
+how an accepted relationship is written back, and when several eligible
+shapes span the same model the one listed first wins.  May also be a list
+named by covariate (`list(WT = "power")`) or a list of
+`list(var=, covar=, shapes=)` items to restrict a single
+parameter/covariate pair; anything not named keeps every shape.  Which
+covariates are searched is controlled by `pinCovariates`, not here.
+Categorical covariates always enter as indicators and ignore this setting.</p></dd>
+
+
+<dt id="arg-covcentertype">covCenterType<a class="anchor" aria-label="anchor" href="#arg-covcentertype"></a></dt>
+<dd><p>Statistic used to center a continuous covariate,
+`"median"` (default) or `"mean"`, computed over subjects rather than rows.</p></dd>
+
+
+<dt id="arg-covcenter">covCenter<a class="anchor" aria-label="anchor" href="#arg-covcenter"></a></dt>
+<dd><p>Named numeric vector of centering values overriding
+`covCenterType` for those covariates, e.g. `c(WT = 70)`.  Names are matched
+case-insensitively.</p></dd>
+
+
+<dt id="arg-catcutoff">catCutoff<a class="anchor" aria-label="anchor" href="#arg-catcutoff"></a></dt>
+<dd><p>Minimum proportion of subjects a non-reference level must
+hold to get its own indicator.  Rarer levels are lumped with the reference.
+Default `0.05`; `0` tests every level.</p></dd>
 
 
 <dt id="arg-covselectalpha">covSelectAlpha<a class="anchor" aria-label="anchor" href="#arg-covselectalpha"></a></dt>
@@ -332,11 +371,17 @@ exact search everywhere.</p></dd>
 
 
 <dt id="arg-covselectmaxexact">covSelectMaxExact<a class="anchor" aria-label="anchor" href="#arg-covselectmaxexact"></a></dt>
-<dd><p>Candidate-covariate count at or above which
+<dd><p>Search size at or above which
 `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
-`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
-trimming, so it is the size of the search actually run.  `Inf` forces the
-exact branch-and-bound for every dimension.</p></dd>
+`17`, just above the measured wall-clock crossover of roughly 16 bits –
+see `tools/benchVaeCovSelect.R`, which finds the same crossover in bits
+whether a covariate carries one shape or two).  Measured in bits of
+feasible-support space – `sum over covariates of log2(1 + shapes tried)` –
+after `pinCovariates` trimming, so it is the size of the search actually
+run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
+single shape this is a plain candidate count; two shape families of one
+covariate cost `log2(3)`, keeping the exact search's worst-case node budget
+the same either way.  `Inf` forces the exact branch-and-bound everywhere.</p></dd>
 
 
 <dt id="arg-bnbstrategy">bnbStrategy<a class="anchor" aria-label="anchor" href="#arg-bnbstrategy"></a></dt>
@@ -545,16 +590,36 @@ function.  By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
-<dd><p>Specifies the "significant digits" that the ode
-solving requests.  When specified this controls the relative and
-absolute tolerances of the ODE solvers.  By default the tolerance
-is <code>0.5*10^(-sigdig-2)</code> for regular ODEs. For the
-sensitivity equations the default is <code>0.5*10\^(-sigdig-1.5)</code>
-(sensitivity changes only applicable for liblsoda).  This also
-controls the <code>atol</code>/<code>rtol</code> of the steady state solutions. The
-<code>ssAtol</code>/<code>ssRtol</code> is <code>0.5*10\^(-sigdig)</code> and for the sensitivities
-<code>0.5*10\^(-sigdig+0.625)</code>.  By default
-this is unspecified (<code>NULL</code>) and uses the standard <code>atol</code>/<code>rtol</code>.</p></dd>
+<dd><p>Specifies the "significant digits" that the ODE
+solving requests.  This is <code>NULL</code> by default, and while it is
+<code>NULL</code> it has no effect at all: <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxSolve()</a></code> uses the standard
+<code>atol</code>/<code>rtol</code> (and the standard sensitivity and steady-state
+tolerances).  <code>sigdig</code> only changes a tolerance when you ask for
+it explicitly.</p>
+<p>When it is supplied, the tolerances are derived with one
+solver-independent formula – the same for stiff, non-stiff and
+auto-switching solvers.  The <code>rtol</code> exponent IS <code>sigdig</code> and
+<code>atol</code> sits three orders below it:</p><ul><li><p><code>rtol = 10^(-sigdig)</code>, <code>atol = 10^(-sigdig-3)</code></p></li>
+<li><p>the sensitivity tolerances match the main solve, so
+<code>rtolSens = rtol</code> and <code>atolSens = atol</code> (gradients and
+covariances are built from them)</p></li>
+<li><p>the steady-state tolerances run one order looser than the
+corresponding main tolerance, so <code>ssRtol = ssRtolSens = 10*rtol</code>
+and <code>ssAtol = ssAtolSens = 10*atol</code></p></li>
+</ul><p>Each of these is set only when you did not pass that tolerance
+yourself; a tolerance you supply always wins.  Because they are
+resolved independently, an explicit <code>atol</code>/<code>rtol</code> overrides the
+main solve but does <em>not</em> propagate to the sensitivity or
+steady-state tolerances – set those directly if you need them
+changed too.</p>
+<p>This mapping matches how <code>nlmixr2est</code> derives solver tolerances
+from its optimization <code>sigdig</code>, so a <code>sigdig</code> used for estimation
+and the same <code>sigdig</code> used for a plain <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxSolve()</a></code> mean the same
+thing.  Note it is keyed to <code>sigdig</code> as a request for that many
+significant digits, and is looser than the <code>atol</code>/<code>rtol</code> defaults
+for small <code>sigdig</code> – at <code>sigdig = 4</code> it gives <code>rtol = 1e-4</code>
+against a default <code>rtol = 1e-6</code>.  Raise <code>sigdig</code>, or set
+<code>atol</code>/<code>rtol</code> directly, when you want a tighter solve.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
