@@ -8,7 +8,7 @@ nmTest({
   })
 
   test_that("vaeControl validates the covariate shape settings", {
-    expect_error(vaeControl(shapes = "hockey"), "unknown covariate shape")
+    expect_error(vaeControl(shapes = "notAShape"), "unknown covariate shape")
     ## "cat" is applied to categorical covariates automatically, never chosen
     expect_error(vaeControl(shapes = "cat"), "unknown covariate shape")
     expect_error(vaeControl(shapes = c("lin", "lin")), "duplicate")

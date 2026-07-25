@@ -104,7 +104,7 @@
       shapeRules$shapes[[.i]]
     } else character(0)
   })))
-  if (length(.sh) == 0L) .sh <- .vaeContShapes
+  if (length(.sh) == 0L) .sh <- .vaeDefaultShapes
   ## Drop shapes that cannot be written at this center before choosing which one
   ## names each family, so a usable sibling (e.g. "lin" for "center") wins.  When
   ## NOTHING requested is writable, substitute each family's plain form rather
