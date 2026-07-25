@@ -13,6 +13,22 @@
 #' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
 #' line. Returns the updated ui.
 #' @noRd
+#' Which shape to write for a selected covariate column
+#'
+#' The search picks a FAMILY (column); shapes within a family span the same
+#' model, so the written parameterization is the first shape this
+#' (parameter, covariate) pair allows in that family, falling back to the
+#' column's own representative shape.
+#' @noRd
+.vaeSelectedShape <- function(prep, parAliases, j) {
+  .own <- prep$covShape[j]
+  if (identical(.own, "cat") || is.null(prep$shapeRules)) return(.own)
+  .ok <- .vaeShapesFor(prep$shapeRules, parAliases, prep$covRaw[j])
+  if (length(.ok) == 0L) return(.own)
+  .m <- .ok[.vaeShapeFamily(.ok) == prep$covFamily[j]]
+  if (length(.m) == 0L) .own else .m[1L]
+}
+
 .vaeUpdateModel <- function(ui, fit) {
   prep <- fit$prep
   .map <- .foceiEtaThetaMap(ui)
@@ -20,6 +36,9 @@
   covNames <- fit$covNames
   ui2 <- ui
   betaVals <- list()
+  ## a shape written in a non-centered parameterization moves part of the effect
+  ## into the intercept, so the structural theta is corrected by this much
+  icAdj <- rep(0, length(thetaNames))
 
   ## 1. inject covariate terms into each parameter's model line
   for (k in seq_along(thetaNames)) {
@@ -35,19 +54,31 @@
     if (length(.idx) == 0L) next
     .idx <- .idx[1]
     terms <- character(0)
+    ## names this parameter answers to in a shapes= rule
+    .aliases <- c(prep$etaNames[k], thName, sub("^eta\\.", "", prep$etaNames[k]))
     for (j in sel) {
-      bn <- paste0("beta_", thName, "_", covNames[j])
-      center <- signif(prep$covPop[j], 12)
-      ## an uncentered covariate (a 0/1 indicator) enters bare -- no "- 0" term
-      enc <- if (prep$covType[j] == "continuous") {
-        paste0("log(", covNames[j], "/", center, ")")
-      } else if (center == 0) {
-        covNames[j]
+      ## The selected column fixes the FAMILY; which parameterization of that
+      ## family is written is the user's choice, so take the first shape this
+      ## (parameter, covariate) pair allows within the family.
+      .shp <- .vaeSelectedShape(prep, .aliases, j)
+      .ctr <- prep$covPop[j]
+      .raw <- prep$covRaw[j]
+      .bn <- if (identical(prep$covType[j], "continuous")) {
+        paste0("beta_", thName, "_", .raw, "_", .shp)
       } else {
-        paste0("(", covNames[j], " - ", center, ")")
+        paste0("beta_", thName, "_", covNames[j])
       }
-      terms <- c(terms, paste0(bn, " * ", enc))
-      betaVals[[bn]] <- fit$beta[k, j]
+      .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
+      icAdj[k] <- icAdj[k] + .r$interceptAdj
+      .enc <- if (identical(prep$covShape[j], "cat")) {
+        ## an indicator enters as written in the data (bare 0/1 column) or as an
+        ## explicit level comparison -- either way it is never re-centered
+        prep$covExpr[j]
+      } else {
+        .vaeShapeExpr(.shp, .raw, .ctr)
+      }
+      terms <- c(terms, paste0(.bn, " * ", .enc))
+      betaVals[[.bn]] <- .r$beta
     }
     ## Inject the covariate terms FLAT (no wrapping parentheses): the mu-ref line
     ## is `p <- exp(theta + eta)`, so replacing `theta` with `theta + beta*cov`
@@ -66,7 +97,8 @@
     ## a free/fixed eta has no structural theta (thetaForEta == NA) -- its
     ## population location is already a literal in the model, so only set omega
     if (!is.na(thetaNames[k])) {
-      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k], 12)))
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ",
+                                 signif(fit$zPop[k] + icAdj[k], 12)))
     }
     ui2 <- .setIni(ui2, paste0(fit$prep$etaNames[k], " ~ ", signif(fit$omega[k], 12)))
   }
@@ -123,7 +155,9 @@
   .inRows <- if (is.null(pairs)) NULL else pairs[pairs$inPool, , drop = FALSE]
   for (.r in seq_len(NROW(.inRows))) {
     .k <- .inRows$k[.r]
-    .j <- match(.inRows$covName[.r], covNames)
+    ## the pair pins to the column matching the form it was written in, which is
+    ## how the coefficient transfers with no re-parameterization
+    .j <- .vaePinColumn(prep, .inRows[.r, , drop = FALSE])
     .sel <- !is.null(fit$selected) && !is.na(.j) && isTRUE(fit$selected[.k, .j])
     .betaVal <- if (.sel) fit$beta[.k, .j] else 0
     ui2 <- .setIni(ui2, paste0(.inRows$coefName[.r], " <- ", signif(.betaVal, 12)))

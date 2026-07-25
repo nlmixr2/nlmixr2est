@@ -102,7 +102,7 @@ nmTest({
     ui <- rxode2::assertRxUi(.tr())               # cl.wt * log(WT/70) on cl
     dd <- as.data.frame(d); names(dd) <- toupper(names(dd))
     cov <- .vaeCovariateSearch(dd, unique(dd$ID))
-    pr <- .vaeModelCovariatePairs(ui, cov$covNames, cov$covType)
+    pr <- .vaeModelCovariatePairs(ui, cov)
     expect_equal(nrow(pr), 1L)
     expect_equal(pr$coefName, "cl.wt")
     expect_equal(pr$covName, "WT")
@@ -119,7 +119,7 @@ nmTest({
     ## WT allowed only on the cl dim; exactly one 1 in the mask
     expect_equal(sum(p$covAllow), 1L)
     k <- match("tcl", .foceiEtaThetaMap(ui)$thetaForEta)
-    expect_equal(p$covAllow[k, match("WT", p$covNames)], 1L)
+    expect_equal(p$covAllow[k, match("WT", p$covRaw)], 1L)
     ## in-pool coefficient held at 0 for the covariate-free training decoder
     thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     expect_equal(unname(p$th[match("cl.wt", thNames)]), 0)
@@ -168,7 +168,7 @@ nmTest({
     dd$AGE <- .ageById[as.character(dd$ID)]          # subject-constant
     ui <- rxode2::assertRxUi(multi())
     cov <- .vaeCovariateSearch(dd, unique(dd$ID))
-    pr <- .vaeModelCovariatePairs(ui, cov$covNames, cov$covType)
+    pr <- .vaeModelCovariatePairs(ui, cov)
     ## both coefficients detected and paired with their own covariate
     expect_setequal(pr$coefName, c("wt.cl", "age.cl"))
     expect_equal(pr$covName[pr$coefName == "wt.cl"], "WT")
@@ -190,7 +190,7 @@ nmTest({
     p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(two()), d,
                                        vaeControl(pinCovariates = TRUE,
                                                   muRefCovAlg = FALSE)))
-    jWT <- match("WT", p$covNames)
+    jWT <- match("WT", p$covRaw)
     expect_true(all(is.finite(p$covMat[, jWT])))     # never -Inf
     expect_equal(p$covPop[jWT], 0)                   # uncentered exactly once
     ## column is log(WT/70) -- the model's centering, applied once
@@ -213,7 +213,7 @@ nmTest({
     lst <- suppressWarnings(.uiModifyForCovs(rxode2::assertRxUi(mu2()), as.data.frame(d)))
     p <- suppressWarnings(.vaeDataPrep(lst$ui, lst$data, vaeControl(pinCovariates = TRUE)))
     ## the derived column is linear (categorical), never log-encoded
-    jMu <- grep("NLMIXRMUDERCOV", p$covNames)
+    jMu <- grep("NLMIXRMUDERCOV", p$covRaw)
     expect_length(jMu, 1L)
     expect_equal(p$covType[jMu], "categorical")
     ## pinned to the cl dim, in place, with no VAE-applied center (mu2 data carries it)
@@ -236,6 +236,10 @@ nmTest({
     p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(noCov), d, vaeControl(pinCovariates = TRUE)))
     expect_false(p$pinActive)
     expect_null(p$covAllow)                         # no mask -> unrestricted search
-    expect_equal(p$covNames, "WT")                  # WT still discovered from data
+    ## WT still discovered from data, now as one search column per shape family
+    expect_equal(unique(p$covRaw), "WT")
+    expect_equal(p$covNames, c("WT_power", "WT_lin"))
+    ## the two shapes share an exclusion group, so only one can ever be selected
+    expect_equal(length(unique(p$covGroup)), 1L)
   })
 })

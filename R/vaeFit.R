@@ -227,22 +227,41 @@
   if (!is.null(prep$covAllow)) {
     prepC$covAllow <- matrix(as.integer(prep$covAllow), prep$zDim, ncol(prep$covMat))
   }
+  ## mutual-exclusion groups: alternate shapes of one covariate share a group id,
+  ## so at most one of them can be selected.  Dropped when every column is its own
+  ## group -- that is the unconstrained search and skipping the field keeps the
+  ## historic code path bit-identical.
+  prepC$covGroup <- NULL
+  if (!is.null(prep$covGroup) && anyDuplicated(prep$covGroup) > 0L) {
+    prepC$covGroup <- as.integer(prep$covGroup)
+  }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
   ## candidates that dimension actually has (after any pinCovariates trimming),
   ## then hand the C++ M-step a closure proposing supports for the L0Learn
   ## dimensions.  Those are candidates only -- C++ scores every one of them
   ## against the same exact objective the branch-and-bound uses.
+  ## Search size is measured in BITS of feasible-support space, not columns:
+  ## exclusion groups mean a covariate with two shape families offers 3 states
+  ## (neither, log, linear), not 4.  One column per group costs exactly 1 bit, so
+  ## a single-shape search is the historic candidate count and covSelectMaxExact
+  ## keeps its old meaning there.
   .nCov <- ncol(prep$covMat)
+  .grp <- prep$covGroup
+  if (is.null(.grp) || length(.grp) != .nCov) .grp <- seq_len(.nCov)
+  .bitsOf <- function(cols) {
+    if (length(cols) == 0L) return(0)
+    sum(log2(1 + as.numeric(table(.grp[cols]))))
+  }
   .allowed <- NULL
-  .nCand <- rep(as.integer(.nCov), prep$zDim)
+  .nCand <- rep(.bitsOf(seq_len(.nCov)), prep$zDim)
   if (!is.null(prepC$covAllow)) {
     .allowed <- lapply(seq_len(prep$zDim), function(k) which(prepC$covAllow[k, ] == 1L) - 1L)
-    .nCand <- vapply(.allowed, length, integer(1))
+    .nCand <- vapply(.allowed, function(a) .bitsOf(a + 1L), numeric(1))
   }
   ## a free (mixture) or fixed dimension never runs the search
-  .nCand[as.logical(prep$isFree) | as.logical(prep$zPopFix)] <- 0L
-  if (!isTRUE(control$covariateSelection) || .nCov == 0L) .nCand[] <- 0L
+  .nCand[as.logical(prep$isFree) | as.logical(prep$zPopFix)] <- 0
+  if (!isTRUE(control$covariateSelection) || .nCov == 0L) .nCand[] <- 0
   .modes <- .vaeCovSelectModes(.nCand, control)
   for (.m in .modes$msg) warning(.m, call. = FALSE)
   prepC$covSelectMode <- .modes$mode

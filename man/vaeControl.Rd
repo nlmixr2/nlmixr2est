@@ -277,11 +277,15 @@ explicit `"l0learn"`) this errors rather than run the slow exact search
 silently; install `L0Learn`, or set `covSelectMaxExact = Inf` to force the
 exact search everywhere.}
 
-\item{covSelectMaxExact}{Candidate-covariate count at or above which
+\item{covSelectMaxExact}{Search size at or above which
 `covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
-`17`, the measured wall-clock crossover).  Counted after `pinCovariates`
-trimming, so it is the size of the search actually run.  `Inf` forces the
-exact branch-and-bound for every dimension.}
+`17`, the measured wall-clock crossover).  Measured in bits of
+feasible-support space -- `sum over covariates of log2(1 + shapes tried)` --
+after `pinCovariates` trimming, so it is the size of the search actually
+run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
+single shape this is a plain candidate count; two shape families of one
+covariate cost `log2(3)`, keeping the exact search's worst-case node budget
+the same either way.  `Inf` forces the exact branch-and-bound everywhere.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),
