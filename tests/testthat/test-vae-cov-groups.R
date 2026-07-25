@@ -78,6 +78,9 @@ nmTest({
     y <- as.numeric(1 + 2 * x + rnorm(N, sd = 0.2))
     got <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", group)
     expect_equal(sum(got$selected[1, 1:2]), 1L)
+    ## and specifically the FIRST twin: on an exact score tie the incumbent is
+    ## the lexicographically smaller support, so this is deterministic
+    expect_equal(as.integer(got$selected[1, 1:2]), c(1L, 0L))
   })
 
   test_that("candidate scoring repairs infeasible proposals", {

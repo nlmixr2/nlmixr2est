@@ -102,6 +102,22 @@ nmTest({
     res <- vaeCovariates(nlmixr2data::theo_sd)
     expect_equal(res$raw, c("WT", "WT"))
     expect_equal(res$type, c("continuous", "continuous"))
+    ## the exported view must agree with the pool the fit actually searches --
+    ## asserting only on vaeCovariates() would miss any divergence
+    mod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.err) })
+    }
+    prep <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(mod),
+                                          nlmixr2data::theo_sd, vaeControl()))
+    expect_equal(res$covariate, prep$covNames)
+    expect_equal(res$raw, prep$covRaw)
+    expect_equal(res$shape, prep$covShape)
+    expect_equal(res$group, prep$covGroup)
+    expect_equal(res$center, prep$covPop)
   })
 
   test_that("vaeCovariates warns on time-varying columns and drops them", {
@@ -128,5 +144,58 @@ nmTest({
 
   test_that("vaeCovariates requires an ID column", {
     expect_error(vaeCovariates(data.frame(time = 0:1, dv = 1:2)), "ID")
+  })
+})
+
+## Regressions for the seventh review pass (discovery and encoding).
+nmTest({
+  .mk <- function(extra) {
+    cbind(data.frame(id = rep(1:6, each = 3), time = rep(0:2, 6), dv = 1:18),
+          extra)
+  }
+
+  test_that("a covariate missing for any subject is excluded, not crashed on", {
+    ## an NA reached `all(v > 0)` and aborted the whole fit with
+    ## "missing value where TRUE/FALSE needed"
+    d <- .mk(data.frame(wt = rep(c(70, 80, NA, 90, 75, 65), each = 3)))
+    expect_warning(res <- vaeCovariates(d), "missing values")
+    expect_equal(nrow(res), 0L)
+    ## a complete covariate alongside an incomplete one is still searched
+    d2 <- .mk(data.frame(wt = rep(c(70, 80, NA, 90, 75, 65), each = 3),
+                         age = rep(c(30, 40, 50, 60, 35, 45), each = 3)))
+    res2 <- suppressWarnings(vaeCovariates(d2))
+    expect_equal(unique(res2$raw), "AGE")
+  })
+
+  test_that("a non-finite covariate is excluded", {
+    ## Inf survived the numeric checks and put Inf into the design column, which
+    ## silently breaks the least-squares M-step
+    d <- .mk(data.frame(wt = rep(c(70, 80, Inf, 90, 75, 65), each = 3)))
+    expect_warning(res <- vaeCovariates(d), "missing values")
+    expect_equal(nrow(res), 0L)
+  })
+
+  test_that("a two-level covariate with a missing value is excluded", {
+    d <- .mk(data.frame(grp = rep(c(1, 2, NA, 1, 2, 1), each = 3)))
+    expect_warning(res <- vaeCovariates(d), "missing values")
+    expect_equal(nrow(res), 0L)
+  })
+
+  test_that("a covariate carrying no information yields no column", {
+    ## constant -> a design column of zeros would make the OLS singular
+    expect_equal(nrow(vaeCovariates(.mk(data.frame(wt = rep(70, 18))))), 0L)
+    ## a single-level factor has no non-reference level
+    expect_equal(nrow(vaeCovariates(.mk(data.frame(
+      rc = rep("A", 18), stringsAsFactors = FALSE)))), 0L)
+  })
+
+  test_that("a shape suffix cannot be confused with a same-named data column", {
+    ## continuous WT emits WT_lin; a 0/1 data column named WT_LIN must stay
+    ## distinct so their coefficients do not collide
+    d <- .mk(data.frame(wt = rep(c(70, 80, 60, 90, 75, 65), each = 3),
+                        wt_lin = rep(c(0, 1, 0, 1, 0, 1), each = 3)))
+    res <- vaeCovariates(d)
+    expect_equal(anyDuplicated(res$covariate), 0L)
+    expect_true(all(c("WT_lin", "WT_LIN") %in% res$covariate))
   })
 })

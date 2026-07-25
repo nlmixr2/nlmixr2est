@@ -140,7 +140,8 @@
 #' @param covCenter named numeric of per-covariate centering overrides
 #' @param catCutoff minimum subject proportion for a level to be testable
 #' @return list(covNames, covRaw, covShape, covFamily, covLevel, covGroup,
-#'   covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped, logDrop)
+#'   covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped, logDrop,
+#'   shapeSub, naExcl)
 #' @noRd
 .vaeCovariateSearch <- function(d, ids, shapeRules = NULL,
                                 covCenterType = c("median", "mean"),
@@ -156,11 +157,29 @@
     is.numeric(v) || is.character(v) || is.factor(v)
   }
   .allCand <- .cand[vapply(.cand, .usable, logical(1))]
-  ## first row of each subject, in estimation order
+  ## First row of each subject, in estimation order.  A subject's value is read
+  ## from its first NON-missing row: a covariate is often blank on dose records,
+  ## and taking the literal first row would call it missing (or, before,
+  ## time-varying) when it is neither.
   .first <- match(ids, d$ID)
+  .subjVal <- function(nm) {
+    .v <- d[[nm]][.first]
+    if (anyNA(.v)) {
+      .all <- d[[nm]]
+      for (.b in which(is.na(.v))) {
+        .i <- which(d$ID == ids[.b] & !is.na(.all))
+        if (length(.i) > 0L) .v[.b] <- .all[.i[1L]]
+      }
+    }
+    .v
+  }
+  ## Constant WITHIN a subject, ignoring missing entries -- an NA on one row does
+  ## not make an otherwise fixed covariate time-varying.
   .isSubjConst <- vapply(.allCand, function(nm) {
-    all(vapply(ids, function(id) length(unique(d[[nm]][d$ID == id])) == 1L,
-               logical(1)))
+    all(vapply(ids, function(id) {
+      .u <- unique(d[[nm]][d$ID == id])
+      length(.u[!is.na(.u)]) <= 1L
+    }, logical(1)))
   }, logical(1))
   # The VAE covariate search absorbs covariates as subject-level (time-invariant)
   # effects, so a covariate that varies within a subject (time-varying) cannot be
@@ -170,6 +189,23 @@
   # subject-constant.  They are reported back (tvExcl) so callers can warn.
   .raw <- .allCand[.isSubjConst]
   .tvExcl <- setdiff(.allCand, .raw)
+  ## The design matrix feeds an ordinary least squares M-step, so every column
+  ## must be complete and finite.  A covariate missing for even one subject
+  ## cannot be searched: silently imputing it would invent data, and the written
+  ## model has no ifelse() guard to carry an imputation to solve time.  (An NA
+  ## also used to reach `all(v > 0)` and abort the whole fit with "missing value
+  ## where TRUE/FALSE needed".)
+  .complete <- vapply(.raw, function(nm) {
+    v <- .subjVal(nm)
+    !anyNA(v) && (!is.numeric(v) || all(is.finite(v)))
+  }, logical(1))
+  .naExcl <- .raw[!.complete]
+  .raw <- .raw[.complete]
+  ## A covariate with a single distinct value carries no information, and as a
+  ## constant 0/1 indicator it would enter the design as a column of ones --
+  ## duplicating the intercept and making the least-squares M-step singular.
+  .raw <- .raw[vapply(.raw, function(nm) length(unique(.subjVal(nm))) > 1L,
+                      logical(1))]
 
   .cols <- list()
   .rawVals <- list()
@@ -180,6 +216,10 @@
   ## relationship); it becomes an integer id once every column is known
   .add <- function(name, raw, shape, family, level, group, values, type,
                    center, expr) {
+    ## a level containing "_" can collide with another covariate's column name
+    ## (covariate WT level "A_B" vs covariate WT_A level "B"), and a duplicate
+    ## name makes the second column unreachable through match()
+    name <- .vaeUniqueName(name, vapply(.cols, `[[`, character(1), "name"))
     .cols[[length(.cols) + 1L]] <<-
       list(name = name, raw = raw, shape = shape, family = family,
            level = level, group = group, values = values, type = type,
@@ -187,7 +227,7 @@
   }
 
   for (nm in .raw) {
-    v <- d[[nm]][.first]
+    v <- .subjVal(nm)
     ## kept so a pinned column can be rebuilt as the model's OWN expression
     .rawVals[[nm]] <- v
     ## mu2/mu3 covariates are pre-transformed by the hook into a linear
@@ -276,7 +316,7 @@
        ## near-collinear copies, but distinct factor levels are not
        covCanon = !duplicated(.covGroup), covRawVal = .rawVals,
        tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
-       shapeSub = unique(.shapeSub))
+       shapeSub = unique(.shapeSub), naExcl = .naExcl)
 }
 
 #' Search column a model-declared covariate pair pins to
@@ -370,6 +410,10 @@ vaeCovariates <- function(data, warn = TRUE,
   if (warn && length(.cov$tvExcl) > 0L) {
     warning("time-varying covariate(s) were excluded from automatic covariate search: ",
             paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
+  }
+  if (warn && length(.cov$naExcl) > 0L) {
+    warning("covariate(s) with missing values were excluded from automatic covariate search: ",
+            paste(.cov$naExcl, collapse = ", "), call. = FALSE)
   }
   data.frame(covariate = .cov$covNames, raw = .cov$covRaw, shape = .cov$covShape,
              level = .cov$covLevel, group = .cov$covGroup, type = .cov$covType,
@@ -776,6 +820,10 @@ vaeCovariates <- function(data, warn = TRUE,
   if (length(.cov$shapeSub) > 0L) {
     .ssPre <- "shape unwritable at center, plain form used: "
     warning(.ssPre, .vaeTruncList(.cov$shapeSub, prefix = .ssPre), call. = FALSE)
+  }
+  if (length(.cov$naExcl) > 0L) {
+    .naPre <- "covariate(s) with missing values not searched: "
+    warning(.naPre, .vaeTruncList(.cov$naExcl, prefix = .naPre), call. = FALSE)
   }
 
   ## pinCovariates=FALSE with a model that declares covariates: turn OFF the

@@ -465,7 +465,10 @@ nmTest({
     ## column would fit the wrong indicator entirely.
     d <- as.data.frame(nlmixr2data::theo_sd)
     ids <- unique(d$ID)
-    d$RACE <- c(rep("W", 10), "B", "Asian")[match(d$ID, ids)]
+    ## "B" must clear catCutoff so a RACE_B column EXISTS -- otherwise the pool
+    ## is empty and the test passes trivially instead of showing that "Asian"
+    ## refuses to pin to some other level's column
+    d$RACE <- c(rep("W", 8), rep("B", 3), "Asian")[match(d$ID, ids)]
     m <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; r1 <- 0.1; add.err <- 0.7
         eta.cl ~ 0.1 })
@@ -478,7 +481,9 @@ nmTest({
     p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
                                        vaeControl(muRefCovAlg = FALSE,
                                                   catCutoff = 0.10)))
-    ## no RACE_Asian column exists
+    ## RACE_B exists but RACE_Asian does not, so there IS a wrong column to
+    ## mis-pin to
+    expect_true("B" %in% p$covLevel)
     expect_false("Asian" %in% p$covLevel)
     ## so the declared effect is estimated in place, not pinned to RACE_B
     expect_false(any(p$pinPairs$inPool))
