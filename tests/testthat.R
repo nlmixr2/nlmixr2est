@@ -77,11 +77,11 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "split", "unary-mu", "timing"),
+    "vae-l0learn-fit", "split", "unary-mu", "timing", "bounded-transform"),
   # batch 7 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c("vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
-    "vi-fullbayes", "omega-offdiag"),
+    "vi-fullbayes", "omega-offdiag", "augpred", "vae-residopt"),
   # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
