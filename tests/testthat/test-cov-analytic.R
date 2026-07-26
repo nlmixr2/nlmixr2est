@@ -728,13 +728,17 @@ nmTest({
     fit <- suppressWarnings(suppressMessages(nlmixr(twoEta, nlmixr2data::theo_sd, "focei",
                             foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
     expect_true(is.matrix(fit$cov))
-    # The analytic path reports covMethod "analytic" when it runs, so that is
-    # what pins the bow-out.  Do NOT assert the absence of "om." rows: whether
-    # the covFull FD cov is ALSO installed turns on the positive-definiteness
-    # guard in .foceiInstallFdFullCov(), and this deliberately over-parameterized
-    # model (tcl shared by two etas) sits right at that boundary -- its min
-    # eigenvalue straddles 0, so the outcome varies run to run.
+    # .analyticCov is stashed only after the analytic engine's deciding inversion
+    # succeeds, so its absence proves the engine never ran -- covMethod alone
+    # would not, since the analytic can also run and then be rejected by its own
+    # PD guard without ever setting covMethod.
+    expect_false(exists(".analyticCov", envir = fit$env, inherits = FALSE))
     expect_false(identical(fit$covMethod, "analytic"))
+    # Do NOT assert the absence of "om." rows: whether the covFull FD cov is ALSO
+    # installed turns on the positive-definiteness guard in
+    # .foceiInstallFdFullCov(), and this deliberately over-parameterized model
+    # (tcl shared by two etas) sits right at that boundary -- its min eigenvalue
+    # straddles 0, so the outcome varies run to run.
   })
 
   test_that("covMethod='analytic' falls back to FD under a bounded-parameter transform", {
