@@ -59,7 +59,7 @@ nmTest({
   ## End-to-end regression for the two covariate-output bugs, exercised together
   ## via a fixed residual parameter (literalFix=TRUE default), which is what
   ## triggered the parFixedDf drop:
-  ##   Bug 1 -- the selected covariate coefficients (beta_*) must appear in the
+  ##   Bug 1 -- the selected covariate coefficients (beta.*) must appear in the
   ##            population-parameter table, not just in $theta/$cov.
   ##   Bug 2 -- covariate-bearing mu-parameters must back-transform (exp) rather
   ##            than print the raw log-scale estimate.
@@ -92,7 +92,7 @@ nmTest({
     ## Bug 1: covariate coefficients present in the population-parameter table
     ## (WT selected on ka and V for theophylline).  Coefficients carry the shape
     ## they were written in.
-    expect_true(all(c("beta_lka_WT_power", "beta_lV_WT_power") %in% rownames(pf)))
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% rownames(pf)))
     expect_true(all(rownames(pf) %in% rownames(fit$cov) |
                       rownames(pf) == "add.err"))
 
@@ -108,8 +108,8 @@ nmTest({
     ## the fixed residual parameter is on the natural scale (no exp)
     expect_equal(pf["add.err", "Estimate"], 0.7, tolerance = 1e-6)
     ## covariate coefficients are reported raw (not back-transformed)
-    expect_equal(pf["beta_lka_WT_power", "Back-transformed"],
-                 pf["beta_lka_WT_power", "Estimate"], tolerance = 1e-6)
+    expect_equal(pf["beta.lka.WT.power", "Back-transformed"],
+                 pf["beta.lka.WT.power", "Estimate"], tolerance = 1e-6)
   })
 
   ## The multi-shape default: BICc now arbitrates between the log and linear
@@ -142,9 +142,9 @@ nmTest({
     ## exclusivity: never two shapes of one covariate on one parameter
     for (k in seq_len(nrow(sel))) expect_lte(sum(sel[k, ]), 1L)
     ## exactly one coefficient per selected parameter, named for the shape used
-    bn <- grep("^beta_", fit$ui$iniDf$name, value = TRUE)
+    bn <- grep("^beta\\.", fit$ui$iniDf$name, value = TRUE)
     expect_equal(length(bn), sum(sel))
-    expect_true(all(grepl("_(power|lin|log|identity|center)$", bn)))
+    expect_true(all(grepl("\\.(power|lin|log|identity|center)$", bn)))
     ## and the emitted model still re-parses with the mu-ref exp() intact
     expect_equal(fit$ui$muRefCurEval$curEval[fit$ui$muRefCurEval$parameter == "lka"],
                  "exp")
@@ -253,5 +253,43 @@ nmTest({
     expect_false(any(grepl("nlmixrMuDerCov", names(fit))))
     ## the pinned note reached $runInfo
     expect_true(any(grepl("pinned to model-specified", fit$runInfo)))
+  })
+
+  ## issue #801: a covariate reaching the coefficient line only through an
+  ## intermediate model variable (wt70 <- WT/70) was mis-classified as a plain
+  ## non-mu structural theta -- frozen under nonMuTheta="none" and, under "eta",
+  ## an eta was injected into the mu-referenced expression, ERRORING the fit with
+  ## "2+ single population parameters in a single mu-referenced expression".  It
+  ## must now estimate the declared coefficient in every nonMuTheta mode.
+  test_that("est=vae estimates a covariate behind an intermediate var (nonMuTheta=eta)", {
+    skip_on_cran()
+    indirect <- function() {
+      ini({
+        lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        beta.ka <- 0.1
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03
+        add.err <- 0.7
+      })
+      model({
+        wt70 <- WT / 70
+        ka <- exp(lka + beta.ka * log(wt70) + eta.ka)
+        ke <- exp(lke + eta.ke)
+        V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V
+        cp ~ add(add.err)
+      })
+    }
+    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L, iters = 160L,
+                      seed = 1L, print = 0L, covMethod = "", nonMuTheta = "eta")
+    fit <- suppressWarnings(rxode2::rxWithSeed(1L,
+      nlmixr2(indirect, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    bk <- fit$ui$iniDf$est[fit$ui$iniDf$name == "beta.ka"]
+    ## not frozen at the 0.1 ini value; pulled to the theophylline WT-on-ka effect
+    expect_gt(abs(bk - 0.1), 0.5)
+    expect_gt(bk, 1)
+    ## the coefficient stays in the reported model (no injected eta collapsed it)
+    expect_true("beta.ka" %in% fit$ui$iniDf$name)
   })
 })
