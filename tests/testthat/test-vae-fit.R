@@ -26,16 +26,32 @@ nmTest({
                                       iters = 160L, hiddenDim = 25L, seed = 1L))
     expect_s3_class(f, "nlmixr2FitData")
 
-    ## selected covariate coefficients are population parameters in the fit
+    ## selected covariate coefficients are population parameters in the fit.
+    ## A continuous coefficient is named beta_<par>_<cov>_<shape> and which shape
+    ## family wins is data-driven, so match the covariate and read the shape back.
     .pf <- if (is.null(rownames(f$parFixed))) f$parFixed$Parameter else rownames(f$parFixed)
-    expect_true(all(c("beta_lka_WT", "beta_lV_WT") %in% .pf))
+    .beta <- function(par) grep(paste0("^beta_", par, "_WT(_|$)"), .pf, value = TRUE)
+    expect_length(.beta("lka"), 1L)
+    expect_length(.beta("lV"), 1L)
     ## objDf / objective present, tagged est = vae
     expect_true(is.finite(f$objDf$OBJF[1]))
 
-    ## FINAL model carries the exact centered covariate expression
+    ## FINAL model carries the exact centered covariate expression -- the one
+    ## belonging to the shape each coefficient was named for
     .fin <- vapply(f$finalUi$lstExpr, function(e) deparse1(e), character(1))
-    expect_true(any(grepl("beta_lka_WT \\* log\\(WT/", .fin)))
-    expect_true(any(grepl("beta_lV_WT \\* log\\(WT/", .fin)))
+    .term <- function(nm) {
+      switch(sub("^beta_[^_]+_WT_?", "", nm),
+             power = "log\\(WT/[0-9.]+\\)",
+             log = "log\\(WT\\)",
+             lin = "\\(WT - [0-9.]+\\)",
+             identity = "WT",
+             center = "\\(WT/[0-9.]+\\)",
+             stop("unexpected coefficient name: ", nm))
+    }
+    for (.p in c("lka", "lV")) {
+      .b <- .beta(.p)
+      expect_true(any(grepl(paste0(.b, " \\* ", .term(.b)), .fin)))
+    }
     expect_true(any(grepl("^ke <- exp\\(lke \\+ eta.ke\\)$", .fin)))
 
     ## ORIGINAL model recoverable via $uiIni (structure differs -- no covariates)

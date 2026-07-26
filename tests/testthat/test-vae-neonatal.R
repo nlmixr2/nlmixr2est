@@ -47,7 +47,10 @@ nmTest({
     ## covariate selection: gestational age (GA) drives birth weight (W0) -- the
     ## strongest, canonical effect (Fig 4, VAE column)
     dimnames(fit$selected) <- list(c("W0", "kin", "TL", "koutmax", "T50"), fit$covNames)
-    expect_true(fit$selected["W0", "GA"])
+    ## a continuous covariate contributes one search column per shape family
+    ## (GA_power, GA_lin, ...) and at most one of them may be taken, so ask
+    ## whether ANY column of GA was selected rather than naming a shape
+    expect_true(any(fit$selected["W0", fit$prep$covRaw == "GA"]))
 
     ## The reference M-step objective must reproduce this fit EXACTLY.  Every
     ## structural parameter here is mu-referenced, so the model has no non-mu
