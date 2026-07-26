@@ -78,6 +78,12 @@
   interval now carry `sqrt(diag(fit$cov))`; a theta with no covariance row
   gets a blank `SE` instead of garbage.
 
+- A non-default confidence level (e.g. `saemControl(ci=0.8)`) is now honored
+  when a covariance install refreshes `$parFixed`.  The refresh read `ci` from
+  the model rather than the fit's control, so it fell back to `0.95`: the
+  column was labeled `Back-transformed(95%CI)` over an 80% interval, and any
+  interval it recomputed used the wrong level.
+
 # nlmixr2est 7.0.1
 
 ## New features
