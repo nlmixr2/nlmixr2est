@@ -93,6 +93,30 @@ nmTest({
     env$parFixedDf["add.sd", "SE"] <- 9.39e-323
     .updateParFixedRefreshSeFromCov(env, .cov, onlyMissing = TRUE)
     expect_equal(unname(env$parFixedDf["add.sd", "SE"]), 0.05)
+
+    # A non-default ci lives in the fit's control, not the ui (the ui slot keeps
+    # the default), so reading only the ui recomputed the bounds at 95% and
+    # labeled the column 95% over an 80% interval.
+    env$control <- list(ci = 0.8)
+    env$parFixedDf <- .pf
+    env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.8, "tfix")
+    class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
+    .updateParFixedRefreshSeFromCov(env, .cov)
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
+                 exp(1 - qnorm(0.9) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]),
+                 exp(1 + qnorm(0.9) * 0.2))
+    expect_true("Back-transformed(80%CI)" %in% names(env$parFixed))
+
+    # a control without a usable ci falls back to the ui / the 0.95 default
+    env$control <- list(ci = NULL)
+    env$parFixedDf <- .pf
+    env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.95, "tfix")
+    class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
+    .updateParFixedRefreshSeFromCov(env, .cov)
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
+                 exp(1 - qnorm(0.975) * 0.2))
+    expect_true("Back-transformed(95%CI)" %in% names(env$parFixed))
   })
 
   ## Literally-fixed thetas are re-inserted into $popDf after the C++ step, so
