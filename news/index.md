@@ -4,6 +4,15 @@
 
 ### Breaking changes
 
+- `est="vae"`: naming a covariate in `vaeControl(shapes=)` now also
+  **limits the search to it**. The list form gained a `fixCov` element
+  defaulting to `TRUE`, so `shapes = list(WT = "power")` searches `WT`
+  and nothing else, where previously it searched every covariate with
+  `WT` restricted to `"power"`. Add `fixCov = FALSE` to restore the old
+  meaning. Excluded covariates are listed in `$runInfo`. A character
+  vector (`shapes = c("power", "lin")`) names no covariate and is
+  unaffected.
+
 - Dropped the `qs2` dependency (and with it `stringfish`, which no
   longer loads against RcppParallel \>= 6.0.0): the focei model disk
   cache now uses RDS files and compressed fit components use base R
@@ -15,6 +24,23 @@
   `rxDeserialize()`.
 
 ### New features
+
+- `est="vae"`: `vaeControl(shapes=)` list elements are now dispatched
+  individually, so the covariate-named and `list(var=, covar=, shapes=)`
+  forms can be mixed in one list. A named element is exact shorthand for
+  the covariate-wide rule, and a shape value of `TRUE` means “eligible,
+  default shapes” – which is how a categorical covariate is named, since
+  it takes no parameterization:
+
+  ``` r
+
+  vaeControl(shapes = list(list(var = "cl", covar = "WT", shapes = "power"),
+                           SEX = TRUE))
+  ```
+
+  This is also how a covariate is restricted to particular parameters
+  without writing the effect into the model: a `var`+`covar` rule makes
+  only that pair eligible.
 
 - The `est="vae"` automatic covariate search gained a `"hockey"` shape,
   a two-armed piecewise-linear relationship knotted at the covariate’s
@@ -128,6 +154,12 @@
   `$parFixedDf` was updated), so the residual `SE`, `%RSE`, and
   confidence interval now carry `sqrt(diag(fit$cov))`; a theta with no
   covariance row gets a blank `SE` instead of garbage.
+
+- A non-default confidence level (e.g. `saemControl(ci=0.8)`) is now
+  honored when a covariance install refreshes `$parFixed`. The refresh
+  read `ci` from the model rather than the fit’s control, so it fell
+  back to `0.95`: the column was labeled `Back-transformed(95%CI)` over
+  an 80% interval, and any interval it recomputed used the wrong level.
 
 ## nlmixr2est 7.0.1
 

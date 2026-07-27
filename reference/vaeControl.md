@@ -175,12 +175,36 @@ vaeControl(
   an accepted relationship is written back, and when several eligible
   shapes span the same model the one listed first wins. \`"hockey"\`
   spans a strictly larger model than the linear shapes and costs two
-  coefficients rather than one. May also be a list named by covariate
-  (\`list(WT = "power")\`) or a list of \`list(var=, covar=, shapes=)\`
-  items to restrict a single parameter/covariate pair; anything not
-  named keeps every shape. Which covariates are searched is controlled
-  by \`pinCovariates\`, not here. Categorical covariates always enter as
-  indicators and ignore this setting.
+  coefficients rather than one.
+
+  May also be a \*\*list\*\*, whose elements are dispatched individually
+  so the two forms mix freely: an element named by covariate (\`WT =
+  "power"\`) is shorthand for the covariate-wide rule \`list(covar =
+  "WT", shapes = "power")\`, and a \`list(var=, covar=, shapes=)\`
+  element restricts one parameter/covariate pair. The most specific rule
+  wins – \`var\`+\`covar\` beats \`covar\`, which beats \`var\`, which
+  beats a rule naming neither – and ties go to the rule listed last.
+
+  In the list form, \*\*naming a covariate also puts it in the
+  search\*\*. \`fixCov = TRUE\` (the default, given as an element of the
+  list) fixes the searched set to exactly the covariates named, so
+  \`shapes = list(WT = "power")\` searches \`WT\` and nothing else. Add
+  \`fixCov = FALSE\` to restrict parameterizations without restricting
+  the search, which is what the list form meant previously. A shape
+  value of \`TRUE\` means "eligible, default shapes", and is how a
+  categorical covariate is named (\`list(WT = "power", SEX = TRUE)\`)
+  since a categorical takes no parameterization. A \`var\`-only rule
+  makes every covariate eligible on that parameter alone; a rule naming
+  neither \`var\` nor \`covar\` contradicts \`fixCov = TRUE\` and is an
+  error. A character vector names no covariate, so \`fixCov\` does not
+  apply and every covariate stays searchable.
+
+  \`fixCov\` is ignored when the model itself declares covariate
+  effects: that already restricts the search (see \`pinCovariates\`) and
+  the declaration is the more specific statement. The disagreement is
+  reported in \`\$runInfo\`, as is every covariate \`fixCov\` excludes.
+  Categorical covariates always enter as indicators and take no shape,
+  but \`fixCov\` still governs whether they are searched at all.
 
 - covCenterType:
 
@@ -628,15 +652,43 @@ vaeControl(
 
 - sigdig:
 
-  Specifies the "significant digits" that the ode solving requests. When
-  specified this controls the relative and absolute tolerances of the
-  ODE solvers. By default the tolerance is `0.5*10^(-sigdig-2)` for
-  regular ODEs. For the sensitivity equations the default is
-  `0.5*10\^(-sigdig-1.5)` (sensitivity changes only applicable for
-  liblsoda). This also controls the `atol`/`rtol` of the steady state
-  solutions. The `ssAtol`/`ssRtol` is `0.5*10\^(-sigdig)` and for the
-  sensitivities `0.5*10\^(-sigdig+0.625)`. By default this is
-  unspecified (`NULL`) and uses the standard `atol`/`rtol`.
+  Specifies the "significant digits" that the ODE solving requests. This
+  is `NULL` by default, and while it is `NULL` it has no effect at all:
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  uses the standard `atol`/`rtol` (and the standard sensitivity and
+  steady-state tolerances). `sigdig` only changes a tolerance when you
+  ask for it explicitly.
+
+  When it is supplied, the tolerances are derived with one
+  solver-independent formula – the same for stiff, non-stiff and
+  auto-switching solvers. The `rtol` exponent IS `sigdig` and `atol`
+  sits three orders below it:
+
+  - `rtol = 10^(-sigdig)`, `atol = 10^(-sigdig-3)`
+
+  - the sensitivity tolerances match the main solve, so
+    `rtolSens = rtol` and `atolSens = atol` (gradients and covariances
+    are built from them)
+
+  - the steady-state tolerances run one order looser than the
+    corresponding main tolerance, so `ssRtol = ssRtolSens = 10*rtol` and
+    `ssAtol = ssAtolSens = 10*atol`
+
+  Each of these is set only when you did not pass that tolerance
+  yourself; a tolerance you supply always wins. Because they are
+  resolved independently, an explicit `atol`/`rtol` overrides the main
+  solve but does *not* propagate to the sensitivity or steady-state
+  tolerances – set those directly if you need them changed too.
+
+  This mapping matches how `nlmixr2est` derives solver tolerances from
+  its optimization `sigdig`, so a `sigdig` used for estimation and the
+  same `sigdig` used for a plain
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  mean the same thing. Note it is keyed to `sigdig` as a request for
+  that many significant digits, and is looser than the `atol`/`rtol`
+  defaults for small `sigdig` – at `sigdig = 4` it gives `rtol = 1e-4`
+  against a default `rtol = 1e-6`. Raise `sigdig`, or set `atol`/`rtol`
+  directly, when you want a tighter solve.
 
 - sigdigTable:
 
