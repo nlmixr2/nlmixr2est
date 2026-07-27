@@ -25,8 +25,13 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
+          # cranTests: run only the CRAN-visible test subset (see
+          # NLMIXR2EST_TEST_CRAN_ONLY in tests/testthat.R).  macOS and Windows are
+          # here to prove the package builds and checks on those toolchains; the
+          # full NOT_CRAN suite costs ~5h45m there against ~19m on Ubuntu, which
+          # exceeded GitHub's 6-hour job limit and produced no signal at all.
+          - {os: macos-latest,   r: 'release', cranTests: true}
+          - {os: windows-latest, r: 'release', cranTests: true}
           - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,   r: 'release'}
           - {os: ubuntu-latest,   r: 'oldrel-1'}
@@ -34,6 +39,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      NLMIXR2EST_TEST_CRAN_ONLY: ${{ matrix.config.cranTests && 'true' || 'false' }}
 
     steps:
       - name: Install deps on MacOS
@@ -54,11 +60,9 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          # cache-version 2: drop caches holding qs2/stringfish binaries built
-          # against RcppParallel < 6.0.0 (pre-oneTBB); those fail to load with
-          # undefined tbb::internal symbols.  qs2/stringfish are forced to
-          # source so they always link the installed RcppParallel.
-          cache-version: 2
+          # cache-version 3: the qs2/stringfish source pins are gone (see below),
+          # so the cached dependency set changed.
+          cache-version: 3
           extra-packages: |
             any::rcmdcheck
             nlmixr2/lbfgsb3c
@@ -69,11 +73,14 @@ jobs:
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             qs=?ignore
-            qs2=?source
-            stringfish=?source
+            rstan=?ignore
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+          # upload-results is left at its default: the action already uploads the
+          # .Rcheck directory on failure ('false' only suppresses it for SUCCESSFUL
+          # runs).  Note neither that nor the console log survives a job that loses
+          # its runner -- which is why the 6h-cancelled jobs reported nothing.
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'

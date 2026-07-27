@@ -18,6 +18,16 @@ library(nlmixr2est)
 #     from testthat.Rout.
 #   * rxode2 (and data.table) within-solve threads: capped to 2 on CRAN, per
 #     CRAN's two-core policy; on CI and locally rxode2 manages its own threads.
+# Platforms that only need to prove the package BUILDS and checks (macOS and
+# Windows in R-CMD-check.yaml) run the CRAN-visible subset instead of the full
+# NOT_CRAN suite.  The same `checking tests` step costs ~19 min on an Ubuntu
+# runner and ~5h45m on macOS/Windows -- model compilation dominates there -- which
+# blew GitHub's hard 6-hour job limit and left those jobs cancelled, i.e. giving
+# no signal at all.  Ubuntu still runs the full essential subset.
+if (isTRUE(as.logical(Sys.getenv("NLMIXR2EST_TEST_CRAN_ONLY", "false")))) {
+  Sys.setenv("NOT_CRAN" = "false") # nolint
+}
+
 .onCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
 .onCI   <- isTRUE(as.logical(Sys.getenv("CI", "false")))
 
