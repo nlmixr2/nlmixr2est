@@ -123,26 +123,49 @@ VAE covariate search never re-centers it.  The original expression is
 restored in the reported model.}
 
 \item{shapes}{Which parameterizations ("shapes") of a continuous covariate
-the automatic search may consider, using the same vocabulary as
-`nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
-(`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
-and `"center"` (`beta*(COV/ctr)`).  `"hockey"` is a two-armed piecewise
-linear relationship knotted at the centering value, written as
-`beta.low*(COV < ctr)*(COV - ctr) + beta.hi*(COV >= ctr)*(COV - ctr)`; both
-arms enter or neither does, and it is skipped for a covariate with fewer
-than `catCutoff` of the subjects on one side of the knot.  At most one shape
-of a covariate may enter a given parameter.  Because the selection objective
-is an ordinary least squares fit with a free intercept, `"power"`/`"log"`
-span the same model, as do `"lin"`/`"identity"`/`"center"`; the shape
-therefore decides how an accepted relationship is written back, and when
-several eligible shapes span the same model the one listed first wins.
-`"hockey"` spans a strictly larger model than the linear shapes and costs
-two coefficients rather than one.  May also be a list
-named by covariate (`list(WT = "power")`) or a list of
-`list(var=, covar=, shapes=)` items to restrict a single
-parameter/covariate pair; anything not named keeps every shape.  Which
-covariates are searched is controlled by `pinCovariates`, not here.
-Categorical covariates always enter as indicators and ignore this setting.}
+  the automatic search may consider, using the same vocabulary as
+  `nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+  (`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+  and `"center"` (`beta*(COV/ctr)`).  `"hockey"` is a two-armed piecewise
+  linear relationship knotted at the centering value, written as
+  `beta.low*(COV < ctr)*(COV - ctr) + beta.hi*(COV >= ctr)*(COV - ctr)`; both
+  arms enter or neither does, and it is skipped for a covariate with fewer
+  than `catCutoff` of the subjects on one side of the knot.  At most one shape
+  of a covariate may enter a given parameter.  Because the selection objective
+  is an ordinary least squares fit with a free intercept, `"power"`/`"log"`
+  span the same model, as do `"lin"`/`"identity"`/`"center"`; the shape
+  therefore decides how an accepted relationship is written back, and when
+  several eligible shapes span the same model the one listed first wins.
+  `"hockey"` spans a strictly larger model than the linear shapes and costs
+  two coefficients rather than one.
+
+  May also be a **list**, whose elements are dispatched individually so the
+  two forms mix freely: an element named by covariate (`WT = "power"`) is
+  shorthand for the covariate-wide rule `list(covar = "WT", shapes =
+  "power")`, and a `list(var=, covar=, shapes=)` element restricts one
+  parameter/covariate pair.  The most specific rule wins -- `var`+`covar`
+  beats `covar`, which beats `var`, which beats a rule naming neither -- and
+  ties go to the rule listed last.
+
+  In the list form, **naming a covariate also puts it in the search**.
+  `fixCov = TRUE` (the default, given as an element of the list) fixes the
+  searched set to exactly the covariates named, so
+  `shapes = list(WT = "power")` searches `WT` and nothing else.  Add
+  `fixCov = FALSE` to restrict parameterizations without restricting the
+  search, which is what the list form meant previously.  A shape value of
+  `TRUE` means "eligible, default shapes", and is how a categorical covariate
+  is named (`list(WT = "power", SEX = TRUE)`) since a categorical takes no
+  parameterization.  A `var`-only rule makes every covariate eligible on that
+  parameter alone; a rule naming neither `var` nor `covar` contradicts
+  `fixCov = TRUE` and is an error.  A character vector names no covariate, so
+  `fixCov` does not apply and every covariate stays searchable.
+
+  `fixCov` is ignored when the model itself declares covariate effects: that
+  already restricts the search (see `pinCovariates`) and the declaration is
+  the more specific statement.  The disagreement is reported in `$runInfo`,
+  as is every covariate `fixCov` excludes.  Categorical covariates always
+  enter as indicators and take no shape, but `fixCov` still governs whether
+  they are searched at all.}
 
 \item{covCenterType}{Statistic used to center a continuous covariate,
 `"median"` (default) or `"mean"`, computed over subjects rather than rows.}
@@ -498,16 +521,42 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Specifies the "significant digits" that the ode
-solving requests.  When specified this controls the relative and
-absolute tolerances of the ODE solvers.  By default the tolerance
-is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
-sensitivity equations the default is \verb{0.5*10\\^(-sigdig-1.5)}
-(sensitivity changes only applicable for liblsoda).  This also
-controls the \code{atol}/\code{rtol} of the steady state solutions. The
-\code{ssAtol}/\code{ssRtol} is \verb{0.5*10\\^(-sigdig)} and for the sensitivities
-\verb{0.5*10\\^(-sigdig+0.625)}.  By default
-this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.}
+\item{sigdig}{Specifies the "significant digits" that the ODE
+solving requests.  This is \code{NULL} by default, and while it is
+\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
+\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
+tolerances).  \code{sigdig} only changes a tolerance when you ask for
+it explicitly.
+
+When it is supplied, the tolerances are derived with one
+solver-independent formula -- the same for stiff, non-stiff and
+auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below it:
+\itemize{
+\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
+\item the sensitivity tolerances match the main solve, so
+\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
+covariances are built from them)
+\item the steady-state tolerances run one order looser than the
+corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
+and \code{ssAtol = ssAtolSens = 10*atol}
+}
+
+Each of these is set only when you did not pass that tolerance
+yourself; a tolerance you supply always wins.  Because they are
+resolved independently, an explicit \code{atol}/\code{rtol} overrides the
+main solve but does \emph{not} propagate to the sensitivity or
+steady-state tolerances -- set those directly if you need them
+changed too.
+
+This mapping matches how \code{nlmixr2est} derives solver tolerances
+from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
+and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
+thing.  Note it is keyed to \code{sigdig} as a request for that many
+significant digits, and is looser than the \code{atol}/\code{rtol} defaults
+for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
+against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
+\code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
