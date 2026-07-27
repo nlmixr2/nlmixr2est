@@ -4,11 +4,26 @@
 ## covariate M-step is an OLS fit of the latent mean on [1 | X_S], so its
 ## objective depends only on the column SPAN.  With a free intercept
 ## log(cov/ctr) and log(cov) span the same space, as do (cov - ctr), cov and
-## cov/ctr.  Shapes therefore collapse to two searchable FAMILIES; the shape
-## itself only chooses how the accepted relationship is written back.
+## cov/ctr.  Shapes therefore collapse to searchable FAMILIES; within a family the
+## shape only chooses how the accepted relationship is written back.
+##
+## "hockey" is the exception: a two-armed piecewise-linear relationship knotted at
+## the centering value.  Its span strictly CONTAINS the lin family's -- the arms
+## sum to the lin column -- so it is a family of its own, not another
+## parameterization of "lin", and it is the only shape contributing more than one
+## design column (one per arm).  The arms are not user-selectable: `shapes=` takes
+## "hockey" and both arms come with it, all-or-none, which is what keeps the
+## written form well defined (see plans/vae-hockey-shape.md).
 
-## user-selectable shapes for a continuous covariate, in canonical order
-.vaeContShapes <- c("power", "lin", "log", "identity", "center")
+## every shape a user may NAME in `shapes=`, in canonical order
+.vaeContShapes <- c("power", "lin", "log", "identity", "center", "hockey")
+## the shapes actually TRIED when `shapes=` is not given.  Deliberately a
+## separate vector even while it matches the one above: the two roles diverge,
+## and conflating them makes any newly-nameable shape a default in the same
+## stroke -- which is a behavior change nobody asked for.
+.vaeDefaultShapes <- c("power", "lin", "log", "identity", "center", "hockey")
+## the two design columns a requested "hockey" expands into, low arm first
+.vaeHockeyArms <- c("hockeyLow", "hockeyHi")
 ## every shape name, including the categorical one (never user-selectable)
 .vaeAllShapes <- c(.vaeContShapes, "cat")
 
@@ -16,12 +31,16 @@
 #'
 #' Shapes in one family span the same column space and are indistinguishable to
 #' the selection objective.
+#' Accepts the internal hockey arm names as well as the user-facing `"hockey"`,
+#' since a selected column carries the arm name rather than the request.
 #' @param shape character vector of shape names
-#' @return character vector of families, one of `"log"`, `"lin"`, `"cat"`
+#' @return character vector of families, one of `"log"`, `"lin"`, `"hockey"`,
+#'   `"cat"`
 #' @noRd
 .vaeShapeFamily <- function(shape) {
   .f <- c(power = "log", log = "log",
           lin = "lin", identity = "lin", center = "lin",
+          hockey = "hockey", hockeyLow = "hockey", hockeyHi = "hockey",
           cat = "cat")[shape]
   if (anyNA(.f)) {
     stop("unknown covariate shape: ",
@@ -69,8 +88,26 @@
          lin = paste0("(", col, " - ", .c, ")"),
          identity = col,
          center = paste0("(", col, "/", .c, ")"),
+         ## the arms are disjoint (`<` against `>=`), so they partition subjects
+         ## and sum to the lin column exactly -- a subject sitting ON the knot
+         ## belongs to the high arm alone.  Both vanish at the knot, so the
+         ## structural theta stays the parameter value AT the center.
+         hockeyLow = paste0("(", col, " < ", .c, ")*(", col, " - ", .c, ")"),
+         hockeyHi = paste0("(", col, " >= ", .c, ")*(", col, " - ", .c, ")"),
          cat = if (raw) col else paste0("(", col, " == ", .vaeLevelLit(level), ")"),
          stop("unknown covariate shape: ", shape, call. = FALSE))
+}
+
+#' Name component a shape contributes to its coefficient name
+#'
+#' Coefficients are named `beta.<par>.<COV>.<tag>`.  The tag is the shape itself
+#' except for the hockey arms, which read as `hockey.low` / `hockey.hi` so the
+#' pair is obvious in `ini()` and in the parameter table.
+#' @param shape shape name
+#' @return length-one character string
+#' @noRd
+.vaeShapeCoefTag <- function(shape) {
+  switch(shape, hockeyLow = "hockey.low", hockeyHi = "hockey.hi", shape)
 }
 
 #' Literal for a factor level inside generated model text
@@ -110,6 +147,10 @@
          lin = list(beta = beta, interceptAdj = 0),
          identity = list(beta = beta, interceptAdj = -beta * center),
          center = list(beta = beta * center, interceptAdj = -beta * center),
+         ## an arm's written expression IS its design column, and both vanish at
+         ## the knot, so no part of the effect moves into the intercept
+         hockeyLow = list(beta = beta, interceptAdj = 0),
+         hockeyHi = list(beta = beta, interceptAdj = 0),
          cat = list(beta = beta, interceptAdj = 0),
          stop("unknown covariate shape: ", shape, call. = FALSE))
 }
@@ -131,17 +172,17 @@
     .d$shapes <- list(.vaeAssertContShapes(shapes))
     .d
   }
-  if (is.null(spec)) spec <- .vaeContShapes
+  if (is.null(spec)) spec <- .vaeDefaultShapes
   if (is.character(spec)) return(.mk(NA_character_, NA_character_, spec))
   if (!is.list(spec)) stop("shapes must be a character vector or a list", call. = FALSE)
-  if (length(spec) == 0L) return(.mk(NA_character_, NA_character_, .vaeContShapes))
+  if (length(spec) == 0L) return(.mk(NA_character_, NA_character_, .vaeDefaultShapes))
   .isPair <- all(vapply(spec, function(e) is.list(e), logical(1)))
   .out <- list()
   if (.isPair) {
     for (.e in spec) {
       .cov <- if (is.null(.e$covar)) .e$cov else .e$covar
       .sh <- if (is.null(.e$shapes)) .e$shape else .e$shapes
-      if (is.null(.sh)) .sh <- .vaeContShapes
+      if (is.null(.sh)) .sh <- .vaeDefaultShapes
       .out[[length(.out) + 1L]] <-
         .mk(if (is.null(.e$var)) NA_character_ else as.character(.e$var),
             if (is.null(.cov)) NA_character_ else toupper(as.character(.cov)),
@@ -179,6 +220,8 @@
          lin = v - center,
          identity = v,
          center = v / center,
+         hockeyLow = (v < center) * (v - center),
+         hockeyHi = (v >= center) * (v - center),
          stop("unknown covariate shape: ", shape, call. = FALSE))
 }
 
@@ -333,6 +376,11 @@
            center = is.finite(center) && center != 0,
            log = is.finite(center) && center > 0,
            power = is.finite(center) && center > 0,
+           ## the knot is the centering value, so it only has to be finite -- a
+           ## zero or negative knot is a perfectly ordinary place to bend
+           hockey = is.finite(center),
+           hockeyLow = is.finite(center),
+           hockeyHi = is.finite(center),
            TRUE)
   }, logical(1), USE.NAMES = FALSE)
 }
@@ -379,7 +427,7 @@
 #' The most specific matching rule wins: (var, cov) beats cov-only, which beats
 #' var-only, which beats the global rule.  `par` is matched against any of the
 #' parameter's aliases (eta name, mu-referenced theta name, bare name).  A pair
-#' no rule mentions keeps every shape -- `shapes=` restricts parameterizations,
+#' no rule mentions keeps the DEFAULT shapes -- `shapes=` restricts parameterizations,
 #' never which covariates are searched (that is `pinCovariates`).
 #' @param rules output of `.vaeResolveShapes`
 #' @param parAliases character vector of names this parameter answers to
@@ -393,7 +441,7 @@
   .anyCov <- is.na(rules$cov)
   .spec <- ifelse(.mCov, 2L, 0L) + ifelse(!is.na(rules$var), 1L, 0L)
   .ok <- .mVar & (.mCov | .anyCov)
-  if (!any(.ok)) return(.vaeContShapes)
+  if (!any(.ok)) return(.vaeDefaultShapes)
   .w <- which(.ok)
   .w <- .w[.spec[.w] == max(.spec[.w])]
   rules$shapes[[.w[length(.w)]]]

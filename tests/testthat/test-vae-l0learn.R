@@ -7,7 +7,6 @@
 nmTest({
 
   test_that(".vaeL0Supports proposes well-formed, deduplicated supports", {
-    skip_if_not_installed("L0Learn")
     .testSeed(1L)
     N <- 120L; p <- 12L
     X <- matrix(rnorm(N * p), N, p)
@@ -34,7 +33,6 @@ nmTest({
   })
 
   test_that(".vaeL0Supports is deterministic and does not touch the RNG", {
-    skip_if_not_installed("L0Learn")
     .testSeed(2L)
     N <- 90L; p <- 8L
     X <- matrix(rnorm(N * p), N, p)
@@ -47,7 +45,6 @@ nmTest({
   })
 
   test_that(".vaeL0Supports degrades to the empty support on unusable input", {
-    skip_if_not_installed("L0Learn")
     .empty <- list(integer(0))
     expect_identical(nlmixr2est:::.vaeL0Supports(matrix(0, 10, 0), rnorm(10)), .empty)
     expect_identical(nlmixr2est:::.vaeL0Supports(matrix(1, 2, 3), rnorm(2)), .empty)
@@ -65,52 +62,35 @@ nmTest({
     nCand <- c(30L, 10L, 30L)
 
     ## explicit "bnb": nothing switches, whatever the size
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("bnb"), avail = TRUE)
+    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("bnb"))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
-    ## "auto" + available: only the dimensions at/over the threshold switch
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"), avail = TRUE)
+    ## "auto": only the dimensions at/over the threshold switch
+    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"))
     expect_identical(m$mode, c(1L, 0L, 1L))
     expect_identical(m$used, "mixed")
     expect_match(m$msg, "not the exact search", all = FALSE)
 
     ## "auto" below the threshold everywhere: unchanged, silent
-    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"), avail = TRUE)
+    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"))
     expect_identical(m$mode, c(0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
-    ## "auto" over the threshold but L0Learn missing: error, not a slow fallback,
-    ## and it names the covSelectMaxExact=Inf escape hatch
-    expect_error(nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"), avail = FALSE),
-                 "covSelectMaxExact=Inf")
-
-    ## "auto" below the threshold with L0Learn missing: exact search, no error
-    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"), avail = FALSE)
-    expect_identical(m$mode, c(0L, 0L))
-    expect_identical(m$used, "bnb")
-
-    ## covSelectMaxExact=Inf forces the exact search even for a wide problem, so a
-    ## missing L0Learn is fine
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf), avail = FALSE)
+    ## covSelectMaxExact=Inf forces the exact search even for a wide problem
+    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf), avail = TRUE)
-    expect_identical(m$mode, c(0L, 0L, 0L))  # Inf beats availability
 
     ## explicit "l0learn": every dimension with candidates switches
-    m <- nlmixr2est:::.vaeCovSelectModes(c(3L, 0L), ctl("l0learn"), avail = TRUE)
+    m <- nlmixr2est:::.vaeCovSelectModes(c(3L, 0L), ctl("l0learn"))
     expect_identical(m$mode, c(1L, 0L))
     expect_identical(m$used, "mixed")
 
-    ## explicit "l0learn" without the package is an error naming it
-    expect_error(nlmixr2est:::.vaeCovSelectModes(nCand, ctl("l0learn"), avail = FALSE),
-                 "L0Learn")
-
     ## the threshold is honored
-    m <- nlmixr2est:::.vaeCovSelectModes(c(24L, 25L), ctl("auto"), avail = TRUE)
+    m <- nlmixr2est:::.vaeCovSelectModes(c(24L, 25L), ctl("auto"))
     expect_identical(m$mode, c(0L, 1L))
   })
 
@@ -130,7 +110,7 @@ nmTest({
   test_that("the run-time message stays inside the runInfo one-line budget", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     ctl <- list(covSelectMethod = "auto", covSelectMaxExact = 25L)
-    msgs <- nlmixr2est:::.vaeCovSelectModes(30L, ctl, avail = TRUE)$msg
+    msgs <- nlmixr2est:::.vaeCovSelectModes(30L, ctl)$msg
     expect_gt(length(msgs), 0L)
     expect_true(all(nchar(msgs) <= 75L))
   })
@@ -208,7 +188,6 @@ nmTest({
   })
 
   test_that("L0Learn candidates plus polish match the exact optimum", {
-    skip_if_not_installed("L0Learn")
     .testSeed(24L)
     N <- 120L
     for (rep in 1:10) {
@@ -233,7 +212,6 @@ nmTest({
   })
 
   test_that(".vaeL0Candidates proposes per dimension in the reduced design", {
-    skip_if_not_installed("L0Learn")
     .testSeed(3L)
     N <- 100L; p <- 10L
     covMat <- matrix(rnorm(N * p), N, p)

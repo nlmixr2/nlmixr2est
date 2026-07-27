@@ -1,10 +1,95 @@
 nmTest({
-  test_that("shapes collapse to the two searchable families", {
+  test_that("shapes collapse to the searchable families", {
     expect_equal(.vaeShapeFamily(c("power", "log")), c("log", "log"))
     expect_equal(.vaeShapeFamily(c("lin", "identity", "center")),
                  c("lin", "lin", "lin"))
     expect_equal(.vaeShapeFamily("cat"), "cat")
-    expect_error(.vaeShapeFamily("hockey"), "unknown covariate shape")
+    expect_error(.vaeShapeFamily("notAShape"), "unknown covariate shape")
+  })
+
+  test_that("hockey is its own family, reachable by request or by arm", {
+    ## a family of its own: its span CONTAINS lin's, so it is not another
+    ## parameterization of lin and must not be swapped for one
+    expect_equal(.vaeShapeFamily("hockey"), "hockey")
+    expect_equal(.vaeShapeFamily(.vaeHockeyArms), c("hockey", "hockey"))
+    expect_identical(.vaeHockeyArms, c("hockeyLow", "hockeyHi"))
+  })
+
+  test_that("hockey is nameable but the arms are internal", {
+    ## `shapes=` takes the RELATIONSHIP; the arms are how it is built, and
+    ## naming one on its own would ask for half a hockey stick
+    expect_true("hockey" %in% .vaeContShapes)
+    expect_silent(.vaeAssertContShapes("hockey"))
+    expect_error(.vaeAssertContShapes("hockeyLow"), "unknown covariate shape")
+    expect_error(.vaeAssertContShapes("hockeyHi"), "unknown covariate shape")
+    ## naming a shape and defaulting to it stay separate decisions, even though
+    ## hockey now happens to be both
+    expect_true(all(.vaeDefaultShapes %in% .vaeContShapes))
+  })
+
+  test_that("the hockey arms are disjoint and sum to the lin column", {
+    ## the property the atomic block rests on, and the reason a subject sitting
+    ## exactly ON the knot must belong to one arm only
+    cov <- c(50, 70, 70.5, 90, 110)
+    ctr <- 70.5
+    lo <- .vaeShapeValue("hockeyLow", cov, ctr)
+    hi <- .vaeShapeValue("hockeyHi", cov, ctr)
+    expect_equal(lo + hi, .vaeShapeValue("lin", cov, ctr))
+    ## no subject is in both arms, and the subject at the knot is in the high one
+    expect_true(all(lo == 0 | hi == 0))
+    expect_equal(lo[cov == ctr], 0)
+    expect_equal(hi[cov == ctr], 0)   # both vanish AT the knot
+    ## below the knot only the low arm is non-zero, above only the high arm
+    expect_true(all(hi[cov < ctr] == 0))
+    expect_true(all(lo[cov > ctr] == 0))
+    expect_true(all(lo[cov < ctr] < 0))
+    expect_true(all(hi[cov > ctr] > 0))
+  })
+
+  test_that("hockey arm text evaluates to the arm's design column", {
+    ## .vaeShapeExpr and .vaeShapeValue must agree EXACTLY, or the written model
+    ## would not reproduce the fit -- including at the knot, where the `<` / `>=`
+    ## boundary decides which arm a subject lands in
+    WT <- c(50, 70, 70.5, 90, 110)
+    ctr <- 70.5
+    for (arm in .vaeHockeyArms) {
+      txt <- .vaeShapeExpr(arm, "WT", ctr)
+      expect_equal(eval(str2lang(txt)), .vaeShapeValue(arm, WT, ctr), info = arm)
+    }
+    expect_equal(.vaeShapeExpr("hockeyLow", "WT", 70.5),
+                 "(WT < 70.5)*(WT - 70.5)")
+    expect_equal(.vaeShapeExpr("hockeyHi", "WT", 70.5),
+                 "(WT >= 70.5)*(WT - 70.5)")
+  })
+
+  test_that("a hockey arm needs no intercept correction", {
+    ## the arm's written expression IS its design column, so unlike "identity" or
+    ## "center" no part of the effect moves into the structural theta
+    for (arm in .vaeHockeyArms) {
+      r <- .vaeShapeBeta(arm, 70.5, -0.4)
+      expect_equal(r$beta, -0.4, info = arm)
+      expect_equal(r$interceptAdj, 0, info = arm)
+    }
+  })
+
+  test_that("hockey is usable at any finite knot", {
+    ## unlike log/power (need a positive center) and center (needs a non-zero
+    ## one), bending is well defined wherever the knot is
+    expect_true(all(.vaeShapeUsable(c("hockey", .vaeHockeyArms), 0)))
+    expect_true(all(.vaeShapeUsable(c("hockey", .vaeHockeyArms), -12)))
+    expect_false(any(.vaeShapeUsable(c("hockey", .vaeHockeyArms), NA_real_)))
+    ## and it does not disturb the existing rules
+    expect_false(.vaeShapeUsable("center", 0))
+    expect_false(.vaeShapeUsable("log", -1))
+  })
+
+  test_that("arm coefficients are named hockey.low and hockey.hi", {
+    expect_equal(.vaeShapeCoefTag("hockeyLow"), "hockey.low")
+    expect_equal(.vaeShapeCoefTag("hockeyHi"), "hockey.hi")
+    ## every other shape names itself
+    for (sh in c("power", "lin", "log", "identity", "center", "cat")) {
+      expect_equal(.vaeShapeCoefTag(sh), sh, info = sh)
+    }
   })
 
   test_that("shape expressions match the nlmixr2scm vocabulary", {
@@ -13,7 +98,7 @@ nmTest({
     expect_equal(.vaeShapeExpr("lin", "WT", 70.5), "(WT - 70.5)")
     expect_equal(.vaeShapeExpr("identity", "WT", 70.5), "WT")
     expect_equal(.vaeShapeExpr("center", "WT", 70.5), "(WT/70.5)")
-    expect_error(.vaeShapeExpr("hockey", "WT", 1), "unknown covariate shape")
+    expect_error(.vaeShapeExpr("notAShape", "WT", 1), "unknown covariate shape")
   })
 
   test_that("categorical expressions compare against the level", {
@@ -62,9 +147,9 @@ nmTest({
     expect_equal(nrow(r), 1L)
     expect_true(is.na(r$var) && is.na(r$cov))
     expect_equal(.vaeShapesFor(r, "cl", "WT"), c("power", "lin"))
-    ## NULL means every continuous shape
+    ## NULL means the default shapes
     expect_equal(.vaeShapesFor(.vaeResolveShapes(NULL), "cl", "WT"),
-                 .vaeContShapes)
+                 .vaeDefaultShapes)
   })
 
   test_that("a covariate-named list restricts that covariate only", {
@@ -72,7 +157,7 @@ nmTest({
     ## matching is case-insensitive because the VAE upper-cases data columns
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     ## an unmatched covariate stays free
-    expect_equal(.vaeShapesFor(r, "cl", "AGE"), .vaeContShapes)
+    expect_equal(.vaeShapesFor(r, "cl", "AGE"), .vaeDefaultShapes)
   })
 
   test_that("a pairsVec list restricts one parameter/covariate pair", {
@@ -82,9 +167,9 @@ nmTest({
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     expect_equal(.vaeShapesFor(r, "v", "WT"), c("lin", "identity"))
     ## shapes= restricts parameterizations only -- a pair no rule mentions is
-    ## still searched, with every shape available
-    expect_equal(.vaeShapesFor(r, "ka", "WT"), .vaeContShapes)
-    expect_equal(.vaeShapesFor(r, "cl", "AGE"), .vaeContShapes)
+    ## still searched, with the default shapes available
+    expect_equal(.vaeShapesFor(r, "ka", "WT"), .vaeDefaultShapes)
+    expect_equal(.vaeShapesFor(r, "cl", "AGE"), .vaeDefaultShapes)
   })
 
   test_that("the most specific rule wins", {
@@ -99,11 +184,11 @@ nmTest({
     r <- .vaeResolveShapes(list(list(var = "tcl", covar = "wt", shapes = "lin")))
     expect_equal(.vaeShapesFor(r, c("eta.cl", "tcl", "cl"), "WT"), "lin")
     ## a different parameter is unaffected by the rule
-    expect_equal(.vaeShapesFor(r, c("eta.v", "tv", "v"), "WT"), .vaeContShapes)
+    expect_equal(.vaeShapesFor(r, c("eta.v", "tv", "v"), "WT"), .vaeDefaultShapes)
   })
 
   test_that("bad shape specifications are rejected", {
-    expect_error(.vaeResolveShapes("hockey"), "unknown covariate shape")
+    expect_error(.vaeResolveShapes("notAShape"), "unknown covariate shape")
     expect_error(.vaeResolveShapes(c("power", "power")), "duplicate")
     expect_error(.vaeResolveShapes(list("power")), "named by covariate")
     expect_error(.vaeResolveShapes(1L), "character vector or a list")

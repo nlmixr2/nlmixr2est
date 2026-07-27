@@ -1,15 +1,9 @@
 # L0Learn-backed candidate generation for the VAE covariate M-step.  This is the
-# ONLY file that names L0Learn: it produces CANDIDATE supports, which the C++
+# ONLY file that names L0Learn (an Imports dependency, so it is always available):
+# it produces CANDIDATE supports, which the C++
 # kernel then re-scores with the exact objective RSS_S/omega + penalty*|S| and
 # polishes.  L0Learn therefore cannot shift a selection through its own internal
 # scaling or lambda grid -- it only decides which subsets get looked at.
-
-#' Is the suggested L0Learn package usable?
-#' @return `TRUE` when `L0Learn` can be loaded
-#' @noRd
-.vaeL0Available <- function() {
-  requireNamespace("L0Learn", quietly = TRUE)
-}
 
 #' Distinct supports visited on one L0Learn regularization path.
 #' @param x covariate matrix (no intercept column)
@@ -59,40 +53,24 @@
 #'   while two shape families of one covariate cost `log2(3)` -- the exact search
 #'   then gets the same worst-case node budget either way.
 #' @param control a `vaeControl()` list
-#' @param avail is L0Learn usable (an argument so the fallback branches are
-#'   testable without installing/uninstalling the package)
 #' @return list with `mode` (0 = exact branch-and-bound, 1 = L0Learn per
 #'   dimension), `used` (`"bnb"`, `"l0learn"` or `"mixed"`) and `msg`
 #' @noRd
-.vaeCovSelectModes <- function(nCand, control, avail = .vaeL0Available()) {
+.vaeCovSelectModes <- function(nCand, control) {
   ## kept numeric: a bit budget is fractional once a covariate carries more than
   ## one shape, and truncating it would quietly widen the exact-search region
   nCand <- as.numeric(nCand)
   .method <- control$covSelectMethod
   if (is.null(.method)) .method <- "auto"
-  .avail <- avail
   .msg <- character(0)
   .mode <- integer(length(nCand))
   if (.method == "l0learn") {
-    if (!.avail) {
-      stop("covSelectMethod=\"l0learn\" needs the L0Learn package; install it ",
-           "or use covSelectMethod=\"bnb\"", call. = FALSE)
-    }
     .mode[nCand > 0] <- 1L
   } else if (.method == "auto") {
     # covSelectMaxExact may be Inf (force the exact search everywhere), so compare
     # against the raw value rather than coercing it to integer (as.integer(Inf) is
-    # NA).  At/over the threshold the exact search is impractical, so a missing
-    # L0Learn is an error, not a silent slow fallback.
-    .big <- nCand >= control$covSelectMaxExact
-    if (any(.big)) {
-      if (.avail) {
-        .mode[.big] <- 1L
-      } else {
-        stop("covariate search needs L0Learn; install it, or force the exact ",
-             "search with covSelectMaxExact=Inf", call. = FALSE)
-      }
-    }
+    # NA).
+    .mode[nCand >= control$covSelectMaxExact] <- 1L
   }
   .used <- if (all(.mode == 1L)) "l0learn" else if (any(.mode == 1L)) "mixed" else "bnb"
   if (.used != "bnb") {

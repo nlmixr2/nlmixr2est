@@ -235,6 +235,12 @@
   if (!is.null(prep$covGroup) && anyDuplicated(prep$covGroup) > 0L) {
     prepC$covGroup <- as.integer(prep$covGroup)
   }
+  ## Likewise for covBlock: every column its own block IS the historic search, so
+  ## send it only when some block actually holds more than one column.
+  prepC$covBlock <- NULL
+  if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
+    prepC$covBlock <- as.integer(prep$covBlock)
+  }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
   ## candidates that dimension actually has (after any pinCovariates trimming),
@@ -245,13 +251,20 @@
   ## exclusion groups mean a covariate with two shape families offers 3 states
   ## (neither, log, linear), not 4.  One column per group costs exactly 1 bit, so
   ## a single-shape search is the historic candidate count and covSelectMaxExact
-  ## keeps its old meaning there.
+  ## keeps its old meaning there.  The unit of choice is the BLOCK, so a hockey
+  ## covariate offers 4 states (neither, log, linear, hockey) rather than the 5
+  ## its column count would suggest -- counting columns would overstate the
+  ## search and push a dimension onto the approximate engine too early.
   .nCov <- ncol(prep$covMat)
   .grp <- prep$covGroup
   if (is.null(.grp) || length(.grp) != .nCov) .grp <- seq_len(.nCov)
+  .blk <- prep$covBlock
+  if (is.null(.blk) || length(.blk) != .nCov) .blk <- seq_len(.nCov)
   .bitsOf <- function(cols) {
     if (length(cols) == 0L) return(0)
-    sum(log2(1 + as.numeric(table(.grp[cols]))))
+    ## one entry per distinct block, counted into that block's group
+    .b <- !duplicated(.blk[cols])
+    sum(log2(1 + as.numeric(table(.grp[cols][.b]))))
   }
   .allowed <- NULL
   .nCand <- rep(.bitsOf(seq_len(.nCov)), prep$zDim)

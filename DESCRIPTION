@@ -48,6 +48,7 @@ Imports:
     cli,
     graphics,
     knitr,
+    L0Learn,
     lbfgsb3c,
     lotri,
     Matrix,
@@ -83,8 +84,7 @@ Suggests:
     rmarkdown,
     rlang,
     numDeriv,
-    rstan,
-    L0Learn
+    rstan
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),

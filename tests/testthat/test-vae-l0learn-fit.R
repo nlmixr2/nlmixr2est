@@ -28,14 +28,22 @@ nmTest({
            linCmt() ~ add(add.sd)})
   }
 
+  ## shapes="power" pins ONE search column per covariate.  This file is about
+  ## which ENGINE runs (exact branch-and-bound against L0Learn-proposed
+  ## candidates), so the design size must be the test's own variable rather than
+  ## whatever the default shape set happens to be -- and several tests below
+  ## deliberately force the EXACT search on all 30 covariates, whose cost is
+  ## exponential in the number of feasible states each covariate offers.  The
+  ## interaction between multi-column shapes and the candidate path is covered
+  ## at kernel level, for pennies, by test-vae-cov-groups.R (block completion)
+  ## and test-vae-l0learn.R (group repair).
   shortCtl <- function(...) {
     vaeControl(itersBurnIn = 5L, iters = 8L, klWarmup = 4L, gammaIter = 6L,
-               nGradStep = 2L, print = 0L, returnVae = TRUE, ...)
+               nGradStep = 2L, print = 0L, returnVae = TRUE, shapes = "power", ...)
   }
 
   test_that("auto engages L0Learn past the threshold and agrees with the exact search", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
 
@@ -55,7 +63,6 @@ nmTest({
 
   test_that("below the threshold nothing switches and nothing is said", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(6L)
     f <- suppressMessages(nlmixr2(wideModel, d, est = "vae", control = shortCtl()))
@@ -64,7 +71,6 @@ nmTest({
 
   test_that("an explicit covSelectMethod overrides the threshold both ways", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(6L)
     ## forced on below the threshold
@@ -84,13 +90,13 @@ nmTest({
 
   test_that("the approximate search reports itself in runInfo", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
     f <- suppressMessages(nlmixr2(wideModel, d, est = "vae",
                                   control = vaeControl(itersBurnIn = 4L, iters = 5L,
                                                        klWarmup = 3L, gammaIter = 4L,
                                                        nGradStep = 2L, print = 0L,
+                                                       shapes = "power",
                                                        calcTables = FALSE)))
     expect_identical(f$vae$covSelectMethodUsed, "l0learn")
     ## a non-exact selection must never arrive silently
@@ -99,7 +105,6 @@ nmTest({
 
   test_that("the L0Learn path is reproducible", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     skip_if_not_installed("nlmixr2data")
     d <- wideData(30L)
     a <- suppressWarnings(suppressMessages(
@@ -113,7 +118,6 @@ nmTest({
 
   test_that("L0Learn candidates plus polish reproduce the exact optimum at scale", {
     skip_on_cran()
-    skip_if_not_installed("L0Learn")
     ## wider version of the essential-suite parity check: more replicates, more
     ## covariates, and both independent and rho=0.7 correlated designs
     .testSeed(2026L)
