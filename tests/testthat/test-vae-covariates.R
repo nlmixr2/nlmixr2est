@@ -53,7 +53,7 @@ nmTest({
 
   test_that("the arms partition the subjects and sum to the lin column", {
     d <- hkData()
-    s <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(c("lin", "hockey")))
+    s <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(c("lin", "hockey"))$rules)
     m <- s$covMat
     expect_equal(unname(m[, "WT_hockeyLow"] + m[, "WT_hockeyHi"]),
                  unname(m[, "WT_lin"]))
@@ -145,7 +145,7 @@ nmTest({
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     d <- hkData()
     .cov <- .vaeCovariateSearch(d, unique(d$ID),
-                                .vaeResolveShapes(c("lin", "hockey")),
+                                .vaeResolveShapes(c("lin", "hockey"))$rules,
                                 covCenter = c(WT = 200))
     expect_equal(.cov$hockeyDrop, "WT")
     .pre <- "<5% of subjects one side of knot, hockey skipped: "
