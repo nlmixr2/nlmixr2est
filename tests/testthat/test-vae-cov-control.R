@@ -1,14 +1,15 @@
 nmTest({
   test_that("vaeControl exposes the covariate shape settings", {
     .c <- vaeControl()
-    expect_equal(.c$shapes, c("power", "lin", "log", "identity", "center"))
+    expect_equal(.c$shapes,
+                 c("power", "lin", "log", "identity", "center", "hockey"))
     expect_equal(.c$covCenterType, "median")
     expect_null(.c$covCenter)
     expect_equal(.c$catCutoff, 0.05)
   })
 
   test_that("vaeControl validates the covariate shape settings", {
-    expect_error(vaeControl(shapes = "hockey"), "unknown covariate shape")
+    expect_error(vaeControl(shapes = "notAShape"), "unknown covariate shape")
     ## "cat" is applied to categorical covariates automatically, never chosen
     expect_error(vaeControl(shapes = "cat"), "unknown covariate shape")
     expect_error(vaeControl(shapes = c("lin", "lin")), "duplicate")

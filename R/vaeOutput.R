@@ -94,10 +94,15 @@
 #' model, so the written parameterization is the first shape this
 #' (parameter, covariate) pair allows in that family, falling back to the
 #' column's own representative shape.
+#'
+#' A hockey arm is exempt, as `cat` is: the family holds exactly one
+#' parameterization, and the user-facing name `"hockey"` names the RELATIONSHIP,
+#' not either arm -- swapping it in would emit a shape with no expression.
 #' @noRd
 .vaeSelectedShape <- function(prep, parAliases, j) {
   .own <- prep$covShape[j]
-  if (identical(.own, "cat") || is.null(prep$shapeRules)) return(.own)
+  if (identical(.own, "cat") || .own %in% .vaeHockeyArms ||
+        is.null(prep$shapeRules)) return(.own)
   .ok <- .vaeShapesFor(prep$shapeRules, parAliases, prep$covRaw[j])
   ## never write a shape that is not expressible at this center
   .ok <- .ok[.vaeShapeUsable(.ok, prep$covPop[j])]
@@ -148,6 +153,8 @@
       ## ini() bounds -- so the corrected value can land outside them.  Clamping
       ## it here would change the prediction, so fall back to the family's
       ## CENTERED shape instead: same fit, no intercept correction needed.
+      ## (a hockey arm never gets here: both arms vanish at the knot, so their
+      ## interceptAdj is 0 and there is nothing to push out of bounds)
       if (.r$interceptAdj != 0 &&
             !.vaeIcAdjInBounds(ui, thName, fit$zPop[k] + icAdj[k] + .r$interceptAdj)) {
         .shp <- if (identical(prep$covFamily[j], "log")) "power" else "lin"
@@ -158,8 +165,10 @@
       ## The categorical branch is built from the raw covariate and its level
       ## directly instead of reusing the design column name (which glues them
       ## with "_"), so the separator is consistent across both branches.
+      ## The hockey arms name themselves `hockey.low` / `hockey.hi` rather than
+      ## by their internal arm shape, so the pair reads as one relationship.
       .bn <- if (identical(prep$covType[j], "continuous")) {
-        paste0("beta.", thName, ".", .raw, ".", .shp)
+        paste0("beta.", thName, ".", .raw, ".", .vaeShapeCoefTag(.shp))
       } else if (!is.na(prep$covLevel[j]) && nzchar(prep$covLevel[j])) {
         paste0("beta.", thName, ".", prep$covRaw[j], ".", prep$covLevel[j])
       } else {

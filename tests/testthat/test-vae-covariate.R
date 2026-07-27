@@ -115,6 +115,40 @@ nmTest({
   ## The multi-shape default: BICc now arbitrates between the log and linear
   ## families rather than being forced into log(cov/center).  Assert on the
   ## COVARIATE and on exclusivity, not on which family happens to win.
+  test_that("the prep list carries hockey blocks through to the encoder input", {
+    skip_on_cran()
+    theoHk <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka ~ 0.3; eta.ke ~ 0.03; eta.V ~ 0.03; add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(theoHk)
+    ctl <- vaeControl(shapes = c("lin", "hockey"), print = 0L, covMethod = "")
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
+    ## one block id per column, and the arms share theirs
+    expect_length(prep$covBlock, ncol(prep$covMat))
+    expect_equal(prep$covShape, c("lin", "hockeyLow", "hockeyHi"))
+    expect_equal(prep$covGroup, c(1L, 1L, 1L))
+    expect_equal(prep$covBlock, c(1L, 2L, 2L))
+    ## the encoder input keeps one BLOCK per group, so a selected hockey reaches
+    ## the encoder whole rather than truncated at the knot
+    expect_equal(ncol(prep$covIn), 1L)
+    hkOnly <- .vaeDataPrep(ui, nlmixr2data::theo_sd,
+                          vaeControl(shapes = "hockey", print = 0L,
+                                     covMethod = ""))
+    expect_equal(hkOnly$covShape, c("hockeyLow", "hockeyHi"))
+    expect_equal(hkOnly$covBlock, c(1L, 1L))
+    expect_equal(ncol(hkOnly$covIn), 2L)
+    ## and with no hockey requested every column is its own block, as before
+    plain <- .vaeDataPrep(ui, nlmixr2data::theo_sd,
+                          vaeControl(shapes = c("power", "lin"), print = 0L,
+                                     covMethod = ""))
+    expect_false(any(grepl("hockey", plain$covShape)))
+    expect_equal(plain$covBlock, seq_along(plain$covShape))
+  })
+
   test_that("the default search picks one shape per covariate end-to-end", {
     skip_on_cran()
     theo <- function() {
@@ -129,10 +163,12 @@ nmTest({
                       iters = 160L, hiddenDim = 25L, seed = 1L,
                       covariateSelection = TRUE, print = 0L, covMethod = "")
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
-    ## WT contributes both shape families, sharing one exclusion group
+    ## WT contributes every shape family, all sharing one exclusion group; the
+    ## hockey arms are two columns of one block within it
     expect_equal(unique(prep$covRaw), "WT")
-    expect_equal(prep$covShape, c("power", "lin"))
+    expect_equal(prep$covShape, c("power", "lin", "hockeyLow", "hockeyHi"))
     expect_equal(length(unique(prep$covGroup)), 1L)
+    expect_equal(length(unique(prep$covBlock)), 3L)
 
     fit <- suppressWarnings(rxode2::rxWithSeed(
       1L, nlmixr2(ui, nlmixr2data::theo_sd, est = "vae", control = ctl)))

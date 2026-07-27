@@ -12,6 +12,35 @@
 
 ## New features
 
+- The `est="vae"` automatic covariate search gained a `"hockey"` shape, a
+  two-armed piecewise-linear relationship knotted at the covariate's centering
+  value and written as
+
+  ```r
+  ka <- exp(tka + beta.tka.WT.hockey.low * (WT <  70.5) * (WT - 70.5)
+                + beta.tka.WT.hockey.hi  * (WT >= 70.5) * (WT - 70.5)
+                + eta.ka)
+  ```
+
+  It is continuous at the knot, so the structural theta keeps its meaning as the
+  parameter value there.  Both arms enter or neither does, and hockey competes
+  with the covariate's other shapes for the same slot, so a parameter never
+  carries two parameterizations of one covariate.  It costs two coefficients
+  against a linear shape's one, so BICc only takes it when the bend earns its
+  keep.  `"hockey"` is part of the default `shapes=`; name `shapes=` without it
+  to opt out.  A covariate with fewer than `catCutoff` of the subjects on one
+  side of the knot is skipped, with a note in `$runInfo` -- reachable only with a
+  `covCenter=` override, since the median splits the subjects in half.
+
+  A hockey stick you write yourself already worked and is unchanged: each arm is
+  independently a mu2 reference, so `vaeControl(pinCovariates=TRUE)` (the
+  default) keeps your model text and coefficient names exactly as written.
+
+- `L0Learn` moved from `Suggests` to `Imports`.  The covariate search already
+  errored rather than fall back when it needed `L0Learn` and the package was
+  absent, so it was effectively required; making that explicit removes the
+  failure mode.
+
 - The covariate coefficients `est="vae"` injects after covariate selection are
   now named with `.` separators instead of `_`: `beta.tka.WT.lin` rather than
   `beta_tka_WT_lin`.  This matches the separator the rest of `nlmixr2` uses for

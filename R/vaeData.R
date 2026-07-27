@@ -104,7 +104,7 @@
       shapeRules$shapes[[.i]]
     } else character(0)
   })))
-  if (length(.sh) == 0L) .sh <- .vaeContShapes
+  if (length(.sh) == 0L) .sh <- .vaeDefaultShapes
   ## Drop shapes that cannot be written at this center before choosing which one
   ## names each family, so a usable sibling (e.g. "lin" for "center") wins.  When
   ## NOTHING requested is writable, substitute each family's plain form rather
@@ -115,7 +115,8 @@
     if (length(.u) > 0L) {
       .sh <- .u
     } else {
-      .sh <- unname(c(log = "power", lin = "lin")[unique(.vaeShapeFamily(.sh))])
+      .sh <- unname(c(log = "power", lin = "lin",
+                      hockey = "hockey")[unique(.vaeShapeFamily(.sh))])
       .sub <- TRUE
     }
   }
@@ -140,8 +141,8 @@
 #' @param covCenter named numeric of per-covariate centering overrides
 #' @param catCutoff minimum subject proportion for a level to be testable
 #' @return list(covNames, covRaw, covShape, covFamily, covLevel, covGroup,
-#'   covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped, logDrop,
-#'   shapeSub, naExcl)
+#'   covBlock, covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped,
+#'   logDrop, shapeSub, naExcl, hockeyDrop)
 #' @noRd
 .vaeCovariateSearch <- function(d, ids, shapeRules = NULL,
                                 covCenterType = c("median", "mean"),
@@ -216,10 +217,15 @@
   .catDropped <- character(0)
   .logDrop <- character(0)
   .shapeSub <- character(0)
-  ## `group` is a KEY here (columns sharing it are alternate forms of one
-  ## relationship); it becomes an integer id once every column is known
+  .hockeyDrop <- character(0)
+  ## `group` and `block` are both KEYS here; each becomes an integer id once
+  ## every column is known.  Columns sharing a GROUP are alternate forms of one
+  ## relationship and compete for a single slot; columns sharing a BLOCK are the
+  ## arms of ONE relationship and are selected all-or-none.  `block` defaults to
+  ## the column's own name, so every column is its own block unless it says
+  ## otherwise -- which reproduces the historic per-column search exactly.
   .add <- function(name, raw, shape, family, level, group, values, type,
-                   center, expr) {
+                   center, expr, block = NULL) {
     ## a level containing "_" can collide with another covariate's column name
     ## (covariate WT level "A_B" vs covariate WT_A level "B"), and a duplicate
     ## name makes the second column unreachable through match()
@@ -227,7 +233,8 @@
     .cols[[length(.cols) + 1L]] <<-
       list(name = name, raw = raw, shape = shape, family = family,
            level = level, group = group, values = values, type = type,
-           center = center, expr = expr)
+           center = center, expr = expr,
+           block = if (is.null(block)) name else block)
   }
 
   for (nm in .raw) {
@@ -261,24 +268,48 @@
       .fam <- .vaeCovFamilies(shapeRules, nm, .ctr)
       if (isTRUE(.fam$substituted)) .shapeSub <- c(.shapeSub, nm)
       .canLog <- all(v > 0) && .ctr > 0
+      ## A hockey knot with (almost) nothing on one side leaves that arm a column
+      ## of zeros, which makes the least-squares M-step singular.  The median
+      ## splits the subjects in half by construction, so this only bites a
+      ## covCenter= override; either way the arms are dropped rather than fitted.
+      ## the floor of 1 is not the same rule as catCutoff: `catCutoff = 0` is a
+      ## documented setting ("test every level"), and against a bare proportion a
+      ## knot outside the data range would pass with an EMPTY side
+      .canHockey <- min(sum(v < .ctr), sum(v >= .ctr)) >= max(1, catCutoff * N)
       .f <- .fam$family; .r <- .fam$repShape
-      .keep <- .f != "log" | .canLog
+      .keep <- (.f != "log" | .canLog) & (.f != "hockey" | .canHockey)
+      if (any(.f == "hockey" & !.canHockey)) .hockeyDrop <- c(.hockeyDrop, nm)
       if (!any(.keep)) {
         ## every requested family is undefined here (log shapes on a covariate
-        ## with non-positive values); fall back to the linear family rather than
-        ## silently dropping the covariate from the search
-        .logDrop <- c(.logDrop, nm)
+        ## with non-positive values, or a hockey knot with an empty side); fall
+        ## back to the linear family rather than silently dropping the covariate
+        ## from the search
+        if (any(.f == "log" & !.canLog)) .logDrop <- c(.logDrop, nm)
         .f <- "lin"; .r <- "lin"
       } else {
-        if (any(!.keep)) .logDrop <- c(.logDrop, nm)
+        if (any(.f == "log" & !.canLog)) .logDrop <- c(.logDrop, nm)
         .f <- .f[.keep]; .r <- .r[.keep]
       }
       for (.i in seq_along(.f)) {
-        .val <- if (.f[.i] == "log") log(v / .ctr) else v - .ctr
         ## every shape family of this covariate shares the covariate's key, so
         ## the search may take at most one of them
-        .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, nm,
-             .val, "continuous", .ctr, .vaeShapeExpr(.r[.i], nm, .ctr))
+        if (.f[.i] == "hockey") {
+          ## one column per ARM, both keyed to a single block so the search takes
+          ## them together or not at all.  Selecting one arm beside the lin column
+          ## would span the same space for the same penalty -- an exact tie whose
+          ## winner is an arbitrary parameterization that does not read as a
+          ## hockey stick.
+          .blk <- paste0(nm, "|hockey")
+          for (.arm in .vaeHockeyArms) {
+            .add(paste0(nm, "_", .arm), nm, .arm, "hockey", NA_character_, nm,
+                 .vaeShapeValue(.arm, v, .ctr), "continuous", .ctr,
+                 .vaeShapeExpr(.arm, nm, .ctr), block = .blk)
+          }
+        } else {
+          .val <- if (.f[.i] == "log") log(v / .ctr) else v - .ctr
+          .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, nm,
+               .val, "continuous", .ctr, .vaeShapeExpr(.r[.i], nm, .ctr))
+        }
       }
     } else {
       ## categorical: an indicator per testable level, reference = modal level.
@@ -306,12 +337,15 @@
   ## emitted, so a covariate that contributes NO column cannot shift them
   .key <- vapply(.cols, `[[`, character(1), "group")
   .covGroup <- match(.key, unique(.key))
+  .bkey <- vapply(.cols, `[[`, character(1), "block")
+  .covBlock <- match(.bkey, unique(.bkey))
   list(covNames = .covNames,
        covRaw = vapply(.cols, `[[`, character(1), "raw"),
        covShape = vapply(.cols, `[[`, character(1), "shape"),
        covFamily = vapply(.cols, `[[`, character(1), "family"),
        covLevel = vapply(.cols, `[[`, character(1), "level"),
        covGroup = .covGroup,
+       covBlock = .covBlock,
        covMat = .covMat,
        covType = vapply(.cols, `[[`, character(1), "type"),
        covPop = vapply(.cols, `[[`, numeric(1), "center"),
@@ -320,7 +354,8 @@
        ## near-collinear copies, but distinct factor levels are not
        covCanon = !duplicated(.covGroup), covRawVal = .rawVals,
        tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
-       shapeSub = unique(.shapeSub), naExcl = .naExcl)
+       shapeSub = unique(.shapeSub), naExcl = .naExcl,
+       hockeyDrop = unique(.hockeyDrop))
 }
 
 #' Search column a model-declared covariate pair pins to
@@ -388,7 +423,9 @@
 #' @return a data frame with one row per candidate search column and columns
 #'   `covariate` (the column name), `raw` (upper-cased data column it comes
 #'   from), `shape`, `level` (for categorical indicators), `group` (mutual
-#'   exclusion group), `type` and `center`; zero rows when nothing qualifies
+#'   exclusion group), `block` (columns selected all-or-none, i.e. the two arms
+#'   of a `"hockey"` relationship), `type` and `center`; zero rows when nothing
+#'   qualifies
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -400,7 +437,7 @@
 #' # restrict the explored shapes
 #' vaeCovariates(d, shapes = "power")
 vaeCovariates <- function(data, warn = TRUE,
-                          shapes = c("power", "lin", "log", "identity", "center"),
+                          shapes = c("power", "lin", "log", "identity", "center", "hockey"),
                           covCenterType = c("median", "mean"),
                           covCenter = NULL, catCutoff = 0.05) {
   checkmate::assertLogical(warn, len = 1, any.missing = FALSE)
@@ -419,8 +456,13 @@ vaeCovariates <- function(data, warn = TRUE,
     warning("covariate(s) with missing values were excluded from automatic covariate search: ",
             paste(.cov$naExcl, collapse = ", "), call. = FALSE)
   }
+  if (warn && length(.cov$hockeyDrop) > 0L) {
+    warning("hockey skipped, <5% of subjects one side of the knot: ",
+            paste(.cov$hockeyDrop, collapse = ", "), call. = FALSE)
+  }
   data.frame(covariate = .cov$covNames, raw = .cov$covRaw, shape = .cov$covShape,
-             level = .cov$covLevel, group = .cov$covGroup, type = .cov$covType,
+             level = .cov$covLevel, group = .cov$covGroup,
+             block = .cov$covBlock, type = .cov$covType,
              center = .cov$covPop, row.names = NULL)
 }
 
@@ -828,6 +870,11 @@ vaeCovariates <- function(data, warn = TRUE,
     .ssPre <- "shape unwritable at center, plain form used: "
     warning(.ssPre, .vaeTruncList(.cov$shapeSub, prefix = .ssPre), call. = FALSE)
   }
+  if (length(.cov$hockeyDrop) > 0L) {
+    .hkPre <- "<5% of subjects one side of knot, hockey skipped: "
+    warning(.hkPre, .vaeTruncList(.cov$hockeyDrop, prefix = .hkPre),
+            call. = FALSE)
+  }
   if (length(.cov$naExcl) > 0L) {
     .naPre <- "covariate(s) with missing values not searched: "
     warning(.naPre, .vaeTruncList(.cov$naExcl, prefix = .naPre), call. = FALSE)
@@ -853,6 +900,7 @@ vaeCovariates <- function(data, warn = TRUE,
     .cov$covFamily <- character(0)
     .cov$covLevel <- character(0)
     .cov$covGroup <- integer(0)
+    .cov$covBlock <- integer(0)
     .cov$covExpr <- character(0)
     .cov$covCanon <- logical(0)
   }
@@ -1169,7 +1217,14 @@ vaeCovariates <- function(data, warn = TRUE,
   } else {
     .sel <- if (is.null(.covAllow)) seq_len(ncol(.cov$covMat)) else
       which(colSums(.covAllow) > 0L)
-    .keep <- .sel[!duplicated(.cov$covGroup[.sel])]
+    ## Dedupe to one BLOCK per group, not one column: the arms of a hockey block
+    ## are complementary halves of one relationship, so keeping only the first
+    ## would hand the encoder a covariate truncated at the knot.  A block never
+    ## spans groups, and with every column its own block this is exactly the
+    ## historic one-column-per-group rule.
+    .g <- .cov$covGroup[.sel]
+    .b <- .cov$covBlock[.sel]
+    .keep <- .sel[.b %in% .b[!duplicated(.g)]]
     .cov$covMat[, .keep, drop = FALSE]
   }
   if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
@@ -1189,7 +1244,8 @@ vaeCovariates <- function(data, warn = TRUE,
        covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
        covPop = .cov$covPop, covRaw = .cov$covRaw, covShape = .cov$covShape,
        covFamily = .cov$covFamily, covLevel = .cov$covLevel,
-       covGroup = .cov$covGroup, covExpr = .cov$covExpr,
+       covGroup = .cov$covGroup, covBlock = .cov$covBlock,
+       covExpr = .cov$covExpr,
        covCanon = .cov$covCanon, shapeRules = .vaeResolveShapes(.csh),
        pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,
        tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
