@@ -349,8 +349,17 @@
     return(invisible())
   }
   .se <- sqrt(diag(cov))
-  .ci <- tryCatch(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)),
-                  error = function(e) 0.95)
+  # Resolve ci the way .updateParFixed does -- the fit's control first, then the
+  # ui.  The ui's control slot can still hold the default when the fit ran with
+  # e.g. saemControl(ci=0.8), and reading only the ui both relabels the column
+  # 95% and recomputes the CIs below at the wrong level.
+  .ci <- tryCatch({
+    .v <- env$control[["ci"]]
+    if (!(length(.v) == 1L && is.numeric(.v) && is.finite(.v))) {
+      .v <- suppressWarnings(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)))
+    }
+    if (length(.v) == 1L && is.numeric(.v) && is.finite(.v)) .v else 0.95
+  }, error = function(e) 0.95)
   .qn <- stats::qnorm(1 - (1 - .ci) / 2)
   .changed <- FALSE
   for (.n in intersect(rownames(.pf), names(.se))) {

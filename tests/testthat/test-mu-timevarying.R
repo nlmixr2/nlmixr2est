@@ -29,15 +29,18 @@ nmTest({
       ini({ tka<-0.45; tcl<-1; tv<-3.45; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
-    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod)); .ui$control <- vaeControl()
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
+    .ctl <- vaeControl()
     .d <- nlmixr2data::theo_sd
     .testSeed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
-    expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d),
+    expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d, .ctl),
                    "time-varying covariate.*not searched: TVCOV")
-    expect_false("TVCOV" %in% .p$covNames)            # excluded
-    expect_true("WT" %in% .p$covNames)                # subject-constant kept
+    # covNames are SEARCH COLUMNS (one per shape family, <cov>_<shape>), so
+    # check membership on the raw covariate each column came from
+    expect_false("TVCOV" %in% .p$covRaw)              # excluded
+    expect_true("WT" %in% .p$covRaw)                  # subject-constant kept
     # subject-constant only: no warning
-    expect_silent(suppressMessages(nlmixr2est:::.vaeDataPrep(.ui, nlmixr2data::theo_sd)))
+    expect_silent(suppressMessages(nlmixr2est:::.vaeDataPrep(.ui, nlmixr2data::theo_sd, .ctl)))
   })
 
   test_that("saem recovers a non-time-varying covariate effect", {

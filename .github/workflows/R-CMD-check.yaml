@@ -19,21 +19,45 @@ jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
 
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }}${{ matrix.config.shard && format(' shard {0}', matrix.config.shard) || '' }})
 
     strategy:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
-          - {os: ubuntu-latest,   r: 'release'}
-          - {os: ubuntu-latest,   r: 'oldrel-1'}
+          # ubuntu-release carries the test signal: it runs the FULL essential
+          # subset (27m, Status: OK).  Every other entry sets cranTests, running
+          # only the CRAN-visible subset (see NLMIXR2EST_TEST_CRAN_ONLY in
+          # tests/testthat.R) while still doing a complete build + R CMD check --
+          # install, examples with --run-donttest, Rd, and compiled-code checks all
+          # still run, which is what these entries are actually here to catch.
+          #
+          # They cannot run the full suite: a long job on a hosted runner gets
+          # RECLAIMED mid-test-run, which surfaces as "exit code 143 / The runner
+          # has received a shutdown signal" (confirmed in the ubuntu-devel log) or,
+          # when the runner is lost outright, as a failure with no log and no
+          # artifact at all.  macOS/Windows spend ~5h45m in `checking tests` against
+          # ~19m on Ubuntu; devel and oldrel-1 were killed at 4h33m and after a
+          # check phase that swung between 1h12m and 4h02m across runs.  Before
+          # this, all four gave no signal whatsoever.
+          - {os: macos-latest,   r: 'release', cranTests: true}
+          - {os: windows-latest, r: 'release', cranTests: true}
+          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release', cranTests: true}
+          - {os: ubuntu-latest,   r: 'oldrel-1', cranTests: true}
+          # The full essential subset is SHARDED across three jobs.  One job is a
+          # lottery: the identical step took 27m on one runner and was reclaimed at
+          # 4h15m ("exit code 143") on another.  Every file still runs -- the shards
+          # partition the subset exactly -- but each job stays short enough to
+          # finish.  See NLMIXR2EST_TEST_SHARD in tests/testthat.R.
+          - {os: ubuntu-latest,   r: 'release', shard: '1/3'}
+          - {os: ubuntu-latest,   r: 'release', shard: '2/3'}
+          - {os: ubuntu-latest,   r: 'release', shard: '3/3'}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      NLMIXR2EST_TEST_CRAN_ONLY: ${{ matrix.config.cranTests && 'true' || 'false' }}
+      NLMIXR2EST_TEST_SHARD: ${{ matrix.config.shard || '' }}
 
     steps:
       - name: Install deps on MacOS
@@ -54,11 +78,9 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          # cache-version 2: drop caches holding qs2/stringfish binaries built
-          # against RcppParallel < 6.0.0 (pre-oneTBB); those fail to load with
-          # undefined tbb::internal symbols.  qs2/stringfish are forced to
-          # source so they always link the installed RcppParallel.
-          cache-version: 2
+          # cache-version 3: the qs2/stringfish source pins are gone (see below),
+          # so the cached dependency set changed.
+          cache-version: 3
           extra-packages: |
             any::rcmdcheck
             nlmixr2/lbfgsb3c
@@ -69,11 +91,14 @@ jobs:
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             qs=?ignore
-            qs2=?source
-            stringfish=?source
+            rstan=?ignore
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+          # upload-results is left at its default: the action already uploads the
+          # .Rcheck directory on failure ('false' only suppresses it for SUCCESSFUL
+          # runs).  Note neither that nor the console log survives a job that loses
+          # its runner -- which is why the 6h-cancelled jobs reported nothing.
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'

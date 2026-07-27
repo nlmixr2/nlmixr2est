@@ -18,6 +18,16 @@ library(nlmixr2est)
 #     from testthat.Rout.
 #   * rxode2 (and data.table) within-solve threads: capped to 2 on CRAN, per
 #     CRAN's two-core policy; on CI and locally rxode2 manages its own threads.
+# Platforms that only need to prove the package BUILDS and checks (macOS and
+# Windows in R-CMD-check.yaml) run the CRAN-visible subset instead of the full
+# NOT_CRAN suite.  The same `checking tests` step costs ~19 min on an Ubuntu
+# runner and ~5h45m on macOS/Windows -- model compilation dominates there -- which
+# blew GitHub's hard 6-hour job limit and left those jobs cancelled, i.e. giving
+# no signal at all.  Ubuntu still runs the full essential subset.
+if (isTRUE(as.logical(Sys.getenv("NLMIXR2EST_TEST_CRAN_ONLY", "false")))) {
+  Sys.setenv("NOT_CRAN" = "false") # nolint
+}
+
 .onCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
 .onCI   <- isTRUE(as.logical(Sys.getenv("CI", "false")))
 
@@ -77,11 +87,11 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing"),
+    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing", "bounded-transform"),
   # batch 7 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c("vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
-    "vi-fullbayes", "omega-offdiag"),
+    "vi-fullbayes", "omega-offdiag", "augpred", "vae-residopt"),
   # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
@@ -109,7 +119,36 @@ if (nzchar(.batch)) {
   }
 } else if (.onCI && !.onCran && length(.slowAll) > 0L) {
   # Essential subset on push/PR CI: everything EXCEPT the slow files.
-  .filter <- paste0("^(?!(", paste(.slowAll, collapse = "|"), ")$)")
+  #
+  # NLMIXR2EST_TEST_SHARD="i/n" splits that subset across n parallel jobs.  A
+  # hosted runner reclaims a long job mid-run ("exit code 143 / The runner has
+  # received a shutdown signal"), and runner speed varies enormously -- the same
+  # `checking tests` step measured 27m on one ubuntu-release runner and was still
+  # going at 4h15m on another before being reclaimed.  Sharding keeps every job
+  # short enough to finish without dropping a single test file.
+  .shard <- Sys.getenv("NLMIXR2EST_TEST_SHARD")
+  if (nzchar(.shard)) {
+    .p <- strsplit(.shard, "/", fixed = TRUE)[[1]]
+    .i <- suppressWarnings(as.integer(.p[1])); .n <- suppressWarnings(as.integer(.p[2]))
+    if (length(.p) != 2L || is.na(.i) || is.na(.n) || .n < 1L || .i < 1L || .i > .n) {
+      stop(sprintf("NLMIXR2EST_TEST_SHARD=%s must be \"i/n\" with 1 <= i <= n", .shard))
+    }
+    # Deal the files out round-robin over a SORTED list so the split is stable
+    # across jobs and platforms, and every file lands in exactly one shard.
+    .all <- sort(sub("^test-", "", sub("\\.R$", "",
+                                       basename(Sys.glob(file.path("testthat", "test-*.R"))))))
+    .ess <- setdiff(.all, .slowAll)
+    # An empty list would make every shard match nothing and report a green run
+    # having tested nothing at all -- fail loudly instead.
+    if (length(.ess) == 0L) {
+      stop("NLMIXR2EST_TEST_SHARD set but no test files found in ./testthat")
+    }
+    .mine <- .ess[seq_along(.ess) %% .n == (.i %% .n)]
+    .filter <- if (length(.mine) == 0L) "^$" else
+      paste0("^(", paste(.mine, collapse = "|"), ")$")
+  } else {
+    .filter <- paste0("^(?!(", paste(.slowAll, collapse = "|"), ")$)")
+  }
 }
 # Locally (and on CRAN) .filter stays NULL -> run everything.
 
