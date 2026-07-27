@@ -25,16 +25,26 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          # cranTests: run only the CRAN-visible test subset (see
-          # NLMIXR2EST_TEST_CRAN_ONLY in tests/testthat.R).  macOS and Windows are
-          # here to prove the package builds and checks on those toolchains; the
-          # full NOT_CRAN suite costs ~5h45m there against ~19m on Ubuntu, which
-          # exceeded GitHub's 6-hour job limit and produced no signal at all.
+          # ubuntu-release carries the test signal: it runs the FULL essential
+          # subset (27m, Status: OK).  Every other entry sets cranTests, running
+          # only the CRAN-visible subset (see NLMIXR2EST_TEST_CRAN_ONLY in
+          # tests/testthat.R) while still doing a complete build + R CMD check --
+          # install, examples with --run-donttest, Rd, and compiled-code checks all
+          # still run, which is what these entries are actually here to catch.
+          #
+          # They cannot run the full suite: a long job on a hosted runner gets
+          # RECLAIMED mid-test-run, which surfaces as "exit code 143 / The runner
+          # has received a shutdown signal" (confirmed in the ubuntu-devel log) or,
+          # when the runner is lost outright, as a failure with no log and no
+          # artifact at all.  macOS/Windows spend ~5h45m in `checking tests` against
+          # ~19m on Ubuntu; devel and oldrel-1 were killed at 4h33m and after a
+          # check phase that swung between 1h12m and 4h02m across runs.  Before
+          # this, all four gave no signal whatsoever.
           - {os: macos-latest,   r: 'release', cranTests: true}
           - {os: windows-latest, r: 'release', cranTests: true}
-          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
+          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release', cranTests: true}
           - {os: ubuntu-latest,   r: 'release'}
-          - {os: ubuntu-latest,   r: 'oldrel-1'}
+          - {os: ubuntu-latest,   r: 'oldrel-1', cranTests: true}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
