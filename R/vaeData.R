@@ -1019,10 +1019,15 @@ vaeCovariates <- function(data, warn = TRUE,
              "  use covariateSelection=FALSE to turn the search off outright",
              call. = FALSE)
       }
-      .fxDrop <- .cov$covRaw[colSums(.shapeMask) == 0L]
+      ## Grouped by RAW covariate, not by column.  A covariate restricted to one
+      ## shape has its other columns masked to zero while the covariate itself is
+      ## still searched through the column that survived, so a per-column test
+      ## could name it as excluded when it was not.
+      .fxBy <- tapply(colSums(.shapeMask), .cov$covRaw, sum)
+      .fxDrop <- names(.fxBy)[.fxBy == 0]
       if (length(.fxDrop) > 0L) {
         .fxPre <- "fixCov=TRUE, covariate(s) not searched: "
-        warning(.fxPre, .vaeTruncList(unique(.fxDrop), prefix = .fxPre),
+        warning(.fxPre, .vaeTruncList(.fxDrop, prefix = .fxPre),
                 call. = FALSE)
       }
     }

@@ -221,7 +221,15 @@
     .nm <- .nm[-.fx]
   }
   if (length(spec) == 0L) {
-    ## `shapes = list(fixCov = ...)` restricts nothing and fixes nothing
+    ## `shapes = list(fixCov = TRUE)` asks to fix the searched set to the
+    ## covariates named, and names none.  Silently reading that as FALSE would
+    ## override an explicit flag; silently reading it as TRUE would search
+    ## nothing.  Neither is what was meant, so say so.
+    if (isTRUE(.fixCov) && length(.fx) == 1L) {
+      stop("shapes: fixCov=TRUE but no covariate is named\n",
+           "  name the covariates to search, or use covariateSelection=FALSE ",
+           "to turn the search off", call. = FALSE)
+    }
     return(.ret(.mk(NA_character_, NA_character_, .vaeDefaultShapes), FALSE))
   }
   .out <- vector("list", length(spec))
@@ -297,8 +305,12 @@
         ## var-only: every covariate, on this parameter alone
         .m[.k, ] <- TRUE
       } else {
-        .j <- match(rules$cov[.r], toupper(.raw))
-        if (!is.na(.j)) .m[.k, .j] <- TRUE
+        ## `which`, not `match`: match() takes only the FIRST hit, which would
+        ## leave a second same-named-up-to-case covariate ineligible.  Both entry
+        ## points upper-case the data columns before the search, so that cannot
+        ## arise today -- this keeps the function correct without relying on it.
+        .j <- which(toupper(.raw) == rules$cov[.r])
+        if (length(.j) > 0L) .m[.k, .j] <- TRUE
       }
     }
   }

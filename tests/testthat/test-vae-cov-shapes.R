@@ -729,3 +729,93 @@ nmTest({
                  "named by covariate")
   })
 })
+
+## fixCov end to end: the mask .vaeShapeAllowMask actually produces, and the
+## three .vaeDataPrep paths (exclusion note, nothing-searchable error, and the
+## declaring model that overrides the flag).
+nmTest({
+  .d <- nlmixr2data::theo_sd
+  .d$WT <- rep(c(60, 70, 80), length.out = length(unique(.d$ID)))[
+    match(.d$ID, unique(.d$ID))]
+  .d$AGE <- rep(c(30, 40, 50), length.out = length(unique(.d$ID)))[
+    match(.d$ID, unique(.d$ID))]
+  names(.d) <- toupper(names(.d))
+
+  ## built as text like the pinning tests above: model()/ini() piping inside
+  ## test_that() resolves the covariate symbol in the wrong environment
+  .mk <- function(term = NULL) {
+    .ini <- if (is.null(term)) "" else " b1 <- 0.1;"
+    .cl <- if (is.null(term)) "exp(tcl + eta.cl)"
+           else paste0("exp(tcl + b1 * ", term, " + eta.cl)")
+    eval(parse(text = paste0(
+      "function() {\n",
+      "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45;", .ini, " add.sd <- 0.7\n",
+      "        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })\n",
+      "  model({ ka <- exp(tka + eta.ka)\n",
+      "    cl <- ", .cl, "\n",
+      "    v <- exp(tv + eta.v)\n",
+      "    d/dt(depot) <- -ka * depot\n",
+      "    d/dt(center) <- ka * depot - cl / v * center\n",
+      "    cp <- center / v; cp ~ add(add.sd) })\n}")))
+  }
+
+  test_that("fixCov masks whole covariates in .vaeShapeAllowMask", {
+    r <- .vaeResolveShapes(list(wt = "power"))
+    cov <- .vaeCovariateSearch(.d, unique(.d$ID), r$rules)
+    m <- .vaeShapeAllowMask(cov, r, c("eta.ka", "eta.cl"), c("tka", "tcl"))
+    ## every WT column stays selectable, every AGE column is masked out
+    expect_true(all(m[, cov$covRaw == "WT"] == 1L))
+    expect_true(all(m[, cov$covRaw == "AGE"] == 0L))
+    ## fixCov=FALSE leaves AGE alone
+    r2 <- .vaeResolveShapes(list(wt = "power", fixCov = FALSE))
+    m2 <- .vaeShapeAllowMask(cov, r2, c("eta.ka", "eta.cl"), c("tka", "tcl"))
+    expect_true(all(m2[, cov$covRaw == "AGE"] == 1L))
+  })
+
+  ## .vaeDataPrep emits several warnings and their order is not part of the
+  ## contract, so collect them all rather than relying on which one comes first
+  .warns <- function(expr) {
+    .w <- character(0)
+    withCallingHandlers(invisible(force(expr)),
+                        warning = function(cond) {
+                          .w <<- c(.w, conditionMessage(cond))
+                          invokeRestart("muffleWarning")
+                        })
+    .w
+  }
+
+  test_that("a covariate restricted to one shape is not reported as excluded", {
+    ## the false positive an independent review predicted: WT's non-power
+    ## columns are masked, but WT itself is still searched through WT_power
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                              vaeControl(shapes = list(wt = "power"),
+                                         muRefCovAlg = FALSE)))
+    .fx <- grep("fixCov=TRUE, covariate", .w, value = TRUE)
+    expect_length(.fx, 1L)
+    expect_match(.fx, "AGE")
+    expect_false(grepl("WT", .fx))
+  })
+
+  test_that("fixCov=TRUE with nothing searchable is an error", {
+    expect_error(
+      .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                   vaeControl(shapes = list(noSuchCov = "power"),
+                              muRefCovAlg = FALSE)),
+      "leaves no covariate searchable")
+  })
+
+  test_that("a declaring model overrides fixCov", {
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk("log(WT/70)")), .d,
+                              vaeControl(shapes = list(age = "power"),
+                                         muRefCovAlg = FALSE)))
+    expect_true(any(grepl("fixCov=TRUE ignored", .w)))
+    ## the declaration is what actually restricts the search
+    expect_true(any(grepl("pinned to model-specified covariates", .w)))
+  })
+
+  test_that("fixCov=TRUE naming no covariate is rejected outright", {
+    expect_error(.vaeResolveShapes(list(fixCov = TRUE)), "no covariate is named")
+    ## ... while an explicit FALSE with no rules is simply unrestricted
+    expect_false(.vaeResolveShapes(list(fixCov = FALSE))$fixCov)
+  })
+})
