@@ -2,6 +2,10 @@
 # agrees with central differences of the objective, a fast fit matches a
 # finite-difference fit, out-of-scope models fall back transparently, and the
 # fast/derivative-free control defaults behave.
+#
+# Weekly-batched via .slowBatches in tests/testthat.R -- do NOT add skip_on_ci().
+# The weekly runner also sets CI=true, so skip_on_ci() here would skip these
+# everywhere and leave the fast/analytic-gradient path with no CI coverage.
 
 nmTest({
   .fast_one_cmt <- function() {
@@ -41,7 +45,6 @@ nmTest({
 
   test_that("analytic outer gradient matches central differences (theta + sigma)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # posthoc (eta*-only) at deliberately off initials so gradients are large-signal
     off <- function() {
@@ -71,7 +74,6 @@ nmTest({
 
   test_that("FOCE (nonmem) analytic gradient matches central differences", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # add+prop so the frozen-R0 depends on the population prediction (exercises the
     # nonmem a0-chain) while staying > 0 (no vanishing-variance guard)
@@ -102,7 +104,6 @@ nmTest({
 
   test_that("FOCE censored (M3) analytic gradient matches central differences", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # censored FOCE re-solves the EBE with the exact censored rho_f/rho_ff at the frozen R0
     # (.foceiAnalyticFoceEbe) and uses the censored score + R0-chain cross deriv rfR
@@ -134,7 +135,6 @@ nmTest({
 
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # both-sides transform with an ESTIMATED lambda: lambda is a theta-like direction
     # (df'/dlambda) plus the DV-transform residual chain (dy'/dlambda) and the -2 log|J|
@@ -176,7 +176,6 @@ nmTest({
 
   test_that("analytic outer gradient matches FD for a covariate model", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # a covariate (wtCl*WT) in the structural model: exercises the covariate direction
     # and the param() covariate declaration in the augmented outer model
@@ -210,7 +209,6 @@ nmTest({
 
   test_that("analytic outer gradient matches FD for a multiple-endpoint model", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # two modeled endpoints (PK cp + PD pca): rx_pred_/rx_r_ are single dvid-conditional
     # expressions, so solving against the dataset selects each endpoint's prediction and
@@ -243,7 +241,6 @@ nmTest({
 
   test_that("fast=TRUE fit matches the finite-difference fit", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
     f0 <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
@@ -261,7 +258,6 @@ nmTest({
 
   test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
     # bioavailability f() and absorption lag() modeled on theta/eta: the outer gradient
@@ -293,7 +289,6 @@ nmTest({
 
   test_that("mceta=-2 (Eq-48) is the default and all fast mceta modes agree", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     expect_equal(foceiControl()$mceta, -2L)                    # new global default
     d <- nlmixr2data::theo_sd
@@ -330,7 +325,6 @@ nmTest({
 
   test_that("FOCEI + prop(): analytic gradient matches central differences near the optimum", {
     skip_on_cran()
-    skip_on_ci()
     # Exercises the (f,R) determinant chain d(dfr)/ddir = pfrf*a + pfRR*aR (foceiGradSubjectFR_)
     # for a prediction-dependent variance: aR = dR/ddir is nonzero only under FOCEI with
     # prop()/pow()/combined error, so additive error and every FOCE variant (frozen variance)
