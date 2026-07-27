@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "odeSwap.h"
 #include "imp.h"
 #include "np.h"
 #include "rxomp.h"
@@ -753,6 +754,9 @@ extern "C" void rxOptionsFreeFocei() {
 //[[Rcpp::export]]
 void freeFocei(){
   rxOptionsFreeFocei();
+  // Drop the peer-solver registry too: its entry points point into the fit's
+  // compiled model DLLs, so it must not outlive the fit.
+  odeSwapClearAll();
 }
 
 
@@ -4693,14 +4697,11 @@ static inline void foceiSetupTheta_(List mvi,
   }
   int npars = thetan+omegan-fixedn;
   if (alloc){
-    rxUpdateFuns(as<SEXP>(mvi["trans"]), &rxInner);
+    // rxInner was loaded by odeSwapRegister(odeSlotInner) in foceiSetup_.
     foceiSetupTrans_(as<CharacterVector>(mvi["params"]));
     // Locate rx_pred_ in the inner lhs (AR(1) lag defs may precede it).
-    op_focei.predOffset = 0;
-    CharacterVector innerLhs = as<CharacterVector>(mvi["lhs"]);
-    for (int il = 0; il < innerLhs.size(); ++il) {
-      if (as<std::string>(innerLhs[il]) == "rx_pred_") { op_focei.predOffset = il; break; }
-    }
+    int _ipi = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
+    op_focei.predOffset = (_ipi < 0) ? 0 : _ipi;
     // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
     // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
   } else if (!op_focei.alloc){
@@ -5085,6 +5086,10 @@ NumericVector foceiSetup_(const RObject &obj,
     mvi = rxode2::rxModelVars_(obj);
   }
   rxOptionsFreeFocei();
+  // Register the inner model as the first peer solver.  Done here (rather than in
+  // foceiSetupTheta_, which only sees the model vars) so the whole registry -- and
+  // therefore the pool decision -- is known before the solve pool is built below.
+  if (!Rf_isNull(obj)) odeSwapRegister(odeSlotInner, "inner", obj, &rxInner);
   op_focei.mvi = mvi;
   op_focei.mixIdxN = (unsigned int)mixIdx.size();
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
@@ -9734,16 +9739,11 @@ Environment foceiFitCpp_(Environment e){
         } else {
           noLhs = model["predNoLhs"];
         }
-        if (rxode2::rxIs(noLhs, "rxode2")) {
-          List mvp = rxode2::rxModelVars_(noLhs);
-          rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
+        if (odeSwapRegister(odeSlotPred, "pred", noLhs, &rxPred)) {
           op_focei.canDoFD = true;
           // Locate rx_pred_ in the predNoLhs lhs (AR(1) lag defs may precede it).
-          op_focei.predNoLhsOffset = 0;
-          CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
-          for (int il = 0; il < predLhs.size(); ++il) {
-            if (as<std::string>(predLhs[il]) == "rx_pred_") { op_focei.predNoLhsOffset = il; break; }
-          }
+          int _ip = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
+          op_focei.predNoLhsOffset = (_ip < 0) ? 0 : _ip;
         } else {
           stop(_("focei cannot be run without rxode2 'predNoLhs'"));
         }
@@ -9757,30 +9757,26 @@ Environment foceiFitCpp_(Environment e){
       op_focei.thetaSensNeq = 0;
       if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
         RObject ts = model["thetaSens"];
-        if (rxode2::rxIs(ts, "rxode2")) {
-          List mvts = rxode2::rxModelVars_(ts);
-          rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
-          op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
-          rxThetaSens.neq = op_focei.thetaSensNeq;
+        if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
+          op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);
           // The model outputs rx__sens_rx_pred__BY_THETA_j___ (d(f)/d(theta)) and
           // rx__sens_rx_r__BY_THETA_j___ (d(V)/d(theta)) for each estimated non-mu
           // theta j (1-based), in two ascending, contiguous blocks.  Record the lhs
           // offsets of the first of each (impThetaSensIdx[0] + 1).
-          CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
-          op_focei.thetaSensNlhs = tsLhs.size();
+          op_focei.thetaSensNlhs = odeSwapNlhs(odeSlotThetaSens);
           op_focei.thetaSensPredOffset = -1;
           op_focei.thetaSensROffset = -1;
           if (op_focei.impThetaSensIdx.size() > 0) {
             std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
             std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
             std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
-            for (int il = 0; il < tsLhs.size(); ++il) {
-              std::string nm = as<std::string>(tsLhs[il]);
-              if (nm == firstF) op_focei.thetaSensOffset = il;
-              else if (nm == firstV) op_focei.thetaSensDvOffset = il;
-              else if (nm == "rx_pred_") op_focei.thetaSensPredOffset = il;
-              else if (nm == "rx_r_") op_focei.thetaSensROffset = il;
-            }
+            // -1 (absent) only overwrites an offset the old scan also left unset
+            int _if = odeSwapLhsIndex(odeSlotThetaSens, firstF.c_str());
+            int _iv = odeSwapLhsIndex(odeSlotThetaSens, firstV.c_str());
+            if (_if >= 0) op_focei.thetaSensOffset = _if;
+            if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
+            op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
+            op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
           }
         }
         // The pool is sized for the theta-sensitivity model (the largest); pin the
@@ -9798,16 +9794,10 @@ Environment foceiFitCpp_(Environment e){
       op_focei.hess2Nlhs = 0;
       if (model.containsElementNamed("innerHess2")) {
         RObject h2 = model["innerHess2"];
-        if (rxode2::rxIs(h2, "rxode2")) {
-          List mvh2 = rxode2::rxModelVars_(h2);
-          rxUpdateFuns(as<SEXP>(mvh2["trans"]), &rxHess2);
-          op_focei.hess2Neq = as<CharacterVector>(mvh2["state"]).size();
-          rxHess2.neq = op_focei.hess2Neq;
-          CharacterVector h2Lhs = as<CharacterVector>(mvh2["lhs"]);
-          op_focei.hess2Nlhs = h2Lhs.size();
-          for (int il = 0; il < h2Lhs.size(); ++il) {
-            if (as<std::string>(h2Lhs[il]) == "rx__d2pred_1_1__") { op_focei.predHess2Offset = il; break; }
-          }
+        if (odeSwapRegister(odeSlotHess2, "hess2", h2, &rxHess2)) {
+          op_focei.hess2Neq = odeSwapNeq(odeSlotHess2);
+          op_focei.hess2Nlhs = odeSwapNlhs(odeSlotHess2);
+          op_focei.predHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__");
           // pin the 1st-order inner Newton solves to innerNeq (pool sized for rxHess2)
           if (op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
             impSetInnerNeqOverride();
@@ -10373,14 +10363,10 @@ RObject vaeInnerSetup_(Environment e) {
   // predNoLhs -> finite-difference event sensitivities
   if (model.containsElementNamed("predNoLhs")) {
     RObject noLhs = model.containsElementNamed("predNoLhsLlik") ? model["predNoLhsLlik"] : model["predNoLhs"];
-    if (rxode2::rxIs(noLhs, "rxode2")) {
-      List mvp = rxode2::rxModelVars_(noLhs);
-      rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
+    if (odeSwapRegister(odeSlotPred, "pred", noLhs, &rxPred)) {
       op_focei.canDoFD = true;
-      op_focei.predNoLhsOffset = 0;
-      CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
-      for (int il = 0; il < predLhs.size(); ++il)
-        if (as<std::string>(predLhs[il]) == "rx_pred_") { op_focei.predNoLhsOffset = il; break; }
+      int _ip = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
+      op_focei.predNoLhsOffset = (_ip < 0) ? 0 : _ip;
     }
   }
   if (model.containsElementNamed("eventEta")) {
@@ -10395,26 +10381,21 @@ RObject vaeInnerSetup_(Environment e) {
   op_focei.thetaSensNeq = 0;
   if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
     RObject ts = model["thetaSens"];
-    if (rxode2::rxIs(ts, "rxode2")) {
-      List mvts = rxode2::rxModelVars_(ts);
-      rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
-      op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
-      rxThetaSens.neq = op_focei.thetaSensNeq;
-      CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
-      op_focei.thetaSensNlhs = tsLhs.size();
+    if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
+      op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);
+      op_focei.thetaSensNlhs = odeSwapNlhs(odeSlotThetaSens);
       op_focei.thetaSensPredOffset = -1;
       op_focei.thetaSensROffset = -1;
       if (op_focei.impThetaSensIdx.size() > 0) {
         std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
         std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
         std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
-        for (int il = 0; il < tsLhs.size(); ++il) {
-          std::string nm = as<std::string>(tsLhs[il]);
-          if (nm == firstF) op_focei.thetaSensOffset = il;
-          else if (nm == firstV) op_focei.thetaSensDvOffset = il;
-          else if (nm == "rx_pred_") op_focei.thetaSensPredOffset = il;
-          else if (nm == "rx_r_") op_focei.thetaSensROffset = il;
-        }
+        int _if = odeSwapLhsIndex(odeSlotThetaSens, firstF.c_str());
+        int _iv = odeSwapLhsIndex(odeSlotThetaSens, firstV.c_str());
+        if (_if >= 0) op_focei.thetaSensOffset = _if;
+        if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
+        op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
+        op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
       }
     }
     if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
@@ -10429,12 +10410,9 @@ RObject vaeInnerSetup_(Environment e) {
   op_focei.vaeOuterNlhs = 0;
   if (model.containsElementNamed("vaeOuter")) {
     RObject vo = model["vaeOuter"];
-    if (rxode2::rxIs(vo, "rxode2")) {
-      List mvvo = rxode2::rxModelVars_(vo);
-      rxUpdateFuns(as<SEXP>(mvvo["trans"]), &rxVaeOuter);
-      op_focei.vaeOuterNeq = as<CharacterVector>(mvvo["state"]).size();
-      rxVaeOuter.neq = op_focei.vaeOuterNeq;
-      op_focei.vaeOuterNlhs = as<CharacterVector>(mvvo["lhs"]).size();
+    if (odeSwapRegister(odeSlotOuter, "outer", vo, &rxVaeOuter)) {
+      op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
+      op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
       if (op_focei.innerNeq > 0) impSetInnerNeqOverride();
     }
   }
@@ -13148,6 +13126,7 @@ List adviOptimize_(List args) {
 //[[Rcpp::export]]
 RObject vaeInnerFree_() {
   rxOptionsFreeFocei();
+  odeSwapClearAll();
   return R_NilValue;
 }
 

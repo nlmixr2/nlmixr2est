@@ -1,0 +1,30 @@
+# R-visible introspection for the shared solve pool (src/odeSwap.cpp).  These
+# exist so tests can assert the MECHANISM -- which model sized the pool, whether
+# the private lhs buffer was needed, whether an override leaked into a later fit
+# -- rather than only that the numbers matched.
+
+#' Pool decision for the currently registered ODE models.
+#'
+#' @return list with `models` (a data.frame of slot/name/neq/nlhs/loaded/
+#'   sizesPool/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/`poolNlhs`,
+#'   `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`, `overrideNeeded`,
+#'   `nLoaded`, and the live `opNeq`/`opNlhs`.
+#' @noRd
+.odeSwapInfo <- function() odeSwapInfo_()
+
+#' Pool decision for a hypothetical set of models.
+#'
+#' Pure: takes the per-model state and lhs counts directly, so the tie-break and
+#' the "widest lhs is not the largest model" case can be tested without a fit.
+#'
+#' @param neq integer vector of ODE state counts (0 = slot not loaded)
+#' @param nlhs integer vector of lhs output counts, same length as `neq`
+#' @return list as in [.odeSwapInfo()], restricted to the plan fields
+#' @noRd
+.odeSwapPlanFor <- function(neq, nlhs) {
+  odeSwapPlanFor_(as.integer(neq), as.integer(nlhs))
+}
+
+#' Slot names in registry order, matching the C++ `OdeSwapSlot` enum.
+#' @noRd
+.odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2", "outer")

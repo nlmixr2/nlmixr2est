@@ -520,6 +520,14 @@ npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
     .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
 }
 
+odeSwapPlanFor_ <- function(neq, nlhs) {
+    .Call(`_nlmixr2est_odeSwapPlanFor_`, neq, nlhs)
+}
+
+odeSwapInfo_ <- function() {
+    .Call(`_nlmixr2est_odeSwapInfo_`)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

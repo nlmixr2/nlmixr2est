@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "odeSwap.h"
 #include "rxomp.h"
 #include <atomic>
 
@@ -97,6 +98,9 @@ RObject nlmFree() {
   nlmOp.scaleC  = NULL;
 
   nlmOp.loaded = false;
+  // The registry's entry points come from this fit's model DLLs; nlmSetup()
+  // calls nlmFree() first, so clearing here also gives it a clean slate.
+  odeSwapClearAll();
   return R_NilValue;
 }
 
@@ -106,18 +110,16 @@ RObject nlmSetup(Environment e) {
   List control = e["control"];
 
   RObject pred = e["predOnly"];
-  List mvp = rxode2::rxModelVars_(pred);
-  rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
-  // Check if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2]) for censoring support
-  CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
-  nlmOp.hasFR = 0;
-  nlmOp.predOffset = 0;
-  for (int i = 0; i < predLhs.size(); ++i) {
-    std::string lhsName = as<std::string>(predLhs[i]);
-    if (lhsName == "rx_pred_f_" || lhsName == "rx_r_") nlmOp.hasFR++;
-    if (lhsName == "rx_pred_") nlmOp.predOffset = i;
+  // Loud, not silent: the old code called rxModelVars_ directly and would have
+  // thrown here, and a skipped registration would quietly zero predOffset/hasFR.
+  if (!odeSwapRegister(odeSlotPred, "pred", pred, &rxPred)) {
+    stop(_("nlm cannot be run without an rxode2 'predOnly' model"));
   }
-  nlmOp.hasFR = (nlmOp.hasFR == 2) ? 1 : 0;
+  // Check if predOnly model has rx_pred_f_ and rx_r_ for censoring support
+  nlmOp.hasFR = (odeSwapLhsIndex(odeSlotPred, "rx_pred_f_") >= 0 &&
+                 odeSwapLhsIndex(odeSlotPred, "rx_r_") >= 0) ? 1 : 0;
+  int _ip = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
+  nlmOp.predOffset = (_ip < 0) ? 0 : _ip;
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
@@ -125,15 +127,16 @@ RObject nlmSetup(Environment e) {
   nlmOp.gradOffset = 0;
   if (e.exists("thetaGrad")) {
     model = e["thetaGrad"];
-    List mv = rxode2::rxModelVars_(model);
-    rxUpdateFuns(as<SEXP>(mv["trans"]), &rxInner);
+    // The sensitivity model takes the inner slot: it is nlm's largest structure
+    // and (below) sizes the shared solve pool, exactly as rxInner does for focei.
+    if (!odeSwapRegister(odeSlotInner, "thetaGrad", model, &rxInner)) {
+      stop(_("nlm cannot be run without an rxode2 'thetaGrad' model"));
+    }
     // rx_pred_ is preceded by the intermediate parameter assignments the
     // sensitivity ODEs need; locate it by name (the sensitivity columns and
     // rx_pred_f_/rx_r_ follow contiguously).
-    CharacterVector gradLhs = as<CharacterVector>(mv["lhs"]);
-    for (int i = 0; i < gradLhs.size(); ++i) {
-      if (as<std::string>(gradLhs[i]) == "rx_pred_") { nlmOp.gradOffset = i; break; }
-    }
+    int _ig = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
+    nlmOp.gradOffset = (_ig < 0) ? 0 : _ig;
   } else {
     if (nlmOp.solveType != solveType_nls_pred) {
       nlmOp.solveType = solveType_pred;

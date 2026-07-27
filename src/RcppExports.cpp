@@ -1502,6 +1502,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// odeSwapPlanFor_
+List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs);
+RcppExport SEXP _nlmixr2est_odeSwapPlanFor_(SEXP neqSEXP, SEXP nlhsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type neq(neqSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type nlhs(nlhsSEXP);
+    rcpp_result_gen = Rcpp::wrap(odeSwapPlanFor_(neq, nlhs));
+    return rcpp_result_gen;
+END_RCPP
+}
+// odeSwapInfo_
+List odeSwapInfo_();
+RcppExport SEXP _nlmixr2est_odeSwapInfo_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(odeSwapInfo_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // augPredTrans
 RObject augPredTrans(NumericVector& pred, NumericVector& ipred, NumericVector& lambda, RObject& yjIn, NumericVector& low, NumericVector& hi);
 RcppExport SEXP _nlmixr2est_augPredTrans(SEXP predSEXP, SEXP ipredSEXP, SEXP lambdaSEXP, SEXP yjInSEXP, SEXP lowSEXP, SEXP hiSEXP) {
