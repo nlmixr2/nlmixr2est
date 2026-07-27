@@ -155,51 +155,154 @@
          stop("unknown covariate shape: ", shape, call. = FALSE))
 }
 
+## The element name that carries the eligibility flag rather than a rule.  Matched
+## EXACTLY and case-sensitively; data columns are upper-cased by the search, so a
+## real `FIXCOV` column is still reachable as a covariate name (the collision is
+## caught in .vaeEligible, where the covariate names are known).
+.vaeFixCovName <- "fixCov"
+
 #' Normalize a user `shapes=` specification into match rules
 #'
-#' Accepts a character vector (one global rule), a list named by covariate, or
-#' a list of `list(var=, covar=, shapes=)` items in nlmixr2scm's `pairsVec`
-#' form.  Covariate names match case-insensitively because the VAE upper-cases
-#' data columns.
+#' Accepts a character vector (one global rule) or a list.  A list element is
+#' dispatched on ITSELF rather than on the whole list, so the two historic forms
+#' may be mixed freely:
+#'
+#'   * a list element -> a `list(var=, covar=, shapes=)` rule (nlmixr2scm's
+#'     `pairsVec` form);
+#'   * a named element -> shorthand for `list(covar = <name>, shapes = <value>)`,
+#'     which is what keeps the named form from needing semantics of its own;
+#'   * the element named `fixCov` -> the eligibility flag, not a rule.
+#'
+#' A shape value of `TRUE` means "eligible, with the default shapes" -- the way
+#' to name a covariate whose parameterization is not up for discussion, i.e. a
+#' categorical, which takes no shape at all.
+#'
+#' Covariate names match case-insensitively because the VAE upper-cases data
+#' columns.
 #' @param spec the `shapes` control value
-#' @return data.frame with columns `var`, `cov` (NA meaning "any") and a
-#'   `shapes` list-column
+#' @return list with `rules` (data.frame of `var`, `cov` -- NA meaning "any" --
+#'   and a `shapes` list-column) and `fixCov` (length-one logical)
 #' @noRd
 .vaeResolveShapes <- function(spec) {
   .mk <- function(var, cov, shapes) {
     .d <- data.frame(var = as.character(var), cov = as.character(cov),
                      stringsAsFactors = FALSE)
-    .d$shapes <- list(.vaeAssertContShapes(shapes))
+    ## TRUE == "eligible, default shapes"; anything else must name real shapes
+    if (isTRUE(shapes)) shapes <- .vaeDefaultShapes
+    if (is.logical(shapes)) {
+      stop("shapes value must be TRUE or a shape vector, not ",
+           deparse(shapes), call. = FALSE)
+    }
+    .d$shapes <- list(.vaeAssertContShapes(as.character(shapes)))
     .d
   }
+  .ret <- function(rules, fixCov) list(rules = rules, fixCov = fixCov)
   if (is.null(spec)) spec <- .vaeDefaultShapes
-  if (is.character(spec)) return(.mk(NA_character_, NA_character_, spec))
+  ## a character vector names no covariate, so there is nothing for fixCov to fix
+  if (is.character(spec)) {
+    return(.ret(.mk(NA_character_, NA_character_, spec), FALSE))
+  }
   if (!is.list(spec)) stop("shapes must be a character vector or a list", call. = FALSE)
-  if (length(spec) == 0L) return(.mk(NA_character_, NA_character_, .vaeDefaultShapes))
-  .isPair <- all(vapply(spec, function(e) is.list(e), logical(1)))
-  .out <- list()
-  if (.isPair) {
-    for (.e in spec) {
+  if (length(spec) == 0L) {
+    return(.ret(.mk(NA_character_, NA_character_, .vaeDefaultShapes), FALSE))
+  }
+  .nm <- names(spec)
+  if (is.null(.nm)) .nm <- rep("", length(spec))
+  ## Pull fixCov out BEFORE any rule parsing.  It is not a rule, and a bare
+  ## logical among the elements must not be read as one.
+  .fixCov <- TRUE
+  .fx <- which(.nm == .vaeFixCovName)
+  if (length(.fx) > 1L) stop("fixCov given more than once in shapes", call. = FALSE)
+  if (length(.fx) == 1L) {
+    .fixCov <- spec[[.fx]]
+    checkmate::assertLogical(.fixCov, len = 1, any.missing = FALSE,
+                             .var.name = "fixCov")
+    spec <- spec[-.fx]
+    .nm <- .nm[-.fx]
+  }
+  if (length(spec) == 0L) {
+    ## `shapes = list(fixCov = ...)` restricts nothing and fixes nothing
+    return(.ret(.mk(NA_character_, NA_character_, .vaeDefaultShapes), FALSE))
+  }
+  .out <- vector("list", length(spec))
+  for (.i in seq_along(spec)) {
+    .e <- spec[[.i]]
+    if (is.list(.e)) {
+      ## pair rule; `$` partial-matches, so cov/covar and shape/shapes both work
       .cov <- if (is.null(.e$covar)) .e$cov else .e$covar
       .sh <- if (is.null(.e$shapes)) .e$shape else .e$shapes
       if (is.null(.sh)) .sh <- .vaeDefaultShapes
-      .out[[length(.out) + 1L]] <-
+      .out[[.i]] <-
         .mk(if (is.null(.e$var)) NA_character_ else as.character(.e$var),
             if (is.null(.cov)) NA_character_ else toupper(as.character(.cov)),
-            as.character(.sh))
-    }
-  } else {
-    .nm <- names(spec)
-    if (is.null(.nm) || any(!nzchar(.nm))) {
-      stop("shapes list must be named by covariate, or be list(var=, covar=, shapes=) items",
+            .sh)
+    } else if (nzchar(.nm[.i])) {
+      ## named element: exactly a covar-only pair rule
+      .out[[.i]] <- .mk(NA_character_, toupper(.nm[.i]), .e)
+    } else {
+      stop("shapes list element ", .i,
+           " must be named by covariate, or be a list(var=, covar=, shapes=) item",
            call. = FALSE)
     }
-    for (.i in seq_along(spec)) {
-      .out[[length(.out) + 1L]] <-
-        .mk(NA_character_, toupper(.nm[.i]), as.character(spec[[.i]]))
+  }
+  .ret(do.call(rbind, .out), .fixCov)
+}
+
+#' Which (parameter, covariate) pairs the search may consider
+#'
+#' `fixCov = TRUE` (the default whenever `shapes=` is given as a list) fixes the
+#' searched covariate set to exactly the covariates the rules NAME.  Naming a
+#' covariate is the statement that it belongs in the search, so the common case
+#' -- "search these, and only these" -- costs nothing beyond listing them, with
+#' no per-covariate opt-out for everything left out.
+#'
+#' Eligibility and parameterization are separate passes: this decides WHICH
+#' cells may be searched, `.vaeShapesFor` decides what an eligible cell may look
+#' like.  The specificity ladder is therefore untouched.
+#'
+#' @param rules `$rules` from `.vaeResolveShapes`
+#' @param fixCov `$fixCov` from `.vaeResolveShapes`
+#' @param etaNames per-latent-dim random-effect names
+#' @param thetaForEta per-latent-dim mu-referenced theta names (may be NA)
+#' @param covRaw raw (data column) name per search column
+#' @return logical matrix, `length(etaNames)` by `length(unique(covRaw))`, over
+#'   the RAW covariates in `unique(covRaw)` order
+#' @noRd
+.vaeEligible <- function(rules, fixCov, etaNames, thetaForEta, covRaw) {
+  .raw <- unique(covRaw)
+  .m <- matrix(TRUE, length(etaNames), length(.raw),
+               dimnames = list(NULL, .raw))
+  if (!isTRUE(fixCov) || length(.raw) == 0L) return(.m)
+  ## A rule naming neither a parameter nor a covariate makes everything
+  ## eligible, which is a direct contradiction of fixCov rather than a
+  ## restriction to honor.  Say so instead of silently ignoring one of the two.
+  if (any(is.na(rules$var) & is.na(rules$cov))) {
+    stop("shapes: a rule with neither var= nor covar= makes every covariate ",
+         "eligible, which contradicts fixCov=TRUE\n",
+         "  use fixCov=FALSE to restrict shapes without restricting the search",
+         call. = FALSE)
+  }
+  if (.vaeFixCovName %in% .raw || toupper(.vaeFixCovName) %in% toupper(.raw)) {
+    stop("shapes: a data covariate is named `", .vaeFixCovName,
+         "`, which collides with the eligibility flag", call. = FALSE)
+  }
+  .m[] <- FALSE
+  for (.k in seq_along(etaNames)) {
+    .al <- c(etaNames[.k], thetaForEta[.k], sub("^eta\\.", "", etaNames[.k]))
+    .al <- unique(.al[!is.na(.al)])
+    for (.r in seq_len(nrow(rules))) {
+      .vOk <- is.na(rules$var[.r]) || rules$var[.r] %in% .al
+      if (!.vOk) next
+      if (is.na(rules$cov[.r])) {
+        ## var-only: every covariate, on this parameter alone
+        .m[.k, ] <- TRUE
+      } else {
+        .j <- match(rules$cov[.r], toupper(.raw))
+        if (!is.na(.j)) .m[.k, .j] <- TRUE
+      }
     }
   }
-  do.call(rbind, .out)
+  .m
 }
 
 #' Numeric column a shape's model text evaluates to
@@ -385,23 +488,38 @@
   }, logical(1), USE.NAMES = FALSE)
 }
 
-#' Per-(latent dim, column) mask of shapes the user allows
+#' Per-(latent dim, column) mask of what the user allows
 #'
-#' `shapes=` may restrict a single (parameter, covariate) pair, but the design
-#' matrix is shared across latent dimensions, so the restriction has to be
-#' enforced as a mask rather than by omitting columns.  Categorical columns are
-#' never restricted -- `shapes=` governs continuous parameterizations only.
+#' Two independent restrictions land in the same mask, because the design matrix
+#' is shared across latent dimensions and neither can be enforced by omitting
+#' columns:
+#'
+#'   * ELIGIBILITY (`fixCov`) -- may this parameter carry this covariate at all?
+#'     An ineligible cell has EVERY column of that covariate zeroed, categorical
+#'     columns included.
+#'   * PARAMETERIZATION (`shapes`) -- given that it may, which forms may it take?
+#'     Categorical columns are never restricted this way: `shapes=` governs
+#'     continuous parameterizations only.
+#'
+#' The order matters.  Eligibility is absolute, so it is applied last and
+#' overrides the parameterization pass, including that pass's fallback for a
+#' covariate whose requested family the data cannot support.
 #' @param cov output of `.vaeCovariateSearch`
-#' @param rules output of `.vaeResolveShapes`
+#' @param resolved output of `.vaeResolveShapes` (`$rules` + `$fixCov`); a bare
+#'   rules data.frame is accepted as `fixCov = FALSE` for callers that only ever
+#'   restricted parameterizations
 #' @param etaNames per-latent-dim random-effect names
 #' @keywords internal
 #' @param thetaForEta per-latent-dim mu-referenced theta names (may be NA)
 #' @return integer 0/1 matrix, `length(etaNames)` by `ncol(cov$covMat)`
 #' @noRd
-.vaeShapeAllowMask <- function(cov, rules, etaNames, thetaForEta) {
+.vaeShapeAllowMask <- function(cov, resolved, etaNames, thetaForEta) {
   .nCov <- length(cov$covNames)
   .m <- matrix(1L, length(etaNames), .nCov)
-  if (.nCov == 0L || is.null(rules)) return(.m)
+  if (.nCov == 0L || is.null(resolved)) return(.m)
+  if (is.data.frame(resolved)) resolved <- list(rules = resolved, fixCov = FALSE)
+  rules <- resolved$rules
+  if (is.null(rules)) return(.m)
   for (.k in seq_along(etaNames)) {
     .al <- c(etaNames[.k], thetaForEta[.k], sub("^eta\\.", "", etaNames[.k]))
     .al <- unique(.al[!is.na(.al)])
@@ -417,6 +535,15 @@
       .have <- setdiff(unique(cov$covFamily[cov$covRaw == cov$covRaw[.j]]), "cat")
       if (length(intersect(.want, .have)) == 0L) next
       if (!(cov$covFamily[.j] %in% .want)) .m[.k, .j] <- 0L
+    }
+  }
+  ## Eligibility last, and unconditionally: an ineligible covariate is out of the
+  ## search whatever the loop above decided, including via the fallback `next`.
+  .el <- .vaeEligible(rules, resolved$fixCov, etaNames, thetaForEta, cov$covRaw)
+  if (!all(.el)) {
+    .col <- match(cov$covRaw, colnames(.el))
+    for (.k in seq_along(etaNames)) {
+      .m[.k, !.el[.k, .col]] <- 0L
     }
   }
   .m
