@@ -119,7 +119,36 @@ if (nzchar(.batch)) {
   }
 } else if (.onCI && !.onCran && length(.slowAll) > 0L) {
   # Essential subset on push/PR CI: everything EXCEPT the slow files.
-  .filter <- paste0("^(?!(", paste(.slowAll, collapse = "|"), ")$)")
+  #
+  # NLMIXR2EST_TEST_SHARD="i/n" splits that subset across n parallel jobs.  A
+  # hosted runner reclaims a long job mid-run ("exit code 143 / The runner has
+  # received a shutdown signal"), and runner speed varies enormously -- the same
+  # `checking tests` step measured 27m on one ubuntu-release runner and was still
+  # going at 4h15m on another before being reclaimed.  Sharding keeps every job
+  # short enough to finish without dropping a single test file.
+  .shard <- Sys.getenv("NLMIXR2EST_TEST_SHARD")
+  if (nzchar(.shard)) {
+    .p <- strsplit(.shard, "/", fixed = TRUE)[[1]]
+    .i <- suppressWarnings(as.integer(.p[1])); .n <- suppressWarnings(as.integer(.p[2]))
+    if (length(.p) != 2L || is.na(.i) || is.na(.n) || .n < 1L || .i < 1L || .i > .n) {
+      stop(sprintf("NLMIXR2EST_TEST_SHARD=%s must be \"i/n\" with 1 <= i <= n", .shard))
+    }
+    # Deal the files out round-robin over a SORTED list so the split is stable
+    # across jobs and platforms, and every file lands in exactly one shard.
+    .all <- sort(sub("^test-", "", sub("\\.R$", "",
+                                       basename(Sys.glob(file.path("testthat", "test-*.R"))))))
+    .ess <- setdiff(.all, .slowAll)
+    # An empty list would make every shard match nothing and report a green run
+    # having tested nothing at all -- fail loudly instead.
+    if (length(.ess) == 0L) {
+      stop("NLMIXR2EST_TEST_SHARD set but no test files found in ./testthat")
+    }
+    .mine <- .ess[seq_along(.ess) %% .n == (.i %% .n)]
+    .filter <- if (length(.mine) == 0L) "^$" else
+      paste0("^(", paste(.mine, collapse = "|"), ")$")
+  } else {
+    .filter <- paste0("^(?!(", paste(.slowAll, collapse = "|"), ")$)")
+  }
 }
 # Locally (and on CRAN) .filter stays NULL -> run everything.
 
