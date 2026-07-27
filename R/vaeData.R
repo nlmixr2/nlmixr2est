@@ -1010,7 +1010,12 @@ vaeCovariates <- function(data, warn = TRUE,
   if (!.searchOff && !.pinActive && length(.cov$covNames) > 0L) {
     .shapeMask <- .vaeShapeAllowMask(.cov, .resolvedShapes, .etaNames,
                                      .foceiEtaThetaMap(ui)$thetaForEta)
-    if (isTRUE(.resolvedShapes$fixCov)) {
+    ## Only when a search is actually going to run.  With
+    ## covariateSelection=FALSE there is nothing for fixCov to narrow, so the
+    ## error below would fire against a user who had ALREADY done what it tells
+    ## them to do, and the note would blame fixCov for a search that was off
+    ## regardless.
+    if (isTRUE(.resolvedShapes$fixCov) && isTRUE(control$covariateSelection)) {
       ## fixCov=TRUE with nothing left to search is a contradiction the user
       ## almost certainly did not intend; covariateSelection=FALSE is the way to
       ## ask for no search at all.

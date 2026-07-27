@@ -804,6 +804,24 @@ nmTest({
       "leaves no covariate searchable")
   })
 
+  test_that("covariateSelection=FALSE has nothing for fixCov to narrow", {
+    ## the error above told the user to set covariateSelection=FALSE, so it must
+    ## not fire at someone who already has -- there is no search to restrict
+    expect_error(
+      suppressWarnings(
+        .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                     vaeControl(covariateSelection = FALSE,
+                                shapes = list(noSuchCov = "power"),
+                                muRefCovAlg = FALSE))),
+      NA)
+    ## nor may it blame fixCov for a search that was off regardless
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                              vaeControl(covariateSelection = FALSE,
+                                         shapes = list(wt = "power"),
+                                         muRefCovAlg = FALSE)))
+    expect_false(any(grepl("fixCov=TRUE, covariate", .w)))
+  })
+
   test_that("a declaring model overrides fixCov", {
     .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk("log(WT/70)")), .d,
                               vaeControl(shapes = list(age = "power"),
