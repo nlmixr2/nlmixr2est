@@ -143,17 +143,17 @@ nmTest({
   })
 
   test_that("a character shapes= vector is one global rule", {
-    r <- .vaeResolveShapes(c("power", "lin"))
+    r <- .vaeResolveShapes(c("power", "lin"))$rules
     expect_equal(nrow(r), 1L)
     expect_true(is.na(r$var) && is.na(r$cov))
     expect_equal(.vaeShapesFor(r, "cl", "WT"), c("power", "lin"))
     ## NULL means the default shapes
-    expect_equal(.vaeShapesFor(.vaeResolveShapes(NULL), "cl", "WT"),
+    expect_equal(.vaeShapesFor(.vaeResolveShapes(NULL)$rules, "cl", "WT"),
                  .vaeDefaultShapes)
   })
 
   test_that("a covariate-named list restricts that covariate only", {
-    r <- .vaeResolveShapes(list(wt = "power"))
+    r <- .vaeResolveShapes(list(wt = "power"))$rules
     ## matching is case-insensitive because the VAE upper-cases data columns
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     ## an unmatched covariate stays free
@@ -163,7 +163,7 @@ nmTest({
   test_that("a pairsVec list restricts one parameter/covariate pair", {
     r <- .vaeResolveShapes(list(
       list(var = "cl", covar = "wt", shapes = "power"),
-      list(var = "v", covar = "wt", shapes = c("lin", "identity"))))
+      list(var = "v", covar = "wt", shapes = c("lin", "identity"))))$rules
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     expect_equal(.vaeShapesFor(r, "v", "WT"), c("lin", "identity"))
     ## shapes= restricts parameterizations only -- a pair no rule mentions is
@@ -175,13 +175,13 @@ nmTest({
   test_that("the most specific rule wins", {
     r <- .vaeResolveShapes(list(
       list(covar = "wt", shapes = "lin"),
-      list(var = "cl", covar = "wt", shapes = "power")))
+      list(var = "cl", covar = "wt", shapes = "power")))$rules
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     expect_equal(.vaeShapesFor(r, "v", "WT"), "lin")
   })
 
   test_that("a parameter matches any of its aliases", {
-    r <- .vaeResolveShapes(list(list(var = "tcl", covar = "wt", shapes = "lin")))
+    r <- .vaeResolveShapes(list(list(var = "tcl", covar = "wt", shapes = "lin")))$rules
     expect_equal(.vaeShapesFor(r, c("eta.cl", "tcl", "cl"), "WT"), "lin")
     ## a different parameter is unaffected by the rule
     expect_equal(.vaeShapesFor(r, c("eta.v", "tv", "v"), "WT"), .vaeDefaultShapes)
@@ -629,5 +629,211 @@ nmTest({
       ## and it round-trips: the level reads back exactly as written
       expect_equal(.vaeDetectShape(.e, "GRP")$level, .l, info = .l)
     }
+  })
+})
+
+## fixCov: naming a covariate in shapes= is the statement that it belongs in the
+## search.  Eligibility is asserted on the matrix rather than on a fit outcome --
+## exact, and it does not need a converged model to be meaningful.
+nmTest({
+  .etas <- c("eta.cl", "eta.v", "eta.ka")
+  .thetas <- c("tcl", "tv", "tka")
+  .raw <- c("WT", "WT", "AGE", "AGE", "SEX")
+  .el <- function(spec) {
+    r <- .vaeResolveShapes(spec)
+    .vaeEligible(r$rules, r$fixCov, .etas, .thetas, .raw)
+  }
+
+  test_that("fixCov=TRUE is the default and fixes the searched set", {
+    m <- .el(list(wt = "power"))
+    expect_true(all(m[, "WT"]))
+    expect_false(any(m[, "AGE"]))
+    expect_false(any(m[, "SEX"]))
+    ## the default only applies to the list form -- a character vector names no
+    ## covariate, so there is nothing to fix
+    expect_true(all(.el(c("power", "lin"))))
+    expect_true(all(.el(NULL)))
+  })
+
+  test_that("fixCov=FALSE reproduces the parameterization-only behavior", {
+    expect_true(all(.el(list(wt = "power", fixCov = FALSE))))
+    ## and it leaves the shape restriction itself intact
+    r <- .vaeResolveShapes(list(wt = "power", fixCov = FALSE))
+    expect_false(r$fixCov)
+    expect_equal(.vaeShapesFor(r$rules, "cl", "WT"), "power")
+  })
+
+  test_that("a pair rule makes only that pair eligible", {
+    m <- .el(list(list(var = "cl", covar = "wt", shapes = "power")))
+    expect_true(m[1L, "WT"])
+    expect_false(any(m[-1L, "WT"]))
+    ## covar-only: that covariate on every parameter
+    m2 <- .el(list(list(covar = "wt", shapes = "power")))
+    expect_true(all(m2[, "WT"]))
+    expect_false(any(m2[, "AGE"]))
+    ## var-only: every covariate, on that parameter alone
+    m3 <- .el(list(list(var = "v", shapes = "power")))
+    expect_true(all(m3[2L, ]))
+    expect_false(any(m3[-2L, ]))
+  })
+
+  test_that("named and pair entries mix in one list", {
+    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"),
+                                sex = TRUE))
+    expect_equal(nrow(r$rules), 2L)
+    ## a named entry is exactly the covar-only rule it is shorthand for
+    expect_equal(.vaeShapesFor(r$rules, "cl", "WT"), "power")
+    expect_equal(.vaeShapesFor(r$rules, "ka", "SEX"), .vaeDefaultShapes)
+    m <- .vaeEligible(r$rules, r$fixCov, .etas, .thetas, .raw)
+    expect_true(m[1L, "WT"])
+    expect_false(any(m[-1L, "WT"]))
+    expect_true(all(m[, "SEX"]))
+    expect_false(any(m[, "AGE"]))
+  })
+
+  test_that("fixCov survives the pair form it is mixed into", {
+    ## the regression this ordering exists to prevent: a bare logical element is
+    ## not a list, so leaving it in would flip the per-element dispatch
+    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"),
+                                fixCov = FALSE))
+    expect_false(r$fixCov)
+    expect_equal(nrow(r$rules), 1L)
+    expect_true(all(.el(list(list(var = "cl", covar = "wt", shapes = "power"),
+                             fixCov = FALSE))))
+  })
+
+  test_that("TRUE means eligible with the default shapes", {
+    r <- .vaeResolveShapes(list(wt = TRUE))
+    expect_equal(.vaeShapesFor(r$rules, "cl", "WT"), .vaeDefaultShapes)
+    expect_true(all(.el(list(wt = TRUE))[, "WT"]))
+  })
+
+  test_that("contradictory fixCov specifications are rejected", {
+    ## a rule naming neither var nor covar makes everything eligible
+    expect_error(.el(list(list(shapes = "lin"), wt = "power")),
+                 "contradicts fixCov")
+    expect_error(.vaeResolveShapes(list(wt = FALSE)),
+                 "TRUE or a shape vector")
+    expect_error(.vaeResolveShapes(list(wt = "power", fixCov = TRUE, fixCov = FALSE)),
+                 "more than once")
+    expect_error(.vaeResolveShapes(list(wt = "power", fixCov = "yes")), "fixCov")
+    ## a data column colliding with the flag name
+    expect_error(.vaeEligible(.vaeResolveShapes(list(wt = "power"))$rules, TRUE,
+                              .etas, .thetas, c("WT", "FIXCOV")),
+                 "collides with the eligibility flag")
+  })
+
+  test_that("an unnamed non-list element is still an error", {
+    expect_error(.vaeResolveShapes(list("power")), "named by covariate")
+    expect_error(.vaeResolveShapes(list(list(covar = "wt", shapes = "lin"), "power")),
+                 "named by covariate")
+  })
+})
+
+## fixCov end to end: the mask .vaeShapeAllowMask actually produces, and the
+## three .vaeDataPrep paths (exclusion note, nothing-searchable error, and the
+## declaring model that overrides the flag).
+nmTest({
+  .d <- nlmixr2data::theo_sd
+  .d$WT <- rep(c(60, 70, 80), length.out = length(unique(.d$ID)))[
+    match(.d$ID, unique(.d$ID))]
+  .d$AGE <- rep(c(30, 40, 50), length.out = length(unique(.d$ID)))[
+    match(.d$ID, unique(.d$ID))]
+  names(.d) <- toupper(names(.d))
+
+  ## built as text like the pinning tests above: model()/ini() piping inside
+  ## test_that() resolves the covariate symbol in the wrong environment
+  .mk <- function(term = NULL) {
+    .ini <- if (is.null(term)) "" else " b1 <- 0.1;"
+    .cl <- if (is.null(term)) "exp(tcl + eta.cl)"
+           else paste0("exp(tcl + b1 * ", term, " + eta.cl)")
+    eval(parse(text = paste0(
+      "function() {\n",
+      "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45;", .ini, " add.sd <- 0.7\n",
+      "        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })\n",
+      "  model({ ka <- exp(tka + eta.ka)\n",
+      "    cl <- ", .cl, "\n",
+      "    v <- exp(tv + eta.v)\n",
+      "    d/dt(depot) <- -ka * depot\n",
+      "    d/dt(center) <- ka * depot - cl / v * center\n",
+      "    cp <- center / v; cp ~ add(add.sd) })\n}")))
+  }
+
+  test_that("fixCov masks whole covariates in .vaeShapeAllowMask", {
+    r <- .vaeResolveShapes(list(wt = "power"))
+    cov <- .vaeCovariateSearch(.d, unique(.d$ID), r$rules)
+    m <- .vaeShapeAllowMask(cov, r, c("eta.ka", "eta.cl"), c("tka", "tcl"))
+    ## every WT column stays selectable, every AGE column is masked out
+    expect_true(all(m[, cov$covRaw == "WT"] == 1L))
+    expect_true(all(m[, cov$covRaw == "AGE"] == 0L))
+    ## fixCov=FALSE leaves AGE alone
+    r2 <- .vaeResolveShapes(list(wt = "power", fixCov = FALSE))
+    m2 <- .vaeShapeAllowMask(cov, r2, c("eta.ka", "eta.cl"), c("tka", "tcl"))
+    expect_true(all(m2[, cov$covRaw == "AGE"] == 1L))
+  })
+
+  ## .vaeDataPrep emits several warnings and their order is not part of the
+  ## contract, so collect them all rather than relying on which one comes first
+  .warns <- function(expr) {
+    .w <- character(0)
+    withCallingHandlers(invisible(force(expr)),
+                        warning = function(cond) {
+                          .w <<- c(.w, conditionMessage(cond))
+                          invokeRestart("muffleWarning")
+                        })
+    .w
+  }
+
+  test_that("a covariate restricted to one shape is not reported as excluded", {
+    ## the false positive an independent review predicted: WT's non-power
+    ## columns are masked, but WT itself is still searched through WT_power
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                              vaeControl(shapes = list(wt = "power"),
+                                         muRefCovAlg = FALSE)))
+    .fx <- grep("fixCov=TRUE, covariate", .w, value = TRUE)
+    expect_length(.fx, 1L)
+    expect_match(.fx, "AGE")
+    expect_false(grepl("WT", .fx))
+  })
+
+  test_that("fixCov=TRUE with nothing searchable is an error", {
+    expect_error(
+      .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                   vaeControl(shapes = list(noSuchCov = "power"),
+                              muRefCovAlg = FALSE)),
+      "leaves no covariate searchable")
+  })
+
+  test_that("covariateSelection=FALSE has nothing for fixCov to narrow", {
+    ## the error above told the user to set covariateSelection=FALSE, so it must
+    ## not fire at someone who already has -- there is no search to restrict
+    expect_error(
+      suppressWarnings(
+        .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                     vaeControl(covariateSelection = FALSE,
+                                shapes = list(noSuchCov = "power"),
+                                muRefCovAlg = FALSE))),
+      NA)
+    ## nor may it blame fixCov for a search that was off regardless
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
+                              vaeControl(covariateSelection = FALSE,
+                                         shapes = list(wt = "power"),
+                                         muRefCovAlg = FALSE)))
+    expect_false(any(grepl("fixCov=TRUE, covariate", .w)))
+  })
+
+  test_that("a declaring model overrides fixCov", {
+    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk("log(WT/70)")), .d,
+                              vaeControl(shapes = list(age = "power"),
+                                         muRefCovAlg = FALSE)))
+    expect_true(any(grepl("fixCov=TRUE ignored", .w)))
+    ## the declaration is what actually restricts the search
+    expect_true(any(grepl("pinned to model-specified covariates", .w)))
+  })
+
+  test_that("fixCov=TRUE naming no covariate is rejected outright", {
+    expect_error(.vaeResolveShapes(list(fixCov = TRUE)), "no covariate is named")
+    ## ... while an explicit FALSE with no rules is simply unrestricted
+    expect_false(.vaeResolveShapes(list(fixCov = FALSE))$fixCov)
   })
 })

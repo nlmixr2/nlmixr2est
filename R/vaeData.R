@@ -148,7 +148,7 @@
                                 covCenterType = c("median", "mean"),
                                 covCenter = NULL, catCutoff = 0.05) {
   covCenterType <- match.arg(covCenterType)
-  if (is.null(shapeRules)) shapeRules <- .vaeResolveShapes(NULL)
+  if (is.null(shapeRules)) shapeRules <- .vaeResolveShapes(NULL)$rules
   N <- length(ids)
   ## auto-discover subject-level covariate candidates (constant within ID),
   ## excluding reserved data columns
@@ -446,7 +446,7 @@ vaeCovariates <- function(data, warn = TRUE,
   if (is.null(d$ID)) {
     stop("'data' must contain an ID column", call. = FALSE)
   }
-  .cov <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(shapes),
+  .cov <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(shapes)$rules,
                               match.arg(covCenterType), covCenter, catCutoff)
   if (warn && length(.cov$tvExcl) > 0L) {
     warning("time-varying covariate(s) were excluded from automatic covariate search: ",
@@ -851,7 +851,8 @@ vaeCovariates <- function(data, warn = TRUE,
   .cct <- if (is.null(control$covCenterType)) "mean" else control$covCenterType
   .cco <- if (is.null(control$catCutoff)) 0.05 else control$catCutoff
   .csh <- if (is.null(control$shapes)) "power" else control$shapes
-  .cov <- .vaeCovariateSearch(d, .ids, .vaeResolveShapes(.csh), .cct,
+  .resolvedShapes <- .vaeResolveShapes(.csh)
+  .cov <- .vaeCovariateSearch(d, .ids, .resolvedShapes$rules, .cct,
                               control$covCenter, .cco)
   if (length(.cov$tvExcl) > 0L) {
     ## keep the $runInfo note single-line even with many covariates
@@ -1004,10 +1005,41 @@ vaeCovariates <- function(data, warn = TRUE,
   ## that is then neither searched nor regressed, and so written back as exactly
   ## 0, silently deleting it.  Under pinning the declaration wins; a declared
   ## shape with no column to pin to already falls back to the regress M-step.
+  ## The same holds for fixCov: the declaration is the more specific statement,
+  ## so it wins, and the disagreement is reported rather than acted on.
   if (!.searchOff && !.pinActive && length(.cov$covNames) > 0L) {
-    .shapeMask <- .vaeShapeAllowMask(.cov, .vaeResolveShapes(.csh), .etaNames,
+    .shapeMask <- .vaeShapeAllowMask(.cov, .resolvedShapes, .etaNames,
                                      .foceiEtaThetaMap(ui)$thetaForEta)
+    ## Only when a search is actually going to run.  With
+    ## covariateSelection=FALSE there is nothing for fixCov to narrow, so the
+    ## error below would fire against a user who had ALREADY done what it tells
+    ## them to do, and the note would blame fixCov for a search that was off
+    ## regardless.
+    if (isTRUE(.resolvedShapes$fixCov) && isTRUE(control$covariateSelection)) {
+      ## fixCov=TRUE with nothing left to search is a contradiction the user
+      ## almost certainly did not intend; covariateSelection=FALSE is the way to
+      ## ask for no search at all.
+      if (all(.shapeMask == 0L)) {
+        stop("shapes: fixCov=TRUE leaves no covariate searchable on any parameter\n",
+             "  use covariateSelection=FALSE to turn the search off outright",
+             call. = FALSE)
+      }
+      ## Grouped by RAW covariate, not by column.  A covariate restricted to one
+      ## shape has its other columns masked to zero while the covariate itself is
+      ## still searched through the column that survived, so a per-column test
+      ## could name it as excluded when it was not.
+      .fxBy <- tapply(colSums(.shapeMask), .cov$covRaw, sum)
+      .fxDrop <- names(.fxBy)[.fxBy == 0]
+      if (length(.fxDrop) > 0L) {
+        .fxPre <- "fixCov=TRUE, covariate(s) not searched: "
+        warning(.fxPre, .vaeTruncList(.fxDrop, prefix = .fxPre),
+                call. = FALSE)
+      }
+    }
     if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
+  } else if (isTRUE(.resolvedShapes$fixCov) && .pinActive) {
+    warning("fixCov=TRUE ignored: the model declares covariates, which pins the search",
+            call. = FALSE)
   }
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
@@ -1246,7 +1278,7 @@ vaeCovariates <- function(data, warn = TRUE,
        covFamily = .cov$covFamily, covLevel = .cov$covLevel,
        covGroup = .cov$covGroup, covBlock = .cov$covBlock,
        covExpr = .cov$covExpr,
-       covCanon = .cov$covCanon, shapeRules = .vaeResolveShapes(.csh),
+       covCanon = .cov$covCanon, shapeRules = .resolvedShapes$rules,
        pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,
        tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
 }

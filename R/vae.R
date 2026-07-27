@@ -62,12 +62,35 @@
 #'   therefore decides how an accepted relationship is written back, and when
 #'   several eligible shapes span the same model the one listed first wins.
 #'   `"hockey"` spans a strictly larger model than the linear shapes and costs
-#'   two coefficients rather than one.  May also be a list
-#'   named by covariate (`list(WT = "power")`) or a list of
-#'   `list(var=, covar=, shapes=)` items to restrict a single
-#'   parameter/covariate pair; anything not named keeps every shape.  Which
-#'   covariates are searched is controlled by `pinCovariates`, not here.
-#'   Categorical covariates always enter as indicators and ignore this setting.
+#'   two coefficients rather than one.
+#'
+#'   May also be a **list**, whose elements are dispatched individually so the
+#'   two forms mix freely: an element named by covariate (`WT = "power"`) is
+#'   shorthand for the covariate-wide rule `list(covar = "WT", shapes =
+#'   "power")`, and a `list(var=, covar=, shapes=)` element restricts one
+#'   parameter/covariate pair.  The most specific rule wins -- `var`+`covar`
+#'   beats `covar`, which beats `var`, which beats a rule naming neither -- and
+#'   ties go to the rule listed last.
+#'
+#'   In the list form, **naming a covariate also puts it in the search**.
+#'   `fixCov = TRUE` (the default, given as an element of the list) fixes the
+#'   searched set to exactly the covariates named, so
+#'   `shapes = list(WT = "power")` searches `WT` and nothing else.  Add
+#'   `fixCov = FALSE` to restrict parameterizations without restricting the
+#'   search, which is what the list form meant previously.  A shape value of
+#'   `TRUE` means "eligible, default shapes", and is how a categorical covariate
+#'   is named (`list(WT = "power", SEX = TRUE)`) since a categorical takes no
+#'   parameterization.  A `var`-only rule makes every covariate eligible on that
+#'   parameter alone; a rule naming neither `var` nor `covar` contradicts
+#'   `fixCov = TRUE` and is an error.  A character vector names no covariate, so
+#'   `fixCov` does not apply and every covariate stays searchable.
+#'
+#'   `fixCov` is ignored when the model itself declares covariate effects: that
+#'   already restricts the search (see `pinCovariates`) and the declaration is
+#'   the more specific statement.  The disagreement is reported in `$runInfo`,
+#'   as is every covariate `fixCov` excludes.  Categorical covariates always
+#'   enter as indicators and take no shape, but `fixCov` still governs whether
+#'   they are searched at all.
 #' @param covCenterType Statistic used to center a continuous covariate,
 #'   `"median"` (default) or `"mean"`, computed over subjects rather than rows.
 #' @param covCenter Named numeric vector of centering values overriding
