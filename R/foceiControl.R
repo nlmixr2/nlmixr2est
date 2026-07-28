@@ -524,6 +524,22 @@
 #' @param stickyRecalcN The number of bad ODE solves before reducing
 #'     the atol/rtol for the rest of the problem.
 #'
+#' @param outerMaxOdeRecalc Maximum number of times to reduce the ODE
+#'     tolerances for a single subject and retry when the analytic
+#'     outer (augmented sensitivity) solve fails.  Tracked separately
+#'     from `maxOdeRecalc`, which governs the inner problem.  A subject
+#'     that solves after loosening still contributes an analytic
+#'     gradient instead of dropping the whole gradient to finite
+#'     differences.
+#'
+#' @param outerOdeRecalcFactor The factor the atol/rtol is loosened by
+#'     on each analytic outer retry; the outer counterpart of
+#'     `odeRecalcFactor`.
+#'
+#' @param outerStickyRecalcN The number of bad analytic outer solves
+#'     for a subject before its loosened tolerance is kept for the rest
+#'     of the problem; the outer counterpart of `stickyRecalcN`.
+#'
 #' @param indTolRelax When `TRUE` (default), only subjects whose ODE
 #'     solve produced NaN/Inf have their tolerances relaxed, and the
 #'     relaxed tolerance persists across optimizer calls (sticky).
@@ -827,6 +843,9 @@ foceiControl <- function(sigdig = 4, #
                          etaMat = NULL, #
                          repeatGillMax = 1,#
                          stickyRecalcN = 4, #
+                         outerMaxOdeRecalc = 5, #
+                         outerOdeRecalcFactor = 10^(0.5), #
+                         outerStickyRecalcN = 4, #
                          indTolRelax = TRUE, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
@@ -1321,6 +1340,9 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(outerMaxOdeRecalc, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertNumeric(outerOdeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(outerStickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
@@ -1465,6 +1487,9 @@ foceiControl <- function(sigdig = 4, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
+    outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
+    outerOdeRecalcFactor = as.double(outerOdeRecalcFactor),
+    outerStickyRecalcN = as.integer(max(1, abs(outerStickyRecalcN))),
     indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
     eventSens = eventSens,

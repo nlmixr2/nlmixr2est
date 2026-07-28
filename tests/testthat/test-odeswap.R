@@ -88,6 +88,30 @@ nmTest({
     expect_identical(p$scratchNlhs, 0L)
   })
 
+  test_that("the analytic outer solve has its own tolerance-retry controls", {
+    # Separate from the inner problem's: a fit may loosen one and not the other,
+    # and the warning has to name the knob that actually applied.
+    d <- foceiControl()
+    expect_identical(d$outerMaxOdeRecalc, 5L)
+    expect_identical(d$outerStickyRecalcN, 4L)
+    expect_equal(d$outerOdeRecalcFactor, 10^0.5)
+    # mirrors the inner defaults but is a distinct field
+    expect_identical(d$outerMaxOdeRecalc, d$maxOdeRecalc)
+    expect_equal(d$outerOdeRecalcFactor, d$odeRecalcFactor)
+
+    s <- foceiControl(outerMaxOdeRecalc = 9L, outerStickyRecalcN = 2L,
+                      outerOdeRecalcFactor = 4)
+    expect_identical(s$outerMaxOdeRecalc, 9L)
+    expect_identical(s$outerStickyRecalcN, 2L)
+    expect_equal(s$outerOdeRecalcFactor, 4)
+    # setting the outer knobs must not disturb the inner ones
+    expect_identical(s$maxOdeRecalc, d$maxOdeRecalc)
+    expect_identical(s$stickyRecalcN, d$stickyRecalcN)
+
+    expect_error(foceiControl(outerOdeRecalcFactor = 0.5))   # must be >= 1
+    expect_error(foceiControl(outerMaxOdeRecalc = -1L))
+  })
+
   test_that("three augmented models coexist: pool by max ODEs, then the lhs pointer", {
     # The analytic path compiles up to three augmented models for one fit (order-2
     # gradient, order-1 AGQ node, covariance over its own direction set).  They all

@@ -46,6 +46,18 @@
 
 ## New features
 
+- `foceiControl()` gains `outerMaxOdeRecalc`, `outerOdeRecalcFactor` and
+  `outerStickyRecalcN`, which loosen ODE tolerances and retry the analytic
+  outer (augmented sensitivity) solve for a single subject that fails at the
+  requested tolerance.  Previously one subject's failed augmented solve dropped
+  the whole gradient to finite differences; now that subject can still
+  contribute an analytic gradient, which is generally more accurate than the FD
+  approximation.  The loosening is per subject, so it is safe under the parallel
+  outer solve, and it is tracked separately from the inner problem's
+  `maxOdeRecalc`/`odeRecalcFactor`/`stickyRecalcN` -- a fit may loosen one and
+  not the other, and the warning names whichever applied.
+
+
 - `est="vae"`: `vaeControl(shapes=)` list elements are now dispatched
   individually, so the covariate-named and `list(var=, covar=, shapes=)` forms
   can be mixed in one list.  A named element is exact shorthand for the

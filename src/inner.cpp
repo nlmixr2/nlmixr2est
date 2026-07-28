@@ -260,6 +260,17 @@ struct focei_options {
   std::atomic<int> stickyRecalcN2{0};
   int stickyRecalcN;
   std::atomic<int> stickyTol{0};
+  // Analytic OUTER (augmented sensitivity) solve.  Deliberately separate state
+  // from the inner problem's: a fit may loosen one and not the other, and the
+  // warning has to name the knob that actually applied.
+  double outerOdeRecalcFactor = 1.0;
+  int outerMaxOdeRecalc = 0;
+  int outerStickyRecalcN = 0;
+  std::atomic<int> outerReducedTol{0};
+  std::atomic<int> outerStickyTol{0};
+  // per-subject retry counters, sized at setup; the outer solve is parallel over
+  // subjects, so this must not be one shared int
+  std::vector<int> outerStickyRecalcN2Per;
   bool indTolRelax;
 
   int nsim;
@@ -1159,6 +1170,24 @@ struct FoceiRetryHooks {
   }
   void onSticky() { op_focei.stickyTol.store(1, std::memory_order_relaxed); }
 };
+
+// Outer counterparts of FoceiRetryHooks: separate latches so a fit that loosened
+// only the outer solve reports the outer knob.
+struct FoceiOuterRetryHooks {
+  void onRetry() { op_focei.outerReducedTol.store(1, std::memory_order_relaxed); }
+  void onSticky() { op_focei.outerStickyTol.store(1, std::memory_order_relaxed); }
+};
+
+static inline OdeRetryOpts foceiOuterRetryOpts() {
+  OdeRetryOpts o;
+  o.maxOdeRecalc = op_focei.outerMaxOdeRecalc;
+  o.stickyRecalcN = op_focei.outerStickyRecalcN;
+  o.odeRecalcFactor = op_focei.outerOdeRecalcFactor;
+  // per-subject loosening: the outer solve is parallel over subjects, so the
+  // global atolRtolFactor_ would race on rxode2's shared grtol2/gatol2 arrays
+  o.relaxMode = odeRelaxInd;
+  return o;
+}
 
 static inline OdeRetryOpts foceiRetryOpts(int relaxMode) {
   OdeRetryOpts o;
@@ -5580,6 +5609,8 @@ NumericVector foceiSetup_(const RObject &obj,
                      R_NilValue, // inits
                      1);//const int setupOnly = 0
     rx = getRxSolve_();
+    // per-subject outer-retry counters, now that nsub is known
+    op_focei.outerStickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
     if (op_focei.neta == 0) foceiSetupNoEta_();
     else foceiSetupEta_(etaMat0);
   }
@@ -5853,6 +5884,14 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.etaNudge2 = as<double>(foceiO["etaNudge2"]);
   op_focei.eventType = as<int>(foceiO["eventType"]);
   op_focei.predNeq = as<int>(foceiO["predNeq"]);
+  op_focei.outerMaxOdeRecalc = foceiO.containsElementNamed("outerMaxOdeRecalc") ?
+    as<int>(foceiO["outerMaxOdeRecalc"]) : 0;
+  op_focei.outerOdeRecalcFactor = foceiO.containsElementNamed("outerOdeRecalcFactor") ?
+    as<double>(foceiO["outerOdeRecalcFactor"]) : 1.0;
+  op_focei.outerStickyRecalcN = foceiO.containsElementNamed("outerStickyRecalcN") ?
+    as<int>(foceiO["outerStickyRecalcN"]) : 0;
+  op_focei.outerReducedTol.store(0, std::memory_order_relaxed);
+  op_focei.outerStickyTol.store(0, std::memory_order_relaxed);
   op_focei.gradProgressOfvTime = as<double>(foceiO["gradProgressOfvTime"]);
   op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
   op_focei.smatPer = as<double>(foceiO["smatPer"]);
@@ -10275,6 +10314,13 @@ Environment foceiFitCpp_(Environment e){
       warning(_("tolerances (atol/rtol) were temporarily increased for some difficult ODE solving during the optimization.\nconsider increasing sigdig/atol/rtol changing initial estimates or changing the structural model"));
     }
   }
+  if (op_focei.outerReducedTol.load(std::memory_order_relaxed)){
+    if (op_focei.outerStickyTol.load(std::memory_order_relaxed)){
+      warning(_("analytic gradient: tolerances increased for some subjects (foceiControl(outerStickyRecalcN=))"));
+    } else {
+      warning(_("analytic gradient: tolerances temporarily increased for some subjects"));
+    }
+  }
   if (op_focei.zeroGrad){
     warning(_("zero gradient replaced with small number (%f)"), sqrt(DBL_EPSILON));
   }
@@ -10729,6 +10775,10 @@ struct VaeOuterE {
   bool ok = false;
 };
 
+// Defensive only: used when outerStickyRecalcN2Per was not sized for this id.
+// thread_local so two workers can never share a counter.
+static thread_local int _outerRetryScratch = 0;
+
 //[[Rcpp::export]]
 List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
   if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
@@ -10780,7 +10830,18 @@ List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cor
     // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
     OdeSwapScope neqGuard(odeSlotOuter, ind, op);
     iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
-    vaeOuterOde(id);
+    // Loosen THIS subject's tolerance and retry rather than failing it straight
+    // to the caller's finite-difference fallback: a solve that succeeds at a
+    // looser tolerance still yields an analytic gradient, which is expected to
+    // beat an FD approximation.  Per-subject relaxation (odeRelaxInd) is what
+    // makes this safe inside the parallel loop.
+    {
+      FoceiOuterRetryHooks _ohk;
+      int &_perN = (id < (int)op_focei.outerStickyRecalcN2Per.size()) ?
+        op_focei.outerStickyRecalcN2Per[(size_t)id] : _outerRetryScratch;
+      odeSwapSolveRetry(op, ind, _perN, [&]{ vaeOuterOde(id); },
+                        foceiOuterRetryOpts(), _ohk);
+    }
     double *solve0 = getIndSolve(ind);
     if (getOpNeq(op) > 0 && ISNA(solve0[0])) { E.ok = false; continue; }
     int nobs = 0;
