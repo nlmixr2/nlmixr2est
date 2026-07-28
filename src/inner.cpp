@@ -1143,6 +1143,25 @@ static inline bool indHasBadSolve(rx_solving_options *op,
   return odeSwapIndBadSolve(op, ind);
 }
 
+// Latches shared by both FOCEi retry loops: "tolerances were reduced" and
+// "the budget was exhausted so the loosening is permanent".
+struct FoceiRetryHooks {
+  void onRetry() {
+    op_focei.reducedTol.store(1, std::memory_order_relaxed);
+    op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+  }
+  void onSticky() { op_focei.stickyTol.store(1, std::memory_order_relaxed); }
+};
+
+static inline OdeRetryOpts foceiRetryOpts(int relaxMode) {
+  OdeRetryOpts o;
+  o.maxOdeRecalc = op_focei.maxOdeRecalc;
+  o.stickyRecalcN = op_focei.stickyRecalcN;
+  o.odeRecalcFactor = op_focei.odeRecalcFactor;
+  o.relaxMode = relaxMode;
+  return o;
+}
+
 arma::vec getCurEta(int cid) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
   arma::vec eta(op_focei.neta);
@@ -1435,28 +1454,10 @@ double likInner0(double *eta, int id) {
     // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
     resetOpBadSolve(op);
     if (fInd->doFD == 0) {
-      double prevTol = getIndTolFactor(ind);
-      innerOde(_rxId);
-      j = 0;
-      while (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN
-             && indHasBadSolve(op, ind) && j < op_focei.maxOdeRecalc) {
-        fInd->stickyRecalcN2++;
-        op_focei.reducedTol.store(1, std::memory_order_relaxed);
-        op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-        atolRtolFactor_(op_focei.odeRecalcFactor);
-        setIndSolve(ind, -1);
-        resetOpBadSolve(op);
-        innerOde(_rxId);
-        j++;
-      }
-      if (j != 0) {
-        if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
-          setIndTolFactor(ind, prevTol); // succeeded within budget; un-stick
-        } else {
-          // Hit sticky threshold: tolFactor stays loose, latch global stickyTol.
-          op_focei.stickyTol.store(1, std::memory_order_relaxed);
-        }
-      }
+      FoceiRetryHooks _hk;
+      j = odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
+                            [&]{ innerOde(_rxId); },
+                            foceiRetryOpts(odeRelaxGlobal), _hk);
     } else {
       // Inner sensitivity solve failed; fall back to perturbing the simpler
       // prediction model, keeping the neq override alive through likInner0's
@@ -9519,32 +9520,17 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
     // Solve the sensitivity model, relaxing ODE tolerances on a bad solve (as the
     // inner problem does), up to maxOdeRecalc; then fall back to central FD.
     if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) fInd->stickyRecalcN2 = 0;
-    double prevTol = getIndTolFactor(ind);
     setIndSolve(ind, -1);
     resetOpBadSolve(op);
-    thetaSensOde(_rxId);
-    int jr = 0;
-    while (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN &&
-           indHasBadSolve(op, ind) && jr < op_focei.maxOdeRecalc) {
-      fInd->stickyRecalcN2++;
-      op_focei.reducedTol.store(1, std::memory_order_relaxed);
-      op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-      // Loosen ONLY this subject's tolerance (thread-safe) instead of the global
-      // atolRtolFactor_ (which mutates the shared grtol2/gatol2 arrays and races
-      // under the parallel M-step).  iniSubject() reapplies ind->tolFactor to the
-      // per-thread tolerance slice on the re-solve below.  This makes the M-step
-      // deterministic for a fixed thread count (not bit-identical to the serial
-      // global-relaxation path, but the relaxation is only a bad-solve fallback).
-      setIndTolFactor(ind, getIndTolFactor(ind) * op_focei.odeRecalcFactor);
-      setIndSolve(ind, -1);
-      resetOpBadSolve(op);
-      thetaSensOde(_rxId);
-      jr++;
-    }
-    if (jr != 0) {
-      if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) setIndTolFactor(ind, prevTol);
-      else op_focei.stickyTol.store(1, std::memory_order_relaxed);
-    }
+    // odeRelaxInd loosens ONLY this subject's tolerance instead of the global
+    // atolRtolFactor_ (which mutates the shared grtol2/gatol2 arrays and races
+    // under the parallel M-step).  iniSubject() reapplies ind->tolFactor on the
+    // re-solve.  Deterministic for a fixed thread count, though not bit-identical
+    // to the serial global-relaxation path.
+    FoceiRetryHooks _hk;
+    odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
+                      [&]{ thetaSensOde(_rxId); },
+                      foceiRetryOpts(odeRelaxInd), _hk);
     bool okRow = true;
     if (!indHasBadSolve(op, ind)) {
       // Re-point this subject's per-thread pointers (ind->lhs etc.) for the

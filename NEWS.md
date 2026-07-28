@@ -155,11 +155,12 @@
   shared solve buffer for a larger model and runs the inner solves compacted
   against it (`est="impmap"`, `"imp"`, `"qrpem"`, `"advi"`, `"emvi"`, `"fbvi"`,
   `est="vae"` with `nonMuTheta="grad"`, and `foceiControl(fast=TRUE)` with a
-  general `ll()` endpoint), the check read past that point into slots the solve
-  never touched.  Whatever those slots happened to hold could be reported as a
-  failed solve, needlessly loosening ODE tolerances and, once the retry budget
-  was spent, latching the loosened tolerance for the rest of the fit.  Objective
-  values for those methods may change slightly as a result.
+  general `ll()` endpoint), the check read past that point into slots holding
+  stale values left by an earlier, wider solve of the same reused buffer.  A
+  stale `NaN`/`Inf` there was reported as a failed solve that had not happened,
+  needlessly loosening ODE tolerances and, once the retry budget was spent,
+  latching the loosened tolerance for the rest of the fit.  Objective values for
+  those methods may change slightly as a result.
 
 ### Other
 

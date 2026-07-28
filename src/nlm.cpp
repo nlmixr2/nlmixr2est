@@ -325,50 +325,39 @@ static inline bool nlmIndHasBadSolve(rx_solving_options *op,
   return odeSwapIndBadSolve(op, ind);
 }
 
+// nlm latches a different "reduced tolerance" flag per solve kind, and (unlike
+// FOCEi) never un-sticks a subject that recovered -- see OdeRetryOpts.
+struct NlmRetryHooks {
+  int *reducedFlag;
+  void onRetry() { *reducedFlag = 1; }
+  void onSticky() { nlmOp.stickyTol = 1; }
+};
+
+static inline OdeRetryOpts nlmRetryOpts() {
+  OdeRetryOpts o;
+  o.maxOdeRecalc = nlmOp.maxOdeRecalc;
+  o.stickyRecalcN = nlmOp.stickyRecalcN;
+  o.odeRecalcFactor = nlmOp.odeRecalcFactor;
+  o.relaxMode = odeRelaxGlobal;
+  o.restoreTolOnSuccess = false;
+  o.resetBadSolveEachRetry = false;
+  return o;
+}
+
 void nlmSolveNlm(int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
-  nlmOde(id);
-  int j=0;
-  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
-  while (perN <= nlmOp.stickyRecalcN &&
-         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
-    perN++;
-    nlmOp.reducedTol  = 1;
-    atolRtolFactor_(nlmOp.odeRecalcFactor);
-    setIndSolve(ind, -1);
-    nlmOde(id);
-    j++;
-  }
-  if (j != 0) {
-    // tolFactor persists on ind: stiff subjects retain loosened tolerance.
-    if (perN > nlmOp.stickyRecalcN) {
-      nlmOp.stickyTol=1;
-    }
-  }
+  NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol;
+  odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
+                    [&]{ nlmOde(id); }, nlmRetryOpts(), hk);
 }
 
 void nlmSolvePred(int &id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
-  predOde(id);
-  int j=0;
-  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
-  while (perN <= nlmOp.stickyRecalcN &&
-         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
-    perN++;
-    nlmOp.reducedTol2 = 1;
-    atolRtolFactor_(nlmOp.odeRecalcFactor);
-    setIndSolve(ind, -1);
-    predOde(id);
-    j++;
-  }
-  if (j != 0) {
-    // tolFactor persists on ind: stiff subjects retain loosened tolerance.
-    if (perN > nlmOp.stickyRecalcN) {
-      nlmOp.stickyTol=1;
-    }
-  }
+  NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol2;
+  odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
+                    [&]{ predOde(id); }, nlmRetryOpts(), hk);
 }
 
 extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);

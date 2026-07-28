@@ -149,13 +149,75 @@ static inline int odeSwapEffNeq(rx_solving_options_ind *ind, rx_solving_options 
 }
 
 // Doubles this individual's last solve actually wrote.  Scanning further reads
-// slots the solve never touched, which is both a use of uninitialised memory and
-// a way to false-trigger the ODE retry loop.
+// slots this solve never touched -- STALE values a previous, wider solve left in
+// the shared buffer, not uninitialised memory (rxode2 allocates ind->solve once
+// for op->neq and reuses it, so valgrind cannot see this; a run on origin/main
+// reports zero errors).  A stale NaN/Inf there is reported as a failed solve
+// that did not happen, which loosens ODE tolerances needlessly.
 int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind);
 
 // NaN/Inf anywhere in that span.  Per-individual, so it answers "did THIS subject
 // fail" without reading op->badSolve, which another thread can flip mid-loop.
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind);
+
+// ---- bad-solve retry with tolerance relaxation --------------------------
+
+// How a retry loosens tolerances.  Carried per call site rather than unified:
+// the global form mutates rxode2's shared grtol2/gatol2 arrays and races under a
+// parallel loop, while the per-individual form is thread-safe but not
+// bit-identical to it.  Which one a site uses is a behavioural choice, so this
+// helper preserves it rather than picking one.
+enum OdeRelaxMode { odeRelaxGlobal = 0, odeRelaxInd = 1 };
+
+struct OdeRetryOpts {
+  int maxOdeRecalc = 0;
+  int stickyRecalcN = 0;
+  int relaxMode = odeRelaxGlobal;
+  double odeRecalcFactor = 1.0;
+  // FOCEi un-sticks a subject that recovered within budget; nlm deliberately
+  // leaves it loosened ("stiff subjects retain loosened tolerance").
+  bool restoreTolOnSuccess = true;
+  // FOCEi clears op->badSolve before each re-solve; nlm does not.  op->badSolve
+  // is racy under cores>1 and this helper does not read it (odeSwapIndBadSolve is
+  // per-individual), so this only keeps the flag tidy for diagnostics.
+  bool resetBadSolveEachRetry = true;
+};
+
+// Solve, then while the solve is bad and budget remains, loosen and re-solve.
+// Returns the retry count.  `stickyRecalcN2` is the caller's per-subject counter
+// (op_focei's atomic or nlmOp's plain int -- hence the template).  Hooks supplies
+// onRetry() ("tolerances were reduced") and onSticky() ("budget exhausted, the
+// loosening is now permanent").
+template <typename SolveFn, typename Hooks>
+int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
+                      int &stickyRecalcN2, SolveFn solveFn,
+                      const OdeRetryOpts &o, Hooks &h) {
+  double prevTol = getIndTolFactor(ind);
+  solveFn();
+  int j = 0;
+  while (stickyRecalcN2 <= o.stickyRecalcN && odeSwapIndBadSolve(op, ind) &&
+         j < o.maxOdeRecalc) {
+    stickyRecalcN2++;
+    h.onRetry();
+    if (o.relaxMode == odeRelaxInd) {
+      setIndTolFactor(ind, getIndTolFactor(ind) * o.odeRecalcFactor);
+    } else {
+      atolRtolFactor_(o.odeRecalcFactor);
+    }
+    setIndSolve(ind, -1);
+    if (o.resetBadSolveEachRetry) resetOpBadSolve(op);
+    solveFn();
+    j++;
+  }
+  if (j != 0) {
+    if (stickyRecalcN2 <= o.stickyRecalcN) {
+      if (o.restoreTolOnSuccess) setIndTolFactor(ind, prevTol);
+    } else {
+      h.onSticky();
+    }
+  }
+  return j;
+}
 
 // Usage counters, so tests can assert the mechanism ran rather than infer it.
 long odeSwapOverrideArmedN();
