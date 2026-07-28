@@ -277,9 +277,8 @@ struct focei_options {
   // the per-subject reset criterion).
   mat eta1SD;
   // Historical 1/sqrt(etaS) scaling, kept for thetaReset(), which standardizes
-  // the MEAN eta rather than an individual one.  resetThetaP was calibrated
-  // against this scaling, so it is preserved verbatim; see the note in
-  // thetaReset().
+  // the MEAN eta rather than an individual one (thetaReset() supplies the
+  // sqrt(n) of the standard error of the mean); see the note there.
   mat eta1SDmean;
   double n;
   double logDetOmegaInv5;
@@ -3066,17 +3065,17 @@ static inline bool thetaReset0(bool forceReset = false) {
   return true;
 }
 
-void thetaReset(double size){
+void thetaReset(double size, double n){
   if (op_focei.isSaem) return;
   if (op_focei.maxOuterIterations <= 0) return;
   if (std::isinf(size)) return;
-  // NOTE: this criterion is applied to the MEAN eta, not to an individual one,
-  // so it needs a different scale from the per-subject reset.  (The statistically
-  // correct z for "is mean(eta) != 0" would be etaM * sqrt(n) / SD.)  resetThetaP
-  // was tuned against the historical 1/sqrt(etaS) scaling, so eta1SDmean keeps
-  // that verbatim: correcting eta1SD to 1/SD without this would silently make
-  // theta resets ~sqrt(n-1) times more likely and destabilize converging fits.
-  mat etaRes =  op_focei.eta1SDmean % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
+  // NOTE: this criterion is applied to the MEAN eta, not to an
+  // individual one, so it needs a different scale from the
+  // per-subject reset: the z for "is mean(eta) != 0" carries a
+  // sqrt(n) from the standard error of the mean.  eta1SDmean keeps
+  // the 1/sqrt(etaS) scaling (etaS is the Welford sum of squares, not
+  // the variance).
+  mat etaRes = std::sqrt(n) * (op_focei.eta1SDmean % op_focei.etaM); //op_focei.cholOmegaInv * etaMat;
   double res=0;
   for (unsigned int j = etaRes.n_rows; j--;) {
     if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
@@ -3559,7 +3558,7 @@ void innerOpt() {
           (!op_focei.initObj || op_focei.checkTheta==1) &&
           R_FINITE(op_focei.resetThetaSize)){
         // Not thread safe...
-        thetaReset(op_focei.resetThetaSize);
+        thetaReset(op_focei.resetThetaSize, op_focei.n);
       }
       std::fill(op_focei.etaM.begin(),op_focei.etaM.end(), 0.0);
       std::fill(op_focei.etaS.begin(),op_focei.etaS.end(), 0.0);
@@ -10226,7 +10225,7 @@ Environment foceiFitCpp_(Environment e){
       // is (n - 1); etaSdInv() divides the Welford sum of squares by count-1.
       op_focei.eta1SD = etaSdInv(op_focei.etaS, n - 1.0);
       op_focei.eta1SDmean = 1/sqrt(op_focei.etaS); // thetaReset scale; see note there
-      thetaReset(op_focei.resetThetaFinalSize);
+      thetaReset(op_focei.resetThetaFinalSize, n - 1.0);
     }
   }
   e["optimTime"] = foceiElapsedSeconds(wallT0);
