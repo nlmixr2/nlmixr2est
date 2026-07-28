@@ -97,3 +97,10 @@ vexp.toml
 .vexp
 ^.vexp$
 tests/testthat/_problems/
+
+# Build artifacts (R CMD build/INSTALL/check output)
+*.Rcheck/
+*.tar.gz
+*.tgz
+inst/tools/*.Rout
+src/Makevars.win
