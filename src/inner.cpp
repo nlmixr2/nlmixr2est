@@ -1141,6 +1141,47 @@ void updateEta(double *eta, int cid) {
 // destruction unless disarm() is called. Protects against ETA-leak when an
 // ODE solve throws/returns NA mid finite-difference perturbation, which
 // would otherwise leave a perturbed ETA in ind->par_ptr and corrupt later calls.
+// Per-thread Omega override for the inner likelihood.
+//
+// Omega enters an individual's likelihood only through Omega^-1 and
+// 0.5*log|Omega^-1|, and both are functions of omega alone.  The outer FD
+// fallback has to evaluate one subject at a perturbed omega WITHOUT disturbing
+// the other subjects being solved concurrently, so the reads below consult a
+// thread-local override first and fall back to the shared value.
+//
+// Unset (the default, and every path except that fallback) reads exactly what it
+// read before, which is what makes this bit-identical.  It replaces the pattern
+// at foceiCalcR's FD block, which swaps the GLOBAL omegaInv/cholOmegaInv/
+// logDetOmegaInv5 and restores afterwards -- correct only while serial.
+struct OmegaOverride {
+  const arma::mat *omegaInv = NULL;
+  double logDetOmegaInv5 = 0.0;
+  bool active = false;
+};
+static thread_local OmegaOverride _omegaOv;
+
+static inline const arma::mat &curOmegaInv() {
+  return _omegaOv.active ? *_omegaOv.omegaInv : op_focei.omegaInv;
+}
+static inline double curLogDetOmegaInv5() {
+  return _omegaOv.active ? _omegaOv.logDetOmegaInv5 : op_focei.logDetOmegaInv5;
+}
+
+// RAII: install a perturbed Omega for THIS thread only.
+struct OmegaScope {
+  OmegaOverride saved;
+  OmegaScope(const arma::mat &oi, double logDet5) {
+    saved = _omegaOv;
+    _omegaOv.omegaInv = &oi;
+    _omegaOv.logDetOmegaInv5 = logDet5;
+    _omegaOv.active = true;
+  }
+  ~OmegaScope() { _omegaOv = saved; }
+private:
+  OmegaScope(const OmegaScope &);
+  OmegaScope &operator=(const OmegaScope &);
+};
+
 struct EtaRestoreGuard {
   rx_solving_options_ind *ind;
   arma::vec saved;
@@ -1969,9 +2010,9 @@ double likInner0(double *eta, int id) {
         // print(wrap(lp));
         // print(wrap(etam));
         // Finalize eq. #12
-        lp = -(lp - op_focei.omegaInv * etam);
+        lp = -(lp - curOmegaInv() * etam);
         // Partially finalize #10
-        fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * op_focei.omegaInv * etam));
+        fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * curOmegaInv() * etam));
         if (fInd->nNonNormal && op_focei.adjLik) {
           fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
         }
@@ -2070,7 +2111,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
     }
     for (int jc = 0; jc < ne; ++jc)
       for (int ic = 0; ic <= jc; ++ic) {
-        H(ic, jc) += op_focei.omegaInv(ic, jc);
+        H(ic, jc) += curOmegaInv()(ic, jc);
         if (!R_finite(H(ic, jc))) return false;
         H(jc, ic) = H(ic, jc);
       }
@@ -2175,7 +2216,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
         H(k, l) = sum(cHff % a.col(l) % a.col(k) +
                       cHfr % (a.col(l) % rpk + rpl % a.col(k)) +
                       cHrr % rpl % rpk) +
-          op_focei.omegaInv(k, l);
+          curOmegaInv()(k, l);
         if (!R_finite(H(k, l))) {
           return false;
         }
@@ -2190,7 +2231,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
     for (k = op_focei.neta; k--;){
       for (l = k+1; l--;) {
         H(k, l) = sum(cHff % a.col(l) % a.col(k)) +
-          op_focei.omegaInv(k, l);
+          curOmegaInv()(k, l);
         if (!R_finite(H(k, l))) {
             return false;
         }
@@ -2257,7 +2298,7 @@ double LikInner2(double *eta, int likId, int id) {
       logH0diag -= _safe_log(H0(j,j));
     }
     if (_aqn == 0) {
-      lik += logH0diag + op_focei.logDetOmegaInv5;
+      lik += logH0diag + curLogDetOmegaInv5();
     } else {
       // Adaptive Gaussian Hermite Quadrature expansion around the EBE mode;
       // the SE of the EBE estimate (inverse cholesky of the Hessian) drives
@@ -2325,7 +2366,7 @@ double LikInner2(double *eta, int likId, int id) {
         }
       }
       //lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik);
-      lik = log(slik) + logH0diag + op_focei.logDetOmegaInv5;
+      lik = log(slik) + logH0diag + curLogDetOmegaInv5();
     }
   }
   lik += fInd->tbsLik;
