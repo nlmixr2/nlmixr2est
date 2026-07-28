@@ -1,5 +1,31 @@
 # nlmixr2est 7.0.2
 
+## Bug fixes
+
+- FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
+  function depend on the optimizer's history rather than on `theta` alone, so
+  the same `theta` could return values hundreds of objective-function units
+  apart.  With a derivative-free outer optimizer (the default `bobyqa`) this
+  corrupts the interpolation model and the fit stalls, oscillates, and can exit
+  "normally" at a point worse than one it already visited.  Fixed by:
+
+    - Making the inner restart cascade **monotone**: each nudge restart is now a
+      candidate and the best eta found is the one kept.  Previously every
+      `n1qn1` restart overwrote the previous result, so the last restart won even
+      when it was worse.
+    - Repairing the `if (!tryAgain)` re-check guards in that cascade, which were
+      unreachable (always evaluated inside `if (tryAgain)`).  Once the first
+      nudge fired, every remaining restart ran unconditionally and the eta was
+      then zeroed regardless of the result.
+    - Making the standardized-eta reset **per component**.  A single eta in its
+      tail previously zeroed the subject's entire eta vector, discarding every
+      converged EBE that subject had.
+    - Fixing `eta1SD`, which was computed as `1/sqrt(etaS)` where `etaS` is
+      Welford's *sum of squared deviations* rather than the variance.  It is now
+      divided by `n - 1`, and a zero/non-finite variance disables that criterion
+      for the component instead of producing `Inf` (which made it fire for every
+      nonzero eta).
+
 ## Breaking changes
 
 - `est="vae"`: naming a covariate in `vaeControl(shapes=)` now also **limits
