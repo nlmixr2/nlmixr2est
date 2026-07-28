@@ -2,7 +2,11 @@
 # largest-neq registered model, and a private lhs buffer is required exactly when
 # the widest-lhs model is NOT that pool model.
 #
-# The pure .odeSwapPlanFor() checks need no fit and stay in the push/PR subset.
+# The pure .odeSwapPlanFor() checks need no fit, and one plain focei fit checks
+# the registry against what rxode2 reports.  Everything fit-heavy lives in
+# test-odeswap-fit.R (weekly): compiling several more models here evicts entries
+# from rxode2's model cache and breaks code generation in a LATER test file --
+# it showed up as "user function 'expit' failed to produce code" in test-nlm.R.
 
 nmTest({
   test_that("the pool plan picks max neq, with a deterministic tie-break", {
@@ -132,42 +136,5 @@ nmTest({
     # a plain focei fit: the inner model is the pool and nothing is wider
     expect_identical(i$poolName, "inner")
     expect_false(i$needsScratch)
-  })
-
-  test_that("a real impmap model reaches the widest-lhs-is-not-the-pool case", {
-    skip_on_cran()
-    skip_if_not_installed("nlmixr2data")
-    # est="impmap" gives every residual-error theta a d(V)/d(theta) lhs column but
-    # NO sensitivity state, so with more residual parameters than etas the
-    # theta-sensitivity model is NARROWER in neq yet WIDER in lhs than the inner
-    # model.  That is the configuration the private lhs buffer exists for; if this
-    # ever stops holding, the scratch path is untested rather than unnecessary.
-    m <- function() {
-      ini({
-        tka <- 0.45; tcl <- 1; tv <- fix(3.45)
-        eta.ka ~ 0.6; eta.cl ~ 0.3
-        add.sd <- 0.7; prop.sd <- 0.1; lambda <- 1
-      })
-      model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
-        d/dt(depot) <- -ka * depot
-        d/dt(center) <- ka * depot - cl / v * center
-        cp <- center / v
-        cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)
-      })
-    }
-    suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
-    i <- .odeSwapInfo()
-    ts <- i$models[i$models$name %in% "thetaSens", ]
-    inr <- i$models[i$models$name %in% "inner", ]
-    expect_identical(nrow(ts), 1L)
-    expect_lt(ts$neq, inr$neq)     # fewer states ...
-    expect_gt(ts$nlhs, inr$nlhs)   # ... but a wider lhs
-    expect_identical(i$poolName, "inner")
-    expect_false(ts$sizesPool)
-    expect_true(i$needsScratch)
-    expect_identical(i$scratchNlhs, ts$nlhs)
   })
 })

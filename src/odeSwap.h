@@ -55,8 +55,16 @@ enum OdeSwapDeny {
 
 // ---- registration -------------------------------------------------------
 
-// rxDynLoad + rxUpdateFuns + neq/nlhs/lhs-name capture, in one place.  Returns
-// false (leaving the slot unloaded) when obj is not a usable rxode2 model.
+// Record a model's neq/nlhs/lhs names WITHOUT loading its DLL or binding its
+// entry points.  That is all odeSwapPlan() needs, and it must stay metadata-only:
+// rxDynLoad-ing a sensitivity model before rxSolve_ has built the pool rebinds
+// rxode2's event-sensitivity globals to it, and the inner solve then frees an
+// ES buffer sized for the wrong neq ("free(): invalid next size").
+bool odeSwapDeclare(int slot, const char *name, SEXP obj);
+
+// odeSwapDeclare plus rxDynLoad + rxUpdateFuns, for when the entry points are
+// actually going to be called.  Returns false (leaving the slot unloaded) when
+// obj is not a usable rxode2 model.
 bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns);
 void odeSwapClear(int slot);
 void odeSwapClearAll();          // clears every slot and releases preserved SEXPs

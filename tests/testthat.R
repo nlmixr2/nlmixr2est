@@ -78,7 +78,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
     "nlme-cov", "agq-fast-grad", "focei-ll-fast-grad-fit",
-    "focei-fast-methods-fit"),
+    "focei-fast-methods-fit", "odeswap-fit"),
   # batch 5
   c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",

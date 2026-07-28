@@ -80,13 +80,12 @@
     assign("control", .fcg, envir = .ui)
     .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
     if (!is.null(.am) && inherits(.am$augMod, "rxode2") && !is.null(.env$model)) {
+      ## Registering it on the model list is enough: the C++ pool registry sizes
+      ## the pool for the largest peer and derives the inner override itself, so R
+      ## no longer nominates a poolModel or computes innerNeq.  foceiSetup_ still
+      ## aliases its THETA_1_/ETA_1_ spelling onto the THETA[1]/ETA[1] columns so
+      ## rxSolve_ can bind it.
       .env$model$vaeOuter <- .am$augMod
-      ## The augmented model SIZES the shared pool (26 states / 29 lhs vs the
-      ## inner model's 6 / 6); the inner MAP then runs under ind->neqOverride.
-      ## foceiSetup_ aliases its THETA_1_/ETA_1_ spelling onto the THETA[1]/ETA[1]
-      ## columns so rxSolve_ can bind it.
-      .env$poolModel <- .am$augMod
-      .env$innerNeq <- length(rxode2::rxModelVars(.env$model$inner)$state)
     }
   }
   vaeInnerSetup_(.env)

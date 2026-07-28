@@ -171,7 +171,12 @@ RObject nlmSetup(Environment e) {
   nlmOp.hessErr = control["hessErr"];
 
 
-  rxode2::rxSolve_(model, rxControl,
+  // Size the pool for the largest registered model rather than assuming it is
+  // `model`.  Today thetaGrad always dominates predOnly, so this is the same
+  // object -- but now it is derived, not assumed.
+  SEXP _poolSEXP = odeSwapPoolModelSEXP();
+  RObject poolModel = (_poolSEXP == R_NilValue) ? model : RObject(_poolSEXP);
+  rxode2::rxSolve_(poolModel, rxControl,
                    R_NilValue,//const Nullable<CharacterVector> &specParams =
                    R_NilValue,//const Nullable<List> &extraArgs =
                    p,//const RObject &params =

@@ -39,19 +39,15 @@ static void odeSwapModelsInit() {
 
 static inline bool odeSlotOk(int slot) { return slot >= 0 && slot < odeSlotN; }
 
-bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns) {
-  if (!odeSlotOk(slot) || fns == NULL) return false;
+bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
+  if (!odeSlotOk(slot)) return false;
   odeSwapClear(slot);
   if (Rf_isNull(obj) || !rxode2::rxIs(RObject(obj), "rxode2")) return false;
-  // The entry points come from R_GetCCallable on the model's DLL, so it must be
-  // loaded before rxUpdateFuns -- registration can therefore run before
-  // foceiSetup_'s rxSolve_ (which is what lets the pool plan be known up front).
-  if (!rxode2::rxDynLoad(RObject(obj))) return false;
+  // Metadata only -- no rxDynLoad, no rxUpdateFuns.  See odeSwap.h.
   List mv = rxode2::rxModelVars_(RObject(obj));
-  rxUpdateFuns(as<SEXP>(mv["trans"]), fns);
   CharacterVector lhs = as<CharacterVector>(mv["lhs"]);
   OdeModelReg &m = _odeReg[slot];
-  m.fns = fns;
+  m.fns = NULL;
   m.name = name;
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
@@ -61,6 +57,18 @@ bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns) {
   odeSwapModelsInit();
   SET_VECTOR_ELT(_odeModels, slot, obj);
   _odePlanStale = true;
+  return true;
+}
+
+bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns) {
+  if (fns == NULL) return false;
+  if (!odeSwapDeclare(slot, name, obj)) return false;
+  // The entry points come from R_GetCCallable on the model's DLL, so it must be
+  // loaded first.  Only do this for models we are about to solve/read.
+  if (!rxode2::rxDynLoad(RObject(obj))) { odeSwapClear(slot); return false; }
+  List mv = rxode2::rxModelVars_(RObject(obj));
+  rxUpdateFuns(as<SEXP>(mv["trans"]), fns);
+  _odeReg[slot].fns = fns;
   return true;
 }
 
@@ -155,7 +163,8 @@ SEXP odeSwapPoolModelSEXP() {
 }
 
 int odeSwapCanPool(int slot) {
-  if (!odeSwapLoaded(slot) || _odeReg[slot].fns->calc_lhs == NULL) return odeDenyNotLoaded;
+  if (!odeSwapLoaded(slot) || _odeReg[slot].fns == NULL ||
+      _odeReg[slot].fns->calc_lhs == NULL) return odeDenyNotLoaded;
   if (_odeReg[slot].nlhs <= 0) return odeDenyNlhsUnknown;
   const OdePoolPlan &p = odeSwapPlan();
   // rxEffNeq only ever compacts: an override above op->neq silently falls back,

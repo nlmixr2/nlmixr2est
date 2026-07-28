@@ -5000,9 +5000,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
 // the fit solve before the finite-difference Hessian.
 static SEXP covSolveArgs_ = R_NilValue;
-// est="impmap": theta-sensitivity model that sizes the shared pool (the largest
-// structure), or R_NilValue to size for the inner model as usual.
-SEXP _impPoolModel = R_NilValue;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -5438,7 +5435,7 @@ NumericVector foceiSetup_(const RObject &obj,
       }
     }
   }
-  // A pool model (_impPoolModel) may spell the SAME parameters differently: the
+  // The pool model may spell the SAME parameters differently: the
   // augmented outer-gradient model declares THETA_1_/ETA_1_ because those names
   // ARE its sensitivity directions, while `params` above is built as
   // THETA[1]/ETA[1].  rxSolve_ binds by NAME, so sizing the pool with that model
@@ -5447,8 +5444,10 @@ NumericVector foceiSetup_(const RObject &obj,
   // already present, add a column carrying its bracket spelling's values.
   // Renaming either model is not an option -- the augmented model's body AND all
   // of its output column names are built from the underscore form.
-  if (_impPoolModel != R_NilValue) {
-    List poolMv = rxode2::rxModelVars_(RObject(_impPoolModel));
+  SEXP _poolSEXP = odeSwapPoolModelSEXP();
+  // Only alias when the pool is sized for a peer, not for `obj` itself.
+  if (_poolSEXP != R_NilValue && odeSwapPlan().poolSlot != odeSlotInner) {
+    List poolMv = rxode2::rxModelVars_(RObject(_poolSEXP));
     CharacterVector poolPars = as<CharacterVector>(poolMv["params"]);
     std::vector<std::string> have;
     for (int q = 0; q < paramsNames.size(); ++q) have.push_back(as<std::string>(paramsNames[q]));
@@ -5506,7 +5505,8 @@ NumericVector foceiSetup_(const RObject &obj,
     // ind->neqOverride.  restoreFitSolve_ must re-solve THIS same pool model (not the
     // smaller inner model) or the pool shrinks and the larger per-subject re-solve
     // (rxHess2 in calcEtaHessian) overflows -- so stash _poolObj, not obj.
-    RObject _poolObj = (_impPoolModel != R_NilValue) ? RObject(_impPoolModel) : obj;
+    RObject _poolObj = (_poolSEXP != R_NilValue && odeSwapPlan().poolSlot != odeSlotInner) ?
+      RObject(_poolSEXP) : obj;
     if (_needSolveArgs) {
       storeCovSolveArgs_(_poolObj, rxControl, params, data);
     }
@@ -9606,12 +9606,11 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   impThetaAccumOne(c, zk, g, H);
 }
 
-// est="impmap": the theta-sensitivity model is the largest structure, so it sizes
-// the single shared solve pool (foceiSetup_'s rxSolve_ uses _impPoolModel when set,
-// mirroring how the pool is sized for the inner model in plain FOCEI).  The inner
-// MAP then runs with ind->neqOverride = op_focei.innerNeq (like the predNeq FD
-// path), and the theta-sensitivity solve overrides to thetaSensNeq.
-// (_impPoolModel is declared earlier, before foceiSetup_.)
+// est="impmap": the theta-sensitivity model is usually the largest structure, so
+// odeSwapPlan() picks it to size the single shared solve pool (foceiSetup_'s
+// rxSolve_).  The inner MAP then runs with ind->neqOverride = op_focei.innerNeq
+// (like the predNeq FD path), and the theta-sensitivity solve overrides to
+// thetaSensNeq.
 
 // True when the solve pool is sized for the larger theta-sensitivity model
 // (multi-endpoint pool-sizing).  The inner solves then run with ind->neqOverride
@@ -9678,6 +9677,12 @@ void impClearInnerNeqOverride() {
 //[[Rcpp::export]]
 Environment foceiFitCpp_(Environment e){
   focei_wall_clock::time_point wallT0 = focei_wall_clock::now();
+  // The registry is a global that outlives a fit, so start every fit from empty:
+  // otherwise a fit with no theta-sensitivity model of its own would size its
+  // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
+  // around foceiSetup_ used to prevent.
+  odeSwapClearAll();
+  op_focei.innerNeq = 0;
   List model = e["model"];
   bool doPredOnly = false;
   op_focei.canDoFD = false;
@@ -9706,32 +9711,32 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
-      // est="impmap": if the theta-sensitivity model has more ODE states than the
-      // inner model, use it to size the shared solve pool (foceiSetup_'s rxSolve_)
-      // and record the inner state count so inner solves run with neqOverride.
-      _impPoolModel = R_NilValue;
-      op_focei.innerNeq = 0;
+      // Register every peer model that may size the shared solve pool BEFORE
+      // foceiSetup_ builds it, so odeSwapPlan() sees the whole set and picks the
+      // largest.  (Their lhs offsets are resolved after foceiSetup_ below, which
+      // is where the est flags and impThetaSensIdx it needs are set.)  This
+      // replaces two separate "is it bigger than inner?" blocks whose second
+      // assignment silently won even when the first model was larger.
+      odeSwapDeclare(odeSlotInner, "inner", inner);
       if (model.containsElementNamed("thetaSens")) {
-        RObject _tsm = model["thetaSens"];
-        if (rxode2::rxIs(_tsm, "rxode2")) {
-          int _tsNeq = as<CharacterVector>(rxode2::rxModelVars_(_tsm)["state"]).size();
-          int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
-          if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
-        }
+        odeSwapDeclare(odeSlotThetaSens, "thetaSens", model["thetaSens"]);
       }
-      // fast=TRUE ll(): size the pool for the larger 2nd-order model (rxHess2) and pin the
-      // cheap 1st-order inner solves to innerNeq (same mechanism as impmap's thetaSens).
       if (model.containsElementNamed("innerHess2")) {
-        RObject _h2m = model["innerHess2"];
-        if (rxode2::rxIs(_h2m, "rxode2")) {
-          int _h2Neq = as<CharacterVector>(rxode2::rxModelVars_(_h2m)["state"]).size();
-          int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
-          if (_h2Neq > _innNeq) { _impPoolModel = _h2m; op_focei.innerNeq = _innNeq; }
-        }
+        odeSwapDeclare(odeSlotHess2, "hess2", model["innerHess2"]);
       }
+      // A larger peer sizes the pool, so the inner solves run compacted to their
+      // own state count via ind->neqOverride.  Set BEFORE foceiSetup_, as the two
+      // blocks this replaces did -- foceiSetup_ reads op_focei state while it
+      // builds the pool.
+      // MUST be set before foceiSetup_, as the two sizing blocks this replaces
+      // were: with it set afterwards an impmap fit aborts in rxode2's
+      // event-sensitivity teardown ("free(): invalid next size") on the first
+      // inner solve.  No reader inside foceiSetup_ is apparent, so treat the
+      // ordering as load bearing until that is chased down upstream.
+      op_focei.innerNeq = (odeSwapNeq(odeSlotInner) < odeSwapPlan().poolNeq) ?
+        odeSwapNeq(odeSlotInner) : 0;
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
-      _impPoolModel = R_NilValue; // consumed by foceiSetup_
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
         if (model.containsElementNamed("predNoLhsLlik")) {
@@ -10310,6 +10315,10 @@ static void adviResetStatics();
 
 //[[Rcpp::export]]
 RObject vaeInnerSetup_(Environment e) {
+  // Same reason as foceiFitCpp_: the registry outlives a fit, so clear it before
+  // declaring this fit's peers.
+  odeSwapClearAll();
+  op_focei.innerNeq = 0;
   op_focei.canDoFD = false;
   op_focei.nEstOmega = e.exists("nEstOmega") ? as<int>(e["nEstOmega"]) : 0;
   // op_focei persists across fits and this path never loads rxHess2, so a stale
@@ -10333,33 +10342,23 @@ RObject vaeInnerSetup_(Environment e) {
   Nullable<NumericVector> _upper = as<Nullable<NumericVector>>(e["upper"]);
   Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
   Nullable<List> _control = as<Nullable<List>>(e["control"]);
-  // est="advi": if the theta-sensitivity model has more ODE states than the inner
-  // model, size the shared solve pool to it and record the inner state count so
-  // inner solves run with neqOverride (mirrors the impmap full-fit path).
-  _impPoolModel = R_NilValue;
-  op_focei.innerNeq = 0;
+  // Register the peers that may size the pool (est="advi" theta-sensitivity
+  // model, nonMuTheta="grad" augmented outer model) BEFORE foceiSetup_ builds
+  // it, so odeSwapPlan() picks the largest.  R no longer has to nominate the
+  // pool model or compute innerNeq -- the registry derives both.  (The registry
+  // was already cleared at the top of this function.)
   if (model.containsElementNamed("thetaSens")) {
-    RObject _tsm = model["thetaSens"];
-    if (rxode2::rxIs(_tsm, "rxode2")) {
-      int _tsNeq = as<CharacterVector>(rxode2::rxModelVars_(_tsm)["state"]).size();
-      int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
-      if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
-    }
+    odeSwapDeclare(odeSlotThetaSens, "thetaSens", model["thetaSens"]);
   }
-  // nonMuTheta="grad": the augmented model is the LARGEST structure, so it sizes
-  // the shared solve pool and the inner MAP runs under ind->neqOverride -- the
-  // same arrangement est="impmap" uses.  Nothing is freed by the M-step, so there
-  // is no solve-arg stash and no restore.
-  if (e.exists("poolModel")) {
-    RObject pm = e["poolModel"];
-    if (rxode2::rxIs(pm, "rxode2")) {
-      _impPoolModel = pm;
-      if (e.exists("innerNeq")) op_focei.innerNeq = as<int>(e["innerNeq"]);
-    }
+  if (model.containsElementNamed("vaeOuter")) {
+    odeSwapDeclare(odeSlotOuter, "outer", model["vaeOuter"]);
   }
+  odeSwapDeclare(odeSlotInner, "inner", inner);
+  // set before foceiSetup_ -- see the matching note in foceiFitCpp_
+  op_focei.innerNeq = (odeSwapNeq(odeSlotInner) < odeSwapPlan().poolNeq) ?
+    odeSwapNeq(odeSlotInner) : 0;
   NumericVector initPar = foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                                       _rxInv, _lower, _upper, _etaMat, _control);
-  _impPoolModel = R_NilValue; // consumed by foceiSetup_
   // predNoLhs -> finite-difference event sensitivities
   if (model.containsElementNamed("predNoLhs")) {
     RObject noLhs = model.containsElementNamed("predNoLhsLlik") ? model["predNoLhsLlik"] : model["predNoLhs"];
@@ -10402,15 +10401,14 @@ RObject vaeInnerSetup_(Environment e) {
       impSetInnerNeqOverride();
     }
   }
-  // nonMuTheta="grad": register the augmented outer-gradient model as a peer
-  // solver.  It is the LARGEST structure, so it sized the shared pool
-  // (_impPoolModel) and the inner MAP runs under ind->neqOverride = innerNeq --
-  // the same arrangement est="advi" uses for its theta-sensitivity model above.
+  // nonMuTheta="grad": the augmented outer-gradient model was registered above
+  // (it is the LARGEST structure, so it sized the shared pool and the inner MAP
+  // runs under ind->neqOverride = innerNeq -- the same arrangement est="advi"
+  // uses for its theta-sensitivity model).  Just record its widths here.
   op_focei.vaeOuterNeq = 0;
   op_focei.vaeOuterNlhs = 0;
-  if (model.containsElementNamed("vaeOuter")) {
-    RObject vo = model["vaeOuter"];
-    if (odeSwapRegister(odeSlotOuter, "outer", vo, &rxVaeOuter)) {
+  {
+    if (odeSwapLoaded(odeSlotOuter)) {
       op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
       op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
       if (op_focei.innerNeq > 0) impSetInnerNeqOverride();
