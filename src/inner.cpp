@@ -273,7 +273,14 @@ struct focei_options {
   mat cholOmegaInv;
   mat etaM;
   mat etaS;
+  // 1/SD of the eta distribution; standardizes an INDIVIDUAL eta (etaInBound(),
+  // the per-subject reset criterion).
   mat eta1SD;
+  // Historical 1/sqrt(etaS) scaling, kept for thetaReset(), which standardizes
+  // the MEAN eta rather than an individual one.  resetThetaP was calibrated
+  // against this scaling, so it is preserved verbatim; see the note in
+  // thetaReset().
+  mat eta1SDmean;
   double n;
   double logDetOmegaInv5;
 
@@ -3064,7 +3071,13 @@ void thetaReset(double size){
   if (op_focei.isSaem) return;
   if (op_focei.maxOuterIterations <= 0) return;
   if (std::isinf(size)) return;
-  mat etaRes =  op_focei.eta1SD % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
+  // NOTE: this criterion is applied to the MEAN eta, not to an individual one,
+  // so it needs a different scale from the per-subject reset.  (The statistically
+  // correct z for "is mean(eta) != 0" would be etaM * sqrt(n) / SD.)  resetThetaP
+  // was tuned against the historical 1/sqrt(etaS) scaling, so eta1SDmean keeps
+  // that verbatim: correcting eta1SD to 1/SD without this would silently make
+  // theta resets ~sqrt(n-1) times more likely and destabilize converging fits.
+  mat etaRes =  op_focei.eta1SDmean % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
   double res=0;
   for (unsigned int j = etaRes.n_rows; j--;) {
     if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
@@ -3542,6 +3555,7 @@ void innerOpt() {
         thetaResetZero();
       }
       op_focei.eta1SD = etaSdInv(op_focei.etaS, op_focei.n);
+      op_focei.eta1SDmean = 1/sqrt(op_focei.etaS); // thetaReset scale; see note there
       if (!op_focei.calcGrad && op_focei.maxOuterIterations > 0 &&
           (!op_focei.initObj || op_focei.checkTheta==1) &&
           R_FINITE(op_focei.resetThetaSize)){
@@ -4965,6 +4979,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.etaS     = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.eta1SD   = mat(op_focei.neta, 1, arma::fill::zeros);
+  op_focei.eta1SDmean = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.n        = 1.0;
 
   // Prefill to 0.1 or 10%
@@ -10211,6 +10226,7 @@ Environment foceiFitCpp_(Environment e){
       // n was seeded at 1 and incremented once per subject, so the subject count
       // is (n - 1); etaSdInv() divides the Welford sum of squares by count-1.
       op_focei.eta1SD = etaSdInv(op_focei.etaS, n - 1.0);
+      op_focei.eta1SDmean = 1/sqrt(op_focei.etaS); // thetaReset scale; see note there
       thetaReset(op_focei.resetThetaFinalSize);
     }
   }
