@@ -21,7 +21,14 @@
                addProp = control$addProp, calcTables = FALSE, compress = FALSE,
                eventSens = control$eventSens, indTolRelax = control$indTolRelax,
                maxOdeRecalc = control$maxOdeRecalc, odeRecalcFactor = control$odeRecalcFactor,
-               stickyRecalcN = control$stickyRecalcN, print = 0L)
+               stickyRecalcN = control$stickyRecalcN,
+               # the analytic outer solve's own loosening: est="vae" reuses the
+               # SAME inner call to choose the likelihood, so it gets the same
+               # generalization and the same knobs rather than a parallel set
+               outerMaxOdeRecalc = control$outerMaxOdeRecalc,
+               outerOdeRecalcFactor = control$outerOdeRecalcFactor,
+               outerStickyRecalcN = control$outerStickyRecalcN,
+               print = 0L)
 }
 
 #' Set up the FOCEi inner problem for `ui` at its current ini() estimates.

@@ -466,6 +466,9 @@ vaeControl <- function(seed = 42L,
                        stickyRecalcN = 4,
                        maxOdeRecalc = 5,
                        odeRecalcFactor = 10^(0.5),
+                       outerStickyRecalcN = 4,
+                       outerMaxOdeRecalc = 5,
+                       outerOdeRecalcFactor = 10^(0.5),
                        indTolRelax = TRUE,
                        eventSens = c("jump", "fd"),
                        rxControl = NULL,
@@ -539,6 +542,9 @@ vaeControl <- function(seed = 42L,
   checkmate::assertIntegerish(stickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(outerStickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(outerMaxOdeRecalc, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(outerOdeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
   likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
@@ -658,6 +664,9 @@ vaeControl <- function(seed = 42L,
                stickyRecalcN = as.integer(stickyRecalcN),
                maxOdeRecalc = as.integer(maxOdeRecalc),
                odeRecalcFactor = odeRecalcFactor,
+               outerStickyRecalcN = as.integer(outerStickyRecalcN),
+               outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
+               outerOdeRecalcFactor = outerOdeRecalcFactor,
                indTolRelax = indTolRelax,
                eventSens = eventSens,
                iterPrintControl = .iterPrintControl,
