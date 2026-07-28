@@ -126,6 +126,8 @@ struct focei_options {
   double *gtryEta = NULL;
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
+  double *gouterThetaHf = NULL;   // [npars * nsub], backs fInd->outerThetaHf
+  bool mGouterThetaHf = false;
   bool mGthetaGrad = false;
   // n1qn1 specific vectors
   double *gZm = NULL;
@@ -573,6 +575,11 @@ struct focei_ind {
   double *etahr;
   double *etahh;
   //
+  // Per-subject Gill step sizes for the outer d(llik)/d(theta) FD fallback.
+  // Per SUBJECT as well as per theta: a subject only reaches this path because
+  // its augmented solve failed, so its usable step is its own property and must
+  // not be shared with subjects that solved cleanly.  0 = not yet chosen.
+  double *outerThetaHf;
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
   //
@@ -765,6 +772,9 @@ extern "C" void rxOptionsFreeFocei() {
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
   op_focei.gthetaGrad = NULL;
+  if (op_focei.gouterThetaHf != NULL && op_focei.mGouterThetaHf) R_Free(op_focei.gouterThetaHf);
+  op_focei.gouterThetaHf = NULL;
+  op_focei.mGouterThetaHf = false;
   op_focei.mGthetaGrad = false;
 
   // Eq-48 warm-start buffers (standalone, not part of the contiguous per-subject block)
@@ -4964,6 +4974,13 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
   op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
   op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(getRxNsub(rx) + 1)
+  // Per-subject Gill steps for the outer FD fallback.  Its own allocation rather
+  // than a slice of the big block: it is sized by npars (not neta) and only the
+  // subjects that fail the augmented solve ever write to it.
+  if (op_focei.gouterThetaHf != NULL && op_focei.mGouterThetaHf) R_Free(op_focei.gouterThetaHf);
+  op_focei.gouterThetaHf =
+    R_Calloc((size_t)op_focei.npars * (size_t)(getRxNsubAndMix(rx) + 1), double);
+  op_focei.mGouterThetaHf = true;
   op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(getRxNsubAndMix(rx) + 1); // nz
   op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * getRxNall(rx)]
   op_focei.gc       = op_focei.ga + op_focei.neta * getRxNallAndMix(rx);//[op_focei.neta * getRxNall(rx)]
@@ -5073,6 +5090,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       6*(op_focei.neta + 1)+1;
 
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
+    fInd->outerThetaHf = (op_focei.gouterThetaHf == NULL) ? NULL :
+      &op_focei.gouterThetaHf[jj];
     jj+= op_focei.npars;
 
     fInd->mode = 1;
