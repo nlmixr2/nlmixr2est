@@ -180,9 +180,10 @@ struct focei_options {
   int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
   int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
   int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
-  int thetaSensNlhs = 0;      // lhs output count of the sensitivity model (impmap); the
-                              // per-thread pool lhs slice is sized for the inner model, so
-                              // the theta-sens solve reads/writes a local buffer this wide
+  int thetaSensNlhs = 0;      // lhs output count of the sensitivity model (impmap).  Whether
+                              // reads need a private buffer is decided by OdeSwapScope: the
+                              // per-thread lhs slice is the POOL model's width, so only a
+                              // peer wider than the pool needs one
   int innerNeq = 0;           // inner model state count when the pool is sized larger (impmap)
   // est="vae" nonMuTheta="grad": augmented outer-gradient model.  Like the impmap
   // theta-sens model it sizes the shared pool, so vaeOuterNlhs is the width of the
@@ -1116,24 +1117,6 @@ static inline bool indHasBadSolve(rx_solving_options *op,
   return false;
 }
 
-// RAII guard for ind->neqOverride: switches one subject's effective neq for a
-// predOde finite-difference pass without mutating shared op->neq (rxode2
-// honors it via rxEffNeq(ind, op)), so other threads keep a stable state count.
-struct IndNeqOverrideGuard {
-  rx_solving_options_ind *ind;
-  int saved;
-  bool armed;
-  IndNeqOverrideGuard(rx_solving_options_ind *_ind, int newOverride)
-      : ind(_ind), armed(true) {
-    saved = getIndNeqOverride(ind);
-    setIndNeqOverride(ind, newOverride);
-  }
-  ~IndNeqOverrideGuard() {
-    if (armed) setIndNeqOverride(ind, saved);
-  }
-  void disarm() { armed = false; }
-};
-
 arma::vec getCurEta(int cid) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
   arma::vec eta(op_focei.neta);
@@ -1204,7 +1187,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   int _rxId = getRxId(id); // base subject index for rxode2 (only nSub subjects)
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
-  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq); // switches this subject's neq to predNeq
+  OdeSwapScope neqGuard(odeSlotPred, ind, op); // switches this subject's neq to the pred model's
   predOde(_rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1213,7 +1196,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
+    double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
@@ -1250,7 +1233,7 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
-  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq);
+  OdeSwapScope neqGuard(odeSlotPred, ind, op);
   setIndSolve(ind, -1);
   predOde(_rxId);
   int nObs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
@@ -1263,7 +1246,7 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
+    double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
@@ -1411,7 +1394,7 @@ double likInner0(double *eta, int id) {
     // Guard for ind->neqOverride; lazily allocated in the doFD branch, lives
     // until likInner0 returns so all reads of ind->solve see the same predNeq
     // stride. Stays nullptr (no-op) on the common innerOde path.
-    std::unique_ptr<IndNeqOverrideGuard> neqGuard;
+    std::unique_ptr<OdeSwapScope> neqGuard;
     // Mixture subjects (id >= nSub) use the base subject index for rxode2 calls.
     int _rxId = getRxId(id);
     // freezeOde: the caller has restored the states in ind->solve; skip the entire
@@ -1452,7 +1435,7 @@ double likInner0(double *eta, int id) {
       // Inner sensitivity solve failed; fall back to perturbing the simpler
       // prediction model, keeping the neq override alive through likInner0's
       // remaining reads of ind->solve.
-      neqGuard.reset(new IndNeqOverrideGuard(ind, op_focei.predNeq));
+      neqGuard.reset(new OdeSwapScope(odeSlotPred, ind, op));
       predOde(_rxId);
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
@@ -1641,7 +1624,9 @@ double likInner0(double *eta, int id) {
         dv0 = getIndDv(ind, kk);
         yj = getIndYj(ind);
         _splitYj(&yj, &dist,  &yj0);
-        double *lhs = getIndLhs(ind);
+        // predSolve reads through the scope (which may need a private buffer);
+        // the plain inner solve reads rxode2's slice as before.
+        double *lhs = neqGuard ? neqGuard->lhs() : getIndLhs(ind);
         if (isDose(getIndEvid(ind, kk))) {
           llikObs[kk] = NA_REAL;
           // Need to calculate for advan sensitivities
@@ -1984,9 +1969,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // 2nd-order model (rxHess2) for THIS subject once at eta* and read rx__d2pred_ =
     // d2(logLik)/deta2.  The shared pool is sized for rxHess2, so switch this subject's
     // neqOverride to hess2Neq for the solve (restored on branch exit to the inner override).
-    // A thread-local lhs buffer (hess2Nlhs wide) keeps calc_lhs from overflowing the
-    // inner-sized shared per-thread slice under the parallel inner loop -- mirrors
-    // impThetaSensCollect.
+    // OdeSwapScope supplies the lhs buffer: rxode2's per-thread slice when it is
+    // wide enough for this model, a private one otherwise.
     rx = getRxSolve_();
     int _rxId = getRxId(id);
     rx_solving_options *op = getSolvingOptions(rx);
@@ -1995,15 +1979,14 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
     // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
     fInd->setup = 0;
-    IndNeqOverrideGuard _h2Guard(ind, op_focei.hess2Neq);
+    OdeSwapScope _h2Guard(odeSlotHess2, ind, op);
     for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     setIndSolve(ind, -1);
     resetOpBadSolve(op);
     hess2Ode(_rxId);
     if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
     iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
-    std::vector<double> _h2LhsBuf((size_t)op_focei.hess2Nlhs);
-    double *lhs = _h2LhsBuf.data();
+    double *lhs = _h2Guard.lhs();   // private buffer; never rxode2's inner-sized slice
     for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
       setIndIdx(ind, jj);
       int kk2 = getIndIx(ind, jj);
@@ -9406,7 +9389,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
   // to thetaSensNeq for these solves and restore on exit (mirrors the predNeq FD
   // pattern).
-  IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
+  OdeSwapScope neqGuard(odeSlotThetaSens, ind, op);
   // Sync the current thetas into this subject before solving (etas set per sample).
   arma::vec curTheta((unsigned int)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
@@ -9457,7 +9440,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // guarded above), allocated once per subject and reused across samples so calc_lhs
   // never writes into the shared inner-sized per-thread pool slice (a data race under
   // the parallel M-step) while avoiding a per-sample heap allocation in the hot path.
-  std::vector<double> tsLhsBuf((size_t)op_focei.thetaSensNlhs);
+  // lhs buffer comes from the scope (see odeSwap.h); read AFTER iniSubjectE below.
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
       setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
@@ -9499,12 +9482,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       // is a no-op (thread 0), but under the parallel M-step it is what makes the
       // lhs reads land in this thread's slice instead of a stale one.
       iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
-      // Read the sensitivity solve through the thread-local tsLhsBuf (allocated once
-      // per subject above): the shared per-thread pool slice (getIndLhs) is sized for
-      // the INNER model, so calc_lhs through it would overflow -- the highest-offset
-      // d(V)/d(theta) reads/writes spill into the neighbouring thread's slice, a data
-      // race under the parallel M-step (dV corruption, benign serially).
-      double *lhs = tsLhsBuf.data();
+      // Read through the scope's buffer: it is rxode2's per-thread slice when the
+      // pool is at least this wide, and a private buffer when this model is wider
+      // -- writing past the slice would spill into the neighbouring thread's,
+      // a data race under the parallel M-step.
+      double *lhs = neqGuard.lhs();
       // read f, V, d(f)/d(theta), d(V)/d(theta) from the sensitivity model lhs
       int ko = 0, kk;
       double curT;
@@ -10678,10 +10660,10 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 // rxSolveFree() and rebuilds the global solve on every M-step.  Nothing is freed
 // here, so there is no restore.
 //
-// The lhs buffer is OURS, sized to the augmented model's own width: rxode2's
-// per-thread slice is sized for the inner model, so calc_lhs through it would
-// overflow (the impmap M-step bug).  Per-subject writes are disjoint, so the loop
-// parallelizes under the vaeInnerLikCore discipline.
+// The lhs buffer comes from OdeSwapScope, which hands back rxode2's per-thread
+// slice when it is wide enough and a private buffer when this model is wider
+// than the pool.  Per-subject writes are disjoint, so the loop parallelizes under
+// the vaeInnerLikCore discipline.
 //
 // Returns the per-subject `E` list .foceiAnalyticGradCore consumes directly --
 // no intermediate column matrix for R to re-slice.
@@ -10743,7 +10725,7 @@ List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cor
     for (int j = 0; j < neta; ++j)
       setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
     // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
-    IndNeqOverrideGuard neqGuard(ind, op_focei.vaeOuterNeq);
+    OdeSwapScope neqGuard(odeSlotOuter, ind, op);
     iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
     vaeOuterOde(id);
     double *solve0 = getIndSolve(ind);
@@ -10762,8 +10744,7 @@ List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cor
     }
     if (hasT) E.trans.zeros(nobs, 4);
     // OUR lhs buffer, this model's width -- never rxode2's inner-sized slice
-    std::vector<double> lhsBuf((size_t)op_focei.vaeOuterNlhs);
-    double *lhs = lhsBuf.data();
+    double *lhs = neqGuard.lhs();   // private buffer, this model's width
     iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
     int ko = 0;
     for (int q = 0; q < getIndNallTimes(ind) && ko < nobs; ++q) {

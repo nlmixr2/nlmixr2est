@@ -43,6 +43,11 @@ nmTest({
     expect_false(ts$sizesPool)
     expect_true(i$needsScratch)
     expect_identical(i$scratchNlhs, ts$nlhs)
+    # and the private buffer was actually taken during the fit -- without this the
+    # test would still pass if OdeSwapScope silently handed back rxode2's slice
+    expect_gt(i$overrideArmedN, 0)
+    expect_gt(i$scratchUsedN, 0)
+    expect_identical(i$scratchResizeN, 0)   # the plan sized it correctly up front
   })
 
   test_that("a fit does not inherit the previous fit's registered peers", {

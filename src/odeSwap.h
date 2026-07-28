@@ -100,4 +100,48 @@ OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &
 
 int odeSwapCanPool(int slot);   // OdeSwapDeny reason code
 
+// ---- per-individual solve scope ----------------------------------------
+
+// True when reading `slot` needs a private lhs buffer rather than rxode2's
+// per-thread ind->lhs slice.  One place decides this, so a call site cannot pick
+// the wrong buffer.
+bool odeSwapWantsScratch(int slot, rx_solving_options *op);
+
+// Arms ind->neqOverride for `slot` for as long as this object lives, and hands
+// back the lhs buffer to read that model through.
+//
+// Solve one individual as a different model:
+//   OdeSwapScope sc(odeSlotThetaSens, ind, op);
+//   ... solve ...
+//   iniSubjectE(rxId, 1, ind, op, rx, rxThetaSens.update_inis);
+//   double *lhs = sc.lhs();          // AFTER iniSubjectE -- see below
+//   rxThetaSens.calc_lhs(rxId, t, getOpIndSolve(op, ind, j), lhs);
+//
+// lhs() is deliberately lazy: iniSubjectE(..., inLhs=1, ...) re-points ind->lhs
+// at the CALLING thread's slice, and callers construct the scope well before
+// they call it.  Caching the pointer in the constructor would hand back another
+// thread's slice under the parallel inner loop.
+struct OdeSwapScope {
+  OdeSwapScope(int slot, rx_solving_options_ind *ind, rx_solving_options *op);
+  ~OdeSwapScope();
+  double *lhs() const;
+  int neq() const { return neq_; }
+  int slot() const { return slot_; }
+  bool usesScratch() const { return wide_; }
+  void disarm() { armed_ = false; }
+private:
+  OdeSwapScope(const OdeSwapScope &);
+  OdeSwapScope &operator=(const OdeSwapScope &);
+  rx_solving_options_ind *ind_;
+  rx_solving_options *op_;
+  int slot_, saved_, neq_;
+  bool wide_, armed_;
+};
+
+// Usage counters, so tests can assert the mechanism ran rather than infer it.
+long odeSwapOverrideArmedN();
+long odeSwapScratchUsedN();
+long odeSwapScratchResizeN();
+void odeSwapResetCounters();
+
 #endif // __ODESWAP_H__

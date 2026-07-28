@@ -5,6 +5,7 @@
 #include "inner.h"
 #include "odeSwap.h"
 #include <algorithm>
+#include <atomic>
 
 #define _(String) (String)
 
@@ -173,6 +174,77 @@ int odeSwapCanPool(int slot) {
   return odeDenyNone;
 }
 
+// ---- per-individual solve scope -----------------------------------------
+
+static std::atomic<long> _odeOverrideArmedN(0);
+static std::atomic<long> _odeScratchUsedN(0);
+static std::atomic<long> _odeScratchResizeN(0);
+
+long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_relaxed); }
+long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
+long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
+void odeSwapResetCounters() {
+  _odeOverrideArmedN.store(0, std::memory_order_relaxed);
+  _odeScratchUsedN.store(0, std::memory_order_relaxed);
+  _odeScratchResizeN.store(0, std::memory_order_relaxed);
+}
+
+// A private buffer is needed exactly when this model writes more lhs values than
+// rxode2's per-thread slice holds.  That slice is op->nlhs wide, which is the
+// POOL model's width -- so a peer narrower than or equal to the pool reads
+// through rxode2's own slice, and only a wider one needs our buffer.
+//
+// Whether that happens is a property of the model set, not of which slot it is:
+// est="impmap" gives each residual-error theta a d(V)/d(theta) lhs column but no
+// sensitivity state, so with more residual parameters than etas the
+// theta-sensitivity model is narrower in neq yet wider in lhs than the inner
+// model and the buffer is required.  See test-odeswap-fit.R.
+bool odeSwapWantsScratch(int slot, rx_solving_options *op) {
+  if (op == NULL) return true;              // no pool to measure against; be safe
+  return odeSwapNlhs(slot) > getOpNlhs(op);
+}
+
+// One buffer per thread, grown on demand and reused across subjects, replacing
+// the three per-call std::vector allocations.
+static std::vector<double> &odeSwapScratch(int want) {
+  static thread_local std::vector<double> buf;
+  if ((int)buf.size() < want) {
+    if (!buf.empty()) _odeScratchResizeN.fetch_add(1, std::memory_order_relaxed);
+    buf.resize((size_t)want);
+  }
+  return buf;
+}
+
+OdeSwapScope::OdeSwapScope(int slot, rx_solving_options_ind *ind, rx_solving_options *op)
+  : ind_(ind), op_(op), slot_(slot), saved_(-1), neq_(0), wide_(false), armed_(false) {
+  neq_ = odeSwapNeq(slot);
+  wide_ = odeSwapWantsScratch(slot, op);
+  // Only arm for a registered slot: odeSwapNeq() returns 0 for an unloaded one,
+  // and compacting the stride to 0 would corrupt the solve rather than fail.
+  if (ind_ != NULL && odeSwapLoaded(slot)) {
+    saved_ = getIndNeqOverride(ind_);
+    setIndNeqOverride(ind_, neq_);
+    armed_ = true;
+    _odeOverrideArmedN.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+OdeSwapScope::~OdeSwapScope() {
+  if (armed_ && ind_ != NULL) setIndNeqOverride(ind_, saved_);
+}
+
+double *OdeSwapScope::lhs() const {
+  if (!wide_) return getIndLhs(ind_);
+  // Size against the live op->nlhs too: the registry can only under-predict if a
+  // model was registered after the pool was built, and silently truncating there
+  // would be the exact overflow this exists to prevent.
+  int want = odeSwapNlhs(slot_);
+  int opN = (op_ != NULL) ? getOpNlhs(op_) : 0;
+  if (opN > want) want = opN;
+  _odeScratchUsedN.fetch_add(1, std::memory_order_relaxed);
+  return odeSwapScratch(want).data();
+}
+
 // ---- R introspection ----------------------------------------------------
 //
 // Exposes the pool decision so tests can assert the MECHANISM (which model sized
@@ -230,5 +302,8 @@ List odeSwapInfo_() {
     _["needsScratch"] = (p.scratchNlhs > 0),
     _["overrideNeeded"] = p.overrideNeeded,
     _["nLoaded"] = p.nLoaded,
-    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs);
+    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs,
+    _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
+    _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
+    _["scratchResizeN"] = (double)odeSwapScratchResizeN());
 }
