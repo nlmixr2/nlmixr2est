@@ -41,9 +41,22 @@ enum OdeSwapSlot {
   odeSlotPred,        // rxPred:      predNoLhs FD model / nlm predOnly
   odeSlotThetaSens,   // rxThetaSens: impmap / advi d(f)/d(theta)
   odeSlotHess2,       // rxHess2:     fast=TRUE ll() d2(logLik)/deta2
-  odeSlotOuter,       // rxVaeOuter:  augmented outer-gradient model
+  odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
+  odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
+  odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
   odeSlotN
 };
+
+// The analytic path compiles up to THREE augmented models for one fit -- the
+// order-2 gradient model, an order-1 model for AGQ quadrature nodes (fast=TRUE
+// with nAGQ > 1), and a covariance model over a different direction set.  They
+// are distinct cache keys (digest | dirs | order | flags), hence distinct
+// compiles, and with nAGQ > 1 the first two are solved during the SAME
+// optimization.  Each therefore needs its own rxSolveF and its own slot: they all
+// stay registered together for the life of the fit, and solving one is a matter
+// of calling ITS entry points, not of re-registering a shared slot.  The pool is
+// still built exactly once, sized by odeSwapPlan() for whichever of them has the
+// most ODE states.
 
 // Why a pooled solve was refused, so a fallback is loud rather than silent.
 enum OdeSwapDeny {
@@ -78,6 +91,16 @@ SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
 // 0-based index of an lhs output in this model, or -1 when absent.  Replaces the
 // hand-rolled "scan mvts$lhs for this name" loops.
 int odeSwapLhsIndex(int slot, const char *nm);
+
+// This slot's compiled entry points, or NULL when unloaded.  Solving "as model X"
+// means calling X's own dydt/calc_lhs through here.  Models never displace one
+// another -- each keeps its own rxSolveF for the life of the fit.
+rxSolveF *odeSwapFns(int slot);
+
+// Integrate ONE individual with `slot`'s entry points, in the shared pool.
+// Generalizes the per-model `#define <x>Ode(id) ind_solve(...)` macros.
+void odeSwapSolveInd(int slot, int rxId);
+
 
 // ---- the pool decision --------------------------------------------------
 
@@ -218,6 +241,24 @@ int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
   }
   return j;
 }
+
+// ---- persistent pin ------------------------------------------------------
+
+// Pin EVERY subject's effective state count to `slot`'s, for methods whose inner
+// solves run compacted against a pool sized for a larger peer.  Unlike
+// OdeSwapScope this outlives a single solve, so it must be balanced by
+// odeSwapUnpinAll().
+//
+// No-op unless the slot is genuinely smaller than the pool.  Records the
+// rx_solve* it pinned, so unpinning cannot walk a different (rebuilt) solve
+// structure and cannot depend on caller state that may already have been reset --
+// the old clear early-returned on op_focei.innerNeq <= 0, so zeroing that first
+// silently skipped it.
+void odeSwapPinAll(int slot);
+void odeSwapUnpinAll();     // idempotent; safe after the pool was freed or rebuilt
+void odeSwapRepin();        // re-apply after rxSolve_ rebuilt the solve structure
+bool odeSwapPinned();
+int  odeSwapPinnedSlot();
 
 // Usage counters, so tests can assert the mechanism ran rather than infer it.
 long odeSwapOverrideArmedN();

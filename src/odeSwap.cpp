@@ -103,6 +103,18 @@ SEXP odeSwapModelSEXP(int slot) {
   return VECTOR_ELT(_odeModels, slot);
 }
 
+rxSolveF *odeSwapFns(int slot) {
+  return odeSwapLoaded(slot) ? _odeReg[slot].fns : NULL;
+}
+
+void odeSwapSolveInd(int slot, int rxId) {
+  rxSolveF *f = odeSwapFns(slot);
+  if (f == NULL || f->dydt == NULL) return;
+  ind_solve(getRxSolve_(), rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
+            f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);
+}
+
+
 int odeSwapLhsIndex(int slot, const char *nm) {
   if (!odeSwapLoaded(slot) || nm == NULL) return -1;
   const std::vector<std::string> &v = _odeReg[slot].lhsNames;
@@ -245,6 +257,61 @@ double *OdeSwapScope::lhs() const {
   return odeSwapScratch(want).data();
 }
 
+// ---- persistent pin ------------------------------------------------------
+
+static int   _odePinnedSlot = -1;
+static rx_solve *_odePinnedRx = NULL;
+static int   _odePinnedNsub = 0;
+
+bool odeSwapPinned()     { return _odePinnedSlot >= 0; }
+int  odeSwapPinnedSlot() { return _odePinnedSlot; }
+
+static void odeSwapPinWalk(int neq) {
+  rx_solve *rxl = getRxSolve_();
+  if (rxl == NULL) return;
+  int nsub = (int)getRxNsub(rxl);
+  // Base subjects only: getRxId(id) is id % nsub in inner.cpp, i.e. the identity
+  // over [0, nsub), and mixture pseudo-subjects share these same inds.
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxl, id);
+    if (ind != NULL) setIndNeqOverride(ind, neq);
+  }
+  _odePinnedRx = rxl;
+  _odePinnedNsub = nsub;
+}
+
+void odeSwapPinAll(int slot) {
+  if (!odeSwapLoaded(slot)) return;
+  const OdePoolPlan &p = odeSwapPlan();
+  int neq = odeSwapNeq(slot);
+  // Only meaningful when a larger peer sized the pool; otherwise the stride
+  // already matches and pinning would just be state to unwind.
+  if (p.poolSlot < 0 || neq >= p.poolNeq) return;
+  odeSwapPinWalk(neq);
+  _odePinnedSlot = slot;
+}
+
+void odeSwapRepin() {
+  if (_odePinnedSlot < 0) return;
+  odeSwapPinWalk(odeSwapNeq(_odePinnedSlot));
+}
+
+void odeSwapUnpinAll() {
+  if (_odePinnedSlot < 0) return;
+  // Only walk when this is still the solve structure we pinned: after
+  // rxSolveFree() the inds are gone, and after a rebuild they are different
+  // objects that were never pinned.
+  if (_odePinnedRx != NULL && getRxSolve_() == _odePinnedRx) {
+    int nsub = (int)getRxNsub(_odePinnedRx);
+    if (nsub > _odePinnedNsub) nsub = _odePinnedNsub;
+    for (int id = 0; id < nsub; ++id) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_odePinnedRx, id);
+      if (ind != NULL) setIndNeqOverride(ind, -1);
+    }
+  }
+  _odePinnedSlot = -1; _odePinnedRx = NULL; _odePinnedNsub = 0;
+}
+
 // ---- override-aware solve-buffer scanning -------------------------------
 
 int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
@@ -314,9 +381,18 @@ List odeSwapInfo_() {
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
   int opNeq = NA_INTEGER, opNlhs = NA_INTEGER;
   rx_solve *rxl = getRxSolve_();
+  IntegerVector activeOv(0);
   if (rxl != NULL) {
     rx_solving_options *op = getSolvingOptions(rxl);
     if (op != NULL) { opNeq = getOpNeq(op); opNlhs = getOpNlhs(op); }
+    int nsub = (int)getRxNsub(rxl);
+    if (nsub > 0) {
+      activeOv = IntegerVector(nsub);
+      for (int id = 0; id < nsub; ++id) {
+        rx_solving_options_ind *ind = getSolvingOptionsInd(rxl, id);
+        activeOv[id] = (ind == NULL) ? NA_INTEGER : getIndNeqOverride(ind);
+      }
+    }
   }
   return List::create(
     _["models"] = models,
@@ -330,6 +406,11 @@ List odeSwapInfo_() {
     _["overrideNeeded"] = p.overrideNeeded,
     _["nLoaded"] = p.nLoaded,
     _["opNeq"] = opNeq, _["opNlhs"] = opNlhs,
+    _["pinned"] = odeSwapPinned(),
+    _["pinnedSlot"] = odeSwapPinnedSlot(),
+    // -1 per subject means "no override in force"; a non -1 left behind after a
+    // fit is the leak this component exists to make impossible.
+    _["activeOverride"] = activeOv,
     _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
     _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
     _["scratchResizeN"] = (double)odeSwapScratchResizeN());

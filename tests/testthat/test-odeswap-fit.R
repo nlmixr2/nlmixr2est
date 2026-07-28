@@ -105,4 +105,54 @@ nmTest({
     expect_identical(after$objf, ref$objf)
     expect_identical(unname(as.numeric(after$theta)), unname(as.numeric(ref$theta)))
   })
+
+  test_that("a pinned inner override does not leak into the next fit", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # est="impmap" pins every subject's effective state count for the whole fit
+    # (the pool is sized for the larger theta-sensitivity model).  That pin used
+    # to be released only by the impmap driver, so the fast-ll and vae paths left
+    # it set on the shared solve structure for whatever ran next.  The release now
+    # lives in rxOptionsFreeFocei(), which runs at BOTH setup start and teardown.
+    d <- nlmixr2data::theo_sd
+    # 1-compartment reference
+    one <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    # the pinning fit, with MORE states -- a stale pin only bites when the next
+    # fit's op->neq differs from the one that was pinned
+    pin <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- fix(3.45); tq <- 0.1; tvp <- 1
+            eta.ka ~ 0.6; eta.cl ~ 0.3
+            add.sd <- 0.7; prop.sd <- 0.1; lambda <- 1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              q <- exp(tq); vp <- exp(tvp)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center - q/v * center + q/vp * peri
+              d/dt(peri) <- q/v * center - q/vp * peri
+              cp <- center / v
+              cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) })
+    }
+    ctl <- foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                        calcTables = FALSE)
+    ref <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
+    expect_false(.odeSwapInfo()$pinned)
+
+    suppressWarnings(suppressMessages(
+      nlmixr2(pin, d, "impmap",
+              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
+    # the pin is released by the time the fit returns
+    expect_false(.odeSwapInfo()$pinned)
+    expect_true(all(.odeSwapInfo()$activeOverride == -1L))
+
+    after <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
+    expect_identical(after$objf, ref$objf)
+    expect_identical(unname(as.numeric(after$theta)),
+                     unname(as.numeric(ref$theta)))
+  })
 })

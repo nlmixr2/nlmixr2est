@@ -88,6 +88,38 @@ nmTest({
     expect_identical(p$scratchNlhs, 0L)
   })
 
+  test_that("three augmented models coexist: pool by max ODEs, then the lhs pointer", {
+    # The analytic path compiles up to three augmented models for one fit (order-2
+    # gradient, order-1 AGQ node, covariance over its own direction set).  They all
+    # stay registered together; solving one calls ITS entry points.  The pool is
+    # built once for whichever has the most ODE states, and only then is the lhs
+    # pointer decided.
+    # slots: inner, pred, <unused>, <unused>, outer, outerNode, outerCov
+    #   outer     26 states / 29 lhs   <- most ODEs, so it sizes the pool
+    #   outerNode 14 / 17
+    #   outerCov  20 / 23
+    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L),
+                         c(8L, 2L, 0L, 0L, 29L, 17L, 23L))
+    expect_identical(p$nLoaded, 5L)
+    expect_identical(p$poolSlot, 4L)      # the order-2 gradient model
+    expect_identical(p$poolNeq, 26L)
+    expect_true(p$overrideNeeded)         # every other model runs compacted
+    # widest lhs belongs to the pool model, so rxode2's own slice is wide enough
+    expect_identical(p$maxNlhsSlot, 4L)
+    expect_identical(p$scratchNlhs, 0L)
+    expect_false(p$needsScratch)
+
+    # same three models, but the covariance model carries extra outputs without
+    # extra states -- now the widest lhs is NOT the pool model and reads of it
+    # need a private buffer
+    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L),
+                         c(8L, 2L, 0L, 0L, 29L, 17L, 40L))
+    expect_identical(p$poolSlot, 4L)      # pool choice is unchanged: still max ODEs
+    expect_identical(p$maxNlhsSlot, 6L)   # but the cov model is the widest reader
+    expect_identical(p$scratchNlhs, 40L)
+    expect_true(p$needsScratch)
+  })
+
   test_that("the registry reports each peer's true neq/nlhs for a plain focei fit", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

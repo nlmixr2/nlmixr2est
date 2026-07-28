@@ -731,6 +731,11 @@ static inline bool muPrintActive() {
 static void releaseCovSolveArgs_(); // defined with covSolveArgs_ below; teardown backstop
 
 extern "C" void rxOptionsFreeFocei() {
+  // Single owner for the persistent neq pin.  This runs at the start of
+  // foceiSetup_ and at every teardown, so a fit cannot leave a pin behind for
+  // the next one -- which is what happened when only the impmap driver cleared
+  // it and the fast-ll / vae paths did not.
+  odeSwapUnpinAll();
   releaseCovSolveArgs_(); // release any preserved covType="analytic" solve args
   if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
   op_focei.etaTrans=NULL;
@@ -800,6 +805,8 @@ rxSolveF rxInner;
 rxSolveF rxPred;
 rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
 rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer of rxInner), re-solved at eta*
+rxSolveF rxOuterNode; // analytic gradient: order-1 augmented model for AGQ nodes
+rxSolveF rxOuterCov;  // analytic covariance: augmented model over the cov direction set
 rxSolveF rxVaeOuter;  // est="vae" nonMuTheta="grad": augmented outer-gradient model
                       // (peer of rxInner/rxPred/rxThetaSens).  Sizes the shared solve
                       // pool -- it is the LARGEST structure -- and the inner MAP then
@@ -4289,7 +4296,7 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // Re-pin it so the next objective eval's inner solves and calcEtaHessian rxHess2 re-solve
   // see the right state counts.
   if (_restored && op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
-    impSetInnerNeqOverride();
+    odeSwapRepin();   // rxSolve_ rebuilt the inds; re-apply the pin to them
   }
   if (Rf_isNull(_res) || !_restored) {
     if (!op_focei.warnedAnalyticFallback) {
@@ -9657,7 +9664,7 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
 // not thread-safe under this override -- so the EM must run serial (like the
 // mixture path), else the parallel E-step non-deterministically rejects a
 // subject's importance samples (neff collapse).
-bool impPoolSizing() { return op_focei.innerNeq > 0; }
+bool impPoolSizing() { return odeSwapPinned(); }
 
 // ---- parallel theta-sensitivity solve scope (M-step) ----
 // The theta-sensitivity ODE solve is thread-safe (FOCEI solves it in parallel in
@@ -9679,29 +9686,15 @@ void impInnerParallelOff() {
   _innerParallel.store(0, std::memory_order_release);
 }
 
-// Pin every subject's effective inner state count to op_focei.innerNeq, since the
-// pool (and op->neq) is sized for the larger theta-sensitivity model.
-void impSetInnerNeqOverride() {
-  if (op_focei.innerNeq <= 0) return;
-  rx = getRxSolve_();
-  int nsub = getRxNsub(rx);
-  for (int id = 0; id < nsub; ++id) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-    setIndNeqOverride(ind, op_focei.innerNeq);
-  }
-}
+// Pin every subject's effective inner state count, since the pool (and op->neq)
+// is sized for a larger peer.  Kept as a thin name for the imp driver; the pin
+// itself, and the guarantee that it is unwound, live in odeSwap.
+void impSetInnerNeqOverride() { odeSwapPinAll(odeSlotInner); }
 
-// Clear the persistent inner neqOverride at the end of the fit so it does not
-// bleed into a later fit whose op->neq differs (the shared rx_global is reused).
-void impClearInnerNeqOverride() {
-  if (op_focei.innerNeq <= 0) return;
-  rx = getRxSolve_();
-  int nsub = getRxNsub(rx);
-  for (int id = 0; id < nsub; ++id) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-    setIndNeqOverride(ind, -1);
-  }
-}
+// Retained for imp.h's declaration.  The pin is now released by
+// rxOptionsFreeFocei(), which runs at BOTH setup start and teardown, so it
+// cannot be skipped by an early return or a missing call site.
+void impClearInnerNeqOverride() { odeSwapUnpinAll(); }
 
 //' Fit/Evaluate FOCEi
 //'
