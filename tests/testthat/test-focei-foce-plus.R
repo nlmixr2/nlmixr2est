@@ -54,18 +54,32 @@ nmTest({
     expect_true(is.finite(fit$objective))
     expect_equal(fit$objective, ref$objective, tolerance = 1e-3)
     # The mu-profiled variants are NOT expected to match the plain fit here:
-    # the foce+ per-subject inner problem is multi-modal, and the mu-group
-    # regression warm-starts the inner optimizer into deeper conditional
-    # modes than the plain fit's eta starts reach -- a legitimately lower
-    # profile objective at the SAME model (verified: plain focep warm-started
-    # from the profiled fit's etaMat reproduces its objective at that point).
-    # They must agree with each other and never end ABOVE the plain fit.
-    # warm="save" (self-init inner Hessian) is pinned: the default
-    # warm="calc" recalculates the eta Hessian at the mu-regression's
-    # restarted theta/eta and steers this fixture's multi-modal inner
-    # problem into a shallower basin (~122.5 > plain 114.7), while the plain
-    # fit is basin-insensitive -- the deeper-mode property this test guards
-    # holds for the self-init warm.
+    # the foce+ per-subject inner problem is multi-modal, so the three land in
+    # different conditional basins.  They must agree with EACH OTHER.
+    #
+    # This test used to additionally assert `fM <= ref + 0.5` -- that the
+    # mu-group regression warm-starts the inner optimizer into DEEPER modes than
+    # the plain fit reaches.  That held only while the plain fit was handicapped
+    # by the inner eta reset discarding its converged EBEs.  With that fixed the
+    # plain fit reaches the deepest mode on this fixture and the inequality
+    # flips, so the directional claim is no longer a property of the estimators:
+    #
+    #                        objective   cold-start at its own estimates
+    #   before the eta fix:
+    #     foce+ / focep       120.9624   120.7041
+    #     mfocep / ifocep     118.2396   118.3629
+    #   after:
+    #     foce+ / focep       116.6300   116.2202   <- genuinely deeper
+    #     mfocep / ifocep     118.2396   118.3629   <- bit-identical; the mu
+    #                                                  family is untouched by
+    #                                                  the eta-reset fix
+    #
+    # So the mu variants are now the ones sitting in the shallower basin, which
+    # is worth a look on its own (they take a different inner path and did not
+    # benefit from the fix) but is not something this test should encode as an
+    # expectation.  warm="save" (self-init inner Hessian) is still pinned: the
+    # default warm="calc" recalculates the eta Hessian at the mu-regression's
+    # restarted theta/eta and moves this fixture again.
     fM <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "mfocep",
              foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "save"))))
@@ -75,7 +89,12 @@ nmTest({
     expect_true(is.finite(fM$objective))
     expect_true(is.finite(fI$objective))
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)
-    expect_lte(fM$objective, ref$objective + 0.5)
-    expect_lte(fI$objective, ref$objective + 0.5)
+    # Pin the mu variants to the basin they actually reach on this fixture, so a
+    # future change to the mu-referenced inner path shows up here.
+    expect_equal(fM$objective, 118.2396, tolerance = 1e-3)
+    expect_equal(fI$objective, 118.2399, tolerance = 1e-3)
+    # ... and keep them in the same neighbourhood as the plain fit.
+    expect_lt(abs(fM$objective - ref$objective), 3)
+    expect_lt(abs(fI$objective - ref$objective), 3)
   })
 })
