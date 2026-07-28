@@ -520,6 +520,10 @@ npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
     .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
 }
 
+odeSwapRetryTest_ <- function(nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFactor, relaxMode, sticky0, restoreTolOnSuccess) {
+    .Call(`_nlmixr2est_odeSwapRetryTest_`, nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFactor, relaxMode, sticky0, restoreTolOnSuccess)
+}
+
 odeSwapPlanFor_ <- function(neq, nlhs) {
     .Call(`_nlmixr2est_odeSwapPlanFor_`, neq, nlhs)
 }

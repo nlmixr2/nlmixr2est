@@ -206,6 +206,39 @@ struct OdeRetryOpts {
   bool resetBadSolveEachRetry = true;
 };
 
+// The retry LOGIC, with every side effect injected.  Splitting it this way is
+// what makes the loop testable: a unit test supplies stub solve/bad/relax/tol
+// functions and drives this exact code, rather than a copy of it.
+//
+//   solve()      perform one solve
+//   bad()        did that solve fail?
+//   relax(mode)  loosen tolerances (global or per-individual)
+//   tolGet()     current per-individual tolerance factor
+//   tolSet(x)    restore it
+template <typename SolveFn, typename BadFn, typename RelaxFn,
+          typename TolGet, typename TolSet, typename Hooks>
+int odeSwapRetryCore(int &stickyRecalcN2, SolveFn solve, BadFn bad, RelaxFn relax,
+                     TolGet tolGet, TolSet tolSet, const OdeRetryOpts &o, Hooks &h) {
+  double prevTol = tolGet();
+  solve();
+  int j = 0;
+  while (stickyRecalcN2 <= o.stickyRecalcN && bad() && j < o.maxOdeRecalc) {
+    stickyRecalcN2++;
+    h.onRetry();
+    relax(o.relaxMode);
+    solve();
+    j++;
+  }
+  if (j != 0) {
+    if (stickyRecalcN2 <= o.stickyRecalcN) {
+      if (o.restoreTolOnSuccess) tolSet(prevTol);
+    } else {
+      h.onSticky();
+    }
+  }
+  return j;
+}
+
 // Solve, then while the solve is bad and budget remains, loosen and re-solve.
 // Returns the retry count.  `stickyRecalcN2` is the caller's per-subject counter
 // (op_focei's atomic or nlmOp's plain int -- hence the template).  Hooks supplies
@@ -215,31 +248,22 @@ template <typename SolveFn, typename Hooks>
 int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
                       int &stickyRecalcN2, SolveFn solveFn,
                       const OdeRetryOpts &o, Hooks &h) {
-  double prevTol = getIndTolFactor(ind);
-  solveFn();
-  int j = 0;
-  while (stickyRecalcN2 <= o.stickyRecalcN && odeSwapIndBadSolve(op, ind) &&
-         j < o.maxOdeRecalc) {
-    stickyRecalcN2++;
-    h.onRetry();
-    if (o.relaxMode == odeRelaxInd) {
-      setIndTolFactor(ind, getIndTolFactor(ind) * o.odeRecalcFactor);
-    } else {
-      atolRtolFactor_(o.odeRecalcFactor);
-    }
-    setIndSolve(ind, -1);
-    if (o.resetBadSolveEachRetry) resetOpBadSolve(op);
-    solveFn();
-    j++;
-  }
-  if (j != 0) {
-    if (stickyRecalcN2 <= o.stickyRecalcN) {
-      if (o.restoreTolOnSuccess) setIndTolFactor(ind, prevTol);
-    } else {
-      h.onSticky();
-    }
-  }
-  return j;
+  return odeSwapRetryCore(
+    stickyRecalcN2,
+    [&]{ solveFn(); },
+    [&]{ return odeSwapIndBadSolve(op, ind); },
+    [&](int mode) {
+      if (mode == odeRelaxInd) {
+        setIndTolFactor(ind, getIndTolFactor(ind) * o.odeRecalcFactor);
+      } else {
+        atolRtolFactor_(o.odeRecalcFactor);
+      }
+      setIndSolve(ind, -1);
+      if (o.resetBadSolveEachRetry) resetOpBadSolve(op);
+    },
+    [&]{ return getIndTolFactor(ind); },
+    [&](double x){ setIndTolFactor(ind, x); },
+    o, h);
 }
 
 // ---- persistent pin ------------------------------------------------------
@@ -251,9 +275,7 @@ int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
 //
 // No-op unless the slot is genuinely smaller than the pool.  Records the
 // rx_solve* it pinned, so unpinning cannot walk a different (rebuilt) solve
-// structure and cannot depend on caller state that may already have been reset --
-// the old clear early-returned on op_focei.innerNeq <= 0, so zeroing that first
-// silently skipped it.
+// structure and cannot depend on caller state that may already have been reset.
 void odeSwapPinAll(int slot);
 void odeSwapUnpinAll();     // idempotent; safe after the pool was freed or rebuilt
 void odeSwapRepin();        // re-apply after rxSolve_ rebuilt the solve structure

@@ -35,3 +35,23 @@
 #' @noRd
 .odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2",
                    "outer", "outerNode", "outerCov")
+
+#' Drive the shared bad-solve retry loop with stub side effects.
+#'
+#' Exercises `odeSwapRetryCore` -- the real loop the FOCEi inner, theta-sens,
+#' analytic-outer and nlm solves all use -- without needing an ODE that fails.
+#' The first `nFail` solves report bad, then they succeed.
+#' @noRd
+.odeSwapRetryTest <- function(nFail, maxOdeRecalc = 5L, stickyRecalcN = 4L,
+                              odeRecalcFactor = 10^0.5, relaxMode = 1L,
+                              sticky0 = 0L, restoreTolOnSuccess = TRUE) {
+  odeSwapRetryTest_(as.integer(nFail), as.integer(maxOdeRecalc),
+                    as.integer(stickyRecalcN), as.double(odeRecalcFactor),
+                    as.integer(relaxMode), as.integer(sticky0),
+                    isTRUE(restoreTolOnSuccess))
+}
+
+#' Relaxation modes, matching the C++ `OdeRelaxMode` enum.
+#' @noRd
+.odeRelaxGlobal <- 0L
+.odeRelaxInd <- 1L

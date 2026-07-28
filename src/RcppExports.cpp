@@ -1502,6 +1502,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// odeSwapRetryTest_
+List odeSwapRetryTest_(int nFail, int maxOdeRecalc, int stickyRecalcN, double odeRecalcFactor, int relaxMode, int sticky0, bool restoreTolOnSuccess);
+RcppExport SEXP _nlmixr2est_odeSwapRetryTest_(SEXP nFailSEXP, SEXP maxOdeRecalcSEXP, SEXP stickyRecalcNSEXP, SEXP odeRecalcFactorSEXP, SEXP relaxModeSEXP, SEXP sticky0SEXP, SEXP restoreTolOnSuccessSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type nFail(nFailSEXP);
+    Rcpp::traits::input_parameter< int >::type maxOdeRecalc(maxOdeRecalcSEXP);
+    Rcpp::traits::input_parameter< int >::type stickyRecalcN(stickyRecalcNSEXP);
+    Rcpp::traits::input_parameter< double >::type odeRecalcFactor(odeRecalcFactorSEXP);
+    Rcpp::traits::input_parameter< int >::type relaxMode(relaxModeSEXP);
+    Rcpp::traits::input_parameter< int >::type sticky0(sticky0SEXP);
+    Rcpp::traits::input_parameter< bool >::type restoreTolOnSuccess(restoreTolOnSuccessSEXP);
+    rcpp_result_gen = Rcpp::wrap(odeSwapRetryTest_(nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFactor, relaxMode, sticky0, restoreTolOnSuccess));
+    return rcpp_result_gen;
+END_RCPP
+}
 // odeSwapPlanFor_
 List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs);
 RcppExport SEXP _nlmixr2est_odeSwapPlanFor_(SEXP neqSEXP, SEXP nlhsSEXP) {

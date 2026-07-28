@@ -88,6 +88,71 @@ nmTest({
     expect_identical(p$scratchNlhs, 0L)
   })
 
+  test_that("the shared retry loop loosens, gives up, and un-sticks correctly", {
+    # Drives odeSwapRetryCore -- the loop the FOCEi inner, theta-sens, analytic
+    # outer and nlm solves all share -- with stub side effects, so the logic is
+    # covered without needing an ODE that fails.
+    f <- 10^0.5
+
+    # nothing fails: one solve, no retries, tolerance untouched
+    r <- .odeSwapRetryTest(nFail = 0L)
+    expect_identical(r$retries, 0L)
+    expect_identical(r$solves, 1L)
+    expect_equal(r$tolFactor, 1)
+    expect_identical(r$onRetry, 0L)
+    expect_identical(r$onSticky, 0L)
+
+    # fails twice then succeeds, inside budget: 2 retries, and because it
+    # recovered within stickyRecalcN the loosening is HANDED BACK
+    r <- .odeSwapRetryTest(nFail = 2L, maxOdeRecalc = 5L, stickyRecalcN = 4L)
+    expect_identical(r$retries, 2L)
+    expect_identical(r$solves, 3L)
+    expect_identical(r$onRetry, 2L)
+    expect_identical(r$onSticky, 0L)
+    expect_equal(r$tolFactor, 1)          # restored
+    expect_identical(r$stickyRecalcN2, 2L)
+
+    # never succeeds: retries are capped by maxOdeRecalc, not by nFail
+    r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 3L, stickyRecalcN = 99L)
+    expect_identical(r$retries, 3L)
+    expect_identical(r$solves, 4L)        # 1 initial + 3 retries
+
+    # budget exhausted: the loosening STAYS and onSticky latches
+    r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 5L, stickyRecalcN = 2L)
+    expect_identical(r$onSticky, 1L)
+    expect_gt(r$tolFactor, 1)             # NOT restored
+    expect_equal(r$tolFactor, f^r$retries)
+
+    # a subject already over its sticky budget does not retry at all
+    r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 5L, stickyRecalcN = 2L,
+                           sticky0 = 3L)
+    expect_identical(r$retries, 0L)
+    expect_identical(r$solves, 1L)
+    expect_identical(r$onRetry, 0L)
+  })
+
+  test_that("the retry loop honors per-site relaxation and un-stick policy", {
+    # These differ per call site and are deliberately NOT unified: the global
+    # form races under a parallel loop, and nlm intentionally keeps a recovered
+    # subject's loosened tolerance.
+    r <- .odeSwapRetryTest(nFail = 2L, relaxMode = .odeRelaxInd)
+    expect_identical(r$indRelax, 2L)
+    expect_identical(r$globalRelax, 0L)
+
+    r <- .odeSwapRetryTest(nFail = 2L, relaxMode = .odeRelaxGlobal)
+    expect_identical(r$globalRelax, 2L)
+    expect_identical(r$indRelax, 0L)
+    # global relaxation does not touch the per-individual factor
+    expect_equal(r$tolFactor, 1)
+
+    # nlm's policy: recovered within budget, but the loosening is kept
+    r <- .odeSwapRetryTest(nFail = 2L, relaxMode = .odeRelaxInd,
+                           restoreTolOnSuccess = FALSE)
+    expect_identical(r$retries, 2L)
+    expect_identical(r$onSticky, 0L)
+    expect_equal(r$tolFactor, (10^0.5)^2)   # kept, not handed back
+  })
+
   test_that("the analytic outer solve has its own tolerance-retry controls", {
     # Separate from the inner problem's: a fit may loosen one and not the other,
     # and the warning has to name the knob that actually applied.

@@ -345,6 +345,46 @@ bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
 // the pool, whether the scratch was needed, whether an override leaked), not just
 // that the numbers came out the same.
 
+// Drives odeSwapRetryCore -- the REAL loop, not a copy -- with stub side effects,
+// so the retry logic is testable without a pathological ODE.  `nFail` solves
+// report bad, then they succeed.
+//[[Rcpp::export]]
+List odeSwapRetryTest_(int nFail, int maxOdeRecalc, int stickyRecalcN,
+                       double odeRecalcFactor, int relaxMode, int sticky0,
+                       bool restoreTolOnSuccess) {
+  OdeRetryOpts o;
+  o.maxOdeRecalc = maxOdeRecalc;
+  o.stickyRecalcN = stickyRecalcN;
+  o.odeRecalcFactor = odeRecalcFactor;
+  o.relaxMode = relaxMode;
+  o.restoreTolOnSuccess = restoreTolOnSuccess;
+
+  int solves = 0, indRelax = 0, globalRelax = 0, onRetry = 0, onSticky = 0;
+  double tol = 1.0;
+  int sticky = sticky0;
+
+  struct StubHooks {
+    int *r; int *s;
+    void onRetry() { (*r)++; }
+    void onSticky() { (*s)++; }
+  } h; h.r = &onRetry; h.s = &onSticky;
+
+  int retries = odeSwapRetryCore(
+    sticky,
+    [&]{ solves++; },
+    [&]{ return solves <= nFail; },              // the first nFail solves "fail"
+    [&](int mode) { if (mode == odeRelaxInd) { indRelax++; tol *= o.odeRecalcFactor; }
+                    else globalRelax++; },
+    [&]{ return tol; },
+    [&](double x){ tol = x; },
+    o, h);
+
+  return List::create(_["retries"] = retries, _["solves"] = solves,
+                      _["tolFactor"] = tol, _["stickyRecalcN2"] = sticky,
+                      _["indRelax"] = indRelax, _["globalRelax"] = globalRelax,
+                      _["onRetry"] = onRetry, _["onSticky"] = onSticky);
+}
+
 //[[Rcpp::export]]
 List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs) {
   std::vector<int> a(neq.begin(), neq.end()), b(nlhs.begin(), nlhs.end());
