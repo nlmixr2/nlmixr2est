@@ -1105,16 +1105,7 @@ struct EtaRestoreGuard {
 // answers "did THIS subject fail" without touching shared state.
 static inline bool indHasBadSolve(rx_solving_options *op,
                                   rx_solving_options_ind *ind) {
-  int neq = getOpNeq(op);
-  if (neq <= 0) return false;
-  double *solve = getIndSolve(ind);
-  int n = neq * getIndNallTimes(ind);
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-      return true;
-    }
-  }
-  return false;
+  return odeSwapIndBadSolve(op, ind);
 }
 
 arma::vec getCurEta(int cid) {
@@ -1441,19 +1432,11 @@ double likInner0(double *eta, int id) {
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
     } // end (!freezeOde) integration guard
-    bool isBadSolve = false;
-    // predSolve lays the buffer out at predNeq stride; scan only those slots.
-    int effNeq = predSolve ? op_focei.predNeq : getOpNeq(op);
-    int nsolve = (effNeq + getOpNlin(op))*getIndNallTimes(ind);
-    if (effNeq > 0) {
-      for (int ns = 0; ns < nsolve; ++ns) {
-        if (ISNA(solve[ns]) || std::isnan(solve[ns]) ||
-            std::isinf(solve[ns])) {
-          isBadSolve = true;
-          break;
-        }
-      }
-    }
+    // Scan exactly what this subject's solve wrote.  The stride comes from
+    // ind->neqOverride, which the OdeSwapScope above already armed for a pred
+    // solve and which the impmap/fast-ll pin sets for the inner solve -- so this
+    // no longer reads slots the solve never touched.
+    bool isBadSolve = odeSwapIndBadSolve(op, ind);
     if (isBadSolve){
       return NA_REAL;
       //throw std::runtime_error("bad solve");
@@ -1489,7 +1472,10 @@ double likInner0(double *eta, int id) {
         // need to optimize finite difference
         // First get the f0 for F and R based on current solve
         arma::mat rf0mat = grabRFmatFromInner(id, predSolve);
-        // now save the prior solve
+        // now save the prior solve.  Same span the solve wrote (and that the
+        // restore below puts back), taken from ind->neqOverride rather than
+        // op->neq so a compacted solve is saved at its own stride.
+        int nsolve = odeSwapIndSolveSpan(op, ind);
         arma::vec solveSave(nsolve);
         std::copy(solve, solve + nsolve, solveSave.memptr());
         arma::vec f0 = rf0mat.col(0);
@@ -3569,13 +3555,8 @@ static inline double foceiOfv0(double *theta){
         int _nsub = (int)getRxNsubAndMix(rx);
         for (int _i = 0; _i < _nsub; _i++) {
           rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
-          double *_solveI = getIndSolve(_indI);
-          int _nsolveI = getOpNeq(_op0) * getIndNallTimes(_indI);
-          for (int _ns = 0; _ns < _nsolveI; _ns++) {
-            if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
-              setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
-              break;
-            }
+          if (odeSwapIndBadSolve(_op0, _indI)) {
+            setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
           }
         }
       }

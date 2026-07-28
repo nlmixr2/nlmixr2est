@@ -138,6 +138,25 @@ private:
   bool wide_, armed_;
 };
 
+// ---- override-aware solve-buffer scanning -------------------------------
+
+// rxode2's rxEffNeq is compiled out for us (rxode2.h guards it behind
+// __RXODE2PTR_H__), so carry the same rule: the override applies only when it is
+// within [0, op->neq], otherwise the full state count does.
+static inline int odeSwapEffNeq(rx_solving_options_ind *ind, rx_solving_options *op) {
+  int o = getIndNeqOverride(ind), n = getOpNeq(op);
+  return (o >= 0 && o <= n) ? o : n;
+}
+
+// Doubles this individual's last solve actually wrote.  Scanning further reads
+// slots the solve never touched, which is both a use of uninitialised memory and
+// a way to false-trigger the ODE retry loop.
+int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind);
+
+// NaN/Inf anywhere in that span.  Per-individual, so it answers "did THIS subject
+// fail" without reading op->badSolve, which another thread can flip mid-loop.
+bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind);
+
 // Usage counters, so tests can assert the mechanism ran rather than infer it.
 long odeSwapOverrideArmedN();
 long odeSwapScratchUsedN();

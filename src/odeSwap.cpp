@@ -245,6 +245,33 @@ double *OdeSwapScope::lhs() const {
   return odeSwapScratch(want).data();
 }
 
+// ---- override-aware solve-buffer scanning -------------------------------
+
+int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
+  if (op == NULL || ind == NULL) return 0;
+  int full = getOpNeq(op);
+  int eff = odeSwapEffNeq(ind, op);
+  int nlin = getOpNlin(op);
+  // rxode2 lays getAdvan() out from the FULL neq when numLin > 0, so an override
+  // does not compact that part of the buffer.  Scan the full span there rather
+  // than risk under-scanning a region the solve did write.
+  if (nlin > 0 && eff != full) eff = full;
+  int n = eff + nlin;
+  if (n <= 0) return 0;
+  return n * getIndNallTimes(ind);
+}
+
+bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
+  int n = odeSwapIndSolveSpan(op, ind);
+  if (n <= 0) return false;
+  double *solve = getIndSolve(ind);
+  if (solve == NULL) return false;
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+  }
+  return false;
+}
+
 // ---- R introspection ----------------------------------------------------
 //
 // Exposes the pool decision so tests can assert the MECHANISM (which model sized

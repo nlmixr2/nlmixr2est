@@ -122,6 +122,21 @@
 
 ## Bug fixes
 
+### Estimation
+
+- The per-subject "did this ODE solve fail" check now scans only the part of the
+  solve buffer that the subject's solve actually wrote.  When a method sizes the
+  shared solve buffer for a larger model and runs the inner solves compacted
+  against it (`est="impmap"`, `"imp"`, `"qrpem"`, `"advi"`, `"emvi"`, `"fbvi"`,
+  `est="vae"` with `nonMuTheta="grad"`, and `foceiControl(fast=TRUE)` with a
+  general `ll()` endpoint), the check read past that point into slots the solve
+  never touched.  Whatever those slots happened to hold could be reported as a
+  failed solve, needlessly loosening ODE tolerances and, once the retry budget
+  was spent, latching the loosened tolerance for the rest of the fit.  Objective
+  values for those methods may change slightly as a result.
+
+### Other
+
 - `nlmixr2fix()` now actually repairs serialized fit components: it previously
   tested the component name (not the object) for rawness, so the repair loop
   never ran, and a successful qs2 read was discarded.

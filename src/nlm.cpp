@@ -317,20 +317,12 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-// Like inner.cpp's indHasBadSolve(): scan ind->solve for NaN/Inf instead of the
-// shared op->badSolve flag, which another thread can flip mid-loop.
+// Shared with inner.cpp: scan ind->solve for NaN/Inf over the span this
+// subject's solve actually wrote, instead of the shared op->badSolve flag which
+// another thread can flip mid-loop.
 static inline bool nlmIndHasBadSolve(rx_solving_options *op,
                                      rx_solving_options_ind *ind) {
-  int neq = getOpNeq(op);
-  if (neq <= 0) return false;
-  double *solve = getIndSolve(ind);
-  int n = neq * getIndNallTimes(ind);
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-      return true;
-    }
-  }
-  return false;
+  return odeSwapIndBadSolve(op, ind);
 }
 
 void nlmSolveNlm(int id) {
