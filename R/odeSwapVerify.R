@@ -5,6 +5,9 @@
 
 #' Pool decision for the currently registered ODE models.
 #'
+#' Counters that survive teardown (`pinnedN`, `pinCalledN`, `pooledSolveN`)
+#' let a test tell a working pooled solve from a silent rxSolve fallback.
+#'
 #' @return list with `models` (a data.frame of slot/name/neq/nlhs/loaded/
 #'   sizesPool/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/`poolNlhs`,
 #'   `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`, `overrideNeeded`,

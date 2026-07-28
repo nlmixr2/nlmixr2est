@@ -80,7 +80,6 @@
 ## memory hygiene rather than stale-state correctness, but a completed fit should
 ## not hold its data hostage for the rest of the session.
 .vaeGradReset <- function() {
-  .vaeGradEnv$active <- FALSE
   .vaeGradEnv$outerCols <- NULL
   .vaeGradEnv$am <- NULL
   .vaeGradEnv$ui <- NULL
@@ -100,7 +99,6 @@
 }
 
 .vaeGradInit <- function(ui, data, regNames) {
-  .vaeGradEnv$active <- FALSE
   ## .vaeInnerSetup replaced the ui's control with the DERIVED focei control, so
   ## .analyticGradCaller (which rxUiGet.foceiOuter consults) would resolve to NA.
   ## Re-mark it so the augmented model builds for this caller.
@@ -147,10 +145,6 @@
   if (isTRUE(.vaeGradEnv$failed)) return(NULL)
   .ui <- .vaeGradEnv$ui
   .reg <- .vaeGradEnv$regNames
-  ## Scope the pooled-solve branch in .foceiAnalyticSolveAll (SHARED with focei's
-  ## own fast gradient) to this call only -- see the comment there.
-  .vaeGradEnv$active <- TRUE
-  on.exit(.vaeGradEnv$active <- FALSE, add = TRUE)
   tryCatch({
     .Om <- if (is.matrix(omega)) omega else diag(as.numeric(omega), nrow = length(omega))
     .st <- .foceiAnalyticGradSetup(.ui, thVals, .Om, caller = "vae")

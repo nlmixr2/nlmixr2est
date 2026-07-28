@@ -50,6 +50,10 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   OdeModelReg &m = _odeReg[slot];
   m.fns = NULL;
   m.name = name;
+  // Matches rxode2's op->neq, which counts "state" only -- NOT stateExtra
+  // (measured: state=8, stateExtra=1, op->neq=8).  Adding stateExtra pushes neq
+  // above op->neq, and rxEffNeq() then ignores the override entirely, silently
+  // disabling every compaction.
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
   m.lhsNames.resize((size_t)lhs.size());
@@ -191,10 +195,24 @@ int odeSwapCanPool(int slot) {
 static std::atomic<long> _odeOverrideArmedN(0);
 static std::atomic<long> _odeScratchUsedN(0);
 static std::atomic<long> _odeScratchResizeN(0);
+// cumulative, NOT reset by clearAll/unpin -- post-fit `pinned` is always FALSE
+// because teardown unpins, so this is the only way a test can see it happened
+static std::atomic<long> _odePinnedN(0);
+// Counts COMPLETED pooled outer-gradient solves.  Cumulative and never reset, so
+// a test can tell a working pooled path from a silent fallback to rxode2::rxSolve
+// -- the two are numerically equivalent, which is how a dead path went unnoticed.
+static std::atomic<long> _odePooledSolveN(0);
+static std::atomic<long> _odePinCalledN(0);
+static std::atomic<int>  _odePinDeny(0);
 
 long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_relaxed); }
 long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
+long odeSwapPinnedN()        { return _odePinnedN.load(std::memory_order_relaxed); }
+long odeSwapPooledSolveN()   { return _odePooledSolveN.load(std::memory_order_relaxed); }
+void odeSwapNotePooledSolve() { _odePooledSolveN.fetch_add(1, std::memory_order_relaxed); }
+long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_relaxed); }
+int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
 void odeSwapResetCounters() {
   _odeOverrideArmedN.store(0, std::memory_order_relaxed);
   _odeScratchUsedN.store(0, std::memory_order_relaxed);
@@ -281,14 +299,17 @@ static void odeSwapPinWalk(int neq) {
 }
 
 void odeSwapPinAll(int slot) {
-  if (!odeSwapLoaded(slot)) return;
+  _odePinCalledN.fetch_add(1, std::memory_order_relaxed);
+  if (!odeSwapLoaded(slot)) { _odePinDeny.store(1, std::memory_order_relaxed); return; }
   const OdePoolPlan &p = odeSwapPlan();
   int neq = odeSwapNeq(slot);
   // Only meaningful when a larger peer sized the pool; otherwise the stride
   // already matches and pinning would just be state to unwind.
-  if (p.poolSlot < 0 || neq >= p.poolNeq) return;
-  odeSwapPinWalk(neq);
+  if (p.poolSlot < 0) { _odePinDeny.store(2, std::memory_order_relaxed); return; }
+  if (neq >= p.poolNeq) { _odePinDeny.store(3, std::memory_order_relaxed); return; }
+  odeSwapPinWalk(odeSwapNeq(slot));
   _odePinnedSlot = slot;
+  _odePinnedN.fetch_add(1, std::memory_order_relaxed);
 }
 
 void odeSwapRepin() {
@@ -453,5 +474,9 @@ List odeSwapInfo_() {
     _["activeOverride"] = activeOv,
     _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
     _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
-    _["scratchResizeN"] = (double)odeSwapScratchResizeN());
+    _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
+    _["pinnedN"] = (double)odeSwapPinnedN(),
+    _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
+    _["pinCalledN"] = (double)odeSwapPinCalledN(),
+    _["pinDeny"] = (double)odeSwapPinDeny());
 }

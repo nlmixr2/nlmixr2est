@@ -751,7 +751,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // vaeOuterSolve_
-List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores);
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores);
 RcppExport SEXP _nlmixr2est_vaeOuterSolve_(SEXP thValsSEXP, SEXP ebesSEXP, SEXP colsSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;

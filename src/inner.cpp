@@ -9855,6 +9855,13 @@ Environment foceiFitCpp_(Environment e){
       if (model.containsElementNamed("innerHess2")) {
         odeSwapDeclare(odeSlotHess2, "hess2", model["innerHess2"]);
       }
+      // foceiControl(fast=TRUE)'s augmented outer model is deliberately NOT
+      // declared here.  Pooling it makes it size the pool (26 states vs 8), and
+      // the inner solves can only run compacted inside that pool via the
+      // neqOverride pin -- which is currently dead (see foceiSetup_ below).
+      // Without the pin the augmented solve fails and the whole gradient drops
+      // to finite differences, which is strictly worse than the rxSolve path.
+      // est="vae" still pools its own outer model (vaeInnerSetup_ declares it).
       // A larger peer sizes the pool, so the inner solves run compacted to their
       // own state count via ind->neqOverride.  Set BEFORE foceiSetup_, as the two
       // blocks this replaces did -- foceiSetup_ reads op_focei state while it
@@ -9864,6 +9871,16 @@ Environment foceiFitCpp_(Environment e){
       // event-sensitivity teardown ("free(): invalid next size") on the first
       // inner solve.  No reader inside foceiSetup_ is apparent, so treat the
       // ordering as load bearing until that is chased down upstream.
+      // Assigned BEFORE foceiSetup_, which calls rxOptionsFreeFocei() and so
+      // placement-news op_focei back to its defaults -- meaning innerNeq is 0 at
+      // every "innerNeq > 0" pin gate below and the inner neqOverride pin is dead
+      // code, here and on main.  Moving the assignment after foceiSetup_ does
+      // arm the pin, and then est="impmap" aborts with "free(): invalid next
+      // size": the pin is sticky per subject, so it also truncates solves of the
+      // POOL model that are not wrapped in an OdeSwapScope (the remaining raw
+      // *Ode macros and imp.cpp's own solves), and rxEffNeq() feeds that count
+      // straight to the integrator.  Enabling the pin therefore has to wait for
+      // the macro/solve-site audit; leaving it dead keeps main's behavior.
       op_focei.innerNeq = (odeSwapNeq(odeSlotInner) < odeSwapPlan().poolNeq) ?
         odeSwapNeq(odeSlotInner) : 0;
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
@@ -10542,13 +10559,19 @@ RObject vaeInnerSetup_(Environment e) {
       impSetInnerNeqOverride();
     }
   }
-  // nonMuTheta="grad": the augmented outer-gradient model was registered above
-  // (it is the LARGEST structure, so it sized the shared pool and the inner MAP
-  // runs under ind->neqOverride = innerNeq -- the same arrangement est="advi"
-  // uses for its theta-sensitivity model).  Just record its widths here.
+  // nonMuTheta="grad": the augmented outer-gradient model was DECLARED before
+  // foceiSetup_ so it could size the shared pool.  Bind its entry points now --
+  // declaring is metadata only, and vaeOuterSolve_ solves through rxVaeOuter, so
+  // without this the pooled M-step refuses on every iteration and silently falls
+  // back to rxode2::rxSolve.  Registering has to happen AFTER foceiSetup_: the
+  // rxDynLoad it does rebinds rxode2's event-sensitivity globals, which corrupts
+  // the solve if it runs before rxSolve_ has built the pool.
   op_focei.vaeOuterNeq = 0;
   op_focei.vaeOuterNlhs = 0;
   {
+    if (model.containsElementNamed("vaeOuter")) {
+      odeSwapRegister(odeSlotOuter, "outer", model["vaeOuter"], &rxVaeOuter);
+    }
     if (odeSwapLoaded(odeSlotOuter)) {
       op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
       op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
@@ -10839,8 +10862,19 @@ struct VaeOuterE {
 // thread_local so two workers can never share a counter.
 static thread_local int _outerRetryScratch = 0;
 
+// Returns RObject, not List: `return R_NilValue` from a List-returning function
+// builds an EMPTY LIST, not NULL, so every refusal here looked like a successful
+// but empty solve to .foceiAnalyticSolveAll and silently dropped the gradient to
+// finite differences.
 //[[Rcpp::export]]
-List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
+  // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
+  // solve is only valid if the augmented model is registered AND the pool is at
+  // least its size.  odeSwapCanPool says exactly that -- a model larger than the
+  // pool returns odeDenyPoolNotSized, which is the failure the flag was patching
+  // (a focei fast fit after a vae grad fit, running against a pool sized for its
+  // own inner model).  Refusing here means R can just call and fall through.
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return R_NilValue;
   if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
       rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
@@ -10979,6 +11013,7 @@ List vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cor
     }
     out[i] = Ei;
   }
+  odeSwapNotePooledSolve();
   return out;
 }
 

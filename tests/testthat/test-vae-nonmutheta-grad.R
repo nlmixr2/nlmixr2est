@@ -231,10 +231,12 @@ nmTest({
 
   test_that("a vae grad fit does not leak into a later focei fast fit", {
     skip_on_cran()
-    ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient and
-    ## .vaeGradEnv lives for the whole session, so a vae grad fit must not leave
-    ## the pooled-solve branch armed.  Without the `active` guard this made 23 of
-    ## test-focei-fast-grad.R's assertions fail whenever the vae tests ran first.
+    ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient, so a vae
+    ## grad fit must not leave the pooled-solve branch armed for the next focei
+    ## fit.  This used to be a session flag (.vaeGradEnv$active); it is now the
+    ## structural odeSwapCanPool(odeSlotOuter) check in C++, and this test pins
+    ## that the replacement holds.
+    .n0 <- .odeSwapInfo()$pooledSolveN
     .ref <- suppressMessages(
       nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
               control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
@@ -244,14 +246,21 @@ nmTest({
               control = vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
                                    itersBurnIn = 10L, iters = 25L, klWarmup = 5L,
                                    gammaIter = 18L))))
-    expect_false(isTRUE(.vaeGradEnv$active))
+    ## The pooled solve must actually have RUN -- it and the rxSolve fallback are
+    ## numerically equivalent, so equality alone cannot tell them apart, and a
+    ## dead pooled path is exactly the bug this counter exists to catch.
+    expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
     expect_null(.vaeGradEnv$outerCols)
+    .n1 <- .odeSwapInfo()$pooledSolveN
     .after <- suppressMessages(
       nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
               control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
                                      calcTables = FALSE)))
     expect_equal(.after$objf, .ref$objf, tolerance = 1e-4)
     expect_equal(unname(.after$theta), unname(.ref$theta), tolerance = 1e-4)
+    ## ...and the focei fit after it must NOT have taken the pooled branch: it
+    ## registers no augmented model, so odeSwapCanPool refuses.
+    expect_identical(.odeSwapInfo()$pooledSolveN, .n1)
   })
 
   test_that("in scope, the gradient path is actually taken", {

@@ -83,7 +83,7 @@ void odeSwapClear(int slot);
 void odeSwapClearAll();          // clears every slot and releases preserved SEXPs
 
 bool odeSwapLoaded(int slot);
-int  odeSwapNeq(int slot);       // 0 when unloaded
+int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
 const char *odeSwapName(int slot);
 SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
@@ -286,6 +286,11 @@ int  odeSwapPinnedSlot();
 long odeSwapOverrideArmedN();
 long odeSwapScratchUsedN();
 long odeSwapScratchResizeN();
+long odeSwapPinnedN();
+long odeSwapPooledSolveN();    // completed pooled outer solves; survives teardown
+void odeSwapNotePooledSolve();
+long odeSwapPinCalledN();
+int  odeSwapPinDeny();   // cumulative pins; survives teardown, unlike odeSwapPinned()
 void odeSwapResetCounters();
 
 #endif // __ODESWAP_H__

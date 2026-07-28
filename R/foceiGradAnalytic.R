@@ -468,23 +468,32 @@
 #' call flag, not on cached state, so focei's own fast gradient is unaffected.
 #' @noRd
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
-  ## est="vae" nonMuTheta="grad": solve the augmented model IN THE SHARED FOCEi
-  ## pool (which it sized) and take the per-subject E structures straight from
-  ## C++.  This avoids rxode2::rxSolve, which frees and rebuilds the global solve
-  ## on every M-step.  A NULL from the solver falls through to the rxSolve path.
+  ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
+  ## the per-subject E structures straight from C++, instead of routing through
+  ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
+  ## Used by BOTH est="vae"'s M-step and focei's own fast gradient.
   ##
-  ## `active` is REQUIRED, not belt-and-braces: this function is SHARED with
-  ## focei's own fast gradient, and .vaeGradEnv persists for the whole session.
-  ## Keyed on outerCols alone, any focei fast fit AFTER a vae grad fit in the same
-  ## session takes this branch against a pool sized for ITS inner model -- which is
-  ## how 23 of test-focei-fast-grad.R's assertions failed.  .vaeGradEval sets
-  ## `active` only around its own gradient call.
-  if (isTRUE(.vaeGradEnv$active) && !is.null(.vaeGradEnv$outerCols)) {
-    .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes),
-                                   .vaeGradEnv$outerCols,
-                                   as.integer(.vaeGradEnv$cores)),
-                    error = function(e) NULL)
-    if (!is.null(.Ec)) return(.Ec)
+  ## No session flag guards this any more.  vaeOuterSolve_ refuses unless the
+  ## augmented model is registered AND the pool is at least its size
+  ## (odeSwapCanPool -> odeDenyPoolNotSized otherwise), which is the structural
+  ## form of what `.vaeGradEnv$active` was patching: a focei fast fit after a vae
+  ## grad fit, running against a pool sized for its own inner model.  A NULL
+  ## falls through to the rxSolve path below.
+  ##
+  ## DDE is excluded: those solves pin method="dop853"/dense, which the shared
+  ## pool fixes at setup and cannot change per solve.
+  .dde <- isTRUE(tryCatch(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L,
+                          error = function(e) FALSE))
+  if (!.dde) {
+    .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
+    if (!is.null(.cols)) {
+      .nc <- tryCatch({ .c <- am$cores
+        if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c) },
+        error = function(e) 1L)
+      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc),
+                      error = function(e) NULL)
+      if (!is.null(.Ec) && length(.Ec) > 0L) return(.Ec)
+    }
   }
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
   etav <- paste0("ETA_", seq_len(neta), "_")

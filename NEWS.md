@@ -2,6 +2,20 @@
 
 ## Bug fixes
 
+### Estimation
+
+- `est="vae"` with `nonMuTheta="grad"` solved its augmented outer-gradient model
+  through `rxode2::rxSolve` on every M-step iteration instead of the shared
+  FOCEi solve pool.  The pooled and fallback routes are numerically equivalent,
+  so this cost time rather than accuracy.
+
+- The analytic outer gradient could silently degrade to finite differences.
+  `vaeOuterSolve_()` returned `R_NilValue` from a `List`-returning function,
+  which builds an *empty list* rather than `NULL`, so every refusal and every
+  failed augmented solve looked to the caller like a successful solve that
+  returned nothing.  Affects `est="vae"` with `nonMuTheta="grad"` and any
+  caller sharing that path.
+
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
   function depend on the optimizer's history rather than on `theta` alone, so
   the same `theta` could return values hundreds of objective-function units
