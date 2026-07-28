@@ -273,7 +273,13 @@ struct focei_options {
   mat cholOmegaInv;
   mat etaM;
   mat etaS;
+  // 1/SD of the eta distribution; standardizes an INDIVIDUAL eta (etaInBound(),
+  // the per-subject reset criterion).
   mat eta1SD;
+  // Historical 1/sqrt(etaS) scaling, kept for thetaReset(), which standardizes
+  // the MEAN eta rather than an individual one (thetaReset() supplies the
+  // sqrt(n) of the standard error of the mean); see the note there.
+  mat eta1SDmean;
   double n;
   double logDetOmegaInv5;
 
@@ -620,6 +626,35 @@ static inline void resetEtaSelective(focei_ind *fInd, int neta) {
       fInd->eta[j] = 0.0;
     }
   }
+}
+
+// Zero ONLY eta j (honoring mu-ref protection).  The standardized-eta bound is a
+// per-component test, so the reset it triggers has to be per-component too;
+// zeroing the whole vector because one component sat in its tail discarded every
+// converged EBE the subject had.
+static inline void resetEtaComponent(focei_ind *fInd, unsigned int j) {
+  if (isMuRefCovProtected(j)) return;
+  fInd->eta[j] = 0.0;
+}
+
+// Convert the Welford accumulator op_focei.etaS into 1/SD.
+//
+// etaS is the SUM of squared deviations (Welford's M2), not the variance, so it
+// must be divided by (n-1) before the square root.  Using it raw made the
+// eta/SD reset criterion sqrt(n-1) times too lax -- effectively inert -- and,
+// when the accumulator was exactly zero (every subject sharing an eta value,
+// which is the state at start-up and after a mass reset), produced Inf so that
+// the criterion fired for every nonzero eta.  A non-positive or non-finite
+// variance yields 0 here, which disables the criterion for that component
+// rather than firing it unconditionally.
+static inline arma::mat etaSdInv(const arma::mat& etaS, double n) {
+  arma::mat ret(etaS.n_rows, etaS.n_cols, arma::fill::zeros);
+  double den = (n > 1.0) ? (n - 1.0) : 1.0;
+  for (arma::uword i = 0; i < etaS.n_elem; ++i) {
+    double v = etaS[i] / den;
+    ret[i] = (v > 0.0 && R_FINITE(v)) ? 1.0/std::sqrt(v) : 0.0;
+  }
+  return ret;
 }
 
 // Standardized-eta "p-value" bound test (the same criterion that drives the inner
@@ -2480,39 +2515,48 @@ static inline int innerOpt1(int id, int likId) {
       op_focei.didEtaReset.store(1, std::memory_order_relaxed);
     } else if (R_FINITE(op_focei.resetEtaSize)) {
       std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
-      // Standardized ETAs
-      // chol(omega^-1) %*% eta
-      mat etaRes = op_focei.cholOmegaInv * etaMat;
-      bool doBreak = false;
-      for (unsigned int j = etaRes.n_rows; j--;){
+      // Standardized ETAs.  Two marginal standardizations, both N(0,1) under
+      // eta ~ N(0, Omega): the whitened chol(Omega^-1) %*% eta, and eta_j/SD_j.
+      // Both are checked for every component (previously the second was skipped
+      // whenever the first fired, and either one zeroed the entire vector).
+      mat etaRes1 = op_focei.cholOmegaInv * etaMat;
+      mat etaRes2 = op_focei.eta1SD % etaMat;
+      // Remember the incoming (warm) eta: the reset is a CANDIDATE, not an
+      // override.  A standardized eta past the bound is only evidence that the
+      // warm start *might* be bad -- under the model's own assumptions ~15% of
+      // etas sit past qnorm(1-0.15/2) by construction, so the bound alone
+      // cannot distinguish a runaway eta from an ordinary tail one.  Committing
+      // to the reset unconditionally discarded converged EBEs.
+      std::vector<double> etaPre((size_t)op_focei.neta);
+      std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaPre.begin());
+      bool didReset = false;
+      for (unsigned int j = 0; j < (unsigned int)op_focei.neta; ++j) {
         if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a reset
-        if (std::fabs(etaRes(j, 0)) >= op_focei.resetEtaSize){
-          if (op_focei.resetHessianAndEta){
-            fInd->mode = 1;
-            fInd->uzm = 1;
-            if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-          }
-          resetEtaSelective(fInd, op_focei.neta);
-          op_focei.didEtaReset.store(1, std::memory_order_relaxed);
-          doBreak=true;
-          break;
+        if (std::fabs(etaRes1(j, 0)) >= op_focei.resetEtaSize ||
+            std::fabs(etaRes2(j, 0)) >= op_focei.resetEtaSize) {
+          resetEtaComponent(fInd, j);
+          didReset = true;
         }
       }
-      if (!doBreak){
-        etaRes = op_focei.eta1SD % etaMat;
-        for (unsigned int j = etaRes.n_rows; j--;){
-          if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a reset
-          if (std::fabs(etaRes(j, 0)) >= op_focei.resetEtaSize){
-            if (op_focei.resetHessianAndEta){
-              fInd->mode = 1;
-              fInd->uzm = 1;
-              if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-            }
-            resetEtaSelective(fInd, op_focei.neta);
-            op_focei.didEtaReset.store(1, std::memory_order_relaxed);
-            break;
-          }
+      if (didReset) {
+        // Keep the reset eta only when it actually improves the inner objective
+        // (or when the warm one is unusable).  This preserves the safety-net
+        // purpose -- escaping a genuinely bad warm start -- while guaranteeing
+        // the reset can never make this subject's contribution worse.
+        double fReset = likInner0(&fInd->eta[0], id);
+        double fPre   = likInner0(&etaPre[0], id);
+        if (R_FINITE(fPre) && (!R_FINITE(fReset) || fPre <= fReset)) {
+          std::copy(etaPre.begin(), etaPre.end(), &fInd->eta[0]);
+          didReset = false;   // warm start retained; nothing was really reset
         }
+      }
+      if (didReset) {
+        if (op_focei.resetHessianAndEta){
+          fInd->mode = 1;
+          fInd->uzm = 1;
+          if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+        }
+        op_focei.didEtaReset.store(1, std::memory_order_relaxed);
       }
     }
   }
@@ -2531,6 +2575,29 @@ static inline int innerOpt1(int id, int likId) {
   int izs = 0; float rzs = 0.0f; double dzs = 0.0;
 
   int nF = fInd->nInnerF;
+  // --- Monotone restart bookkeeping ------------------------------------------
+  // Every restart in the nudge cascade below is a CANDIDATE, never a
+  // replacement.  Previously each n1qn1_ call overwrote f/fInd->x, so the LAST
+  // restart won even when it was worse than an earlier one.  Because the
+  // individual objective is recomputed by LikInner2() at whatever eta the
+  // cascade leaves behind, that made the returned objective depend on the
+  // optimizer's history rather than on theta alone.
+  double fBest = std::numeric_limits<double>::infinity();
+  std::vector<double> etaBest((size_t)fop->neta, 0.0);
+  bool haveBest = false;
+  auto keepBest = [&]() {
+    if (R_FINITE(f) && f < fBest) {
+      fBest = f;
+      std::copy(fInd->x, fInd->x + fop->neta, etaBest.begin());
+      haveBest = true;
+    }
+  };
+  // Restore the best candidate seen so far, so a transient bad solve in a later
+  // restart cannot discard an already-good inner solution.
+  auto restoreBest = [&]() {
+    f = fBest;
+    std::copy(etaBest.begin(), etaBest.end(), fInd->x);
+  };
   if (n1qn1Inner) {
     fInd->badSolve = 0;
     n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
@@ -2538,6 +2605,7 @@ static inline int innerOpt1(int id, int likId) {
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
     if (ISNA(f)) return 0;
+    keepBest();
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -2571,10 +2639,14 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) return 0;
+        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
         // nF = fInd->nInnerF - nF;
         // if (nF > 3) tryAgain = false;
-        if (!tryAgain) {
+        // The re-check below used to be wrapped in `if (!tryAgain)`, which can
+        // never be true here (we are inside `if (tryAgain)`), so the cascade
+        // always ran every remaining restart regardless of whether the optimizer
+        // had moved.  Run it unconditionally as intended.
+        {
           tryAgain = true;
           for (int i = fop->neta; i--;){
             if (fInd->x[i] != op_focei.etaNudge){
@@ -2595,10 +2667,10 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) return 0;
+          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
           // nF = fInd->nInnerF - nF;
           // if (nF > 3) tryAgain = false;
-          if (!tryAgain){
+          {
             tryAgain = true;
             for (int i = fop->neta; i--;){
               if (fInd->x[i] != -op_focei.etaNudge){
@@ -2619,10 +2691,10 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) return 0;
+            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
             // nF = fInd->nInnerF - nF;
             // if (nF > 3) tryAgain = false;
-            if (!tryAgain){
+            {
               tryAgain = true;
               for (int i = fop->neta; i--;){
                 if (fInd->x[i] != -op_focei.etaNudge2){
@@ -2643,10 +2715,10 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) return 0;
+              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
               // nF = fInd->nInnerF - nF;
               // if (nF > 3) tryAgain = false;
-              if (!tryAgain){
+              {
                 tryAgain = true;
                 for (int i = fop->neta; i--;){
                   if (fInd->x[i] != +op_focei.etaNudge2){
@@ -2665,10 +2737,10 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) return 0;
+                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
                 //nF = fInd->nInnerF-nF;
                 // if (nF > 3) tryAgain = false;
-                if (!tryAgain){
+                {
                   tryAgain = true;
                   for (int i = fop->neta; i--;){
                     if (fInd->x[i] != 0.0){
@@ -2677,9 +2749,10 @@ static inline int innerOpt1(int id, int likId) {
                     }
                   }
                 }
-                if (tryAgain) {
-                  std::fill_n(fInd->x, fop->neta, 0);
-                }
+                // (the unconditional zero-fill that used to live here is now
+                // redundant: the best-of restore at the end of the cascade owns
+                // the final eta, and zeroing x here discarded a restart that had
+                // actually moved.)
                 std::fill_n(&fInd->var[0], fop->neta, 0.1);
               }
             }
@@ -2724,6 +2797,15 @@ static inline int innerOpt1(int id, int likId) {
     //   }
     // }
   }
+  // Apply the best candidate found across the restart cascade.  This is what
+  // makes the inner solve monotone: a restart can only ever improve the eta the
+  // cascade leaves behind, never degrade it.  LikInner2() below recomputes the
+  // individual objective at this eta, so this is also what the outer optimizer
+  // ultimately sees.
+  if (haveBest && (!R_FINITE(f) || fBest < f)) {
+    restoreBest();
+  }
+
   // only nudge once
   fInd->doEtaNudge=0;
 
@@ -2983,11 +3065,17 @@ static inline bool thetaReset0(bool forceReset = false) {
   return true;
 }
 
-void thetaReset(double size){
+void thetaReset(double size, double n){
   if (op_focei.isSaem) return;
   if (op_focei.maxOuterIterations <= 0) return;
   if (std::isinf(size)) return;
-  mat etaRes =  op_focei.eta1SD % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
+  // NOTE: this criterion is applied to the MEAN eta, not to an
+  // individual one, so it needs a different scale from the
+  // per-subject reset: the z for "is mean(eta) != 0" carries a
+  // sqrt(n) from the standard error of the mean.  eta1SDmean keeps
+  // the 1/sqrt(etaS) scaling (etaS is the Welford sum of squares, not
+  // the variance).
+  mat etaRes = std::sqrt(n) * (op_focei.eta1SDmean % op_focei.etaM); //op_focei.cholOmegaInv * etaMat;
   double res=0;
   for (unsigned int j = etaRes.n_rows; j--;) {
     if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
@@ -3464,12 +3552,13 @@ void innerOpt() {
       if (op_focei.zeroGrad) {
         thetaResetZero();
       }
-      op_focei.eta1SD = 1/sqrt(op_focei.etaS);
+      op_focei.eta1SD = etaSdInv(op_focei.etaS, op_focei.n);
+      op_focei.eta1SDmean = 1/sqrt(op_focei.etaS); // thetaReset scale; see note there
       if (!op_focei.calcGrad && op_focei.maxOuterIterations > 0 &&
           (!op_focei.initObj || op_focei.checkTheta==1) &&
           R_FINITE(op_focei.resetThetaSize)){
         // Not thread safe...
-        thetaReset(op_focei.resetThetaSize);
+        thetaReset(op_focei.resetThetaSize, op_focei.n);
       }
       std::fill(op_focei.etaM.begin(),op_focei.etaM.end(), 0.0);
       std::fill(op_focei.etaS.begin(),op_focei.etaS.end(), 0.0);
@@ -4888,6 +4977,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.etaS     = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.eta1SD   = mat(op_focei.neta, 1, arma::fill::zeros);
+  op_focei.eta1SDmean = mat(op_focei.neta, 1, arma::fill::zeros);
   op_focei.n        = 1.0;
 
   // Prefill to 0.1 or 10%
@@ -10131,8 +10221,11 @@ Environment foceiFitCpp_(Environment e){
         op_focei.etaS = op_focei.etaS + (etaMat - op_focei.etaM) %  (etaMat - oldM);
         n += 1.0;
       }
-      op_focei.eta1SD = 1/sqrt(op_focei.etaS);
-      thetaReset(op_focei.resetThetaFinalSize);
+      // n was seeded at 1 and incremented once per subject, so the subject count
+      // is (n - 1); etaSdInv() divides the Welford sum of squares by count-1.
+      op_focei.eta1SD = etaSdInv(op_focei.etaS, n - 1.0);
+      op_focei.eta1SDmean = 1/sqrt(op_focei.etaS); // thetaReset scale; see note there
+      thetaReset(op_focei.resetThetaFinalSize, n - 1.0);
     }
   }
   e["optimTime"] = foceiElapsedSeconds(wallT0);
