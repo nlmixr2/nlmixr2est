@@ -2527,8 +2527,7 @@ static inline int innerOpt1(int id, int likId) {
       // warm start *might* be bad -- under the model's own assumptions ~15% of
       // etas sit past qnorm(1-0.15/2) by construction, so the bound alone
       // cannot distinguish a runaway eta from an ordinary tail one.  Committing
-      // to the reset unconditionally discarded converged EBEs and made the
-      // objective depend on the optimizer's history instead of on theta.
+      // to the reset unconditionally discarded converged EBEs.
       std::vector<double> etaPre((size_t)op_focei.neta);
       std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaPre.begin());
       bool didReset = false;
