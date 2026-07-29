@@ -1439,6 +1439,12 @@ static void getPopR(int id, arma::vec &rPop) {
   // pointer with the inner model, so solving it here would corrupt the next
   // inner linCmt gradient.  At eta=0 the inner model's states are population,
   // so its rx_r_ is the genuine eta=0 R for both ODE and linCmt.
+  // Self-contained solve+read region: arm this subject's stride for the inner
+  // model and hold it across the calc_lhs reads below, so both use the same
+  // stride (getOpIndSolve indexes by the live override).  Was unscoped, so with
+  // a larger peer sizing the pool this ran at the pool's neq while rxInner's
+  // dydt fills only its own, and read back through rxode2's pool-width slice.
+  OdeSwapScope neqGuard(odeSlotInner, ind, op);
   setIndSolve(ind, -1);
   innerOde(_rxId); // solve the inner model at eta=0
   iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
@@ -1448,7 +1454,7 @@ static void getPopR(int id, arma::vec &rPop) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
+    double *lhs = neqGuard.lhs();
     if (isDose(getIndEvid(ind, kk))) {
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
