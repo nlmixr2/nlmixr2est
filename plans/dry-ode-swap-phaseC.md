@@ -174,3 +174,66 @@ rxAssignPtr(obj), i.e. repoints rxode2's global current-model pointer, which is
 why calling it mid-solve corrupts the run.  The remaining abort is consistent
 with the ES shape being wrong for whichever model is solved second, but that has
 not been confirmed by measurement yet.
+
+## DESIGN (as specified): batch solves by model, load each model's ES per batch
+
+The ES shape is process-global, so it cannot be swapped per individual or inside
+an OpenMP region.  The solve loop is therefore organised as BATCHES BY MODEL,
+each batch bracketed by that model's ES load:
+
+    rxEventSensLoadModel(outer)          # outer ES active
+      solve every individual for OUTER   # parallel over individuals is fine:
+                                         # ES globals are constant for the batch
+      FLAG each individual whose outer solve is bad -- do NOT fall back inline,
+      and do NOT abandon the whole gradient (drop the all-or-nothing contract)
+
+    rxEventSensLoadModel(inner)          # swap ES: inner ES active
+      for each FLAGGED individual only:
+        finite-difference d(llik)/d(theta) using the INNER problem + inner ES
+      restore
+
+Why the fallback cannot be inline: the FD fallback re-optimises the subject
+through the inner problem (innerOptId), which needs the INNER model's event
+sensitivities.  Applying it while the outer ES is loaded mis-specifies it -- the
+same failure as loading one model's ES for both.  focei (fast=TRUE) and vae
+(nonMuTheta="grad") both need inner and outer to coexist across a fit, so the
+only correct ordering is batch-outer -> flag -> batch-inner-FD.
+
+### Work items
+
+1. Registry: capture each slot's ES dims once (active/nState/nParam/nParam2/
+   nParam3/useCalcJac) so a batch boundary can install them without an R call.
+   rxode2 exposes `rxode2EventSensLoad` as a C-callable and
+   `rxEventSensLoadModel()` / `rxEventSensDeactivate()` from R.
+
+2. Batch boundary API in the core, e.g. odeSwapEsBatch(slot) RAII: installs that
+   slot's ES on entry, restores the previous shape on exit.  MUST be constructed
+   OUTSIDE any parallel region -- it is process-global state, unlike
+   OdeSwapScope which is per-ind and may be used inside one.
+
+3. Drop the all-or-nothing contract in BOTH places:
+     - src/inner.cpp vaeOuterSolve_: `if (!E.ok) return R_NilValue`
+       -> return per-subject ok flags with the E structures
+     - R/foceiGradAnalytic.R: `any(.res$ok == 0L)` -> keep the good subjects,
+       collect the flagged ones
+   (The gradient is a SUM of per-subject terms, so replacing one term is
+   mathematically coherent.)
+
+4. Phase 8D2 FD fallback, run in the inner-ES batch over the flagged subjects
+   only: EtaRestoreGuard + innerOptId to re-optimise and restore the subject's
+   eta, per-subject Gill steps in fInd->outerThetaHf (storage already added in
+   2992c46e3), shi21 central differences over np = nth + nsg + nom with the
+   perturbed Omega^-1/log|Omega| precomputed before the loop.
+
+5. Warn when the fallback engages so it reaches $runInfo: under 75 chars, no
+   method-name prefix (CLAUDE.md).
+
+6. focei.R:~2417 keeps loading the INNER model's ES for the fit as a whole; the
+   outer ES is loaded only for the duration of the outer batch.
+
+### Verification
+
+odeSwapBaseline.R first (impmap + focei_fast fail fast), then the FULL
+test-focei-fast-grad.R -- the baseline passes while that file segfaults, so the
+baseline alone is not a sufficient gate.  Then subRun.sh 7 (currently FAIL) vs
+subRun.sh 6 (ok).
