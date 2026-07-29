@@ -287,3 +287,69 @@ where the pool solve is not live -- i.e. at setup / phase boundaries.
 
 What remains is to drive it from the fit's PHASE boundaries in foceiFitCpp_
 rather than from inside the solve entry points.
+
+## RESOLVED (f65b73a5a): the pooled fast gradient works, with two exclusions
+
+Implemented: the augmented outer model sizes the pool (declared before
+foceiSetup_) and is registered after it, so the gradient runs through
+vaeOuterSolve_.  All three swapped quantities are handled -- state count (pool
+sized for the augmented model, nothing compacts), ES jump shape
+(OdeSwapEsBatch, per batch, outside the parallel region), and solve tolerance
+(OdeSolveTolGuard).  f/lag went from segfault to passing; focei_fast is within
+2e-10 of main; test-focei-fast-grad.R is at exact main parity.
+
+### The hidden crash that invalidated attempts 1-5
+
+odeSwapDeclare's ES capture parsed eventSensInfo$map dims with
+as<IntegerVector>(map2$q) -- but map2$q is CHARACTER, so it threw inside
+declare.  Combined with an unguarded Rf_eval on a missing env binding (an R
+longjmp that C++ try/catch cannot catch), every earlier attempt to declare the
+augmented model crashed for THIS reason, not because of the pool design.  The
+capture is now a boolean; rxEventSensLoadModel() derives the dims itself.
+
+### Why multiple endpoints are still excluded -- and where the cause actually is
+
+NOT the gradient route.  Measured, in order:
+
+1. Diffing both routes' per-subject E structures on the same fit:
+   R/aR/AR/Rsig* IDENTICAL, only f/a/A differ, by 1e-5..1e-4.  So the symbolic
+   assembly and the dvid-conditional reads are fine.
+2. emax is the one component whose per-subject contributions nearly cancel (FD
+   reference 63 against components of 600-34000), so a 1e-4 perturbation IS
+   enough to move it by hundreds.  An earlier note here claiming the diff was
+   "far too small to explain" the gap was wrong.
+3. Zero subjects take the per-subject relax/retry path (relaxAfter=0,
+   tolFactor=1 for all 32) -- so it is not degraded/relaxed solves.
+4. DECISIVE: with pooling forced on, the SAME wrong gradient appears whether
+   the pooled solve succeeds (pooledSolveN=1) or fails and falls back to
+   rxSolve (pooledSolveN=0).  Two different gradient routes, one identical
+   wrong answer.
+
+=> Declaring the augmented model resizes the FIT's pool (62 states here).  The
+fit's own inner solves then run inside that larger pool, the EBEs shift, and the
+gradient follows.  The gradient route is not the variable.
+
+This is the same defect as the very first one found in this work, from the other
+side: an inner model solved inside a larger pool without per-individual stride
+compaction.  Single-endpoint models tolerate it (focei_fast: 2e-10); emax has no
+margin, so it does not.
+
+**The real dependency is therefore the per-individual stride compaction
+(Phases 9/C), not an endpoint gate.**  Compaction requires every solve AND its
+reads to sit inside one OdeSwapScope -- see the three constraints above, in
+particular that a scope must not be introduced at a read site, because
+getOpIndSolve() indexes by the live override.  Once inner solves inside a large
+pool are numerically identical to inner solves in their own pool, the endpoint
+exclusion can be removed and re-measured with subRun.sh + the multi-endpoint
+test.
+
+### Also worth knowing
+
+- rxSetSolveAtolRtol (OdeSolveTolGuard) is honoured by a FRESH rxSolve but NOT
+  by an ind_solve() inside an existing pool, which reads per-subject
+  tolerances.  Tightening those per subject (setIndTolFactor) makes the
+  augmented solve fail outright -- tried and reverted.
+- setIndSolve(ind, -1) before the augmented solve changes nothing measurable.
+- delay() models cannot be pooled at all: op->delayState/delayCol are built at
+  solve setup from the POOL model's stateProp and are part of the solve
+  structure, not a swappable global.
