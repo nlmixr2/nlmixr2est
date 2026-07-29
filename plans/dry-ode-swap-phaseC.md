@@ -83,3 +83,38 @@ Test harness note: run test files with the small helpers sourced but WITHOUT
 helper-zzz-fits.R (its ~10 cached fits pin ~21GB and make a 59s file take
 hours).  `.testSeed` lives in helper-quiet.R, so load_helpers=FALSE alone makes
 tests error spuriously.  See scratchpad/runFile.R.
+
+## Attempts 4 and 5 (fresh-context session): pool sizing is necessary but not sufficient
+
+**Attempt 4 -- declare the augmented model ONLY (no pin, no new scopes).**
+Crash-free.  impmap intact (192.487097125745); every baseline case matches main
+except focei_fast, which moves 2e-10 relative.  This confirms the key insight
+that correctness needs the stride to be UNIFORM between a solve and its reads,
+not minimal: leaving every solve at the pool width is uniform by construction,
+exactly as main is uniform at 8 today.  So compaction (the pin / per-solve
+scopes) is a PERFORMANCE optimization, not a correctness prerequisite -- which
+is the opposite of what attempts 1-3 assumed.
+
+But it does NOT fix the bug: subRun.sh 7 went 3 fails -> 4.  Reason: the
+augmented model is solved by a SEPARATE rxode2::rxSolve (measured: "PATH
+rxSolve" on all 23 calls), so sizing the FIT's pool does not touch it.  The
+first-order-only integration happens inside that separate solve.
+
+**Attempt 5 -- also register the outer model so the pooled path activates.**
+`odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter)` after
+foceiSetup_, plus op_focei.vaeOuterNeq/Nlhs.  The pooled path DID engage --
+`pool=outer poolNeq=26 pooledSolveN=4`, baseline crash-free, impmap intact,
+focei_fast 123.663223389668 (vs main 123.665906512565) -- but the full
+test-focei-fast-grad.R SEGFAULTS (exit 139).
+
+The baseline does not cover the multiple-endpoint model, and that is the prime
+suspect: vaeOuterSolve_ was written for est="vae"'s single-endpoint M-step and
+reads through offsets from am$cols.  A second modeled endpoint changes the
+direction set and the lhs layout, so the pooled reader overruns.
+
+**Next step:** make vaeOuterSolve_ multi-endpoint safe, or gate the pooled
+branch on the augmented model shape it supports (single endpoint, no censoring)
+and let the others keep the rxSolve route.  The registry already records
+neq/nlhs per slot, so the gate is a check, not new machinery.  Verify with
+odeSwapBaseline.R (fast) THEN the full test-focei-fast-grad.R (it is the file
+that segfaults; the baseline alone will not catch this).
