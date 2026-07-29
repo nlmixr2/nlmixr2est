@@ -237,3 +237,16 @@ odeSwapBaseline.R first (impmap + focei_fast fail fast), then the FULL
 test-focei-fast-grad.R -- the baseline passes while that file segfaults, so the
 baseline alone is not a sufficient gate.  Then subRun.sh 7 (currently FAIL) vs
 subRun.sh 6 (ok).
+
+### Scope limit: the pred fallback stays INLINE
+
+The batch-and-defer rule applies ONLY to the outer problem.  rxPred implements
+no sensitivities, so event sensitivities are out of scope for it and its solve
+is unaffected by whichever ES shape is loaded.  The existing inline fallback in
+likInner0 -- `fInd->doFD` -> `OdeSwapScope(odeSlotPred, ind, op)` -> predOde(),
+with the guard held so the later reads of ind->solve see the same predNeq
+stride -- is therefore already correct and must NOT be restructured into a
+batch.  Same for the nlm pred fallback.
+
+Only a failed OUTER (augmented) solve has to be flagged and deferred to the
+inner-ES batch, because only that fallback re-enters the inner problem.
