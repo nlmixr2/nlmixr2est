@@ -250,3 +250,40 @@ batch.  Same for the nlm pred fallback.
 
 Only a failed OUTER (augmented) solve has to be flagged and deferred to the
 inner-ES batch, because only that fallback re-enters the inner problem.
+
+## AGREED SHAPE for installing the ES per batch (confirmed)
+
+Install the ES shape from the C++ side, at fit setup, BEFORE the solve pool goes
+live -- the same point foceiFitCpp_ already registers the peer models -- keeping
+the per-slot shape in the registry and re-installing only when the ACTIVE MODEL
+CHANGES BETWEEN PHASES.  Never around an individual solve, and never while the
+pool solve is live.
+
+### Why not the two placements already tried and reverted
+
+- Inside vaeOuterSolve_ (either at the batch, or hoisted to function entry):
+  CRASHES the vae grad fit.  The install goes through rxode2's R entry point,
+  which reads the model's vars and can repoint rxode2's global model pointer;
+  doing that while the fit's global solve is live kills the run.  Position
+  within the function is irrelevant -- the solve is live for the whole call.
+- In R around the gradient call (.foceiAnalyticGradFocei): out of scope for this
+  refactor; the swap belongs in the C++ core.
+
+### Constraint that forces it
+
+The install must be an R round trip: rxode2EventSensLoad / rxode2EventSensSetActive
+are registered with R_RegisterCCallable but are NOT part of rxode2's linked
+function-pointer API, so calling them directly is an ABI hazard that crashes on
+CRAN updates.  (Adding them to the linked API is a legitimate follow-up in
+rxode2, but is explicitly NOT part of this work.)  An R round trip is only safe
+where the pool solve is not live -- i.e. at setup / phase boundaries.
+
+### Already in place (0de6841f5)
+
+- registry captures each model's ES shape at declare time from eventSensInfo$map
+- OdeSwapEsBatch RAII installs/restores a slot's shape via
+  rxode2::rxEventSensLoadModel(), documented as batch-boundary-only
+- odeSwapHasEs(slot) -- false for rxPred, which is why its fallback stays inline
+
+What remains is to drive it from the fit's PHASE boundaries in foceiFitCpp_
+rather than from inside the solve entry points.
