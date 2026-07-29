@@ -83,6 +83,32 @@ void odeSwapClear(int slot);
 void odeSwapClearAll();          // clears every slot and releases preserved SEXPs
 
 bool odeSwapLoaded(int slot);
+// ---- event-sensitivity (jump) shape ---------------------------------------
+// rxode2 keeps the ES shape in PROCESS GLOBALS (_rxEsActive/_rxEsNState/
+// _rxEsNParam/_rxEsNParam2), installed through the registered C-callable
+// rxode2EventSensLoad().  It therefore describes exactly ONE model at a time:
+// rxPred has no event sensitivities, rxInner has them, and the augmented outer
+// model has them with a DIFFERENT shape.  Solving one model under another's
+// shape mis-specifies its jumps.
+//
+// Because the state is global it cannot be swapped per individual or inside an
+// OpenMP region.  Solves are batched by model: install the batch's shape, solve
+// every individual for that model, then restore.  OdeSwapEsBatch is that
+// boundary and MUST be constructed outside any parallel region -- unlike
+// OdeSwapScope, which is per-ind and safe inside one.
+struct OdeSwapEsBatch {
+  explicit OdeSwapEsBatch(int slot);
+  ~OdeSwapEsBatch();
+  bool armed() const { return armed_; }
+private:
+  int prevSlot_;
+  bool armed_;
+  OdeSwapEsBatch(const OdeSwapEsBatch &);
+  OdeSwapEsBatch &operator=(const OdeSwapEsBatch &);
+};
+// Does this slot carry event sensitivities at all?  (false for rxPred.)
+bool odeSwapHasEs(int slot);
+
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
 const char *odeSwapName(int slot);

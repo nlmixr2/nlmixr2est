@@ -3,6 +3,7 @@
 #define STRICT_R_HEADER
 #include "armahead.h"
 #include "inner.h"
+#include <set>
 #include "odeSwap.h"
 #include <algorithm>
 #include <atomic>
@@ -18,6 +19,9 @@ struct OdeModelReg {
   std::vector<std::string> lhsNames;
   int neq = 0;
   int nlhs = 0;
+  // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
+  // with no jump sensitivities, e.g. rxPred
+  int esActive = 0, esNState = 0, esNParam = 0, esNParam2 = 0;
   bool loaded = false;
 };
 
@@ -58,6 +62,42 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   m.nlhs = lhs.size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
+  // Capture this model's event-sensitivity shape from its eventSensInfo$map,
+  // the same fields rxode2's rxEventSensLoadModel() reads.  Data access only --
+  // no R evaluation, so this is safe to do here and cheap to install later.
+  m.esActive = 0; m.esNState = 0; m.esNParam = 0; m.esNParam2 = 0;
+  {
+    RObject _o(obj);
+    List _e;
+    bool _haveEs = false;
+    if (_o.hasAttribute("eventSensInfo")) {
+      _e = as<List>(_o.attr("eventSensInfo")); _haveEs = true;
+    } else if (Rf_isEnvironment(obj)) {
+      Environment _env(obj);
+      if (_env.exists("eventSensInfo")) {
+        SEXP _v = _env["eventSensInfo"];
+        if (!Rf_isNull(_v) && TYPEOF(_v) == VECSXP) { _e = as<List>(_v); _haveEs = true; }
+      }
+    }
+    if (_haveEs && _e.containsElementNamed("map") &&
+        !(_e.containsElementNamed("mode") &&
+          as<std::string>(_e["mode"]) == "fd")) {
+      List _map = as<List>(_e["map"]);
+      if (_map.containsElementNamed("nState")) m.esNState = as<int>(_map["nState"]);
+      if (_map.containsElementNamed("sensParams")) {
+        m.esNParam = Rf_length(as<SEXP>(_map["sensParams"]));
+      }
+      if (_map.containsElementNamed("map2") && !Rf_isNull(_map["map2"])) {
+        List _m2 = as<List>(_map["map2"]);
+        if (_m2.containsElementNamed("q")) {
+          IntegerVector _q = as<IntegerVector>(_m2["q"]);
+          std::set<int> _u(_q.begin(), _q.end());
+          m.esNParam2 = (int)_u.size();
+        }
+      }
+      m.esActive = (m.esNState > 0 || m.esNParam > 0) ? 1 : 0;
+    }
+  }
   m.loaded = true;
   odeSwapModelsInit();
   SET_VECTOR_ELT(_odeModels, slot, obj);
@@ -79,6 +119,48 @@ bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns) {
   rxUpdateFuns(as<SEXP>(mv["trans"]), fns);
   _odeReg[slot].fns = fns;
   return true;
+}
+
+bool odeSwapHasEs(int slot) {
+  return odeSlotOk(slot) && _odeReg[slot].loaded && _odeReg[slot].esActive != 0;
+}
+
+// Which slot's ES shape is currently installed (-1 = untouched by us).
+static int _odeEsSlot = -1;
+
+// Install a slot's ES shape.  rxode2's rxode2EventSensLoad/SetActive are not
+// linkable from here, so this goes through the R entry point -- which is also
+// more complete: it sets nParam3 and useCalcJac, which the C signature omits.
+// An R round trip is acceptable BECAUSE this is a batch boundary: it runs once
+// per model batch, outside any parallel region.  It must never be called from
+// inside an OpenMP loop (Rcpp::Function is not safe there).
+static void odeSwapEsInstall(int slot) {
+  if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return;
+  SEXP _m = odeSwapModelSEXP(slot);
+  if (_m == R_NilValue) return;
+  try {
+    Environment _rx = Environment::namespace_env("rxode2");
+    Function _f = as<Function>(_rx["rxEventSensLoadModel"]);
+    _f(RObject(_m));
+  } catch (...) {
+    // leave the shape as it was; the caller falls back rather than mis-solving
+  }
+}
+
+OdeSwapEsBatch::OdeSwapEsBatch(int slot) : prevSlot_(_odeEsSlot), armed_(false) {
+  // Only swap when this model actually carries jump sensitivities and is not
+  // already installed; a model without them (rxPred) leaves the shape alone,
+  // which is why its fallback can stay inline.
+  if (!odeSwapHasEs(slot) || slot == _odeEsSlot) return;
+  odeSwapEsInstall(slot);
+  _odeEsSlot = slot;
+  armed_ = true;
+}
+
+OdeSwapEsBatch::~OdeSwapEsBatch() {
+  if (!armed_) return;
+  if (prevSlot_ >= 0) odeSwapEsInstall(prevSlot_);
+  _odeEsSlot = prevSlot_;
 }
 
 void odeSwapClear(int slot) {
