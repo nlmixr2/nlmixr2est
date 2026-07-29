@@ -490,7 +490,8 @@
       .nc <- tryCatch({ .c <- am$cores
         if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c) },
         error = function(e) 1L)
-      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc),
+      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
+                                     as.numeric(tol)),
                       error = function(e) NULL)
       if (!is.null(.Ec) && length(.Ec) > 0L) return(.Ec)
     }

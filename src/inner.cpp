@@ -5187,6 +5187,24 @@ static bool restoreFitSolve_() {
 // finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
 // user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
 // own augmented solves (.foceiAnalyticSolveTol).
+// Set atol/rtol for the duration of a pooled batch solve, restoring the fit's
+// values afterwards.  Same mechanism as CovSolveTolGuard, driven by an explicit
+// tolerance rather than a control field.
+struct OdeSolveTolGuard {
+  bool active = false;
+  double savAtol = NA_REAL, savRtol = NA_REAL;
+  explicit OdeSolveTolGuard(double tol) {
+    if (!R_FINITE(tol) || tol <= 0) return;
+    rxGetSolveAtolRtol(&savAtol, &savRtol);
+    if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve
+    rxSetSolveAtolRtol(tol, tol);
+    active = true;
+  }
+  ~OdeSolveTolGuard() {
+    if (active) rxSetSolveAtolRtol(savAtol, savRtol);
+  }
+};
+
 struct CovSolveTolGuard {
   bool active = false;
   double savAtol = NA_REAL, savRtol = NA_REAL;
@@ -9855,13 +9873,14 @@ Environment foceiFitCpp_(Environment e){
       if (model.containsElementNamed("innerHess2")) {
         odeSwapDeclare(odeSlotHess2, "hess2", model["innerHess2"]);
       }
-      // foceiControl(fast=TRUE)'s augmented outer model is deliberately NOT
-      // declared here.  Pooling it makes it size the pool (26 states vs 8), and
-      // the inner solves can only run compacted inside that pool via the
-      // neqOverride pin -- which is currently dead (see foceiSetup_ below).
-      // Without the pin the augmented solve fails and the whole gradient drops
-      // to finite differences, which is strictly worse than the rxSolve path.
-      // est="vae" still pools its own outer model (vaeInnerSetup_ declares it).
+      bool _outerPoolOk = model.containsElementNamed("outerPoolOk") &&
+        as<bool>(model["outerPoolOk"]);
+      if (_outerPoolOk && model.containsElementNamed("outer")) {
+        odeSwapDeclare(odeSlotOuter, "outer", model["outer"]);
+        if (model.containsElementNamed("outerNode")) {
+          odeSwapDeclare(odeSlotOuterNode, "outerNode", model["outerNode"]);
+        }
+      }
       // A larger peer sizes the pool, so the inner solves run compacted to their
       // own state count via ind->neqOverride.  Set BEFORE foceiSetup_, as the two
       // blocks this replaces did -- foceiSetup_ reads op_focei state while it
@@ -9885,6 +9904,12 @@ Environment foceiFitCpp_(Environment e){
         odeSwapNeq(odeSlotInner) : 0;
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
+      if (_outerPoolOk && odeSwapLoaded(odeSlotOuter) &&
+          model.containsElementNamed("outer")) {
+        odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter);
+        op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
+        op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
+      }
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
         if (model.containsElementNamed("predNoLhsLlik")) {
@@ -10867,7 +10892,8 @@ static thread_local int _outerRetryScratch = 0;
 // but empty solve to .foceiAnalyticSolveAll and silently dropped the gradient to
 // finite differences.
 //[[Rcpp::export]]
-RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
+                       double tol) {
   // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
   // solve is only valid if the augmented model is registered AND the pool is at
   // least its size.  odeSwapCanPool says exactly that -- a model larger than the
@@ -10875,6 +10901,25 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // (a focei fast fit after a vae grad fit, running against a pool sized for its
   // own inner model).  Refusing here means R can just call and fall through.
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return R_NilValue;
+  // ---- outer ES batch ------------------------------------------------------
+  // The augmented model's event ("jump") sensitivities have a different shape
+  // than the inner model's, and the shape is a rxode2 process global (loaded
+  // once per fit from the INNER model at focei.R's rxEventSensLoadModel call).
+  // Install the augmented model's shape for this whole batch and restore the
+  // inner model's on return.  Entered from R between solves -- the pool exists
+  // but no integration is running -- and BEFORE the parallel region below.
+  // Without this, a modeled-dose (f/lag) fit segfaults: the jump injection
+  // fires during the pooled outer solve with the inner model's dims.
+  OdeSwapEsBatch _esBatch(odeSlotOuter);
+  // Solve the augmented model at the ANALYTIC tolerance, not the fit's.  The
+  // rxode2::rxSolve route passes atol=rtol=.foceiAnalyticSolveTol(ui) (about
+  // 1e-10 at sigdig=4); the pool carries the fit's ordinary, far looser
+  // tolerances.  Second-order sensitivities amplify integration error, so the
+  // gap showed up as f/a/A differing by 1e-5..1e-4 between the two routes --
+  // enough to move a near-cancelling gradient term by an order of magnitude
+  // (measured on a two-endpoint model: emax 63 vs 569).  R and the Rsig block
+  // matched exactly, since those are not integrated.
+  OdeSolveTolGuard _tolGuard(tol);
   if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
       rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();

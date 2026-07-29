@@ -21,7 +21,7 @@ struct OdeModelReg {
   int nlhs = 0;
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
   // with no jump sensitivities, e.g. rxPred
-  int esActive = 0, esNState = 0, esNParam = 0, esNParam2 = 0;
+  int esActive = 0;   // does this model carry event ("jump") sensitivities?
   bool loaded = false;
 };
 
@@ -62,41 +62,31 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   m.nlhs = lhs.size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
-  // Capture this model's event-sensitivity shape from its eventSensInfo$map,
-  // the same fields rxode2's rxEventSensLoadModel() reads.  Data access only --
-  // no R evaluation, so this is safe to do here and cheap to install later.
-  m.esActive = 0; m.esNState = 0; m.esNParam = 0; m.esNParam2 = 0;
-  {
+  // Record only WHETHER this model carries event ("jump") sensitivities.  The
+  // shape itself is installed through rxode2's R entry point, which derives the
+  // dims from the model, so the registry does not need to duplicate them --
+  // and must not try: eventSensInfo$map's fields are not all integer
+  // (map2$q is character), so parsing them here throws.
+  m.esActive = 0;
+  try {
     RObject _o(obj);
-    List _e;
-    bool _haveEs = false;
+    SEXP _v = R_NilValue;
     if (_o.hasAttribute("eventSensInfo")) {
-      _e = as<List>(_o.attr("eventSensInfo")); _haveEs = true;
-    } else if (Rf_isEnvironment(obj)) {
-      Environment _env(obj);
-      if (_env.exists("eventSensInfo")) {
-        SEXP _v = _env["eventSensInfo"];
-        if (!Rf_isNull(_v) && TYPEOF(_v) == VECSXP) { _e = as<List>(_v); _haveEs = true; }
-      }
+      _v = _o.attr("eventSensInfo");
+    } else if (TYPEOF(obj) == ENVSXP &&
+               R_existsVarInFrame(obj, Rf_install("eventSensInfo"))) {
+      // check the binding first: Rf_eval on a missing symbol raises an R error,
+      // i.e. a longjmp past C++ destructors that try/catch cannot catch
+      _v = Rf_eval(Rf_install("eventSensInfo"), obj);
     }
-    if (_haveEs && _e.containsElementNamed("map") &&
-        !(_e.containsElementNamed("mode") &&
-          as<std::string>(_e["mode"]) == "fd")) {
-      List _map = as<List>(_e["map"]);
-      if (_map.containsElementNamed("nState")) m.esNState = as<int>(_map["nState"]);
-      if (_map.containsElementNamed("sensParams")) {
-        m.esNParam = Rf_length(as<SEXP>(_map["sensParams"]));
-      }
-      if (_map.containsElementNamed("map2") && !Rf_isNull(_map["map2"])) {
-        List _m2 = as<List>(_map["map2"]);
-        if (_m2.containsElementNamed("q")) {
-          IntegerVector _q = as<IntegerVector>(_m2["q"]);
-          std::set<int> _u(_q.begin(), _q.end());
-          m.esNParam2 = (int)_u.size();
-        }
-      }
-      m.esActive = (m.esNState > 0 || m.esNParam > 0) ? 1 : 0;
+    if (!Rf_isNull(_v) && TYPEOF(_v) == VECSXP) {
+      List _e(_v);
+      bool _fd = _e.containsElementNamed("mode") &&
+        as<std::string>(_e["mode"]) == "fd";
+      if (!_fd && _e.containsElementNamed("map")) m.esActive = 1;
     }
+  } catch (...) {
+    m.esActive = 0;
   }
   m.loaded = true;
   odeSwapModelsInit();
@@ -147,19 +137,43 @@ static void odeSwapEsInstall(int slot) {
   }
 }
 
+static void odeSwapEsDeactivate() {
+  try {
+    Environment _rx = Environment::namespace_env("rxode2");
+    Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
+    _f();
+  } catch (...) {
+  }
+}
+
 OdeSwapEsBatch::OdeSwapEsBatch(int slot) : prevSlot_(_odeEsSlot), armed_(false) {
-  // Only swap when this model actually carries jump sensitivities and is not
-  // already installed; a model without them (rxPred) leaves the shape alone,
-  // which is why its fallback can stay inline.
-  if (!odeSwapHasEs(slot) || slot == _odeEsSlot) return;
-  odeSwapEsInstall(slot);
+  if (slot == _odeEsSlot) return;               // already this batch's shape
+  if (odeSwapHasEs(slot)) {
+    odeSwapEsInstall(slot);
+  } else {
+    // A model with no jump sensitivities must not be solved under another
+    // model's shape either: the injection would fire with dims that belong to
+    // a different model.  Deactivate for the batch.
+    odeSwapEsDeactivate();
+  }
   _odeEsSlot = slot;
   armed_ = true;
 }
 
 OdeSwapEsBatch::~OdeSwapEsBatch() {
   if (!armed_) return;
-  if (prevSlot_ >= 0) odeSwapEsInstall(prevSlot_);
+  if (prevSlot_ >= 0) {
+    odeSwapEsInstall(prevSlot_);
+  } else if (odeSwapHasEs(odeSlotInner)) {
+    // prevSlot_ == -1 means the pre-batch shape was installed OUTSIDE the
+    // registry -- the fit-wide load of the INNER model's sensitivities
+    // (focei.R's rxEventSensLoadModel(model$inner)).  Restore that, not
+    // nothing: leaving the batch's shape live would mis-specify every inner
+    // solve after the first gradient call of an iterating fit.
+    odeSwapEsInstall(odeSlotInner);
+  } else {
+    odeSwapEsDeactivate();
+  }
   _odeEsSlot = prevSlot_;
 }
 
@@ -273,6 +287,18 @@ int odeSwapCanPool(int slot) {
   // rxEffNeq only ever compacts: an override above op->neq silently falls back,
   // so a model larger than the pool cannot be solved in it.
   if (p.poolSlot < 0 || _odeReg[slot].neq > p.poolNeq) return odeDenyPoolNotSized;
+  // The registry records the pool as PLANNED; verify the LIVE solve still
+  // matches.  Post-fit table generation (and any other re-solve) replaces the
+  // global solve with one sized for the inner/pred model, while the registry
+  // still describes the fit's pool -- solving this model there overflows the
+  // state and lhs buffers (measured: post-fit analytic gradient after
+  // calcTables=TRUE segfaulted exactly this way).
+  rx_solve *_rx = getRxSolve_();
+  if (_rx == NULL) return odeDenyPoolNotSized;
+  rx_solving_options *_op = getSolvingOptions(_rx);
+  if (_op == NULL ||
+      getOpNeq(_op) < _odeReg[slot].neq ||
+      getOpNlhs(_op) < _odeReg[slot].nlhs) return odeDenyPoolNotSized;
   return odeDenyNone;
 }
 

@@ -1429,6 +1429,29 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
+    # May the augmented outer model be POOLED (size the shared solve and run
+    # through vaeOuterSolve_)?  Data flag only -- consumed by foceiFitCpp_.
+    # Multiple endpoints are TEMPORARILY excluded, cause not yet identified.
+    # Measured on the two-endpoint warfarin PK/PD test: the pooled gradient
+    # differs from the rxSolve one by 9x on emax (569 vs an FD reference of 63)
+    # while the other six components agree to ~2-10%.  Diffing the two routes'
+    # per-subject E structures on the same fit shows R/aR/AR/Rsig* IDENTICAL and
+    # only f/a/A differing, by 1e-5..1e-4 -- far too small to explain the
+    # gradient gap, so the discrepancy is NOT the reader mishandling
+    # dvid-conditional endpoints and NOT solve tolerance (matching the rxSolve
+    # route's atol/rtol changed nothing).  Something downstream of the E
+    # structures is endpoint-dependent; until that is found, multi-endpoint
+    # models keep the rxSolve route.
+    # NO delay() models: the delay-history column map (op->delayState/delayCol)
+    # is built at solve setup FROM THE POOL MODEL's stateProp -- it is part of
+    # the solve structure, not a swappable global like the event-sensitivity
+    # shape -- and the augmented model's delayed sensitivities have their own
+    # delay() lookbacks, so pooling it would make every inner solve read the
+    # wrong history columns.  DDE keeps the rxSolve route (dop853, dense), which
+    # installs its own map.
+    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) == 1L &&
+                             !isTRUE(rxode2::rxModelVars(.outerAm$augMod)$flags[["hasDelay"]] == 1L),
+                           error = function(e) FALSE),
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
     # top level so the rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,

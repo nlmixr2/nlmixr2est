@@ -252,15 +252,17 @@ nmTest({
     expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
     expect_null(.vaeGradEnv$outerCols)
     .n1 <- .odeSwapInfo()$pooledSolveN
+    .n2 <- .odeSwapInfo()$pooledSolveN
     .after <- suppressMessages(
       nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
               control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
                                      calcTables = FALSE)))
     expect_equal(.after$objf, .ref$objf, tolerance = 1e-4)
     expect_equal(unname(.after$theta), unname(.ref$theta), tolerance = 1e-4)
-    ## ...and the focei fit after it must NOT have taken the pooled branch: it
-    ## registers no augmented model, so odeSwapCanPool refuses.
-    expect_identical(.odeSwapInfo()$pooledSolveN, .n1)
+    ## The focei fast fit now pools its OWN augmented model (single-endpoint),
+    ## and this must actually have HAPPENED -- the pooled and rxSolve routes are
+    ## numerically equivalent, so the equalities above cannot tell them apart.
+    expect_gt(.odeSwapInfo()$pooledSolveN, .n2)
   })
 
   test_that("in scope, the gradient path is actually taken", {

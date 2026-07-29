@@ -4,6 +4,13 @@
 
 ### Estimation
 
+- `foceiControl(fast=TRUE)` now solves its augmented outer-gradient model in
+  the shared FOCEi solve pool (single-endpoint models), sized for the augmented
+  model and with that model's event ("jump") sensitivities installed for the
+  batch.  This makes the analytic gradient exact for modeled dosing (`f()`/
+  `lag()`), which previously crashed or fell back to finite differences on that
+  path; multiple-endpoint models keep the previous `rxSolve` route.
+
 - `est="vae"` with `nonMuTheta="grad"` solved its augmented outer-gradient model
   through `rxode2::rxSolve` on every M-step iteration instead of the shared
   FOCEi solve pool.  The pooled and fallback routes are numerically equivalent,
