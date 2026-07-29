@@ -461,6 +461,22 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
   return n * getIndNallTimes(ind);
 }
 
+bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
+                            int slot) {
+  int n = odeSwapIndSolveSpan(op, ind);
+  int own = odeSwapNeq(slot);
+  // Only clamp DOWN, and only when this model is genuinely narrower than the
+  // span: never widen, or a compacted solve would be under-scanned.
+  if (own > 0 && own < n && getOpNlin(op) <= 0) n = own;
+  if (n <= 0) return false;
+  double *solve = getIndSolve(ind);
+  if (solve == NULL) return false;
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+  }
+  return false;
+}
+
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
   int n = odeSwapIndSolveSpan(op, ind);
   if (n <= 0) return false;

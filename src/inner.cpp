@@ -1561,11 +1561,15 @@ double likInner0(double *eta, int id) {
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
     } // end (!freezeOde) integration guard
-    // Scan exactly what this subject's solve wrote.  The stride comes from
-    // ind->neqOverride, which the OdeSwapScope above already armed for a pred
-    // solve and which the impmap/fast-ll pin sets for the inner solve -- so this
-    // no longer reads slots the solve never touched.
-    bool isBadSolve = odeSwapIndBadSolve(op, ind);
+    // Scan exactly what this subject's solve wrote.  Bounded by the model that
+    // was actually solved, not by op->neq: when a larger peer sized the pool and
+    // no override is armed, op->neq runs past this model's own states into slots
+    // it never wrote, and a stale NaN there reads as a failed solve.  That is how
+    // pool SIZE leaked into results -- the needless tolerance loosening shifted
+    // the EBEs, so the same fit answered differently depending on which peer
+    // sized the pool.  Strides are untouched; only the scan bound changes.
+    bool isBadSolve = odeSwapIndBadSolveSlot(op, ind,
+                                             predSolve ? odeSlotPred : odeSlotInner);
     if (isBadSolve){
       return NA_REAL;
       //throw std::runtime_error("bad solve");

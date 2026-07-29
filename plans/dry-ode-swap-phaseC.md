@@ -395,3 +395,50 @@ AND its reads to share one stride -- so likInner0's stride has to span its
 external reader (the read-only function near inner.cpp:1262, which reads a solve
 likInner0 performed and must NOT introduce a scope of its own).  That is a
 scope-lifetime change across a function boundary, not another site conversion.
+
+## SCOPE (explicit): one rxSolve vector per fit, never rebuilt
+
+IN scope -- this is the refactor:
+  - sizing the pool's neq / nlhs for the LARGEST model, once, at setup
+  - per-individual neqOverride to compact a smaller model within that pool
+  - per-solve lhs buffers (rxode2's slice when it fits, a private scratch when not)
+
+OUT of scope -- do not do this:
+  - resizing or REBUILDING the rxSolve vector (the global solve structure).
+    One rxSolve_ at setup; models are swapped inside it thereafter.
+
+This indicts a route previously treated as the safe fallback:
+`.foceiAnalyticSolveAll`'s `rxode2::rxSolve(am$augMod, ...)` call REBUILDS the
+global solve on every gradient evaluation (its own comment says so), which is
+exactly the out-of-scope operation.  The pooled path is not an optimisation over
+it -- the pooled path is the supported design, and the rxSolve route is the thing
+to remove, not to fall back to.
+
+Consequence for the multi-endpoint exclusion: gating multi-endpoint back onto the
+rxSolve route is NOT an acceptable resolution, because that route rebuilds the
+solve vector.  The pooled path has to be made correct for it.
+
+## Next lead: reset to the BEST eta before the outer problem
+
+The inner problem optimises eta.  The solve state left behind is whatever eta the
+optimiser tried LAST, which is not necessarily the BEST eta it found.  Anything
+downstream that reuses the solve -- including the outer problem / the analytic
+gradient -- then works from the wrong eta.
+
+So before handing off to the outer problem the model must be reset to the best
+eta: if it is already that eta the cost is minimal (the ODE solve is cached), and
+otherwise the eta must be updated and re-solved.
+
+This is consistent with what has been measured on the multi-endpoint case, where
+four other explanations were tested and rejected:
+  - per-subject relax/retry: zero subjects relaxed (relaxAfter=0, tolFactor=1)
+  - solve tolerance: OdeSolveTolGuard active (1e-10 over 1e-7/1e-4), no change
+  - stale-tail bad-solve scan: bounding the scan to the solved model's own neq
+    (odeSwapIndBadSolveSlot) changed nothing
+  - the pooled gradient route itself: declare-without-register isolates the pool
+    size from the pooled solve, and the wrong gradient persists
+
+What has NOT been tested is whether the fit's inner optimum is left on the last
+eta rather than the best one, which would make the EBEs the gradient is evaluated
+at inconsistent with the solve state -- and would explain why the discrepancy
+lands on the one gradient component whose per-subject terms nearly cancel.

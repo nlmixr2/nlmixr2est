@@ -209,6 +209,17 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind);
 // fail" without reading op->badSolve, which another thread can flip mid-loop.
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind);
 
+// Same, but bounded by what the model in `slot` actually writes.  Use this when
+// the pool is sized for a LARGER peer and no override is armed: the span is then
+// op->neq, so the scan runs past this model's own states into slots it never
+// wrote.  That is how pool SIZE leaks into results -- a stale NaN in the tail
+// reads as a failed solve, loosens tolerances, and shifts the EBEs, so the same
+// fit gives different answers depending on which peer happened to size the pool.
+// Bounding the scan makes the pool size irrelevant without changing any stride
+// (the solve and every read keep using op->neq, so all indexing is untouched).
+bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
+                            int slot);
+
 // ---- bad-solve retry with tolerance relaxation --------------------------
 
 // How a retry loosens tolerances.  Carried per call site rather than unified:
