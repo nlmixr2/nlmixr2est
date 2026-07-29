@@ -353,3 +353,45 @@ test.
 - delay() models cannot be pooled at all: op->delayState/delayCol are built at
   solve setup from the POOL model's stateProp and are part of the solve
   structure, not a swappable global.
+
+## Multi-endpoint: the cause is now ISOLATED by measurement (not inferred)
+
+An earlier note here said the cause was "the fit-wide effect of sizing the pool",
+reasoned from "same wrong gradient whether the pooled solve succeeds or falls
+back".  That was an inference: three things change together when the augmented
+model is declared+registered (pool resize, ES batch, tolerance guard), and the
+fallback case still ran the latter two.
+
+Isolating experiment: DECLARE the augmented model but do NOT register it, so the
+pool resizes to 62 while odeSwapCanPool returns odeDenyNotLoaded -- the pooled
+solve, the ES batch and the tolerance guard are all definitively off (verified:
+canPoolOuter=1, pooledSolveN=0).  The gradient is STILL wrong, byte-identical
+(emax 569.5 vs an FD reference of 63).
+
+=> The POOL RESIZE ALONE causes it.  The pooled solve, the ES batch and the
+tolerance guard are exonerated.
+
+### The concrete mechanism
+
+test-focei-fast-grad.R builds its FD reference with ofvAt(), which refits using
+`foceiControl(print=0, covMethod="", maxOuterIterations=0, maxInnerIterations=100)`
+-- crucially WITHOUT fast=TRUE.  Those refits therefore have no augmented model
+and an INNER-sized pool, while the analytic fit's pool is 62.  So the analytic
+gradient is evaluated at EBEs from a 62-state-pool fit and compared against a
+finite-difference reference assembled from inner-pool fits.  The two are not at
+the same EBEs.
+
+Single-endpoint models tolerate this: the EBE shift is ~2e-10 (focei_fast
+matches main to that).  emax does not: its per-subject contributions cancel to 63
+against components of 600-34000, so it has no margin.
+
+### Why this makes stride compaction load bearing
+
+The fix is to make an inner solve inside a LARGER pool numerically identical to
+an inner solve in its own pool.  That is exactly per-individual stride
+compaction (ind->neqOverride), and it is why the endpoint exclusion cannot be
+lifted by any gate or tolerance change.  Compaction in turn requires every solve
+AND its reads to share one stride -- so likInner0's stride has to span its
+external reader (the read-only function near inner.cpp:1262, which reads a solve
+likInner0 performed and must NOT introduce a scope of its own).  That is a
+scope-lifetime change across a function boundary, not another site conversion.
