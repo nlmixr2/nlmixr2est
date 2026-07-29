@@ -118,3 +118,59 @@ and let the others keep the rxSolve route.  The registry already records
 neq/nlhs per slot, so the gate is a check, not new machinery.  Verify with
 odeSwapBaseline.R (fast) THEN the full test-focei-fast-grad.R (it is the file
 that segfaults; the baseline alone will not catch this).
+
+## The third swapped quantity: event-sensitivity (jump) shape -- GLOBAL
+
+A swap has to adapt THREE things per solve, not two:
+
+1. neq        -- ind->neqOverride (per individual, per solve)
+2. lhs width  -- OdeSwapScope::lhs(); getIndLhs(ind) is only op->nlhs (POOL) wide
+3. **event-sensitivity shape** -- rxode2 GLOBALS, and this is the missing one
+
+rxode2 keeps the jump-sensitivity shape in globals (src/par_solve.cpp):
+
+    _rxEsActive, _rxEsNState, _rxEsNParam, _rxEsNParam2, _rxEsNParam3,
+    _rxEsUseCalcJac
+
+set via the C-callable `rxode2EventSensLoad(trans, active, nState, nParam,
+nParam2)` (registered in rxode2 src/init.c) or from R by
+`rxEventSensLoadModel(model)` / `rxEventSensDeactivate()`.  rxode2's own docs
+name this exact use case: "For downstream packages (e.g. nlmixr2est's FOCEi)
+that solve a sensitivity model through a direct C++ ind_solve() loop, bypassing
+rxSolve()".
+
+rxPred has NO event sensitivities; rxInner HAS them; rxOuter has them too but a
+DIFFERENT shape (different sens directions -> different nParam/nParam2).
+
+nlmixr2est loads them once per fit, from the INNER model only
+(R/focei.R:~2417, `rxEventSensLoadModel(.ret$model$inner)`).  With
+foceiControl(fast=TRUE) the augmented outer model is solved through the SAME
+ind_solve() loop under the inner model's ES dims, so its jumps are mis-shaped.
+
+Do NOT "fix" this by loading the largest model instead (tried, reverted): the
+injection is compartment-count guarded, so smaller models SKIP it -- loading
+outer strips the INNER problem's own jump sensitivities and mis-specifies it.
+One global load cannot serve both models.
+
+### Consequence for the architecture
+
+Because the ES shape is GLOBAL it cannot be switched per individual inside an
+OpenMP region, and it cannot be interleaved.  Solves must be BATCHED BY MODEL:
+load model X's ES, solve every individual for X, then swap the ES and solve the
+batch for Y.  This is the same "one stride at a time, no swapping in between"
+rule that governs neq and the lhs width, applied to a quantity that happens to
+be process-global rather than per-ind.
+
+Any implementation therefore needs, per registry slot: the model's ES dims
+captured once, plus a scope/batch boundary that installs them outside the
+parallel region and restores the previous shape after.
+
+### Still unexplained
+
+With the pool declared+registered for the outer model (attempt 5) and the
+scope-entry rxDynLoad removed, the full test-focei-fast-grad.R STILL aborts.
+rxDynLoad is NOT an ES installer -- it loads the DLL if needed and calls
+rxAssignPtr(obj), i.e. repoints rxode2's global current-model pointer, which is
+why calling it mid-solve corrupts the run.  The remaining abort is consistent
+with the ES shape being wrong for whichever model is solved second, but that has
+not been confirmed by measurement yet.
