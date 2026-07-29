@@ -68,9 +68,13 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
 bool odeSwapRegister(int slot, const char *name, SEXP obj, rxSolveF *fns) {
   if (fns == NULL) return false;
   if (!odeSwapDeclare(slot, name, obj)) return false;
-  // The entry points come from R_GetCCallable on the model's DLL, so it must be
-  // loaded first.  Only do this for models we are about to solve/read.
-  if (!rxode2::rxDynLoad(RObject(obj))) { odeSwapClear(slot); return false; }
+  // Deliberately NO rxDynLoad here.  The code this replaced called only
+  // rxUpdateFuns for each peer model, and adding a load broke the modeled-dosing
+  // (f/lag) analytic gradient: rxDynLoad rebinds rxode2's event-sensitivity
+  // globals, and the f/lag jump sensitivities ARE event sensitivities, so
+  // re-loading a peer mid-setup corrupts them.  R hands these models in already
+  // loaded (foceiSetup_ rxDynLoads the inner model itself); if one were not,
+  // rxUpdateFuns would fail loudly rather than silently compute a wrong result.
   List mv = rxode2::rxModelVars_(RObject(obj));
   rxUpdateFuns(as<SEXP>(mv["trans"]), fns);
   _odeReg[slot].fns = fns;
