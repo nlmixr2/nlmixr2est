@@ -120,7 +120,7 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
 static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
-                     arma::vec& Li, arma::vec& Neff,
+                     arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed) {
@@ -200,6 +200,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   std::vector<arma::mat> cvExp(nExp, arma::mat(neta, neta, arma::fill::zeros));
   arma::vec LiExp(nExp); LiExp.fill(NA_REAL);
   arma::vec NeffExp(nExp); NeffExp.fill(NA_REAL);
+  arma::vec XiExp(nExp); XiExp.fill(NA_REAL);
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
@@ -267,6 +268,24 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
           S.row(k) = (modes[id] + cholL[id] * z).t();
         }
       }
+      // NONMEM-style xi (NM7 eq. 1.73/1.75): the mean importance weight
+      // normalized so the proposal kernel is 1 at its center.  q at the center
+      // is just the log joint density there (the kernel term vanishes at d=0),
+      // so xi = exp(logMeanExp - qCenter) once logMeanExp is formed below.
+      //
+      // xi == 1 exactly when the proposal matches the posterior shape, < 1 when
+      // the proposal is over-dispersed, and > 1 when the posterior has heavier
+      // tails than the Gaussian proposal -- xi is NOT bounded above.  That
+      // heavy-tail signal is what the NONMEM-faithful per-subject gamma
+      // controller targets, and it is a different statistic from the Kish
+      // effective sample size below (they are not comparable).
+      //
+      // Evaluated HERE -- after the draws are complete but before the weight
+      // loop -- deliberately: the sample matrix S is already filled, so this
+      // cannot perturb the sampling stream, and the weight loop still leaves
+      // the subject's eta at S.row(isample-1) exactly as before, preserving
+      // bit-identity with the pre-xi kernel.
+      double qCenter = -impEvalJointLik(modes[id], id);
       // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
       // density (minimized by the inner optimizer), so it enters with a minus;
       // the proposal density is subtracted, contributing +(1/(2 gamma)) d'H d.
@@ -299,6 +318,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
         0.5 * logDetH[id];
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
       NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
+      // NONMEM xi: mean weight normalized to the proposal center (see above).
+      if (R_finite(qCenter)) XiExp[id] = std::exp(logMeanExp - qCenter);
       arma::rowvec pbar = zk.t() * S;
       cmExp.row(id) = pbar;
       arma::mat B(neta, neta, arma::fill::zeros);
@@ -319,6 +340,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
   Li.set_size(nsub); Li.fill(NA_REAL);
   Neff.set_size(nsub); Neff.fill(NA_REAL);
+  Xi.set_size(nsub); Xi.fill(NA_REAL);
   aMat.set_size(nsub, Nm); aMat.zeros();
   for (int i = 0; i < nsub; ++i) {
     if (Nm == 1) {
@@ -326,6 +348,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       condVar[i] = cvExp[i];
       Li[i] = LiExp[i];
       Neff[i] = NeffExp[i];
+      Xi[i] = XiExp[i];
       aMat(i, 0) = 1.0;
       continue;
     }
@@ -368,6 +391,13 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       if (a > 0 && R_finite(NeffExp[i + j * nsub])) nf += a * NeffExp[i + j * nsub];
     }
     if (nf > 0) Neff[i] = nf;
+    // Responsibility-weighted xi, matching how Neff is combined above.
+    double xf = 0.0; bool anyXi = false;
+    for (int j = 0; j < Nm; ++j) {
+      double a = aMat(i, j);
+      if (a > 0 && R_finite(XiExp[i + j * nsub])) { xf += a * XiExp[i + j * nsub]; anyXi = true; }
+    }
+    if (anyXi) Xi[i] = xf;
     // Fold the responsibility a_ij into each component's importance weights so the
     // M-step, iterating the expanded subjects, forms the component-weighted score.
     for (int j = 0; j < Nm; ++j) {
@@ -634,7 +664,7 @@ void impOuter(Environment e) {
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
-  arma::vec Li, Neff;
+  arma::vec Li, Neff, Xi;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
@@ -680,7 +710,7 @@ void impOuter(Environment e) {
   std::vector<int> omFixedEta;
   impGetOmegaFixedEta(omFixedEta);
 
-  std::vector<double> objTrace, gammaTrace, neffTrace;
+  std::vector<double> objTrace, gammaTrace, neffTrace, xiTrace;
   std::vector<arma::vec> parHist;
   bool converged = false;
   int iterRun = 0;
@@ -694,7 +724,7 @@ void impOuter(Environment e) {
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, sampS, sampZk, aMat, &e, qrPinSeed);
+             condMean, condVar, Li, Neff, Xi, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -702,9 +732,15 @@ void impOuter(Environment e) {
     for (int id = 0; id < nsub; ++id)
       if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isample; ++nAcc; }
     if (nAcc > 0) accFrac /= (double)nAcc;
+    // Mean NONMEM-style xi (a DIFFERENT statistic from accFrac -- see impEStep).
+    double xiMean = 0.0; int nXi = 0;
+    for (int id = 0; id < nsub; ++id)
+      if (R_finite(Xi[id])) { xiMean += Xi[id]; ++nXi; }
+    if (nXi > 0) xiMean /= (double)nXi; else xiMean = NA_REAL;
     objTrace.push_back(obj);
     gammaTrace.push_back(gamma);
     neffTrace.push_back(accFrac);
+    xiTrace.push_back(xiMean);
     iterRun = iter + 1;
 
     // M-step.  First a Newton step on the non-mu structural thetas from the
@@ -916,6 +952,7 @@ void impOuter(Environment e) {
   e["impCondVar"]  = condVarList;
   e["impLi"]       = wrap(Li);
   e["impNeff"]     = wrap(Neff);
+  e["impXi"]       = wrap(Xi);
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
@@ -928,6 +965,7 @@ void impOuter(Environment e) {
   e["impObjTrace"] = wrap(objTrace);
   e["impGammaTrace"] = wrap(gammaTrace);
   e["impNeffFrac"] = wrap(neffTrace);
+  e["impXiTrace"]  = wrap(xiTrace);
   e["impMuGroupN"] = impMuGroupN();
 
   // Restore the solve core count if it was forced serial for the mixture EM.
