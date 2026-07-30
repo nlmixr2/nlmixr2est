@@ -528,6 +528,15 @@ odeSwapPlanFor_ <- function(neq, nlhs) {
     .Call(`_nlmixr2est_odeSwapPlanFor_`, neq, nlhs)
 }
 
+#' Record which model role rxode2's event path is bound to (R-side installs).
+#' Roles: -1 unknown, 0 pred, 1 inner, 2 outer, 3 hess2.
+#' @param slot role id
+#' @return NULL
+#' @noRd
+odeSwapEsNoteInstalled_ <- function(slot) {
+    .Call(`_nlmixr2est_odeSwapEsNoteInstalled_`, slot)
+}
+
 odeSwapInfo_ <- function() {
     .Call(`_nlmixr2est_odeSwapInfo_`)
 }

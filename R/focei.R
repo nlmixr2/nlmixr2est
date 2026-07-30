@@ -2447,7 +2447,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error=function(e) FALSE)
     if (isTRUE(.esLoaded)) {
-      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+      ## Tell the C++ core which model the event path is now bound to.  handle_evid
+      ## sizes its scratch from the effective neq but calls the INSTALLED model's
+      ## dydt, so a solve may only be compacted when the two agree -- and the core
+      ## cannot see this R-side install on its own.  Roles: 0 pred, 1 inner,
+      ## 2 outer, 3 hess2 -- a focei problem sets up 1, 2 and 3.
+      odeSwapEsNoteInstalled_(1L)
+      on.exit({
+        rxode2::rxEventSensDeactivate()
+        odeSwapEsNoteInstalled_(-1L)
+      }, add=TRUE)
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
@@ -2693,6 +2702,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
       .control$fast <- FALSE
     }
+  }
+  # Mixture models are out of the fast path until the outer gradient has a proper
+  # treatment for them.  The mixture objective is a sum of component likelihoods
+  # WEIGHTED by each component's probability, so the outer gradient needs the
+  # weighted per-component contributions -- it is not "the eta of the winning
+  # component".  Both simple readings are wrong: indexing inds_focei[_id] takes
+  # component 0 regardless of which won, and picking the winner still drops the
+  # probability weighting and the derivative of the weights themselves.
+  if (isTRUE(.control$fast) &&
+        isTRUE(tryCatch(length(.ui$thetaMixIndex) > 0L, error = function(e) FALSE))) {
+    .minfo("mixture model: the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
+    .control$fast <- FALSE
   }
   # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
   # cannot be built -- downgrade fast once here (plain focei gradient) instead of

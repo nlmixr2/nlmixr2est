@@ -552,3 +552,59 @@ lines after the allocation.
 => Re-test BOTH exclusions once the getPopR revert is confirmed.  If the full
 file is clean with them enabled, they come out.  Use the route-agreement probe
 (same fit, both routes) as the accuracy gate, not the FD comparison.
+
+
+## Open, pre-existing: the augmented model can return columns nobody wrote
+
+`test-focei-fast-grad.R`'s "fast=TRUE fit matches the finite-difference fit" fails 3
+assertions (analytic gradient never consumed).  Present on `main` with the same
+harness, so Phase 0's un-skipping EXPOSED it rather than causing it; the fit still
+converges (objf/fixef assertions pass) -- what breaks is that `fast=TRUE` silently
+buys nothing.
+
+Characterized:
+- Cumulative: blocks 0-3 alone pass, 4-6 alone pass, 0-6 together fail.
+- `.foceiAnalyticGradCore` bails at the `foceiGradAllFR_` finiteness check, because
+  the augmented solve returns `f`/`f1` finite and correct while EVERY later declared
+  lhs (`rx_f2_*`, `rx_rvarf_`, `rx_rvar1/2_*`, `rx_rsig*`) is unwritten.  thetas,
+  states, `Oi`, `dOiCube`, `tr28` are all finite -- it is not a numerical blow-up.
+- Measured: the bound `calc_lhs` writes 4 of the model's 29 declared lhs, and the
+  SAME model (same prefix `rx_6afe1706...`, same modelVars) resolved to two different
+  `calc_lhs` addresses within one session.  So the first pointer also dangles.
+- NOT the pooled path: plain `rxode2::rxSolve` reproduces it (29 columns present,
+  3300 non-finite), with `pooledSolveN` at 0 for that fit.
+
+Ruled out by measurement: rxode2 model cache (`rxClean()` before the fit changes
+nothing), stale global solve atol/rtol (both guards are RAII), a wrong compaction
+stride (`override=26 opNeq=26 opNlhs=29 esOk=1 canPool=0`), stale `rxInv`/omega
+derivatives, prefix collision, the model being unloaded (`rxIsLoaded` is TRUE on all
+20 calls), and stale on-disk artifacts (rxTempDir is per-session).
+
+NOT reduced to a standalone rxode2 reproducer: compiling and solving 96 unrelated
+models in one session leaves the first model perfect (`tools/` probe), so plain model
+churn is not the trigger.  No upstream issue filed -- it needs a reproducer first.
+
+Do NOT "detect and rebuild": a finiteness probe is unreliable here, because the
+failure is UNWRITTEN memory, which can read back finite.  Tried and reverted.
+
+Landed defence instead: `odeSwapCheckLhsWidth()` probes the bound `calc_lhs` width
+once per pooled outer call and refuses to pool on a mismatch (counter
+`lhsWidthMismatchN`; measured firing 15/15 on the failing fit), so the shared pool can
+never consume a mismatched binding.
+
+Review fixes on the guard itself (antigravity, 5 findings, all real):
+- the probe counted the HIGHEST written slot, so a writer hitting lhs[0] and
+  lhs[want-1] while skipping the middle passed; now every slot in [0, want) must be
+  written;
+- it probed at t=0 with the raw state, which would mis-flag an lhs inside a
+  time-dependent branch; now probes at the subject's own first time, and a refusal
+  warns once instead of silently dropping the pooled route;
+- OdeSwapEsBatch's early return compared the ROLE, so switching between two slots
+  that share odeEsOuter (thetaSens/outer/outerNode/outerCov) skipped installing the
+  model about to be solved; it compares the SLOT now, while the compaction gate keeps
+  using the role;
+- declining to compact neutralized only a NARROWER pinned override; a wider one
+  would integrate more states than the model has, so any pinned override is cleared;
+- .foceiAnalyticEnsureLoaded() was removed outright: re-loading a dll in R does not
+  refresh the C++ rxSolveF pointers, so it introduced a stale-pointer segfault path
+  in exchange for a reload that never fired (rxIsLoaded was TRUE on all 20 calls).

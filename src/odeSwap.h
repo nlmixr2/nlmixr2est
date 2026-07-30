@@ -96,12 +96,34 @@ bool odeSwapLoaded(int slot);
 // every individual for that model, then restore.  OdeSwapEsBatch is that
 // boundary and MUST be constructed outside any parallel region -- unlike
 // OdeSwapScope, which is per-ind and safe inside one.
+//
+// The shape belongs to a MODEL ROLE, not to a registry slot: several slots share
+// one shape (thetaSens and the augmented outer models), while hess2 has its own.
+// handle_evid sizes its scratch from the effective neq but calls the INSTALLED
+// model's dydt, so a solve may only be compacted when the two agree -- and the
+// installer can be R-side (focei.R loads the inner model's shape for the whole
+// fit), which the registry cannot see on its own.  Hence odeSwapEsNoteInstalled().
+enum OdeEsModel {
+  odeEsUnknown = -1,   // not recorded -- never compact
+  odeEsPred    =  0,   // no event sensitivities of its own
+  odeEsInner   =  1,
+  odeEsOuter   =  2,   // augmented outer models (and thetaSens)
+  odeEsHess2   =  3    // its OWN shape, NOT inner's
+};
+// Which ROLE a slot's event-sensitivity shape belongs to.
+int  odeSwapEsModelForSlot(int slot);
+// Which ROLE is installed right now (odeEsUnknown when we have not recorded it).
+int  odeSwapEsInstalledModel();
+// Record a role installed outside the registry (focei.R's fit-wide load).
+void odeSwapEsNoteInstalled(int esModel);
+
 struct OdeSwapEsBatch {
   explicit OdeSwapEsBatch(int slot);
   ~OdeSwapEsBatch();
   bool armed() const { return armed_; }
 private:
-  int prevSlot_;
+  int prevSlot_;      // previous ROLE
+  int prevSlotIdx_;   // previous SLOT -- what restoring actually needs
   bool armed_;
   OdeSwapEsBatch(const OdeSwapEsBatch &);
   OdeSwapEsBatch &operator=(const OdeSwapEsBatch &);
@@ -321,6 +343,22 @@ int  odeSwapPinnedSlot();
 
 // Usage counters, so tests can assert the mechanism ran rather than infer it.
 long odeSwapOverrideArmedN();
+// A bound calc_lhs whose written width disagreed with the registry's nlhs.
+long odeSwapLhsWidthMismatchN();
+// Declined compactions that had to neutralize a narrower pinned override.
+long odeSwapOverrideNeutralizedN();
+// Verify the function pointers bound for `slot` really write the registry's nlhs.
+// rxUpdateFuns resolves symbols with R_GetCCallable(lib, name) -- BY NAME -- so the
+// same model can re-resolve to another dll's symbol later in a session.  Returns
+// false on a mismatch, and the caller must then refuse to pool.
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
+// Number of times a bound calc_lhs was found NOT to match its registry width.
+long odeSwapLhsWidthMismatchN();
+// Verify the function pointers bound for `slot` really write the registry's nlhs.
+// R_GetCCallable() resolves by symbol NAME, so a peer can silently re-resolve to a
+// different model's dll within one session.  Returns false on a mismatch (caller
+// must refuse to pool); the probe runs once per call and costs one calc_lhs.
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
 long odeSwapScratchUsedN();
 long odeSwapScratchResizeN();
 long odeSwapPinnedN();

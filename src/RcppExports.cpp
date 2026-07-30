@@ -1532,6 +1532,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// odeSwapEsNoteInstalled_
+RObject odeSwapEsNoteInstalled_(int slot);
+RcppExport SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP slotSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type slot(slotSEXP);
+    rcpp_result_gen = Rcpp::wrap(odeSwapEsNoteInstalled_(slot));
+    return rcpp_result_gen;
+END_RCPP
+}
 // odeSwapInfo_
 List odeSwapInfo_();
 RcppExport SEXP _nlmixr2est_odeSwapInfo_() {

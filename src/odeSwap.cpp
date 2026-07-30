@@ -115,8 +115,29 @@ bool odeSwapHasEs(int slot) {
   return odeSlotOk(slot) && _odeReg[slot].loaded && _odeReg[slot].esActive != 0;
 }
 
-// Which slot's ES shape is currently installed (-1 = untouched by us).
-static int _odeEsSlot = -1;
+// Which ROLE's ES shape is installed (odeEsUnknown = we have not recorded one),
+// and which SLOT installed it.  Both are needed and they are NOT interchangeable:
+// the ROLE decides whether a solve may compact, while restoring has to re-install
+// a concrete slot's model.  Conflating them installed slot 1 (pred) when restoring
+// role 1 (inner).
+static int _odeEsSlot = odeEsUnknown;
+static int _odeEsSlotIdx = -1;
+
+int odeSwapEsModelForSlot(int slot) {
+  switch (slot) {
+  case odeSlotPred:      return odeEsPred;
+  case odeSlotInner:     return odeEsInner;
+  case odeSlotHess2:     return odeEsHess2;
+  case odeSlotThetaSens:
+  case odeSlotOuter:
+  case odeSlotOuterNode:
+  case odeSlotOuterCov:  return odeEsOuter;
+  default:               return odeEsUnknown;
+  }
+}
+
+int  odeSwapEsInstalledModel()          { return _odeEsSlot; }
+void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx = -1; }
 
 // Install a slot's ES shape.  rxode2's rxode2EventSensLoad/SetActive are not
 // linkable from here, so this goes through the R entry point -- which is also
@@ -124,17 +145,19 @@ static int _odeEsSlot = -1;
 // An R round trip is acceptable BECAUSE this is a batch boundary: it runs once
 // per model batch, outside any parallel region.  It must never be called from
 // inside an OpenMP loop (Rcpp::Function is not safe there).
-static void odeSwapEsInstall(int slot) {
-  if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return;
+static bool odeSwapEsInstall(int slot) {
+  if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return false;
   SEXP _m = odeSwapModelSEXP(slot);
-  if (_m == R_NilValue) return;
+  if (_m == R_NilValue) return false;
   try {
     Environment _rx = Environment::namespace_env("rxode2");
     Function _f = as<Function>(_rx["rxEventSensLoadModel"]);
     _f(RObject(_m));
   } catch (...) {
     // leave the shape as it was; the caller falls back rather than mis-solving
+    return false;
   }
+  return true;
 }
 
 static void odeSwapEsDeactivate() {
@@ -146,25 +169,36 @@ static void odeSwapEsDeactivate() {
   }
 }
 
-OdeSwapEsBatch::OdeSwapEsBatch(int slot) : prevSlot_(_odeEsSlot), armed_(false) {
-  if (slot == _odeEsSlot) return;               // already this batch's shape
+OdeSwapEsBatch::OdeSwapEsBatch(int slot)
+  : prevSlot_(_odeEsSlot), prevSlotIdx_(_odeEsSlotIdx), armed_(false) {
+  int want = odeSwapEsModelForSlot(slot);
+  // Compare the SLOT, not the role: thetaSens/outer/outerNode/outerCov all share the
+  // odeEsOuter role but are DIFFERENT compiled models with different ES shapes, so a
+  // role match would skip installing the one we are about to solve.
+  if (slot == _odeEsSlotIdx) return;                       // already this model
+  bool esOk = true;
   if (odeSwapHasEs(slot)) {
-    odeSwapEsInstall(slot);
+    esOk = odeSwapEsInstall(slot);
+    // Record the role ONLY when the install actually happened.  Recording a role
+    // we failed to install would tell OdeSwapScope it may compact against a shape
+    // that is not there.
+    if (!esOk) return;
   } else {
     // A model with no jump sensitivities must not be solved under another
     // model's shape either: the injection would fire with dims that belong to
     // a different model.  Deactivate for the batch.
     odeSwapEsDeactivate();
   }
-  _odeEsSlot = slot;
+  _odeEsSlot = want;
+  _odeEsSlotIdx = slot;
   armed_ = true;
 }
 
 OdeSwapEsBatch::~OdeSwapEsBatch() {
   if (!armed_) return;
-  if (prevSlot_ >= 0) {
-    odeSwapEsInstall(prevSlot_);
-  } else if (odeSwapHasEs(odeSlotInner)) {
+  if (prevSlotIdx_ >= 0) {
+    odeSwapEsInstall(prevSlotIdx_);          // a SLOT, never a role
+  } else if (prevSlot_ == odeEsInner && odeSwapHasEs(odeSlotInner)) {
     // prevSlot_ == -1 means the pre-batch shape was installed OUTSIDE the
     // registry -- the fit-wide load of the INNER model's sensitivities
     // (focei.R's rxEventSensLoadModel(model$inner)).  Restore that, not
@@ -175,6 +209,7 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
     odeSwapEsDeactivate();
   }
   _odeEsSlot = prevSlot_;
+  _odeEsSlotIdx = prevSlotIdx_;
 }
 
 void odeSwapClear(int slot) {
@@ -305,6 +340,8 @@ int odeSwapCanPool(int slot) {
 // ---- per-individual solve scope -----------------------------------------
 
 static std::atomic<long> _odeOverrideArmedN(0);
+static std::atomic<long> _odeLhsWidthMismatchN(0);
+static std::atomic<long> _odeOverrideNeutralizedN(0);
 static std::atomic<long> _odeScratchUsedN(0);
 static std::atomic<long> _odeScratchResizeN(0);
 // cumulative, NOT reset by clearAll/unpin -- post-fit `pinned` is always FALSE
@@ -318,6 +355,42 @@ static std::atomic<long> _odePinCalledN(0);
 static std::atomic<int>  _odePinDeny(0);
 
 long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_relaxed); }
+long odeSwapLhsWidthMismatchN() { return _odeLhsWidthMismatchN.load(std::memory_order_relaxed); }
+long odeSwapOverrideNeutralizedN() { return _odeOverrideNeutralizedN.load(std::memory_order_relaxed); }
+
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+  if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
+  int want = odeSwapNlhs(slot);
+  int room = getOpNlhs(op);
+  if (want <= 0 || room < want) return false;
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
+  if (ind == NULL) return false;
+  double *st = getIndSolve(ind);
+  if (st == NULL) return false;
+  // Only WHICH slots get written matters, not the values -- so use a sentinel no
+  // model produces.  NaN would compare unequal and so read as "written".
+  static const double _sent = -9.87654321e37;
+  std::vector<double> probe((size_t)room, _sent);
+  // Probe at this subject's own first time, not t=0: an lhs sitting inside a
+  // time-dependent branch would go unassigned at an arbitrary time and look missing.
+  fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
+  // EVERY declared slot must be written, not merely the last one -- a writer that
+  // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
+  int missing = 0;
+  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
+  if (missing > 0) {
+    // A model whose lhs are all inside conditional branches could in principle
+    // report missing here and lose the pooled route.  That is the safe direction:
+    // the caller then takes the rxode2::rxSolve reference path, which is correct,
+    // just slower -- and the counter plus the warning make it visible rather than
+    // silent.  odeSwapCanPool() computes deny reasons on demand.
+    if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
+      Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
+    }
+    return false;
+  }
+  return true;
+}
 long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
 long odeSwapPinnedN()        { return _odePinnedN.load(std::memory_order_relaxed); }
@@ -327,6 +400,8 @@ long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_rela
 int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
 void odeSwapResetCounters() {
   _odeOverrideArmedN.store(0, std::memory_order_relaxed);
+  _odeLhsWidthMismatchN.store(0, std::memory_order_relaxed);
+  _odeOverrideNeutralizedN.store(0, std::memory_order_relaxed);
   _odeScratchUsedN.store(0, std::memory_order_relaxed);
   _odeScratchResizeN.store(0, std::memory_order_relaxed);
 }
@@ -363,11 +438,35 @@ OdeSwapScope::OdeSwapScope(int slot, rx_solving_options_ind *ind, rx_solving_opt
   wide_ = odeSwapWantsScratch(slot, op);
   // Only arm for a registered slot: odeSwapNeq() returns 0 for an unloaded one,
   // and compacting the stride to 0 would corrupt the solve rather than fail.
-  if (ind_ != NULL && odeSwapLoaded(slot)) {
+  // AND only when the event path is bound to THIS model's role.  handle_evid
+  // callocs its scratch from the EFFECTIVE neq and then calls the INSTALLED model's
+  // dydt, so an override taken against a different installed model overflows that
+  // scratch (valgrind-confirmed).  Unknown (odeEsUnknown) never compacts.  pred is
+  // exempt and has to be: it carries no event sensitivities of its own, so the jump
+  // injection does not fire, and the finite-difference fallback REQUIRES compaction.
+  int _esCur = odeSwapEsInstalledModel();
+  int _esWant = odeSwapEsModelForSlot(slot);
+  bool _pathMatches = (_esWant == odeEsPred) ||
+    (_esCur != odeEsUnknown && _esCur == _esWant);
+  if (ind_ != NULL && odeSwapLoaded(slot) && _pathMatches) {
     saved_ = getIndNeqOverride(ind_);
     setIndNeqOverride(ind_, neq_);
     armed_ = true;
     _odeOverrideArmedN.fetch_add(1, std::memory_order_relaxed);
+  } else if (ind_ != NULL) {
+    // Declining must mean "run at the POOL's full width" -- not "inherit whatever
+    // override happens to be pinned".  A focei fast fit pins the inner override for
+    // the whole fit, so inheriting it would integrate only the wider model's leading
+    // states and leave every later one stale.
+    // ANY pinned override, not just a narrower one: a WIDER one left in place would
+    // integrate more states than this model has and run its dydt out of bounds.
+    int _cur = getIndNeqOverride(ind_);
+    if (_cur >= 0) {
+      saved_ = _cur;
+      setIndNeqOverride(ind_, -1);       // -1 = no override -> full op->neq
+      armed_ = true;
+      _odeOverrideNeutralizedN.fetch_add(1, std::memory_order_relaxed);
+    }
   }
 }
 
@@ -547,6 +646,17 @@ List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs) {
                       _["overrideNeeded"] = p.overrideNeeded);
 }
 
+//' Record which model role rxode2's event path is bound to (R-side installs).
+//' Roles: -1 unknown, 0 pred, 1 inner, 2 outer, 3 hess2.
+//' @param slot role id
+//' @return NULL
+//' @noRd
+//[[Rcpp::export]]
+RObject odeSwapEsNoteInstalled_(int slot) {
+  odeSwapEsNoteInstalled(slot);   // a ROLE, not a slot index
+  return R_NilValue;
+}
+
 //[[Rcpp::export]]
 List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
@@ -601,6 +711,8 @@ List odeSwapInfo_() {
     // fit is the leak this component exists to make impossible.
     _["activeOverride"] = activeOv,
     _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
+    _["overrideNeutralizedN"] = (double)odeSwapOverrideNeutralizedN(),
+    _["lhsWidthMismatchN"] = (double)odeSwapLhsWidthMismatchN(),
     _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
     _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
     _["pinnedN"] = (double)odeSwapPinnedN(),

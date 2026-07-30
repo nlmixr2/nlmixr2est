@@ -10946,7 +10946,17 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
       rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
+  // Does the BOUND calc_lhs actually belong to the model the registry describes?
+  // rxUpdateFuns resolves symbols with R_GetCCallable(lib, name), which resolves by
+  // NAME -- and the same augmented model can re-resolve to a different dll's symbol
+  // later in a session.  Measured on test-focei-fast-grad.R: a 26-state/29-lhs outer
+  // model whose bound calc_lhs wrote only 4 of the 29 columns.  The registry still
+  // reported 29, so f2/rvar/rvar1/rvar2/rsig were all read from slots nobody wrote
+  // -- finite garbage or NaN by solve history, silently degrading the whole fit to
+  // finite differences (or worse, going unnoticed).  Probe the width once per call
+  // and refuse to pool on a mismatch: the caller falls back to rxode2::rxSolve.
   rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
   const int nsub = (int)getRxNsub(rx);
   if (ebes.nrow() != nsub) return R_NilValue;
   const int neta = (int)op_focei.neta;

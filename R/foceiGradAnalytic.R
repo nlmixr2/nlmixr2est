@@ -1111,10 +1111,27 @@
 #' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
 #' (out of scope).  `thVals` is the named converged theta vector.
 #' @noRd
+#' Is this UI a mixture model?
+#'
+#' The analytic outer gradient has no treatment for mixtures yet: the objective is a
+#' probability-WEIGHTED sum of component likelihoods, so the gradient needs the
+#' weighted per-component contributions AND the derivative of the weights.  Neither
+#' "component 0" nor "the winning component" is correct.  Excluded centrally so every
+#' route is covered -- foceiControl(fast=TRUE) downgrades in focei.R, but est="vae"
+#' nonMuTheta="grad" and a direct post-fit .foceiGradAnalyticCalc() reach the analytic
+#' path without passing through that downgrade.
+#' @param ui model UI
+#' @return TRUE when the model has mixture thetas
+#' @noRd
+.foceiAnalyticIsMixture <- function(ui) {
+  isTRUE(tryCatch(length(ui$thetaMixIndex) > 0L, error = function(e) FALSE))
+}
+
 .foceiAnalyticGradSetup <- function(ui, thVals, Om, e = NULL,
                                     caller = .analyticGradCaller(ui)) {
   if (is.na(caller)) return(NULL)
   if (!.hasRxSens()) return(NULL)
+  if (.foceiAnalyticIsMixture(ui)) return(NULL)     # mixtures: weighted sum, no treatment yet
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
   if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
@@ -1300,6 +1317,7 @@
 #' @noRd
 .foceiOuterDirs <- function(ui, caller = .analyticGradCaller(ui)) {
   if (!.hasRxSens()) return(NULL)
+  if (.foceiAnalyticIsMixture(ui)) return(NULL)     # mixtures: weighted sum, no treatment yet
   if (isTRUE(any(ui$predDf$linCmt))) return(NULL)   # linCmt(): no symbolic state sensitivities
   if (!.analyticGradAllowsBoundedTr(ui, caller)) return(NULL)
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
