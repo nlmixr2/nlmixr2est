@@ -467,6 +467,29 @@
 #' of `vaeControl(nonMuTheta="grad")` instead.  That branch is gated on an active
 #' call flag, not on cached state, so focei's own fast gradient is unaffected.
 #' @noRd
+# Verification-only opt-out: when TRUE, .foceiAnalyticSolveAll skips the pooled
+# solve and takes the rxode2::rxSolve route.  Exists so a test can evaluate the
+# SAME fit both ways -- identical thetas, identical best etas, no inner
+# re-optimisation -- which is a far stronger check of the pooled solve than a
+# finite-difference comparison assembled from separate refits.  Never set during
+# an ordinary fit.
+.odeSwapNoPool <- new.env(parent = emptyenv())
+.odeSwapNoPool$on <- FALSE
+
+#' Analytic outer gradient forced through the rxode2::rxSolve route.
+#'
+#' Verification helper: pairs with [.foceiGradAnalyticCalc()] to compare the two
+#' solve routes on one fit.
+#' @param fit a completed fit
+#' @return the gradient, as [.foceiGradAnalyticCalc()] returns it
+#' @noRd
+.foceiAnalyticGradViaRxSolve <- function(fit) {
+  .old <- .odeSwapNoPool$on
+  .odeSwapNoPool$on <- TRUE
+  on.exit(.odeSwapNoPool$on <- .old, add = TRUE)
+  .foceiGradAnalyticCalc(fit)
+}
+
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
@@ -484,7 +507,7 @@
   ## pool fixes at setup and cannot change per solve.
   .dde <- isTRUE(tryCatch(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L,
                           error = function(e) FALSE))
-  if (!.dde) {
+  if (!.dde && !isTRUE(.odeSwapNoPool$on)) {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
       .nc <- tryCatch({ .c <- am$cores
@@ -493,7 +516,7 @@
       .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
                                      as.numeric(tol)),
                       error = function(e) NULL)
-      if (!is.null(.Ec) && length(.Ec) > 0L) return(.Ec)
+      if (!is.null(.Ec) && length(.Ec) > 0L && !isTRUE(.odeSwapNoPool$on)) return(.Ec)
     }
   }
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)

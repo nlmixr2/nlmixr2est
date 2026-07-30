@@ -258,4 +258,45 @@ nmTest({
     expect_identical(i$poolName, "inner")
     expect_false(i$needsScratch)
   })
+
+  test_that("the pooled solve and rxSolve give the same gradient", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    ## Route agreement, not a finite-difference comparison.  Both gradients are
+    ## taken from the SAME fit object, so the thetas and the best etas are
+    ## identical by construction and no inner re-optimisation happens between
+    ## them -- any difference is the solve route alone.
+    ##
+    ## This is deliberately stronger than test-focei-fast-grad.R's FD check for
+    ## this purpose: that test's ofvAt() refits WITHOUT fast=TRUE, so its
+    ## reference comes from unpooled fits with re-optimised etas, and its flat
+    ## h=1e-3 divides by 2e-3 and amplifies inner-optimisation noise ~500x.
+    ## Multiple endpoints were once excluded from pooling on the strength of that
+    ## comparison.  The two routes in fact agree exactly there too (verified
+    ## manually, all 8 components, relative error 0); that exclusion now stands
+    ## only because enabling it corrupts the heap later in a many-fit sequence.
+    one <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(one, nlmixr2data::theo_sd, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                           maxOuterIterations = 0L, maxInnerIterations = 100L,
+                           calcTables = FALSE))))
+    ## fast=TRUE pools: the augmented model sizes the pool
+    expect_identical(.odeSwapInfo()$poolName, "outer")
+    .n0 <- .odeSwapInfo()$pooledSolveN
+    gPool <- .foceiGradAnalyticCalc(f)
+    expect_false(is.null(gPool))
+    ## and the pooled solve must actually have run, or this compares nothing
+    expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
+    gRx <- .foceiAnalyticGradViaRxSolve(f)
+    expect_false(is.null(gRx))
+    expect_equal(unname(gPool), unname(gRx), tolerance = 1e-10)
+  })
 })

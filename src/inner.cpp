@@ -1439,12 +1439,25 @@ static void getPopR(int id, arma::vec &rPop) {
   // pointer with the inner model, so solving it here would corrupt the next
   // inner linCmt gradient.  At eta=0 the inner model's states are population,
   // so its rx_r_ is the genuine eta=0 R for both ODE and linCmt.
-  // Self-contained solve+read region: arm this subject's stride for the inner
-  // model and hold it across the calc_lhs reads below, so both use the same
-  // stride (getOpIndSolve indexes by the live override).  Was unscoped, so with
-  // a larger peer sizing the pool this ran at the pool's neq while rxInner's
-  // dydt fills only its own, and read back through rxode2's pool-width slice.
-  OdeSwapScope neqGuard(odeSlotInner, ind, op);
+  // NOT scoped/compacted here, and this is load bearing.  Arming an override
+  // makes rxode2's event path size a scratch buffer from the EFFECTIVE neq while
+  // the dydt it then invokes belongs to whichever model rxode2's globals point
+  // at.  Under foceiControl(fast=TRUE) those disagree -- the override is the
+  // inner model's 8 states, the dydt is the augmented outer model's 26 -- and
+  // handle_evid callocs 8 doubles (rxode2parseHandleEvid.h:1705) which the dydt
+  // overruns three lines later (:1708).  Valgrind, minimal FOCE "nonmem" +
+  // fast=TRUE reproducer:
+  //
+  //   Invalid write of size 8
+  //     at  rx_6afe1706...__dydt        <- augmented outer model, 26 states
+  //     by  handle_evid ... ind_solve
+  //     by  getPopR (inner.cpp)
+  //   Address is 0 bytes after a block of size 64 alloc'd   <- 8 doubles
+  //     by  handle_evid                                     <- sized from the override
+  //
+  // A solve may only be compacted where rxode2's event-path globals describe the
+  // SAME model.  Running at the pool's neq wastes unused states but keeps the
+  // sizing and the dydt consistent, which is what correctness requires.
   setIndSolve(ind, -1);
   innerOde(_rxId); // solve the inner model at eta=0
   iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
@@ -1454,7 +1467,7 @@ static void getPopR(int id, arma::vec &rPop) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = neqGuard.lhs();
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
@@ -4362,21 +4375,6 @@ static bool analyticOuterGrad(double *theta, double *g) {
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
-  // Stage each subject's BEST eta in par_ptr before the gradient runs.  The inner
-  // problem records its winner in fInd->eta, but the last likelihood evaluation it
-  // made may have been a LOSING candidate, which leaves that candidate's eta in
-  // par_ptr.  The outer problem has no solve cache -- it re-solves whenever it is
-  // called -- so it only needs the right eta staged, and no solve is done here:
-  // an inner solve at this point would be wasted work.
-  //
-  // Deliberately in the OUTER gradient step, not in the inner problem: the inner
-  // problem's other consumers (its own iterations, the pred fallback) re-establish
-  // their state anyway, so staging there would be pure cost.
-  {
-    rx_solve *_sRx = getRxSolve_();
-    int _nsub = (_sRx == NULL) ? 0 : (int)getRxNsub(_sRx);
-    for (int _id = 0; _id < _nsub; ++_id) updateEta(inds_focei[_id].eta, _id);
-  }
   // Refresh the live state the R gradient reads; omega/theta/etaObf are
   // otherwise only written into the fit env at finalize.
   NumericVector _th(op_focei.ntheta);

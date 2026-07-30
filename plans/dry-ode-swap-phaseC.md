@@ -505,3 +505,50 @@ tested and rejected (per-subject relaxation, solve tolerance, the stale-tail
 bad-solve scan, the pooled gradient route in isolation, the solver-position reset,
 best-eta staging).  The cause is not yet identified, and the exclusion stays in
 place until it is.
+
+## CORRECTION: both exclusions are IN scope
+
+This file previously framed the multi-endpoint and delay exclusions as settled and
+out of scope.  Both framings are withdrawn.
+
+### Multiple endpoints -- IN scope
+
+Accuracy is not in question: evaluating the analytic gradient twice on the SAME
+fit (identical thetas, identical best etas, no inner re-optimisation), once
+pooled and once through rxode2::rxSolve, gives BIT-IDENTICAL gradients for a
+two-endpoint model -- all 8 components, relative error 0.  test-odeswap.R pins
+this via .foceiAnalyticGradViaRxSolve().
+
+The FD comparison that originally motivated the exclusion is an invalid
+instrument for the purpose: test-focei-fast-grad.R's ofvAt() refits WITHOUT
+fast=TRUE, so it references unpooled fits with re-optimised etas against a pooled
+analytic value, and its flat h=1e-3 divides by 2e-3, amplifying
+inner-optimisation noise ~500x on a component whose per-subject terms cancel
+to ~63.
+
+### delay() -- IN scope
+
+The stated justification was that DDE pins method="dop853"/dense, which a shared
+pool fixes at setup and cannot change per solve.  That is wrong: focei ALREADY
+forces the DDE configuration at the FIT level (R/focei.R, the hasDelay block
+around line 1711 -- method 0, stiff2 13, dense TRUE), so a DDE fit's pool is
+already built dense-dop853 and there is nothing to change per solve.
+
+The only untested DDE-specific concern left is the delay-history column map
+(op->delayState/delayCol), built at solve setup from the pool model's stateProp.
+Whether the augmented model's map is compatible with the inner solves has NOT
+been measured -- and the same route-agreement probe used for endpoints answers it
+directly, so it should be measured rather than assumed.
+
+### What both exclusions actually rest on now
+
+Only the heap corruption seen when they were enabled -- and that corruption has
+since been traced by valgrind to getPopR's OdeSwapScope (a83a22f96), an unrelated
+and now-reverted cause: handle_evid callocs a scratch from the EFFECTIVE neq
+(the override, 8 doubles) while the dydt it invokes belongs to whichever model
+rxode2's globals point at (the augmented model, 26 states), overflowing three
+lines after the allocation.
+
+=> Re-test BOTH exclusions once the getPopR revert is confirmed.  If the full
+file is clean with them enabled, they come out.  Use the route-agreement probe
+(same fit, both routes) as the accuracy gate, not the FD comparison.

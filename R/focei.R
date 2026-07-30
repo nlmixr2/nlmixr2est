@@ -1431,17 +1431,24 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
     # May the augmented outer model be POOLED (size the shared solve and run
     # through vaeOuterSolve_)?  Data flag only -- consumed by foceiFitCpp_.
-    # Multiple endpoints are TEMPORARILY excluded, cause not yet identified.
-    # Measured on the two-endpoint warfarin PK/PD test: the pooled gradient
-    # differs from the rxSolve one by 9x on emax (569 vs an FD reference of 63)
-    # while the other six components agree to ~2-10%.  Diffing the two routes'
-    # per-subject E structures on the same fit shows R/aR/AR/Rsig* IDENTICAL and
-    # only f/a/A differing, by 1e-5..1e-4 -- far too small to explain the
-    # gradient gap, so the discrepancy is NOT the reader mishandling
-    # dvid-conditional endpoints and NOT solve tolerance (matching the rxSolve
-    # route's atol/rtol changed nothing).  Something downstream of the E
-    # structures is endpoint-dependent; until that is found, multi-endpoint
-    # models keep the rxSolve route.
+    #
+    # Multiple endpoints are excluded for MEMORY SAFETY, not for accuracy.
+    #
+    # Accuracy is fine: evaluating the analytic gradient twice on the SAME fit --
+    # once pooled, once through rxode2::rxSolve, so identical thetas and identical
+    # best etas with no inner re-optimisation -- gives bit-identical gradients for
+    # a two-endpoint model (all 8 components, relative error 0).  So the earlier
+    # justification for this exclusion was wrong, and so was the FD comparison it
+    # rested on: test-focei-fast-grad.R's ofvAt() refits WITHOUT fast=TRUE, so it
+    # references unpooled fits with re-optimised etas against a pooled analytic
+    # value, and its flat h=1e-3 divides by 2e-3, amplifying inner-optimisation
+    # noise ~500x on a component whose per-subject terms cancel to ~63.
+    #
+    # But enabling it aborts test-focei-fast-grad.R with "free(): invalid next
+    # size".  A two-fit file (test-odeswap.R) is clean, so the corruption needs
+    # the many-fit sequence -- most likely a buffer still sized for a narrower
+    # model once a much wider augmented model has sized the pool.  Until that is
+    # found, multi-endpoint keeps the rxSolve route.
     # NO delay() models: the delay-history column map (op->delayState/delayCol)
     # is built at solve setup FROM THE POOL MODEL's stateProp -- it is part of
     # the solve structure, not a swappable global like the event-sensitivity
