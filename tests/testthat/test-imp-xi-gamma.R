@@ -119,6 +119,45 @@ nmTest({
     expect_equal(.impmapResolveGammaMethod("auto", rxode2::rxode2(.lnm)), "global")
   })
 
+  test_that("gammaMethod='auto' requires EVERY endpoint to be Gaussian", {
+    # predDf has one row per endpoint, so the decision is an all() over rows:
+    # a model is only "global" if every endpoint is Gaussian.  One non-normal
+    # endpoint alongside normal ones makes the joint posterior non-Gaussian and
+    # must select "individual".
+    .m2n <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; teff <- 1
+           eta.cl ~ 0.1; add.sd <- 0.7; eff.sd <- 0.5})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             d/dt(depot) <- -ka * depot
+             d/dt(cen) <- ka * depot - cl / v * cen
+             cp <- cen / v
+             eff <- teff * cp
+             cp ~ add(add.sd)
+             eff ~ add(eff.sd)})
+    }
+    .mMix <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; tl <- 1; eta.cl ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             d/dt(depot) <- -ka * depot
+             d/dt(cen) <- ka * depot - cl / v * cen
+             cp <- cen / v
+             lam <- exp(tl)
+             cp ~ add(add.sd)
+             eff ~ pois(lam)})
+    }
+    .u2n <- rxode2::rxode2(.m2n)
+    .uMix <- rxode2::rxode2(.mMix)
+    expect_equal(nrow(.u2n$predDf), 2L)     # premise: multiple rows
+    expect_equal(nrow(.uMix$predDf), 2L)
+    # all endpoints Gaussian -> global
+    expect_equal(.impmapResolveGammaMethod("auto", .u2n), "global")
+    # ONE non-Gaussian endpoint is enough to select individual
+    expect_equal(.impmapResolveGammaMethod("auto", .uMix), "individual")
+    # and the canonicalizer must vectorize across rows rather than collapse
+    expect_equal(unname(rxode2::rxPreferredDistributionName(
+      as.character(.uMix$predDf$distribution))), c("dnorm", "pois"))
+  })
+
   test_that("gammaMethod='auto' re-resolves when a control is reused", {
     # Resolution overwrites gammaMethod in place.  A control lifted off a
     # finished fit and reused on a different model must re-resolve from the
