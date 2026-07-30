@@ -63,6 +63,78 @@ nmTest({
     expect_true(all(diff(.xi1) < 0))
   })
 
+  test_that("gammaMethod: control accepts both modes and defaults to global", {
+    expect_equal(impmapControl()$gammaMethod, "global")
+    expect_equal(impmapControl(gammaMethod = "individual")$gammaMethod, "individual")
+    expect_error(impmapControl(gammaMethod = "nonsense"))
+    # round-trips through the control constructor (do.call re-entry)
+    .c <- impmapControl(gammaMethod = "individual")
+    expect_equal(do.call(impmapControl, .c)$gammaMethod, "individual")
+    # stripped when down-converting to a plain foceiControl
+    expect_true("gammaMethod" %in% .impmapIsControlNames)
+  })
+
+  test_that("gammaMethod='global' keeps one shared scale", {
+    .d <- nlmixr2data::theo_sd
+    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 10L,
+                                                 covMethod = "",
+                                                 gammaMethod = "global")))
+    .E <- .f$env
+    expect_equal(.E$impGammaMethod, "global")
+    # every subject on the same scale, equal to the reported scalar
+    expect_equal(length(unique(round(.E$impGammaInd, 12))), 1L)
+    expect_equal(unname(.E$impGammaInd[1]), unname(.E$impGammaUsed), tolerance = 1e-10)
+  })
+
+  test_that("gammaMethod='individual' gives per-subject scales that target iaccept", {
+    .d <- nlmixr2data::theo_sd
+    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 30L,
+                                                 covMethod = "",
+                                                 gammaMethod = "individual")))
+    .E <- .f$env
+    expect_equal(.E$impGammaMethod, "individual")
+    # subjects genuinely diverge -- this is the whole point of the mode
+    expect_gt(length(unique(round(.E$impGammaInd, 8))), 1L)
+    # every scale respects the ISCALE bounds
+    expect_true(all(.E$impGammaInd >= 0.1 - 1e-8))
+    expect_true(all(.E$impGammaInd <= 10 + 1e-8))
+    expect_true(all(is.finite(.E$impGammaInd)))
+    # the controller drives mean xi onto the iaccept target (default 0.4).  The
+    # global rule leaves it near 1 on this near-Gaussian model, so this is a
+    # genuine discriminator between the two laws, not a tautology.
+    expect_equal(tail(.E$impXiTrace, 1), 0.4, tolerance = 0.1)
+  })
+
+  test_that("gammaMethod does not move the estimates, only the variance", {
+    # The importance weights correct for gamma, so both laws must agree on the
+    # parameters even though they sample at very different proposal widths.
+    .d <- nlmixr2data::theo_sd
+    .g <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 25L, covMethod = "",
+                                                 gammaMethod = "global")))
+    .i <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 25L, covMethod = "",
+                                                 gammaMethod = "individual")))
+    # the two ran at materially different scales ...
+    expect_gt(.i$env$impGammaUsed, 1.2 * .g$env$impGammaUsed)
+    # ... but agree on the fixed effects and the objective
+    expect_equal(unname(.i$theta), unname(.g$theta), tolerance = 0.02)
+    expect_equal(.i$env$impObj, .g$env$impObj, tolerance = 0.5)
+  })
+
+  test_that("individual gamma respects a tightened iscaleMax clamp", {
+    .d <- nlmixr2data::theo_sd
+    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 20L, covMethod = "",
+                                                 gammaMethod = "individual",
+                                                 iscaleMax = 1.2)))
+    # the unclamped controller wants gamma ~ 1.8 here, so 1.2 must bind
+    expect_true(all(.f$env$impGammaInd <= 1.2 + 1e-8))
+    expect_gt(max(.f$env$impGammaInd), 1.0)
+  })
+
   test_that("xi is near 1 for a well-matched proposal on a near-Gaussian model", {
     # gamma = 1 makes the proposal the Laplace approximation itself, so on a
     # model whose individual posterior is close to Gaussian xi should sit near 1.

@@ -9,6 +9,7 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
+                           "gammaMethod",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -38,6 +39,28 @@
 #' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
+#' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
+#'
+#'   `"global"` keeps one scale shared by every subject, inflated (never
+#'   relaxed) only when the *mean* Kish effective-sample fraction falls below
+#'   `iaccept`.  It leaves `gamma` at its efficient starting value while
+#'   coverage is healthy, which is the right behaviour when the individual
+#'   posteriors are close to Gaussian.
+#'
+#'   `"individual"` gives every subject its own `gamma_i` and adapts it
+#'   two-sided toward a target on that subject's `xi_i`, clamped to
+#'   `[iscaleMin, iscaleMax]` -- NONMEM's rule (NM7 Technical Guide eq. 1.90 and
+#'   the note after 1.76, where `gamma` is per-subject and is "continually
+#'   adjusted so that xi_i approximates IACCEPT").  Prefer this when the
+#'   individual posteriors are heavy-tailed or the design is heterogeneous:
+#'   a global scale is driven by the mean, so a handful of badly-covered
+#'   subjects never trip it and their likelihood and `Omega` contributions end
+#'   up carried by a few samples.
+#'
+#'   The two modes report *different* efficiency statistics -- `"individual"`
+#'   targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
+#'   quantity) while `"global"` targets the Kish effective-sample fraction.
+#'   These are not comparable; the fit's `$runInfo` says which is in force.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
 #'   (NONMEM ISCALE_MIN / ISCALE_MAX).
 #' @param iaccept Minimum importance-sampling effective-sample fraction
@@ -94,6 +117,7 @@ impmapControl <- function(sigdig=4,
                           nIter=100L,
                           mapIter=1L,
                           gamma=1.0,
+                          gammaMethod=c("global", "individual"),
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -108,6 +132,7 @@ impmapControl <- function(sigdig=4,
                           sirSample=NULL,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
+  gammaMethod <- match.arg(gammaMethod)
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
@@ -154,6 +179,7 @@ impmapControl <- function(sigdig=4,
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
+  .control$gammaMethod <- gammaMethod
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
   .control$iaccept <- as.double(iaccept)

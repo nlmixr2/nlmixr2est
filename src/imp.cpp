@@ -126,6 +126,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
+                     arma::vec& XiExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed) {
@@ -414,6 +415,11 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
     }
   }
 
+  // Per-EXPANDED-subject xi, which is what the individual-gamma controller
+  // drives (one gamma_i per expanded subject).  `Xi` above is the
+  // responsibility-combined per-base-subject value used for reporting.
+  XiExpOut = XiExp;
+
   // On the last iteration, stash the per-subject sampler diagnostics (first
   // component for a mixture).
   if (eStash != nullptr) {
@@ -672,7 +678,7 @@ void impOuter(Environment e) {
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
-  arma::vec Li, Neff, Xi;
+  arma::vec Li, Neff, Xi, XiExp;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
@@ -686,6 +692,14 @@ void impOuter(Environment e) {
   // holding it as a vector is what lets a per-subject controller drive the
   // elements apart without touching the E-step again.
   arma::vec gammaVec(nExp); gammaVec.fill(gamma);
+  // gammaMethod="individual": NONMEM's per-subject rule (NM7 eq. 1.90 and the
+  // note after 1.76) -- each subject's gamma_i is adapted two-sided so that its
+  // own xi_i approaches iaccept.  Otherwise the legacy global rule drives one
+  // shared scale off the MEAN Kish effective-sample fraction.
+  bool gammaInd = impGammaIndividual();
+  // Largest relative per-step change the controller applied last iteration;
+  // starts large so convergence cannot trip before the controller has run.
+  double gammaStepPrev = R_PosInf;
 
   // Force the EM serial when the per-subject inner solves are not thread-safe:
   //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
@@ -736,11 +750,13 @@ void impOuter(Environment e) {
     if (iter > 0 && !isImp) impReMap();
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
-    // Global rule: every expanded subject shares the scalar scale.  (The
-    // per-subject controller replaces this fill with its own per-element update.)
-    gammaVec.fill(gamma);
+    // Global rule: every expanded subject shares the scalar scale.  Under
+    // "individual" gammaVec already carries the per-subject scales the
+    // controller set at the end of the previous iteration (and the constructor
+    // fill for iteration 0), so it must NOT be flattened here.
+    if (!gammaInd) gammaVec.fill(gamma);
     impEStep(nsub, neta, isample, gammaVec, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, sampS, sampZk, aMat, &e, qrPinSeed);
+             condMean, condVar, Li, Neff, Xi, XiExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -753,6 +769,10 @@ void impOuter(Environment e) {
     for (int id = 0; id < nsub; ++id)
       if (R_finite(Xi[id])) { xiMean += Xi[id]; ++nXi; }
     if (nXi > 0) xiMean /= (double)nXi; else xiMean = NA_REAL;
+    // `gamma` is the scalar summary of the scale actually used this iteration:
+    // itself under "global", the mean of the per-subject scales under
+    // "individual".  It is what gets traced and reported as impGammaUsed.
+    if (gammaInd) gamma = arma::mean(gammaVec);
     objTrace.push_back(obj);
     gammaTrace.push_back(gamma);
     neffTrace.push_back(accFrac);
@@ -920,7 +940,13 @@ void impOuter(Environment e) {
       // not a precision requirement (the objMetric gate carries the precision).
       double parTol = 0.02;
       double gWin0 = gammaTrace[n - nConvWindow - 1];
-      bool gammaStable = std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0);
+      // Under "individual" the traced scalar is a MEAN, so offsetting moves
+      // across subjects could look settled while individual scales are still
+      // swinging.  Gate on the largest per-subject step the controller actually
+      // applied instead, which cannot be masked that way.
+      bool gammaStable = gammaInd
+        ? (gammaStepPrev <= 1e-3)
+        : (std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0));
       if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
     }
 
@@ -933,7 +959,43 @@ void impOuter(Environment e) {
     // drops below the floor (heavy-tailed/skewed posterior), with a gentle
     // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
     // correct for gamma, so this changes only the variance, not the estimates.
-    if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
+    if (gammaInd) {
+      // NONMEM's per-subject rule.  xi_i falls monotonically as the proposal
+      // widens, so xi_i ABOVE the target means subject i's proposal is too
+      // narrow for its posterior (the heavy-tail case) and gamma_i must grow;
+      // xi_i below target means it is needlessly over-dispersed and gamma_i
+      // shrinks.  Two-sided, so a bad early iteration is not paid for forever.
+      //
+      // The sqrt damps the step (xi is not linear in gamma) and the symmetric
+      // 1.25x cap keeps one noisy iteration from slamming a subject into a
+      // bound.  Weights correct for gamma, so this moves variance, not the
+      // estimates.
+      const double capUp = 1.25, capDn = 1.0 / 1.25;
+      double maxStep = 0.0;
+      for (int id = 0; id < nExp; ++id) {
+        double xiId = XiExp[id];
+        if (ISNAN(xiId)) continue;      // no usable xi (dead subject): leave alone
+        double fac;
+        if (!R_finite(xiId)) {
+          fac = capUp;                  // xi = +Inf: as under-dispersed as it gets
+        } else if (xiId <= 0.0) {
+          fac = capDn;                  // xi = 0: proposal far too wide
+        } else {
+          fac = std::sqrt(xiId / iaccept);
+          if (fac > capUp) fac = capUp;
+          else if (fac < capDn) fac = capDn;
+        }
+        double g = gammaVec[id] * fac;
+        if (g < iscaleMin) g = iscaleMin;
+        if (g > iscaleMax) g = iscaleMax;
+        // Measure the step actually taken (after clamping) so a subject pinned
+        // at a bound reads as settled rather than as perpetually moving.
+        double applied = (gammaVec[id] > 0.0) ? std::fabs(g / gammaVec[id] - 1.0) : 0.0;
+        if (applied > maxStep) maxStep = applied;
+        gammaVec[id] = g;
+      }
+      gammaStepPrev = maxStep;
+    } else if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
       double fac = std::sqrt(iaccept / accFrac);
       if (fac > 1.25) fac = 1.25;
       gamma *= fac;
@@ -969,6 +1031,10 @@ void impOuter(Environment e) {
   e["impLi"]       = wrap(Li);
   e["impNeff"]     = wrap(Neff);
   e["impXi"]       = wrap(Xi);
+  // Per-expanded-subject proposal scales actually used, and which controller
+  // produced them.  Under "global" every element equals impGammaUsed.
+  e["impGammaInd"] = wrap(gammaVec);
+  e["impGammaMethod"] = gammaInd ? "individual" : "global";
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
