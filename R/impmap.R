@@ -332,6 +332,51 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (all(.canon == "dnorm")) "global" else "individual"
 }
 
+#' Build the $runInfo note naming the efficiency statistic in force
+#'
+#' Both statistics are always computed and stashed on the fit -- NONMEM-style
+#' `xi` in `$impXiTrace`/`$impXi` and the Kish effective-sample fraction in
+#' `$impNeffFrac`/`$impNeff` -- but only one of them drives the proposal-scale
+#' adaptation, and they are NOT the same quantity even though both are governed
+#' by `iaccept`.  Measured on theophylline at gamma = 1, mean xi = 1.009 while
+#' the mean Kish fraction = 0.997; at gamma = 4 they read 0.503 and 0.667.
+#' Reading one as if it were the other, or comparing a "global" fit's number
+#' against an "individual" fit's, is a live mistake, so every fit says which is
+#' which.
+#'
+#' @param resolved Resolved gammaMethod: "global" or "individual".
+#' @param user What the user asked for ("auto", "global", "individual").
+#' @param iaccept Target/floor value.
+#' @return A single-line character message.
+#' @noRd
+.impmapGammaRunInfo <- function(resolved, user, iaccept) {
+  .why <- if (identical(user, "auto")) {
+    if (identical(resolved, "individual")) {
+      " (auto: not every endpoint is Gaussian)"
+    } else {
+      " (auto: all endpoints are Gaussian)"
+    }
+  } else {
+    ""
+  }
+  if (identical(resolved, "individual")) {
+    paste0("gammaMethod=\"individual\"", .why,
+           ": the proposal scale is adapted per subject toward xi=", iaccept,
+           " (NONMEM IACCEPT).  Sampling efficiency for this fit is xi",
+           " ($impXi/$impXiTrace); the Kish effective-sample fraction",
+           " ($impNeffFrac) is a DIFFERENT statistic and the two are not",
+           " comparable -- nor is xi comparable across gammaMethod settings.")
+  } else {
+    paste0("gammaMethod=\"global\"", .why,
+           ": one shared proposal scale, adapted only when the mean Kish",
+           " effective-sample fraction falls below ", iaccept,
+           ".  Sampling efficiency for this fit is that fraction",
+           " ($impNeff/$impNeffFrac); NONMEM-style xi ($impXiTrace) is also",
+           " reported but is a DIFFERENT statistic and the two are not",
+           " comparable.")
+  }
+}
+
 #' Install the impmap control into the ui
 #'
 #' @param env Environment with ui in it
@@ -383,6 +428,13 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (is.null(.gmUser)) .gmUser <- .control$gammaMethod
   .control$gammaMethodUser <- .gmUser                # kept for $runInfo
   .control$gammaMethod <- .impmapResolveGammaMethod(.gmUser, ui)
+  # Say which efficiency statistic this fit's number actually is.  Both are
+  # always stashed but they are not the same quantity, and only one drives the
+  # adaptation -- warning() here is the established route onto $runInfo
+  # (collected in nlmixr2Est.R and printed under "Information about run").
+  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser,
+                              .control$iaccept),
+          call.=FALSE)
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they

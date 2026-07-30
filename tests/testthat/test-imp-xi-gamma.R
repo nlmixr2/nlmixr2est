@@ -196,6 +196,46 @@ nmTest({
     expect_gt(length(unique(round(.fl$env$impGammaInd, 8))), 1L)
   })
 
+  test_that("$runInfo names which efficiency statistic the fit is reporting", {
+    # xi and the Kish effective-sample fraction are both always stashed, are
+    # both governed by iaccept, and are NOT the same quantity.  Every fit has to
+    # say which one its number is, or the two get read interchangeably.
+    .msgG <- .impmapGammaRunInfo("global", "auto", 0.4)
+    .msgI <- .impmapGammaRunInfo("individual", "auto", 0.4)
+    # each names its own statistic ...
+    expect_match(.msgG, "Kish effective-sample fraction")
+    expect_match(.msgG, "impNeffFrac", fixed = TRUE)
+    expect_match(.msgI, "xi")
+    expect_match(.msgI, "impXiTrace", fixed = TRUE)
+    # ... and both state plainly that the two cannot be compared
+    expect_match(.msgG, "not\\s+comparable")
+    expect_match(.msgI, "not\\s+comparable")
+    # auto explains itself; an explicit choice does not editorialize
+    expect_match(.msgI, "auto", fixed = TRUE)
+    expect_false(grepl("auto", .impmapGammaRunInfo("individual", "individual", 0.4), fixed = TRUE))
+    # the target value is reported, not hardcoded in the prose
+    expect_match(.impmapGammaRunInfo("individual", "auto", 0.25), "0.25", fixed = TRUE)
+  })
+
+  test_that("$runInfo note reaches the fit on both paths", {
+    .d <- nlmixr2data::theo_sd
+    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 5L, covMethod = "")))
+    .ri <- .fn$runInfo
+    expect_true(any(grepl("gammaMethod=\"global\"", .ri, fixed = TRUE)))
+    expect_true(any(grepl("not comparable", .ri, fixed = TRUE)))
+    .ll <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; sd1 <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt()
+             ll(cp) ~ -0.5 * log(2 * pi) - log(sd1) - 0.5 * ((DV - cp) / sd1)^2})
+    }
+    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 5L, covMethod = "")))
+    .ril <- .fl$runInfo
+    expect_true(any(grepl("gammaMethod=\"individual\"", .ril, fixed = TRUE)))
+    expect_true(any(grepl("not comparable", .ril, fixed = TRUE)))
+  })
+
   test_that("gammaMethod='global' keeps one shared scale", {
     .d <- nlmixr2data::theo_sd
     .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
