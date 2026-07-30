@@ -469,3 +469,39 @@ best-eta reset has to be applied at the INNER problem's EXIT -- "reset to the be
 eta before it goes to the outer problem" -- in innerOpt/innerOptId, not at the
 outer solve's entry.  That touches every fit and needs its own pass with a full
 baseline, rather than being bolted onto this work.
+
+## RETRACTED: "an uncompacted inner solve in a big pool destroys the fit"
+
+An earlier revision of this file claimed a decisive measurement that pool size
+alone wrecks the fit (multi-endpoint objf -10208 with poolNeq=62 vs 53695 with
+poolNeq=4), and concluded that the damage scales with the pool-to-model ratio.
+BOTH the experiment and the conclusion were wrong.
+
+The experiment did not isolate pool size.  Forcing outerPoolOk also DECLARES and
+REGISTERS the augmented model, routes the gradient through vaeOuterSolve_, opens
+the ES batch and applies the tolerance guard.  It compared two different
+estimation paths, so the objf difference cannot be attributed to the resize --
+and with two endpoints it was an untested combination, so that number most
+likely reflects a broken configuration rather than a property of pool sizing.
+
+### What the passing baselines actually prove
+
+Sizing the pool for a LARGER model and clamping neq/lhs as designed does NOT move
+the objective.  This is demonstrated, not inferred:
+
+  - impmap_scratch: poolNeq=6 (thetaSens) with a 4-state inner model, clamped via
+    ind->neqOverride -> objf 192.487097125745, EXACTLY origin/main
+  - focei_fast: poolNeq=26 (augmented outer) with an 8-state inner model
+    -> within 2e-10 of origin/main
+  - nlm_grad, focei_c1/c2, focei_full, posthoc: unchanged throughout
+
+So a larger pool with correct clamping is numerically neutral.  Any claim that
+pool size per se perturbs a fit contradicts these results.
+
+### Status of the multi-endpoint failure: OPEN
+
+No established finding about pool sizing.  Six gradient-side hypotheses have been
+tested and rejected (per-subject relaxation, solve tolerance, the stale-tail
+bad-solve scan, the pooled gradient route in isolation, the solver-position reset,
+best-eta staging).  The cause is not yet identified, and the exclusion stays in
+place until it is.

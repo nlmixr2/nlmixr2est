@@ -4362,6 +4362,21 @@ static bool analyticOuterGrad(double *theta, double *g) {
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
+  // Stage each subject's BEST eta in par_ptr before the gradient runs.  The inner
+  // problem records its winner in fInd->eta, but the last likelihood evaluation it
+  // made may have been a LOSING candidate, which leaves that candidate's eta in
+  // par_ptr.  The outer problem has no solve cache -- it re-solves whenever it is
+  // called -- so it only needs the right eta staged, and no solve is done here:
+  // an inner solve at this point would be wasted work.
+  //
+  // Deliberately in the OUTER gradient step, not in the inner problem: the inner
+  // problem's other consumers (its own iterations, the pred fallback) re-establish
+  // their state anyway, so staging there would be pure cost.
+  {
+    rx_solve *_sRx = getRxSolve_();
+    int _nsub = (_sRx == NULL) ? 0 : (int)getRxNsub(_sRx);
+    for (int _id = 0; _id < _nsub; ++_id) updateEta(inds_focei[_id].eta, _id);
+  }
   // Refresh the live state the R gradient reads; omega/theta/etaObf are
   // otherwise only written into the fit env at finalize.
   NumericVector _th(op_focei.ntheta);
