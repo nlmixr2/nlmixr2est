@@ -10978,6 +10978,18 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
       setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
     // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
     OdeSwapScope neqGuard(odeSlotOuter, ind, op);
+    // Two things have to hold before this subject is solved, and BOTH are needed:
+    //   1. the eta installed above is the BEST eta the inner problem found (what
+    //      the caller passes in `ebes`), not whatever eta its optimiser happened
+    //      to try last;
+    //   2. the ODE system is reset to the START of the solve.  ind->solve carries
+    //      the initial conditions forward by design and needs no clearing, but the
+    //      solver's position state does -- otherwise the solve does not advance
+    //      from the eta just installed.  When the eta is unchanged this costs
+    //      nothing, since the solve is cached.
+    // Every other solve site here already resets (likInner0, shi21ThetaGeneral,
+    // getPopR); this one did not.
+    setIndSolve(ind, -1);
     iniSubjectE(_rxId, 1, ind, op, rx, rxVaeOuter.update_inis);
     // Loosen THIS subject's tolerance and retry rather than failing it straight
     // to the caller's finite-difference fallback: a solve that succeeds at a

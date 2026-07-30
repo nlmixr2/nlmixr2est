@@ -442,3 +442,30 @@ What has NOT been tested is whether the fit's inner optimum is left on the last
 eta rather than the best one, which would make the EBEs the gradient is evaluated
 at inconsistent with the solve state -- and would explain why the discrepancy
 lands on the one gradient component whose per-subject terms nearly cancel.
+
+## Best-eta + solve reset: applied at the outer solve; the fit-side half remains
+
+rxode2 copies the initial conditions into ind->solve and carries that same vector
+forward, so the BUFFER never needs clearing.  What must be reset is the solver's
+POSITION state (setIndSolve(ind, -1)) -- "this subject starts a new solve".  Two
+things then have to hold together before a solve:
+
+  1. the eta installed is the BEST eta the inner problem found, not whatever eta
+     its optimiser tried last; and
+  2. the ODE system is reset to the start of the solve.
+
+When the eta is unchanged this costs nothing (the solve is cached); otherwise the
+eta must be updated and re-solved.
+
+DONE: vaeOuterSolve_ now does both, in order (install eta -> setIndSolve(-1) ->
+iniSubjectE -> solve).  It was the only solve site in inner.cpp that never reset
+the position -- likInner0, shi21ThetaGeneral and getPopR all did.
+
+STILL OPEN: this does NOT fix the multi-endpoint gradient, and the reason is
+positional.  The declare-without-register isolation already showed the wrong
+gradient appears with the pooled solve entirely off, i.e. the discrepancy is
+present in the FIT's EBEs before the outer problem is ever entered.  So the
+best-eta reset has to be applied at the INNER problem's EXIT -- "reset to the best
+eta before it goes to the outer problem" -- in innerOpt/innerOptId, not at the
+outer solve's entry.  That touches every fit and needs its own pass with a full
+baseline, rather than being bolted onto this work.
