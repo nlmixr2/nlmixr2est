@@ -117,14 +117,18 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
 // conditional mean, variance, objective contribution, and effective sample
 // size.  `iter` shifts the per-subject RNG stream so successive iterations use
 // fresh (still thread-count-independent) samples.
-static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
+// gammaVec carries ONE proposal scale per EXPANDED subject (id = i + j*nsub), so
+// a mixture's components each get their own scale.  Under gammaMethod="global"
+// every element holds the same value and this is arithmetically identical to the
+// previous scalar gamma; the per-subject controller is what makes them diverge.
+static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
+                     int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed) {
-  double invGamma2 = 1.0 / (2.0 * gamma);
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
 
@@ -154,6 +158,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
 #ifdef _OPENMP
     if (doParProp) setRxThreadId(omp_get_thread_num());
 #endif
+    double gammaId = gammaVec[id];
     if (isImp) {
       arma::vec eta(neta);
       impGetEta(id, eta);
@@ -169,7 +174,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       double ldv, lds;
       if (arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0) {
         arma::mat L;
-        if (arma::chol(L, gamma * Sig, "lower")) {
+        if (arma::chol(L, gammaId * Sig, "lower")) {
           Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
         }
       }
@@ -184,7 +189,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
         if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
           Hs[id] = H;
           logDetH[id] = ldv;
-          Sigma *= gamma;
+          Sigma *= gammaId;
           arma::mat L;
           if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
         }
@@ -243,6 +248,9 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       nmSetSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
       cmExp.row(id) = modes[id].t();
       if (!haveL[id]) continue;
+      // This subject's own proposal scale (all equal under gammaMethod="global").
+      double gammaId = gammaVec[id];
+      double invGamma2 = 1.0 / (2.0 * gammaId);
       arma::mat S(isample, neta);
       if (qr) {
         // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
@@ -314,7 +322,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       outZk[id] = zk;
       okExp[id] = 1;
       double logMeanExp = qmax + std::log(sumw / (double)isample);
-      double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) -
+      double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
         0.5 * logDetH[id];
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
       NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
@@ -673,6 +681,11 @@ void impOuter(Environment e) {
   // est="imp": skip the per-iteration MAP search; the E-step proposal is centered
   // at the running conditional mean with covariance gamma*Omega.
   bool isImp = impIsImp();
+  // Per-expanded-subject proposal scale.  Under the current (global) rule every
+  // element tracks the scalar `gamma`, so the E-step arithmetic is unchanged;
+  // holding it as a vector is what lets a per-subject controller drive the
+  // elements apart without touching the E-step again.
+  arma::vec gammaVec(nExp); gammaVec.fill(gamma);
 
   // Force the EM serial when the per-subject inner solves are not thread-safe:
   //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
@@ -723,7 +736,10 @@ void impOuter(Environment e) {
     if (iter > 0 && !isImp) impReMap();
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
-    impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(), isImp,
+    // Global rule: every expanded subject shares the scalar scale.  (The
+    // per-subject controller replaces this fill with its own per-element update.)
+    gammaVec.fill(gamma);
+    impEStep(nsub, neta, isample, gammaVec, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
