@@ -478,6 +478,14 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
+  # stashed final-iteration weights so it costs nothing during the EM.
+  tryCatch({
+    .fenv <- .fit$env
+    if (is.environment(.fenv)) {
+      assign("impPsisK", .impPsisKAll(.fenv), envir=.fenv)
+    }
+  }, error=function(e) NULL)
   .fit
 }
 

@@ -424,15 +424,25 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
   // component for a mixture).
   if (eStash != nullptr) {
     arma::mat modeMat(nsub, neta);
-    List hessList(nsub), samplesList(nsub);
+    List hessList(nsub), samplesList(nsub), weightList(nsub);
     for (int id = 0; id < nsub; ++id) {
       modeMat.row(id) = modes[id].t();
       hessList[id] = haveL[id] ? wrap(Hs[id]) : R_NilValue;
       samplesList[id] = wrap(outS[id]);
+      // Normalized importance weights, kept so a TAIL-sensitive diagnostic
+      // (Pareto k-hat) can be computed post-fit.  xi and the Kish ESS are both
+      // means over samples drawn FROM the proposal, so both are structurally
+      // blind to tails the proposal never visits -- which is the failure mode a
+      // heavier-tailed (t) proposal exists to prevent.  k-hat estimates the
+      // tail index of the weight distribution and does see it.  Pareto k-hat is
+      // scale-invariant, so the mixture responsibility folded into these
+      // weights above does not affect it.
+      weightList[id] = wrap(outZk[id]);
     }
     (*eStash)["impEtaMode"] = wrap(modeMat);
     (*eStash)["impEtaHess"] = hessList;
     (*eStash)["impSamples"] = samplesList;
+    (*eStash)["impWeights"] = weightList;
   }
 }
 
