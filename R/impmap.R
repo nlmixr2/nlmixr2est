@@ -49,9 +49,12 @@
 #'
 #'   `"individual"` gives every subject its own `gamma_i` and adapts it
 #'   two-sided toward a target on that subject's `xi_i`, clamped to
-#'   `[iscaleMin, iscaleMax]` -- NONMEM's rule (NM7 Technical Guide eq. 1.90 and
-#'   the note after 1.76, where `gamma` is per-subject and is "continually
-#'   adjusted so that xi_i approximates IACCEPT").  Prefer this when the
+#'   `[iscaleMin, iscaleMax]`.  This follows NONMEM's *objective* -- the NM7
+#'   Technical Guide states that `gamma` is per-subject (eq. 1.90) and is
+#'   "continually adjusted so that xi_i approximates IACCEPT" (note after
+#'   eq. 1.76), bounded by `ISCALE_MIN`/`ISCALE_MAX` -- but the guide publishes
+#'   no update formula, so the functional form used here is nlmixr2's own.
+#'   Prefer this when the
 #'   individual posteriors are heavy-tailed or the design is heterogeneous:
 #'   a global scale is driven by the mean, so a handful of badly-covered
 #'   subjects never trip it and their likelihood and `Omega` contributions end

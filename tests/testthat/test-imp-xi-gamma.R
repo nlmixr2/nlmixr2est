@@ -135,6 +135,30 @@ nmTest({
     expect_gt(max(.f$env$impGammaInd), 1.0)
   })
 
+  test_that("covMethod='imp' uses the converged scales under individual gamma", {
+    # impComputeCov used to read impGammaProp() -- the control's INITIAL gamma --
+    # so with gammaMethod="individual" it evaluated the covariance with a single
+    # scale of 1.0 while the fit had converged near 1.8 per subject.  The
+    # importance weights correct for gamma, so that was consistent rather than
+    # biased, but it sampled from a proposal the fit had already rejected as
+    # poorly matched, which inflates Monte-Carlo noise in the FD Hessian.  This
+    # pins that the covariance is built and stays well-formed on that path.
+    .d <- nlmixr2data::theo_sd
+    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 15L,
+                                                 covMethod = "imp",
+                                                 gammaMethod = "individual")))
+    .E <- .f$env
+    # the scales really did move away from the control's initial gamma = 1
+    expect_gt(min(.E$impGammaInd), 1.05)
+    .cv <- as.matrix(.E$cov)
+    expect_true(all(is.finite(.cv)))
+    expect_equal(.cv, t(.cv), tolerance = 1e-8)          # symmetric
+    expect_true(all(diag(.cv) > 0))                       # positive diagonal
+    expect_true(all(is.finite(.E$impSeTheta)))
+    expect_true(all(.E$impSeTheta > 0))
+  })
+
   test_that("individual gamma is stable at high eta dimension (no limit cycle)", {
     # The damping exponent has to scale with neta.  For a Gaussian posterior
     # xi = gamma^(-neta/2), so gamma' = gamma*(xi/iaccept)^p linearizes to an

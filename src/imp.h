@@ -160,7 +160,7 @@ void impUpdateStructThetas(const arma::vec& step);
 // Monte-Carlo observed-information covariance for the estimated thetas: FD
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
-void impComputeCov(Rcpp::Environment e);
+void impComputeCov(Rcpp::Environment e, const arma::vec& gammaVec);
 bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"

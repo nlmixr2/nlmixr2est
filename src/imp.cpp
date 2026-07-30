@@ -285,8 +285,8 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       // xi == 1 exactly when the proposal matches the posterior shape, < 1 when
       // the proposal is over-dispersed, and > 1 when the posterior has heavier
       // tails than the Gaussian proposal -- xi is NOT bounded above.  That
-      // heavy-tail signal is what the NONMEM-faithful per-subject gamma
-      // controller targets, and it is a different statistic from the Kish
+      // heavy-tail signal is what the per-subject gamma controller
+      // targets, and it is a different statistic from the Kish
       // effective sample size below (they are not comparable).
       //
       // Evaluated HERE -- after the draws are complete but before the weight
@@ -448,12 +448,16 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
 // behaved.  The observed information is 0.5 * d2(-2LL)/dpar2 and the covariance
 // is its inverse.  (mu-referenced thetas still need mode tracking -- a later
 // increment -- since the fixed samples do not follow the mode shift.)
-void impComputeCov(Environment e) {
+// gammaVec carries the CONVERGED proposal scales from the EM (one per expanded
+// subject; the first nsub entries are component 0, which is the indexing this
+// function uses).  It previously read impGammaProp(), the control's *initial*
+// gamma -- wrong whenever the scale adapted during the fit, and badly wrong
+// under gammaMethod="individual" where the scales are per subject.  The
+// covariance must be evaluated with the same proposal the fit converged on.
+void impComputeCov(Environment e, const arma::vec& gammaVec) {
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
-  double gamma = impGammaProp();
-  double invGamma2 = 1.0 / (2.0 * gamma);
   // Parallelize the reweighted-objective subject loop (each subject contributes an
   // independent scalar to the -2LL) when the inner solves are thread-safe: no
   // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
@@ -489,7 +493,7 @@ void impComputeCov(Environment e) {
       H = 0.5 * (H + H.t()); // guard against tiny numerical asymmetry
       arma::mat Sigma; double ldv, lds;
       if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
-        Sigma *= gamma;
+        Sigma *= gammaVec[id];
         arma::mat L;
         if (arma::chol(L, Sigma, "lower")) {
           Hs[id] = H; Ls[id] = L; logDetH[id] = ldv; ok[id] = 1;
@@ -571,6 +575,8 @@ void impComputeCov(Environment e) {
 #endif
       if (ok[id]) {
         impForceResolve(id);
+        // This subject's converged proposal scale (all equal under "global").
+        double invGamma2 = 1.0 / (2.0 * gammaVec[id]);
         arma::vec q(isample); int nGood = 0;
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
@@ -583,7 +589,7 @@ void impComputeCov(Environment e) {
           double qmax = q.max();
           double sumw = arma::accu(arma::exp(q - qmax));
           double logMeanExp = qmax + std::log(sumw / (double)isample);
-          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) - 0.5 * logDetH[id];
+          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id];
           objBuf[id] = -2.0 * (logMeanExp + Ci);
         }
       }
@@ -692,10 +698,17 @@ void impOuter(Environment e) {
   // holding it as a vector is what lets a per-subject controller drive the
   // elements apart without touching the E-step again.
   arma::vec gammaVec(nExp); gammaVec.fill(gamma);
-  // gammaMethod="individual": NONMEM's per-subject rule (NM7 eq. 1.90 and the
-  // note after 1.76) -- each subject's gamma_i is adapted two-sided so that its
-  // own xi_i approaches iaccept.  Otherwise the legacy global rule drives one
-  // shared scale off the MEAN Kish effective-sample fraction.
+  // gammaMethod="individual": each subject's gamma_i is adapted two-sided so
+  // that its own xi_i approaches iaccept.  Otherwise the legacy global rule
+  // drives one shared scale off the MEAN Kish effective-sample fraction.
+  //
+  // NONMEM specifies the OBJECTIVE of this loop but not its update law.  The
+  // NM7 Technical Guide gives the target ("gamma is continually adjusted so
+  // that xi_i approximates IACCEPT", note after eq. 1.76), the per-subject
+  // granularity (gamma_i in eq. 1.90; "adjusted for each subject" at 1.474),
+  // and the [ISCALE_MIN, ISCALE_MAX] bounds -- and nothing further.  The
+  // functional form below (multiplicative, exponent 2/neta, symmetric cap) is
+  // ours; the guide publishes no formula to copy.
   bool gammaInd = impGammaIndividual();
   // Largest relative per-step change the controller applied last iteration;
   // starts large so convergence cannot trip before the controller has run.
@@ -960,7 +973,7 @@ void impOuter(Environment e) {
     // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
     // correct for gamma, so this changes only the variance, not the estimates.
     if (gammaInd) {
-      // NONMEM's per-subject rule.  xi_i falls monotonically as the proposal
+      // xi_i falls monotonically as the proposal
       // widens, so xi_i ABOVE the target means subject i's proposal is too
       // narrow for its posterior (the heavy-tail case) and gamma_i must grow;
       // xi_i below target means it is needlessly over-dispersed and gamma_i
@@ -980,11 +993,12 @@ void impOuter(Environment e) {
       // oscillates gamma 1.32/1.24/1.30/1.23... and xi 0.36/0.45/0.37/0.46...
       // indefinitely.  Models with 8+ random effects are ordinary here.
       //
-      // p = 2/neta gives lambda = 0: the Newton step for the Gaussian case,
-      // stable for every dimension, and one-step convergent when the posterior
-      // really is Gaussian.  The symmetric 1.25x cap still bounds a single
-      // noisy iteration.  Weights correct for gamma, so this moves variance,
-      // not the estimates.
+      // p = 2/neta gives lambda = 0 at every dimension.  This is not tuned
+      // damping: xi = gamma^(-neta/2) inverts exactly, so
+      // gamma * (xi/target)^(2/neta) IS the analytic solve for the gamma that
+      // hits the target -- a FIXED exponent is the thing that needs justifying.
+      // The symmetric 1.25x cap still bounds a single noisy iteration.  Weights
+      // correct for gamma, so this moves variance, not the estimates.
       const double pExp = 2.0 / std::max(1.0, (double)neta);
       const double capUp = 1.25, capDn = 1.0 / 1.25;
       double maxStep = 0.0;
@@ -1034,7 +1048,7 @@ void impOuter(Environment e) {
   // Monte-Carlo observed-information covariance (theta block) at the converged
   // estimate, before the inner neqOverride is cleared (the inner solves use it).
   // Selected by impmapControl(covMethod="imp") (the default).
-  if (impCovEnabled()) impComputeCov(e);
+  if (impCovEnabled()) impComputeCov(e, gammaVec);
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
