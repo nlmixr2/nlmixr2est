@@ -966,10 +966,26 @@ void impOuter(Environment e) {
       // xi_i below target means it is needlessly over-dispersed and gamma_i
       // shrinks.  Two-sided, so a bad early iteration is not paid for forever.
       //
-      // The sqrt damps the step (xi is not linear in gamma) and the symmetric
-      // 1.25x cap keeps one noisy iteration from slamming a subject into a
-      // bound.  Weights correct for gamma, so this moves variance, not the
-      // estimates.
+      // The damping exponent MUST scale with the number of random effects.
+      // For a Gaussian posterior matched by H_i the statistic is
+      // xi = gamma^(-neta/2), so the update gamma' = gamma * (xi/iaccept)^p
+      // linearizes (in log gamma) to an error multiplier
+      //
+      //   lambda = 1 - p * neta / 2
+      //
+      // A FIXED p (e.g. the natural-looking sqrt, p = 1/2) is therefore only
+      // stable for neta < 8: at neta = 8 lambda = -1 and the controller enters
+      // a period-2 limit cycle that never settles, so the fit can never meet
+      // the gamma-stability gate.  That is not a hypothetical -- an 8-eta model
+      // oscillates gamma 1.32/1.24/1.30/1.23... and xi 0.36/0.45/0.37/0.46...
+      // indefinitely.  Models with 8+ random effects are ordinary here.
+      //
+      // p = 2/neta gives lambda = 0: the Newton step for the Gaussian case,
+      // stable for every dimension, and one-step convergent when the posterior
+      // really is Gaussian.  The symmetric 1.25x cap still bounds a single
+      // noisy iteration.  Weights correct for gamma, so this moves variance,
+      // not the estimates.
+      const double pExp = 2.0 / std::max(1.0, (double)neta);
       const double capUp = 1.25, capDn = 1.0 / 1.25;
       double maxStep = 0.0;
       for (int id = 0; id < nExp; ++id) {
@@ -981,7 +997,7 @@ void impOuter(Environment e) {
         } else if (xiId <= 0.0) {
           fac = capDn;                  // xi = 0: proposal far too wide
         } else {
-          fac = std::sqrt(xiId / iaccept);
+          fac = std::pow(xiId / iaccept, pExp);
           if (fac > capUp) fac = capUp;
           else if (fac < capDn) fac = capDn;
         }

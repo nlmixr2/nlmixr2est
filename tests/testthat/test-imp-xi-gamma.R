@@ -135,6 +135,58 @@ nmTest({
     expect_gt(max(.f$env$impGammaInd), 1.0)
   })
 
+  test_that("individual gamma is stable at high eta dimension (no limit cycle)", {
+    # The damping exponent has to scale with neta.  For a Gaussian posterior
+    # xi = gamma^(-neta/2), so gamma' = gamma*(xi/iaccept)^p linearizes to an
+    # error multiplier lambda = 1 - p*neta/2.  A FIXED p = 1/2 gives
+    # lambda = -1 at neta = 8, i.e. a period-2 limit cycle that never settles
+    # (observed: gamma 1.32/1.24/1.30/1.23..., xi 0.36/0.45/0.37/0.46...).
+    # p = 2/neta gives lambda = 0 for every dimension.  This test fails on the
+    # fixed-exponent controller and passes on the dimension-aware one.
+    skip_on_cran()
+    .testSeed(7); rxode2::rxSetSeed(7)
+    .mk <- function() {
+      tt <- c(0.25, 1, 2, 4, 8, 16, 24)
+      do.call(rbind, lapply(1:12, function(id) {
+        ka <- exp(0.4 + stats::rnorm(1, 0, .3)); cl <- exp(1 + stats::rnorm(1, 0, .3))
+        v <- exp(3.4 + stats::rnorm(1, 0, .3))
+        cp <- 100 * ka / (v * (ka - cl / v)) * (exp(-cl / v * tt) - exp(-ka * tt))
+        cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, .1))
+        rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+              data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
+      }))
+    }
+    .d <- .mk(); .d <- .d[order(.d$id, .d$time, -.d$evid), ]
+    m8 <- function() {
+      ini({
+        tka <- 0.4; tcl <- 1; tv <- 3.4; tq <- 0.8; tv2 <- 3; tf <- 0; tlag <- -2; tke0 <- -1
+        eta.ka ~ .3; eta.cl ~ .3; eta.v ~ .3; eta.q ~ .3
+        eta.v2 ~ .3; eta.f ~ .2; eta.lag ~ .2; eta.ke0 ~ .2
+        add.sd <- 0.3
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        q <- exp(tq + eta.q); v2 <- exp(tv2 + eta.v2); f <- exp(tf + eta.f)
+        lag <- exp(tlag + eta.lag); ke0 <- exp(tke0 + eta.ke0)
+        d/dt(depot) <- -ka * depot
+        d/dt(cen) <- ka * depot - cl / v * cen - q / v * cen + q / v2 * peri + 0 * lag + 0 * ke0
+        d/dt(peri) <- q / v * cen - q / v2 * peri
+        cp <- f * cen / v
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- suppressWarnings(nlmixr2(m8, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 18L, isample = 200L,
+                                                 covMethod = "", gammaMethod = "individual")))
+    expect_equal(nrow(.f$omega), 8L)
+    .tail <- tail(.f$env$impXiTrace, 10)
+    # a period-2 limit cycle has lag-1 autocorrelation ~ -1; a settled trace
+    # with Monte-Carlo noise sits well above that
+    expect_gt(stats::cor(head(.tail, -1), .tail[-1]), -0.8)
+    # and the swing must be small relative to the target it is holding
+    expect_lt(diff(range(.tail)), 0.15)
+  })
+
   test_that("xi is near 1 for a well-matched proposal on a near-Gaussian model", {
     # gamma = 1 makes the proposal the Laplace approximation itself, so on a
     # model whose individual posterior is close to Gaussian xi should sit near 1.
