@@ -63,8 +63,9 @@ nmTest({
     expect_true(all(diff(.xi1) < 0))
   })
 
-  test_that("gammaMethod: control accepts both modes and defaults to global", {
-    expect_equal(impmapControl()$gammaMethod, "global")
+  test_that("gammaMethod: control accepts all three modes and defaults to auto", {
+    expect_equal(impmapControl()$gammaMethod, "auto")
+    expect_equal(impmapControl(gammaMethod = "global")$gammaMethod, "global")
     expect_equal(impmapControl(gammaMethod = "individual")$gammaMethod, "individual")
     expect_error(impmapControl(gammaMethod = "nonsense"))
     # round-trips through the control constructor (do.call re-entry)
@@ -72,6 +73,45 @@ nmTest({
     expect_equal(do.call(impmapControl, .c)$gammaMethod, "individual")
     # stripped when down-converting to a plain foceiControl
     expect_true("gammaMethod" %in% .impmapIsControlNames)
+  })
+
+  test_that("gammaMethod='auto' resolves on the model's distribution", {
+    # The unit of the decision: transformably-normal -> "global" (gamma = 1 is
+    # already the efficient proposal), anything else -> "individual".
+    .norm <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             linCmt() ~ add(add.sd)})
+    }
+    .ll <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; sd1 <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt()
+             ll(cp) ~ -0.5 * log(2 * pi) - log(sd1) - 0.5 * ((DV - cp) / sd1)^2})
+    }
+    expect_equal(.impmapResolveGammaMethod("auto", rxode2::rxode2(.norm)), "global")
+    expect_equal(.impmapResolveGammaMethod("auto", rxode2::rxode2(.ll)), "individual")
+    # an explicit choice is never overridden
+    expect_equal(.impmapResolveGammaMethod("global", rxode2::rxode2(.ll)), "global")
+    expect_equal(.impmapResolveGammaMethod("individual", rxode2::rxode2(.norm)), "individual")
+    # a ui with no usable predDf falls back to the historical behaviour
+    expect_equal(.impmapResolveGammaMethod("auto", list()), "global")
+  })
+
+  test_that("gammaMethod='auto' end-to-end: normal stays global, ll goes individual", {
+    .d <- nlmixr2data::theo_sd
+    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 10L, covMethod = "")))
+    expect_equal(.fn$env$impGammaMethod, "global")
+    expect_equal(length(unique(round(.fn$env$impGammaInd, 8))), 1L)
+    .ll <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; sd1 <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt()
+             ll(cp) ~ -0.5 * log(2 * pi) - log(sd1) - 0.5 * ((DV - cp) / sd1)^2})
+    }
+    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 10L, covMethod = "")))
+    expect_equal(.fl$env$impGammaMethod, "individual")
+    expect_gt(length(unique(round(.fl$env$impGammaInd, 8))), 1L)
   })
 
   test_that("gammaMethod='global' keeps one shared scale", {

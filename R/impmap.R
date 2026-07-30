@@ -9,7 +9,7 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod",
+                           "gammaMethod", "gammaMethodUser",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -40,6 +40,18 @@
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
+#'
+#'   `"auto"` (default) picks per model: `"individual"` when the model is not
+#'   transformably normal -- a general log-likelihood (`ll()`) endpoint, or a
+#'   count/categorical/time-to-event distribution -- and `"global"` otherwise.
+#'   That is the split the hypothesis actually rests on: `gamma = 1` is already
+#'   the efficient proposal when the individual posterior is close to Gaussian,
+#'   so a normal model gains nothing from per-subject adaptation and would only
+#'   pay for it in effective sample size, while a general-likelihood model is
+#'   exactly where the posteriors go non-Gaussian and per-subject coverage
+#'   starts to vary.  The test is `all(ui$predDf$distribution == "norm")`, the
+#'   same line [rxode2::assertRxUiTransformNormal()] draws.  The resolved value
+#'   is reported in the fit's `$runInfo`.
 #'
 #'   `"global"` keeps one scale shared by every subject, inflated (never
 #'   relaxed) only when the *mean* Kish effective-sample fraction falls below
@@ -120,7 +132,7 @@ impmapControl <- function(sigdig=4,
                           nIter=100L,
                           mapIter=1L,
                           gamma=1.0,
-                          gammaMethod=c("global", "individual"),
+                          gammaMethod=c("auto", "global", "individual"),
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -161,6 +173,12 @@ impmapControl <- function(sigdig=4,
   .dots <- list(...)
   .impCov <- isTRUE(.dots$impCov)   # may already be set on a round-tripped control
   .dots$impCov <- NULL              # internal field; do not forward to foceiControl
+  # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
+  # records what the user asked for before "auto" was resolved).  A control that
+  # has been round-tripped therefore carries it; keep it, but do not forward it
+  # to foceiControl, which has no such argument.
+  .gammaMethodUser <- .dots$gammaMethodUser
+  .dots$gammaMethodUser <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -183,6 +201,7 @@ impmapControl <- function(sigdig=4,
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
+  if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
   .control$iaccept <- as.double(iaccept)
@@ -265,6 +284,37 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .impmapControlToFoceiControl(.env, assign=FALSE)
 }
 
+#' Resolve gammaMethod="auto" against the model
+#'
+#' `"individual"` when the model is NOT transformably normal -- a general
+#' log-likelihood (`ll()`) endpoint, or a count / categorical / time-to-event
+#' distribution -- and `"global"` otherwise.
+#'
+#' The rationale is the hypothesis the per-subject controller rests on: the
+#' proposal is the Laplace approximation, so `gamma = 1` is already efficient
+#' when the individual posterior is near-Gaussian.  A normal model therefore
+#' gains nothing from per-subject adaptation and pays for it in effective
+#' sample size (measured on theophylline: ESS 0.95 -> 0.70 for identical
+#' estimates), whereas a general-likelihood model is where the posteriors are
+#' genuinely non-Gaussian and per-subject coverage varies.
+#'
+#' The test is `all(predDf$distribution == "norm")`, the same line
+#' `rxode2::assertRxUiTransformNormal()` draws between transformably-normal and
+#' general likelihoods.
+#'
+#' @param gammaMethod User setting: "auto", "global" or "individual".
+#' @param ui rxode2 ui object
+#' @return "global" or "individual"
+#' @noRd
+.impmapResolveGammaMethod <- function(gammaMethod, ui) {
+  if (!identical(gammaMethod, "auto")) return(gammaMethod)
+  .dist <- tryCatch(ui$predDf$distribution, error=function(e) NULL)
+  # No usable predDf (should not happen for a fittable model): fall back to the
+  # conservative choice, which is the historical behaviour.
+  if (is.null(.dist) || length(.dist) == 0L) return("global")
+  if (all(as.character(.dist) == "norm")) "global" else "individual"
+}
+
 #' Install the impmap control into the ui
 #'
 #' @param env Environment with ui in it
@@ -302,6 +352,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .covMethodUser <- .control$covMethod  # restored on the fit env control below
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L
+  # Resolve gammaMethod="auto" here, where the ui (and therefore predDf) is in
+  # scope; the C++ kernel only ever sees a concrete "global"/"individual".
+  .control$gammaMethodUser <- .control$gammaMethod   # kept for $runInfo
+  .control$gammaMethod <- .impmapResolveGammaMethod(.control$gammaMethod, ui)
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they
