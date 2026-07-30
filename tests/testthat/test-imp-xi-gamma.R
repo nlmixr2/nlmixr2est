@@ -95,6 +95,49 @@ nmTest({
     expect_equal(.impmapResolveGammaMethod("individual", rxode2::rxode2(.norm)), "individual")
     # a ui with no usable predDf falls back to the historical behaviour
     expect_equal(.impmapResolveGammaMethod("auto", list()), "global")
+    # ... as does an NA distribution (all(NA == "x") is NA, which would error an if)
+    expect_equal(.impmapResolveGammaMethod(
+      "auto", list(predDf = data.frame(distribution = c("norm", NA)))), "global")
+    # "norm" and "dnorm" are rxode2 ALIASES for the same Gaussian family, so the
+    # exact-likelihood (Laplace) form of a plain normal endpoint must still
+    # resolve to "global" -- its posterior is as Gaussian as the add() form
+    .dn <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             linCmt() ~ add(add.sd) + dnorm()})
+    }
+    .udn <- rxode2::rxode2(.dn)
+    expect_equal(as.character(.udn$predDf$distribution), "dnorm")   # premise
+    expect_equal(.impmapResolveGammaMethod("auto", .udn), "global")
+    # lognormal residuals ride predDf$transform with distribution "norm", so
+    # they are Gaussian for this purpose too
+    .lnm <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             linCmt() ~ lnorm(add.sd)})
+    }
+    expect_equal(.impmapResolveGammaMethod("auto", rxode2::rxode2(.lnm)), "global")
+  })
+
+  test_that("gammaMethod='auto' re-resolves when a control is reused", {
+    # Resolution overwrites gammaMethod in place.  A control lifted off a
+    # finished fit and reused on a different model must re-resolve from the
+    # user's original "auto" rather than carry the previous model's answer.
+    .norm <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+             linCmt() ~ add(add.sd)})
+    }
+    .uNorm <- rxode2::rxode2(.norm)
+    # simulate a control already resolved to "individual" by an earlier ll fit
+    .ctl <- impmapControl()
+    .ctl$gammaMethodUser <- "auto"
+    .ctl$gammaMethod <- "individual"
+    .gm <- .ctl$gammaMethodUser
+    expect_equal(.impmapResolveGammaMethod(.gm, .uNorm), "global")
+    # whereas an explicitly-set control keeps the user's choice on reuse
+    .ctl2 <- impmapControl(gammaMethod = "individual")
+    expect_equal(.impmapResolveGammaMethod(.ctl2$gammaMethod, .uNorm), "individual")
   })
 
   test_that("gammaMethod='auto' end-to-end: normal stays global, ll goes individual", {

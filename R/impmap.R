@@ -310,9 +310,26 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!identical(gammaMethod, "auto")) return(gammaMethod)
   .dist <- tryCatch(ui$predDf$distribution, error=function(e) NULL)
   # No usable predDf (should not happen for a fittable model): fall back to the
-  # conservative choice, which is the historical behaviour.
+  # conservative choice, which is the historical behaviour.  Same for an NA
+  # distribution -- `all(NA == "x")` is NA, which would error an `if`.
   if (is.null(.dist) || length(.dist) == 0L) return("global")
-  if (all(as.character(.dist) == "norm")) "global" else "individual"
+  .dist <- as.character(.dist)
+  if (anyNA(.dist)) return("global")
+  # Canonicalize before comparing: rxode2 spells the Gaussian family both
+  # "norm" and "dnorm" and treats them as identical (rxPreferredDistributionName
+  # maps both to "dnorm"), so a literal == "norm" test would send an otherwise
+  # ordinary normal model down the "individual" path.  That matters because
+  # `linCmt() ~ add(add.sd) + dnorm()` -- the exact-likelihood (Laplace) form of
+  # a plain normal endpoint -- reports "dnorm" while having a posterior every
+  # bit as Gaussian as the add() form, so it should not pay for per-subject
+  # adaptation.
+  #
+  # Note lognormal / boxCox / yeoJohnson residuals are carried in
+  # predDf$transform with distribution still "norm", so they canonicalize to
+  # "dnorm" here and correctly count as Gaussian.
+  .canon <- tryCatch(rxode2::rxPreferredDistributionName(.dist),
+                     error=function(e) .dist)
+  if (all(.canon == "dnorm")) "global" else "individual"
 }
 
 #' Install the impmap control into the ui
@@ -354,8 +371,18 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .control$covMethod <- 0L
   # Resolve gammaMethod="auto" here, where the ui (and therefore predDf) is in
   # scope; the C++ kernel only ever sees a concrete "global"/"individual".
-  .control$gammaMethodUser <- .control$gammaMethod   # kept for $runInfo
-  .control$gammaMethod <- .impmapResolveGammaMethod(.control$gammaMethod, ui)
+  #
+  # Resolve from the USER's original choice, not from whatever this control
+  # currently holds: resolution overwrites gammaMethod in place, so a control
+  # taken off a finished fit (fit$env$impmapControl) and reused on a different
+  # model would otherwise carry the previous model's resolved value and never
+  # re-resolve -- an "auto" control from a log-likelihood fit would silently
+  # pin a normal model to "individual".  Keying off gammaMethodUser makes
+  # resolution idempotent and re-runnable.
+  .gmUser <- .control$gammaMethodUser
+  if (is.null(.gmUser)) .gmUser <- .control$gammaMethod
+  .control$gammaMethodUser <- .gmUser                # kept for $runInfo
+  .control$gammaMethod <- .impmapResolveGammaMethod(.gmUser, ui)
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they
