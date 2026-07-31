@@ -586,7 +586,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
             vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE),
             .foceiToCmtLinesAndDvid(x[[1]]))
   .ret <- .ret[.ret != ""]
-  .ret <- list(predOnly=rxode2::rxode2(paste(.ret, collapse="\n")))
+  .ret <- list(predOnly=.nlmixr2estRxode2(paste(.ret, collapse="\n"), "rxSaemPred"))
   class(.ret) <- "saemModelList"
   .ret
 }

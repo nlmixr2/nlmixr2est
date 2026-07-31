@@ -608,3 +608,84 @@ Review fixes on the guard itself (antigravity, 5 findings, all real):
 - .foceiAnalyticEnsureLoaded() was removed outright: re-loading a dll in R does not
   refresh the C++ rxSolveF pointers, so it introduced a stale-pointer segfault path
   in exchange for a reload that never fired (rxIsLoaded was TRUE on all 20 calls).
+
+
+## RESOLVED: the augmented model was executing another build's code
+
+Root cause (nlmixr2/rxode2#1171): rxode2 names a model's generated .c/.so from
+`.rxPre(model, modName)` = `rx_<parsed_md5>_<arch>_` -- the PARSED model text alone --
+while the emitted C also depends on the event-sensitivity code, which is generated
+afterwards and injected.  Two builds of one model text whose event-sensitivity code
+differs therefore land on ONE .so; the later build wins, and because entry points
+resolve by name (R_GetCCallable) a model object bound to the earlier one silently
+executes the replacement.
+
+Traced in one session, same prefix, same directory:
+
+    rx_6afe1706..._.so  193856 bytes   <- eventSens="jump" build
+    rx_6afe1706..._.so  167792 bytes   <- replacement, emitted from foceiFitCpp_
+
+after which that model's calc_lhs wrote 4 of its 29 declared lhs, so f2/rvar/rvar1/
+rvar2/rsig were read from slots nobody wrote and every analytic outer gradient came
+back non-finite.  The same failure mode is what nlmixr2Est.R's "not provided by
+package" cache-reset recovery papers over.
+
+Fix here (independent of the rxode2 fix): the FOCEi-family generated models are built
+with a role-tagged, content-hashed `modName` (role + eventSens + parsed md5), in a
+build directory of our own under R's session tempdir().  BOTH parts are needed and
+neither alone is sufficient -- verified:
+
+- naming alone, artifacts in rxTempDir():        28/3 and 100/3 (still fails)
+- build dir alone, no naming:                    not sufficient either
+- naming + build dir outside rxTempDir():        31/0/0 and 103/0/0
+
+What is NOT the mechanism, each ruled out by measurement: the rxode2 model cache
+(rxClean() before the fit changes nothing), stale global solve tolerances, a wrong
+compaction stride, stale rxInv/omega derivatives, a prefix collision between DIFFERENT
+models, the model being unloaded (rxIsLoaded TRUE on all 20 calls), stale on-disk
+artifacts, and the deferred thunk lacking event-sensitivity info (both colliding
+builds carry it).
+
+Known costs and follow-ups:
+- tempdir() is per-session, so these artifacts are rebuilt once per session and are
+  NOT shared with an opted-in rxCreateCache().  Accepted deliberately while #1171 is
+  open; revert to rxTempDir() once it is fixed.
+- The convention covers every model nlmixr2est generates (focei family, nlm, nls,
+  saem, nlme, pruning).  rxPipeline is left alone: it re-materializes the USER's model,
+  not a generated one.
+- test-nlm.R's "matExp event sensitivities build HdTheta" errors, and does so
+  identically at 7e679993a with every change stashed -- pre-existing, not this work.
+
+
+## Phase 8D2 design, as corrected by the user (supersedes the "inline, no second pass" note)
+
+The earlier note in this plan said the per-individual FD should run INLINE in the
+augmented solve's parallel loop, with no second pass.  That is wrong and cannot work:
+the augmented solve runs inside `OdeSwapEsBatch(odeSlotOuter)`, i.e. under the OUTER
+model's event-sensitivity shape, while the FD needs the INNER problem.  The ES shape is
+a process global and can only change at a batch boundary, so the two cannot interleave.
+
+Corrected design:
+
+1. **Do NOT compute the FD during the analytic gradient's ODE solve.**  A subject whose
+   augmented solve fails is FLAGGED and the loop continues; failure stops being fatal to
+   the whole gradient (today `inner.cpp:11090` returns R_NilValue on the first failure,
+   and `R/foceiGradAnalytic.R:798` discards on `any(ok == 0L)` -- both must change to
+   carry per-subject flags).
+
+2. **Re-establish the inner problem for the flagged individual.**  A separate phase,
+   outside the outer ES batch, sets the inner model's ODE/ES shape back up for that
+   subject before anything is evaluated.
+
+3. **Use `innerOpt1()` for the difference**, so the subject is re-optimized exactly the
+   way the inner problem does it, rather than approximating it.
+
+4. **Shi CENTRAL differences with an optimized step size for the fit**, and those shi
+   differences keep their OWN saved `h`: they are differencing a DIFFERENT problem than
+   the inner problem's `h` is tuned for, so the two step-size stores must not be shared.
+   `op_focei.gouterThetaHf` / `fInd->outerThetaHf` already exists for exactly this and
+   is allocated and freed but never written -- it is the store to use.
+
+Still to confirm before coding: the eta save/restore around `innerOpt1()`
+(`EtaRestoreGuard`), and whether the omega directions need the same treatment or can be
+precomputed once outside the per-subject phase.

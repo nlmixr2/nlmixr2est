@@ -58,3 +58,16 @@
 #' @noRd
 .odeRelaxGlobal <- 0L
 .odeRelaxInd <- 1L
+
+#' Count of proven calc_lhs width mismatches (bound code vs declared nlhs).
+#'
+#' Non-zero means some model's compiled entry point does not compute the columns the
+#' model declares -- see nlmixr2/rxode2#1171.  Cheap enough to read around a single
+#' pooled solve.
+#' @return integer count since the last registry reset
+#' @noRd
+.odeSwapLhsMismatchN <- function() {
+  .n <- tryCatch(odeSwapInfo_()$lhsWidthMismatchN, error = function(e) NA_real_)
+  if (is.null(.n) || length(.n) != 1L || is.na(.n)) return(0L)
+  as.integer(.n)
+}

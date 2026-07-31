@@ -1371,7 +1371,8 @@
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
     # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
-    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
+    list(augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump"),
+         dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
          st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
          cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .cores, key = .key)
   }, error = function(e) NULL)

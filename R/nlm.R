@@ -583,8 +583,9 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
-  list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
-                                       .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+  list(predOnly=.nlmixr2estRxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
+                                          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n"),
+                                  "rxNlmPredOnly"),
        eventTheta=.eventTheta)
 }
 
@@ -914,8 +915,8 @@ rxUiGet.nlmSensModel <- function(x, ...) {
   ## adjoint carries its own dosing-parameter corrections (rx__adjdF/Dlag/Drate)
   ## in the sweep, so it must NOT also inject the forward variational jump.
   if (!is.null(.s$..adjSens)) .eventSens <- "fd"
-  list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
-       predOnly=rxode2::rxode2(.s$..pred.nolhs),
+  list(thetaGrad=.nlmixr2estRxode2(.s$..nlmS, "rxNlmGrad", eventSens=.eventSens),
+       predOnly=.nlmixr2estRxode2(.s$..pred.nolhs, "rxNlmPred"),
        eventTheta=.s$.eventTheta)
 }
 

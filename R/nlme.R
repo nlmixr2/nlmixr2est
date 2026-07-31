@@ -226,7 +226,7 @@ nlmeControl <- nlmixr2NlmeControl
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
-  nlmixr2global$nlmeFitRxModel <- rxode2::rxode2(ui$nlmeRxModel)
+  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
   nlmixr2global$nlmeFitRxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
 
   .ctl <- ui$control

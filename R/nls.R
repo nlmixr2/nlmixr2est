@@ -598,8 +598,9 @@ rxUiGet.nlsRxModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
-  list(predOnly =rxode2::rxode2(paste(c(rxUiGet.nlsParams(x, ...), .cmt,
-                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+  list(predOnly =.nlmixr2estRxode2(paste(c(rxUiGet.nlsParams(x, ...), .cmt,
+                                         .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n"),
+                                   "rxNlsPredOnly"),
        eventTheta=.eventTheta)
 }
 
@@ -769,8 +770,8 @@ rxUiGet.nlsSensModel <- function(x, ...) {
   .s <- rxUiGet.nlsEnv(x, ...)
   ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to the residual-Jacobian model instead of using finite differences.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
-  list(thetaGrad=rxode2::rxode2(.s$..nlsS, eventSens=.eventSens),
-       predOnly=rxode2::rxode2(.s$..pred.nolhs),
+  list(thetaGrad=.nlmixr2estRxode2(.s$..nlsS, "rxNlsGrad", eventSens=.eventSens),
+       predOnly=.nlmixr2estRxode2(.s$..pred.nolhs, "rxNlsPred"),
        eventTheta=.s$.eventTheta)
 }
 

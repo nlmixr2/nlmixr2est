@@ -1170,7 +1170,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg, eventSens = "fd") {
+.toRx <- function(x, msg, eventSens = "fd", role = NULL) {
   if (is.null(x)) {
     return(NULL)
   }
@@ -1180,9 +1180,14 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## sensitivities are computed analytically rather than by finite differences.
   ## Passed only for models that carry the sensitivity equations (the inner
   ## model); "fd" everywhere else preserves the legacy behavior.
-  .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
-                               nlmixr2global$toRxDvidCmt),
-                         eventSens = eventSens)
+  ## Role-tag the compiled artifact.  rxode2 names the .c/.so from the PARSED model
+  ## alone (.rxPre -> rx_<parsed_md5>_<arch>_), while the emitted C also depends on the
+  ## event-sensitivity code generated afterwards -- so two builds of one parsed model
+  ## whose event-sensitivity code differs share one .so and the later build wins for
+  ## both, silently.  See nlmixr2/rxode2#1171.  The md5 stays in the name so genuinely
+  ## different models still never share an artifact.
+  .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
+  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
   .msuccess("done")
   .ret
 }
@@ -1365,10 +1370,12 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens)
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens,
+                 role = "rxInner")
   # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
   innerHess2 <- if (!is.null(s$..innerHess2)) {
-    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens)
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens,
+          role = "rxHess2")
   } else NULL
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
@@ -1403,11 +1410,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .predOnly <- if (.hasMix) {
     .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
                         collapse="\n")
-    .toRx(.prunedStr, ifelse(.getRxPredLlikOption(),
+    .toRx(.prunedStr, role = "rxPredPruned", ifelse(.getRxPredLlikOption(),
                              "compiling Llik EBE model (mixture)...",
                              "compiling EBE model (mixture)..."))
   } else {
-    .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+    .toRx(s$..pred, role = "rxPredOnly", ifelse(.getRxPredLlikOption(),
                            "compiling Llik EBE model...",
                            "compiling EBE model..."))
   }
@@ -1424,7 +1431,19 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
-    outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
+    # eventSens MUST be "jump" here, matching rxUiGet.foceiOuter's own build
+    # (foceiCovAnalytic.R).  rxode2 keys the generated .c/.so on the model TEXT and
+    # name only (rxCompile.character: prefix <- .rxPre(model, modName)) -- NOT on
+    # eventSensCode -- so compiling the same sensitivity model once with "jump" and
+    # once with "fd" writes BOTH builds to one .so path.  The second overwrites the
+    # first, and a model object bound earlier keeps resolving its entry points by
+    # name, so it silently executes the other variant: measured as an augmented
+    # model that declares 29 lhs whose calc_lhs computes only 4, which drops the
+    # analytic gradient for a whole fit.  Event sensitivities stay ON for every
+    # sensitivity (inner/outer) model so only one variant per text is ever built.
+    outer = if (is.null(.outerAm)) .toRx(s$..outer, "compiling outer model...",
+                                         eventSens = "jump",
+                                         role = "rxOuterFb") else .outerAm$augMod,
     # ALL the aug-model metadata except the compiled model itself: the batched
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
@@ -1463,7 +1482,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # top level so the rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
     outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
-    predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
+    predNoLhs = .toRx(pred.opt, role = "rxPredNoLhs", ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
     theta = NULL,
