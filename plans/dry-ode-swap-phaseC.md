@@ -1249,3 +1249,41 @@ is why chasing it directly was wasted effort.
 The R-mediated route remains as the fallback for everything the direct path does not
 cover (FOCE, AGQ, ll(), mixtures, models whose augmented form outgrows the pool), and
 `foceiAnalyticGradPooled_` stays as the R-callable wrapper for tests.
+
+### Extending the direct C++ gradient to FOCE / AGQ / ll() -- scope
+
+User direction: FOCE, AGQ and ll() should all run through the direct path; only mixtures
+stay out (they need probability-weighted per-component contributions plus the derivative
+of the weights -- solvable, not solved).  Then the R route is deleted.
+
+Surveyed.  The three are NOT equal in cost.
+
+**FOCE** -- kernel `foceiGradSubjectFoceFR_` / `foceiGradAllFoceFR_` already exists in
+C++.  The assembly is the same shape as FOCEI with different blocks: `aRe`/`aRc` instead
+of `aR`/`AR` (no AR cube), `R0`/`R0sig` instead of `R`/`Rsig`/`RsigDir`.  Two extra
+pieces, and the second is real work:
+  * a SECOND augmented solve at eta=0 (`E0all`) when `foceType==0` and `ef$dependsF0` --
+    cheap, it is `vaeOuterSolveFill` with a zero ebes matrix;
+  * `.foceiAnalyticFoceEbeBatch` -- an EBE RE-SOLVE at the frozen R0.  This is a Newton
+    solve currently done in R and it has no C++ equivalent.  It is a genuine port, not
+    wiring.  (`fInd->saveEta` is NOT a substitute: those are the inner problem's etas,
+    and the FOCE gradient needs the EBEs of the frozen-R0 objective.)
+
+**AGQ** -- kernel `foceiGradSubjectAgqFR_` / `foceiGradAllAgqFR_` exists.  Needs the
+quadrature grid built from Ht's Cholesky FACTOR (`etaSolve[i,] + sqrt(2) * GinvL %*% x`)
+and one augmented solve per node, then the same stacking.  Moderate, self-contained.
+
+**ll()** -- `.foceiAnalyticGradCoreLL`, ~93 lines of R, and there is NO C++ kernel for it
+at all.  It also carries the `fd2` route (directional central FD of the analytic 2nd-order
+A).  This is the largest of the three.
+
+### Sequencing, and why the R route cannot go first
+
+Deleting the R route before these land would silently strip FOCE/AGQ/ll fits of their
+analytic gradient (they would fall to finite differences), which is a behaviour
+regression, not a cleanup.  Order: FOCE, AGQ, ll(), THEN delete the R path and the
+`.foceiCalcGradAnalytic` hook with it.
+
+Per the user's other instruction: when the analytic outer gradient cannot be computed it
+must not be applied at all -- so the direct path returning false should mean the fit uses
+its ordinary gradient, with no second, slower analytic attempt through R.
