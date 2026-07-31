@@ -344,6 +344,9 @@ struct focei_options {
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
   double cholSEtol;
   double hessEps;
+  // The FIT's ODE tolerances, captured the first time the analytic gradient runs.
+  // NA until then; reset per fit in rxOptionsFreeFocei().
+  double fitAtol = NA_REAL, fitRtol = NA_REAL;
   double hessEpsLlik;
   double hessEpsInner;
   int shi21maxOuter;
@@ -756,6 +759,9 @@ extern "C" void rxOptionsFreeFocei() {
   // the next one -- which is what happened when only the impmap driver cleared
   // it and the fast-ll / vae paths did not.
   odeSwapUnpinAll();
+  // Re-capture the fit's ODE tolerances next time the analytic gradient runs; they
+  // belong to the fit being torn down, not the next one.
+  op_focei.fitAtol = NA_REAL; op_focei.fitRtol = NA_REAL;
   releaseCovSolveArgs_(); // release any preserved covType="analytic" solve args
   if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
   op_focei.etaTrans=NULL;
@@ -5397,6 +5403,32 @@ struct OdeSolveTolGuard {
   ~OdeSolveTolGuard() {
     if (active) rxSetSolveAtolRtol(savAtol, savRtol);
   }
+};
+
+// Solve the augmented model at the FIT's own tolerance.
+//
+// There is deliberately NO separate "analytic" tolerance.  The gradient has to be the
+// gradient of the objective the optimizer is actually minimizing, so it is solved the
+// way that objective is solved; a tightened tolerance here would describe a different
+// objective than the one being optimized.  (This branch briefly did exactly that.)
+//
+// It still SETS the tolerance rather than leaving the live values alone, so a tolerance
+// shift earlier in the fit cannot leak in -- this is a RESET, not an override.  The
+// fit's values are captured on the first call, before anything on this path can have
+// moved them.
+struct OdeFitTolGuard {
+  bool active = false;
+  double savAtol = NA_REAL, savRtol = NA_REAL;
+  OdeFitTolGuard() {
+    rxGetSolveAtolRtol(&savAtol, &savRtol);
+    if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;    // no live solve
+    if (!R_FINITE(op_focei.fitAtol) || !R_FINITE(op_focei.fitRtol)) {
+      op_focei.fitAtol = savAtol; op_focei.fitRtol = savRtol;
+    }
+    rxSetSolveAtolRtol(op_focei.fitAtol, op_focei.fitRtol);
+    active = true;
+  }
+  ~OdeFitTolGuard() { if (active) rxSetSolveAtolRtol(savAtol, savRtol); }
 };
 
 struct CovSolveTolGuard {
@@ -11923,8 +11955,7 @@ static void vaeOuterSolveFill(NumericVector thVals, NumericMatrix ebes, List col
 }
 
 //[[Rcpp::export]]
-RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
-                       double tol) {
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
   // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
   // solve is only valid if the augmented model is registered AND the pool is at
   // least its size.  odeSwapCanPool says exactly that -- a model larger than the
@@ -11947,15 +11978,8 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // from the outer model to the inner one, inside this one gradient call, is exactly
   // what the shared-pool machinery exists for.
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
-  // Solve the augmented model at the ANALYTIC tolerance, not the fit's.  The
-  // rxode2::rxSolve route passes atol=rtol=.foceiAnalyticSolveTol(ui) (about
-  // 1e-10 at sigdig=4); the pool carries the fit's ordinary, far looser
-  // tolerances.  Second-order sensitivities amplify integration error, so the
-  // gap showed up as f/a/A differing by 1e-5..1e-4 between the two routes --
-  // enough to move a near-cancelling gradient term by an order of magnitude
-  // (measured on a two-endpoint model: emax 63 vs 569).  R and the Rsig block
-  // matched exactly, since those are not integrated.
-  OdeSolveTolGuard _tolGuard(tol);
+  // Reset to the fit's tolerance for this solve -- see OdeFitTolGuard.
+  OdeFitTolGuard _tolGuard;
   if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
       rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();

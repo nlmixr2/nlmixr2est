@@ -232,8 +232,8 @@ foceiOuterFdInd_ <- function(ids0, analyticRef) {
     .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
 }
 
-vaeOuterSolve_ <- function(thVals, ebes, cols, cores, tol) {
-    .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores, tol)
+vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
+    .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
 }
 
 #' Build the nonparametric Psi (conditional-likelihood) matrix
