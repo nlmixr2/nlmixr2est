@@ -54,6 +54,8 @@ extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_odeSwapInfo_(void);
 extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
+extern SEXP _nlmixr2est_foceiOuterFdInd_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiIndLik_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapRetryTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -211,6 +213,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
   {"_nlmixr2est_odeSwapInfo_", (DL_FUNC) &_nlmixr2est_odeSwapInfo_, 0},
   {"_nlmixr2est_odeSwapEsNoteInstalled_", (DL_FUNC) &_nlmixr2est_odeSwapEsNoteInstalled_, 1},
+  {"_nlmixr2est_foceiOuterFdInd_", (DL_FUNC) &_nlmixr2est_foceiOuterFdInd_, 2},
+  {"_nlmixr2est_foceiIndLik_", (DL_FUNC) &_nlmixr2est_foceiIndLik_, 2},
   {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
   {"_nlmixr2est_odeSwapRetryTest_", (DL_FUNC) &_nlmixr2est_odeSwapRetryTest_, 7},
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},

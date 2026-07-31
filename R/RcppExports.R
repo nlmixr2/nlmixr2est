@@ -192,6 +192,46 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+#' Per-subject -2LL at a given theta, for hand-differencing the 8D2 fallback.
+#'
+#' Same path the finite difference uses (theta into par_ptr, pinned reference eta,
+#' innerOpt1() re-optimization), exposed so a difference can be taken in R at any step
+#' and compared against what shi settles on.  Restores the eta, the n1qn1 Hessian and
+#' fullTheta exactly as the FD phase does.
+#' @param thetaIn theta vector (length ntheta)
+#' @param ids0 0-based subject ids
+#' @return per-subject -2LL, NA where the subject could not be re-optimized
+#' @noRd
+foceiIndLik_ <- function(thetaIn, ids0) {
+    .Call(`_nlmixr2est_foceiIndLik_`, thetaIn, ids0)
+}
+
+#' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
+#'
+#' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
+#' loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
+#' model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
+#' process global that only changes at a batch boundary, so the two cannot interleave.
+#' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
+#'
+#' Differences the subject's own likelihood with shi CENTRAL differences at an
+#' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
+#' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
+#' difference a different problem than the inner problem's etahf is tuned for, so
+#' sharing one store would mis-size both.
+#'
+#' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
+#' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
+#' this per-subject phase.  Until that lands the caller must still treat an omega
+#' direction as unavailable.
+#' @param ids0 0-based subject ids to difference
+#' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
+#'   re-optimized even at a perturbed theta
+#' @noRd
+foceiOuterFdInd_ <- function(ids0, analyticRef) {
+    .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
+}
+
 vaeOuterSolve_ <- function(thVals, ebes, cols, cores, tol) {
     .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores, tol)
 }

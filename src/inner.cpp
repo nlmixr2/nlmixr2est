@@ -9,6 +9,8 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include <cfloat>
+#include <cstring>
 #include "odeSwap.h"
 #include "imp.h"
 #include "np.h"
@@ -1123,6 +1125,7 @@ arma::mat cholSE__(arma::mat A, double tol);
 typedef void (*gill83fn_type)(double *fp, double *theta, int id, int foceiGill);
 
 void gill83fnF(double *fp, double *theta, int, int foceiGill);
+void gill83fnLik(double *fp, double *theta, int id, int);
 int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double *theta, int cpar, double epsR, int K, double gillStep,
            double fTol, int cid, gill83fn_type gill83fn, int foceiGill, double gillF);
@@ -1390,6 +1393,60 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
   }
   return ret;
 }
+static inline int innerOpt1(int id, int likId);   // defined below; used by shi21LikTheta
+
+// Phase 8D2: what shi21Central() differences for the per-individual d(llik)/d(theta)
+// fallback.  Unlike shi21ThetaGeneral above -- which solves the PRED model at a fixed
+// eta and returns per-observation f or V -- this RE-OPTIMIZES the subject with
+// innerOpt1() at the perturbed theta and returns its likelihood contribution, which is
+// the quantity the analytic outer gradient supplies for the subjects that did solve.
+// Returning a 1-vector keeps it usable by the shared shi21 machinery.
+//
+// Only the subject's own par_ptr is touched, so this is safe per individual; the
+// caller owns saving and restoring that subject's best eta.
+// The eta every shi21LikTheta() evaluation must START from.  Without this each
+// evaluation re-optimizes from wherever the PREVIOUS perturbation left the eta, so the
+// + and - legs of a central difference are taken about different points.  Harmless for
+// a theta with no eta; badly wrong for one that has them -- measured on theo_sd, tv and
+// add.sd (no etas) agreed to within the overall factor while tka and tcl (eta-bearing)
+// did not.  Set by foceiOuterFdInd_() per subject, before its loop.
+static thread_local std::vector<double> _fdRefEta;
+
+arma::vec shi21LikTheta(arma::vec &theta, int id) {
+  arma::vec ret(1);
+  if (inds_focei == NULL) { ret(0) = NA_REAL; return ret; }
+  focei_ind *fInd = &(inds_focei[id]);
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  if (ind == NULL) { ret(0) = NA_REAL; return ret; }
+  // The perturbed theta has to land in BOTH places or the difference is meaningless:
+  // par_ptr is what the subject's ODE solve reads, and op_focei.fullTheta is what the
+  // individual objective's remaining terms read.  Setting only par_ptr moves the solve
+  // but not those terms, which corrupts exactly the directions that depend on them --
+  // measured as per-direction ratios of -0.64/0.32/-2.13/-1.99 against the analytic
+  // gradient where a correct difference must give 1.  The caller restores fullTheta.
+  // par_ptr ONLY.  op_focei.fullTheta is deliberately not written: it is shared across
+  // subjects, so writing it from a parallel region is a data race -- and it was measured
+  // to make no difference to these values (bit-identical with and without), because
+  // theta reaches the individual likelihood entirely through par_ptr.
+  for (int t = 0; t < (int)op_focei.ntheta && t < (int)theta.size(); ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
+  }
+  // Start every evaluation from the SAME eta, so a central difference is taken about
+  // one point rather than along a drifting path.
+  if ((int)_fdRefEta.size() == op_focei.neta) {
+    for (int i = 0; i < op_focei.neta; ++i) {
+      setIndParPtr(ind, op_focei.etaTrans[i], _fdRefEta[(size_t)i]);
+    }
+  }
+  setIndSolve(ind, -1);            // re-solve: this theta is not the cached one
+  if (!innerOpt1(id, 0)) { ret(0) = NA_REAL; return ret; }
+  // lik[0] on this path is the individual's log-likelihood; the outer objective (and so
+  // the analytic gradient this must match) is -2LL.
+  ret(0) = -2.0 * fInd->lik[0];
+  return ret;
+}
+
 arma::vec shi21ThetaF(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 0); }
 arma::vec shi21ThetaR(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 1); }
 
@@ -10914,6 +10971,596 @@ static thread_local int _outerRetryScratch = 0;
 // builds an EMPTY LIST, not NULL, so every refusal here looked like a successful
 // but empty solve to .foceiAnalyticSolveAll and silently dropped the gradient to
 // finite differences.
+// Phase 8D2: tighten the INNER optimizer for the duration of a differencing phase.
+//
+// KEPT BUT NOT ARMED.  Tightening every inner tolerance by 1e3 and raising the
+// iteration cap 10x changed the hand-differenced tcl values by NOTHING -- identical to
+// four decimals for every subject.  The inner optimizer was already converged, so the
+// step dependence is not re-optimization noise.  Re-reading that data: most subjects
+// converge monotonically but slowly (id2 marches -3.43/-1.82/-1.36/-1.20/-1.15 toward
+// about -1.13), i.e. a large higher-order term biases the WIDE steps, and only id5 and
+// id12 are genuinely erratic.  So the lever is Richardson extrapolation / smaller steps,
+// not inner convergence.  Left here, unarmed, so the experiment is not repeated.
+//
+// d(-2LL_i)/d(theta) is a PROFILE likelihood derivative: every evaluation re-runs
+// innerOpt1(), which lands on a slightly different eta each time.  For a theta that
+// carries an eta that re-optimization noise swamps the signal -- hand-differencing tcl
+// on theo_sd, 8 of 12 subjects failed to converge across two decades of step size
+// (swings of 2-4 units at h=1e-4), while the 4 whose inner problem converges tightly
+// were stable to 3-4 significant figures.  No step-size heuristic can fix that; the
+// noise floor has to come down instead.
+//
+// Restores every control on exit, including on a throw.
+struct FdInnerTolGuard {
+  double epsilon, factr, pgtol, abstol, reltol;
+  int maxInner;
+  bool armed;
+  explicit FdInnerTolGuard(double k, int iterMult) : armed(true) {
+    epsilon = op_focei.epsilon; factr = op_focei.factr; pgtol = op_focei.pgtol;
+    abstol = op_focei.abstol;   reltol = op_focei.reltol;
+    maxInner = op_focei.maxInnerIterations;
+    if (k > 1.0) {
+      op_focei.epsilon /= k;    // n1qn1
+      op_focei.factr   /= k;    // lbfgsb3C: multiple of machine eps, smaller = tighter
+      op_focei.pgtol   /= k;
+      op_focei.abstol  /= k;
+      op_focei.reltol  /= k;
+    }
+    // A tighter tolerance is useless if the iteration cap stops it first.
+    if (op_focei.maxInnerIterations > 0 && iterMult > 1) {
+      op_focei.maxInnerIterations *= iterMult;
+    }
+  }
+  ~FdInnerTolGuard() {
+    if (!armed) return;
+    op_focei.epsilon = epsilon; op_focei.factr = factr; op_focei.pgtol = pgtol;
+    op_focei.abstol = abstol;   op_focei.reltol = reltol;
+    op_focei.maxInnerIterations = maxInner;
+  }
+};
+
+
+// Phase 8D2: Richardson extrapolation as a full Neville tableau, the scheme R's
+// numDeriv uses for method="Richardson".  numDeriv itself cannot be used here: this
+// runs inside the OpenMP region and R must not be called from a worker thread.
+//
+// r successive central differences at h, h/v, h/v^2, ... are combined by
+//   a[i] <- (a[i+1]*v^(2m) - a[i]) / (v^(2m) - 1)
+// which cancels the h^2, h^4, ... terms in turn, so the estimate is TUNED to the slope
+// rather than corrected one order at a time.  Defaults match numDeriv (r = 4, v = 2).
+//
+// Applied only to a parameter whose slopes contain an outlier -- that outlier is the
+// evidence that a plain central difference is inadequate for that parameter.  Costs
+// 2*r evaluations for those parameters and nothing for the rest.
+static double fdRichardson(arma::vec &theta, int id, int j, double h,
+                           int r = 4, double v = 2.0) {
+  if (!R_finite(h) || h <= 0 || r < 1) return NA_REAL;
+  double th0 = theta[j];
+  std::vector<double> a((size_t)r, NA_REAL);
+  arma::vec tp = theta, tm = theta;
+  double hh = h;
+  for (int i = 0; i < r; ++i) {
+    tp[j] = th0 + hh;   double fp = shi21LikTheta(tp, id)(0);
+    tm[j] = th0 - hh;   double fm = shi21LikTheta(tm, id)(0);
+    if (!R_finite(fp) || !R_finite(fm)) return NA_REAL;
+    a[(size_t)i] = (fp - fm) / (2.0 * hh);
+    hh /= v;
+  }
+  for (int m = 1; m < r; ++m) {
+    double w = std::pow(v, 2.0 * (double)m);
+    for (int i = 0; i < r - m; ++i) {
+      a[(size_t)i] = (a[(size_t)(i + 1)] * w - a[(size_t)i]) / (w - 1.0);
+    }
+  }
+  return R_finite(a[0]) ? a[0] : NA_REAL;
+}
+
+// Phase 8D2: Lanczos GENERALIZED DERIVATIVE -- the least-squares slope through 2m+1
+// evaluations, f'(x) ~ sum_k k*f(x+kh) / (h * sum_k k^2).
+//
+// Motivated by what the data on this objective keeps showing: it is NOISY (a profile
+// likelihood, re-optimized per evaluation), and Richardson is the wrong instrument for
+// noise -- it extrapolates toward h -> 0, where the noise lives, which is why r=4
+// (reaching h/8) measured WORSE than r=2 here (tcl ratio -3.70 vs 0.425).  A
+// generalized derivative instead FITS the slope over a spread of points, so independent
+// evaluation noise averages down as more points are used rather than being amplified.
+// Same O(h^2) truncation as a central difference, lower variance.
+//
+// m = 2 costs 4 evaluations, the same as the 2-point Richardson it replaces.
+static double fdLanczos(arma::vec &theta, int id, int j, double h, int m = 2) {
+  if (!R_finite(h) || h <= 0 || m < 1) return NA_REAL;
+  double th0 = theta[j];
+  arma::vec tk = theta;
+  double num = 0.0, den = 0.0;
+  for (int k = -m; k <= m; ++k) {
+    if (k == 0) continue;
+    tk[j] = th0 + (double)k * h;
+    double fk = shi21LikTheta(tk, id)(0);
+    if (!R_finite(fk)) return NA_REAL;
+    num += (double)k * fk;
+    den += (double)(k * k);
+  }
+  if (!(den > 0.0)) return NA_REAL;
+  return num / (h * den);
+}
+
+// Phase 8D2: total-variation regularized differentiation, after Chartrand, "Numerical
+// Differentiation of Noisy, Nonsmooth Data" (ISRN Appl. Math. 2011, 164564).
+//
+// Every stencil tried on this objective failed the same way, because a stencil has to
+// choose between bias and noise on one span: wide steps carry the h^2 term, narrow ones
+// sit in the inner optimizer's re-optimization noise.  Chartrand's method removes that
+// choice.  It estimates the derivative FUNCTION u on an interval as the minimizer of
+//
+//     F(u) = alpha * integral|u'| + 1/2 * integral|Au - f|^2 ,   A = antidifferentiation
+//
+// so a WIDE interval can be used for signal-to-noise while u varying across it absorbs
+// the curvature that would otherwise bias a wide difference.  Total variation (rather
+// than an L2 penalty) is what allows that without forcing u smooth.
+//
+// Minimized by the Vogel-Oman lagged-diffusivity iteration the paper specifies:
+//   E_n = diag( ((u_i - u_{i-1})^2 + e)^{-1/2} ),  L_n = dx * D^T E_n D,
+//   H_n = A^T A + alpha L_n,  g_n = A^T(A u_n - f) + alpha L_n u_n,
+//   solve H_n s_n = -g_n,  u_{n+1} = u_n + s_n.
+// Returns u at the centre of the interval, i.e. the derivative at the current theta.
+// One lagged-diffusivity solve at a fixed alpha.  Split out so the alpha search costs
+// only linear algebra: the function samples are taken once, up in fdTvDeriv().
+static arma::vec tvSolveAlpha(const arma::mat &A, const arma::mat &AtA, const arma::mat &D,
+                              const arma::vec &f, const arma::vec &u0,
+                              double dx, double alpha, int iters) {
+  const double eTv = 1e-8;
+  int N = (int)D.n_rows;
+  arma::vec u = u0;
+  for (int it = 0; it < iters; ++it) {
+    arma::vec du = D * u;
+    arma::vec ediag((size_t)N);
+    for (int i = 0; i < N; ++i) ediag[(size_t)i] = 1.0 / std::sqrt(du[(size_t)i]*du[(size_t)i] + eTv);
+    arma::mat Ln = dx * (D.t() * arma::diagmat(ediag) * D);
+    arma::mat Hn = AtA + alpha * Ln;
+    arma::vec gn = A.t() * (A * u - f) + alpha * (Ln * u);
+    arma::vec sn;
+    if (!arma::solve(sn, Hn, -gn, arma::solve_opts::likely_sympd)) break;
+    u += sn;
+    if (arma::norm(sn, 2) < 1e-10 * (1.0 + arma::norm(u, 2))) break;
+  }
+  return u;
+}
+
+static double fdTvDeriv(arma::vec &theta, int id, int j, double span,
+                        int N, double alphaFixed, int iters) {
+  if (!R_finite(span) || span <= 0 || N < 6) return NA_REAL;
+  double th0 = theta[j];
+  double dx = 2.0 * span / (double)N;
+  int n1 = N + 1;
+  arma::vec f((size_t)n1);
+  arma::vec tk = theta;
+  for (int i = 0; i < n1; ++i) {
+    tk[j] = th0 - span + (double)i * dx;
+    double fi = shi21LikTheta(tk, id)(0);
+    if (!R_finite(fi)) return NA_REAL;
+    f[(size_t)i] = fi;
+  }
+  f -= f[0];
+  arma::mat A((size_t)n1, (size_t)n1, arma::fill::zeros);
+  for (int i = 1; i < n1; ++i) {
+    for (int k = 1; k <= i; ++k) {
+      A((size_t)i, (size_t)k)     += 0.5 * dx;
+      A((size_t)i, (size_t)(k-1)) += 0.5 * dx;
+    }
+  }
+  arma::mat D((size_t)N, (size_t)n1, arma::fill::zeros);
+  for (int i = 0; i < N; ++i) {
+    D((size_t)i, (size_t)i)     = -1.0 / dx;
+    D((size_t)i, (size_t)(i+1)) =  1.0 / dx;
+  }
+  arma::vec u0((size_t)n1, arma::fill::zeros);
+  for (int i = 1; i < N; ++i) u0[(size_t)i] = (f[(size_t)(i+1)] - f[(size_t)(i-1)]) / (2.0 * dx);
+  u0[0] = u0[1]; u0[(size_t)N] = u0[(size_t)(N-1)];
+  arma::mat AtA = A.t() * A;
+
+  double alpha = alphaFixed;
+  if (!(alpha > 0)) {
+    // DISCREPANCY PRINCIPLE (Chartrand section 3): choose alpha so |Au* - f|^2 matches
+    // the noise variance in f.  The noise cannot be estimated by replication --
+    // re-evaluating at one theta is deterministic -- so it must come from the erratic
+    // component of f ACROSS theta.
+    //
+    // A plain SECOND difference is the wrong probe for that here, for two reasons that
+    // push in opposite directions:
+    //   * it does not annihilate curvature, so over a wide span it measures f'' * dx^2
+    //     as if it were noise, INFLATING sigma^2 -- which over-regularizes (measured:
+    //     the second-difference estimator picked alpha giving tcl 1.54, against 0.957
+    //     for a hand-tuned 1e-4);
+    //   * the erratic part here is CORRELATED between neighbouring thetas (nearby
+    //     points send the inner optimizer down similar paths), and a lag-1 filter
+    //     suppresses correlated noise, deflating sigma^2.
+    //
+    // A fourth difference with a LAG fixes both: (1,-4,6,-4,1) annihilates any cubic
+    // trend, so curvature no longer leaks in, and evaluating it at lag L separates the
+    // points far enough that the optimizer-path correlation has decayed.  For iid noise
+    // Var(sum d_i f_i) = sigma^2 * sum d_i^2 = 70 sigma^2.
+    int lag = 2;                       // > 1 so neighbouring-path correlation drops out
+    double acc = 0.0; int cnt = 0;
+    for (int i = 2*lag; i <= N - 2*lag; ++i) {
+      double d4 =        f[(size_t)(i - 2*lag)]
+               - 4.0 *   f[(size_t)(i -   lag)]
+               + 6.0 *   f[(size_t)i]
+               - 4.0 *   f[(size_t)(i +   lag)]
+               +         f[(size_t)(i + 2*lag)];
+      acc += d4 * d4; ++cnt;
+    }
+    double sigma2 = (cnt > 0) ? acc / (70.0 * (double)cnt) : 0.0;
+    if (!(sigma2 > 0)) return u0[(size_t)(N/2)];      // no detectable noise: plain CD
+    double target = (double)n1 * sigma2;
+    // Larger alpha -> smoother u -> larger residual, so the residual is monotone in
+    // alpha and a bisection on log(alpha) lands on the discrepancy match.
+    double lo = 1e-12, hi = 1e4;
+    for (int it = 0; it < 40; ++it) {
+      double mid = std::sqrt(lo * hi);
+      arma::vec um = tvSolveAlpha(A, AtA, D, f, u0, dx, mid, iters);
+      double resid = arma::accu(arma::square(A * um - f));
+      if (resid > target) hi = mid; else lo = mid;
+    }
+    alpha = std::sqrt(lo * hi);
+  }
+  arma::vec u = tvSolveAlpha(A, AtA, D, f, u0, dx, alpha, iters);
+  double c = u[(size_t)(N / 2)];
+  return R_finite(c) ? c : NA_REAL;
+}
+
+// gill83's scalar objective for the per-individual FD: this subject's -2LL at `theta`.
+// Reuses shi21LikTheta(), so the theta install, the pinned reference eta and the
+// innerOpt1() re-optimization are identical to the shi path -- only the differencing
+// scheme changes.  `foceiGill` is unused here: this never touches the outer objective.
+void gill83fnLik(double *fp, double *theta, int id, int) {
+  arma::vec th((size_t)op_focei.ntheta);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) th[t] = theta[t];
+  arma::vec r = shi21LikTheta(th, id);
+  *fp = r(0);
+}
+
+//' Per-subject -2LL at a given theta, for hand-differencing the 8D2 fallback.
+//'
+//' Same path the finite difference uses (theta into par_ptr, pinned reference eta,
+//' innerOpt1() re-optimization), exposed so a difference can be taken in R at any step
+//' and compared against what shi settles on.  Restores the eta, the n1qn1 Hessian and
+//' fullTheta exactly as the FD phase does.
+//' @param thetaIn theta vector (length ntheta)
+//' @param ids0 0-based subject ids
+//' @return per-subject -2LL, NA where the subject could not be re-optimized
+//' @noRd
+//[[Rcpp::export]]
+NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0) {
+  int nid = ids0.size(), nth = (int)op_focei.ntheta;
+  NumericVector out(nid);
+  std::fill(out.begin(), out.end(), NA_REAL);
+  if (nid == 0 || nth == 0 || inds_focei == NULL) return out;
+  rx = getRxSolve_();
+  if (rx == NULL) return out;
+  int nsub = foceiIndSetupN(rx);
+  OdeSwapEsBatch esBatch(odeSlotInner);
+  std::vector<double> theta0((size_t)nth);
+  for (int t = 0; t < nth; ++t) theta0[(size_t)t] = op_focei.fullTheta[t];
+  arma::vec theta((size_t)nth);
+  for (int t = 0; t < nth && t < thetaIn.size(); ++t) theta[t] = thetaIn[t];
+  for (int k = 0; k < nid; ++k) {
+    int id = ids0[k];
+    if (id < 0 || id >= nsub) continue;
+    focei_ind *fInd = &(inds_focei[id]);
+    EtaRestoreGuard etaGuard(id);
+    rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
+    _fdRefEta.assign((size_t)op_focei.neta, 0.0);
+    for (int i = 0; i < op_focei.neta; ++i) {
+      _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
+    }
+    std::vector<double> savedZm;
+    int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
+    if (fInd->zm != NULL && op_focei.nzm > 0) {
+      savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
+    }
+    arma::vec r = shi21LikTheta(theta, id);
+    out[k] = r(0);
+    if (!savedZm.empty()) std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
+    fInd->mode = savedMode;
+    fInd->uzm = (unsigned int)savedUzm;
+  }
+  _fdRefEta.clear();
+  for (int t = 0; t < nth; ++t) op_focei.fullTheta[t] = theta0[(size_t)t];
+  return out;
+}
+
+//' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
+//'
+//' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
+//' loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
+//' model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
+//' process global that only changes at a batch boundary, so the two cannot interleave.
+//' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
+//'
+//' Differences the subject's own likelihood with shi CENTRAL differences at an
+//' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
+//' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
+//' difference a different problem than the inner problem's etahf is tuned for, so
+//' sharing one store would mis-size both.
+//'
+//' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
+//' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
+//' this per-subject phase.  Until that lands the caller must still treat an omega
+//' direction as unavailable.
+//' @param ids0 0-based subject ids to difference
+//' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
+//'   re-optimized even at a perturbed theta
+//' @noRd
+//[[Rcpp::export]]
+NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
+  int nid = ids0.size();
+  int nth = (int)op_focei.ntheta;
+  NumericMatrix out(nid, nth);
+  NumericMatrix hOut(nid, nth);     // the step shi actually settled on, for diagnostics
+  std::fill(out.begin(), out.end(), NA_REAL);
+  std::fill(hOut.begin(), hOut.end(), NA_REAL);
+  if (nid == 0 || nth == 0 || inds_focei == NULL) return out;
+  rx = getRxSolve_();
+  if (rx == NULL) return out;
+  int nsub = foceiIndSetupN(rx);
+  // The inner problem's event-sensitivity shape, installed once for the whole phase --
+  // outside any parallel region, as OdeSwapEsBatch requires.
+  OdeSwapEsBatch esBatch(odeSlotInner);
+  arma::vec theta((size_t)nth);
+  std::vector<double> theta0((size_t)nth);
+  for (int t = 0; t < nth; ++t) { theta[t] = op_focei.fullTheta[t]; theta0[t] = theta[t]; }
+  // innerOpt1() must be called under the SAME bracketing the inner problem uses, or it
+  // reads the wrong per-thread state.  Two parts, both load bearing:
+  //   * _innerParallel is set UNCONDITIONALLY (as innerOpt does): it gates how the inner
+  //     solve picks its buffers, regardless of whether we actually fork threads;
+  //   * setRxThreadId() hands rxode2 our real thread id per iteration -- rxode2 and
+  //     nlmixr2est each link their own libgomp, so rxode2's own omp_get_thread_num()
+  //     collapses every worker onto slot 0 and corrupts the heap (see the note at
+  //     innerOpt).
+  // Without this the finite difference was THREAD-COUNT DEPENDENT, which the inner
+  // problem itself is not -- the tell that it was reading corrupted state rather than
+  // being inherently variable.
+  rx_solving_options *op0 = getSolvingOptions(rx);
+  int fdCores = getOpCores(op0);
+  if (fdCores < 1) fdCores = 1;
+  const bool fdParallel = (fdCores > 1) && solveMethodThreadSafe(op0);
+  if (fdParallel) sortIds(rx, 2);
+  _innerParallel.store(1, std::memory_order_release);
+  // INVARIANT for bit-identical results across thread counts: this region performs NO
+  // reduction.  Each iteration writes only its own subject's slots (out(k,.), hOut(k,.)),
+  // and every sum over subjects is taken AFTER the region, in a fixed order.  An OpenMP
+  // reduction would accumulate in whatever order the threads finish, so the total would
+  // depend on the thread count in the last bits; storing per subject and summing
+  // afterwards makes the result identical by construction rather than by luck.  The
+  // batched analytic kernel follows the same pattern (gmat.col(i) in the region,
+  // sum(gmat, 1) after it), and any future wiring of these values into the gradient must
+  // keep it.
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (fdParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    int id = ids0[k];
+    if (id < 0 || id >= nsub) continue;
+    // PRIVATE copy of theta per subject.  shi21Central() takes its `t` by REFERENCE and
+    // perturbs t[idx] during the step search, so sharing one vector across threads lets
+    // each thread differentiate at another thread's perturbed theta.  Measured before
+    // this fix: per-subject slopes differing by factors of 3-6 between thread counts, on
+    // exactly the outlier subjects the correction depends on.
+    arma::vec thetaK = theta;
+    focei_ind *fInd = &(inds_focei[id]);
+    // The surrounding fit must not inherit ANY of what innerOpt1() moves.  Three things
+    // have to come back, not just the eta:
+    //   * the eta itself (EtaRestoreGuard),
+    //   * this subject's n1qn1 warm-start Hessian -- re-optimizing at perturbed thetas
+    //     overwrites zm/mode/uzm, and the fit would then warm-start its next inner
+    //     problem from a Hessian belonging to a theta it never visited,
+    //   * op_focei.fullTheta, which shi21LikTheta() now writes through (restored after
+    //     the loop below, since every subject perturbs the same global).
+    EtaRestoreGuard etaGuard(id);
+    {
+      rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
+      _fdRefEta.assign((size_t)op_focei.neta, 0.0);
+      for (int i = 0; i < op_focei.neta; ++i) {
+        _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
+      }
+    }
+    std::vector<double> savedZm;
+    int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
+    if (fInd->zm != NULL && op_focei.nzm > 0) {
+      savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
+    }
+    arma::vec f0 = shi21LikTheta(thetaK, id);
+    if (!f0.is_finite()) continue;             // cannot even evaluate: leave NA
+    // shi CENTRAL differences, not Gill83.  Gill was tried here because it behaves
+    // better on the OUTER objective gradient and takes a scalar objective, which a
+    // per-subject likelihood is -- but measured on theo_sd it was worse in every
+    // direction (ratios -0.10/-0.018/0.86/1.28 against shi's 0.963/-0.053/0.992/0.997),
+    // so shi stays.  gill83fnLik() is kept for re-testing that comparison.
+    arma::vec gr(1);
+    for (int j = 0; j < nth; ++j) {
+      double h = (fInd->outerThetaHf == NULL) ? 0.0 : fInd->outerThetaHf[j];
+      // Step bounds: the fit's global shi21hMin/hMax, NOT a per-parameter rescaling.
+      // Two heuristics were tried and REJECTED on measurement (theo_sd, 12 subjects):
+      //
+      //   floor eps^(1/3)*max(|theta|,1) (~1.2e-5): reasoning was that eps^(1/3) is the
+      //     central-difference optimum so the 1e-4 default sat above it.  Wrong premise
+      //     -- this objective is a PROFILE likelihood, so its noise floor is set by the
+      //     inner optimizer's convergence, not by machine epsilon.  Lowering the floor
+      //     let the search into that noise and took tka from ratio 0.963 to 0.317.  The
+      //     1e-4 default is protective here, not restrictive.
+      //   ceiling 0.1*max(|theta|,1): did not catch the runaway it targeted (tcl's bad
+      //     subject sits at h=0.0263, under the bound) and clamped three tka subjects
+      //     that were fine.
+      //
+      // The remaining outliers are large relative to the OTHER SUBJECTS' steps for the
+      // same parameter (0.0263 vs a median of 0.000216), not in absolute terms, so a
+      // fixed multiple of the parameter cannot separate them.  Bounding against a robust
+      // across-subject scale is the next thing to try and needs two passes.
+      double hNew = shi21Central(shi21LikTheta, thetaK, h,
+                                 f0, gr, id, j,
+                                 op_focei.hessEps,
+                                 1.5,   // rl
+                                 4.5,   // ru
+                                 3.0,   // nu
+                                 op_focei.shi21maxFD,
+                                 op_focei.shi21hMax, op_focei.shi21hMin);
+      if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hNew;
+      // Plain shi here.  Richardson is applied ONLY to the subjects the median bound
+      // flags below: those are the ones whose step ran away, i.e. where the O(h^2) term
+      // is demonstrably material.  Applying it everywhere was measured to cost accuracy
+      // on the directions that were already right (tka 0.963 -> 0.844, tv 0.992 ->
+      // 0.913), because it trades that bias for variance on subjects whose h^2 term was
+      // already negligible.
+      out(k, j) = gr(0);
+      hOut(k, j) = hNew;
+    }
+    if (!savedZm.empty()) {
+      std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
+    }
+    fInd->mode = savedMode;
+    fInd->uzm = (unsigned int)savedUzm;
+#ifdef _OPENMP
+    if (fdParallel) setRxThreadId(-1);
+#endif
+  }
+  _innerParallel.store(0, std::memory_order_release);
+  if (fdParallel) sortIds(rx, 0);
+  // ---- second pass: rein in steps whose RATE is an outlier across subjects --------
+  //
+  // shi's step selection is harmonic-mean corrected (src/shi21.cpp), so the natural
+  // linear scale for these steps is the RATE r = 1/h, not h itself: a harmonic mean of
+  // h is an arithmetic mean of r.  Testing on r therefore lets a normal two-sided
+  // criterion do the work, instead of the arbitrary "20x the median" it replaces.
+  //
+  // A subject is an outlier when |r_i - mean(r)| > z(1 - p/2) * sd(r), two-sided at
+  // p = 0.05.  Both tails matter: too small a step (large rate) sits in the noise, too
+  // large a step (small rate) leaves the region where the local model holds.  Flagged
+  // subjects are re-differenced at the CENTRAL rate, 1/mean(r), and Richardson-
+  // extrapolated there -- the extrapolation is applied only to these, since applying it
+  // everywhere costs accuracy on the directions whose h^2 term is already negligible.
+  // Iglewicz-Hoaglin MODIFIED z-score, M_i = 0.6745 * (x_i - median) / MAD, with the
+  // conventional 3.5 cut.  Preferred over a normal two-sided p here because both the
+  // centre and the scale are robust, so a single bad subject cannot widen the interval
+  // that is supposed to catch it -- which is exactly how mean/sd failed (one 23.72
+  // inflated sd to ~8 and hid inside its own bound).  Tunable, like the other critical
+  // values in the algorithm.
+  const double _fdOutlierMz = 3.5;
+  for (int j = 0; j < nth; ++j) {
+    // Test the SLOPE itself, on a ROBUST centre and scale.
+    //
+    // 1/slope was tried and cannot work here: inverting compresses a large slope toward
+    // zero, so the outlier we need lands in the MIDDLE of the distribution while
+    // legitimate small slopes are pushed into the tails.  Measured on tcl: the bad
+    // subject's 23.72 inverts to 0.042, |z| ~ 0.36, while a well-behaved -0.50 inverts
+    // to -1.997 and nearly trips the criterion -- the transform inverts the ranking.
+    //
+    // Mean and sd cannot work either: one 23.72 inflates the sd to ~8, so the outlier
+    // hides inside its own interval.  Median and MAD are unmoved by it, the same reason
+    // the median worked for the steps.  1.4826 puts MAD on the sd scale for a normal,
+    // so the two-sided p keeps its meaning.
+    // The reference distribution INCLUDES the subjects that solved analytically: those
+    // are the correct per-subject slopes for this parameter, so they are what a
+    // finite-differenced subject should look like.  Judging the FD subjects only
+    // against each other would let a whole group of bad differences look normal.
+    std::vector<double> r;
+    for (int k = 0; k < analyticRef.nrow(); ++k) {
+      if (j < analyticRef.ncol()) {
+        double av = analyticRef(k, j);
+        if (R_finite(av)) r.push_back(av);
+      }
+    }
+    for (int k = 0; k < nid; ++k) {
+      double dv = out(k, j);
+      if (R_finite(dv)) r.push_back(dv);
+    }
+    if (r.size() < 3) continue;
+    std::vector<double> rs = r;
+    std::sort(rs.begin(), rs.end());
+    double mean = rs[rs.size() / 2];                 // median as the centre
+    std::vector<double> ad(r.size());
+    for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - mean);
+    std::sort(ad.begin(), ad.end());
+    double mad = ad[ad.size() / 2];                  // raw MAD, as the modified z uses
+    if (!R_finite(mean)) continue;
+    // MAD == 0 when more than half the subjects share a slope to the bit.  Not seen on
+    // theo_sd, but it is reachable (e.g. a direction most subjects are insensitive to),
+    // and dividing by it would make every differing subject infinitely extreme.  Floor
+    // it at sqrt(eps): any deviation genuinely above the numerical noise still scores a
+    // large modified z and is treated as the outlier it is, while identical subjects
+    // score 0 and are left alone.
+    if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
+    // Re-difference the flagged subjects at the median step for this parameter: the
+    // rate test says their SLOPE is the outlier, so the step is what gets standardized.
+    std::vector<double> hs;
+    for (int k = 0; k < nid; ++k) {
+      double hv = hOut(k, j);
+      if (R_finite(hv) && hv > 0) hs.push_back(hv);
+    }
+    if (hs.empty()) continue;
+    std::sort(hs.begin(), hs.end());
+    double hCentral = hs[hs.size() / 2];
+    // An outlier is a DIAGNOSTIC ABOUT THE PARAMETER, not about the subject.  If any
+    // subject's slope is an outlier for this theta, the central difference is inadequate
+    // for this theta, so Richardson is applied to EVERY subject for it.  If no subject
+    // is an outlier the plain central difference is adequate and Richardson is skipped
+    // -- which matters, because applying it where it is not needed costs accuracy
+    // (measured: tka 0.963 -> 0.844, tv 0.992 -> 0.913).
+    bool anyOutlier = false;
+    for (int k = 0; k < nid && !anyOutlier; ++k) {
+      double dv = out(k, j);
+      if (!R_finite(dv)) continue;
+      if (std::fabs(0.6745 * (dv - mean) / mad) > _fdOutlierMz) anyOutlier = true;
+    }
+    if (!anyOutlier) continue;
+    // Only the finite-differenced subjects are recomputed.  The analytic subjects are
+    // exact -- they contribute to the statistics, never to the correction.
+    for (int k = 0; k < nid; ++k) {
+      int id = ids0[k];
+      if (id < 0 || id >= nsub) continue;
+      double hUse = hOut(k, j);
+      if (!R_finite(hUse) || hUse <= 0) continue;
+      focei_ind *fInd = &(inds_focei[id]);
+      EtaRestoreGuard etaGuard(id);
+      rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
+      _fdRefEta.assign((size_t)op_focei.neta, 0.0);
+      for (int i = 0; i < op_focei.neta; ++i) {
+        _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
+      }
+      std::vector<double> savedZm;
+      int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
+      if (fInd->zm != NULL && op_focei.nzm > 0) {
+        savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
+      }
+      // Span-preserving Lanczos generalized derivative: the outermost evaluation stays
+      // at shi's tuned step and the stencil subdivides INSIDE it (h = span/m).  m is
+      // TV-regularized differentiation on a WIDE interval (Chartrand).  The span is
+      // deliberately much wider than shi's step: TV wants signal-to-noise and absorbs
+      // the curvature itself through u varying across the interval.  alpha <= 0 selects
+      // it by the discrepancy principle.  Candidates for control arguments alongside
+      // the other tunables.
+      const double _span = 0.05;      // interval half-width
+      const int    _N     = 40;       // grid points across it
+      const double _alpha = -1.0;     // <=0: choose alpha from the data
+      const int    _iters = 12;       // lagged-diffusivity iterations
+      double dR = fdTvDeriv(theta, id, j, _span, _N, _alpha, _iters);
+      if (R_finite(dR)) out(k, j) = dR;
+      if (!savedZm.empty()) std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
+      fInd->mode = savedMode;
+      fInd->uzm = (unsigned int)savedUzm;
+    }
+  }
+  _fdRefEta.clear();
+  // Every subject perturbed the shared fullTheta; put it back exactly as found.
+  for (int t = 0; t < nth; ++t) op_focei.fullTheta[t] = theta0[t];
+  out.attr("h") = hOut;
+  out.attr("hMin") = op_focei.shi21hMin;
+  out.attr("hMax") = op_focei.shi21hMax;
+  return out;
+}
+
 //[[Rcpp::export]]
 RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
                        double tol) {
@@ -10933,7 +11580,12 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // but no integration is running -- and BEFORE the parallel region below.
   // Without this, a modeled-dose (f/lag) fit segfaults: the jump injection
   // fires during the pooled outer solve with the inner model's dims.
-  OdeSwapEsBatch _esBatch(odeSlotOuter);
+  // Scoped deliberately: this batch must CLOSE before the per-individual finite
+  // difference below can install the inner model's event-sensitivity shape.  The shape
+  // is a process global, so outer and inner cannot be live at once -- swapping the pool
+  // from the outer model to the inner one, inside this one gradient call, is exactly
+  // what the shared-pool machinery exists for.
+  std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   // Solve the augmented model at the ANALYTIC tolerance, not the fit's.  The
   // rxode2::rxSolve route passes atol=rtol=.foceiAnalyticSolveTol(ui) (about
   // 1e-10 at sigdig=4); the pool carries the fit's ordinary, far looser
@@ -11084,10 +11736,19 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
   // R objects are built OUTSIDE the parallel region
+  // Phase 8D2 foundation: report per-subject success instead of discarding the whole
+  // gradient on the first failure.  A failed subject's entry is R_NilValue and its
+  // "ok" flag is 0, so the caller can route just those subjects to the per-individual
+  // finite-difference d(llik)/d(theta) -- which CANNOT run here, since this loop is
+  // inside OdeSwapEsBatch(odeSlotOuter) and the FD needs the inner problem's event
+  // sensitivities.  Callers that cannot yet use the flags still see the old
+  // all-or-nothing behaviour, because they check for a NULL entry.
   List out(nsub);
+  IntegerVector okv(nsub);
   for (int i = 0; i < nsub; ++i) {
     VaeOuterE& E = Es[(size_t)i];
-    if (!E.ok) return R_NilValue;              // any failed subject -> caller falls back
+    okv[i] = E.ok ? 1 : 0;
+    if (!E.ok) continue;                       // flagged; entry stays R_NilValue
     List Ei = List::create(_["f"] = wrap(E.f), _["a"] = wrap(E.a), _["A"] = wrap(E.A));
     if (hasR) {
       Ei["R"] = wrap(E.R); Ei["aR"] = wrap(E.aR); Ei["AR"] = wrap(E.AR);
@@ -11103,7 +11764,31 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
     }
     out[i] = Ei;
   }
+  out.attr("ok") = okv;         // 1 = solved, 0 = flagged for the per-individual FD
   odeSwapNotePooledSolve();
+  // ---- swap the pool: outer -> inner, and finite-difference the flagged subjects ----
+  //
+  // Done HERE, in the gradient call that already owns the pool, rather than downstream:
+  // the augmented solve above ran under the OUTER model's event-sensitivity shape, and a
+  // subject that failed it needs the INNER problem re-established before its likelihood
+  // can be differenced.  Closing the outer batch and opening an inner one is the model
+  // swap the shared pool was built to make cheap.
+  {
+    std::vector<int> flagged;
+    for (int i = 0; i < nsub; ++i) if (okv[i] == 0) flagged.push_back(i);
+    if (!flagged.empty()) {
+      _esBatch.reset();                       // close the OUTER shape before swapping
+      IntegerVector fids((R_xlen_t)flagged.size());
+      for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
+      // Per-subject analytic slopes are not decomposed out of the batched kernel yet, so
+      // the outlier statistics currently see only the differenced subjects; passing them
+      // in is the remaining piece (see plans/dry-ode-swap-phaseC.md).
+      NumericMatrix aref(0, 0);
+      NumericMatrix fd = foceiOuterFdInd_(fids, aref);   // opens the INNER shape itself
+      out.attr("fd") = fd;
+      out.attr("fdIds") = fids;
+    }
+  }
   return out;
 }
 

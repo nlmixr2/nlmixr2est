@@ -1468,15 +1468,12 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # the many-fit sequence -- most likely a buffer still sized for a narrower
     # model once a much wider augmented model has sized the pool.  Until that is
     # found, multi-endpoint keeps the rxSolve route.
-    # NO delay() models: the delay-history column map (op->delayState/delayCol)
-    # is built at solve setup FROM THE POOL MODEL's stateProp -- it is part of
-    # the solve structure, not a swappable global like the event-sensitivity
-    # shape -- and the augmented model's delayed sensitivities have their own
-    # delay() lookbacks, so pooling it would make every inner solve read the
-    # wrong history columns.  DDE keeps the rxSolve route (dop853, dense), which
-    # installs its own map.
-    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) == 1L &&
-                             !isTRUE(rxode2::rxModelVars(.outerAm$augMod)$flags[["hasDelay"]] == 1L),
+    # delay() models ARE in scope: focei forces the DDE configuration at the FIT level
+    # (the hasDelay block below -- method 0, stiff2 13, dense TRUE), so a delay fit's
+    # pool is built that way from the start and nothing needs changing per solve.  The
+    # delay-history column map is then built from a pool model that already carries the
+    # delays.  test-dde-focei.R covers it.
+    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) == 1L,
                            error = function(e) FALSE),
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
     # top level so the rxLoad reloads it, metadata separately.

@@ -750,6 +750,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiIndLik_
+NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0);
+RcppExport SEXP _nlmixr2est_foceiIndLik_(SEXP thetaInSEXP, SEXP ids0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thetaIn(thetaInSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type ids0(ids0SEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiIndLik_(thetaIn, ids0));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiOuterFdInd_
+NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef);
+RcppExport SEXP _nlmixr2est_foceiOuterFdInd_(SEXP ids0SEXP, SEXP analyticRefSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type ids0(ids0SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type analyticRef(analyticRefSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiOuterFdInd_(ids0, analyticRef));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeOuterSolve_
 RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores, double tol);
 RcppExport SEXP _nlmixr2est_vaeOuterSolve_(SEXP thValsSEXP, SEXP ebesSEXP, SEXP colsSEXP, SEXP coresSEXP, SEXP tolSEXP) {

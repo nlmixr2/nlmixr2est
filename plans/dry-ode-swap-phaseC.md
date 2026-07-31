@@ -689,3 +689,97 @@ Corrected design:
 Still to confirm before coding: the eta save/restore around `innerOpt1()`
 (`EtaRestoreGuard`), and whether the omega directions need the same treatment or can be
 precomputed once outside the per-subject phase.
+
+
+## Phase 8F: DDE is IN scope -- do not add a deny code for it
+
+Recorded because it kept coming back.  8F's deny codes are for linCmt() and
+pool-not-sized ONLY.  DDE is NOT excluded from the pooled route.
+
+The old justification was that a delay model pins method="dop853"/dense per solve and a
+shared pool cannot change that.  It does not hold: focei already forces the DDE
+configuration at the FIT level (R/focei.R hasDelay block -- method 0, stiff2 13, dense
+TRUE), so a delay fit's pool is built that way from the start.  The delay-history column
+map (op->delayState/delayCol) is then built at setup from a pool model that already
+carries the delays.
+
+Removed accordingly: the `.dde` gate on the pooled branch of .foceiAnalyticSolveAll and
+the hasDelay conjunct in focei.R's outerPoolOk.  test-dde-focei.R covers it.
+
+
+### 8D2 progress and the open correctness problem
+
+Landed and building:
+- `vaeOuterSolve_` no longer discards the whole gradient on the first failed subject: it
+  returns R_NilValue for that subject's entry and an integer `ok` attribute.  R records
+  the flagged ids in `.foceiOuterFlagged$ids`.  Behaviour is unchanged for now -- a
+  flagged subject still falls through to the rxSolve route.
+- `shi21LikTheta()` (src/inner.cpp): the function shi21Central() differences.  Installs
+  theta into the subject's par_ptr, re-optimizes with `innerOpt1(id, 0)`, returns
+  `fInd->lik[0]` as a 1-vector.
+- `foceiOuterFdInd_(ids0)`: its own phase, opens `OdeSwapEsBatch(odeSlotInner)` (the FD
+  needs the INNER shape and the augmented loop runs under the OUTER one, so they cannot
+  interleave), guards each subject's eta with `EtaRestoreGuard`, and shi CENTRAL
+  differences each theta with the step size cached in `fInd->outerThetaHf[j]` -- the
+  separate store, not the inner problem's `etahf`.
+- `.foceiOuterFdForFlagged()` on the R side; init.c updated by hand (arity 1).
+- The FD phase saves and restores everything `innerOpt1()` moves: the subject's eta
+  (EtaRestoreGuard), its n1qn1 warm-start Hessian (zm/mode/uzm -- otherwise the fit
+  would warm-start a later inner problem from a Hessian belonging to a theta it never
+  visited), and the shared `op_focei.fullTheta`.
+
+Smoke test: 12 subjects x 4 thetas, all finite, plausible magnitudes.
+
+**OPEN -- the values do not yet agree with the analytic gradient.**  `LikInner2()` sets
+`fInd->lik[likId] = -2*lik`, so `lik[0]` is the individual's -2LL contribution and
+`colSums(fd)` should reproduce the analytic outer gradient's theta components with ratio
+1.  Measured on theo_sd (12 subjects):
+
+    sum of per-subject FD:  -0.605  -10.227   22.302   35.014
+    analytic gradient:       0.388   -3.241  -47.584  -69.691
+    ratio:                  -0.642    0.317   -2.134   -1.990
+
+Non-constant, so this is not a scale factor.
+
+RULED OUT: that `shi21LikTheta()` was not syncing `op_focei.fullTheta`.  It now writes
+theta through to fullTheta as well as par_ptr, and the FD values are BIT-IDENTICAL --
+so theta reaches the individual likelihood entirely through par_ptr and fullTheta plays
+no part in it.  (The write is kept anyway: it costs nothing and keeps the two views
+consistent while the subject is perturbed.)
+
+FIXED SINCE (two real defects, both confirmed by the numbers moving):
+
+1. **Scale.** `fInd->lik[0]` on the innerOpt1 path holds the individual's +LL, not -2LL
+   (line 2424 assigns `lik`, not the `-2*lik` of line 2428).  The outer objective is
+   -2LL, so `shi21LikTheta()` now returns `-2 * lik[0]`.
+2. **Eta path-dependence.** Each shi evaluation re-optimized from wherever the PREVIOUS
+   perturbation left the eta, so the + and - legs of a central difference were taken
+   about different points.  Every evaluation now starts from one pinned reference eta
+   (`_fdRefEta`, captured per subject before its loop).  This is what was wrecking the
+   eta-bearing thetas: tka went from ratio -2.68 to 0.963 on this change alone.
+
+Comparison at a common theta (maxOuterIterations=0, theo_sd, 12 subjects):
+
+    theta    analytic     sum of FD    ratio
+    tka       -1.5611      -1.6210     0.963
+    tcl       -1.1936      22.3964    -0.053   <- STILL WRONG
+    tv        82.6138      83.2853     0.992
+    add.sd   -79.1820     -79.4173     0.997
+
+STILL OPEN: `tcl`.  It is a real disagreement (22.4 against -1.19), not near-zero
+ratio noise, and it is not simply "has an eta" -- tka also has one and now agrees.  Next
+step is to difference tcl by hand, per subject, against `innerOpt1()` at +/- h to see
+whether the discrepancy is in the FD or in the analytic term for that direction.
+
+SUPERSEDED SUSPECT -- the comparison itself.  `.foceiGradAnalyticCalc(fit)`
+evaluates at the FIT's final theta, while `foceiOuterFdInd_()` starts from whatever
+`op_focei.fullTheta` holds after the fit returns, which is the optimizer's LAST trial
+point, not necessarily the optimum.  Two gradients evaluated at different thetas will
+differ by an arbitrary, per-direction amount, which is exactly the pattern above.  Fix
+the harness before touching the FD again: pin both to the same theta (set fullTheta to
+the fit's estimates, or take the analytic gradient at the FD's starting point), then
+require ratio 1.
+
+Do NOT wire the substitution until that comparison passes: a wrong per-subject term
+would silently bias the total gradient, which is precisely the class of bug this
+session spent its time on.

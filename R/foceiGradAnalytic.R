@@ -490,6 +490,38 @@
   .foceiGradAnalyticCalc(fit)
 }
 
+#' Per-individual d(llik)/d(theta) for the subjects whose augmented solve failed.
+#'
+#' Phase 8D2.  Runs as its OWN phase, after the augmented solve has finished and its
+#' outer event-sensitivity batch has closed -- `foceiOuterFdInd_()` installs the inner
+#' problem's shape itself, which is only legal at a batch boundary.  Each flagged
+#' subject is re-optimized through `innerOpt1()` at shi central-differenced thetas, with
+#' step sizes kept in that subject's own store.
+#'
+#' @param ids1 1-based subject indices flagged by the solve
+#' @param analyticRef per-subject slopes for the subjects that solved analytically; they
+#'   form the reference distribution the outlier test judges against, and are never
+#'   themselves recomputed
+#' @return nid x ntheta matrix of d(llik_i)/d(theta), or NULL when unavailable
+#' @noRd
+.foceiOuterFdForFlagged <- function(ids1, analyticRef = matrix(numeric(0), 0, 0)) {
+  if (length(ids1) == 0L) return(NULL)
+  .g <- tryCatch(foceiOuterFdInd_(as.integer(ids1 - 1L), as.matrix(analyticRef)),
+                 error = function(e) NULL)
+  if (is.null(.g) || !is.matrix(.g) || nrow(.g) != length(ids1)) return(NULL)
+  if (!all(is.finite(.g))) return(NULL)   # a subject that could not be re-optimized
+  .g
+}
+
+#' Subjects whose augmented solve failed, for the Phase 8D2 per-individual FD.
+#'
+#' Recorded here rather than acted on in the solve loop: that loop runs inside
+#' OdeSwapEsBatch(odeSlotOuter), and the finite difference needs the INNER problem's
+#' event sensitivities, which can only be installed at a batch boundary.
+#' @noRd
+.foceiOuterFlagged <- new.env(parent = emptyenv())
+.foceiOuterFlagged$ids <- integer(0)
+
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
@@ -505,9 +537,12 @@
   ##
   ## DDE is excluded: those solves pin method="dop853"/dense, which the shared
   ## pool fixes at setup and cannot change per solve.
-  .dde <- isTRUE(tryCatch(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L,
-                          error = function(e) FALSE))
-  if (!.dde && !isTRUE(.odeSwapNoPool$on)) {
+  ## DDE is IN scope for the pooled route.  The old exclusion assumed a delay model
+  ## pins method="dop853"/dense per solve, which a shared pool cannot do -- but focei
+  ## already forces that configuration at the FIT level (R/focei.R, the hasDelay block:
+  ## method 0, stiff2 13, dense TRUE), so a DDE fit's pool is built that way to begin
+  ## with and there is nothing to change per solve.
+  if (!isTRUE(.odeSwapNoPool$on)) {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
       .nc <- tryCatch({ .c <- am$cores
@@ -516,7 +551,38 @@
       .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
                                      as.numeric(tol)),
                       error = function(e) NULL)
-      if (!is.null(.Ec) && length(.Ec) > 0L && !isTRUE(.odeSwapNoPool$on)) return(.Ec)
+      ## vaeOuterSolve_ now flags failed subjects per individual (attr "ok") rather
+      ## than discarding the whole gradient.  Until the Phase 8D2 finite-difference
+      ## phase consumes those flags, a flagged subject still falls through to the
+      ## rxSolve route, i.e. behaviour is unchanged -- but the flags are here.
+      if (!is.null(.Ec) && length(.Ec) > 0L && !isTRUE(.odeSwapNoPool$on)) {
+        .ok <- attr(.Ec, "ok")
+        if (is.null(.ok) || all(.ok == 1L)) {
+          .foceiOuterFlagged$ids <- integer(0)
+          return(.Ec)
+        }
+        ## A flagged subject has no E.  Give it a zero-filled one of the right shape so
+        ## the assembly below keeps working; its gradient column is replaced wholesale in
+        ## foceiGradAllFR_ by the per-individual finite difference, so these zeros never
+        ## reach the result.
+        .good <- which(.ok == 1L)
+        if (length(.good) > 0L) {
+          .tmpl <- .Ec[[.good[1L]]]
+          for (.i in which(.ok == 0L)) {
+            .nobsI <- length(obsTimes[[.i]])
+            .z <- lapply(.tmpl, function(.x) {
+              if (is.null(dim(.x))) numeric(.nobsI)
+              else array(0, c(.nobsI, dim(.x)[-1]))
+            })
+            .z <- .z[names(.tmpl)]
+            if (!is.null(.tmpl$trans)) .z$trans <- .tmpl$trans
+            .Ec[[.i]] <- .z
+          }
+          .foceiOuterFlagged$ids <- which(.ok == 0L)
+          attr(.Ec, "ok") <- .ok
+          return(.Ec)
+        }
+      }
     }
   }
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
