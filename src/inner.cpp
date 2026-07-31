@@ -11788,57 +11788,16 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   return out;
 }
 
-//[[Rcpp::export]]
-RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
-                       double tol) {
-  // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
-  // solve is only valid if the augmented model is registered AND the pool is at
-  // least its size.  odeSwapCanPool says exactly that -- a model larger than the
-  // pool returns odeDenyPoolNotSized, which is the failure the flag was patching
-  // (a focei fast fit after a vae grad fit, running against a pool sized for its
-  // own inner model).  Refusing here means R can just call and fall through.
-  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return R_NilValue;
-  // ---- outer ES batch ------------------------------------------------------
-  // The augmented model's event ("jump") sensitivities have a different shape
-  // than the inner model's, and the shape is a rxode2 process global (loaded
-  // once per fit from the INNER model at focei.R's rxEventSensLoadModel call).
-  // Install the augmented model's shape for this whole batch and restore the
-  // inner model's on return.  Entered from R between solves -- the pool exists
-  // but no integration is running -- and BEFORE the parallel region below.
-  // Without this, a modeled-dose (f/lag) fit segfaults: the jump injection
-  // fires during the pooled outer solve with the inner model's dims.
-  // Scoped deliberately: this batch must CLOSE before the per-individual finite
-  // difference below can install the inner model's event-sensitivity shape.  The shape
-  // is a process global, so outer and inner cannot be live at once -- swapping the pool
-  // from the outer model to the inner one, inside this one gradient call, is exactly
-  // what the shared-pool machinery exists for.
-  std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
-  // Solve the augmented model at the ANALYTIC tolerance, not the fit's.  The
-  // rxode2::rxSolve route passes atol=rtol=.foceiAnalyticSolveTol(ui) (about
-  // 1e-10 at sigdig=4); the pool carries the fit's ordinary, far looser
-  // tolerances.  Second-order sensitivities amplify integration error, so the
-  // gap showed up as f/a/A differing by 1e-5..1e-4 between the two routes --
-  // enough to move a near-cancelling gradient term by an order of magnitude
-  // (measured on a two-endpoint model: emax 63 vs 569).  R and the Rsig block
-  // matched exactly, since those are not integrated.
-  OdeSolveTolGuard _tolGuard(tol);
-  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
-      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
-  rx = getRxSolve_();
-  // Does the BOUND calc_lhs actually belong to the model the registry describes?
-  // rxUpdateFuns resolves symbols with R_GetCCallable(lib, name), which resolves by
-  // NAME -- and the same augmented model can re-resolve to a different dll's symbol
-  // later in a session.  Measured on test-focei-fast-grad.R: a 26-state/29-lhs outer
-  // model whose bound calc_lhs wrote only 4 of the 29 columns.  The registry still
-  // reported 29, so f2/rvar/rvar1/rvar2/rsig were all read from slots nobody wrote
-  // -- finite garbage or NaN by solve history, silently degrading the whole fit to
-  // finite differences (or worse, going unnoticed).  Probe the width once per call
-  // and refuse to pool on a mismatch: the caller falls back to rxode2::rxSolve.
-  rx_solving_options *op = getSolvingOptions(rx);
-  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
-  const int nsub = (int)getRxNsub(rx);
-  if (ebes.nrow() != nsub) return R_NilValue;
-  const int neta = (int)op_focei.neta;
+// Unpack the augmented model's lhs column map and solve every subject in the shared
+// pool, filling Es.  Split out of vaeOuterSolve_ so the gradient assembly can consume
+// these structures in C++ without a round trip through R (Phase 8E) -- the ndir^2
+// sensitivity cubes are the bulk of the data and never need to become R objects.
+//
+// The CALLER owns the gates, the outer ES batch and the solve-tolerance guard: all
+// three have to be established before this runs, and the batch has to outlive it.
+static void vaeOuterSolveFill(NumericVector thVals, NumericMatrix ebes, List cols,
+                              int cores, rx_solving_options *op, int nsub, int neta,
+                              std::vector<VaeOuterE> &Es) {
   // 0-based lhs offsets, resolved in R from .foceiAnalyticCols against this
   // model's own lhs names (a rename there surfaces as a clean R-side error
   // rather than a silent wrong column here).
@@ -11858,7 +11817,6 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   }
   List rsig1 = hasR && cols.containsElementNamed("rsig1") ? as<List>(cols["rsig1"]) : List();
   if (hasT) tr = cols["trans"];
-  std::vector<VaeOuterE> Es((size_t)nsub);
   cores = min2(cores, getOpCores(op));
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
@@ -11962,6 +11920,65 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
 #endif
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+}
+
+//[[Rcpp::export]]
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
+                       double tol) {
+  // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
+  // solve is only valid if the augmented model is registered AND the pool is at
+  // least its size.  odeSwapCanPool says exactly that -- a model larger than the
+  // pool returns odeDenyPoolNotSized, which is the failure the flag was patching
+  // (a focei fast fit after a vae grad fit, running against a pool sized for its
+  // own inner model).  Refusing here means R can just call and fall through.
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return R_NilValue;
+  // ---- outer ES batch ------------------------------------------------------
+  // The augmented model's event ("jump") sensitivities have a different shape
+  // than the inner model's, and the shape is a rxode2 process global (loaded
+  // once per fit from the INNER model at focei.R's rxEventSensLoadModel call).
+  // Install the augmented model's shape for this whole batch and restore the
+  // inner model's on return.  Entered from R between solves -- the pool exists
+  // but no integration is running -- and BEFORE the parallel region below.
+  // Without this, a modeled-dose (f/lag) fit segfaults: the jump injection
+  // fires during the pooled outer solve with the inner model's dims.
+  // Scoped deliberately: this batch must CLOSE before the per-individual finite
+  // difference below can install the inner model's event-sensitivity shape.  The shape
+  // is a process global, so outer and inner cannot be live at once -- swapping the pool
+  // from the outer model to the inner one, inside this one gradient call, is exactly
+  // what the shared-pool machinery exists for.
+  std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
+  // Solve the augmented model at the ANALYTIC tolerance, not the fit's.  The
+  // rxode2::rxSolve route passes atol=rtol=.foceiAnalyticSolveTol(ui) (about
+  // 1e-10 at sigdig=4); the pool carries the fit's ordinary, far looser
+  // tolerances.  Second-order sensitivities amplify integration error, so the
+  // gap showed up as f/a/A differing by 1e-5..1e-4 between the two routes --
+  // enough to move a near-cancelling gradient term by an order of magnitude
+  // (measured on a two-endpoint model: emax 63 vs 569).  R and the Rsig block
+  // matched exactly, since those are not integrated.
+  OdeSolveTolGuard _tolGuard(tol);
+  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
+      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
+  rx = getRxSolve_();
+  // Does the BOUND calc_lhs actually belong to the model the registry describes?
+  // rxUpdateFuns resolves symbols with R_GetCCallable(lib, name), which resolves by
+  // NAME -- and the same augmented model can re-resolve to a different dll's symbol
+  // later in a session.  Measured on test-focei-fast-grad.R: a 26-state/29-lhs outer
+  // model whose bound calc_lhs wrote only 4 of the 29 columns.  The registry still
+  // reported 29, so f2/rvar/rvar1/rvar2/rsig were all read from slots nobody wrote
+  // -- finite garbage or NaN by solve history, silently degrading the whole fit to
+  // finite differences (or worse, going unnoticed).  Probe the width once per call
+  // and refuse to pool on a mismatch: the caller falls back to rxode2::rxSolve.
+  rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
+  const int nsub = (int)getRxNsub(rx);
+  if (ebes.nrow() != nsub) return R_NilValue;
+  const int neta = (int)op_focei.neta;
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  vaeOuterSolveFill(thVals, ebes, cols, cores, op, nsub, neta, Es);
+  // Shape flags the R-list build below needs; the fill keeps its own copies.
+  const bool hasR = as<bool>(cols["hasR"]);
+  const bool hasT = as<bool>(cols["hasT"]);
+  const int nsig = hasR ? ((IntegerVector)cols["rsig"]).size() : 0;
   // R objects are built OUTSIDE the parallel region
   // Phase 8D2 foundation: report per-subject success instead of discarding the whole
   // gradient on the first failure.  A failed subject's entry is R_NilValue and its
