@@ -70,6 +70,17 @@
 
 ### Bug fixes
 
+- [`vpcSimExpand()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSimExpand.md)
+  no longer merges the entire observed dataset into the simulation when
+  a requested `extra` column is missing: a dropped filter result meant
+  an unknown column (e.g. a misspelled `stratify` in `vpcPlot()`)
+  spliced every observed column into the simulation, and valid columns
+  dragged the rest of the observed data along with them (colliding with
+  the simulation’s own, e.g. `time.x`/`time.y`). Only the requested
+  columns are merged now, and a column found in neither the simulation
+  nor the data warns and is ignored
+  ([\#830](https://github.com/nlmixr2/nlmixr2est/issues/830)).
+
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the
   objective function depend on the optimizer’s history rather than on
   `theta` alone, so the same `theta` could return values hundreds of
