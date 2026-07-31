@@ -1287,3 +1287,347 @@ regression, not a cleanup.  Order: FOCE, AGQ, ll(), THEN delete the R path and t
 Per the user's other instruction: when the analytic outer gradient cannot be computed it
 must not be applied at all -- so the direct path returning false should mean the fit uses
 its ordinary gradient, with no second, slower analytic attempt through R.
+`foceiControl(fast=TRUE)` replaces the finite-difference outer gradient with an analytic
+one (Almquist 2015).  As of `222bbb38c` the **FOCEI** case runs entirely in C++:
+`analyticOuterGrad()` -> `analyticOuterGradDirect()` -> `gradPooledCore()` solves the
+augmented model in the shared ODE pool, stacks the sensitivities and calls
+`foceiGradSubjectFR_`, without touching R.  Measured on theo_sd: 16 analytic gradient
+iterations, 0 finite-difference, objf within 1.8e-5 of `fast=FALSE`, and the -10
+protect-stack imbalance the previous C++ -> R -> C++ design produced is gone.
+
+Three shapes still fall back to an R route (`.foceiCalcGradAnalytic`, reached through
+`Rcpp::Function` at `src/inner.cpp:4663`):
+
+* **FOCE** (`interaction=0`), both `foceType` 0 "nonmem" and 1 "foce+"
+* **AGQ** (`nAGQ > 1`)
+* **general likelihood** (`ll()` endpoints)
+
+That route rebuilds `etaObf`/`omega`/`.gradTheta` as R objects on **every gradient
+evaluation**, re-derives the per-fit setup in R, `.Call`s back down, and reads `etaP`
+back out of the fit environment -- the exact round trip Phase 8E removed for FOCEI.  It
+also lets R run between the augmented solve and the assembly, where it can disturb the
+shared solve pool.
+
+Intended outcome: all four shapes compute the gradient in C++ with no R on the hot path;
+the R gradient implementation is then deleted outright and the existing gradient tests
+are re-pointed at the C++ code the fit actually runs.  Mixtures stay out of scope (they
+need probability-weighted per-component contributions plus the derivative of the
+weights -- solvable, not solved) and keep the ordinary finite-difference gradient.  When
+the analytic gradient cannot be computed it is not applied at all: no second, slower
+analytic attempt through R.
+
+## Two decisions taken up front
+
+1. **The R gradient implementation goes away completely**, including the post-fit
+   `.foceiGradAnalyticCalc(fit)` entry.  That entry is currently what ~15 assertions in
+   `test-focei-fast-grad.R`, `test-agq-fast-grad.R`, `test-subFinal.R` and
+   `test-odeswap.R` call -- so today **none** of them exercise the direct C++ path.  They
+   get re-pointed at a thin test-only wrapper over the same C++ code the fit runs, so the
+   tests verify shipping code instead of a parallel R implementation that can drift.
+2. **The FOCE Newton EBE re-solve may improve on the R version** rather than reproducing
+   it bit-for-bit (per-subject early exit from the batched solve, better tolerances).
+   FOCE fit results may shift slightly; the gradient-vs-central-difference assertions are
+   the correctness bar, not equality with today's numbers.
+
+## What already exists (do not rebuild)
+
+| Piece | Where |
+| --- | --- |
+| FOCEI direct path | `src/inner.cpp` `analyticOuterGradDirect` (12322), `gradPooledCore` (12162) |
+| Augmented pooled solve | `src/inner.cpp` `vaeOuterSolveFill` (11928) -- SEXP-free; takes the eta matrix as an argument, so a zero matrix gives the FOCE eta=0 solve |
+| Per-fit setup POD | `src/inner.cpp` `FoceiGradPooledSetup` (4565), `loadGradPooledSetup` (4612) |
+| Per-subject FD fallback | `src/inner.cpp` `foceiOuterFdInd_`, `calcOuterThetaHf`, `fdCentralAt`, `shi21LikTheta` |
+| Pool slots for all three extra models | `src/odeSwap.h`: `odeSlotOuter`, `odeSlotOuterNode` (AGQ order-1), `odeSlotHess2` (ll d2) |
+| ES-shape batch boundary / per-ind scope | `src/odeSwap.h`: `OdeSwapEsBatch`, `OdeSwapScope` |
+| FOCE gradient kernel | `src/foceiGrad.cpp:471` `foceiGradSubjectFoceFR_` (**`static`**) |
+| AGQ gradient kernel | `src/foceiGrad.cpp:1043` `foceiGradSubjectAgqFR_` (**`static`**, non-throwing, reports via `ok_out`) |
+| Censored partials | `src/censEst.h` `censNormalPartials()` -- header-inline, already called from C++ |
+| **AGQ quadrature grid** | already in C++: `op_focei.aqx` / `op_focei.aqw` (`_aqn x neta`), `_aqn`, loaded by `setupAq1_` (inner.cpp:9417) |
+| **ll() per-subject Hessian reader** | already in C++: `calcEtaHessian`'s hess2 branch (inner.cpp:2278-2315) reads `rx__d2pred_` into `H` |
+| **Method-agnostic per-subject FD** | `shi21LikTheta` re-optimizes eta at the perturbed theta via `innerOpt1`, i.e. it differences *the objective's own inner problem* -- failed FOCE/AGQ/ll subjects already fall back correctly with no change |
+
+Both gradient kernels take **pure arma / plain scalar arguments only** -- no SEXP in any
+parameter list -- so calling them from C++ constructs zero R objects.  They are `static`
+only because they never had a C++ caller.
+
+Two R-side complications evaporate in the pooled path and must NOT be ported:
+
+* the AGQ **node-replicated event data** (`.foceiAgqRepData`, `.foceiAgqRepCache`) exists
+  only because `rxSolve` needs pseudo-subjects; the pool solves one individual at a time,
+  so nodes become a loop.
+* the `innerHess2` **`ETA[k]`/`THETA[k]` bracket-naming** gotcha exists only because R
+  sets parameters by name; C++ writes `par_ptr` positionally through `op_focei.etaTrans`
+  / `op_focei.thetaTrans`.
+
+## Phase 0 -- make the kernels callable
+
+* `src/foceiGrad.cpp`: drop `static` from `foceiGradSubjectFoceFR_` and
+  `foceiGradSubjectAgqFR_`.
+* `src/foceiGrad.h`: declare both, beside the existing `foceiGradSubjectFR_`.
+
+No `init.c` / `compileAttributes` churn -- these are not `[[Rcpp::export]]`.
+
+When writing driver loops: `foceiGradSubjectFR_` and `foceiGradSubjectFoceFR_` use
+**throwing** `arma::inv()` and the caller owns the `try/catch(...)` (`Makevars` sets
+`ARMA_DONT_USE_OPENMP` but not `ARMA_DONT_USE_EXCEPTIONS`, so a throw escaping an OpenMP
+structured block is `std::terminate`).  The AGQ kernel uses the non-throwing forms.
+
+## Phase 1 -- generalize the augmented solve
+
+`vaeOuterSolveFill` is hardcoded to `odeSlotOuter` / the global `rxVaeOuter` and always
+reads the 2nd-order blocks.  All three new routes need it against a different slot, model
+and column map.  Proposed signature (`src/inner.cpp`):
+
+```cpp
+// what to read back from the solve
+enum OuterFillWhat {
+  outerFillFull = 0,   // f,a,A,R,aR,AR,Rsig,RsigDir,Rsig2,trans  (odeSlotOuter)
+  outerFillOrder1,     // f,a,R,aR,Rsig                            (odeSlotOuterNode, AGQ)
+  outerFillEtaHess     // eta-eta 2nd derivative block only         (odeSlotHess2, ll)
+};
+
+static void outerSolveFill(int slot, rxSolveF *fns,
+                           const std::vector<double> &thVals, const arma::mat &ebes,
+                           const FoceiGradPooledSetup::Cols &C, int what,
+                           int cores, rx_solving_options *op, int nsub, int neta,
+                           std::vector<VaeOuterE> &Es);
+```
+
+`vaeOuterSolveFill(...)` becomes `outerSolveFill(odeSlotOuter, &rxVaeOuter, ...,
+outerFillFull, ...)`.  Split the lhs column-map fields of `FoceiGradPooledSetup` into a
+nested `Cols` struct so the POD can hold three (`cols`, `colsNode`, `colsHess2`).
+
+The caller keeps ownership of `OdeSwapEsBatch` and `OdeFitTolGuard`, as it does today.
+`odeSwapEsModelForSlot` already maps `odeSlotOuterNode` to the same `odeEsOuter` role as
+`odeSlotOuter`, so an AGQ node loop stays inside one batch; `odeSlotHess2` has its own
+role and needs its own.
+
+**Commit and run the FOCEI tests here** -- this refactor must be provably a no-op for the
+working path before anything is built on it.
+
+## Phase 2 -- widen the per-fit setup, and add the test-only C++ entry
+
+### 2a. Setup
+
+`.foceiGradPooledSetup()` (`R/foceiGradAnalytic.R:530`) returns `NULL` for
+`interaction != 1L`, `nAGQ > 1L` and `ef$isLL` (550-552) and requires `cols$hasR` (555).
+C++ has a sixth, structural exclusion: `loadGradPooledSetup`'s `if (!G.hasR) return;`
+(inner.cpp:4628), which must relax in step.  Note `.foceiAnalyticGradSetup` reports
+**`interaction = 0L` for ll() as well**, so `interaction` alone cannot separate FOCE from
+ll -- carry `isLL` explicitly and test it first.
+
+Replace those gates with per-shape assembly:
+
+* always carry `interaction`, `foceType`, `nAGQ`, `isLL`, `dependsF0`, `canVanish`,
+  `censOpt` (`dependsF0`/`canVanish` come from `.foceiAnalyticErrFull(ui)`, per-fit
+  constants)
+* FOCE: no new columns -- the eta=0 solve reuses the same augmented model
+* AGQ: add `colsNode` from `.vaeOuterCols(amNode)`, `amNode` preferring
+  `ui$foceiModel$outerNode` + `outerNodeMeta`, else
+  `.foceiAnalyticAugModelDirs(ui, dirs, order = 1L)`; preserve the current
+  "fall back to the order-2 model" behaviour by emitting `colsNode = cols`
+* ll(): drop the `hasR` requirement; add `thPos` (each structural theta's `ntheta`
+  position, needed for the non-mu perturbation) and the hess2 column info
+* keep every existing scope gate (mixtures, `linCmt`, IOV, bounded transforms, fixed
+  mu-thetas, `cholSEOpt`, finite `agqLow`/`agqHi`, FOCE + `censOption="laplace"`,
+  AGQ + censoring/lambda, ll + censoring) -- each becomes a per-shape `ok` flag rather
+  than a blanket `NULL`.
+
+Mirror the new fields in the C++ POD and in `loadGradPooledSetup`.  This stays a
+**once-per-fit** read.
+
+Everything else the routes need is already reachable in C++ and must come from there, not
+R: theta (`op_focei.fullTheta`), EBEs (`fInd->saveEta`), Omega / `d.omegaInv` / `tr.28`
+(`_rxInv` via `getOmegaInv()` / `getDOmegaInvL()` / `getTr28V()`), DV / CENS / LIMIT
+(`getIndDv` / `getIndCens` / `getIndLimit`), the DV transform (`_powerD`, taken from the
+augmented model's `E.trans`, **not** `getIndLambda`), the thread count (`getOpCores`), and
+the AGQ grid (`op_focei.aqx/aqw`, `_aqn`).
+
+### 2b. The test entry point, and the mechanism counter
+
+Both are needed *before* Phase 3, not after, so each shape can migrate its own tests as it
+lands.
+
+* A test-only `[[Rcpp::export]]` that computes the gradient for a fit through
+  `analyticOuterGradDirect`/`gradPooledCore` and returns `list(g, etaP)`.
+  `foceiAnalyticGradPooled_` (inner.cpp:12440) is the existing shape to follow.  This is
+  the one place where building R objects is worth it.  Needs `Rcpp::compileAttributes(".")`
+  **and** a hand edit to `src/init.c` (prototype + `callMethods[]` arity).
+* `op_focei.nAnalyticGradDirect`, incremented on a successful `analyticOuterGradDirect`.
+  `nAnalyticGrad` / `nFDGradFast` (inner.cpp:349-350) already drive the `"; grad: analytic"`
+  suffix in the fit's `extra`, but they count the R route and the direct route alike, so
+  during Phases 3-5 a silent fallback to R would look exactly like success.
+
+## Phase 3 -- FOCE
+
+A FOCE branch in `gradPooledCore` (`G.interaction == 0 && !G.isLL`):
+
+1. **eta=0 solve** when `foceType == 0 && dependsF0`: `outerSolveFill` with a zero `ebes`
+   -> `E0all`.  Same slot and ES batch as the eta-hat solve.
+2. **Newton EBE re-solve at the frozen R0** -- the port of `.foceiAnalyticFoceEbeBatch`
+   (`R/foceiCovAnalytic.R:2304-2337`).  Per subject: `S = Oi*eta + sum(q0 * a)`,
+   `Hf = Oi + sum(q1 * a a' + q0 * A)`, with `q0 = -(y-f)/R0`, `q1 = 1/R0` replaced on
+   censored rows by `censNormalPartials(..., 2)` columns 1 and 3; iterate
+   `eta -= solve(Hf, S)`.  Free to improve on the R structure -- notably by dropping
+   converged subjects out of the batched solve instead of re-solving everyone each
+   iteration.  Non-convergence returns false (ordinary gradient).  Put it in a helper
+   `foceEbeNewton(...)`; the per-subject algebra parallelizes over subjects while the
+   solve stays batched, so the ES batch remains outside.
+   `fInd->saveEta` is **not** a substitute -- those are the inner problem's etas, not the
+   frozen-R0 objective's.
+3. **Stack + kernel**: the FOCEI loop with `aRe`/`aRc`/`R0`/`R0sig` in place of
+   `aR`/`AR`/`R`/`Rsig`/`RsigDir` and no `AR` cube; `fp = (foceType == 1 || no E0)`; call
+   `foceiGradSubjectFoceFR_`.
+
+Then re-point the FOCE assertions in `test-focei-fast-grad.R` at the Phase-2b entry and
+add the `nAnalyticGradDirect > 0` assertion for a FOCE fit.
+
+## Phase 4 -- AGQ
+
+Branch on `G.nAGQ > 1`:
+
+1. eta-hat solve as FOCEI (full order-2 blocks).
+2. Per subject `Ht = Oi + sum(a a'/R + 0.5 aR aR'/R^2)`, `chol`, **require
+   `rcond(Ht) >= 1e-10`** (arma `is_sympd()` and R `chol()` disagree near the PD boundary;
+   a mismatch means the objective took the `nmNearPD`/`cholSE` branch, a different
+   non-smooth function), `GinvL = inv(trimatu(chol))`.
+3. Node loop over the `_aqn` rows of `op_focei.aqx`: eta = `ehat + sqrt(2) * GinvL * x_k`
+   -- the `sqrt(2)` must match the kernel's `etaCur` or the node sensitivities sit at the
+   wrong eta -- with one
+   `outerSolveFill(odeSlotOuterNode, ..., outerFillOrder1, ...)` per node over all
+   subjects.  Drop the R chunking (`.maxPs = 2048`): it exists only to bound pseudo-subject
+   count in one `rxSolve`.
+4. Assemble node-major buffers (node `k` at rows `k*nobs`), call
+   `foceiGradSubjectAgqFR_`; any subject with `ok_out == false` fails the whole gradient.
+
+Out of scope, already gated in R and to stay gated: censoring, estimated DV-transform
+lambda, finite `agqLow`/`agqHi`, `cholSEOpt`.
+
+Then re-point `test-agq-fast-grad.R` and add its mechanism assertion.
+
+## Phase 5 -- ll()
+
+No new kernel is strictly required, but for symmetry and unit-testability put the
+per-subject algebra in `src/foceiGrad.cpp` as `foceiGradSubjectLL_` with the same
+out-param shape as the other three.  Port `.foceiAnalyticGradCoreLL`
+(`R/foceiGradAnalytic.R:1101-1193`):
+
+1. eta-hat solve on `odeSlotOuter` for `a` and `A`; per subject `H = Oi + (-sum A)`, PD
+   check on the min eigenvalue, `Hi = inv(H)`.
+2. Build `2*(nth+nom)` perturbed configurations, `hFD = 1e-4`.  The direction is **not** a
+   coordinate axis: for theta `p` with `s = dirTh[p]`, `sh = Hi * d2` where
+   `d2[l] = sum(A[,l,s])`, plus `sh[s] += 1` when `s <= neta` (mu-referenced); for omega
+   `k`, `etaP = Hi * (-dOi * eta)`.  Mu-referenced thetas hold the theta value and move
+   only the eta (perturbing an ODE-entering theta goes non-finite); non-mu thetas move
+   `th[thPos[p]] +/- hFD`.
+3. Solve each configuration on `odeSlotHess2` reading only the eta-eta block
+   (`outerFillEtaHess`), falling back to `odeSlotOuter` when hess2 is unavailable.  Its own
+   ES role, so its own `OdeSwapEsBatch`.
+4. Assemble: `g[p] = -2*dl[p] + sum(Hi % dH)`;
+   `g[nth+k] = dq[k] - 2*nsub*tr28[k] + sum(Hi % (dOi + dH))`.  `etaP` is NULL for ll(), so
+   set `op_focei.etaPValid = 0` and skip the Eq-48 warm start, matching today.
+
+Out of scope: censored observations (they enter as `-logPhi`, which the log-density
+augmented model does not carry).
+
+Then re-point `test-focei-ll-fast-grad.R` / `test-focei-ll-fast-grad-fit.R`.
+
+## Phase 6 -- delete the R implementation
+
+Only after 3-5 land and their tests pass on the C++ entry.  Deleting earlier would
+silently drop FOCE/AGQ/ll fits to finite differences.
+
+* `src/inner.cpp`: remove the `Rcpp::Function _agf` fallback block in `analyticOuterGrad`
+  (~4649-4700), leaving `foceiOfv0` + `analyticOuterGradDirect`.  Re-check whether
+  `restoreFitSolve_()` / `odeSwapRepin()` are still needed anywhere -- the direct path does
+  not use them.
+* `R/foceiGradAnalytic.R`: delete `.foceiCalcGradAnalytic`, `.foceiAnalyticGradFocei`,
+  `.foceiGradAnalyticCalc`, `.foceiAnalyticGradCore`, `.foceiAnalyticGradCoreLL`, the
+  config solvers, `.foceiAnalyticSolveAll`'s `rxSolve` fallback if nothing else uses it,
+  the `NLMIXR2EST_GRAD_POOLED`-gated experimental block (818-846) together with its now-false
+  comment about the protect-stack imbalance, and `.foceiAgqRepData`/`.foceiAgqRepCache`.
+  Keep `.foceiGradPooledSetup`, `.foceiGradSolveTol`, `.foceiAnalyticGradSetup`.
+* `R/foceiCovAnalytic.R`: `.foceiAnalyticFoceEbeBatch` / `.foceiAnalyticFoceEbe` are also
+  used by the covariance path -- check before removing; the cov path is out of scope here.
+* `R/vaeGrad.R:95` teardown of `.foceiGradHess2` / `.foceiGradAugNode` / `.analyticStarted`
+  follows whatever survives.
+* `test-odeswap.R:294-298` compares the pooled route against
+  `.foceiAnalyticGradViaRxSolve` -- that comparison loses its second operand.  Decide then
+  whether it becomes a pool-vs-`odeSwapNoPool` comparison or is dropped.
+
+## Files touched
+
+* `src/inner.cpp` -- the bulk: `outerSolveFill`, the FOCE/AGQ/ll branches, POD widening,
+  the test entry, the direct-route counter
+* `src/foceiGrad.cpp`, `src/foceiGrad.h` -- de-`static` two kernels, add `foceiGradSubjectLL_`
+* `src/init.c` + `Rcpp::compileAttributes(".")` -- **required**, for the Phase-2b export
+* `R/foceiGradAnalytic.R` -- setup widening (Phase 2), deletions (Phase 6)
+* `tests/testthat/test-{focei-fast-grad,agq-fast-grad,focei-ll-fast-grad,focei-ll-fast-grad-fit,subFinal,odeswap}.R`
+  -- re-pointed at the C++ entry, plus mechanism assertions
+* `NEWS.md` -- one bullet under `## Bug fixes` / `### Estimation`
+* `CLAUDE.md` -- the odeSwap/gradient-layer note owed by Phase 9 of the parent plan
+
+## Verification
+
+Per phase, in the worktree, with **no concurrent `compile_dll`** -- a build in the same
+`src/` while a test's `load_all` compiles there silently destroys the run:
+
+```r
+testthat::test_file("tests/testthat/test-focei-fast-grad.R")      # Phases 0-3
+testthat::test_file("tests/testthat/test-agq-fast-grad.R")        # Phase 4
+testthat::test_file("tests/testthat/test-focei-ll-fast-grad.R")   # Phase 5
+testthat::test_file("tests/testthat/test-focei-ll-fast-grad-fit.R")
+testthat::test_file("tests/testthat/test-subFinal.R")             # also calls the gradient entry
+testthat::test_file("tests/testthat/test-odeswap.R")
+testthat::test_file("tests/testthat/test-cov-analytic.R")         # shares the aug-model machinery
+```
+
+These assert the analytic gradient against central differences and that `fast=TRUE` fits
+match `fast=FALSE` fits -- that is the correctness bar, and it survives the FOCE Newton
+being allowed to converge differently.  Each phase additionally asserts
+`nAnalyticGradDirect > 0` on a fit of its shape, so a silent fallback fails loudly.
+
+Before the PR: `devtools::test()` on the essential subset, plus an antigravity review of
+each commit (`agy -p ... --add-dir /home/matt-fidler/src/nlmixr2est-dry-ode-swap`) with
+findings triaged before pushing.
+
+## Risks, worst first
+
+1. **Re-pointing the tests is the highest-risk step, not the C++.** Fifteen assertions
+   currently validate an R implementation; if the new C++ entry is not wired to exactly
+   the same code path the fit uses, the suite goes green while proving nothing.  Assert on
+   the direct-route counter, not just the numbers.
+2. **The FOCE Newton EBE re-solve** is the only genuinely iterative algorithm being
+   ported, and it is now allowed to differ from R.  It must fail closed on
+   non-convergence.  Give it its own commit and check its `eta0Mat` against the R version
+   for one fit before wiring the gradient on top.
+3. **ES-shape batching.** The shape is a process global; AGQ adds a second slot in the
+   same role, ll() a slot in a different role.  A batch opened in the wrong place
+   mis-specifies jumps and produces plausible wrong numbers, not a crash.
+4. **Pool sizing.** `odeSwapPlan()` sizes the pool for the largest-neq registered model;
+   the AGQ order-1 node model and hess2 must be declared before `rxSolve_` builds the pool
+   or `odeSwapCanPool` denies them.  Check `odeSwapCanPool(slot) == odeDenyNone`
+   explicitly.
+5. **`static` kernels and OpenMP exceptions** -- easy to get wrong once, fatal
+   (`std::terminate`) when wrong.
+6. **Silent scope loss.** Widening `.foceiGradPooledSetup` risks a shape reporting `ok`
+   that the C++ branch does not handle.  Every gate removed in Phase 2 must be
+   re-expressed per shape, not dropped.
+
+## Sequencing
+
+Phases below are 8F.0 .. 8F.6 of the overall plan:
+
+8F.0 -> 8F.1 (prove no-op on FOCEI) -> 8F.2 -> 8F.3 (FOCE) -> 8F.4 (AGQ) -> 8F.5 (ll)
+-> 8F.6 (delete R).  One commit per phase, `origin/main` merged in on each commit,
+antigravity review at each commit with findings fixed before pushing, and
+`plans/dry-ode-swap-phaseC.md` updated as each phase lands.
+
+Then back to the overall plan: Phase 7, Phase 9, Phase 10, verification sweep, PR.
+
+## Outstanding, independent of this work
+
+`tests/testthat/test-focei-fast-grad.R` has no result against current HEAD -- the last
+attempt was destroyed by a concurrent build.  Run it clean before 8F.0 so the baseline is
+known.  Nothing has been pushed since `ef8a86a7a` (13 local commits); push once 8F.0/8F.1
+are green.
