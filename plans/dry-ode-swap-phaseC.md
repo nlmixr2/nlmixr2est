@@ -1203,3 +1203,49 @@ This very likely also disposes of the -10 protect imbalance: on the corrected pa
 live gradient creates NO R objects, so the imbalance has nowhere to come from.  Chasing
 it inside a design that is being removed is not worth the cycles -- fix the layer first,
 then re-check.
+
+### Phase 8E FIXED AT THE RIGHT LAYER: analyticOuterGrad calls C++ directly
+
+`analyticOuterGrad` now tries `analyticOuterGradDirect()` first, and that path touches R
+nowhere.  What it replaced, per GRADIENT EVALUATION: building `etaObf` (a data.frame of
+every subject's etas via `foceiEtas`), `omega` and `.gradTheta` as R objects; an
+`Rcpp::Function` call into R; R re-deriving the whole setup; a `.Call` back down; and
+finally C++ reading etaP back OUT of the fit env into `op_focei.getaP`.
+
+How each per-call input is obtained now, without R:
+
+* theta      -- `op_focei.fullTheta`
+* EBEs       -- `fInd->saveEta` (NOT `fInd->eta`: saveEta is the eta at which lik[0] was
+                computed, and it is what `foceiEtas` fed the R route, so the two agree by
+                construction)
+* Omega      -- `getOmegaInv()`
+* dOmega^-1 / tr.28 -- new `getDOmegaInvL()` / `getTr28V()` macros on the SAME `_rxInv`
+                handle the inner problem already uses.  Nothing is recomputed and nothing
+                is shuffled; this was the user's point.
+* g          -- written into the caller's `double *g` (x dUnscaleParDx)
+* etaP       -- written STRAIGHT into `op_focei.getaP` on the scaled parameterization,
+                never becoming an R object
+
+Per-fit constants (lhs column map, dirTh/sigCol/lamDir, dimensions, censOption) are
+computed once by `.foceiGradPooledSetup()` before `foceiFitCpp_` and copied into a POD
+(`FoceiGradPooledSetup`) by `loadGradPooledSetup()` when the outer optimizer starts.  The
+POD holds plain vectors, so no R object stays alive across the fit, and
+`vaeOuterSolveFill` was moved onto it (plus `std::vector<double>`/`arma::mat` instead of
+NumericVector/NumericMatrix) so the solve touches no SEXP either.
+
+Measured, theo_sd, full fits:
+
+    objf fast=FALSE 130.2898192   fast=TRUE 130.2921878   rel diff 1.8e-5
+    analytic gradient iterations 16, finite-difference iterations 0
+    extra: "grad: analytic"
+
+Comfortably inside test-focei-fast-grad.R's 0.02 objf / 1e-2 fixef tolerances.
+
+**The -10 protect-stack imbalance is gone** -- zero warnings on the direct path.  That
+confirms the earlier read: it was a symptom of building R objects in a nested
+C++ -> R -> C++ path, not a bug to hunt in isolation.  Fixing the layer removed it, which
+is why chasing it directly was wasted effort.
+
+The R-mediated route remains as the fallback for everything the direct path does not
+cover (FOCE, AGQ, ll(), mixtures, models whose augmented form outgrows the pool), and
+`foceiAnalyticGradPooled_` stays as the R-callable wrapper for tests.

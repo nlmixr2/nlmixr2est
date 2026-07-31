@@ -513,6 +513,58 @@
   .g
 }
 
+#' Per-FIT constants for the all-C++ analytic outer gradient.
+#'
+#' Everything the gradient needs that does NOT change between outer iterations: the
+#' augmented model's lhs column map, the direction bookkeeping and the problem
+#' dimensions.  Computed ONCE per fit and cached in C++, so `analyticOuterGrad` can run
+#' with no R interaction at all -- the omega derivatives it also needs come from the
+#' fit's own `rxInv` handle, which C++ already holds for the inner problem.
+#'
+#' Deliberately returns plain atomic vectors: C++ copies them into a POD struct and keeps
+#' no R objects alive across the fit.
+#' @param ui model UI
+#' @param e fit environment (for the live omega/rxInv reuse)
+#' @return a plain list, or NULL when the pooled gradient is out of scope
+#' @noRd
+.foceiGradPooledSetup <- function(ui, e = NULL) {
+  tryCatch({
+    if (.foceiAnalyticIsMixture(ui)) return(NULL)
+    .thv <- tryCatch({
+      .ini <- ui$iniDf
+      .r <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
+      .r <- .r[order(.r$ntheta), , drop = FALSE]
+      setNames(as.numeric(.r$est), .r$name)
+    }, error = function(.) NULL)
+    if (is.null(.thv)) return(NULL)
+    ## Omega is only used here for the SHAPE of the estimation-scale derivative block
+    ## (how many free omega parameters there are); the values themselves are recomputed
+    ## in C++ from the fit's rxInv on every call.  So the initial Omega is fine, and it
+    ## is what is available before the fit starts.
+    .Om <- tryCatch(get("omega", e), error = function(.) NULL)
+    if (is.null(.Om)) .Om <- tryCatch(ui$omega, error = function(.) NULL)
+    if (is.null(.Om)) return(NULL)
+    st <- .foceiAnalyticGradSetup(ui, .thv, .Om, e)
+    if (is.null(st)) return(NULL)
+    ## only the FOCEI (f,R) shape is ported to the all-C++ route
+    if (!identical(as.integer(st$interaction), 1L)) return(NULL)
+    if (as.integer(st$nAGQ) > 1L) return(NULL)
+    if (isTRUE(st$ef$isLL)) return(NULL)
+    am <- .foceiAnalyticAugModelDirs(ui, st$dir$dirs)
+    if (is.null(am)) return(NULL)
+    .cols <- tryCatch(.vaeOuterCols(am), error = function(.) NULL)
+    if (is.null(.cols) || !isTRUE(.cols$hasR)) return(NULL)
+    list(cols = .cols,
+         neta = as.integer(st$neta), nth = as.integer(st$dir$nth),
+         nsg = as.integer(length(st$ef$sgName)), nom = as.integer(length(st$dOiEst)),
+         dirTh = as.integer(st$dir$dirTh),
+         sigCol = as.integer(seq_len(length(st$ef$sgName))),
+         lamDir = as.integer(st$dir$lamDir),
+         nLam = as.integer(length(st$dir$lamNames)),
+         censOpt = as.integer(rxode2::rxGetControl(ui, "censOption", 0L)))
+  }, error = function(e) NULL)
+}
+
 #' The FIT's own ODE tolerances, for solving the analytic gradient.
 #'
 #' There is deliberately no separate "analytic gradient" tolerance: the gradient has to

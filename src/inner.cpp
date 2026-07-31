@@ -76,6 +76,12 @@ void restoreFromEnvrionment(Environment e);
 #define getOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omegaInv", R_NilValue)))
 #define getOmegaDet() (as<double>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "log.det.OMGAinv.5", R_NilValue)))
 #define getOmegaN() as<int>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "ntheta", R_NilValue))
+// Estimation-scale Omega derivatives, from the SAME _rxInv handle the inner problem
+// already uses -- d.omegaInv is the list of dOmega^-1/d(chol theta_k) and tr.28 the
+// 0.5*tr(dOmega^-1_k Omega) terms.  Reused rather than recomputed so the outer gradient
+// needs nothing from R per call.
+#define getDOmegaInvL() (as<List>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "d.omegaInv", R_NilValue)))
+#define getTr28V() (as<NumericVector>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "tr.28", R_NilValue)))
 #define getOmegaTheta() as<NumericVector>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "theta", R_NilValue));
 #define setOmegaTheta(x) rxode2::rxSymInvCholEnvCalculate(_rxInv, "theta", x)
 #define tbs(x) _powerD(x,    getIndLambda(ind), getIndLambdaYj(ind), getIndLogitLow(ind), getIndLogitHi(ind))
@@ -4548,11 +4554,99 @@ static void loadAnalyticEtaP(double *theta) {
 // the finite-difference gradient -- ONLY when the sensitivity system could not
 // be solved (a size mismatch is a wiring bug and stops).  theta is the current
 // scaled optimizer point.
+// ---- per-FIT cache for the all-C++ analytic outer gradient -------------------------
+//
+// Everything the gradient needs that does not change between outer iterations, copied
+// out of R exactly ONCE per fit.  Nothing here holds an R object alive: `cols` is
+// flattened into plain vectors, so a gradient evaluation touches no SEXP at all.  The
+// per-iteration pieces (theta, the EBEs, Omega and its derivatives) all already live in
+// C++ -- op_focei.fullTheta, the individuals, and the _rxInv handle the inner problem
+// uses -- which is what makes the R excursion removable.
+struct FoceiGradPooledSetup {
+  bool ok = false;
+  int neta = 0, nth = 0, nsg = 0, nom = 0, nd = 0, nLam = 0, censOpt = 0;
+  bool hasR = false, hasT = false;
+  int predf = -1, rvarf = -1, nsig = 0;
+  std::vector<int> f1, f2, iiF, jjF, fDirIdx;
+  std::vector<int> rvar1, rvar2, ii, jj, rsig, rsig2, sigA, sigB, tr;
+  std::vector< std::vector<int> > rsig1;
+  std::vector<int> dirTh, sigCol, lamDir;
+  void clear() { *this = FoceiGradPooledSetup(); }
+};
+static FoceiGradPooledSetup _gradPooled;
+
+static std::vector<int> _ivFrom(SEXP x) {
+  IntegerVector v(x);
+  std::vector<int> o((size_t)v.size());
+  for (int i = 0; i < v.size(); ++i) o[(size_t)i] = v[i];
+  return o;
+}
+
+// Flatten an R lhs column map into the POD.  Shared by the per-fit cache below and by
+// vaeOuterSolve_, which still receives its map from R.
+static void colsFromList(List cols, FoceiGradPooledSetup &G) {
+  G.nd = as<int>(cols["nd"]);
+  G.hasR = as<bool>(cols["hasR"]); G.hasT = as<bool>(cols["hasT"]);
+  G.predf = as<int>(cols["predf"]);
+  G.f1 = _ivFrom(cols["f1"]); G.f2 = _ivFrom(cols["f2"]);
+  G.iiF = _ivFrom(cols["iiF"]); G.jjF = _ivFrom(cols["jjF"]);
+  G.fDirIdx = _ivFrom(cols["fDirIdx"]);
+  if (G.hasR) {
+    G.rvarf = as<int>(cols["rvarf"]);
+    G.rvar1 = _ivFrom(cols["rvar1"]); G.rvar2 = _ivFrom(cols["rvar2"]);
+    G.ii = _ivFrom(cols["ii"]); G.jj = _ivFrom(cols["jj"]);
+    G.rsig = _ivFrom(cols["rsig"]); G.rsig2 = _ivFrom(cols["rsig2"]);
+    G.sigA = _ivFrom(cols["sigA"]); G.sigB = _ivFrom(cols["sigB"]);
+    G.nsig = (int)G.rsig.size();
+    if (cols.containsElementNamed("rsig1")) {
+      List r1 = as<List>(cols["rsig1"]);
+      G.rsig1.resize((size_t)r1.size());
+      for (int t = 0; t < r1.size(); ++t) G.rsig1[(size_t)t] = _ivFrom(r1[t]);
+    }
+  }
+  if (G.hasT) G.tr = _ivFrom(cols["trans"]);
+}
+
+// Read the per-fit setup R stashed on the fit env.  Called once, from foceiFitCpp_
+// just before the outer optimizer starts; every gradient after that is pure C++.
+static void loadGradPooledSetup(Environment e) {
+  _gradPooled.clear();
+  if (op_focei.fast == 0) return;
+  RObject so;
+  if (e.exists(".foceiGradPooledSetup")) so = e[".foceiGradPooledSetup"];
+  if (so.isNULL()) return;
+  List st(so);
+  if (!st.containsElementNamed("cols")) return;
+  List cols = as<List>(st["cols"]);
+  FoceiGradPooledSetup &G = _gradPooled;
+  G.neta = as<int>(st["neta"]); G.nth = as<int>(st["nth"]);
+  G.nsg = as<int>(st["nsg"]);   G.nom = as<int>(st["nom"]);
+  G.nLam = as<int>(st["nLam"]); G.censOpt = as<int>(st["censOpt"]);
+  G.dirTh = _ivFrom(st["dirTh"]); G.sigCol = _ivFrom(st["sigCol"]);
+  G.lamDir = _ivFrom(st["lamDir"]);
+  colsFromList(cols, G);
+  if (!G.hasR) return;              // (f,R) kernel only
+  G.ok = true;
+}
+
+// Defined after the augmented-solve machinery it needs (VaeOuterE, vaeOuterSolveFill,
+// OdeFitTolGuard, foceiOuterFdInd_); declared here so analyticOuterGrad can prefer it.
+static bool analyticOuterGradDirect(double *theta, double *g);
+
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
+  // The all-C++ path.  Preferred because it touches R not at all: the R route below has
+  // to build etaObf/omega/.gradTheta as R objects, call into R, have R re-derive the
+  // setup and .Call back down, then read etaP back out of the fit env -- every gradient
+  // evaluation.  Anything it cannot handle simply returns false and falls through.
+  if (analyticOuterGradDirect(theta, g)) return true;
+  if (_gradPooled.ok) {
+    // The setup said this fit was in scope but the evaluation failed; keep going through
+    // R rather than dropping to finite differences.
+  }
   // Refresh the live state the R gradient reads; omega/theta/etaObf are
   // otherwise only written into the fit env at finalize.
   NumericVector _th(op_focei.ntheta);
@@ -6757,6 +6851,9 @@ Environment foceiOuter(Environment e){
     op_foceiFitEnv = e;
     op_foceiFitEnvSet = true;
     op_foceiUseAnalyticGrad = (op_focei.fast != 0);
+    // Per-fit constants for the all-C++ gradient, read out of R exactly once.  After
+    // this every gradient evaluation runs without touching R.
+    loadGradPooledSetup(e);
     switch(op_focei.outerOpt){
     case 0:
       foceiLbfgsb(e);
@@ -11828,28 +11925,14 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
 //
 // The CALLER owns the gates, the outer ES batch and the solve-tolerance guard: all
 // three have to be established before this runs, and the batch has to outlive it.
-static void vaeOuterSolveFill(NumericVector thVals, NumericMatrix ebes, List cols,
+static void vaeOuterSolveFill(const std::vector<double> &thVals, const arma::mat &ebes,
+                              const FoceiGradPooledSetup &G,
                               int cores, rx_solving_options *op, int nsub, int neta,
                               std::vector<VaeOuterE> &Es) {
-  // 0-based lhs offsets, resolved in R from .foceiAnalyticCols against this
-  // model's own lhs names (a rename there surfaces as a clean R-side error
-  // rather than a silent wrong column here).
-  IntegerVector f1 = cols["f1"], f2 = cols["f2"], iiF = cols["iiF"], jjF = cols["jjF"];
-  IntegerVector fDirIdx = cols["fDirIdx"];
-  const int predf = as<int>(cols["predf"]);
-  const int nd = as<int>(cols["nd"]);
-  const bool hasR = as<bool>(cols["hasR"]);
-  const bool hasT = as<bool>(cols["hasT"]);
-  IntegerVector rvar1, rvar2, ii, jj, rsig, rsig2, sigA, sigB, tr;
-  int rvarf = -1; int nsig = 0;
-  if (hasR) {
-    rvarf = as<int>(cols["rvarf"]);
-    rvar1 = cols["rvar1"]; rvar2 = cols["rvar2"]; ii = cols["ii"]; jj = cols["jj"];
-    rsig = cols["rsig"]; rsig2 = cols["rsig2"]; sigA = cols["sigA"]; sigB = cols["sigB"];
-    nsig = rsig.size();
-  }
-  List rsig1 = hasR && cols.containsElementNamed("rsig1") ? as<List>(cols["rsig1"]) : List();
-  if (hasT) tr = cols["trans"];
+  // The column map comes from the per-fit POD, so no SEXP is touched here -- that is
+  // what lets the outer gradient run without any R interaction per iteration.
+  const int nd = G.nd, predf = G.predf, rvarf = G.rvarf, nsig = G.nsig;
+  const bool hasR = G.hasR, hasT = G.hasT;
   cores = min2(cores, getOpCores(op));
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
@@ -11865,8 +11948,8 @@ static void vaeOuterSolveFill(NumericVector thVals, NumericMatrix ebes, List col
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
     VaeOuterE& E = Es[(size_t)id];
     // theta + eta into this subject's par_ptr (shared positional layout)
-    for (int t = 0; t < (int)op_focei.ntheta && t < thVals.size(); ++t)
-      setIndParPtr(ind, op_focei.thetaTrans[t], thVals[t]);
+    for (int t = 0; t < (int)op_focei.ntheta && t < (int)thVals.size(); ++t)
+      setIndParPtr(ind, op_focei.thetaTrans[t], thVals[(size_t)t]);
     for (int j = 0; j < neta; ++j)
       setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
     // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
@@ -11922,29 +12005,29 @@ static void vaeOuterSolveFill(NumericVector thVals, NumericMatrix ebes, List col
       rxVaeOuter.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
       if (getIndEvid(ind, kk) != 0) continue;   // dose rows: solve advanced, no output
       E.f[ko] = lhs[predf];
-      for (int d = 0; d < f1.size(); ++d) E.a(ko, fDirIdx[d]) = lhs[f1[d]];
-      for (int r = 0; r < f2.size(); ++r) {
-        double v = lhs[f2[r]];
-        E.A(ko, iiF[r], jjF[r]) = v; E.A(ko, jjF[r], iiF[r]) = v;
+      for (int d = 0; d < G.f1.size(); ++d) E.a(ko, G.fDirIdx[d]) = lhs[G.f1[d]];
+      for (int r = 0; r < G.f2.size(); ++r) {
+        double v = lhs[G.f2[r]];
+        E.A(ko, G.iiF[r], G.jjF[r]) = v; E.A(ko, G.jjF[r], G.iiF[r]) = v;
       }
       if (hasR) {
         E.R[ko] = lhs[rvarf];
-        for (int d = 0; d < rvar1.size(); ++d) E.aR(ko, d) = lhs[rvar1[d]];
-        for (int r = 0; r < rvar2.size(); ++r) {
-          double v = lhs[rvar2[r]];
-          E.AR(ko, ii[r], jj[r]) = v; E.AR(ko, jj[r], ii[r]) = v;
+        for (int d = 0; d < G.rvar1.size(); ++d) E.aR(ko, d) = lhs[G.rvar1[d]];
+        for (int r = 0; r < G.rvar2.size(); ++r) {
+          double v = lhs[G.rvar2[r]];
+          E.AR(ko, G.ii[r], G.jj[r]) = v; E.AR(ko, G.jj[r], G.ii[r]) = v;
         }
         for (int s = 0; s < nsig; ++s) {
-          E.Rsig(ko, s) = lhs[rsig[s]];
-          IntegerVector r1 = as<IntegerVector>(rsig1[s]);
+          E.Rsig(ko, s) = lhs[G.rsig[s]];
+          const std::vector<int> &r1 = G.rsig1[(size_t)s];
           for (int d = 0; d < r1.size(); ++d) E.RsigDir(ko, d, s) = lhs[r1[d]];
         }
-        for (int r = 0; r < rsig2.size(); ++r) {
-          double v = lhs[rsig2[r]];
-          E.Rsig2(ko, sigA[r], sigB[r]) = v; E.Rsig2(ko, sigB[r], sigA[r]) = v;
+        for (int r = 0; r < G.rsig2.size(); ++r) {
+          double v = lhs[G.rsig2[r]];
+          E.Rsig2(ko, G.sigA[r], G.sigB[r]) = v; E.Rsig2(ko, G.sigB[r], G.sigA[r]) = v;
         }
       }
-      if (hasT) for (int c = 0; c < 4; ++c) E.trans(ko, c) = lhs[tr[c]];
+      if (hasT) for (int c = 0; c < 4; ++c) E.trans(ko, c) = lhs[G.tr[c]];
       ko++;
     }
     E.ok = (ko == nobs);
@@ -11999,7 +12082,13 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   if (ebes.nrow() != nsub) return R_NilValue;
   const int neta = (int)op_focei.neta;
   std::vector<VaeOuterE> Es((size_t)nsub);
-  vaeOuterSolveFill(thVals, ebes, cols, cores, op, nsub, neta, Es);
+  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  std::vector<double> _thv((size_t)thVals.size());
+  for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
+  arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
+  for (int r = 0; r < ebes.nrow(); ++r)
+    for (int c = 0; c < ebes.ncol(); ++c) _eb(r, c) = ebes(r, c);
+  vaeOuterSolveFill(_thv, _eb, _gcols, cores, op, nsub, neta, Es);
   // Shape flags the R-list build below needs; the fill keeps its own copies.
   const bool hasR = as<bool>(cols["hasR"]);
   const bool hasT = as<bool>(cols["hasT"]);
@@ -12061,6 +12150,264 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   return out;
 }
 
+// The FOCEI (f,R) analytic outer gradient, start to finish, in C++.
+//
+// Takes and returns nothing but plain C++/arma: no SEXP is created anywhere on this
+// path, which is the point.  The augmented solve, the per-individual finite difference
+// for failed subjects, the stacking and the per-subject kernel all happen in one region,
+// so R never runs between the solve and the assembly and cannot disturb the shared pool.
+//
+// `g` comes back on the NATURAL parameter scale (the caller applies dUnscaleParDx);
+// `etaP` is written straight into op_focei.getaP by the caller.
+static bool gradPooledCore(const FoceiGradPooledSetup &G,
+                           const std::vector<double> &thVals, const arma::mat &ebes,
+                           const arma::mat &Oi, const arma::cube &dOiEst,
+                           const arma::vec &tr28, int cores,
+                           arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
+  if (!G.ok) return false;
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
+  std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
+  OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
+  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
+      rxVaeOuter.calc_lhs == NULL) return false;
+  rx = getRxSolve_();
+  if (rx == NULL) return false;
+  rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  const int nsub = (int)getRxNsub(rx);
+  const int neta = G.neta, nth = G.nth, nsg = G.nsg, nom = G.nom, nd = G.nd;
+  const int np = nth + nsg + nom;
+  if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  vaeOuterSolveFill(thVals, ebes, G, cores, op, nsub, neta, Es);
+
+  // Swap the pool outer -> inner for the failed subjects.  The augmented solve ran under
+  // the OUTER event-sensitivity shape; the difference needs the INNER problem, and the
+  // shape is a process global, so the outer batch closes first.
+  std::vector<int> flagged;
+  for (int i = 0; i < nsub; ++i) if (!Es[(size_t)i].ok) flagged.push_back(i);
+  NumericMatrix fd; IntegerVector fids;
+  if (!flagged.empty()) {
+    _esBatch.reset();
+    fids = IntegerVector((R_xlen_t)flagged.size());
+    for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
+    NumericMatrix aref(0, 0);
+    fd = foceiOuterFdInd_(fids, aref);
+    if (fd.nrow() != (int)flagged.size()) return false;
+  }
+
+  // ---- stack ------------------------------------------------------------------------
+  std::vector<int> nobsAll((size_t)nsub, 0);
+  int totObs = 0;
+  for (int i = 0; i < nsub; ++i) {
+    nobsAll[(size_t)i] = Es[(size_t)i].nobs;
+    if (nobsAll[(size_t)i] <= 0) return false;
+    totObs += nobsAll[(size_t)i];
+  }
+  arma::ivec off((unsigned int)nsub + 1); off[0] = 0;
+  for (int i = 0; i < nsub; ++i) off[i + 1] = off[i] + nobsAll[(size_t)i];
+  arma::mat aB(totObs, nd, arma::fill::zeros), aRB(totObs, nd, arma::fill::zeros);
+  arma::cube AB(totObs, nd, nd, arma::fill::zeros), ARB(totObs, nd, nd, arma::fill::zeros);
+  arma::vec fB(totObs, arma::fill::zeros), yB(totObs, arma::fill::zeros),
+    RB(totObs, arma::fill::zeros);
+  arma::mat RsigB(totObs, nsg, arma::fill::zeros);
+  arma::cube RsigDirB(totObs, nd, nsg, arma::fill::zeros);
+  const bool hasLam = (G.nLam > 0) && G.hasT && !G.lamDir.empty();
+  arma::mat dvSensB(totObs, hasLam ? nd : 0, arma::fill::zeros);
+  const bool hasCens = hasRxCens(rx) || hasRxLimit(rx);
+  arma::ivec censB(hasCens ? totObs : 0, arma::fill::zeros);
+  arma::vec limB(hasCens ? totObs : 0);
+  if (hasCens) limB.fill(NA_REAL);
+  jacSum = 0.0;
+  for (int i = 0; i < nsub; ++i) {
+    VaeOuterE& E = Es[(size_t)i];
+    int o0 = off[i], n = nobsAll[(size_t)i];
+    if (!E.ok) continue;                     // finite-differenced; rows stay zero
+    aB.rows(o0, o0 + n - 1) = E.a;
+    aRB.rows(o0, o0 + n - 1) = E.aR;
+    AB.rows(o0, o0 + n - 1) = E.A;
+    ARB.rows(o0, o0 + n - 1) = E.AR;
+    fB.subvec(o0, o0 + n - 1) = E.f;
+    RB.subvec(o0, o0 + n - 1) = E.R;
+    if (nsg > 0) {
+      RsigB.rows(o0, o0 + n - 1) = E.Rsig;
+      RsigDirB.rows(o0, o0 + n - 1) = E.RsigDir;
+    }
+    // DV / CENS / LIMIT straight from the individual -- the inner problem reads them the
+    // same way -- in the same observation order the solve loop filled E.f with.
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    int ko = 0;
+    for (int q = 0; q < getIndNallTimes(ind) && ko < n; ++q) {
+      int kk = getIndIx(ind, q);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = getIndDv(ind, kk);
+      double yj = G.hasT ? E.trans(ko, 0) : 0.0, lam = G.hasT ? E.trans(ko, 1) : 1.0;
+      double lo = G.hasT ? E.trans(ko, 2) : 0.0, hi = G.hasT ? E.trans(ko, 3) : 1.0;
+      yB[o0 + ko] = G.hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
+      if (hasLam) {
+        double dvs = _powerDLambda(dv, lam, (int)yj, lo, hi);
+        for (size_t L = 0; L < G.lamDir.size(); ++L) {
+          int d = G.lamDir[L] - 1;
+          if (d >= 0 && d < nd) dvSensB(o0 + ko, d) = dvs;
+        }
+        jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
+      }
+      if (hasCens) {
+        censB[o0 + ko] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
+        double lim = NA_REAL;
+        if (hasRxLimit(rx)) {
+          lim = getIndLimit(ind, kk);
+          if (!ISNA(lim) && R_FINITE(lim) && G.hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
+        }
+        limB[o0 + ko] = lim;
+      }
+      ko++;
+    }
+    if (ko != n) return false;
+  }
+
+  // ---- kernel -----------------------------------------------------------------------
+  arma::mat gmat(np, nsub, arma::fill::zeros);
+  etaPOut.zeros(neta, np, nsub);
+  arma::ivec dirThV((unsigned int)G.dirTh.size()), sigColV((unsigned int)G.sigCol.size());
+  for (size_t q = 0; q < G.dirTh.size(); ++q) dirThV[q] = G.dirTh[q];
+  for (size_t q = 0; q < G.sigCol.size(); ++q) sigColV[q] = G.sigCol[q];
+  int kcores = cores < 1 ? 1 : cores;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(kcores)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    if (!Es[(size_t)i].ok) continue;
+    try {
+      int o0 = off[i], o1 = off[i + 1] - 1;
+      arma::mat ai = aB.rows(o0, o1), aRi = aRB.rows(o0, o1);
+      arma::cube Ai = AB.rows(o0, o1), ARi = ARB.rows(o0, o1);
+      arma::mat Rsigi = (nsg > 0) ? arma::mat(RsigB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::cube RsigDiri = (nsg > 0) ? arma::cube(RsigDirB.rows(o0, o1)) :
+        arma::cube(o1 - o0 + 1, nd, 0);
+      arma::mat dvi = hasLam ? arma::mat(dvSensB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::ivec censi = hasCens ? arma::ivec(censB.subvec(o0, o1)) : arma::ivec();
+      arma::vec limi = hasCens ? arma::vec(limB.subvec(o0, o1)) : arma::vec();
+      arma::vec gi; arma::mat etaPi;
+      foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
+                          fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                          ebes.row(i).t(), Oi, dOiEst, tr28,
+                          neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi);
+      gmat.col(i) = gi; etaPOut.slice(i) = etaPi;
+    } catch (...) {
+      gmat.col(i).fill(arma::datum::nan); etaPOut.slice(i).fill(arma::datum::nan);
+    }
+  }
+  // finite-differenced subjects: only the theta block is available, which is what the
+  // zero column already says for sigma/omega.
+  for (int q = 0; q < (int)flagged.size(); ++q) {
+    int i = flagged[(size_t)q];
+    for (int t = 0; t < nth && t < fd.ncol(); ++t) {
+      double v = fd(q, t);
+      if (!R_finite(v)) return false;
+      gmat(t, i) = v;
+    }
+  }
+  gOut = arma::sum(gmat, 1);
+  return gOut.is_finite();
+}
+
+// The all-C++ outer gradient, called straight from analyticOuterGrad.
+//
+// Nothing here goes through R: theta is op_focei.fullTheta, the EBEs come from the
+// individuals, and Omega and its estimation-scale derivatives come from the _rxInv
+// handle the inner problem already holds.  etaP is written directly into
+// op_focei.getaP -- previously it was wrapped to R, stashed on the fit env, read back
+// out and copied into that same array.
+static bool analyticOuterGradDirect(double *theta, double *g) {
+  const FoceiGradPooledSetup &G = _gradPooled;
+  if (!G.ok) return false;
+  rx = getRxSolve_();
+  if (rx == NULL) return false;
+  const int nsub = (int)getRxNsub(rx);
+  const int neta = G.neta, npars = (int)op_focei.npars;
+  if (neta != op_focei.neta || G.nth + G.nsg + G.nom != npars) return false;
+  if (inds_focei == NULL) return false;
+  // theta, in the augmented model's positional order
+  std::vector<double> thv((size_t)op_focei.ntheta);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) thv[(size_t)t] = op_focei.fullTheta[t];
+  // The EBEs the objective just settled on.  saveEta, NOT eta: saveEta is the eta at
+  // which lik[0] was computed (LikInner2 writes it under likId==0), which is the point
+  // the gradient must be taken at.  fInd->eta is the inner optimizer's working vector
+  // and can sit somewhere else.  This is also exactly what the R route used -- foceiEtas
+  // reads saveEta -- so the two agree by construction.
+  arma::mat ebes((unsigned int)nsub, (unsigned int)neta);
+  for (int i = 0; i < nsub; ++i) {
+    focei_ind *fInd = &(inds_focei[i]);
+    if (fInd->saveEta == NULL) return false;
+    for (int j = 0; j < neta; ++j) ebes(i, j) = fInd->saveEta[j];
+  }
+  // Omega and its estimation-scale derivatives, from the inner problem's own handle
+  arma::mat Oi;
+  arma::cube dOiEst;
+  arma::vec tr28;
+  try {
+    Oi = getOmegaInv();
+    List dOiL = getDOmegaInvL();
+    NumericVector tr = getTr28V();
+    int nom = G.nom;
+    if ((int)dOiL.size() != nom || (int)tr.size() != nom) return false;
+    dOiEst.zeros(neta, neta, nom > 0 ? nom : 1);
+    tr28.zeros(nom > 0 ? nom : 0);
+    for (int k = 0; k < nom; ++k) {
+      arma::mat dk = as<arma::mat>(dOiL[k]);
+      if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return false;
+      dOiEst.slice(k) = dk;
+      tr28[k] = tr[k];
+    }
+  } catch (...) { return false; }
+  int cores = getOpCores(getSolvingOptions(rx));
+  arma::vec gv; arma::cube etaP; double jacSum = 0.0;
+  bool okc = false;
+  try {
+    okc = gradPooledCore(G, thv, ebes, Oi, dOiEst, tr28, cores, gv, etaP, jacSum);
+  } catch (...) { return false; }
+  if (!okc || (int)gv.n_elem != npars) return false;
+  // the transform Jacobian term, applied on the lambda directions
+  if (G.nLam > 0) {
+    for (size_t q = 0; q < G.lamDir.size(); ++q) {
+      int d = G.lamDir[q] - 1;
+      if (d >= 0 && d < npars) gv[d] -= 2.0 * jacSum;
+    }
+  }
+  for (int i = 0; i < npars; ++i) {
+    if (!R_finite(gv[i])) return false;
+    g[i] = gv[i] * dUnscaleParDx(i);
+  }
+  // etaP straight into op_focei.getaP, on the scaled optimizer parameterization
+  if (op_focei.mceta == -2 || op_focei.mceta == -1) {
+    size_t need = (size_t)neta * (size_t)npars * (size_t)nsub;
+    if (need > 0 && etaP.n_elem == need) {
+      if (op_focei.getaP == NULL || op_focei.getaPn != need) {
+        if (op_focei.getaP != NULL) R_Free(op_focei.getaP);
+        op_focei.getaP = R_Calloc(need, double);
+        op_focei.getaPn = need;
+      }
+      if (op_focei.etaPTheta == NULL) op_focei.etaPTheta = R_Calloc(npars, double);
+      for (int k = 0; k < npars; ++k) {
+        double sc = dUnscaleParDx(k);
+        for (int i = 0; i < nsub; ++i)
+          for (int j = 0; j < neta; ++j)
+            op_focei.getaP[(size_t)j + (size_t)neta * ((size_t)k + (size_t)npars * i)] =
+              etaP(j, k, i) * sc;
+      }
+      std::copy(theta, theta + npars, op_focei.etaPTheta);
+      op_focei.etaPValid = 1;
+    } else {
+      op_focei.etaPValid = 0;
+    }
+  } else {
+    op_focei.etaPValid = 0;
+  }
+  return true;
+}
+
+
 //' FOCEI analytic outer gradient, computed entirely in C++.
 //'
 //' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
@@ -12113,7 +12460,13 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
   const bool hasT = as<bool>(cols["hasT"]);
   if (!hasR) return R_NilValue;            // (f,R) kernel only; the FOCE path stays in R
   std::vector<VaeOuterE> Es((size_t)nsub);
-  vaeOuterSolveFill(thVals, ebes, cols, cores, op, nsub, neta, Es);
+  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  std::vector<double> _thv((size_t)thVals.size());
+  for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
+  arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
+  for (int r = 0; r < ebes.nrow(); ++r)
+    for (int c = 0; c < ebes.ncol(); ++c) _eb(r, c) = ebes(r, c);
+  vaeOuterSolveFill(_thv, _eb, _gcols, cores, op, nsub, neta, Es);
 
   // ---- swap the pool outer -> inner and finite-difference the failed subjects -------
   // Same reason as in vaeOuterSolve_: the augmented solve ran under the OUTER model's

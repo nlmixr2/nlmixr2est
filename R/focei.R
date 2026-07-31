@@ -2477,6 +2477,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .thetaReset$thetaNames <- .ret$thetaNames
   nResets <- 0L
+  ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
+  ## read by C++ when the outer optimizer starts; after that every gradient evaluation
+  ## runs without touching R.  A NULL simply leaves the previous R-mediated route in
+  ## place, so this cannot break a fit.
+  if (isTRUE(tryCatch(.ret$control$fast, error = function(e) FALSE))) {
+    .gpSetup <- tryCatch(.foceiGradPooledSetup(.ret$ui, .ret), error = function(e) NULL)
+    if (!is.null(.gpSetup)) assign(".foceiGradPooledSetup", .gpSetup, envir = .ret)
+  }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
       nResets <- nResets + 1L
