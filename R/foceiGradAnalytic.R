@@ -513,6 +513,31 @@
   .g
 }
 
+#' The FIT's own ODE tolerances, for solving the analytic gradient.
+#'
+#' There is deliberately no separate "analytic gradient" tolerance: the gradient has to
+#' be the gradient of the objective the optimizer is minimizing, so the augmented model
+#' is solved at the tolerance that objective is solved at.  Tightening it here makes the
+#' gradient describe a different objective -- and the finite-difference references these
+#' gradients are checked against are themselves objective differences at the fit's
+#' tolerance.  [.foceiAnalyticSolveTol()] remains correct for the COVARIANCE path, where
+#' `covSolveTol` is a documented user control.
+#' @return `c(atol, rtol)`, or NULL when the fit's values cannot be read
+#' @noRd
+.foceiGradSolveTol <- function(ui) {
+  .rc <- tryCatch(ui$control$rxControl, error = function(e) NULL)
+  if (is.null(.rc)) return(NULL)
+  .a <- suppressWarnings(as.numeric(.rc$atol)[1])
+  .r <- suppressWarnings(as.numeric(.rc$rtol)[1])
+  if (!is.finite(.a) || !is.finite(.r) || .a <= 0 || .r <= 0) return(NULL)
+  c(.a, .r)
+}
+
+.foceiGradSolveTolOr <- function(ui) {
+  .t <- .foceiGradSolveTol(ui)
+  if (is.null(.t)) .foceiAnalyticSolveTol(ui) else .t
+}
+
 #' Subjects whose augmented solve failed, for the Phase 8D2 per-individual FD.
 #'
 #' Recorded here rather than acted on in the solve loop: that loop runs inside
@@ -602,7 +627,7 @@
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .sol <- tryCatch(withCallingHandlers(
     as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = .ev, cores = .nc,
-                                  returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
+                                  returnType = "data.frame", atol = tol[1], rtol = tol[length(tol)]), .ddeArgs))),
     warning = function(w) invokeRestart("muffleWarning")), error = function(e) NULL)
   if (is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))) return(NULL)
   # Extract every sensitivity column from the WHOLE solve as a matrix ONCE (the per-subject
@@ -1105,7 +1130,7 @@
       list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
     sol <- withCallingHandlers(
       as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = ev, cores = .nc,
-        returnType = "data.frame", atol = tol, rtol = tol, addDosing = FALSE), .ddeArgs))),
+        returnType = "data.frame", atol = tol[1], rtol = tol[length(tol)], addDosing = FALSE), .ddeArgs))),
       warning = function(w) invokeRestart("muffleWarning"))
     .cm <- if (is.null(am$cols))
       .foceiAnalyticCols(am$dirs, if (is.null(am$fDirs)) am$dirs else am$fDirs, am$P2,
@@ -1158,7 +1183,7 @@
       list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
     sol <- withCallingHandlers(
       as.data.frame(do.call(rxode2::rxSolve, c(list(mod, params = pars, events = ev, cores = cores,
-        returnType = "data.frame", atol = tol, rtol = tol, addDosing = FALSE), .ddeArgs))),
+        returnType = "data.frame", atol = tol[1], rtol = tol[length(tol)], addDosing = FALSE), .ddeArgs))),
       warning = function(w) invokeRestart("muffleWarning"))
     if (!all(.cols %in% names(sol))) return(NULL)
     M <- as.matrix(sol[, .cols, drop = FALSE])
@@ -1280,7 +1305,7 @@
     # censored obs: FOCEI (f,R) grad kernel handles them (.foceiAnalyticGradCore gates
     # FOCE-censored to FD internally); no blanket fallback here.
     .r <- .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
-                                 st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
+                                 st$dOiEst, st$tr28, st$omNames, .foceiGradSolveTolOr(ui),
                                  interaction = st$interaction, foceType = st$foceType,
                                  nAGQ = st$nAGQ)
     if (is.null(.r)) return(NULL)
@@ -1330,7 +1355,7 @@
     }
     if (isFALSE(am)) return(NULL)                    # stay on the FD gradient
     .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
-                           st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
+                           st$dOiEst, st$tr28, st$omNames, .foceiGradSolveTolOr(ui),
                            interaction = st$interaction, foceType = st$foceType,
                            startedEnv = e, am = am, nAGQ = st$nAGQ)
   }, error = function(e) NULL)

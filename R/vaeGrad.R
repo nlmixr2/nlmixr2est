@@ -169,7 +169,7 @@
     ## (.vaeGradReset clears the slot), which is the lifetime focei gives it too.
     .r <- .foceiAnalyticGradCore(.ui, .th, ebes, .vaeGradEnv$ids, .vaeGradEnv$data,
                                  .Om, .st$ef, .st$dir, .st$dOiEst, .st$tr28,
-                                 .st$omNames, .foceiAnalyticSolveTol(.ui),
+                                 .st$omNames, .foceiGradSolveTolOr(.ui),
                                  interaction = .st$interaction,
                                  foceType = .st$foceType, am = .vaeGradEnv$am,
                                  nAGQ = .st$nAGQ, startedEnv = .vaeGradEnv)

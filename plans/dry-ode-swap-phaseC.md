@@ -1078,3 +1078,39 @@ Decide it explicitly during the port, and measure both:
   argues for consistency with its neighbours in the same sum.
 
 Whichever is chosen, the FD must be gated at the tolerance it will actually run at.
+
+### Phase 8E: the analytic gradient now solves at the FIT's tolerance
+
+Done, both routes.  There is no longer a separate "analytic gradient" tolerance:
+`.foceiGradSolveTol(ui)` returns the fit's own `rxControl` atol/rtol and is used at the
+gradient call sites, while `.foceiAnalyticSolveTol()` (and `covSolveTol`) stays where it
+belongs, on the COVARIANCE path.  The pooled route resets to the fit's values in C++
+(`OdeFitTolGuard`), so a tolerance shift earlier in a fit cannot leak into the gradient.
+
+**A vacuous verification, corrected.**  The first check of the multiple-endpoint model
+reported "PASS, unchanged" -- because that model does not use the pooled route at all.
+Probing `odeSwapInfo_()$pooledSolveN` across a gradient call settles it:
+
+    theo_sd (1 endpoint)   pooledSolveN 0 -> 1   POOLED
+    warfarin (2 endpoints) pooledSolveN 1 -> 1   rxSolve fallback
+
+The two-endpoint augmented model is larger than the pool, so it takes the fallback, which
+still carried 1e-10.  Changing only the pooled route left that case untouched and the
+identical numbers looked like evidence when they were the absence of it.  Do not read an
+unchanged result as a passing test without first checking the code ran.
+
+Measured once BOTH routes were on the fit's tolerance:
+
+    warfarin PKPD, analytic vs central difference of the OBJECTIVE (the test's own
+    reference, itself taken at the fit's tolerance):
+
+      max rel diff   0.008996 (tight 1e-10)  ->  0.009063 (fit tolerance)   [limit 0.01]
+      emax           3e-5 either way
+
+So the tight tolerance was not buying accuracy here: the change is neutral, and the
+`emax 63 vs 569` blow-up recorded for f65b73a5a is NOT reproduced by this test.  The
+worst term (`tcl`, 0.9%) sits near the 1% limit both before and after, so that tightness
+is pre-existing and comes from somewhere else -- most likely the reference itself, an
+h=1e-3 difference of a refit objective.
+
+theo_sd is unchanged to three decimals in the FD/analytic ratios.
