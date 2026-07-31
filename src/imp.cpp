@@ -879,6 +879,7 @@ void impOuter(Environment e) {
   // for the next iteration, so anything consuming "the converged proposal" must
   // read the snapshot rather than the live vector -- including impComputeCov.
   arma::vec gammaUsed(nExp); gammaUsed.fill(gamma);
+  double gammaScalarUsed = gamma;   // scalar counterpart of gammaUsed
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
@@ -1035,6 +1036,7 @@ void impOuter(Environment e) {
     isampleUsed = isampleVec;
     dfUsed = dfVec;
     gammaUsed = gammaVec;
+    gammaScalarUsed = gamma;
     impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
@@ -1420,7 +1422,11 @@ void impOuter(Environment e) {
   e["impGammaInd"] = wrap(gammaUsed);
   e["impGammaMethod"] = gammaInd ? "individual" : "global";
   e["impObj"]      = obj;
-  e["impGammaUsed"] = gamma;
+  // Snapshot, so the scalar cannot disagree with the impGammaInd vector: under
+  // gammaMethod="global" the scalar gamma is adapted at the END of the loop for
+  // an iteration that never runs, which would report gamma_start*fac here
+  // against gamma_start in the vector.
+  e["impGammaUsed"] = gammaScalarUsed;
   e["impNsample"]  = isample;
   e["impNsampleInd"] = wrap(isampleUsed);  // counts USED by the last E-step
   e["impDfInd"]    = wrap(dfUsed);          // df USED by the last E-step
