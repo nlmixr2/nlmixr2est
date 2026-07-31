@@ -11334,11 +11334,24 @@ NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0) {
 // was re-chosen from whatever state that call happened to begin in -- the step, and so
 // the difference, was not a property of the subject but of the call.  Cached in
 // fInd->outerThetaHf and reused thereafter (reset in foceiOuterFinal, as etahf is).
+// One plain central difference of the individual likelihood at a GIVEN step.  Split out
+// because three callers need it: the cached-step branch below, the bound repair, and the
+// reuse path.  f0 is only consulted when a leg fails to solve (calcGradCentral falls back
+// to one-sided), so passing the subject's f0 from the reference point is correct.
+static double fdCentralAt(arma::vec &theta, int id, int j, double h, arma::vec &f0) {
+  arma::vec hTheta = theta, grPH, grMH;
+  hTheta[j] = theta[j] + h;
+  grPH = shi21LikTheta(hTheta, id);
+  hTheta[j] = theta[j] - h;
+  grMH = shi21LikTheta(hTheta, id);
+  arma::vec g = calcGradCentral(grMH, f0, grPH, h);
+  return g(0);
+}
+
 static void calcOuterThetaHf(int id, arma::vec &theta, arma::vec &f0, int nth,
                              double *grOut, double *hOut) {
   focei_ind *fInd = &(inds_focei[id]);
-  arma::vec gr(1), grPH(1), grMH(1);
-  arma::vec hTheta(theta.n_elem);
+  arma::vec gr(1);
   for (int j = 0; j < nth; ++j) {
     double h = (fInd->outerThetaHf == NULL) ? 0.0 : fInd->outerThetaHf[j];
     if (h == 0.0) {
@@ -11377,14 +11390,7 @@ static void calcOuterThetaHf(int id, arma::vec &theta, arma::vec &f0, int nth,
     }
     // Cached step: a plain central difference about the pinned reference point, which
     // is what makes repeat gradient calls at the same theta reproduce each other.
-    hTheta = theta;
-    hTheta[j] += h;
-    grPH = shi21LikTheta(hTheta, id);
-    hTheta = theta;
-    hTheta[j] -= h;
-    grMH = shi21LikTheta(hTheta, id);
-    gr = calcGradCentral(grMH, f0, grPH, h);
-    grOut[j] = gr(0);
+    grOut[j] = fdCentralAt(theta, id, j, h, f0);
     hOut[j] = h;
   }
 }
@@ -11507,6 +11513,88 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
 #ifdef _OPENMP
     if (fdParallel) setRxThreadId(-1);
 #endif
+  }
+  // ---- repair pass: subjects whose step search TERMINATED ON ITS BOUND -------------
+  //
+  // shi returns hMin (or hMax) exactly when its ratio test never landed in [rl, ru] and
+  // the clamp stopped it.  That is a FAILURE SIGNAL, not a chosen step: the search gave
+  // up, and hMin is far below where this profile likelihood is differentiable -- its
+  // noise floor is set by the inner optimizer's convergence, not by machine epsilon.
+  //
+  // Measured on theo_sd: subject 12 clamped to hMin=1e-4 for tka and tv, and that ONE
+  // subject carried essentially the entire error in both directions (tka -1.539 of a
+  // -1.546 total, tv -1.740 of -1.777).  Every unclamped subject agreed with a hand
+  // difference to ~1e-2 or better.
+  //
+  // The modified-z pass below CANNOT see this, and testing the slope harder would not
+  // help: subject 12's wrong tka slope (-0.897) is unremarkable among slopes spanning
+  // -5.0 to +2.7, so it is not an outlier in slope.  It is an outlier in STEP -- 1e-4
+  // against a median of 0.255, three and a half orders of magnitude.  Detecting it on
+  // the bound is exact and needs no threshold at all, which is why this is preferred
+  // over the median-step heuristic tried earlier.
+  //
+  // Repair at the median step of the subjects whose search DID converge for the same
+  // parameter: those are steps this objective demonstrably supports in that direction,
+  // and the usable window is per parameter (measured: tka wants ~1e-1, tv ~3e-3).
+  {
+    std::vector<double> hRepair((size_t)nth, 0.0);
+    for (int j = 0; j < nth; ++j) {
+      std::vector<double> ok;
+      for (int k = 0; k < nid; ++k) {
+        double hv = hOut(k, j);
+        if (!R_finite(hv) || hv <= 0) continue;
+        if (hv == op_focei.shi21hMin || hv == op_focei.shi21hMax) continue;
+        ok.push_back(hv);
+      }
+      if (ok.empty()) continue;      // nothing converged: leave the clamped values alone
+      std::sort(ok.begin(), ok.end());
+      hRepair[(size_t)j] = ok[ok.size() / 2];
+    }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
+#endif
+    for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+      if (fdParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      int id = ids0[k];
+      if (id < 0 || id >= nsub) continue;
+      bool any = false;
+      for (int j = 0; j < nth && !any; ++j) {
+        double hv = hOut(k, j);
+        if (hRepair[(size_t)j] > 0 && R_finite(hv) &&
+            (hv == op_focei.shi21hMin || hv == op_focei.shi21hMax)) any = true;
+      }
+      if (!any) continue;
+      arma::vec thetaK = theta;
+      focei_ind *fInd = &(inds_focei[id]);
+      EtaRestoreGuard etaGuard(id);
+      FdInnerStateGuard fdGuard(id);
+      {
+        rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
+        _fdRefEta.assign((size_t)op_focei.neta, 0.0);
+        for (int i = 0; i < op_focei.neta; ++i) {
+          _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
+        }
+      }
+      arma::vec f0 = shi21LikTheta(thetaK, id);
+      if (!f0.is_finite()) continue;
+      for (int j = 0; j < nth; ++j) {
+        double hv = hOut(k, j), hr = hRepair[(size_t)j];
+        if (!(hr > 0) || !R_finite(hv)) continue;
+        if (hv != op_focei.shi21hMin && hv != op_focei.shi21hMax) continue;
+        double dv = fdCentralAt(thetaK, id, j, hr, f0);
+        if (!R_finite(dv)) continue;
+        out(k, j) = dv;
+        hOut(k, j) = hr;
+        // Overwrite the cache too: leaving the degenerate step there would hand the
+        // same bad value straight back on the next call, which reuses it by design.
+        if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hr;
+      }
+#ifdef _OPENMP
+      if (fdParallel) setRxThreadId(-1);
+#endif
+    }
   }
   _innerParallel.store(0, std::memory_order_release);
   if (fdParallel) sortIds(rx, 0);

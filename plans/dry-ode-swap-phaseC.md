@@ -890,11 +890,57 @@ Ratios against the analytic reference recorded earlier in this file:
 
     tka 2.018   tcl 1.016   tv 0.980   add.sd 0.996
 
-Three directions land near 1; `tka` sits near 2.  DO NOT chase that 2 yet.  Those
-reference numbers were taken in a DIFFERENT process at the fit's final theta, while the
-FD starts from whatever `op_focei.fullTheta` holds after the fit returns -- the
-optimizer's last trial point.  This file already flags that mismatch as the superseded
-suspect, and it produces exactly this pattern (per-direction, non-constant).  Fix the
-harness first: compute the analytic gradient IN THE SAME PROCESS at the SAME theta the
-FD starts from, then re-read the ratios.  Only if `tka` is still ~2 with both pinned is
-there an FD defect to find.
+Three directions land near 1; `tka` sits near 2.
+
+### RESOLVED -- the whole residual error was steps that hit the shi bound
+
+The harness suspicion above was WRONG and is retracted.  Pinning both sides in one
+process (`$CLAUDE_JOB_DIR/tmp/fdref.R`) showed `fit$theta` and the FD's starting theta
+are the SAME under `maxOuterIterations=0`, so there was never a theta mismatch.  The
+`tka` factor of 2 was a real FD defect.
+
+Localizing it (`fdper.R`: per-subject FD against a hand central difference at a step
+inside that parameter's usable window) was decisive -- every subject agreed to ~1e-2 or
+better except ONE:
+
+    tka  subject 12:  hand  0.6427   FD -0.8965   err -1.539  (total err -1.546)
+    tv   subject 12:  hand 90.1914   FD 88.4517   err -1.740  (total err -1.777)
+
+Subject 12 carried essentially the entire error in both directions, and it is exactly
+the subject whose step search terminated ON `shi21hMin` (1e-4) for those two parameters.
+
+A step sweep of the total objective shows why, and shows the usable window is per
+parameter and spans two orders of magnitude:
+
+    ratio to analytic     h=0.3   0.03    0.01   1e-3    1e-4
+    tka                   1.026  1.038   1.035  1.029   2.082
+    tcl                   1.014  1.011   1.024  0.850  -0.391
+    tv                    1.972  1.010   1.002  0.991   0.980
+    add.sd                3.190  1.016   1.002  1.000   1.001
+
+`tka`/`tcl` (eta-bearing) need a LARGE step and fall apart below ~1e-3; `tv`/`add.sd`
+need a small one and fall apart above ~0.03.  This is a profile likelihood, so its noise
+floor is the inner optimizer's convergence, not machine epsilon -- `hMin=1e-4` is inside
+that noise for the eta-bearing directions.
+
+**Fix: treat termination on the bound as the failure signal it is.**  shi returns hMin
+(or hMax) exactly when its ratio test never landed in [rl, ru] and the clamp stopped it
+-- the search gave up.  Those subject/parameter cells are re-differenced at the median
+step of the subjects whose search DID converge for the same parameter, and the cache is
+overwritten so the degenerate step is not handed back on the next call.
+
+Detecting it on the BOUND rather than by a threshold is what makes this exact, and it is
+why the earlier median-step heuristic was the right instinct with the wrong trigger.
+The modified-z pass cannot see this case and testing the slope harder would not help:
+subject 12's wrong `tka` slope (-0.897) is unremarkable among slopes spanning -5.0 to
++2.7.  It is not an outlier in slope, only in step -- 1e-4 against a median of 0.255.
+
+Result (theo_sd, same process, same theta):
+
+    ratio FD/analytic    tka 1.031   tcl 1.016   tv 1.002   add.sd 0.996   (tka was 2.018)
+
+and the FD now matches the HAND difference to ~0.1% (tka -1.6090 vs -1.6069, tv 82.7715
+vs 82.7717).  The remaining 1-3% against the analytic value is the truncation error of a
+central difference on this objective -- the hand difference shows the same gap at every
+step in the window -- not a defect.  Both gates still pass: bit-identical across 1 and 4
+threads, and reproducible across repeat calls at a cached step.
