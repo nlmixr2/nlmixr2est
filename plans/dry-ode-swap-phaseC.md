@@ -1152,3 +1152,54 @@ Also worth recording, both self-inflicted:
 * Running `pkgbuild::compile_dll()` in this worktree while a test's `load_all()` is
   compiling there destroys both -- the gate run died with no result and no error.
   Serialize builds against test runs.
+
+### Phase 8E is wired at the WRONG LAYER -- assessment
+
+Checked at the user's prompting.  The 8E work is real but it optimized the middle of a
+path that should not exist.  Per OUTER GRADIENT EVALUATION the live sequence is
+C++ -> R -> C++ -> R -> C++:
+
+`analyticOuterGrad` (inner.cpp:4551), all before it ever reaches the gradient:
+  * `foceiEtas()` builds an R list/data.frame of EVERY subject's etas + OFV -> `etaObf`
+  * `getOmega()` -> R matrix -> `omega`;  `.gradTheta` -> R vector
+  * `Function _agf = ...".foceiCalcGradAnalytic"` -> **calls into R**
+
+R `.foceiCalcGradAnalytic` -> `.foceiAnalyticGradFocei` -> `.foceiAnalyticGradCore`:
+  * re-derives the direction set / Oi / dOiEst / tr28 EVERY call
+  * **`.Call`s back down** (foceiAnalyticGradPooled_, or the staged kernel)
+  * stashes etaP on the env as `.foceiGradEtaP` (neta x npars x nsub doubles)
+
+back in C++:
+  * `as<NumericVector>(_res)` for g
+  * `loadAnalyticEtaP()` (inner.cpp:4515) reads `.foceiGradEtaP` BACK OUT of the env and
+    copies it into `op_focei.getaP`
+
+So etaP is computed in C++, wrapped to R, stashed on an environment, read back out, and
+copied into a C++ array -- a full round trip to no purpose.  The etas make the mirror
+trip: computed in C++, wrapped into a data.frame, parsed back into a matrix in R, sent
+down again.
+
+8E removed the INNER round trip (E structs -> R -> stacked -> back down) and left the
+outer one, then added one more R object to it (the etaP cube in `List::create`).  That is
+why the state is wrong, and it is the same class of error as the earlier foceiGradAllFR_
+misfire: correct code at the wrong layer.
+
+### What "right" looks like
+
+* `analyticOuterGrad` calls the C++ gradient DIRECTLY -- no `Rcpp::Function`, no env
+  writes, no `.Call` back down.  The only `.Call` on a fit's hot path should be the inner
+  problem's.
+* Per-fit setup (dirs, cols, Oi, dOiEst, tr28, dirTh, sigCol, lamDir) cached in C++ once,
+  not rebuilt in R on every gradient call.
+* `g` written into the caller's `double *g`; etaP written straight into `op_focei.getaP`
+  with the `dUnscaleParDx` scaling, never becoming an R object.  `foceiEtas`/`omega`/
+  `.gradTheta` env writes drop out entirely for the analytic path.
+* Keep a thin R-facing `.Call` wrapper for TESTS only -- that is the one place building
+  R objects is worth it.
+* Where SEXPs are genuinely needed, use the existing `rxProtect` RAII guard
+  (src/rxProtect.h) rather than hand-balanced PROTECT/UNPROTECT.
+
+This very likely also disposes of the -10 protect imbalance: on the corrected path the
+live gradient creates NO R objects, so the imbalance has nowhere to come from.  Chasing
+it inside a design that is being removed is not worth the cycles -- fix the layer first,
+then re-check.
