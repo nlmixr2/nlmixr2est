@@ -11,6 +11,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "rxomp.h"
+#include "foceiGrad.h"
 #include "censEst.h"   // censNormalPartials: exact censored rho(f,R) partials (M2/M3/M4)
 using namespace arma;
 
@@ -243,17 +244,17 @@ Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f
 // model-independent closed forms computed here from f/y/R, so ANY variance structure works.
 // Shared per-subject core, called both from the single-subject export (oracle) and the
 // batched OpenMP driver foceiGradAllFR_; writes g_out (np) and etaP_out (neta x np).
-static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
-                                const arma::mat& aR, const arma::cube& AR,
-                                const arma::mat& Rsig, const arma::cube& RsigDir,
-                                const arma::mat& dvSens,
-                                const arma::ivec& censv, const arma::vec& limv, int censOpt,
-                                const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
-                                const arma::vec& ehat, const arma::mat& Oi,
-                                const arma::cube& dOiEst, const arma::vec& tr28,
-                                int neta, int nth, int nsg, int nom,
-                                const arma::ivec& dirTh, const arma::ivec& sigCol,
-                                arma::vec& g_out, arma::mat& etaP_out) {
+void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
+                         const arma::mat& aR, const arma::cube& AR,
+                         const arma::mat& Rsig, const arma::cube& RsigDir,
+                         const arma::mat& dvSens,
+                         const arma::ivec& censv, const arma::vec& limv, int censOpt,
+                         const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                         const arma::vec& ehat, const arma::mat& Oi,
+                         const arma::cube& dOiEst, const arma::vec& tr28,
+                         int neta, int nth, int nsg, int nom,
+                         const arma::ivec& dirTh, const arma::ivec& sigCol,
+                         arma::vec& g_out, arma::mat& etaP_out) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;

@@ -757,6 +757,41 @@
     etaSolve <- eta0Mat
     if (!is.null(E0all)) for (i in seq_len(nsub)) E0List[i] <- list(E0all[[i]])
   }
+  ## Phase 8E: the all-C++ route.  It solves the augmented model in the shared pool,
+  ## finite-differences the subjects whose solve failed, stacks the sensitivities and runs
+  ## the kernel WITHOUT returning here in between -- so the per-observation ndir^2 cubes
+  ## never become R objects, and R cannot disturb the pool between the solve and the
+  ## assembly.  Only the FOCEI (f,R) shape is covered; everything else falls through to
+  ## the staged path below, and a NULL here does too.
+  ## OFF BY DEFAULT -- opt in with NLMIXR2EST_GRAD_POOLED=1.  The route is numerically
+  ## exact (max abs diff 0 against the staged path on theo_sd) but its .Call leaves R's
+  ## protect stack unbalanced by -10, which risks premature GC even while results look
+  ## right.  Localized only as far as: argument marshalling alone is clean, and the
+  ## imbalance is present by the end of the solve -- yet vaeOuterSolve_ performs the same
+  ## sequence with no imbalance.  Do not enable until that is understood.
+  if (!.foce && nAGQ <= 1L && !isTRUE(.odeSwapNoPool$on) &&
+        nzchar(Sys.getenv("NLMIXR2EST_GRAD_POOLED"))) {
+    .cols8e <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
+    .nc8e <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+    if (length(.nc8e) != 1L || is.na(.nc8e) || .nc8e < 1L) .nc8e <- 1L
+    .dOi8e <- array(0, c(neta, neta, max(nom, 1L)))
+    if (nom > 0L) for (k in seq_len(nom)) .dOi8e[, , k] <- dOiEst[[k]]
+    .p8e <- if (is.null(.cols8e)) NULL else
+      tryCatch(foceiAnalyticGradPooled_(as.numeric(th), as.matrix(etaSolve), .cols8e, .nc8e,
+                 Oi, .dOi8e, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                 neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
+                 as.integer(rxode2::rxGetControl(ui, "censOption", 0L)),
+                 as.integer(lamDir)),
+               error = function(e) NULL)
+    if (!is.null(.p8e) && all(is.finite(.p8e$g)) && all(is.finite(.p8e$etaP))) {
+      g <- .p8e$g
+      .etaP8e <- vector("list", length(ids))
+      for (i in seq_along(ids)) .etaP8e[[i]] <- .p8e$etaP[, , i]
+      names(g) <- c(thStruct, sgNames, omNames)
+      if (length(lamNames)) g[lamNames] <- g[lamNames] - 2 * .p8e$jacSum
+      return(list(g = g, etaP = .etaP8e, ids = ids))
+    }
+  }
   .EsAll <- .foceiAnalyticSolveAll(am, th, etaSolve, .idCode, data, .obsT, solveTol)
   if (is.null(.EsAll)) return(NULL)
   g <- numeric(np)

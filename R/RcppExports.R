@@ -236,6 +236,38 @@ vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
     .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
 }
 
+#' FOCEI analytic outer gradient, computed entirely in C++.
+#'
+#' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
+#' subjects whose solve failed, stacks the per-subject sensitivities and runs the
+#' gradient kernel -- without returning to R in between.
+#'
+#' The round trip this replaces was not just slow (the per-observation ndir^2 cubes A
+#' and AR are the bulk of the data and were materialized twice, once wrapped out of C++
+#' and once read back in); it also let R run between the solve and the assembly, where
+#' it could disturb the shared solve pool.  Keeping the whole sequence in one C++ region
+#' removes both.
+#'
+#' Returns R_NilValue when it cannot do the job, and the caller falls back to the
+#' rxSolve route.
+#' @param thVals theta values, in the augmented model's positional order
+#' @param ebes nsub x neta matrix of EBEs (the etas the gradient is taken at)
+#' @param cols augmented-model lhs column map from .foceiAnalyticCols
+#' @param cores thread count
+#' @param Oi Omega^-1
+#' @param dOiEst neta x neta x nom cube of estimation-scale Omega^-1 derivatives
+#' @param tr28 Omega log-determinant derivative terms (length nom)
+#' @param neta,nth,nsg,nom problem dimensions
+#' @param dirTh 1-based direction index per theta
+#' @param sigCol 1-based sigma column per residual parameter
+#' @param censOpt censoring determinant treatment (censOption)
+#' @param lamDir 1-based direction indices of estimated transform lambdas (may be empty)
+#' @return list(g, etaP, jacSum, fdIds) or NULL
+#' @noRd
+foceiAnalyticGradPooled_ <- function(thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir) {
+    .Call(`_nlmixr2est_foceiAnalyticGradPooled_`, thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir)
+}
+
 #' Build the nonparametric Psi (conditional-likelihood) matrix
 #'
 #' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates

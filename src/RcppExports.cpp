@@ -788,6 +788,31 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiAnalyticGradPooled_
+RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List cols, int cores, arma::mat Oi, arma::cube dOiEst, arma::vec tr28, int neta, int nth, int nsg, int nom, arma::ivec dirTh, arma::ivec sigCol, int censOpt, arma::ivec lamDir);
+RcppExport SEXP _nlmixr2est_foceiAnalyticGradPooled_(SEXP thValsSEXP, SEXP ebesSEXP, SEXP colsSEXP, SEXP coresSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP, SEXP sigColSEXP, SEXP censOptSEXP, SEXP lamDirSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thVals(thValsSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type ebes(ebesSEXP);
+    Rcpp::traits::input_parameter< List >::type cols(colsSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type Oi(OiSEXP);
+    Rcpp::traits::input_parameter< arma::cube >::type dOiEst(dOiEstSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type tr28(tr28SEXP);
+    Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
+    Rcpp::traits::input_parameter< int >::type nth(nthSEXP);
+    Rcpp::traits::input_parameter< int >::type nsg(nsgSEXP);
+    Rcpp::traits::input_parameter< int >::type nom(nomSEXP);
+    Rcpp::traits::input_parameter< arma::ivec >::type dirTh(dirThSEXP);
+    Rcpp::traits::input_parameter< arma::ivec >::type sigCol(sigColSEXP);
+    Rcpp::traits::input_parameter< int >::type censOpt(censOptSEXP);
+    Rcpp::traits::input_parameter< arma::ivec >::type lamDir(lamDirSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiAnalyticGradPooled_(thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npBuildPsi
 NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores);
 RcppExport SEXP _nlmixr2est_npBuildPsi(SEXP etaPointsSEXP, SEXP coresSEXP) {

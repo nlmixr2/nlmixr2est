@@ -1114,3 +1114,41 @@ is pre-existing and comes from somewhere else -- most likely the reference itsel
 h=1e-3 difference of a refit objective.
 
 theo_sd is unchanged to three decimals in the FD/analytic ratios.
+
+### Phase 8E steps 1b/1c: written, exact, and GATED OFF
+
+`foceiAnalyticGradPooled_` does the whole FOCEI (f,R) gradient in one C++ region: solves
+the augmented model in the shared pool, finite-differences the failed subjects, reads DV
+/ CENS / LIMIT straight from the individual (`getIndDv` / `getIndCens` / `getIndLimit`,
+the same way the inner problem reads them), applies the transform with `_powerD` /
+`_powerDLambda` / `_powerDL`, stacks, runs `foceiGradSubjectFR_` (de-static'd and
+declared in the new `src/foceiGrad.h`) and substitutes the FD rows.  R dispatches to it
+before `.foceiAnalyticSolveAll` and returns early; anything unsupported falls through.
+
+Verified: `max abs diff 0` against the staged path on theo_sd -- bit-identical.
+
+**BUT: it leaves R's protect stack unbalanced by -10, so it is OFF unless
+`NLMIXR2EST_GRAD_POOLED` is set.**  More UNPROTECTs than PROTECTs risks premature GC of
+live objects; results being exact today does not make that safe.
+
+What is known, so the next attempt does not redo it:
+
+* Argument marshalling alone is clean -- returning immediately on entry gives no
+  imbalance, so the 15 arguments (including the by-value arma types) are not the cause.
+* The imbalance is already present by the end of the solve, i.e. within
+  `OdeSwapEsBatch` + `OdeFitTolGuard` + the `cols` gates + `vaeOuterSolveFill`.
+* `vaeOuterSolve_` performs that SAME sequence and is clean (checked directly by forcing
+  the old route).  So it is not any one of those calls in isolation; it is something
+  about this entry point.  That contradiction is the thing to explain first.
+* Beware: `MODE=staged` (`.odeSwapNoPool$on <- TRUE`) does NOT exercise `vaeOuterSolve_`
+  at all, so a clean staged run proves nothing about it.  Force the old pooled route
+  instead.
+
+Also worth recording, both self-inflicted:
+
+* `nlmixr2est:::.odeSwapNoPool$on <- TRUE` is not a valid assignment (`:::<-` does not
+  exist); it fails with "object 'nlmixr2est' not found" and produces spurious stack
+  imbalance warnings of its own.  Bind the env first, then assign into it.
+* Running `pkgbuild::compile_dll()` in this worktree while a test's `load_all()` is
+  compiling there destroys both -- the gate run died with no result and no error.
+  Serialize builds against test runs.

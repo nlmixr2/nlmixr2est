@@ -8,6 +8,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
+#include "foceiGrad.h"
 #include "inner.h"
 #include <cfloat>
 #include <cstring>
@@ -12058,6 +12059,201 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
     }
   }
   return out;
+}
+
+//' FOCEI analytic outer gradient, computed entirely in C++.
+//'
+//' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
+//' subjects whose solve failed, stacks the per-subject sensitivities and runs the
+//' gradient kernel -- without returning to R in between.
+//'
+//' The round trip this replaces was not just slow (the per-observation ndir^2 cubes A
+//' and AR are the bulk of the data and were materialized twice, once wrapped out of C++
+//' and once read back in); it also let R run between the solve and the assembly, where
+//' it could disturb the shared solve pool.  Keeping the whole sequence in one C++ region
+//' removes both.
+//'
+//' Returns R_NilValue when it cannot do the job, and the caller falls back to the
+//' rxSolve route.
+//' @param thVals theta values, in the augmented model's positional order
+//' @param ebes nsub x neta matrix of EBEs (the etas the gradient is taken at)
+//' @param cols augmented-model lhs column map from .foceiAnalyticCols
+//' @param cores thread count
+//' @param Oi Omega^-1
+//' @param dOiEst neta x neta x nom cube of estimation-scale Omega^-1 derivatives
+//' @param tr28 Omega log-determinant derivative terms (length nom)
+//' @param neta,nth,nsg,nom problem dimensions
+//' @param dirTh 1-based direction index per theta
+//' @param sigCol 1-based sigma column per residual parameter
+//' @param censOpt censoring determinant treatment (censOption)
+//' @param lamDir 1-based direction indices of estimated transform lambdas (may be empty)
+//' @return list(g, etaP, jacSum, fdIds) or NULL
+//' @noRd
+//[[Rcpp::export]]
+RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List cols,
+                                 int cores, arma::mat Oi, arma::cube dOiEst,
+                                 arma::vec tr28, int neta, int nth, int nsg, int nom,
+                                 arma::ivec dirTh, arma::ivec sigCol, int censOpt,
+                                 arma::ivec lamDir) {
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return R_NilValue;
+  std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
+  // The fit's tolerance, reset for this solve -- there is no separate analytic
+  // tolerance; see OdeFitTolGuard.
+  OdeFitTolGuard _tolGuard;
+  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
+      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
+  rx = getRxSolve_();
+  if (rx == NULL) return R_NilValue;
+  rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
+  const int nsub = (int)getRxNsub(rx);
+  if (ebes.nrow() != nsub || (int)ebes.ncol() != neta) return R_NilValue;
+  const int nd = as<int>(cols["nd"]);
+  const bool hasR = as<bool>(cols["hasR"]);
+  const bool hasT = as<bool>(cols["hasT"]);
+  if (!hasR) return R_NilValue;            // (f,R) kernel only; the FOCE path stays in R
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  vaeOuterSolveFill(thVals, ebes, cols, cores, op, nsub, neta, Es);
+
+  // ---- swap the pool outer -> inner and finite-difference the failed subjects -------
+  // Same reason as in vaeOuterSolve_: the augmented solve ran under the OUTER model's
+  // event-sensitivity shape, and a subject that failed it needs the INNER problem
+  // re-established before its likelihood can be differenced.  The shape is a process
+  // global, so the outer batch has to close first.
+  std::vector<int> flagged;
+  for (int i = 0; i < nsub; ++i) if (!Es[(size_t)i].ok) flagged.push_back(i);
+  NumericMatrix fd; IntegerVector fids;
+  if (!flagged.empty()) {
+    _esBatch.reset();
+    fids = IntegerVector((R_xlen_t)flagged.size());
+    for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
+    NumericMatrix aref(0, 0);
+    fd = foceiOuterFdInd_(fids, aref);
+    if (fd.nrow() != (int)flagged.size()) return R_NilValue;
+  }
+
+  // ---- stack the per-subject sensitivities (this is what R used to do) -------------
+  std::vector<int> nobsAll((size_t)nsub, 0);
+  int totObs = 0;
+  for (int i = 0; i < nsub; ++i) {
+    // A flagged subject contributes no analytic sensitivities; its gradient column is
+    // replaced by the finite difference below, so it needs no rows here.  It still needs
+    // a slot, and zero rows would break the kernel, so it is given its own rows and
+    // simply not read.
+    nobsAll[(size_t)i] = Es[(size_t)i].nobs;
+    if (nobsAll[(size_t)i] <= 0) return R_NilValue;
+    totObs += nobsAll[(size_t)i];
+  }
+  const int np = nth + nsg + nom;
+  arma::ivec off((unsigned int)nsub + 1); off[0] = 0;
+  for (int i = 0; i < nsub; ++i) off[i + 1] = off[i] + nobsAll[(size_t)i];
+  arma::mat aB(totObs, nd, arma::fill::zeros), aRB(totObs, nd, arma::fill::zeros);
+  arma::cube AB(totObs, nd, nd, arma::fill::zeros), ARB(totObs, nd, nd, arma::fill::zeros);
+  arma::vec fB(totObs, arma::fill::zeros), yB(totObs, arma::fill::zeros),
+    RB(totObs, arma::fill::zeros);
+  arma::mat RsigB(totObs, nsg, arma::fill::zeros);
+  arma::cube RsigDirB(totObs, nd, nsg, arma::fill::zeros);
+  const bool hasLam = (lamDir.n_elem > 0) && hasT;
+  arma::mat dvSensB(totObs, hasLam ? nd : 0, arma::fill::zeros);
+  const bool hasCens = hasRxCens(rx) || hasRxLimit(rx);
+  arma::ivec censB(hasCens ? totObs : 0, arma::fill::zeros);
+  arma::vec limB(hasCens ? totObs : 0);
+  if (hasCens) limB.fill(NA_REAL);
+  arma::mat ehatB(nsub, neta, arma::fill::zeros);
+  double jacSum = 0.0;
+  for (int i = 0; i < nsub; ++i) {
+    VaeOuterE& E = Es[(size_t)i];
+    int o0 = off[i], n = nobsAll[(size_t)i];
+    for (int j = 0; j < neta; ++j) ehatB(i, j) = ebes(i, j);
+    if (!E.ok) continue;                    // finite-differenced below; rows stay zero
+    aB.rows(o0, o0 + n - 1) = E.a;
+    aRB.rows(o0, o0 + n - 1) = E.aR;
+    AB.rows(o0, o0 + n - 1) = E.A;
+    ARB.rows(o0, o0 + n - 1) = E.AR;
+    fB.subvec(o0, o0 + n - 1) = E.f;
+    RB.subvec(o0, o0 + n - 1) = E.R;
+    if (nsg > 0) {
+      RsigB.rows(o0, o0 + n - 1) = E.Rsig;
+      RsigDirB.rows(o0, o0 + n - 1) = E.RsigDir;
+    }
+    // DV, CENS and LIMIT come straight from the individual -- the inner problem reads
+    // them the same way -- so they never have to cross from R, and they are read in the
+    // same observation order the solve loop filled E.f with.
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    int ko = 0;
+    for (int q = 0; q < getIndNallTimes(ind) && ko < n; ++q) {
+      int kk = getIndIx(ind, q);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = getIndDv(ind, kk);
+      double yj = hasT ? E.trans(ko, 0) : 0.0, lam = hasT ? E.trans(ko, 1) : 1.0;
+      double lo = hasT ? E.trans(ko, 2) : 0.0, hi = hasT ? E.trans(ko, 3) : 1.0;
+      yB[o0 + ko] = hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
+      if (hasLam) {
+        double dvs = _powerDLambda(dv, lam, (int)yj, lo, hi);
+        for (unsigned int L = 0; L < lamDir.n_elem; ++L) {
+          int d = lamDir[L] - 1;
+          if (d >= 0 && d < nd) dvSensB(o0 + ko, d) = dvs;
+        }
+        jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
+      }
+      if (hasCens) {
+        censB[o0 + ko] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
+        double lim = NA_REAL;
+        if (hasRxLimit(rx)) {
+          lim = getIndLimit(ind, kk);
+          if (!ISNA(lim) && R_FINITE(lim) && hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
+        }
+        limB[o0 + ko] = lim;
+      }
+      ko++;
+    }
+    if (ko != n) return R_NilValue;         // observation count disagreed: bail to R
+  }
+
+  // ---- the kernel, per subject ------------------------------------------------------
+  arma::mat gmat(np, nsub, arma::fill::zeros);
+  arma::cube etaPall(neta, np, nsub, arma::fill::zeros);
+  int kcores = cores; if (kcores < 1) kcores = 1;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(kcores)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    if (!Es[(size_t)i].ok) continue;        // finite-differenced; leave the column zero
+    try {
+      int o0 = off[i], o1 = off[i + 1] - 1;
+      arma::mat ai = aB.rows(o0, o1), aRi = aRB.rows(o0, o1);
+      arma::cube Ai = AB.rows(o0, o1), ARi = ARB.rows(o0, o1);
+      arma::mat Rsigi = (nsg > 0) ? arma::mat(RsigB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::cube RsigDiri = (nsg > 0) ? arma::cube(RsigDirB.rows(o0, o1)) :
+        arma::cube(o1 - o0 + 1, nd, 0);
+      arma::mat dvi = hasLam ? arma::mat(dvSensB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::ivec censi = hasCens ? arma::ivec(censB.subvec(o0, o1)) : arma::ivec();
+      arma::vec limi = hasCens ? arma::vec(limB.subvec(o0, o1)) : arma::vec();
+      arma::vec gi; arma::mat etaPi;
+      foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, censOpt,
+                          fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                          ehatB.row(i).t(), Oi, dOiEst, tr28,
+                          neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
+      gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+    } catch (...) {
+      gmat.col(i).fill(arma::datum::nan); etaPall.slice(i).fill(arma::datum::nan);
+    }
+  }
+  // ---- substitute the finite-differenced subjects -----------------------------------
+  // Only the theta block is available from the per-individual FD; a flagged subject
+  // contributes nothing to the sigma/omega directions, which is what the zero column
+  // already says.
+  for (int q = 0; q < (int)flagged.size(); ++q) {
+    int i = flagged[(size_t)q];
+    for (int t = 0; t < nth && t < fd.ncol(); ++t) {
+      double v = fd(q, t);
+      if (!R_finite(v)) return R_NilValue;  // an un-differenced subject: fall back to R
+      gmat(t, i) = v;
+    }
+  }
+  arma::vec g = arma::sum(gmat, 1);
+  return List::create(_["g"] = g, _["etaP"] = etaPall, _["jacSum"] = jacSum,
+                      _["fdIds"] = fids);
 }
 
 // ===========================================================================
