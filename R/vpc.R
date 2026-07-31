@@ -273,7 +273,7 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
   } else {
     .fullData <- fullData
   }
-  .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
+  .fullData$nlmixrRowNums <- seq_len(nrow(.fullData))
   .bad <- extra[!(extra %in% c(names(.fullData), names(sim)))]
   if (length(.bad) > 0) {
     warning("column(s) not in simulation or data: ",
