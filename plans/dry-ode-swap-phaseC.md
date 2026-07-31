@@ -1005,3 +1005,56 @@ are treated as suspect.  That conflation is deliberate -- a step at or below the
 untrustworthy for this objective either way -- but it is a conflation, not a precise
 test.  Distinguishing them would mean returning a termination reason from shi21Central,
 which the eta and nlm paths also call.
+
+## Phase 8E: pull the analytic gradient assembly into C++ (user-specified)
+
+### Why
+
+The FOCEI analytic gradient currently makes a C++ -> R -> C++ round trip:
+
+    vaeOuterSolve_        (C++)  builds per-subject E structs, wraps them to R lists
+    .foceiAnalyticGradCore (R)   stacks them into aB/AB/aRB/ARB/RsigB/RsigDirB/... 
+    foceiGradAllFR_       (C++)  takes those 25 arguments and computes the gradient
+
+Two problems, both the user's stated reason for the change:
+
+1. **Pool state.**  Returning to R between the solve and the assembly gives R the
+   chance to disturb the shared pool -- exactly the class of failure this whole branch
+   exists to remove.  The solve and everything that reads it should be one C++ region.
+2. **Cost.**  `AB` and `ARB` are `totObs x ndir x ndir`.  They are materialized twice
+   (wrapped out of C++, then read back in) for no reason: the data never leaves the
+   process and the kernel that consumes them is C++ anyway.
+
+The FD substitution for flagged subjects belongs in the same place -- R currently
+zero-fills a flagged subject's E purely so the R-side stacking keeps working
+(foceiGradAnalytic.R:564), which is a workaround for the round trip, not a design.
+
+### Feasibility (checked)
+
+* The per-subject `VaeOuterE` structs already exist in C++ (`std::vector<VaeOuterE> Es`)
+  and hold f/a/A/R/aR/AR/Rsig/RsigDir/trans.
+* The DV transform R applies while stacking is ALREADY C++: `.foceiAnalyticTbsY()` is a
+  thin `.Call(_nlmixr2est_powerD, ...)`, and `_powerD` is used directly in censResid.cpp.
+  So `yB`, `limB` and the lambda dvSens/jacobian terms can all be formed C++-side.
+* Everything else the kernel needs is small and per-call (Oi, dOiEst, tr28, dirTh,
+  sigCol, neta/nth/nsg/nom, censOpt) or O(totObs) scalars (DV, CENS, LIMIT) -- cheap to
+  pass.  Only the ndir^2 cubes are worth keeping in C++, and those are exactly the ones
+  that would stop crossing.
+
+### Steps (each committable and separately verifiable)
+
+1a. Refactor `vaeOuterSolve_`'s body into a helper returning `std::vector<VaeOuterE>` +
+    the ok flags, leaving `vaeOuterSolve_` as the R-facing wrapper over it.  No behavior
+    change; gate is bit-identical gradients.
+1b. New entry `foceiAnalyticGradPooled_`: calls the helper, closes the outer ES batch,
+    runs the per-individual FD for flagged subjects, stacks into the arma matrices in
+    C++, runs the existing per-subject kernel, SUBSTITUTES the FD row into `gmat.col(i)`
+    for each flagged subject, and returns `list(g, etaP)`.
+1c. `.foceiAnalyticGradCore` calls it and skips the R stacking block when it succeeds;
+    the rxSolve route stays as the fallback.  The zero-fill workaround then goes away.
+
+Remember `src/init.c` is MANUAL: a new `[[Rcpp::export]]` needs BOTH
+`Rcpp::compileAttributes(".")` AND a hand-edited prototype + `callMethods[]` arity.
+
+Gate: `g` bit-identical to the current path on theo_sd, the multiple-endpoint model and
+a censored model, plus the existing 1-vs-4-thread identity.
