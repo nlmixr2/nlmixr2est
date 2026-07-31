@@ -783,3 +783,63 @@ require ratio 1.
 Do NOT wire the substitution until that comparison passes: a wrong per-subject term
 would silently bias the total gradient, which is precisely the class of bug this
 session spent its time on.
+
+
+## NEXT: refactor the shi step search to be per inner problem (user-specified)
+
+The per-individual d(llik)/d(theta) machinery is committed (3485a22b8) and unwired.
+What must change before it can be wired in.
+
+### The problem
+
+The shi `h` search currently runs from the THETA loop in `foceiOuterFdInd_`: for each
+subject it calls `shi21Central(shi21LikTheta, ...)`, which drives `innerOpt1()` per
+perturbation.  The step is therefore chosen without the subject's inner problem being
+settled, unlike `etahf`, which is optimized INSIDE the inner problem where that
+subject's context is already established.  Two symptoms trace to this:
+
+* `cl`'s steps look wrong systematically rather than sporadically;
+* the finite difference is THREAD-COUNT DEPENDENT.  Proven not to be the FD loop:
+  forcing that loop serial while leaving rxode2 at 4 threads reproduces the 4-thread
+  answer bit for bit.  It is the inner solve running in a pool sized for the OUTER
+  model under a neq override, which the relocation should remove.
+
+### What to build
+
+A NEW per-individual shi optimization, modelled on the `etahf` block in
+`calcEtaHessian` -- same `shi21Central` machinery, same optimize-once/cache/reuse
+discipline -- but SEPARATE from it.  The individual's contribution to the OVERALL
+likelihood is a different function from the inner problem's conditional objective, so
+it cannot share the eta routine or its step store.
+
+* driven by `shi21LikTheta()`;
+* caches into `fInd->outerThetaHf[j]` (allocated, freed, and per subject already);
+* gated to the individual: the search runs where that subject's inner problem is
+  established, not from an outer theta loop.
+
+### State that must be cached across a differencing call
+
+`innerOpt1()` moves more than the eta.  Save and restore, per subject:
+
+* the eta (`EtaRestoreGuard`);
+* the n1qn1 warm start (`zm`, `mode`, `uzm`) -- otherwise a later inner problem warm
+  starts from a Hessian belonging to a theta the fit never visited;
+* `op_focei.fullTheta`;
+* `fInd->lik[0..2]` -- innerOpt1() WRITES it, so differencing otherwise replaces the
+  subject's likelihood with one evaluated at a perturbed theta.  Added in this commit.
+  The same hazard applies wherever else `innerOpt1()` is called for a side purpose
+  rather than to advance the fit; those call sites are worth auditing.
+
+### Retained unchanged
+
+The outlier handling is orthogonal to where `h` is optimized and measured to work:
+modified z-score (Iglewicz-Hoaglin, 3.5) on raw slopes against a median/MAD centre and
+scale, MAD floored at sqrt(eps), analytic subjects in the reference population and
+never recomputed, an outlier treated as a diagnostic ABOUT THE PARAMETER, and flagged
+parameters pushed through Chartrand TV with discrepancy-principle alpha.
+
+### Gate
+
+`expect_identical` across 1 vs 4 threads -- the same bar Phase 10 sets for imp.  Then
+wire the substitution into the gradient (C only, inside the existing gradient call) and
+add the `$runInfo` warning.

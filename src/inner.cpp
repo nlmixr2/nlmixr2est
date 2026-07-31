@@ -11372,6 +11372,14 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     if (fInd->zm != NULL && op_focei.nzm > 0) {
       savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
     }
+    // fInd->lik must be cached too.  shi21LikTheta() runs innerOpt1(), which WRITES
+    // fInd->lik[0] -- so differencing silently replaces the subject's likelihood with
+    // one evaluated at a perturbed theta, and whatever reads it next (the objective, a
+    // later gradient, the finalize step) sees a value belonging to a theta the fit never
+    // visited.  Saving eta/zm/fullTheta but not lik leaves exactly that hole.
+    // The same hazard applies anywhere else innerOpt1() is called for a side purpose
+    // rather than to advance the fit -- worth auditing those call sites.
+    double savedLik[3] = { fInd->lik[0], fInd->lik[1], fInd->lik[2] };
     arma::vec f0 = shi21LikTheta(thetaK, id);
     if (!f0.is_finite()) continue;             // cannot even evaluate: leave NA
     // shi CENTRAL differences, not Gill83.  Gill was tried here because it behaves
@@ -11422,6 +11430,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     }
     fInd->mode = savedMode;
     fInd->uzm = (unsigned int)savedUzm;
+    fInd->lik[0] = savedLik[0]; fInd->lik[1] = savedLik[1]; fInd->lik[2] = savedLik[2];
 #ifdef _OPENMP
     if (fdParallel) setRxThreadId(-1);
 #endif
