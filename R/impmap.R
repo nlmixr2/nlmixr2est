@@ -9,7 +9,7 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod", "gammaMethodUser",
+                           "gammaMethod", "gammaMethodUser", "df",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -39,6 +39,23 @@
 #' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
+#' @param df Degrees of freedom of the importance-sampling proposal (NONMEM
+#'   `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
+#'   `> 0` uses a multivariate **t** with that many degrees of freedom.
+#'
+#'   This changes the proposal's SHAPE rather than its width, and that is the
+#'   distinction that matters.  `gamma` can only make a Gaussian proposal
+#'   wider; it cannot give it heavier tails.  When the target posterior has
+#'   heavier tails than the proposal, the importance weights have infinite
+#'   variance -- and neither `xi` nor the Kish effective sample size can detect
+#'   it, because the offending mass lies where the proposal rarely lands.  The
+#'   Pareto k-hat diagnostic (`fit$env$impPsisK`) does detect it: `k > 0.7`
+#'   means that subject's weights are unreliable.  A t proposal has polynomial
+#'   tails that dominate a Gaussian target's, which bounds the weights.
+#'
+#'   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
+#'   `DF` when there are fewer data points than etas, or for categorical data.
+#'   Small values (3-8) are heavy; large values approach the Gaussian.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
@@ -133,6 +150,7 @@ impmapControl <- function(sigdig=4,
                           mapIter=1L,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
+                          df=0,
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -201,6 +219,7 @@ impmapControl <- function(sigdig=4,
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
+  .control$df <- as.double(df)
   if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)

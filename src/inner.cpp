@@ -504,6 +504,9 @@ struct focei_options {
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
   double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
+  // Proposal degrees of freedom (NONMEM DF).  0 = multivariate normal; >0 uses a
+  // multivariate t, whose polynomial tails dominate a Gaussian target's.
+  double impDf = 0.0;
   // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
   // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
   std::string impGammaMethod = "global";
@@ -5211,6 +5214,7 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
+    if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
     if (foceiO.containsElementNamed("gammaMethod") && TYPEOF(foceiO["gammaMethod"]) == STRSXP)
       op_focei.impGammaMethod = as<std::string>(foceiO["gammaMethod"]);
     if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
@@ -9064,6 +9068,7 @@ std::string impDiagXform() {
 }
 
 double impIaccept() { return op_focei.impIaccept; }
+double impDf() { return op_focei.impDf; }
 // TRUE when the per-subject (NONMEM) gamma controller is selected.  Queried once
 // per EM iteration, not in the sampling loop, so the string compare is free.
 bool impGammaIndividual() { return op_focei.impGammaMethod == "individual"; }

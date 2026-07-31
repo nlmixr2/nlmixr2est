@@ -16,6 +16,7 @@
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include <boost/random/sobol.hpp>
+#include <boost/math/distributions/chi_squared.hpp>
 #include <ctime>
 #include "nmMcmcRng.h"
 #include "imp.h"
@@ -58,6 +59,71 @@ static arma::mat impQrZ(const arma::mat& U0, const arma::vec* shift) {
     }
   }
   return Z;
+}
+
+// ---- multivariate-t proposal (NONMEM DF) -----------------------------------
+// A Gaussian proposal scaled by gamma can only be made WIDER, never
+// heavier-tailed, and importance weights blow up (infinite variance) when the
+// proposal's tails are lighter than the target's -- a failure Pareto k-hat
+// detects and xi/Kish ESS cannot.  Switching the proposal to a multivariate t
+// with `df` degrees of freedom fixes the SHAPE: t tails are polynomial, so for
+// small df they dominate any Gaussian target tail.  df = 0 means "Gaussian",
+// the historical path.
+//
+// Only rxNormEng/rxUnifEng are available on the thread-safe engine, so the
+// chi-square is drawn by INVERSE CDF from a single uniform, using boost's
+// quantile function.  Inverse CDF rather than a rejection sampler
+// (Marsaglia-Tsang) on purpose: a rejection loop consumes a VARIABLE number of
+// draws, so the stream position would depend on the accept/reject history and
+// the fit would stop being reproducible under any change that shifts it.  One
+// uniform in, one chi-square out, and it works for any real df > 0.  It also
+// makes the quasi-random path natural -- a Sobol coordinate can feed it
+// directly.
+static inline double impChisqQuantile(double u, double df) {
+  if (u <= 0.0) u = 1e-12;
+  if (u >= 1.0) u = 1.0 - 1e-12;
+  return boost::math::quantile(boost::math::chi_squared_distribution<double>(df), u);
+}
+
+// Scale factor turning a standard normal vector into a multivariate-t one:
+// t = z * sqrt(df / chisq_df).  df <= 0 -> 1 (Gaussian: no scaling and NO
+// uniform drawn, so the Gaussian path consumes exactly the stream it always
+// did and stays bit-identical).
+static inline double impTScale(double df) {
+  if (df <= 0.0) return 1.0;
+  double w = impChisqQuantile(rxUnifEng(0.0, 1.0), df);
+  if (!(w > 0.0) || !R_finite(w)) return 1.0;
+  return std::sqrt(df / w);
+}
+
+// Same, but from a supplied uniform (quasi-random path).
+static inline double impTScaleU(double u, double df) {
+  if (df <= 0.0) return 1.0;
+  double w = impChisqQuantile(u, df);
+  if (!(w > 0.0) || !R_finite(w)) return 1.0;
+  return std::sqrt(df / w);
+}
+
+// Log of the peak-normalized proposal kernel's RECIPROCAL, i.e. the term that
+// enters the log importance weight q_k.  Gaussian: d'Hd/(2 gamma).
+// t: ((df+p)/2) * log1p(d'Hd/(gamma*df)).  Both are 0 at d = 0.
+static inline double impLogKernelRecip(double quad, double gammaId, double df, int p) {
+  // NB the Gaussian branch reproduces the original operation order exactly --
+  // (1/(2*gamma)) * quad, not quad/(2*gamma).  They differ in the last bits,
+  // and est="imp" (whose quadratic form has a different magnitude) shows the
+  // reassociation as ~1e-10 drift, which would break the bit-identity contract
+  // this branch has held to at every step.
+  if (df <= 0.0) return (1.0 / (2.0 * gammaId)) * quad;
+  return 0.5 * (df + (double)p) * std::log1p(quad / (gammaId * df));
+}
+
+// Additive correction to the Gaussian normalizer Ci when a t proposal is used:
+//   (p/2) log(df/2) + lgamma(df/2) - lgamma((df+p)/2)
+// -> 0 as df -> Inf (Gamma(x+a)/Gamma(x) ~ x^a), recovering the Gaussian.
+static inline double impCiTCorrection(double df, int p) {
+  if (df <= 0.0) return 0.0;
+  return 0.5 * (double)p * std::log(0.5 * df) +
+    std::lgamma(0.5 * df) - std::lgamma(0.5 * (df + (double)p));
 }
 
 // ---- SIR (sampling-importance-resampling) element ---------------------------
@@ -122,7 +188,7 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
 // every element holds the same value and this is arithmetically identical to the
 // previous scalar gamma; the per-subject controller is what makes them diverge.
 static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
-                     int cores,
+                     double df, int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
@@ -251,7 +317,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       if (!haveL[id]) continue;
       // This subject's own proposal scale (all equal under gammaMethod="global").
       double gammaId = gammaVec[id];
-      double invGamma2 = 1.0 / (2.0 * gammaId);
+      double dfId = df;   // proposal degrees of freedom; 0 = Gaussian
       arma::mat S(isample, neta);
       if (qr) {
         // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
@@ -268,13 +334,19 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
           Z = qrZ0;
         }
         for (int k = 0; k < isample; ++k) {
-          S.row(k) = (modes[id] + cholL[id] * Z.row(k).t()).t();
+          // Quasi-random t: the Sobol point supplies the Gaussian direction and
+          // a fresh uniform supplies the chi-square scale.  (A fully
+          // quasi-random t would need an extra Sobol coordinate; this keeps the
+          // low-discrepancy structure where it does the most good.)
+          double ts = impTScale(dfId);
+          S.row(k) = (modes[id] + cholL[id] * (Z.row(k).t() * ts)).t();
         }
       } else {
         for (int k = 0; k < isample; ++k) {
           arma::vec z(neta);
           for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
-          S.row(k) = (modes[id] + cholL[id] * z).t();
+          double ts = impTScale(dfId);
+          S.row(k) = (modes[id] + cholL[id] * (z * ts)).t();
         }
       }
       // NONMEM-style xi (NM7 eq. 1.73/1.75): the mean importance weight
@@ -304,7 +376,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
         arma::vec eta = S.row(k).t();
         arma::vec d = eta - modes[id];
         double qk = -impEvalJointLik(eta, id) +
-          invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
+          impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaId, dfId, neta);
         // A proposal sample whose inner solve fails (NA/NaN, even after the
         // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
         // giving it -Inf log-weight (weight 0).
@@ -324,7 +396,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       okExp[id] = 1;
       double logMeanExp = qmax + std::log(sumw / (double)isample);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
-        0.5 * logDetH[id];
+        0.5 * logDetH[id] + impCiTCorrection(dfId, neta);
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
       NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
       // NONMEM xi: mean weight normalized to the proposal center (see above).
@@ -586,20 +658,23 @@ void impComputeCov(Environment e, const arma::vec& gammaVec) {
       if (ok[id]) {
         impForceResolve(id);
         // This subject's converged proposal scale (all equal under "global").
-        double invGamma2 = 1.0 / (2.0 * gammaVec[id]);
+        // Must use the SAME proposal shape (df) as the E-step or the reweighted
+        // objective is not the one the fit converged on.
+        double dfCov = impDf();
         arma::vec q(isample); int nGood = 0;
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
           arma::vec d = eta - modes[id];
           double qk = -impEvalJointLik(eta, id) +
-            invGamma2 * arma::as_scalar(d.t() * Hs[id] * d);
+            impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], dfCov, neta);
           if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
         }
         if (nGood != 0) {
           double qmax = q.max();
           double sumw = arma::accu(arma::exp(q - qmax));
           double logMeanExp = qmax + std::log(sumw / (double)isample);
-          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id];
+          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id]
+            + impCiTCorrection(dfCov, neta);
           objBuf[id] = -2.0 * (logMeanExp + Ci);
         }
       }
@@ -778,7 +853,7 @@ void impOuter(Environment e) {
     // controller set at the end of the previous iteration (and the constructor
     // fill for iteration 0), so it must NOT be flattened here.
     if (!gammaInd) gammaVec.fill(gamma);
-    impEStep(nsub, neta, isample, gammaVec, cores, iter, impLogDetOmegaInv5(), isImp,
+    impEStep(nsub, neta, isample, gammaVec, impDf(), cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
