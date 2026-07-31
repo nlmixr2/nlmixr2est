@@ -949,8 +949,19 @@ void impOuter(Environment e) {
     bool nonNormal = impAutoNonNormal();
     for (int i = 0; i < nsub; ++i) {
       bool sparse = impNobs(i) < neta;
-      double dfI = (sparse || nonNormal) ? 4.0 : 0.0;
-      double iaI = (sparse || nonNormal) ? 0.2 : iaccept;
+      // TUNED: start at a MILD t (df 20) rather than the heaviest.  df 20 was
+      // measured to clear every failing subject on theophylline for 0.25% of
+      // the effective sample size, whereas df 4 costs far more Monte-Carlo
+      // noise for no extra tail benefit.  The k-hat escalation below drops it
+      // further only on evidence.
+      double dfI = (sparse || nonNormal) ? 20.0 : 0.0;
+      // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
+      // wide, and widening a Gaussian is the lever measured NOT to fix tails
+      // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
+      // already -1.33 (no failure at all) it cut ESS 0.549 -> 0.412 and
+      // doubled the objective noise for nothing.  It is now applied only where
+      // k-hat says the proposal is genuinely struggling (below).
+      double iaI = iaccept;
       for (int j = 0; j < Nmix; ++j) {
         dfVec[i + j * nsub] = dfI;
         iacceptVec[i + j * nsub] = iaI;
@@ -1033,8 +1044,17 @@ void impOuter(Environment e) {
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
         if (!R_finite(kh) || kh <= 0.7) continue;
-        if (dfVec[id] <= 0.0)      dfVec[id] = 8.0;   // Gaussian -> moderately heavy
-        else if (dfVec[id] > 4.0)  dfVec[id] = 4.0;   // -> heaviest used here
+        // TUNED ladder: Gaussian -> mild -> moderate -> heavy, so each step is
+        // the smallest that might work.  Heavier tails buy tail reliability at
+        // the price of Monte-Carlo noise, so overshooting costs precision.
+        if (dfVec[id] <= 0.0)       dfVec[id] = 20.0;
+        else if (dfVec[id] > 8.0)   dfVec[id] = 8.0;
+        else if (dfVec[id] > 4.0)   dfVec[id] = 4.0;
+        else if (iacceptVec[id] > 0.2) {
+          // tails already as heavy as this ladder goes and still failing: now
+          // fall back to the tutorial's IACCEPT ~ 0.2, which widens gamma
+          iacceptVec[id] = 0.2;
+        }
       }
     }
 

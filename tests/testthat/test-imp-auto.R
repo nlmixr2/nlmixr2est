@@ -84,7 +84,13 @@ nmTest({
                                    impmapControl(print = 0L, nIter = 8L, isample = 300L,
                                                  covMethod = "", auto = TRUE)))
     expect_true(all(.f$env$impDfInd > 0))          # every subject gets a t proposal
-    expect_true(all(.f$env$impIacceptInd == 0.2))  # and the tutorial's target
+    # iaccept is NOT dropped to 0.2 up front any more.  Lowering it forces gamma
+    # wide, and widening a Gaussian was measured not to fix tails while costing
+    # a lot of ESS -- on this very fixture (k-hat already -1.33, i.e. no failure
+    # at all) the blanket 0.2 cut ESS 0.549 -> 0.412 and doubled the objective
+    # noise for nothing.  It is now held in reserve for subjects whose k-hat is
+    # still failing after the df ladder is exhausted.
+    expect_true(all(.f$env$impIacceptInd == 0.4))
   })
 
   test_that("auto reallocates the sample budget without inflating it", {

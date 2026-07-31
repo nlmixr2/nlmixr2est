@@ -91,6 +91,30 @@
 #'
 #'   Per-subject values are reported in `fit$env$impDfInd`,
 #'   `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.
+#'
+#'   **Measured trade-off -- read this before turning it on.**  `auto = TRUE`
+#'   reliably improves the *tail* behaviour of the importance weights and
+#'   reliably degrades the *accuracy* of the objective.  On theophylline,
+#'   against a reference computed at `isample = 20000` (which agrees to 0.0003
+#'   across Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy):
+#'
+#'   \itemize{
+#'     \item `auto = FALSE`: max Pareto k-hat 2.41, 3.3 subjects above 0.7;
+#'       objective bias +0.002, SD 0.029, **RMSE 0.027**
+#'     \item `auto = TRUE`: max Pareto k-hat 0.70, 0.3 subjects above 0.7;
+#'       objective bias -0.025, SD 0.045, **RMSE 0.049**
+#'   }
+#'
+#'   So the tail failure k-hat reports is real -- those weights genuinely have
+#'   infinite variance -- but on these fixtures it does not materialise as
+#'   practical error, and heavier-tailed proposals cost roughly twice the RMSE
+#'   to remove it.  `k-hat > 0.7` is a statement about worst-case behaviour;
+#'   over 8-12 seeds the worst case did not occur.
+#'
+#'   The default is therefore `FALSE`.  Turn `auto` on when a rare catastrophic
+#'   draw would be worse than a small loss of precision -- a likelihood you
+#'   intend to compare across models, or a model where `fit$env$impPsisK` is
+#'   far above 0.7 rather than marginally above it.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
