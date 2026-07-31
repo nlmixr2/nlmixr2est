@@ -245,7 +245,7 @@ qrpemControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x563a82ab22b8>
+#> <bytecode: 0x564232782de0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -929,6 +929,15 @@ qrpemControl()
 #> 
 #> $gamma
 #> [1] 1
+#> 
+#> $gammaMethod
+#> [1] "auto"
+#> 
+#> $df
+#> [1] 0
+#> 
+#> $auto
+#> [1] TRUE
 #> 
 #> $iscaleMin
 #> [1] 0.1

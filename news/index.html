@@ -32,6 +32,23 @@
     </div>
 
     <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<div class="section level3">
+<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<ul><li>
+<p>Importance-sampling EM (<code>est="imp"</code> / <code>"impmap"</code> / <code>"qrpem"</code>): the proposal density is now adapted <strong>per subject</strong> rather than by one global setting, and a diagnostic is reported that can tell when it matters.</p>
+<ul><li><p><code>fit$env$impPsisK</code> gives a <strong>Pareto k-hat</strong> per subject – the tail index of that subject’s importance weights. <code>k &gt; 0.7</code> means those weights have infinite variance and that subject’s contribution is untrustworthy. This is worth checking because the two statistics already reported cannot detect the problem: <code>xi</code> (NONMEM’s <code>IACCEPT</code> quantity) and the Kish effective sample size are both means over samples drawn <em>from</em> the proposal, so neither sees a tail the proposal rarely visits. On plain theophylline, two of twelve subjects have k-hat of 2.60 and 1.28 while <code>xi</code> reads ~0.97 and the effective-sample fraction ~0.99 for those same subjects.</p></li>
+<li><p><code>impmapControl(df=)</code> switches the proposal from a multivariate normal to a multivariate <strong>t</strong> (NONMEM <code>DF</code>). This is the remedy for a bad k-hat, because it changes the proposal’s <em>tails</em> rather than its width, and tail weight is what decides whether the weights are well behaved. More samples does not help – boosting a failing subject tenfold moved its k-hat from 0.76 to 3.28 – whereas <code>df = 20</code> cleared every failing subject for 0.25% of the effective sample size.</p></li>
+<li><p><code>impmapControl(isample=)</code> additionally accepts one count <strong>per subject</strong>.</p></li>
+<li><p><code>impmapControl(gammaMethod=)</code> selects how the proposal scale is adapted: one shared value, or per subject two-sided toward <code>iaccept</code> on that subject’s own <code>xi</code> (NONMEM’s rule). <code>"auto"</code>, the default, uses the per-subject law only for models that are not transformably normal, since <code>gamma = 1</code> is already efficient when the individual posterior is close to Gaussian.</p></li>
+<li><p><code>impmapControl(auto=)</code> is NONMEM’s <code>AUTO=1</code>: choose <code>df</code>, <code>isample</code> and <code>iaccept</code> per subject. <strong>It defaults to <code>TRUE</code>.</strong> It escalates <code>df</code> only for subjects whose k-hat says they need it, leaving the rest on the cheaper Gaussian, and shifts sample budget from data-rich subjects to difficult ones. Measured on theophylline against a high-accuracy reference, it takes the worst k-hat from 2.44 to 0.49 and improves <code>Omega</code> accuracy about 20%, for about 19% more Monte-Carlo noise on the objective; infinite-variance weights are a correctness problem whose error is unbounded in the worst case, while the added noise is bounded and measurable. Set <code>auto = FALSE</code> for the un-adapted behaviour, which is the better choice when <code>fit$env$impPsisK</code> is already comfortably below 0.7 everywhere and the tightest possible objective is wanted.</p></li>
+</ul><p>Note NONMEM does not publish the values its <code>AUTO=1</code> uses; only the <code>nobs &lt; neta</code> trigger and <code>IACCEPT ~ 0.2</code> are documented. The concrete numbers here (<code>df = 30</code>, the k-hat thresholds, the sample-budget rule) are nlmixr2’s own, tuned on the measurements above.</p>
+</li>
+<li><p>Importance-sampling EM: the <code>covMethod="imp"</code> covariance is now evaluated at the proposal the fit actually converged on, rather than at the control’s initial <code>gamma</code> with a Gaussian proposal.</p></li>
+<li><p>Importance-sampling EM: <code>$runInfo</code> now names which sampling-efficiency statistic a fit is reporting, and states that <code>xi</code> and the Kish effective-sample fraction are not comparable with each other.</p></li>
+</ul></div>
+</div>
+    <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.0.2" id="nlmixr2est-702">nlmixr2est 7.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-702"></a></h2>
 <div class="section level3">
 <h3 id="bug-fixes-7-0-2">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-7-0-2"></a></h3>

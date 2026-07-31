@@ -63,6 +63,9 @@ score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
 <span>  nIter <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  mapIter <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  gamma <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  gammaMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"global"</span>, <span class="st">"individual"</span><span class="op">)</span>,</span>
+<span>  df <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  auto <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  iscaleMin <span class="op">=</span> <span class="fl">0.1</span>,</span>
 <span>  iscaleMax <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  iaccept <span class="op">=</span> <span class="fl">0.4</span>,</span>
@@ -105,7 +108,15 @@ this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
 
 <dt id="arg-isample">isample<a class="anchor" aria-label="anchor" href="#arg-isample"></a></dt>
 <dd><p>Number of importance samples drawn per subject per iteration
-(NONMEM ISAMPLE).</p></dd>
+  (NONMEM ISAMPLE).  Either a single count used for every subject, or a
+  vector of length `nsub` giving a count **per subject**.</p>
+<p>Per-subject counts are the NM7 Technical Guide's own remedy for poor
+  coverage (its derivation is Gaussian throughout and never mentions a t
+  proposal): a subject whose weights are badly behaved can be given more
+  samples without charging every other subject for them.  Note this treats
+  the symptom rather than the cause – more draws from a proposal whose
+  tails are too light still gives weights with infinite variance, which
+  `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.</p></dd>
 
 
 <dt id="arg-niter">nIter<a class="anchor" aria-label="anchor" href="#arg-niter"></a></dt>
@@ -121,6 +132,105 @@ re-centers the proposal at the MAP mode each iteration.</p></dd>
 <dd><p>Initial proposal-variance inflation factor (NONMEM ISCALE); the
 proposal covariance is `gamma` times the inverse of the inner information
 matrix at the mode.</p></dd>
+
+
+<dt id="arg-gammamethod">gammaMethod<a class="anchor" aria-label="anchor" href="#arg-gammamethod"></a></dt>
+<dd><p>How the proposal scale `gamma` is adapted during the EM.</p>
+<p>`"auto"` (default) picks per model: `"individual"` when the model is not
+  transformably normal – a general log-likelihood (`ll()`) endpoint, or a
+  count/categorical/time-to-event distribution – and `"global"` otherwise.
+  That is the split the hypothesis actually rests on: `gamma = 1` is already
+  the efficient proposal when the individual posterior is close to Gaussian,
+  so a normal model gains nothing from per-subject adaptation and would only
+  pay for it in effective sample size, while a general-likelihood model is
+  exactly where the posteriors go non-Gaussian and per-subject coverage
+  starts to vary.  The test is `all(ui$predDf$distribution == "norm")`, the
+  same line [rxode2::assertRxUiTransformNormal()] draws.  The resolved value
+  is reported in the fit's `$runInfo`.</p>
+<p>`"global"` keeps one scale shared by every subject, inflated (never
+  relaxed) only when the *mean* Kish effective-sample fraction falls below
+  `iaccept`.  It leaves `gamma` at its efficient starting value while
+  coverage is healthy, which is the right behaviour when the individual
+  posteriors are close to Gaussian.</p>
+<p>`"individual"` gives every subject its own `gamma_i` and adapts it
+  two-sided toward a target on that subject's `xi_i`, clamped to
+  `[iscaleMin, iscaleMax]`.  This follows NONMEM's *objective* – the NM7
+  Technical Guide states that `gamma` is per-subject (eq. 1.90) and is
+  "continually adjusted so that xi_i approximates IACCEPT" (note after
+  eq. 1.76), bounded by `ISCALE_MIN`/`ISCALE_MAX` – but the guide publishes
+  no update formula, so the functional form used here is nlmixr2's own.
+  Prefer this when the
+  individual posteriors are heavy-tailed or the design is heterogeneous:
+  a global scale is driven by the mean, so a handful of badly-covered
+  subjects never trip it and their likelihood and `Omega` contributions end
+  up carried by a few samples.</p>
+<p>The two modes report *different* efficiency statistics – `"individual"`
+  targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
+  quantity) while `"global"` targets the Kish effective-sample fraction.
+  These are not comparable; the fit's `$runInfo` says which is in force.</p></dd>
+
+
+<dt id="arg-df">df<a class="anchor" aria-label="anchor" href="#arg-df"></a></dt>
+<dd><p>Degrees of freedom of the importance-sampling proposal (NONMEM
+  `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
+  `&gt; 0` uses a multivariate **t** with that many degrees of freedom.</p>
+<p>This changes the proposal's SHAPE rather than its width, and that is the
+  distinction that matters.  `gamma` can only make a Gaussian proposal
+  wider; it cannot give it heavier tails.  When the target posterior has
+  heavier tails than the proposal, the importance weights have infinite
+  variance – and neither `xi` nor the Kish effective sample size can detect
+  it, because the offending mass lies where the proposal rarely lands.  The
+  Pareto k-hat diagnostic (`fit$env$impPsisK`) does detect it: `k &gt; 0.7`
+  means that subject's weights are unreliable.  A t proposal has polynomial
+  tails that dominate a Gaussian target's, which bounds the weights.</p>
+<p>NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
+  `DF` when there are fewer data points than etas, or for categorical data.
+  Small values (3-8) are heavy; large values approach the Gaussian.</p></dd>
+
+
+<dt id="arg-auto">auto<a class="anchor" aria-label="anchor" href="#arg-auto"></a></dt>
+<dd><p>NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
+  freedom, the sample count and the acceptance target **per subject** rather
+  than applying one global setting to everybody.</p>
+<p>* **`df`** – a subject whose observation count is below the number of
+    random effects, or any subject when the model is not transformably
+    normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
+    ("fewer data points than there are ETAs ... or data are categorical").
+  * **`isample`** – the total sample budget (`isample * nsub`) is
+    reallocated toward subjects whose effective-sample fraction is lowest,
+    the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
+    load-balancing, not a cost increase.  Note sample count is deliberately
+    *not* driven by Pareto k-hat: a heavy tail is not repairable by more
+    draws (see `df`).
+  * **`iaccept`** – lowered to 0.2 for the same sparse/categorical
+    subjects, per the tutorial.</p>
+<p>The concrete values (`df = 4`, the `nobs &lt; neta` test, the budget
+  reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
+  `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
+  documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
+  in lack of stochastic reproducibility", this remains seeded and
+  thread-count independent.</p>
+<p>Per-subject values are reported in `fit$env$impDfInd`,
+  `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.</p>
+<p>**Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
+  behaviour of the importance weights and the accuracy of `Omega`, at some
+  cost in Monte-Carlo noise on the objective.  On theophylline, against a
+  reference computed at `isample = 20000` (which agrees to 0.0003 across
+  Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+  seeds:</p>
+<p></p><ul><li><p>`auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
+      objective RMSE 0.0315, `Omega` RMSE 0.00247</p></li>
+<li><p>`auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
+      objective RMSE 0.0376, `Omega` RMSE 0.00198</p></li>
+</ul><p>So `auto` removes the tail failure and estimates `Omega` about 20<!-- % more -->
+  accurately, for about 19<!-- % more Monte-Carlo noise on the objective.  It is -->
+  on by default because weights with infinite variance are a correctness
+  problem – their error is unbounded in the worst case – whereas the extra
+  noise is a bounded, measurable cost.</p>
+<p>Set `auto = FALSE` to recover the previous behaviour exactly (that path
+  remains bit-identical to earlier versions), which is worth doing when you
+  want the tightest possible objective on a model whose `fit$env$impPsisK`
+  values are already comfortably below 0.7.</p></dd>
 
 
 <dt id="arg-iscalemin-iscalemax">iscaleMin, iscaleMax<a class="anchor" aria-label="anchor" href="#arg-iscalemin-iscalemax"></a></dt>
@@ -409,7 +519,7 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x563a82ab22b8&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x564232782de0&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1093,6 +1203,15 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $gamma</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $gammaMethod</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $df</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $auto</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $iscaleMin</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.1</span>

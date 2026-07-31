@@ -1,5 +1,71 @@
 # Changelog
 
+## nlmixr2est (development version)
+
+### New features
+
+- Importance-sampling EM (`est="imp"` / `"impmap"` / `"qrpem"`): the
+  proposal density is now adapted **per subject** rather than by one
+  global setting, and a diagnostic is reported that can tell when it
+  matters.
+
+  - `fit$env$impPsisK` gives a **Pareto k-hat** per subject – the tail
+    index of that subject’s importance weights. `k > 0.7` means those
+    weights have infinite variance and that subject’s contribution is
+    untrustworthy. This is worth checking because the two statistics
+    already reported cannot detect the problem: `xi` (NONMEM’s `IACCEPT`
+    quantity) and the Kish effective sample size are both means over
+    samples drawn *from* the proposal, so neither sees a tail the
+    proposal rarely visits. On plain theophylline, two of twelve
+    subjects have k-hat of 2.60 and 1.28 while `xi` reads ~0.97 and the
+    effective-sample fraction ~0.99 for those same subjects.
+
+  - `impmapControl(df=)` switches the proposal from a multivariate
+    normal to a multivariate **t** (NONMEM `DF`). This is the remedy for
+    a bad k-hat, because it changes the proposal’s *tails* rather than
+    its width, and tail weight is what decides whether the weights are
+    well behaved. More samples does not help – boosting a failing
+    subject tenfold moved its k-hat from 0.76 to 3.28 – whereas
+    `df = 20` cleared every failing subject for 0.25% of the effective
+    sample size.
+
+  - `impmapControl(isample=)` additionally accepts one count **per
+    subject**.
+
+  - `impmapControl(gammaMethod=)` selects how the proposal scale is
+    adapted: one shared value, or per subject two-sided toward `iaccept`
+    on that subject’s own `xi` (NONMEM’s rule). `"auto"`, the default,
+    uses the per-subject law only for models that are not transformably
+    normal, since `gamma = 1` is already efficient when the individual
+    posterior is close to Gaussian.
+
+  - `impmapControl(auto=)` is NONMEM’s `AUTO=1`: choose `df`, `isample`
+    and `iaccept` per subject. **It defaults to `TRUE`.** It escalates
+    `df` only for subjects whose k-hat says they need it, leaving the
+    rest on the cheaper Gaussian, and shifts sample budget from
+    data-rich subjects to difficult ones. Measured on theophylline
+    against a high-accuracy reference, it takes the worst k-hat from
+    2.44 to 0.49 and improves `Omega` accuracy about 20%, for about 19%
+    more Monte-Carlo noise on the objective; infinite-variance weights
+    are a correctness problem whose error is unbounded in the worst
+    case, while the added noise is bounded and measurable. Set
+    `auto = FALSE` for the un-adapted behaviour, which is the better
+    choice when `fit$env$impPsisK` is already comfortably below 0.7
+    everywhere and the tightest possible objective is wanted.
+
+  Note NONMEM does not publish the values its `AUTO=1` uses; only the
+  `nobs < neta` trigger and `IACCEPT ~ 0.2` are documented. The concrete
+  numbers here (`df = 30`, the k-hat thresholds, the sample-budget rule)
+  are nlmixr2’s own, tuned on the measurements above.
+
+- Importance-sampling EM: the `covMethod="imp"` covariance is now
+  evaluated at the proposal the fit actually converged on, rather than
+  at the control’s initial `gamma` with a Gaussian proposal.
+
+- Importance-sampling EM: `$runInfo` now names which sampling-efficiency
+  statistic a fit is reporting, and states that `xi` and the Kish
+  effective-sample fraction are not comparable with each other.
+
 ## nlmixr2est 7.0.2
 
 ### Bug fixes
