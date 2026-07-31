@@ -36,6 +36,12 @@ std::string impDiagXform();
 
 // Convergence controller / proposal-scale adaptation controls (from impmapControl):
 double impIaccept();      // target effective-sample fraction that gamma adapts toward
+double impDf();           // proposal degrees of freedom (NONMEM DF); 0 = Gaussian
+void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = use the scalar)
+int impNobs(int id);      // observation count for subject id (AUTO's sparsity test)
+bool impAutoEnabled();    // AUTO=1 equivalent: per-subject df / isample / iaccept
+bool impAutoNonNormal();  // model not transformably normal (tutorial's "categorical" trigger)
+bool impGammaIndividual();// TRUE for gammaMethod="individual" (per-subject NONMEM gamma_i)
 double impIscaleMin();    // lower bound for the adapted gamma
 double impIscaleMax();    // upper bound for the adapted gamma
 int impNconvWindow();     // trailing-iteration window for the convergence check
@@ -159,7 +165,8 @@ void impUpdateStructThetas(const arma::vec& step);
 // Monte-Carlo observed-information covariance for the estimated thetas: FD
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
-void impComputeCov(Rcpp::Environment e);
+void impComputeCov(Rcpp::Environment e, const arma::vec& gammaVec,
+                   const arma::vec& dfVec);
 bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"

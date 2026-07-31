@@ -11,6 +11,9 @@ impmapControl(
   nIter = 100L,
   mapIter = 1L,
   gamma = 1,
+  gammaMethod = c("auto", "global", "individual"),
+  df = 0,
+  auto = TRUE,
   iscaleMin = 0.1,
   iscaleMax = 10,
   iaccept = 0.4,
@@ -44,7 +47,16 @@ this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
 \item{...}{Parameters used in the default `foceiControl()`}
 
 \item{isample}{Number of importance samples drawn per subject per iteration
-(NONMEM ISAMPLE).}
+  (NONMEM ISAMPLE).  Either a single count used for every subject, or a
+  vector of length `nsub` giving a count **per subject**.
+
+  Per-subject counts are the NM7 Technical Guide's own remedy for poor
+  coverage (its derivation is Gaussian throughout and never mentions a t
+  proposal): a subject whose weights are badly behaved can be given more
+  samples without charging every other subject for them.  Note this treats
+  the symptom rather than the cause -- more draws from a proposal whose
+  tails are too light still gives weights with infinite variance, which
+  `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.}
 
 \item{nIter}{Maximum number of importance-sampling EM iterations.}
 
@@ -54,6 +66,114 @@ re-centers the proposal at the MAP mode each iteration.}
 \item{gamma}{Initial proposal-variance inflation factor (NONMEM ISCALE); the
 proposal covariance is `gamma` times the inverse of the inner information
 matrix at the mode.}
+
+\item{gammaMethod}{How the proposal scale `gamma` is adapted during the EM.
+
+  `"auto"` (default) picks per model: `"individual"` when the model is not
+  transformably normal -- a general log-likelihood (`ll()`) endpoint, or a
+  count/categorical/time-to-event distribution -- and `"global"` otherwise.
+  That is the split the hypothesis actually rests on: `gamma = 1` is already
+  the efficient proposal when the individual posterior is close to Gaussian,
+  so a normal model gains nothing from per-subject adaptation and would only
+  pay for it in effective sample size, while a general-likelihood model is
+  exactly where the posteriors go non-Gaussian and per-subject coverage
+  starts to vary.  The test is `all(ui$predDf$distribution == "norm")`, the
+  same line [rxode2::assertRxUiTransformNormal()] draws.  The resolved value
+  is reported in the fit's `$runInfo`.
+
+  `"global"` keeps one scale shared by every subject, inflated (never
+  relaxed) only when the *mean* Kish effective-sample fraction falls below
+  `iaccept`.  It leaves `gamma` at its efficient starting value while
+  coverage is healthy, which is the right behaviour when the individual
+  posteriors are close to Gaussian.
+
+  `"individual"` gives every subject its own `gamma_i` and adapts it
+  two-sided toward a target on that subject's `xi_i`, clamped to
+  `[iscaleMin, iscaleMax]`.  This follows NONMEM's *objective* -- the NM7
+  Technical Guide states that `gamma` is per-subject (eq. 1.90) and is
+  "continually adjusted so that xi_i approximates IACCEPT" (note after
+  eq. 1.76), bounded by `ISCALE_MIN`/`ISCALE_MAX` -- but the guide publishes
+  no update formula, so the functional form used here is nlmixr2's own.
+  Prefer this when the
+  individual posteriors are heavy-tailed or the design is heterogeneous:
+  a global scale is driven by the mean, so a handful of badly-covered
+  subjects never trip it and their likelihood and `Omega` contributions end
+  up carried by a few samples.
+
+  The two modes report *different* efficiency statistics -- `"individual"`
+  targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
+  quantity) while `"global"` targets the Kish effective-sample fraction.
+  These are not comparable; the fit's `$runInfo` says which is in force.}
+
+\item{df}{Degrees of freedom of the importance-sampling proposal (NONMEM
+  `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
+  `> 0` uses a multivariate **t** with that many degrees of freedom.
+
+  This changes the proposal's SHAPE rather than its width, and that is the
+  distinction that matters.  `gamma` can only make a Gaussian proposal
+  wider; it cannot give it heavier tails.  When the target posterior has
+  heavier tails than the proposal, the importance weights have infinite
+  variance -- and neither `xi` nor the Kish effective sample size can detect
+  it, because the offending mass lies where the proposal rarely lands.  The
+  Pareto k-hat diagnostic (`fit$env$impPsisK`) does detect it: `k > 0.7`
+  means that subject's weights are unreliable.  A t proposal has polynomial
+  tails that dominate a Gaussian target's, which bounds the weights.
+
+  NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
+  `DF` when there are fewer data points than etas, or for categorical data.
+  Small values (3-8) are heavy; large values approach the Gaussian.}
+
+\item{auto}{NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
+  freedom, the sample count and the acceptance target **per subject** rather
+  than applying one global setting to everybody.
+
+  * **`df`** -- a subject whose observation count is below the number of
+    random effects, or any subject when the model is not transformably
+    normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
+    ("fewer data points than there are ETAs ... or data are categorical").
+  * **`isample`** -- the total sample budget (`isample * nsub`) is
+    reallocated toward subjects whose effective-sample fraction is lowest,
+    the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
+    load-balancing, not a cost increase.  Note sample count is deliberately
+    *not* driven by Pareto k-hat: a heavy tail is not repairable by more
+    draws (see `df`).
+  * **`iaccept`** -- lowered to 0.2 for the same sparse/categorical
+    subjects, per the tutorial.
+
+  The concrete values (`df = 4`, the `nobs < neta` test, the budget
+  reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
+  `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
+  documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
+  in lack of stochastic reproducibility", this remains seeded and
+  thread-count independent.
+
+  Per-subject values are reported in `fit$env$impDfInd`,
+  `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.
+
+  **Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
+  behaviour of the importance weights and the accuracy of `Omega`, at some
+  cost in Monte-Carlo noise on the objective.  On theophylline, against a
+  reference computed at `isample = 20000` (which agrees to 0.0003 across
+  Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+  seeds:
+
+  \itemize{
+    \item `auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
+      objective RMSE 0.0315, `Omega` RMSE 0.00247
+    \item `auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
+      objective RMSE 0.0376, `Omega` RMSE 0.00198
+  }
+
+  So `auto` removes the tail failure and estimates `Omega` about 20% more
+  accurately, for about 19% more Monte-Carlo noise on the objective.  It is
+  on by default because weights with infinite variance are a correctness
+  problem -- their error is unbounded in the worst case -- whereas the extra
+  noise is a bounded, measurable cost.
+
+  Set `auto = FALSE` to recover the previous behaviour exactly (that path
+  remains bit-identical to earlier versions), which is worth doing when you
+  want the tightest possible objective on a model whose `fit$env$impPsisK`
+  values are already comfortably below 0.7.}
 
 \item{iscaleMin, iscaleMax}{Lower/upper bounds for the adapted `gamma`
 (NONMEM ISCALE_MIN / ISCALE_MAX).}

@@ -9,6 +9,7 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
+                           "gammaMethod", "gammaMethodUser", "df", "auto", "autoNonNormal",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -31,13 +32,127 @@
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param isample Number of importance samples drawn per subject per iteration
-#'   (NONMEM ISAMPLE).
+#'   (NONMEM ISAMPLE).  Either a single count used for every subject, or a
+#'   vector of length `nsub` giving a count **per subject**.
+#'
+#'   Per-subject counts are the NM7 Technical Guide's own remedy for poor
+#'   coverage (its derivation is Gaussian throughout and never mentions a t
+#'   proposal): a subject whose weights are badly behaved can be given more
+#'   samples without charging every other subject for them.  Note this treats
+#'   the symptom rather than the cause -- more draws from a proposal whose
+#'   tails are too light still gives weights with infinite variance, which
+#'   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.
 #' @param nIter Maximum number of importance-sampling EM iterations.
 #' @param mapIter Number of MAP re-centering iterations per EM step; `> 0`
 #'   re-centers the proposal at the MAP mode each iteration.
 #' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
+#' @param df Degrees of freedom of the importance-sampling proposal (NONMEM
+#'   `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
+#'   `> 0` uses a multivariate **t** with that many degrees of freedom.
+#'
+#'   This changes the proposal's SHAPE rather than its width, and that is the
+#'   distinction that matters.  `gamma` can only make a Gaussian proposal
+#'   wider; it cannot give it heavier tails.  When the target posterior has
+#'   heavier tails than the proposal, the importance weights have infinite
+#'   variance -- and neither `xi` nor the Kish effective sample size can detect
+#'   it, because the offending mass lies where the proposal rarely lands.  The
+#'   Pareto k-hat diagnostic (`fit$env$impPsisK`) does detect it: `k > 0.7`
+#'   means that subject's weights are unreliable.  A t proposal has polynomial
+#'   tails that dominate a Gaussian target's, which bounds the weights.
+#'
+#'   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
+#'   `DF` when there are fewer data points than etas, or for categorical data.
+#'   Small values (3-8) are heavy; large values approach the Gaussian.
+#' @param auto NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
+#'   freedom, the sample count and the acceptance target **per subject** rather
+#'   than applying one global setting to everybody.
+#'
+#'   * **`df`** -- a subject whose observation count is below the number of
+#'     random effects, or any subject when the model is not transformably
+#'     normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
+#'     ("fewer data points than there are ETAs ... or data are categorical").
+#'   * **`isample`** -- the total sample budget (`isample * nsub`) is
+#'     reallocated toward subjects whose effective-sample fraction is lowest,
+#'     the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
+#'     load-balancing, not a cost increase.  Note sample count is deliberately
+#'     *not* driven by Pareto k-hat: a heavy tail is not repairable by more
+#'     draws (see `df`).
+#'   * **`iaccept`** -- lowered to 0.2 for the same sparse/categorical
+#'     subjects, per the tutorial.
+#'
+#'   The concrete values (`df = 4`, the `nobs < neta` test, the budget
+#'   reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
+#'   `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
+#'   documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
+#'   in lack of stochastic reproducibility", this remains seeded and
+#'   thread-count independent.
+#'
+#'   Per-subject values are reported in `fit$env$impDfInd`,
+#'   `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.
+#'
+#'   **Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
+#'   behaviour of the importance weights and the accuracy of `Omega`, at some
+#'   cost in Monte-Carlo noise on the objective.  On theophylline, against a
+#'   reference computed at `isample = 20000` (which agrees to 0.0003 across
+#'   Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+#'   seeds:
+#'
+#'   \itemize{
+#'     \item `auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
+#'       objective RMSE 0.0315, `Omega` RMSE 0.00247
+#'     \item `auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
+#'       objective RMSE 0.0376, `Omega` RMSE 0.00198
+#'   }
+#'
+#'   So `auto` removes the tail failure and estimates `Omega` about 20% more
+#'   accurately, for about 19% more Monte-Carlo noise on the objective.  It is
+#'   on by default because weights with infinite variance are a correctness
+#'   problem -- their error is unbounded in the worst case -- whereas the extra
+#'   noise is a bounded, measurable cost.
+#'
+#'   Set `auto = FALSE` to recover the previous behaviour exactly (that path
+#'   remains bit-identical to earlier versions), which is worth doing when you
+#'   want the tightest possible objective on a model whose `fit$env$impPsisK`
+#'   values are already comfortably below 0.7.
+#' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
+#'
+#'   `"auto"` (default) picks per model: `"individual"` when the model is not
+#'   transformably normal -- a general log-likelihood (`ll()`) endpoint, or a
+#'   count/categorical/time-to-event distribution -- and `"global"` otherwise.
+#'   That is the split the hypothesis actually rests on: `gamma = 1` is already
+#'   the efficient proposal when the individual posterior is close to Gaussian,
+#'   so a normal model gains nothing from per-subject adaptation and would only
+#'   pay for it in effective sample size, while a general-likelihood model is
+#'   exactly where the posteriors go non-Gaussian and per-subject coverage
+#'   starts to vary.  The test is `all(ui$predDf$distribution == "norm")`, the
+#'   same line [rxode2::assertRxUiTransformNormal()] draws.  The resolved value
+#'   is reported in the fit's `$runInfo`.
+#'
+#'   `"global"` keeps one scale shared by every subject, inflated (never
+#'   relaxed) only when the *mean* Kish effective-sample fraction falls below
+#'   `iaccept`.  It leaves `gamma` at its efficient starting value while
+#'   coverage is healthy, which is the right behaviour when the individual
+#'   posteriors are close to Gaussian.
+#'
+#'   `"individual"` gives every subject its own `gamma_i` and adapts it
+#'   two-sided toward a target on that subject's `xi_i`, clamped to
+#'   `[iscaleMin, iscaleMax]`.  This follows NONMEM's *objective* -- the NM7
+#'   Technical Guide states that `gamma` is per-subject (eq. 1.90) and is
+#'   "continually adjusted so that xi_i approximates IACCEPT" (note after
+#'   eq. 1.76), bounded by `ISCALE_MIN`/`ISCALE_MAX` -- but the guide publishes
+#'   no update formula, so the functional form used here is nlmixr2's own.
+#'   Prefer this when the
+#'   individual posteriors are heavy-tailed or the design is heterogeneous:
+#'   a global scale is driven by the mean, so a handful of badly-covered
+#'   subjects never trip it and their likelihood and `Omega` contributions end
+#'   up carried by a few samples.
+#'
+#'   The two modes report *different* efficiency statistics -- `"individual"`
+#'   targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
+#'   quantity) while `"global"` targets the Kish effective-sample fraction.
+#'   These are not comparable; the fit's `$runInfo` says which is in force.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
 #'   (NONMEM ISCALE_MIN / ISCALE_MAX).
 #' @param iaccept Minimum importance-sampling effective-sample fraction
@@ -94,6 +209,9 @@ impmapControl <- function(sigdig=4,
                           nIter=100L,
                           mapIter=1L,
                           gamma=1.0,
+                          gammaMethod=c("auto", "global", "individual"),
+                          df=0,
+                          auto=TRUE,
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -108,13 +226,23 @@ impmapControl <- function(sigdig=4,
                           sirSample=NULL,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
+  gammaMethod <- match.arg(gammaMethod)
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
-  checkmate::assertIntegerish(isample, any.missing=FALSE, len=1, lower=1, .var.name="isample")
+  # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
+  # ISAMPLE): a badly covered subject can buy more samples without charging
+  # every other subject for them.
+  checkmate::assertIntegerish(isample, any.missing=FALSE, min.len=1, lower=1,
+                              .var.name="isample")
   checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
-  .isample <- as.integer(isample)
+  .isampleAll <- as.integer(isample)
+  # A per-subject vector must be exactly nsub long.  nsub is not known here, so
+  # the length is checked at fit time in the kernel (it used to fall back to a
+  # uniform max() and ignore a wrong-length vector without a word).
+  # the scalar used for sizing / sirSample defaults / reporting is the largest
+  .isample <- max(.isampleAll)
   if (is.null(sirSample)) {
     .sirSample <- max(25L, as.integer(ceiling(.isample / 10)))
   } else {
@@ -133,6 +261,12 @@ impmapControl <- function(sigdig=4,
   .dots <- list(...)
   .impCov <- isTRUE(.dots$impCov)   # may already be set on a round-tripped control
   .dots$impCov <- NULL              # internal field; do not forward to foceiControl
+  # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
+  # records what the user asked for before "auto" was resolved).  A control that
+  # has been round-tripped therefore carries it; keep it, but do not forward it
+  # to foceiControl, which has no such argument.
+  .gammaMethodUser <- .dots$gammaMethodUser
+  .dots$gammaMethodUser <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -150,10 +284,15 @@ impmapControl <- function(sigdig=4,
                       c(list(sigdig=sigdig), .dots,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
-  .control$isample <- as.integer(isample)
+  .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
+  .control$gammaMethod <- gammaMethod
+  .control$df <- as.double(df)
+  checkmate::assertLogical(auto, any.missing=FALSE, len=1, .var.name="auto")
+  .control$auto <- auto
+  if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
   .control$iaccept <- as.double(iaccept)
@@ -236,6 +375,99 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .impmapControlToFoceiControl(.env, assign=FALSE)
 }
 
+#' Resolve gammaMethod="auto" against the model
+#'
+#' `"individual"` when the model is NOT transformably normal -- a general
+#' log-likelihood (`ll()`) endpoint, or a count / categorical / time-to-event
+#' distribution -- and `"global"` otherwise.
+#'
+#' The rationale is the hypothesis the per-subject controller rests on: the
+#' proposal is the Laplace approximation, so `gamma = 1` is already efficient
+#' when the individual posterior is near-Gaussian.  A normal model therefore
+#' gains nothing from per-subject adaptation and pays for it in effective
+#' sample size (measured on theophylline: ESS 0.95 -> 0.70 for identical
+#' estimates), whereas a general-likelihood model is where the posteriors are
+#' genuinely non-Gaussian and per-subject coverage varies.
+#'
+#' The test is `all(predDf$distribution == "norm")`, the same line
+#' `rxode2::assertRxUiTransformNormal()` draws between transformably-normal and
+#' general likelihoods.
+#'
+#' @param gammaMethod User setting: "auto", "global" or "individual".
+#' @param ui rxode2 ui object
+#' @return "global" or "individual"
+#' @noRd
+.impmapResolveGammaMethod <- function(gammaMethod, ui) {
+  if (!identical(gammaMethod, "auto")) return(gammaMethod)
+  .dist <- tryCatch(ui$predDf$distribution, error=function(e) NULL)
+  # No usable predDf (should not happen for a fittable model): fall back to the
+  # conservative choice, which is the historical behaviour.  Same for an NA
+  # distribution -- `all(NA == "x")` is NA, which would error an `if`.
+  if (is.null(.dist) || length(.dist) == 0L) return("global")
+  .dist <- as.character(.dist)
+  if (anyNA(.dist)) return("global")
+  # Canonicalize before comparing: rxode2 spells the Gaussian family both
+  # "norm" and "dnorm" and treats them as identical (rxPreferredDistributionName
+  # maps both to "dnorm"), so a literal == "norm" test would send an otherwise
+  # ordinary normal model down the "individual" path.  That matters because
+  # `linCmt() ~ add(add.sd) + dnorm()` -- the exact-likelihood (Laplace) form of
+  # a plain normal endpoint -- reports "dnorm" while having a posterior every
+  # bit as Gaussian as the add() form, so it should not pay for per-subject
+  # adaptation.
+  #
+  # Note lognormal / boxCox / yeoJohnson residuals are carried in
+  # predDf$transform with distribution still "norm", so they canonicalize to
+  # "dnorm" here and correctly count as Gaussian.
+  .canon <- tryCatch(rxode2::rxPreferredDistributionName(.dist),
+                     error=function(e) .dist)
+  if (all(.canon == "dnorm")) "global" else "individual"
+}
+
+#' Build the $runInfo note naming the efficiency statistic in force
+#'
+#' Both statistics are always computed and stashed on the fit -- NONMEM-style
+#' `xi` in `$impXiTrace`/`$impXi` and the Kish effective-sample fraction in
+#' `$impNeffFrac`/`$impNeff` -- but only one of them drives the proposal-scale
+#' adaptation, and they are NOT the same quantity even though both are governed
+#' by `iaccept`.  Measured on theophylline at gamma = 1, mean xi = 1.009 while
+#' the mean Kish fraction = 0.997; at gamma = 4 they read 0.503 and 0.667.
+#' Reading one as if it were the other, or comparing a "global" fit's number
+#' against an "individual" fit's, is a live mistake, so every fit says which is
+#' which.
+#'
+#' @param resolved Resolved gammaMethod: "global" or "individual".
+#' @param user What the user asked for ("auto", "global", "individual").
+#' @param iaccept Target/floor value.
+#' @return A single-line character message.
+#' @noRd
+.impmapGammaRunInfo <- function(resolved, user, iaccept) {
+  .why <- if (identical(user, "auto")) {
+    if (identical(resolved, "individual")) {
+      " (auto: not every endpoint is Gaussian)"
+    } else {
+      " (auto: all endpoints are Gaussian)"
+    }
+  } else {
+    ""
+  }
+  if (identical(resolved, "individual")) {
+    paste0("gammaMethod=\"individual\"", .why,
+           ": the proposal scale is adapted per subject toward xi=", iaccept,
+           " (NONMEM IACCEPT).  Sampling efficiency for this fit is xi",
+           " ($impXi/$impXiTrace); the Kish effective-sample fraction",
+           " ($impNeffFrac) is a DIFFERENT statistic and the two are not",
+           " comparable -- nor is xi comparable across gammaMethod settings.")
+  } else {
+    paste0("gammaMethod=\"global\"", .why,
+           ": one shared proposal scale, adapted only when the mean Kish",
+           " effective-sample fraction falls below ", iaccept,
+           ".  Sampling efficiency for this fit is that fraction",
+           " ($impNeff/$impNeffFrac); NONMEM-style xi ($impXiTrace) is also",
+           " reported but is a DIFFERENT statistic and the two are not",
+           " comparable.")
+  }
+}
+
 #' Install the impmap control into the ui
 #'
 #' @param env Environment with ui in it
@@ -273,6 +505,30 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .covMethodUser <- .control$covMethod  # restored on the fit env control below
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L
+  # Resolve gammaMethod="auto" here, where the ui (and therefore predDf) is in
+  # scope; the C++ kernel only ever sees a concrete "global"/"individual".
+  #
+  # Resolve from the USER's original choice, not from whatever this control
+  # currently holds: resolution overwrites gammaMethod in place, so a control
+  # taken off a finished fit (fit$env$impmapControl) and reused on a different
+  # model would otherwise carry the previous model's resolved value and never
+  # re-resolve -- an "auto" control from a log-likelihood fit would silently
+  # pin a normal model to "individual".  Keying off gammaMethodUser makes
+  # resolution idempotent and re-runnable.
+  .gmUser <- .control$gammaMethodUser
+  if (is.null(.gmUser)) .gmUser <- .control$gammaMethod
+  .control$gammaMethodUser <- .gmUser                # kept for $runInfo
+  .control$gammaMethod <- .impmapResolveGammaMethod(.gmUser, ui)
+  # AUTO's "or data are categorical" trigger: reuse the same transformably-normal
+  # test the gammaMethod resolution uses, so there is one notion of model class.
+  .control$autoNonNormal <- identical(.impmapResolveGammaMethod("auto", ui), "individual")
+  # Say which efficiency statistic this fit's number actually is.  Both are
+  # always stashed but they are not the same quantity, and only one drives the
+  # adaptation -- warning() here is the established route onto $runInfo
+  # (collected in nlmixr2Est.R and printed under "Information about run").
+  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser,
+                              .control$iaccept),
+          call.=FALSE)
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they
@@ -316,6 +572,14 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
+  # stashed final-iteration weights so it costs nothing during the EM.
+  tryCatch({
+    .fenv <- .fit$env
+    if (is.environment(.fenv)) {
+      assign("impPsisK", .impPsisKAll(.fenv), envir=.fenv)
+    }
+  }, error=function(e) NULL)
   .fit
 }
 
