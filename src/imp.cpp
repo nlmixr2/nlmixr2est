@@ -875,6 +875,10 @@ void impOuter(Environment e) {
   // which is impossible.
   arma::ivec isampleUsed(nExp); isampleUsed.fill(isample);
   arma::vec dfUsed(nExp); dfUsed.fill(impDf());   // df actually used last E-step
+  // Same for gamma.  The controllers all mutate their vectors AFTER the E-step,
+  // for the next iteration, so anything consuming "the converged proposal" must
+  // read the snapshot rather than the live vector -- including impComputeCov.
+  arma::vec gammaUsed(nExp); gammaUsed.fill(gamma);
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
@@ -1030,6 +1034,7 @@ void impOuter(Environment e) {
     if (!gammaInd) gammaVec.fill(gamma);
     isampleUsed = isampleVec;
     dfUsed = dfVec;
+    gammaUsed = gammaVec;
     impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
@@ -1393,7 +1398,11 @@ void impOuter(Environment e) {
   // Monte-Carlo observed-information covariance (theta block) at the converged
   // estimate, before the inner neqOverride is cleared (the inner solves use it).
   // Selected by impmapControl(covMethod="imp") (the default).
-  if (impCovEnabled()) impComputeCov(e, gammaVec, dfVec);
+  // Snapshots, not the live vectors: the adaptation steps have already moved
+  // gammaVec/dfVec on for an iteration that never ran, so passing them would
+  // evaluate the covariance at a proposal the fit never actually used (and
+  // disagree with the reported impDfInd / impGammaInd).
+  if (impCovEnabled()) impComputeCov(e, gammaUsed, dfUsed);
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
@@ -1408,7 +1417,7 @@ void impOuter(Environment e) {
   e["impXi"]       = wrap(Xi);
   // Per-expanded-subject proposal scales actually used, and which controller
   // produced them.  Under "global" every element equals impGammaUsed.
-  e["impGammaInd"] = wrap(gammaVec);
+  e["impGammaInd"] = wrap(gammaUsed);
   e["impGammaMethod"] = gammaInd ? "individual" : "global";
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
