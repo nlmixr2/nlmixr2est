@@ -1058,3 +1058,23 @@ Remember `src/init.c` is MANUAL: a new `[[Rcpp::export]]` needs BOTH
 
 Gate: `g` bit-identical to the current path on theo_sd, the multiple-endpoint model and
 a censored model, plus the existing 1-vs-4-thread identity.
+
+### Phase 8E open decision: which solve tolerance the FD runs at
+
+`OdeSolveTolGuard _tolGuard(tol)` in `vaeOuterSolve_` was introduced on THIS branch
+(f65b73a5a), and its scope extends over the per-individual FD block that was added
+later.  So the FD's `innerOpt1()` re-optimizations run at the ANALYTIC solve tolerance
+(~1e-10), not the fit's.
+
+That is a scope accident, not a decision, and it is not what was measured: every
+accuracy number recorded above came from calling `foceiOuterFdInd_` directly from R,
+where no tol guard is active.  The shipped path would differ from the gated path.
+
+Decide it explicitly during the port, and measure both:
+
+* the gradient should be of the objective the OPTIMIZER minimizes, which argues for the
+  fit's tolerance;
+* but the analytic gradient it is being substituted into is computed at 1e-10, which
+  argues for consistency with its neighbours in the same sum.
+
+Whichever is chosen, the FD must be gated at the tolerance it will actually run at.
