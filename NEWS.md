@@ -2,6 +2,26 @@
 
 ## New features
 
+- The default `sigdig` is now `3` (was `4`) for every estimation method except
+  `est="nls"`.  `sigdig` drives the ODE solver tolerances as `rtol = 10^-sigdig`
+  and `atol = 10^(-sigdig-3)`, so the default solve is now `rtol = 1e-3`,
+  `atol = 1e-6` -- what most open-source ODE solvers default to, and still
+  tighter than the precision the optimizer targets.  Fits are faster.  Pass
+  `sigdig = 4` to any control function to restore the previous tolerances.
+
+    - `est="nls"` keeps `sigdig = 4`: its Levenberg-Marquardt step is sensitive
+      to solver noise, and it already requests a solve three orders tighter than
+      the optimizer target.
+
+    - The optimizer tolerances that are tuned values rather than the
+      `10^-sigdig` formula (`est="nlm"`, `est="nlme"`) stay anchored at
+      `sigdig = 4`, so at the new default they also sit one order looser.
+
+    - **Printed parameter tables now show 3 significant digits** rather than 4.
+      `sigdigTable` follows `sigdig` when it is not set explicitly, and that
+      coupling is deliberate: a fit converged to about 3 digits should not
+      report 4.  Set `sigdigTable = 4` to keep the previous output.
+
 - Importance-sampling EM (`est="imp"` / `"impmap"` / `"qrpem"`): the proposal
   density is now adapted **per subject** rather than by one global setting, and
   a diagnostic is reported that can tell when it matters.

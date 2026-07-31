@@ -187,10 +187,15 @@ getValidNlmixrCtl.default <- function(control) {
 
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'
-#' Keeps the method's tuned default at `sigdig = 4` and tightens/loosens it by one
-#' order of magnitude per significant digit (`default * 10^(4 - sigdig)`).  Used
-#' where a method's optimizer default should be preserved at the default `sigdig`
-#' rather than replaced by the FOCEi formula (nlm, nls, nlme).
+#' Reproduces the method's historic tuned tolerance at `sigdig = 4` and
+#' tightens/loosens it by one order of magnitude per significant digit
+#' (`default * 10^(4 - sigdig)`).  Used where a method's optimizer default is a
+#' tuned value rather than the FOCEi `10^-sigdig` formula (nlm, nls, nlme).
+#'
+#' The anchor is 4, NOT the package default `sigdig` (3): at the default these
+#' tolerances therefore sit one order looser than their historic values, which is
+#' the intent -- `est="nls"` opts out by keeping `sigdig = 4` as ITS default,
+#' because its LM step is sensitive to solver noise.
 #' @param default the tolerance at `sigdig = 4`
 #' @param sigdig optimization significant digits
 #' @return the scaled tolerance

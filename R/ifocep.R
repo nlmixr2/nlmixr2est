@@ -21,7 +21,7 @@
 #' @examples
 #'
 #' ifocepControl()
-ifocepControl <- function(sigdig=4,
+ifocepControl <- function(sigdig=3,
                              ...,
                              interaction=FALSE,
                              muModel=c("irls", "lin", "none"),

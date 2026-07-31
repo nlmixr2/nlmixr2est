@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 4,
+  sigdig = 3,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -122,6 +122,9 @@ foceiControl(
   etaMat = NULL,
   repeatGillMax = 1,
   stickyRecalcN = 4,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
   indTolRelax = TRUE,
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
@@ -157,8 +160,8 @@ tolerances match the main solve (the outer gradient and covariance are built
 from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
 order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{...}{Ignored parameters}
 
@@ -349,7 +352,8 @@ suppressed).}
 
 \item{lbfgsFactr}{Convergence factor for "L-BFGS-B": converges when the
 objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-Default `1e10` (~4 sigdigs, \code{2e-6}).}
+Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
+the objective reduction target IS \code{10^-sigdig}.}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
@@ -675,6 +679,22 @@ parameter.}
 
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
+
+\item{outerMaxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances for a single subject and retry when the analytic
+outer (augmented sensitivity) solve fails.  Tracked separately
+from `maxOdeRecalc`, which governs the inner problem.  A subject
+that solves after loosening still contributes an analytic
+gradient instead of dropping the whole gradient to finite
+differences.}
+
+\item{outerOdeRecalcFactor}{The factor the atol/rtol is loosened by
+on each analytic outer retry; the outer counterpart of
+`odeRecalcFactor`.}
+
+\item{outerStickyRecalcN}{The number of bad analytic outer solves
+for a subject before its loosened tolerance is kept for the rest
+of the problem; the outer counterpart of `stickyRecalcN`.}
 
 \item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
 solve produced NaN/Inf have their tolerances relaxed, and the

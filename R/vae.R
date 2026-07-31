@@ -459,7 +459,7 @@ vaeControl <- function(seed = 42L,
                        compress = FALSE,
                        adjObf = TRUE,
                        ci = 0.95,
-                       sigdig = 4,
+                       sigdig = 3,
                        sigdigTable = NULL,
                        rhoend = NULL,
 
@@ -600,7 +600,7 @@ vaeControl <- function(seed = 42L,
                                                iterPrintControl = .xtra$iterPrintControl)
 
   # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
-  # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
+  # regress M-step; FOCEi mechanism from sigdig, else the historic 1e-4
   if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   ## Convergence tolerance of the RESIDUAL optimizer.  Derived from `sigdig` the

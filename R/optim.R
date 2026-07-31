@@ -168,7 +168,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          sensMethod = c("default", "forward", "adjoint"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "optim", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)

@@ -223,7 +223,7 @@ emviControl <- function(seed = 42L,
                         compress = FALSE,
                         adjObf = TRUE,
                         ci = 0.95,
-                        sigdig = 4,
+                        sigdig = 3,
                         sigdigTable = NULL,
 
                         stickyRecalcN = 4,

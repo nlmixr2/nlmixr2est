@@ -117,7 +117,7 @@ nlmControl <- function(typsize = NULL,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=FALSE,
                        covMethod=c("r", "nlm", ""),
-                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                       adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)

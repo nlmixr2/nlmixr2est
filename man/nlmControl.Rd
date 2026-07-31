@@ -50,7 +50,7 @@ nlmControl(
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...
@@ -267,8 +267,8 @@ tolerances match the main solve (the outer gradient and covariance are built
 from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
 order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the

@@ -751,13 +751,14 @@
 }
 
 #' Augmented-solve tolerance for the SEs: `covSolveTol` if the user set it, else
-#' tightened from `sigdig` (default 1e-10).
+#' tightened from `sigdig` (1e-9 at the default sigdig = 3).
 #' @noRd
 .foceiAnalyticSolveTol <- function(ui) {
   .user <- tryCatch(rxode2::rxGetControl(ui, "covSolveTol", NULL), error = function(e) NULL)
   if (!is.null(.user) && is.finite(.user) && .user > 0) return(.user)
-  .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 4)))
-  if (!is.finite(.sd)) .sd <- 4
+  # fallback tracks the package default sigdig, not a frozen literal
+  .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 3)))
+  if (!is.finite(.sd)) .sd <- 3
   max(1e-14, min(1e-8, 10^-(.sd + 6)))
 }
 

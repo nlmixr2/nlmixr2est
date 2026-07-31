@@ -103,7 +103,7 @@ lbfgsb3cControl <- function(trace=0,
                             sensMethod = c("default", "forward", "adjoint"),
                             calcTables=TRUE, compress=FALSE,
                             covMethod=c("r", ""),
-                            adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                            adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, ...) {
 
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
   # L-BFGS-B factr from sigdig (FOCEi mechanism, matches foceiControl lbfgsFactr);

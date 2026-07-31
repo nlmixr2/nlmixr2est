@@ -37,8 +37,8 @@
 #'   from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
 #'   order looser.
 #'   Keying the optimizer to the same \code{10^-sigdig} means it converges to
-#'   exactly the precision the solve supports.  At the default \code{sigdig = 4}
-#'   this is \code{atol = 1e-7}, \code{rtol = 1e-4}.
+#'   exactly the precision the solve supports.  At the default \code{sigdig = 3}
+#'   this is \code{atol = 1e-6}, \code{rtol = 1e-3}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
 #'   If not specified, then it matches the significant digits in the
@@ -197,7 +197,8 @@
 #'
 #' @param lbfgsFactr Convergence factor for "L-BFGS-B": converges when the
 #'     objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-#'     Default `1e10` (~4 sigdigs, \code{2e-6}).
+#'     Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
+#'     the objective reduction target IS \code{10^-sigdig}.
 #'
 #' @param diagXform Transformation used on the diagonal of
 #'     \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
@@ -710,7 +711,7 @@
 #'
 #' @family Estimation control
 #' @export
-foceiControl <- function(sigdig = 4, #
+foceiControl <- function(sigdig = 3, #
                          ...,
                          epsilon = NULL, # 1e-4,
                          maxInnerIterations = 1000, #

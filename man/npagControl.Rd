@@ -88,8 +88,8 @@ likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
 
 \item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
 `bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
-`1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at the
-default `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).}
+`1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at
+`sigdig = 4` (npag has no `sigdig`, so this is not derived from it).}
 
 \item{...}{Parameters passed to [impmapControl()].}
 }
