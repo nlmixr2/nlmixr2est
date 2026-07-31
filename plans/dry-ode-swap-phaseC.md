@@ -843,3 +843,58 @@ parameters pushed through Chartrand TV with discrepancy-principle alpha.
 `expect_identical` across 1 vs 4 threads -- the same bar Phase 10 sets for imp.  Then
 wire the substitution into the gradient (C only, inside the existing gradient call) and
 add the `$runInfo` warning.
+
+### DONE -- what the refactor actually found
+
+Built as specified: `calcOuterThetaHf()` is a new per-individual routine modelled on the
+`etahf` block, driven by `shi21LikTheta()`, caching into `fInd->outerThetaHf[j]`, with
+the optimize-once/reuse discipline the eta path has (search only when the cached step is
+0; reuse it with a plain central difference afterwards).  Reset in `foceiOuterFinal()`
+alongside `getahf`/`getahr`, so the final objective cannot inherit a step chosen at an
+earlier theta.
+
+Relocating the search then exposed TWO REAL DEFECTS, both silent, and both explaining
+more than the relocation itself did:
+
+1. **`likInner0()` short-circuits on `fInd->oldEta` alone -- THETA IS NOT IN THAT
+   CHECK.**  Pinning the reference eta (which the previous commit did) makes an eta match
+   the common case, so the cached `fInd->llik` from the PREVIOUS theta was returned and
+   the difference across that leg was silently zero.  `setIndSolve(ind,-1)` does not help:
+   the short-circuit returns before reaching the solve.  Fixed by poisoning `oldEta` with
+   NA_REAL before each evaluation -- any comparison against NaN is unequal, so the
+   recompute is forced exactly rather than merely made unlikely (the -42 sentinel used
+   elsewhere is only "unlikely if normal").
+2. **`innerOpt1()` starts from `fInd->eta`, not from `par_ptr`.**  `EtaRestoreGuard`
+   only covers `par_ptr`, so the pinned reference eta was being installed in the wrong
+   store: the optimizer still began wherever the previous perturbation ended.  Fixed by
+   installing the reference into both, and by a new `FdInnerStateGuard` that saves and
+   restores the whole inner-problem state -- `eta`, `oldEta`, `setup`, `zm/mode/uzm`,
+   `lik[0..2]` -- replacing three ad-hoc partial save/restore blocks.
+
+**CORRECTION to the root-cause attribution above.**  The thread-count dependence was NOT
+"the inner solve running in a pool sized for the OUTER model under a neq override".  It
+was this carried inner-optimizer state: the per-subject path depended on what the
+previous evaluation left behind, and thread scheduling changed which evaluation that
+was.  Nothing about the pool or the override was touched, and the dependence is gone.
+
+Gate, theo_sd, 12 subjects (`$CLAUDE_JOB_DIR/tmp/fdgate.R`):
+
+    1 vs 4 threads:  max |g_t1 - g_t4| = 0, steps identical      PASS
+    repeat calls at the cached step: identical                   PASS
+
+`tcl`, the direction that was wrong by a factor of ~19, is now the second most accurate.
+
+### STILL OPEN -- the comparison harness, not the FD
+
+Ratios against the analytic reference recorded earlier in this file:
+
+    tka 2.018   tcl 1.016   tv 0.980   add.sd 0.996
+
+Three directions land near 1; `tka` sits near 2.  DO NOT chase that 2 yet.  Those
+reference numbers were taken in a DIFFERENT process at the fit's final theta, while the
+FD starts from whatever `op_focei.fullTheta` holds after the fit returns -- the
+optimizer's last trial point.  This file already flags that mismatch as the superseded
+suspect, and it produces exactly this pattern (per-direction, non-constant).  Fix the
+harness first: compute the analytic gradient IN THE SAME PROCESS at the SAME theta the
+FD starts from, then re-read the ratios.  Only if `tka` is still ~2 with both pinned is
+there an FD defect to find.

@@ -1205,6 +1205,45 @@ struct EtaRestoreGuard {
   void disarm() { armed = false; }
 };
 
+// Everything innerOpt1() moves that must not leak out of a differencing call.
+//
+// EtaRestoreGuard covers par_ptr only, which is NOT where the inner optimizer keeps
+// its state: it STARTS from fInd->eta and likInner0() short-circuits on fInd->oldEta.
+// Leaving those behind makes each evaluation begin wherever the previous perturbation
+// ended, so the difference depends on the order the perturbations ran rather than on
+// theta.  Measured before this guard: repeat calls at a FROZEN step disagreed in every
+// cell (max 3.5e-3), and the step search was thread-count dependent.
+//
+// zm/mode/uzm are the n1qn1 warm start -- without them the fit would warm start a later
+// inner problem from a Hessian belonging to a theta it never visited.  lik[0..2] because
+// innerOpt1() writes the likelihood, so differencing would otherwise replace the
+// subject's likelihood with one evaluated at a perturbed theta.
+struct FdInnerStateGuard {
+  focei_ind *fInd;
+  std::vector<double> eta, oldEta, zm;
+  double lik[3];
+  unsigned int setup, uzm;
+  int mode;
+  FdInnerStateGuard(int cid) {
+    fInd = &(inds_focei[cid]);
+    int ne = op_focei.neta;
+    if (fInd->eta != NULL && ne > 0) eta.assign(&fInd->eta[0], &fInd->eta[0] + ne);
+    if (fInd->oldEta != NULL && ne > 0) oldEta.assign(&fInd->oldEta[0], &fInd->oldEta[0] + ne);
+    if (fInd->zm != NULL && op_focei.nzm > 0) {
+      zm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
+    }
+    lik[0] = fInd->lik[0]; lik[1] = fInd->lik[1]; lik[2] = fInd->lik[2];
+    setup = fInd->setup; uzm = fInd->uzm; mode = fInd->mode;
+  }
+  ~FdInnerStateGuard() {
+    if (!eta.empty()) std::copy(eta.begin(), eta.end(), &fInd->eta[0]);
+    if (!oldEta.empty()) std::copy(oldEta.begin(), oldEta.end(), &fInd->oldEta[0]);
+    if (!zm.empty()) std::copy(zm.begin(), zm.end(), &fInd->zm[0]);
+    fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
+    fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
+  }
+};
+
 // Per-subject "did this solve fail" check, replacing the shared
 // hasOpBadSolve(op) poll: op->badSolve is set globally on ANY thread's
 // failure, so reading it in a retry loop is racy across threads. Each
@@ -1433,11 +1472,25 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
   // Start every evaluation from the SAME eta, so a central difference is taken about
-  // one point rather than along a drifting path.
+  // one point rather than along a drifting path.  Both stores must be set: par_ptr is
+  // what the ODE solve reads, but innerOpt1() starts its optimization from fInd->eta,
+  // so pinning par_ptr alone still lets the optimizer begin wherever the previous
+  // perturbation happened to finish.
   if ((int)_fdRefEta.size() == op_focei.neta) {
     for (int i = 0; i < op_focei.neta; ++i) {
       setIndParPtr(ind, op_focei.etaTrans[i], _fdRefEta[(size_t)i]);
+      if (fInd->eta != NULL) fInd->eta[i] = _fdRefEta[(size_t)i];
     }
+  }
+  // likInner0() decides whether to recompute by comparing the trial eta against
+  // fInd->oldEta -- and THETA IS NOT PART OF THAT CHECK.  Pinning the reference eta
+  // above makes a match the common case, so without this the cached likelihood from the
+  // PREVIOUS theta is returned and the difference is silently zero.  NA_REAL rather than
+  // the -42 sentinel used elsewhere: any comparison against NaN is unequal, so the
+  // recompute is forced exactly rather than merely made unlikely.  The caller's
+  // FdInnerStateGuard puts oldEta back.
+  if (fInd->oldEta != NULL && op_focei.neta > 0) {
+    std::fill_n(&fInd->oldEta[0], op_focei.neta, NA_REAL);
   }
   setIndSolve(ind, -1);            // re-solve: this theta is not the cached one
   if (!innerOpt1(id, 0)) { ret(0) = NA_REAL; return ret; }
@@ -6262,6 +6315,12 @@ void foceiOuterFinal(double *x, Environment e){
   // This will give reproducible likelihoods with fd events
   std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+  // Same reason for the outer theta FD steps: they are cached per subject across the
+  // fit, so the final objective must not inherit a step chosen at some earlier theta.
+  if (op_focei.gouterThetaHf != NULL && rx != NULL) {
+    std::fill_n(op_focei.gouterThetaHf,
+                (size_t)op_focei.npars * (size_t)(getRxNsubAndMix(rx) + 1), 0.0);
+  }
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
   _finalObfCalc = true;
@@ -11246,27 +11305,88 @@ NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0) {
   for (int k = 0; k < nid; ++k) {
     int id = ids0[k];
     if (id < 0 || id >= nsub) continue;
-    focei_ind *fInd = &(inds_focei[id]);
     EtaRestoreGuard etaGuard(id);
+    FdInnerStateGuard fdGuard(id);
     rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
     _fdRefEta.assign((size_t)op_focei.neta, 0.0);
     for (int i = 0; i < op_focei.neta; ++i) {
       _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
     }
-    std::vector<double> savedZm;
-    int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
-    if (fInd->zm != NULL && op_focei.nzm > 0) {
-      savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
-    }
     arma::vec r = shi21LikTheta(theta, id);
     out[k] = r(0);
-    if (!savedZm.empty()) std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
-    fInd->mode = savedMode;
-    fInd->uzm = (unsigned int)savedUzm;
   }
   _fdRefEta.clear();
   for (int t = 0; t < nth; ++t) op_focei.fullTheta[t] = theta0[(size_t)t];
   return out;
+}
+
+// The per-individual step search for the outer theta finite difference.
+//
+// Modelled on the etahf block in calcEtaHessian -- same shi21Central machinery, same
+// optimize-once/cache/reuse discipline -- but deliberately SEPARATE from it.  What is
+// differenced here is the individual's contribution to the OVERALL likelihood
+// (shi21LikTheta), not the inner problem's conditional objective that etahf is tuned
+// for, so the two are different functions and cannot share a step store.
+//
+// Gated to the individual: every theta direction is searched inside ONE subject's
+// established inner problem, against one pinned reference eta and one f0.  Before this
+// the search was re-run from the outer theta loop on every gradient call, so the step
+// was re-chosen from whatever state that call happened to begin in -- the step, and so
+// the difference, was not a property of the subject but of the call.  Cached in
+// fInd->outerThetaHf and reused thereafter (reset in foceiOuterFinal, as etahf is).
+static void calcOuterThetaHf(int id, arma::vec &theta, arma::vec &f0, int nth,
+                             double *grOut, double *hOut) {
+  focei_ind *fInd = &(inds_focei[id]);
+  arma::vec gr(1), grPH(1), grMH(1);
+  arma::vec hTheta(theta.n_elem);
+  for (int j = 0; j < nth; ++j) {
+    double h = (fInd->outerThetaHf == NULL) ? 0.0 : fInd->outerThetaHf[j];
+    if (h == 0.0) {
+      // Not chosen yet for this subject/parameter.  Search, and take the search's own
+      // final central difference as the gradient -- the eta path does the same rather
+      // than spending another pair of evaluations on a step it just probed.
+      //
+      // Step bounds: the fit's global shi21hMin/hMax, NOT a per-parameter rescaling.
+      // Two heuristics were tried and REJECTED on measurement (theo_sd, 12 subjects):
+      //
+      //   floor eps^(1/3)*max(|theta|,1) (~1.2e-5): reasoning was that eps^(1/3) is the
+      //     central-difference optimum so the 1e-4 default sat above it.  Wrong premise
+      //     -- this objective is a PROFILE likelihood, so its noise floor is set by the
+      //     inner optimizer's convergence, not by machine epsilon.  Lowering the floor
+      //     let the search into that noise and took tka from ratio 0.963 to 0.317.  The
+      //     1e-4 default is protective here, not restrictive.
+      //   ceiling 0.1*max(|theta|,1): did not catch the runaway it targeted (tcl's bad
+      //     subject sits at h=0.0263, under the bound) and clamped three tka subjects
+      //     that were fine.
+      //
+      // The remaining outliers are large relative to the OTHER SUBJECTS' steps for the
+      // same parameter, not in absolute terms, so a fixed multiple of the parameter
+      // cannot separate them -- that is what the across-subject pass below is for.
+      double hNew = shi21Central(shi21LikTheta, theta, h,
+                                 f0, gr, id, j,
+                                 op_focei.hessEps,
+                                 1.5,   // rl
+                                 4.5,   // ru
+                                 3.0,   // nu
+                                 op_focei.shi21maxFD,
+                                 op_focei.shi21hMax, op_focei.shi21hMin);
+      if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hNew;
+      grOut[j] = gr(0);
+      hOut[j] = hNew;
+      continue;
+    }
+    // Cached step: a plain central difference about the pinned reference point, which
+    // is what makes repeat gradient calls at the same theta reproduce each other.
+    hTheta = theta;
+    hTheta[j] += h;
+    grPH = shi21LikTheta(hTheta, id);
+    hTheta = theta;
+    hTheta[j] -= h;
+    grMH = shi21LikTheta(hTheta, id);
+    gr = calcGradCentral(grMH, f0, grPH, h);
+    grOut[j] = gr(0);
+    hOut[j] = h;
+  }
 }
 
 //' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
@@ -11350,16 +11470,12 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // this fix: per-subject slopes differing by factors of 3-6 between thread counts, on
     // exactly the outlier subjects the correction depends on.
     arma::vec thetaK = theta;
-    focei_ind *fInd = &(inds_focei[id]);
-    // The surrounding fit must not inherit ANY of what innerOpt1() moves.  Three things
-    // have to come back, not just the eta:
-    //   * the eta itself (EtaRestoreGuard),
-    //   * this subject's n1qn1 warm-start Hessian -- re-optimizing at perturbed thetas
-    //     overwrites zm/mode/uzm, and the fit would then warm-start its next inner
-    //     problem from a Hessian belonging to a theta it never visited,
-    //   * op_focei.fullTheta, which shi21LikTheta() now writes through (restored after
-    //     the loop below, since every subject perturbs the same global).
+    // The surrounding fit must not inherit ANY of what innerOpt1() moves: par_ptr's eta
+    // (EtaRestoreGuard) plus the inner optimizer's own state, its n1qn1 warm start and
+    // the subject's likelihood (FdInnerStateGuard).  op_focei.fullTheta is restored
+    // after the loop, since every subject perturbs the same global.
     EtaRestoreGuard etaGuard(id);
+    FdInnerStateGuard fdGuard(id);
     {
       rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
       _fdRefEta.assign((size_t)op_focei.neta, 0.0);
@@ -11367,19 +11483,6 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
         _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
       }
     }
-    std::vector<double> savedZm;
-    int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
-    if (fInd->zm != NULL && op_focei.nzm > 0) {
-      savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
-    }
-    // fInd->lik must be cached too.  shi21LikTheta() runs innerOpt1(), which WRITES
-    // fInd->lik[0] -- so differencing silently replaces the subject's likelihood with
-    // one evaluated at a perturbed theta, and whatever reads it next (the objective, a
-    // later gradient, the finalize step) sees a value belonging to a theta the fit never
-    // visited.  Saving eta/zm/fullTheta but not lik leaves exactly that hole.
-    // The same hazard applies anywhere else innerOpt1() is called for a side purpose
-    // rather than to advance the fit -- worth auditing those call sites.
-    double savedLik[3] = { fInd->lik[0], fInd->lik[1], fInd->lik[2] };
     arma::vec f0 = shi21LikTheta(thetaK, id);
     if (!f0.is_finite()) continue;             // cannot even evaluate: leave NA
     // shi CENTRAL differences, not Gill83.  Gill was tried here because it behaves
@@ -11387,50 +11490,20 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // per-subject likelihood is -- but measured on theo_sd it was worse in every
     // direction (ratios -0.10/-0.018/0.86/1.28 against shi's 0.963/-0.053/0.992/0.997),
     // so shi stays.  gill83fnLik() is kept for re-testing that comparison.
-    arma::vec gr(1);
+    // The step search itself is per individual (calcOuterThetaHf): it runs here, inside
+    // this subject's established inner problem, and caches its step for reuse.
+    //
+    // Plain shi differences here.  Richardson/TV is applied ONLY where the across-subject
+    // pass below flags the parameter -- i.e. where the O(h^2) term is demonstrably
+    // material.  Applying it everywhere was measured to cost accuracy on the directions
+    // that were already right (tka 0.963 -> 0.844, tv 0.992 -> 0.913): it trades bias for
+    // variance on subjects whose h^2 term was already negligible.
+    std::vector<double> grK((size_t)nth, NA_REAL), hK((size_t)nth, NA_REAL);
+    calcOuterThetaHf(id, thetaK, f0, nth, grK.data(), hK.data());
     for (int j = 0; j < nth; ++j) {
-      double h = (fInd->outerThetaHf == NULL) ? 0.0 : fInd->outerThetaHf[j];
-      // Step bounds: the fit's global shi21hMin/hMax, NOT a per-parameter rescaling.
-      // Two heuristics were tried and REJECTED on measurement (theo_sd, 12 subjects):
-      //
-      //   floor eps^(1/3)*max(|theta|,1) (~1.2e-5): reasoning was that eps^(1/3) is the
-      //     central-difference optimum so the 1e-4 default sat above it.  Wrong premise
-      //     -- this objective is a PROFILE likelihood, so its noise floor is set by the
-      //     inner optimizer's convergence, not by machine epsilon.  Lowering the floor
-      //     let the search into that noise and took tka from ratio 0.963 to 0.317.  The
-      //     1e-4 default is protective here, not restrictive.
-      //   ceiling 0.1*max(|theta|,1): did not catch the runaway it targeted (tcl's bad
-      //     subject sits at h=0.0263, under the bound) and clamped three tka subjects
-      //     that were fine.
-      //
-      // The remaining outliers are large relative to the OTHER SUBJECTS' steps for the
-      // same parameter (0.0263 vs a median of 0.000216), not in absolute terms, so a
-      // fixed multiple of the parameter cannot separate them.  Bounding against a robust
-      // across-subject scale is the next thing to try and needs two passes.
-      double hNew = shi21Central(shi21LikTheta, thetaK, h,
-                                 f0, gr, id, j,
-                                 op_focei.hessEps,
-                                 1.5,   // rl
-                                 4.5,   // ru
-                                 3.0,   // nu
-                                 op_focei.shi21maxFD,
-                                 op_focei.shi21hMax, op_focei.shi21hMin);
-      if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hNew;
-      // Plain shi here.  Richardson is applied ONLY to the subjects the median bound
-      // flags below: those are the ones whose step ran away, i.e. where the O(h^2) term
-      // is demonstrably material.  Applying it everywhere was measured to cost accuracy
-      // on the directions that were already right (tka 0.963 -> 0.844, tv 0.992 ->
-      // 0.913), because it trades that bias for variance on subjects whose h^2 term was
-      // already negligible.
-      out(k, j) = gr(0);
-      hOut(k, j) = hNew;
+      out(k, j) = grK[(size_t)j];
+      hOut(k, j) = hK[(size_t)j];
     }
-    if (!savedZm.empty()) {
-      std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
-    }
-    fInd->mode = savedMode;
-    fInd->uzm = (unsigned int)savedUzm;
-    fInd->lik[0] = savedLik[0]; fInd->lik[1] = savedLik[1]; fInd->lik[2] = savedLik[2];
 #ifdef _OPENMP
     if (fdParallel) setRxThreadId(-1);
 #endif
@@ -11531,17 +11604,12 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       if (id < 0 || id >= nsub) continue;
       double hUse = hOut(k, j);
       if (!R_finite(hUse) || hUse <= 0) continue;
-      focei_ind *fInd = &(inds_focei[id]);
       EtaRestoreGuard etaGuard(id);
+      FdInnerStateGuard fdGuard(id);
       rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
       _fdRefEta.assign((size_t)op_focei.neta, 0.0);
       for (int i = 0; i < op_focei.neta; ++i) {
         _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
-      }
-      std::vector<double> savedZm;
-      int savedMode = fInd->mode, savedUzm = (int)fInd->uzm;
-      if (fInd->zm != NULL && op_focei.nzm > 0) {
-        savedZm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
       }
       // Span-preserving Lanczos generalized derivative: the outermost evaluation stays
       // at shi's tuned step and the stencil subdivides INSIDE it (h = span/m).  m is
@@ -11556,9 +11624,6 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       const int    _iters = 12;       // lagged-diffusivity iterations
       double dR = fdTvDeriv(theta, id, j, _span, _N, _alpha, _iters);
       if (R_finite(dR)) out(k, j) = dR;
-      if (!savedZm.empty()) std::copy(savedZm.begin(), savedZm.end(), &fInd->zm[0]);
-      fInd->mode = savedMode;
-      fInd->uzm = (unsigned int)savedUzm;
     }
   }
   _fdRefEta.clear();
