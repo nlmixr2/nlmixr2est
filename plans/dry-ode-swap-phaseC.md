@@ -944,3 +944,23 @@ vs 82.7717).  The remaining 1-3% against the analytic value is the truncation er
 central difference on this objective -- the hand difference shows the same gap at every
 step in the window -- not a defect.  Both gates still pass: bit-identical across 1 and 4
 threads, and reproducible across repeat calls at a cached step.
+
+### Audit: other innerOpt1() call sites (user-requested)
+
+Clean, and one correction to the framing above.
+
+* `didInnerResetPointFail` (3344) and `innerOptId` (3405) call innerOpt1() to ADVANCE
+  the fit -- its writes to lik/eta are the intended output, not a side effect.  No hazard.
+* The established outer FD theta gradient (7650/7665/7696) calls `innerOpt1(gid, 1)` and
+  `innerOpt1(gid, 2)`, deliberately using the lower/upper likelihood slots so `lik[0]`
+  is never touched -- that is what `lik[1]`/`lik[2]` are for.  No hazard, and it is the
+  cleaner convention: the new path could have used `likId=2` instead of guarding
+  `lik[0]`.  Not changed now because it would move results; worth doing if this code is
+  ever revisited.
+
+**CORRECTION to the likInner0 finding.**  That path ALREADY guards the eta-only
+short-circuit: inner.cpp:7628 poisons `op_focei.goldEta` with the -42 sentinel before
+every parameter's perturbation, for exactly this reason.  So the short-circuit is a known
+hazard the codebase handles, NOT a latent package bug -- what was missing is that the new
+per-individual path did not guard it.  The NA_REAL poisoning is the same mechanism made
+exact rather than "unlikely if normal".  Nothing that ships today is affected by it.
