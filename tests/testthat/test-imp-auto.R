@@ -20,7 +20,8 @@ nmTest({
   }
 
   test_that("auto control round-trips and defaults off", {
-    expect_false(impmapControl()$auto)
+    expect_true(impmapControl()$auto)
+    expect_false(impmapControl(auto = FALSE)$auto)
     expect_true(impmapControl(auto = TRUE)$auto)
     expect_true(do.call(impmapControl, impmapControl(auto = TRUE))$auto)
     expect_error(impmapControl(auto = "yes"))

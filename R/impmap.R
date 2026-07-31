@@ -92,29 +92,30 @@
 #'   Per-subject values are reported in `fit$env$impDfInd`,
 #'   `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.
 #'
-#'   **Measured trade-off -- read this before turning it on.**  `auto = TRUE`
-#'   reliably improves the *tail* behaviour of the importance weights and
-#'   reliably degrades the *accuracy* of the objective.  On theophylline,
-#'   against a reference computed at `isample = 20000` (which agrees to 0.0003
-#'   across Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy):
+#'   **Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
+#'   behaviour of the importance weights and the accuracy of `Omega`, at some
+#'   cost in Monte-Carlo noise on the objective.  On theophylline, against a
+#'   reference computed at `isample = 20000` (which agrees to 0.0003 across
+#'   Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+#'   seeds:
 #'
 #'   \itemize{
-#'     \item `auto = FALSE`: max Pareto k-hat 2.41, 3.3 subjects above 0.7;
-#'       objective bias +0.002, SD 0.029, **RMSE 0.027**
-#'     \item `auto = TRUE`: max Pareto k-hat 0.70, 0.3 subjects above 0.7;
-#'       objective bias -0.025, SD 0.045, **RMSE 0.049**
+#'     \item `auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
+#'       objective RMSE 0.0315, `Omega` RMSE 0.00247
+#'     \item `auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
+#'       objective RMSE 0.0376, `Omega` RMSE 0.00198
 #'   }
 #'
-#'   So the tail failure k-hat reports is real -- those weights genuinely have
-#'   infinite variance -- but on these fixtures it does not materialise as
-#'   practical error, and heavier-tailed proposals cost roughly twice the RMSE
-#'   to remove it.  `k-hat > 0.7` is a statement about worst-case behaviour;
-#'   over 8-12 seeds the worst case did not occur.
+#'   So `auto` removes the tail failure and estimates `Omega` about 20% more
+#'   accurately, for about 19% more Monte-Carlo noise on the objective.  It is
+#'   on by default because weights with infinite variance are a correctness
+#'   problem -- their error is unbounded in the worst case -- whereas the extra
+#'   noise is a bounded, measurable cost.
 #'
-#'   The default is therefore `FALSE`.  Turn `auto` on when a rare catastrophic
-#'   draw would be worse than a small loss of precision -- a likelihood you
-#'   intend to compare across models, or a model where `fit$env$impPsisK` is
-#'   far above 0.7 rather than marginally above it.
+#'   Set `auto = FALSE` to recover the previous behaviour exactly (that path
+#'   remains bit-identical to earlier versions), which is worth doing when you
+#'   want the tightest possible objective on a model whose `fit$env$impPsisK`
+#'   values are already comfortably below 0.7.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
@@ -210,7 +211,7 @@ impmapControl <- function(sigdig=4,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
                           df=0,
-                          auto=FALSE,
+                          auto=TRUE,
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
