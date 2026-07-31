@@ -532,6 +532,17 @@ struct focei_options {
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
   double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
+  // Proposal degrees of freedom (NONMEM DF).  0 = multivariate normal; >0 uses a
+  // multivariate t, whose polynomial tails dominate a Gaussian target's.
+  double impDf = 0.0;
+  // Optional per-subject sample counts (NONMEM's per-subject ISAMPLE).  Empty
+  // means "use the scalar impNsample for everyone".
+  std::vector<int> impNsampleVec;
+  bool impAuto = false;      // AUTO=1: adapt df / isample / iaccept per subject
+  bool impAutoNonNormal = false; // model is not transformably normal (categorical etc.)
+  // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
+  // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
+  std::string impGammaMethod = "global";
   double impIscaleMin = 0.1; // lower bound for adapted gamma
   double impIscaleMax = 10.0;// upper bound for adapted gamma
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
@@ -5620,10 +5631,30 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNpb = false;
   }
   if (op_focei.isImpmap) {
-    if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
+    // isample may be a per-subject vector; the scalar is the largest requested
+    // count (used for sizing, the SIR default and reporting).
+    if (foceiO.containsElementNamed("isample")) {
+      IntegerVector isv0 = as<IntegerVector>(foceiO["isample"]);
+      int mx = 1;
+      for (int i = 0; i < isv0.size(); ++i) if (isv0[i] > mx) mx = isv0[i];
+      op_focei.impIsample = mx;
+    }
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
+    if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
+    if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
+    if (foceiO.containsElementNamed("autoNonNormal"))
+      op_focei.impAutoNonNormal = as<bool>(foceiO["autoNonNormal"]);
+    if (foceiO.containsElementNamed("isample")) {
+      IntegerVector isv = as<IntegerVector>(foceiO["isample"]);
+      op_focei.impNsampleVec.clear();
+      if (isv.size() > 1) {
+        for (int i = 0; i < isv.size(); ++i) op_focei.impNsampleVec.push_back(isv[i]);
+      }
+    }
+    if (foceiO.containsElementNamed("gammaMethod") && TYPEOF(foceiO["gammaMethod"]) == STRSXP)
+      op_focei.impGammaMethod = as<std::string>(foceiO["gammaMethod"]);
     if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
     if (foceiO.containsElementNamed("iscaleMax")) op_focei.impIscaleMax = as<double>(foceiO["iscaleMax"]);
     if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
@@ -9497,6 +9528,20 @@ std::string impDiagXform() {
 }
 
 double impIaccept() { return op_focei.impIaccept; }
+double impDf() { return op_focei.impDf; }
+bool impAutoEnabled() { return op_focei.impAuto; }
+bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
+void impNsampleVecGet(std::vector<int>& out) { out = op_focei.impNsampleVec; }
+
+// Observation count for subject id -- AUTO uses nobs/neta to decide whether a
+// subject's data is sparse enough to need a heavy-tailed (t) proposal.
+int impNobs(int id) {
+  focei_ind *fInd = &(inds_focei[id]);
+  return (int)fInd->nObs;
+}
+// TRUE when the per-subject (NONMEM) gamma controller is selected.  Queried once
+// per EM iteration, not in the sampling loop, so the string compare is free.
+bool impGammaIndividual() { return op_focei.impGammaMethod == "individual"; }
 double impIscaleMin() { return op_focei.impIscaleMin; }
 double impIscaleMax() { return op_focei.impIscaleMax; }
 int impNconvWindow() { return op_focei.impNconvWindow; }
