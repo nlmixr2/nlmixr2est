@@ -964,3 +964,44 @@ every parameter's perturbation, for exactly this reason.  So the short-circuit i
 hazard the codebase handles, NOT a latent package bug -- what was missing is that the new
 per-individual path did not guard it.  The NA_REAL poisoning is the same mechanism made
 exact rather than "unlikely if normal".  Nothing that ships today is affected by it.
+
+### Antigravity review (commit range c0a6a0b11..eaa4f0302) -- triaged
+
+CONFIRMED and fixed:
+
+* **Global eta Welford accumulators.**  `innerOpt1()` (inner.cpp:3007) updates
+  `op_focei.n/etaM/etaS` whenever `_innerParallel == 0`.  The TV pass ran after
+  `_innerParallel.store(0)`, and `foceiIndLik_()` never set the flag at all, so both
+  folded etas evaluated at PERTURBED thetas into the population statistics that drive
+  the standardized-eta reset thresholds.  Fixed by a new `FdPhaseStateGuard` held for
+  the whole phase: it sets `_innerParallel`, and restores `n/etaM/etaS` plus the
+  `didEtaReset`/`didHessianReset`/`didEtaNudge` diagnostic flags, which are set
+  regardless of `_innerParallel` and are reported to the user.
+* **Per-subject state still leaking.**  `FdInnerStateGuard` now also covers
+  `saveEta` (LikInner2 writes it under likId==0 -- our likId -- and foceiFinalize
+  reports it), `llikObs` (per-observation conditional log-likelihoods, handed to R as
+  `e["llikObs"]`), `etahf`/`etahr`/`etahh` (the INNER problem's own step caches, which
+  calcEtaHessian would fill at a perturbed theta), and `stickyRecalcN2` (once it passes
+  `stickyRecalcN` the subject's solver tolerance stays loosened for the whole fit).
+* **Clamp detector was exact equality.**  shi's `rcur == -1` branch does `h = h*0.5/3.0`
+  and `continue`, bypassing the floor clamp, so a sub-hMin return is reachable and `==`
+  would miss it.  Now `<= hMin` / `>= hMax`.
+
+REJECTED, with reasons:
+
+* `parErrorNoEta` / `parWarnBadHess` "left set by a failed perturbation" -- these are
+  written by `innerOptId()` (3403/3404/3412), not by `innerOpt1()`.  This path calls
+  `innerOpt1()` directly and never reaches them.
+* "Repaired steps re-enter the median set on later calls, skewing it" -- by design: the
+  repair overwrites the cache precisely so the degenerate step is not reused, and the
+  replacement is itself the converged median.  Not a defect.
+* "If every subject clamps, nothing is repaired" -- deliberate and documented: with no
+  converged step for that parameter there is nothing to repair TO, and inventing one
+  would be worse than leaving the value flagged.
+
+NOTED, not changed: shi can also return exactly hMin having ACCEPTED it (ratio test in
+range at the floor), which the detector cannot distinguish from giving up there.  Both
+are treated as suspect.  That conflation is deliberate -- a step at or below the floor is
+untrustworthy for this objective either way -- but it is a conflation, not a precise
+test.  Distinguishing them would mean returning a termination reason from shi21Central,
+which the eta and nlm paths also call.

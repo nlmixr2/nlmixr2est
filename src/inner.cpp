@@ -1220,27 +1220,88 @@ struct EtaRestoreGuard {
 // subject's likelihood with one evaluated at a perturbed theta.
 struct FdInnerStateGuard {
   focei_ind *fInd;
-  std::vector<double> eta, oldEta, zm;
+  std::vector<double> eta, oldEta, zm, saveEta, etahf, etahr, etahh, llikObs;
   double lik[3];
   unsigned int setup, uzm;
-  int mode;
+  int mode, stickyRecalcN2;
   FdInnerStateGuard(int cid) {
     fInd = &(inds_focei[cid]);
     int ne = op_focei.neta;
     if (fInd->eta != NULL && ne > 0) eta.assign(&fInd->eta[0], &fInd->eta[0] + ne);
     if (fInd->oldEta != NULL && ne > 0) oldEta.assign(&fInd->oldEta[0], &fInd->oldEta[0] + ne);
+    // LikInner2() copies eta into saveEta whenever likId==0 -- which is the likId this
+    // path uses -- and foceiFinalize reads saveEta to report the subject's ETAs.  Without
+    // this the reported ETAs would belong to a perturbed theta.
+    if (fInd->saveEta != NULL && ne > 0) saveEta.assign(&fInd->saveEta[0], &fInd->saveEta[0] + ne);
+    // The INNER problem's own step caches.  innerOpt1() reaches calcEtaHessian(), which
+    // fills these when they are still 0 -- at the perturbed theta.  The fit would then
+    // reuse eta steps tuned somewhere it never visited.
+    if (fInd->etahf != NULL && ne > 0) etahf.assign(&fInd->etahf[0], &fInd->etahf[0] + ne);
+    if (fInd->etahr != NULL && ne > 0) etahr.assign(&fInd->etahr[0], &fInd->etahr[0] + ne);
+    if (fInd->etahh != NULL && ne > 0) etahh.assign(&fInd->etahh[0], &fInd->etahh[0] + ne);
     if (fInd->zm != NULL && op_focei.nzm > 0) {
       zm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
     }
+    // Per-observation conditional log-likelihoods.  likInner0() overwrites these, and
+    // they are handed to R as e["llikObs"], so a perturbed evaluation would otherwise
+    // ship in the fit.
+    {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid));
+      int nAll = (ind == NULL) ? 0 : getIndNallTimes(ind);
+      if (fInd->llikObs != NULL && nAll > 0) {
+        llikObs.assign(&fInd->llikObs[0], &fInd->llikObs[0] + nAll);
+      }
+    }
     lik[0] = fInd->lik[0]; lik[1] = fInd->lik[1]; lik[2] = fInd->lik[2];
     setup = fInd->setup; uzm = fInd->uzm; mode = fInd->mode;
+    // odeSwapSolveRetry() increments this by reference on a hard solve; once it passes
+    // op_focei.stickyRecalcN the subject's tolerance stays loosened for the whole fit.
+    stickyRecalcN2 = fInd->stickyRecalcN2;
   }
   ~FdInnerStateGuard() {
     if (!eta.empty()) std::copy(eta.begin(), eta.end(), &fInd->eta[0]);
     if (!oldEta.empty()) std::copy(oldEta.begin(), oldEta.end(), &fInd->oldEta[0]);
+    if (!saveEta.empty()) std::copy(saveEta.begin(), saveEta.end(), &fInd->saveEta[0]);
+    if (!etahf.empty()) std::copy(etahf.begin(), etahf.end(), &fInd->etahf[0]);
+    if (!etahr.empty()) std::copy(etahr.begin(), etahr.end(), &fInd->etahr[0]);
+    if (!etahh.empty()) std::copy(etahh.begin(), etahh.end(), &fInd->etahh[0]);
     if (!zm.empty()) std::copy(zm.begin(), zm.end(), &fInd->zm[0]);
+    if (!llikObs.empty()) std::copy(llikObs.begin(), llikObs.end(), &fInd->llikObs[0]);
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
+    fInd->stickyRecalcN2 = stickyRecalcN2;
+  }
+};
+
+// The fit-wide state a differencing PHASE must not move, as opposed to the per-subject
+// state FdInnerStateGuard covers.
+//
+// op_focei.n/etaM/etaS are the running population eta mean and variance (Welford).
+// innerOpt1() updates them whenever _innerParallel is 0, so a differencing phase that
+// runs serially -- the TV pass, and every foceiIndLik_ call -- would fold etas evaluated
+// at perturbed thetas into the statistics that drive the standardized-eta reset
+// thresholds.  Holding _innerParallel at 1 for the whole phase is the primary fix; this
+// guard also restores them, and restores the did* diagnostic flags, which are set
+// regardless of _innerParallel and are reported to the user.
+struct FdPhaseStateGuard {
+  double n;
+  arma::mat etaM, etaS;
+  int didEtaReset, didHessianReset, didEtaNudge;
+  int innerPar;
+  FdPhaseStateGuard() {
+    n = op_focei.n; etaM = op_focei.etaM; etaS = op_focei.etaS;
+    didEtaReset = op_focei.didEtaReset.load(std::memory_order_relaxed);
+    didHessianReset = op_focei.didHessianReset.load(std::memory_order_relaxed);
+    didEtaNudge = op_focei.didEtaNudge.load(std::memory_order_relaxed);
+    innerPar = _innerParallel.load(std::memory_order_acquire);
+    _innerParallel.store(1, std::memory_order_release);
+  }
+  ~FdPhaseStateGuard() {
+    _innerParallel.store(innerPar, std::memory_order_release);
+    op_focei.n = n; op_focei.etaM = etaM; op_focei.etaS = etaS;
+    op_focei.didEtaReset.store(didEtaReset, std::memory_order_relaxed);
+    op_focei.didHessianReset.store(didHessianReset, std::memory_order_relaxed);
+    op_focei.didEtaNudge.store(didEtaNudge, std::memory_order_relaxed);
   }
 };
 
@@ -11298,6 +11359,9 @@ NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0) {
   if (rx == NULL) return out;
   int nsub = foceiIndSetupN(rx);
   OdeSwapEsBatch esBatch(odeSlotInner);
+  // This runs serially, so without the phase guard innerOpt1() would fold every
+  // perturbed eta into the population Welford statistics -- see FdPhaseStateGuard.
+  FdPhaseStateGuard phaseGuard;
   std::vector<double> theta0((size_t)nth);
   for (int t = 0; t < nth; ++t) theta0[(size_t)t] = op_focei.fullTheta[t];
   arma::vec theta((size_t)nth);
@@ -11451,7 +11515,9 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   if (fdCores < 1) fdCores = 1;
   const bool fdParallel = (fdCores > 1) && solveMethodThreadSafe(op0);
   if (fdParallel) sortIds(rx, 2);
-  _innerParallel.store(1, std::memory_order_release);
+  // Covers the WHOLE phase, serial passes included -- see FdPhaseStateGuard.  It also
+  // sets _innerParallel, which is why that store is no longer done by hand here.
+  FdPhaseStateGuard phaseGuard;
   // INVARIANT for bit-identical results across thread counts: this region performs NO
   // reduction.  Each iteration writes only its own subject's slots (out(k,.), hOut(k,.)),
   // and every sum over subjects is taken AFTER the region, in a fixed order.  An OpenMP
@@ -11543,7 +11609,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       for (int k = 0; k < nid; ++k) {
         double hv = hOut(k, j);
         if (!R_finite(hv) || hv <= 0) continue;
-        if (hv == op_focei.shi21hMin || hv == op_focei.shi21hMax) continue;
+        if (hv <= op_focei.shi21hMin || hv >= op_focei.shi21hMax) continue;
         ok.push_back(hv);
       }
       if (ok.empty()) continue;      // nothing converged: leave the clamped values alone
@@ -11563,7 +11629,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       for (int j = 0; j < nth && !any; ++j) {
         double hv = hOut(k, j);
         if (hRepair[(size_t)j] > 0 && R_finite(hv) &&
-            (hv == op_focei.shi21hMin || hv == op_focei.shi21hMax)) any = true;
+            (hv <= op_focei.shi21hMin || hv >= op_focei.shi21hMax)) any = true;
       }
       if (!any) continue;
       arma::vec thetaK = theta;
@@ -11582,7 +11648,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       for (int j = 0; j < nth; ++j) {
         double hv = hOut(k, j), hr = hRepair[(size_t)j];
         if (!(hr > 0) || !R_finite(hv)) continue;
-        if (hv != op_focei.shi21hMin && hv != op_focei.shi21hMax) continue;
+        if (hv > op_focei.shi21hMin && hv < op_focei.shi21hMax) continue;
         double dv = fdCentralAt(thetaK, id, j, hr, f0);
         if (!R_finite(dv)) continue;
         out(k, j) = dv;
@@ -11596,7 +11662,6 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
 #endif
     }
   }
-  _innerParallel.store(0, std::memory_order_release);
   if (fdParallel) sortIds(rx, 0);
   // ---- second pass: rein in steps whose RATE is an outlier across subjects --------
   //
