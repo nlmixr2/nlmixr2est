@@ -274,11 +274,19 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
     .fullData <- fullData
   }
   .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
+  .bad <- extra[!(extra %in% c(names(.fullData), names(sim)))]
+  if (length(.bad) > 0) {
+    warning("column(s) not in simulation or data: ",
+            paste(.bad, collapse=", "), call.=FALSE)
+  }
   .extra <- extra[extra %in% names(.fullData)]
-  .extra <- extra[!(extra %in% names(sim))]
+  .extra <- .extra[!(.extra %in% names(sim))]
   if (length(.extra) == 0) return(sim)
   .wid <- which(tolower(names(.fullData)) == "id")
   names(.fullData)[.wid] <- "ID"
+  # merge in only the requested columns; other observed columns can
+  # collide with the simulation's own (e.g. time.x/time.y)
+  .fullData <- .fullData[, c("ID", "nlmixrRowNums", .extra), drop=FALSE]
   .sim <- sim
   .wid <- which(tolower(names(.sim)) == "id")
   names(.sim)[.wid] <- "ID"
