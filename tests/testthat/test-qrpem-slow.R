@@ -75,10 +75,14 @@ nmTest({
   })
 
   test_that("Q3: qrRefresh pins or redraws the per-subject shift across iterations", {
+    # auto=FALSE: this pins the Sobol shift STREAM, and a t proposal consumes an
+    # extra uniform per draw for the chi-square scale, so letting auto assign df
+    # would shift the stream and the pin/redraw comparison would compare
+    # different things.
     .zLast <- function(nIter, qrRefresh, i = 1L) {
       .f <- suppressWarnings(
         nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
-                impmapControl(print=0L, nIter=nIter, isample=128L, qr=TRUE,
+                impmapControl(print=0L, nIter=nIter, isample=128L, qr=TRUE, auto=FALSE,
                               qrRefresh=qrRefresh)))
       .zPoints(.f$env, i)
     }
@@ -90,7 +94,7 @@ nmTest({
     # even with a fixed shift, different subjects get different shifts
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
-              impmapControl(print=0L, nIter=1L, isample=128L, qr=TRUE,
+              impmapControl(print=0L, nIter=1L, isample=128L, qr=TRUE, auto=FALSE,
                             qrRefresh=FALSE)))
     expect_gt(max(abs(.zPoints(.f$env, 1L) - .zPoints(.f$env, 2L))), 0.01)
   })
@@ -154,11 +158,15 @@ nmTest({
     # the SIR branch only engages when sirN < isample; at equality the fit is
     # bit-identical to sir=FALSE (the SIR plumbing is a strict superset)
     .run <- function(sir, sirSample = NULL) {
+      # auto=FALSE: the SIR branch engages on sirN < that subject's isample, and
+      # auto reallocates isample per subject, so "sirSample == isample" is no
+      # longer a single condition holding for everybody.  This test is about the
+      # SIR plumbing, so it pins a uniform sample count.
       .ctl <- if (sir) {
         impmapControl(print=0L, nIter=2L, isample=100L, sir=TRUE,
-                      sirSample=sirSample)
+                      sirSample=sirSample, auto=FALSE)
       } else {
-        impmapControl(print=0L, nIter=2L, isample=100L)
+        impmapControl(print=0L, nIter=2L, isample=100L, auto=FALSE)
       }
       suppressWarnings(nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap", .ctl))
     }
@@ -234,10 +242,15 @@ nmTest({
   })
 
   test_that("Q1: default (qr/sir off) fit is unchanged vs the pre-QRPEM baseline", {
+    # auto=FALSE explicitly: this baseline was recorded before per-subject
+    # adaptation existed, and `auto` now defaults to TRUE, so the DEFAULT fit is
+    # deliberately no longer identical to it.  What this test still guards is
+    # that the un-adapted path is untouched -- which is the contract auto=FALSE
+    # carries.
     .ref <- readRDS(test_path("baselines", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
-              impmapControl(print=0L, nIter=5L, isample=100L)))
+              impmapControl(print=0L, nIter=5L, isample=100L, auto=FALSE)))
     expect_equal(fixef(.f), .ref$fixef, tolerance=1e-8)
     expect_equal(.f$omega, .ref$omega, tolerance=1e-8)
     expect_equal(.f$env$impObj, .ref$obj, tolerance=1e-8)
