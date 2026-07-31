@@ -617,7 +617,8 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 // gamma -- wrong whenever the scale adapted during the fit, and badly wrong
 // under gammaMethod="individual" where the scales are per subject.  The
 // covariance must be evaluated with the same proposal the fit converged on.
-void impComputeCov(Environment e, const arma::vec& gammaVec) {
+void impComputeCov(Environment e, const arma::vec& gammaVec,
+                   const arma::vec& dfVec) {
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
@@ -691,13 +692,13 @@ void impComputeCov(Environment e, const arma::vec& gammaVec) {
         Z = qrZ0;
       }
       for (int k = 0; k < isample; ++k) {
-        S.row(k) = (modes[id] + Ls[id] * Z.row(k).t()).t();
+        S.row(k) = (modes[id] + Ls[id] * (Z.row(k).t() * impTScale(dfVec[id]))).t();
       }
     } else {
       for (int k = 0; k < isample; ++k) {
         arma::vec z(neta);
         for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-        S.row(k) = (modes[id] + Ls[id] * z).t();
+        S.row(k) = (modes[id] + Ls[id] * (z * impTScale(dfVec[id]))).t();
       }
     }
     Ss[id] = S;
@@ -741,7 +742,7 @@ void impComputeCov(Environment e, const arma::vec& gammaVec) {
         // This subject's converged proposal scale (all equal under "global").
         // Must use the SAME proposal shape (df) as the E-step or the reweighted
         // objective is not the one the fit converged on.
-        double dfCov = impDf();
+        double dfCov = dfVec[id];
         arma::vec q(isample); int nGood = 0;
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
@@ -868,6 +869,12 @@ void impOuter(Environment e) {
   // badly covered subject; holding it as a vector is what lets that happen
   // without charging every other subject for the extra samples.
   arma::ivec isampleVec(nExp); isampleVec.fill(isample);
+  // Counts actually USED by the last E-step.  isampleVec is reallocated after
+  // the E-step, so reporting it directly pairs next iteration's counts with
+  // this iteration's Neff and can show an effective-sample FRACTION above 1,
+  // which is impossible.
+  arma::ivec isampleUsed(nExp); isampleUsed.fill(isample);
+  arma::vec dfUsed(nExp); dfUsed.fill(impDf());   // df actually used last E-step
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
@@ -880,6 +887,11 @@ void impOuter(Environment e) {
     // subject i's count.
     std::vector<int> isv;
     impNsampleVecGet(isv);
+    if ((int)isv.size() > 1 && (int)isv.size() != nsub) {
+      Rf_error("'isample' has length %d but there are %d subjects; a per-subject "
+               "isample vector must have one entry per subject",
+               (int)isv.size(), nsub);
+    }
     if ((int)isv.size() == nsub) {
       for (int i = 0; i < nsub; ++i) {
         int v = isv[i] < 1 ? 1 : isv[i];
@@ -954,7 +966,12 @@ void impOuter(Environment e) {
       // the effective sample size, whereas df 4 costs far more Monte-Carlo
       // noise for no extra tail benefit.  The k-hat escalation below drops it
       // further only on evidence.
-      double dfI = (sparse || nonNormal) ? 20.0 : 0.0;
+      // TUNED (df sweep, theophylline, 12 seeds, RMSE vs an isample=20000
+      // reference): df 30 clears the tail failure completely (max k-hat
+      // 2.58 -> -0.02, bad subjects 2.08 -> 0.08) for a 7% RMSE cost
+      // (0.0240 -> 0.0257).  Entering at 20 costs 33% and at 8 costs 3x for no
+      // extra tail benefit, so the earlier ladder was simply mistuned.
+      double dfI = (sparse || nonNormal) ? 30.0 : 0.0;
       // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
       // wide, and widening a Gaussian is the lever measured NOT to fix tails
       // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
@@ -1011,6 +1028,8 @@ void impOuter(Environment e) {
     // controller set at the end of the previous iteration (and the constructor
     // fill for iteration 0), so it must NOT be flattened here.
     if (!gammaInd) gammaVec.fill(gamma);
+    isampleUsed = isampleVec;
+    dfUsed = dfVec;
     impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
@@ -1018,7 +1037,7 @@ void impOuter(Environment e) {
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
     double accFrac = 0.0; int nAcc = 0;
     for (int id = 0; id < nsub; ++id)
-      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isampleVec[id]; ++nAcc; }
+      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isampleUsed[id]; ++nAcc; }
     if (nAcc > 0) accFrac /= (double)nAcc;
     // Mean NONMEM-style xi (a DIFFERENT statistic from accFrac -- see impEStep).
     double xiMean = 0.0; int nXi = 0;
@@ -1041,20 +1060,32 @@ void impOuter(Environment e) {
     // it.  Escalation is one-way and stepwise (Gaussian -> 8 -> 4) so a noisy
     // k-hat cannot oscillate the proposal shape from iteration to iteration.
     if (autoOn) {
+      // Severity-driven, and two-way.  The earlier version walked a fixed
+      // ladder one rung per iteration regardless of HOW bad k-hat was, and
+      // never came back -- so a subject with k-hat 0.75 took the same path as
+      // one at 3.0, and any subject that did not need a t proposal kept paying
+      // for it.  Both waste accuracy, which is what the gate was failing on.
+      //
+      // Mapping comes from the df sweep (theophylline, 12 seeds, RMSE vs an
+      // isample=20000 reference): df 30 already takes max k-hat 2.58 -> -0.02
+      // for a 7% RMSE cost, while df 8 costs 3x for no extra tail benefit.  So
+      // heavier rungs are reserved for k-hat that df 30 has NOT settled.
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
-        if (!R_finite(kh) || kh <= 0.7) continue;
-        // TUNED ladder: Gaussian -> mild -> moderate -> heavy, so each step is
-        // the smallest that might work.  Heavier tails buy tail reliability at
-        // the price of Monte-Carlo noise, so overshooting costs precision.
-        if (dfVec[id] <= 0.0)       dfVec[id] = 20.0;
-        else if (dfVec[id] > 8.0)   dfVec[id] = 8.0;
-        else if (dfVec[id] > 4.0)   dfVec[id] = 4.0;
-        else if (iacceptVec[id] > 0.2) {
-          // tails already as heavy as this ladder goes and still failing: now
-          // fall back to the tutorial's IACCEPT ~ 0.2, which widens gamma
-          iacceptVec[id] = 0.2;
+        if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
+        if (kh > 0.7) {
+          // pick the lightest tail plausibly heavy enough for this severity
+          double want = (kh > 2.0) ? 12.0 : (kh > 1.0 ? 20.0 : 30.0);
+          // only ever go heavier here; escalation must not oscillate
+          if (dfVec[id] <= 0.0 || want < dfVec[id]) dfVec[id] = want;
         }
+        // NOTE deliberately one-way.  Relaxing on a low k-hat is circular: once
+        // a t proposal is in place k-hat drops precisely BECAUSE it is working
+        // (measured -1.3 to -1.9 on subjects that read 2.03 under a Gaussian),
+        // so "safe now" is evidence the fix is needed, not that it is not.
+        // Relaxing on it walks straight back into the failure and oscillates.
+        // Efficiency comes from picking the right rung immediately -- the
+        // severity mapping above -- not from backing off afterwards.
       }
     }
 
@@ -1073,11 +1104,22 @@ void impOuter(Environment e) {
     if (autoOn && nExp > 1) {
       arma::vec need(nExp, arma::fill::ones);
       for (int id = 0; id < nExp; ++id) {
-        double fr = R_finite(Neff[id]) ? Neff[id] / (double)isampleVec[id] : 1.0;
+        double fr = R_finite(Neff[id]) ? Neff[id] / (double)isampleUsed[id] : 1.0;
         if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
-        // inverse-efficiency weighting, bounded so no subject starves or hogs
-        double w = 1.0 / std::max(0.05, std::min(1.0, fr));
-        need[id] = std::min(4.0, w);
+        // Only deviate from uniform where the effective-sample fraction is
+        // genuinely deficient.  Reallocating on small differences just adds
+        // per-subject sampling noise for no gain; a subject already above the
+        // acceptance target does not need more draws.
+        // NONMEM's stated behaviour is two-sided: more budget to subjects with
+        // noisy likelihoods or many active random effects, and LESS to
+        // data-rich subjects whose conditional mode is easy to resolve.  A
+        // threshold rule ("boost only below iaccept") captures only the first
+        // half and is completely inert when every subject is above the target,
+        // which is the common case -- so allocate PROPORTIONALLY to inverse
+        // effective-sample fraction instead, normalized to the fixed budget.
+        // Easy subjects then automatically fund the hard ones.
+        double w = 1.0 / std::max(0.02, std::min(1.0, fr));
+        need[id] = std::min(6.0, w);
       }
       double tot = arma::accu(need);
       if (tot > 0.0 && R_finite(tot)) {
@@ -1351,7 +1393,7 @@ void impOuter(Environment e) {
   // Monte-Carlo observed-information covariance (theta block) at the converged
   // estimate, before the inner neqOverride is cleared (the inner solves use it).
   // Selected by impmapControl(covMethod="imp") (the default).
-  if (impCovEnabled()) impComputeCov(e, gammaVec);
+  if (impCovEnabled()) impComputeCov(e, gammaVec, dfVec);
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
@@ -1371,8 +1413,8 @@ void impOuter(Environment e) {
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
-  e["impNsampleInd"] = wrap(isampleVec);   // per-expanded-subject counts
-  e["impDfInd"]    = wrap(dfVec);           // per-expanded-subject proposal df
+  e["impNsampleInd"] = wrap(isampleUsed);  // counts USED by the last E-step
+  e["impDfInd"]    = wrap(dfUsed);          // df USED by the last E-step
   e["impIacceptInd"] = wrap(iacceptVec);    // per-expanded-subject acceptance target
   e["impKhatIter"] = wrap(KhatExp);         // last-iteration in-kernel k-hat
   e["impAuto"]     = autoOn;

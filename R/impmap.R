@@ -237,6 +237,9 @@ impmapControl <- function(sigdig=4,
                               .var.name="isample")
   checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
   .isampleAll <- as.integer(isample)
+  # A per-subject vector must be exactly nsub long.  nsub is not known here, so
+  # the length is checked at fit time in the kernel (it used to fall back to a
+  # uniform max() and ignore a wrong-length vector without a word).
   # the scalar used for sizing / sirSample defaults / reporting is the largest
   .isample <- max(.isampleAll)
   if (is.null(sirSample)) {
