@@ -96,3 +96,72 @@ nmTest({
   })
 
 })
+
+# Per-subject ISAMPLE (the NM7 Technical Guide's own remedy) vs the t proposal.
+nmTest({
+
+  .isModel <- function() {
+    ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
+    model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+           linCmt() ~ add(add.sd)})
+  }
+
+  test_that("isample accepts a per-subject vector and uses it", {
+    expect_equal(impmapControl(isample = 300L)$isample, 300L)
+    expect_equal(impmapControl(isample = c(100L, 200L))$isample, c(100L, 200L))
+    expect_error(impmapControl(isample = 0L))
+    .d <- nlmixr2data::theo_sd
+    .n <- length(unique(.d$ID))
+    .iv <- rep(300L, .n); .iv[c(1L, 3L)] <- 900L
+    .f <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 5L,
+                                                 isample = .iv, covMethod = "")))
+    expect_equal(as.integer(.f$env$impNsampleInd), .iv)
+  })
+
+  test_that("a uniform isample vector matches the equivalent scalar", {
+    .d <- nlmixr2data::theo_sd
+    .n <- length(unique(.d$ID))
+    .a <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 5L,
+                                                 isample = 300L, covMethod = "")))
+    .b <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 5L,
+                                                 isample = rep(300L, .n),
+                                                 covMethod = "")))
+    expect_equal(.b$objf, .a$objf, tolerance = 1e-10)
+    expect_equal(unname(.b$theta), unname(.a$theta), tolerance = 1e-10)
+  })
+
+  test_that("more samples does NOT repair tail failure -- only a heavier tail does", {
+    # The guide's remedy treats the symptom; the tutorial's treats the cause.
+    # Infinite weight variance is a property of the proposal/target TAIL RATIO,
+    # so extra draws from a too-light proposal simply reach further into the
+    # region that breaks the estimator and can make k-hat WORSE.  Measured:
+    #
+    #   Gaussian, uniform 300              max k-hat 1.611, 4 subjects bad
+    #   Gaussian, bad subjects at 3000     max k-hat 3.276, 1 subject bad
+    #   t proposal df=20, uniform 300      max k-hat -0.577, 0 bad
+    skip_on_cran()
+    .d <- nlmixr2data::theo_sd
+    .n <- length(unique(.d$ID))
+    .g <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 8L,
+                                                 isample = 300L, covMethod = "")))
+    .k0 <- .g$env$impPsisK
+    expect_gt(sum(.k0 > 0.7), 0L)                     # premise
+    .iv <- rep(300L, .n); .iv[.k0 > 0.7] <- 3000L
+    .boost <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                       impmapControl(print = 0L, nIter = 8L,
+                                                     isample = .iv, covMethod = "")))
+    .t <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
+                                   impmapControl(print = 0L, nIter = 8L,
+                                                 isample = 300L, covMethod = "",
+                                                 df = 20)))
+    # 10x the samples does not clear the unreliable regime ...
+    expect_gt(max(.boost$env$impPsisK), 0.7)
+    # ... while a heavier-tailed proposal does, at the ORIGINAL sample count
+    expect_lt(max(.t$env$impPsisK), 0.7)
+  })
+
+})

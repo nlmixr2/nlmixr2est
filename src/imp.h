@@ -37,6 +37,7 @@ std::string impDiagXform();
 // Convergence controller / proposal-scale adaptation controls (from impmapControl):
 double impIaccept();      // target effective-sample fraction that gamma adapts toward
 double impDf();           // proposal degrees of freedom (NONMEM DF); 0 = Gaussian
+void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = use the scalar)
 bool impGammaIndividual();// TRUE for gammaMethod="individual" (per-subject NONMEM gamma_i)
 double impIscaleMin();    // lower bound for the adapted gamma
 double impIscaleMax();    // upper bound for the adapted gamma

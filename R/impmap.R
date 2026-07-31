@@ -32,7 +32,16 @@
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
 #' @param isample Number of importance samples drawn per subject per iteration
-#'   (NONMEM ISAMPLE).
+#'   (NONMEM ISAMPLE).  Either a single count used for every subject, or a
+#'   vector of length `nsub` giving a count **per subject**.
+#'
+#'   Per-subject counts are the NM7 Technical Guide's own remedy for poor
+#'   coverage (its derivation is Gaussian throughout and never mentions a t
+#'   proposal): a subject whose weights are badly behaved can be given more
+#'   samples without charging every other subject for them.  Note this treats
+#'   the symptom rather than the cause -- more draws from a proposal whose
+#'   tails are too light still gives weights with infinite variance, which
+#'   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.
 #' @param nIter Maximum number of importance-sampling EM iterations.
 #' @param mapIter Number of MAP re-centering iterations per EM step; `> 0`
 #'   re-centers the proposal at the MAP mode each iteration.
@@ -170,9 +179,15 @@ impmapControl <- function(sigdig=4,
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
-  checkmate::assertIntegerish(isample, any.missing=FALSE, len=1, lower=1, .var.name="isample")
+  # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
+  # ISAMPLE): a badly covered subject can buy more samples without charging
+  # every other subject for them.
+  checkmate::assertIntegerish(isample, any.missing=FALSE, min.len=1, lower=1,
+                              .var.name="isample")
   checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
-  .isample <- as.integer(isample)
+  .isampleAll <- as.integer(isample)
+  # the scalar used for sizing / sirSample defaults / reporting is the largest
+  .isample <- max(.isampleAll)
   if (is.null(sirSample)) {
     .sirSample <- max(25L, as.integer(ceiling(.isample / 10)))
   } else {
@@ -214,7 +229,7 @@ impmapControl <- function(sigdig=4,
                       c(list(sigdig=sigdig), .dots,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
-  .control$isample <- as.integer(isample)
+  .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)

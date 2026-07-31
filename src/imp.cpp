@@ -187,7 +187,14 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
 // a mixture's components each get their own scale.  Under gammaMethod="global"
 // every element holds the same value and this is arithmetically identical to the
 // previous scalar gamma; the per-subject controller is what makes them diverge.
-static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
+// isampleVec carries one sample count per EXPANDED subject.  Under the classic
+// (scalar) setting every entry is the same and this is arithmetically identical
+// to the previous fixed-count E-step; per-subject counts let a badly covered
+// subject buy more samples without charging every other subject for them, which
+// is the NM7 Technical Guide's own mechanism (its derivation is Gaussian
+// throughout and never mentions a t proposal).
+static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
+                     const arma::vec& gammaVec,
                      double df, int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
@@ -293,7 +300,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
   bool qrRefresh = impQrRefreshEnabled();
   arma::mat qrU0, qrZ0;
   if (qr) {
-    qrU0 = impSobolU0(isample, neta);
+    qrU0 = impSobolU0((int)isampleVec.max(), neta);
     if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
   }
   // Parallelize over base subjects, iterating a subject's mixture components
@@ -318,7 +325,8 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       // This subject's own proposal scale (all equal under gammaMethod="global").
       double gammaId = gammaVec[id];
       double dfId = df;   // proposal degrees of freedom; 0 = Gaussian
-      arma::mat S(isample, neta);
+      int nsId = (int)isampleVec[id];   // this subject's sample count
+      arma::mat S(nsId, neta);
       if (qr) {
         // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
         // from this subject's seeded stream; qrRefresh=FALSE instead uses the
@@ -333,7 +341,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
         } else {
           Z = qrZ0;
         }
-        for (int k = 0; k < isample; ++k) {
+        for (int k = 0; k < nsId; ++k) {
           // Quasi-random t: the Sobol point supplies the Gaussian direction and
           // a fresh uniform supplies the chi-square scale.  (A fully
           // quasi-random t would need an extra Sobol coordinate; this keeps the
@@ -342,7 +350,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
           S.row(k) = (modes[id] + cholL[id] * (Z.row(k).t() * ts)).t();
         }
       } else {
-        for (int k = 0; k < isample; ++k) {
+        for (int k = 0; k < nsId; ++k) {
           arma::vec z(neta);
           for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
           double ts = impTScale(dfId);
@@ -370,9 +378,9 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
       // density (minimized by the inner optimizer), so it enters with a minus;
       // the proposal density is subtracted, contributing +(1/(2 gamma)) d'H d.
-      arma::vec q(isample);
+      arma::vec q(nsId);
       int nGood = 0;
-      for (int k = 0; k < isample; ++k) {
+      for (int k = 0; k < nsId; ++k) {
         arma::vec eta = S.row(k).t();
         arma::vec d = eta - modes[id];
         double qk = -impEvalJointLik(eta, id) +
@@ -394,7 +402,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       outS[id] = S;
       outZk[id] = zk;
       okExp[id] = 1;
-      double logMeanExp = qmax + std::log(sumw / (double)isample);
+      double logMeanExp = qmax + std::log(sumw / (double)nsId);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
         0.5 * logDetH[id] + impCiTCorrection(dfId, neta);
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
@@ -404,7 +412,7 @@ static void impEStep(int nsub, int neta, int isample, const arma::vec& gammaVec,
       arma::rowvec pbar = zk.t() * S;
       cmExp.row(id) = pbar;
       arma::mat B(neta, neta, arma::fill::zeros);
-      for (int k = 0; k < isample; ++k) {
+      for (int k = 0; k < nsId; ++k) {
         arma::rowvec dr = S.row(k) - pbar;
         B += zk[k] * (dr.t() * dr);
       }
@@ -783,6 +791,23 @@ void impOuter(Environment e) {
   // holding it as a vector is what lets a per-subject controller drive the
   // elements apart without touching the E-step again.
   arma::vec gammaVec(nExp); gammaVec.fill(gamma);
+  // Per-expanded-subject sample count.  Uniform unless AUTO raises it for a
+  // badly covered subject; holding it as a vector is what lets that happen
+  // without charging every other subject for the extra samples.
+  arma::ivec isampleVec(nExp); isampleVec.fill(isample);
+  {
+    // A per-subject isample= vector is given per BASE subject; tile it across
+    // the mixture's expanded pseudo-subjects so component j of subject i gets
+    // subject i's count.
+    std::vector<int> isv;
+    impNsampleVecGet(isv);
+    if ((int)isv.size() == nsub) {
+      for (int i = 0; i < nsub; ++i) {
+        int v = isv[i] < 1 ? 1 : isv[i];
+        for (int j = 0; j < Nmix; ++j) isampleVec[i + j * nsub] = v;
+      }
+    }
+  }
   // gammaMethod="individual": each subject's gamma_i is adapted two-sided so
   // that its own xi_i approaches iaccept.  Otherwise the legacy global rule
   // drives one shared scale off the MEAN Kish effective-sample fraction.
@@ -820,7 +845,8 @@ void impOuter(Environment e) {
   uint32_t qrPinSeed = (uint32_t)impBaseSeed() + 0x9E3779B1u;
   // Salted base for the SIR stratified offsets; SIR only engages when it can
   // shrink the sample (sirN < isample) so every other path is unchanged.
-  bool sir = impSirEnabled() && impSirN() < isample;
+  // SIR only engages where it actually shrinks that subject's sample.
+  bool sir = impSirEnabled();
   int sirN = impSirN();
   uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
 
@@ -853,14 +879,14 @@ void impOuter(Environment e) {
     // controller set at the end of the previous iteration (and the constructor
     // fill for iteration 0), so it must NOT be flattened here.
     if (!gammaInd) gammaVec.fill(gamma);
-    impEStep(nsub, neta, isample, gammaVec, impDf(), cores, iter, impLogDetOmegaInv5(), isImp,
+    impEStep(nsub, neta, isampleVec, gammaVec, impDf(), cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
     double accFrac = 0.0; int nAcc = 0;
     for (int id = 0; id < nsub; ++id)
-      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isample; ++nAcc; }
+      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isampleVec[id]; ++nAcc; }
     if (nAcc > 0) accFrac /= (double)nAcc;
     // Mean NONMEM-style xi (a DIFFERENT statistic from accFrac -- see impEStep).
     double xiMean = 0.0; int nXi = 0;
@@ -1153,6 +1179,7 @@ void impOuter(Environment e) {
   e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
+  e["impNsampleInd"] = wrap(isampleVec);   // per-expanded-subject counts
   e["impQr"]       = impQrEnabled();
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
