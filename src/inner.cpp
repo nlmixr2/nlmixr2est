@@ -510,6 +510,8 @@ struct focei_options {
   // Optional per-subject sample counts (NONMEM's per-subject ISAMPLE).  Empty
   // means "use the scalar impNsample for everyone".
   std::vector<int> impNsampleVec;
+  bool impAuto = false;      // AUTO=1: adapt df / isample / iaccept per subject
+  bool impAutoNonNormal = false; // model is not transformably normal (categorical etc.)
   // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
   // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
   std::string impGammaMethod = "global";
@@ -5225,6 +5227,9 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
     if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
+    if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
+    if (foceiO.containsElementNamed("autoNonNormal"))
+      op_focei.impAutoNonNormal = as<bool>(foceiO["autoNonNormal"]);
     if (foceiO.containsElementNamed("isample")) {
       IntegerVector isv = as<IntegerVector>(foceiO["isample"]);
       op_focei.impNsampleVec.clear();
@@ -9086,7 +9091,16 @@ std::string impDiagXform() {
 
 double impIaccept() { return op_focei.impIaccept; }
 double impDf() { return op_focei.impDf; }
+bool impAutoEnabled() { return op_focei.impAuto; }
+bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
 void impNsampleVecGet(std::vector<int>& out) { out = op_focei.impNsampleVec; }
+
+// Observation count for subject id -- AUTO uses nobs/neta to decide whether a
+// subject's data is sparse enough to need a heavy-tailed (t) proposal.
+int impNobs(int id) {
+  focei_ind *fInd = &(inds_focei[id]);
+  return (int)fInd->nObs;
+}
 // TRUE when the per-subject (NONMEM) gamma controller is selected.  Queried once
 // per EM iteration, not in the sampling loop, so the string compare is free.
 bool impGammaIndividual() { return op_focei.impGammaMethod == "individual"; }

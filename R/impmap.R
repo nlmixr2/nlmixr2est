@@ -9,7 +9,7 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod", "gammaMethodUser", "df",
+                           "gammaMethod", "gammaMethodUser", "df", "auto", "autoNonNormal",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -65,6 +65,32 @@
 #'   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
 #'   `DF` when there are fewer data points than etas, or for categorical data.
 #'   Small values (3-8) are heavy; large values approach the Gaussian.
+#' @param auto NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
+#'   freedom, the sample count and the acceptance target **per subject** rather
+#'   than applying one global setting to everybody.
+#'
+#'   * **`df`** -- a subject whose observation count is below the number of
+#'     random effects, or any subject when the model is not transformably
+#'     normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
+#'     ("fewer data points than there are ETAs ... or data are categorical").
+#'   * **`isample`** -- the total sample budget (`isample * nsub`) is
+#'     reallocated toward subjects whose effective-sample fraction is lowest,
+#'     the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
+#'     load-balancing, not a cost increase.  Note sample count is deliberately
+#'     *not* driven by Pareto k-hat: a heavy tail is not repairable by more
+#'     draws (see `df`).
+#'   * **`iaccept`** -- lowered to 0.2 for the same sparse/categorical
+#'     subjects, per the tutorial.
+#'
+#'   The concrete values (`df = 4`, the `nobs < neta` test, the budget
+#'   reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
+#'   `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
+#'   documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
+#'   in lack of stochastic reproducibility", this remains seeded and
+#'   thread-count independent.
+#'
+#'   Per-subject values are reported in `fit$env$impDfInd`,
+#'   `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
@@ -160,6 +186,7 @@ impmapControl <- function(sigdig=4,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
                           df=0,
+                          auto=FALSE,
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -235,6 +262,8 @@ impmapControl <- function(sigdig=4,
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
   .control$df <- as.double(df)
+  checkmate::assertLogical(auto, any.missing=FALSE, len=1, .var.name="auto")
+  .control$auto <- auto
   if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
@@ -462,6 +491,9 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (is.null(.gmUser)) .gmUser <- .control$gammaMethod
   .control$gammaMethodUser <- .gmUser                # kept for $runInfo
   .control$gammaMethod <- .impmapResolveGammaMethod(.gmUser, ui)
+  # AUTO's "or data are categorical" trigger: reuse the same transformably-normal
+  # test the gammaMethod resolution uses, so there is one notion of model class.
+  .control$autoNonNormal <- identical(.impmapResolveGammaMethod("auto", ui), "individual")
   # Say which efficiency statistic this fit's number actually is.  Both are
   # always stashed but they are not the same quantity, and only one drives the
   # adaptation -- warning() here is the established route onto $runInfo

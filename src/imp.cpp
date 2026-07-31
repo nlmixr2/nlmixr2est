@@ -126,6 +126,76 @@ static inline double impCiTCorrection(double df, int p) {
     std::lgamma(0.5 * df) - std::lgamma(0.5 * (df + (double)p));
 }
 
+// ---- Pareto k-hat (PSIS) ----------------------------------------------------
+// In-kernel copy of the Zhang & Stephens (2009) empirical-Bayes GPD fit that
+// R/impPsis.R computes post-fit (validated there against loo::psis).  Needed
+// HERE because AUTO must react to tail failure while the EM is still running,
+// and the cheap in-sample statistics (xi, Kish ESS) are structurally blind to
+// it.  Pure arithmetic on the weight vector; no RNG, no allocation beyond the
+// tail copy, so it is safe inside the parallel E-step.
+static double impPsisKhat(const arma::vec& w) {
+  // Mirrors R/impPsis.R line for line (that version is validated against
+  // loo::psis); the earlier attempt to be clever with Armadillo expressions
+  // silently returned ~0 for weights whose true k-hat was 2.0.
+  std::vector<double> x;
+  x.reserve(w.n_elem);
+  for (arma::uword i = 0; i < w.n_elem; ++i) {
+    double v = w[i];
+    if (R_finite(v) && v > 0.0) x.push_back(v);
+  }
+  int S = (int)x.size();
+  if (S < 25) return NA_REAL;
+  int tail = (int)std::floor(0.2 * S);
+  int t2 = (int)std::floor(3.0 * std::sqrt((double)S));
+  if (t2 < tail) tail = t2;
+  if (tail < 5) return NA_REAL;
+  std::sort(x.begin(), x.end());
+  // threshold = largest weight NOT in the tail (R: .srt[.s - .tail], 1-based)
+  double u = x[S - tail - 1];
+  std::vector<double> exc;
+  exc.reserve(tail);
+  for (int i = S - tail; i < S; ++i) {
+    double e = x[i] - u;
+    if (e > 0.0) exc.push_back(e);
+  }
+  int n = (int)exc.size();
+  if (n < 5) return NA_REAL;
+  std::sort(exc.begin(), exc.end());
+  int m = 30 + (int)std::floor(std::sqrt((double)n));
+  // R: .xstar <- x[floor(.n/4 + 0.5)]  -- 1-based, so subtract 1 here
+  int qi = (int)std::floor((double)n / 4.0 + 0.5) - 1;
+  if (qi < 0) qi = 0;
+  if (qi >= n) qi = n - 1;
+  double xstar = exc[qi];
+  if (!(xstar > 0.0) || !R_finite(xstar)) return NA_REAL;
+  std::vector<double> theta(m), l(m);
+  double lmax = R_NegInf;
+  for (int j = 0; j < m; ++j) {
+    theta[j] = 1.0 / exc[n - 1] +
+      (1.0 - std::sqrt((double)m / ((double)(j + 1) - 0.5))) / 3.0 / xstar;
+    double k = 0.0;
+    for (int i = 0; i < n; ++i) k += std::log1p(-theta[j] * exc[i]);
+    k /= (double)n;
+    double lj = R_NegInf;
+    double a = -theta[j] / k;
+    if (R_finite(k) && k != 0.0 && a > 0.0) lj = (double)n * (std::log(a) - k - 1.0);
+    l[j] = lj;
+    if (lj > lmax) lmax = lj;
+  }
+  if (!R_finite(lmax)) return NA_REAL;
+  double sw = 0.0, tw = 0.0;
+  for (int j = 0; j < m; ++j) {
+    double wj = std::exp(l[j] - lmax);
+    if (!R_finite(wj)) continue;
+    sw += wj; tw += theta[j] * wj;
+  }
+  if (!(sw > 0.0) || !R_finite(sw)) return NA_REAL;
+  double thetaHat = tw / sw;
+  double kh = 0.0;
+  for (int i = 0; i < n; ++i) kh += std::log1p(-thetaHat * exc[i]);
+  return kh / (double)n;
+}
+
 // ---- SIR (sampling-importance-resampling) element ---------------------------
 // Systematic (stratified) resampling: sirN indices drawn with copy counts
 // proportional to the normalized weights (each count is within 1 of
@@ -195,11 +265,11 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
 // throughout and never mentions a t proposal).
 static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      const arma::vec& gammaVec,
-                     double df, int cores,
+                     const arma::vec& dfVec, int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
-                     arma::vec& XiExpOut,
+                     arma::vec& XiExpOut, arma::vec& KhatExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed) {
@@ -280,6 +350,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   arma::vec LiExp(nExp); LiExp.fill(NA_REAL);
   arma::vec NeffExp(nExp); NeffExp.fill(NA_REAL);
   arma::vec XiExp(nExp); XiExp.fill(NA_REAL);
+  arma::vec KhatExp(nExp); KhatExp.fill(NA_REAL);
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
@@ -324,7 +395,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       if (!haveL[id]) continue;
       // This subject's own proposal scale (all equal under gammaMethod="global").
       double gammaId = gammaVec[id];
-      double dfId = df;   // proposal degrees of freedom; 0 = Gaussian
+      double dfId = dfVec[id];   // this subject's proposal df; 0 = Gaussian
       int nsId = (int)isampleVec[id];   // this subject's sample count
       arma::mat S(nsId, neta);
       if (qr) {
@@ -409,6 +480,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
       // NONMEM xi: mean weight normalized to the proposal center (see above).
       if (R_finite(qCenter)) XiExp[id] = std::exp(logMeanExp - qCenter);
+      KhatExp[id] = impPsisKhat(zk);   // tail index of this subject's weights
       arma::rowvec pbar = zk.t() * S;
       cmExp.row(id) = pbar;
       arma::mat B(neta, neta, arma::fill::zeros);
@@ -499,6 +571,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // drives (one gamma_i per expanded subject).  `Xi` above is the
   // responsibility-combined per-base-subject value used for reporting.
   XiExpOut = XiExp;
+  KhatExpOut = KhatExp;
 
   // On the last iteration, stash the per-subject sampler diagnostics (first
   // component for a mixture).
@@ -777,7 +850,7 @@ void impOuter(Environment e) {
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
-  arma::vec Li, Neff, Xi, XiExp;
+  arma::vec Li, Neff, Xi, XiExp, KhatExp;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
@@ -795,6 +868,12 @@ void impOuter(Environment e) {
   // badly covered subject; holding it as a vector is what lets that happen
   // without charging every other subject for the extra samples.
   arma::ivec isampleVec(nExp); isampleVec.fill(isample);
+  // Per-expanded-subject proposal df and acceptance target.  Uniform unless
+  // AUTO differentiates them.
+  arma::vec dfVec(nExp); dfVec.fill(impDf());
+  arma::vec iacceptVec(nExp); iacceptVec.fill(iaccept);
+  bool autoOn = impAutoEnabled();
+  int isampleBudget = isample * nExp;   // AUTO reallocates within this total
   {
     // A per-subject isample= vector is given per BASE subject; tile it across
     // the mixture's expanded pseudo-subjects so component j of subject i gets
@@ -838,6 +917,48 @@ void impOuter(Environment e) {
   // Initial MAP at the starting parameters.
   impMapPass(e);
 
+  // NB placed AFTER the initial MAP pass on purpose: fInd->nObs is only filled
+  // in during a solve, so reading it before impMapPass() returns 0 for every
+  // subject and makes the whole dataset look sparse (which silently gave every
+  // subject df = 4).
+  // ---- AUTO step 1: proposal df from each subject's data sparsity ----------
+  // Decided once, up front, from nobs/neta: a subject with few observations
+  // relative to the number of random effects has a poorly-determined, often
+  // heavy-tailed conditional density that a normal proposal cannot cover, and
+  // no sample count repairs that (measured: boosting a failing subject 10x
+  // moved its k-hat 0.76 -> 3.28, because extra draws reach further into the
+  // tail the proposal misses).  Heavier tails do repair it, cheaply.
+  //
+  // The trigger is the tutorial's, verbatim: "When there are fewer data points
+  // than there are ETAs to be estimated (sparse data) or data are categorical,
+  // then DF should be set to a nonzero number to use the t-distribution sampler
+  // and/or decrease the acceptance rate IACCEPT from the default value of 0.4
+  // to about 0.2" (Bauer, NONMEM Tutorial Part II, 2019).  So the test is
+  // nobs < neta -- NOT a wider sparsity band -- and categorical/non-normal data
+  // qualifies regardless of how much of it there is.
+  //
+  // On the VALUES: IACCEPT ~ 0.2 is the tutorial's own number.  DF = 4 is NOT
+  // -- the tutorial says only "DF should be set to a nonzero number".  NONMEM
+  // does not publish what AUTO=1 actually picks, so 4 is nlmixr2's choice,
+  // informed by the measurement that even df = 20 cleared every failing
+  // subject on theophylline (max k-hat 1.61 -> -0.58) for 0.25% of the
+  // effective sample size, so a heavier default is safe and cheap.  Any
+  // comparison against NONMEM should treat these numbers as nlmixr2's, not as
+  // a reproduction of NONMEM's internals.
+  if (autoOn) {
+    bool nonNormal = impAutoNonNormal();
+    for (int i = 0; i < nsub; ++i) {
+      bool sparse = impNobs(i) < neta;
+      double dfI = (sparse || nonNormal) ? 4.0 : 0.0;
+      double iaI = (sparse || nonNormal) ? 0.2 : iaccept;
+      for (int j = 0; j < Nmix; ++j) {
+        dfVec[i + j * nsub] = dfI;
+        iacceptVec[i + j * nsub] = iaI;
+      }
+    }
+  }
+
+
   // Fit-constant base seed for the pinned (qrRefresh=FALSE) Cranley-Patterson
   // shift streams; only consumed in that mode so every other path's draw
   // stream is unchanged.
@@ -879,8 +1000,8 @@ void impOuter(Environment e) {
     // controller set at the end of the previous iteration (and the constructor
     // fill for iteration 0), so it must NOT be flattened here.
     if (!gammaInd) gammaVec.fill(gamma);
-    impEStep(nsub, neta, isampleVec, gammaVec, impDf(), cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, XiExp, sampS, sampZk, aMat, &e, qrPinSeed);
+    impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
+             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -897,6 +1018,57 @@ void impOuter(Environment e) {
     // itself under "global", the mean of the per-subject scales under
     // "individual".  It is what gets traced and reported as impGammaUsed.
     if (gammaInd) gamma = arma::mean(gammaVec);
+    // ---- AUTO step 3: escalate df when k-hat reports tail failure ----------
+    // The tutorial's df trigger (nobs < neta, or categorical) is necessary but
+    // NOT sufficient: measured on plain theophylline -- 11 observations against
+    // 1 eta, transformably normal, so neither condition fires -- four of twelve
+    // subjects still have infinite-variance weights (max k-hat 2.36), which a
+    // t proposal clears completely.  NONMEM has no tail diagnostic to notice
+    // this; we do, so AUTO uses it.
+    //
+    // This is nlmixr2 going BEYOND the documented NONMEM rule, not reproducing
+    // it.  Escalation is one-way and stepwise (Gaussian -> 8 -> 4) so a noisy
+    // k-hat cannot oscillate the proposal shape from iteration to iteration.
+    if (autoOn) {
+      for (int id = 0; id < nExp; ++id) {
+        double kh = KhatExp[id];
+        if (!R_finite(kh) || kh <= 0.7) continue;
+        if (dfVec[id] <= 0.0)      dfVec[id] = 8.0;   // Gaussian -> moderately heavy
+        else if (dfVec[id] > 4.0)  dfVec[id] = 4.0;   // -> heaviest used here
+      }
+    }
+
+    // ---- AUTO step 2: reallocate the sample budget across subjects --------
+    // The tutorial's trigger is "many ETAs or the objective function has large
+    // stochastic fluctuations".  Both show up as a low effective-sample
+    // FRACTION for that subject, so the budget is shifted toward the subjects
+    // whose weights are least effective and away from the ones that are
+    // already cheap to resolve.  The total is held at isample*nExp, so this is
+    // load-balancing rather than a cost increase.
+    //
+    // Deliberately NOT driven by k-hat: a bad tail is not fixable by more
+    // samples (measured: 10x on a failing subject moved k-hat 0.76 -> 3.28),
+    // that is what the df assignment above is for.  Sample count is the right
+    // lever only for ordinary Monte-Carlo noise.
+    if (autoOn && nExp > 1) {
+      arma::vec need(nExp, arma::fill::ones);
+      for (int id = 0; id < nExp; ++id) {
+        double fr = R_finite(Neff[id]) ? Neff[id] / (double)isampleVec[id] : 1.0;
+        if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
+        // inverse-efficiency weighting, bounded so no subject starves or hogs
+        double w = 1.0 / std::max(0.05, std::min(1.0, fr));
+        need[id] = std::min(4.0, w);
+      }
+      double tot = arma::accu(need);
+      if (tot > 0.0 && R_finite(tot)) {
+        for (int id = 0; id < nExp; ++id) {
+          int v = (int)std::lround((double)isampleBudget * need[id] / tot);
+          if (v < 25) v = 25;                       // floor: keep PSIS usable
+          if (v > 20 * isample) v = 20 * isample;   // ceiling: bound the cost
+          isampleVec[id] = v;
+        }
+      }
+    }
     objTrace.push_back(obj);
     gammaTrace.push_back(gamma);
     neffTrace.push_back(accFrac);
@@ -1122,7 +1294,7 @@ void impOuter(Environment e) {
         } else if (xiId <= 0.0) {
           fac = capDn;                  // xi = 0: proposal far too wide
         } else {
-          fac = std::pow(xiId / iaccept, pExp);
+          fac = std::pow(xiId / iacceptVec[id], pExp);
           if (fac > capUp) fac = capUp;
           else if (fac < capDn) fac = capDn;
         }
@@ -1180,6 +1352,10 @@ void impOuter(Environment e) {
   e["impGammaUsed"] = gamma;
   e["impNsample"]  = isample;
   e["impNsampleInd"] = wrap(isampleVec);   // per-expanded-subject counts
+  e["impDfInd"]    = wrap(dfVec);           // per-expanded-subject proposal df
+  e["impIacceptInd"] = wrap(iacceptVec);    // per-expanded-subject acceptance target
+  e["impKhatIter"] = wrap(KhatExp);         // last-iteration in-kernel k-hat
+  e["impAuto"]     = autoOn;
   e["impQr"]       = impQrEnabled();
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
