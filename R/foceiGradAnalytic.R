@@ -546,22 +546,71 @@
     if (is.null(.Om)) return(NULL)
     st <- .foceiAnalyticGradSetup(ui, .thv, .Om, e)
     if (is.null(st)) return(NULL)
-    ## only the FOCEI (f,R) shape is ported to the all-C++ route
-    if (!identical(as.integer(st$interaction), 1L)) return(NULL)
-    if (as.integer(st$nAGQ) > 1L) return(NULL)
-    if (isTRUE(st$ef$isLL)) return(NULL)
+    ## Shape.  `.foceiAnalyticGradSetup` reports interaction = 0 for an ll() model as well
+    ## as for FOCE, so isLL has to be carried separately and tested first.
+    .isLL <- isTRUE(st$ef$isLL)
+    .interaction <- as.integer(st$interaction)
+    .nAGQ <- as.integer(st$nAGQ)
     am <- .foceiAnalyticAugModelDirs(ui, st$dir$dirs)
     if (is.null(am)) return(NULL)
     .cols <- tryCatch(.vaeOuterCols(am), error = function(.) NULL)
-    if (is.null(.cols) || !isTRUE(.cols$hasR)) return(NULL)
+    if (is.null(.cols)) return(NULL)
+    ## The (f,R) kernels contract a variance model.  An ll() endpoint has none -- its
+    ## rx_pred_ IS the per-observation log density -- so hasR is required for every shape
+    ## except that one.
+    if (!.isLL && !isTRUE(.cols$hasR)) return(NULL)
+    ## AGQ solves its quadrature nodes through a 1st-order sibling model (26 ODE states
+    ## down to 8 on a one-compartment model).  Prefer the one built and disk-cached at
+    ## model setup; fall back to building it, and then to the order-2 model, which is
+    ## what the nodes used before that optimization existed.
+    .colsNode <- NULL
+    if (.nAGQ > 1L) {
+      .amN <- tryCatch({
+        .fmN <- ui$foceiModel
+        if (inherits(.fmN$outerNode, "rxode2") && !is.null(.fmN$outerNodeMeta)) {
+          c(list(augMod = .fmN$outerNode), .fmN$outerNodeMeta)
+        } else {
+          .foceiAnalyticAugModelDirs(ui, st$dir$dirs, order = 1L)
+        }
+      }, error = function(.) NULL)
+      if (!is.null(.amN) && identical(.amN$ndir, am$ndir)) {
+        .colsNode <- tryCatch(.vaeOuterCols(.amN), error = function(.) NULL)
+      }
+      if (is.null(.colsNode)) .colsNode <- .cols
+    }
+    ## ll() differences the eta-eta block through the eta-only 2nd-order model
+    ## (innerHess2), which drops the non-mu theta directions and so carries far fewer
+    ## 2nd-order sensitivity compartments than the full augmented model.
+    .colsHess2 <- NULL
+    if (.isLL) {
+      .h2 <- tryCatch(ui$foceiModel$innerHess2, error = function(.) NULL)
+      if (inherits(.h2, "rxode2")) {
+        .colsHess2 <- tryCatch(.vaeOuterCols(list(augMod = .h2, dirs = st$dir$dirs,
+                                                  ndir = am$ndir)),
+                               error = function(.) NULL)
+      }
+    }
+    ## ntheta position of each structural theta -- the ll() perturbation of a non-mu
+    ## theta moves th[thPos[p]], which is not the direction index.
+    .thPos <- tryCatch(as.integer(ui$iniDf$ntheta[match(st$dir$thStruct, ui$iniDf$name)]),
+                       error = function(.) integer(0))
     list(cols = .cols,
+         colsNode = .colsNode,
+         colsHess2 = .colsHess2,
          neta = as.integer(st$neta), nth = as.integer(st$dir$nth),
          nsg = as.integer(length(st$ef$sgName)), nom = as.integer(length(st$dOiEst)),
          dirTh = as.integer(st$dir$dirTh),
          sigCol = as.integer(seq_len(length(st$ef$sgName))),
          lamDir = as.integer(st$dir$lamDir),
          nLam = as.integer(length(st$dir$lamNames)),
-         censOpt = as.integer(rxode2::rxGetControl(ui, "censOption", 0L)))
+         censOpt = as.integer(rxode2::rxGetControl(ui, "censOption", 0L)),
+         isLL = .isLL,
+         interaction = .interaction,
+         foceType = as.integer(st$foceType),
+         nAGQ = .nAGQ,
+         dependsF0 = isTRUE(st$ef$dependsF0),
+         canVanish = isTRUE(st$ef$canVanish),
+         thPos = .thPos)
   }, error = function(e) NULL)
 }
 

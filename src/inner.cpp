@@ -348,6 +348,10 @@ struct focei_options {
   int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
   int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
   int nAnalyticGrad = 0;    // # outer gradients from the analytic path
+  // # of those that came from the ALL-C++ direct path.  Separate from nAnalyticGrad
+  // because until the R gradient route is deleted (8F.6) both are "analytic", and a
+  // silent fallback to R would otherwise be indistinguishable from success.
+  int nAnalyticGradDirect = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
   double cholSEtol;
@@ -4596,6 +4600,29 @@ struct FoceiGradPooledSetup : OuterCols {
   bool ok = false;
   int neta = 0, nth = 0, nsg = 0, nom = 0, nLam = 0, censOpt = 0;
   std::vector<int> dirTh, sigCol, lamDir;
+
+  // ---- which objective this fit's gradient is for -----------------------------------
+  // Test isLL FIRST: .foceiAnalyticGradSetup reports interaction = 0 for an ll() model as
+  // well as for FOCE, so `interaction` alone does not separate the two.
+  bool isLL = false;      // ll()/generalized endpoint: log-density model, no variance R
+  int interaction = 1;    // 1 = FOCEI, 0 = FOCE
+  int foceType = 0;       // FOCE variance: 0 = "nonmem" (frozen R0), 1 = "foce+" (live R)
+  // 0 and 1 BOTH mean "no quadrature grid": the focei/foce controls default nAGQ to 0
+  // and laplace to 1.  Only > 1 is adaptive Gaussian quadrature, so that is what the
+  // gates test -- do not read a 0 here as "unset".
+  int nAGQ = 1;
+  bool dependsF0 = false; // FOCE "nonmem" needs the extra eta=0 solve only when set
+  bool canVanish = false; // f can pass through zero -- guard the solve before using it
+
+  // ll() perturbs a non-mu theta by hFD, which needs that theta's ntheta position
+  std::vector<int> thPos;
+
+  // Sibling augmented models.  A fit can have up to three registered at once, each a
+  // distinct compile with its own column map: the order-2 gradient model is `*this`, the
+  // order-1 AGQ node model is colsNode, the ll() eta-Hessian model is colsHess2.
+  OuterCols colsNode, colsHess2;
+  bool hasNode = false, hasHess2 = false;
+
   void clear() { *this = FoceiGradPooledSetup(); }
 };
 static FoceiGradPooledSetup _gradPooled;
@@ -4650,7 +4677,31 @@ static void loadGradPooledSetup(Environment e) {
   G.dirTh = _ivFrom(st["dirTh"]); G.sigCol = _ivFrom(st["sigCol"]);
   G.lamDir = _ivFrom(st["lamDir"]);
   colsFromList(cols, G);
-  if (!G.hasR) return;              // (f,R) kernel only
+  // Shape.  Absent fields keep the struct's FOCEI defaults, so an older setup list still
+  // loads as the FOCEI shape it described.
+  if (st.containsElementNamed("isLL"))       G.isLL = as<bool>(st["isLL"]);
+  if (st.containsElementNamed("interaction")) G.interaction = as<int>(st["interaction"]);
+  if (st.containsElementNamed("foceType"))   G.foceType = as<int>(st["foceType"]);
+  if (st.containsElementNamed("nAGQ"))       G.nAGQ = as<int>(st["nAGQ"]);
+  if (st.containsElementNamed("dependsF0"))  G.dependsF0 = as<bool>(st["dependsF0"]);
+  if (st.containsElementNamed("canVanish"))  G.canVanish = as<bool>(st["canVanish"]);
+  if (st.containsElementNamed("thPos"))      G.thPos = _ivFrom(st["thPos"]);
+  if (st.containsElementNamed("colsNode") && !Rf_isNull(st["colsNode"])) {
+    colsFromList(as<List>(st["colsNode"]), G.colsNode);
+    G.hasNode = true;
+  }
+  if (st.containsElementNamed("colsHess2") && !Rf_isNull(st["colsHess2"])) {
+    colsFromList(as<List>(st["colsHess2"]), G.colsHess2);
+    G.hasHess2 = true;
+  }
+  // The (f,R) kernels contract a variance model; an ll() endpoint has none, because its
+  // rx_pred_ IS the per-observation log density.  So hasR is required for every shape
+  // EXCEPT ll(), where demanding it is what used to reject those fits outright.
+  if (!G.isLL && !G.hasR) return;
+  // AGQ nodes solve a 1st-order sibling model; without its map there is nothing to read
+  // them through, and falling back to the order-2 model is a decision for the R setup
+  // (which emits colsNode = cols in that case), not something to paper over here.
+  if (G.nAGQ > 1 && !G.hasNode) return;
   G.ok = true;
 }
 
@@ -4667,7 +4718,10 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // to build etaObf/omega/.gradTheta as R objects, call into R, have R re-derive the
   // setup and .Call back down, then read etaP back out of the fit env -- every gradient
   // evaluation.  Anything it cannot handle simply returns false and falls through.
-  if (analyticOuterGradDirect(theta, g)) return true;
+  if (analyticOuterGradDirect(theta, g)) {
+    op_focei.nAnalyticGradDirect++;
+    return true;
+  }
   if (_gradPooled.ok) {
     // The setup said this fit was in scope but the evaluation failed; keep going through
     // R rather than dropping to finite differences.
@@ -6878,6 +6932,7 @@ Environment foceiOuter(Environment e){
   op_focei.nG=0;
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
+  op_focei.nAnalyticGradDirect=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
   if (op_focei.maxOuterIterations > 0){
@@ -9419,6 +9474,11 @@ void foceiFinalizeTables(Environment e){
       // fallbacks); plus the mu-referenced regression variant when active.
       std::string _details = as<std::string>(ctl["outerOptTxt"]);
       if (op_focei.fast && op_focei.maxOuterIterations > 0) {
+        // Counts, for tests that must show WHICH route produced the gradient rather
+        // than only that the numbers were right (a silent fallback looks identical).
+        e["nAnalyticGrad"] = IntegerVector::create(op_focei.nAnalyticGrad);
+        e["nAnalyticGradDirect"] = IntegerVector::create(op_focei.nAnalyticGradDirect);
+        e["nFDGradFast"] = IntegerVector::create(op_focei.nFDGradFast);
         if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
           _details += "; grad: analytic";
         } else if (op_focei.nAnalyticGrad > 0) {
@@ -12238,6 +12298,11 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const arma::vec &tr28, int cores,
                            arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
   if (!G.ok) return false;
+  // Shape gate.  .foceiGradPooledSetup now describes FOCE, AGQ and ll() fits too, but the
+  // kernels below are the FOCEI (f,R) ones -- 8F.3/8F.4/8F.5 add the rest.  Until then
+  // those shapes must fall through to the R route, NOT be assembled with the wrong
+  // kernel, which would be silently wrong rather than loudly absent.
+  if (G.isLL || G.interaction != 1 || G.nAGQ > 1) return false;
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
