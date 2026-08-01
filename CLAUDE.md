@@ -138,6 +138,12 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 
 `tests/testthat/helper-zzz-fits.R` pre-fits models and caches them so individual test files can reference fitted objects without re-running estimation. Fixture `.rds` files live in `tests/testthat/fixtures/`.
 
+The cache key hashes all of `R/` + `src/`, so ANY source edit invalidates every fixture.
+There is no locking around it -- `file.exists()` -> load, else compute and write -- so
+running the suite with parallel workers against a COLD cache makes every worker compute
+the same fits and race on the same `.rds` writes. Warm the cache with one serial run
+first, then go parallel.
+
 ### Test thread policy
 
 `tests/testthat.R` keeps CI and CRAN from oversubscribing core-limited runners
@@ -145,8 +151,11 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 shutdown signal"):
 
 - **testthat workers**: SERIAL (`TESTTHAT_PARALLEL=FALSE`) on CI (`CI=true`) or
-  CRAN; everywhere else testthat manages `Config/testthat/parallel`
-  (`parallel: true`, `edition: 3` in `DESCRIPTION`) normally.  Serial is
+  CRAN; everywhere else testthat decides.  NOTE: `DESCRIPTION` carries only
+  `Config/testthat/edition: 3` -- there is NO `Config/testthat/parallel` field, so
+  the default everywhere is SERIAL.  To run the suite in parallel locally, set
+  `TESTTHAT_PARALLEL=TRUE` for the run rather than adding the field (CI forces it
+  off anyway, and see the fixture caveat below).  Serial is
   deliberate, not just "one worker": parallel mode's worker->orchestrator
   message pipe base64-serializes every non-success test event, so an ERRORING
   test whose backtrace inlines a fit/data object (any `do.call(f, list(<big>))`
