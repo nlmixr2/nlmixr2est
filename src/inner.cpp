@@ -4651,11 +4651,11 @@ struct FoceiGradPooledSetup : OuterCols {
   // ll() perturbs a non-mu theta by hFD, which needs that theta's ntheta position
   std::vector<int> thPos;
 
-  // Sibling augmented models.  A fit can have up to three registered at once, each a
-  // distinct compile with its own column map: the order-2 gradient model is `*this`, the
-  // order-1 AGQ node model is colsNode, the ll() eta-Hessian model is colsHess2.
-  OuterCols colsNode, colsHess2;
-  bool hasNode = false, hasHess2 = false;
+  // Sibling augmented model: the order-2 gradient model is `*this`, the order-1 AGQ node
+  // model is colsNode.  (ll() differences through `innerHess2`, whose rx__d2pred_ block is
+  // read positionally off op_focei.predHess2Offset, so it needs no column map.)
+  OuterCols colsNode;
+  bool hasNode = false;
 
   void clear() { *this = FoceiGradPooledSetup(); }
 };
@@ -4731,10 +4731,6 @@ static void loadGradPooledSetup(Environment e) {
   if (st.containsElementNamed("colsNode") && !Rf_isNull(st["colsNode"])) {
     colsFromList(as<List>(st["colsNode"]), G.colsNode);
     G.hasNode = true;
-  }
-  if (st.containsElementNamed("colsHess2") && !Rf_isNull(st["colsHess2"])) {
-    colsFromList(as<List>(st["colsHess2"]), G.colsHess2);
-    G.hasHess2 = true;
   }
   // The (f,R) kernels contract a variance model; an ll() endpoint has none, because its
   // rx_pred_ IS the per-observation log density.  So hasR is required for every shape
@@ -12450,6 +12446,236 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   return true;
 }
 
+// ---- ll() / generalized likelihood -------------------------------------------------
+//
+// Per-subject eta-eta block of the log-density's second derivative,
+// Hb_i = -sum_obs d2 logLik / deta deta'.
+//
+// Two routes give the same matrix.  `innerHess2` is the eta-only 2nd-order model built
+// for the objective's own exact inner Hessian: its rx__d2pred_i_j__ IS that derivative,
+// it drops the non-mu theta directions and so carries far fewer 2nd-order sensitivity
+// compartments.  The full augmented model is the fallback, read out of the eta block of
+// its rx_f2_ cube.  The CALLER owns the ES batch for whichever slot this runs on.
+static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
+                         const std::vector<double> &thVals, const arma::mat &ebes,
+                         int cores, rx_solving_options *op, int nsub, int neta,
+                         std::vector<arma::mat> &Hb) {
+  Hb.assign((size_t)nsub, arma::mat());
+  if (!useHess2) {
+    std::vector<VaeOuterE> Es((size_t)nsub);
+    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebes, G, cores, op, nsub, neta, Es);
+    for (int i = 0; i < nsub; ++i) {
+      const VaeOuterE &E = Es[(size_t)i];
+      if (!E.ok) return false;
+      arma::mat H(neta, neta, arma::fill::zeros);
+      for (int l = 0; l < neta; ++l)
+        for (int m = 0; m < neta; ++m) H(l, m) = -arma::accu(E.A.slice(m).col(l));
+      if (!H.is_finite()) return false;
+      Hb[(size_t)i] = H;
+    }
+    return true;
+  }
+  if (op_focei.predHess2Offset < 0 || rxHess2.calc_lhs == NULL) return false;
+  const int poff = op_focei.predHess2Offset;
+  cores = min2(cores, getOpCores(op));
+  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  std::vector<int> okv((size_t)nsub, 0);
+  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nsub; ++i) {
+    int id = doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    int _rxId = getRxId(id);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+    // innerHess2 is a peer of the INNER model, so theta/eta go in through the same
+    // positional par_ptr layout -- no bracket naming, unlike the R route.
+    for (int t = 0; t < (int)op_focei.ntheta && t < (int)thVals.size(); ++t)
+      setIndParPtr(ind, op_focei.thetaTrans[t], thVals[(size_t)t]);
+    for (int j = 0; j < neta; ++j)
+      setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
+    OdeSwapScope neqGuard(odeSlotHess2, ind, op);
+    setIndSolve(ind, -1);
+    iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
+    {
+      FoceiOuterRetryHooks _ohk;
+      int &_perN = (id < (int)op_focei.outerStickyRecalcN2Per.size()) ?
+        op_focei.outerStickyRecalcN2Per[(size_t)id] : _outerRetryScratch;
+      odeSwapSolveRetry(op, ind, _perN, [&]{ odeSwapSolveInd(odeSlotHess2, _rxId); },
+                        foceiOuterRetryOpts(), _ohk);
+    }
+    double *solve0 = getIndSolve(ind);
+    if (getOpNeq(op) > 0 && ISNA(solve0[0])) continue;   // okv stays 0 -> decline
+    arma::mat H(neta, neta, arma::fill::zeros);
+    double *lhs = neqGuard.lhs();   // private buffer, this model's width
+    iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
+    for (int q = 0; q < getIndNallTimes(ind); ++q) {
+      setIndIdx(ind, q);
+      int kk = getIndIx(ind, q);
+      double curT = getTime(kk, ind);
+      rxHess2.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
+      if (getIndEvid(ind, kk) != 0) continue;            // dose rows: solve advanced only
+      int r = 0;                                         // rx__d2pred_ order: j outer, i<=j
+      for (int jc = 0; jc < neta; ++jc)
+        for (int ic = 0; ic <= jc; ++ic) { H(ic, jc) += -lhs[poff + r]; ++r; }
+    }
+    for (int jc = 0; jc < neta; ++jc)
+      for (int ic = 0; ic < jc; ++ic) H(jc, ic) = H(ic, jc);
+    Hb[(size_t)id] = H;
+    okv[(size_t)id] = H.is_finite() ? 1 : 0;
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(-1);
+#endif
+  }
+  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  for (int i = 0; i < nsub; ++i) if (!okv[(size_t)i]) return false;
+  return true;
+}
+
+// The ll()/generalized-likelihood analytic outer gradient (Almquist Eq 23 with the EXACT
+// inner Hessian), start to finish, in C++.
+//
+//   g[theta_p] = -2 sum_i sum_obs a[,s_p] + sum_i tr(Hi_i dH_i/dtheta_p)
+//   g[omega_k] = sum_i eta_i' dOi_k eta_i - 2 nsub tr28_k
+//                + sum_i tr(Hi_i (dOi_k + dH_i/domega_k))
+//
+// with H_i = Omega^-1 - sum_obs A[eta,eta].  dH/dp is a DIRECTIONAL central difference of
+// that analytic 2nd-order block -- there is no 3rd-order tensor -- and the direction is
+// the analytic EBE sensitivity (Eq 46), not a coordinate axis.  A mu-referenced theta
+// therefore HOLDS its value and moves only the eta (perturbing an ODE-entering theta goes
+// non-finite); a non-mu theta moves th[thPos[p]].
+//
+// `etaPOut` is left EMPTY on purpose: ll() has no Eq-48 warm start, and the caller reads
+// an empty cube as "no etaP" (etaPValid = 0), matching the R route's etaP = NULL.
+static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
+                             const std::vector<double> &thVals, const arma::mat &ebes,
+                             const arma::mat &Oi, const arma::cube &dOiEst,
+                             const arma::vec &tr28, int cores,
+                             arma::vec &gOut, arma::cube &etaPOut) {
+  const int neta = G.neta, nth = G.nth, nom = G.nom;
+  if (G.nsg != 0) return false;                 // an ll() endpoint has no variance model
+  if (G.nLam != 0) return false;                // nor an estimated DV-transform lambda
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
+  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
+      rxVaeOuter.calc_lhs == NULL) return false;
+  if ((int)G.thPos.size() != nth || (int)G.dirTh.size() != nth) return false;
+  rx = getRxSolve_();
+  if (rx == NULL) return false;
+  rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  const int nsub = (int)getRxNsub(rx);
+  if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
+  // Censored (M2/M3/M4) observations enter an ll() objective as -logPhi, a contribution
+  // the log-density augmented model does not carry.  Mirror the R gate.
+  if (hasRxCens(rx) || hasRxLimit(rx)) return false;
+  const double hFD = 1e-4;
+
+  // Prefer the eta-only 2nd-order model for the 2*(nth+nom) perturbation solves; fall
+  // back to the full augmented model when it is unavailable or cannot pool.
+  const bool useHess2 = (op_focei.predHess2Offset >= 0) && (rxHess2.calc_lhs != NULL) &&
+    odeSwapLoaded(odeSlotHess2) && (odeSwapCanPool(odeSlotHess2) == odeDenyNone) &&
+    odeSwapCheckLhsWidth(odeSlotHess2, &rxHess2, rx, op);
+
+  OdeFitTolGuard _tolGuard;                     // the fit's tolerance, reset for this solve
+  std::vector<arma::mat> Hi((size_t)nsub);
+  arma::vec dl((unsigned int)nth, arma::fill::zeros);
+  arma::vec dq((unsigned int)(nom > 0 ? nom : 1), arma::fill::zeros);
+  // Perturbation eta matrices, in the same (+,-) pair order the assembly reads them back.
+  std::vector<arma::mat> ebP((size_t)(nth + nom)), ebM((size_t)(nth + nom));
+  {
+    OdeSwapEsBatch _esBatch(odeSlotOuter);
+    std::vector<VaeOuterE> Es((size_t)nsub);
+    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebes, G, cores, op, nsub, neta, Es);
+    for (int i = 0; i < nsub; ++i) {
+      const VaeOuterE &E = Es[(size_t)i];
+      if (!E.ok) return false;                  // no per-subject FD for ll(): decline whole
+      arma::mat H = Oi;
+      for (int l = 0; l < neta; ++l)
+        for (int m = 0; m < neta; ++m) H(l, m) -= arma::accu(E.A.slice(m).col(l));
+      arma::vec ev;
+      if (!H.is_finite() || !arma::eig_sym(ev, arma::symmatu(H)) || ev.min() <= 0.0)
+        return false;                           // not PD: the inner mode is not a maximum
+      arma::mat hi;
+      if (!arma::inv_sympd(hi, arma::symmatu(H))) return false;
+      Hi[(size_t)i] = hi;
+    }
+    for (int p = 0; p < nth; ++p) {
+      const int s = G.dirTh[(size_t)p] - 1;     // 1-based direction index
+      if (s < 0 || s >= G.nd) return false;
+      const bool isMu = (s < neta);             // directions 1..neta ARE the etas
+      arma::mat ep = ebes, em = ebes;
+      double dlp = 0.0;
+      for (int i = 0; i < nsub; ++i) {
+        const VaeOuterE &E = Es[(size_t)i];
+        dlp += arma::accu(E.a.col(s));
+        arma::vec d2((unsigned int)neta);
+        for (int l = 0; l < neta; ++l) d2[l] = arma::accu(E.A.slice(s).col(l));
+        arma::vec sh = Hi[(size_t)i] * d2;
+        if (isMu) sh[s] += 1.0;
+        ep.row(i) = ebes.row(i) + hFD * sh.t();
+        em.row(i) = ebes.row(i) - hFD * sh.t();
+      }
+      dl[p] = dlp;
+      ebP[(size_t)p] = ep; ebM[(size_t)p] = em;
+    }
+  }
+  for (int k = 0; k < nom; ++k) {
+    const arma::mat &dOi = dOiEst.slice(k);
+    arma::mat ep = ebes, em = ebes;
+    double dqk = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      arma::vec eta = ebes.row(i).t();
+      dqk += arma::as_scalar(eta.t() * dOi * eta);
+      arma::vec etaP = Hi[(size_t)i] * (-(dOi * eta));
+      ep.row(i) = ebes.row(i) + hFD * etaP.t();
+      em.row(i) = ebes.row(i) - hFD * etaP.t();
+    }
+    dq[k] = dqk;
+    ebP[(size_t)(nth + k)] = ep; ebM[(size_t)(nth + k)] = em;
+  }
+
+  // The perturbation solves.  innerHess2 has its OWN event-sensitivity role, so it gets
+  // its own batch -- opened here, outside llHblockFill's OpenMP region, because the shape
+  // is a process global (see the AGQ node batch for what solving under the wrong one
+  // does).  When falling back to the augmented model the outer batch is what is wanted.
+  gOut.zeros(nth + nom);
+  {
+    OdeSwapEsBatch _cfgBatch(useHess2 ? odeSlotHess2 : odeSlotOuter);
+    std::vector<arma::mat> Hp, Hm;
+    for (int p = 0; p < nth + nom; ++p) {
+      // A non-mu theta moves its VALUE; a mu-referenced one (and every omega) holds the
+      // theta and moves only the eta, which is why thp/thm are per-parameter.
+      std::vector<double> thp = thVals, thm = thVals;
+      if (p < nth) {
+        const int s = G.dirTh[(size_t)p] - 1;
+        if (s >= neta) {
+          int kk = G.thPos[(size_t)p] - 1;      // ntheta position, not the direction index
+          if (kk < 0 || kk >= (int)thVals.size()) return false;
+          thp[(size_t)kk] += hFD; thm[(size_t)kk] -= hFD;
+        }
+      }
+      if (!llHblockFill(useHess2, G, thp, ebP[(size_t)p], cores, op, nsub, neta, Hp))
+        return false;
+      if (!llHblockFill(useHess2, G, thm, ebM[(size_t)p], cores, op, nsub, neta, Hm))
+        return false;
+      double tr = 0.0;
+      for (int i = 0; i < nsub; ++i) {
+        arma::mat dH = (Hp[(size_t)i] - Hm[(size_t)i]) / (2.0 * hFD);
+        if (p >= nth) dH += dOiEst.slice(p - nth);
+        if (!dH.is_finite()) return false;
+        tr += arma::accu(Hi[(size_t)i] % dH);
+      }
+      if (p < nth) gOut[p] = -2.0 * dl[p] + tr;
+      else gOut[p] = dq[p - nth] - 2.0 * (double)nsub * tr28[p - nth] + tr;
+    }
+  }
+  etaPOut.reset();                              // ll(): no etaP -> no Eq-48 warm start
+  return gOut.is_finite();
+}
+
 // The FOCEI (f,R) analytic outer gradient, start to finish, in C++.
 //
 // Takes and returns nothing but plain C++/arma: no SEXP is created anywhere on this
@@ -12465,11 +12691,12 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const arma::vec &tr28, int cores,
                            arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
   if (!G.ok) return false;
-  // Shape gate.  .foceiGradPooledSetup describes AGQ and ll() fits too, but their kernels
-  // are not wired yet (8F.4/8F.5).  Until then those shapes must fall through to the R
-  // route, NOT be assembled with the wrong kernel -- silently wrong rather than loudly
-  // absent.  FOCE (interaction == 0) IS handled below.
-  if (G.isLL) return false;                 // 8F.5
+  // Shape gate.  .foceiGradPooledSetup reports interaction = 0 for an ll() fit as well as
+  // for FOCE, so isLL is tested FIRST -- an ll() endpoint has no variance model and its
+  // rx_pred_ is the log-density, so assembling it with the (f,R) kernel would be silently
+  // wrong rather than loudly absent.  jacSum stays 0: ll() has no DV transform.
+  if (G.isLL) return gradPooledCoreLL(G, thVals, ebes, Oi, dOiEst, tr28, cores,
+                                      gOut, etaPOut);
   const bool isFoce = (G.interaction == 0);
   const bool isAgq = (G.nAGQ > 1);
   // AGQ is FOCEI plus a quadrature term; the two are mutually exclusive by construction

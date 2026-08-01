@@ -32,6 +32,9 @@ nmTest({
     # gradient; it converges to the same MLE within optimizer tolerance
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 1e-2)
+    # ...and it got there on the all-C++ gradient.  Without this the fit could quietly
+    # decline every evaluation to finite differences and still pass the two above.
+    expect_gt(fT$env$nAnalyticGradDirect, 0L)
   })
 
   test_that("ll() with linCmt() falls back gracefully to finite differences", {
@@ -44,6 +47,7 @@ nmTest({
     fT <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 1e-2)
+    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L)   # out of scope: no analytic gradient
   })
 
   test_that("generalized (Poisson) ll() fast fit matches the finite-difference fit", {
@@ -60,10 +64,17 @@ nmTest({
       model({ lam <- exp(tint + eta.int + (tslp + eta.slp) * x)
               ll(cp) ~ DV * log(lam) - lam - lgamma(DV + 1) })
     }
-    fF <- suppressMessages(nlmixr2(pois, sim, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
-    fT <- suppressMessages(nlmixr2(pois, sim, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
+    # sigdig pinned at 4: at the default 3 this model's own optimizer noise is ~9% in
+    # theta (measured), which is larger than the fast-vs-fd difference under test.
+    .ctl <- function(fast) foceiControl(print = 0L, covMethod = "", sigdig = 4, fast = fast)
+    fF <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(FALSE)))
+    fT <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 2e-2)
+    # ODE-free: the augmented model has no ODE states, so the pooled C++ gradient is
+    # gated out (op_focei.vaeOuterNeq <= 0) and this fit runs the R/fd route.  Pinned so
+    # that lifting that gate is a deliberate change, not a silent one.
+    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L)
   })
 
 })

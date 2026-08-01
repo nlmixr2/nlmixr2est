@@ -578,25 +578,12 @@
       }
       if (is.null(.colsNode)) .colsNode <- .cols
     }
-    ## ll() differences the eta-eta block through the eta-only 2nd-order model
-    ## (innerHess2), which drops the non-mu theta directions and so carries far fewer
-    ## 2nd-order sensitivity compartments than the full augmented model.
-    .colsHess2 <- NULL
-    if (.isLL) {
-      .h2 <- tryCatch(ui$foceiModel$innerHess2, error = function(.) NULL)
-      if (inherits(.h2, "rxode2")) {
-        .colsHess2 <- tryCatch(.vaeOuterCols(list(augMod = .h2, dirs = st$dir$dirs,
-                                                  ndir = am$ndir)),
-                               error = function(.) NULL)
-      }
-    }
     ## ntheta position of each structural theta -- the ll() perturbation of a non-mu
     ## theta moves th[thPos[p]], which is not the direction index.
     .thPos <- tryCatch(as.integer(ui$iniDf$ntheta[match(st$dir$thStruct, ui$iniDf$name)]),
                        error = function(.) integer(0))
     list(cols = .cols,
          colsNode = .colsNode,
-         colsHess2 = .colsHess2,
          neta = as.integer(st$neta), nth = as.integer(st$dir$nth),
          nsg = as.integer(length(st$ef$sgName)), nom = as.integer(length(st$dOiEst)),
          dirTh = as.integer(st$dir$dirTh),

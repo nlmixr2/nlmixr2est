@@ -1776,3 +1776,63 @@ correctly" rather than write new machinery: the ES-shape constraint is documente
 odeSwap.h and was quoted earlier in this very phase, and the bug still got written by
 assuming the role mapping implied shape sharing.  Read the slot/role distinction before
 adding any further peer solve.
+
+## 8F.5 -- ll() / general likelihood in C++ (DONE)
+
+`gradPooledCore` now dispatches `G.isLL` to a new `gradPooledCoreLL`, which implements
+Almquist Eq 23 with the exact inner Hessian:
+
+    g[theta_p] = -2 sum_i sum_obs a[,s_p] + sum_i tr(Hi_i dH_i/dtheta_p)
+    g[omega_k] = sum_i eta_i' dOi_k eta_i - 2 nsub tr28_k
+                 + sum_i tr(Hi_i (dOi_k + dH_i/domega_k))
+
+with `H_i = Omega^-1 - sum_obs A[eta,eta]`.  `dH/dp` is a directional central difference
+(`hFD = 1e-4`) along the analytic EBE sensitivity, NOT a coordinate axis -- so a
+mu-referenced theta holds its value and moves only the eta, and a non-mu theta moves
+`th[thPos[p]]`.  `etaPOut` is left EMPTY, which the caller reads as "no etaP"
+(`etaPValid = 0`), matching the R route's `etaP = NULL`.
+
+The `2*(nth+nom)` perturbation solves go through `llHblockFill`, which has two routes:
+`innerHess2` (the eta-only 2nd-order model built for the objective's own exact Hessian,
+read positionally off `op_focei.predHess2Offset`) and, when that is unavailable, the full
+augmented model's eta-eta `rx_f2_` block.  BOTH were exercised: forcing the fallback
+reproduces the `innerHess2` route to 8 significant digits.
+
+`innerHess2` has its own ES role, so it gets its own `OdeSwapEsBatch`, opened outside
+`llHblockFill`'s OpenMP region.  Written that way from the start rather than discovered --
+the 8F.4 lesson applied.
+
+Verified against the R route at a fixed point:
+
+    ll() ODE, 3 etas, sigdig 3   max abs 5.088e-04   max rel 8.903e-04
+    ll() ODE, 1 eta,  sigdig 3   max abs 7.747e-04   max rel 5.379e-04
+    ll() ODE, 3 etas, sigdig 6   max abs 1.065e-05   max rel 7.090e-06
+
+The sigdig-3 gap is solver/FD noise, not a formula difference: it falls ~100x when the
+tolerances tighten 3 orders.  Both routes divide an FD by `2e-4`, so they amplify solver
+noise identically but not bit-identically.  FOCEI/FOCE/AGQ re-checked unchanged.
+
+`colsHess2` / `hasHess2` (emitted by 8F.2) turned out to be dead -- the hess2 block is
+read positionally, not through a column map -- and were removed from the POD and the R
+setup rather than left as a misleading field.
+
+Two findings in `test-focei-ll-fast-grad-fit.R`, both PRE-EXISTING and neither caused by
+this phase:
+
+  1. The Poisson (ODE-free) case never reaches the direct route at all: `gradPooledCore`
+     gates on `op_focei.vaeOuterNeq <= 0`, and an algebraic model has no ODE states.
+     `odeSwapPlanFor` explicitly contemplates zero-neq models with real lhs outputs, so
+     the gate is probably over-strict.  Recorded as its own task; the test now PINS
+     `nAnalyticGradDirect == 0` so lifting it has to be deliberate.
+  2. That same Poisson fit fails its `fast=TRUE` vs `fast=FALSE` theta comparison at the
+     new default `sigdig = 3` -- 8.9% apart, objf 419.843 vs 420.391 -- but only 0.15%
+     apart at `sigdig = 4`.  This is fallout from the sigdig default change, not from the
+     gradient port.  The test now pins `sigdig = 4`, since at 3 the model's own optimizer
+     noise is larger than the difference the test exists to measure.
+
+## 8F.6 -- delete the R gradient implementation (NEXT)
+
+All four shapes now compute in C++, so the R route can go.  See the Phase 6 section of
+the 8F plan for the deletion list; the risk is entirely in re-pointing the ~15 assertions
+that today validate the R implementation, so each must assert `nAnalyticGradDirect > 0`
+and not merely agree numerically.

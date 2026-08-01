@@ -105,6 +105,13 @@
   returned nothing.  Affects `est="vae"` with `nonMuTheta="grad"` and any
   caller sharing that path.
 
+- `foceiControl(fast=TRUE)` now computes the analytic outer gradient entirely in
+  C++ for `est="foce"`/`"focep"`, `est="agq"` and general-likelihood (`ll()`)
+  endpoints, as `est="focei"` already did.  Those three shapes previously
+  returned to R on every gradient evaluation to rebuild the fit's etas, omega
+  and setup as R objects; besides the cost, that let R run between the augmented
+  solve and the assembly, where it could disturb the shared solve pool.
+
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
   function depend on the optimizer's history rather than on `theta` alone, so
   the same `theta` could return values hundreds of objective-function units
@@ -128,6 +135,17 @@
       divided by `n - 1`, and a zero/non-finite variance disables that criterion
       for the component instead of producing `Inf` (which made it fire for every
       nonzero eta).
+
+### Output / tables
+
+- `vpcSimExpand()` no longer merges the entire observed dataset into the
+  simulation when a requested `extra` column is missing: a dropped filter
+  result meant an unknown column (e.g. a misspelled `stratify` in
+  `vpcPlot()`) spliced every observed column into the simulation, and valid
+  columns dragged the rest of the observed data along with them (colliding
+  with the simulation's own, e.g. `time.x`/`time.y`).  Only the requested
+  columns are merged now, and a column found in neither the simulation nor
+  the data warns and is ignored (#830).
 
 ## Breaking changes
 
