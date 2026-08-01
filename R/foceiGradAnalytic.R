@@ -488,6 +488,29 @@
       }
       if (is.null(.colsNode)) .colsNode <- .cols
     }
+    ## Map each OUTER-OPTIMIZER parameter to its slot in the kernel's output vector.
+    ##
+    ## The kernel emits nth theta directions, then nsg sigma, then nom omega.  That is NOT
+    ## the optimizer's parameter vector, for two independent reasons:
+    ##   * an estimated boxCox/yeoJohnson lambda appears in BOTH dir$thStruct (it is a
+    ##     direction) and ef$sgName (it is a sigma theta of the augmented model), so the
+    ##     kernel emits it twice;
+    ##   * the mu-referenced (lin/irls) families profile some structural thetas out of the
+    ##     outer problem entirely, so the optimizer has FEWER parameters than the kernel.
+    ## The deleted R route hid both: it named the vector c(thStruct, sgName, omNames) and
+    ## the caller subset it by name, which takes the first match and drops the rest.  C++
+    ## is positional and cannot, so carry the map explicitly.  Getting this wrong is
+    ## silent -- the arity guard in analyticOuterGradDirect() just declines to finite
+    ## differences -- which is how both cases went unnoticed.
+    .kernelNames <- c(st$dir$thStruct, st$ef$sgName, st$omNames)
+    .thAll <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
+    .thRows <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+    .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
+    .thEst <- .thRows$name[!.thRows$fix]
+    .parNames <- c(setdiff(.thEst, .foceiMuSkipThetaNames(ui, .thAll)), st$omNames)
+    .gMap <- match(.parNames, .kernelNames)
+    if (anyNA(.gMap)) return(NULL)
+    .gMap <- as.integer(.gMap - 1L)          # 0-based for C++
     ## ntheta position of each structural theta -- the ll() perturbation of a non-mu
     ## theta moves th[thPos[p]], which is not the direction index.
     .thPos <- tryCatch(as.integer(ui$iniDf$ntheta[match(st$dir$thStruct, ui$iniDf$name)]),
@@ -515,7 +538,8 @@
          ebeSkipTol = 1e-3,   ## looser first-iteration "already stationary?" test
          dependsF0 = isTRUE(st$ef$dependsF0),
          canVanish = isTRUE(st$ef$canVanish),
-         thPos = .thPos)
+         thPos = .thPos,
+         gMap = .gMap)
   }, error = function(e) NULL)
 }
 
@@ -721,9 +745,19 @@
   }
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  # foce+ (foceType=1, live conditional R) uses the same live-R kernel as the
-  # analytic covariance (.foceiAnalyticSubjectGradFoceFR / .fpG), so its analytic
-  # gradient is in scope alongside FOCEI and FOCE-nonmem.
+  ## FOCE (interaction = 0) is OUT OF SCOPE for the analytic outer gradient.
+  ##
+  ## Its frozen-R0 EBE Newton cannot reach its score target at the default solve
+  ## precision -- |S| is assembled from the ODE solve and so floors around 5e-3 at
+  ## rtol = 1e-3, against a 1e-9 target (nlmixr2/nlmixr2est#836; a backtracking line
+  ## search was implemented and ruled out overshoot as the cause).  Attempting it anyway
+  ## costs a full augmented population solve per outer iteration that is then thrown away
+  ## before falling back to finite differences, so declining up front is strictly faster
+  ## and gives the same numbers.
+  ##
+  ## Note this is reached only for the Gaussian FOCE path: an ll()/generalized endpoint
+  ## also reports interaction = 0 but returns above, and is unaffected.
+  if (interaction == 0L) return(NULL)
   nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
   # agqControl() forces interaction=TRUE, so only the FOCEI (f,R) kernel has a quadrature
   # form -- a FOCE-AGQ combination cannot arise.

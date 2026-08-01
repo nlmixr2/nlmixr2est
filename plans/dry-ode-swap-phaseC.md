@@ -2188,3 +2188,73 @@ Candidate real fixes are listed in #836: a convergence test that respects achiev
 precision, a target tied to the solve (NOT the reverted `10^-(sigdig+6)` coupling, which
 moved the target opposite to the precision supporting it), or a tighter tolerance for the
 EBE re-solve alone.
+
+## Open: multi-endpoint analytic outer gradient (wrong values, not a fallback)
+
+Measured on the `test-focei-fast-grad.R` pkpd fixture (`cp ~ add(add.pk) | cp`,
+`pca ~ add(add.pd) | pca`), analytic vs central differences at the same theta:
+
+|  param  | endpoint | analytic |    fd    | ratio |
+|---------|----------|---------:|---------:|------:|
+| tka     | PK       |    305.5 |    178.7 |  1.71 |
+| tcl     | PK (eta) |   -265.0 |   -304.6 |  0.87 |
+| tv      | PK       |  -4204.6 |  -1901.7 |  2.21 |
+| add.pk  | PK       |  -1575.9 |   -613.9 |  2.57 |
+| emax    | PD       |   -15.92 |   -15.94 |  1.00 |
+| ec50    | PD       |     2.66 |     3.09 |  0.86 |
+| add.pd  | PD       |    28.61 |    28.29 |  1.01 |
+
+PD-only directions are exact; PK directions are inflated ~2x.  PD parameters have
+structurally zero sensitivity on PK rows while PK parameters do NOT on PD rows, so a
+leak that fails to confine a contribution to its own rows corrupts exactly the PK
+directions -- which is what is seen.
+
+Ruled out by measurement:
+  * shared timepoints -- endpoints at DISJOINT times fail equally (1.79 vs 1.57)
+  * DV/E row misalignment -- `yB` and `outerSolveFill` use the identical
+    `getIndIx` / `evid != 0` loop, so they are ordered together by construction
+  * the augmented model / read-back -- the C++ reads ONE `rx_predf_`/`rx_rvarf_`/`Rsig`
+    block per observation row and never inspects dvid; the deleted R route consumed the
+    same model and was correct
+
+DIRECTION (per the maintainer) -- STRUCTURAL, not a refinement:
+
+**The outer gradient's symengine step must match the INNER one.**  The inner model
+already resolves every endpoint, error model and both-sides transform into a single
+`rx_pred_` / `rx_r_` per observation: the conditionals live INSIDE the model, and the
+objective simply reads one number per row.  The outer (augmented) model instead
+re-derives that structure on its own, branching per error model and per endpoint.  Every
+such branch is a place the two derivations can disagree, and each one has to be
+rediscovered as a bug.  The outer gradient is a sum over observations of terms in f, R
+and their sensitivities; nothing in Almquist references an endpoint or an error-model
+family, so the gradient must be identical whether the observations came from one
+endpoint or several, under add(), prop(), combined or a transform.
+
+This is why the defects below are ONE root cause, not three:
+
+  * multi-endpoint -- PK directions inflated ~2x (table above)
+  * estimated boxCox/yeoJohnson lambda -- declines the analytic gradient outright
+  * `.isAddProp` -- a fast path switched off by the endpoint COUNT alone
+    (`R/foceiCovAnalytic.R:846` `.multiEndpoint <- nrow(ui$predDf) > 1L`,
+     used at `:915`), so a 2-endpoint `add()` model takes a different derivative
+     path than the structurally identical 1-endpoint `add()` model
+
+Patching them one at a time keeps the fragility and leaves an open-ended tail of edge
+cases (per-endpoint lambdas, censoring x endpoint, transform x endpoint, ...) that
+cannot be handled correctly under the current split.  The fix is to derive the augmented
+outer model through the SAME symengine path the inner model uses, so f, R and their
+sensitivities arrive per-observation with the conditionals already resolved -- then delete
+the error-model and endpoint branching from the gradient setup rather than repairing it.
+
+Scope note: this is a redesign of the augmented-model generation
+(`.foceiAnalyticAugModelDirs` / `.foceiAnalyticErrFull` / `.vaeOuterCols`), not a patch to
+the C++ read-back, which is already endpoint-agnostic and correct.
+
+## Open: estimated boxCox/yeoJohnson lambda declines the analytic gradient
+
+Confirmed on the SHIPPING path (full `fast=TRUE` fit): `grad: fd`,
+`nAnalyticGradDirect = 0`.  A scope regression, not a test artifact.
+`.foceiGradPooledSetup()` is correct -- `gMap = 0,1,2,4,3,6,7,8` (len 8 = npars),
+nKer = 9, lambda resolved to its theta-direction slot -- so the refusal is inside
+`gradPooledCore`.  Its `return false` sites are SILENT, which is how this and the
+mu-family arity bug both shipped unnoticed; annotate them before chasing further.

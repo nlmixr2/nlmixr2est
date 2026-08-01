@@ -30,6 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  fdChartrand = TRUE,
   foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
@@ -59,8 +60,8 @@ foceiControl(
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
-  resetThetaP = 0.05,
-  resetThetaFinalP = 0.15,
+  resetThetaP = 0,
+  resetThetaFinalP = 0,
   diagOmegaBoundUpper = 5,
   diagOmegaBoundLower = 100,
   cholSEOpt = FALSE,
@@ -307,6 +308,25 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
 
+\item{fdChartrand}{Refine finite-difference slopes that the robust outlier
+    test flags (default \code{TRUE}).  When a subject's per-parameter slope
+    sits far outside the modified z-score interval of the others, its central
+    difference is suspect; those slopes -- and only those -- are recomputed
+    with a total-variation regularized derivative (Chartrand) on a wide
+    interval.  Set \code{FALSE} to keep the plain central difference.
+
+    On by default because the outlier test is itself the gate: a well-behaved
+    problem flags nothing and pays nothing, so the cost falls only on the
+    complex fits where a slope really is an outlier -- exactly where you would
+    want the refinement, and where a user is least likely to know to ask for
+    it.  \code{fit$env$nFdOutlier} reports flagged parameters and refined
+    slopes, so you can see whether it engaged for a given fit.
+
+    Worth knowing when judging it: the measurements that originally motivated
+    this refinement were taken while the likelihood and the Shi step selection
+    were both faulty, so they do not evidence its value on current code, and it
+    has not been observed to trigger on ordinary fits.}
+
 \item{foceEbeTol}{Convergence tolerance on the score of the FOCE
 frozen-variance EBE re-solve, which the analytic outer gradient
 (\code{fast=TRUE}, \code{interaction=FALSE}) needs because FOCE's mode is
@@ -446,11 +466,15 @@ or \code{eta/sd(allEtas)}. `0` = never reset, `1` = always reset.}
 
 \item{resetThetaP}{P-value for resetting mu-referenced THETAs based on
 ETA drift, checked at the start and near a local minimum (see
-\code{resetThetaCheckPer}). `0` = never reset; `1` is not allowed.}
+\code{resetThetaCheckPer}). `0` = never reset (the default); `1` is
+not allowed.  Defaults to off: when the etas cannot re-center the
+reset repeats without progress and can error the fit out, and where
+it converges it reaches a worse optimum than leaving it off.}
 
 \item{resetThetaFinalP}{represents the p-value for reseting the
 population mu-referenced THETA parameters based on ETA drift
-during optimization, and resetting the optimization one final time.}
+during optimization, and resetting the optimization one final time.
+`0` = never reset (the default); see \code{resetThetaP}.}
 
 \item{diagOmegaBoundUpper}{Upper bound of the diagonal omega matrix, as
 \code{diag(omega)*diagOmegaBoundUpper}. `1` = no upper bound.}

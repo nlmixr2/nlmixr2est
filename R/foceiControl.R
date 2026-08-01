@@ -103,6 +103,25 @@
 #'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
 #'     installs only the structural-theta block (the historical shape).
 #'
+#' @param fdChartrand Refine finite-difference slopes that the robust outlier
+#'     test flags (default \code{TRUE}).  When a subject's per-parameter slope
+#'     sits far outside the modified z-score interval of the others, its central
+#'     difference is suspect; those slopes -- and only those -- are recomputed
+#'     with a total-variation regularized derivative (Chartrand) on a wide
+#'     interval.  Set \code{FALSE} to keep the plain central difference.
+#'
+#'     On by default because the outlier test is itself the gate: a well-behaved
+#'     problem flags nothing and pays nothing, so the cost falls only on the
+#'     complex fits where a slope really is an outlier -- exactly where you would
+#'     want the refinement, and where a user is least likely to know to ask for
+#'     it.  \code{fit$env$nFdOutlier} reports flagged parameters and refined
+#'     slopes, so you can see whether it engaged for a given fit.
+#'
+#'     Worth knowing when judging it: the measurements that originally motivated
+#'     this refinement were taken while the likelihood and the Shi step selection
+#'     were both faulty, so they do not evidence its value on current code, and it
+#'     has not been observed to trigger on ordinary fits.
+#'
 #' @param fast When \code{TRUE}, compute the outer (population) gradient
 #'     analytically from Almquist (2015) sensitivity equations instead of by
 #'     finite differences, and use the Eq-48 random-effect extrapolation for the
@@ -313,7 +332,10 @@
 #'
 #' @param resetThetaP P-value for resetting mu-referenced THETAs based on
 #'     ETA drift, checked at the start and near a local minimum (see
-#'     \code{resetThetaCheckPer}). `0` = never reset; `1` is not allowed.
+#'     \code{resetThetaCheckPer}). `0` = never reset (the default); `1` is
+#'     not allowed.  Defaults to off: when the etas cannot re-center the
+#'     reset repeats without progress and can error the fit out, and where
+#'     it converges it reaches a worse optimum than leaving it off.
 #'
 #' @param resetThetaCheckPer represents objective function
 #'     \% percentage below which resetThetaP is checked.
@@ -321,6 +343,7 @@
 #' @param resetThetaFinalP represents the p-value for reseting the
 #'     population mu-referenced THETA parameters based on ETA drift
 #'     during optimization, and resetting the optimization one final time.
+#'     `0` = never reset (the default); see \code{resetThetaP}.
 #'
 #' @param resetHessianAndEta is a boolean representing if the
 #'     individual Hessian is reset when ETAs are reset using the
@@ -746,6 +769,7 @@ foceiControl <- function(sigdig = 3, #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
+                         fdChartrand = TRUE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          foceEbeTol = NULL, #
@@ -778,8 +802,16 @@ foceiControl <- function(sigdig = 3, #
                          cholSEtol = (.Machine$double.eps)^(1 / 3), #
                          cholAccept = 1e-3, #
                          resetEtaP = 0.15, #
-                         resetThetaP = 0.05, #
-                         resetThetaFinalP = 0.15, #
+                         # Default OFF.  The ETA-drift theta reset re-centers a
+                         # mu-referenced theta by the mean eta and restarts.  When the
+                         # etas cannot re-center -- e.g. every omega fixed, or a model
+                         # whose misfit the etas must absorb -- the shift does not stick,
+                         # the drift returns and the reset repeats until the restart cap
+                         # errors the fit out.  Where it does converge it lands on a worse
+                         # optimum than not resetting at all.  Same failure mode as the
+                         # mu-referenced (lin/irls) families' linear centering.
+                         resetThetaP = 0, #
+                         resetThetaFinalP = 0, #
                          diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
                          diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
                          cholSEOpt = FALSE, #
@@ -958,6 +990,7 @@ foceiControl <- function(sigdig = 3, #
     covTryHarder <- as.integer(covTryHarder)
   } else {
     checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdChartrand, any.missing=FALSE, len=1)
     covTryHarder <- as.integer(covTryHarder)
   }
 
@@ -1408,6 +1441,7 @@ foceiControl <- function(sigdig = 3, #
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,
+    fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),

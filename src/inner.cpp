@@ -305,6 +305,8 @@ struct focei_options {
   int nNewtonSingular = 0;  // Hf could not be factored, or S/Hf went non-finite
   double newtonWorstS = 0;  // largest |S| left on the table by a maxit failure
   int nNewtonBacktrack = 0; // damped (halved) Newton steps taken
+  int nFdOutlierParam = 0;  // parameters whose FD slopes had a modified-z outlier
+  int nFdChartrand = 0;     // subject-parameter slopes replaced by the TV derivative
   std::atomic<int> outerStickyTol{0};
   // per-subject retry counters, sized at setup; the outer solve is parallel over
   // subjects, so this must not be one shared int
@@ -372,6 +374,7 @@ struct focei_options {
   int interaction;
   int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
   int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
+  int fdChartrand = 1;      // TV-regularized refinement of outlier FD slopes (opt-OUT)
   int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
   int nAnalyticGrad = 0;    // # outer gradients from the analytic path
   // # of those that came from the ALL-C++ direct path.  Separate from nAnalyticGrad
@@ -4621,6 +4624,12 @@ struct FoceiGradPooledSetup : OuterCols {
 
   // ll() perturbs a non-mu theta by hFD, which needs that theta's ntheta position
   std::vector<int> thPos;
+  // Map from each OUTER-OPTIMIZER parameter to its slot in the kernel's
+  // (nth theta, nsg sigma, nom omega) output vector.  Not the identity: an estimated
+  // boxCox/yeoJohnson lambda occupies BOTH a theta direction and a sigma slot, and the
+  // mu-referenced families profile structural thetas out of the outer problem.  Built in
+  // .foceiGradPooledSetup(); see the note there.
+  std::vector<int> gMap;
 
   // Sibling augmented model: the order-2 gradient model is `*this`, the order-1 AGQ node
   // model is colsNode.  (ll() differences through `innerHess2`, whose rx__d2pred_ block is
@@ -4696,6 +4705,7 @@ static void loadGradPooledSetupList(List st) {
   }
   if (st.containsElementNamed("canVanish"))  G.canVanish = as<bool>(st["canVanish"]);
   if (st.containsElementNamed("thPos"))      G.thPos = _ivFrom(st["thPos"]);
+  if (st.containsElementNamed("gMap"))       G.gMap  = _ivFrom(st["gMap"]);
   if (st.containsElementNamed("colsNode") && !Rf_isNull(st["colsNode"])) {
     colsFromList(as<List>(st["colsNode"]), G.colsNode);
     G.hasNode = true;
@@ -6304,6 +6314,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.foceType=as<int>(foceiO["foceType"]);
   op_focei.fast=foceiO.containsElementNamed("fast") ? as<int>(foceiO["fast"]) : 0;
+  op_focei.fdChartrand=foceiO.containsElementNamed("fdChartrand") ?
+    as<int>(foceiO["fdChartrand"]) : 1;
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
@@ -6939,6 +6951,8 @@ Environment foceiOuter(Environment e){
   op_focei.nNewtonSingular=0;
   op_focei.newtonWorstS=0;
   op_focei.nNewtonBacktrack=0;
+  op_focei.nFdOutlierParam=0;
+  op_focei.nFdChartrand=0;
   op_focei.firstDirectGrad.clear();
   op_focei.firstDirectTheta.clear();
   op_focei.firstDirectGradSet=0;
@@ -9528,6 +9542,9 @@ void foceiFinalizeTables(Environment e){
           _["solve"] = op_focei.nNewtonSolve,
           _["singular"] = op_focei.nNewtonSingular,
           _["backtrack"] = op_focei.nNewtonBacktrack);
+        e["nFdOutlier"] = IntegerVector::create(
+          _["params"] = op_focei.nFdOutlierParam,
+          _["chartrandSlopes"] = op_focei.nFdChartrand);
         e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
@@ -12001,16 +12018,45 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // is an outlier the plain central difference is adequate and Richardson is skipped
     // -- which matters, because applying it where it is not needed costs accuracy
     // (measured: tka 0.963 -> 0.844, tv 0.992 -> 0.913).
+    // Flag the OUTLIER SUBJECTS, and correct only those.
+    //
+    // This used to apply the TV derivative to every finite-differenced subject as soon as
+    // ONE of them was an outlier for this parameter.  Narrowed to the outliers because a
+    // subject whose slope sits inside the robust interval has an adequate central
+    // difference, and because fdTvDeriv is a 40-point grid with 12 lagged-diffusivity
+    // iterations PER SUBJECT -- one outlier used to pay for all of them.
+    //
+    // DO NOT cite the tka 0.963 -> 0.844 / tv 0.992 -> 0.913 numbers above as evidence
+    // for anything.  They were measured while the likelihood was corrupt and the shi step
+    // selection was broken, so they say nothing about the present code.
+    //
+    // It is kept ON by default anyway, and controllable: a pass that does not fire on
+    // ordinary fits may still matter on an extreme one, and the outlier test gates it so
+    // the default costs nothing where it is not needed.  nFdOutlierParam counts
+    // detections regardless of whether the refinement runs.
+    std::vector<char> isOutlier((size_t)nid, 0);
     bool anyOutlier = false;
-    for (int k = 0; k < nid && !anyOutlier; ++k) {
+    for (int k = 0; k < nid; ++k) {
       double dv = out(k, j);
       if (!R_finite(dv)) continue;
-      if (std::fabs(0.6745 * (dv - mean) / mad) > _fdOutlierMz) anyOutlier = true;
+      if (std::fabs(0.6745 * (dv - mean) / mad) > _fdOutlierMz) {
+        isOutlier[(size_t)k] = 1;
+        anyOutlier = true;
+      }
     }
     if (!anyOutlier) continue;
-    // Only the finite-differenced subjects are recomputed.  The analytic subjects are
-    // exact -- they contribute to the statistics, never to the correction.
+    op_focei.nFdOutlierParam++;
+    // OPT-OUT (foceiControl(fdChartrand = FALSE)).  On by default because the outlier
+    // test above is the gate: a well-behaved problem flags nothing and reaches here
+    // never, so the cost falls only on the fits where a slope really is an outlier.  The
+    // counter above records the detection either way, so turning the refinement off still
+    // tells you it would have applied.
+    if (!op_focei.fdChartrand) continue;
+    // Only the finite-differenced OUTLIERS are recomputed.  The analytic subjects are
+    // exact -- they contribute to the statistics, never to the correction -- and the
+    // in-range finite-differenced subjects keep their central difference.
     for (int k = 0; k < nid; ++k) {
+      if (!isOutlier[(size_t)k]) continue;
       int id = ids0[k];
       if (id < 0 || id >= nsub) continue;
       double hUse = hOut(k, j);
@@ -12034,7 +12080,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       const double _alpha = -1.0;     // <=0: choose alpha from the data
       const int    _iters = 12;       // lagged-diffusivity iterations
       double dR = fdTvDeriv(theta, id, j, _span, _N, _alpha, _iters);
-      if (R_finite(dR)) { out(k, j) = dR; op_focei.curAnalyticChartrand = 1; }
+      if (R_finite(dR)) { out(k, j) = dR; op_focei.curAnalyticChartrand = 1; op_focei.nFdChartrand++; }
     }
   }
   _fdRefEta.clear();
@@ -13040,7 +13086,10 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   if (rx == NULL) return false;
   const int nsub = (int)getRxNsub(rx);
   const int neta = G.neta, npars = (int)op_focei.npars;
-  if (neta != op_focei.neta || G.nth + G.nsg + G.nom != npars) return false;
+  // The kernel's vector is gathered into the optimizer's through G.gMap, so the arity
+  // that must match npars is the MAP's, not nth+nsg+nom (those differ whenever a lambda
+  // is double-listed or a mu family profiles thetas out).
+  if (neta != op_focei.neta || (int)G.gMap.size() != npars) return false;
   if (inds_focei == NULL) return false;
   // theta, in the augmented model's positional order
   std::vector<double> thv((size_t)op_focei.ntheta);
@@ -13081,28 +13130,38 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   try {
     okc = gradPooledCore(G, thv, ebes, Oi, dOiEst, tr28, cores, gv, etaP, jacSum);
   } catch (...) { return false; }
-  if (!okc || (int)gv.n_elem != npars) return false;
-  // the transform Jacobian term, applied on the lambda directions
+  // gv is in KERNEL space (nth + nsg + nom), which is not npars -- see G.gMap.
+  const int nKer = G.nth + G.nsg + G.nom;
+  if (!okc || (int)gv.n_elem != nKer) return false;
+  // the transform Jacobian term, applied on the lambda directions -- lamDir indexes the
+  // theta directions, so this stays in KERNEL space, before the gather
   if (G.nLam > 0) {
     for (size_t q = 0; q < G.lamDir.size(); ++q) {
       int d = G.lamDir[q] - 1;
-      if (d >= 0 && d < npars) gv[d] -= 2.0 * jacSum;
+      if (d >= 0 && d < nKer) gv[d] -= 2.0 * jacSum;
     }
   }
+  // gather kernel -> outer-optimizer parameter vector
+  arma::vec gp((unsigned int)npars);
   for (int i = 0; i < npars; ++i) {
-    if (!R_finite(gv[i])) return false;
+    int k = G.gMap[(size_t)i];
+    if (k < 0 || k >= nKer) return false;
+    gp[i] = gv[k];
+    if (!R_finite(gp[i])) return false;
   }
   if (!op_focei.firstDirectGradSet) {
-    op_focei.firstDirectGrad.assign(gv.begin(), gv.end());
+    op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
                                      &op_focei.fullTheta[0] + op_focei.ntheta);
     op_focei.firstDirectGradSet = 1;
   }
-  for (int i = 0; i < npars; ++i) g[i] = gv[i] * dUnscaleParDx(i);
+  for (int i = 0; i < npars; ++i) g[i] = gp[i] * dUnscaleParDx(i);
   // etaP straight into op_focei.getaP, on the scaled optimizer parameterization
   if (op_focei.mceta == -2 || op_focei.mceta == -1) {
+    // etaP columns are in KERNEL space too, so it is sized by nKer and gathered below
     size_t need = (size_t)neta * (size_t)npars * (size_t)nsub;
-    if (need > 0 && etaP.n_elem == need) {
+    size_t haveK = (size_t)neta * (size_t)nKer * (size_t)nsub;
+    if (need > 0 && etaP.n_elem == haveK) {
       if (op_focei.getaP == NULL || op_focei.getaPn != need) {
         if (op_focei.getaP != NULL) R_Free(op_focei.getaP);
         op_focei.getaP = R_Calloc(need, double);
@@ -13111,10 +13170,11 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
       if (op_focei.etaPTheta == NULL) op_focei.etaPTheta = R_Calloc(npars, double);
       for (int k = 0; k < npars; ++k) {
         double sc = dUnscaleParDx(k);
+        int kk = G.gMap[(size_t)k];
         for (int i = 0; i < nsub; ++i)
           for (int j = 0; j < neta; ++j)
             op_focei.getaP[(size_t)j + (size_t)neta * ((size_t)k + (size_t)npars * i)] =
-              etaP(j, k, i) * sc;
+              etaP(j, kk, i) * sc;
       }
       std::copy(theta, theta + npars, op_focei.etaPTheta);
       op_focei.etaPValid = 1;

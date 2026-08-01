@@ -2522,6 +2522,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         }
       })
       if (this.env$err == "theta reset") {
+        # A restart must recompute its OWN objective.  nlmixr2EnvSetup() (inner.cpp)
+        # computes one only when the environment does not already carry it -- otherwise
+        # it adopts the existing value verbatim -- and this loop deliberately reuses
+        # `.ret` across calls (see the etaObf fixup in .foceiFitInternal).  A stale
+        # objective left by the aborted run therefore gets reported against the
+        # restarted fit's parameters, and every statistic derived from it (OBJF, AIC,
+        # BIC, logLik) inherits the error.
+        for (.stale in c("objective", "OBJF", "objf", "AIC", "BIC", "logLik", "adj")) {
+          if (exists(.stale, envir = .ret, inherits = FALSE)) {
+            rm(list = .stale, envir = .ret)
+          }
+        }
         .nm <- names(.ret$thetaIni)
         .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
         .ret$rxInv$theta <- .thetaReset$omegaTheta

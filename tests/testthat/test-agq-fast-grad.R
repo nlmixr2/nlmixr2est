@@ -78,10 +78,12 @@ nmTest({
       # NB h: the AGQ objective's central-difference error bottoms out around 3e-3..1e-2;
       # 1e-4 sits on the noisy side of the V and reads ~1e-3 relative even for an exact
       # gradient, so do not tighten this.
-      .fd <- vapply(names(.base), function(nm) {
-        h <- 3e-3 * max(abs(.base[[nm]]), 1)
-        (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-      }, numeric(1))
+      ## cached reference -- see helper-gradref.R
+      .fd <- .gradRef(paste0("agq-nAGQ", .n), function()
+        vapply(names(.base), function(nm) {
+          h <- 3e-3 * max(abs(.base[[nm]]), 1)
+          (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+        }, numeric(1)))
       expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
     }
   })
@@ -153,10 +155,12 @@ nmTest({
       suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq",
                                                 .ctl(nAGQ = 2L, sigdig = 7))))$objf
     }
-    .fd <- vapply(names(.base), function(nm) {
-      h <- 3e-3 * max(abs(.base[[nm]]), 1)
-      (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-    }, numeric(1))
+    ## cached reference -- see helper-gradref.R
+    .fd <- .gradRef("agq-agqf-equivalence", function()
+      vapply(names(.base), function(nm) {
+        h <- 3e-3 * max(abs(.base[[nm]]), 1)
+        (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+      }, numeric(1)))
     expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
   })
 })

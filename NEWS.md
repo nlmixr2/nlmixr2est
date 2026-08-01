@@ -2,6 +2,19 @@
 
 ## New features
 
+- The **mu-referenced FOCEi family is experimental**.  `est = "mfocei"`,
+  `"ifocei"`, `"mfoce"`, `"ifoce"`, `"mfocep"`, `"ifocep"`, `"magq"`, `"iagq"`,
+  `"mlaplace"`, `"ilaplace"` and their `fast=TRUE` siblings (`"mfoceif"` and
+  relatives) are research methods.  They are not validated to the standard of the
+  established estimation methods, their results should not be relied on without
+  independent checking, and their interface and defaults may change or be
+  withdrawn in a future release without a deprecation cycle.
+
+    - The same machinery is reachable from the ordinary methods with
+      `foceiControl(muModel=)` (`"lin"` or `"irls"`, default `"none"`), which is
+      where it will continue to live.
+
+
 - The default `sigdig` is now `3` (was `4`) for every estimation method except
   `est="nls"`.  `sigdig` drives the ODE solver tolerances as `rtol = 10^-sigdig`
   and `atol = 10^(-sigdig-3)`, so the default solve is now `rtol = 1e-3`,
@@ -83,6 +96,21 @@
 ## Bug fixes
 
 ### Estimation
+
+- The ETA-drift theta reset (`foceiControl(resetThetaP=)`,
+  `resetThetaFinalP=`) now defaults to OFF.  It re-centered a mu-referenced
+  theta by the mean ETA and restarted the fit, but when the ETAs cannot
+  re-center -- every omega fixed, or a model whose misfit the ETAs must absorb
+  -- the shift did not stick and the reset repeated until the restart cap
+  errored the fit out ("Maximum number of theta resets (10) exceeded").  Where
+  it did converge it reached a worse optimum than leaving it off.  Set
+  `resetThetaP=` to restore the old behavior.
+
+- Fixed a theta-reset restart reporting the PREVIOUS attempt's objective
+  function.  The restart reuses the fit environment, and the objective was only
+  computed when the environment did not already carry one, so a restarted fit
+  could report an objective (and the `OBJF`/`AIC`/`BIC`/log-likelihood derived
+  from it) belonging to the aborted attempt rather than to its own parameters.
 
 - The nlm family (`est="nlm"`, `"nlminb"`, ...), `est="nls"` and the
   importance-sampling EM sensitivity model now honor the covariate

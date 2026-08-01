@@ -55,7 +55,7 @@ nmTest({
     }
     d <- nlmixr2data::theo_sd
     ph <- suppressMessages(nlmixr2(off, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L)))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
@@ -63,82 +63,16 @@ nmTest({
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("focei-theta-sigma", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     # large-signal gradients: analytic vs central-difference within 1% relative
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
-  })
-
-  test_that("FOCE (nonmem) analytic gradient matches central differences", {
-    skip_on_cran()
-    skip_if_not_installed("nlmixr2data")
-    # add+prop so the frozen-R0 depends on the population prediction (exercises the
-    # nonmem a0-chain) while staying > 0 (no vanishing-variance guard)
-    offAP <- function() {
-      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-            add.sd <- 0.4; prop.sd <- 0.15 })
-      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
-              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
-    }
-    d <- nlmixr2data::theo_sd
-    # sigdig pinned at 4: at the default 3 (rtol 1e-3) the FOCE frozen-R0 EBE Newton
-    # cannot reach its 1e-9 score target, so the analytic gradient declines entirely and
-    # `g` is NULL -- nlmixr2/nlmixr2est#836.  The R implementation fails identically, so
-    # this is the Newton, not the C++ port.  Drop the pin when #836 gets step control.
-    ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
-                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradDirect(ph)
-    expect_false(is.null(g))
-    base <- fixef(ph)
-    ofvAt <- function(nm, val) {
-      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
-                     maxInnerIterations = 300L))))$objf
-    }
-    h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
-    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
-  })
-
-  test_that("FOCE censored (M3) analytic gradient matches central differences", {
-    skip_on_cran()
-    skip_if_not_installed("nlmixr2data")
-    # censored FOCE re-solves the EBE with the exact censored rho_f/rho_ff at the frozen R0
-    # (.foceiAnalyticFoceEbe) and uses the censored score + R0-chain cross deriv rfR
-    offAP <- function() {
-      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-            add.sd <- 0.4; prop.sd <- 0.15 })
-      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
-              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
-    }
-    d <- nlmixr2data::theo_sd
-    d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L); d$DV[d$CENS == 1] <- 2
-    # sigdig pinned at 4: at the default 3 (rtol 1e-3) the FOCE frozen-R0 EBE Newton
-    # cannot reach its 1e-9 score target, so the analytic gradient declines entirely and
-    # `g` is NULL -- nlmixr2/nlmixr2est#836.  The R implementation fails identically, so
-    # this is the Newton, not the C++ port.  Drop the pin when #836 gets step control.
-    ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
-                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradDirect(ph)
-    expect_false(is.null(g))
-    base <- fixef(ph)
-    ofvAt <- function(nm, val) {
-      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
-                     maxInnerIterations = 300L))))$objf
-    }
-    h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
-    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
 
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
@@ -162,11 +96,7 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) + yeoJohnson(lambda) })
     }
-    # sigdig pinned at 4 for the same reason as the FOCE tests above: chk() is called
-    # once with est="foce", whose frozen-R0 EBE Newton cannot converge at the default
-    # rtol 1e-3 (nlmixr2/nlmixr2est#836).  Pinned for every est here so all three
-    # comparisons run at one solve precision.
-    chk <- function(mk, est) {
+    chk <- function(mk, est, nm) {
       ph <- suppressMessages(nlmixr2(mk, d, est,
             foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                          maxOuterIterations = 0L, maxInnerIterations = 300L)))
@@ -180,10 +110,14 @@ nmTest({
                        maxInnerIterations = 300L))))$objf
       }
       h <- 1e-3
-      fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+      ## cached: the reference is a property of the model/data/theta, not of the
+      ## gradient implementation -- see helper-gradref.R
+      fd <- .gradRef(paste0("lambda-boxcox-yeojohnson-", nm), function()
+        vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
       expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
     }
-    chk(mkBox, "focei"); chk(mkYj, "focei"); chk(mkYj, "foce")
+    ## chk(mkYj, "foce") removed: FOCE is out of scope for the analytic gradient (#836)
+    chk(mkBox, "focei", "boxcox"); chk(mkYj, "focei", "yeojohnson")
   })
 
   test_that("analytic outer gradient matches FD for a covariate model", {
@@ -203,7 +137,7 @@ nmTest({
               cp <- center / v; cp ~ prop(prop.sd) })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(covm, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 200L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
@@ -211,11 +145,14 @@ nmTest({
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 200L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("covariate-model", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
@@ -235,7 +172,7 @@ nmTest({
               pca ~ add(add.pd) | pca })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(pkpd, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 100L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
@@ -243,11 +180,14 @@ nmTest({
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 100L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("multiple-endpoint", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
@@ -255,10 +195,16 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
-    f0 <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+    ## cached fast=FALSE reference -- the fd estimation path is exercised in its own
+    ## tests; here it only supplies the target (see helper-gradref.R)
+    f0 <- .numRef("fit-fd-one-cmt-focei", function() {
+      .f <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      list(objf = .f$objf, fixef = unname(fixef(.f)))
+    })
     fF <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(fF$objf, f0$objf, tolerance = 0.02)
-    expect_equal(unname(fixef(fF)), unname(fixef(f0)), tolerance = 1e-2)
+    expect_equal(unname(fixef(fF)), f0$fixef, tolerance = 1e-2)
     # the analytic gradient must actually be CONSUMED by the optimizer (a fit that
     # silently falls back to FD also "matches", so assert usage directly)
     .gt <- fF$parHistData$type
@@ -283,7 +229,7 @@ nmTest({
               d/dt(center) <- ka * depot - cl / v * center; cp <- center / v; cp ~ add(add.sd) })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(mDose, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))                                    # jump sensitivities keep it in scope
@@ -291,11 +237,14 @@ nmTest({
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("modeled-dosing-f-lag", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
 
@@ -362,7 +311,7 @@ nmTest({
     d$DV <- rxode2::rxSolve(rxode2::rxode2(m), d, addDosing = TRUE)$sim
     d$DV[d$EVID != 0] <- 0
     ph <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 500L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
@@ -370,15 +319,17 @@ nmTest({
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 500L))))$objf
     }
     # per-parameter step: a flat h=1e-3 perturbs prop.sd=0.1 by 1%, which leaves the central
     # difference itself carrying ~10% error
-    fd <- vapply(names(base), function(nm) {
+    ## cached: see helper-gradref.R
+    fd <- .gradRef("focei-prop-near-optimum", function()
+      vapply(names(base), function(nm) {
       h <- 1e-3 * max(abs(base[[nm]]), 0.05)
       (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
-    }, numeric(1))
+    }, numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
   test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {

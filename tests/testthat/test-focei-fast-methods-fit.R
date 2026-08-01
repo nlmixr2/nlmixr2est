@@ -37,7 +37,10 @@ nmTest({
               cp <- center / v; cp ~ add(add.sd) })
     }
     for (est in c("mfocei", "ifocei", "mfoce")) {
-      f0 <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = FALSE))))
+      ## cached fast=FALSE reference, per est -- see helper-gradref.R
+      f0 <- .numRef(paste0("fit-fd-methods-", est), function()
+        list(objf = suppressMessages(suppressWarnings(nlmixr2(mc, d, est,
+               foceiControl(print = 0L, covMethod = "", fast = FALSE))))$objf))
       fF <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = TRUE))))
       expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)
       # analytic gradient actually consumed on the mu-profiled parameter set
@@ -85,12 +88,15 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
     }
-    for (.m in list(addFix, combFix)) {
+    for (.mn in c("addFix", "combFix")) {
+      .m <- get(.mn)
       for (.e in c("foceif", "ifoceif", "mfoceif")) {
         .ctl <- switch(.e, foceif = foceiControl, ifoceif = ifoceiControl, mfoceif = mfoceiControl)
         fF <- suppressWarnings(suppressMessages(nlmixr2(.m, d, .e, .ctl(print = 0L, covMethod = ""))))
-        f0 <- suppressWarnings(suppressMessages(nlmixr2(.m, d, sub("f$", "", .e),
-                                                        .ctl(print = 0L, covMethod = "", fast = FALSE))))
+        ## cached fast=FALSE reference -- see helper-gradref.R
+        f0 <- .numRef(paste0("fit-fd-resfix-", .mn, "-", .e), function()
+          list(objf = suppressWarnings(suppressMessages(nlmixr2(.m, d, sub("f$", "", .e),
+                 .ctl(print = 0L, covMethod = "", fast = FALSE))))$objf))
         expect_match(fF$extra, "grad: analytic", info = .e)
         expect_equal(fF$objf, f0$objf, tolerance = 0.2, info = .e)
       }

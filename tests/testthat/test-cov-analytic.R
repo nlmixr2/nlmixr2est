@@ -232,11 +232,12 @@ nmTest({
     expect_identical(fitA$covMethod, "analytic")
     expect_true(any(grepl("^om\\.", rownames(fitA$cov))))
     expect_true(all(is.finite(sqrt(diag(fitA$cov)))))
-    fitR <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                     foceiControl(print = 0L, covMethod = "r", sigdig = 6))))
-    cp <- intersect(rownames(fitA$cov), rownames(fitR$cov))
-    expect_lt(max(abs(sqrt(diag(fitA$cov))[cp] - sqrt(diag(fitR$cov))[cp]) /
-                    (sqrt(diag(fitR$cov))[cp] + 1e-8)), 0.05)
+    ## cached FD reference -- see helper-gradref.R
+    seR <- .numRef("cov-cens-m3-focei", function()
+      sqrt(diag(suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
+        foceiControl(print = 0L, covMethod = "r", sigdig = 6))))$cov)))
+    cp <- intersect(rownames(fitA$cov), names(seR))
+    expect_lt(max(abs(sqrt(diag(fitA$cov))[cp] - seR[cp]) / (seR[cp] + 1e-8)), 0.05)
     for (dd in list(dM2, dM4)) {
       f <- suppressWarnings(suppressMessages(nlmixr(cm, dd, "focei",
                                                     foceiControl(print = 0L, covMethod = "analytic"))))
@@ -248,11 +249,12 @@ nmTest({
                                                    foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE, sigdig = 6))))
     expect_identical(fF$covMethod, "analytic")
     expect_true(any(grepl("^om\\.", rownames(fF$cov))))
-    fFr <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                    foceiControl(print = 0L, covMethod = "r", interaction = FALSE, sigdig = 6))))
-    cpf <- intersect(c("tka", "tcl", "tv", "add.sd"), intersect(rownames(fF$cov), rownames(fFr$cov)))
-    expect_lt(max(abs(sqrt(diag(fF$cov))[cpf] - sqrt(diag(fFr$cov))[cpf]) /
-                    (sqrt(diag(fFr$cov))[cpf] + 1e-8)), 0.03)
+    ## cached FD reference -- see helper-gradref.R
+    seFr <- .numRef("cov-cens-m3-foce", function()
+      sqrt(diag(suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
+        foceiControl(print = 0L, covMethod = "r", interaction = FALSE, sigdig = 6))))$cov)))
+    cpf <- intersect(c("tka", "tcl", "tv", "add.sd"), intersect(rownames(fF$cov), names(seFr)))
+    expect_lt(max(abs(sqrt(diag(fF$cov))[cpf] - seFr[cpf]) / (seFr[cpf] + 1e-8)), 0.03)
     # foce+ (live conditional R) censored is in scope too
     fFp <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                     foceiControl(print = 0L, covMethod = "analytic",
@@ -366,9 +368,14 @@ nmTest({
       ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       ctlR <- do.call(foceiControl, c(list(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       fitA <- suppressMessages(nlmixr2(mBox, d, est, ctlA))
-      fitR <- suppressWarnings(suppressMessages(nlmixr2(mBox, d, est, ctlR)))
       expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
-      seA <- sqrt(diag(fitA$cov)); seS <- sqrt(diag(fitR$cov))
+      seA <- sqrt(diag(fitA$cov))
+      ## The covMethod="r" reference is a property of the model/data/theta, not of the
+      ## analytic implementation under test -- cache it (see helper-gradref.R).  Only its
+      ## standard errors are consumed, so only those are stored.
+      .key <- paste0("cov-boxcox-", est, if (length(ctlExtra)) "-focep" else "")
+      seS <- .numRef(.key, function()
+        sqrt(diag(suppressWarnings(suppressMessages(nlmixr2(mBox, d, est, ctlR)))$cov)))
       nm <- c("tka", "tcl", "tv", "add.sd", "lambda")     # theta/sigma/lambda block (DV-affected)
       expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
       expect_equal(unname(seA[nm]), unname(seS[nm]), tolerance = 0.05)
@@ -401,21 +408,23 @@ nmTest({
     d <- nlmixr2data::theo_sd
     # lnorm: drop the predose observations (a zero prediction makes log(f) = -Inf)
     dPos <- d[!(d$EVID == 0 & d$TIME == 0), ]
-    chk <- function(m, dat, est) {
+    chk <- function(m, dat, est, key) {
       ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6)
       ctlR <- foceiControl(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6)
       fitA <- suppressMessages(nlmixr2(m, dat, est, ctlA))
-      fitR <- suppressMessages(nlmixr2(m, dat, est, ctlR))
       expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
-      seA <- sqrt(diag(fitA$cov)); seR <- sqrt(diag(fitR$cov))
+      seA <- sqrt(diag(fitA$cov))
+      ## cached FD reference -- see helper-gradref.R
+      seR <- .numRef(paste0("cov-", key, "-", est), function()
+        sqrt(diag(suppressMessages(nlmixr2(m, dat, est, ctlR))$cov)))
       nm <- intersect(names(seA), names(seR))
       expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
       expect_equal(unname(seA[nm]), unname(seR[nm]), tolerance = 0.1)
     }
-    chk(mLnorm, dPos, "focei")
-    chk(mLnorm, dPos, "foce")
-    chk(mLogit, d, "focei")
-    chk(mLogit, d, "foce")
+    chk(mLnorm, dPos, "focei", "lnorm")
+    chk(mLnorm, dPos, "foce", "lnorm")
+    chk(mLogit, d, "focei", "logitnorm")
+    chk(mLogit, d, "foce", "logitnorm")
   })
 
   test_that("mu-referenced covariate coefficients reuse eta sensitivities (bare + algebraic)", {
@@ -476,9 +485,11 @@ nmTest({
     ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 4)
     ctlFd <- foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 4)
     fitA <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlA))
-    fitFd <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlFd))
     expect_identical(fitA$covMethod, "analytic")           # stayed analytic (theta got its own direction)
-    seA <- sqrt(diag(fitA$cov)); seFd <- sqrt(diag(fitFd$cov))
+    seA <- sqrt(diag(fitA$cov))
+    ## cached FD reference -- see helper-gradref.R
+    seFd <- .numRef("cov-shared-eta", function()
+      sqrt(diag(suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlFd))$cov)))
     nm <- intersect(names(seA), names(seFd))
     expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
     expect_equal(unname(seA[nm]), unname(seFd[nm]), tolerance = 0.05)  # matches the finite-difference cov
@@ -576,9 +587,10 @@ nmTest({
     expect_equal(unname(.se[c("tka", "tcl", "tv")]),
                  c(0.18868, 0.08351, 0.04617), tolerance = 0.05)
     # covariate SE matches a tight-tolerance finite-difference R covariance (~0.607)
-    fit_fd <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
-                foceiControl(print = 0L, covMethod = "r", sigdig = 7))))
-    .sefd <- sqrt(diag(fit_fd$cov))
+    ## cached FD reference -- see helper-gradref.R
+    .sefd <- .numRef("cov-nonmu-covariate-coef", function()
+      sqrt(diag(suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
+        foceiControl(print = 0L, covMethod = "r", sigdig = 7))))$cov)))
     expect_equal(unname(.se[["wt_cl"]]), unname(.sefd[["wt_cl"]]), tolerance = 0.05)
   })
 
@@ -607,9 +619,12 @@ nmTest({
     .seA <- sqrt(diag(fitA$cov))
     expect_true(all(is.finite(.seA)) && all(.seA > 0))
     # matches the finite-difference covariance over the same full parameter set
-    fitR <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
-                foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 6))))
-    .seR <- sqrt(diag(fitR$cov)); .nm <- intersect(names(.seA), names(.seR))
+    ## cached FD reference -- see helper-gradref.R
+    .seR <- .numRef("cov-covariate-etaless-param", function()
+      sqrt(diag(suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
+        foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE,
+                     fast = TRUE, sigdig = 6))))$cov)))
+    .nm <- intersect(names(.seA), names(.seR))
     expect_equal(unname(.seA[.nm]), unname(.seR[.nm]), tolerance = 0.05)
   })
 
@@ -640,9 +655,10 @@ nmTest({
     .se <- sqrt(diag(fit$cov))
     expect_true(is.finite(.se[["om.eta.cl"]]) && .se[["om.eta.cl"]] > 0)
     # theta SEs match a tight-tolerance finite-difference R covariance
-    fit_fd <- suppressWarnings(suppressMessages(nlmixr(nonmu, dat, "focei",
-                foceiControl(print = 0L, covMethod = "r", sigdig = 7))))
-    .sefd <- sqrt(diag(fit_fd$cov))
+    ## cached FD reference -- see helper-gradref.R
+    .sefd <- .numRef("cov-orphan-eta", function()
+      sqrt(diag(suppressWarnings(suppressMessages(nlmixr(nonmu, dat, "focei",
+        foceiControl(print = 0L, covMethod = "r", sigdig = 7))))$cov)))
     expect_equal(unname(.se[c("tka", "tcl", "tv")]),
                  unname(.sefd[c("tka", "tcl", "tv")]), tolerance = 0.05)
   })
@@ -854,9 +870,13 @@ nmTest({
     # shape as the finite-difference covMethod, not widen back to every structural theta.
     fitA <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                 foceiControl(print = 0L, covMethod = "analytic", covFull = FALSE, skipCov = c(FALSE, FALSE, TRUE, TRUE)))))
-    fitF <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-                foceiControl(print = 0L, covMethod = "r", covFull = FALSE, skipCov = c(FALSE, FALSE, TRUE, TRUE)))))
-    expect_setequal(rownames(fitA$cov), rownames(fitF$cov))
+    ## cached FD reference -- only the cov SHAPE is compared, so only rownames are stored
+    ## (see helper-gradref.R)
+    .rnF <- .numRef("cov-skipcov-shape", function()
+      rownames(suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+        foceiControl(print = 0L, covMethod = "r", covFull = FALSE,
+                     skipCov = c(FALSE, FALSE, TRUE, TRUE)))))$cov))
+    expect_setequal(rownames(fitA$cov), .rnF)
     expect_false("tv" %in% rownames(fitA$cov))                   # skipCov'd theta excluded, not widened
   })
 

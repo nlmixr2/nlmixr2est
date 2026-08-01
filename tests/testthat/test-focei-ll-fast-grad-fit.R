@@ -26,12 +26,17 @@ nmTest({
   test_that("ll() fast (analytic) fit matches the finite-difference fit", {
     skip_on_cran(); skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
-    fF <- suppressMessages(nlmixr2(.ll_ode, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+    ## cached fast=FALSE reference -- see helper-gradref.R
+    fF <- .numRef("fit-fd-ll-ode", function() {
+      .f <- suppressMessages(nlmixr2(.ll_ode, d, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      list(objf = .f$objf, theta = unname(.f$theta))
+    })
     fT <- suppressMessages(nlmixr2(.ll_ode, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     # fast=TRUE for an ll() endpoint uses the exact-Hessian objective + analytic outer
     # gradient; it converges to the same MLE within optimizer tolerance
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
-    expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 1e-2)
+    expect_equal(unname(fT$theta), fF$theta, tolerance = 1e-2)
     # ...and it got there on the all-C++ gradient.  Without this the fit could quietly
     # decline every evaluation to finite differences and still pass the two above.
     expect_gt(fT$env$nAnalyticGradDirect, 0L)
@@ -43,10 +48,15 @@ nmTest({
     # objective and the analytic outer gradient are out of scope; fast=TRUE must transparently
     # fall back to finite differences and still converge to the same MLE (not error).
     d <- nlmixr2data::theo_sd
-    fF <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+    ## cached fast=FALSE reference -- see helper-gradref.R
+    fF <- .numRef("fit-fd-ll-lincmt", function() {
+      .f <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      list(objf = .f$objf, theta = unname(.f$theta))
+    })
     fT <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
-    expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 1e-2)
+    expect_equal(unname(fT$theta), fF$theta, tolerance = 1e-2)
     expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L)   # out of scope: no analytic gradient
   })
 
@@ -67,10 +77,14 @@ nmTest({
     # sigdig pinned at 4: at the default 3 this model's own optimizer noise is ~9% in
     # theta (measured), which is larger than the fast-vs-fd difference under test.
     .ctl <- function(fast) foceiControl(print = 0L, covMethod = "", sigdig = 4, fast = fast)
-    fF <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(FALSE)))
+    ## cached fast=FALSE reference -- see helper-gradref.R
+    fF <- .numRef("fit-fd-ll-pois", function() {
+      .f <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(FALSE)))
+      list(objf = .f$objf, theta = unname(.f$theta))
+    })
     fT <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
-    expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 2e-2)
+    expect_equal(unname(fT$theta), fF$theta, tolerance = 2e-2)
     # ODE-free models pool too: the augmented model has no ODE states, but it has real
     # lhs outputs and its sensitivities are plain symbolic derivatives.
     expect_gt(fT$env$nAnalyticGradDirect, 0L)
