@@ -387,6 +387,8 @@ rxUiGet.saemModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  ## no splitBolus() here -- saem solves the pre-split $dataSav, so declaring it
+  ## would split the doses twice (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
@@ -488,15 +490,9 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
   .ui0 <- x[[1]]
-  .levels  <- .ui0$levels
-  if (!is.null(.levels)) {
-    .levels <- vapply(seq_along(.levels),
-                      function(i){
-                        deparse1(.levels[[i]])
-                      },
-                      character(1), USE.NAMES=FALSE)
-    .levels <- paste(.levels, collapse="\n")
-  }
+  ## No levels() lines are emitted: .foceiPreProcessData() turns the string
+  ## covariates into factors with the model's level order, so the solve sees
+  ## the numeric codes directly.
   .s <- rxUiGet.loadPruneSaemPred(x, ...)
   .saemModelEnv$symengine <- .s
   .replaceLst <- rxUiGet.saemModelPredReplaceLst(x, ...)
@@ -577,6 +573,8 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ret2
   ), collapse = "\n")
   .interp <- rxUiGet.interpLinesStr(x, ...)
+  ## as in rxUiGet.saemModel(), splitBolus() is left out: the events this model
+  ## solves have already been split
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
             .interp,

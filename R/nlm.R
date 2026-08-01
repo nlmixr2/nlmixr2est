@@ -583,6 +583,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  ## no splitBolus() here -- this model solves the pre-split events, so
+  ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
        eventTheta=.eventTheta)
@@ -759,11 +761,15 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' Finalize nlm rxode2 based on symengine saved info
 #'
 #' @param .s Symengine/rxode2 object
+#' @param interpLines covariate interpolation lines (`locf()`/`nocb()`/...) to
+#'   emit; symengine drops them, so they have to be added back here
 #' @return Nothing
 #' @author Matthew L Fidler
 #' @noRd
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
-                           optExpression = TRUE, cores = 0L) {
+                           optExpression = TRUE, cores = 0L,
+                           interpLines = "") {
+  interpLines <- interpLines[interpLines != ""]
   .rxInjectMatExpDdt(.s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -791,6 +797,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    interpLines,
     .lhs,
     .ddt,
     .sens,
@@ -814,6 +821,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .s$..pred.nolhs <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    interpLines,
     .lhs0,
     .lhs,
     .ddt,
@@ -860,7 +868,8 @@ rxUiGet.nlmEnv <- function(x, ...) {
     .calcSens <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
     .s$..adjSens <- .rxAdjointSensLines(.nlmPrune(x), .calcSens, .adj$stiff)
   }
-  .rxFinalizeNlm(.s, .sumProd, .optExpression, .optExprCores(x[[1]]))
+  .rxFinalizeNlm(.s, .sumProd, .optExpression, .optExprCores(x[[1]]),
+                 interpLines = rxUiGet.interpLinesStr(x, ...))
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)
