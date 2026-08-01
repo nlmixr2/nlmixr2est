@@ -1703,3 +1703,42 @@ So tighter is more correct and the declines are the honest price -- each falls b
 finite differences, which is also correct.  This is why the fix is step control
 (backtracking on |S| / a trust region) and not a looser target: a looser target buys a
 faster fit that answers the wrong question.
+
+### 8F.4 (AGQ): first attempt corrupts the heap -- stashed, not committed
+
+Written and compiling, but a fit crashes the allocator on the node solve:
+
+    malloc(): invalid size (unsorted)
+    munmap_chunk(): invalid pointer
+    free(): invalid next size (fast)
+
+FOCEI and FOCE in the same run completed and matched the R route first (1.9e-04 and
+4.1e-06), so the corruption is specific to the new AGQ path.  Stashed as
+"8F.4 WIP: AGQ branch" rather than committed.
+
+Found on the way, and correct independently of the crash: **odeSlotOuterNode was
+DECLARED but never REGISTERED.**  odeSwapDeclare is metadata-only on purpose (loading a
+sensitivity model's DLL before rxSolve_ builds the pool rebinds rxode2's ES globals), so
+the node model's neq fed the pool sizing while rxOuterNode kept null entry points.  Any
+node solve would have silently reported failure.
+
+LEADING HYPOTHESIS for the corruption, to test first: the node solve runs INSIDE
+`OdeSwapEsBatch(odeSlotOuter)`.  odeSwapEsModelForSlot maps odeSlotOuterNode and
+odeSlotOuter to the same role (odeEsOuter), on the assumption that the augmented models
+share one event-sensitivity shape.  But the node model is order 1 and the gradient model
+order 2, so their ES shapes (_rxEsNState/_rxEsNParam/_rxEsNParam2) plausibly differ.
+handle_evid sizes its scratch from the effective neq but calls the INSTALLED model's
+dydt, and odeSwap.h states a solve may only be compacted when the two agree -- a
+mismatch there writes past the buffer, which is exactly the signature seen.
+
+Checks to run before writing more code:
+  1. compare odeSwapNeq/odeSwapNlhs and the ES shape of odeSlotOuter vs odeSlotOuterNode
+     for an nAGQ=2 fit -- if the ES shapes differ, the node solve needs its OWN
+     OdeSwapEsBatch, which means closing the outer batch around it;
+  2. call odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op) -- gradPooledCore
+     does this for odeSlotOuter and the AGQ path never did;
+  3. confirm _aqn and op_focei.aqx/aqw are sized (_aqn x neta) at gradient time before
+     aliasing them with the advanced arma::mat constructor.
+
+Do NOT chase this by reading the diff again -- run it under valgrind or ASAN, which will
+name the write directly and costs less than another round of hypotheses.
