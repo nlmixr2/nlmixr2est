@@ -4648,7 +4648,7 @@ struct FoceiGradPooledSetup : OuterCols {
   // FOCE frozen-R0 Newton tolerances, derived from sigdig by foceiControl() rather than
   // frozen here: a constant would describe a precision the user did not ask for.  At the
   // default sigdig = 3 these are the historic 1e-9 / 1e-3.
-  double ebeTol = 1e-9;       // score convergence
+  double ebeTol = 1e-9;       // score convergence (fixed; foceiControl(foceEbeTol=) overrides)
   double ebeSkipTol = 1e-3;   // looser first-iteration test: already stationary?
   bool canVanish = false; // f can pass through zero -- guard the solve before using it
 
@@ -12401,9 +12401,11 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
 // One pooled solve per iteration over ALL subjects, as in R.  Iteration 1 tests
 // stationarity at the incoming eta with a LOOSE tolerance (skipTol) so an eta that is
 // already stationary -- the FOCEI/additive case -- returns untouched; later iterations
-// use convTol.  Both come from sigdig via foceiControl(foceEbeTol=), so this Newton is
-// held to the same precision as every other tolerance in the fit.  Returns false if any
-// subject fails to converge, which sends the whole
+// use convTol.  These are the FIXED values the routine shipped with (1e-3 / 1e-9), not
+// sigdig-derived: a score convergence target on an inner Newton is not a solve precision,
+// and tying it to sigdig made the analytic FOCE gradient available or not depending on
+// the requested digits.  foceiControl(foceEbeTol=) overrides convTol.  Returns false if
+// any subject fails to converge, which sends the whole
 // gradient to the ordinary finite-difference route rather than reporting a mode that was
 // never reached.
 static bool foceEbeNewton(const FoceiGradPooledSetup &G,

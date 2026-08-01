@@ -596,21 +596,13 @@
          foceType = as.integer(st$foceType),
          nAGQ = .nAGQ,
          ebeTol = {
-           ## FOCE frozen-R0 Newton tolerance.  foceiControl() already derives it from
-           ## sigdig; fall back to the same formula for a control that predates it.
+           ## FOCE frozen-R0 Newton score tolerance -- a fixed 1e-9, NOT derived from
+           ## sigdig.  foceiControl(foceEbeTol=) overrides it.
            .t <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "foceEbeTol", NA_real_)))
-           if (!is.finite(.t) || .t <= 0) {
-             .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 3)))
-             if (!is.finite(.sd)) .sd <- 3
-             .t <- 10^-(.sd + 6)
-           }
+           if (!is.finite(.t) || .t <= 0) .t <- 1e-9
            .t
          },
-         ebeSkipTol = {
-           .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 3)))
-           if (!is.finite(.sd)) .sd <- 3
-           10^-.sd
-         },
+         ebeSkipTol = 1e-3,   ## looser first-iteration "already stationary?" test
          dependsF0 = isTRUE(st$ef$dependsF0),
          canVanish = isTRUE(st$ef$canVanish),
          thPos = .thPos)

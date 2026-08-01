@@ -310,11 +310,12 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
 \item{foceEbeTol}{Convergence tolerance on the score of the FOCE
 frozen-variance EBE re-solve, which the analytic outer gradient
 (\code{fast=TRUE}, \code{interaction=FALSE}) needs because FOCE's mode is
-not the inner problem's mode.  \code{NULL} (default) derives it from
-\code{sigdig} as \code{10^-(sigdig+6)}, matching every other tolerance in
-this control; the first iteration uses the looser \code{10^-sigdig} so an
-already-stationary eta is returned untouched.  Set it explicitly to test
-whether a fit's finite-difference fallbacks are tolerance-driven.}
+not the inner problem's mode.  \code{NULL} (default) uses \code{1e-9}; the
+first iteration uses a looser \code{1e-3} so an already-stationary eta is
+returned untouched.  Unlike the solver and optimizer tolerances this is not
+derived from \code{sigdig} -- it is a convergence target on an inner Newton
+rather than a precision request.  Set it explicitly to test whether a fit's
+finite-difference fallbacks are tolerance-driven.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
