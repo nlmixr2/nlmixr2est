@@ -1425,6 +1425,69 @@
        nAGQ = nAGQ)
 }
 
+#' Post-fit analytic natural-scale gradient, computed by the fit's OWN C++ path.
+#'
+#' Re-enters the estimation machinery at the fit's converged estimates and EBEs --
+#' `est="none"` with zero inner/outer iterations and the fit's `etaMat`, the same
+#' post-fit re-entry `setCov()` uses -- and reads back the gradient
+#' `analyticOuterGrad()` stashed.  So this is the SHIPPING gradient, not a parallel
+#' implementation of it: that distinction is the whole point, because a test that
+#' validates a second implementation proves nothing about the code the fit runs.
+#'
+#' `NULL` when the fit is out of analytic scope, which is the same signal
+#' `foceiControl(fast=TRUE)` acts on when it falls back to finite differences.
+#' @param fit nlmixr2 fit object
+#' @return named natural-scale gradient (structural thetas, sigmas, om.chol), or `NULL`
+#' @noRd
+.foceiGradDirect <- function(fit) {
+  tryCatch({
+    .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
+    .est <- .env$est
+    if (is.null(.est) || !nzchar(.est)) return(NULL)
+    .control <- .env$foceiControl
+    .control$maxInnerIterations <- 0L      # evaluate at the fit's EBEs, do not re-optimize
+    .control$maxOuterIterations <- 0L      # no outer step: the gradient is at THIS theta
+    .control$calcTables <- FALSE
+    .control$covMethod <- 0L               # no covariance step
+    .control$fast <- TRUE                  # ...which is what makes the gradient run at all
+    .control$skipCov <- fit$skipCov
+    # Re-run under the fit's OWN est, not est="none": the gradient SHAPE is the
+    # estimation method (FOCE freezes the residual variance, AGQ adds quadrature), and
+    # est="none" would silently evaluate every fit as plain FOCEI.
+    .ui <- fit$ui
+    .th <- tryCatch(fit$theta, error = function(.) NULL)
+    if (!is.null(.th)) {                   # pin the final thetas on the ui
+      .w <- match(names(.th), .ui$iniDf$name); .ok <- !is.na(.w)
+      .ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
+    }
+    .eta <- tryCatch(fit$eta, error = function(.) NULL)
+    if (!is.null(.eta)) {                  # ...and the final etas
+      .control$etaMat <- as.matrix(.eta[, setdiff(names(.eta), "ID"), drop = FALSE])
+    }
+    # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); restore it
+    .savedMuRef <- .muRefTrans$cur
+    on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+    .f2 <- suppressMessages(suppressWarnings(
+      nlmixr2(.ui, data = getData(fit), est = .est, control = .control)))
+    .src <- tryCatch(.f2$env, error = function(.) NULL)
+    if (is.null(.src) || !exists(".gradDirectFirst", .src, inherits = FALSE)) return(NULL)
+    .g <- as.numeric(get(".gradDirectFirst", .src))
+    # Name it the way the gradient assembly orders it: structural thetas, then sigmas,
+    # then the estimation-scale omega (Cholesky) elements.
+    .ini <- .ui$iniDf
+    .thRows <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
+    .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
+    .thv <- fit$theta[.thRows$name]
+    if (anyNA(.thv)) .thv <- .thRows$est
+    .st <- .foceiAnalyticGradSetup(.ui, stats::setNames(as.numeric(.thv), .thRows$name),
+                                   fit$omega)
+    if (is.null(.st)) return(NULL)
+    .nm <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
+    if (length(.nm) != length(.g)) return(NULL)
+    stats::setNames(.g, .nm)
+  }, error = function(e) NULL)
+}
+
 #' Post-fit analytic natural-scale gradient for a fitted object (validation /
 #' standalone).  Mirrors `.foceiCovAnalyticCalc`'s gathering.
 #' @noRd

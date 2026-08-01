@@ -7037,6 +7037,32 @@ Environment foceiOuter(Environment e){
     for (unsigned int k = op_focei.npars; k--;){
       x[k]=scalePar(op_focei.initPar, k);
     }
+    // fast=TRUE with no outer iterations (a posthoc fit): evaluate the analytic gradient
+    // ONCE at the reported estimates and stash it.  Without this there is no way to get
+    // the gradient the fit's own machinery produces at a known point -- the outer
+    // optimizer, which is what normally drives analyticOuterGrad, never runs.  That gap
+    // is why the gradient tests validated a separate R implementation instead of the
+    // shipping path.  Costs one gradient evaluation, and only when the user asked for the
+    // analytic gradient in the first place.
+    //
+    // BEFORE foceiOuterFinal, mirroring the outer-optimizer branch above: the gradient
+    // solves the augmented model in the shared pool and leaves it there, and
+    // foceiOuterFinal is what re-solves the inner problem and rebuilds the fit's own
+    // state.  Running it afterwards would hand the tables the augmented solve.
+    //
+    // This branch sets scaleObjective = 0 and does no parameter scaling, so
+    // dUnscaleParDx is the identity and the stashed gradient is on the NATURAL scale --
+    // the same scale .foceiGradAnalyticCalc returned.
+    if (op_focei.fast) {
+      op_foceiFitEnv = e;
+      op_foceiFitEnvSet = true;
+      op_foceiUseAnalyticGrad = true;
+      loadGradPooledSetup(e);
+      std::vector<double> _g((size_t)op_focei.npars, 0.0);
+      analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+      op_foceiUseAnalyticGrad = false;
+      op_focei.calcGrad = 0;
+    }
     foceiOuterFinal(x.begin(), e);
     if (op_focei.maxInnerIterations == 0){
       e["fail"] = NA_INTEGER;
@@ -9543,7 +9569,10 @@ void foceiFinalizeTables(Environment e){
       // gradient, the finite-difference gradient, or a mix (per-iteration solve
       // fallbacks); plus the mu-referenced regression variant when active.
       std::string _details = as<std::string>(ctl["outerOptTxt"]);
-      if (op_focei.fast && op_focei.maxOuterIterations > 0) {
+      // Not gated on maxOuterIterations: a posthoc (0-iteration) fast fit evaluates the
+      // analytic gradient once at the reported estimates, and these counters plus
+      // .gradDirectFirst are how a caller sees WHICH route produced it.
+      if (op_focei.fast) {
         // Counts, for tests that must show WHICH route produced the gradient rather
         // than only that the numbers were right (a silent fallback looks identical).
         e["nAnalyticGrad"] = IntegerVector::create(op_focei.nAnalyticGrad);
