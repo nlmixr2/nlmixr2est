@@ -1307,6 +1307,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
 }
 
 .innerInternal <- function(ui, s) {
+  ## Interpolation is carried into the generated models, splitBolus() is not:
+  ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
   .cmt <-  ui$foceiCmtPreModel
   .interp <- ui$interpLinesStr
   if (.interp != "") {
@@ -2312,6 +2314,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  ## The normModel carries splitBolus(), so the etTrans() below splits the doses
+  ## once here and $dataSav holds the split events for every estimation method.
+  ## That is why no generated model re-emits splitBolus() -- a generated model
+  ## that declares it splits the already-split doses a second time.
   .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
   .strCmpP <- .mod$strCmpParams
   .strCmpPNames <- tolower(names(.strCmpP))
