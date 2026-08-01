@@ -2093,3 +2093,58 @@ thetaGrad size the same, so no compaction fires.  This removes a LATENT mismatch
 would bite a model whose sensitivity system is materially larger than its prediction model
 -- rather than correcting a currently wrong answer.  A test that actually exercises the
 compaction would need such a model and does not exist yet.
+
+## Phase 10 -- lift the imp serial forcing (BLOCKED on a triggering model; NOT attempted)
+
+The plan's line numbers (imp.cpp:420,656) are stale and the forcing is no longer blanket.
+It now lives at one site and is already conditional:
+
+```cpp
+if ((Nmix > 1 || impPoolSizing()) && cores > 1) { savedCores = impSetSolveCores(1); cores = 1; }
+```
+
+with two documented causes: (a) mixtures, whose expanded pseudo-subjects share solve rows
+and race; (b) `impPoolSizing()` == `odeSwapPinned()`, where the inner MAP runs under
+`ind->neqOverride` against a pool sized for the theta-sensitivity model.  The plain
+single-endpoint path already keeps full parallelism, so part of this phase is done.
+
+The helpers the phase calls for ALREADY EXIST and are used by the M-step:
+`impMStepParallelOk()`, `impInnerParallelOn()`, `impInnerParallelOff()` (inner.cpp),
+exposing the `sortIds` + `_innerParallel` scope that imp.cpp cannot reach directly
+(`_innerParallel` is a file static).  `_innerParallel` suppresses `innerOpt1()` updating
+the fit-wide Welford eta mean/variance that drive the standardized-eta reset thresholds --
+order-dependent, hence non-deterministic under threads.
+
+### Why this stopped short of a change
+
+A gate harness was built and VALIDATED (1 vs 4 threads, `all.equal(tolerance = 0)`):
+
+    single-endpoint impmap   objf 116.8198256 both   IDENTICAL   (genuinely parallel)
+    multi-endpoint impmap    objf -10208.04279 both  IDENTICAL
+
+But the second row does not test what it looks like.  Measured `pinnedN` across that fit:
+delta **0** -- the multi-endpoint model does NOT pin the pool (`poolName = thetaSens`,
+`poolNeq = 10`, yet no pin), so `impPoolSizing()` is FALSE and the forcing never fires for
+it.  `impSetInnerNeqOverride()` only pins when `op_focei.innerNeq > 0`, i.e. when the
+inner model is strictly smaller than the pool, which this model apparently does not
+satisfy.
+
+So there is currently NO known model that exercises the `impPoolSizing()` branch, and
+changing the forcing without one would be untestable against the phase's own gate
+("expect_identical across 1 vs 4 threads, else revert to serial and report").
+
+### What the next attempt needs, in order
+
+1. A model that makes `odeSwapPinned()` true under `est="impmap"` -- verify with
+   `.odeSwapInfo()$pinnedN` increasing across the fit, NOT by assuming a multi-endpoint or
+   combined-error model does it.
+2. Confirm the fit is genuinely running >1 thread when unforced (the identity result alone
+   cannot distinguish "parallel and deterministic" from "silently serial" -- the same
+   mechanism-vs-numbers trap that nearly shipped a wrong multi-endpoint ll() gradient).
+3. Only then bracket the E-step parallel region (imp.cpp:384) with
+   `impInnerParallelOn()/Off()` and drop `impPoolSizing()` from the condition, keeping the
+   mixture half.
+4. Re-run the gate; revert to serial and report if it is not identical.
+
+Mixtures (case a) are a separate problem -- racing per-component solves on shared rows --
+and are not addressed by the `_innerParallel` bracketing.
