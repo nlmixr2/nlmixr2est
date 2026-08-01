@@ -65,10 +65,13 @@ void restoreFromEnvrionment(Environment e);
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
-#define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
-#define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
-#define thetaSensOde(id) ind_solve(rx, getRxId(id), rxThetaSens.dydt_liblsoda, rxThetaSens.dydt_lsoda_dum, rxThetaSens.jdum_lsoda, rxThetaSens.dydt, rxThetaSens.update_inis, rxThetaSens.global_jt)
-#define hess2Ode(id) ind_solve(rx, getRxId(id), rxHess2.dydt_liblsoda, rxHess2.dydt_lsoda_dum, rxHess2.jdum_lsoda, rxHess2.dydt, rxHess2.update_inis, rxHess2.global_jt)
+// The per-model ind_solve() macros are gone: every solve now goes through
+// odeSwapSolveInd(slot, rxId), which takes the entry points from the slot registry
+// instead of naming a global rxSolveF struct.  One solve entry, so a model that is
+// registered is solved and a model that is not cannot be solved through a stale
+// function pointer.  (The macros also re-applied getRxId() internally while every call
+// site already passed a mapped id; getRxId is id % nsub and therefore idempotent, so
+// that was harmless, but passing the mapped id straight through is clearer.)
 // (no vaeOuterOde macro: the augmented solve goes through odeSwapSolveInd(slot, rxId),
 // which is the same call for whichever augmented model the caller names.)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
@@ -1484,7 +1487,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
   OdeSwapScope neqGuard(odeSlotPred, ind, op); // switches this subject's neq to the pred model's
-  predOde(_rxId); // Assumes same order of parameters; use base subject index
+  odeSwapSolveInd(odeSlotPred, _rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
   double curT;
@@ -1531,7 +1534,7 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
   }
   OdeSwapScope neqGuard(odeSlotPred, ind, op);
   setIndSolve(ind, -1);
-  predOde(_rxId);
+  odeSwapSolveInd(odeSlotPred, _rxId);
   int nObs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
   fInd->nObs = nObs; // keep consistent for callers
   arma::vec ret(nObs);
@@ -1691,7 +1694,7 @@ static void getPopR(int id, arma::vec &rPop) {
   // SAME model.  Running at the pool's neq wastes unused states but keeps the
   // sizing and the dydt consistent, which is what correctness requires.
   setIndSolve(ind, -1);
-  innerOde(_rxId); // solve the inner model at eta=0
+  odeSwapSolveInd(odeSlotInner, _rxId); // solve the inner model at eta=0
   iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
   int kk, k = 0;
   double curT;
@@ -1794,14 +1797,14 @@ double likInner0(double *eta, int id) {
     if (fInd->doFD == 0) {
       FoceiRetryHooks _hk;
       j = odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
-                            [&]{ innerOde(_rxId); },
+                            [&]{ odeSwapSolveInd(odeSlotInner, _rxId); },
                             foceiRetryOpts(odeRelaxGlobal), _hk);
     } else {
       // Inner sensitivity solve failed; fall back to perturbing the simpler
       // prediction model, keeping the neq override alive through likInner0's
       // remaining reads of ind->solve.
       neqGuard.reset(new OdeSwapScope(odeSlotPred, ind, op));
-      predOde(_rxId);
+      odeSwapSolveInd(odeSlotPred, _rxId);
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
@@ -2347,7 +2350,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
     for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     setIndSolve(ind, -1);
     resetOpBadSolve(op);
-    hess2Ode(_rxId);
+    odeSwapSolveInd(odeSlotHess2, _rxId);
     if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
     iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
     double *lhs = _h2Guard.lhs();   // private buffer; never rxode2's inner-sized slice
@@ -10153,7 +10156,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
     // to the serial global-relaxation path.
     FoceiRetryHooks _hk;
     odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
-                      [&]{ thetaSensOde(_rxId); },
+                      [&]{ odeSwapSolveInd(odeSlotThetaSens, _rxId); },
                       foceiRetryOpts(odeRelaxInd), _hk);
     bool okRow = true;
     if (!indHasBadSolve(op, ind)) {

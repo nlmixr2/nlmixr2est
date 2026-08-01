@@ -97,6 +97,18 @@ Three rules, each of which has caused a real bug:
   same model can re-resolve to a different dll's `calc_lhs` later in a session.
   `odeSwapCheckLhsWidth()` probes it; skipping the check reads columns nobody wrote.
 
+**Do NOT convert these to the batched/deferred form** -- they are correct as inline
+per-individual scopes and were deliberately left that way:
+
+- the pred fallback in `likInner0` (`fInd->doFD` -> `OdeSwapScope(odeSlotPred, ind, op)` ->
+  solve) and the nlm pred solve in `nlmSolveFid`.  `rxPred` implements no sensitivities,
+  so no event-sensitivity shape applies to it and batching buys nothing.  In BOTH cases
+  the scope must span the later reads, not just the solve: `getOpIndSolve()` strides
+  `ind->solve` by the effective neq, so releasing the guard early fixes the integration
+  and then misreads the result.
+- only a failed OUTER (augmented) solve has to be flagged and deferred, because only that
+  fallback re-enters the inner problem.
+
 Diagnostics live in `.odeSwapInfo()`.  `pooledSolveN` counts COMPLETED pooled augmented
 solves and is incremented in `outerSolveFill` -- the solve itself, deliberately not at any
 R-facing wrapper, because counting the wrapper meant the counter tracked the R fallback

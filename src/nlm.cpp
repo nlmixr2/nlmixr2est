@@ -16,8 +16,8 @@
 #include "scale.h"
 
 
-#define nlmOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
-#define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
+// Solves go through odeSwapSolveInd(slot, id) -- see the note in inner.cpp.  nlm's
+// "inner" slot holds the theta-sensitivity model (nlmSetup registers thetaGrad there).
 
 struct nlmOptions {
   unsigned int ntheta=0;
@@ -349,7 +349,7 @@ void nlmSolveNlm(int id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol;
   odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
-                    [&]{ nlmOde(id); }, nlmRetryOpts(), hk);
+                    [&]{ odeSwapSolveInd(odeSlotInner, id); }, nlmRetryOpts(), hk);
 }
 
 void nlmSolvePred(int &id) {
@@ -357,7 +357,7 @@ void nlmSolvePred(int &id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol2;
   odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
-                    [&]{ predOde(id); }, nlmRetryOpts(), hk);
+                    [&]{ odeSwapSolveInd(odeSlotPred, id); }, nlmRetryOpts(), hk);
 }
 
 extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);
