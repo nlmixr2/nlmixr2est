@@ -387,6 +387,13 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = getSolvingOptions(rx);
+  // The shared pool is sized for nlm's SENSITIVITY model (nlmSetup gives it the inner
+  // slot as nlm's largest structure), so a pred solve must be compacted to the pred
+  // model's own state count.  The guard is held for the WHOLE function, not just around
+  // the solve: getOpIndSolve() below strides ind->solve by the effective neq, so
+  // releasing it after nlmSolvePred() would read the predictions back at the sensitivity
+  // model's stride.  Same discipline as the inline pred fallback in likInner0.
+  OdeSwapScope neqGuard(odeSlotPred, ind, op);
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   nlmSolvePred(id);
   int kk, k=0;

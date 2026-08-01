@@ -2063,3 +2063,33 @@ route was removed.
 
 **ODE-free models -- fixed earlier in 8F.5b**, verified against central differences at
 5.6e-07.
+
+## Phase 7 -- nlm pred under an override (DONE)
+
+`nlmSolveFid` solved the prediction model with no `OdeSwapScope`, so a pred solve was
+never compacted to the pred model's own state count.  nlm sizes the pool for its
+SENSITIVITY model (`nlmSetup` gives it the inner slot as "nlm's largest structure"), so
+wherever the two differ the predictions were read back at the sensitivity model's stride.
+
+The guard goes in `nlmSolveFid`, NOT inside `nlmSolvePred` as the task text suggested:
+`getOpIndSolve()` in the read loop strides `ind->solve` by the effective neq, so a guard
+released after the solve would fix the integration and then misread the result.  Held for
+the whole function, matching the inline pred fallback in `likInner0`.
+
+Tier-B verification (baseline rebuilt at 8b8066c47, then compared):
+
+    est       objf rel     theta rel    all.equal(1e-8)
+    nlm       0.000e+00    0.000e+00    TRUE
+    nlminb    0.000e+00    0.000e+00    TRUE
+    bobyqa    0.000e+00    0.000e+00    TRUE
+    nls       0.000e+00    0.000e+00    TRUE
+    MAX relative delta 0.000e+00 (stop threshold 1e-6: ok)
+
+test-nlm.R + test-nls.R + test-nlm-cens.R + test-nlmsetup-fresh-rx.R: 117 passed, 0 failed.
+
+Read the zero delta correctly: `OdeSwapScope` applies an override only when the pool
+EXCEEDS the model being solved, and for the tested one-compartment models pred and
+thetaGrad size the same, so no compaction fires.  This removes a LATENT mismatch -- it
+would bite a model whose sensitivity system is materially larger than its prediction model
+-- rather than correcting a currently wrong answer.  A test that actually exercises the
+compaction would need such a model and does not exist yet.

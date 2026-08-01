@@ -139,6 +139,13 @@
   just without the intervening attempt.  `est="vae"` with `nonMuTheta="grad"` evaluates
   the same C++ gradient.
 
+- The `est="nlm"` family (`nlm`, `nlminb`, `bobyqa`, `nls` and relatives) solved its
+  prediction model without compacting the shared solve pool to that model's own state
+  count.  The pool is sized for the larger sensitivity model, so the predictions were read
+  back at the wrong stride whenever the two differ.  No current result changes -- for the
+  models covered by the tests the two size the same, so no compaction was needed -- but
+  the mismatch is removed rather than left latent.
+
 - `foceiControl(fast=TRUE)` now uses the analytic outer gradient for **multiple-endpoint
   Gaussian models**, which previously took a slower `rxSolve` route.  They were excluded
   from the shared solve pool because enabling them corrupted the heap; the cause was an
