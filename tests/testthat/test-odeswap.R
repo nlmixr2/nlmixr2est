@@ -291,12 +291,17 @@ nmTest({
     ## fast=TRUE pools: the augmented model sizes the pool
     expect_identical(.odeSwapInfo()$poolName, "outer")
     .n0 <- .odeSwapInfo()$pooledSolveN
-    gPool <- .foceiGradAnalyticCalc(f)
+    gPool <- .foceiGradDirect(f)
     expect_false(is.null(gPool))
-    ## and the pooled solve must actually have run, or this compares nothing
+    expect_true(all(is.finite(gPool)))
+    ## and the pooled solve must actually have run, or this asserts nothing about pooling
     expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
-    gRx <- .foceiAnalyticGradViaRxSolve(f)
-    expect_false(is.null(gRx))
-    expect_equal(unname(gPool), unname(gRx), tolerance = 1e-10)
+    ## This used to also compare against .foceiAnalyticGradViaRxSolve(), the same gradient
+    ## forced through rxode2::rxSolve instead of the pool.  That route was the R gradient
+    ## implementation, which is gone -- the pooled solve is now the only one -- so the
+    ## comparison has no second operand.  What it was protecting (that the pooled solve
+    ## returns the RIGHT numbers, not merely some numbers) is covered by the
+    ## central-difference assertions in test-focei-fast-grad.R; what belongs HERE is that
+    ## the pool was used at all, which pooledSolveN above asserts.
   })
 })

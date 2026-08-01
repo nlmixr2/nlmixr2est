@@ -88,13 +88,9 @@
   .vaeGradEnv$regNames <- NULL
   .vaeGradEnv$cores <- NULL
   .vaeGradEnv$failed <- NULL
-  ## .vaeGradEval passes this env to .foceiAnalyticGradCore as `startedEnv`, which
-  ## caches compiled models in it (.foceiGradHess2 for the ll() core, and for the
-  ## Gaussian core .foceiGradAugNode / .analyticStarted).  Those are per-fit and
-  ## hold compiled models, so drop them with the rest.
-  rm(list = intersect(c(".foceiGradHess2", ".foceiGradAugNode", ".analyticStarted"),
-                      ls(.vaeGradEnv, all.names = TRUE)),
-     envir = .vaeGradEnv)
+  ## The C++ pooled setup is per-fit (it holds this model's lhs column maps); clearing
+  ## the flag makes the next fit install its own rather than inherit this one's shape.
+  .vaeGradEnv$pooledOk <- NULL
   invisible(NULL)
 }
 
@@ -161,20 +157,25 @@
       }
       .vaeGradEnv$am <- .am
     }
-    .th <- setNames(as.numeric(thVals), paste0("THETA_", seq_along(thVals), "_"))
-    ## startedEnv: the ll() core caches the eta-only 2nd-order model (innerHess2)
-    ## there and reuses it for the dH/dtheta perturbation batch.  Without it every
-    ## M-step re-resolves it and then solves the FULL outer model 2*(nth+nom)
-    ## times instead of the much smaller eta-only one.  .vaeGradEnv is per-fit
-    ## (.vaeGradReset clears the slot), which is the lifetime focei gives it too.
-    .r <- .foceiAnalyticGradCore(.ui, .th, ebes, .vaeGradEnv$ids, .vaeGradEnv$data,
-                                 .Om, .st$ef, .st$dir, .st$dOiEst, .st$tr28,
-                                 .st$omNames, .foceiGradSolveTolOr(.ui),
-                                 interaction = .st$interaction,
-                                 foceType = .st$foceType, am = .vaeGradEnv$am,
-                                 nAGQ = .st$nAGQ, startedEnv = .vaeGradEnv)
-    if (is.null(.r) || is.null(.r$g)) return(NULL)
-    .g <- .r$g[.reg]
+    ## The pooled setup describes the SHAPE (lhs column maps, direction indices, which
+    ## kernel) and depends only on the model, so install it once and reuse it for every
+    ## M-step; the point itself -- theta, the encoder etas, omega -- is passed per call.
+    ## This is the same C++ core a focei fit's own gradient runs, which is the point:
+    ## the R implementation this replaced was a second, drifting copy of it.
+    if (!isTRUE(.vaeGradEnv$pooledOk)) {
+      .ps <- .foceiGradPooledSetup(.ui)
+      if (is.null(.ps) || !isTRUE(foceiGradPooledSetupLoad_(.ps))) {
+        .vaeGradEnv$failed <- TRUE
+        return(NULL)
+      }
+      .vaeGradEnv$pooledOk <- TRUE
+    }
+    .g <- foceiGradPooledDirect_(as.numeric(thVals), as.matrix(ebes),
+                                 solve(.Om), .st$dOiEst, as.numeric(.st$tr28),
+                                 .vaeGradEnv$cores)
+    if (is.null(.g)) return(NULL)
+    names(.g) <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
+    .g <- .g[.reg]
     ## a regressed theta the gradient does not carry (not in thStruct) means the
     ## direction set and the M-step disagree -- decline rather than step on NA
     if (anyNA(.g) || !all(is.finite(.g))) return(NULL)

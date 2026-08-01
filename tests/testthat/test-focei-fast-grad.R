@@ -57,7 +57,7 @@ nmTest({
     ph <- suppressMessages(nlmixr2(off, d, "focei",
           foceiControl(print = 0L, covMethod = "", fast = TRUE,
                        maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
@@ -85,16 +85,20 @@ nmTest({
               cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
     }
     d <- nlmixr2data::theo_sd
+    # sigdig pinned at 4: at the default 3 (rtol 1e-3) the FOCE frozen-R0 EBE Newton
+    # cannot reach its 1e-9 score target, so the analytic gradient declines entirely and
+    # `g` is NULL -- nlmixr2/nlmixr2est#836.  The R implementation fails identically, so
+    # this is the Newton, not the C++ port.  Drop the pin when #836 gets step control.
     ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
@@ -116,16 +120,20 @@ nmTest({
     }
     d <- nlmixr2data::theo_sd
     d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L); d$DV[d$CENS == 1] <- 2
+    # sigdig pinned at 4: at the default 3 (rtol 1e-3) the FOCE frozen-R0 EBE Newton
+    # cannot reach its 1e-9 score target, so the analytic gradient declines entirely and
+    # `g` is NULL -- nlmixr2/nlmixr2est#836.  The R implementation fails identically, so
+    # this is the Newton, not the C++ port.  Drop the pin when #836 gets step control.
     ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
@@ -154,17 +162,21 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) + yeoJohnson(lambda) })
     }
+    # sigdig pinned at 4 for the same reason as the FOCE tests above: chk() is called
+    # once with est="foce", whose frozen-R0 EBE Newton cannot converge at the default
+    # rtol 1e-3 (nlmixr2/nlmixr2est#836).  Pinned for every est here so all three
+    # comparisons run at one solve precision.
     chk <- function(mk, est) {
       ph <- suppressMessages(nlmixr2(mk, d, est,
-            foceiControl(print = 0L, covMethod = "", fast = TRUE,
+            foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                          maxOuterIterations = 0L, maxInnerIterations = 300L)))
-      g <- .foceiGradAnalyticCalc(ph)
+      g <- .foceiGradDirect(ph)
       expect_false(is.null(g))
       base <- fixef(ph)
       ofvAt <- function(nm, val) {
         ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
         suppressMessages(suppressWarnings(nlmixr2(ui2, d, est,
-          foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+          foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                        maxInnerIterations = 300L))))$objf
       }
       h <- 1e-3
@@ -193,7 +205,7 @@ nmTest({
     ph <- suppressMessages(suppressWarnings(nlmixr2(covm, d, "focei",
           foceiControl(print = 0L, covMethod = "", fast = TRUE,
                        maxOuterIterations = 0L, maxInnerIterations = 200L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
@@ -225,7 +237,7 @@ nmTest({
     ph <- suppressMessages(suppressWarnings(nlmixr2(pkpd, d, "focei",
           foceiControl(print = 0L, covMethod = "", fast = TRUE,
                        maxOuterIterations = 0L, maxInnerIterations = 100L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
@@ -273,7 +285,7 @@ nmTest({
     ph <- suppressMessages(suppressWarnings(nlmixr2(mDose, d, "focei",
           foceiControl(print = 0L, covMethod = "", fast = TRUE,
                        maxOuterIterations = 0L, maxInnerIterations = 300L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))                                    # jump sensitivities keep it in scope
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
@@ -352,7 +364,7 @@ nmTest({
     ph <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei",
           foceiControl(print = 0L, covMethod = "", fast = TRUE,
                        maxOuterIterations = 0L, maxInnerIterations = 500L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {

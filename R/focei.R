@@ -1463,17 +1463,22 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # value, and its flat h=1e-3 divides by 2e-3, amplifying inner-optimisation
     # noise ~500x on a component whose per-subject terms cancel to ~63.
     #
-    # But enabling it aborts test-focei-fast-grad.R with "free(): invalid next
-    # size".  A two-fit file (test-odeswap.R) is clean, so the corruption needs
-    # the many-fit sequence -- most likely a buffer still sized for a narrower
-    # model once a much wider augmented model has sized the pool.  Until that is
-    # found, multi-endpoint keeps the rxSolve route.
+    # Multi-endpoint used to be excluded because enabling it aborted
+    # test-focei-fast-grad.R with "free(): invalid next size" -- a corruption that
+    # needed the many-fit sequence and was guessed to be a buffer still sized for a
+    # narrower model.  That guess was close: the cause was OdeSwapEsBatch keying on the
+    # event-sensitivity ROLE rather than the SLOT, so a peer augmented model was
+    # integrated under another model's ES shape and handle_evid freed jump scratch sized
+    # for the wrong one.  Fixed when the AGQ node solve hit the identical signature (see
+    # the 8F.4 note in plans/dry-ode-swap-phaseC.md), so the exclusion is lifted: a
+    # multi-endpoint fast fit now gets the pooled ANALYTIC gradient instead of finite
+    # differences.
     # delay() models ARE in scope: focei forces the DDE configuration at the FIT level
     # (the hasDelay block below -- method 0, stiff2 13, dense TRUE), so a delay fit's
     # pool is built that way from the start and nothing needs changing per solve.  The
     # delay-history column map is then built from a pool model that already carries the
     # delays.  test-dde-focei.R covers it.
-    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) == 1L,
+    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) >= 1L,
                            error = function(e) FALSE),
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
     # top level so the rxLoad reloads it, metadata separately.
@@ -2716,7 +2721,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control$interaction <- 0L
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
     # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
-    # gradient differentiates it directly (.foceiAnalyticGradCoreLL, exact inner Hessian +
+    # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +
     # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
     # out-of-scope cases (multiple endpoints, censoring, nAGQ>1, IOV), where the
     # augmented `..outer` model cannot supply the gradient and the fit uses finite

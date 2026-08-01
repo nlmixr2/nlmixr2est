@@ -226,7 +226,11 @@ nmTest({
                          vaeControl(nonMuTheta = "regress"))
     o2 <- vaeInnerLik(matrix(0, length(ids), 2L), 1L, FALSE, FALSE)$obj
     .vaeInnerFree()
-    expect_equal(sum(o2), 212.0768500568, tolerance = 1e-6)
+    ## Absolute regression pin, so it tracks the DEFAULT solver tolerance: the value
+    ## moved 212.0768500568 -> 212.0814 when the default sigdig went 4 -> 3 (rtol 1e-3).
+    ## Re-pinned at the current default rather than pinning sigdig, since what this
+    ## asserts is that the add-error model carries no tbsLik term at all.
+    expect_equal(sum(o2), 212.0814, tolerance = 1e-5)
   })
 
   test_that("a vae grad fit does not leak into a later focei fast fit", {

@@ -121,6 +121,30 @@
   models now get the analytic gradient; measured against central differences of
   the objective, agreement is within 6e-7 relative.
 
+- `foceiControl(fast=TRUE)` no longer returns to R for the outer gradient at all.  The
+  R implementation it used to fall through to has been removed: it was a second copy of
+  the same mathematics that had to be kept in step by hand, and reaching it rebuilt the
+  fit's etas, omega and setup as R objects on every gradient evaluation.  A model the
+  analytic gradient cannot handle now goes straight to finite differences, as before,
+  just without the intervening attempt.  `est="vae"` with `nonMuTheta="grad"` evaluates
+  the same C++ gradient.
+
+- `foceiControl(fast=TRUE)` now uses the analytic outer gradient for **multiple-endpoint
+  Gaussian models**, which previously took a slower `rxSolve` route.  They were excluded
+  from the shared solve pool because enabling them corrupted the heap; the cause was an
+  event-sensitivity shape being installed for the wrong model, fixed earlier in this
+  release, so the exclusion is lifted.
+
+    - General-likelihood models (`ll()`, and named distributions such as `pois()` /
+      `binom()`) with more than one endpoint are still excluded and continue to use the
+      finite-difference gradient, with a message saying so.  Single-endpoint models of
+      that kind are unaffected and use the analytic gradient (nlmixr2/nlmixr2est#838).
+
+- The FOCE EBE Newton convergence tolerance is no longer derived from `sigdig`; it is
+  fixed at `1e-9`, the value it shipped with, and `foceiControl(foceEbeTol=)` overrides
+  it.  Deriving it made the analytic FOCE gradient available or not depending on the
+  requested digits.
+
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
   function depend on the optimizer's history rather than on `theta` alone, so
   the same `theta` could return values hundreds of objective-function units

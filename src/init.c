@@ -46,6 +46,8 @@ extern SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, 
 extern SEXP _nlmixr2est_vaeInnerLik(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeOuterSolve_(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiAnalyticGradPooled_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiGradPooledSetupLoad_(SEXP);
+extern SEXP _nlmixr2est_foceiGradPooledDirect_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerFree_(void);
 extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
 extern SEXP _nlmixr2est_foceiLikUnload_(void);
@@ -206,6 +208,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_vaeInnerLik", (DL_FUNC) &_nlmixr2est_vaeInnerLik, 4},
   {"_nlmixr2est_vaeOuterSolve_", (DL_FUNC) &_nlmixr2est_vaeOuterSolve_, 4},
   {"_nlmixr2est_foceiAnalyticGradPooled_", (DL_FUNC) &_nlmixr2est_foceiAnalyticGradPooled_, 15},
+  {"_nlmixr2est_foceiGradPooledSetupLoad_", (DL_FUNC) &_nlmixr2est_foceiGradPooledSetupLoad_, 1},
+  {"_nlmixr2est_foceiGradPooledDirect_", (DL_FUNC) &_nlmixr2est_foceiGradPooledDirect_, 6},
   {"_nlmixr2est_vaeInnerFree_", (DL_FUNC) &_nlmixr2est_vaeInnerFree_, 0},
   {"_nlmixr2est_foceiLikLoad_", (DL_FUNC) &_nlmixr2est_foceiLikLoad_, 1},
   {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},

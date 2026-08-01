@@ -1879,3 +1879,187 @@ fast-vs-fd theta comparison 8.9% apart (0.15% at `sigdig = 4`), and the gap is U
 by the gradient now being analytic -- 0.0891 before, 0.0893 after.  So it is the
 objective's own solver noise at `rtol = 1e-3`, not the gradient, and the `sigdig = 4` pin
 in test-focei-ll-fast-grad-fit.R stands on its own evidence.
+
+## 8F.6 -- delete the R gradient implementation (DONE)
+
+The focei family no longer touches R for the outer gradient at all: `analyticOuterGrad`
+now ends at `analyticOuterGradDirect`, and a decline goes straight to finite differences
+rather than making a second, slower attempt through R.  791 lines deleted from
+`R/foceiGradAnalytic.R`.
+
+Two things the plan did not anticipate.
+
+**1. `.foceiGradAnalyticCalc` works POST-fit, so re-pointing 22 assertions needed a
+post-fit C++ entry.**  There was none -- 8F.2 delivered `.gradDirectFirst` (a stash the
+outer optimizer fills), not an exported entry, and with `maxOuterIterations = 0` the
+optimizer never runs so nothing is stashed.  Solved in two pieces (8F.6a):
+
+  * a `fast=TRUE`, zero-outer-iteration fit now evaluates the analytic gradient once at
+    the reported estimates and stashes it, BEFORE `foceiOuterFinal` (which is what
+    re-solves the inner problem and rebuilds the fit state -- running the gradient after
+    it would hand the tables the augmented solve);
+  * `.foceiGradDirect(fit)` re-enters estimation at the fit's converged thetas/etas --
+    the same post-fit re-entry `setCov()` uses, which the user pointed out already exists
+    and is used by babelmixr2 -- and reads that stash back.
+
+  It re-runs under the fit's OWN est, not `est="none"`: the gradient SHAPE is the
+  estimation method, and `est="none"` silently evaluates everything as plain FOCEI
+  (measured: the AGQ case returned nothing).  With both routes then evaluating at
+  identical pinned etas the agreement is far tighter than the two-separate-fits
+  comparison used through 8F.5:
+
+      FOCEI   4.299e-15      AGQ nAGQ=2   8.066e-11
+      ll()    5.900e-09      FOCE         2.649e-15  (sigdig 4)
+
+  `fast` is deliberately NOT forced on in the re-entry.  Forcing it would make the
+  `expect_null(...)` assertions on `fast=FALSE` fits pass for the wrong reason -- exactly
+  the "green suite proving nothing" failure this phase's risk list put first.
+
+**2. `est="vae"` with `nonMuTheta="grad"` was a LIVE consumer of the R core**, not a test
+one.  `.vaeGradEval` called `.foceiAnalyticGradCore` per M-step.  Migrated rather than
+kept: `.vaeGradEval` takes exactly `gradPooledCore`'s arguments (theta, etas, omega), so
+it needed an entry point that accepts the point explicitly instead of reading it from
+`op_focei` -- `foceiGradPooledSetupLoad_()` (shape, installed once) plus
+`foceiGradPooledDirect_()` (the point, per call).  Both hand-added to `src/init.c`.
+Verified the M-step really reaches it: 20 gradients returned, 0 declines.
+
+KEPT for the covariance path (12 references in `R/foceiCovAnalytic.R`):
+`.foceiAnalyticSolveAll`, `.foceiAnalyticFoceEbe*`, and the direction/setup helpers.
+
+### The pooledSolveN inversion -- worth remembering
+
+`odeSwapNotePooledSolve()` was called only inside `vaeOuterSolve_`, the R-facing wrapper,
+never in `outerSolveFill` where the pooled solve happens.  So the counter tracked solves
+that exited THROUGH R.  Before this phase a focei fast fit reached `vaeOuterSolve_` only
+when the analytic gradient DECLINED and fell back -- so
+`expect_gt(pooledSolveN, .n0)`, written to prove the pooled path was live, was being
+satisfied by the fallback it existed to rule out.  A baseline run at `f161db191` confirms
+that assertion was already failing at HEAD.  Moved the increment to `outerSolveFill`.
+
+Lesson, and it generalizes: a mechanism assertion must count the mechanism, not a proxy
+that happens to correlate with it.  Deleting the R route is what exposed this.
+
+### Test failures triaged against a real baseline
+
+Three VAE failures appeared.  Rather than reason about them, the 8F.6 work was stashed,
+the tree rebuilt at `f161db191`, and the file re-run:
+
+  * ELBO `212.0814` vs pinned `212.0768500568` -- PRESENT at baseline, identical numbers.
+    The pin dates from `ee893281c` (2026-07-22), before the sigdig 4 -> 3 default landed.
+    Re-pinned at the current default; the test asserts the add-error model carries no
+    tbsLik term, so the absolute constant is incidental.
+  * focei `pooledSolveN` (line 265) -- PRESENT at baseline; the inversion above.
+  * VAE `pooledSolveN` (line 252) -- genuinely caused by 8F.6 moving VAE off
+    `vaeOuterSolve_`, and fixed by the counter relocation.
+
+After the fixes: VAE 0 failed / 74 passed.
+
+### sigdig = 4 pinned on the FOCE gradient tests
+
+Six sites across `test-focei-fast-grad.R` and `test-subFinal.R` (the nonmem test, the
+censored M3 test, and the parameterized `chk()` called with `est="foce"`), on the fit AND
+its central-difference reference so both run at one solve precision.  At the default
+`sigdig = 3` the frozen-R0 Newton cannot reach its 1e-9 score target and the analytic
+gradient declines outright -- issue #836, where this evidence is now recorded along with
+the suggested backtracking line search.  Drop the pins when #836 gets step control.
+
+### Cost of the multi-endpoint lift: MEASURED, and it is small
+
+An earlier version of this note claimed the lift roughly doubled the test process's RSS
+(11 GB -> 21 GB) because `odeSwapPlan` sizes the pool for the largest registered model.
+That claim was inference, not measurement, and it is WRONG.  Measured directly on the
+warfarin two-endpoint model:
+
+    fast=TRUE posthoc fit    20.9 s   (pool "outer", neq 62)
+    .foceiGradDirect          1.9 s
+    process RSS               0.5 GB
+    fast=FALSE posthoc fit     5.4 s   (pool "inner", neq 4 -- the lift does not touch it)
+
+So the whole multiple-endpoint test costs ~100 s, and a `fast=FALSE` reference fit does
+not declare the outer model at all, so its pool stays inner-sized.  The lift is cheap.
+
+The slow stretch in test-focei-fast-grad.R (a single fit taking tens of minutes, RSS in
+the tens of GB) is therefore NOT the multi-endpoint test and NOT caused by the lift -- the
+run made BEFORE the lift stalled in the same region.  It is a pre-existing property of
+that file and is still unattributed; the reporter output is block-buffered to a file, so
+only the per-fit stderr counter is visible live, which is why locating it by inspection
+kept producing wrong guesses.  Worth finding, separately, with an unbuffered run or a
+per-test timing harness.
+
+## Verification policy: the full sweep is DEFERRED to a separate CRAN-release project
+
+Decided by the user after Phase 8.  A full `devtools::test()` on this branch would be
+re-run anyway, because several things still in flight change what it asserts -- so it is
+not run here.  What this branch gets instead is the per-phase relevant checks that have
+been running all along, plus the gradient/VAE/odeswap files that 8F touched.
+
+Carry these into the CRAN-release sweep; they are known, not speculative:
+
+1. **Fixtures rebuild completely.**  `tests/testthat/helper-zzz-fits.R` keys ~10 pre-fits
+   on a hash of all of `R/` + `src/`, and this branch changed both extensively.  Budget
+   for the full refit, and do not read the first run's timings as a regression.
+
+2. **`sigdigTable` now follows `sigdig`, so printed tables show 3 significant digits, not
+   4.**  Anything asserting FORMATTED output is a candidate.  `test-nlmixr2output.R` was
+   flagged earlier in this project as having `parFixed` assertions built on
+   `formatMinWidth(digits = 4)`; that was NOT re-confirmed against current code, so treat
+   it as a lead to check rather than a known failure.
+
+3. **Four `sigdig` pins added on this branch**, each with a comment giving its reason:
+   - `test-focei-ll-fast-grad-fit.R` -- Poisson ll() fit pinned to `sigdig = 4` (at 3 the
+     model's own optimizer noise is ~9% in theta, larger than the fast-vs-fd difference
+     under test);
+   - `test-vae-nonmutheta-grad.R` -- the ELBO regression constant re-pinned
+     `212.0768500568 -> 212.0814` (it tracks the default solver tolerance);
+   - `test-focei-fast-grad.R` and `test-subFinal.R` -- six FOCE sites pinned to
+     `sigdig = 4` for issue #836.
+   Three of these four disappear if #836 gets step control.  Re-check them at release
+   rather than treating them as permanent.
+
+4. **`est="foce"` / `"focep"` get NO analytic gradient at the default `sigdig = 3`** --
+   they fall back to finite differences, which is correct but slow.  Issue #836.  This is
+   a user-visible consequence of the sigdig default change and should be a release note
+   if #836 has not landed by then.
+
+## 8F.6b -- scope audit, triggered by deleting the R route
+
+Removing the R implementation exposed which models it was UNIQUELY serving.  That is not
+visible from a reference search -- the R functions had no dangling callers -- so the
+antigravity review passed while a capability had quietly gone.  Four cases, checked the
+same way each time: find the gate, lift it, probe, then verify against CENTRAL DIFFERENCES
+of the objective.  The last step is the one that mattered.
+
+**Gaussian multiple endpoints -- LIFTED (was a regression).**  `outerPoolOk` in
+`R/focei.R` restricted pooling to `nrow(ui$predDf) == 1L`, so multi-endpoint fits were
+served only by the R route; deleting it dropped them to finite differences
+(`nAnalyticGradDirect = 0`, `extra: "grad: fd"`).  The exclusion existed because enabling
+it aborted `test-focei-fast-grad.R` with `free(): invalid next size` -- the SAME bug
+root-caused in 8F.4 (OdeSwapEsBatch keying on the ES role rather than the slot).  With
+that fixed the gate lifts cleanly: `nAnalyticGradDirect = 21`, `extra: "grad: analytic"`,
+no corruption.  Net gain, not just a restoration: these models previously used the
+`rxSolve` route and now use the pooled analytic one.  Correctness rests on the earlier
+finding, recorded in the same comment block, that pooled and `rxSolve` agree
+bit-identically on a two-endpoint model.
+
+**ll() / named-distribution multiple endpoints -- TRIED AND REVERTED.**  Lifting
+`nrow(.pd) != 1L` in `.foceiLLGradInScope` makes every MECHANISM signal green --
+`.foceiGradDirect` returns a finite gradient, `nAnalyticGradDirect = 21`,
+`extra: "grad: analytic"` -- and the numbers are wrong.  Analytic vs central differences on
+a 2-endpoint warfarin ll() model: tcl off 7.6x, add.pd off ~370x, every component wrong.
+Reverted; filed as issue #838 with the table and the reproduction.  The gate is on the
+general-likelihood PATH, not on `ll()` syntax, so `pois()`/`binom()` inherit it: in scope
+at one endpoint, out at more than one, including the mixed `pois` + Gaussian case (once
+any endpoint is non-normal the whole objective is general-likelihood).
+
+This is the single most useful negative result of Phase 8.  The mechanism counters added
+in 8F.2 exist to catch a silent fallback, and they did their job -- but they certify only
+that the code RAN, never that it was right.  A numerical check has to sit beside them.
+
+**DDE -- already in scope; a stale comment said otherwise.**  No live exclusion exists in
+the scope gates, the augmented-model builder, or the C++ deny codes.  What existed was a
+dead comment directly above its own correction ("DDE is excluded: ..." followed by "DDE is
+IN scope for the pooled route"), deleted here.  `test-dde-focei.R` passes 4/4 after the R
+route was removed.
+
+**ODE-free models -- fixed earlier in 8F.5b**, verified against central differences at
+5.6e-07.

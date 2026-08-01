@@ -95,6 +95,19 @@ foceiOfv <- function(theta) {
     .Call(`_nlmixr2est_foceiOfv`, theta)
 }
 
+#' Install the pooled analytic-gradient setup for a non-focei caller
+#'
+#' `est="vae"` with `nonMuTheta="grad"` evaluates the analytic outer gradient once per
+#' M-step, at its own theta/eta/omega, and has no fit env to hang the setup on.  This
+#' installs the setup once so `foceiGradPooledDirect_()` can be called repeatedly.
+#' @param st setup list from `.foceiGradPooledSetup()`
+#' @return TRUE if the setup describes a shape the C++ gradient handles
+#' @keywords internal
+#' @export
+foceiGradPooledSetupLoad_ <- function(st) {
+    .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
+}
+
 foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
@@ -234,6 +247,27 @@ foceiOuterFdInd_ <- function(ids0, analyticRef) {
 
 vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
     .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
+}
+
+#' Analytic outer gradient at a caller-supplied theta / eta / omega
+#'
+#' The same C++ core the fit's own gradient uses (`gradPooledCore`), but with the point
+#' passed in rather than read out of `op_focei`.  `est="vae"` with `nonMuTheta="grad"`
+#' needs exactly this: its M-step evaluates the gradient at a theta and an encoder eta
+#' matrix that are not the inner problem's, and at an omega that changes every step.
+#' Requires `foceiGradPooledSetupLoad_()` first, and a live FOCEi inner problem (the
+#' shared pool, `rxVaeOuter`, and the theta/eta par_ptr maps all come from it).
+#' @param thVals natural-scale theta, in ntheta order
+#' @param ebes nsub x neta matrix of etas to take the gradient at
+#' @param Oi inverse of the current Omega
+#' @param dOiEst list of d(Omega^-1)/d(estimation-scale omega element)
+#' @param tr28 the matching trace terms
+#' @param cores thread count
+#' @return natural-scale gradient (thetas, sigmas, omegas), or NULL if it declined
+#' @keywords internal
+#' @export
+foceiGradPooledDirect_ <- function(thVals, ebes, Oi, dOiEst, tr28, cores) {
+    .Call(`_nlmixr2est_foceiGradPooledDirect_`, thVals, ebes, Oi, dOiEst, tr28, cores)
 }
 
 #' FOCEI analytic outer gradient, computed entirely in C++.

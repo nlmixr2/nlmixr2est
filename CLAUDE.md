@@ -72,6 +72,52 @@ Skipping step 2 gives a runtime `.Call` error like `Incorrect number of argument
 old arity), NOT a compile error -- so it survives a clean rebuild. A header change
 still needs `rm -f src/*.o src/*.so` before rebuilding.
 
+### Shared ODE solve pool (`src/odeSwap.*`)
+
+Several compiled rxode2 models coexist during one FOCEi fit -- the inner model, the
+2nd-order `innerHess2`, the theta-sensitivity model, and the augmented outer-gradient
+model plus its AGQ node sibling.  They do NOT each get their own solve.  `odeSwap`
+registers them in SLOTS, sizes one pool for the largest, and swaps per individual through
+`ind->neqOverride`.
+
+Three rules, each of which has caused a real bug:
+
+- **`odeSwapDeclare` is metadata only; `odeSwapRegister` binds entry points.**  Declaring
+  before `rxSolve_` lets the pool be sized for a model; registering (which `rxDynLoad`s)
+  before the pool exists rebinds rxode2's event-sensitivity globals and corrupts the
+  solve.  So declare early, register after `foceiSetup_`.
+- **The event-sensitivity ("jump") SHAPE is a process global, and `OdeSwapEsBatch` keys on
+  the SLOT, not the role.**  Slots can share a role (`odeEsOuter` covers the gradient
+  model, the AGQ node model, the theta-sens model) while being different compiles with
+  different shapes.  Solving one under another's shape makes `handle_evid` free scratch
+  sized for the wrong model -- it presents as `free(): invalid next size` or
+  "attempting free on address which was not malloc()-ed", usually only after MANY fits.
+  Every peer solve needs its own batch, constructed OUTSIDE any OpenMP region.
+- **Check the lhs width before reading.**  `rxUpdateFuns` resolves symbols by NAME, so the
+  same model can re-resolve to a different dll's `calc_lhs` later in a session.
+  `odeSwapCheckLhsWidth()` probes it; skipping the check reads columns nobody wrote.
+
+Diagnostics live in `.odeSwapInfo()`.  `pooledSolveN` counts COMPLETED pooled augmented
+solves and is incremented in `outerSolveFill` -- the solve itself, deliberately not at any
+R-facing wrapper, because counting the wrapper meant the counter tracked the R fallback
+rather than the pooled route.
+
+### Analytic outer gradient (`foceiControl(fast=TRUE)`)
+
+Computed entirely in C++: `analyticOuterGrad` -> `analyticOuterGradDirect` ->
+`gradPooledCore` (FOCEI/FOCE/AGQ) or `gradPooledCoreLL` (general likelihood).  There is no
+R implementation and no second attempt -- a decline goes straight to the finite-difference
+gradient.  The per-fit SHAPE (lhs column maps, direction indices, which kernel) is read
+out of R exactly once by `loadGradPooledSetup`; every evaluation after that touches no R.
+
+- `.foceiGradDirect(fit)` is the post-fit entry (tests use it): it re-enters estimation at
+  the fit's converged thetas/etas under the fit's OWN `est` and reads back the gradient
+  the shipping path produced.  Re-running under `est="none"` would silently evaluate
+  everything as plain FOCEI, because the gradient shape IS the estimation method.
+- Tests must assert `nAnalyticGradDirect > 0` AND compare against central differences.
+  The counter proves the code ran, never that it was right -- a multi-endpoint `ll()`
+  experiment produced `grad: analytic` with every component wrong (issue #838).
+
 ### Post-fit objects
 
 Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit accessors use `nmObjGet` S3 dispatch (`R/nmObjGet.R`, `R/nmObjHandle.R`). Residuals are added lazily via `addCwres()` and `addNpde()`.

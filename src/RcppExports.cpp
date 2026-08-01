@@ -520,6 +520,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiGradPooledSetupLoad_
+bool foceiGradPooledSetupLoad_(List st);
+RcppExport SEXP _nlmixr2est_foceiGradPooledSetupLoad_(SEXP stSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type st(stSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiGradPooledSetupLoad_(st));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiNumericGrad
 NumericVector foceiNumericGrad(NumericVector theta);
 RcppExport SEXP _nlmixr2est_foceiNumericGrad(SEXP thetaSEXP) {
@@ -785,6 +796,22 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type cols(colsSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     rcpp_result_gen = Rcpp::wrap(vaeOuterSolve_(thVals, ebes, cols, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiGradPooledDirect_
+RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes, NumericMatrix Oi, List dOiEst, NumericVector tr28, int cores);
+RcppExport SEXP _nlmixr2est_foceiGradPooledDirect_(SEXP thValsSEXP, SEXP ebesSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type thVals(thValsSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type ebes(ebesSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Oi(OiSEXP);
+    Rcpp::traits::input_parameter< List >::type dOiEst(dOiEstSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type tr28(tr28SEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiGradPooledDirect_(thVals, ebes, Oi, dOiEst, tr28, cores));
     return rcpp_result_gen;
 END_RCPP
 }

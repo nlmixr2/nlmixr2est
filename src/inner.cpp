@@ -376,9 +376,8 @@ struct focei_options {
   int nAnalyticGradDirect = 0;
   // The FIRST direct gradient of the fit, on the NATURAL parameter scale (i.e. before
   // dUnscaleParDx), together with the theta it was taken at.  Captured so a test can
-  // compare the direct route against the R route at the same point: run one fit with
-  // maxOuterIterations=1 and read this, and another with maxOuterIterations=0 and call
-  // .foceiGradAnalyticCalc().  Both evaluate at the initial estimates.
+  // read by .foceiGradDirect(), which re-enters estimation at a fit's converged point
+  // with maxOuterIterations = 0 and takes the gradient this stashes.
   std::vector<double> firstDirectGrad;
   std::vector<double> firstDirectTheta;
   int firstDirectGradSet = 0;
@@ -4562,43 +4561,7 @@ static inline double dUnscaleParDx(int i) {
 static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
 void impSetInnerNeqOverride();     // defined below; re-pins the inner neqOverride after restore
 
-// Read the per-subject etaP (neta x npars x nsub) the R analytic gradient stashed
-// on the fit env (.foceiGradEtaP) into op_focei.getaP, converting each column to
-// the SCALED optimizer parameterization (x dUnscaleParDx) so the Eq-48 step
-// (op_focei.theta - etaPTheta) is in the same space.  Snapshots the scaled theta
-// and sets etaPValid.  No-op (etaPValid=0) unless mceta is an Eq-48 mode.
-static void loadAnalyticEtaP(double *theta) {
-  op_focei.etaPValid = 0;
-  if (op_focei.mceta != -2 && op_focei.mceta != -1) return;
-  if (!op_foceiFitEnv.exists(".foceiGradEtaP")) return;
-  RObject _epO = op_foceiFitEnv[".foceiGradEtaP"];
-  if (Rf_isNull(_epO)) return;
-  NumericVector _ep(_epO);
-  int neta = op_focei.neta, npars = (int)op_focei.npars;
-  rx = getRxSolve_();
-  int nsub = getRxNsub(rx);
-  size_t need = (size_t)neta * npars * nsub;
-  if (need == 0 || (size_t)_ep.size() != need) return;
-  if (op_focei.getaP == NULL || op_focei.getaPn != need) {
-    if (op_focei.getaP != NULL) R_Free(op_focei.getaP);
-    op_focei.getaP = R_Calloc(need, double);
-    op_focei.getaPn = need;
-  }
-  if (op_focei.etaPTheta == NULL) op_focei.etaPTheta = R_Calloc(npars, double);
-  for (int k = 0; k < npars; k++) {
-    double sc = dUnscaleParDx(k);
-    for (int i = 0; i < nsub; i++) {
-      for (int j = 0; j < neta; j++) {
-        size_t idx = (size_t)j + (size_t)neta * ((size_t)k + (size_t)npars * i);
-        op_focei.getaP[idx] = _ep[idx] * sc;
-      }
-    }
-  }
-  std::copy(theta, theta + npars, op_focei.etaPTheta);
-  op_focei.etaPValid = 1;
-}
-
-// Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
+// Analytic ("fast") outer gradient hook: fill g from the all-C++ gradient when
 // the gate is live.  Returns true on success (g filled), false to fall back to
 // the finite-difference gradient -- ONLY when the sensitivity system could not
 // be solved (a size mismatch is a wiring bug and stops).  theta is the current
@@ -4697,15 +4660,12 @@ static void colsFromList(List cols, OuterCols &C) {
   if (C.hasT) C.tr = _ivFrom(cols["trans"]);
 }
 
-// Read the per-fit setup R stashed on the fit env.  Called once, from foceiFitCpp_
-// just before the outer optimizer starts; every gradient after that is pure C++.
-static void loadGradPooledSetup(Environment e) {
+// Read the per-fit setup from the list .foceiGradPooledSetup() builds.  Split out of the
+// Environment form so a caller that is not a focei fit -- est="vae" with
+// nonMuTheta="grad", which evaluates this gradient per M-step at its own theta/eta/omega
+// -- can install a setup without a fit env to hang it on.
+static void loadGradPooledSetupList(List st) {
   _gradPooled.clear();
-  if (op_focei.fast == 0) return;
-  RObject so;
-  if (e.exists(".foceiGradPooledSetup")) so = e[".foceiGradPooledSetup"];
-  if (so.isNULL()) return;
-  List st(so);
   if (!st.containsElementNamed("cols")) return;
   List cols = as<List>(st["cols"]);
   FoceiGradPooledSetup &G = _gradPooled;
@@ -4747,6 +4707,32 @@ static void loadGradPooledSetup(Environment e) {
   G.ok = true;
 }
 
+// Read the per-fit setup R stashed on the fit env.  Called once, from foceiFitCpp_
+// just before the outer optimizer starts; every gradient after that is pure C++.
+static void loadGradPooledSetup(Environment e) {
+  _gradPooled.clear();
+  if (op_focei.fast == 0) return;
+  RObject so;
+  if (e.exists(".foceiGradPooledSetup")) so = e[".foceiGradPooledSetup"];
+  if (so.isNULL()) return;
+  loadGradPooledSetupList(as<List>(so));
+}
+
+//' Install the pooled analytic-gradient setup for a non-focei caller
+//'
+//' `est="vae"` with `nonMuTheta="grad"` evaluates the analytic outer gradient once per
+//' M-step, at its own theta/eta/omega, and has no fit env to hang the setup on.  This
+//' installs the setup once so `foceiGradPooledDirect_()` can be called repeatedly.
+//' @param st setup list from `.foceiGradPooledSetup()`
+//' @return TRUE if the setup describes a shape the C++ gradient handles
+//' @keywords internal
+//' @export
+//[[Rcpp::export]]
+bool foceiGradPooledSetupLoad_(List st) {
+  loadGradPooledSetupList(st);
+  return _gradPooled.ok;
+}
+
 // Defined after the augmented-solve machinery it needs (VaeOuterE, outerSolveFill,
 // OdeFitTolGuard, foceiOuterFdInd_); declared here so analyticOuterGrad can prefer it.
 static bool analyticOuterGradDirect(double *theta, double *g);
@@ -4774,65 +4760,16 @@ static bool analyticOuterGrad(double *theta, double *g) {
       op_focei.nDeclineOther++;
     }
   }
-  if (_gradPooled.ok) {
-    // The setup said this fit was in scope but the evaluation failed; keep going through
-    // R rather than dropping to finite differences.
+  // Declined.  There is no second, slower attempt: the R gradient implementation this
+  // used to fall through to is gone (it was a parallel copy of the same mathematics that
+  // had to be kept in step by hand, and it forced etaObf/omega/.gradTheta to be rebuilt
+  // as R objects on EVERY gradient evaluation).  A decline now goes straight to the
+  // ordinary finite-difference gradient, which is correct -- just slower.
+  if (!op_focei.warnedAnalyticFallback) {
+    op_focei.warnedAnalyticFallback = 1;
+    Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
   }
-  // Refresh the live state the R gradient reads; omega/theta/etaObf are
-  // otherwise only written into the fit env at finalize.
-  NumericVector _th(op_focei.ntheta);
-  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta,
-            _th.begin());
-  op_foceiFitEnv[".gradTheta"] = _th;
-  op_foceiFitEnv["omega"] = getOmega();
-  if (op_focei.mixIdxN != 0) {
-    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv, true);
-  } else {
-    op_foceiFitEnv["etaObf"] = foceiEtas(op_foceiFitEnv);
-  }
-  Environment _nlmixr2est = Environment::namespace_env("nlmixr2est");
-  Function _agf = as<Function>(_nlmixr2est[".foceiCalcGradAnalytic"]);
-  RObject _res = _agf(op_foceiFitEnv);
-  // The augmented-sensitivity solves replaced the fit's global solve; restore it
-  // so the next foceiOfv0 (objective/inner solve) reads the fit, not the last
-  // augmented subject.  A failed restore -> fall back to FD (which re-solves).
-  bool _restored = restoreFitSolve_();
-  // fast=TRUE ll(): the aug solve + restore rebuild the global solve, dropping the inner
-  // neqOverride that pins the cheap 1st-order Newton (pool sized for the 2nd-order rxHess2).
-  // Re-pin it so the next objective eval's inner solves and calcEtaHessian rxHess2 re-solve
-  // see the right state counts.
-  if (_restored && op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
-    odeSwapRepin();   // rxSolve_ rebuilt the inds; re-apply the pin to them
-  }
-  if (Rf_isNull(_res) || !_restored) {
-    if (!op_focei.warnedAnalyticFallback) {
-      op_focei.warnedAnalyticFallback = 1;
-      Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
-    }
-    return false;
-  }
-  NumericVector _gv = as<NumericVector>(_res);
-  if ((int)_gv.size() != (int)op_focei.npars) {
-    // never silently degrade to FD on a length mismatch -- it means the R-side
-    // parameter mapping disagrees with the optimizer's free-parameter set
-    stop("fast=TRUE: analytic gradient length (%d) does not match the number of outer parameters (%d)",
-         (int)_gv.size(), (int)op_focei.npars);
-  }
-  for (int i = 0; i < (int)op_focei.npars; i++) {
-    if (!R_finite(_gv[i])) {
-      // non-finite element = the sensitivity system did not solve cleanly
-      if (!op_focei.warnedAnalyticFallback) {
-        op_focei.warnedAnalyticFallback = 1;
-        Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
-      }
-      return false;
-    }
-    g[i] = _gv[i] * dUnscaleParDx(i);
-  }
-  // Stash the per-subject EBE sensitivity etaP (Almquist Eq 46) that the R gradient
-  // computed, for the Eq-48 warm-start extrapolation at the next outer step.
-  loadAnalyticEtaP(theta);
-  return true;
+  return false;
 }
 
 void numericGrad(double *theta, double *g){
@@ -7052,7 +6989,7 @@ Environment foceiOuter(Environment e){
     //
     // This branch sets scaleObjective = 0 and does no parameter scaling, so
     // dUnscaleParDx is the identity and the stashed gradient is on the NATURAL scale --
-    // the same scale .foceiGradAnalyticCalc returned.
+    // the same scale .foceiGradDirect() reports.
     if (op_focei.fast) {
       op_foceiFitEnv = e;
       op_foceiFitEnvSet = true;
@@ -11445,7 +11382,7 @@ List vaeInnerLik(NumericMatrix etaMat, int cores, bool grad = false, bool preds 
 // than the pool.  Per-subject writes are disjoint, so the loop parallelizes under
 // the vaeInnerLikCore discipline.
 //
-// Returns the per-subject `E` list .foceiAnalyticGradCore consumes directly --
+// Returns the per-subject `E` list the gradient assembly consumes directly --
 // no intermediate column matrix for R to re-slice.
 struct VaeOuterE {
   arma::vec f, R;
@@ -12235,6 +12172,12 @@ static void outerSolveFill(int slot, rxSolveF *fns,
 #endif
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
+  // Counted HERE, at the pooled solve itself, not at the R-facing wrapper.  It used to
+  // be incremented in vaeOuterSolve_, which meant it counted only solves that went out
+  // through R -- so once the all-C++ gradient became the normal path the counter tracked
+  // the R FALLBACK rather than the pooled route, and the tests asserting "the pooled
+  // solve really ran" were satisfied by exactly the thing they existed to rule out.
+  odeSwapNotePooledSolve();
 }
 
 //[[Rcpp::export]]
@@ -12321,7 +12264,6 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
     out[i] = Ei;
   }
   out.attr("ok") = okv;         // 1 = solved, 0 = flagged for the per-individual FD
-  odeSwapNotePooledSolve();
   // ---- swap the pool: outer -> inner, and finite-difference the flagged subjects ----
   //
   // Done HERE, in the gradient call that already owns the pool, rather than downstream:
@@ -13137,6 +13079,61 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
     op_focei.etaPValid = 0;
   }
   return true;
+}
+
+//' Analytic outer gradient at a caller-supplied theta / eta / omega
+//'
+//' The same C++ core the fit's own gradient uses (`gradPooledCore`), but with the point
+//' passed in rather than read out of `op_focei`.  `est="vae"` with `nonMuTheta="grad"`
+//' needs exactly this: its M-step evaluates the gradient at a theta and an encoder eta
+//' matrix that are not the inner problem's, and at an omega that changes every step.
+//' Requires `foceiGradPooledSetupLoad_()` first, and a live FOCEi inner problem (the
+//' shared pool, `rxVaeOuter`, and the theta/eta par_ptr maps all come from it).
+//' @param thVals natural-scale theta, in ntheta order
+//' @param ebes nsub x neta matrix of etas to take the gradient at
+//' @param Oi inverse of the current Omega
+//' @param dOiEst list of d(Omega^-1)/d(estimation-scale omega element)
+//' @param tr28 the matching trace terms
+//' @param cores thread count
+//' @return natural-scale gradient (thetas, sigmas, omegas), or NULL if it declined
+//' @keywords internal
+//' @export
+//[[Rcpp::export]]
+RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
+                               NumericMatrix Oi, List dOiEst, NumericVector tr28,
+                               int cores) {
+  const FoceiGradPooledSetup &G = _gradPooled;
+  if (!G.ok) return R_NilValue;
+  const int neta = G.neta, nom = G.nom;
+  const int np = G.nth + G.nsg + nom;
+  if (ebes.ncol() != neta) return R_NilValue;
+  if (Oi.nrow() != neta || Oi.ncol() != neta) return R_NilValue;
+  if ((int)dOiEst.size() != nom || (int)tr28.size() != nom) return R_NilValue;
+  std::vector<double> thv(thVals.begin(), thVals.end());
+  arma::mat eb = as<arma::mat>(ebes);
+  arma::mat oi = as<arma::mat>(Oi);
+  arma::cube dOi(neta, neta, nom > 0 ? nom : 1, arma::fill::zeros);
+  arma::vec tr(nom > 0 ? nom : 0);
+  for (int k = 0; k < nom; ++k) {
+    arma::mat dk = as<arma::mat>(dOiEst[k]);
+    if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return R_NilValue;
+    dOi.slice(k) = dk;
+    tr[k] = tr28[k];
+  }
+  arma::vec gv; arma::cube etaP; double jacSum = 0.0;
+  bool ok = false;
+  try {
+    ok = gradPooledCore(G, thv, eb, oi, dOi, tr, cores, gv, etaP, jacSum);
+  } catch (...) { return R_NilValue; }
+  if (!ok || (int)gv.n_elem != np) return R_NilValue;
+  if (G.nLam > 0) {                     // transform Jacobian, on the lambda directions
+    for (size_t q = 0; q < G.lamDir.size(); ++q) {
+      int d = G.lamDir[q] - 1;
+      if (d >= 0 && d < np) gv[d] -= 2.0 * jacSum;
+    }
+  }
+  if (!gv.is_finite()) return R_NilValue;
+  return wrap(NumericVector(gv.begin(), gv.end()));
 }
 
 

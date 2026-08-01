@@ -143,48 +143,6 @@
   list(g = g, etaP = etaP)
 }
 
-.foceiAgqRepCache <- new.env(parent = emptyenv())   # per-(data, nnodes) node-replicated event data
-#' Node-replicated event data for the batched AGQ node solve: the nodes are extra eta
-#' points on the SAME model and events, so all `nsub * nn` (subject, node) solves go
-#' through ONE rxSolve as pseudo-subjects (pseudo-id `(k-1)*nsub + i`) instead of `nn`
-#' population solves -- which also lets OpenMP balance `nsub*nn` solves instead of `nsub`.
-#' Depends only on `(data, nn)`, both fixed for a fit, so cache it: rebuilding the
-#' `nn`-fold rbind per gradient call would eat the win.
-#' @noRd
-.foceiAgqRepData <- function(data, nsub, nn) {
-  .fp <- tryCatch(digest::digest(list(data, nsub, nn)), error = function(e) NULL)
-  if (!is.null(.fp)) {
-    .hit <- get0(.fp, envir = .foceiAgqRepCache, inherits = FALSE)
-    if (!is.null(.hit)) return(.hit)
-  }
-  # as.integer(ID) matches how .idCode normalizes factor IDs, so the offset pseudo-subject
-  # IDs stay aligned with .repIds (a bare factor ID would coerce to NA under arithmetic).
-  .r <- do.call(rbind, lapply(seq_len(nn), function(k) { d <- data; d$ID <- (k - 1L) * nsub + as.integer(d$ID); d }))
-  if (!is.null(.fp)) {
-    if (length(ls(.foceiAgqRepCache, all.names = TRUE)) >= 32L)
-      rm(list = ls(.foceiAgqRepCache, all.names = TRUE), envir = .foceiAgqRepCache)
-    assign(.fp, .r, envir = .foceiAgqRepCache)
-  }
-  .r
-}
-
-#' (f,R) AGQ per-subject outer gradient (nAGQ > 1): FOCEI with one term of the objective
-#' replaced (inner.cpp LikInner2) -- `l(etahat)` becomes `log(sum_k a_k)` over the
-#' quadrature grid, `a_k = w_k exp(x_k'x_k) exp(l(etaCur_k))`, `etaCur_k = etahat +
-#' sqrt(2)*Ginv x_k`, `Ginv = chol(Ht)^-1` (the sqrt(2) node scaling and exp(x'x) untilt
-#' match inner.cpp).  The log-det/Omega/tbs terms are unchanged, so the
-#' FOCEI trace term carries over as-is:
-#'
-#'   g[p] = 2*sum_k pi_k*[dPhi_p(etaCur_k) + Phi_eta(etaCur_k)'(etaP[,p] + dGinv_p x_k)]
-#'          + tr(Hti %*% dHtStar_p),   pi_k = a_k/sum(a)
-#'
-#' The envelope theorem does NOT apply (`l` is evaluated at the nodes, not the mode), so
-#' `Phi_eta(etaCur_k) != 0` and the moving mode enters via both `etaP` and the node
-#' placement `dGinv_p x_k`.  `dGinv_p = -Ginv %*% PhiU(t(Ginv) %*% dHtStar_p %*% Ginv)`
-#' (PhiU = triu, diagonal halved) needs no new sensitivity work -- it reuses the
-#' `dHtStar_p` the trace term already forms.  `Eks` holds the per-node solves; `qx`/`qw`
-#' are the `.agq()` grid.  At nAGQ=1 this reduces to `.foceiAnalyticSubjectGradFR`.
-#' @noRd
 .foceiAnalyticSubjectGradAgqFR <- function(E, Eks, ehat, Om, neta, nth, nsg, dirTh, sigCol,
                                            dOiEst, tr28, ndir, qx, qw, Oi = solve(Om)) {
   tr <- function(M) sum(diag(M))
@@ -456,54 +414,6 @@
   list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
-#' Solve the augmented model for ALL subjects in one rxode2 population solve
-#' (internally C++ + OpenMP-threaded), instead of one R solve per subject -- the
-#' per-subject solve loop otherwise dominates the gradient (~87%).  Per-subject
-#' etas travel as an ID-keyed params data.frame.  Returns a per-subject list of
-#' `list(f, a, A)` (same shape as `.foceiAnalyticSolveFA`), or `NULL` on failure.
-#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject
-#' re-solve), EXCEPT for the `est="vae"` pooled branch below: when
-#' `.vaeGradEnv$active` is set, the solve runs in the shared FOCEi pool on behalf
-#' of `vaeControl(nonMuTheta="grad")` instead.  That branch is gated on an active
-#' call flag, not on cached state, so focei's own fast gradient is unaffected.
-#' @noRd
-# Verification-only opt-out: when TRUE, .foceiAnalyticSolveAll skips the pooled
-# solve and takes the rxode2::rxSolve route.  Exists so a test can evaluate the
-# SAME fit both ways -- identical thetas, identical best etas, no inner
-# re-optimisation -- which is a far stronger check of the pooled solve than a
-# finite-difference comparison assembled from separate refits.  Never set during
-# an ordinary fit.
-.odeSwapNoPool <- new.env(parent = emptyenv())
-.odeSwapNoPool$on <- FALSE
-
-#' Analytic outer gradient forced through the rxode2::rxSolve route.
-#'
-#' Verification helper: pairs with [.foceiGradAnalyticCalc()] to compare the two
-#' solve routes on one fit.
-#' @param fit a completed fit
-#' @return the gradient, as [.foceiGradAnalyticCalc()] returns it
-#' @noRd
-.foceiAnalyticGradViaRxSolve <- function(fit) {
-  .old <- .odeSwapNoPool$on
-  .odeSwapNoPool$on <- TRUE
-  on.exit(.odeSwapNoPool$on <- .old, add = TRUE)
-  .foceiGradAnalyticCalc(fit)
-}
-
-#' Per-individual d(llik)/d(theta) for the subjects whose augmented solve failed.
-#'
-#' Phase 8D2.  Runs as its OWN phase, after the augmented solve has finished and its
-#' outer event-sensitivity batch has closed -- `foceiOuterFdInd_()` installs the inner
-#' problem's shape itself, which is only legal at a batch boundary.  Each flagged
-#' subject is re-optimized through `innerOpt1()` at shi central-differenced thetas, with
-#' step sizes kept in that subject's own store.
-#'
-#' @param ids1 1-based subject indices flagged by the solve
-#' @param analyticRef per-subject slopes for the subjects that solved analytically; they
-#'   form the reference distribution the outlier test judges against, and are never
-#'   themselves recomputed
-#' @return nid x ntheta matrix of d(llik_i)/d(theta), or NULL when unavailable
-#' @noRd
 .foceiOuterFdForFlagged <- function(ids1, analyticRef = matrix(numeric(0), 0, 0)) {
   if (length(ids1) == 0L) return(NULL)
   .g <- tryCatch(foceiOuterFdInd_(as.integer(ids1 - 1L), as.matrix(analyticRef)),
@@ -656,14 +566,15 @@
   ## grad fit, running against a pool sized for its own inner model.  A NULL
   ## falls through to the rxSolve path below.
   ##
-  ## DDE is excluded: those solves pin method="dop853"/dense, which the shared
-  ## pool fixes at setup and cannot change per solve.
   ## DDE is IN scope for the pooled route.  The old exclusion assumed a delay model
   ## pins method="dop853"/dense per solve, which a shared pool cannot do -- but focei
   ## already forces that configuration at the FIT level (R/focei.R, the hasDelay block:
   ## method 0, stiff2 13, dense TRUE), so a DDE fit's pool is built that way to begin
   ## with and there is nothing to change per solve.
-  if (!isTRUE(.odeSwapNoPool$on)) {
+  ## (This used to be gated by .odeSwapNoPool, a verification-only opt-out that let a
+  ## test evaluate the same fit through rxSolve instead of the pool.  Its only setter was
+  ## the R gradient route, which is gone, so the gate could never fire.)
+  {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
       .nc <- tryCatch({ .c <- am$cores
@@ -679,7 +590,7 @@
       ## than discarding the whole gradient.  Until the Phase 8D2 finite-difference
       ## phase consumes those flags, a flagged subject still falls through to the
       ## rxSolve route, i.e. behaviour is unchanged -- but the flags are here.
-      if (!is.null(.Ec) && length(.Ec) > 0L && !isTRUE(.odeSwapNoPool$on)) {
+      if (!is.null(.Ec) && length(.Ec) > 0L) {
         .ok <- attr(.Ec, "ok")
         if (is.null(.ok) || all(.ok == 1L)) {
           .foceiOuterFlagged$ids <- integer(0)
@@ -781,573 +692,6 @@
   Es
 }
 
-#' Shared core: analytic natural-scale outer gradient of the FOCEI objective
-#' (OFV = -2*logLik) over structural theta + residual sigma + Omega (Cholesky
-#' scale), summed over subjects.  Gathering (theta/eta/data/omega) is done by the
-#' live-env and post-fit callers; this runs the augmented solve + assembly.
-#' Returns a NAMED numeric vector or `NULL`.
-#' @noRd
-.foceiAnalyticGradCore <- function(ui, th, ebes, ids, data, Om, ef, .dir, dOiEst, tr28,
-                                   omNames, solveTol, interaction = 1L, foceType = 0L,
-                                   startedEnv = NULL, am = NULL, nAGQ = 1L) {
-  if (isTRUE(ef$isLL))                                # ll()/generalized: direct-log-density core
-    return(.foceiAnalyticGradCoreLL(ui, th, ebes, ids, data, Om, .dir, dOiEst, tr28,
-                                    omNames, solveTol, am = am, startedEnv = startedEnv))
-  neta <- ncol(ebes); Oi <- solve(Om)
-  thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
-  lamDir <- .dir$lamDir; lamNames <- .dir$lamNames; lamIdx <- .dir$lamIdx
-  nom <- length(dOiEst)
-  etav <- paste0("ETA_", seq_len(neta), "_")
-  .foce <- identical(as.integer(interaction), 0L)
-  # censored (M2/M3/M4) observations: the (f,R) grad kernels carry the censored score, and the
-  # FOCE EBE re-solve (.foceiAnalyticFoceEbe) uses the exact censored rho_f/rho_ff at the frozen
-  # R0.  FOCEI supports both censOption values (determinant generalization); FOCE (frozen R0)
-  # supports only the default "gauss" (Gauss-Newton determinant) -- the laplace censored FOCE
-  # determinant is not ported, so it falls back to the finite-difference gradient.
-  .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
-    (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-  if (.hasCens && .foce &&
-        as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L) return(NULL)
-  # The augmented model depends only on the model + direction set (fixed for a
-  # fit), NOT on theta/eta/omega; the symbolic .rxSens build dominates each
-  # gradient (~63%), so the live path passes a cached `am` (built once per fit).
-  if (is.null(am)) am <- .foceiAnalyticAugModelDirs(ui, dirs)
-  if (is.null(am) || am$ndir != ndir) return(NULL)
-  # FOCEI (interaction=1) uses the general (f,R) assembly: the sigma set is EVERY
-  # error parameter the variance depends on (am$sigTh), which covers any variance
-  # Both FOCEI and FOCE assemble over am$sigTh (every error param the variance depends on)
-  # via the (f,R) path, so any variance structure works for both.
-  .sigTh <- am$sigTh
-  .sgNameFR <- if (length(.sigTh)) ui$iniDf$name[match(.sigTh, ui$iniDf$ntheta)] else character(0)
-  nsg <- length(.sigTh); sgNames <- .sgNameFR
-  np <- nth + nsg + nom
-  .byId <- split(data, as.character(data$ID))
-  .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
-  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
-  .obsT <- lapply(seq_along(ids), function(i) {
-    .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0]
-  })
-  # FOCE: the per-subject EBE re-solve (Newton) + optional eta=0 population solve are
-  # inherently per-subject; collect the re-solved etas (and E0) here.  FOCEI EBEs are
-  # fixed.  The FINAL a/A solve is then batched for ALL subjects in one rxode2
-  # population solve (C++ + OpenMP), which otherwise dominates the gradient cost.
-  etaSolve <- ebes
-  E0List <- vector("list", length(ids))
-  if (.foce) {
-    # BATCHED FOCE EBE re-solve (mirrors the cov path): the eta=0 population solve (nonmem
-    # frozen R0) and the per-subject Newton EBE re-solve are batched over ALL subjects -- one
-    # rxode2 population solve per Newton step via .foceiAnalyticFoceEbeBatch -- instead of a
-    # per-subject Newton loop (neta*maxit single-subject solves).  Bit-identical to the former
-    # loop (same S_FOCE=0 stationarity, same censored partials).  foce+ (foceType=1) and additive
-    # nonmem (no dependsF0) need no eta=0 solve, so E0all=NULL and the batch uses the live R.
-    nsub <- length(ids)
-    .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
-      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
-    if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
-    .needE0 <- identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
-    E0all <- if (.needE0) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
-    if (.needE0 && is.null(E0all)) return(NULL)
-    eta0Mat <- .foceiAnalyticFoceEbeBatch(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
-                                          solveTol, foceType = foceType, E0all = E0all)
-    if (is.null(eta0Mat)) return(NULL)
-    etaSolve <- eta0Mat
-    if (!is.null(E0all)) for (i in seq_len(nsub)) E0List[i] <- list(E0all[[i]])
-  }
-  ## Phase 8E: the all-C++ route.  It solves the augmented model in the shared pool,
-  ## finite-differences the subjects whose solve failed, stacks the sensitivities and runs
-  ## the kernel WITHOUT returning here in between -- so the per-observation ndir^2 cubes
-  ## never become R objects, and R cannot disturb the pool between the solve and the
-  ## assembly.  Only the FOCEI (f,R) shape is covered; everything else falls through to
-  ## the staged path below, and a NULL here does too.
-  ## OFF BY DEFAULT -- opt in with NLMIXR2EST_GRAD_POOLED=1.  The route is numerically
-  ## exact (max abs diff 0 against the staged path on theo_sd) but its .Call leaves R's
-  ## protect stack unbalanced by -10, which risks premature GC even while results look
-  ## right.  Localized only as far as: argument marshalling alone is clean, and the
-  ## imbalance is present by the end of the solve -- yet vaeOuterSolve_ performs the same
-  ## sequence with no imbalance.  Do not enable until that is understood.
-  if (!.foce && nAGQ <= 1L && !isTRUE(.odeSwapNoPool$on) &&
-        nzchar(Sys.getenv("NLMIXR2EST_GRAD_POOLED"))) {
-    .cols8e <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
-    .nc8e <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
-    if (length(.nc8e) != 1L || is.na(.nc8e) || .nc8e < 1L) .nc8e <- 1L
-    .dOi8e <- array(0, c(neta, neta, max(nom, 1L)))
-    if (nom > 0L) for (k in seq_len(nom)) .dOi8e[, , k] <- dOiEst[[k]]
-    .p8e <- if (is.null(.cols8e)) NULL else
-      tryCatch(foceiAnalyticGradPooled_(as.numeric(th), as.matrix(etaSolve), .cols8e, .nc8e,
-                 Oi, .dOi8e, if (nom > 0L) as.numeric(tr28) else numeric(0),
-                 neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
-                 as.integer(rxode2::rxGetControl(ui, "censOption", 0L)),
-                 as.integer(lamDir)),
-               error = function(e) NULL)
-    if (!is.null(.p8e) && all(is.finite(.p8e$g)) && all(is.finite(.p8e$etaP))) {
-      g <- .p8e$g
-      .etaP8e <- vector("list", length(ids))
-      for (i in seq_along(ids)) .etaP8e[[i]] <- .p8e$etaP[, , i]
-      names(g) <- c(thStruct, sgNames, omNames)
-      if (length(lamNames)) g[lamNames] <- g[lamNames] - 2 * .p8e$jacSum
-      return(list(g = g, etaP = .etaP8e, ids = ids))
-    }
-  }
-  .EsAll <- .foceiAnalyticSolveAll(am, th, etaSolve, .idCode, data, .obsT, solveTol)
-  if (is.null(.EsAll)) return(NULL)
-  g <- numeric(np)
-  etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
-  if (nAGQ > 1L) {
-    # the quadrature kernel carries the plain normal log-density, so censoring and an
-    # estimated DV-transform lambda stay on finite differences
-    if (.hasCens || length(lamDir) > 0L) return(NULL)
-    nsub <- length(ids)
-    # the FOCEI batch path builds yB inline; the AGQ kernel needs E$y per solve
-    .addY <- function(E, i) {
-      .o <- .byId[[as.character(.idCode[i])]]; .o <- .o[.o$EVID == 0, , drop = FALSE]
-      E$y <- .foceiAnalyticTbsY(.o$DV, E$trans); E
-    }
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
-      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
-      .EsAll[[i]] <- .addY(E, i)
-    }
-    # Ginv = chol(Ht)^-1 places the nodes; a non-PD Ht means the objective took the
-    # nmNearPD/cholSE branch, a different (non-smooth) function -- fall back to FD.
-    .ei <- seq_len(neta)
-    .GinvL <- vector("list", nsub)
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; .eff <- 1 / E$R; .eRR <- 0.5 / E$R^2
-      .Ht <- Oi
-      for (l in .ei) for (m in .ei)
-        .Ht[l, m] <- .Ht[l, m] + sum(.eff * E$a[, l] * E$a[, m] + .eRR * E$aR[, l] * E$aR[, m])
-      .ch <- tryCatch(chol(.Ht), error = function(e) NULL)
-      if (is.null(.ch)) return(NULL)
-      # chol() succeeding is not proof the objective took the plain-chol branch: arma's
-      # is_sympd() and R's chol() disagree near the PD boundary, so require a PD margin.
-      if (!is.finite(rcond(.Ht)) || rcond(.Ht) < 1e-10) return(NULL)
-      .GinvL[[i]] <- backsolve(.ch, diag(neta))
-    }
-    .ag <- .agq(neta, nAGQ); .qx <- .ag$x; .qw <- .ag$w; .nn <- .ag$n
-    .Eks <- vector("list", nsub)
-    for (i in seq_len(nsub)) .Eks[[i]] <- vector("list", .nn)
-    # The nodes read only f/R/a/aR/Rsig -- never A/AR/RsigDir, which are used solely at
-    # eta-hat (exact inner Hessian -> etaP, and dHtD) -- so they solve a 1st-order model:
-    # 26 ODE states -> 8.  They are nAGQ^neta solves per gradient and dominate once the
-    # grid grows, so this is worth 1.07x-1.91x on the gradient.
-    #
-    # Prefer the `outerNode` sibling built at model setup and disk-cached in foceiModel
-    # (same treatment as `outer`); fall back to building it.  Cached on the fit env either
-    # way, with a FALSE sentinel so a model that cannot build one does not re-attempt the
-    # symengine pass every gradient call.
-    .amN <- if (!is.null(startedEnv) && exists(".foceiGradAugNode", startedEnv, inherits = FALSE))
-      get(".foceiGradAugNode", startedEnv) else NULL
-    if (is.null(.amN)) {
-      .fmN <- tryCatch(ui$foceiModel, error = function(e) NULL)
-      .amN <- if (!is.null(.fmN) && inherits(.fmN$outerNode, "rxode2") && !is.null(.fmN$outerNodeMeta)) {
-        c(list(augMod = .fmN$outerNode), .fmN$outerNodeMeta)
-      } else {
-        .foceiAnalyticAugModelDirs(ui, dirs, order = 1L)
-      }
-      if (!(!is.null(.amN) && inherits(.amN$augMod, "rxode2"))) .amN <- FALSE
-      if (!is.null(startedEnv)) assign(".foceiGradAugNode", .amN, envir = startedEnv)
-    }
-    # a missing/unbuildable node model is not fatal: fall back to the eta-hat model, which
-    # is what the nodes used before this optimization existed
-    if (isFALSE(.amN) || is.null(.amN) || .amN$ndir != ndir) .amN <- am
-    # BATCHED node solve: every (subject, node) pair goes through ONE rxSolve as a
-    # pseudo-subject, rather than nn separate population solves.  Chunk the node set so
-    # a wide grid (nn = nAGQ^neta) cannot blow up memory -- the solve returns an E per
-    # pseudo-subject, so cap the pseudo-subject count per call.
-    .maxPs <- 2048L
-    .chunk <- max(1L, min(.nn, .maxPs %/% max(nsub, 1L)))
-    .ks <- split(seq_len(.nn), ceiling(seq_len(.nn) / .chunk))
-    for (.kk in .ks) {
-      .m <- length(.kk)
-      .repEta <- do.call(rbind, lapply(.kk, function(k) {
-        .x <- .qx[k, ]
-        .e <- t(vapply(seq_len(nsub),
-                       # sqrt(2): the node SOLVE position must match the kernel's etaCur =
-                       # etahat + sqrt(2)*Ginv*x, or the node sensitivities are at the wrong eta.
-                       function(i) etaSolve[i, ] + sqrt(2) * as.numeric(.GinvL[[i]] %*% .x), numeric(neta)))
-        if (neta == 1L) matrix(.e, ncol = 1L) else .e
-      }))
-      .repData <- .foceiAgqRepData(data, nsub, .m)
-      # Key the pseudo-subject IDs on .idCode, exactly as the eta-hat batch solve does: .repEta
-      # row (b-1)*nsub+i carries subject-position i's eta, whose events live under etTrans code
-      # .idCode[i] (= i only when the eta order matches the etTrans code order).  Pairing
-      # positionally (seq_len) would give subject i's eta the events of etTrans code i, which
-      # for a permuted/non-1..N ID order in a balanced design is silently wrong (the obs-count
-      # guard would not catch it).  For the identity order this is exactly seq_len(nsub*.m).
-      .repIds <- rep((seq_len(.m) - 1L) * nsub, each = nsub) + rep(.idCode, times = .m)
-      .Ek <- .foceiAnalyticSolveAll(.amN, th, .repEta, .repIds, .repData,
-                                    rep(.obsT, .m), solveTol)
-      if (is.null(.Ek)) return(NULL)
-      for (.j in seq_along(.kk)) for (i in seq_len(nsub))
-        .Eks[[i]][[.kk[.j]]] <- .addY(.Ek[[(.j - 1L) * nsub + i]], i)
-    }
-    # Assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllAgqFR_), mirroring the
-    # FOCEI batch path.  eta-hat arrays are concatenated over observations; the node
-    # arrays are node-major (nn blocks of totObs rows).  y does not vary by node.
-    nobsAll <- vapply(.EsAll, function(E) length(E$f), integer(1))
-    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))
-    aB <- matrix(0, totObs, ndir); aRB <- matrix(0, totObs, ndir)
-    AB <- array(0, c(totObs, ndir, ndir)); ARB <- array(0, c(totObs, ndir, ndir))
-    fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs)
-    RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
-    ehatB <- matrix(0, nsub, neta)
-    aNB <- matrix(0, .nn * totObs, ndir); aRNB <- matrix(0, .nn * totObs, ndir)
-    RsigNB <- matrix(0, .nn * totObs, nsg)
-    fNB <- numeric(.nn * totObs); RNB <- numeric(.nn * totObs)
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
-      aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
-      fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R
-      if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
-      ehatB[i, ] <- etaSolve[i, ]
-      for (k in seq_len(.nn)) {
-        .Ek <- .Eks[[i]][[k]]; .nr <- (k - 1L) * totObs + rows
-        aNB[.nr, ] <- .Ek$a; aRNB[.nr, ] <- .Ek$aR
-        fNB[.nr] <- .Ek$f; RNB[.nr] <- .Ek$R
-        if (nsg > 0L) RsigNB[.nr, ] <- .Ek$Rsig
-      }
-    }
-    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
-    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
-    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllAgqFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, fB, yB, RB,
-                                        aNB, aRNB, RsigNB, fNB, RNB, .qx, .qw,
-                                        ehatB, as.integer(off), Oi, dOiCube,
-                                        if (nom > 0L) as.numeric(tr28) else numeric(0),
-                                        neta, nth, nsg, nom, as.integer(dirTh),
-                                        as.integer(seq_len(nsg)), ncores),
-                     error = function(e) NULL)
-    # any subject the kernel could not assemble (non-PD Ht -> the C++ objective took the
-    # nmNearPD/cholSE branch) invalidates the whole gradient: fall back to FD.
-    if (is.null(.res) || any(.res$ok == 0L) ||
-          !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
-    g <- .res$g
-    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
-  } else if (.foce) {
-    # FOCE: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFoceFR_).  The frozen
-    # R0 sensitivities are resolved per subject in R (nonmem: aRe=0, aRc/R0/R0sig from the
-    # eta=0 solve E0; foce+ / additive nonmem: all from the eta-hat solve E) then batched.
-    nsub <- length(ids); nobsAll <- integer(nsub)
-    .fpG <- identical(as.integer(foceType), 1L) || is.null(E0List[[1L]])   # uniform across subjects
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
-      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
-      nobsAll[i] <- length(E$f)
-    }
-    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))
-    aB <- matrix(0, totObs, ndir); aReB <- matrix(0, totObs, ndir); aRcB <- matrix(0, totObs, ndir)
-    AB <- array(0, c(totObs, ndir, ndir)); R0B <- numeric(totObs); R0sigB <- matrix(0, totObs, nsg)
-    dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
-    jacSum <- setNames(numeric(length(lamNames)), lamNames)
-    censB <- if (.hasCens) integer(totObs) else integer(0)   # per-obs CENS + transformed LIMIT
-    limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
-    fB <- numeric(totObs); yB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; E0 <- E0List[[i]]; rows <- (off[i] + 1L):off[i + 1L]
-      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
-      aB[rows, ] <- E$a; AB[rows, , ] <- E$A; fB[rows] <- E$f; yB[rows] <- .foceiAnalyticTbsY(obs$DV, E$trans)
-      if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR
-        if (nsg > 0L) R0sigB[rows, ] <- E$Rsig }
-      else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR                       # aReB stays 0 (frozen)
-        if (nsg > 0L) R0sigB[rows, ] <- E0$Rsig }
-      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
-        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-        jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
-      }
-      if (.hasCens) {
-        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
-        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
-        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)   # transform the censoring bound like the DV
-      }
-      ehatB[i, ] <- etaSolve[i, ]
-    }
-    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
-    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
-    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, dvSensB, as.integer(censB), as.numeric(limB),
-                                         fB, yB, R0B, ehatB, as.integer(off),
-                                         Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
-                                         neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
-                                         as.integer(.fpG), ncores), error = function(e) NULL)
-    if (is.null(.res) || !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
-    g <- .res$g
-    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
-  } else {
-    # FOCEI: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFR_), removing the
-    # per-subject R<->C++ round-trip.  Sensitivities are concatenated over observations.
-    nsub <- length(ids); nobsAll <- integer(nsub)
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
-      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
-      nobsAll[i] <- length(E$f)
-    }
-    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))       # 0-based per-subject row offsets
-    aB <- matrix(0, totObs, ndir); aRB <- matrix(0, totObs, ndir)
-    AB <- array(0, c(totObs, ndir, ndir)); ARB <- array(0, c(totObs, ndir, ndir))
-    fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs)
-    RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
-    dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
-    jacSum <- setNames(numeric(length(lamNames)), lamNames)
-    # censored (M2/M3/M4): per-obs CENS + transformed LIMIT; censOption picks the
-    # determinant treatment (laplace exact vs gauss).  Empty when no censoring.
-    .censOpt <- as.integer(rxode2::rxGetControl(ui, "censOption", 0L))
-    censB <- if (.hasCens) integer(totObs) else integer(0)
-    limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
-    ehatB <- matrix(0, nsub, neta)
-    for (i in seq_len(nsub)) {
-      E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
-      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
-      aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
-      fB[rows] <- E$f; yB[rows] <- .foceiAnalyticTbsY(obs$DV, E$trans); RB[rows] <- E$R
-      if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
-      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
-        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-        jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
-      }
-      if (.hasCens) {
-        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
-        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
-        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)   # transform the censoring bound like the DV
-      }
-      ehatB[i, ] <- etaSolve[i, ]
-    }
-    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
-    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
-    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, dvSensB,
-                                     as.integer(censB), as.numeric(limB), .censOpt, fB, yB, RB, ehatB, as.integer(off),
-                                     Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
-                                     neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)), ncores),
-                     error = function(e) NULL)
-    if (is.null(.res) || !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
-    g <- .res$g
-    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
-  }
-  names(g) <- c(thStruct, sgNames, omNames)
-  if (length(lamNames)) g[lamNames] <- g[lamNames] - 2 * jacSum   # transform Jacobian -2 log|dy'/dDV|
-  list(g = g, etaP = etaPList, ids = ids)
-}
-
-#' ll()/generalized-likelihood outer gradient core (Almquist Eq 23 with the EXACT
-#' inner Hessian).  For an ll() endpoint `rx_pred_` IS the per-observation
-#' log-density, so the reused augmented model's `rx_f1_`/`rx_f2_` are
-#' `d logLik/ddir` and `d2 logLik/ddir ddir'` (score + exact-Hessian blocks).
-#' `H = Omega^-1 - sum_obs A[eta,eta]`; `dH/dtheta` uses the fd2 route (directional
-#' central FD of the analytic 2nd-order A -- NO 3rd-order tensor).  Mu-referenced
-#' thetas difference along their eta coordinate (theta value HELD -- perturbing an
-#' ODE-entering theta goes non-finite); non-mu thetas perturb the theta value.
-#' Omega is on the estimation (Cholesky-of-Omega^-1) scale via `dOiEst`/`tr28`.
-#' Returns `list(g = <named natural theta + om.chol>, etaP, ids)` or `NULL` (FD).
-#' @noRd
-.foceiAnalyticGradCoreLL <- function(ui, th, ebes, ids, data, Om, .dir, dOiEst, tr28,
-                                     omNames, solveTol, am = NULL, startedEnv = NULL) {
-  neta <- ncol(ebes); Oi <- solve(Om)
-  dirs <- .dir$dirs; dirTh <- .dir$dirTh; thStruct <- .dir$thStruct; nth <- .dir$nth
-  nom <- length(dOiEst); hFD <- 1e-4
-  # censored (M2/M3/M4) obs enter the likelihood as -logPhi, a different contribution the
-  # log-density aug model does not carry -> FD fallback (mirror the Gaussian gate).
-  if ((!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
-        (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))) return(NULL)
-  if (is.null(am)) am <- .foceiAnalyticAugModelDirs(ui, dirs)
-  if (is.null(am) || am$ndir != length(dirs)) return(NULL)
-  .byId <- split(data, as.character(data$ID))
-  .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
-  .obsT <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0] })
-  nsub <- length(ids)
-  .thPos <- ui$iniDf$ntheta[match(thStruct, ui$iniDf$name)]   # ntheta position (== index in th) per struct theta
-  solveAll <- function(thv, eb) .foceiAnalyticSolveAll(am, thv, eb, .idCode, data, .obsT, solveTol)
-  .Hblock <- function(E) { H <- matrix(0, neta, neta)         # -sum_obs A[eta,eta]
-    for (l in seq_len(neta)) for (m in seq_len(neta)) H[l, m] <- -sum(E$A[, l, m]); H }
-  Es <- solveAll(th, ebes); if (is.null(Es)) return(NULL)
-  Hs <- vector("list", nsub); His <- vector("list", nsub)
-  for (i in seq_len(nsub)) {
-    H <- Oi + .Hblock(Es[[i]])
-    if (!all(is.finite(H)) || min(eigen(H, symmetric = TRUE, only.values = TRUE)$values) <= 0) return(NULL)
-    Hs[[i]] <- H; His[[i]] <- solve(H)
-  }
-  g <- numeric(nth + nom)
-  # dH/dp is a directional central FD of the analytic 2nd-order A: each parameter needs a (+,-)
-  # perturbed augmented solve.  BATCH all 2*(nth+nom) perturbations into ONE population solve
-  # (stacked pseudo-subjects) -- the per-call rxSolve overhead dominates, so this is ~n-fold
-  # fewer solves than the per-parameter loop.  The perturbation EBEs move along the analytic
-  # EBE-sensitivity direction etaP (Eq 46); the reader returns only A (the log-det FD needs it).
-  .cfgTh <- vector("list", 2L * (nth + nom)); .cfgEb <- vector("list", 2L * (nth + nom))
-  .dl <- numeric(nth); .dq <- numeric(nom); .dOiL <- vector("list", nom)
-  for (p in seq_len(nth)) {
-    s <- dirTh[p]; isMu <- s <= neta
-    dl <- 0; ebp <- ebes; ebm <- ebes
-    for (i in seq_len(nsub)) { E <- Es[[i]]; dl <- dl + sum(E$a[, s])
-      d2 <- numeric(neta); for (l in seq_len(neta)) d2[l] <- sum(E$A[, l, s])
-      sh <- as.numeric(His[[i]] %*% d2); if (isMu) sh[s] <- sh[s] + 1
-      ebp[i, ] <- ebes[i, ] + sh * hFD; ebm[i, ] <- ebes[i, ] - sh * hFD }
-    .dl[p] <- dl
-    thp <- th; thm <- th
-    if (!isMu) { .k <- .thPos[p]; thp[.k] <- th[.k] + hFD; thm[.k] <- th[.k] - hFD }
-    .cfgTh[[2L * p - 1L]] <- thp; .cfgTh[[2L * p]] <- thm
-    .cfgEb[[2L * p - 1L]] <- ebp; .cfgEb[[2L * p]] <- ebm
-  }
-  for (k in seq_len(nom)) {
-    dOi <- as.matrix(dOiEst[[k]]); .dOiL[[k]] <- dOi; dq <- 0; ebp <- ebes; ebm <- ebes
-    for (i in seq_len(nsub)) { eta <- ebes[i, ]; dq <- dq + as.numeric(t(eta) %*% dOi %*% eta)
-      etaP <- as.numeric(His[[i]] %*% (-as.numeric(dOi %*% eta)))
-      ebp[i, ] <- ebes[i, ] + etaP * hFD; ebm[i, ] <- ebes[i, ] - etaP * hFD }
-    .dq[k] <- dq
-    .cfgTh[[2L * nth + 2L * k - 1L]] <- th; .cfgTh[[2L * nth + 2L * k]] <- th
-    .cfgEb[[2L * nth + 2L * k - 1L]] <- ebp; .cfgEb[[2L * nth + 2L * k]] <- ebm
-  }
-  # The perturbation solves read ONLY the eta-eta A block (.Hblock).  Route them through the
-  # eta-only 2nd-order model `innerHess2` (built for the objective's exact Hessian, whose
-  # rx__d2pred_ == the outer model's eta-eta rx_f2_ to machine precision) -- it drops the
-  # non-mu theta direction sensitivities, so it has far fewer 2nd-order state-sensitivity
-  # compartments than the full outer model.  Fall back to the outer model when unavailable.
-  .h2 <- if (!is.null(startedEnv) && exists(".foceiGradHess2", startedEnv, inherits = FALSE))
-    get(".foceiGradHess2", startedEnv) else NULL
-  if (is.null(.h2)) {
-    .h2 <- tryCatch(ui$foceiModel$innerHess2, error = function(e) NULL)
-    if (!(!is.null(.h2) && inherits(.h2, "rxode2"))) .h2 <- FALSE
-    if (!is.null(startedEnv)) assign(".foceiGradHess2", .h2, envir = startedEnv)
-  }
-  .B <- if (!isFALSE(.h2))
-          .foceiAnalyticHess2ConfigsLL(.h2, .cfgTh, .cfgEb, ids, data, .obsT, solveTol, neta,
-                                       cores = if (is.null(am$cores)) 0L else am$cores)
-        else .foceiAnalyticSolveConfigsLL(am, .cfgTh, .cfgEb, ids, data, .obsT, solveTol)
-  if (is.null(.B)) return(NULL)
-  ## ---- theta gradient ----
-  for (p in seq_len(nth)) {
-    Ep <- .B[[2L * p - 1L]]; Em <- .B[[2L * p]]; gk <- 0
-    for (i in seq_len(nsub)) { if (is.null(Ep[[i]]) || is.null(Em[[i]])) return(NULL)
-      dH <- (.Hblock(Ep[[i]]) - .Hblock(Em[[i]])) / (2 * hFD)
-      if (!all(is.finite(dH))) return(NULL); gk <- gk + sum(His[[i]] * dH) }
-    g[p] <- -2 * .dl[p] + gk
-  }
-  ## ---- omega gradient (Cholesky-of-Omega^-1 scale) ----
-  for (k in seq_len(nom)) {
-    Ep <- .B[[2L * nth + 2L * k - 1L]]; Em <- .B[[2L * nth + 2L * k]]; gt <- 0
-    for (i in seq_len(nsub)) { if (is.null(Ep[[i]]) || is.null(Em[[i]])) return(NULL)
-      dH <- .dOiL[[k]] + (.Hblock(Ep[[i]]) - .Hblock(Em[[i]])) / (2 * hFD)
-      gt <- gt + sum(His[[i]] * dH) }
-    g[nth + k] <- .dq[k] - 2 * nsub * tr28[k] + gt   # -2*dprior(log|Om| per subject) + eta'dOi eta + tr(Hi dH)
-  }
-  if (!all(is.finite(g))) return(NULL)
-  names(g) <- c(thStruct, omNames)
-  list(g = g, etaP = NULL, ids = ids)   # etaP NULL -> the caller's length()>0 guard skips the Eq-48 warm start
-}
-
-#' Batched multi-configuration augmented solve for the ll() log-det gradient.  Solves
-#' `length(cfgEbes)` perturbation configurations -- each its own theta vector `cfgTh[[c]]`
-#' and per-subject eta matrix `cfgEbes[[c]]` -- in ONE rxode2 population solve by stacking
-#' them as pseudo-subjects (id `(c-1)*nsub + subject`), then splits back.  Returns a list
-#' (one per config) of per-subject `list(a, A)` (the pieces the log-det FD reads), or `NULL`
-#' on failure (the caller then returns `NULL` -> finite-difference gradient fallback).
-#' @noRd
-.foceiAnalyticSolveConfigsLL <- function(am, cfgTh, cfgEbes, ids, data, obsTimes, tol) {
-  tryCatch({
-    nc <- length(cfgEbes); nsub <- length(obsTimes); neta <- ncol(cfgEbes[[1]])
-    etav <- paste0("ETA_", seq_len(neta), "_")
-    subIdx <- match(as.character(data$ID), as.character(ids))    # data row -> subject index 1..nsub
-    if (anyNA(subIdx)) return(NULL)
-    pars <- do.call(rbind, lapply(seq_len(nc), function(.c) {
-      p <- data.frame(ID = (.c - 1L) * nsub + seq_len(nsub))
-      for (k in seq_len(neta)) p[[etav[k]]] <- cfgEbes[[.c]][, k]
-      for (.nm in names(cfgTh[[.c]])) p[[.nm]] <- cfgTh[[.c]][[.nm]]
-      p
-    }))
-    ev <- do.call(rbind, lapply(seq_len(nc), function(.c) { d <- data; d$ID <- (.c - 1L) * nsub + subIdx; d }))
-    .nc <- if (is.null(am$cores)) 0L else am$cores
-    .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L))
-      list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
-    sol <- withCallingHandlers(
-      as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = ev, cores = .nc,
-        returnType = "data.frame", atol = tol[1], rtol = tol[length(tol)], addDosing = FALSE), .ddeArgs))),
-      warning = function(w) invokeRestart("muffleWarning"))
-    .cm <- if (is.null(am$cols))
-      .foceiAnalyticCols(am$dirs, if (is.null(am$fDirs)) am$dirs else am$fDirs, am$P2,
-                         if (is.null(am$P2r)) am$P2 else am$P2r, am$sigTh) else am$cols
-    if (!all(c(.cm$f1, .cm$f2) %in% names(sol))) return(NULL)
-    np2 <- nrow(am$P2); nd <- length(am$dirs)
-    .M1 <- as.matrix(sol[, .cm$f1, drop = FALSE]); .M2 <- as.matrix(sol[, .cm$f2, drop = FALSE])
-    .tm <- sol$time; .idc <- if ("id" %in% names(sol)) sol$id else sol$ID
-    .byIdSol <- split(seq_len(nrow(sol)), as.character(.idc))
-    lapply(seq_len(nc), function(.c) lapply(seq_len(nsub), function(i) {
-      .ri <- .byIdSol[[as.character((.c - 1L) * nsub + i)]]
-      if (is.null(.ri)) return(NULL)
-      .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]; no <- length(.keep)
-      if (no != length(obsTimes[[i]])) return(NULL)
-      a <- matrix(0, no, nd); a[, .cm$fDirIdx] <- .M1[.keep, , drop = FALSE]; A <- array(0, c(no, nd, nd))
-      for (r in seq_len(np2)) { .v <- .M2[.keep, r]; A[, .cm$iiF[r], .cm$jjF[r]] <- .v; A[, .cm$jjF[r], .cm$iiF[r]] <- .v }
-      list(a = a, A = A)
-    }))
-  }, error = function(e) NULL)
-}
-
-#' Batched multi-configuration solve of the eta-only 2nd-order model `innerHess2` (built for
-#' the objective's exact Hessian) for the ll() log-det gradient perturbations.  Same
-#' pseudo-subject stacking as [.foceiAnalyticSolveConfigsLL] but reads the eta-eta second
-#' derivative `rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j` (i<=j) -- exactly the eta-eta A
-#' block `.Hblock` needs -- from a model with far fewer 2nd-order state-sensitivity compartments
-#' (no non-mu theta directions).  IMPORTANT: `innerHess2` is the (inner) FOCEi model, so its
-#' parameters use the BRACKET naming `ETA[k]`/`THETA[k]` (not the augmented model's `ETA_k_`);
-#' set them accordingly or the solve silently defaults the etas.  Perturbed thetas/covariate
-#' coefficients enter as ordinary parameters.  Returns a list (per config) of per-subject
-#' `list(A)` (`A` is neta x neta), or `NULL` on failure.
-#' @noRd
-.foceiAnalyticHess2ConfigsLL <- function(mod, cfgTh, cfgEbes, ids, data, obsTimes, tol, neta, cores = 0L) {
-  tryCatch({
-    nc <- length(cfgEbes); nsub <- length(obsTimes)
-    subIdx <- match(as.character(data$ID), as.character(ids))
-    if (anyNA(subIdx)) return(NULL)
-    pars <- do.call(rbind, lapply(seq_len(nc), function(.c) {
-      p <- data.frame(ID = (.c - 1L) * nsub + seq_len(nsub), check.names = FALSE)
-      for (k in seq_len(neta)) p[[paste0("ETA[", k, "]")]] <- cfgEbes[[.c]][, k]
-      .tv <- cfgTh[[.c]]                                   # named THETA_1_.. in ntheta order
-      for (k in seq_along(.tv)) p[[paste0("THETA[", k, "]")]] <- .tv[[k]]
-      p
-    }))
-    ev <- do.call(rbind, lapply(seq_len(nc), function(.c) { d <- data; d$ID <- (.c - 1L) * nsub + subIdx; d }))
-    .ij <- do.call(rbind, lapply(seq_len(neta), function(j) t(vapply(seq_len(j), function(i) c(i, j), integer(2)))))
-    .cols <- paste0("rx__d2pred_", .ij[, 1], "_", .ij[, 2], "__")
-    # DDE: force pure dop853 (dense, no Jacobian) for a delay model, matching the outer solve.
-    .ddeArgs <- if (isTRUE(rxode2::rxModelVars(mod)$flags[["hasDelay"]] == 1L))
-      list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
-    sol <- withCallingHandlers(
-      as.data.frame(do.call(rxode2::rxSolve, c(list(mod, params = pars, events = ev, cores = cores,
-        returnType = "data.frame", atol = tol[1], rtol = tol[length(tol)], addDosing = FALSE), .ddeArgs))),
-      warning = function(w) invokeRestart("muffleWarning"))
-    if (!all(.cols %in% names(sol))) return(NULL)
-    M <- as.matrix(sol[, .cols, drop = FALSE])
-    .tm <- sol$time; .idc <- if ("id" %in% names(sol)) sol$id else sol$ID
-    .byIdSol <- split(seq_len(nrow(sol)), as.character(.idc))
-    lapply(seq_len(nc), function(.c) lapply(seq_len(nsub), function(i) {
-      .ri <- .byIdSol[[as.character((.c - 1L) * nsub + i)]]
-      if (is.null(.ri)) return(NULL)
-      .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]; no <- length(.keep)
-      if (no != length(obsTimes[[i]])) return(NULL)
-      A <- array(0, c(no, neta, neta))
-      for (r in seq_len(nrow(.ij))) { .v <- M[.keep, r]; A[, .ij[r, 1], .ij[r, 2]] <- .v; A[, .ij[r, 2], .ij[r, 1]] <- .v }
-      list(A = A)
-    }))
-  }, error = function(e) NULL)
-}
-
-#' Common scope gates + error/direction/omega setup shared by the live and
-#' post-fit gradient paths.  Returns a list of the assembled pieces, or `NULL`
-#' (out of scope).  `thVals` is the named converged theta vector.
-#' @noRd
-#' Is this UI a mixture model?
-#'
-#' The analytic outer gradient has no treatment for mixtures yet: the objective is a
-#' probability-WEIGHTED sum of component likelihoods, so the gradient needs the
-#' weighted per-component contributions AND the derivative of the weights.  Neither
-#' "component 0" nor "the winning component" is correct.  Excluded centrally so every
-#' route is covered -- foceiControl(fast=TRUE) downgrades in focei.R, but est="vae"
-#' nonMuTheta="grad" and a direct post-fit .foceiGradAnalyticCalc() reach the analytic
-#' path without passing through that downgrade.
-#' @param ui model UI
-#' @return TRUE when the model has mixture thetas
-#' @noRd
 .foceiAnalyticIsMixture <- function(ui) {
   isTRUE(tryCatch(length(ui$thetaMixIndex) > 0L, error = function(e) FALSE))
 }
@@ -1366,7 +710,7 @@
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   # ll()/generalized likelihood (needOptimHess -> interaction=0, EXACT inner
   # Hessian): rx_pred_ is the log-density, so skip the Gaussian ErrFull and set up
-  # the direct-log-density core (.foceiAnalyticGradCoreLL).
+  # the direct-log-density core (gradPooledCoreLL in C++).
   if (.foceiLLGradInScope(ui, caller)) {
     .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
     .dir <- .foceiOuterDirsLL(ui); if (is.null(.dir)) return(NULL)
@@ -1426,8 +770,9 @@
 #' implementation of it: that distinction is the whole point, because a test that
 #' validates a second implementation proves nothing about the code the fit runs.
 #'
-#' `NULL` when the fit is out of analytic scope, which is the same signal
-#' `foceiControl(fast=TRUE)` acts on when it falls back to finite differences.
+#' `NULL` when the fit is out of analytic scope -- the same signal
+#' `foceiControl(fast=TRUE)` acts on when it falls back to finite differences -- and
+#' also when the fit was not run with `fast=TRUE` at all.
 #' @param fit nlmixr2 fit object
 #' @return named natural-scale gradient (structural thetas, sigmas, om.chol), or `NULL`
 #' @noRd
@@ -1441,8 +786,10 @@
     .control$maxOuterIterations <- 0L      # no outer step: the gradient is at THIS theta
     .control$calcTables <- FALSE
     .control$covMethod <- 0L               # no covariance step
-    .control$fast <- TRUE                  # ...which is what makes the gradient run at all
     .control$skipCov <- fit$skipCov
+    # `fast` is deliberately NOT forced on: this reports what the analytic gradient does
+    # for THIS fit as configured, so a fast=FALSE fit correctly yields NULL rather than a
+    # gradient it never used.
     # Re-run under the fit's OWN est, not est="none": the gradient SHAPE is the
     # estimation method (FOCE freezes the residual variance, AGQ adds quadrature), and
     # est="none" would silently evaluate every fit as plain FOCEI.
@@ -1480,87 +827,6 @@
   }, error = function(e) NULL)
 }
 
-#' Post-fit analytic natural-scale gradient for a fitted object (validation /
-#' standalone).  Mirrors `.foceiCovAnalyticCalc`'s gathering.
-#' @noRd
-.foceiGradAnalyticCalc <- function(fit) {
-  tryCatch({
-    ui <- fit$finalUi
-    Om <- fit$omega
-    ini <- ui$iniDf
-    thRows <- ini[!is.na(ini$ntheta), , drop = FALSE]
-    thRows <- thRows[order(thRows$ntheta), , drop = FALSE]
-    .thv <- fit$theta[thRows$name]; if (anyNA(.thv)) .thv <- thRows$est
-    thVals <- setNames(as.numeric(.thv), thRows$name)
-    st <- .foceiAnalyticGradSetup(ui, thVals, Om)
-    if (is.null(st)) return(NULL)
-    th <- setNames(as.numeric(thVals), paste0("THETA_", seq_along(thVals), "_"))
-    ebes <- as.matrix(fit$eta[, st$etaNames, drop = FALSE])
-    # censored obs: FOCEI (f,R) grad kernel handles them (.foceiAnalyticGradCore gates
-    # FOCE-censored to FD internally); no blanket fallback here.
-    .r <- .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
-                                 st$dOiEst, st$tr28, st$omNames, .foceiGradSolveTolOr(ui),
-                                 interaction = st$interaction, foceType = st$foceType,
-                                 nAGQ = st$nAGQ)
-    if (is.null(.r)) return(NULL)
-    .r$g                                              # named natural-scale gradient (validation/tests)
-  }, error = function(e) NULL)
-}
-
-#' Live-fit analytic natural-scale gradient from the C++ callback env `e`.
-#' @noRd
-.foceiAnalyticGradFocei <- function(e) {
-  tryCatch({
-    ui <- get("ui", e)
-    Om <- get("omega", e)
-    thNames <- get("thetaNames", e)
-    ## live gradient calls: the C++ hook (analyticOuterGrad) refreshes
-    ## .gradTheta/omega/etaObf into the env each call -- the theta data.frame
-    ## (and omega/etaObf) are otherwise only written into the env at finalize
-    thVals <- if (exists(".gradTheta", e, inherits = FALSE)) {
-      get(".gradTheta", e)
-    } else {
-      get("theta", e)$theta
-    }
-    names(thVals) <- thNames
-    st <- .foceiAnalyticGradSetup(ui, thVals, Om, e)
-    if (is.null(st)) return(NULL)
-    th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
-    etaObf <- get("etaObf", e)
-    ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(st$neta), "]"), drop = FALSE])
-    data <- get("dataSav", e)
-    # censored obs handled in .foceiAnalyticGradCore (FOCE-censored gates to FD there)
-    # The augmented model is the persistent `..outer` sibling of the inner model.
-    # Prefer the copy built at model-setup time and disk-cached in foceiModel$outer
-    # (reconstruct am from the top-level compiled model + outerMeta); fall back to
-    # building it via rxUiGet.foceiOuter.  Cached on the fit env either way.
-    am <- if (exists(".foceiGradAug", e, inherits = FALSE)) get(".foceiGradAug", e) else NULL
-    if (is.null(am)) {
-      .fm <- tryCatch(ui$foceiModel, error = function(e) NULL)
-      if (!is.null(.fm) && inherits(.fm$outer, "rxode2") && !is.null(.fm$outerMeta)) {
-        am <- c(list(augMod = .fm$outer), .fm$outerMeta)
-      } else {
-        am <- ui$foceiOuter
-      }
-      # cache a failed build too (FALSE sentinel) so an out-of-scope model does not
-      # re-attempt the symengine aug build on every gradient call
-      if (!(!is.null(am) && inherits(am$augMod, "rxode2"))) am <- FALSE
-      assign(".foceiGradAug", am, envir = e)
-    }
-    if (isFALSE(am)) return(NULL)                    # stay on the FD gradient
-    .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
-                           st$dOiEst, st$tr28, st$omNames, .foceiGradSolveTolOr(ui),
-                           interaction = st$interaction, foceType = st$foceType,
-                           startedEnv = e, am = am, nAGQ = st$nAGQ)
-  }, error = function(e) NULL)
-}
-
-#' Which estimation method is asking for the analytic outer gradient:
-#' `"focei"` (`foceiControl(fast=TRUE)`), `"vae"`
-#' (`vaeControl(nonMuTheta="grad")`), or `NA` when nobody asked.  The two callers
-#' consume the gradient differently, so a couple of scope gates are per-caller
-#' (see `.analyticGradAllowsBoundedTr`); everything else is shared.
-#' @noRd
 .analyticGradCaller <- function(ui) {
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE)))) return("focei")
   if (identical(as.character(rxode2::rxGetControl(ui, "nonMuTheta", "")), "grad")) return("vae")
@@ -1590,7 +856,7 @@
 #' Two admissible shapes, the same pair `.foceiAnalyticGradSetup` dispatches on:
 #' a conditionally Gaussian endpoint (the `(f,R)` direction set) or a single
 #' non-Gaussian `ll()`/generalized endpoint (the direct-log-density set).  The
-#' VAE consumes either through the SAME `.foceiAnalyticGradCore` entry, which
+#' VAE consumes either through the SAME C++ gradient core, which
 #' routes on `ef$isLL`.
 #' @noRd
 .vaeGradInScope <- function(ui) {
@@ -1620,7 +886,7 @@
 #' Is a fit in scope for the ll()/generalized-likelihood analytic outer gradient?
 #' The ll() objective uses the EXACT inner Hessian (needOptimHess), so `rx_pred_`
 #' is the per-observation log-density and the gradient is assembled by
-#' `.foceiAnalyticGradCoreLL` (differentiating the log-density directly) rather than
+#' the log-density core (differentiating it directly) rather than
 #' the Gaussian (f,R) path.  Phase 1 scope: a single non-Gaussian endpoint, no
 #' linCmt/bounded transform/IOV/FO, at least one eta.  (Multi-endpoint, censoring,
 #' and nAGQ are handled by falling back to the finite-difference gradient.)
@@ -1633,7 +899,15 @@
   tryCatch({
     if (!.hasRxSens()) return(FALSE)
     .pd <- ui$predDfFocei
-    if (is.null(.pd) || nrow(.pd) != 1L) return(FALSE)                 # single endpoint (phase 1)
+    if (is.null(.pd) || nrow(.pd) != 1L) return(FALSE)
+    ## Single endpoint.  Multi-endpoint ll() was TRIED and reverted: lifting this gate
+    ## yields a gradient that runs (nAnalyticGradDirect > 0, "grad: analytic") but does
+    ## NOT verify -- on a 2-endpoint warfarin ll() model, analytic vs central differences
+    ## was off by 7.6x on tcl and ~370x on add.pd.  So the mechanism works and the
+    ## mathematics does not; the per-endpoint log-density contributions are evidently not
+    ## being combined the way the single-endpoint core assumes.  Unlike the GAUSSIAN
+    ## multi-endpoint case (which the R route already served, and which the pooled route
+    ## reproduces bit-identically), there is no shipping reference here to fall back on.
     if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) return(FALSE)  # Gaussian -> (f,R) path
     # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
     # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2
@@ -1770,48 +1044,3 @@ attr(rxUiGet.foceiOuterNode, "rstudio") <- emptyenv()
   thNames[c(.g, .ct) + 1L]
 }
 
-#' Analytic outer gradient of the FOCE/FOCEI objective (Almquist 2015 Eq 23).
-#'
-#' Called from C++ (`analyticOuterGrad`) when `foceiControl(fast=TRUE)`.  The fit
-#' environment `e` carries the current theta/eta state; the C++ caller has already
-#' evaluated the objective at the current theta so the inner solutions (eta*) are
-#' current.
-#'
-#' @param e focei fit environment
-#' @return numeric gradient vector (length npars, model-theta scale), or `NULL`
-#'   to fall back to the finite-difference gradient
-#' @noRd
-.foceiCalcGradAnalytic <- function(e) {
-  tryCatch({
-    .r <- .foceiAnalyticGradFocei(e)
-    if (is.null(.r) || is.null(.r$g) || !all(is.finite(.r$g))) return(NULL)
-    g <- .r$g; gn <- names(g)
-    # op_focei parameter order is fullTheta = [non-fixed thetas by ntheta order |
-    # omega Cholesky params] (inner.cpp fullTheta layout).  Map the named
-    # natural-scale gradient onto that order; the C++ hook stops on any length
-    # mismatch (a mapping bug must never silently degrade to FD).
-    # Mu-referenced (lin/irls) fits profile the mu-group thetas out of the outer
-    # free-parameter set (inner.cpp isMuGroupSkip); at the profiled optimum the
-    # envelope theorem makes the free-parameter partials the profiled gradient,
-    # so those thetas are simply dropped from the mapping.
-    thNames <- get("thetaNames", e)
-    .muSkip <- .foceiMuSkipThetaNames(get("ui", e), thNames)
-    thOrder <- thNames[thNames %in% gn & !(thNames %in% .muSkip)] # outer-free structural+sigma thetas, in order
-    omIdx <- grep("^om\\.chol\\.", gn)
-    parOrder <- c(match(thOrder, gn), omIdx)            # gradient/etaP column order -> npars order
-    gvec <- g[parOrder]
-    if (anyNA(gvec) || !all(is.finite(gvec))) return(NULL)
-    # Stash the per-subject d eta*/d p (etaP), columns reordered to the npars order,
-    # for the C++ Eq-48 extrapolation (mceta=-2/-1).  neta x npars x nsub array,
-    # aligned to etaObf$ID order (same as the fit's per-subject solve order).
-    .etaP <- .r$etaP
-    if (length(.etaP) > 0L && !any(vapply(.etaP, is.null, logical(1)))) {
-      .neta <- nrow(.etaP[[1]]); .np <- length(parOrder); .ns <- length(.etaP)
-      .arr <- array(NA_real_, c(.neta, .np, .ns))
-      for (i in seq_len(.ns)) .arr[, , i] <- .etaP[[i]][, parOrder, drop = FALSE]
-      if (all(is.finite(.arr))) assign(".foceiGradEtaP", .arr, envir = e)
-      else if (exists(".foceiGradEtaP", e, inherits = FALSE)) rm(".foceiGradEtaP", envir = e)
-    }
-    as.numeric(gvec)
-  }, error = function(e) NULL)
-}
