@@ -598,6 +598,8 @@ rxUiGet.nlsRxModel <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  ## no splitBolus() here -- this model solves the pre-split events, so
+  ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(predOnly =.nlmixr2estRxode2(paste(c(rxUiGet.nlsParams(x, ...), .cmt,
                                          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n"),
                                    "rxNlsPredOnly"),
@@ -666,11 +668,15 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
 #' Finalize nls rxode2 based on symengine saved info
 #'
 #' @param .s Symengine/rxode2 object
+#' @param interpLines covariate interpolation lines (`locf()`/`nocb()`/...) to
+#'   emit; symengine drops them, so they have to be added back here
 #' @return Nothing
 #' @author Matthew L Fidler
 #' @noRd
 .rxFinalizeNls <- function(.s, sum.prod = FALSE,
-                           optExpression = TRUE, cores = 0L) {
+                           optExpression = TRUE, cores = 0L,
+                           interpLines = "") {
+  interpLines <- interpLines[interpLines != ""]
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -688,6 +694,7 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
   .s$..nlsS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    interpLines,
     .ddt,
     .sens,
     .yj,
@@ -705,6 +712,7 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
   .s$..pred.nolhs <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    interpLines,
     .lhs0,
     .ddt,
     .yj,
@@ -737,7 +745,8 @@ rxUiGet.nlsEnv <- function(x, ...) {
   .s$params <- rxUiGet.nlsParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .rxFinalizeNls(.s, .sumProd, .optExpression, .optExprCores(x[[1]]))
+  .rxFinalizeNls(.s, .sumProd, .optExpression, .optExprCores(x[[1]]),
+                 interpLines = rxUiGet.interpLinesStr(x, ...))
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)

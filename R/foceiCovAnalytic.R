@@ -1375,6 +1375,8 @@
     .param <- .uiGetThetaEtaParams(ui, TRUE)          # params(THETA[1], .., ETA[1], .., covs)
     .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
     .modTxt <- paste(.param, .modTxt, sep = "\n")
+    # no splitBolus() in the augmented model -- it translates the already-split
+    # dataSav, so declaring it would split the doses twice (.foceiPreProcessData)
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread

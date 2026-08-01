@@ -114,8 +114,14 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 .impmapThetaSensModel <- function(ui) {
   .s <- rxUiGet.impmapThetaSens(list(ui))
   if (is.null(.s)) return(NULL)
+  ## Interpolation is carried like the inner model does; splitBolus() is not --
+  ## this model solves the pre-split events, so declaring it would split the
+  ## doses twice (see .foceiPreProcessData())
+  .cmt <- ui$foceiCmtPreModel
+  .interp <- ui$interpLinesStr
+  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
   nlmixr2global$toRxParam <-
-    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", ui$foceiCmtPreModel, "\n")
+    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
   # with another build of the same text (nlmixr2/rxode2#1171).  eventSens is left at
