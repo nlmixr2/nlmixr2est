@@ -30,6 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -305,6 +306,15 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{foceEbeTol}{Convergence tolerance on the score of the FOCE
+frozen-variance EBE re-solve, which the analytic outer gradient
+(\code{fast=TRUE}, \code{interaction=FALSE}) needs because FOCE's mode is
+not the inner problem's mode.  \code{NULL} (default) derives it from
+\code{sigdig} as \code{10^-(sigdig+6)}, matching every other tolerance in
+this control; the first iteration uses the looser \code{10^-sigdig} so an
+already-stationary eta is returned untouched.  Set it explicitly to test
+whether a fit's finite-difference fallbacks are tolerance-driven.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}

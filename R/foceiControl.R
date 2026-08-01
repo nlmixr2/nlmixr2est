@@ -128,6 +128,15 @@
 #'     cannot be corrected to be non-positive definite try estimating
 #'     the Hessian on the unscaled parameter space.
 #'
+#' @param foceEbeTol Convergence tolerance on the score of the FOCE
+#'     frozen-variance EBE re-solve, which the analytic outer gradient
+#'     (\code{fast=TRUE}, \code{interaction=FALSE}) needs because FOCE's mode is
+#'     not the inner problem's mode.  \code{NULL} (default) derives it from
+#'     \code{sigdig} as \code{10^-(sigdig+6)}, matching every other tolerance in
+#'     this control; the first iteration uses the looser \code{10^-sigdig} so an
+#'     already-stationary eta is returned untouched.  Set it explicitly to test
+#'     whether a fit's finite-difference fallbacks are tolerance-driven.
+#'
 #' @param hessEps is a double value representing the epsilon for the
 #'   Hessian calculation. This is used for the R matrix calculation.
 #'
@@ -738,6 +747,7 @@ foceiControl <- function(sigdig = 3, #
                          fast = FALSE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+                         foceEbeTol = NULL, #
                          hessEps =(.Machine$double.eps)^(1/3),
                          #hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
                          hessEpsLlik =(.Machine$double.eps)^(1/3),
@@ -1002,6 +1012,13 @@ foceiControl <- function(sigdig = 3, #
   }
   optGillF <- as.integer(optGillF)
 
+  # FOCE EBE Newton tolerance.  Derived from sigdig for the same reason every other
+  # tolerance here is: a frozen constant would describe a different precision than the
+  # one the user asked for.  At the default sigdig=3 this reproduces the historic 1e-9.
+  if (is.null(foceEbeTol)) {
+    foceEbeTol <- if (is.null(sigdig)) 1e-9 else 10^-(as.numeric(sigdig) + 6)
+  }
+  checkmate::assertNumeric(foceEbeTol, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
@@ -1411,6 +1428,7 @@ foceiControl <- function(sigdig = 3, #
     foce = foce,
     foceType = foceType,
     cholSEtol = as.double(cholSEtol),
+    foceEbeTol = as.double(foceEbeTol),
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType=optimHessType,

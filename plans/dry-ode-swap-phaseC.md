@@ -1669,3 +1669,37 @@ behaviour is not.
 
 Every one of these declines degrades cleanly to the finite-difference gradient, so this
 is coverage and speed, not correctness.
+
+### foceEbeTol: the Newton tolerance from sigdig, and what sweeping it proves
+
+The FOCE frozen-R0 Newton had a hard-coded conv 1e-9 / skip 1e-3 sitting next to a
+`sigdig` that drives every other tolerance in the fit.  Now derived:
+`conv = 10^-(sigdig+6)`, `skip = 10^-sigdig`, exposed as `foceiControl(foceEbeTol=)`.
+At the default sigdig = 3 that reproduces the historic pair exactly, so the change is
+behaviour-neutral until a user moves sigdig.
+
+Sweeping it settles the decline question.  theo_sd, FOCE nonmem, 15 outer iterations;
+reference objf: FOCE fast=FALSE 118.1402, FOCEI 117.2569.
+
+    foceEbeTol   objf        direct  fd   newtonMaxit
+    1e-9         118.3220    8       9    9
+    1e-4         117.8059    12      7    7
+    1e-2         117.2552    8       0    0
+
+Two things fall out, the second more important than the first:
+
+* Loosening DOES reduce declines -- a prediction that it would not (because the worst
+  |S| stalls at 5.5e-3) was wrong.  The stall is not uniform: most subjects converge
+  somewhere between 1e-9 and 1e-4 and only the worst sits at 5e-3.
+
+* Loosening is nonetheless NOT a fix, it is a corruption.  Watch the objf walk from the
+  FOCE reference to the FOCEI one.  At 1e-2 the tolerance exceeds |S| at the INCOMING
+  eta, so the Newton accepts the inner problem's mode immediately and never solves the
+  frozen-R0 mode at all.  Zero declines because it stopped doing the work.  That is
+  precisely the failure the skip test is only meant to permit for a genuinely stationary
+  subject.
+
+So tighter is more correct and the declines are the honest price -- each falls back to
+finite differences, which is also correct.  This is why the fix is step control
+(backtracking on |S| / a trust region) and not a looser target: a looser target buys a
+faster fit that answers the wrong question.

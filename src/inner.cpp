@@ -4641,6 +4641,11 @@ struct FoceiGradPooledSetup : OuterCols {
   // gates test -- do not read a 0 here as "unset".
   int nAGQ = 1;
   bool dependsF0 = false; // FOCE "nonmem" needs the extra eta=0 solve only when set
+  // FOCE frozen-R0 Newton tolerances, derived from sigdig by foceiControl() rather than
+  // frozen here: a constant would describe a precision the user did not ask for.  At the
+  // default sigdig = 3 these are the historic 1e-9 / 1e-3.
+  double ebeTol = 1e-9;       // score convergence
+  double ebeSkipTol = 1e-3;   // looser first-iteration test: already stationary?
   bool canVanish = false; // f can pass through zero -- guard the solve before using it
 
   // ll() perturbs a non-mu theta by hFD, which needs that theta's ntheta position
@@ -4713,6 +4718,14 @@ static void loadGradPooledSetup(Environment e) {
   if (st.containsElementNamed("foceType"))   G.foceType = as<int>(st["foceType"]);
   if (st.containsElementNamed("nAGQ"))       G.nAGQ = as<int>(st["nAGQ"]);
   if (st.containsElementNamed("dependsF0"))  G.dependsF0 = as<bool>(st["dependsF0"]);
+  if (st.containsElementNamed("ebeTol")) {
+    double v = as<double>(st["ebeTol"]);
+    if (R_finite(v) && v > 0) G.ebeTol = v;
+  }
+  if (st.containsElementNamed("ebeSkipTol")) {
+    double v = as<double>(st["ebeSkipTol"]);
+    if (R_finite(v) && v > 0) G.ebeSkipTol = v;
+  }
   if (st.containsElementNamed("canVanish"))  G.canVanish = as<bool>(st["canVanish"]);
   if (st.containsElementNamed("thPos"))      G.thPos = _ivFrom(st["thPos"]);
   if (st.containsElementNamed("colsNode") && !Rf_isNull(st["colsNode"])) {
@@ -12350,7 +12363,9 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
 // One pooled solve per iteration over ALL subjects, as in R.  Iteration 1 tests
 // stationarity at the incoming eta with a LOOSE tolerance (skipTol) so an eta that is
 // already stationary -- the FOCEI/additive case -- returns untouched; later iterations
-// use convTol.  Returns false if any subject fails to converge, which sends the whole
+// use convTol.  Both come from sigdig via foceiControl(foceEbeTol=), so this Newton is
+// held to the same precision as every other tolerance in the fit.  Returns false if any
+// subject fails to converge, which sends the whole
 // gradient to the ordinary finite-difference route rather than reporting a mode that was
 // never reached.
 static bool foceEbeNewton(const FoceiGradPooledSetup &G,
@@ -12362,7 +12377,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   // subject's |S| went 0.005498 -> 0.004977 over 170 extra iterations, so the failures
   // are a stalled step, not an iteration budget.  See the plan for the evidence.
   const int maxit = 30;
-  const double skipTol = 1e-3, convTol = 1e-9;
+  const double skipTol = G.ebeSkipTol, convTol = G.ebeTol;
   const bool fp = (G.foceType == 1) || (E0all == NULL);
   const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
   etaOut = ebes;
