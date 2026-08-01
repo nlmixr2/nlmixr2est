@@ -2148,3 +2148,43 @@ changing the forcing without one would be untestable against the phase's own gat
 
 Mixtures (case a) are a separate problem -- racing per-component solves on shared rows --
 and are not addressed by the `_innerParallel` bracketing.
+
+
+## FOCE Newton step control (#836): implemented, does NOT fix it, and refutes the stated cause
+
+Backtracking line search added to `foceEbeNewton`: per subject, if `|S|` did not decrease,
+undo the last step and reapply it at half length (Newton DIRECTION kept, magnitude cut),
+up to 8 halvings.  Arranged to fit the batched solve -- each iteration is one population
+solve and a subject either accepts a fresh step or backtracks its previous one, so a
+backtrack adds no solve of its own.
+
+    sigdig   analytic gradient   newton counters
+    3        still declines      maxit 1, backtrack 25
+    4        works               backtrack 0
+    6        works               backtrack 0
+
+**This refutes the overshoot hypothesis** that was written into this plan and into #836.
+If the step overshot, halving would have found an improving one; 25 halvings never reduced
+`|S|`.
+
+REAL cause: `|S|` is assembled from the ODE solve, so it cannot be computed more precisely
+than the solve permits -- about 5e-3 at `rtol = 1e-3`, which is exactly the leftover `|S|`
+originally reported -- while `convTol` asks for 1e-9.  Six orders; no step control closes
+that.
+
+Also correcting an earlier entry in this plan: the noise-floor explanation was dismissed on
+the grounds that a stalled score "would leave |S| ~ 1e-6".  That was wrong.  The floor is
+set by the SOLVE precision, not by the convergence tolerance, so 5.5e-3 at rtol = 1e-3 is
+precisely what a noise floor looks like -- the number cited as refutation was the
+confirmation.
+
+Kept anyway, and the reason is bounded: `backtrack == 0` at sigdig 4 and 6 means no step
+was ever modified where the Newton already worked, so it is inert there by construction;
+it is the standard safeguard against a genuinely overshooting Newton; and it is what
+turned an opaque failure into a diagnosed one.  It is NOT a fix -- `est="foce"` still uses
+finite differences at the default sigdig, and the six `sigdig = 4` test pins stay.
+
+Candidate real fixes are listed in #836: a convergence test that respects achievable
+precision, a target tied to the solve (NOT the reverted `10^-(sigdig+6)` coupling, which
+moved the target opposite to the precision supporting it), or a tighter tolerance for the
+EBE re-solve alone.

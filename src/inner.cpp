@@ -304,6 +304,7 @@ struct focei_options {
   int nNewtonSolve = 0;     // an augmented solve inside the Newton failed
   int nNewtonSingular = 0;  // Hf could not be factored, or S/Hf went non-finite
   double newtonWorstS = 0;  // largest |S| left on the table by a maxit failure
+  int nNewtonBacktrack = 0; // damped (halved) Newton steps taken
   std::atomic<int> outerStickyTol{0};
   // per-subject retry counters, sized at setup; the outer solve is parallel over
   // subjects, so this must not be one shared int
@@ -6937,6 +6938,7 @@ Environment foceiOuter(Environment e){
   op_focei.nNewtonSolve=0;
   op_focei.nNewtonSingular=0;
   op_focei.newtonWorstS=0;
+  op_focei.nNewtonBacktrack=0;
   op_focei.firstDirectGrad.clear();
   op_focei.firstDirectTheta.clear();
   op_focei.firstDirectGradSet=0;
@@ -9524,7 +9526,8 @@ void foceiFinalizeTables(Environment e){
         e["nNewtonFail"] = IntegerVector::create(
           _["maxit"] = op_focei.nNewtonMaxit,
           _["solve"] = op_focei.nNewtonSolve,
-          _["singular"] = op_focei.nNewtonSingular);
+          _["singular"] = op_focei.nNewtonSingular,
+          _["backtrack"] = op_focei.nNewtonBacktrack);
         e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
@@ -12358,16 +12361,35 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
                           const arma::mat &Oi, const std::vector<VaeOuterE> *E0all,
                           int cores, rx_solving_options *op, int nsub, int neta,
                           arma::mat &etaOut) {
-  // 30, as in the R original.  Measured: raising it to 200 does not help -- a failing
-  // subject's |S| went 0.005498 -> 0.004977 over 170 extra iterations, so the failures
-  // are a stalled step, not an iteration budget.  See the plan for the evidence.
-  const int maxit = 30;
+  // Backtracking line search on |S|, arranged to fit the BATCHED solve: each iteration is
+  // one population solve, and a subject either accepts a fresh Newton step or halves the
+  // one it last took, so a backtrack costs no extra solve of its own.
+  //
+  // Read what this does and does NOT buy (nlmixr2/nlmixr2est#836).  It is a standard
+  // safeguard against an overshooting Newton and it is provably inert when not needed
+  // (backtrack == 0 at sigdig 4 and 6, i.e. no step was ever modified).  It does NOT make
+  // FOCE converge at the default sigdig = 3, and the experiment says why: 25 halvings
+  // there still fail to reduce |S|.  An overshooting step would have been fixed by
+  // halving.  What is actually happening is that |S| is computed from the ODE solve, so
+  // it cannot be driven below the solve's own noise -- about 5e-3 at rtol = 1e-3 -- while
+  // convTol asks for 1e-9.  No step control can close that gap; only a tighter solve
+  // (sigdig >= 4) or a convergence test that respects the achievable precision can.
+  const int maxit = 100;        // total iterations; backtracks consume them too
+  const int maxBack = 8;        // halvings per step, i.e. down to alpha = 1/256
   const double skipTol = G.ebeSkipTol, convTol = G.ebeTol;
   const bool fp = (G.foceType == 1) || (E0all == NULL);
   const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
   etaOut = ebes;
   std::vector<char> active((size_t)nsub, 1);
   std::vector<VaeOuterE> Es((size_t)nsub);
+  // Per-subject line-search state.  prevS is |S| at the eta BEFORE the step currently
+  // being judged; lastStep is that step's full (undamped) direction and alpha the
+  // fraction of it presently applied.
+  std::vector<double> prevS((size_t)nsub, R_PosInf);
+  std::vector<arma::vec> lastStep((size_t)nsub);
+  std::vector<double> alpha((size_t)nsub, 1.0);
+  std::vector<int> nback((size_t)nsub, 0);
+  std::vector<char> haveStep((size_t)nsub, 0);
   for (int it = 0; it <= maxit; ++it) {
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, etaOut, G, cores, op, nsub, neta, Es);
     bool any = false;
@@ -12414,8 +12436,29 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
         return false;
       }
+      // Did the last step actually reduce |S|?  If not, undo it and retry at half the
+      // length; the Newton DIRECTION is kept, only its magnitude is cut.
+      if (haveStep[(size_t)i] && sMax >= prevS[(size_t)i]) {
+        if (nback[(size_t)i] >= maxBack) {         // damping exhausted: give up honestly
+          op_focei.nNewtonMaxit++;
+          if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
+          return false;
+        }
+        etaOut.row(i) += alpha[(size_t)i] * lastStep[(size_t)i].t();   // undo
+        alpha[(size_t)i] *= 0.5;
+        etaOut.row(i) -= alpha[(size_t)i] * lastStep[(size_t)i].t();   // reapply, shorter
+        nback[(size_t)i]++;
+        op_focei.nNewtonBacktrack++;
+        any = true;
+        continue;                                  // re-solve and re-judge the same step
+      }
       arma::vec step;
       if (!arma::solve(step, Hf, S)) { op_focei.nNewtonSingular++; return false; }
+      prevS[(size_t)i] = sMax;                     // reference for judging this new step
+      lastStep[(size_t)i] = step;
+      alpha[(size_t)i] = 1.0;
+      nback[(size_t)i] = 0;
+      haveStep[(size_t)i] = 1;
       etaOut.row(i) -= step.t();
       any = true;
     }
