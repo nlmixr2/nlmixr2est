@@ -825,7 +825,10 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|    Forward    |"; break;  // Forward
       case 4:  label = "    C|    Central    |"; break;  // Central
       case 5:  label = "    S|     Shi21     |"; break;  // Shi21
-      case 9:  label = "    A|    Analytic   |"; break;  // analytic gradient
+      case 9:  label = "    A|    Analytic   |"; break;  // pure analytic
+      case 10: label = "   Ar|  Analytic+rlx |"; break;  // + relaxed ODE tolerance
+      case 11: label = "   Af|  Analytic+fd  |"; break;  // + per-subject finite difference
+      case 12: label = "   Ac|  Analytic+chr |"; break;  // + Chartrand TV derivative
       default: label = "    G|    Gradient   |"; break;
       }
     } else {
@@ -835,7 +838,10 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       case 3:  label = "    F|"; break;  // Forward
       case 4:  label = "    C|"; break;  // Central
       case 5:  label = "    S|"; break;  // Shi21
-      case 9:  label = "    A|"; break;  // analytic gradient
+      case 9:  label = "    A|"; break;  // pure analytic
+      case 10: label = "   Ar|"; break;  // + relaxed ODE tolerance
+      case 11: label = "   Af|"; break;  // + per-subject finite difference
+      case 12: label = "   Ac|"; break;  // + Chartrand TV derivative
       default: label = "    G|"; break;
       }
     }
@@ -913,7 +919,10 @@ static inline RObject scaleParHisDf(scaling *scale) {
   tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                "Forward Difference", "Central Difference",
                                                "Scaled", "Unscaled", "Back-Transformed",
-                                               "Forward Sensitivity", "Analytic Gradient");
+                                               "Forward Sensitivity", "Analytic Gradient",
+                                               "Analytic Gradient (relaxed)",
+                                               "Analytic Gradient (finite difference)",
+                                               "Analytic Gradient (Chartrand)");
   tmp.attr("class") = "factor";
   ret[1] = tmp;
   arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());

@@ -2792,7 +2792,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                                     levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
                                              "Central Difference", "Scaled", "Unscaled",
                                              "Back-Transformed", "Forward Sensitivity",
-                                             "Analytic Gradient"))
+                                             "Analytic Gradient",
+                                             "Analytic Gradient (relaxed)",
+                                             "Analytic Gradient (finite difference)",
+                                             "Analytic Gradient (Chartrand)"))
     .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }

@@ -279,6 +279,24 @@ struct focei_options {
   int outerMaxOdeRecalc = 0;
   int outerStickyRecalcN = 0;
   std::atomic<int> outerReducedTol{0};
+  // Provenance of THIS analytic gradient, reset per evaluation.  The optimizer's
+  // iteration print reports A / Ar / Af / Ac from these, so a user can see that a fit's
+  // "analytic" gradient was in fact degraded, and how -- previously every one of these
+  // printed an identical "A" and the difference was invisible.
+  std::atomic<int> curAnalyticRelax{0};   // some subject's solve needed a looser tolerance
+  int curAnalyticFd = 0;                  // some subject fell back to finite differences
+  int curAnalyticChartrand = 0;           // ... and that FD used the Chartrand TV derivative
+  // Why the direct route DECLINED, counted over the fit.  A decline sends the whole
+  // gradient to finite differences, which is safe but slow, and without these the only
+  // visible symptom is a fit that is unexpectedly not analytic.
+  int nDeclineNewton = 0;   // FOCE frozen-R0 Newton did not converge
+  int nDeclineE0 = 0;       // the eta=0 (frozen R0) solve failed
+  int nDeclineOther = 0;    // everything else (pool/shape/solve/finite checks)
+  // Which way the Newton failed, so the fix is chosen from evidence rather than guessed.
+  int nNewtonMaxit = 0;     // ran out of iterations at convTol
+  int nNewtonSolve = 0;     // an augmented solve inside the Newton failed
+  int nNewtonSingular = 0;  // Hf could not be factored, or S/Hf went non-finite
+  double newtonWorstS = 0;  // largest |S| left on the table by a maxit failure
   std::atomic<int> outerStickyTol{0};
   // per-subject retry counters, sized at setup; the outer solve is parallel over
   // subjects, so this must not be one shared int
@@ -1365,7 +1383,10 @@ struct FoceiRetryHooks {
 // Outer counterparts of FoceiRetryHooks: separate latches so a fit that loosened
 // only the outer solve reports the outer knob.
 struct FoceiOuterRetryHooks {
-  void onRetry() { op_focei.outerReducedTol.store(1, std::memory_order_relaxed); }
+  void onRetry() {
+    op_focei.outerReducedTol.store(1, std::memory_order_relaxed);      // fit-wide
+    op_focei.curAnalyticRelax.store(1, std::memory_order_relaxed);     // this gradient
+  }
   void onSticky() { op_focei.outerStickyTol.store(1, std::memory_order_relaxed); }
 };
 
@@ -4726,9 +4747,19 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // to build etaObf/omega/.gradTheta as R objects, call into R, have R re-derive the
   // setup and .Call back down, then read etaP back out of the fit env -- every gradient
   // evaluation.  Anything it cannot handle simply returns false and falls through.
-  if (analyticOuterGradDirect(theta, g)) {
-    op_focei.nAnalyticGradDirect++;
-    return true;
+  op_focei.curAnalyticRelax.store(0, std::memory_order_relaxed);
+  op_focei.curAnalyticFd = 0;
+  op_focei.curAnalyticChartrand = 0;
+  {
+    int _nw = op_focei.nDeclineNewton, _n0 = op_focei.nDeclineE0;
+    if (analyticOuterGradDirect(theta, g)) {
+      op_focei.nAnalyticGradDirect++;
+      return true;
+    }
+    // Declined.  If neither of the two attributed reasons fired, it was something else.
+    if (_gradPooled.ok && op_focei.nDeclineNewton == _nw && op_focei.nDeclineE0 == _n0) {
+      op_focei.nDeclineOther++;
+    }
   }
   if (_gradPooled.ok) {
     // The setup said this fit was in scope but the evaluation failed; keep going through
@@ -6774,7 +6805,12 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   int finalize=0, i = 0;
   niterGrad.push_back(niter.back());
   if (op_focei.curAnalytic){
-    gradType.push_back(9);
+    // Most-degraded wins: Chartrand implies the FD fallback ran, which implies the
+    // analytic solve did not cover every subject.
+    if (op_focei.curAnalyticChartrand) gradType.push_back(12);
+    else if (op_focei.curAnalyticFd) gradType.push_back(11);
+    else if (op_focei.curAnalyticRelax.load(std::memory_order_relaxed)) gradType.push_back(10);
+    else gradType.push_back(9);
   } else if (op_focei.derivMethod == 0){
     if (op_focei.curGill == 1){
       gradType.push_back(1);
@@ -6941,6 +6977,13 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  op_focei.nDeclineNewton=0;
+  op_focei.nDeclineE0=0;
+  op_focei.nDeclineOther=0;
+  op_focei.nNewtonMaxit=0;
+  op_focei.nNewtonSolve=0;
+  op_focei.nNewtonSingular=0;
+  op_focei.newtonWorstS=0;
   op_focei.firstDirectGrad.clear();
   op_focei.firstDirectTheta.clear();
   op_focei.firstDirectGradSet=0;
@@ -8952,7 +8995,10 @@ void parHistData(Environment e, bool focei){
     tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                  "Forward Difference", "Central Difference",
                                                  "Scaled", "Unscaled", "Back-Transformed",
-                                                 "Forward Sensitivity", "Analytic Gradient");
+                                                 "Forward Sensitivity", "Analytic Gradient",
+                                                 "Analytic Gradient (relaxed)",
+                                                 "Analytic Gradient (finite difference)",
+                                                 "Analytic Gradient (Chartrand)");
     tmp.attr("class") = "factor";
     ret[1] = tmp;
     arma::mat cPar(vPar.size()/iterType.size(), iterType.size());
@@ -9489,6 +9535,15 @@ void foceiFinalizeTables(Environment e){
         // than only that the numbers were right (a silent fallback looks identical).
         e["nAnalyticGrad"] = IntegerVector::create(op_focei.nAnalyticGrad);
         e["nAnalyticGradDirect"] = IntegerVector::create(op_focei.nAnalyticGradDirect);
+        e["nGradDecline"] = IntegerVector::create(
+          _["newton"] = op_focei.nDeclineNewton,
+          _["e0"] = op_focei.nDeclineE0,
+          _["other"] = op_focei.nDeclineOther);
+        e["nNewtonFail"] = IntegerVector::create(
+          _["maxit"] = op_focei.nNewtonMaxit,
+          _["solve"] = op_focei.nNewtonSolve,
+          _["singular"] = op_focei.nNewtonSingular);
+        e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
                                                 op_focei.firstDirectGrad.end());
@@ -11406,69 +11461,11 @@ struct FdInnerTolGuard {
 };
 
 
-// Phase 8D2: Richardson extrapolation as a full Neville tableau, the scheme R's
-// numDeriv uses for method="Richardson".  numDeriv itself cannot be used here: this
-// runs inside the OpenMP region and R must not be called from a worker thread.
-//
-// r successive central differences at h, h/v, h/v^2, ... are combined by
-//   a[i] <- (a[i+1]*v^(2m) - a[i]) / (v^(2m) - 1)
-// which cancels the h^2, h^4, ... terms in turn, so the estimate is TUNED to the slope
-// rather than corrected one order at a time.  Defaults match numDeriv (r = 4, v = 2).
-//
-// Applied only to a parameter whose slopes contain an outlier -- that outlier is the
-// evidence that a plain central difference is inadequate for that parameter.  Costs
-// 2*r evaluations for those parameters and nothing for the rest.
-static double fdRichardson(arma::vec &theta, int id, int j, double h,
-                           int r = 4, double v = 2.0) {
-  if (!R_finite(h) || h <= 0 || r < 1) return NA_REAL;
-  double th0 = theta[j];
-  std::vector<double> a((size_t)r, NA_REAL);
-  arma::vec tp = theta, tm = theta;
-  double hh = h;
-  for (int i = 0; i < r; ++i) {
-    tp[j] = th0 + hh;   double fp = shi21LikTheta(tp, id)(0);
-    tm[j] = th0 - hh;   double fm = shi21LikTheta(tm, id)(0);
-    if (!R_finite(fp) || !R_finite(fm)) return NA_REAL;
-    a[(size_t)i] = (fp - fm) / (2.0 * hh);
-    hh /= v;
-  }
-  for (int m = 1; m < r; ++m) {
-    double w = std::pow(v, 2.0 * (double)m);
-    for (int i = 0; i < r - m; ++i) {
-      a[(size_t)i] = (a[(size_t)(i + 1)] * w - a[(size_t)i]) / (w - 1.0);
-    }
-  }
-  return R_finite(a[0]) ? a[0] : NA_REAL;
-}
-
-// Phase 8D2: Lanczos GENERALIZED DERIVATIVE -- the least-squares slope through 2m+1
-// evaluations, f'(x) ~ sum_k k*f(x+kh) / (h * sum_k k^2).
-//
-// Motivated by what the data on this objective keeps showing: it is NOISY (a profile
-// likelihood, re-optimized per evaluation), and Richardson is the wrong instrument for
-// noise -- it extrapolates toward h -> 0, where the noise lives, which is why r=4
-// (reaching h/8) measured WORSE than r=2 here (tcl ratio -3.70 vs 0.425).  A
-// generalized derivative instead FITS the slope over a spread of points, so independent
-// evaluation noise averages down as more points are used rather than being amplified.
-// Same O(h^2) truncation as a central difference, lower variance.
-//
-// m = 2 costs 4 evaluations, the same as the 2-point Richardson it replaces.
-static double fdLanczos(arma::vec &theta, int id, int j, double h, int m = 2) {
-  if (!R_finite(h) || h <= 0 || m < 1) return NA_REAL;
-  double th0 = theta[j];
-  arma::vec tk = theta;
-  double num = 0.0, den = 0.0;
-  for (int k = -m; k <= m; ++k) {
-    if (k == 0) continue;
-    tk[j] = th0 + (double)k * h;
-    double fk = shi21LikTheta(tk, id)(0);
-    if (!R_finite(fk)) return NA_REAL;
-    num += (double)k * fk;
-    den += (double)(k * k);
-  }
-  if (!(den > 0.0)) return NA_REAL;
-  return num / (h * den);
-}
+// (fdRichardson and fdLanczos lived here.  Both were stencils tried against this
+// objective and both were beaten by the Chartrand TV derivative below -- Richardson
+// extrapolates toward h -> 0, where a re-optimized profile likelihood's noise lives, and
+// the Lanczos generalized derivative still has to pick one span.  Removed once nothing
+// called them; the reasoning is kept because it is why the TV method is the one here.)
 
 // Phase 8D2: total-variation regularized differentiation, after Chartrand, "Numerical
 // Differentiation of Noisy, Nonsmooth Data" (ISRN Appl. Math. 2011, 164564).
@@ -12042,7 +12039,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       const double _alpha = -1.0;     // <=0: choose alpha from the data
       const int    _iters = 12;       // lagged-diffusivity iterations
       double dR = fdTvDeriv(theta, id, j, _span, _N, _alpha, _iters);
-      if (R_finite(dR)) out(k, j) = dR;
+      if (R_finite(dR)) { out(k, j) = dR; op_focei.curAnalyticChartrand = 1; }
     }
   }
   _fdRefEta.clear();
@@ -12361,6 +12358,9 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
                           const arma::mat &Oi, const std::vector<VaeOuterE> *E0all,
                           int cores, rx_solving_options *op, int nsub, int neta,
                           arma::mat &etaOut) {
+  // 30, as in the R original.  Measured: raising it to 200 does not help -- a failing
+  // subject's |S| went 0.005498 -> 0.004977 over 170 extra iterations, so the failures
+  // are a stalled step, not an iteration budget.  See the plan for the evidence.
   const int maxit = 30;
   const double skipTol = 1e-3, convTol = 1e-9;
   const bool fp = (G.foceType == 1) || (E0all == NULL);
@@ -12374,11 +12374,11 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
     for (int i = 0; i < nsub; ++i) {
       if (!active[(size_t)i]) continue;
       const VaeOuterE &E = Es[(size_t)i];
-      if (!E.ok) return false;                       // a failed solve here is not recoverable
+      if (!E.ok) { op_focei.nNewtonSolve++; return false; }
       const int nobs = E.nobs;
-      if (nobs <= 0) return false;
+      if (nobs <= 0) { op_focei.nNewtonSolve++; return false; }
       const arma::vec &R0v = fp ? E.R : (*E0all)[(size_t)i].R;
-      if ((int)R0v.n_elem != nobs) return false;
+      if ((int)R0v.n_elem != nobs) { op_focei.nNewtonSolve++; return false; }
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
       arma::vec yt, limt; arma::ivec cens;
       obsFromInd(ind, E, G.hasT, hasCens, hasLimit, yt, cens, limt);
@@ -12406,11 +12406,16 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
           Hf(l, m) += h;
         }
       }
-      if (!S.is_finite() || !Hf.is_finite()) return false;
-      if (arma::abs(S).max() < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
-      if (it == maxit) return false;                 // did not converge
+      if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; return false; }
+      double sMax = arma::abs(S).max();
+      if (sMax < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
+      if (it == maxit) {                             // did not converge
+        op_focei.nNewtonMaxit++;
+        if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
+        return false;
+      }
       arma::vec step;
-      if (!arma::solve(step, Hf, S)) return false;
+      if (!arma::solve(step, Hf, S)) { op_focei.nNewtonSingular++; return false; }
       etaOut.row(i) -= step.t();
       any = true;
     }
@@ -12466,10 +12471,14 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     E0s.resize((size_t)nsub);
     arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
-    for (int i = 0; i < nsub; ++i) if (!E0s[(size_t)i].ok) return false;
+    for (int i = 0; i < nsub; ++i)
+      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; return false; }
   }
   if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
-                               cores, op, nsub, neta, foceEta)) return false;
+                               cores, op, nsub, neta, foceEta)) {
+    op_focei.nDeclineNewton++;
+    return false;
+  }
   const arma::mat &ebesUse = isFoce ? foceEta : ebes;
 
   std::vector<VaeOuterE> Es((size_t)nsub);
@@ -12486,6 +12495,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     fids = IntegerVector((R_xlen_t)flagged.size());
     for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
     NumericMatrix aref(0, 0);
+    op_focei.curAnalyticFd = 1;
     fd = foceiOuterFdInd_(fids, aref);
     if (fd.nrow() != (int)flagged.size()) return false;
   }

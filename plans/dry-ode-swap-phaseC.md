@@ -1631,3 +1631,41 @@ Then back to the overall plan: Phase 7, Phase 9, Phase 10, verification sweep, P
 attempt was destroyed by a concurrent build.  Run it clean before 8F.0 so the baseline is
 known.  Nothing has been pushed since `ef8a86a7a` (13 local commits); push once 8F.0/8F.1
 are green.
+
+### 8F.3 follow-up: why FOCE declines the direct gradient (measured, not guessed)
+
+A FOCE `fast=TRUE` fit on theo_sd reports `direct 8 / fd 9` -- the direct route declines
+about half its evaluations.  The gradient is verified correct whenever it IS produced
+(4.1e-06 abs / 9.7e-07 rel against the R route at the initial estimates, against a FOCEI
+control at 1.9e-04 / 6.5e-05), so this was never a correctness question.
+
+Instrumented rather than guessed.  Decline reasons, then Newton sub-reasons:
+
+    FOCE   declines -> newton: 9  e0: 0  other: 0
+           newton   -> maxit: 9  solve: 0  singular: 0   worst |S| left 0.005498
+    FOCEI  declines -> newton: 0  e0: 0  other: 0
+
+So: every decline is the frozen-R0 Newton, and every Newton failure is iteration
+exhaustion -- not a failed solve, not an unfactorable Hf.
+
+TWO HYPOTHESES KILLED BY MEASUREMENT:
+
+* "convTol 1e-9 is below the solve's noise floor at sigdig=3 (atol 1e-6)."  Refuted: a
+  score stalled at the noise floor would leave |S| ~ 1e-6, not 5.5e-3.  Acting on this
+  would have loosened a tolerance that is not the problem.
+* "It converges, just slowly; 30 iterations is too few."  Refuted: maxit=200 leaves the
+  failure count unchanged at 9 and moves worst |S| only 0.005498 -> 0.004977.  170 extra
+  iterations bought 9%.
+
+CONCLUSION: the step is computable (singular: 0) but ineffective -- a stalled undamped
+Newton, not a budget problem.  The fix is step control (backtracking on |S|, or a trust
+region on ||step||), which costs extra batched solves per Newton iteration and so wants
+measuring before it is adopted.
+
+NOT A REGRESSION FROM THE PORT: |S| ~ 0.005 exceeds even the loose first-iteration
+skipTol of 1e-3, so R's `.foceiAnalyticFoceEbeBatch` returns NULL at these same thetas.
+FOCE fits have always fallen back to finite differences here; the counters are new, the
+behaviour is not.
+
+Every one of these declines degrades cleanly to the finite-difference gradient, so this
+is coverage and speed, not correctness.
