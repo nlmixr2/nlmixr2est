@@ -1195,8 +1195,13 @@
     rxode2::.rxJacobian(.s, c(.st, .mfDirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
+    # Gated on there being STATES to expand: a purely algebraic model (no d/dt(), e.g. a
+    # generalized ll() endpoint) legitimately has no state sensitivities, and needs none --
+    # .g1/.g2 below reduce to plain symbolic derivatives when .st is empty, which is exactly
+    # right.  Bailing on the empty expansion made every such model fall back to finite
+    # differences.
     .s1 <- rxode2::.rxSens(.s, .mfDirs)
-    if (length(.s1) == 0L) return(NULL)
+    if (length(.st) > 0L && length(.s1) == 0L) return(NULL)
     # 2nd order (model f-directions only): the expensive expansion.  order = 1 skips it
     # entirely -- no 2nd-order state-sensitivity compartments, no f2/rvar2 chains.
     .s2 <- if (order >= 2L) rxode2::.rxSens(.s, .mfDirs, .mfDirs) else character(0)
@@ -1304,7 +1309,9 @@
     # Compartments whose IC .rxSens already emitted (e.g. the DDE delay-sensitivity
     # augmentation writes the sensitivity-compartment histories/ICs itself); skip
     # those to avoid a duplicate `cmt(0)=` assignment.
-    .icDone <- trimws(sub("\\(0\\)=.*$", "", grep("\\(0\\)=", unlist(strsplit(c(.s1, .s2), "\n")), value = TRUE)))
+    # as.character(): with no ODE states .rxSens returns an empty LIST, not an empty
+    # character vector, and strsplit() rejects it ("non-character argument").
+    .icDone <- trimws(sub("\\(0\\)=.*$", "", grep("\\(0\\)=", unlist(strsplit(as.character(c(.s1, .s2)), "\n")), value = TRUE)))
     .emitIc <- function(.cmt, .expr) if (identical(.toRx(.expr), "0") || .cmt %in% .icDone) character(0)
       else paste0(.cmt, "(0)=", .toRx(.expr))
     .icL <- character(0)

@@ -1836,3 +1836,46 @@ All four shapes now compute in C++, so the R route can go.  See the Phase 6 sect
 the 8F plan for the deletion list; the risk is entirely in re-pointing the ~15 assertions
 that today validate the R implementation, so each must assert `nAnalyticGradDirect > 0`
 and not merely agree numerically.
+
+## 8F.5b -- ODE-free models get the analytic gradient too (DONE)
+
+The task recorded at the end of 8F.5 assumed the blocker for a purely algebraic model
+(no `d/dt()`, e.g. the Poisson `ll()` endpoint) was the C++ gate
+`op_focei.vaeOuterNeq <= 0`.  It was one of TWO blockers, and the smaller one.
+
+**Blocker 1 (C++, 4 sites).**  `vaeOuterNeq <= 0 || vaeOuterNlhs <= 0` -- neq is the
+augmented model's ODE STATE count, which is legitimately 0 for an algebraic model.  The
+solve exists to read lhs columns, so `nlhs` alone is the requirement.  `odeSwapPlanFor`
+already sizes the pool on "neq > 0 OR nlhs > 0" for exactly this reason.
+
+**Blocker 2 (R, the real one).**  `.foceiAnalyticAugModelDirs` never built an augmented
+model for such a fit, so there was nothing to pool in the first place:
+
+  - `if (length(.s1) == 0L) return(NULL)` treated an empty `.rxSens` expansion as "not
+    differentiable".  With no states there is nothing to expand and nothing is needed --
+    `.g1`/`.g2` reduce to plain symbolic derivatives when `.st` is empty, which is exactly
+    the right answer.  Now gated on `length(.st) > 0L`.
+  - `strsplit(c(.s1, .s2), "\n")` then threw "non-character argument": with no states
+    `.rxSens` returns an empty LIST, not an empty character vector.  Fixed with
+    `as.character()`.
+
+That second one was invisible because the whole builder body sits inside
+`tryCatch(..., error = function(e) NULL)`, so the failure presented as "out of scope"
+rather than as an error.  Finding it needed the tryCatch stripped -- worth remembering,
+since several builders on this path swallow errors the same way.
+
+Verified:
+
+    Poisson ll(), ODE-free: analytic vs CENTRAL DIFFERENCES   max rel 5.615e-07
+    Poisson ll(), ODE-free: direct C++ vs R route             max rel 3.307e-05
+    nAnalyticGradDirect 0 -> 3 for the same fit
+
+FOCEI/FOCE/AGQ/ll-ODE gradients re-checked bit-identical; both R changes are no-ops when
+states exist (`as.character` on a character vector is identity, and the `.st > 0` guard
+preserves the old bail).
+
+NOT changed, and worth knowing: the `sigdig = 3` default still leaves this model's
+fast-vs-fd theta comparison 8.9% apart (0.15% at `sigdig = 4`), and the gap is UNCHANGED
+by the gradient now being analytic -- 0.0891 before, 0.0893 after.  So it is the
+objective's own solver noise at `rtol = 1e-3`, not the gradient, and the `sigdig = 4` pin
+in test-focei-ll-fast-grad-fit.R stands on its own evidence.

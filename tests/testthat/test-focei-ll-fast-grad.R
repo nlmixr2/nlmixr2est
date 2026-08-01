@@ -36,4 +36,25 @@ nmTest({
     expect_true(is(.ll_lincmt))              # linCmt() passes the coarse gate (falls back to FD at build)
   })
 
+  test_that("the augmented sensitivity model builds for an ODE-free model", {
+    # A purely algebraic model (no d/dt()) has NO state sensitivities and needs none:
+    # d(rx_pred_)/ddir is a plain symbolic derivative.  The builder used to bail on the
+    # empty .rxSens expansion, which sent every such model to finite differences.
+    .algebraic <- function() {
+      ini({ tint <- 1.2; tslp <- 0.5; eta.int ~ 0.4; eta.slp ~ 0.2 })
+      model({ lam <- exp(tint + eta.int + (tslp + eta.slp) * x)
+              ll(cp) ~ DV * log(lam) - lam - lgamma(DV + 1) })
+    }
+    .ui <- suppressWarnings(rxode2::rxUiDecompress(rxode2::rxode2(.algebraic)))
+    expect_equal(length(rxode2::rxStateOde(.ui$loadPruneSens)), 0L)   # really has no states
+    .d <- .foceiOuterDirsLL(.ui)
+    expect_false(is.null(.d))
+    .am <- .foceiAnalyticAugModelDirs(.ui, .d$dirs)
+    expect_false(is.null(.am))
+    expect_true(inherits(.am$augMod, "rxode2"))
+    expect_equal(.am$ndir, length(.d$dirs))
+    # and the reader can map its columns -- the pooled C++ solve reads through this
+    expect_false(is.null(.vaeOuterCols(.am)))
+  })
+
 })

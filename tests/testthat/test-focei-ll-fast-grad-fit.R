@@ -71,10 +71,9 @@ nmTest({
     fT <- suppressMessages(nlmixr2(pois, sim, "focei", .ctl(TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), unname(fF$theta), tolerance = 2e-2)
-    # ODE-free: the augmented model has no ODE states, so the pooled C++ gradient is
-    # gated out (op_focei.vaeOuterNeq <= 0) and this fit runs the R/fd route.  Pinned so
-    # that lifting that gate is a deliberate change, not a silent one.
-    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L)
+    # ODE-free models pool too: the augmented model has no ODE states, but it has real
+    # lhs outputs and its sensitivities are plain symbolic derivatives.
+    expect_gt(fT$env$nAnalyticGradDirect, 0L)
   })
 
 })

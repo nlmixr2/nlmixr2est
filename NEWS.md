@@ -112,6 +112,15 @@
   and setup as R objects; besides the cost, that let R run between the augmented
   solve and the assembly, where it could disturb the shared solve pool.
 
+- `foceiControl(fast=TRUE)` fell back to finite differences for every model with
+  no `d/dt()` -- a purely algebraic `ll()`/generalized endpoint such as a Poisson
+  or logistic regression.  Such a model has no ODE state sensitivities and needs
+  none (its prediction derivatives are plain symbolic ones), but the augmented
+  sensitivity model refused to build on the empty expansion, and the pooled solve
+  additionally required a non-zero ODE state count.  Both are fixed, so these
+  models now get the analytic gradient; measured against central differences of
+  the objective, agreement is within 6e-7 relative.
+
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
   function depend on the optimizer's history rather than on `theta` alone, so
   the same `theta` could return values hundreds of objective-function units

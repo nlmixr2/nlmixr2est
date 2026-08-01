@@ -201,7 +201,11 @@ struct focei_options {
   // theta-sens model it sizes the shared pool, so vaeOuterNlhs is the width of the
   // lhs buffer we allocate OURSELVES -- calc_lhs must never write into rxode2's
   // per-thread slice, which is sized for the (narrower) inner model.
-  int vaeOuterNeq = 0;        // ODE state count of the augmented model
+  int vaeOuterNeq = 0;        // ODE state count of the augmented model.  MAY BE ZERO --
+                              // a purely algebraic model (e.g. a generalized ll() endpoint
+                              // with no d/dt()) has real lhs outputs and no ODE states, so
+                              // nlhs, not neq, is what gates the pooled solve.  odeSwapPlanFor
+                              // sizes the pool on "neq > 0 OR nlhs > 0" for the same reason.
   int vaeOuterNlhs = 0;       // lhs output count of the augmented model
 
   unsigned int neta;
@@ -12230,8 +12234,7 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   // Reset to the fit's tolerance for this solve -- see OdeFitTolGuard.
   OdeFitTolGuard _tolGuard;
-  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
-      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
   // Does the BOUND calc_lhs actually belong to the model the registry describes?
   // rxUpdateFuns resolves symbols with R_GetCCallable(lib, name), which resolves by
@@ -12559,8 +12562,7 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   if (G.nsg != 0) return false;                 // an ll() endpoint has no variance model
   if (G.nLam != 0) return false;                // nor an estimated DV-transform lambda
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
-  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
-      rxVaeOuter.calc_lhs == NULL) return false;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return false;
   if ((int)G.thPos.size() != nth || (int)G.dirTh.size() != nth) return false;
   rx = getRxSolve_();
   if (rx == NULL) return false;
@@ -12708,8 +12710,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
-  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
-      rxVaeOuter.calc_lhs == NULL) return false;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return false;
   rx = getRxSolve_();
   if (rx == NULL) return false;
   rx_solving_options *op = getSolvingOptions(rx);
@@ -13147,8 +13148,7 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
   // The fit's tolerance, reset for this solve -- there is no separate analytic
   // tolerance; see OdeFitTolGuard.
   OdeFitTolGuard _tolGuard;
-  if (op_focei.vaeOuterNeq <= 0 || op_focei.vaeOuterNlhs <= 0 ||
-      rxVaeOuter.calc_lhs == NULL) return R_NilValue;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
   if (rx == NULL) return R_NilValue;
   rx_solving_options *op = getSolvingOptions(rx);
