@@ -352,6 +352,14 @@ struct focei_options {
   // because until the R gradient route is deleted (8F.6) both are "analytic", and a
   // silent fallback to R would otherwise be indistinguishable from success.
   int nAnalyticGradDirect = 0;
+  // The FIRST direct gradient of the fit, on the NATURAL parameter scale (i.e. before
+  // dUnscaleParDx), together with the theta it was taken at.  Captured so a test can
+  // compare the direct route against the R route at the same point: run one fit with
+  // maxOuterIterations=1 and read this, and another with maxOuterIterations=0 and call
+  // .foceiGradAnalyticCalc().  Both evaluate at the initial estimates.
+  std::vector<double> firstDirectGrad;
+  std::vector<double> firstDirectTheta;
+  int firstDirectGradSet = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
   double cholSEtol;
@@ -6933,6 +6941,9 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  op_focei.firstDirectGrad.clear();
+  op_focei.firstDirectTheta.clear();
+  op_focei.firstDirectGradSet=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
   if (op_focei.maxOuterIterations > 0){
@@ -9478,6 +9489,12 @@ void foceiFinalizeTables(Environment e){
         // than only that the numbers were right (a silent fallback looks identical).
         e["nAnalyticGrad"] = IntegerVector::create(op_focei.nAnalyticGrad);
         e["nAnalyticGradDirect"] = IntegerVector::create(op_focei.nAnalyticGradDirect);
+        if (op_focei.firstDirectGradSet) {
+          e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
+                                                op_focei.firstDirectGrad.end());
+          e[".gradDirectFirstTheta"] = NumericVector(op_focei.firstDirectTheta.begin(),
+                                                     op_focei.firstDirectTheta.end());
+        }
         e["nFDGradFast"] = IntegerVector::create(op_focei.nFDGradFast);
         if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
           _details += "; grad: analytic";
@@ -12283,6 +12300,126 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   return out;
 }
 
+// One subject's observation-aligned DV, CENS and LIMIT, on the DV-transform scale the
+// augmented solve reported (E.trans), in the SAME observation order the solve filled E.f.
+//
+// The transform quadruple comes from the augmented model's lhs, NOT from getIndLambda:
+// with an estimated lambda those differ, and the sensitivities were expanded against the
+// model's own.
+static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
+                       bool hasT, bool hasCens, bool hasLimit,
+                       arma::vec &yt, arma::ivec &cens, arma::vec &limt) {
+  const int n = E.nobs;
+  yt.set_size(n);
+  if (hasCens || hasLimit) { cens.zeros(n); limt.set_size(n); limt.fill(NA_REAL); }
+  else { cens.reset(); limt.reset(); }
+  int ko = 0;
+  for (int q = 0; q < getIndNallTimes(ind) && ko < n; ++q) {
+    int kk = getIndIx(ind, q);
+    if (getIndEvid(ind, kk) != 0) continue;
+    double dv = getIndDv(ind, kk);
+    double yj = hasT ? E.trans(ko, 0) : 0.0, lam = hasT ? E.trans(ko, 1) : 1.0;
+    double lo = hasT ? E.trans(ko, 2) : 0.0, hi = hasT ? E.trans(ko, 3) : 1.0;
+    yt[ko] = hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
+    if (hasCens || hasLimit) {
+      cens[ko] = hasCens ? getIndCens(ind, kk) : 0;
+      double lim = NA_REAL;
+      if (hasLimit) {
+        lim = getIndLimit(ind, kk);
+        if (!ISNA(lim) && R_FINITE(lim) && hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
+      }
+      limt[ko] = lim;
+    }
+    ko++;
+  }
+}
+
+// FOCE EBE re-solve at the FROZEN residual variance R0 -- the C++ port of
+// .foceiAnalyticFoceEbeBatch (R/foceiCovAnalytic.R).
+//
+// Why this exists at all: FOCE freezes the variance, so the mode of ITS objective is not
+// the mode of the inner problem.  fInd->saveEta is the inner problem's eta and is NOT a
+// substitute; using it would silently evaluate the gradient off the FOCE mode.
+//
+// Newton on the interaction-free score, per subject:
+//   S  = Omega^-1 eta + sum_obs q0 * a
+//   Hf = Omega^-1     + sum_obs (q1 * a a' + q0 * A)
+// with q0 = -(y - f)/R0 and q1 = 1/R0, replaced on censored rows by the exact censored
+// partials (censNormalPartials order 2: column 0 is rho_f, column 2 is rho_ff).
+//
+// R0 is E0's R under foceType=0 "nonmem" (frozen at the eta=0 population prediction) and
+// the live E->R under "foce+" or when there is no E0 -- `fp` says which.
+//
+// One pooled solve per iteration over ALL subjects, as in R.  Iteration 1 tests
+// stationarity at the incoming eta with a LOOSE tolerance (skipTol) so an eta that is
+// already stationary -- the FOCEI/additive case -- returns untouched; later iterations
+// use convTol.  Returns false if any subject fails to converge, which sends the whole
+// gradient to the ordinary finite-difference route rather than reporting a mode that was
+// never reached.
+static bool foceEbeNewton(const FoceiGradPooledSetup &G,
+                          const std::vector<double> &thVals, const arma::mat &ebes,
+                          const arma::mat &Oi, const std::vector<VaeOuterE> *E0all,
+                          int cores, rx_solving_options *op, int nsub, int neta,
+                          arma::mat &etaOut) {
+  const int maxit = 30;
+  const double skipTol = 1e-3, convTol = 1e-9;
+  const bool fp = (G.foceType == 1) || (E0all == NULL);
+  const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
+  etaOut = ebes;
+  std::vector<char> active((size_t)nsub, 1);
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  for (int it = 0; it <= maxit; ++it) {
+    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, etaOut, G, cores, op, nsub, neta, Es);
+    bool any = false;
+    for (int i = 0; i < nsub; ++i) {
+      if (!active[(size_t)i]) continue;
+      const VaeOuterE &E = Es[(size_t)i];
+      if (!E.ok) return false;                       // a failed solve here is not recoverable
+      const int nobs = E.nobs;
+      if (nobs <= 0) return false;
+      const arma::vec &R0v = fp ? E.R : (*E0all)[(size_t)i].R;
+      if ((int)R0v.n_elem != nobs) return false;
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+      arma::vec yt, limt; arma::ivec cens;
+      obsFromInd(ind, E, G.hasT, hasCens, hasLimit, yt, cens, limt);
+      arma::vec q0 = -(yt - E.f) / R0v;
+      arma::vec q1 = 1.0 / R0v;
+      if (hasCens || hasLimit) {
+        for (int o = 0; o < nobs; ++o) {
+          double lim = limt[o];
+          if (cens[o] == 0 && (ISNA(lim) || !R_FINITE(lim))) continue;
+          double cp[9];
+          censNormalPartials((double)cens[o], yt[o], lim, E.f[o], R0v[o], 2, cp);
+          q0[o] = cp[0];       // rho_f
+          q1[o] = cp[2];       // rho_ff
+        }
+      }
+      arma::vec S = Oi * etaOut.row(i).t();
+      arma::mat Hf = Oi;
+      for (int l = 0; l < neta; ++l) {
+        double s = 0.0;
+        for (int o = 0; o < nobs; ++o) s += q0[o] * E.a(o, l);
+        S[l] += s;
+        for (int m = 0; m < neta; ++m) {
+          double h = 0.0;
+          for (int o = 0; o < nobs; ++o) h += q1[o] * E.a(o, l) * E.a(o, m) + q0[o] * E.A(o, l, m);
+          Hf(l, m) += h;
+        }
+      }
+      if (!S.is_finite() || !Hf.is_finite()) return false;
+      if (arma::abs(S).max() < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
+      if (it == maxit) return false;                 // did not converge
+      arma::vec step;
+      if (!arma::solve(step, Hf, S)) return false;
+      etaOut.row(i) -= step.t();
+      any = true;
+    }
+    if (!any) break;
+  }
+  for (int i = 0; i < nsub; ++i) if (active[(size_t)i]) return false;
+  return true;
+}
+
 // The FOCEI (f,R) analytic outer gradient, start to finish, in C++.
 //
 // Takes and returns nothing but plain C++/arma: no SEXP is created anywhere on this
@@ -12298,11 +12435,12 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const arma::vec &tr28, int cores,
                            arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
   if (!G.ok) return false;
-  // Shape gate.  .foceiGradPooledSetup now describes FOCE, AGQ and ll() fits too, but the
-  // kernels below are the FOCEI (f,R) ones -- 8F.3/8F.4/8F.5 add the rest.  Until then
-  // those shapes must fall through to the R route, NOT be assembled with the wrong
-  // kernel, which would be silently wrong rather than loudly absent.
-  if (G.isLL || G.interaction != 1 || G.nAGQ > 1) return false;
+  // Shape gate.  .foceiGradPooledSetup describes AGQ and ll() fits too, but their kernels
+  // are not wired yet (8F.4/8F.5).  Until then those shapes must fall through to the R
+  // route, NOT be assembled with the wrong kernel -- silently wrong rather than loudly
+  // absent.  FOCE (interaction == 0) IS handled below.
+  if (G.isLL || G.nAGQ > 1) return false;
+  const bool isFoce = (G.interaction == 0);
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
@@ -12316,8 +12454,26 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   const int neta = G.neta, nth = G.nth, nsg = G.nsg, nom = G.nom, nd = G.nd;
   const int np = nth + nsg + nom;
   if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
+
+  // FOCE: the gradient is taken at the mode of the FROZEN-variance objective, which is not
+  // the inner problem's mode, so the EBEs have to be re-solved before anything else.  And
+  // under "nonmem" (foceType 0) with an f0-dependent variance, R0 is frozen at the eta=0
+  // population prediction, which needs its own solve first.
+  std::vector<VaeOuterE> E0s;
+  arma::mat foceEta;
+  const bool needE0 = isFoce && (G.foceType == 0) && G.dependsF0;
+  if (needE0) {
+    E0s.resize((size_t)nsub);
+    arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
+    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
+    for (int i = 0; i < nsub; ++i) if (!E0s[(size_t)i].ok) return false;
+  }
+  if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
+                               cores, op, nsub, neta, foceEta)) return false;
+  const arma::mat &ebesUse = isFoce ? foceEta : ebes;
+
   std::vector<VaeOuterE> Es((size_t)nsub);
-  outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebes, G, cores, op, nsub, neta, Es);
+  outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebesUse, G, cores, op, nsub, neta, Es);
 
   // Swap the pool outer -> inner for the failed subjects.  The augmented solve ran under
   // the OUTER event-sensitivity shape; the difference needs the INNER problem, and the
@@ -12356,6 +12512,14 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   arma::ivec censB(hasCens ? totObs : 0, arma::fill::zeros);
   arma::vec limB(hasCens ? totObs : 0);
   if (hasCens) limB.fill(NA_REAL);
+  // FOCE blocks.  The variance sensitivity splits in two: aRe drives the ETA block (zero
+  // under "nonmem", where R is frozen with respect to eta) and aRc the PARAMETER columns
+  // (E0's dR0/ddir under "nonmem", the live dR/ddir under foce+).  There is no AR cube --
+  // the FOCE kernel is gradient-only.  fp = 1 selects foce+/live-R, 0 the nonmem a0-chain.
+  const int fp = (G.foceType == 1 || !needE0) ? 1 : 0;
+  arma::mat aReB(isFoce ? totObs : 0, isFoce ? nd : 0, arma::fill::zeros);
+  arma::mat aRcB(isFoce ? totObs : 0, isFoce ? nd : 0, arma::fill::zeros);
+  arma::mat R0sigB(isFoce ? totObs : 0, isFoce ? nsg : 0, arma::fill::zeros);
   jacSum = 0.0;
   for (int i = 0; i < nsub; ++i) {
     VaeOuterE& E = Es[(size_t)i];
@@ -12370,6 +12534,19 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     if (nsg > 0) {
       RsigB.rows(o0, o0 + n - 1) = E.Rsig;
       RsigDirB.rows(o0, o0 + n - 1) = E.RsigDir;
+    }
+    if (isFoce) {
+      if (fp) {                              // foce+ / no E0: everything from the live solve
+        aReB.rows(o0, o0 + n - 1) = E.aR;
+        aRcB.rows(o0, o0 + n - 1) = E.aR;
+        if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E.Rsig;
+      } else {                               // nonmem: R0 and its sensitivities from eta=0
+        const VaeOuterE &E0 = E0s[(size_t)i];
+        if (E0.nobs != n) return false;
+        RB.subvec(o0, o0 + n - 1) = E0.R;    // the kernel's R0v
+        aRcB.rows(o0, o0 + n - 1) = E0.aR;   // aReB stays zero: R is frozen w.r.t. eta
+        if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E0.Rsig;
+      }
     }
     // DV / CENS / LIMIT straight from the individual -- the inner problem reads them the
     // same way -- in the same observation order the solve loop filled E.f with.
@@ -12427,10 +12604,21 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       arma::ivec censi = hasCens ? arma::ivec(censB.subvec(o0, o1)) : arma::ivec();
       arma::vec limi = hasCens ? arma::vec(limB.subvec(o0, o1)) : arma::vec();
       arma::vec gi; arma::mat etaPi;
-      foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
-                          fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
-                          ebes.row(i).t(), Oi, dOiEst, tr28,
-                          neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi);
+      if (isFoce) {
+        // R0v is RB, which the stacking filled from E0 under "nonmem" and from the live
+        // solve under foce+.  ehat is the FOCE mode from the Newton, not the inner eta.
+        arma::mat aRei = aReB.rows(o0, o1), aRci = aRcB.rows(o0, o1);
+        arma::mat R0sigi = (nsg > 0) ? arma::mat(R0sigB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+        foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi,
+                                fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                                ebesUse.row(i).t(), Oi, dOiEst, tr28,
+                                neta, nth, nsg, nom, dirThV, sigColV, fp, gi, etaPi);
+      } else {
+        foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
+                            fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                            ebes.row(i).t(), Oi, dOiEst, tr28,
+                            neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi);
+      }
       gmat.col(i) = gi; etaPOut.slice(i) = etaPi;
     } catch (...) {
       gmat.col(i).fill(arma::datum::nan); etaPOut.slice(i).fill(arma::datum::nan);
@@ -12515,8 +12703,14 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   }
   for (int i = 0; i < npars; ++i) {
     if (!R_finite(gv[i])) return false;
-    g[i] = gv[i] * dUnscaleParDx(i);
   }
+  if (!op_focei.firstDirectGradSet) {
+    op_focei.firstDirectGrad.assign(gv.begin(), gv.end());
+    op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
+                                     &op_focei.fullTheta[0] + op_focei.ntheta);
+    op_focei.firstDirectGradSet = 1;
+  }
+  for (int i = 0; i < npars; ++i) g[i] = gv[i] * dUnscaleParDx(i);
   // etaP straight into op_focei.getaP, on the scaled optimizer parameterization
   if (op_focei.mceta == -2 || op_focei.mceta == -1) {
     size_t need = (size_t)neta * (size_t)npars * (size_t)nsub;
