@@ -10443,6 +10443,16 @@ Environment foceiFitCpp_(Environment e){
         odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter);
         op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
         op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
+        // The AGQ node model was DECLARED above (metadata only, so odeSwapPlan could
+        // size the pool for it) but never bound.  Binding has to wait until here: a
+        // sensitivity model rxDynLoad-ed before rxSolve_ builds the pool rebinds
+        // rxode2's event-sensitivity globals to itself, and the inner solve then frees
+        // an ES buffer sized for the wrong neq.  Without this, rxOuterNode has NULL
+        // entry points and every node solve silently reports failure.
+        if (odeSwapLoaded(odeSlotOuterNode) &&
+            model.containsElementNamed("outerNode")) {
+          odeSwapRegister(odeSlotOuterNode, "outerNode", model["outerNode"], &rxOuterNode);
+        }
       }
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
@@ -12459,8 +12469,15 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // are not wired yet (8F.4/8F.5).  Until then those shapes must fall through to the R
   // route, NOT be assembled with the wrong kernel -- silently wrong rather than loudly
   // absent.  FOCE (interaction == 0) IS handled below.
-  if (G.isLL || G.nAGQ > 1) return false;
+  if (G.isLL) return false;                 // 8F.5
   const bool isFoce = (G.interaction == 0);
+  const bool isAgq = (G.nAGQ > 1);
+  // AGQ is FOCEI plus a quadrature term; the two are mutually exclusive by construction
+  // (.foceiAnalyticGradSetup rejects nAGQ > 1 without interaction) but assert it, because
+  // the branches below assume it.
+  if (isAgq && isFoce) return false;
+  if (isAgq && (!G.hasNode || odeSwapCanPool(odeSlotOuterNode) != odeDenyNone ||
+                rxOuterNode.calc_lhs == NULL)) return false;
   if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
@@ -12504,6 +12521,10 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // shape is a process global, so the outer batch closes first.
   std::vector<int> flagged;
   for (int i = 0; i < nsub; ++i) if (!Es[(size_t)i].ok) flagged.push_back(i);
+  // AGQ cannot use the per-individual finite difference at all: a flagged subject has no
+  // Ht, so the whole evaluation declines below.  Bail before running that pass rather
+  // than paying for it and discarding the result.
+  if (isAgq && !flagged.empty()) return false;
   NumericMatrix fd; IntegerVector fids;
   if (!flagged.empty()) {
     _esBatch.reset();
@@ -12606,6 +12627,72 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     if (ko != n) return false;
   }
 
+  // ---- AGQ quadrature nodes ---------------------------------------------------------
+  // Ht per subject, its Cholesky factor, then one order-1 solve per node.  The grid is
+  // already in C++ (op_focei.aqx/aqw, filled by setupAq1_ for the objective itself), so
+  // nothing here comes from R.
+  const int nn = isAgq ? (int)_aqn : 0;
+  std::vector< std::vector<VaeOuterE> > Ek;          // [node][subject]
+  arma::mat qx, qw;
+  if (isAgq) {
+    if (nn <= 0 || op_focei.aqx == NULL || op_focei.aqw == NULL) return false;
+    qx = arma::mat(op_focei.aqx, nn, neta, false, true);
+    qw = arma::mat(op_focei.aqw, nn, neta, false, true);
+    std::vector<arma::mat> GinvL((size_t)nsub);
+    for (int i = 0; i < nsub; ++i) {
+      const VaeOuterE &E = Es[(size_t)i];
+      if (!E.ok) return false;                       // a flagged subject has no Ht
+      arma::mat Ht = Oi;
+      arma::vec eff = 1.0 / E.R, eRR = 0.5 / arma::square(E.R);
+      for (int l = 0; l < neta; ++l)
+        for (int m = 0; m < neta; ++m)
+          Ht(l, m) += arma::accu(eff % E.a.col(l) % E.a.col(m) +
+                                 eRR % E.aR.col(l) % E.aR.col(m));
+      // A non-PD Ht means the OBJECTIVE took its nmNearPD/cholSE branch -- a different,
+      // non-smooth function -- so differentiating a Cholesky here would be answering the
+      // wrong question.  arma's is_sympd() and a plain chol() disagree near the boundary,
+      // hence the explicit rcond margin rather than trusting chol() alone.
+      arma::mat ch;
+      if (!arma::chol(ch, Ht)) return false;
+      if (!R_finite(arma::rcond(Ht)) || arma::rcond(Ht) < 1e-10) return false;
+      arma::mat gi;
+      if (!arma::inv(gi, arma::trimatu(ch))) return false;
+      GinvL[(size_t)i] = gi;
+    }
+    // One batched solve per node.  The R route replicated the event data into
+    // nsub*nn pseudo-subjects to get this from a single rxSolve; the pool solves one
+    // individual at a time, so the replication (and its cache) is simply not needed.
+    //
+    // The node model needs its OWN event-sensitivity batch.  It shares the odeEsOuter
+    // ROLE with the gradient model, but OdeSwapEsBatch keys on the SLOT precisely
+    // because they are different compiles with different ES shapes -- order 1 vs order
+    // 2.  Solving it under the gradient model's shape makes handle_evid size its jump
+    // scratch for one model and free it against the other (ASAN: "attempting free on
+    // address which was not malloc()-ed", handle_evid -> odeSwapSolveInd).  Constructed
+    // here, outside outerSolveFill's OpenMP region, because the shape is a process
+    // global; the destructor restores the outer slot for the assembly below.
+    if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return false;
+    OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
+    Ek.resize((size_t)nn);
+    for (int k = 0; k < nn; ++k) {
+      arma::mat etaK((unsigned int)nsub, (unsigned int)neta);
+      arma::vec xk = qx.row(k).t();
+      for (int i = 0; i < nsub; ++i) {
+        // sqrt(2) is load bearing: the node SOLVE position must match the kernel's
+        // etaCur = etahat + sqrt(2) * Ginv * x, or the node sensitivities sit at the
+        // wrong eta and the quadrature silently integrates the wrong function.
+        etaK.row(i) = ebesUse.row(i) + (std::sqrt(2.0) * (GinvL[(size_t)i] * xk)).t();
+      }
+      Ek[(size_t)k].resize((size_t)nsub);
+      outerSolveFill(odeSlotOuterNode, &rxOuterNode, thVals, etaK, G.colsNode,
+                     cores, op, nsub, neta, Ek[(size_t)k]);
+      for (int i = 0; i < nsub; ++i) {
+        const VaeOuterE &En = Ek[(size_t)k][(size_t)i];
+        if (!En.ok || En.nobs != nobsAll[(size_t)i]) return false;
+      }
+    }
+  }
+
   // ---- kernel -----------------------------------------------------------------------
   arma::mat gmat(np, nsub, arma::fill::zeros);
   etaPOut.zeros(neta, np, nsub);
@@ -12629,7 +12716,36 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       arma::ivec censi = hasCens ? arma::ivec(censB.subvec(o0, o1)) : arma::ivec();
       arma::vec limi = hasCens ? arma::vec(limB.subvec(o0, o1)) : arma::vec();
       arma::vec gi; arma::mat etaPi;
-      if (isFoce) {
+      if (isAgq) {
+        // Node arrays are NODE-MAJOR for this subject: node k occupies rows
+        // k*no .. k*no+no-1.  y does not vary by node, so the kernel reuses yv.
+        const int no = o1 - o0 + 1;
+        arma::mat aN((unsigned int)(nn * no), (unsigned int)nd, arma::fill::zeros);
+        arma::mat aRN((unsigned int)(nn * no), (unsigned int)nd, arma::fill::zeros);
+        arma::mat RsigN((unsigned int)(nn * no), (unsigned int)(nsg > 0 ? nsg : 0),
+                        arma::fill::zeros);
+        arma::vec fN((unsigned int)(nn * no)), RN((unsigned int)(nn * no));
+        for (int k = 0; k < nn; ++k) {
+          const VaeOuterE &En = Ek[(size_t)k][(size_t)i];
+          int r0 = k * no;
+          aN.rows(r0, r0 + no - 1) = En.a;
+          aRN.rows(r0, r0 + no - 1) = En.aR;
+          fN.subvec(r0, r0 + no - 1) = En.f;
+          RN.subvec(r0, r0 + no - 1) = En.R;
+          if (nsg > 0) RsigN.rows(r0, r0 + no - 1) = En.Rsig;
+        }
+        bool okI = false;
+        foceiGradSubjectAgqFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri,
+                               fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                               aN, aRN, RsigN, fN, RN, qx, qw,
+                               ebesUse.row(i).t(), Oi, dOiEst, tr28,
+                               neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, okI);
+        // The AGQ kernel reports failure rather than throwing (non-PD H0 at a node, a
+        // non-finite log-weight).  A subject the quadrature could not assemble makes the
+        // whole gradient wrong, not just that column, so poison it and let the finite
+        // check downstream decline the evaluation.
+        if (!okI) { gi.set_size(np); gi.fill(arma::datum::nan); etaPi.zeros(neta, np); }
+      } else if (isFoce) {
         // R0v is RB, which the stacking filled from E0 under "nonmem" and from the live
         // solve under foce+.  ehat is the FOCE mode from the Newton, not the inner eta.
         arma::mat aRei = aReB.rows(o0, o1), aRci = aRcB.rows(o0, o1);

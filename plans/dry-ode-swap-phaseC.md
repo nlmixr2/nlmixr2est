@@ -1704,7 +1704,7 @@ finite differences, which is also correct.  This is why the fix is step control
 (backtracking on |S| / a trust region) and not a looser target: a looser target buys a
 faster fit that answers the wrong question.
 
-### 8F.4 (AGQ): first attempt corrupts the heap -- stashed, not committed
+### 8F.4 (AGQ): first attempt corrupted the heap -- ASAN named it, FIXED
 
 Written and compiling, but a fit crashes the allocator on the node solve:
 
@@ -1742,3 +1742,37 @@ Checks to run before writing more code:
 
 Do NOT chase this by reading the diff again -- run it under valgrind or ASAN, which will
 name the write directly and costs less than another round of hypotheses.
+
+**RESOLVED.**  ASAN named the write on the first run:
+
+    ERROR: attempting free on address which was not malloc()-ed   thread T38
+      handle_evid  ->  odeSwapSolveInd  ->  outerSolveFill (the node solve)
+
+The hypothesis above was right, and the mechanism to prevent it already existed.
+`OdeSwapEsBatch` keys on the SLOT, not the role -- odeSwap.cpp:174-178 says so in a
+comment written for exactly this case: "thetaSens/outer/outerNode/outerCov all share the
+odeEsOuter role but are DIFFERENT compiled models with different ES shapes, so a role
+match would skip installing the one we are about to solve."  The node loop had no batch
+of its own, so the order-1 node model was integrated under the order-2 gradient model's
+ES shape and handle_evid freed jump scratch sized for the other model.
+
+Fix: `OdeSwapEsBatch _nodeBatch(odeSlotOuterNode)` around the node loop (outside
+outerSolveFill's OpenMP region, since the shape is a process global; the destructor
+restores the outer slot for the assembly), plus the odeSwapCheckLhsWidth call for the
+node slot that gradPooledCore already makes for odeSlotOuter.
+
+Verified twice over -- ASAN clean, and the gradient matches the R route at the same point:
+
+    FOCEI (control)   max abs 1.891e-04   max rel 6.472e-05
+    FOCE  (8F.3)      max abs 4.110e-06   max rel 9.676e-07
+    AGQ nAGQ=2        max abs 2.757e-06   max rel 8.190e-07
+    AGQ nAGQ=3        max abs 8.355e-07   max rel 2.826e-07
+
+Both were needed: ASAN alone proves only that it stops corrupting memory, and an
+uninstrumented run can return plausible numbers while still being wrong.
+
+LESSON, since this is the second time in 8F the fix was "use the existing mechanism
+correctly" rather than write new machinery: the ES-shape constraint is documented in
+odeSwap.h and was quoted earlier in this very phase, and the bug still got written by
+assuming the role mapping implied shape sharing.  Read the slot/role distinction before
+adding any further peer solve.
