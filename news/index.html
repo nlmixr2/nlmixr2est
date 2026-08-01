@@ -47,6 +47,13 @@
 <li><p>Importance-sampling EM: the <code>covMethod="imp"</code> covariance is now evaluated at the proposal the fit actually converged on, rather than at the control’s initial <code>gamma</code> with a Gaussian proposal.</p></li>
 <li><p>Importance-sampling EM: <code>$runInfo</code> now names which sampling-efficiency statistic a fit is reporting, and states that <code>xi</code> and the Kish effective-sample fraction are not comparable with each other.</p></li>
 </ul></div>
+<div class="section level3">
+<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<div class="section level4">
+<h4 id="estimation-development-version">Estimation<a class="anchor" aria-label="anchor" href="#estimation-development-version"></a></h4>
+<ul><li>The nlm family (<code>est="nlm"</code>, <code>"nlminb"</code>, …), <code>est="nls"</code> and the importance-sampling EM sensitivity model now honor the covariate interpolation declared in the model (<code>nocb()</code>, <code>linear()</code>, <code>midpoint()</code>). Their gradient and prediction models were generated without those lines, so they always used the default <code>locf()</code> interpolation.</li>
+</ul></div>
+</div>
 </div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.0.2" id="nlmixr2est-702">nlmixr2est 7.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-702"></a></h2>

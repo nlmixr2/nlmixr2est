@@ -66,6 +66,17 @@
   statistic a fit is reporting, and states that `xi` and the Kish
   effective-sample fraction are not comparable with each other.
 
+### Bug fixes
+
+#### Estimation
+
+- The nlm family (`est="nlm"`, `"nlminb"`, …), `est="nls"` and the
+  importance-sampling EM sensitivity model now honor the covariate
+  interpolation declared in the model (`nocb()`, `linear()`,
+  `midpoint()`). Their gradient and prediction models were generated
+  without those lines, so they always used the default `locf()`
+  interpolation.
+
 ## nlmixr2est 7.0.2
 
 ### Bug fixes
