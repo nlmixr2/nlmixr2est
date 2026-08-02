@@ -71,29 +71,40 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 3
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
-    "saem-nonmutheta", "saem-sharedinner", "focei-theta-reset-bounds",
+    "saem-nonmutheta", "focei-theta-reset-bounds",
     "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp"),
 
+  # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
+  # in two.  Both TIMED OUT on the weekly runner (run 30688874991, 2026-08-01):
+  # "the runner has received a shutdown signal", exit 143, after ~3h06m of test
+  # time, so they reported NO assertion results at all.  A meaningful slice of
+  # the suite therefore had no CI signal, which is how a wrong nlm adjoint
+  # gradient and several stale assertions survived here unnoticed.  Each
+  # focei-wang2007-* file is kept in a separate batch -- one is ~10 error models
+  # x 6 fits (ODE and solved-form) and dominates whatever batch it lands in.
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
-    "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
-    "nlme-cov", "agq-fast-grad", "focei-ll-fast-grad-fit",
-    "focei-fast-methods-fit", "odeswap-fit"),
+    "nlme", "focei-fast-grad", "lincmt-ode-fit"),
   # batch 5
-  c("focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
-    "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
-    "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
-  # batch 6 -- heaviest remaining files on the single-worker CI runner
+  c("focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
+    "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit"),
+  # batch 6
+  c("focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
+    "posthoc", "ar-est", "mu-family"),
+  # batch 7
+  c("mu-plain-fit", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
+    "vae-errmodel", "table-cmt", "vae-covariate"),
+  # batch 8 -- heaviest remaining files on the single-worker CI runner
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.
   c("vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
     "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing", "bounded-transform"),
-  # batch 7 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
+  # batch 9 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c("vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
     "vi-fullbayes", "vi-stan", "omega-offdiag", "augpred", "vae-residopt"),
-  # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
+  # batch 10 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
   # in the push/PR subset) and run weekly only.
