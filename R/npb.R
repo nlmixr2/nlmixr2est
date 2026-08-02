@@ -55,7 +55,11 @@
 #'   `bobyqa` that fits the residual-error thetas.  A fixed default of `1e-4`,
 #'   matching the optimizer convergence tolerance `10^(-sigdig)` at
 #'   `sigdig = 4` (npb has no `sigdig`, so this is not derived from it).
-#' @param ... Parameters passed to [impmapControl()].
+#' @param ... Parameters passed to [impmapControl()], for the shared FOCEI-family
+#'   scaffolding only.  The importance-sampling controls are **rejected** rather
+#'   than accepted -- see [npagControl()] -- as are `cycles` and `gammaOptimize`,
+#'   which this signature carries but `npb` does not use.  `impSeed` is rejected
+#'   pointing at `seed`.
 #' @return An `impmapControl` object tagged for the npb engine.
 #' @export
 #' @author Matthew L. Fidler

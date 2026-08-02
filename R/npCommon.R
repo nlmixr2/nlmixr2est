@@ -343,9 +343,11 @@
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
                     "qr", "qrShift", "qrRefresh", "sir", "sirSample")
 
-# Inert too, but with a real np counterpart worth naming in the message.
-.npRemapImpCtl <- c(nIter = "cycles", ctol = "rhoend", nConvWindow = "cycles",
-                    impSeed = "seed")
+# Inert too, but with a real np counterpart worth naming in the message.  npag
+# has no seed of its own -- its grid is Sobol-deterministic -- so impSeed only
+# has a counterpart under npb.
+.npRemapImpCtl <- c(nIter = "cycles", ctol = "rhoend", nConvWindow = "cycles")
+.npRemapImpCtlNpb <- c(.npRemapImpCtl, impSeed = "seed")
 
 # Fields stamped onto a BUILT control, never typed by a caller.  Their presence
 # means this is a rebuild (do.call(npagControl, npagControl()), .npValidCtl, a
@@ -384,8 +386,11 @@
 .npAssertImpCtl <- function(nms, engine = "npag") {
   if (length(nms) == 0L) return(invisible(TRUE))
   if (any(nms %in% .npInternalCtl)) return(invisible(TRUE))  # a rebuild, not a fresh call
+  .map <- if (identical(engine, "npb")) .npRemapImpCtlNpb else .npRemapImpCtl
   .bad <- intersect(nms, .npInertImpCtl)
-  .remap <- intersect(nms, names(.npRemapImpCtl))
+  # npag is Sobol-deterministic, so impSeed has nothing to point at there
+  if (!identical(engine, "npb")) .bad <- union(.bad, intersect(nms, "impSeed"))
+  .remap <- intersect(nms, names(.map))
   if (length(.bad) == 0L && length(.remap) == 0L) return(invisible(TRUE))
   .msg <- character(0)
   if (length(.bad)) {
@@ -395,7 +400,7 @@
   }
   if (length(.remap)) {
     .msg <- c(.msg, paste0("use ",
-                           paste(paste0("'", unname(.npRemapImpCtl[.remap]), "'"),
+                           paste(paste0("'", unname(.map[.remap]), "'"),
                                  collapse=", "), " instead of ",
                            paste0("'", paste(.remap, collapse="', '"), "'")))
   }
