@@ -1312,7 +1312,7 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
     if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
       .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
-    } else if (resetThetaP <= 0) {
+    } else if (resetThetaFinalP <= 0) {
       .resetThetaFinalSize <- Inf
     } else {
       stop("cannot always reset THETAs", call.=FALSE)

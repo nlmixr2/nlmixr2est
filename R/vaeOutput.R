@@ -7,12 +7,6 @@
 # which reuses inner.cpp's engine wholesale -- including the focei covariance
 # step ("analytic", "r,s", "r", "s") -- see .vaeToFit.
 
-#' Update a ui with the VAE's selected covariate effects and fitted estimates.
-#'
-#' Continuous covariates enter as `beta*log(COV/center)`, categorical as
-#' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
-#' line. Returns the updated ui.
-#' @noRd
 #' Would a corrected structural theta still respect its ini() bounds?
 #' @param ui rxode2 ui carrying the ini() bounds
 #' @param thName structural theta name
@@ -113,6 +107,12 @@
   if (length(.m) == 0L) .own else .m[1L]
 }
 
+#' Update a ui with the VAE's selected covariate effects and fitted estimates.
+#'
+#' Continuous covariates enter as `beta*log(COV/center)`, categorical as
+#' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
+#' line. Returns the updated ui.
+#' @noRd
 .vaeUpdateModel <- function(ui, fit) {
   prep <- fit$prep
   .map <- .foceiEtaThetaMap(ui)
