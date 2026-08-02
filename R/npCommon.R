@@ -334,12 +334,83 @@
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
 
+# Importance-sampling controls that npag/npb ACCEPT (they are impmapControl
+# arguments) but never read.  There is no proposal density under a nonparametric
+# engine, so none of these can mean anything; silently ignoring them let someone
+# tune a fit with knobs that did nothing.  See plans/np-impmap-control-surface.md.
+.npInertImpCtl <- c("isample", "gamma", "gammaMethod", "df", "auto",
+                    "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
+                    "iscaleMin", "iscaleMax", "iaccept", "mapIter",
+                    "qr", "qrShift", "qrRefresh", "sir", "sirSample")
+
+# Inert too, but with a real np counterpart worth naming in the message.
+.npRemapImpCtl <- c(nIter = "cycles", ctol = "rhoend", nConvWindow = "cycles",
+                    impSeed = "seed")
+
+# Fields stamped onto a BUILT control, never typed by a caller.  Their presence
+# means this is a rebuild (do.call(npagControl, npagControl()), .npValidCtl, a
+# fit's own control) rather than a fresh call, and a rebuild must not be
+# rejected for carrying the very defaults the constructor put there.  impCov is
+# stamped unconditionally by impmapControl(), so it alone is sufficient; the
+# rest are listed so the signature does not depend on one field.
+.npInternalCtl <- c("impCov", "gammaMethodUser", "impMuThetaIdx", "impMuEtaIdx",
+                    "impThetaSensIdx", "impOmegaFixedEta")
+
+#' Literal argument names of the calling function's call.
+#'
+#' `match.call()` normalises partial matching away, so `npagControl(gamma = 2)`
+#' would arrive as `gammaOptimize`.  `sys.call()` preserves what was typed, which
+#' is the only way to see that a caller wrote an inert name that R then bound to
+#' a real formal.  That is not hypothetical: `gamma` is a prefix of
+#' `gammaOptimize`, so `npagControl(gamma = 2)` silently set
+#' `gammaOptimize = isTRUE(2)`, i.e. FALSE -- turning the assay-error
+#' optimisation OFF rather than being ignored.
+#' @param sc the caller's own `sys.call()`, passed in rather than inferred --
+#'   `sys.call(-1)` from inside this helper resolves to the wrong frame
+#' @return character vector of supplied argument names
+#' @noRd
+.npCallNames <- function(sc) {
+  if (is.null(sc)) return(character(0))
+  .n <- names(as.list(sc)[-1L])
+  if (is.null(.n)) character(0) else .n[nzchar(.n)]
+}
+
+#' Reject importance-sampling controls that a nonparametric engine cannot use
+#'
+#' @param nms names supplied by the caller
+#' @param engine "npag" or "npb", for the message
+#' @return invisible(TRUE), or throws
+#' @noRd
+.npAssertImpCtl <- function(nms, engine = "npag") {
+  if (length(nms) == 0L) return(invisible(TRUE))
+  if (any(nms %in% .npInternalCtl)) return(invisible(TRUE))  # a rebuild, not a fresh call
+  .bad <- intersect(nms, .npInertImpCtl)
+  .remap <- intersect(nms, names(.npRemapImpCtl))
+  if (length(.bad) == 0L && length(.remap) == 0L) return(invisible(TRUE))
+  .msg <- character(0)
+  if (length(.bad)) {
+    .msg <- c(.msg, paste0("'", paste(.bad, collapse="', '"),
+                           "' configure the importance-sampling proposal, which est=\"",
+                           engine, "\" does not build"))
+  }
+  if (length(.remap)) {
+    .msg <- c(.msg, paste0("use ",
+                           paste(paste0("'", unname(.npRemapImpCtl[.remap]), "'"),
+                                 collapse=", "), " instead of ",
+                           paste0("'", paste(.remap, collapse="', '"), "'")))
+  }
+  stop(paste(.msg, collapse="; "), call. = FALSE)
+}
+
 # Validate a control for a nonparametric engine.  The impmap validator rebuilds
 # the control via do.call(impmapControl, .), which rejects the npag-only fields
 # (points/cycles/gammaOptimize/est), so strip them first, then re-attach.
 #' @noRd
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
+  # raw lists reach here without passing through npagControl()/npbControl(), so
+  # this is the path a bare list(isample = 500) would otherwise slip through
+  if (is.list(.in)) .npAssertImpCtl(names(.in), est)
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
               gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,

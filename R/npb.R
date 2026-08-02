@@ -68,6 +68,19 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        cycles = 100L,
                        gammaOptimize = FALSE, muExpand = FALSE, cores = NULL,
                        rhoend = 1e-4, ...) {
+  # cycles and gammaOptimize are FORMALS here and documented unused for npb, so
+  # they never reach ... and a names(list(...)) check cannot see them.  Catch
+  # them from the call itself.
+  .npbDots <- list(...)
+  .npbNames <- union(names(.npbDots), .npCallNames(sys.call()))
+  .npAssertImpCtl(.npbNames, "npb")
+  if (!any(names(.npbDots) %in% .npInternalCtl)) {   # exempt a rebuild, as above
+    .npbUnused <- intersect(.npbNames, c("cycles", "gammaOptimize"))
+    if (length(.npbUnused)) {
+      stop(paste0("'", paste(.npbUnused, collapse="', '"),
+                  "' is not used by est=\"npb\""), call. = FALSE)
+    }
+  }
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)

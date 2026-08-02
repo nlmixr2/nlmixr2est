@@ -112,6 +112,10 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), dfScan = -1L,
                         cores = NULL, rhoend = 1e-4, ...) {
+  # importance-sampling controls do not apply to a nonparametric engine; reject
+  # them rather than accepting and ignoring them (a rebuild is exempt -- see
+  # .npAssertImpCtl)
+  .npAssertImpCtl(union(names(list(...)), .npCallNames(sys.call())), "npag")
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
