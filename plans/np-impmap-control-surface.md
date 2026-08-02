@@ -17,8 +17,23 @@ Measured against the source (every name in `.impmapIsControlNames` grepped throu
 `ctol`, `nConvWindow`, `impSeed`, `qr`, `qrShift`, `qrRefresh`, `sir`,
 `sirSample`.
 
-**Actually consumed:** only `impCov` and the internal M-step index maps
-(`impMuThetaIdx`, `impMuEtaIdx`, `impThetaSensIdx`, `impOmegaFixedEta`).
+**Actually consumed:** `impCov`, and -- as of the fix below -- the internal M-step
+index maps (`impMuThetaIdx`, `impMuEtaIdx`, `impThetaSensIdx`,
+`impOmegaFixedEta`).
+
+An independent review of an earlier draft of this plan corrected that second
+half.  The index maps were NOT in fact consumed: `foceiSetup_` loaded them inside
+`if (op_focei.isImpmap)`, which is `(impmap || imp || qrpem)` and therefore false
+for np, so R computed all four in `.npFamilyControl` and C++ discarded them.
+`npagOuter` calls `impMuInterceptStep()` (which iterates `impMuThetaIdx` and does
+`fullTheta[th] += delta`) and `impGetOmegaFixedEta()`, so in a clean session the
+mu-intercept step ran zero iterations and no eta was reported omega-fixed, while
+after an impmap fit in the SAME session the process-global `op_focei` still held
+that fit's indices and np indexed `fullTheta` with another model's map.  Fixed in
+2d5cffaaf by loading all four under `isNpag || isNpb` and clearing them
+otherwise.  Session-order-dependent behaviour of this kind is invisible to the
+test suite, since a test file that runs np alone only ever sees the silent
+no-op.
 
 Some of these are merely inapplicable -- there is no importance-sampling proposal
 under a nonparametric engine, so `df`/`auto`/`iaccept`/`qr` cannot mean anything.
@@ -61,13 +76,34 @@ Exit: a table in this file, control by control, with the decision.
 
 ## Phase 2 -- reject explicitly-passed inapplicable controls
 
-The mechanism is small but has one subtlety: `impmapControl()` returns every
-field populated with defaults, so the control object cannot tell you what the
-caller actually asked for. Capture `...` BEFORE delegating:
+The obvious mechanism is WRONG, and review caught it:
 
-    .dots <- list(...)
+    .dots <- list(...)                                   # NOT sufficient
     .bad <- intersect(names(.dots), .npInertImpControls)
     if (length(.bad)) stop(...)
+
+`impmapControl()` returns every field populated, so a round-trip --
+`do.call(npagControl, npagControl())`, `.foceiFamilyControl()`, or
+`getValidNlmixrCtl.impmap()` rebuilding a control -- passes `isample`, `nIter`,
+`df` and the rest through `...` as ordinary named arguments. The naive check
+rejects them and breaks every internal rebuild. This is the same shape as the
+bug that broke `est="fo"/"foi"`: a control field the round-trip could not
+survive.
+
+So the check must distinguish an explicit call from a rebuild. Options, in
+preference order:
+
+1. **Stamp the control.** Have `npagControl()`/`npbControl()` set a marker
+   (e.g. `.ctl$.npBuilt <- TRUE`) on what they return. A rebuild passes that
+   marker back through `...`; its presence means "not a fresh user call, skip
+   validation". Explicit and cheap to reason about.
+2. **Detect internal-only fields.** A rebuild carries names no caller would
+   type (`gammaMethodUser`, `impMuThetaIdx`, `impThetaSensIdx`, `impCov`). Any
+   of those present implies a rebuild. Works, but relies on that set staying
+   internal.
+
+Whichever is chosen, the round-trip must be an explicit test (Phase 5), not an
+assumption.
 
 Decide error vs warning. An error is right here: these are silent no-ops today,
 and a warning in a long fit scrolls past. But note the repo convention if a
@@ -86,9 +122,14 @@ round-trip rejected).
 
 ## Phase 3 -- wire what should work
 
-* `impSeed`: make it drive npb's sampler seed, or alias `seed` and `impSeed` to
-  one another with a single source of truth. npag is Sobol-deterministic, so
-  state that in the docs rather than silently accepting a seed there.
+* `impSeed`: `npbControl()` takes its own `seed = 42L`, and `src/npb.cpp` reads
+  `control["npSeed"]`, populated from `seed`. `impSeed` reaches
+  `impmapControl()` and is then ignored, so `npbControl(impSeed = 123L)`
+  silently does nothing where someone plainly meant to set the sampler seed.
+  Either alias the two to a single source of truth or reject `impSeed` pointing
+  at `seed`. npag is Sobol-deterministic, so say that in the docs rather than
+  accepting a seed there at all.
+
 * `mapIter`: determine whether `impMapPass` honours it under np. If it does, it
   belongs in the "consumed" list and the docs; if it does not, either wire it or
   reject it.
@@ -122,7 +163,7 @@ goes in a `.slowBatches` entry.
 ## Phase 6 -- documentation
 
 * `~/src/nlmixr2/vignettes/articles/nonparametric-npag-npb.Rmd` has a
-  "Relationship to `impmap`" section that currently lists SEVEN inert controls.
+  "Relationship to `impmap`" section that lists SEVEN inert controls.
   The real count is 22. Correct it, and replace the prose list with the Phase 1
   table.
 * `npagControl()`/`npbControl()` roxygen should state plainly that they extend
