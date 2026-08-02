@@ -45,8 +45,17 @@ nmTest({
     expect_identical(i$scratchNlhs, ts$nlhs)
     # and the private buffer was actually taken during the fit -- without this the
     # test would still pass if OdeSwapScope silently handed back rxode2's slice
-    expect_gt(i$overrideArmedN, 0)
     expect_gt(i$scratchUsedN, 0)
+    # The neqOverride is NOT armed here, and must not be asserted to be.  Arming is
+    # gated on the event-sensitivity path matching (odeSwap.cpp: `_pathMatches`) -- the
+    # slot must either be pred, which is exempt, or want the ES model that is currently
+    # installed.  thetaSens is neither, so the scope declines and runs at the pool's
+    # full width.  That gate is valgrind-driven: handle_evid sizes its jump scratch from
+    # the EFFECTIVE neq and then calls the INSTALLED model's dydt, so compacting against
+    # a different installed model overruns it.  Declining is the correct outcome, and
+    # scratchUsedN above already proves the private lhs buffer -- what this test is
+    # actually about -- was taken.
+    expect_identical(i$overrideArmedN, 0)
     expect_identical(i$scratchResizeN, 0)   # the plan sized it correctly up front
   })
 
