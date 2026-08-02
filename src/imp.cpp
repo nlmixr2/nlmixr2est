@@ -1073,16 +1073,34 @@ void impOuter(Environment e) {
       // one at 3.0, and any subject that did not need a t proposal kept paying
       // for it.  Both waste accuracy, which is what the gate was failing on.
       //
-      // Mapping comes from the df sweep (theophylline, 12 seeds, RMSE vs an
-      // isample=20000 reference): df 30 already takes max k-hat 2.58 -> -0.02
-      // for a 7% RMSE cost, while df 8 costs 3x for no extra tail benefit.  So
-      // heavier rungs are reserved for k-hat that df 30 has NOT settled.
+      // Mapping re-derived after the imp/impmap/focei pooling fixes, which removed
+      // the tail failures the ORIGINAL sweep was calibrated on -- see
+      // plans/imp-auto-reinstrument.md and the appendix in the nlmixr2 imp article.
+      // Sweep: theophylline + 3 etas, 8 seeds, RMSE vs an isample=8000 reference.
+      //
+      //   df   objRMSE   omegaRMSE   max k-hat   subjects k>0.7
+      //    0    0.0113     0.00406      0.941        2.38
+      //   30    0.0095     0.00281      0.593        0.25
+      //   20    0.0097     0.00255      0.484        0.12
+      //   12    0.0105     0.00224      0.405        0.00
+      //    8    0.0116     0.00223      0.273        0.00
+      //
+      // The objective RMSE is MINIMIZED at df 30 and degrades past it -- df 8 is
+      // worse than no t proposal at all -- while the tail and Omega keep improving.
+      // 30/20 is that trade-off's sweet spot; heavier rungs buy Omega at a real
+      // objective cost.
+      //
+      // The old k>2 -> df 12 rung is gone.  Post-fix nothing in the sweep exceeds
+      // k-hat ~1.1 (theophylline 3-eta peaks at 0.94, a deliberately sparse
+      // nobs<neta fixture at 1.07), so it was unreachable, and where df 12 could be
+      // measured it was worse than 20 on the objective.  An unreachable rung
+      // calibrated on a regime that no longer occurs is not a safety margin.
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
         if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
         if (kh > 0.7) {
           // pick the lightest tail plausibly heavy enough for this severity
-          double want = (kh > 2.0) ? 12.0 : (kh > 1.0 ? 20.0 : 30.0);
+          double want = (kh > 1.0) ? 20.0 : 30.0;
           // only ever go heavier here; escalation must not oscillate
           if (dfVec[id] <= 0.0 || want < dfVec[id]) dfVec[id] = want;
         }
