@@ -883,15 +883,18 @@ void impOuter(Environment e) {
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
-  // Improvability state for the AUTO df escalation (see AUTO step 3).  kAtEsc is
-  // this subject's k-hat at the moment it was escalated; noImp counts consecutive
-  // iterations in which the t proposal has failed to improve on it.
+  // Improvability state for the AUTO df escalation (see AUTO step 3).  noImp
+  // counts consecutive iterations in which the current rung has failed to
+  // improve on what the subject manages without any escalation.
   // Lowest df a subject may be returned to.  Withdrawal undoes the k-hat
   // ESCALATION, never the df that step 1 assigned: a non-normal endpoint needs a
   // heavy-tailed proposal by construction, so dropping it to a Gaussian because
   // k-hat did not improve would break the model, not repair it.
   arma::vec dfFloor(nExp); dfFloor.fill(impDf());
-  arma::vec kAtEsc(nExp); kAtEsc.fill(NA_REAL);
+  // What this subject's k-hat looks like WITHOUT any escalation -- the
+  // counterfactual withdrawal has to judge a rung against.  Refreshed on every
+  // iteration the subject spends at its floor, and frozen while it is escalated.
+  arma::vec kAtFloor(nExp); kAtFloor.fill(NA_REAL);
   arma::ivec noImp(nExp, arma::fill::zeros);
   arma::ivec escDead(nExp, arma::fill::zeros);   // 1 = escalation withdrawn, do not retry
   arma::vec iacceptVec(nExp); iacceptVec.fill(iaccept);
@@ -1203,6 +1206,21 @@ void impOuter(Environment e) {
           wantEsc = (dfVec[id] <= 0.0 || want < dfVec[id]);
         }
 
+        // The counterfactual, kept FRESH.  Three separate review findings all
+        // reduce to getting this value wrong:
+        //   * frozen at a pre-deterioration reading, a rung that genuinely
+        //     repairs a since-degraded subject scores as failing and is
+        //     withdrawn;
+        //   * taken from the k-hat at the moment of escalation, a noise spike
+        //     sets an easy bar and a subject stalls at a proposal achieving
+        //     nothing;
+        //   * taken as the running minimum, an old good value is pinned and a
+        //     working rung is withdrawn again.
+        // Recording it while the subject sits at its floor solves all three: it
+        // tracks deterioration that happens BEFORE any escalation, and it stops
+        // tracking the moment an escalation could be responsible for the value.
+        if (dfVec[id] == dfFloor[id]) kAtFloor[id] = kh;
+
         // Withdrawal.  Only for a subject actually moved off its floor -- testing
         // dfVec > 0 instead stranded subjects that were never escalated at all --
         // and only once the ladder is EXHAUSTED (!wantEsc), so "this is not
@@ -1211,14 +1229,11 @@ void impOuter(Environment e) {
         // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS it
         // (30 -> 20).
         if (!nonmemSparse && dfPatience > 0 && !wantEsc &&
-            dfVec[id] != dfFloor[id] && R_finite(kAtEsc[id])) {
-          // Measured against the k-hat this rung was meant to improve, NOT
-          // against the previous iteration.  The question is "is this rung paying
-          // off", not "is it still getting better": a rung that took k-hat
-          // 1.5 -> 0.95 and then sat flat is helping, and withdrawing it would
-          // hand back the proposal that read 1.5.  Stagnation above the baseline
-          // is therefore not a strike.
-          bool improved = (kh <= 0.7) || (kh < kAtEsc[id] - 0.1);
+            dfVec[id] != dfFloor[id] && R_finite(kAtFloor[id])) {
+          // Non-strict on the margin: a rung that buys exactly the 0.1 it is
+          // asked for has earned its place.  Strict `<` withdrew a proposal that
+          // took k-hat 1.25 -> 0.75 against a floor of 0.85.
+          bool improved = (kh <= 0.7) || (kh <= kAtFloor[id] - 0.1);
           if (improved) {
             noImp[id] = 0;
           } else if (++noImp[id] >= dfPatience) {
@@ -1232,25 +1247,9 @@ void impOuter(Environment e) {
         }
 
         if (wantEsc) {
-          // Re-baseline on EVERY escalation, and give the new rung a full
-          // patience window.  Both matter: keeping the original baseline breaks a
-          // subject that was healthy at its floor and deteriorated later (a
-          // baseline of 0.6 cannot be beaten by an escalation that correctly
-          // takes k-hat 1.3 -> 0.9), and inheriting strikes withdrew a heavier
-          // rung after a single iteration for want of a 0.1 improvement it had
-          // not had time to deliver.
-          // The bar only ever gets HARDER: keep the best k-hat seen before this
-          // rung, so the escalation must beat the best the subject has managed
-          // without it.  Taking kh outright let a noise spike set an easy bar --
-          // Gaussian 0.85, escalate, spike to 1.05, escalate again re-baselining
-          // to 1.05, settle back to 0.85, and 0.85 < 1.05 - 0.1 then reads as
-          // "improved" forever.  The subject stalled at df 20 with exactly the
-          // k-hat the Gaussian gave it, paying for a proposal achieving nothing.
-          //
-          // The min cannot reintroduce the stale-baseline bug this replaced: only
-          // k-hat values AT an escalation are recorded, and those are all > 0.7,
-          // so a healthy pre-deterioration reading is never in the minimum.
-          kAtEsc[id] = (R_finite(kAtEsc[id]) && kAtEsc[id] < kh) ? kAtEsc[id] : kh;
+          // Each rung gets a full patience window; inheriting strikes withdrew a
+          // heavier rung after a single iteration for want of an improvement it
+          // had not had time to deliver.
           noImp[id] = 0;
           dfVec[id] = want;
         }
