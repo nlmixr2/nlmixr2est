@@ -5754,6 +5754,28 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("impOmegaFixedEta"))
       op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
   }
+  // The nonparametric engines are NOT isImpmap, but they do call the shared
+  // M-step helpers: npagOuter runs impMuInterceptStep() (which iterates
+  // op_focei.impMuThetaIdx) and impGetOmegaFixedEta().  R computes both maps for
+  // np in .npFamilyControl (R/npCommon.R), so leaving them inside the isImpmap
+  // block silently discarded them: in a clean session the mu-intercept loop ran
+  // zero times and no eta was reported as omega-fixed, and after an impmap fit in
+  // the SAME session op_focei still held that fit's indices, so np indexed
+  // fullTheta with another model's map.
+  if ((op_focei.isNpag || op_focei.isNpb)) {
+    if (foceiO.containsElementNamed("impMuThetaIdx"))
+      op_focei.impMuThetaIdx = as<IntegerVector>(foceiO["impMuThetaIdx"]);
+    else op_focei.impMuThetaIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impMuEtaIdx"))
+      op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
+    else op_focei.impMuEtaIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impOmegaFixedEta"))
+      op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
+    else op_focei.impOmegaFixedEta = IntegerVector(0);
+  }
   // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
   // population gradient, but is not isImpmap; load the index here too.
   if (op_focei.isAdvi && foceiO.containsElementNamed("impThetaSensIdx")) {
