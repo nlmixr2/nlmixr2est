@@ -219,3 +219,29 @@ rough order of preference:
 
 Whatever is chosen, re-time the file afterwards -- the point is the budget, so an
 untimed "should be faster" does not close this.
+
+## Phase 9 -- test-imp-xi-gamma.R premises also went stale
+
+Three more failures in the same family as the k-hat ones, and from the same
+cause: the pooling fixes made the sampler better behaved, so tests that keyed on
+the OLD pathological behaviour no longer hold.
+
+    test-imp-xi-gamma.R:283  individual gamma > 1.2 * global    (now 0.98x)
+    test-imp-xi-gamma.R:315  min(impGammaInd) > 1.05            (now 1.015)
+    test-imp-xi-gamma.R:388  impXiTrace[1] < 2                  (now FALSE)
+
+Measured, and NOT caused by the AUTO work in this branch: with `auto = FALSE`,
+where no subject receives a t proposal at all (`impDfInd` all 0), the ratio is
+0.975 -- essentially identical to the 0.981 with `auto = TRUE`.  The df ladder,
+the sparsity gate and the withdrawal rule are all irrelevant here.
+
+What actually changed is that `gammaMethod = "individual"` and `"global"` now
+converge to nearly the same proposal scale (1.2241 vs 1.2484), where the test
+expects them to differ by at least 20%.  That is arguably GOOD -- the two
+adaptation laws agreeing is what a well-behaved sampler should do -- but it means
+the test no longer demonstrates what it claims.
+
+Treat as the k-hat cases were treated: establish what the current sampler
+actually does, then decide whether the assertion should be re-aimed at a fixture
+where the two laws genuinely diverge, or the claim itself retired.  Do not
+simply widen the tolerance -- the premise, not the threshold, is what moved.
