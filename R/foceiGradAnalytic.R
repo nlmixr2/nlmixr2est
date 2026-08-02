@@ -947,10 +947,17 @@
     ## yields a gradient that runs (nAnalyticGradDirect > 0, "grad: analytic") but does
     ## NOT verify -- on a 2-endpoint warfarin ll() model, analytic vs central differences
     ## was off by 7.6x on tcl and ~370x on add.pd.  So the mechanism works and the
-    ## mathematics does not; the per-endpoint log-density contributions are evidently not
-    ## being combined the way the single-endpoint core assumes.  Unlike the GAUSSIAN
-    ## multi-endpoint case (which the R route already served, and which the pooled route
-    ## reproduces bit-identically), there is no shipping reference here to fall back on.
+    ## mathematics does not.  Unlike the GAUSSIAN multi-endpoint case (which the R route
+    ## already served, and which the pooled route reproduces bit-identically), there is
+    ## no shipping reference here to fall back on.
+    ##
+    ## Re-measured after the solve-pool fix (#839) and the multi-endpoint pooling / CMT
+    ## re-basing: tcl is now correct (7.6x -> 0.36%), but add.pd is still ~373x off and
+    ## tka/tv/add.pk are 4.2x/1.9x/2.5x off.  What is right is tcl (the only structural
+    ## theta carrying an eta) plus the PD-only algebraic thetas; what is wrong is the
+    ## non-eta structural thetas and the per-endpoint RESIDUAL thetas.  That is direction
+    ## bookkeeping, not pooling -- see the thPos/gMap note in .foceiGradPooledSetup, which
+    ## is single-endpoint-shaped.  nlmixr2/nlmixr2est#838.
     if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) return(FALSE)  # Gaussian -> (f,R) path
     # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
     # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2
