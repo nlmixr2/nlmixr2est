@@ -136,4 +136,29 @@ nmTest({
     expect_error(npbControl(cycles = 100L), "cycles")
   })
 
+  test_that("an inert control that TOOK EFFECT is caught however it got there", {
+    # A forwarding wrapper hides the literal names from sys.call(), so the
+    # name-based check cannot see them; checking the BUILT control closes that.
+    #
+    # Abbreviated names need no help: impmapControl() declares isample/iaccept
+    # AFTER `...` in its signature, and R requires an exact match for those, so
+    # `isampl` is already an "unused argument" error.  Pinned anyway, because
+    # moving a formal ahead of `...` would silently re-open partial matching.
+    expect_error(npagControl(isampl = 500))
+    expect_error(npagControl(iaccep = 0.2))
+    expect_error(npbControl(isampl = 500))
+    .foo <- function(...) npagControl(...)
+    expect_error(.foo(isample = 500), "isample")
+    # ... and npb gained the `df` formal npag already had, so a wrapper cannot
+    # smuggle df through partial matching there either
+    .bar <- function(...) npbControl(...)
+    expect_error(.bar(df = 8), "df")
+    expect_error(.bar(df = 0), "df")
+    # A value equal to the default changed nothing, so through a wrapper -- where
+    # the literal name is invisible -- there is nothing to report.  A DIRECT call
+    # still errors, because the name was typed.
+    expect_true(is.list(.foo(mapIter = 1)))
+    expect_error(npagControl(mapIter = 1), "mapIter")
+  })
+
 })

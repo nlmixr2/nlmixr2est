@@ -146,6 +146,9 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
   if (!missing(df)) .npExp <- union(.npExp, "df")
   .npAssertImpCtl(.npDots, "npag", explicit = .npExp)
   .ctl <- impmapControl(...)
+  # outcome check: catches an abbreviated name R partial-matched inside
+  # impmapControl(), and a wrapper that hid the literal names from sys.call()
+  .npAssertBuilt(.ctl, "npag")
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ctl$rhoend <- as.numeric(rhoend)

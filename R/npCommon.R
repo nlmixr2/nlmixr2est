@@ -459,6 +459,34 @@
   stop(paste(.msg, collapse="; "), call. = FALSE)
 }
 
+#' Reject inert controls that actually TOOK EFFECT on a built control
+#'
+#' The name-based check cannot see everything: R partial-matches `isampl` to
+#' `isample` inside `impmapControl()`, and a forwarding wrapper hides the literal
+#' names from `sys.call()`.  Checking the RESULT closes both, and is the more
+#' honest question anyway -- an inert control matters exactly when it changed
+#' something.  A value equal to the default changed nothing, so there is nothing
+#' to report.
+#' @param ctl a control built by impmapControl()
+#' @param engine estimation string
+#' @return invisible(TRUE), or throws
+#' @noRd
+.npAssertBuilt <- function(ctl, engine = "npag") {
+  .def <- .npImpDefaults()
+  .chk <- setdiff(union(.npInertImpCtl, names(.npRemapImpCtlNpb)), .npRuntimeStamped)
+  .bad <- Filter(function(n) {
+    n %in% names(ctl) && n %in% names(.def) &&
+      !isTRUE(all.equal(ctl[[n]], .def[[n]]))
+  }, .chk)
+  # sirSample is DERIVED from isample, so it always travels with it; naming both
+  # is noise when isample is already the thing that was set
+  if (length(.bad) > 1L && "isample" %in% .bad) .bad <- setdiff(.bad, "sirSample")
+  if (length(.bad) == 0L) return(invisible(TRUE))
+  stop(paste0("'", paste(.bad, collapse = "', '"),
+              "' configure the importance-sampling proposal, which est=\"",
+              engine, "\" does not build"), call. = FALSE)
+}
+
 # Validate a control for a nonparametric engine.  The impmap validator rebuilds
 # the control via do.call(impmapControl, .), which rejects the npag-only fields
 # (points/cycles/gammaOptimize/est), so strip them first, then re-attach.

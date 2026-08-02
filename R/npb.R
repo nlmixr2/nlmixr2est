@@ -71,7 +71,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        residOptimize = c("alternate", "final", "none"),
                        cycles = 100L,
                        gammaOptimize = FALSE, muExpand = FALSE, cores = NULL,
-                       rhoend = 1e-4, gamma, ...) {
+                       rhoend = 1e-4, gamma, df, ...) {
   # `gamma` is declared ONLY to be rejected: it is a prefix of the real formal
   # gammaOptimize, so without it R partial-matches and npbControl(gamma = 2)
   # silently sets gammaOptimize = isTRUE(2).  An exact match beats a partial one,
@@ -80,6 +80,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
   .npbChk <- list(...)
   .npbExp <- .npCallNames(sys.call())
   if (!missing(gamma)) .npbExp <- union(.npbExp, "gamma")
+  if (!missing(df)) .npbExp <- union(.npbExp, "df")
   # cycles/gammaOptimize are FORMALS here, documented unused for npb, so they
   # never reach ... ; fold them in so the shared validator sees them
   for (.n in intersect(names(as.list(match.call())[-1L]),
@@ -88,6 +89,7 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
   }
   .npAssertImpCtl(.npbChk, "npb", explicit = .npbExp)
   .ctl <- impmapControl(...)
+  .npAssertBuilt(.ctl, "npb")
   .ctl$est <- "npb"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ctl$rhoend <- as.numeric(rhoend)
