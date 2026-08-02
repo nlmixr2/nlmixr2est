@@ -1,6 +1,13 @@
 nmTest({
 
   tol <- 1e-5
+  ## Per-subject ran_coef are exp(theta + eta_i) at the converged EBEs, so they
+  ## inherit the ODE solve accuracy.  posthocControl() defaults to sigdig=3
+  ## (rtol=1e-3), so pinning these golden values to 1e-5 asserts far more
+  ## precision than the solve is asked to deliver -- they drift ~2e-4 run to run
+  ## and tighten to ~3e-6 only at sigdig=8.  Compare fit-to-fit results at `tol`;
+  ## compare frozen golden numbers at the accuracy the default solve provides.
+  tolEbe <- 1e-3
   ## From https://raw.githubusercontent.com/bbolker/broom.mixed/master/tests/testthat/helper-checkers.R
 
   ##' test the basics of tidy/augment/glance output: is a data frame, no row names
@@ -412,7 +419,7 @@ nmTest({
       29.2305913871308, 31.8379070004274, 33.9077584685152, 31.2454399174589,
       27.0633487903421, 40.6859508443866, 33.6487106457298, 35.5118803877647,
       31.940988239621, 26.0728299589223, 37.2139995031868, 24.7515885649664
-    ), tolerance = tol)
+    ), tolerance = tolEbe)
 
     td <- broom.mixed::tidy(fitP, effects = "ran_coef", exponentiate = FALSE)
     td2 <- td$estimate
