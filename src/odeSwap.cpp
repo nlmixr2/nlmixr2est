@@ -19,6 +19,15 @@ struct OdeModelReg {
   std::vector<std::string> lhsNames;
   int neq = 0;
   int nlhs = 0;
+  // Endpoint (CMT) rebasing -- see odeSwapCmtRebase().  rxode2 compiles each
+  // model's endpoint switch against the USER compartment numbering and emits
+  //   #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
+  // so a model normalizes the raw CMT with its OWN sensitivity-compartment
+  // count.  Peers sharing one pooled event table therefore need the raw value
+  // rebased by the difference; nSens and the CMT parameter slot are recorded
+  // here so that can be done without going back to R.
+  int nSens = 0;      // length(rxModelVars(obj)$sens)
+  int cmtPar = -1;    // index of "CMT" in $params, or -1 if the model has none
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
   // with no jump sensitivities, e.g. rxPred
   int esActive = 0;   // does this model carry event ("jump") sensitivities?
@@ -62,6 +71,16 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   m.nlhs = lhs.size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
+  // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
+  m.nSens = mv.containsElementNamed("sens") ?
+    as<CharacterVector>(mv["sens"]).size() : 0;
+  m.cmtPar = -1;
+  if (mv.containsElementNamed("params")) {
+    CharacterVector pars = as<CharacterVector>(mv["params"]);
+    for (int i = 0; i < pars.size(); ++i) {
+      if (as<std::string>(pars[i]) == "CMT") { m.cmtPar = i; break; }
+    }
+  }
   // Record only WHETHER this model carries event ("jump") sensitivities.  The
   // shape itself is installed through rxode2's R entry point, which derives the
   // dims from the model, so the registry does not need to duplicate them --
@@ -217,6 +236,7 @@ void odeSwapClear(int slot) {
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
+  m.nSens = 0; m.cmtPar = -1;
   m.lhsNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
   _odePlanStale = true;
@@ -233,6 +253,82 @@ void odeSwapClearAll() {
 }
 
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
+int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
+int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
+
+// How much to subtract from the pooled table's raw CMT before `slot`'s calc_lhs
+// reads it.  See the OdeModelReg comment: rxode2 bakes `- nSens` into each
+// model's own _CMT macro, but the translated event table belongs to whichever
+// model sized the pool, so a peer de-normalizes by the wrong offset.
+//
+// UPSTREAM DEFICIENCY (rxode2): the shared table should carry an offset-free
+// endpoint id, or _CMT should normalize against the table's model rather than
+// the reading model's.  Until rxode2 offers that, this rebase is the fix.
+// Returns 0 when the slot IS the pool, when either model has no CMT parameter,
+// or when the counts already agree -- so it is a no-op on every single-model fit.
+int odeSwapCmtDelta(int slot) {
+  if (!odeSwapLoaded(slot)) return 0;
+  const OdePoolPlan &p = odeSwapPlan();
+  if (p.poolSlot < 0 || p.poolSlot == slot) return 0;
+  if (!odeSwapLoaded(p.poolSlot)) return 0;
+  return _odeReg[p.poolSlot].nSens - _odeReg[slot].nSens;
+}
+
+// Re-base the endpoint rows of one subject's CMT covariate column.  See odeSwap.h.
+//
+// ABI WARNING -- this is the ONLY place nlmixr2est reaches into rxode2's structs
+// by field (`op->cmtCov`, `ind->cov_ptr`), so it is ABI-linked: a layout change in
+// rxode2 silently miscompiles it rather than failing to build.  rxode2 already
+// exposes the READ half through the function-pointer table (`getIndCmt(op, ind,
+// kk)`, rx2api.c:267, slot 82); what is missing is the matching writer.
+//
+// UPSTREAM API REQUEST (rxode2): add `void setIndCmt(rx_solving_options *op,
+// rx_solving_options_ind *ind, int kk, int cmt)` as a peer of getIndCmt, and
+// register it in the pointer table.  That encapsulates both fields, keeps this
+// out of the ABI, and is the exact inverse of an accessor that already exists.
+// Everything else here already goes through the public accessors.
+//
+// Layout, per rx2api.c getIndCmt: covariates are stored per individual,
+// covariate-major -- ind->cov_ptr[n_all_times * op->cmtCov + kk] -- so this
+// touches only this subject's slice and is safe inside the per-subject parallel
+// regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets the
+// other way.
+void OdeSwapCmtScope::shift(int by) {
+  if (by == 0 || _op == NULL || _ind == NULL) return;
+  int cc = _op->cmtCov;                       // ABI: no accessor exists yet
+  if (cc < 0) return;
+  int n = getIndNallTimes(_ind);
+  double *cov = _ind->cov_ptr;                // ABI: no accessor exists yet
+  if (n <= 0 || cov == NULL) return;
+  size_t off = (size_t)n * (size_t)cc;
+  for (int kk = 0; kk < n; ++kk) {
+    double v = cov[off + (size_t)kk];
+    if (ISNA(v)) continue;
+    // dose / physical compartments are left alone -- the macro does not offset them
+    if (!(v > (double)_nPhys || v < -(double)_nPhys)) continue;
+    cov[off + (size_t)kk] = (v < 0) ? v - (double)by : v + (double)by;
+  }
+}
+
+OdeSwapCmtScope::OdeSwapCmtScope(int slot, rx_solving_options *op,
+                                 rx_solving_options_ind *ind) {
+  int d = odeSwapCmtDelta(slot);
+  if (d == 0 || op == NULL || ind == NULL || op->cmtCov < 0) return;
+  const OdePoolPlan &p = odeSwapPlan();
+  // physical compartments = states that are not sensitivities; identical for every
+  // peer (they share one user model), so the pool's own counts define it
+  int nPhys = odeSwapNeq(p.poolSlot) - odeSwapNSens(p.poolSlot);
+  if (nPhys < 0) return;
+  _op = op; _ind = ind; _delta = d; _nPhys = nPhys;
+  shift(-_delta);                 // pool basis -> this peer's basis
+}
+
+OdeSwapCmtScope::~OdeSwapCmtScope() {
+  if (_delta == 0) return;
+  shift(_delta);                  // back to the pool basis for the next reader
+  _delta = 0;
+}
+
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
 int  odeSwapNlhs(int slot)   { return odeSwapLoaded(slot) ? _odeReg[slot].nlhs : 0; }
 const char *odeSwapName(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].name : NULL; }

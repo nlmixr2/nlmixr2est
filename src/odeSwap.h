@@ -133,6 +133,65 @@ bool odeSwapHasEs(int slot);
 
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
+int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
+int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
+
+// Endpoint (CMT) rebasing for a pooled solve.
+//
+// rxode2 compiles a multi-endpoint model's endpoint switch in USER compartment
+// numbering and normalizes the raw CMT with the model's OWN sensitivity count:
+//     #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
+// Each model is therefore self-consistent on its own translated event table
+// (inner: raw 5 -> 3; outer: raw 63 -> 3).  But a pooled fit translates ONCE,
+// against whichever model sized the pool, so a peer subtracts the wrong offset
+// (inner reading the outer model's table: 63 - 2 = 61, matching no endpoint) and
+// its rx_pred_/rx_r_/d(f)/d(eta)/rx_yj_ all silently evaluate to 0.
+//
+// odeSwapCmtDelta(slot) is how much the pooled table's raw CMT is off for that
+// slot: 0 unless a LARGER peer sized the pool and the two disagree.
+//
+// It is NOT applied anywhere yet.  Everything it needs is already available --
+// nSens comes straight from rxModelVars(obj)$sens, recorded at declare time -- so
+// this is purely ours to finish; nothing is required from rxode2.  What is not
+// simple is WHERE to apply it: rxode2 delivers CMT as a COVARIATE (op->cmtCov,
+// rxData.cpp) and refreshes it from the covariate arrays at the top of calc_lhs,
+// so writing ind->par_ptr beforehand is overwritten before the model reads it
+// (measured).  The interception point has to be the covariate column, for the
+// duration of a pooled solve.  Until that is built, multi-endpoint models simply
+// do not pool -- see the outerPoolOk gate in R/focei.R.
+//
+// NOTE the _CMT normalization itself is CORRECT and must not be "fixed" upstream:
+// it is what makes a model solved against its OWN translated table read the right
+// endpoint, which is every standalone solve (npde, cwres, tables, plain rxSolve).
+// What is unsupported is running several peers of different sensitivity depth over
+// ONE table -- that is the pool's own doing, so the rebase belongs here and applies
+// to pooled solves only.
+int  odeSwapCmtDelta(int slot);
+
+// RAII: re-base one subject's CMT covariate column for the duration of a pooled
+// solve/read with `slot`'s model, and restore it on every exit path.
+//
+// Only ENDPOINT rows are touched -- those whose |CMT| exceeds the physical
+// compartment count, which is the same `baseSize` rxode2's _CMT macro tests
+// against and is identical across peers (they share one user model).  Dose rows
+// (CMT <= nPhys) must NOT be shifted: the macro leaves them alone, so rebasing
+// them would send a dose into a different compartment.
+//
+// A no-op unless a larger peer sized the pool (odeSwapCmtDelta == 0), so plain
+// single-model fits and every standalone solve pay nothing.
+struct OdeSwapCmtScope {
+  OdeSwapCmtScope(int slot, rx_solving_options *op, rx_solving_options_ind *ind);
+  ~OdeSwapCmtScope();
+  OdeSwapCmtScope(const OdeSwapCmtScope &) = delete;
+  OdeSwapCmtScope &operator=(const OdeSwapCmtScope &) = delete;
+  bool active() const { return _delta != 0; }
+private:
+  rx_solving_options *_op = NULL;
+  rx_solving_options_ind *_ind = NULL;
+  int _delta = 0;
+  int _nPhys = 0;
+  void shift(int by);
+};
 const char *odeSwapName(int slot);
 SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
 

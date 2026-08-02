@@ -855,8 +855,22 @@
     .st <- .foceiAnalyticGradSetup(.ui, stats::setNames(as.numeric(.thv), .thRows$name),
                                    fit$omega)
     if (is.null(.st)) return(NULL)
-    .nm <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
-    if (length(.nm) != length(.g)) return(NULL)
+    # These names are in KERNEL space (nth + nsg + nom).  That is not the outer
+    # optimizer's vector whenever a parameter occupies two kernel slots -- an estimated
+    # boxCox/yeoJohnson lambda is both a theta direction and a sigma slot, so the kernel
+    # names come out one longer than the gradient (9 vs 8 on a 1-cmt boxCox model) and
+    # this used to bail to NULL, reporting "no analytic gradient" for a gradient that
+    # had in fact been computed.  gMap is the same kernel -> outer gather the C++ uses
+    # (analyticOuterGradDirect), so reuse it rather than re-deriving the correspondence.
+    .nmKer <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
+    .nm <- .nmKer
+    if (length(.nmKer) != length(.g)) {
+      .gp <- tryCatch(.foceiGradPooledSetup(.ui), error = function(e) NULL)
+      .map <- if (is.null(.gp)) NULL else .gp$gMap
+      if (is.null(.map) || length(.map) != length(.g) ||
+            any(.map < 0L) || any(.map >= length(.nmKer))) return(NULL)
+      .nm <- .nmKer[.map + 1L]
+    }
     stats::setNames(.g, .nm)
   }, error = function(e) NULL)
 }

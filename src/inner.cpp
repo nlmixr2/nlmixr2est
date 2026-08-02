@@ -536,6 +536,7 @@ struct focei_options {
   double *getaP = NULL;      // [neta * npars * nsub], indexed by id
   double *etaPTheta = NULL;  // [npars] scaled theta at the last analytic-gradient call
   int etaPValid = 0;
+  int lastDeclineSite = 0;  // gradPooledCore refusal site (see declineHere)
   size_t getaPn = 0;         // allocated element count (realloc guard)
 
   // Pre-drawn ETA samples for mceta >= 1 (neta x (mceta-1) x nsub); filled
@@ -1430,6 +1431,7 @@ arma::vec getCurEta(int cid) {
 }
 
 arma::mat grabRFmatFromInner(int id, bool predSolve) {
+  // pooled table -> this reader's CMT basis (no-op unless a larger peer pooled)
   int _rxId = getRxId(id); // base subject index for rxode2
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   focei_ind *fInd = &(inds_focei[id]);
@@ -1440,6 +1442,8 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   rx_solving_options *op = getSolvingOptions(rx);
   int kk, k=0;
   double curT;
+  // pooled table -> this reader's own CMT basis (no-op unless a larger peer pooled)
+  OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : odeSlotInner, op, ind);
   if (predSolve) {
     iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
   } else {
@@ -1491,6 +1495,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
   OdeSwapScope neqGuard(odeSlotPred, ind, op); // switches this subject's neq to the pred model's
+  OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind); // ... and its CMT basis (no-op unpooled)
   odeSwapSolveInd(odeSlotPred, _rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1537,6 +1542,7 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
   OdeSwapScope neqGuard(odeSlotPred, ind, op);
+  OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);  // pooled table -> pred's CMT basis
   setIndSolve(ind, -1);
   odeSwapSolveInd(odeSlotPred, _rxId);
   int nObs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
@@ -1699,6 +1705,8 @@ static void getPopR(int id, arma::vec &rPop) {
   // sizing and the dydt consistent, which is what correctness requires.
   setIndSolve(ind, -1);
   odeSwapSolveInd(odeSlotInner, _rxId); // solve the inner model at eta=0
+  // Pooled table: re-base CMT to the inner model's basis for its calc_lhs reads
+  OdeSwapCmtScope _cmtScope(odeSlotInner, op, ind);
   iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
   int kk, k = 0;
   double curT;
@@ -1988,6 +1996,10 @@ double likInner0(double *eta, int id) {
       }
       int dist=0, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
+      // Pooled table: re-base CMT to the basis of whichever model is about to be
+      // read, so its endpoint switch (and rx_yj_) resolve as they would on that
+      // model's own translated table.  Restored on every exit path below.
+      OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : odeSlotInner, op, ind);
       for (j = 0; j < getIndNallTimes(ind); ++j) {
         setIndIdx(ind, j);
         kk = getIndIx(ind, j);
@@ -2357,6 +2369,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
     odeSwapSolveInd(odeSlotHess2, _rxId);
     if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
     iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
+    OdeSwapCmtScope _h2Cmt(odeSlotHess2, op, ind);   // pooled table -> hess2's basis
     double *lhs = _h2Guard.lhs();   // private buffer; never rxode2's inner-sized slice
     for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
       setIndIdx(ind, jj);
@@ -10186,6 +10199,9 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       // is a no-op (thread 0), but under the parallel M-step it is what makes the
       // lhs reads land in this thread's slice instead of a stale one.
       iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
+      // pooled table -> the theta-sensitivity model's own CMT basis.  A no-op while
+      // thetaSens IS the pool (est="impmap"/"advi"), but not if a wider peer sizes it.
+      OdeSwapCmtScope _tsCmt(odeSlotThetaSens, op, ind);
       // Read through the scope's buffer: it is rxode2's per-thread slice when the
       // pool is at least this wide, and a private buffer when this model is wider
       // -- writing past the slice would spill into the neighbouring thread's,
@@ -12184,6 +12200,8 @@ static void outerSolveFill(int slot, rxSolveF *fns,
     if (hasT) E.trans.zeros(nobs, 4);
     // OUR lhs buffer, this model's width -- never rxode2's inner-sized slice
     double *lhs = neqGuard.lhs();   // private buffer, this model's width
+    // pooled table -> THIS model's CMT basis (no-op when it is itself the pool)
+    OdeSwapCmtScope _cmtScope(slot, op, ind);
     iniSubjectE(_rxId, 1, ind, op, rx, fns->update_inis);
     int ko = 0;
     for (int q = 0; q < getIndNallTimes(ind) && ko < nobs; ++q) {
@@ -12579,6 +12597,8 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
     if (getOpNeq(op) > 0 && ISNA(solve0[0])) continue;   // okv stays 0 -> decline
     arma::mat H(neta, neta, arma::fill::zeros);
     double *lhs = neqGuard.lhs();   // private buffer, this model's width
+    // pooled table -> hess2's own CMT basis (no-op when it is itself the pool)
+    OdeSwapCmtScope _h2Cmt(odeSlotHess2, op, ind);
     iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
     for (int q = 0; q < getIndNallTimes(ind); ++q) {
       setIndIdx(ind, q);
@@ -12752,12 +12772,25 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
 //
 // `g` comes back on the NATURAL parameter scale (the caller applies dUnscaleParDx);
 // `etaP` is written straight into op_focei.getaP by the caller.
+// Which `return false` inside gradPooledCore()/gradPooledCoreLL() last refused the
+// analytic gradient.  These refusals used to be silent, which is how the mu-family
+// arity bug and the estimated-lambda decline both shipped unnoticed: the fit just
+// reported `grad: fd` with no reason.  Recorded on op_focei so a fit can be asked
+// afterwards, and printed when NLMIXR2EST_GRAD_DECLINE is set.
+static inline bool declineHere(int site) {
+  op_focei.lastDeclineSite = site;
+  static int _dbg = -1;
+  if (_dbg < 0) { const char *e = getenv("NLMIXR2EST_GRAD_DECLINE"); _dbg = (e && e[0] && e[0] != '0'); }
+  if (_dbg) REprintf("[gradDecline] gradPooledCore site #%d\n", site);
+  return false;
+}
+
 static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const std::vector<double> &thVals, const arma::mat &ebes,
                            const arma::mat &Oi, const arma::cube &dOiEst,
                            const arma::vec &tr28, int cores,
                            arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
-  if (!G.ok) return false;
+  if (!G.ok) return declineHere(1);
   // Shape gate.  .foceiGradPooledSetup reports interaction = 0 for an ll() fit as well as
   // for FOCE, so isLL is tested FIRST -- an ll() endpoint has no variance model and its
   // rx_pred_ is the log-density, so assembling it with the (f,R) kernel would be silently
@@ -12769,21 +12802,21 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // AGQ is FOCEI plus a quadrature term; the two are mutually exclusive by construction
   // (.foceiAnalyticGradSetup rejects nAGQ > 1 without interaction) but assert it, because
   // the branches below assume it.
-  if (isAgq && isFoce) return false;
+  if (isAgq && isFoce) return declineHere(2);
   if (isAgq && (!G.hasNode || odeSwapCanPool(odeSlotOuterNode) != odeDenyNone ||
-                rxOuterNode.calc_lhs == NULL)) return false;
-  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return false;
+                rxOuterNode.calc_lhs == NULL)) return declineHere(3);
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return declineHere(4);
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
   OdeFitTolGuard _tolGuard;                 // the fit's tolerance, reset for this solve
-  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return false;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return declineHere(5);
   rx = getRxSolve_();
-  if (rx == NULL) return false;
+  if (rx == NULL) return declineHere(6);
   rx_solving_options *op = getSolvingOptions(rx);
-  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return declineHere(7);
   const int nsub = (int)getRxNsub(rx);
   const int neta = G.neta, nth = G.nth, nsg = G.nsg, nom = G.nom, nd = G.nd;
   const int np = nth + nsg + nom;
-  if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
+  if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return declineHere(8);
 
   // FOCE: the gradient is taken at the mode of the FROZEN-variance objective, which is not
   // the inner problem's mode, so the EBEs have to be re-solved before anything else.  And
@@ -12797,12 +12830,12 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
     for (int i = 0; i < nsub; ++i)
-      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; return false; }
+      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; return declineHere(9); }
   }
   if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
                                cores, op, nsub, neta, foceEta)) {
     op_focei.nDeclineNewton++;
-    return false;
+    return declineHere(10);
   }
   const arma::mat &ebesUse = isFoce ? foceEta : ebes;
 
@@ -12817,7 +12850,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // AGQ cannot use the per-individual finite difference at all: a flagged subject has no
   // Ht, so the whole evaluation declines below.  Bail before running that pass rather
   // than paying for it and discarding the result.
-  if (isAgq && !flagged.empty()) return false;
+  if (isAgq && !flagged.empty()) return declineHere(11);
   NumericMatrix fd; IntegerVector fids;
   if (!flagged.empty()) {
     _esBatch.reset();
@@ -12826,7 +12859,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     NumericMatrix aref(0, 0);
     op_focei.curAnalyticFd = 1;
     fd = foceiOuterFdInd_(fids, aref);
-    if (fd.nrow() != (int)flagged.size()) return false;
+    if (fd.nrow() != (int)flagged.size()) return declineHere(12);
   }
 
   // ---- stack ------------------------------------------------------------------------
@@ -12834,7 +12867,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   int totObs = 0;
   for (int i = 0; i < nsub; ++i) {
     nobsAll[(size_t)i] = Es[(size_t)i].nobs;
-    if (nobsAll[(size_t)i] <= 0) return false;
+    if (nobsAll[(size_t)i] <= 0) return declineHere(13);
     totObs += nobsAll[(size_t)i];
   }
   arma::ivec off((unsigned int)nsub + 1); off[0] = 0;
@@ -12881,7 +12914,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E.Rsig;
       } else {                               // nonmem: R0 and its sensitivities from eta=0
         const VaeOuterE &E0 = E0s[(size_t)i];
-        if (E0.nobs != n) return false;
+        if (E0.nobs != n) return declineHere(14);
         RB.subvec(o0, o0 + n - 1) = E0.R;    // the kernel's R0v
         aRcB.rows(o0, o0 + n - 1) = E0.aR;   // aReB stays zero: R is frozen w.r.t. eta
         if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E0.Rsig;
@@ -12917,7 +12950,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       }
       ko++;
     }
-    if (ko != n) return false;
+    if (ko != n) return declineHere(15);
   }
 
   // ---- AGQ quadrature nodes ---------------------------------------------------------
@@ -12928,13 +12961,13 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   std::vector< std::vector<VaeOuterE> > Ek;          // [node][subject]
   arma::mat qx, qw;
   if (isAgq) {
-    if (nn <= 0 || op_focei.aqx == NULL || op_focei.aqw == NULL) return false;
+    if (nn <= 0 || op_focei.aqx == NULL || op_focei.aqw == NULL) return declineHere(16);
     qx = arma::mat(op_focei.aqx, nn, neta, false, true);
     qw = arma::mat(op_focei.aqw, nn, neta, false, true);
     std::vector<arma::mat> GinvL((size_t)nsub);
     for (int i = 0; i < nsub; ++i) {
       const VaeOuterE &E = Es[(size_t)i];
-      if (!E.ok) return false;                       // a flagged subject has no Ht
+      if (!E.ok) return declineHere(17);                       // a flagged subject has no Ht
       arma::mat Ht = Oi;
       arma::vec eff = 1.0 / E.R, eRR = 0.5 / arma::square(E.R);
       for (int l = 0; l < neta; ++l)
@@ -12946,10 +12979,10 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       // wrong question.  arma's is_sympd() and a plain chol() disagree near the boundary,
       // hence the explicit rcond margin rather than trusting chol() alone.
       arma::mat ch;
-      if (!arma::chol(ch, Ht)) return false;
-      if (!R_finite(arma::rcond(Ht)) || arma::rcond(Ht) < 1e-10) return false;
+      if (!arma::chol(ch, Ht)) return declineHere(18);
+      if (!R_finite(arma::rcond(Ht)) || arma::rcond(Ht) < 1e-10) return declineHere(19);
       arma::mat gi;
-      if (!arma::inv(gi, arma::trimatu(ch))) return false;
+      if (!arma::inv(gi, arma::trimatu(ch))) return declineHere(20);
       GinvL[(size_t)i] = gi;
     }
     // One batched solve per node.  The R route replicated the event data into
@@ -12964,7 +12997,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     // address which was not malloc()-ed", handle_evid -> odeSwapSolveInd).  Constructed
     // here, outside outerSolveFill's OpenMP region, because the shape is a process
     // global; the destructor restores the outer slot for the assembly below.
-    if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return false;
+    if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return declineHere(21);
     OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
     Ek.resize((size_t)nn);
     for (int k = 0; k < nn; ++k) {
@@ -12981,7 +13014,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                      cores, op, nsub, neta, Ek[(size_t)k]);
       for (int i = 0; i < nsub; ++i) {
         const VaeOuterE &En = Ek[(size_t)k][(size_t)i];
-        if (!En.ok || En.nobs != nobsAll[(size_t)i]) return false;
+        if (!En.ok || En.nobs != nobsAll[(size_t)i]) return declineHere(22);
       }
     }
   }
@@ -13064,7 +13097,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     int i = flagged[(size_t)q];
     for (int t = 0; t < nth && t < fd.ncol(); ++t) {
       double v = fd(q, t);
-      if (!R_finite(v)) return false;
+      if (!R_finite(v)) return declineHere(23);
       gmat(t, i) = v;
     }
   }
@@ -13081,16 +13114,16 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
 // out and copied into that same array.
 static bool analyticOuterGradDirect(double *theta, double *g) {
   const FoceiGradPooledSetup &G = _gradPooled;
-  if (!G.ok) return false;
+  if (!G.ok) return declineHere(101);
   rx = getRxSolve_();
-  if (rx == NULL) return false;
+  if (rx == NULL) return declineHere(102);
   const int nsub = (int)getRxNsub(rx);
   const int neta = G.neta, npars = (int)op_focei.npars;
   // The kernel's vector is gathered into the optimizer's through G.gMap, so the arity
   // that must match npars is the MAP's, not nth+nsg+nom (those differ whenever a lambda
   // is double-listed or a mu family profiles thetas out).
-  if (neta != op_focei.neta || (int)G.gMap.size() != npars) return false;
-  if (inds_focei == NULL) return false;
+  if (neta != op_focei.neta || (int)G.gMap.size() != npars) return declineHere(103);
+  if (inds_focei == NULL) return declineHere(104);
   // theta, in the augmented model's positional order
   std::vector<double> thv((size_t)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) thv[(size_t)t] = op_focei.fullTheta[t];
@@ -13102,7 +13135,7 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   arma::mat ebes((unsigned int)nsub, (unsigned int)neta);
   for (int i = 0; i < nsub; ++i) {
     focei_ind *fInd = &(inds_focei[i]);
-    if (fInd->saveEta == NULL) return false;
+    if (fInd->saveEta == NULL) return declineHere(105);
     for (int j = 0; j < neta; ++j) ebes(i, j) = fInd->saveEta[j];
   }
   // Omega and its estimation-scale derivatives, from the inner problem's own handle
@@ -13114,25 +13147,29 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
     List dOiL = getDOmegaInvL();
     NumericVector tr = getTr28V();
     int nom = G.nom;
-    if ((int)dOiL.size() != nom || (int)tr.size() != nom) return false;
+    if ((int)dOiL.size() != nom || (int)tr.size() != nom) return declineHere(106);
     dOiEst.zeros(neta, neta, nom > 0 ? nom : 1);
     tr28.zeros(nom > 0 ? nom : 0);
     for (int k = 0; k < nom; ++k) {
       arma::mat dk = as<arma::mat>(dOiL[k]);
-      if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return false;
+      if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return declineHere(107);
       dOiEst.slice(k) = dk;
       tr28[k] = tr[k];
     }
-  } catch (...) { return false; }
+  } catch (...) { return declineHere(108); }
   int cores = getOpCores(getSolvingOptions(rx));
   arma::vec gv; arma::cube etaP; double jacSum = 0.0;
   bool okc = false;
   try {
     okc = gradPooledCore(G, thv, ebes, Oi, dOiEst, tr28, cores, gv, etaP, jacSum);
-  } catch (...) { return false; }
+  } catch (const std::exception &e_) {
+    if (getenv("NLMIXR2EST_GRAD_DECLINE") != NULL)
+      REprintf("[gradDecline] gradPooledCore threw: %s\n", e_.what());
+    return declineHere(109);
+  } catch (...) { return declineHere(113); }
   // gv is in KERNEL space (nth + nsg + nom), which is not npars -- see G.gMap.
   const int nKer = G.nth + G.nsg + G.nom;
-  if (!okc || (int)gv.n_elem != nKer) return false;
+  if (!okc || (int)gv.n_elem != nKer) return declineHere(110);
   // the transform Jacobian term, applied on the lambda directions -- lamDir indexes the
   // theta directions, so this stays in KERNEL space, before the gather
   if (G.nLam > 0) {
@@ -13145,9 +13182,9 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   arma::vec gp((unsigned int)npars);
   for (int i = 0; i < npars; ++i) {
     int k = G.gMap[(size_t)i];
-    if (k < 0 || k >= nKer) return false;
+    if (k < 0 || k >= nKer) return declineHere(111);
     gp[i] = gv[k];
-    if (!R_finite(gp[i])) return false;
+    if (!R_finite(gp[i])) return declineHere(112);
   }
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());

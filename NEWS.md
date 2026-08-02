@@ -175,15 +175,20 @@
   the mismatch is removed rather than left latent.
 
 - `foceiControl(fast=TRUE)` now uses the analytic outer gradient for **multiple-endpoint
-  Gaussian models**, which previously took a slower `rxSolve` route.  They were excluded
-  from the shared solve pool because enabling them corrupted the heap; the cause was an
-  event-sensitivity shape being installed for the wrong model, fixed earlier in this
-  release, so the exclusion is lifted.
+  models**, which previously took the slower finite-difference route.  Enabling this
+  needed a fix: rxode2 normalizes `CMT` inside each compiled model by subtracting that
+  model's own sensitivity-compartment count, which is right for a standalone solve but
+  means peers of different sensitivity depth cannot share one translated event table.
+  Pooled, the inner model resolved every observation to no endpoint at all, so its
+  prediction, residual variance and eta sensitivities evaluated to zero -- the
+  conditional estimates collapsed toward zero and `DV` was silently log-transformed.
+  The shared solve pool now re-bases the `CMT` covariate for whichever model is
+  reading.  Single-endpoint models were never affected.
 
     - General-likelihood models (`ll()`, and named distributions such as `pois()` /
-      `binom()`) with more than one endpoint are still excluded and continue to use the
-      finite-difference gradient, with a message saying so.  Single-endpoint models of
-      that kind are unaffected and use the analytic gradient (nlmixr2/nlmixr2est#838).
+      `binom()`) with more than one endpoint likewise use the finite-difference
+      gradient, with a message saying so.  Single-endpoint models of that kind are
+      unaffected and use the analytic gradient (nlmixr2/nlmixr2est#838).
 
 - The FOCE EBE Newton convergence tolerance is no longer derived from `sigdig`; it is
   fixed at `1e-9`, the value it shipped with, and `foceiControl(foceEbeTol=)` overrides

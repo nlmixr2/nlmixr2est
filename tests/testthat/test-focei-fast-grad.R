@@ -159,9 +159,12 @@ nmTest({
   test_that("analytic outer gradient matches FD for a multiple-endpoint model", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # two modeled endpoints (PK cp + PD pca): rx_pred_/rx_r_ are single dvid-conditional
-    # expressions, so solving against the dataset selects each endpoint's prediction and
-    # variance per observation -- the (f,R) path handles both endpoints' sigmas
+    # Two modeled endpoints (PK cp + PD pca).  These pool: the augmented model sizes
+    # the shared solve, and OdeSwapCmtScope re-bases the CMT covariate to each peer's
+    # own basis while it reads (rxode2 normalizes CMT with the COMPILING model's
+    # sensitivity count, so one translated table cannot serve peers of different
+    # sensitivity depth).  Without that re-base every endpoint branch of the inner
+    # model missed and the EBEs collapsed to ~0 -- see plans/dry-ode-swap-phaseC.md.
     d <- nlmixr2data::warfarin
     pkpd <- function() {
       ini({ tka <- 0.5; tcl <- -2; tv <- 2; emax <- 2; ec50 <- 1; add.pk <- 1; add.pd <- 3; eta.cl ~ 0.1 })
@@ -176,6 +179,8 @@ nmTest({
                        maxOuterIterations = 0L, maxInnerIterations = 100L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
+    ## the mechanism: a multi-endpoint model really does pool now
+    expect_identical(.odeSwapInfo()$poolName, "outer")
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))

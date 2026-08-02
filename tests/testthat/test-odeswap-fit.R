@@ -155,4 +155,61 @@ nmTest({
     expect_identical(unname(as.numeric(after$theta)),
                      unname(as.numeric(ref$theta)))
   })
+
+  test_that("a pooled multi-endpoint model re-bases CMT and stays correct", {
+    skip_on_cran()
+    # rxode2 normalizes CMT inside each compiled model with THAT model's own
+    # sensitivity-compartment count (`#define _CMT ... CMT - nSens`), so one translated
+    # event table cannot serve peers of different sensitivity depth.  Pooled, the inner
+    # model was handed the augmented model's basis and computed 63 - 2 = 61, matching no
+    # endpoint: rx_pred_, rx_r_, d(f)/d(eta) and rx_yj_ all evaluated to 0, the EBEs
+    # collapsed to ~0, and yj = 0 silently log-transformed DV.  OdeSwapCmtScope re-bases
+    # the CMT covariate per solving model; this pins that it holds.
+    #
+    # Asserts the MECHANISM (which model sized the pool) as well as the result: a
+    # matching objective alone would also pass if fast=TRUE had quietly stopped
+    # being fast for an unrelated reason.
+    me <- function() {
+      ini({ tka <- 0.5; tcl <- -2; tv <- 2; tbase <- 1; tkout <- -1
+            add.pk <- 1; add.pd <- 0.5; eta.cl ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v
+              pd <- exp(tbase) * cp / (exp(tkout) + cp)
+              cp ~ add(add.pk) | cp
+              pd ~ add(add.pd) | pd })
+    }
+    withr::local_seed(7)
+    mk <- function(i, mu) {
+      o <- rbind(data.frame(ID = i, TIME = c(.5, 1, 2, 4, 8), EVID = 0, AMT = 0,
+                            DV = abs(stats::rnorm(5, mu, 1)), CMT = "cp"),
+                 data.frame(ID = i, TIME = c(.75, 1.5, 3, 6, 10), EVID = 0, AMT = 0,
+                            DV = abs(stats::rnorm(5, 2, .3)), CMT = "pd"))
+      rbind(data.frame(ID = i, TIME = 0, EVID = 101, AMT = 100, DV = NA, CMT = "cp"),
+            o[order(o$TIME), ])
+    }
+    d <- rbind(mk(1, 8), mk(2, 3))
+    # one thread: the parallel inner optimizer is not bitwise reproducible, and this
+    # compares EBEs, not just the objective
+    .th <- rxode2::rxCores()
+    on.exit(rxode2::setRxThreads(.th), add = TRUE)
+    rxode2::setRxThreads(1L)
+    ctl <- function(fast) {
+      foceiControl(print = 0L, covMethod = "", sigdig = 4, fast = fast,
+                   maxOuterIterations = 0L, maxInnerIterations = 200L,
+                   calcTables = FALSE)
+    }
+    ref  <- suppressWarnings(suppressMessages(nlmixr2(me, d, "focei", ctl(FALSE))))
+    fast <- suppressWarnings(suppressMessages(nlmixr2(me, d, "focei", ctl(TRUE))))
+    # the augmented model DOES size the pool here -- the point is that the CMT
+    # re-base keeps the objective right anyway
+    expect_identical(.odeSwapInfo()$poolName, "outer")
+    ## not expect_identical: fast=TRUE still evaluates the posthoc gradient, so the
+    ## last digits move.  The bug this pins was worth ~900 objective units, not 1e-12.
+    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-8)
+    expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-6)
+    # and the ETAs are genuinely conditional, not the collapsed ~0 the shift produced
+    expect_gt(max(abs(as.numeric(ref$eta[[2]]))), 1e-3)
+  })
 })

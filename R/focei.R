@@ -1465,16 +1465,22 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # value, and its flat h=1e-3 divides by 2e-3, amplifying inner-optimisation
     # noise ~500x on a component whose per-subject terms cancel to ~63.
     #
-    # Multi-endpoint used to be excluded because enabling it aborted
-    # test-focei-fast-grad.R with "free(): invalid next size" -- a corruption that
-    # needed the many-fit sequence and was guessed to be a buffer still sized for a
-    # narrower model.  That guess was close: the cause was OdeSwapEsBatch keying on the
-    # event-sensitivity ROLE rather than the SLOT, so a peer augmented model was
-    # integrated under another model's ES shape and handle_evid freed jump scratch sized
-    # for the wrong one.  Fixed when the AGQ node solve hit the identical signature (see
-    # the 8F.4 note in plans/dry-ode-swap-phaseC.md), so the exclusion is lifted: a
-    # multi-endpoint fast fit now gets the pooled ANALYTIC gradient instead of finite
-    # differences.
+    # Multi-endpoint models DO pool, but only because OdeSwapCmtScope re-bases the
+    # CMT covariate per solving model (src/odeSwap.cpp).  Do not lift that and leave
+    # this enabled.
+    #
+    # rxode2 compiles a multi-endpoint model's endpoint switch in USER compartment
+    # numbering and emits, per model,
+    #     #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
+    # with nSens the sensitivity count of the model BEING COMPILED (codegen.c).  That
+    # is correct for any standalone solve -- npde, cwres, tables -- but a pooled fit
+    # translates the event table once, against whichever model sized the pool, and the
+    # peers have different nSens (here inner 2, outer 60).  Unre-based, the inner model
+    # computed 63 - 2 = 61, matching no endpoint: rx_pred_, rx_r_, d(f)/d(eta) and
+    # rx_yj_ all evaluated to 0, the EBEs collapsed to ~0 and yj = 0 silently
+    # log-transformed DV.  Measured then: objf -633.7157 / etas 3.1e-08 against
+    # fast=FALSE's 262.3697 / 1.548, 2.470.  With the re-base the two agree to 11
+    # digits and the multi-endpoint fit gets the analytic gradient.
     # delay() models ARE in scope: focei forces the DDE configuration at the FIT level
     # (the hasDelay block below -- method 0, stiff2 13, dense TRUE), so a delay fit's
     # pool is built that way from the start and nothing needs changing per solve.  The

@@ -1279,7 +1279,22 @@
       .erTh <- ui$iniDf$ntheta[!is.na(ui$iniDf$err)]
       .frTh <- suppressWarnings(unique(as.integer(sub("THETA_([0-9]+)_", "\\1",
         regmatches(.rvarStr, gregexpr("THETA_[0-9]+_", .rvarStr))[[1]]))))
-      .sigTh <- sort(intersect(.erTh, .frTh))
+      # An ESTIMATED boxCox/yeoJohnson lambda is an error theta that occupies a sigma
+      # slot in the parameter accounting, but rx_r_ never mentions it (dR/dlambda = 0 --
+      # the transform moves f and the DV, not the variance).  The intersection above
+      # therefore dropped it, leaving nsg = 2 sigma directions against ONE emitted
+      # rx_rsig_ column, and the pooled kernel threw
+      #   copy into submatrix: incompatible matrix dimensions: 11x2 and 11x1
+      # which the bare catch(...) in analyticOuterGradDirect swallowed into a silent
+      # "grad: fd".  Emit the full sigma set instead: dR/dlambda is identically zero, and
+      # an `rx_rsig_<n>_ = 0` still comes back as a real solve column (the rx_<name>_
+      # naming rule -- see CLAUDE.md), so the column count matches the direction count and
+      # the zero contributes nothing.  Lambda's real gradient still arrives through its
+      # theta direction and the -2*jacSum Jacobian term, unchanged.
+      .li <- ui$iniDf
+      .lamTh <- .li$ntheta[!is.na(.li$ntheta) & !is.na(.li$err) & !.li$fix &
+                             .li$err %in% c("boxCox", "yeoJohnson")]
+      .sigTh <- sort(union(intersect(.erTh, .frTh), .lamTh))
       for (.n in .sigTh) {
         .sg <- paste0("THETA_", .n, "_"); .dRs <- .Dn(.rvar, .sg)
         .sigL <- c(.sigL, paste0("rx_rsig_", .n, "_=", .toRx(.dRs)),
@@ -1374,7 +1389,29 @@
     # exactly (thetas in ntheta order, etas in neta order, then covariates).
     .param <- .uiGetThetaEtaParams(ui, TRUE)          # params(THETA[1], .., ETA[1], .., covs)
     .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
-    .modTxt <- paste(.param, .modTxt, sep = "\n")
+    # Same compartment/endpoint prologue and epilogue the inner, predOnly and predNoLhs
+    # models get from .toRx (which pastes toRxParam + body + toRxDvidCmt).  This model
+    # builds its own text and calls .nlmixr2estRxode2 directly, so without this it was
+    # the only peer with no cmt() pins and an EMPTY dvid, i.e. a different endpoint
+    # contract from every model it shares the solve pool with.  Aligning it is right on
+    # its own terms and is a prerequisite for ever pooling a multi-endpoint model.
+    #
+    # It is NOT sufficient, and multi-endpoint models still do not pool (see the
+    # outerPoolOk gate in focei.R).  The endpoint cmt() is only legal AFTER the d/dt
+    # block, so it is numbered after that model's generated sensitivity states -- 5/6
+    # for the 4-state inner model, 63/64 for this 62-state one.  CMT reaches a model as
+    # that solve-compartment index (measured: par_ptr last slot, 5 vs 63), so peers whose
+    # state counts differ cannot share one translated event table and both resolve their
+    # `CMT ==` endpoint switch.  Single-endpoint models have no switch, which is the only
+    # reason they pool safely today.
+    #
+    # Verified neutral where it does apply: single-endpoint theo_sd fast=TRUE still pools
+    # (pool = outer), still takes the analytic gradient, objf 133.654382798 against
+    # fast=FALSE's 133.654382066.
+    .cmtPre <- ui$foceiCmtPreModel
+    .interp <- ui$interpLinesStr
+    if (!is.null(.interp) && .interp != "") .cmtPre <- paste0(.cmtPre, "\n", .interp)
+    .modTxt <- paste(c(.param, .cmtPre, .modTxt, .foceiToCmtLinesAndDvid(ui)), collapse = "\n")
     # no splitBolus() in the augmented model -- it translates the already-split
     # dataSav, so declaring it would split the doses twice (.foceiPreProcessData)
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities

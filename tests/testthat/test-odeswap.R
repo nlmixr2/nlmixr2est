@@ -271,10 +271,12 @@ nmTest({
     ## this purpose: that test's ofvAt() refits WITHOUT fast=TRUE, so its
     ## reference comes from unpooled fits with re-optimised etas, and its flat
     ## h=1e-3 divides by 2e-3 and amplifies inner-optimisation noise ~500x.
-    ## Multiple endpoints were once excluded from pooling on the strength of that
-    ## comparison.  The two routes in fact agree exactly there too (verified
-    ## manually, all 8 components, relative error 0); that exclusion now stands
-    ## only because enabling it corrupts the heap later in a many-fit sequence.
+    ##
+    ## SINGLE endpoint only.  Multiple endpoints must not pool at all: CMT reaches a
+    ## model as its own solve compartment index, so a larger peer sizing the pool hands
+    ## the inner model an endpoint number from a different model's compartment space and
+    ## zeroes its prediction, variance and eta sensitivities.  Pinned in
+    ## test-odeswap-fit.R.
     one <- function() {
       ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })

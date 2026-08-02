@@ -2189,6 +2189,222 @@ precision, a target tied to the solve (NOT the reverted `10^-(sigdig+6)` couplin
 moved the target opposite to the precision supporting it), or a tighter tolerance for the
 EBE re-solve alone.
 
+## ROOT CAUSE: CMT reaches a model as the POOL model's compartment index
+
+Traced, not inferred.  A temporary trace was compiled into `innerOpt1` (entry / Eq-48
+candidate / after the reset block / after the n1qn1 cascade / exit), into
+`analyticOuterGradDirect` (which EBEs it reads, which `etaP` it writes), and a
+per-observation dump of `cmt`, `yj`, `lambda`, `dv`, `f`, `r`, `d(f)/d(eta)`, the raw
+`lhs` and `solve` rows, and `par_ptr`.  Two-endpoint pkpd model, `maxOuterIterations = 0`,
+`setRxThreads(1)`, same theta, same starting eta.
+
+First inner call, before any gradient exists (`etaPValid = 0`, `getaP = NULL`, so the
+Eq-48 warm start cannot have run):
+
+```
+fast=FALSE  cmt=5  yj=2 lam=1 dv=10.287247 f=7.5594606 r=1 dfdeta=-0.039265976
+            lhs=[7.55946,-0.039266,1,0]   solve=[43.8516,55.8573,0,-0.290138]
+            par_ptr=[0.5,-2,2,1,-1,1,0.5,0, 5]   npars=9
+fast=TRUE   cmt=63 yj=0 lam=0 dv=2.330905 f=0    r=1 dfdeta=0
+            lhs=[0,-0,0,0,nan,...]        solve=[43.8516,55.8573,0,-0.290138]
+            par_ptr=[0.5,-2,2,1,-1,1,0.5,0,63]   npars=9
+```
+
+The ODE solve is BIT-IDENTICAL, and the parameter layout is identical (9 slots, `CMT`
+last).  The ONLY thing that differs is the value in that last slot.
+
+`CMT` reaches a model as the SOLVE COMPARTMENT INDEX, and an endpoint's index is
+assigned after that model's own generated states: the 4-state inner model numbers
+`cmt(cp) = 5`, the 62-state augmented model numbers it 63.  The event table is
+translated once, against whichever model sized the pool.  So when the augmented model
+pools, the inner model -- compiled to test `CMT == 5` / `CMT == 6` -- is handed 63/64,
+every branch misses, and `rx_pred_`, `rx_r_`, `d(f)/d(eta)` and `rx_yj_` all evaluate to
+0.  Consequences:
+
+  * the inner objective has NO eta dependence -- n1qn1 converges in 3 evaluations at
+    eta ~ 3e-08, which is the "collapsing ETAs".  The objective is broken, not the eta
+    bookkeeping, and the inner model IS the correct model and IS running (it writes
+    exactly its own 4 lhs entries);
+  * `r = 0` is floored to 1, so the residual model is gone too;
+  * `yj = 0, lambda = 0` is boxCox-with-lambda-0, i.e. DV is silently LOG TRANSFORMED
+    (`dv 10.287247 -> 2.330905`) on an untransformed endpoint.
+
+Single-endpoint models have no `CMT ==` switch (`rx_pred_` is unconditional), which is
+the only reason they pool safely -- so this surfaced the moment `afb49bc89` let
+multi-endpoint models pool.
+
+REFUTED by the same trace: the Eq-48 `d eta*/d theta` extrapolation is NOT involved.
+`etaPValid = 0` and `getaP = NULL` at the first inner call, and the collapse is already
+complete there.  When it does run on the second call it reproduces the eta it was given.
+
+### Scope: NOT confined to fast=TRUE, and NOT new
+
+Any peer that sizes the pool does it.  `est="impmap"` (pool = `thetaSens`, 10 states)
+on the same model gives cmt 11/12 and the same `f = 0` / `yj = 0`, on the RELEASED
+package:
+
+```
+installed nlmixr2est 7.0.2, two-endpoint model:
+  focei    objf= 262.36971   IPRED [0.0686, 11.492]  PRED [0.0686, 12.700]
+  impmap   objf=-633.71574   IPRED [0.2596,  5.092]  PRED [0.2596,  5.092]   <- IPRED == PRED
+```
+
+`-633.71574` is byte-identical to the broken focei `fast=TRUE` value: the same corrupted
+objective through a different pool sizer.  Multi-endpoint `est="impmap"` (and by
+construction `advi`, and `fast=TRUE` `ll()` via `innerHess2`) is shipping wrong today.
+Track separately -- the containment below does not help there, because impmap NEEDS the
+larger buffer and refusing to pool would break it rather than fix it.
+
+Note `predNoLhs` (2 states, endpoints at 3/4) is in the same position whenever the
+4-state inner model sizes the pool.  It only escapes notice because it is reached solely
+through the `doFD` fallback.
+
+### Containment applied
+
+`outerPoolOk` is back to `nrow(ui$predDf) == 1L` (R/focei.R).  A multi-endpoint fast fit
+gets the FD outer gradient again, and its objective is correct: verified bit-identical to
+`fast=FALSE` on both an eta-independent and an eta-CHAINED second endpoint
+(`objf 262.3697124` / `195.0009533`, etas equal to all printed digits, threads pinned to
+1).  With threads unpinned the two differ by ~0.4 on the chained model -- ordinary
+parallel inner-optimizer noise, present with `fast=FALSE` too.
+
+### Also fixed: the augmented model had no endpoint contract at all
+
+`.foceiAnalyticAugModelDirs` composed its own text and called `.nlmixr2estRxode2`
+directly, bypassing `.toRx` (which pastes `toRxParam` + body + `toRxDvidCmt`).  So it was
+the ONLY peer with no `cmt()` pins and an EMPTY `dvid`, while inner / predOnly /
+predNoLhs all carry `dvid = 3/4`.  It now emits the same prologue and epilogue.
+
+This is necessary but NOT sufficient, and was measured as such: with `dvid = 3/4` on the
+62-state outer model, re-enabling the pool still reproduced `objf -633.7157423` and
+`CMT = 63`.  Verified neutral where it does apply -- single-endpoint theo_sd `fast=TRUE`
+still pools (`pool = outer`), still takes the analytic gradient, `objf 133.654382798`
+against `fast=FALSE`'s `133.654382066`.
+
+### Mechanism, exactly: rxode2's _CMT macro subtracts the COMPILING model's nSens
+
+`summary(rxC(model))` on the three peers, same fit:
+
+```c
+inner      #define _CMT ((fabs(CMT)<=2) ? CMT : ((CMT<0) ? CMT+2  : CMT-2 ))
+predNoLhs  #define _CMT CMT
+outer      #define _CMT ((fabs(CMT)<=2) ? CMT : ((CMT<0) ? CMT+60 : CMT-60))
+```
+
+and in all three, identically:
+
+```c
+CMT = _PP[8];
+rx_expr_0 = _CMT==4;
+rx_expr_1 = _CMT==3;
+```
+
+So the model BODY is written in user-compartment numbering (depot 1, center 2,
+cp 3, pd 4) and `_CMT` normalizes the raw CMT with that model's OWN sensitivity
+count.  rxode2 does this deliberately -- src/codegen.c:218:
+
+```c
+// This converts CMT to user CMT in model
+// Hence CMT = 4 could translate in data to 44 with sensi=10
+// Then cmt=44 translates back to cmt-10 or 4.
+// This makes the sensitivity equations insensitive to CMT changes that occur in FOCEi
+sAppend(&sbOut,"#define _CMT ((fabs(CMT)<=%d) ? CMT : ((CMT<0) ? CMT+%d: CMT-%d))\n",
+        baseSize, tb.sensi, tb.sensi);
+```
+
+Each model is self-consistent ON ITS OWN translated table -- measured, same rows:
+
+| model     | nstate | etTrans CMT | _CMT offset | resolves to |
+|-----------|-------:|------------:|------------:|-------------|
+| mv0       |      2 |     3, 4, 3 |           0 | cp, pd, cp  |
+| predNoLhs |      2 |     3, 4, 3 |           0 | cp, pd, cp  |
+| predOnly  |      2 |     3, 4, 3 |           0 | cp, pd, cp  |
+| inner     |      4 |     5, 6, 5 |           2 | cp, pd, cp  |
+| outer     |     62 |  63, 64, 63 |          60 | cp, pd, cp  |
+
+A pooled fit translates ONCE, against whichever model sized the pool, so a peer
+de-normalizes with the wrong offset: the inner model reading the outer model's
+table computes `63 - 2 = 61`, which matches no endpoint.
+
+### FIXED: OdeSwapCmtScope re-bases the CMT covariate per solving model
+
+Do not ask rxode2 to change `_CMT`.  Subtracting the compiling model's `tb.sensi`
+is right, and load bearing, whenever a model is solved against its OWN translated
+table -- every standalone solve does that: npde, cwres, the residual and table
+steps, plain `rxSolve()` of a sensitivity model.  Changing it upstream would break
+those, and they are the common case.
+
+What is unsupported is what the pool does on purpose: run several peer models
+(inner, pred, thetaSens, hess2, augmented outer) over ONE table, sized for the
+largest.  Their `tb.sensi` differ (2, 0, 60 here) and a table carries one basis, so
+at most one peer normalizes correctly.  rxode2 is not wrong; the pool is asking for
+something it has no contract for -- so the fix belongs here.
+
+`OdeSwapCmtScope` (src/odeSwap.{h,cpp}) is an RAII scope that, for the duration of
+a pooled solve/read with a given slot, shifts that subject's CMT covariate column by
+`nSens_pool - nSens_peer` and restores it on every exit path.  Only ENDPOINT rows
+move (|CMT| > nPhys); dose rows must not, since `_CMT` leaves them alone and shifting
+them would redirect a dose.  Instantiated in `likInner0` (around the density loop,
+picking pred vs inner) and in `getPopR`.  Zero cost when nothing larger sized the
+pool, so single-model fits and standalone solves are untouched by construction.
+
+Measured, threads pinned to 1, `maxOuterIterations = 0`:
+
+| model                | fast=FALSE       | fast=TRUE        | pool  | grad     |
+|----------------------|-----------------:|-----------------:|-------|----------|
+| 2-endpoint, indep PD |    262.36971237  |    262.36971237  | outer | analytic |
+| 2-endpoint, chained  |   195.000953334  |   195.000953335  | outer | analytic |
+| 1-endpoint theo_sd   |   133.654382066  |   133.654382798  | outer | analytic |
+
+with the EBEs equal to every printed digit on the two-endpoint fits.  Before the
+re-base the multi-endpoint fast fit gave `-633.7157423` and etas ~3e-08.
+
+REJECTED on the way (measured, not assumed): rebasing `ind->par_ptr[cmtPar]` just
+before `calc_lhs`.  CMT is delivered as a COVARIATE (`op->cmtCov`,
+src/rxData.cpp:4070) and refreshed from the covariate arrays at the top of
+`calc_lhs`, so the write is overwritten before the model reads it -- the par_ptr slot
+still held the previous row's value at the moment of the write.  The covariate column
+is the only correct interception point.
+
+Nothing was needed from rxode2 to compute the shift: `tb.sensi` is already exposed as
+`length(rxModelVars(obj)$sens)` and `odeSwapDeclare()` records it per slot (`nSens`;
+live: inner 2, outer 60, pred 0).
+
+### UPSTREAM API REQUEST (rxode2) -- ABI, not behavior
+
+`OdeSwapCmtScope::shift()` is the ONLY place nlmixr2est reaches into rxode2's structs
+by field (`op->cmtCov`, `ind->cov_ptr`), so it is ABI-linked: a layout change upstream
+miscompiles it silently rather than failing to build.  rxode2 already exposes the READ
+half through the function-pointer table -- `getIndCmt(op, ind, kk)` (rx2api.c:267,
+table slot 82).  Request the matching writer:
+
+```c
+void setIndCmt(rx_solving_options *op, rx_solving_options_ind *ind, int kk, int cmt);
+```
+
+registered in the same table.  That encapsulates both fields, takes this out of the
+ABI, and is the exact inverse of an accessor that already exists.  Everything else in
+the scope already goes through public accessors (`getIndNallTimes`, `odeSwapNeq`,
+`odeSwapNSens`).  Swap the direct writes for it once available.
+
+### This very likely subsumes the "~2x inflated PK directions" table below
+
+The FD reference in that comparison is sound -- `ofvAt()` refits WITHOUT `fast=TRUE`, so
+those fits never pooled.  The ANALYTIC side did: `analyticOuterGradDirect` reads
+`fInd->saveEta`, which under the pool is the collapsed eta ~ 3e-08, not the EBE.  So the
+two columns were taken at DIFFERENT eta points -- analytic at eta ~ 0, FD at the true
+EBEs -- which alone can produce a systematic ratio on exactly the eta-carrying (PK)
+directions and none on the PD ones.  Re-measure that table once the numbering is
+pool-invariant, before concluding anything about endpoint / error-model branching in the
+gradient assembly.
+
+### Developer trap found on the way
+
+`outerPoolOk` is stored INSIDE the cached `foceiModelList` RDS, and
+`rxUiGet.foceiModelDigest` keys only on model/control properties -- not on package
+source.  Editing the gate has no effect until `rxode2::rxClean()`; a stale cache made the
+fix look like it had failed on the chained model (objf 340.06) when it had not.
+
 ## Open: multi-endpoint analytic outer gradient (wrong values, not a fallback)
 
 Measured on the `test-focei-fast-grad.R` pkpd fixture (`cp ~ add(add.pk) | cp`,
@@ -2250,11 +2466,44 @@ Scope note: this is a redesign of the augmented-model generation
 (`.foceiAnalyticAugModelDirs` / `.foceiAnalyticErrFull` / `.vaeOuterCols`), not a patch to
 the C++ read-back, which is already endpoint-agnostic and correct.
 
-## Open: estimated boxCox/yeoJohnson lambda declines the analytic gradient
+## FIXED: estimated boxCox/yeoJohnson lambda declined the analytic gradient
 
-Confirmed on the SHIPPING path (full `fast=TRUE` fit): `grad: fd`,
-`nAnalyticGradDirect = 0`.  A scope regression, not a test artifact.
-`.foceiGradPooledSetup()` is correct -- `gMap = 0,1,2,4,3,6,7,8` (len 8 = npars),
-nKer = 9, lambda resolved to its theta-direction slot -- so the refusal is inside
-`gradPooledCore`.  Its `return false` sites are SILENT, which is how this and the
-mu-family arity bug both shipped unnoticed; annotate them before chasing further.
+Two independent defects, both found only after the silent `return false` sites were
+annotated (`declineHere()`), which the earlier note asked for.  The bare
+`catch (...)` around `gradPooledCore` was hiding an exception, not a refusal:
+
+```
+[gradDecline] gradPooledCore threw: copy into submatrix: incompatible matrix dimensions: 11x2 and 11x1
+```
+
+1. **Sigma column count** (`R/foceiCovAnalytic.R`).  `.sigTh <- intersect(.erTh, .frTh)`
+   kept only error thetas that `rx_r_` actually mentions.  An estimated lambda is an
+   error theta that `rx_r_` never mentions (`dR/dlambda = 0` -- the transform moves f
+   and the DV, not the variance), so it was dropped: `nsg = 2` directions against ONE
+   emitted `rx_rsig_` column, and `RsigB(totObs, nsg)` could not take `E.Rsig`
+   (`nobs, 1`).  Fixed by unioning the estimated boxCox/yeoJohnson thetas back in --
+   `dR/dlambda` emits as an identically-zero column, which the `rx_<name>_` naming rule
+   keeps as a real solve column, so counts match and the zero contributes nothing.
+   Lambda's real gradient still arrives via its theta direction and `-2*jacSum`.
+   Measured: `cols$rsig` 1 -> 2 (indices 30, 37), matching `nsg = 2`.
+
+2. **Name gather** (`R/foceiGradAnalytic.R`, `.foceiGradDirect`).  With the throw gone
+   the gradient computed but the helper still returned NULL: `.nm` was assembled in
+   KERNEL space (`thStruct` 4 + `sgName` 2 + `omNames` 3 = 9) against an outer gradient
+   of npars = 8, because lambda occupies two kernel slots.  `length(.nm) != length(.g)`
+   then bailed -- reporting "no analytic gradient" for one that had been computed.
+   Fixed by gathering the names through `gMap`, the same kernel -> outer map
+   `analyticOuterGradDirect` already uses.
+
+Verified against the cached central-difference references (helper-gradref.R), 1-cmt
+theo_sd, `sigdig = 4`:
+
+| transform  | max relative error | tolerance |
+|------------|-------------------:|----------:|
+| boxCox     |            0.00977 |      0.01 |
+| yeoJohnson |            0.00410 |      0.01 |
+
+boxCox sits close to the bound.  It is the `tka` component (analytic -6.7288 against
+the reference -6.6637); every other component agrees to <0.1%.  Worth a look before
+tightening that tolerance, but it is within the contract the test has always asserted.
+
