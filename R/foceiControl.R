@@ -332,10 +332,10 @@
 #'
 #' @param resetThetaP P-value for resetting mu-referenced THETAs based on
 #'     ETA drift, checked at the start and near a local minimum (see
-#'     \code{resetThetaCheckPer}). `0` = never reset (the default); `1` is
-#'     not allowed.  Defaults to off: when the etas cannot re-center the
-#'     reset repeats without progress and can error the fit out, and where
-#'     it converges it reaches a worse optimum than leaving it off.
+#'     \code{resetThetaCheckPer}). `0` = never reset; `1` is not allowed.
+#'     Defaults to `0.05`.  Set `0` to disable: where the etas cannot
+#'     re-center, the reset can repeat without progress and error the fit
+#'     out.
 #'
 #' @param resetThetaCheckPer represents objective function
 #'     \% percentage below which resetThetaP is checked.
@@ -343,7 +343,7 @@
 #' @param resetThetaFinalP represents the p-value for reseting the
 #'     population mu-referenced THETA parameters based on ETA drift
 #'     during optimization, and resetting the optimization one final time.
-#'     `0` = never reset (the default); see \code{resetThetaP}.
+#'     Defaults to `0.15`; `0` = never reset.  See \code{resetThetaP}.
 #'
 #' @param resetHessianAndEta is a boolean representing if the
 #'     individual Hessian is reset when ETAs are reset using the
@@ -802,16 +802,13 @@ foceiControl <- function(sigdig = 3, #
                          cholSEtol = (.Machine$double.eps)^(1 / 3), #
                          cholAccept = 1e-3, #
                          resetEtaP = 0.15, #
-                         # Default OFF.  The ETA-drift theta reset re-centers a
-                         # mu-referenced theta by the mean eta and restarts.  When the
-                         # etas cannot re-center -- e.g. every omega fixed, or a model
-                         # whose misfit the etas must absorb -- the shift does not stick,
-                         # the drift returns and the reset repeats until the restart cap
-                         # errors the fit out.  Where it does converge it lands on a worse
-                         # optimum than not resetting at all.  Same failure mode as the
-                         # mu-referenced (lin/irls) families' linear centering.
-                         resetThetaP = 0, #
-                         resetThetaFinalP = 0, #
+                         # The ETA-drift theta reset re-centers a mu-referenced theta by
+                         # the mean eta and restarts.  Where the etas cannot re-center --
+                         # every omega fixed, or a model whose misfit the etas must absorb
+                         # -- the shift does not stick and the reset can repeat until the
+                         # restart cap errors the fit out.
+                         resetThetaP = 0.05, #
+                         resetThetaFinalP = 0.15, #
                          diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
                          diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
                          cholSEOpt = FALSE, #
