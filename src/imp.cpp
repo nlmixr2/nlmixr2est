@@ -1158,25 +1158,31 @@ void impOuter(Environment e) {
         // Both halves are load bearing, and gating the trigger alone is NOT
         // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
         // the tutorial rule applied, 0.181 gating it but never withdrawing,
-        // 0.152 with AUTO off entirely, 0.132 gating AND withdrawing.  Gating on
+        // 0.152 with AUTO off entirely, 0.142 gating AND withdrawing.  Gating on
         // its own is still worse than not adapting at all; the withdrawal is
         // what turns it into a win.
         //
         // autoDfPatience TUNED to 2 (sweep over 0,1,2,3,5; 8 seeds):
         //
         //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
-        //     0 (off)      0.18065         0.01654         0.00301
-        //     1            0.16900         0.01418         0.00271
-        //     2            0.13221         0.01588         0.00225
-        //     3            0.14566         0.01654         0.00301
-        //     5            0.18657         0.01654         0.00301
+        //   patience   sparse obj   theo3 obj   sparse k>0.7   theo3 k>0.7
+        //     0 (off)     0.18065      0.01654        5.12          0.25
+        //     1           0.09691      0.01418        4.50          0.50
+        //     2           0.14234      0.01588        5.00          0.38
+        //     3           0.14566      0.01654        5.12          0.25
+        //     5           0.18657      0.01654        5.12          0.25
         //
-        // A genuine optimum, not a round number: the sparse curve is
-        // non-monotonic either side of 2, and 2 is simultaneously better than 0
-        // on BOTH objective and Omega for theo3.  Note patience interacts with
-        // nIter -- at 3 and 5 the counter never accumulates within a 12-iteration
-        // fit on the fixtures whose k-hat does improve, which is why those rows
-        // are identical to switching withdrawal off.
+        // A trade-off, not a single optimum.  1 gives the best objective on two
+        // of three fixtures but the WORST tail on all three -- on fixtures where
+        // escalation genuinely helps, withdrawing that eagerly retracts a working
+        // proposal.  2 is the default because tail behaviour is weighted above
+        // objective RMSE: infinite-variance weights are a correctness problem
+        // with unbounded error, Monte-Carlo noise is bounded and measurable.
+        // That is the same reasoning that puts auto on by default.
+        //
+        // Patience also interacts with nIter: at 3 and 5 the counter cannot
+        // accumulate inside a 12-iteration fit on a fixture whose k-hat does
+        // improve, which is why those rows match switching withdrawal off.
         // Establish the baseline for a df that step 1 pre-assigned (the
         // Decide the rung this k-hat asks for FIRST, because withdrawal must not
         // pre-empt an escalation that is still available.  Running the withdrawal
