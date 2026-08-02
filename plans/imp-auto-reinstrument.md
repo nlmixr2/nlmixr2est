@@ -245,3 +245,30 @@ Treat as the k-hat cases were treated: establish what the current sampler
 actually does, then decide whether the assertion should be re-aimed at a fixture
 where the two laws genuinely diverge, or the claim itself retired.  Do not
 simply widen the tolerance -- the premise, not the threshold, is what moved.
+
+## Phase 10 -- test-qrpem-slow.R asserts near-bit-identity
+
+`test-qrpem-slow.R:254-258` compares a default impmap fit against the checked-in
+pre-QRPEM baseline (`baselines/qrpem-baseline-ref.rds`) at testthat's DEFAULT
+tolerance, about 1.5e-8 -- effectively bit-identity for a stochastic EM.
+
+Observed drift is ~1e-7 relative:
+
+    fixef[1]   0.416636904  vs  0.416636853
+    omega[1]   0.333680510  vs  0.333680524
+    objective  130.9532537  vs  130.9532578
+
+That magnitude rules out the AUTO work in this branch as the cause.  A changed
+proposal df moves a fit by percent, not by the eighth decimal; escalation or
+withdrawal is a visible change, not this.  A compiler, BLAS or summation-order
+difference produces exactly this signature.
+
+Two things to decide, neither of which is "re-record the baseline and move on":
+
+* whether this assertion should be at bit-identity at all.  The claim it is
+  making -- "turning qr/sir off leaves the historical impmap path untouched" --
+  is a claim about BEHAVIOUR, and a tolerance of 1e-6 would still demonstrate it
+  while surviving a toolchain change.
+* whether the drift is attributable to any commit here.  That needs a fit run on
+  main with the same seed, compared against the same baseline.  Until that is
+  done, do not assume either way.
