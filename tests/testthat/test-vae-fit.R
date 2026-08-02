@@ -21,7 +21,8 @@ nmTest({
         cp ~ add(add.err)
       })
     }
-    ## shapes/covCenterType pinned as in test-vae-covariate.R: the expanded shape
+    ## shapes/covCenterType pinned as in test-vae-covariate-selection.R: the
+    ## expanded shape
     ## search would otherwise decide the coefficient NAMES (lka picks "lin" and
     ## lV "power" by default), making this test about which shape wins rather
     ## than about the fit accessors it is here to check.

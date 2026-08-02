@@ -93,7 +93,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "posthoc", "ar-est", "mu-family"),
   # batch 7
   c("mu-plain-fit", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
-    "vae-errmodel", "table-cmt", "vae-covariate"),
+    "vae-errmodel", "table-cmt", "vae-covariate-selection"),
   # batch 8 -- heaviest remaining files on the single-worker CI runner
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.
