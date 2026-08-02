@@ -1207,8 +1207,10 @@ void impOuter(Environment e) {
           // which is the intended trade: the failure this guards against is a
           // proposal that never helped, not one that stopped helping.
           //
-          // For the same reason noImp is not reset when the rung is made heavier
-          // below -- the strike count belongs to the intervention as a whole.
+          // noImp is not reset explicitly when the rung is made heavier below;
+          // it does not need to be.  That escalation re-baselines kAtEsc, so a
+          // rung that works clears `improved` on its next iteration and zeroes
+          // the count itself, while one that does nothing keeps accumulating.
           bool improved = (kh <= 0.7) || (kh < kAtEsc[id] - 0.1);
           if (improved) {
             noImp[id] = 0;
@@ -1227,7 +1229,14 @@ void impOuter(Environment e) {
           double want = (kh > 1.0) ? 20.0 : 30.0;
           // only ever go heavier here; escalation must not oscillate
           if (dfVec[id] <= 0.0 || want < dfVec[id]) {
-            if (dfVec[id] <= 0.0) kAtEsc[id] = kh; // remember what we set out to fix
+            // Re-baseline on EVERY escalation, not just the first.  Each rung is
+            // judged against the state it was meant to improve.  Keeping the
+            // original baseline breaks a subject that was healthy at its floor
+            // and deteriorated later: a baseline of 0.6 recorded at iteration 0
+            // cannot be beaten by an escalation that correctly takes k-hat from
+            // 1.3 to 0.9, so a proposal that IS working scores as failing and
+            // gets withdrawn.
+            kAtEsc[id] = kh;
             dfVec[id] = want;
           }
         }
