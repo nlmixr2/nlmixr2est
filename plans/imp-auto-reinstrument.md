@@ -169,3 +169,31 @@ article reproduces what it claims.
 Add a cheap assertion that the Phase 2 fixture still produces its tail failure under
 `auto=FALSE`.  If a future change removes it again -- as the pooling fix did -- that
 fires immediately, instead of quietly hollowing out the AUTO tests a second time.
+
+## Phase 7 -- the withdrawal rule is not reachable by the test suite
+
+Eight rounds of independent review found 11 defects in the AUTO withdrawal logic.
+The last three (a stale bar, an easy bar, a pinned bar) were all LATENT: no
+fixture in the sweep produces the k-hat sequences that trigger them, so the suite
+was green throughout.  They were found by reasoning about the state machine, and
+confirmed by replaying k-hat sequences through a standalone model of it.
+
+`kAtFloor`, `noImp` and `escDead` are locals inside `impOuter`.  The tests can
+only observe `impDfInd` (the last E-step's df) and the objective, so a subtle
+regression -- reverting the margin comparison from `<=` to `<`, say -- passes
+everything.
+
+The fix is to make the decision testable rather than to add more fits:
+
+* extract the per-subject decision into a pure function of
+  `(kh, df, dfFloor, kAtFloor, noImp, escDead, patience, nonmemSparse)`
+  returning the new state, and have the loop call it;
+* export a thin wrapper for the tests (note `src/init.c` hand-maintains the
+  `.Call` table with hardcoded arities -- see CLAUDE.md);
+* drive it with the sequences that actually broke it:
+  - floor 30, k-hat 0.6,0.6,0.6,1.3 -> escalate -> 0.9        must KEEP
+  - floor 0, 0.85,0.85, spike 1.05 -> escalate -> 0.85,0.85   must WITHDRAW
+  - floor 0, 0.85, 1.25 -> escalate -> 0.75,0.75              must KEEP
+
+That is a refactor with `.Call` registration consequences, so it is deliberately
+NOT part of this release; the rule as it stands is reviewed clean and measured.
