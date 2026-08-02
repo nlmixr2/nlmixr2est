@@ -197,3 +197,25 @@ The fix is to make the decision testable rather than to add more fits:
 
 That is a refactor with `.Call` registration consequences, so it is deliberately
 NOT part of this release; the rule as it stands is reviewed clean and measured.
+
+## Phase 8 -- test-imp-auto.R is now too slow for its batch
+
+The reinstrumentation took the file from about 6 fits to 14, several of them on
+the sparse (nobs < neta) fixture, and it measures ~40 minutes and ~24 GB on one
+worker.  `.slowBatches` sizes each batch to stay well under an hour IN TOTAL, so
+one file at 40 minutes breaks that budget on its own.
+
+This is a cost the reinstrumentation added, not a pre-existing one.  Options, in
+rough order of preference:
+
+* drop `nIter` for the sparse-based tests.  They assert WHICH subjects escalate
+  and whether withdrawal fires, not convergence, so the default 12 iterations is
+  more than the assertions need.  Verify each assertion still holds at the lower
+  count rather than assuming.
+* halve `isample` (300 -> 150) for the same tests; k-hat is noisier but the
+  assertions are ordinal (some/not-all, fewer-than), not threshold-exact.
+* collapse the `autoDfPatience` coverage: the 0-vs-2 comparison needs two sparse
+  fits, and one of them could reuse a fit already computed in the same file.
+
+Whatever is chosen, re-time the file afterwards -- the point is the budget, so an
+untimed "should be faster" does not close this.
