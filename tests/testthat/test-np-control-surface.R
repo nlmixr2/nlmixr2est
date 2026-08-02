@@ -95,4 +95,26 @@ nmTest({
     expect_error(npagControl(mapIter = 1), "mapIter")
   })
 
+  test_that("a fit-stamped control re-validates", {
+    # .impmapFamilyFit RESOLVES gammaMethod ("auto" -> "global"/"individual") and
+    # STAMPS autoNonNormal onto the runtime control, so a real fit's control
+    # legitimately differs from what the constructor returns.  Two separate bugs
+    # met here: the validator read those as user requests, and impmapControl()
+    # never stripped autoNonNormal (so do.call on a fit's own control had always
+    # died with "unused argument"), which is why this path had never worked.
+    for (.e in c("npag", "npb")) {
+      .ctl <- if (.e == "npag") npagControl() else npbControl()
+      .ctl$gammaMethod <- "global"
+      .ctl$autoNonNormal <- TRUE
+      .v <- if (.e == "npag") getValidNlmixrCtl.npag else getValidNlmixrCtl.npb
+      .out <- .v(list(.ctl))
+      expect_true(.out$autoNonNormal, info = .e)
+    }
+    # impmapControl itself round-trips a stamped control now
+    .ic <- impmapControl(); .ic$autoNonNormal <- TRUE
+    expect_true(do.call(impmapControl, .ic)$autoNonNormal)
+    # but an explicitly TYPED gammaMethod is still a request, and still rejected
+    expect_error(npagControl(gammaMethod = "global"), "gammaMethod")
+  })
+
 })

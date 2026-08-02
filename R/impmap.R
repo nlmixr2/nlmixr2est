@@ -303,6 +303,13 @@ impmapControl <- function(sigdig=3,
   # to foceiControl, which has no such argument.
   .gammaMethodUser <- .dots$gammaMethodUser
   .dots$gammaMethodUser <- NULL
+  # autoNonNormal is likewise stamped on the RUNTIME control (it records whether
+  # the resolved gammaMethod came out "individual"), and is not an argument here
+  # either.  Without this, do.call(impmapControl, <a fit's own control>) died
+  # with "unused argument: 'autoNonNormal'" -- so re-validating a completed fit's
+  # control never worked.
+  .autoNonNormal <- .dots$autoNonNormal
+  .dots$autoNonNormal <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -320,6 +327,7 @@ impmapControl <- function(sigdig=3,
                       c(list(sigdig=sigdig), .dots,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
+  if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
   .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)

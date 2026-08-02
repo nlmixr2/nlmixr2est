@@ -361,6 +361,15 @@
 # field (impCov) instead, which was bypassable in both directions --
 # npagControl(isample = 500, impCov = TRUE) skipped validation entirely, and a
 # pre-built impmapControl(isample = 500) handed to npag did too.
+# Fields that .impmapFamilyFit RESOLVES or STAMPS onto a RUNTIME control, so
+# their value on a real fit's control legitimately differs from what
+# impmapControl() would return: gammaMethod is resolved from "auto" to
+# "global"/"individual", and autoNonNormal/gammaMethodUser are stamped and are
+# not impmapControl() arguments at all.  Comparing those against the constructor
+# defaults rejected a completed fit's own control on re-validation.  For these,
+# only a name the caller actually TYPED counts.
+.npRuntimeStamped <- c("gammaMethod", "gammaMethodUser", "autoNonNormal")
+
 .npImpDefEnv <- new.env(parent = emptyenv())
 .npImpDefaults <- function() {
   if (is.null(.npImpDefEnv$d)) .npImpDefEnv$d <- impmapControl()
@@ -407,6 +416,9 @@
   # solely when its value differs from what the constructor would have produced.
   .asked <- function(n) {
     if (n %in% explicit) return(TRUE)
+    # resolved/stamped at fit time -- a differing value is the fit's doing, not
+    # the caller's, so only an explicitly typed name counts (handled above)
+    if (n %in% .npRuntimeStamped) return(FALSE)
     if (!n %in% names(vals)) return(FALSE)
     .v <- vals[[n]]
     if (length(.v) == 1L && is.atomic(.v) && is.na(.v)) return(TRUE)  # name-only
