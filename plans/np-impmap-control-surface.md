@@ -60,10 +60,17 @@ write it down, because the implementation is trivial once the classification is
 settled and unarguable afterwards.
 
 * **Internal, never user-facing -- must NOT be rejected**: `gammaMethodUser`
-  (stamped by `.impmapFamilyFit` to record the pre-`"auto"` preference) and the
-  M-step index maps. A caller never types these; a REBUILD always carries them.
+  (stamped to record the pre-`"auto"` preference), `impCov`, and the four M-step
+  index maps (`impMuThetaIdx`, `impMuEtaIdx`, `impThetaSensIdx`,
+  `impOmegaFixedEta`). A caller never types these; a REBUILD always carries them.
   Rejecting them breaks exactly the round-trips Phase 2 is trying to survive, so
-  they come off the reject list entirely.
+  they come off the reject list entirely -- and if the "detect internal fields"
+  option is chosen, this is precisely the detection signature.
+
+  Note `sirSample` is computed and stamped by `impmapControl()` when absent, so a
+  rebuilt control always carries it too; it is nonetheless a real user-facing
+  argument, so it stays in the reject bucket and the rebuild detection must not
+  depend on it.
 * **Inapplicable** -- no meaning without an importance-sampling proposal:
   `isample`, `gamma`, `gammaMethod`, `df`, `auto`, `autoNonNormal`,
   `autoNonmemSparse`, `autoDfPatience`, `iscaleMin`, `iscaleMax`, `iaccept`,
@@ -122,6 +129,12 @@ discovered:
   fields) and so reads as a rebuild, silently ignoring the edit -- which is the
   original bug wearing a different hat. Either validate at fit time as well, or
   accept and document that post-hoc edits are not checked.
+
+A sequencing detail that decides where the check can live: `npagControl()` calls
+`impmapControl(...)` BEFORE stamping `.ctl$est <- "npag"`, so a check placed
+inside `impmapControl()` cannot tell it was invoked from the np constructor. The
+check therefore belongs in `npagControl()`/`npbControl()` and in `.npValidCtl()`
+(which is where the raw-list path converges), not in `impmapControl()`.
 
 Whichever is chosen, the round-trip must be an explicit test (Phase 5), not an
 assumption.
@@ -216,3 +229,29 @@ This is a user-visible behaviour change: code that today passes `isample` to
 `npagControl()` and is silently ignored would start erroring. That is the point
 -- such code is already not doing what its author intended -- but it belongs in a
 release where the change can be called out, not slipped into a patch.
+
+## Phase 7 -- the general form: op_focei fields that leak across fits
+
+Both bugs found while writing this plan were the same shape: a field loaded into
+the process-global `op_focei` only `if (foceiO.containsElementNamed(...))`, with
+no clear on absence, so a later fit inherits an earlier one's value. Two were
+fixed (np in 2d5cffaaf, advi in 46f00ceb2). A sweep of `foceiSetup_` finds the
+pattern is broader:
+
+* the `isImpmap` index-map loads have no `else` clear, so an impmap fit whose
+  control lacks them inherits the previous fit's;
+* `est="focei"`, `est="saem"` and friends enter none of the three blocks, so the
+  index maps are never cleared for them at all;
+* the `imp*` scalars (`impCov`, `isample`, `gamma`, `nIter`, `impSeed`, ...) are
+  likewise conditional, and `rxOptionsFreeFocei()` does not reset them.
+
+The np and advi cases mattered because those methods READ the fields without
+always setting them. For methods that never read them, a stale value is inert
+today -- but it is inert by accident, and the next method to reuse one of these
+helpers inherits the hazard.
+
+The durable fix is to reset the whole `imp*` group unconditionally at the top of
+`foceiSetup_` (or in `rxOptionsFreeFocei()`) and let each block populate what it
+needs, rather than clearing field by field at each call site. That is a
+self-contained change and is NOT part of this release; it is recorded here so the
+pattern is not rediscovered a third time.
