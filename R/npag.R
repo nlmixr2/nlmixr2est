@@ -102,6 +102,11 @@
 #'   `bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
 #'   `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at
 #'   `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).
+#' @param gamma,df Declared only so they are REJECTED rather than partially
+#'   matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+#'   formal R bound `gamma = 2` to it and silently turned the assay-error
+#'   optimisation off; `df` is an importance-sampling proposal control a
+#'   nonparametric engine never builds.  Passing either is an error.
 #' @param ... Parameters passed to [impmapControl()], for the shared FOCEI-family
 #'   scaffolding only (the inner MAP problem, mu-referencing, the residual error
 #'   model, threads).  The importance-sampling controls are **rejected** rather
