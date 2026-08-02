@@ -1170,7 +1170,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg, eventSens = "fd") {
+.toRx <- function(x, msg, eventSens = "fd", role = NULL) {
   if (is.null(x)) {
     return(NULL)
   }
@@ -1180,9 +1180,14 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## sensitivities are computed analytically rather than by finite differences.
   ## Passed only for models that carry the sensitivity equations (the inner
   ## model); "fd" everywhere else preserves the legacy behavior.
-  .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
-                               nlmixr2global$toRxDvidCmt),
-                         eventSens = eventSens)
+  ## Role-tag the compiled artifact.  rxode2 names the .c/.so from the PARSED model
+  ## alone (.rxPre -> rx_<parsed_md5>_<arch>_), while the emitted C also depends on the
+  ## event-sensitivity code generated afterwards -- so two builds of one parsed model
+  ## whose event-sensitivity code differs share one .so and the later build wins for
+  ## both, silently.  See nlmixr2/rxode2#1171.  The md5 stays in the name so genuinely
+  ## different models still never share an artifact.
+  .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
+  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
   .msuccess("done")
   .ret
 }
@@ -1367,10 +1372,12 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens)
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens,
+                 role = "rxInner")
   # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
   innerHess2 <- if (!is.null(s$..innerHess2)) {
-    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens)
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens,
+          role = "rxHess2")
   } else NULL
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
@@ -1405,11 +1412,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .predOnly <- if (.hasMix) {
     .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
                         collapse="\n")
-    .toRx(.prunedStr, ifelse(.getRxPredLlikOption(),
+    .toRx(.prunedStr, role = "rxPredPruned", ifelse(.getRxPredLlikOption(),
                              "compiling Llik EBE model (mixture)...",
                              "compiling EBE model (mixture)..."))
   } else {
-    .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+    .toRx(s$..pred, role = "rxPredOnly", ifelse(.getRxPredLlikOption(),
                            "compiling Llik EBE model...",
                            "compiling EBE model..."))
   }
@@ -1426,16 +1433,66 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
-    outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
+    # eventSens MUST be "jump" here, matching rxUiGet.foceiOuter's own build
+    # (foceiCovAnalytic.R).  rxode2 keys the generated .c/.so on the model TEXT and
+    # name only (rxCompile.character: prefix <- .rxPre(model, modName)) -- NOT on
+    # eventSensCode -- so compiling the same sensitivity model once with "jump" and
+    # once with "fd" writes BOTH builds to one .so path.  The second overwrites the
+    # first, and a model object bound earlier keeps resolving its entry points by
+    # name, so it silently executes the other variant: measured as an augmented
+    # model that declares 29 lhs whose calc_lhs computes only 4, which drops the
+    # analytic gradient for a whole fit.  Event sensitivities stay ON for every
+    # sensitivity (inner/outer) model so only one variant per text is ever built.
+    outer = if (is.null(.outerAm)) .toRx(s$..outer, "compiling outer model...",
+                                         eventSens = "jump",
+                                         role = "rxOuterFb") else .outerAm$augMod,
     # ALL the aug-model metadata except the compiled model itself: the batched
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
+    # May the augmented outer model be POOLED (size the shared solve and run
+    # through vaeOuterSolve_)?  Data flag only -- consumed by foceiFitCpp_.
+    #
+    # Multiple endpoints are excluded for MEMORY SAFETY, not for accuracy.
+    #
+    # Accuracy is fine: evaluating the analytic gradient twice on the SAME fit --
+    # once pooled, once through rxode2::rxSolve, so identical thetas and identical
+    # best etas with no inner re-optimisation -- gives bit-identical gradients for
+    # a two-endpoint model (all 8 components, relative error 0).  So the earlier
+    # justification for this exclusion was wrong, and so was the FD comparison it
+    # rested on: test-focei-fast-grad.R's ofvAt() refits WITHOUT fast=TRUE, so it
+    # references unpooled fits with re-optimised etas against a pooled analytic
+    # value, and its flat h=1e-3 divides by 2e-3, amplifying inner-optimisation
+    # noise ~500x on a component whose per-subject terms cancel to ~63.
+    #
+    # Multi-endpoint models DO pool, but only because OdeSwapCmtScope re-bases the
+    # CMT covariate per solving model (src/odeSwap.cpp).  Do not lift that and leave
+    # this enabled.
+    #
+    # rxode2 compiles a multi-endpoint model's endpoint switch in USER compartment
+    # numbering and emits, per model,
+    #     #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
+    # with nSens the sensitivity count of the model BEING COMPILED (codegen.c).  That
+    # is correct for any standalone solve -- npde, cwres, tables -- but a pooled fit
+    # translates the event table once, against whichever model sized the pool, and the
+    # peers have different nSens (here inner 2, outer 60).  Unre-based, the inner model
+    # computed 63 - 2 = 61, matching no endpoint: rx_pred_, rx_r_, d(f)/d(eta) and
+    # rx_yj_ all evaluated to 0, the EBEs collapsed to ~0 and yj = 0 silently
+    # log-transformed DV.  Measured then: objf -633.7157 / etas 3.1e-08 against
+    # fast=FALSE's 262.3697 / 1.548, 2.470.  With the re-base the two agree to 11
+    # digits and the multi-endpoint fit gets the analytic gradient.
+    # delay() models ARE in scope: focei forces the DDE configuration at the FIT level
+    # (the hasDelay block below -- method 0, stiff2 13, dense TRUE), so a delay fit's
+    # pool is built that way from the start and nothing needs changing per solve.  The
+    # delay-history column map is then built from a pool model that already carries the
+    # delays.  test-dde-focei.R covers it.
+    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) >= 1L,
+                           error = function(e) FALSE),
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
     # top level so the rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
     outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
-    predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
+    predNoLhs = .toRx(pred.opt, role = "rxPredNoLhs", ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
     theta = NULL,
@@ -2423,11 +2480,28 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error=function(e) FALSE)
     if (isTRUE(.esLoaded)) {
-      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+      ## Tell the C++ core which model the event path is now bound to.  handle_evid
+      ## sizes its scratch from the effective neq but calls the INSTALLED model's
+      ## dydt, so a solve may only be compacted when the two agree -- and the core
+      ## cannot see this R-side install on its own.  Roles: 0 pred, 1 inner,
+      ## 2 outer, 3 hess2 -- a focei problem sets up 1, 2 and 3.
+      odeSwapEsNoteInstalled_(1L)
+      on.exit({
+        rxode2::rxEventSensDeactivate()
+        odeSwapEsNoteInstalled_(-1L)
+      }, add=TRUE)
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
   nResets <- 0L
+  ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
+  ## read by C++ when the outer optimizer starts; after that every gradient evaluation
+  ## runs without touching R.  A NULL simply leaves the previous R-mediated route in
+  ## place, so this cannot break a fit.
+  if (isTRUE(tryCatch(.ret$control$fast, error = function(e) FALSE))) {
+    .gpSetup <- tryCatch(.foceiGradPooledSetup(.ret$ui, .ret), error = function(e) NULL)
+    if (!is.null(.gpSetup)) assign(".foceiGradPooledSetup", .gpSetup, envir = .ret)
+  }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
       nResets <- nResets + 1L
@@ -2454,6 +2528,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         }
       })
       if (this.env$err == "theta reset") {
+        # A restart must recompute its OWN objective.  nlmixr2EnvSetup() (inner.cpp)
+        # computes one only when the environment does not already carry it -- otherwise
+        # it adopts the existing value verbatim -- and this loop deliberately reuses
+        # `.ret` across calls (see the etaObf fixup in .foceiFitInternal).  A stale
+        # objective left by the aborted run therefore gets reported against the
+        # restarted fit's parameters, and every statistic derived from it (OBJF, AIC,
+        # BIC, logLik) inherits the error.
+        for (.stale in c("objective", "OBJF", "objf", "AIC", "BIC", "logLik", "adj")) {
+          if (exists(.stale, envir = .ret, inherits = FALSE)) {
+            rm(list = .stale, envir = .ret)
+          }
+        }
         .nm <- names(.ret$thetaIni)
         .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
         .ret$rxInv$theta <- .thetaReset$omegaTheta
@@ -2659,7 +2745,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control$interaction <- 0L
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
     # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
-    # gradient differentiates it directly (.foceiAnalyticGradCoreLL, exact inner Hessian +
+    # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +
     # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
     # out-of-scope cases (multiple endpoints, censoring, nAGQ>1, IOV), where the
     # augmented `..outer` model cannot supply the gradient and the fit uses finite
@@ -2669,6 +2755,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
       .control$fast <- FALSE
     }
+  }
+  # Mixture models are out of the fast path until the outer gradient has a proper
+  # treatment for them.  The mixture objective is a sum of component likelihoods
+  # WEIGHTED by each component's probability, so the outer gradient needs the
+  # weighted per-component contributions -- it is not "the eta of the winning
+  # component".  Both simple readings are wrong: indexing inds_focei[_id] takes
+  # component 0 regardless of which won, and picking the winner still drops the
+  # probability weighting and the derivative of the weights themselves.
+  if (isTRUE(.control$fast) &&
+        isTRUE(tryCatch(length(.ui$thetaMixIndex) > 0L, error = function(e) FALSE))) {
+    .minfo("mixture model: the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
+    .control$fast <- FALSE
   }
   # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
   # cannot be built -- downgrade fast once here (plain focei gradient) instead of
@@ -2723,7 +2821,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                                     levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
                                              "Central Difference", "Scaled", "Unscaled",
                                              "Back-Transformed", "Forward Sensitivity",
-                                             "Analytic Gradient"))
+                                             "Analytic Gradient",
+                                             "Analytic Gradient (relaxed)",
+                                             "Analytic Gradient (finite difference)",
+                                             "Analytic Gradient (Chartrand)"))
     .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }

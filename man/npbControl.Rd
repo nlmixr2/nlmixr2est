@@ -67,7 +67,7 @@ bit-for-bit identical regardless of the thread count.}
 
 \item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
 `bobyqa` that fits the residual-error thetas.  A fixed default of `1e-4`,
-matching the optimizer convergence tolerance `10^(-sigdig)` at the default
+matching the optimizer convergence tolerance `10^(-sigdig)` at
 `sigdig = 4` (npb has no `sigdig`, so this is not derived from it).}
 
 \item{...}{Parameters passed to [impmapControl()].}

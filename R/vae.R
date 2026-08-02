@@ -459,13 +459,16 @@ vaeControl <- function(seed = 42L,
                        compress = FALSE,
                        adjObf = TRUE,
                        ci = 0.95,
-                       sigdig = 4,
+                       sigdig = 3,
                        sigdigTable = NULL,
                        rhoend = NULL,
 
                        stickyRecalcN = 4,
                        maxOdeRecalc = 5,
                        odeRecalcFactor = 10^(0.5),
+                       outerStickyRecalcN = 4,
+                       outerMaxOdeRecalc = 5,
+                       outerOdeRecalcFactor = 10^(0.5),
                        indTolRelax = TRUE,
                        eventSens = c("jump", "fd"),
                        rxControl = NULL,
@@ -539,6 +542,9 @@ vaeControl <- function(seed = 42L,
   checkmate::assertIntegerish(stickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(outerStickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(outerMaxOdeRecalc, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(outerOdeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
   likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
@@ -594,7 +600,7 @@ vaeControl <- function(seed = 42L,
                                                iterPrintControl = .xtra$iterPrintControl)
 
   # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
-  # regress M-step; FOCEi mechanism from sigdig, else the sigdig=4 value
+  # regress M-step; FOCEi mechanism from sigdig, else the historic 1e-4
   if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   ## Convergence tolerance of the RESIDUAL optimizer.  Derived from `sigdig` the
@@ -658,6 +664,9 @@ vaeControl <- function(seed = 42L,
                stickyRecalcN = as.integer(stickyRecalcN),
                maxOdeRecalc = as.integer(maxOdeRecalc),
                odeRecalcFactor = odeRecalcFactor,
+               outerStickyRecalcN = as.integer(outerStickyRecalcN),
+               outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
+               outerOdeRecalcFactor = outerOdeRecalcFactor,
                indTolRelax = indTolRelax,
                eventSens = eventSens,
                iterPrintControl = .iterPrintControl,

@@ -18,12 +18,18 @@ struct rxSolveF {
   int global_jt = 2;
   int global_mf = 22;
   int global_debug = 0;
-  int neq = NA_INTEGER;
+  // No neq here: the state count lives in the odeSwap registry (src/odeSwap.h),
+  // which is what the pool decision reads.  The field that used to sit here was
+  // written in four places and never read.
 };
 
 extern rxSolveF rxInner;
 extern rxSolveF rxPred;
 extern rxSolveF rxThetaSens;
+extern rxSolveF rxHess2;
+extern rxSolveF rxVaeOuter;
+extern rxSolveF rxOuterNode;
+extern rxSolveF rxOuterCov;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
 extern rx_solve *rx;

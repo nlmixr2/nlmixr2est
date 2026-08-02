@@ -2,6 +2,39 @@
 
 ## New features
 
+- The **mu-referenced FOCEi family is experimental**.  `est = "mfocei"`,
+  `"ifocei"`, `"mfoce"`, `"ifoce"`, `"mfocep"`, `"ifocep"`, `"magq"`, `"iagq"`,
+  `"mlaplace"`, `"ilaplace"` and their `fast=TRUE` siblings (`"mfoceif"` and
+  relatives) are research methods.  They are not validated to the standard of the
+  established estimation methods, their results should not be relied on without
+  independent checking, and their interface and defaults may change or be
+  withdrawn in a future release without a deprecation cycle.
+
+    - The same machinery is reachable from the ordinary methods with
+      `foceiControl(muModel=)` (`"lin"` or `"irls"`, default `"none"`), which is
+      where it will continue to live.
+
+
+- The default `sigdig` is now `3` (was `4`) for every estimation method except
+  `est="nls"`.  `sigdig` drives the ODE solver tolerances as `rtol = 10^-sigdig`
+  and `atol = 10^(-sigdig-3)`, so the default solve is now `rtol = 1e-3`,
+  `atol = 1e-6` -- what most open-source ODE solvers default to, and still
+  tighter than the precision the optimizer targets.  Fits are faster.  Pass
+  `sigdig = 4` to any control function to restore the previous tolerances.
+
+    - `est="nls"` keeps `sigdig = 4`: its Levenberg-Marquardt step is sensitive
+      to solver noise, and it already requests a solve three orders tighter than
+      the optimizer target.
+
+    - The optimizer tolerances that are tuned values rather than the
+      `10^-sigdig` formula (`est="nlm"`, `est="nlme"`) stay anchored at
+      `sigdig = 4`, so at the new default they also sit one order looser.
+
+    - **Printed parameter tables now show 3 significant digits** rather than 4.
+      `sigdigTable` follows `sigdig` when it is not set explicitly, and that
+      coupling is deliberate: a fit converged to about 3 digits should not
+      report 4.  Set `sigdigTable = 4` to keep the previous output.
+
 - Importance-sampling EM (`est="imp"` / `"impmap"` / `"qrpem"`): the proposal
   density is now adapted **per subject** rather than by one global setting, and
   a diagnostic is reported that can tell when it matters.
@@ -64,6 +97,21 @@
 
 ### Estimation
 
+- The ETA-drift theta reset (`foceiControl(resetThetaP=)`,
+  `resetThetaFinalP=`) now defaults to OFF.  It re-centered a mu-referenced
+  theta by the mean ETA and restarted the fit, but when the ETAs cannot
+  re-center -- every omega fixed, or a model whose misfit the ETAs must absorb
+  -- the shift did not stick and the reset repeated until the restart cap
+  errored the fit out ("Maximum number of theta resets (10) exceeded").  Where
+  it did converge it reached a worse optimum than leaving it off.  Set
+  `resetThetaP=` to restore the old behavior.
+
+- Fixed a theta-reset restart reporting the PREVIOUS attempt's objective
+  function.  The restart reuses the fit environment, and the objective was only
+  computed when the environment did not already carry one, so a restarted fit
+  could report an objective (and the `OBJF`/`AIC`/`BIC`/log-likelihood derived
+  from it) belonging to the aborted attempt rather than to its own parameters.
+
 - The nlm family (`est="nlm"`, `"nlminb"`, ...), `est="nls"` and the
   importance-sampling EM sensitivity model now honor the covariate
   interpolation declared in the model (`nocb()`, `linear()`, `midpoint()`).
@@ -74,14 +122,78 @@
 
 ## Bug fixes
 
-- `vpcSimExpand()` no longer merges the entire observed dataset into the
-  simulation when a requested `extra` column is missing: a dropped filter
-  result meant an unknown column (e.g. a misspelled `stratify` in
-  `vpcPlot()`) spliced every observed column into the simulation, and valid
-  columns dragged the rest of the observed data along with them (colliding
-  with the simulation's own, e.g. `time.x`/`time.y`).  Only the requested
-  columns are merged now, and a column found in neither the simulation nor
-  the data warns and is ignored (#830).
+### Estimation
+
+- `foceiControl(fast=TRUE)` now solves its augmented outer-gradient model in
+  the shared FOCEi solve pool (single-endpoint models), sized for the augmented
+  model and with that model's event ("jump") sensitivities installed for the
+  batch.  This makes the analytic gradient exact for modeled dosing (`f()`/
+  `lag()`), which previously crashed or fell back to finite differences on that
+  path; multiple-endpoint models keep the previous `rxSolve` route.
+
+- `est="vae"` with `nonMuTheta="grad"` solved its augmented outer-gradient model
+  through `rxode2::rxSolve` on every M-step iteration instead of the shared
+  FOCEi solve pool.  The pooled and fallback routes are numerically equivalent,
+  so this cost time rather than accuracy.
+
+- The analytic outer gradient could silently degrade to finite differences.
+  `vaeOuterSolve_()` returned `R_NilValue` from a `List`-returning function,
+  which builds an *empty list* rather than `NULL`, so every refusal and every
+  failed augmented solve looked to the caller like a successful solve that
+  returned nothing.  Affects `est="vae"` with `nonMuTheta="grad"` and any
+  caller sharing that path.
+
+- `foceiControl(fast=TRUE)` now computes the analytic outer gradient entirely in
+  C++ for `est="foce"`/`"focep"`, `est="agq"` and general-likelihood (`ll()`)
+  endpoints, as `est="focei"` already did.  Those three shapes previously
+  returned to R on every gradient evaluation to rebuild the fit's etas, omega
+  and setup as R objects; besides the cost, that let R run between the augmented
+  solve and the assembly, where it could disturb the shared solve pool.
+
+- `foceiControl(fast=TRUE)` fell back to finite differences for every model with
+  no `d/dt()` -- a purely algebraic `ll()`/generalized endpoint such as a Poisson
+  or logistic regression.  Such a model has no ODE state sensitivities and needs
+  none (its prediction derivatives are plain symbolic ones), but the augmented
+  sensitivity model refused to build on the empty expansion, and the pooled solve
+  additionally required a non-zero ODE state count.  Both are fixed, so these
+  models now get the analytic gradient; measured against central differences of
+  the objective, agreement is within 6e-7 relative.
+
+- `foceiControl(fast=TRUE)` no longer returns to R for the outer gradient at all.  The
+  R implementation it used to fall through to has been removed: it was a second copy of
+  the same mathematics that had to be kept in step by hand, and reaching it rebuilt the
+  fit's etas, omega and setup as R objects on every gradient evaluation.  A model the
+  analytic gradient cannot handle now goes straight to finite differences, as before,
+  just without the intervening attempt.  `est="vae"` with `nonMuTheta="grad"` evaluates
+  the same C++ gradient.
+
+- The `est="nlm"` family (`nlm`, `nlminb`, `bobyqa`, `nls` and relatives) solved its
+  prediction model without compacting the shared solve pool to that model's own state
+  count.  The pool is sized for the larger sensitivity model, so the predictions were read
+  back at the wrong stride whenever the two differ.  No current result changes -- for the
+  models covered by the tests the two size the same, so no compaction was needed -- but
+  the mismatch is removed rather than left latent.
+
+- `foceiControl(fast=TRUE)` now uses the analytic outer gradient for **multiple-endpoint
+  models**, which previously took the slower finite-difference route.  Enabling this
+  needed a fix: rxode2 normalizes `CMT` inside each compiled model by subtracting that
+  model's own sensitivity-compartment count, which is right for a standalone solve but
+  means peers of different sensitivity depth cannot share one translated event table.
+  Pooled, the inner model resolved every observation to no endpoint at all, so its
+  prediction, residual variance and eta sensitivities evaluated to zero -- the
+  conditional estimates collapsed toward zero and `DV` was silently log-transformed.
+  The shared solve pool now re-bases the `CMT` covariate for whichever model is
+  reading.  Single-endpoint models were never affected.
+
+    - General-likelihood models (`ll()`, and named distributions such as `pois()` /
+      `binom()`) with more than one endpoint likewise use the finite-difference
+      gradient, with a message saying so.  Single-endpoint models of that kind are
+      unaffected and use the analytic gradient (nlmixr2/nlmixr2est#838).
+
+- The FOCE EBE Newton convergence tolerance is no longer derived from `sigdig`; it is
+  fixed at `1e-9`, the value it shipped with, and `foceiControl(foceEbeTol=)` overrides
+  it.  Deriving it made the analytic FOCE gradient available or not depending on the
+  requested digits.
 
 - FOCEi: the inner eta-reset / eta-nudge machinery could make the objective
   function depend on the optimizer's history rather than on `theta` alone, so
@@ -107,6 +219,17 @@
       for the component instead of producing `Inf` (which made it fire for every
       nonzero eta).
 
+### Output / tables
+
+- `vpcSimExpand()` no longer merges the entire observed dataset into the
+  simulation when a requested `extra` column is missing: a dropped filter
+  result meant an unknown column (e.g. a misspelled `stratify` in
+  `vpcPlot()`) spliced every observed column into the simulation, and valid
+  columns dragged the rest of the observed data along with them (colliding
+  with the simulation's own, e.g. `time.x`/`time.y`).  Only the requested
+  columns are merged now, and a column found in neither the simulation nor
+  the data warns and is ignored (#830).
+
 ## Breaking changes
 
 - `est="vae"`: naming a covariate in `vaeControl(shapes=)` now also **limits
@@ -126,6 +249,18 @@
   rxode2 (>= 5.1.5) for `rxDeserialize()`.
 
 ## New features
+
+- `foceiControl()` gains `outerMaxOdeRecalc`, `outerOdeRecalcFactor` and
+  `outerStickyRecalcN`, which loosen ODE tolerances and retry the analytic
+  outer (augmented sensitivity) solve for a single subject that fails at the
+  requested tolerance.  Previously one subject's failed augmented solve dropped
+  the whole gradient to finite differences; now that subject can still
+  contribute an analytic gradient, which is generally more accurate than the FD
+  approximation.  The loosening is per subject, so it is safe under the parallel
+  outer solve, and it is tracked separately from the inner problem's
+  `maxOdeRecalc`/`odeRecalcFactor`/`stickyRecalcN` -- a fit may loosen one and
+  not the other, and the warning names whichever applied.
+
 
 - `est="vae"`: `vaeControl(shapes=)` list elements are now dispatched
   individually, so the covariate-named and `list(var=, covar=, shapes=)` forms
@@ -228,6 +363,22 @@
   which is what makes a single threshold in these units meaningful.
 
 ## Bug fixes
+
+### Estimation
+
+- The per-subject "did this ODE solve fail" check now scans only the part of the
+  solve buffer that the subject's solve actually wrote.  When a method sizes the
+  shared solve buffer for a larger model and runs the inner solves compacted
+  against it (`est="impmap"`, `"imp"`, `"qrpem"`, `"advi"`, `"emvi"`, `"fbvi"`,
+  `est="vae"` with `nonMuTheta="grad"`, and `foceiControl(fast=TRUE)` with a
+  general `ll()` endpoint), the check read past that point into slots holding
+  stale values left by an earlier, wider solve of the same reused buffer.  A
+  stale `NaN`/`Inf` there was reported as a failed solve that had not happened,
+  needlessly loosening ODE tolerances and, once the retry budget was spent,
+  latching the loosened tolerance for the rest of the fit.  Objective values for
+  those methods may change slightly as a result.
+
+### Other
 
 - `nlmixr2fix()` now actually repairs serialized fit components: it previously
   tested the component name (not the object) for rawness, so the repair loop

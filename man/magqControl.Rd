@@ -5,7 +5,7 @@
 \title{Control options for the magq estimation method}
 \usage{
 magqControl(
-  sigdig = 4,
+  sigdig = 3,
   nAGQ = 2,
   ...,
   interaction = TRUE,
@@ -26,8 +26,8 @@ tolerances match the main solve (the outer gradient and covariance are built
 from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
 order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with

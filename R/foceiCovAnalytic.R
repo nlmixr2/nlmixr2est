@@ -751,13 +751,14 @@
 }
 
 #' Augmented-solve tolerance for the SEs: `covSolveTol` if the user set it, else
-#' tightened from `sigdig` (default 1e-10).
+#' tightened from `sigdig` (1e-9 at the default sigdig = 3).
 #' @noRd
 .foceiAnalyticSolveTol <- function(ui) {
   .user <- tryCatch(rxode2::rxGetControl(ui, "covSolveTol", NULL), error = function(e) NULL)
   if (!is.null(.user) && is.finite(.user) && .user > 0) return(.user)
-  .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 4)))
-  if (!is.finite(.sd)) .sd <- 4
+  # fallback tracks the package default sigdig, not a frozen literal
+  .sd <- suppressWarnings(as.numeric(rxode2::rxGetControl(ui, "sigdig", 3)))
+  if (!is.finite(.sd)) .sd <- 3
   max(1e-14, min(1e-8, 10^-(.sd + 6)))
 }
 
@@ -1194,8 +1195,13 @@
     rxode2::.rxJacobian(.s, c(.st, .mfDirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
+    # Gated on there being STATES to expand: a purely algebraic model (no d/dt(), e.g. a
+    # generalized ll() endpoint) legitimately has no state sensitivities, and needs none --
+    # .g1/.g2 below reduce to plain symbolic derivatives when .st is empty, which is exactly
+    # right.  Bailing on the empty expansion made every such model fall back to finite
+    # differences.
     .s1 <- rxode2::.rxSens(.s, .mfDirs)
-    if (length(.s1) == 0L) return(NULL)
+    if (length(.st) > 0L && length(.s1) == 0L) return(NULL)
     # 2nd order (model f-directions only): the expensive expansion.  order = 1 skips it
     # entirely -- no 2nd-order state-sensitivity compartments, no f2/rvar2 chains.
     .s2 <- if (order >= 2L) rxode2::.rxSens(.s, .mfDirs, .mfDirs) else character(0)
@@ -1273,7 +1279,22 @@
       .erTh <- ui$iniDf$ntheta[!is.na(ui$iniDf$err)]
       .frTh <- suppressWarnings(unique(as.integer(sub("THETA_([0-9]+)_", "\\1",
         regmatches(.rvarStr, gregexpr("THETA_[0-9]+_", .rvarStr))[[1]]))))
-      .sigTh <- sort(intersect(.erTh, .frTh))
+      # An ESTIMATED boxCox/yeoJohnson lambda is an error theta that occupies a sigma
+      # slot in the parameter accounting, but rx_r_ never mentions it (dR/dlambda = 0 --
+      # the transform moves f and the DV, not the variance).  The intersection above
+      # therefore dropped it, leaving nsg = 2 sigma directions against ONE emitted
+      # rx_rsig_ column, and the pooled kernel threw
+      #   copy into submatrix: incompatible matrix dimensions: 11x2 and 11x1
+      # which the bare catch(...) in analyticOuterGradDirect swallowed into a silent
+      # "grad: fd".  Emit the full sigma set instead: dR/dlambda is identically zero, and
+      # an `rx_rsig_<n>_ = 0` still comes back as a real solve column (the rx_<name>_
+      # naming rule -- see CLAUDE.md), so the column count matches the direction count and
+      # the zero contributes nothing.  Lambda's real gradient still arrives through its
+      # theta direction and the -2*jacSum Jacobian term, unchanged.
+      .li <- ui$iniDf
+      .lamTh <- .li$ntheta[!is.na(.li$ntheta) & !is.na(.li$err) & !.li$fix &
+                             .li$err %in% c("boxCox", "yeoJohnson")]
+      .sigTh <- sort(union(intersect(.erTh, .frTh), .lamTh))
       for (.n in .sigTh) {
         .sg <- paste0("THETA_", .n, "_"); .dRs <- .Dn(.rvar, .sg)
         .sigL <- c(.sigL, paste0("rx_rsig_", .n, "_=", .toRx(.dRs)),
@@ -1303,7 +1324,9 @@
     # Compartments whose IC .rxSens already emitted (e.g. the DDE delay-sensitivity
     # augmentation writes the sensitivity-compartment histories/ICs itself); skip
     # those to avoid a duplicate `cmt(0)=` assignment.
-    .icDone <- trimws(sub("\\(0\\)=.*$", "", grep("\\(0\\)=", unlist(strsplit(c(.s1, .s2), "\n")), value = TRUE)))
+    # as.character(): with no ODE states .rxSens returns an empty LIST, not an empty
+    # character vector, and strsplit() rejects it ("non-character argument").
+    .icDone <- trimws(sub("\\(0\\)=.*$", "", grep("\\(0\\)=", unlist(strsplit(as.character(c(.s1, .s2)), "\n")), value = TRUE)))
     .emitIc <- function(.cmt, .expr) if (identical(.toRx(.expr), "0") || .cmt %in% .icDone) character(0)
       else paste0(.cmt, "(0)=", .toRx(.expr))
     .icL <- character(0)
@@ -1366,14 +1389,37 @@
     # exactly (thetas in ntheta order, etas in neta order, then covariates).
     .param <- .uiGetThetaEtaParams(ui, TRUE)          # params(THETA[1], .., ETA[1], .., covs)
     .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
-    .modTxt <- paste(.param, .modTxt, sep = "\n")
+    # Same compartment/endpoint prologue and epilogue the inner, predOnly and predNoLhs
+    # models get from .toRx (which pastes toRxParam + body + toRxDvidCmt).  This model
+    # builds its own text and calls .nlmixr2estRxode2 directly, so without this it was
+    # the only peer with no cmt() pins and an EMPTY dvid, i.e. a different endpoint
+    # contract from every model it shares the solve pool with.  Aligning it is right on
+    # its own terms and is a prerequisite for ever pooling a multi-endpoint model.
+    #
+    # It is NOT sufficient, and multi-endpoint models still do not pool (see the
+    # outerPoolOk gate in focei.R).  The endpoint cmt() is only legal AFTER the d/dt
+    # block, so it is numbered after that model's generated sensitivity states -- 5/6
+    # for the 4-state inner model, 63/64 for this 62-state one.  CMT reaches a model as
+    # that solve-compartment index (measured: par_ptr last slot, 5 vs 63), so peers whose
+    # state counts differ cannot share one translated event table and both resolve their
+    # `CMT ==` endpoint switch.  Single-endpoint models have no switch, which is the only
+    # reason they pool safely today.
+    #
+    # Verified neutral where it does apply: single-endpoint theo_sd fast=TRUE still pools
+    # (pool = outer), still takes the analytic gradient, objf 133.654382798 against
+    # fast=FALSE's 133.654382066.
+    .cmtPre <- ui$foceiCmtPreModel
+    .interp <- ui$interpLinesStr
+    if (!is.null(.interp) && .interp != "") .cmtPre <- paste0(.cmtPre, "\n", .interp)
+    .modTxt <- paste(c(.param, .cmtPre, .modTxt, .foceiToCmtLinesAndDvid(ui)), collapse = "\n")
     # no splitBolus() in the augmented model -- it translates the already-split
     # dataSav, so declaring it would split the doses twice (.foceiPreProcessData)
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
     # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
-    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
+    list(augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump"),
+         dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
          st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
          cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .cores, key = .key)
   }, error = function(e) NULL)

@@ -203,7 +203,7 @@
 #' @examples
 #'
 #' impmapControl()
-impmapControl <- function(sigdig=4,
+impmapControl <- function(sigdig=3,
                           ...,
                           isample=300L,
                           nIter=100L,

@@ -123,5 +123,10 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
-  .toRx(.s$..thetaSens, "compiling sensitivity model...")
+  # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
+  # with another build of the same text (nlmixr2/rxode2#1171).  eventSens is left at
+  # the default: switching it to "jump" here changes the impmap thetaSens codegen and
+  # broke 5 assertions in test-impmap.R, so that is a separate question from the
+  # artifact-name collision this fixes.
+  .toRx(.s$..thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
 }

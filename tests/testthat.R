@@ -77,7 +77,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 4
   c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "focei-wang2007-boxcox-lnorm", "nlme", "focei-fast-grad", "lincmt-ode-fit",
-    "nlme-cov", "agq-fast-grad", "focei-ll-fast-grad-fit"),
+    "nlme-cov", "agq-fast-grad", "focei-ll-fast-grad-fit",
+    "focei-fast-methods-fit", "odeswap-fit"),
   # batch 5
   c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
@@ -91,7 +92,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 7 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c("vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
-    "vi-fullbayes", "omega-offdiag", "augpred", "vae-residopt"),
+    "vi-fullbayes", "vi-stan", "omega-offdiag", "augpred", "vae-residopt"),
   # batch 8 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay

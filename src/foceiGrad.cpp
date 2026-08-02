@@ -11,6 +11,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "rxomp.h"
+#include "foceiGrad.h"
 #include "censEst.h"   // censNormalPartials: exact censored rho(f,R) partials (M2/M3/M4)
 using namespace arma;
 
@@ -243,17 +244,17 @@ Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f
 // model-independent closed forms computed here from f/y/R, so ANY variance structure works.
 // Shared per-subject core, called both from the single-subject export (oracle) and the
 // batched OpenMP driver foceiGradAllFR_; writes g_out (np) and etaP_out (neta x np).
-static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
-                                const arma::mat& aR, const arma::cube& AR,
-                                const arma::mat& Rsig, const arma::cube& RsigDir,
-                                const arma::mat& dvSens,
-                                const arma::ivec& censv, const arma::vec& limv, int censOpt,
-                                const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
-                                const arma::vec& ehat, const arma::mat& Oi,
-                                const arma::cube& dOiEst, const arma::vec& tr28,
-                                int neta, int nth, int nsg, int nom,
-                                const arma::ivec& dirTh, const arma::ivec& sigCol,
-                                arma::vec& g_out, arma::mat& etaP_out) {
+void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
+                         const arma::mat& aR, const arma::cube& AR,
+                         const arma::mat& Rsig, const arma::cube& RsigDir,
+                         const arma::mat& dvSens,
+                         const arma::ivec& censv, const arma::vec& limv, int censOpt,
+                         const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                         const arma::vec& ehat, const arma::mat& Oi,
+                         const arma::cube& dOiEst, const arma::vec& tr28,
+                         int neta, int nth, int nsg, int nom,
+                         const arma::ivec& dirTh, const arma::ivec& sigCol,
+                         arma::vec& g_out, arma::mat& etaP_out) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -467,16 +468,16 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
 // Gauss-Newton Ht=Omega^-1+sum(a a/R0).  `fp` = foce+ (1) vs nonmem (0): nonmem adds the
 // aRc a0-chain to dHt/dtheta (dHtD used aRe=0 there).  No 3rd-order tensor (gradient only).
 // Shared core (called from the single-subject export and the batched OpenMP driver).
-static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
-                                    const arma::mat& aRe, const arma::mat& aRc,
-                                    const arma::mat& R0sig, const arma::mat& dvSens,
-                                    const arma::ivec& censv, const arma::vec& limv,
-                                    const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
-                                    const arma::vec& ehat, const arma::mat& Oi,
-                                    const arma::cube& dOiEst, const arma::vec& tr28,
-                                    int neta, int nth, int nsg, int nom,
-                                    const arma::ivec& dirTh, const arma::ivec& sigCol, int fp,
-                                    arma::vec& g_out, arma::mat& etaP_out) {
+void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
+                             const arma::mat& aRe, const arma::mat& aRc,
+                             const arma::mat& R0sig, const arma::mat& dvSens,
+                             const arma::ivec& censv, const arma::vec& limv,
+                             const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                             const arma::vec& ehat, const arma::mat& Oi,
+                             const arma::cube& dOiEst, const arma::vec& tr28,
+                             int neta, int nth, int nsg, int nom,
+                             const arma::ivec& dirTh, const arma::ivec& sigCol, int fp,
+                             arma::vec& g_out, arma::mat& etaP_out) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -1039,18 +1040,18 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
 // Node arrays are node-major: node k occupies rows k*nobs .. k*nobs+nobs-1; y is
 // node-invariant.  Censoring/estimated lambda are gated out in R, so censGradCoefs takes
 // an empty censv -- giving exactly the Gauss-Newton determinant coefficients.
-static void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
-                                   const arma::mat& aR, const arma::cube& AR,
-                                   const arma::mat& Rsig, const arma::cube& RsigDir,
-                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
-                                   const arma::mat& aN, const arma::mat& aRN, const arma::mat& RsigN,
-                                   const arma::vec& fN, const arma::vec& RN,
-                                   const arma::mat& qx, const arma::mat& qw,
-                                   const arma::vec& ehat, const arma::mat& Oi,
-                                   const arma::cube& dOiEst, const arma::vec& tr28,
-                                   int neta, int nth, int nsg, int nom,
-                                   const arma::ivec& dirTh, const arma::ivec& sigCol,
-                                   arma::vec& g_out, arma::mat& etaP_out, bool& ok_out) {
+void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
+                            const arma::mat& aR, const arma::cube& AR,
+                            const arma::mat& Rsig, const arma::cube& RsigDir,
+                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                            const arma::mat& aN, const arma::mat& aRN, const arma::mat& RsigN,
+                            const arma::vec& fN, const arma::vec& RN,
+                            const arma::mat& qx, const arma::mat& qw,
+                            const arma::vec& ehat, const arma::mat& Oi,
+                            const arma::cube& dOiEst, const arma::vec& tr28,
+                            int neta, int nth, int nsg, int nom,
+                            const arma::ivec& dirTh, const arma::ivec& sigCol,
+                            arma::vec& g_out, arma::mat& etaP_out, bool& ok_out) {
   ok_out = false;
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;

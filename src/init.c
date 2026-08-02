@@ -45,6 +45,9 @@ extern SEXP _nlmixr2est_vaeDecoderSolveSubject_(SEXP, SEXP, SEXP, SEXP, SEXP, SE
 extern SEXP _nlmixr2est_vaeDecoderElboStep_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerLik(SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeOuterSolve_(SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiAnalyticGradPooled_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiGradPooledSetupLoad_(SEXP);
+extern SEXP _nlmixr2est_foceiGradPooledDirect_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerFree_(void);
 extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
 extern SEXP _nlmixr2est_foceiLikUnload_(void);
@@ -52,6 +55,12 @@ extern SEXP _nlmixr2est_foceiLikSetTheta_(SEXP);
 extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
+extern SEXP _nlmixr2est_odeSwapInfo_(void);
+extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
+extern SEXP _nlmixr2est_foceiOuterFdInd_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiIndLik_(SEXP, SEXP);
+extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
+extern SEXP _nlmixr2est_odeSwapRetryTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoopFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -198,6 +207,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_vaeDecoderElboStep_", (DL_FUNC) &_nlmixr2est_vaeDecoderElboStep_, 14},
   {"_nlmixr2est_vaeInnerLik", (DL_FUNC) &_nlmixr2est_vaeInnerLik, 4},
   {"_nlmixr2est_vaeOuterSolve_", (DL_FUNC) &_nlmixr2est_vaeOuterSolve_, 4},
+  {"_nlmixr2est_foceiAnalyticGradPooled_", (DL_FUNC) &_nlmixr2est_foceiAnalyticGradPooled_, 15},
+  {"_nlmixr2est_foceiGradPooledSetupLoad_", (DL_FUNC) &_nlmixr2est_foceiGradPooledSetupLoad_, 1},
+  {"_nlmixr2est_foceiGradPooledDirect_", (DL_FUNC) &_nlmixr2est_foceiGradPooledDirect_, 6},
   {"_nlmixr2est_vaeInnerFree_", (DL_FUNC) &_nlmixr2est_vaeInnerFree_, 0},
   {"_nlmixr2est_foceiLikLoad_", (DL_FUNC) &_nlmixr2est_foceiLikLoad_, 1},
   {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},
@@ -205,6 +217,12 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLikEval_", (DL_FUNC) &_nlmixr2est_foceiLikEval_, 3},
   {"_nlmixr2est_adviElboGrad_", (DL_FUNC) &_nlmixr2est_adviElboGrad_, 6},
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
+  {"_nlmixr2est_odeSwapInfo_", (DL_FUNC) &_nlmixr2est_odeSwapInfo_, 0},
+  {"_nlmixr2est_odeSwapEsNoteInstalled_", (DL_FUNC) &_nlmixr2est_odeSwapEsNoteInstalled_, 1},
+  {"_nlmixr2est_foceiOuterFdInd_", (DL_FUNC) &_nlmixr2est_foceiOuterFdInd_, 2},
+  {"_nlmixr2est_foceiIndLik_", (DL_FUNC) &_nlmixr2est_foceiIndLik_, 2},
+  {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
+  {"_nlmixr2est_odeSwapRetryTest_", (DL_FUNC) &_nlmixr2est_odeSwapRetryTest_, 7},
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},
   {"_nlmixr2est_adviElboGradFR_", (DL_FUNC) &_nlmixr2est_adviElboGradFR_, 6},
   {"_nlmixr2est_adviLoopFR_", (DL_FUNC) &_nlmixr2est_adviLoopFR_, 27},

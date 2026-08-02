@@ -72,6 +72,64 @@ Skipping step 2 gives a runtime `.Call` error like `Incorrect number of argument
 old arity), NOT a compile error -- so it survives a clean rebuild. A header change
 still needs `rm -f src/*.o src/*.so` before rebuilding.
 
+### Shared ODE solve pool (`src/odeSwap.*`)
+
+Several compiled rxode2 models coexist during one FOCEi fit -- the inner model, the
+2nd-order `innerHess2`, the theta-sensitivity model, and the augmented outer-gradient
+model plus its AGQ node sibling.  They do NOT each get their own solve.  `odeSwap`
+registers them in SLOTS, sizes one pool for the largest, and swaps per individual through
+`ind->neqOverride`.
+
+Three rules, each of which has caused a real bug:
+
+- **`odeSwapDeclare` is metadata only; `odeSwapRegister` binds entry points.**  Declaring
+  before `rxSolve_` lets the pool be sized for a model; registering (which `rxDynLoad`s)
+  before the pool exists rebinds rxode2's event-sensitivity globals and corrupts the
+  solve.  So declare early, register after `foceiSetup_`.
+- **The event-sensitivity ("jump") SHAPE is a process global, and `OdeSwapEsBatch` keys on
+  the SLOT, not the role.**  Slots can share a role (`odeEsOuter` covers the gradient
+  model, the AGQ node model, the theta-sens model) while being different compiles with
+  different shapes.  Solving one under another's shape makes `handle_evid` free scratch
+  sized for the wrong model -- it presents as `free(): invalid next size` or
+  "attempting free on address which was not malloc()-ed", usually only after MANY fits.
+  Every peer solve needs its own batch, constructed OUTSIDE any OpenMP region.
+- **Check the lhs width before reading.**  `rxUpdateFuns` resolves symbols by NAME, so the
+  same model can re-resolve to a different dll's `calc_lhs` later in a session.
+  `odeSwapCheckLhsWidth()` probes it; skipping the check reads columns nobody wrote.
+
+**Do NOT convert these to the batched/deferred form** -- they are correct as inline
+per-individual scopes and were deliberately left that way:
+
+- the pred fallback in `likInner0` (`fInd->doFD` -> `OdeSwapScope(odeSlotPred, ind, op)` ->
+  solve) and the nlm pred solve in `nlmSolveFid`.  `rxPred` implements no sensitivities,
+  so no event-sensitivity shape applies to it and batching buys nothing.  In BOTH cases
+  the scope must span the later reads, not just the solve: `getOpIndSolve()` strides
+  `ind->solve` by the effective neq, so releasing the guard early fixes the integration
+  and then misreads the result.
+- only a failed OUTER (augmented) solve has to be flagged and deferred, because only that
+  fallback re-enters the inner problem.
+
+Diagnostics live in `.odeSwapInfo()`.  `pooledSolveN` counts COMPLETED pooled augmented
+solves and is incremented in `outerSolveFill` -- the solve itself, deliberately not at any
+R-facing wrapper, because counting the wrapper meant the counter tracked the R fallback
+rather than the pooled route.
+
+### Analytic outer gradient (`foceiControl(fast=TRUE)`)
+
+Computed entirely in C++: `analyticOuterGrad` -> `analyticOuterGradDirect` ->
+`gradPooledCore` (FOCEI/FOCE/AGQ) or `gradPooledCoreLL` (general likelihood).  There is no
+R implementation and no second attempt -- a decline goes straight to the finite-difference
+gradient.  The per-fit SHAPE (lhs column maps, direction indices, which kernel) is read
+out of R exactly once by `loadGradPooledSetup`; every evaluation after that touches no R.
+
+- `.foceiGradDirect(fit)` is the post-fit entry (tests use it): it re-enters estimation at
+  the fit's converged thetas/etas under the fit's OWN `est` and reads back the gradient
+  the shipping path produced.  Re-running under `est="none"` would silently evaluate
+  everything as plain FOCEI, because the gradient shape IS the estimation method.
+- Tests must assert `nAnalyticGradDirect > 0` AND compare against central differences.
+  The counter proves the code ran, never that it was right -- a multi-endpoint `ll()`
+  experiment produced `grad: analytic` with every component wrong (issue #838).
+
 ### Post-fit objects
 
 Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit accessors use `nmObjGet` S3 dispatch (`R/nmObjGet.R`, `R/nmObjHandle.R`). Residuals are added lazily via `addCwres()` and `addNpde()`.
@@ -80,6 +138,12 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 
 `tests/testthat/helper-zzz-fits.R` pre-fits models and caches them so individual test files can reference fitted objects without re-running estimation. Fixture `.rds` files live in `tests/testthat/fixtures/`.
 
+The cache key hashes all of `R/` + `src/`, so ANY source edit invalidates every fixture.
+There is no locking around it -- `file.exists()` -> load, else compute and write -- so
+running the suite with parallel workers against a COLD cache makes every worker compute
+the same fits and race on the same `.rds` writes. Warm the cache with one serial run
+first, then go parallel.
+
 ### Test thread policy
 
 `tests/testthat.R` keeps CI and CRAN from oversubscribing core-limited runners
@@ -87,8 +151,11 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 shutdown signal"):
 
 - **testthat workers**: SERIAL (`TESTTHAT_PARALLEL=FALSE`) on CI (`CI=true`) or
-  CRAN; everywhere else testthat manages `Config/testthat/parallel`
-  (`parallel: true`, `edition: 3` in `DESCRIPTION`) normally.  Serial is
+  CRAN; everywhere else testthat decides.  NOTE: `DESCRIPTION` carries only
+  `Config/testthat/edition: 3` -- there is NO `Config/testthat/parallel` field, so
+  the default everywhere is SERIAL.  To run the suite in parallel locally, set
+  `TESTTHAT_PARALLEL=TRUE` for the run rather than adding the field (CI forces it
+  off anyway, and see the fixture caveat below).  Serial is
   deliberate, not just "one worker": parallel mode's worker->orchestrator
   message pipe base64-serializes every non-success test event, so an ERRORING
   test whose backtrace inlines a fit/data object (any `do.call(f, list(<big>))`

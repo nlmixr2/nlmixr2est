@@ -117,7 +117,7 @@ nlmControl <- function(typsize = NULL,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=FALSE,
                        covMethod=c("r", "nlm", ""),
-                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                       adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
@@ -585,8 +585,9 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   }
   ## no splitBolus() here -- this model solves the pre-split events, so
   ## declaring it would split the doses twice (see .foceiPreProcessData())
-  list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
-                                       .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+  list(predOnly=.nlmixr2estRxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
+                                          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n"),
+                                  "rxNlmPredOnly"),
        eventTheta=.eventTheta)
 }
 
@@ -923,8 +924,8 @@ rxUiGet.nlmSensModel <- function(x, ...) {
   ## adjoint carries its own dosing-parameter corrections (rx__adjdF/Dlag/Drate)
   ## in the sweep, so it must NOT also inject the forward variational jump.
   if (!is.null(.s$..adjSens)) .eventSens <- "fd"
-  list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
-       predOnly=rxode2::rxode2(.s$..pred.nolhs),
+  list(thetaGrad=.nlmixr2estRxode2(.s$..nlmS, "rxNlmGrad", eventSens=.eventSens),
+       predOnly=.nlmixr2estRxode2(.s$..pred.nolhs, "rxNlmPred"),
        eventTheta=.s$.eventTheta)
 }
 

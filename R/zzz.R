@@ -5,8 +5,15 @@
     if (file.exists(.md5File)) {
       .md5 <- readLines(.md5File)
       if (.md5 != nlmixr2.md5) {
-        packageStartupMessage("detected new version of nlmixr2est, cleaning rxode2 cache")
-        rxode2::rxClean()
+        ## Deliberately NOT rxClean() here.  It wipes rxTempDir(), and deleting a
+        ## generated model's compiled artifact out from under a live model object makes
+        ## rxode2's deferred-compile thunk rebuild it -- emitting different code than
+        ## the build it replaces, which silently corrupts that model (see
+        ## nlmixr2/rxode2#1171 and .nlmixr2estRxode2()).  Every model nlmixr2est
+        ## generates now carries a role-tagged, content-hashed artifact name and builds
+        ## outside rxTempDir(), so an upgrade cannot make this package reuse a stale
+        ## artifact and there is nothing here to clean.
+        writeLines(nlmixr2.md5, .md5File)
       }
     } else {
       writeLines(nlmixr2.md5, .md5File)

@@ -53,8 +53,8 @@ nmTest({
       do.call(laplaceControl, c(list(fast = TRUE), .c0))))
     .fa <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
       do.call(agqControl, c(list(fast = TRUE, nAGQ = 1L), .c0))))
-    .gl <- .foceiGradAnalyticCalc(.fl)
-    .ga <- .foceiGradAnalyticCalc(.fa)
+    .gl <- .foceiGradDirect(.fl)
+    .ga <- .foceiGradDirect(.fa)
     expect_false(is.null(.gl))
     expect_false(is.null(.ga))
     expect_true(all(is.finite(.ga)))
@@ -67,7 +67,7 @@ nmTest({
     for (.n in c(2L, 3L)) {
       .f <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
                                      .ctl(nAGQ = .n, fast = TRUE, sigdig = 7)))
-      .g <- .foceiGradAnalyticCalc(.f)
+      .g <- .foceiGradDirect(.f)
       expect_false(is.null(.g))
       .base <- fixef(.f)
       .ofvAt <- function(nm, val) {
@@ -78,10 +78,12 @@ nmTest({
       # NB h: the AGQ objective's central-difference error bottoms out around 3e-3..1e-2;
       # 1e-4 sits on the noisy side of the V and reads ~1e-3 relative even for an exact
       # gradient, so do not tighten this.
-      .fd <- vapply(names(.base), function(nm) {
-        h <- 3e-3 * max(abs(.base[[nm]]), 1)
-        (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-      }, numeric(1))
+      ## cached reference -- see helper-gradref.R
+      .fd <- .gradRef(paste0("agq-nAGQ", .n), function()
+        vapply(names(.base), function(nm) {
+          h <- 3e-3 * max(abs(.base[[nm]]), 1)
+          (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+        }, numeric(1)))
       expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
     }
   })
@@ -91,16 +93,16 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # fast=FALSE: no analytic gradient at all
     .f0 <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = 2L)))
-    expect_null(.foceiGradAnalyticCalc(.f0))
+    expect_null(.foceiGradDirect(.f0))
     # an active agqLow/agqHi clamp kinks the objective (both default to +/-Inf)
     .fc <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
                                     .ctl(nAGQ = 2L, fast = TRUE, agqLow = -1e6)))
-    expect_null(.foceiGradAnalyticCalc(.fc))
+    expect_null(.foceiGradDirect(.fc))
     # cholSEOpt uses a different Cholesky factor than chol(), and the factor places the
     # quadrature nodes -- differentiating chol() would be the wrong function
     .fs <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
                                     .ctl(nAGQ = 2L, fast = TRUE, cholSEOpt = TRUE)))
-    expect_null(.foceiGradAnalyticCalc(.fs))
+    expect_null(.foceiGradDirect(.fs))
   })
 
   test_that("fast=TRUE AGQ fit matches the finite-difference fit", {
@@ -145,7 +147,7 @@ nmTest({
     }
     .f <- suppressMessages(nlmixr2(.cov, nlmixr2data::theo_sd, "agq",
                                    .ctl(nAGQ = 2L, fast = TRUE, sigdig = 7)))
-    .g <- .foceiGradAnalyticCalc(.f)
+    .g <- .foceiGradDirect(.f)
     expect_false(is.null(.g))
     .base <- fixef(.f)
     .ofvAt <- function(nm, val) {
@@ -153,10 +155,12 @@ nmTest({
       suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq",
                                                 .ctl(nAGQ = 2L, sigdig = 7))))$objf
     }
-    .fd <- vapply(names(.base), function(nm) {
-      h <- 3e-3 * max(abs(.base[[nm]]), 1)
-      (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-    }, numeric(1))
+    ## cached reference -- see helper-gradref.R
+    .fd <- .gradRef("agq-agqf-equivalence", function()
+      vapply(names(.base), function(nm) {
+        h <- 3e-3 * max(abs(.base[[nm]]), 1)
+        (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+      }, numeric(1)))
     expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
   })
 })

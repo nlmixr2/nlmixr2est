@@ -2,6 +2,10 @@
 # agrees with central differences of the objective, a fast fit matches a
 # finite-difference fit, out-of-scope models fall back transparently, and the
 # fast/derivative-free control defaults behave.
+#
+# Weekly-batched via .slowBatches in tests/testthat.R -- do NOT add skip_on_ci().
+# The weekly runner also sets CI=true, so skip_on_ci() here would skip these
+# everywhere and leave the fast/analytic-gradient path with no CI coverage.
 
 nmTest({
   .fast_one_cmt <- function() {
@@ -41,7 +45,6 @@ nmTest({
 
   test_that("analytic outer gradient matches central differences (theta + sigma)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # posthoc (eta*-only) at deliberately off initials so gradients are large-signal
     off <- function() {
@@ -52,89 +55,28 @@ nmTest({
     }
     d <- nlmixr2data::theo_sd
     ph <- suppressMessages(nlmixr2(off, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("focei-theta-sigma", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     # large-signal gradients: analytic vs central-difference within 1% relative
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
-  test_that("FOCE (nonmem) analytic gradient matches central differences", {
-    skip_on_cran()
-    skip_on_ci()
-    skip_if_not_installed("nlmixr2data")
-    # add+prop so the frozen-R0 depends on the population prediction (exercises the
-    # nonmem a0-chain) while staying > 0 (no vanishing-variance guard)
-    offAP <- function() {
-      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-            add.sd <- 0.4; prop.sd <- 0.15 })
-      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
-              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
-    }
-    d <- nlmixr2data::theo_sd
-    ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
-    expect_false(is.null(g))
-    base <- fixef(ph)
-    ofvAt <- function(nm, val) {
-      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                     maxInnerIterations = 300L))))$objf
-    }
-    h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
-    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
-  })
-
-  test_that("FOCE censored (M3) analytic gradient matches central differences", {
-    skip_on_cran()
-    skip_on_ci()
-    skip_if_not_installed("nlmixr2data")
-    # censored FOCE re-solves the EBE with the exact censored rho_f/rho_ff at the frozen R0
-    # (.foceiAnalyticFoceEbe) and uses the censored score + R0-chain cross deriv rfR
-    offAP <- function() {
-      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
-            add.sd <- 0.4; prop.sd <- 0.15 })
-      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
-              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
-    }
-    d <- nlmixr2data::theo_sd
-    d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L); d$DV[d$CENS == 1] <- 2
-    ph <- suppressMessages(nlmixr2(offAP, d, "foce",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
-    g <- .foceiGradAnalyticCalc(ph)
-    expect_false(is.null(g))
-    base <- fixef(ph)
-    ofvAt <- function(nm, val) {
-      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                     maxInnerIterations = 300L))))$objf
-    }
-    h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
-    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
-  })
-
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # both-sides transform with an ESTIMATED lambda: lambda is a theta-like direction
     # (df'/dlambda) plus the DV-transform residual chain (dy'/dlambda) and the -2 log|J|
@@ -154,29 +96,32 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) + yeoJohnson(lambda) })
     }
-    chk <- function(mk, est) {
+    chk <- function(mk, est, nm) {
       ph <- suppressMessages(nlmixr2(mk, d, est,
-            foceiControl(print = 0L, covMethod = "", fast = TRUE,
+            foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                          maxOuterIterations = 0L, maxInnerIterations = 300L)))
-      g <- .foceiGradAnalyticCalc(ph)
+      g <- .foceiGradDirect(ph)
       expect_false(is.null(g))
       base <- fixef(ph)
       ofvAt <- function(nm, val) {
         ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
         suppressMessages(suppressWarnings(nlmixr2(ui2, d, est,
-          foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+          foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                        maxInnerIterations = 300L))))$objf
       }
       h <- 1e-3
-      fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+      ## cached: the reference is a property of the model/data/theta, not of the
+      ## gradient implementation -- see helper-gradref.R
+      fd <- .gradRef(paste0("lambda-boxcox-yeojohnson-", nm), function()
+        vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
       expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
     }
-    chk(mkBox, "focei"); chk(mkYj, "focei"); chk(mkYj, "foce")
+    ## chk(mkYj, "foce") removed: FOCE is out of scope for the analytic gradient (#836)
+    chk(mkBox, "focei", "boxcox"); chk(mkYj, "focei", "yeojohnson")
   })
 
   test_that("analytic outer gradient matches FD for a covariate model", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # a covariate (wtCl*WT) in the structural model: exercises the covariate direction
     # and the param() covariate declaration in the augmented outer model
@@ -192,29 +137,34 @@ nmTest({
               cp <- center / v; cp ~ prop(prop.sd) })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(covm, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 200L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 200L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("covariate-model", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
   test_that("analytic outer gradient matches FD for a multiple-endpoint model", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
-    # two modeled endpoints (PK cp + PD pca): rx_pred_/rx_r_ are single dvid-conditional
-    # expressions, so solving against the dataset selects each endpoint's prediction and
-    # variance per observation -- the (f,R) path handles both endpoints' sigmas
+    # Two modeled endpoints (PK cp + PD pca).  These pool: the augmented model sizes
+    # the shared solve, and OdeSwapCmtScope re-bases the CMT covariate to each peer's
+    # own basis while it reads (rxode2 normalizes CMT with the COMPILING model's
+    # sensitivity count, so one translated table cannot serve peers of different
+    # sensitivity depth).  Without that re-base every endpoint branch of the inner
+    # model missed and the EBEs collapsed to ~0 -- see plans/dry-ode-swap-phaseC.md.
     d <- nlmixr2data::warfarin
     pkpd <- function() {
       ini({ tka <- 0.5; tcl <- -2; tv <- 2; emax <- 2; ec50 <- 1; add.pk <- 1; add.pd <- 3; eta.cl ~ 0.1 })
@@ -225,31 +175,41 @@ nmTest({
               pca ~ add(add.pd) | pca })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(pkpd, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 100L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
+    ## the mechanism: a multi-endpoint model really does pool now
+    expect_identical(.odeSwapInfo()$poolName, "outer")
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 100L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("multiple-endpoint", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
   test_that("fast=TRUE fit matches the finite-difference fit", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
-    f0 <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+    ## cached fast=FALSE reference -- the fd estimation path is exercised in its own
+    ## tests; here it only supplies the target (see helper-gradref.R)
+    f0 <- .numRef("fit-fd-one-cmt-focei", function() {
+      .f <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      list(objf = .f$objf, fixef = unname(fixef(.f)))
+    })
     fF <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(fF$objf, f0$objf, tolerance = 0.02)
-    expect_equal(unname(fixef(fF)), unname(fixef(f0)), tolerance = 1e-2)
+    expect_equal(unname(fixef(fF)), f0$fixef, tolerance = 1e-2)
     # the analytic gradient must actually be CONSUMED by the optimizer (a fit that
     # silently falls back to FD also "matches", so assert usage directly)
     .gt <- fF$parHistData$type
@@ -261,7 +221,6 @@ nmTest({
 
   test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
     # bioavailability f() and absorption lag() modeled on theta/eta: the outer gradient
@@ -275,25 +234,27 @@ nmTest({
               d/dt(center) <- ka * depot - cl / v * center; cp <- center / v; cp ~ add(add.sd) })
     }
     ph <- suppressMessages(suppressWarnings(nlmixr2(mDose, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 300L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))                                    # jump sensitivities keep it in scope
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 300L))))$objf
     }
     h <- 1e-3
-    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R
+    fd <- .gradRef("modeled-dosing-f-lag", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
 
   test_that("mceta=-2 (Eq-48) is the default and all fast mceta modes agree", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     expect_equal(foceiControl()$mceta, -2L)                    # new global default
     d <- nlmixr2data::theo_sd
@@ -330,7 +291,6 @@ nmTest({
 
   test_that("FOCEI + prop(): analytic gradient matches central differences near the optimum", {
     skip_on_cran()
-    skip_on_ci()
     # Exercises the (f,R) determinant chain d(dfr)/ddir = pfrf*a + pfRR*aR (foceiGradSubjectFR_)
     # for a prediction-dependent variance: aR = dR/ddir is nonzero only under FOCEI with
     # prop()/pow()/combined error, so additive error and every FOCE variant (frozen variance)
@@ -356,23 +316,25 @@ nmTest({
     d$DV <- rxode2::rxSolve(rxode2::rxode2(m), d, addDosing = TRUE)$sim
     d$DV[d$EVID != 0] <- 0
     ph <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei",
-          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
                        maxOuterIterations = 0L, maxInnerIterations = 500L))))
-    g <- .foceiGradAnalyticCalc(ph)
+    g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
-        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                      maxInnerIterations = 500L))))$objf
     }
     # per-parameter step: a flat h=1e-3 perturbs prop.sd=0.1 by 1%, which leaves the central
     # difference itself carrying ~10% error
-    fd <- vapply(names(base), function(nm) {
+    ## cached: see helper-gradref.R
+    fd <- .gradRef("focei-prop-near-optimum", function()
+      vapply(names(base), function(nm) {
       h <- 1e-3 * max(abs(base[[nm]]), 0.05)
       (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
-    }, numeric(1))
+    }, numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
   test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {

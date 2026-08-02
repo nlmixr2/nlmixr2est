@@ -4,7 +4,7 @@
 \alias{foControl}
 \title{Control options for the FO estimation method}
 \usage{
-foControl(sigdig = 4, ..., posthoc = TRUE, interaction = NULL, fo = NULL)
+foControl(sigdig = 3, ..., posthoc = TRUE, interaction = NULL, fo = NULL)
 }
 \arguments{
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
@@ -18,8 +18,8 @@ tolerances match the main solve (the outer gradient and covariance are built
 from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
 order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{...}{Parameters used in the default `foceiConrol()`}
 

@@ -95,6 +95,19 @@ foceiOfv <- function(theta) {
     .Call(`_nlmixr2est_foceiOfv`, theta)
 }
 
+#' Install the pooled analytic-gradient setup for a non-focei caller
+#'
+#' `est="vae"` with `nonMuTheta="grad"` evaluates the analytic outer gradient once per
+#' M-step, at its own theta/eta/omega, and has no fit env to hang the setup on.  This
+#' installs the setup once so `foceiGradPooledDirect_()` can be called repeatedly.
+#' @param st setup list from `.foceiGradPooledSetup()`
+#' @return TRUE if the setup describes a shape the C++ gradient handles
+#' @keywords internal
+#' @export
+foceiGradPooledSetupLoad_ <- function(st) {
+    .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
+}
+
 foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
@@ -192,8 +205,101 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
+#' Per-subject -2LL at a given theta, for hand-differencing the 8D2 fallback.
+#'
+#' Same path the finite difference uses (theta into par_ptr, pinned reference eta,
+#' innerOpt1() re-optimization), exposed so a difference can be taken in R at any step
+#' and compared against what shi settles on.  Restores the eta, the n1qn1 Hessian and
+#' fullTheta exactly as the FD phase does.
+#' @param thetaIn theta vector (length ntheta)
+#' @param ids0 0-based subject ids
+#' @return per-subject -2LL, NA where the subject could not be re-optimized
+#' @noRd
+foceiIndLik_ <- function(thetaIn, ids0) {
+    .Call(`_nlmixr2est_foceiIndLik_`, thetaIn, ids0)
+}
+
+#' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
+#'
+#' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
+#' loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
+#' model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
+#' process global that only changes at a batch boundary, so the two cannot interleave.
+#' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
+#'
+#' Differences the subject's own likelihood with shi CENTRAL differences at an
+#' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
+#' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
+#' difference a different problem than the inner problem's etahf is tuned for, so
+#' sharing one store would mis-size both.
+#'
+#' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
+#' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
+#' this per-subject phase.  Until that lands the caller must still treat an omega
+#' direction as unavailable.
+#' @param ids0 0-based subject ids to difference
+#' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
+#'   re-optimized even at a perturbed theta
+#' @noRd
+foceiOuterFdInd_ <- function(ids0, analyticRef) {
+    .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
+}
+
 vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
     .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
+}
+
+#' Analytic outer gradient at a caller-supplied theta / eta / omega
+#'
+#' The same C++ core the fit's own gradient uses (`gradPooledCore`), but with the point
+#' passed in rather than read out of `op_focei`.  `est="vae"` with `nonMuTheta="grad"`
+#' needs exactly this: its M-step evaluates the gradient at a theta and an encoder eta
+#' matrix that are not the inner problem's, and at an omega that changes every step.
+#' Requires `foceiGradPooledSetupLoad_()` first, and a live FOCEi inner problem (the
+#' shared pool, `rxVaeOuter`, and the theta/eta par_ptr maps all come from it).
+#' @param thVals natural-scale theta, in ntheta order
+#' @param ebes nsub x neta matrix of etas to take the gradient at
+#' @param Oi inverse of the current Omega
+#' @param dOiEst list of d(Omega^-1)/d(estimation-scale omega element)
+#' @param tr28 the matching trace terms
+#' @param cores thread count
+#' @return natural-scale gradient (thetas, sigmas, omegas), or NULL if it declined
+#' @keywords internal
+#' @export
+foceiGradPooledDirect_ <- function(thVals, ebes, Oi, dOiEst, tr28, cores) {
+    .Call(`_nlmixr2est_foceiGradPooledDirect_`, thVals, ebes, Oi, dOiEst, tr28, cores)
+}
+
+#' FOCEI analytic outer gradient, computed entirely in C++.
+#'
+#' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
+#' subjects whose solve failed, stacks the per-subject sensitivities and runs the
+#' gradient kernel -- without returning to R in between.
+#'
+#' The round trip this replaces was not just slow (the per-observation ndir^2 cubes A
+#' and AR are the bulk of the data and were materialized twice, once wrapped out of C++
+#' and once read back in); it also let R run between the solve and the assembly, where
+#' it could disturb the shared solve pool.  Keeping the whole sequence in one C++ region
+#' removes both.
+#'
+#' Returns R_NilValue when it cannot do the job, and the caller falls back to the
+#' rxSolve route.
+#' @param thVals theta values, in the augmented model's positional order
+#' @param ebes nsub x neta matrix of EBEs (the etas the gradient is taken at)
+#' @param cols augmented-model lhs column map from .foceiAnalyticCols
+#' @param cores thread count
+#' @param Oi Omega^-1
+#' @param dOiEst neta x neta x nom cube of estimation-scale Omega^-1 derivatives
+#' @param tr28 Omega log-determinant derivative terms (length nom)
+#' @param neta,nth,nsg,nom problem dimensions
+#' @param dirTh 1-based direction index per theta
+#' @param sigCol 1-based sigma column per residual parameter
+#' @param censOpt censoring determinant treatment (censOption)
+#' @param lamDir 1-based direction indices of estimated transform lambdas (may be empty)
+#' @return list(g, etaP, jacSum, fdIds) or NULL
+#' @noRd
+foceiAnalyticGradPooled_ <- function(thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir) {
+    .Call(`_nlmixr2est_foceiAnalyticGradPooled_`, thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir)
 }
 
 #' Build the nonparametric Psi (conditional-likelihood) matrix
@@ -518,6 +624,27 @@ npSobolGrid_ <- function(n, lower, upper) {
 #' @export
 npCondense_ <- function(lambda, psi, ratio = 1e-3, tol = 1e-8) {
     .Call(`_nlmixr2est_npCondense_`, lambda, psi, ratio, tol)
+}
+
+odeSwapRetryTest_ <- function(nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFactor, relaxMode, sticky0, restoreTolOnSuccess) {
+    .Call(`_nlmixr2est_odeSwapRetryTest_`, nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFactor, relaxMode, sticky0, restoreTolOnSuccess)
+}
+
+odeSwapPlanFor_ <- function(neq, nlhs) {
+    .Call(`_nlmixr2est_odeSwapPlanFor_`, neq, nlhs)
+}
+
+#' Record which model role rxode2's event path is bound to (R-side installs).
+#' Roles: -1 unknown, 0 pred, 1 inner, 2 outer, 3 hess2.
+#' @param slot role id
+#' @return NULL
+#' @noRd
+odeSwapEsNoteInstalled_ <- function(slot) {
+    .Call(`_nlmixr2est_odeSwapEsNoteInstalled_`, slot)
+}
+
+odeSwapInfo_ <- function() {
+    .Call(`_nlmixr2est_odeSwapInfo_`)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {

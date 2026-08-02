@@ -14,7 +14,7 @@
 #' @examples
 #'
 #' posthocControl()
-posthocControl <- function(sigdig=4,
+posthocControl <- function(sigdig=3,
                            ...,
                            interaction=FALSE,
                            maxOuterIterations=NULL) {

@@ -39,7 +39,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE,
+    adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, muRefCovAlg=TRUE,
     eventSens=c("jump", "fd"), print=NULL,
     covMethod=c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""), ...) {
 
@@ -62,9 +62,11 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(niterEM, len=1, any.missing=FALSE, lower=1)
   checkmate::assertNumeric(minScale, len=1, any.missing=FALSE, lower=0)
-  # nlme optimizer tolerances from sigdig: keep the tuned defaults at sigdig=4 and
+  # nlme optimizer tolerances from sigdig: reproduce the tuned values at sigdig=4 and
   # tighten one order per significant digit; a user value wins, sigdig=NULL keeps
-  # the defaults (sigdig=5 -> tolerance=1e-6, msTol=1e-7, pnlsTol=1e-4)
+  # the defaults (sigdig=5 -> tolerance=1e-6, msTol=1e-7, pnlsTol=1e-4).  The
+  # anchor is 4 while the default sigdig is 3, so these run one order looser by
+  # default than they historically did.
   if (is.null(tolerance)) tolerance <- if (!is.null(sigdig)) .sigdigScale(1e-5, sigdig) else 1e-05
   if (is.null(msTol)) msTol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-06
   if (is.null(pnlsTol)) pnlsTol <- if (!is.null(sigdig)) .sigdigScale(1e-3, sigdig) else 0.001
@@ -226,7 +228,7 @@ nlmeControl <- nlmixr2NlmeControl
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
-  nlmixr2global$nlmeFitRxModel <- rxode2::rxode2(ui$nlmeRxModel)
+  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
   nlmixr2global$nlmeFitRxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
 
   .ctl <- ui$control

@@ -123,7 +123,7 @@ nlminbControl <- function(eval.max=200,
                           sensMethod = c("default", "forward", "adjoint"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                          adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
