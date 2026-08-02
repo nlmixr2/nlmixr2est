@@ -1157,7 +1157,7 @@ void impOuter(Environment e) {
         // Both halves are load bearing, and gating the trigger alone is NOT
         // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
         // the tutorial rule applied, 0.181 gating it but never withdrawing,
-        // 0.152 with AUTO off entirely, 0.109 gating AND withdrawing.  Gating on
+        // 0.152 with AUTO off entirely, 0.132 gating AND withdrawing.  Gating on
         // its own is still worse than not adapting at all; the withdrawal is
         // what turns it into a win.
         //
@@ -1166,9 +1166,9 @@ void impOuter(Environment e) {
         //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
         //     0 (off)      0.18065         0.01654         0.00301
         //     1            0.16900         0.01418         0.00271
-        //     2            0.10929         0.01588         0.00225
-        //     3            0.12265         0.01654         0.00301
-        //     5            0.18267         0.01654         0.00301
+        //     2            0.13221         0.01588         0.00225
+        //     3            0.14566         0.01654         0.00301
+        //     5            0.18657         0.01654         0.00301
         //
         // A genuine optimum, not a round number: the sparse curve is
         // non-monotonic either side of 2, and 2 is simultaneously better than 0
