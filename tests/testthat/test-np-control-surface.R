@@ -72,4 +72,27 @@ nmTest({
     expect_error(getValidNlmixrCtl.npb(list(list(df = 8))), "df")
   })
 
+  test_that("the five review-found bypasses stay closed", {
+    # Each of these passed an earlier implementation.  They are kept as named
+    # regressions because every one of them was SILENT: the control was accepted
+    # and then ignored, which is the whole failure mode being fixed.
+    .foo <- function(...) npagControl(...)
+    .bar <- function(...) npbControl(...)
+    # 1. an internal field alongside an inert one no longer exempts the call
+    expect_error(npagControl(isample = 500, impCov = TRUE), "isample")
+    # 2. partial matching through a forwarding wrapper, where sys.call() cannot
+    #    see the literal name -- caught by the explicit inert formals
+    expect_error(.foo(gamma = 2), "gamma")
+    expect_error(.foo(df = 8), "df")
+    expect_error(.bar(gamma = 2), "gamma")
+    # 3. a pre-built impmapControl handed to an np validator
+    expect_error(getValidNlmixrCtl.npag(list(impmapControl(isample = 500))), "isample")
+    # 4. npb's inert formals arriving as a raw list, bypassing npbControl()
+    expect_error(getValidNlmixrCtl.npb(list(list(cycles = 500))), "cycles")
+    # 5. the mu/irls sugar engines are normalised, so impSeed still remaps
+    expect_error(getValidNlmixrCtl.mnpb(list(list(impSeed = 7))), "seed")
+    # and a name typed with its DEFAULT value is still a request
+    expect_error(npagControl(mapIter = 1), "mapIter")
+  })
+
 })

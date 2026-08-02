@@ -343,32 +343,39 @@
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
                     "qr", "qrShift", "qrRefresh", "sir", "sirSample")
 
-# Inert too, but with a real np counterpart worth naming in the message.  npag
-# has no seed of its own -- its grid is Sobol-deterministic -- so impSeed only
-# has a counterpart under npb.
+# Inert too, but with a real np counterpart worth naming.  npag has no seed of
+# its own -- its grid is Sobol-deterministic -- so impSeed only remaps under npb.
 .npRemapImpCtl <- c(nIter = "cycles", ctol = "rhoend", nConvWindow = "cycles")
 .npRemapImpCtlNpb <- c(.npRemapImpCtl, impSeed = "seed")
 
-# Fields stamped onto a BUILT control, never typed by a caller.  Their presence
-# means this is a rebuild (do.call(npagControl, npagControl()), .npValidCtl, a
-# fit's own control) rather than a fresh call, and a rebuild must not be
-# rejected for carrying the very defaults the constructor put there.  impCov is
-# stamped unconditionally by impmapControl(), so it alone is sufficient; the
-# rest are listed so the signature does not depend on one field.
-.npInternalCtl <- c("impCov", "gammaMethodUser", "impMuThetaIdx", "impMuEtaIdx",
-                    "impThetaSensIdx", "impOmegaFixedEta")
+# npbControl carries these as FORMALS and documents them unused for npb.
+# list(), NOT c(): c(100L, FALSE) coerces to numeric, so gammaOptimize would be
+# compared as 0 and all.equal(FALSE, 0) fails on mode -- rejecting every npb
+# control that carried its own default.
+.npbInertFormals <- list(cycles = 100L, gammaOptimize = FALSE)
 
-#' Literal argument names of the calling function's call.
+# impmapControl()'s defaults, computed once.  Validation compares VALUES against
+# these rather than trying to detect a "rebuild": a control being rebuilt carries
+# the constructor's own defaults, while a caller asking for something carries a
+# value that differs.  An earlier version keyed on the presence of an internal
+# field (impCov) instead, which was bypassable in both directions --
+# npagControl(isample = 500, impCov = TRUE) skipped validation entirely, and a
+# pre-built impmapControl(isample = 500) handed to npag did too.
+.npImpDefEnv <- new.env(parent = emptyenv())
+.npImpDefaults <- function() {
+  if (is.null(.npImpDefEnv$d)) .npImpDefEnv$d <- impmapControl()
+  .npImpDefEnv$d
+}
+
+#' Literal argument names of a call, defeating partial matching.
 #'
-#' `match.call()` normalises partial matching away, so `npagControl(gamma = 2)`
-#' would arrive as `gammaOptimize`.  `sys.call()` preserves what was typed, which
-#' is the only way to see that a caller wrote an inert name that R then bound to
-#' a real formal.  That is not hypothetical: `gamma` is a prefix of
-#' `gammaOptimize`, so `npagControl(gamma = 2)` silently set
-#' `gammaOptimize = isTRUE(2)`, i.e. FALSE -- turning the assay-error
-#' optimisation OFF rather than being ignored.
-#' @param sc the caller's own `sys.call()`, passed in rather than inferred --
-#'   `sys.call(-1)` from inside this helper resolves to the wrong frame
+#' `match.call()` normalises partial matching away, so a caller writing `gamma`
+#' would arrive as `gammaOptimize`.  `sys.call()` keeps what was typed.  This
+#' only sees a DIRECT call -- through a forwarding wrapper the names live in the
+#' wrapper's call, which is why `gamma`/`df` are also declared as explicit inert
+#' formals on the constructors (an exact match beats a partial one, on every
+#' path).
+#' @param sc the caller's own `sys.call()`
 #' @return character vector of supplied argument names
 #' @noRd
 .npCallNames <- function(sc) {
@@ -377,21 +384,51 @@
   if (is.null(.n)) character(0) else .n[nzchar(.n)]
 }
 
-#' Reject importance-sampling controls that a nonparametric engine cannot use
+#' Reject importance-sampling controls a nonparametric engine cannot use
 #'
-#' @param nms names supplied by the caller
-#' @param engine "npag" or "npb", for the message
+#' @param vals named list of supplied control values (from `...`, a control
+#'   object, or a raw list).  Names with no value -- e.g. literal names
+#'   recovered from `sys.call()` -- may be supplied as `NA`.
+#' @param engine estimation string; the mu/irls sugar (`mnpag`, `inpb`, ...) is
+#'   normalised, so `impSeed` remaps under every npb flavour.
 #' @return invisible(TRUE), or throws
 #' @noRd
-.npAssertImpCtl <- function(nms, engine = "npag") {
-  if (length(nms) == 0L) return(invisible(TRUE))
-  if (any(nms %in% .npInternalCtl)) return(invisible(TRUE))  # a rebuild, not a fresh call
-  .map <- if (identical(engine, "npb")) .npRemapImpCtlNpb else .npRemapImpCtl
-  .bad <- intersect(nms, .npInertImpCtl)
-  # npag is Sobol-deterministic, so impSeed has nothing to point at there
-  if (!identical(engine, "npb")) .bad <- union(.bad, intersect(nms, "impSeed"))
-  .remap <- intersect(nms, names(.map))
-  if (length(.bad) == 0L && length(.remap) == 0L) return(invisible(TRUE))
+.npAssertImpCtl <- function(vals, engine = "npag", explicit = character(0)) {
+  if (length(vals) == 0L && length(explicit) == 0L) return(invisible(TRUE))
+  if (length(vals) && is.null(names(vals))) return(invisible(TRUE))
+  .isNpb <- grepl("npb$", engine)
+  .map <- if (.isNpb) .npRemapImpCtlNpb else .npRemapImpCtl
+  .def <- .npImpDefaults()
+  # A name only counts as "asked for" when its value differs from the default
+  # the constructor would have produced anyway.
+  # A name TYPED by the caller counts however it was valued -- asking for
+  # mapIter = 1 is still asking for something inapplicable, even though 1 is its
+  # default.  A name that only arrived because a control object carries it counts
+  # solely when its value differs from what the constructor would have produced.
+  .asked <- function(n) {
+    if (n %in% explicit) return(TRUE)
+    if (!n %in% names(vals)) return(FALSE)
+    .v <- vals[[n]]
+    if (length(.v) == 1L && is.atomic(.v) && is.na(.v)) return(TRUE)  # name-only
+    if (!n %in% names(.def)) return(TRUE)
+    !isTRUE(all.equal(.v, .def[[n]]))
+  }
+  .nms <- Filter(.asked, union(names(vals), explicit))
+  .bad <- intersect(.nms, .npInertImpCtl)
+  if (!.isNpb) .bad <- union(.bad, intersect(.nms, "impSeed"))
+  .remap <- intersect(.nms, names(.map))
+  # npb's own inert formals reach here too, so a raw list gets the same check
+  .npbBad <- character(0)
+  if (.isNpb) {
+    .npbBad <- Filter(function(n) {
+      n %in% explicit ||
+        (n %in% names(vals) && !isTRUE(all.equal(vals[[n]], .npbInertFormals[[n]])))
+    }, union(intersect(names(vals), names(.npbInertFormals)),
+             intersect(explicit, names(.npbInertFormals))))
+  }
+  if (length(.bad) == 0L && length(.remap) == 0L && length(.npbBad) == 0L) {
+    return(invisible(TRUE))
+  }
   .msg <- character(0)
   if (length(.bad)) {
     .msg <- c(.msg, paste0("'", paste(.bad, collapse="', '"),
@@ -400,9 +437,12 @@
   }
   if (length(.remap)) {
     .msg <- c(.msg, paste0("use ",
-                           paste(paste0("'", unname(.map[.remap]), "'"),
-                                 collapse=", "), " instead of ",
-                           paste0("'", paste(.remap, collapse="', '"), "'")))
+                           paste(paste0("'", unname(.map[.remap]), "'"), collapse=", "),
+                           " instead of '", paste(.remap, collapse="', '"), "'"))
+  }
+  if (length(.npbBad)) {
+    .msg <- c(.msg, paste0("'", paste(.npbBad, collapse="', '"),
+                           "' is not used by est=\"", engine, "\""))
   }
   stop(paste(.msg, collapse="; "), call. = FALSE)
 }
@@ -415,7 +455,7 @@
   .in <- control[[1]]
   # raw lists reach here without passing through npagControl()/npbControl(), so
   # this is the path a bare list(isample = 500) would otherwise slip through
-  if (is.list(.in)) .npAssertImpCtl(names(.in), est)
+  if (is.list(.in)) .npAssertImpCtl(.in, est)
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
               gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,

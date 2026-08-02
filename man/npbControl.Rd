@@ -18,6 +18,7 @@ npbControl(
   muExpand = FALSE,
   cores = NULL,
   rhoend = 1e-04,
+  gamma,
   ...
 )
 }

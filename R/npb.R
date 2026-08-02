@@ -71,20 +71,21 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
                        residOptimize = c("alternate", "final", "none"),
                        cycles = 100L,
                        gammaOptimize = FALSE, muExpand = FALSE, cores = NULL,
-                       rhoend = 1e-4, ...) {
-  # cycles and gammaOptimize are FORMALS here and documented unused for npb, so
-  # they never reach ... and a names(list(...)) check cannot see them.  Catch
-  # them from the call itself.
-  .npbDots <- list(...)
-  .npbNames <- union(names(.npbDots), .npCallNames(sys.call()))
-  .npAssertImpCtl(.npbNames, "npb")
-  if (!any(names(.npbDots) %in% .npInternalCtl)) {   # exempt a rebuild, as above
-    .npbUnused <- intersect(.npbNames, c("cycles", "gammaOptimize"))
-    if (length(.npbUnused)) {
-      stop(paste0("'", paste(.npbUnused, collapse="', '"),
-                  "' is not used by est=\"npb\""), call. = FALSE)
-    }
+                       rhoend = 1e-4, gamma, ...) {
+  # `gamma` is declared ONLY to be rejected: it is a prefix of the real formal
+  # gammaOptimize, so without it R partial-matches and npbControl(gamma = 2)
+  # silently sets gammaOptimize = isTRUE(2).  An exact match beats a partial one,
+  # which catches the name even through a forwarding wrapper.
+  # validation list is SEPARATE from what is forwarded to impmapControl()
+  .npbChk <- list(...)
+  if (!missing(gamma)) .npbChk$gamma <- gamma
+  # cycles/gammaOptimize are FORMALS here, documented unused for npb, so they
+  # never reach ... ; fold them in so the shared validator sees them
+  for (.n in intersect(names(as.list(match.call())[-1L]),
+                       c("cycles", "gammaOptimize"))) {
+    .npbChk[[.n]] <- get(.n)
   }
+  .npAssertImpCtl(.npbChk, "npb", explicit = .npCallNames(sys.call()))
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)

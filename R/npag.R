@@ -126,11 +126,22 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), dfScan = -1L,
-                        cores = NULL, rhoend = 1e-4, ...) {
-  # importance-sampling controls do not apply to a nonparametric engine; reject
-  # them rather than accepting and ignoring them (a rebuild is exempt -- see
-  # .npAssertImpCtl)
-  .npAssertImpCtl(union(names(list(...)), .npCallNames(sys.call())), "npag")
+                        cores = NULL, rhoend = 1e-4,
+                        gamma, df, ...) {
+  # `gamma` and `df` are declared ONLY to be rejected.  They are prefixes of the
+  # real formals gammaOptimize and dfScan, so without them R partial-matches and
+  # npagControl(gamma = 2) silently sets gammaOptimize = isTRUE(2) = FALSE.  An
+  # exact match beats a partial one, so declaring them catches the name on every
+  # path -- including through a forwarding wrapper, where sys.call() cannot see
+  # it.  They are missing() unless supplied, so they cost nothing otherwise.
+  .npDots <- list(...)
+  # validation list is SEPARATE from the construction list: it carries the
+  # literal call names (as NA, meaning "asked for, value unknown"), which must
+  # not be forwarded to impmapControl()
+  .npChk <- .npDots
+  if (!missing(gamma)) .npChk$gamma <- gamma
+  if (!missing(df)) .npChk$df <- df
+  .npAssertImpCtl(.npChk, "npag", explicit = .npCallNames(sys.call()))
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
