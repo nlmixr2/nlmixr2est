@@ -1167,8 +1167,29 @@ void impOuter(Environment e) {
         // nIter -- at 3 and 5 the counter never accumulates within a 12-iteration
         // fit on the fixtures whose k-hat does improve, which is why those rows
         // are identical to switching withdrawal off.
+        // Establish the baseline for a df that step 1 pre-assigned (the
+        // categorical/non-normal trigger, or autoNonmemSparse).  Those subjects
+        // never enter the escalation branch below -- their dfVec is already > 0 --
+        // so without this kAtEsc stays NA, R_finite() below is always false, and
+        // autoDfPatience is silently inert for every non-normal model.  There is
+        // no pre-intervention k-hat to use in that case (the first E-step already
+        // ran under the t proposal), so the first observation becomes the
+        // baseline: the question is then whether it improves from there.
+        if (dfVec[id] > 0.0 && !R_finite(kAtEsc[id])) kAtEsc[id] = kh;
         if (!nonmemSparse && dfPatience > 0 && dfVec[id] > 0.0 &&
             R_finite(kAtEsc[id]) && !escDead[id]) {
+          // Deliberately measured against the BASELINE k-hat, not against the
+          // previous iteration.  The question withdrawal answers is "is
+          // intervening paying off at all", not "is it still getting better": a
+          // subject that fell 1.5 -> 0.95 and then sat flat is being helped, and
+          // withdrawing it would hand back a Gaussian that read 1.5.  Stagnation
+          // above the baseline is therefore NOT a strike.  The consequence is
+          // that one clear improvement grants immunity for the rest of the fit,
+          // which is the intended trade: the failure this guards against is a
+          // proposal that never helped, not one that stopped helping.
+          //
+          // For the same reason noImp is not reset when the rung is made heavier
+          // below -- the strike count belongs to the intervention as a whole.
           bool improved = (kh <= 0.7) || (kh < kAtEsc[id] - 0.1);
           if (improved) {
             noImp[id] = 0;
