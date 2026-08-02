@@ -201,6 +201,17 @@ matrix at the mode.}
   is not published and was not done on these models, so someone who measures
   the opposite on their own problem should be able to have it.}
 
+\item{autoDfPatience}{Number of consecutive iterations an escalated `df` may
+  fail to improve Pareto k-hat before that escalation is withdrawn and the
+  subject returned to the proposal it had without it.  `0` never withdraws.
+  Withdrawal is final, so escalation and withdrawal cannot oscillate, and it
+  never goes below the `df` the model itself requires -- a non-normal endpoint
+  keeps its t proposal.
+
+  A rung is judged against what the subject manages WITHOUT any escalation,
+  measured while it sits there, so deterioration that happens before any
+  escalation is tracked and an escalation is never credited for it.}
+
 \item{iscaleMin, iscaleMax}{Lower/upper bounds for the adapted `gamma`
 (NONMEM ISCALE_MIN / ISCALE_MAX).}
 

@@ -140,6 +140,16 @@
 #'   Set `TRUE` to get the documented NONMEM rule anyway.  NONMEM's own testing
 #'   is not published and was not done on these models, so someone who measures
 #'   the opposite on their own problem should be able to have it.
+#' @param autoDfPatience Number of consecutive iterations an escalated `df` may
+#'   fail to improve Pareto k-hat before that escalation is withdrawn and the
+#'   subject returned to the proposal it had without it.  `0` never withdraws.
+#'   Withdrawal is final, so escalation and withdrawal cannot oscillate, and it
+#'   never goes below the `df` the model itself requires -- a non-normal endpoint
+#'   keeps its t proposal.
+#'
+#'   A rung is judged against what the subject manages WITHOUT any escalation,
+#'   measured while it sits there, so deterioration that happens before any
+#'   escalation is tracked and an escalation is never credited for it.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
@@ -425,10 +435,6 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' `rxode2::assertRxUiTransformNormal()` draws between transformably-normal and
 #' general likelihoods.
 #'
-#' @param autoDfPatience Number of consecutive iterations an escalated `df` may
-#'   fail to improve Pareto k-hat before it is withdrawn and the subject returned
-#'   to a Gaussian proposal.  `0` never withdraws.  Withdrawal is final, so the
-#'   escalation and the withdrawal cannot oscillate against each other.
 #' @param gammaMethod Requested setting: "auto", "global" or "individual".
 #' @param ui rxode2 ui object
 #' @return "global" or "individual"
