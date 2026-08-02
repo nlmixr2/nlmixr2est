@@ -81,12 +81,14 @@ nmTest({
     skip_on_cran()
     .off <- .fitAuto(FALSE, model = .pk3)
     .k0 <- .off$env$impPsisK
-    # The premise, asserted rather than assumed.  If the sampler ever improves to
-    # the point that this fixture stops failing -- which is exactly what happened
-    # to the previous one-eta fixture -- skip loudly instead of passing an
-    # assertion that has quietly become vacuous.
-    skip_if(sum(.k0 > 0.7) == 0,
-            "fixture no longer produces tail failure; AUTO cannot be exercised")
+    # The premise, ASSERTED rather than skipped.  A skip would be quieter than
+    # the thing it is guarding against: when the previous one-eta fixture stopped
+    # producing tail failure, it was precisely this assertion going red that
+    # surfaced it.  If this fails, the fixture no longer exercises AUTO and needs
+    # re-selecting -- see plans/imp-auto-reinstrument.md -- rather than the
+    # assertion being loosened.
+    expect_gt(sum(.k0 > 0.7), 0L,
+              label = "stressed-fixture subjects with k-hat > 0.7 (AUTO premise)")
     .on <- .fitAuto(TRUE, model = .pk3)
     # some subjects got a t proposal, but NOT all of them
     expect_gt(sum(.on$env$impDfInd > 0), 0L)
@@ -183,6 +185,16 @@ nmTest({
     # noise for nothing.  It is now held in reserve for subjects whose k-hat is
     # still failing after the df ladder is exhausted.
     expect_true(all(.f$env$impIacceptInd == 0.4))
+    # Withdrawal must never take a non-normal subject BELOW the t proposal the
+    # trigger assigned.  A non-normal endpoint needs heavy tails by construction,
+    # and withdrawal is permanent, so a drop to Gaussian could not be undone --
+    # the df floor is what prevents it.  Exercised at patience 1 to make
+    # withdrawal as eager as it can be.
+    .fp <- suppressWarnings(nlmixr2(.m, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 8L, isample = 300L,
+                                                  covMethod = "", auto = TRUE,
+                                                  autoDfPatience = 1L)))
+    expect_true(all(.fp$env$impDfInd > 0))
   })
 
   test_that("auto reallocates the sample budget without inflating it", {

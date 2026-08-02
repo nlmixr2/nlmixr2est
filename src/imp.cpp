@@ -886,6 +886,11 @@ void impOuter(Environment e) {
   // Improvability state for the AUTO df escalation (see AUTO step 3).  kAtEsc is
   // this subject's k-hat at the moment it was escalated; noImp counts consecutive
   // iterations in which the t proposal has failed to improve on it.
+  // Lowest df a subject may be returned to.  Withdrawal undoes the k-hat
+  // ESCALATION, never the df that step 1 assigned: a non-normal endpoint needs a
+  // heavy-tailed proposal by construction, so dropping it to a Gaussian because
+  // k-hat did not improve would break the model, not repair it.
+  arma::vec dfFloor(nExp); dfFloor.fill(impDf());
   arma::vec kAtEsc(nExp); kAtEsc.fill(NA_REAL);
   arma::ivec noImp(nExp, arma::fill::zeros);
   arma::ivec escDead(nExp, arma::fill::zeros);   // 1 = escalation withdrawn, do not retry
@@ -1019,6 +1024,7 @@ void impOuter(Environment e) {
       double iaI = iaccept;
       for (int j = 0; j < Nmix; ++j) {
         dfVec[i + j * nsub] = dfI;
+        dfFloor[i + j * nsub] = dfI;   // withdrawal may not go below this
         iacceptVec[i + j * nsub] = iaI;
       }
     }
@@ -1194,9 +1200,16 @@ void impOuter(Environment e) {
           if (improved) {
             noImp[id] = 0;
           } else if (++noImp[id] >= dfPatience) {
-            dfVec[id] = 0.0;                      // give the samples back
+            // back to the step-1 floor, NOT to 0: for a non-normal endpoint that
+            // floor is the t proposal the model requires, and withdrawal is
+            // permanent (escDead), so dropping below it could never be undone.
+            if (dfVec[id] != dfFloor[id]) {
+              dfVec[id] = dfFloor[id];
+              escDead[id] = 1;
+              continue;
+            }
+            // already at the floor: nothing to withdraw, stop counting strikes
             escDead[id] = 1;
-            continue;
           }
         }
         if (escDead[id]) continue;                // measured not to help here
