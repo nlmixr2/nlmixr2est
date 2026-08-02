@@ -1158,7 +1158,7 @@ void impOuter(Environment e) {
         // Both halves are load bearing, and gating the trigger alone is NOT
         // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
         // the tutorial rule applied, 0.181 gating it but never withdrawing,
-        // 0.152 with AUTO off entirely, 0.142 gating AND withdrawing.  Gating on
+        // 0.152 with AUTO off entirely, 0.102 gating AND withdrawing.  Gating on
         // its own is still worse than not adapting at all; the withdrawal is
         // what turns it into a win.
         //
@@ -1167,18 +1167,22 @@ void impOuter(Environment e) {
         //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
         //   patience   sparse obj   theo3 obj   sparse k>0.7   theo3 k>0.7
         //     0 (off)     0.18065      0.01654        5.12          0.25
-        //     1           0.09691      0.01418        4.50          0.50
-        //     2           0.14234      0.01588        5.00          0.38
-        //     3           0.14566      0.01654        5.12          0.25
-        //     5           0.18657      0.01654        5.12          0.25
+        //     1           0.18740      0.01418        4.50          0.50
+        //     2           0.10198      0.01588        4.62          0.38
+        //     3           0.12873      0.01654        5.00          0.25
+        //     5           0.18267      0.01654        5.12          0.25
         //
-        // A trade-off, not a single optimum.  1 gives the best objective on two
-        // of three fixtures but the WORST tail on all three -- on fixtures where
-        // escalation genuinely helps, withdrawing that eagerly retracts a working
-        // proposal.  2 is the default because tail behaviour is weighted above
-        // objective RMSE: infinite-variance weights are a correctness problem
-        // with unbounded error, Monte-Carlo noise is bounded and measurable.
-        // That is the same reasoning that puts auto on by default.
+        // 2 is the sparse optimum, and the curve rises either side of it.  It is
+        // not the best objective on theo3 (1 is), but 1 has the worst tail on
+        // every fixture, and tail behaviour is weighted higher: infinite-variance
+        // weights are a correctness problem with unbounded error while
+        // Monte-Carlo noise is bounded.  Same reasoning that puts auto on at all.
+        //
+        // Measured BEFORE the monotone-baseline fix, 1 looked best on sparse
+        // (0.097 against 0.142).  That was the easy-baseline bug withdrawing at
+        // roughly the right moment by accident; with the bar correct the ordering
+        // inverts.  A reminder that a constant tuned against unverified code is
+        // only as good as the code under it.
         //
         // Patience also interacts with nIter: at 3 and 5 the counter cannot
         // accumulate inside a 12-iteration fit on a fixture whose k-hat does
@@ -1235,7 +1239,18 @@ void impOuter(Environment e) {
           // takes k-hat 1.3 -> 0.9), and inheriting strikes withdrew a heavier
           // rung after a single iteration for want of a 0.1 improvement it had
           // not had time to deliver.
-          kAtEsc[id] = kh;
+          // The bar only ever gets HARDER: keep the best k-hat seen before this
+          // rung, so the escalation must beat the best the subject has managed
+          // without it.  Taking kh outright let a noise spike set an easy bar --
+          // Gaussian 0.85, escalate, spike to 1.05, escalate again re-baselining
+          // to 1.05, settle back to 0.85, and 0.85 < 1.05 - 0.1 then reads as
+          // "improved" forever.  The subject stalled at df 20 with exactly the
+          // k-hat the Gaussian gave it, paying for a proposal achieving nothing.
+          //
+          // The min cannot reintroduce the stale-baseline bug this replaced: only
+          // k-hat values AT an escalation are recorded, and those are all > 0.7,
+          // so a healthy pre-deterioration reading is never in the minimum.
+          kAtEsc[id] = (R_finite(kAtEsc[id]) && kAtEsc[id] < kh) ? kAtEsc[id] : kh;
           noImp[id] = 0;
           dfVec[id] = want;
         }
