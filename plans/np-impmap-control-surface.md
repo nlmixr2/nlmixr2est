@@ -59,18 +59,25 @@ Three buckets, and every one of the 22 goes in exactly one. Do this first and
 write it down, because the implementation is trivial once the classification is
 settled and unarguable afterwards.
 
+* **Internal, never user-facing -- must NOT be rejected**: `gammaMethodUser`
+  (stamped by `.impmapFamilyFit` to record the pre-`"auto"` preference) and the
+  M-step index maps. A caller never types these; a REBUILD always carries them.
+  Rejecting them breaks exactly the round-trips Phase 2 is trying to survive, so
+  they come off the reject list entirely.
 * **Inapplicable** -- no meaning without an importance-sampling proposal:
-  `isample`, `gamma`, `gammaMethod`, `gammaMethodUser`, `df`, `auto`,
-  `autoNonNormal`, `autoNonmemSparse`, `autoDfPatience`, `iscaleMin`,
-  `iscaleMax`, `iaccept`, `qr`, `qrShift`, `qrRefresh`, `sir`, `sirSample`.
-  These should be REJECTED when passed explicitly.
-* **Should work and does not** -- a real np analogue exists, so wire it rather
-  than reject it: `impSeed` (npb's `seed`), and possibly `mapIter` (npag does run
-  a MAP pass through `impMapPass`; check whether it honours an iteration count).
+  `isample`, `gamma`, `gammaMethod`, `df`, `auto`, `autoNonNormal`,
+  `autoNonmemSparse`, `autoDfPatience`, `iscaleMin`, `iscaleMax`, `iaccept`,
+  `mapIter`, `qr`, `qrShift`, `qrRefresh`, `sir`, `sirSample`.
+  These should be REJECTED when passed explicitly. `mapIter` is here on
+  evidence, not assumption: `impMapPass()` (`src/inner.cpp`) runs a single
+  `foceiOuterFinal()` pass, and `mapIter` is never loaded into C++ by
+  `foceiSetup_` nor read by `impMapPass()`, so it cannot mean anything under np.
+* **Should work and does not** -- a real np analogue exists, so wire it:
+  `impSeed` (npb's `seed`).
 * **Arguably remappable** -- `nIter`, `ctol`, `nConvWindow` have np counterparts
   (`cycles`, `rhoend`). Decide deliberately: alias, or reject with a message
-  naming the right control. Aliasing is friendlier but creates two names for one
-  thing; rejecting with a pointer is more honest. Prefer rejecting with a pointer.
+  naming the right control. Prefer rejecting with a pointer.
+
 
 Exit: a table in this file, control by control, with the decision.
 
@@ -102,8 +109,23 @@ preference order:
    of those present implies a rebuild. Works, but relies on that set staying
    internal.
 
+Both options share two failure modes that must be designed against, not
+discovered:
+
+* **Validating only in the constructor is not enough.** `getValidNlmixrCtl.npag`
+  routes a RAW list through `.npValidCtl` -> `getValidNlmixrCtl.impmap` ->
+  `do.call(impmapControl, .)`, never entering `npagControl()`. So
+  `getValidNlmixrCtl.npag(list(isample = 500))` bypasses any check that lives
+  only in the constructor. Validation has to sit where every path converges.
+* **A control edited after construction bypasses it too.**
+  `ctl <- npagControl(); ctl$isample <- 5000` carries the marker (or the internal
+  fields) and so reads as a rebuild, silently ignoring the edit -- which is the
+  original bug wearing a different hat. Either validate at fit time as well, or
+  accept and document that post-hoc edits are not checked.
+
 Whichever is chosen, the round-trip must be an explicit test (Phase 5), not an
 assumption.
+
 
 Decide error vs warning. An error is right here: these are silent no-ops today,
 and a warning in a long fit scrolls past. But note the repo convention if a
@@ -120,6 +142,17 @@ round-trip of an already-built control. Test the round-trip explicitly -- this i
 exactly the shape of bug that broke `est="fo"/"foi"` before (a control field the
 round-trip rejected).
 
+## Phase 2b -- npbControl's inert FORMAL arguments
+
+`npbControl()` declares `cycles = 100L` and `gammaOptimize = FALSE` as named
+FORMALS, documented "Unused for npb". Because they are formals they never reach
+`...`, so a `list(...)` check cannot see them: `npbControl(cycles = 500)` stays a
+silent no-op even after Phase 2 lands.
+
+Handle them explicitly -- validate the formals as well as `...`, or remove them
+from the signature if nothing depends on their presence. Check first whether any
+internal caller passes them positionally before changing the signature.
+
 ## Phase 3 -- wire what should work
 
 * `impSeed`: `npbControl()` takes its own `seed = 42L`, and `src/npb.cpp` reads
@@ -130,9 +163,9 @@ round-trip rejected).
   at `seed`. npag is Sobol-deterministic, so say that in the docs rather than
   accepting a seed there at all.
 
-* `mapIter`: determine whether `impMapPass` honours it under np. If it does, it
-  belongs in the "consumed" list and the docs; if it does not, either wire it or
-  reject it.
+(`mapIter` was investigated and is NOT honoured -- `impMapPass()` runs a single
+`foceiOuterFinal()` pass and `mapIter` never reaches C++ -- so it moved to the
+reject bucket in Phase 1 rather than being wired.)
 
 ## Phase 4 -- resolve the `gamma` / `gammaOptimize` collision
 
@@ -151,11 +184,18 @@ The failure being fixed is silence, so the tests must assert the noise:
 
 * every control in the inapplicable bucket raises when passed to `npagControl()`
   and `npbControl()`;
-* a control that is legitimately shared (`impCov`) still passes through;
-* `do.call(npagControl, npagControl())` round-trips -- the regression risk in
-  Phase 2;
+* a control that is legitimately shared (`impCov`) still passes through, and no
+  internal field (`gammaMethodUser`, the index maps) is ever rejected;
+* `do.call(npagControl, npagControl())` AND `do.call(npbControl, npbControl())`
+  round-trip -- both engines, since they are separate constructors;
+* `getValidNlmixrCtl.npag(list(isample = 500))` and the npb equivalent raise,
+  covering the raw-list path that bypasses the constructor;
+* `getValidNlmixrCtl.npag(fit$control)` on a completed fit still validates;
+* a post-construction edit (`ctl$isample <- 5000`) behaves as Phase 2 decided --
+  whichever way that goes, pin it so it cannot change silently;
 * the wired controls from Phase 3 demonstrably change the fit (a seed change
   moves npb draws), rather than merely being accepted.
+
 
 Cheap control-level checks belong in the push/PR subset; anything needing a fit
 goes in a `.slowBatches` entry.

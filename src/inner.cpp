@@ -5778,8 +5778,13 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
   // population gradient, but is not isImpmap; load the index here too.
-  if (op_focei.isAdvi && foceiO.containsElementNamed("impThetaSensIdx")) {
-    op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+  if (op_focei.isAdvi) {
+    // Clear on absence, like the np branch above: op_focei is a process global,
+    // so without the else an advi fit whose control carries no impThetaSensIdx
+    // silently inherits the previous fit's indices.
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
   }
 
   op_focei.zeroGrad = false;
