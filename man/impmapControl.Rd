@@ -14,6 +14,8 @@ impmapControl(
   gammaMethod = c("auto", "global", "individual"),
   df = 0,
   auto = TRUE,
+  autoNonmemSparse = FALSE,
+  autoDfPatience = 2L,
   iscaleMin = 0.1,
   iscaleMax = 10,
   iaccept = 0.4,
@@ -127,10 +129,13 @@ matrix at the mode.}
   freedom, the sample count and the acceptance target **per subject** rather
   than applying one global setting to everybody.
 
-  * **`df`** -- a subject whose observation count is below the number of
-    random effects, or any subject when the model is not transformably
-    normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
-    ("fewer data points than there are ETAs ... or data are categorical").
+  * **`df`** -- any subject gets a heavy-tailed t proposal when the model is
+    not transformably normal, and any subject whose Pareto k-hat reports tail
+    failure gets one on that evidence.  The tutorial's other trigger, "fewer
+    data points than there are ETAs", is **not** applied on its own -- see
+    `autoNonmemSparse`.  An escalation that fails to improve k-hat over two
+    iterations is withdrawn, since a heavy tail the data creates is not
+    repairable by proposal shape.
   * **`isample`** -- the total sample budget (`isample * nsub`) is
     reallocated toward subjects whose effective-sample fraction is lowest,
     the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
@@ -140,7 +145,7 @@ matrix at the mode.}
   * **`iaccept`** -- lowered to 0.2 for the same sparse/categorical
     subjects, per the tutorial.
 
-  The concrete values (`df = 4`, the `nobs < neta` test, the budget
+  The concrete values (the `df` ladder, the k-hat thresholds, the budget
   reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
   `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
   documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
@@ -152,28 +157,49 @@ matrix at the mode.}
 
   **Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
   behaviour of the importance weights and the accuracy of `Omega`, at some
-  cost in Monte-Carlo noise on the objective.  On theophylline, against a
-  reference computed at `isample = 20000` (which agrees to 0.0003 across
-  Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+  cost in Monte-Carlo noise on the objective.  On theophylline with three
+  ETAs -- a one-ETA model has no tail failure to fix, so it shows nothing
+  either way -- against a reference computed at `isample = 8000`, over 8
   seeds:
 
   \itemize{
-    \item `auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
-      objective RMSE 0.0315, `Omega` RMSE 0.00247
-    \item `auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
-      objective RMSE 0.0376, `Omega` RMSE 0.00198
+    \item `auto = FALSE`: max Pareto k-hat 0.941, 2.38 subjects above 0.7;
+      objective RMSE 0.0113, `Omega` RMSE 0.00406
+    \item `auto = TRUE`: max Pareto k-hat 0.571, 0.25 subjects above 0.7;
+      objective RMSE 0.0165, `Omega` RMSE 0.00301
   }
 
-  So `auto` removes the tail failure and estimates `Omega` about 20% more
-  accurately, for about 19% more Monte-Carlo noise on the objective.  It is
+  So `auto` removes the tail failure and estimates `Omega` about 26% more
+  accurately, for about 46% more Monte-Carlo noise on the objective.  It is
   on by default because weights with infinite variance are a correctness
   problem -- their error is unbounded in the worst case -- whereas the extra
-  noise is a bounded, measurable cost.
+  noise is a bounded, measurable cost.  Setting `df` globally gives a better
+  objective still on a model that is uniformly heavy-tailed, but costs 75%
+  more objective RMSE on one that is not, which is why it is not the default.
 
   Set `auto = FALSE` to recover the previous behaviour exactly (that path
   remains bit-identical to earlier versions), which is worth doing when you
   want the tightest possible objective on a model whose `fit$env$impPsisK`
   values are already comfortably below 0.7.}
+
+\item{autoNonmemSparse}{Apply the NONMEM tutorial's `nobs < neta` trigger
+  unconditionally, so a subject with fewer observations than random effects
+  always gets a t proposal.  `FALSE` (default) leaves such subjects to the
+  Pareto k-hat evidence like any other, and withdraws an escalation that does
+  not improve k-hat within two iterations.
+
+  The default diverges from the tutorial deliberately, on measurement.  On a
+  fixture built to the tutorial's own definition of sparse (2 observations, 3
+  etas), 8 seeds against an `isample = 8000` reference, applying the rule made
+  every number worse -- objective RMSE 0.1517 -> 0.2059, `Omega` RMSE 0.02379
+  -> 0.03163, and *more* failing subjects (3.88 -> 4.88).  With fewer
+  observations than random effects the individual posterior is not identified,
+  so the heavy tail is structural and no proposal shape repairs it; the
+  reference itself still reads max k-hat 0.794.
+
+  Set `TRUE` to get the documented NONMEM rule anyway.  NONMEM's own testing
+  is not published and was not done on these models, so someone who measures
+  the opposite on their own problem should be able to have it.}
 
 \item{iscaleMin, iscaleMax}{Lower/upper bounds for the adapted `gamma`
 (NONMEM ISCALE_MIN / ISCALE_MAX).}
