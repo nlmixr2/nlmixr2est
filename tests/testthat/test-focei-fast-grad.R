@@ -111,13 +111,16 @@ nmTest({
       }
       h <- 1e-3
       ## cached: the reference is a property of the model/data/theta, not of the
-      ## gradient implementation -- see helper-gradref.R
-      fd <- .gradRef(paste0("lambda-boxcox-yeojohnson-", nm), function()
+      ## gradient implementation -- see helper-gradref.R.  The key carries `est`:
+      ## FOCE and FOCEI minimize different objectives, so they cannot share one.
+      fd <- .gradRef(paste0("lambda-boxcox-yeojohnson-", nm, "-", est), function()
         vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
-      expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
+      expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01, info = paste(nm, est))
     }
-    ## chk(mkYj, "foce") removed: FOCE is out of scope for the analytic gradient (#836)
     chk(mkBox, "focei", "boxcox"); chk(mkYj, "focei", "yeojohnson")
+    ## FOCE restored: it was dropped as out of scope (#836), but that decline was
+    ## measured before the shared ODE solve pool fix (#839) and no longer holds.
+    chk(mkBox, "foce", "boxcox"); chk(mkYj, "foce", "yeojohnson")
   })
 
   test_that("analytic outer gradient matches FD for a covariate model", {

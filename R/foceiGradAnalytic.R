@@ -745,19 +745,14 @@
   }
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  ## FOCE (interaction = 0) is OUT OF SCOPE for the analytic outer gradient.
-  ##
-  ## Its frozen-R0 EBE Newton cannot reach its score target at the default solve
-  ## precision -- |S| is assembled from the ODE solve and so floors around 5e-3 at
-  ## rtol = 1e-3, against a 1e-9 target (nlmixr2/nlmixr2est#836; a backtracking line
-  ## search was implemented and ruled out overshoot as the cause).  Attempting it anyway
-  ## costs a full augmented population solve per outer iteration that is then thrown away
-  ## before falling back to finite differences, so declining up front is strictly faster
-  ## and gives the same numbers.
-  ##
-  ## Note this is reached only for the Gaussian FOCE path: an ll()/generalized endpoint
-  ## also reports interaction = 0 but returns above, and is unaffected.
-  if (interaction == 0L) return(NULL)
+  ## FOCE (interaction = 0) was declined here up front: its frozen-R0 EBE Newton could
+  ## not reach the 1e-9 score target at the default solve, |S| flooring near 5e-3 at
+  ## rtol = 1e-3 (nlmixr2/nlmixr2est#836).  That was measured BEFORE the shared ODE solve
+  ## pool was fixed (#839), where a peer solve run under another slot's event-sensitivity
+  ## shape corrupted the scratch the score is assembled from.  The gate is lifted so FOCE
+  ## goes through gradPooledCore's isFoce/foceEbeNewton path like any other shape; a
+  ## Newton that still cannot converge declines per fit at its own site rather than
+  ## being refused for the whole method.
   nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
   # agqControl() forces interaction=TRUE, so only the FOCEI (f,R) kernel has a quadrature
   # form -- a FOCE-AGQ combination cannot arise.
