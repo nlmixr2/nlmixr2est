@@ -1014,7 +1014,10 @@ void impOuter(Environment e) {
       // 2.58 -> -0.02, bad subjects 2.08 -> 0.08) for a 7% RMSE cost
       // (0.0240 -> 0.0257).  Entering at 20 costs 33% and at 8 costs 3x for no
       // extra tail benefit, so the earlier ladder was simply mistuned.
-      double dfI = (sparse || nonNormal) ? 30.0 : 0.0;
+      // impDf() rather than 0 for the untriggered case: a global df= is an
+      // explicit request and must survive auto=TRUE.  At the default df = 0
+      // this is identical to the old expression.
+      double dfI = (sparse || nonNormal) ? 30.0 : impDf();
       // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
       // wide, and widening a Gaussian is the lever measured NOT to fix tails
       // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
@@ -1182,7 +1185,17 @@ void impOuter(Environment e) {
         // ran under the t proposal), so the first observation becomes the
         // baseline: the question is then whether it improves from there.
         if (dfVec[id] > 0.0 && !R_finite(kAtEsc[id])) kAtEsc[id] = kh;
-        if (!nonmemSparse && dfPatience > 0 && dfVec[id] > 0.0 &&
+        // Strikes belong to an ESCALATION, so only count them once the subject
+        // has actually been moved off its floor.  Testing dfVec > 0 instead
+        // stranded subjects that were never escalated at all: a non-normal
+        // subject sitting at its floor of 30 with k-hat 0.8 is not escalated
+        // (want == 30 is not heavier than 30), yet it accumulated strikes, hit
+        // patience, and was marked escDead -- so when its k-hat later rose past
+        // 1.0 and genuinely needed df 20, escalation was skipped forever.
+        // Note "escalated" is dfVec != dfFloor, not an inequality: escalating a
+        // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS
+        // it (30 -> 20).
+        if (!nonmemSparse && dfPatience > 0 && dfVec[id] != dfFloor[id] &&
             R_finite(kAtEsc[id]) && !escDead[id]) {
           // Deliberately measured against the BASELINE k-hat, not against the
           // previous iteration.  The question withdrawal answers is "is
@@ -1203,13 +1216,9 @@ void impOuter(Environment e) {
             // back to the step-1 floor, NOT to 0: for a non-normal endpoint that
             // floor is the t proposal the model requires, and withdrawal is
             // permanent (escDead), so dropping below it could never be undone.
-            if (dfVec[id] != dfFloor[id]) {
-              dfVec[id] = dfFloor[id];
-              escDead[id] = 1;
-              continue;
-            }
-            // already at the floor: nothing to withdraw, stop counting strikes
+            dfVec[id] = dfFloor[id];
             escDead[id] = 1;
+            continue;
           }
         }
         if (escDead[id]) continue;                // measured not to help here
