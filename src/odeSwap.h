@@ -425,6 +425,5 @@ long odeSwapPooledSolveN();    // completed pooled outer solves; survives teardo
 void odeSwapNotePooledSolve();
 long odeSwapPinCalledN();
 int  odeSwapPinDeny();   // cumulative pins; survives teardown, unlike odeSwapPinned()
-void odeSwapResetCounters();
 
 #endif // __ODESWAP_H__

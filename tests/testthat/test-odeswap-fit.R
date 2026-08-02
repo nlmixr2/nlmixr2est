@@ -30,12 +30,11 @@ nmTest({
         cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)
       })
     }
-    ## The odeSwap counters are PROCESS-cumulative.  odeSwapResetCounters() exists
-    ## in src/odeSwap.cpp but is not called from anywhere -- no .cpp, no R -- so a
-    ## fit earlier in this worker leaves its arming behind.  Assert the DELTA across
-    ## THIS fit; the absolute value only reads as 0 when the file happens to run
-    ## before anything else that arms an override, which made it pass or fail on
-    ## test-file scheduling rather than on behavior.
+    ## The odeSwap counters are PROCESS-cumulative and nothing clears them, so a
+    ## fit earlier in this worker leaves its arming behind.  Assert the DELTA
+    ## across THIS fit; the absolute value only reads as 0 when the file happens
+    ## to run before anything else that arms an override, which made it pass or
+    ## fail on test-file scheduling rather than on behavior.
     .b <- .odeSwapInfo()
     suppressWarnings(suppressMessages(
       nlmixr2(m, nlmixr2data::theo_sd, "impmap",

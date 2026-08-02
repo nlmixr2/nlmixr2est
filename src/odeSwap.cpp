@@ -494,13 +494,6 @@ long odeSwapPooledSolveN()   { return _odePooledSolveN.load(std::memory_order_re
 void odeSwapNotePooledSolve() { _odePooledSolveN.fetch_add(1, std::memory_order_relaxed); }
 long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_relaxed); }
 int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
-void odeSwapResetCounters() {
-  _odeOverrideArmedN.store(0, std::memory_order_relaxed);
-  _odeLhsWidthMismatchN.store(0, std::memory_order_relaxed);
-  _odeOverrideNeutralizedN.store(0, std::memory_order_relaxed);
-  _odeScratchUsedN.store(0, std::memory_order_relaxed);
-  _odeScratchResizeN.store(0, std::memory_order_relaxed);
-}
 
 // A private buffer is needed exactly when this model writes more lhs values than
 // rxode2's per-thread slice holds.  That slice is op->nlhs wide, which is the
