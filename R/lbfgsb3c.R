@@ -100,7 +100,7 @@ lbfgsb3cControl <- function(trace=0,
                             literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
                             eventSens = c("jump", "fd"),
-                            sensMethod = c("default", "forward", "adjoint"),
+                            sensMethod = c("default", "forward"),
                             calcTables=TRUE, compress=FALSE,
                             covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, ...) {

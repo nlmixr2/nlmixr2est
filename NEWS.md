@@ -1273,10 +1273,6 @@
 - `foceiControl(warm = c("calc", "save"))`: `"calc"` (default) warm-starts each
   `n1qn1` inner problem from the eta Hessian recalculated at the current theta.
 
-- `sensMethod` (nlm-family controls and `foceiControl()`): forward or in-engine
-  discrete adjoint (`"adjoint"`) ODE parameter sensitivities; `"default"` reads
-  `getOption("nlmixr2est.adjoint")`.
-
 - Residual (error-model) parameters are now included in the focei-family
   covariance (only fixed, IOV and mixture-probability thetas skip).
 

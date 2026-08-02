@@ -80,7 +80,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "nlme-cov", "agq-fast-grad", "focei-ll-fast-grad-fit",
     "focei-fast-methods-fit", "odeswap-fit"),
   # batch 5
-  c("focei-llik", "iov", "iov-zero-eta", "nlm-adjoint", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
+  c("focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress", "posthoc", "ar-est",
     "mu-family", "mu-plain-fit", "vae-fit", "focei-wang2007-basic",
     "vae-neonatal", "vae-errmodel", "table-cmt", "vae-covariate"),
   # batch 6 -- heaviest remaining files on the single-worker CI runner

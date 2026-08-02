@@ -28,7 +28,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -156,12 +156,9 @@ finite-difference Hessian that already reflects censoring exactly.}
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
 
-\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
-`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
-(`s`) method.}
+`"default"` is the same thing.}
 
 \item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
 iteration print. `NULL` (default) defers to [crayon::has_color()].}

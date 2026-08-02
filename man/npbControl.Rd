@@ -19,6 +19,7 @@ npbControl(
   cores = NULL,
   rhoend = 1e-04,
   gamma,
+  df,
   ...
 )
 }
