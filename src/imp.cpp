@@ -1140,6 +1140,7 @@ void impOuter(Environment e) {
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
         if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
+        if (escDead[id]) continue;                // measured not to help here
         // IMPROVABILITY.  A t proposal repairs a tail the proposal shape is
         // missing; it cannot repair one the DATA creates.  With fewer
         // observations than random effects the individual posterior is not
@@ -1177,40 +1178,36 @@ void impOuter(Environment e) {
         // fit on the fixtures whose k-hat does improve, which is why those rows
         // are identical to switching withdrawal off.
         // Establish the baseline for a df that step 1 pre-assigned (the
-        // categorical/non-normal trigger, or autoNonmemSparse).  Those subjects
-        // never enter the escalation branch below -- their dfVec is already > 0 --
-        // so without this kAtEsc stays NA, R_finite() below is always false, and
-        // autoDfPatience is silently inert for every non-normal model.  There is
-        // no pre-intervention k-hat to use in that case (the first E-step already
-        // ran under the t proposal), so the first observation becomes the
-        // baseline: the question is then whether it improves from there.
-        if (dfVec[id] > 0.0 && !R_finite(kAtEsc[id])) kAtEsc[id] = kh;
-        // Strikes belong to an ESCALATION, so only count them once the subject
-        // has actually been moved off its floor.  Testing dfVec > 0 instead
-        // stranded subjects that were never escalated at all: a non-normal
-        // subject sitting at its floor of 30 with k-hat 0.8 is not escalated
-        // (want == 30 is not heavier than 30), yet it accumulated strikes, hit
-        // patience, and was marked escDead -- so when its k-hat later rose past
-        // 1.0 and genuinely needed df 20, escalation was skipped forever.
-        // Note "escalated" is dfVec != dfFloor, not an inequality: escalating a
-        // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS
-        // it (30 -> 20).
-        if (!nonmemSparse && dfPatience > 0 && dfVec[id] != dfFloor[id] &&
-            R_finite(kAtEsc[id]) && !escDead[id]) {
-          // Deliberately measured against the BASELINE k-hat, not against the
-          // previous iteration.  The question withdrawal answers is "is
-          // intervening paying off at all", not "is it still getting better": a
-          // subject that fell 1.5 -> 0.95 and then sat flat is being helped, and
-          // withdrawing it would hand back a Gaussian that read 1.5.  Stagnation
-          // above the baseline is therefore NOT a strike.  The consequence is
-          // that one clear improvement grants immunity for the rest of the fit,
-          // which is the intended trade: the failure this guards against is a
-          // proposal that never helped, not one that stopped helping.
-          //
-          // noImp is not reset explicitly when the rung is made heavier below;
-          // it does not need to be.  That escalation re-baselines kAtEsc, so a
-          // rung that works clears `improved` on its next iteration and zeroes
-          // the count itself, while one that does nothing keeps accumulating.
+        // Decide the rung this k-hat asks for FIRST, because withdrawal must not
+        // pre-empt an escalation that is still available.  Running the withdrawal
+        // check first retired a subject at df 30 carrying its last strike the
+        // moment its k-hat crossed 1.0 -- it went to the floor and escDead
+        // without ever trying df 20, which is precisely the rung that k-hat was
+        // asking for.
+        double want = 0.0;
+        bool wantEsc = false;
+        if (kh > 0.7) {
+          // lightest tail plausibly heavy enough for this severity
+          want = (kh > 1.0) ? 20.0 : 30.0;
+          // one-way: only ever go heavier, so the shape cannot oscillate
+          wantEsc = (dfVec[id] <= 0.0 || want < dfVec[id]);
+        }
+
+        // Withdrawal.  Only for a subject actually moved off its floor -- testing
+        // dfVec > 0 instead stranded subjects that were never escalated at all --
+        // and only once the ladder is EXHAUSTED (!wantEsc), so "this is not
+        // helping" means the heaviest applicable rung is not helping.  Note
+        // "escalated" is dfVec != dfFloor, not an inequality: escalating a
+        // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS it
+        // (30 -> 20).
+        if (!nonmemSparse && dfPatience > 0 && !wantEsc &&
+            dfVec[id] != dfFloor[id] && R_finite(kAtEsc[id])) {
+          // Measured against the k-hat this rung was meant to improve, NOT
+          // against the previous iteration.  The question is "is this rung paying
+          // off", not "is it still getting better": a rung that took k-hat
+          // 1.5 -> 0.95 and then sat flat is helping, and withdrawing it would
+          // hand back the proposal that read 1.5.  Stagnation above the baseline
+          // is therefore not a strike.
           bool improved = (kh <= 0.7) || (kh < kAtEsc[id] - 0.1);
           if (improved) {
             noImp[id] = 0;
@@ -1223,22 +1220,18 @@ void impOuter(Environment e) {
             continue;
           }
         }
-        if (escDead[id]) continue;                // measured not to help here
-        if (kh > 0.7) {
-          // pick the lightest tail plausibly heavy enough for this severity
-          double want = (kh > 1.0) ? 20.0 : 30.0;
-          // only ever go heavier here; escalation must not oscillate
-          if (dfVec[id] <= 0.0 || want < dfVec[id]) {
-            // Re-baseline on EVERY escalation, not just the first.  Each rung is
-            // judged against the state it was meant to improve.  Keeping the
-            // original baseline breaks a subject that was healthy at its floor
-            // and deteriorated later: a baseline of 0.6 recorded at iteration 0
-            // cannot be beaten by an escalation that correctly takes k-hat from
-            // 1.3 to 0.9, so a proposal that IS working scores as failing and
-            // gets withdrawn.
-            kAtEsc[id] = kh;
-            dfVec[id] = want;
-          }
+
+        if (wantEsc) {
+          // Re-baseline on EVERY escalation, and give the new rung a full
+          // patience window.  Both matter: keeping the original baseline breaks a
+          // subject that was healthy at its floor and deteriorated later (a
+          // baseline of 0.6 cannot be beaten by an escalation that correctly
+          // takes k-hat 1.3 -> 0.9), and inheriting strikes withdrew a heavier
+          // rung after a single iteration for want of a 0.1 improvement it had
+          // not had time to deliver.
+          kAtEsc[id] = kh;
+          noImp[id] = 0;
+          dfVec[id] = want;
         }
         // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
         // circular: once a t proposal is in place k-hat drops precisely BECAUSE
