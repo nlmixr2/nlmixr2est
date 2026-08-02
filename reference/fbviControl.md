@@ -108,7 +108,7 @@ fbviControl()
 #> [1] 0.1
 #> 
 #> $tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $evalElbo
 #> [1] 100
@@ -159,10 +159,10 @@ fbviControl()
 #> [1] 0.95
 #> 
 #> $sigdig
-#> [1] 4
+#> [1] 3
 #> 
 #> $sigdigTable
-#> [1] 4
+#> [1] 3
 #> 
 #> $stickyRecalcN
 #> [1] 4
@@ -207,10 +207,10 @@ fbviControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-07
+#> [1] 1e-06
 #> 
 #> $rtol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -416,10 +416,10 @@ fbviControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-06
+#> [1] 1e-05
 #> 
 #> $ssRtol
-#> [1] 0.001
+#> [1] 0.01
 #> 
 #> $safeZero
 #> [1] 1
@@ -445,16 +445,16 @@ fbviControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-07
-#> 
-#> $rtolSens
-#> [1] 1e-04
-#> 
-#> $ssAtolSens
 #> [1] 1e-06
 #> 
-#> $ssRtolSens
+#> $rtolSens
 #> [1] 0.001
+#> 
+#> $ssAtolSens
+#> [1] 1e-05
+#> 
+#> $ssRtolSens
+#> [1] 0.01
 #> 
 #> $simVariability
 #> [1] NA

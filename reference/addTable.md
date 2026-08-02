@@ -95,13 +95,13 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  
-#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
+#>  
+#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> covMethod="sa" could not be computed; using the linearized FIM
@@ -117,7 +117,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8592
+#> → compress parHistData in nlmixr2 object, save 8800
 #> → compress phiM in nlmixr2 object, save 446912
 
 print(f)
@@ -129,9 +129,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1085787 2.5067e-05 0.01200451       0.08     0.243 6.707        0.43
+#> elapsed 0.1274536 3.3784e-05 0.01200518       0.08      0.71 6.657       0.959
 #>         compress     other
-#> elapsed    0.129 0.1473917
+#> elapsed    0.134 0.1645074
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -162,9 +162,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1085787 2.5067e-05 0.01200451       0.08     0.243 6.707        0.43
+#> elapsed 0.1274536 3.3784e-05 0.01200518       0.08      0.71 6.657       0.959
 #>         compress     other
-#> elapsed    0.129 0.1473917
+#> elapsed    0.134 0.1645074
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

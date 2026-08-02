@@ -36,7 +36,7 @@ uobyqaControl(
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
@@ -239,7 +239,7 @@ uobyqaControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -331,22 +331,22 @@ print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0938        67.95303
+#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0934        67.95307
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.337714 0.3316644  5.931e-06      0.057       0.006 0.025    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3977553 0.8234119  6.342e-06       0.06       0.007  0.03    0.001
 #>              other
-#> elapsed 0.09961567
+#> elapsed 0.09382647
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.8062 0.2470 30.64 -0.8062 (-1.290, -0.3221)
-#> Em    5.487  2.368 43.16     5.487 (0.8456, 10.13)
-#> E50   2.898  1.244 42.94     2.898 (0.4592, 5.337)
-#> g     2.000  FIXED FIXED                     2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.806 0.247  30.6  -0.806 (-1.29, -0.322)
+#> Em    5.49  2.37  43.2      5.49 (0.846, 10.1)
+#> E50   2.90  1.24  42.9      2.90 (0.459, 5.34)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -363,9 +363,9 @@ print(fit2)
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.806218529273989, 5.48662370667654, 2.89816119688357 
-#> objective: 579.080149823452 
-#> number of function evaluations: 58 
+#> parameter estimates: -0.806219301959938, 5.48662148012539, 2.89815804525741 
+#> objective: 579.08014982352 
+#> number of function evaluations: 57 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

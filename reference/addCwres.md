@@ -72,13 +72,13 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  
-#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
+#>  
+#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> rxode2 5.1.5 using 2 threads (see ?getRxThreads)
@@ -103,7 +103,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8592
+#> → compress parHistData in nlmixr2 object, save 8800
 #> → compress phiM in nlmixr2 object, save 446912
 
 print(f)
@@ -115,9 +115,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6919784 2.5237e-05 0.01500449      0.091     0.883 6.723       1.185
+#> elapsed 0.7159557 2.8934e-05    0.01401      0.096     0.921 6.611         1.2
 #>         table compress     other
-#> elapsed 0.055    0.131 0.6229918
+#> elapsed 0.057     0.13 0.6210054
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -184,9 +184,9 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6919784 2.5237e-05 0.01500449      0.091     0.883 6.723       1.185
+#> elapsed 0.7159557 2.8934e-05    0.01401      0.096     0.921 6.611         1.2
 #>         table compress     other
-#> elapsed 0.055    0.131 0.6229918
+#> elapsed 0.057     0.13 0.6210054
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

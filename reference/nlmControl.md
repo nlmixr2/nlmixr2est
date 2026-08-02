@@ -51,7 +51,7 @@ nlmControl(
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...
@@ -350,7 +350,7 @@ nlmControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -439,22 +439,22 @@ print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -688.1881 1155.689 1170.412      -574.8445         2543532          156652
+#> lPop -470.4339 1373.443 1388.166      -683.7216        71.76736        12.89174
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3301429 0.5768507  6.242e-06      0.047       0.005 0.024    0.001
-#>             other
-#> elapsed 0.1010002
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.3926134 1.601976  6.462e-06      0.051       0.006  0.03    0.001
+#>              other
+#> elapsed 0.09740361
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.6132 4.621 753.5 -0.6132 (-9.669, 8.443)
-#> Em    8.994 202.7  2253   8.994 (-388.2, 406.2)
-#> E50   4.654 86.24  1853   4.654 (-164.4, 173.7)
-#> g     2.000 FIXED FIXED                   2.000
+#>      Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  0.500 0.202  40.5    0.500 (0.103, 0.897)
+#> Em  0.500 0.636   127    0.500 (-0.746, 1.75)
+#> E50  2.00 0.971  48.5     2.00 (0.0976, 3.90)
+#> g    2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r (nlm)
 #>   Censoring ($censInformation): No censoring
@@ -463,56 +463,56 @@ print(fit2)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0358     0 -0.433 -0.613
-#> 2 1     0.0521     0 -0.433 -0.612
-#> 3 1     0.0610     0 -0.433 -0.612
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0358     0 -0.974 0.500
+#> 2 1     0.0521     0 -0.974 0.500
+#> 3 1     0.0610     0 -0.974 0.500
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$nlm
 #> $minimum
-#> [1] 574.8445
+#> [1] 683.7216
 #> 
 #> $estimate
-#>         E0         Em        E50 
-#> -0.6132045  8.9940370  4.6540873 
+#>  E0  Em E50 
+#> 0.5 0.5 2.0 
 #> 
 #> $gradient
-#> [1] -0.0000354457 -0.0001682365  0.0003334576
+#> [1]  0.29350714 -0.65011450 -0.08835844
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001540785  0.001106304 -0.003283119
-#> Em   0.001106304  0.002038902 -0.005582168
-#> E50 -0.003283119 -0.005582168  0.013746572
+#> E0   0.001724099  0.005847094 -0.001196002
+#> Em   0.005847094  0.037764626 -0.011144397
+#> E50 -0.001196002 -0.011144397  0.007378253
 #> 
 #> $code
 #> [1] 1
 #> 
 #> $iterations
-#> [1] 16
+#> [1] 0
 #> 
 #> $scaleC
 #> [1] 0.002771929 0.032196427 0.029707265
 #> 
 #> $estimate.scaled
-#>         E0         Em        E50 
-#> -402.59919  262.81924   90.34135 
+#>  E0  Em E50 
+#>  -1  -1   1 
 #> 
 #> $cov.scaled
-#>           E0       Em      E50
-#> E0   2778574 10483320  4835317
-#> Em  10483320 39626715 18272785
-#> E50  4835317 18272785  8426572
+#>             E0         Em       E50
+#> E0   5331.6305 -1029.2055 -690.3033
+#> Em  -1029.2055   389.7731  421.8959
+#> E50  -690.3033   421.8959 1067.4845
 #> 
 #> $r
-#>                E0            Em          E50
-#> E0   0.0007703926  0.0005531519 -0.001641559
-#> Em   0.0005531519  0.0010194508 -0.002791084
-#> E50 -0.0016415595 -0.0027910839  0.006873286
+#>                E0           Em           E50
+#> E0   0.0008620494  0.002923547 -0.0005980012
+#> Em   0.0029235472  0.018882313 -0.0055721987
+#> E50 -0.0005980012 -0.005572199  0.0036891265
 #> 
 
 # The nlm control has been modified slightly to include

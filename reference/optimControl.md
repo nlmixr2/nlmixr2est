@@ -57,7 +57,7 @@ optimControl(
   covMethod = c("r", "optim", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...
@@ -381,7 +381,7 @@ optimControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -472,18 +472,18 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3728286 0.5281443  5.399e-06      0.047       0.006 0.025    0.001
-#>              other
-#> elapsed 0.09102175
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.3978085  1.57367  6.122e-06       0.05       0.007 0.054    0.001
+#>            other
+#> elapsed 0.108515
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.2572 0.2875 111.8 -0.2572 (-0.8207, 0.3063)
-#> Em    16.85  14.96 88.78     16.85 (-12.47, 46.17)
-#> E50   8.804  7.100 80.65     8.804 (-5.112, 22.72)
-#> g     2.000  FIXED FIXED                     2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.257 0.288   112  -0.257 (-0.821, 0.306)
+#> Em    16.9  15.0  88.8      16.9 (-12.5, 46.2)
+#> E50   8.80  7.10  80.6      8.80 (-5.11, 22.7)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type (value$covMethod): r (optim)
 #>   Censoring (value$censInformation): No censoring

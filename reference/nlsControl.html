@@ -428,8 +428,8 @@ tolerances match the main solve (the outer gradient and covariance are built
 from them); the steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one
 order looser.
 Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
-exactly the precision the solve supports.  At the default <code>sigdig = 4</code>
-this is <code>atol = 1e-7</code>, <code>rtol = 1e-4</code>.</p></dd>
+exactly the precision the solve supports.  At the default <code>sigdig = 3</code>
+this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -512,7 +512,7 @@ skips the final back-transform.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2280</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2488</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Uses port and respect parameter boundaries</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span> <span class="op">&lt;-</span> <span class="fu"><a href="nlmixr2.html">nlmixr</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est<span class="op">=</span><span class="st">"nls"</span>, <span class="fu">nlsControl</span><span class="op">(</span>algorithm<span class="op">=</span><span class="st">"port"</span><span class="op">)</span><span class="op">)</span></span></span>
@@ -545,7 +545,7 @@ skips the final back-transform.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2576</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2776</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># You can access the underlying nls object with `$nls`</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nls</span></span></span>

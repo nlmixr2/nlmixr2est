@@ -6,7 +6,7 @@ Control Options for FOCEi
 
 ``` r
 foceiControl(
-  sigdig = 4,
+  sigdig = 3,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -31,6 +31,8 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  fdChartrand = TRUE,
+  foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -59,8 +61,8 @@ foceiControl(
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
-  resetThetaP = 0.05,
-  resetThetaFinalP = 0.15,
+  resetThetaP = 0,
+  resetThetaFinalP = 0,
   diagOmegaBoundUpper = 5,
   diagOmegaBoundLower = 100,
   cholSEOpt = FALSE,
@@ -123,6 +125,9 @@ foceiControl(
   etaMat = NULL,
   repeatGillMax = 1,
   stickyRecalcN = 4,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
   indTolRelax = TRUE,
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
@@ -162,7 +167,7 @@ foceiControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - ...:
 
@@ -348,6 +353,40 @@ foceiControl(
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
   (e.g. `foceif`) default this to `TRUE`.
 
+- fdChartrand:
+
+  Refine finite-difference slopes that the robust outlier test flags
+  (default `TRUE`). When a subject's per-parameter slope sits far
+  outside the modified z-score interval of the others, its central
+  difference is suspect; those slopes – and only those – are recomputed
+  with a total-variation regularized derivative (Chartrand) on a wide
+  interval. Set `FALSE` to keep the plain central difference.
+
+  On by default because the outlier test is itself the gate: a
+  well-behaved problem flags nothing and pays nothing, so the cost falls
+  only on the complex fits where a slope really is an outlier – exactly
+  where you would want the refinement, and where a user is least likely
+  to know to ask for it. `fit$env$nFdOutlier` reports flagged parameters
+  and refined slopes, so you can see whether it engaged for a given fit.
+
+  Worth knowing when judging it: the measurements that originally
+  motivated this refinement were taken while the likelihood and the Shi
+  step selection were both faulty, so they do not evidence its value on
+  current code, and it has not been observed to trigger on ordinary
+  fits.
+
+- foceEbeTol:
+
+  Convergence tolerance on the score of the FOCE frozen-variance EBE
+  re-solve, which the analytic outer gradient (`fast=TRUE`,
+  `interaction=FALSE`) needs because FOCE's mode is not the inner
+  problem's mode. `NULL` (default) uses `1e-9`; the first iteration uses
+  a looser `1e-3` so an already-stationary eta is returned untouched.
+  Unlike the solver and optimizer tolerances this is not derived from
+  `sigdig` – it is a convergence target on an inner Newton rather than a
+  precision request. Set it explicitly to test whether a fit's
+  finite-difference fallbacks are tolerance-driven.
+
 - hessEps:
 
   is a double value representing the epsilon for the Hessian
@@ -412,8 +451,9 @@ foceiControl(
 - lbfgsFactr:
 
   Convergence factor for "L-BFGS-B": converges when the objective
-  reduction is within `lbfgsFactr * .Machine$double.eps`. Default
-  \`1e10\` (~4 sigdigs, `2e-6`).
+  reduction is within `lbfgsFactr * .Machine$double.eps`. Derived from
+  `sigdig` as `10^-sigdig / .Machine$double.eps`, so the objective
+  reduction target IS `10^-sigdig`.
 
 - eigen:
 
@@ -522,13 +562,17 @@ foceiControl(
 
   P-value for resetting mu-referenced THETAs based on ETA drift, checked
   at the start and near a local minimum (see `resetThetaCheckPer`).
-  \`0\` = never reset; \`1\` is not allowed.
+  \`0\` = never reset (the default); \`1\` is not allowed. Defaults to
+  off: when the etas cannot re-center the reset repeats without progress
+  and can error the fit out, and where it converges it reaches a worse
+  optimum than leaving it off.
 
 - resetThetaFinalP:
 
   represents the p-value for reseting the population mu-referenced THETA
   parameters based on ETA drift during optimization, and resetting the
-  optimization one final time.
+  optimization one final time. \`0\` = never reset (the default); see
+  `resetThetaP`.
 
 - diagOmegaBoundUpper:
 
@@ -878,6 +922,26 @@ foceiControl(
 
   The number of bad ODE solves before reducing the atol/rtol for the
   rest of the problem.
+
+- outerMaxOdeRecalc:
+
+  Maximum number of times to reduce the ODE tolerances for a single
+  subject and retry when the analytic outer (augmented sensitivity)
+  solve fails. Tracked separately from \`maxOdeRecalc\`, which governs
+  the inner problem. A subject that solves after loosening still
+  contributes an analytic gradient instead of dropping the whole
+  gradient to finite differences.
+
+- outerOdeRecalcFactor:
+
+  The factor the atol/rtol is loosened by on each analytic outer retry;
+  the outer counterpart of \`odeRecalcFactor\`.
+
+- outerStickyRecalcN:
+
+  The number of bad analytic outer solves for a subject before its
+  loosened tolerance is kept for the rest of the problem; the outer
+  counterpart of \`stickyRecalcN\`.
 
 - indTolRelax:
 

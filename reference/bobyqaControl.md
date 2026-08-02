@@ -36,7 +36,7 @@ bobyqaControl(
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   eventSens = c("jump", "fd"),
   ...
@@ -238,7 +238,7 @@ bobyqaControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -322,22 +322,22 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -720.4741 1123.403 1138.126      -558.7015        4022.913        209.9283
+#> lPop -720.4725 1123.405 1138.128      -558.7023        3583.103         194.246
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8242828 0.8340517  7.023e-06      0.045       0.008 0.031    0.001
+#> elapsed 0.8633588 0.8201432  8.607e-06      0.048       0.007 0.032    0.001
 #>              other
-#> elapsed 0.09465855
+#> elapsed 0.09748941
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.5763 0.2303 39.97 -0.5763 (-1.028, -0.1248)
-#> Em    8.765  8.338 95.13     8.765 (-7.577, 25.11)
-#> E50   4.052  2.857 70.51     4.052 (-1.548, 9.651)
-#> g     2.000  FIXED FIXED                     2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.579 0.229  39.6  -0.579 (-1.03, -0.129)
+#> Em    8.61  7.85  91.2      8.61 (-6.78, 24.0)
+#> E50   4.00  2.72  68.1      4.00 (-1.34, 9.34)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -346,16 +346,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0564     0 -0.447 -0.575
-#> 2 1     0.0595     1 -1.02  -0.574
-#> 3 1     0.0650     1 -1.02  -0.574
+#> 1 1     0.0564     0 -0.446 -0.577
+#> 2 1     0.0595     1 -1.02  -0.577
+#> 3 1     0.0650     1 -1.02  -0.576
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.576283310352614, 8.7651421061649, 4.05150054402458 
-#> objective: 558.701496077373 
-#> number of function evaluations: 390 
+#> parameter estimates: -0.57863859429345, 8.61091072540098, 3.99816989169562 
+#> objective: 558.702290191142 
+#> number of function evaluations: 226 
 # }
 ```

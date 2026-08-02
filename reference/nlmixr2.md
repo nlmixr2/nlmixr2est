@@ -747,13 +747,13 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  
-#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
+#>  
+#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> covMethod="sa" could not be computed; using the linearized FIM
@@ -771,8 +771,8 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9040
-#> → compress phiM in nlmixr2 object, save 446624
+#> → compress parHistData in nlmixr2 object, save 9096
+#> → compress phiM in nlmixr2 object, save 445240
 
 # }
 ```

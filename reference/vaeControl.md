@@ -60,12 +60,15 @@ vaeControl(
   compress = FALSE,
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   rhoend = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
@@ -717,6 +720,26 @@ vaeControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- outerStickyRecalcN:
+
+  The number of bad analytic outer solves for a subject before its
+  loosened tolerance is kept for the rest of the problem; the outer
+  counterpart of \`stickyRecalcN\`.
+
+- outerMaxOdeRecalc:
+
+  Maximum number of times to reduce the ODE tolerances for a single
+  subject and retry when the analytic outer (augmented sensitivity)
+  solve fails. Tracked separately from \`maxOdeRecalc\`, which governs
+  the inner problem. A subject that solves after loosening still
+  contributes an analytic gradient instead of dropping the whole
+  gradient to finite differences.
+
+- outerOdeRecalcFactor:
+
+  The factor the atol/rtol is loosened by on each analytic outer retry;
+  the outer counterpart of \`odeRecalcFactor\`.
 
 - indTolRelax:
 

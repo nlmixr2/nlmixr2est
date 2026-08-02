@@ -6,7 +6,7 @@ FOCEI; see \`foceiControl(muModel=)\`.
 ## Usage
 
 ``` r
-ifoceiControl(sigdig = 4, ..., muModel = c("irls", "lin", "none"))
+ifoceiControl(sigdig = 3, ..., muModel = c("irls", "lin", "none"))
 ```
 
 ## Arguments
@@ -24,7 +24,7 @@ ifoceiControl(sigdig = 4, ..., muModel = c("irls", "lin", "none"))
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - ...:
 
@@ -104,13 +104,13 @@ ifoceiControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+11
+#> [1] 4.5036e+12
 #> 
 #> $scaleTo
 #> [1] 1
 #> 
 #> $epsilon
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -138,6 +138,9 @@ ifoceiControl()
 #> 
 #> $fast
 #> [1] FALSE
+#> 
+#> $fdChartrand
+#> [1] 1
 #> 
 #> $centralDerivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -170,16 +173,16 @@ ifoceiControl()
 #> [1] 0.95
 #> 
 #> $sigdig
-#> [1] 4
+#> [1] 3
 #> 
 #> $sigdigTable
-#> [1] 4
+#> [1] 3
 #> 
 #> $scaleObjective
 #> [1] 0
 #> 
 #> $boundTol
-#> [1] 0.005
+#> [1] 0.05
 #> 
 #> $calcTables
 #> [1] TRUE
@@ -198,6 +201,9 @@ ifoceiControl()
 #> 
 #> $cholSEtol
 #> [1] 6.055454e-06
+#> 
+#> $foceEbeTol
+#> [1] 1e-09
 #> 
 #> $hessEps
 #> [1] 6.055454e-06
@@ -221,10 +227,10 @@ ifoceiControl()
 #> [1] 1.439531
 #> 
 #> $resetThetaSize
-#> [1] 1.959964
+#> [1] Inf
 #> 
 #> $resetThetaFinalSize
-#> [1] 1.439531
+#> [1] Inf
 #> 
 #> $diagOmegaBoundUpper
 #> [1] 5
@@ -262,23 +268,23 @@ ifoceiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x565143804d90>
+#> <bytecode: 0x5566fd4801d8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
 #> 
 #> $rhoend
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $npt
 #> NULL
 #> 
 #> $rel.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $x.tol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $eval.max
 #> [1] 4000
@@ -290,13 +296,13 @@ ifoceiControl()
 #> [1] 1
 #> 
 #> $abstol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $reltol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $derivSwitchTol
-#> [1] 2e-04
+#> [1] 0.002
 #> 
 #> $resetHessianAndEta
 #> [1] 0
@@ -439,6 +445,15 @@ ifoceiControl()
 #> $stickyRecalcN
 #> [1] 4
 #> 
+#> $outerMaxOdeRecalc
+#> [1] 5
+#> 
+#> $outerOdeRecalcFactor
+#> [1] 3.162278
+#> 
+#> $outerStickyRecalcN
+#> [1] 4
+#> 
 #> $indTolRelax
 #> [1] TRUE
 #> 
@@ -469,10 +484,10 @@ ifoceiControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-07
+#> [1] 1e-06
 #> 
 #> $rtol
-#> [1] 1e-04
+#> [1] 0.001
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -678,10 +693,10 @@ ifoceiControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-06
+#> [1] 1e-05
 #> 
 #> $ssRtol
-#> [1] 0.001
+#> [1] 0.01
 #> 
 #> $safeZero
 #> [1] 1
@@ -707,16 +722,16 @@ ifoceiControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-07
-#> 
-#> $rtolSens
-#> [1] 1e-04
-#> 
-#> $ssAtolSens
 #> [1] 1e-06
 #> 
-#> $ssRtolSens
+#> $rtolSens
 #> [1] 0.001
+#> 
+#> $ssAtolSens
+#> [1] 1e-05
+#> 
+#> $ssRtolSens
+#> [1] 0.01
 #> 
 #> $simVariability
 #> [1] NA

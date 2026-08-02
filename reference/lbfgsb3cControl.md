@@ -41,7 +41,7 @@ lbfgsb3cControl(
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   ...
 )
@@ -269,7 +269,7 @@ lbfgsb3cControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -349,23 +349,23 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
-#>          OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -685.961 1157.916 1172.639       -575.958         3265.19        173.2675
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -685.9489 1157.928 1172.651      -575.9641        2947.852        155.9717
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3637508 1.532557  6.913e-06      0.052       0.007 0.032    0.001
+#> elapsed 0.3949056 1.596713  7.354e-06      0.055       0.007  0.03    0.001
 #>              other
-#> elapsed 0.09768542
+#> elapsed 0.09937392
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.7441 0.2174 29.22 -0.7441 (-1.170, -0.3180)
-#> Em    8.703  7.380 84.80     8.703 (-5.762, 23.17)
-#> E50   4.311  2.684 62.26    4.311 (-0.9498, 9.572)
-#> g     2.000  FIXED FIXED                     2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.735 0.215  29.2  -0.735 (-1.16, -0.314)
+#> Em    8.64  7.00  81.0      8.64 (-5.08, 22.4)
+#> E50   4.31  2.57  59.7     4.31 (-0.730, 9.36)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -376,9 +376,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0343     0 -0.389 -0.744
-#> 2 1     0.0489     1 -1.13  -0.743
-#> 3 1     0.0501     0 -0.389 -0.743
+#> 1 1     0.0343     0 -0.392 -0.735
+#> 2 1     0.0489     1 -1.13  -0.734
+#> 3 1     0.0501     0 -0.392 -0.734
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -386,16 +386,16 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.7440591  8.7028559  4.3109578 
+#> -0.7354961  8.6393124  4.3130364 
 #> 
 #> $grad
-#> [1] -0.0013035589 -0.0026641811  0.0003459083
+#> [1]  0.0005885896 -0.0043509279  0.0035591963
 #> 
 #> $value
-#> [1] 575.958
+#> [1] 575.9641
 #> 
 #> $counts
-#> [1] 12 12
+#> [1] 11 11
 #> 
 #> $convergence
 #> [1] 0
@@ -408,25 +408,25 @@ fit2$lbfgsb3c
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#> -480.26594  260.53448   81.40733 
+#> -476.96711  258.50850   81.47965 
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001349488  0.001140202 -0.003468655
-#> Em   0.001140202  0.002448925 -0.006581618
-#> E50 -0.003468655 -0.006581618  0.018346748
+#> E0   0.001352343  0.001144204 -0.003450905
+#> Em   0.001144204  0.002466883 -0.006555405
+#> E50 -0.003450905 -0.006555405  0.018124070
 #> 
 #> $cov.scaled
 #>           E0        Em       E50
-#> E0  7013.738  8311.419  4307.620
-#> Em  8311.419 55371.787 21435.157
-#> E50 4307.620 21435.157  8721.964
+#> E0  6867.561  7452.178  4003.038
+#> Em  7452.178 49832.212 19443.045
+#> E50 4003.038 19443.045  8015.371
 #> 
 #> $r
 #>                E0            Em          E50
-#> E0   0.0006747439  0.0005701008 -0.001734327
-#> Em   0.0005701008  0.0012244623 -0.003290809
-#> E50 -0.0017343273 -0.0032908092  0.009173374
+#> E0   0.0006761713  0.0005721019 -0.001725453
+#> Em   0.0005721019  0.0012334414 -0.003277703
+#> E50 -0.0017254525 -0.0032777027  0.009062035
 #> 
 
 # The nlm control has been modified slightly to include

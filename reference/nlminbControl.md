@@ -54,7 +54,7 @@ nlminbControl(
   covMethod = c("r", "nlminb", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   ...
 )
@@ -349,7 +349,7 @@ nlminbControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -421,90 +421,90 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 2552
+#> → compress parHistData in nlmixr2 object, save 2584
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -717.7045 1126.173 1140.896      -560.0863        141.9691        39.63679
+#> lPop -622.3423 1221.535 1236.258      -607.7674        200176.2        32184.21
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3267677 0.6109747  6.673e-06      0.046       0.006 0.025    0.011
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.4201618 1.630652  7.003e-06      0.048       0.007 0.029    0.012
 #>              other
-#> elapsed 0.09825094
+#> elapsed 0.09517912
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>       Est.     SE  %RSE  Back-transformed(95%CI)
-#> E0  -1.048 0.2690 25.66 -1.048 (-1.575, -0.5209)
-#> Em   4.907  1.334 27.18     4.907 (2.293, 7.520)
-#> E50  2.204 0.7135 32.37    2.204 (0.8057, 3.603)
-#> g    2.000  FIXED FIXED                    2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.631 0.442  70.1   -0.631 (-1.50, 0.236)
+#> Em    3.98  17.5   439      3.98 (-30.3, 38.3)
+#> E50 -0.395  3.14   795    -0.395 (-6.56, 5.77)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r (nlminb)
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
-#>     relative convergence (4) 
+#>     singular convergence (7) 
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED     v
-#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
-#> 1 1     0.0175     0 -0.301 -1.05
-#> 2 1     0.0480     1 -1.35  -1.05
-#> 3 1     0.0529     0 -0.301 -1.05
+#>   ID      TIME    DV  IPRED      v
+#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
+#> 1 1     0.0175     0 -0.429 -0.623
+#> 2 1     0.0480     1 -1.02  -0.573
+#> 3 1     0.0529     0 -0.452 -0.561
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlminb
 
 fit2$nlminb
 #> $par
-#>        E0        Em       E50 
-#> -1.048113  4.906669  2.204173 
+#>         E0         Em        E50 
+#> -0.6306708  3.9798419 -0.3954250 
 #> 
 #> $objective
-#> [1] 560.0863
+#> [1] 607.7674
 #> 
 #> $convergence
-#> [1] 0
+#> [1] 1
 #> 
 #> $iterations
-#> [1] 6
+#> [1] 3
 #> 
 #> $evaluations
 #> function gradient 
-#>       13        7 
+#>        7        3 
 #> 
 #> $message
-#> [1] "relative convergence (4)"
+#> [1] "singular convergence (7)"
 #> 
 #> $scaleC
 #> [1] 0.002625647 0.033446592 0.031305839
 #> 
 #> $par.scaled
-#>          E0          Em         E50 
-#> -590.611939  130.752410    7.521888 
+#>         E0         Em        E50 
+#> -431.62564  103.04175  -75.51688 
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001317153  0.003320324 -0.008536096
-#> Em   0.003320324  0.016202310 -0.032805292
-#> E50 -0.008536096 -0.032805292  0.079285806
+#>              E0          Em        E50
+#> E0  0.000605315 0.004398094 0.02370273
+#> Em  0.004398094 0.039999369 0.45011670
+#> E50 0.023702729 0.450116703 2.33007725
 #> 
 #> $cov.scaled
-#>             E0        Em       E50
-#> E0  10495.6743  844.7115 1479.4967
-#> Em    844.7115 1589.5948  748.6543
-#> E50  1479.4967  748.6543  519.4997
+#>            E0        Em       E50
+#> E0   28359.66  69198.69 -13395.46
+#> Em   69198.69 273412.56 -52499.49
+#> E50 -13395.46 -52499.49  10083.49
 #> 
 #> $r
-#>                E0           Em          E50
-#> E0   0.0006585765  0.001660162 -0.004268048
-#> Em   0.0016601622  0.008101155 -0.016402646
-#> E50 -0.0042680479 -0.016402646  0.039642903
+#>               E0          Em        E50
+#> E0  0.0003026575 0.002199047 0.01185136
+#> Em  0.0021990471 0.019999685 0.22505835
+#> E50 0.0118513643 0.225058352 1.16503862
 #> 
 # }
 ```

@@ -36,7 +36,7 @@ newuoaControl(
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
@@ -239,7 +239,7 @@ newuoaControl(
   them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
   looser. Keying the optimizer to the same `10^-sigdig` means it
   converges to exactly the precision the solve supports. At the default
-  `sigdig = 4` this is `atol = 1e-7`, `rtol = 1e-4`.
+  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
 
 - sigdigTable:
 
@@ -330,23 +330,23 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
 #> 
-#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -691.2571 1152.62 1167.343        -573.31        56471.47        831.3488
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -691.2546 1152.623 1167.346      -573.3113        41156.05        670.4292
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3416586 0.4475015  5.881e-06      0.047       0.006 0.024        0
-#>              other
-#> elapsed 0.09183401
+#> elapsed 0.3517932 0.4317956  6.833e-06      0.048       0.006 0.027    0.001
+#>             other
+#> elapsed 0.1014044
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI)
-#> E0  -0.6243 0.2158 34.56 -0.6243 (-1.047, -0.2014)
-#> Em    15.36  32.18 209.6     15.36 (-47.72, 78.43)
-#> E50   6.164  7.858 127.5     6.164 (-9.238, 21.57)
-#> g     2.000  FIXED FIXED                     2.000
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.627 0.213  34.0  -0.627 (-1.05, -0.209)
+#> Em    14.6  27.4   188      14.6 (-39.1, 68.3)
+#> E50   5.97  6.90   116      5.97 (-7.55, 19.5)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -355,17 +355,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0433     0 -0.429 -0.624
-#> 2 1     0.0522     0 -0.429 -0.623
-#> 3 1     0.0618     0 -0.429 -0.623
+#> 1 1     0.0433     0 -0.428 -0.626
+#> 2 1     0.0522     0 -0.428 -0.626
+#> 3 1     0.0618     0 -0.428 -0.626
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with
 
 fit2$newuoa
-#> parameter estimates: -0.624310996891431, 15.3565709623864, 6.1639318831118 
-#> objective: 573.309968013234 
-#> number of function evaluations: 754 
+#> parameter estimates: -0.627186264212064, 14.5915294778787, 5.97441925317689 
+#> objective: 573.311253656376 
+#> number of function evaluations: 490 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters
