@@ -138,10 +138,13 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
   # validation list is SEPARATE from the construction list: it carries the
   # literal call names (as NA, meaning "asked for, value unknown"), which must
   # not be forwarded to impmapControl()
-  .npChk <- .npDots
-  if (!missing(gamma)) .npChk$gamma <- gamma
-  if (!missing(df)) .npChk$df <- df
-  .npAssertImpCtl(.npChk, "npag", explicit = .npCallNames(sys.call()))
+  # gamma/df are inert formals with NO legitimate use here, so their PRESENCE is
+  # the request -- comparing values would let foo(gamma = 1) through a wrapper
+  # merely because 1 is impmap's default for it.
+  .npExp <- .npCallNames(sys.call())
+  if (!missing(gamma)) .npExp <- union(.npExp, "gamma")
+  if (!missing(df)) .npExp <- union(.npExp, "df")
+  .npAssertImpCtl(.npDots, "npag", explicit = .npExp)
   .ctl <- impmapControl(...)
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)

@@ -117,4 +117,23 @@ nmTest({
     expect_error(npagControl(gammaMethod = "global"), "gammaMethod")
   })
 
+  test_that("an inert FORMAL is rejected on presence, not on value", {
+    # gamma/df exist as formals only to be rejected, so their PRESENCE is the
+    # request.  Comparing values would let a wrapper through merely because the
+    # value happened to equal impmap's default for that control.
+    .foo <- function(...) npagControl(...)
+    .bar <- function(...) npbControl(...)
+    expect_error(.foo(gamma = 1), "gamma")     # 1 IS impmap's default gamma
+    expect_error(.foo(df = 0), "df")           # 0 IS impmap's default df
+    expect_error(.bar(gamma = 1), "gamma")
+    # npag's real controls are untouched -- test-npag-error-models.R relies on
+    # passing cycles/gammaOptimize to npagControl
+    expect_equal(npagControl(cycles = 30L, gammaOptimize = TRUE)$cycles, 30L)
+    expect_true(npagControl(gammaOptimize = TRUE)$gammaOptimize)
+    # npbControl(cycles = 100L) IS rejected although 100L is its own default:
+    # cycles is documented unused for npb, so typing it is a request for
+    # something that does nothing.  Deliberate, and pinned so it stays that way.
+    expect_error(npbControl(cycles = 100L), "cycles")
+  })
+
 })

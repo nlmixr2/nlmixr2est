@@ -78,14 +78,15 @@ npbControl <- function(points = 50L, alpha = 1.0, burnin = 500L, nsamp = 500L,
   # which catches the name even through a forwarding wrapper.
   # validation list is SEPARATE from what is forwarded to impmapControl()
   .npbChk <- list(...)
-  if (!missing(gamma)) .npbChk$gamma <- gamma
+  .npbExp <- .npCallNames(sys.call())
+  if (!missing(gamma)) .npbExp <- union(.npbExp, "gamma")
   # cycles/gammaOptimize are FORMALS here, documented unused for npb, so they
   # never reach ... ; fold them in so the shared validator sees them
   for (.n in intersect(names(as.list(match.call())[-1L]),
                        c("cycles", "gammaOptimize"))) {
     .npbChk[[.n]] <- get(.n)
   }
-  .npAssertImpCtl(.npbChk, "npb", explicit = .npCallNames(sys.call()))
+  .npAssertImpCtl(.npbChk, "npb", explicit = .npbExp)
   .ctl <- impmapControl(...)
   .ctl$est <- "npb"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
