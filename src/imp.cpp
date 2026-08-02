@@ -883,6 +883,12 @@ void impOuter(Environment e) {
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
+  // Improvability state for the AUTO df escalation (see AUTO step 3).  kAtEsc is
+  // this subject's k-hat at the moment it was escalated; noImp counts consecutive
+  // iterations in which the t proposal has failed to improve on it.
+  arma::vec kAtEsc(nExp); kAtEsc.fill(NA_REAL);
+  arma::ivec noImp(nExp, arma::fill::zeros);
+  arma::ivec escDead(nExp, arma::fill::zeros);   // 1 = escalation withdrawn, do not retry
   arma::vec iacceptVec(nExp); iacceptVec.fill(iaccept);
   bool autoOn = impAutoEnabled();
   int isampleBudget = isample * nExp;   // AUTO reallocates within this total
@@ -962,10 +968,37 @@ void impOuter(Environment e) {
   // effective sample size, so a heavier default is safe and cheap.  Any
   // comparison against NONMEM should treat these numbers as nlmixr2's, not as
   // a reproduction of NONMEM's internals.
+  // The nobs<neta half of that trigger is GATED by default, and this is a
+  // deliberate divergence from the tutorial.  Measured on a fixture built to the
+  // tutorial's own definition of sparse (2 observations, 3 etas), 8 seeds vs an
+  // isample=8000 reference, applying it makes every number worse:
+  //
+  //                     objRMSE   OmegaRMSE   max k-hat   subjects k>0.7
+  //   no adaptation      0.1517     0.02379      1.065         3.88
+  //   global df 30       0.1666     0.02695      1.075         5.00
+  //   AUTO (this rule)   0.2059     0.03163      1.088         4.88
+  //
+  // The reason is visible in the reference, which itself reads max k-hat 0.794:
+  // with fewer observations than random effects the individual posterior is not
+  // identified, so the heavy tail is STRUCTURAL and no proposal shape repairs
+  // it.  Escalating there spends accuracy on a problem the proposal does not
+  // own.  So sparsity alone no longer assigns a t proposal; k-hat has to ask for
+  // it, and the improvability check below withdraws it if it does not help.
+  //
+  // The categorical/non-normal half is NOT gated -- measured on a sparse Poisson
+  // fixture AUTO is the best of the three methods (objRMSE 0.00341 vs 0.00525
+  // for no adaptation), even though its k-hat never fails.
+  //
+  // impmapControl(autoNonmemSparse=TRUE) restores the unconditional tutorial
+  // behavior.  It is a real option, not a courtesy: NONMEM's own testing is not
+  // published, the models it was tuned on are not ours, and someone who measures
+  // the reverse on their own problem should be able to have the documented rule.
+  const bool nonmemSparse = impAutoNonmemSparse();
+  const int dfPatience = impAutoDfPatience();  // <= 0 disables withdrawal entirely
   if (autoOn) {
     bool nonNormal = impAutoNonNormal();
     for (int i = 0; i < nsub; ++i) {
-      bool sparse = impNobs(i) < neta;
+      bool sparse = nonmemSparse && (impNobs(i) < neta);
       // TUNED: start at a MILD t (df 20) rather than the heaviest.  df 20 was
       // measured to clear every failing subject on theophylline for 0.25% of
       // the effective sample size, whereas df 4 costs far more Monte-Carlo
@@ -1098,19 +1131,70 @@ void impOuter(Environment e) {
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
         if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
+        // IMPROVABILITY.  A t proposal repairs a tail the proposal shape is
+        // missing; it cannot repair one the DATA creates.  With fewer
+        // observations than random effects the individual posterior is not
+        // identified and k-hat stays high however heavy the proposal gets
+        // (measured: 1.065 under a Gaussian, 1.075 at df 30, 1.088 under AUTO --
+        // and the isample=8000 reference itself reads 0.794).  Escalating there
+        // costs accuracy for nothing, so withdraw it once the evidence is in.
+        //
+        // This is NOT the circular relaxation the note below rejects.  That one
+        // backs off because k-hat became GOOD, which is evidence the remedy is
+        // working.  This backs off because k-hat stayed BAD after escalating,
+        // which is evidence the remedy does not apply.  Withdrawal is final so
+        // the pair cannot oscillate.
+        //
+        // Both halves are load bearing, and gating the trigger alone is NOT
+        // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
+        // the tutorial rule applied, 0.181 gating it but never withdrawing,
+        // 0.152 with AUTO off entirely, 0.109 gating AND withdrawing.  Gating on
+        // its own is still worse than not adapting at all; the withdrawal is
+        // what turns it into a win.
+        //
+        // autoDfPatience TUNED to 2 (sweep over 0,1,2,3,5; 8 seeds):
+        //
+        //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
+        //     0 (off)      0.18065         0.01654         0.00301
+        //     1            0.16900         0.01418         0.00271
+        //     2            0.10929         0.01588         0.00225
+        //     3            0.12265         0.01654         0.00301
+        //     5            0.18267         0.01654         0.00301
+        //
+        // A genuine optimum, not a round number: the sparse curve is
+        // non-monotonic either side of 2, and 2 is simultaneously better than 0
+        // on BOTH objective and Omega for theo3.  Note patience interacts with
+        // nIter -- at 3 and 5 the counter never accumulates within a 12-iteration
+        // fit on the fixtures whose k-hat does improve, which is why those rows
+        // are identical to switching withdrawal off.
+        if (!nonmemSparse && dfPatience > 0 && dfVec[id] > 0.0 &&
+            R_finite(kAtEsc[id]) && !escDead[id]) {
+          bool improved = (kh <= 0.7) || (kh < kAtEsc[id] - 0.1);
+          if (improved) {
+            noImp[id] = 0;
+          } else if (++noImp[id] >= dfPatience) {
+            dfVec[id] = 0.0;                      // give the samples back
+            escDead[id] = 1;
+            continue;
+          }
+        }
+        if (escDead[id]) continue;                // measured not to help here
         if (kh > 0.7) {
           // pick the lightest tail plausibly heavy enough for this severity
           double want = (kh > 1.0) ? 20.0 : 30.0;
           // only ever go heavier here; escalation must not oscillate
-          if (dfVec[id] <= 0.0 || want < dfVec[id]) dfVec[id] = want;
+          if (dfVec[id] <= 0.0 || want < dfVec[id]) {
+            if (dfVec[id] <= 0.0) kAtEsc[id] = kh; // remember what we set out to fix
+            dfVec[id] = want;
+          }
         }
-        // NOTE deliberately one-way.  Relaxing on a low k-hat is circular: once
-        // a t proposal is in place k-hat drops precisely BECAUSE it is working
-        // (measured -1.3 to -1.9 on subjects that read 2.03 under a Gaussian),
-        // so "safe now" is evidence the fix is needed, not that it is not.
-        // Relaxing on it walks straight back into the failure and oscillates.
-        // Efficiency comes from picking the right rung immediately -- the
-        // severity mapping above -- not from backing off afterwards.
+        // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
+        // circular: once a t proposal is in place k-hat drops precisely BECAUSE
+        // it is working (measured -1.3 to -1.9 on subjects that read 2.03 under a
+        // Gaussian), so "safe now" is evidence the fix is needed, not that it is
+        // not.  Relaxing on it walks straight back into the failure and
+        // oscillates.  Efficiency comes from picking the right rung immediately
+        // -- the severity mapping above -- not from backing off afterwards.
       }
     }
 

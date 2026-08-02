@@ -581,6 +581,8 @@ struct focei_options {
   std::vector<int> impNsampleVec;
   bool impAuto = false;      // AUTO=1: adapt df / isample / iaccept per subject
   bool impAutoNonNormal = false; // model is not transformably normal (categorical etc.)
+  bool impAutoNonmemSparse = false; // apply the tutorial's nobs<neta trigger unconditionally
+  int impAutoDfPatience = 2; // non-improving iterations tolerated before withdrawing an escalation
   // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
   // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
   std::string impGammaMethod = "global";
@@ -5716,6 +5718,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
     if (foceiO.containsElementNamed("autoNonNormal"))
       op_focei.impAutoNonNormal = as<bool>(foceiO["autoNonNormal"]);
+    if (foceiO.containsElementNamed("autoNonmemSparse"))
+      op_focei.impAutoNonmemSparse = as<bool>(foceiO["autoNonmemSparse"]);
+    if (foceiO.containsElementNamed("autoDfPatience"))
+      op_focei.impAutoDfPatience = as<int>(foceiO["autoDfPatience"]);
     if (foceiO.containsElementNamed("isample")) {
       IntegerVector isv = as<IntegerVector>(foceiO["isample"]);
       op_focei.impNsampleVec.clear();
@@ -9678,6 +9684,8 @@ double impIaccept() { return op_focei.impIaccept; }
 double impDf() { return op_focei.impDf; }
 bool impAutoEnabled() { return op_focei.impAuto; }
 bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
+bool impAutoNonmemSparse() { return op_focei.impAutoNonmemSparse; }
+int  impAutoDfPatience() { return op_focei.impAutoDfPatience; }
 void impNsampleVecGet(std::vector<int>& out) { out = op_focei.impNsampleVec; }
 
 // Observation count for subject id -- AUTO uses nobs/neta to decide whether a
