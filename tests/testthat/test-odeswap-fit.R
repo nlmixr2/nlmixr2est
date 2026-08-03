@@ -36,10 +36,13 @@ nmTest({
     ## to run before anything else that arms an override, which made it pass or
     ## fail on test-file scheduling rather than on behavior.
     .b <- .odeSwapInfo()
-    suppressWarnings(suppressMessages(
+    .fit0 <- suppressWarnings(suppressMessages(
       nlmixr2(m, nlmixr2data::theo_sd, "impmap",
               impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
-    i <- .odeSwapInfo()
+    # Read the fit's OWN captured layout, not the process-global registry: the
+    # registry describes the most recent registration, and impmap's post-fit
+    # objective recompute runs a nested focei fit that re-registers the slots.
+    i <- .fit0$env$odeSwapInfo
     ts <- i$models[i$models$name %in% "thetaSens", ]
     inr <- i$models[i$models$name %in% "inner", ]
     expect_identical(nrow(ts), 1L)
@@ -109,10 +112,11 @@ nmTest({
         cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)
       })
     }
-    suppressWarnings(suppressMessages(
+    .fitInv <- suppressWarnings(suppressMessages(
       nlmixr2(inv, d, "impmap",
               impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
-    expect_true(odeSwapInfo_()$models$loaded[3])   # thetaSens registered
+    # the fit's own captured layout -- see the note above
+    expect_true(.fitInv$env$odeSwapInfo$models$loaded[3])   # thetaSens registered
 
     # ... and the next plain fit must be unaffected by it
     after <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))

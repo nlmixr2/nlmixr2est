@@ -703,6 +703,15 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # Capture THIS fit's pooled-solve layout before anything else runs.  The odeSwap
+  # registry is process-global and describes the most recent registration, so the
+  # objective recompute below -- which runs a nested focei fit -- re-registers the
+  # slots and the global view stops describing this fit.  Stash it here so the
+  # diagnostic travels with the fit and cannot be overwritten by a later one.
+  tryCatch({
+    .fenv0 <- .fit$env
+    if (is.environment(.fenv0)) assign("odeSwapInfo", .odeSwapInfo(), envir=.fenv0)
+  }, error=function(e) NULL)
   .impmapRecomputeObjf(.fit)
   # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
   # stashed final-iteration weights so it costs nothing during the EM.

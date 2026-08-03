@@ -218,22 +218,27 @@ test_that("formatMinWidth in parFixed", {
 
   # Works with .ret$control$ci and .ret$control$sigdig ----
   fitFixedLabelCI <- .nlmixr(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0, ci = 0.9, sigdig = 4))
+  # digits from THIS fit, not the one at the top of the file: fitFixedLabelCI is
+  # built with its own sigdig, so formatting the expectation with the other fit's
+  # sigdigTable compares a table rendered at one precision against one checked at
+  # another.  Same principle as the .digits comment above -- read it off the fit.
+  .digitsCI <- fitFixedLabelCI$control$sigdigTable
   expect_equal(
     fitFixedLabelCI$parFixed,
     structure(
       list(
         Parameter = c("ka", "clearance", "", ""),
-        Est. = formatMinWidth(fitFixedLabelCI$parFixedDf$Estimate, digits = .digits),
-        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:4], digits = .digits)),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:4], digits = .digits)),
+        Est. = formatMinWidth(fitFixedLabelCI$parFixedDf$Estimate, digits = .digitsCI),
+        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:4], digits = .digitsCI)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:4], digits = .digitsCI)),
         `Back-transformed(90%CI)` =
           c(
-            formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[1], digits = .digits),
+            formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[1], digits = .digitsCI),
             sprintf(
               "%s (%s, %s)",
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = .digits),
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = .digits),
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = .digits)
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = .digitsCI),
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = .digitsCI),
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = .digitsCI)
             )[2:4])
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
