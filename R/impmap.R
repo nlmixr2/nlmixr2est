@@ -622,6 +622,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  .impmapRecomputeObjf(.fit)
   # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
   # stashed final-iteration weights so it costs nothing during the EM.
   tryCatch({
@@ -631,6 +632,64 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     }
   }, error=function(e) NULL)
   .fit
+}
+
+#' Publish the objective as a FOCEi evaluation at the converged estimates.
+#'
+#' The in-C++ finalize (`impMapPass` -> `foceiOuterFinal`) computes the individual
+#' objective from an eta-Hessian that never receives its data term on this path:
+#' `fInd->a` (d(pred)/d(eta)) is left at allocation residue, so
+#' `sum(cHff * a * a)` vanishes and `H` collapses to `Omega^-1` alone.  Measured on
+#' theophylline with one random effect: `log|H|` reads 2.17048 for EVERY subject
+#' instead of the correct 3.63-3.96, and the published objective comes out 19.96
+#' too LOW (173.63 against 193.60).  Models with 2+ random effects are unaffected.
+#'
+#' Rather than repair that C++ state, take the objective the same way `setOfv()`
+#' does for SAEM (`.setOfvFo`, `R/ofv.R`): re-evaluate through the ordinary
+#' `nlmixr2()` FOCEi path at the converged estimates.  `maxOuterIterations = 0`
+#' pins the thetas and Omega; the INNER problem is deliberately left to optimize,
+#' because the FOCEi objective is defined with the etas at their conditional mode
+#' -- freezing them at the importance-sampling conditional means is a different
+#' (and worse) quantity, measured at 193.615 against 193.601 for the mode.
+#'
+#' The EM's own estimates are untouched: only the published objective is replaced.
+#' `$impObj` (the importance-sampling estimate) is left alone, so the two remain
+#' separately readable.
+#'
+#' @param fit completed impmap-family fit
+#' @return invisibly TRUE when the objective was replaced
+#' @noRd
+.impmapRecomputeObjf <- function(fit) {
+  .env <- tryCatch(fit$env, error=function(e) NULL)
+  if (!is.environment(.env)) return(invisible(FALSE))
+  # deep-copy the UI: the nested re-fit must not mutate THIS fit's UI
+  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
+                  error=function(e) NULL)
+  if (is.null(.ui)) return(invisible(FALSE))
+  .sigdig <- tryCatch(fit$foceiControl$sigdig, error=function(e) NULL)
+  # the nested re-fit resets mu-referencing global state; save + restore
+  .savedMuRef <- .muRefTrans$cur
+  on.exit(.muRefTrans$cur <- .savedMuRef, add=TRUE)
+  .ctl <- try(foceiControl(print=0L, covMethod="", maxOuterIterations=0L,
+                           calcTables=FALSE, compress=FALSE,
+                           sigdig=if (is.null(.sigdig)) 4 else .sigdig),
+              silent=TRUE)
+  if (inherits(.ctl, "try-error")) return(invisible(FALSE))
+  .f2 <- try(suppressMessages(suppressWarnings(
+    nlmixr2(.ui, data=nlme::getData(fit), est="focei", control=.ctl))),
+    silent=TRUE)
+  if (inherits(.f2, "try-error")) return(invisible(FALSE))
+  .e2 <- tryCatch(.f2$env, error=function(e) NULL)
+  if (!is.environment(.e2)) return(invisible(FALSE))
+  # carry the objective AND the per-subject quantities derived from the same
+  # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
+  for (.n in c("objective", "OBJF", "objf", "logLik", "AIC", "BIC", "objDf",
+               "etaObf", "etaObfFull", "phiH", "phiC", "phiR", "phiSE", "phiRSE")) {
+    if (exists(.n, envir=.e2, inherits=FALSE)) {
+      assign(.n, get(.n, envir=.e2), envir=.env)
+    }
+  }
+  invisible(TRUE)
 }
 
 #' Restore the requested covMethod on the fit env's stored control
