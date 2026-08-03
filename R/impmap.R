@@ -667,9 +667,17 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
                   error=function(e) NULL)
   if (is.null(.ui)) return(invisible(FALSE))
   .sigdig <- tryCatch(fit$foceiControl$sigdig, error=function(e) NULL)
-  # the nested re-fit resets mu-referencing global state; save + restore
+  # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
+  # including the timing environment (dropping the outer fit's "other" timing row)
+  # and nlmixr2objectName (which would report ".ui" instead of the user's symbol).
+  # Snapshot and restore the whole thing, plus the mu-referencing global.
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add=TRUE)
+  .savedGlobal <- as.list(nlmixr2global, all.names=TRUE)
+  on.exit({
+    rm(list=ls(nlmixr2global, all.names=TRUE), envir=nlmixr2global)
+    for (.gn in names(.savedGlobal)) assign(.gn, .savedGlobal[[.gn]], envir=nlmixr2global)
+  }, add=TRUE)
   .ctl <- try(foceiControl(print=0L, covMethod="", maxOuterIterations=0L,
                            calcTables=FALSE, compress=FALSE,
                            sigdig=if (is.null(.sigdig)) 4 else .sigdig),
@@ -683,10 +691,26 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!is.environment(.e2)) return(invisible(FALSE))
   # carry the objective AND the per-subject quantities derived from the same
   # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
-  for (.n in c("objective", "OBJF", "objf", "logLik", "AIC", "BIC", "objDf",
+  for (.n in c("objective", "OBJF", "objf", "logLik", "AIC", "BIC",
                "etaObf", "etaObfFull", "phiH", "phiC", "phiR", "phiSE", "phiRSE")) {
     if (exists(.n, envir=.e2, inherits=FALSE)) {
       assign(.n, get(.n, envir=.e2), envir=.env)
+    }
+  }
+  # objDf is MERGED, not replaced: the re-fit runs covMethod="" so its objDf has no
+  # Condition#(Cov)/Condition#(Cor), and replacing wholesale would drop the columns
+  # the imp covariance had already filled in.
+  if (exists("objDf", envir=.e2, inherits=FALSE)) {
+    .newObjDf <- get("objDf", envir=.e2)
+    .oldObjDf <- tryCatch(get("objDf", envir=.env, inherits=FALSE), error=function(e) NULL)
+    if (is.data.frame(.oldObjDf) && is.data.frame(.newObjDf) &&
+          nrow(.oldObjDf) == nrow(.newObjDf)) {
+      for (.c in intersect(names(.newObjDf), names(.oldObjDf))) {
+        .oldObjDf[[.c]] <- .newObjDf[[.c]]
+      }
+      assign("objDf", .oldObjDf, envir=.env)
+    } else {
+      assign("objDf", .newObjDf, envir=.env)
     }
   }
   invisible(TRUE)
