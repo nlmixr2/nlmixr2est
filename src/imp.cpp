@@ -1490,17 +1490,27 @@ void impOuter(Environment e) {
       bool gammaStable;
       if (gammaInd) {
         gammaStable = (gammaStepPrev <= 1e-3);
-      } else if (impGammaRuleTarget()) {
+      } else if (impGammaRuleTarget() && nConvWindow >= 2) {
+        // Split the window in half and compare the two means.  BOTH halves must be
+        // non-empty: at nConvWindow=1 the older half has no elements, mOld stays 0,
+        // and the test degenerates to gamma <= gammaTargetTol -- unsatisfiable,
+        // since gamma is bounded below by iscaleMin (0.1 by default), so the fit
+        // could never converge.  Hence the nConvWindow >= 2 guard here and the
+        // fall-through to the instantaneous test below.
+        int hw = nConvWindow / 2;              // >= 1, and nConvWindow - hw >= 1
         double mNew = 0.0, mOld = 0.0;
-        int hw = nConvWindow / 2;
-        if (hw < 1) hw = 1;
         for (int k = n - hw; k < n; ++k) mNew += gammaTrace[k];
         for (int k = n - nConvWindow; k < n - hw; ++k) mOld += gammaTrace[k];
         mNew /= (double)hw;
-        mOld /= (double)std::max(1, nConvWindow - hw);
+        mOld /= (double)(nConvWindow - hw);
         gammaStable = (std::fabs(mNew - mOld) <= gammaTargetTol * std::max(1.0, mOld));
       } else {
-        gammaStable = (std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0));
+        // Instantaneous test.  The floor rule's gamma is exactly constant once
+        // coverage is healthy so 1e-3 is ample; a target-tracking gamma carries
+        // xi's Monte-Carlo noise, so it gets the same looser tolerance the
+        // window-mean test uses (without it, nConvWindow=1 could never converge).
+        double tol = impGammaRuleTarget() ? gammaTargetTol : 1e-3;
+        gammaStable = (std::fabs(gamma - gWin0) <= tol * std::max(1.0, gWin0));
       }
       if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
     }
@@ -1592,6 +1602,16 @@ void impOuter(Environment e) {
       // xiMean is NA when no subject had a usable xi, and a single non-finite
       // subject would otherwise poison gamma for the rest of the fit through
       // pow(NaN, .), so guard before applying.
+      //
+      // LIMIT OF THE SHARED FORM.  The exponent 2/neta inverts xi = gamma^(-neta/2)
+      // exactly for ONE posterior.  Over heterogeneous subjects sharing one gamma
+      // the mean responds with an effective exponent sum(w_i d_i); if a
+      // heavy-tailed subject with d_i > neta/2 dominates the mean enough that
+      // sum(w_i d_i) > neta, the linearized map has eigenvalue < -1 and gamma
+      // oscillates between the caps instead of settling.  The 1.25x caps bound it
+      // (it cannot diverge) and the window-mean gate below will simply not report
+      // convergence.  gammaMethod="individual" has no such exposure -- each
+      // subject inverts its own xi -- so that is the remedy when it bites.
       if (iaccept > 0 && R_finite(xiMean) && xiMean > 0.0) {
         const double pExp = 2.0 / std::max(1.0, (double)neta);
         double fac = std::pow(xiMean / iaccept, pExp);
