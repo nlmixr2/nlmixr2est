@@ -32,8 +32,54 @@
   ## The fallback must still build in OUR directory.  Dropping back to rxode2's own
   ## naming AND its own directory would put the model right back where two builds of
   ## one text overwrite each other, which is the failure this exists to prevent.
-  if (is.null(.nm)) return(rxode2::rxode2(model, wd = .wd, ...))
-  rxode2::rxode2(model, modName = .nm, wd = .wd, ...)
+  if (is.null(.nm)) return(.nlmixr2estStripModelSrc(rxode2::rxode2(model, wd = .wd, ...)))
+  .nlmixr2estStripModelSrc(rxode2::rxode2(model, modName = .nm, wd = .wd, ...))
+}
+
+#' Drop the srcrefs that pin a whole R session onto a compiled model.
+#'
+#' A compiled model stays in `rxode2:::.rxModels` for the life of the session and
+#' nothing removes it, so anything it retains is retained forever.  Two of its
+#' closures carry a srcref whose `srcfilealias` resolves to a `srcfilecopy` whose
+#' PARENT environment captures the session; the listed bindings of that srcfilecopy
+#' total ~2MB while its deep size is the whole session.
+#'
+#' rxode2 already runs `removeSource()` over the model env and its `cmpMgr`, but
+#' these two escape that sweep:
+#'
+#'   `assignPtr`'s closure env             -> `.f`
+#'   `environment(.rxDll$.call)`           -> `.badBuild`   (inside a LIST, so
+#'                                                           `ls(.env)` never sees it)
+#'
+#' Both must go: they are independent references to the same alias, so severing one
+#' keeps it alive and measures as no change at all.
+#'
+#' Measured on `theo_sd` (12 subjects), 5 distinct models fitted in one session with
+#' `est="impmap"`: the retained entries grew 70 -> 142 -> 285 -> 569 -> 1137MB, exactly
+#' doubling per model, because each new model's srcfilecopy captured a session that
+#' already held the previous ones.
+#'
+#' This runs for EVERY generated model of every estimation method, since all of them
+#' compile through `.nlmixr2estRxode2()`.
+#'
+#' @param mod compiled rxode2 model
+#' @return `mod`, invisibly modified in place
+#' @noRd
+.nlmixr2estStripModelSrc <- function(mod) {
+  if (!is.environment(mod)) return(mod)
+  .strip <- function(env, nm) {
+    if (!is.environment(env)) return(invisible(NULL))
+    .f <- tryCatch(get(nm, envir = env, inherits = FALSE), error = function(e) NULL)
+    if (is.function(.f)) {
+      tryCatch(assign(nm, removeSource(.f), envir = env), error = function(e) NULL)
+    }
+    invisible(NULL)
+  }
+  .ap <- tryCatch(get("assignPtr", envir = mod, inherits = FALSE), error = function(e) NULL)
+  if (is.function(.ap)) .strip(environment(.ap), ".f")
+  .dll <- tryCatch(get(".rxDll", envir = mod, inherits = FALSE), error = function(e) NULL)
+  if (is.list(.dll) && is.function(.dll$.call)) .strip(environment(.dll$.call), ".badBuild")
+  mod
 }
 
 #' Stable artifact name for a generated model: role + everything that changes its code.

@@ -118,6 +118,15 @@
   Their gradient and prediction models were generated without those lines,
   so they always used the default `locf()` interpolation.
 
+- Fitting a series of models in one R session no longer accumulates memory.
+  Every compiled model kept two closures carrying a source reference back to
+  the session it was built in, and compiled models are never released, so each
+  new model retained everything retained before it -- memory roughly doubled
+  per model.  Fitting five small models with `est="impmap"` retained 2.2GB;
+  it now retains 1.7MB, and `test-impmap.R` peaks at 0.9GB rather than 41GB.
+  This affects every estimation method, since all of them compile their
+  generated models through the same entry point.
+
 # nlmixr2est 7.0.2
 
 ## Bug fixes
