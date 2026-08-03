@@ -312,6 +312,25 @@ impmapControl <- function(sigdig=3,
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
   gammaRule <- match.arg(gammaRule)
+  # RULE-DEPENDENT DEFAULTS.  The tuned constants belong to the RULE, so switching
+  # to the NONMEM rule must bring its constants with it -- otherwise the user gets
+  # NONMEM's law running on the floor rule's tuning, which is the unfair pairing
+  # this whole comparison was redone to avoid.  Only defaults are substituted: an
+  # explicitly supplied value always wins (and a control round-tripped through
+  # do.call(impmapControl, ctl) supplies everything, so it is idempotent).
+  #
+  # nConvWindow: 10 for "floor", 20 for "target".  The target rule tracks a
+  # Monte-Carlo statistic, so it needs a longer window to average the noise out.
+  # Measured (3 ETAs, 6 seeds, isample=300, RMSE vs an isample=6000 reference):
+  #
+  #   target w=10   thetaRMSE 0.00196  omegaRMSE 0.00266  maxK -0.356  iter 16
+  #   target w=20   thetaRMSE 0.00167  omegaRMSE 0.00196  maxK -0.429  iter 27
+  #   target w=30   thetaRMSE 0.00199  omegaRMSE 0.00291  maxK -0.451  iter 34
+  #
+  # w=20 is the accuracy optimum; w=30 costs iterations for nothing.
+  if (identical(gammaRule, "target") && missing(nConvWindow)) {
+    nConvWindow <- 20L
+  }
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")

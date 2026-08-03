@@ -1467,9 +1467,31 @@ void impOuter(Environment e) {
     if (nConvWindow > 0 && R_finite(obj) &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();
-      double s = 0.0;
-      for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
-      double objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
+      double objMetric;
+      if (impGammaRuleTarget() && nConvWindow >= 2) {
+        // TARGET rule: mean|delta obj| is a NOISE measure, not a drift measure --
+        // it has a floor at the Monte-Carlo noise level and never reaches ctol no
+        // matter how settled the fit is.  The target rule deliberately widens the
+        // proposal to put xi on iaccept, which costs effective sample size and so
+        // RAISES that floor: measured on the 3-eta theophylline fixture,
+        // mean|delta| is 0.00055-0.00093 under "floor" (ESS 0.95-0.96, all below
+        // a ctol of 1e-3) against 0.00181-0.00264 under "target" (ESS 0.69-0.71,
+        // all above it), so the fit could never converge however long it ran.
+        // Use the drift of the window MEAN instead -- the same noise-robust form
+        // the gamma gate below uses.  Scoped to this rule so the floor rule's
+        // tuned behaviour is bit-identical.
+        int hw = nConvWindow / 2;
+        double mNew = 0.0, mOld = 0.0;
+        for (int k = n - hw; k < n; ++k) mNew += objTrace[k];
+        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += objTrace[k];
+        mNew /= (double)hw;
+        mOld /= (double)(nConvWindow - hw);
+        objMetric = std::fabs(mNew - mOld) / std::max(1.0, std::fabs(obj));
+      } else {
+        double s = 0.0;
+        for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
+        objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
+      }
       const arma::vec& parOld = parHist[n - nConvWindow - 1];
       double parMetric = arma::max(arma::abs(parNow - parOld) / (arma::abs(parOld) + 1e-8));
       // A settled parameter still has ~1-2% Monte-Carlo net drift across the
