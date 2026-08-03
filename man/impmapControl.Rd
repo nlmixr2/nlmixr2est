@@ -124,9 +124,34 @@ matrix at the mode.}
   capped 1.25x each way and clamped to `[iscaleMin, iscaleMax]`).
 
   The two rules settle at different operating points, so they are not
-  interchangeable: on theophylline `"floor"` leaves `gamma` at 1.0 with `xi`
-  about 0.44, while `"target"` drives `xi` onto `iaccept`.  Constants tuned
-  against one rule do not carry over to the other.}
+  interchangeable, and constants tuned against one do not carry over to the
+  other.
+
+  **Measured trade-off** (theophylline, 6 seeds, `isample = 300`, RMSE against
+  an `isample = 6000` reference):
+
+  \itemize{
+    \item 3 ETAs -- `"floor"`: theta RMSE 0.00185, `Omega` RMSE 0.00298, max
+      Pareto k-hat 0.604, 0.33 subjects above 0.7, converged 100% of seeds.
+      `"target"`: theta RMSE 0.00257, `Omega` RMSE 0.00378, max k-hat -0.491,
+      0 subjects above 0.7, converged 0%.
+    \item 8 ETAs -- `"floor"` never adapts at all (`gamma` pinned at 1.0 with
+      `xi` 1.35, i.e. a proposal far too narrow), because it watches the mean
+      Kish fraction, which stays healthy while `xi` says the proposal is
+      wrong.  `"target"` moves `gamma` to 1.25 and puts `xi` on 0.41.
+  }
+
+  So `"target"` fixes the tail and is the only rule that reacts at high ETA
+  dimension, but it pays for it: putting `xi` on `iaccept` deliberately widens
+  the proposal (`gamma` 1.79 on the 3-ETA fixture), which costs effective
+  sample size (0.96 to 0.70) and adds Monte-Carlo noise to the objective --
+  enough that the fit often does not meet `ctol` within `nIter`.
+
+  `"floor"` is the default because a heavy tail is already the job of the AUTO
+  `df` ladder (see `auto`), which repairs it *without* over-dispersing.  Reach
+  for `"target"` when the tail is the binding problem and `auto` has not
+  cleared it -- `fit$env$impPsisK` is how you tell -- or at high ETA
+  dimension, and expect to loosen `ctol` or raise `nIter` with it.}
 
 \item{df}{Degrees of freedom of the importance-sampling proposal (NONMEM
   `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
