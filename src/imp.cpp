@@ -1491,7 +1491,18 @@ void impOuter(Environment e) {
     // drops below the floor (heavy-tailed/skewed posterior), with a gentle
     // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
     // correct for gamma, so this changes only the variance, not the estimates.
-    if (gammaInd) {
+    //
+    // Iteration 0 does not adapt.  Its weights are normalized against the STARTING
+    // mode/Hessian at the initial estimates, which is not yet a meaningful
+    // reference, so both statistics the controller reads are transients: measured
+    // on theophylline, xi = 4.1e6 against a settled ~0.39 and accFrac = 0.257
+    // against a settled ~0.53.  Adapting off that inflated gamma to 1.248
+    // (sqrt(0.4/0.257), just under the 1.25 cap) on a problem whose proposal is
+    // healthy from iteration 1 onward -- and the "global" branch below is
+    // one-sided, so it could never come back down.
+    if (iter == 0) {
+      // nothing to adapt from yet
+    } else if (gammaInd) {
       // xi_i falls monotonically as the proposal
       // widens, so xi_i ABOVE the target means subject i's proposal is too
       // narrow for its posterior (the heavy-tail case) and gamma_i must grow;

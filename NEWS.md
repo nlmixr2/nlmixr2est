@@ -118,6 +118,15 @@
   Their gradient and prediction models were generated without those lines,
   so they always used the default `locf()` interpolation.
 
+- Importance-sampling EM (`est="imp"` / `"impmap"` / `"qrpem"`) no longer
+  inflates the proposal scale off its first iteration.  Iteration 1 normalizes
+  its weights against the starting mode, which is not yet a meaningful
+  reference, so its coverage statistic reads far worse than the truth; under
+  `gammaMethod="global"` that permanently inflated gamma, and the global
+  controller can only inflate, so it never recovered.  On theophylline gamma
+  was pinned at 1.248 for the whole fit, costing effective sample size (the
+  mean effective fraction rises from 0.53 to 0.59 now that it stays at 1.0).
+
 - Fitting a series of models in one R session no longer accumulates memory.
   Every compiled model kept two closures carrying a source reference back to
   the session it was built in, and compiled models are never released, so each
