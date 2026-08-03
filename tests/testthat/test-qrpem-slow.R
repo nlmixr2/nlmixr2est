@@ -255,11 +255,19 @@ nmTest({
     # the failure was the comparison being run at a different solve precision
     # than the reference.  Pinning it also makes the test independent of
     # whatever the default becomes next.
+    #
+    # gammaRule is pinned for the SAME reason, and it is the next default this
+    # anticipated: the baseline predates the two-sided rule, and "target" is now
+    # the default.  Under it the proposal scale adapts both ways, which moves the
+    # draws (and so impSamples) far past these tolerances.  Pinning "floor"
+    # restores the comparison this test is actually making -- that the un-adapted
+    # path is unchanged -- rather than re-recording a baseline whose whole value
+    # is being old.
     .ref <- readRDS(test_path("baselines", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
               impmapControl(print=0L, nIter=5L, isample=100L, auto=FALSE,
-                            sigdig=4)))
+                            sigdig=4, gammaRule="floor")))
     expect_equal(fixef(.f), .ref$fixef, tolerance=1e-6)
     expect_equal(.f$omega, .ref$omega, tolerance=1e-6)
     expect_equal(.f$env$impObj, .ref$obj, tolerance=1e-6)
