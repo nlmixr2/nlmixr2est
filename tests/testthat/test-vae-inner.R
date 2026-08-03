@@ -235,7 +235,20 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(theo)
-    ctl <- vaeControl()
+    # sigdig = 6 is REQUIRED for the finite-difference check below, not cosmetic.
+    # The loss contains an ODE solve, so it carries a relative noise floor set by
+    # the solver tolerances (sigdig drives rtol/atol).  A central difference's
+    # roundoff error is noise/h, so at the default sigdig the h = 1e-5 step below
+    # is far inside the noise and the FD "reference" is meaningless -- measured
+    # relative error against the analytic gradient, same seed and step:
+    #
+    #   sigdig default   h=1e-3 1.0e-4 | h=1e-4 1.0e-3 | h=1e-5 1.0e-2   (~1e-7/h)
+    #   sigdig = 6       h=1e-3 1.1e-5 | h=1e-4 9.7e-8 | h=1e-5 5.8e-8
+    #
+    # i.e. the error scales as 1/h at the default (roundoff-dominated) and becomes
+    # a clean U-shape with its minimum at this step once the solve is tight enough.
+    # The analytic gradient is right either way -- it agrees to 6e-8 here.
+    ctl <- vaeControl(sigdig = 6)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     N <- prep$N; zDim <- prep$zDim; hDim <- 12L
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
