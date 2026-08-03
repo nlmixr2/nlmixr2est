@@ -9,7 +9,8 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod", "gammaMethodUser", "df", "auto", "autoNonNormal",
+                           "gammaMethod", "gammaMethodUser", "gammaRule",
+                           "df", "auto", "autoNonNormal",
                            "autoNonmemSparse", "autoDfPatience",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
@@ -187,8 +188,29 @@
 #'   targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
 #'   quantity) while `"global"` targets the Kish effective-sample fraction.
 #'   These are not comparable; the fit's `$runInfo` says which is in force.
+#' @param gammaRule How the SHARED (`gammaMethod="global"`) proposal scale is
+#'   adapted.  Ignored for `gammaMethod="individual"`, which always follows
+#'   NONMEM's two-sided per-subject rule.
+#'
+#'   `"floor"` (default) treats `iaccept` as a one-sided FLOOR on the mean Kish
+#'   effective-sample fraction: `gamma` stays at its efficient starting value
+#'   while coverage is healthy and is inflated only when coverage drops below the
+#'   floor.  It never comes back down.
+#'
+#'   `"target"` follows the NM7 Technical Guide, which says `gamma` is
+#'   "continually adjusted so that xi_i approximates IACCEPT" -- adapted BOTH
+#'   ways, on `xi` rather than the Kish fraction, using the same analytic
+#'   inversion as the per-subject controller (`gamma * (xi/iaccept)^(2/neta)`,
+#'   capped 1.25x each way and clamped to `[iscaleMin, iscaleMax]`).
+#'
+#'   The two rules settle at different operating points, so they are not
+#'   interchangeable: on theophylline `"floor"` leaves `gamma` at 1.0 with `xi`
+#'   about 0.44, while `"target"` drives `xi` onto `iaccept`.  Constants tuned
+#'   against one rule do not carry over to the other.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
-#'   (NONMEM ISCALE_MIN / ISCALE_MAX).
+#'   (NONMEM ISCALE_MIN / ISCALE_MAX).  Both bounds are reachable under
+#'   `gammaRule="target"`; under `"floor"` `gamma` only ever moves up, so only
+#'   `iscaleMax` can bind.
 #' @param iaccept Minimum importance-sampling effective-sample fraction
 #'   (NONMEM IACCEPT).  The proposal scale `gamma` is kept at its efficient
 #'   starting value while the achieved fraction stays at or above `iaccept`, and
@@ -244,6 +266,7 @@ impmapControl <- function(sigdig=3,
                           mapIter=1L,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
+                          gammaRule=c("floor", "target"),
                           df=0,
                           auto=TRUE,
                           autoNonmemSparse=FALSE,
@@ -263,6 +286,7 @@ impmapControl <- function(sigdig=3,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
+  gammaRule <- match.arg(gammaRule)
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
@@ -333,6 +357,7 @@ impmapControl <- function(sigdig=3,
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
+  .control$gammaRule <- gammaRule
   .control$df <- as.double(df)
   checkmate::assertLogical(auto, any.missing=FALSE, len=1, .var.name="auto")
   checkmate::assertLogical(autoNonmemSparse, any.missing=FALSE, len=1,

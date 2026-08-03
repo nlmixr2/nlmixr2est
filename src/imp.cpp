@@ -842,6 +842,12 @@ void impOuter(Environment e) {
 
   // Convergence controller + proposal-scale adaptation (NONMEM ISCALE/IACCEPT/CTYPE).
   double iaccept = impIaccept();
+  // Drift tolerance on the gamma window mean for gammaRule="target".  Looser than
+  // the floor rule's 1e-3 because that rule's gamma is exactly constant once
+  // coverage is healthy, while a target-tracking gamma carries the Monte-Carlo
+  // noise of xi.  PROVISIONAL -- a constant tuned for this rule, to be re-measured
+  // with the rest of the target-rule set.
+  const double gammaTargetTol = 1e-2;
   double iscaleMin = impIscaleMin();
   double iscaleMax = impIscaleMax();
   int nConvWindow = impNconvWindow();
@@ -1476,9 +1482,26 @@ void impOuter(Environment e) {
       // across subjects could look settled while individual scales are still
       // swinging.  Gate on the largest per-subject step the controller actually
       // applied instead, which cannot be masked that way.
-      bool gammaStable = gammaInd
-        ? (gammaStepPrev <= 1e-3)
-        : (std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0));
+      // gammaRule="target" tracks a MONTE-CARLO statistic, so gamma keeps jittering
+      // around its fixed point and never stops moving the way the one-sided floor
+      // rule's gamma does (which is literally constant on a healthy model, making
+      // the window test below vacuous).  Gate it on the drift of the window MEAN
+      // instead: noise averages out over nConvWindow, a genuine trend does not.
+      bool gammaStable;
+      if (gammaInd) {
+        gammaStable = (gammaStepPrev <= 1e-3);
+      } else if (impGammaRuleTarget()) {
+        double mNew = 0.0, mOld = 0.0;
+        int hw = nConvWindow / 2;
+        if (hw < 1) hw = 1;
+        for (int k = n - hw; k < n; ++k) mNew += gammaTrace[k];
+        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += gammaTrace[k];
+        mNew /= (double)hw;
+        mOld /= (double)std::max(1, nConvWindow - hw);
+        gammaStable = (std::fabs(mNew - mOld) <= gammaTargetTol * std::max(1.0, mOld));
+      } else {
+        gammaStable = (std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0));
+      }
       if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
     }
 
@@ -1555,7 +1578,38 @@ void impOuter(Environment e) {
         gammaVec[id] = g;
       }
       gammaStepPrev = maxStep;
+    } else if (impGammaRuleTarget()) {
+      // gammaRule="target" -- NONMEM's rule for the SHARED scale.  The NM7
+      // Technical Guide (note after eq. 1.76) says gamma is "continually adjusted
+      // so that xi_i approximates IACCEPT", i.e. two-sided on xi, not one-sided on
+      // the Kish fraction.  Reuse the per-subject branch's analytic inversion:
+      // xi = gamma^(-neta/2) inverts exactly, so pExp = 2/neta gives an error
+      // multiplier of 0 at every dimension.  A FIXED exponent (the sqrt the
+      // "floor" branch below uses) is the form measured to enter a period-2 limit
+      // cycle at neta >= 8, which one-sidedness is currently the only thing
+      // suppressing -- so the two-sided rule must NOT reuse it.
+      //
+      // xiMean is NA when no subject had a usable xi, and a single non-finite
+      // subject would otherwise poison gamma for the rest of the fit through
+      // pow(NaN, .), so guard before applying.
+      if (iaccept > 0 && R_finite(xiMean) && xiMean > 0.0) {
+        const double pExp = 2.0 / std::max(1.0, (double)neta);
+        double fac = std::pow(xiMean / iaccept, pExp);
+        if (fac > 1.25) fac = 1.25;
+        else if (fac < 1.0 / 1.25) fac = 1.0 / 1.25;
+        double g = gamma * fac;
+        if (g < iscaleMin) g = iscaleMin;
+        if (g > iscaleMax) g = iscaleMax;
+        // measure the step AFTER clamping, so a gamma pinned at a bound reads as
+        // settled rather than as perpetually moving (mirrors gammaStepPrev in the
+        // per-subject branch); the convergence gate compares gamma across the
+        // window, which a clamped gamma satisfies for free.
+        gamma = g;
+      }
     } else if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
+      // gammaRule="floor" (default) -- iaccept is a one-sided FLOOR on the mean
+      // Kish effective-sample fraction: gamma is left at its efficient starting
+      // value while coverage is healthy and inflated only when it drops below.
       double fac = std::sqrt(iaccept / accFrac);
       if (fac > 1.25) fac = 1.25;
       gamma *= fac;

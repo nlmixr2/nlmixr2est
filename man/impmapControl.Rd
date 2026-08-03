@@ -12,6 +12,7 @@ impmapControl(
   mapIter = 1L,
   gamma = 1,
   gammaMethod = c("auto", "global", "individual"),
+  gammaRule = c("floor", "target"),
   df = 0,
   auto = TRUE,
   autoNonmemSparse = FALSE,
@@ -106,6 +107,26 @@ matrix at the mode.}
   targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
   quantity) while `"global"` targets the Kish effective-sample fraction.
   These are not comparable; the fit's `$runInfo` says which is in force.}
+
+\item{gammaRule}{How the SHARED (`gammaMethod="global"`) proposal scale is
+  adapted.  Ignored for `gammaMethod="individual"`, which always follows
+  NONMEM's two-sided per-subject rule.
+
+  `"floor"` (default) treats `iaccept` as a one-sided FLOOR on the mean Kish
+  effective-sample fraction: `gamma` stays at its efficient starting value
+  while coverage is healthy and is inflated only when coverage drops below the
+  floor.  It never comes back down.
+
+  `"target"` follows the NM7 Technical Guide, which says `gamma` is
+  "continually adjusted so that xi_i approximates IACCEPT" -- adapted BOTH
+  ways, on `xi` rather than the Kish fraction, using the same analytic
+  inversion as the per-subject controller (`gamma * (xi/iaccept)^(2/neta)`,
+  capped 1.25x each way and clamped to `[iscaleMin, iscaleMax]`).
+
+  The two rules settle at different operating points, so they are not
+  interchangeable: on theophylline `"floor"` leaves `gamma` at 1.0 with `xi`
+  about 0.44, while `"target"` drives `xi` onto `iaccept`.  Constants tuned
+  against one rule do not carry over to the other.}
 
 \item{df}{Degrees of freedom of the importance-sampling proposal (NONMEM
   `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
@@ -213,7 +234,9 @@ matrix at the mode.}
   escalation is tracked and an escalation is never credited for it.}
 
 \item{iscaleMin, iscaleMax}{Lower/upper bounds for the adapted `gamma`
-(NONMEM ISCALE_MIN / ISCALE_MAX).}
+(NONMEM ISCALE_MIN / ISCALE_MAX).  Both bounds are reachable under
+`gammaRule="target"`; under `"floor"` `gamma` only ever moves up, so only
+`iscaleMax` can bind.}
 
 \item{iaccept}{Minimum importance-sampling effective-sample fraction
 (NONMEM IACCEPT).  The proposal scale `gamma` is kept at its efficient

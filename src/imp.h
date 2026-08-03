@@ -44,6 +44,7 @@ bool impAutoNonNormal();  // model not transformably normal (tutorial's "categor
 bool impAutoNonmemSparse(); // apply the tutorial's nobs<neta df trigger unconditionally
 int  impAutoDfPatience();   // non-improving iterations tolerated before withdrawing df
 bool impGammaIndividual();// TRUE for gammaMethod="individual" (per-subject NONMEM gamma_i)
+bool impGammaRuleTarget();// TRUE for gammaRule="target" (two-sided xi -> iaccept)
 double impIscaleMin();    // lower bound for the adapted gamma
 double impIscaleMax();    // upper bound for the adapted gamma
 int impNconvWindow();     // trailing-iteration window for the convergence check

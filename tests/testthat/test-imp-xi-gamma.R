@@ -412,4 +412,52 @@ nmTest({
     expect_lt(.xiSettled, 10.0)
   })
 
+
+  test_that("gammaRule selects the shared-scale adaptation law", {
+    skip_on_cran()
+    .d <- nlmixr2data::theo_sd
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              linCmt() ~ add(add.sd) })
+    }
+    .ctl <- function(rule) {
+      impmapControl(print = 0L, nIter = 100L, isample = 300L, nConvWindow = 10L,
+                    covMethod = "", gammaRule = rule)
+    }
+    # control surface: both levels accepted, "floor" is the default
+    expect_equal(impmapControl()$gammaRule, "floor")
+    expect_equal(impmapControl(gammaRule = "target")$gammaRule, "target")
+    expect_error(impmapControl(gammaRule = "nope"))
+
+    .fl <- suppressWarnings(nlmixr2(.m, .d, "impmap", .ctl("floor")))
+    .tg <- suppressWarnings(nlmixr2(.m, .d, "impmap", .ctl("target")))
+    # both resolve to the shared ("global") scale, so gammaRule is what differs
+    expect_equal(.fl$env$impGammaMethod, "global")
+    expect_equal(.tg$env$impGammaMethod, "global")
+
+    # "floor" treats iaccept as a one-sided floor: a well-covered proposal is
+    # never inflated, so gamma is left at its efficient starting value.
+    expect_equal(unname(.fl$env$impGammaUsed), 1.0, tolerance = 1e-8)
+    expect_true(all(.fl$env$impGammaTrace == 1.0))
+
+    # "target" is NONMEM's rule -- gamma is adjusted BOTH ways until xi
+    # approximates IACCEPT.  Assert the mechanism, not a pinned value: gamma must
+    # move off 1, and must move DOWN at least once (a one-sided rule cannot).
+    .g <- .tg$env$impGammaTrace
+    expect_gt(max(.g), 1.0)
+    expect_true(any(diff(.g) < 0))
+    .ia <- .tg$env$impmapControl$iaccept
+    expect_equal(unname(tail(.tg$env$impXiTrace, 1)), .ia, tolerance = 0.1)
+
+    # both must still SETTLE -- the target rule tracks a Monte-Carlo statistic, so
+    # its convergence gate is the drift of the gamma window mean, not the
+    # instantaneous step (which never reaches the floor rule's 1e-3).
+    expect_true(isTRUE(.fl$env$impConverged))
+    expect_true(isTRUE(.tg$env$impConverged))
+
+    # the rule moves the VARIANCE of the estimates, not their expectation
+    expect_equal(.fl$objf, .tg$objf, tolerance = 0.5)
+  })
+
 })

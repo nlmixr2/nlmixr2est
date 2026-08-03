@@ -586,6 +586,12 @@ struct focei_options {
   // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
   // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
   std::string impGammaMethod = "global";
+  // "floor"  -- iaccept is a one-sided FLOOR on the mean Kish ESS fraction: gamma
+  //             inflates when coverage drops below it and never comes back down.
+  // "target" -- NONMEM's rule: gamma is adjusted BOTH ways so xi approximates
+  //             IACCEPT, using the same analytic inversion the per-subject branch
+  //             uses.  Selected by impmapControl(gammaRule=).
+  std::string impGammaRule = "floor";
   double impIscaleMin = 0.1; // lower bound for adapted gamma
   double impIscaleMax = 10.0;// upper bound for adapted gamma
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
@@ -5731,6 +5737,8 @@ NumericVector foceiSetup_(const RObject &obj,
     }
     if (foceiO.containsElementNamed("gammaMethod") && TYPEOF(foceiO["gammaMethod"]) == STRSXP)
       op_focei.impGammaMethod = as<std::string>(foceiO["gammaMethod"]);
+    if (foceiO.containsElementNamed("gammaRule") && TYPEOF(foceiO["gammaRule"]) == STRSXP)
+      op_focei.impGammaRule = as<std::string>(foceiO["gammaRule"]);
     if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
     if (foceiO.containsElementNamed("iscaleMax")) op_focei.impIscaleMax = as<double>(foceiO["iscaleMax"]);
     if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
@@ -9724,6 +9732,9 @@ int impNobs(int id) {
 // TRUE when the per-subject (NONMEM) gamma controller is selected.  Queried once
 // per EM iteration, not in the sampling loop, so the string compare is free.
 bool impGammaIndividual() { return op_focei.impGammaMethod == "individual"; }
+// TRUE when the shared ("global") scale tracks xi -> iaccept two-sided (NONMEM),
+// FALSE for the one-sided Kish-ESS floor.  Queried once per EM iteration.
+bool impGammaRuleTarget() { return op_focei.impGammaRule == "target"; }
 double impIscaleMin() { return op_focei.impIscaleMin; }
 double impIscaleMax() { return op_focei.impIscaleMax; }
 int impNconvWindow() { return op_focei.impNconvWindow; }
