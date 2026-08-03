@@ -1162,6 +1162,27 @@
 
 ### Estimation
 
+- The FOCEi-family objective function is now reproducible, and no longer depends
+  on how the ETAs were reached.  The inner problem uses finite-difference steps
+  (`etahf`/`etahr` for the ETA gradient, `etahh` for the FD Hessian) that are
+  searched once per subject and then reused, so whichever call came first fixed
+  them -- during optimization that is the warm-start Hessian
+  (`foceiControl(warm="calc")`) or an early inner iterate, at an ETA that is not
+  the one being reported.  All three are now re-searched at the reported ETAs
+  before the final objective is computed.  Two consequences:
+
+    - **Repeating a fit now gives the same objective function value, and the
+      same value regardless of the number of threads.**  It previously varied
+      between runs of the same model on the same data, and differed between a
+      threaded and a single-threaded run.
+
+    - **Objective function values change**, most visibly for models with a
+      non-normal endpoint (`ll()`, `dnorm()`, `t()`, `cauchy()`, count or
+      ordinal), which difference the whole inner Hessian.  A fit evaluated at
+      supplied ETAs (`etaMat=`, `maxInnerIterations=0`) and the same fit
+      optimized to those ETAs now agree exactly, where before they could differ
+      by more than 100 objective units on an 8-ETA model.
+
 - The ETA-drift theta reset (`foceiControl(resetThetaP=)`,
   `resetThetaFinalP=`) now defaults to OFF.  It re-centered a mu-referenced
   theta by the mean ETA and restarted the fit, but when the ETAs cannot

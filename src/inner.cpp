@@ -3168,6 +3168,18 @@ static inline int innerOpt1(int id, int likId) {
   // Use saved Hessian on next opimization.
   fInd->mode=2;
   fInd->uzm =0;
+  // The shi21 steps (etahf/etahr for the eta gradient, etahh for the FD Hessian) are
+  // searched once per subject and then reused, so whichever call comes first fixes them
+  // -- during optimization that is warmZm or an early n1qn1 iterate, at an eta that is
+  // not the one being reported.  foceiOuterFinal zeroes all three so the final objective
+  // is reproducible; do it again here or the optimization re-freezes them before
+  // LikInner2 below recomputes the reported objective.  Without this the objective
+  // depends on how the etas were reached rather than on (theta, eta) alone.
+  if (_finalObfCalc) {
+    if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], op_focei.neta, 0.0);
+    if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], op_focei.neta, 0.0);
+    if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], op_focei.neta, 0.0);
+  }
   if (ISNA(LikInner2(fInd->eta, likId, id))) return 0;
   return 1;
 }
