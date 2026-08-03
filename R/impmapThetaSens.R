@@ -100,7 +100,21 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
   .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .rr, .dfOut, .dvOut, ""), collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
-  .s
+  ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
+  ##
+  ## rxUiGet caches a handler's return value on the `ui`, and `.s` carries the
+  ## full AST/expression trees for d(f)/d(theta) and d(V)/d(theta).  Caching it
+  ## meant a later `ui` holding an earlier one also held that earlier model's
+  ## entire tree, so memory DOUBLED with every distinct model fitted in a session
+  ## (measured x1.97, x1.99, x2.00) -- 41GB across test-impmap.R's ~21 models on
+  ## theo_sd, which is 12 subjects.  focei stayed flat because its cached
+  ## handlers return lightweight compiled-model wrappers.
+  ##
+  ## Model development -- fitting a series of related models in one session -- is
+  ## exactly the workflow that leaked, so this was user-facing, not just a test
+  ## problem.  Anything registered as an rxUiGet method must return a lightweight
+  ## value for the same reason.
+  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx)
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
@@ -128,5 +142,5 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   # the default: switching it to "jump" here changes the impmap thetaSens codegen and
   # broke 5 assertions in test-impmap.R, so that is a separate question from the
   # artifact-name collision this fixes.
-  .toRx(.s$..thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
 }
