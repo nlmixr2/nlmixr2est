@@ -5,6 +5,17 @@
 # estimates the tail index of the weight distribution and can.  These tests pin
 # that the estimator actually recovers a known tail index, because a biased
 # diagnostic is worse than no diagnostic.
+# NOTE ON gammaRule.  These tests exercise the TAIL machinery -- the t proposal
+# (df), Pareto k-hat, and AUTO's df escalation -- all of which need a Gaussian
+# proposal that actually FAILS in order to have anything to repair.  The default
+# rule is now "target", which drives xi onto iaccept and in doing so repairs the
+# tail itself: on the 3-ETA theophylline fixture it takes max k-hat from 0.836 to
+# about -0.4, leaving these premises unsatisfiable.  So they pin
+# gammaRule = "floor" deliberately.
+#
+# That overlap is a real consequence of the default change, not a test artifact:
+# with "target" as the default the df/AUTO tail machinery is a secondary safety
+# net rather than the primary remedy.
 nmTest({
 
   .rgpd <- function(n, k) ((1 - stats::runif(n))^(-k) - 1) / k
@@ -70,7 +81,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .f <- suppressWarnings(nlmixr2(.m, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 6L,
-                                                 isample = 300L, covMethod = "")))
+                                                 isample = 300L, covMethod = "", gammaRule = "floor")))
     .E <- .f$env
     expect_equal(length(.E$impPsisK), length(unique(.d$ID)))
     # all three diagnostics are present and per-subject
@@ -105,7 +116,7 @@ nmTest({
     .f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, "impmap",
                                    impmapControl(print = 0L, nIter = 6L,
                                                  isample = 300L, covMethod = "",
-                                                 auto = FALSE)))
+                                                 auto = FALSE, gammaRule = "floor")))
     .E <- .f$env
     .bad <- which(.E$impPsisK > 0.7)
     # at least one subject is in the unreliable regime
@@ -145,7 +156,7 @@ nmTest({
       .f <- suppressWarnings(nlmixr2(.m, dat, "impmap",
                                      impmapControl(print = 0L, nIter = 5L,
                                                    isample = ns, covMethod = "",
-                                                   auto = FALSE)))
+                                                   auto = FALSE, gammaRule = "floor")))
       max(.f$env$impPsisK)
     }
     # structural: still unreliable at 300 and at 2000 (and the isample = 8000

@@ -426,8 +426,12 @@ nmTest({
                     covMethod = "", gammaRule = rule)
     }
     # control surface: both levels accepted, "floor" is the default
-    expect_equal(impmapControl()$gammaRule, "floor")
-    expect_equal(impmapControl(gammaRule = "target")$gammaRule, "target")
+    expect_equal(impmapControl()$gammaRule, "target")   # NONMEM's rule is default
+    expect_equal(impmapControl(gammaRule = "floor")$gammaRule, "floor")
+    # the tuned constants travel WITH the rule
+    expect_equal(impmapControl()$nConvWindow, 20L)
+    expect_equal(impmapControl(gammaRule = "floor")$nConvWindow, 10L)
+    expect_equal(impmapControl(gammaRule = "target", nConvWindow = 7L)$nConvWindow, 7L)
     expect_error(impmapControl(gammaRule = "nope"))
 
     .fl <- suppressWarnings(nlmixr2(.m, .d, "impmap", .ctl("floor")))

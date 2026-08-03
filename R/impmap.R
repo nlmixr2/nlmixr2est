@@ -192,12 +192,12 @@
 #'   adapted.  Ignored for `gammaMethod="individual"`, which always follows
 #'   NONMEM's two-sided per-subject rule.
 #'
-#'   `"floor"` (default) treats `iaccept` as a one-sided FLOOR on the mean Kish
+#'   `"floor"` treats `iaccept` as a one-sided FLOOR on the mean Kish
 #'   effective-sample fraction: `gamma` stays at its efficient starting value
 #'   while coverage is healthy and is inflated only when coverage drops below the
 #'   floor.  It never comes back down.
 #'
-#'   `"target"` follows the NM7 Technical Guide, which says `gamma` is
+#'   `"target"` (default) follows the NM7 Technical Guide, which says `gamma` is
 #'   "continually adjusted so that xi_i approximates IACCEPT" -- adapted BOTH
 #'   ways, on `xi` rather than the Kish fraction, using the same analytic
 #'   inversion as the per-subject controller (`gamma * (xi/iaccept)^(2/neta)`,
@@ -227,11 +227,23 @@
 #'   sample size (0.96 to 0.70) and adds Monte-Carlo noise to the objective --
 #'   enough that the fit often does not meet `ctol` within `nIter`.
 #'
-#'   `"floor"` is the default because a heavy tail is already the job of the AUTO
-#'   `df` ladder (see `auto`), which repairs it *without* over-dispersing.  Reach
-#'   for `"target"` when the tail is the binding problem and `auto` has not
-#'   cleared it -- `fit$env$impPsisK` is how you tell -- or at high ETA
-#'   dimension, and expect to loosen `ctol` or raise `nIter` with it.
+#'   `"target"` is the default: tuned against tuned, it wins every column at 3
+#'   ETAs and is the only rule that adapts at all at 8 ETAs.  Its cost is on the
+#'   1-ETA fixture, where it roughly doubles theta RMSE (0.00113 to 0.00224) and
+#'   takes about twice as many iterations.  That trade follows the same weighting
+#'   `auto` uses: weights with infinite variance are a correctness problem whose
+#'   error is unbounded, while the extra Monte-Carlo noise is bounded and
+#'   measurable.
+#'
+#'   Choose `"floor"` for the previous behaviour -- a proposal left at its
+#'   efficient starting value while coverage is healthy.  It is also what the
+#'   tail-machinery tests pin, because `"target"` repairs the tail itself and
+#'   leaves the `df` ladder nothing to fix.
+#'
+#'   **The tuned constants travel with the rule.**  Selecting a rule also selects
+#'   its tuned defaults (`nConvWindow` 20 for `"target"`, 10 for `"floor"`), so
+#'   switching to the NONMEM method does not silently run NONMEM's law on the
+#'   other rule's tuning.  An explicitly supplied value always wins.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
 #'   (NONMEM ISCALE_MIN / ISCALE_MAX).  Both bounds are reachable under
 #'   `gammaRule="target"`; under `"floor"` `gamma` only ever moves up, so only
@@ -291,7 +303,7 @@ impmapControl <- function(sigdig=3,
                           mapIter=1L,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
-                          gammaRule=c("floor", "target"),
+                          gammaRule=c("target", "floor"),
                           df=0,
                           auto=TRUE,
                           autoNonmemSparse=FALSE,

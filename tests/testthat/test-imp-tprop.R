@@ -5,6 +5,17 @@
 # importance weights have infinite variance -- detectable by Pareto k-hat and
 # invisible to xi and the Kish ESS.  A t proposal has polynomial tails that
 # dominate a Gaussian target's, which bounds the weights.
+# NOTE ON gammaRule.  These tests exercise the TAIL machinery -- the t proposal
+# (df), Pareto k-hat, and AUTO's df escalation -- all of which need a Gaussian
+# proposal that actually FAILS in order to have anything to repair.  The default
+# rule is now "target", which drives xi onto iaccept and in doing so repairs the
+# tail itself: on the 3-ETA theophylline fixture it takes max k-hat from 0.836 to
+# about -0.4, leaving these premises unsatisfiable.  So they pin
+# gammaRule = "floor" deliberately.
+#
+# That overlap is a real consequence of the default change, not a test artifact:
+# with "target" as the default the df/AUTO tail machinery is a secondary safety
+# net rather than the primary remedy.
 nmTest({
 
   # FIXTURE: THREE ETAs.  These tests need a Gaussian proposal that genuinely
@@ -36,13 +47,13 @@ nmTest({
     suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
                              impmapControl(print = 0L, nIter = nIter,
                                            isample = isample, covMethod = "",
-                                           auto = FALSE, df = df)))
+                                           auto = FALSE, df = df, gammaRule = "floor")))
   }
 
   test_that("df control round-trips and defaults to the Gaussian proposal", {
     expect_equal(impmapControl()$df, 0)
-    expect_equal(impmapControl(df = 5)$df, 5)
-    expect_equal(do.call(impmapControl, impmapControl(df = 7))$df, 7)
+    expect_equal(impmapControl(df = 5, gammaRule = "floor")$df, 5)
+    expect_equal(do.call(impmapControl, impmapControl(df = 7, gammaRule = "floor"))$df, 7)
     expect_true("df" %in% .impmapIsControlNames)
   })
 
@@ -98,7 +109,7 @@ nmTest({
     .i <- suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
                                    impmapControl(print = 0L, nIter = 6L,
                                                  covMethod = "", df = 10,
-                                                 gammaMethod = "individual")))
+                                                 gammaMethod = "individual", gammaRule = "floor")))
     expect_equal(.i$env$impGammaMethod, "individual")
     expect_true(all(is.finite(.i$env$impGammaInd)))
   })
@@ -108,7 +119,7 @@ nmTest({
     # the reweighted objective is not the one the fit converged on.
     .f <- suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
                                    impmapControl(print = 0L, nIter = 8L,
-                                                 covMethod = "imp", df = 10)))
+                                                 covMethod = "imp", df = 10, gammaRule = "floor")))
     .cv <- as.matrix(.f$env$cov)
     expect_true(all(is.finite(.cv)))
     expect_true(all(diag(.cv) > 0))
@@ -130,9 +141,9 @@ nmTest({
   }
 
   test_that("isample accepts a per-subject vector and uses it", {
-    expect_equal(impmapControl(isample = 300L)$isample, 300L)
-    expect_equal(impmapControl(isample = c(100L, 200L))$isample, c(100L, 200L))
-    expect_error(impmapControl(isample = 0L))
+    expect_equal(impmapControl(isample = 300L, gammaRule = "floor")$isample, 300L)
+    expect_equal(impmapControl(isample = c(100L, 200L), gammaRule = "floor")$isample, c(100L, 200L))
+    expect_error(impmapControl(isample = 0L, gammaRule = "floor"))
     .d <- nlmixr2data::theo_sd
     .n <- length(unique(.d$ID))
     .iv <- rep(300L, .n); .iv[c(1L, 3L)] <- 900L
@@ -143,7 +154,7 @@ nmTest({
     .f <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 5L,
                                                  isample = .iv, covMethod = "",
-                                                 auto = FALSE)))
+                                                 auto = FALSE, gammaRule = "floor")))
     expect_equal(as.integer(.f$env$impNsampleInd), .iv)
   })
 
@@ -152,11 +163,11 @@ nmTest({
     .n <- length(unique(.d$ID))
     .a <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 5L,
-                                                 isample = 300L, covMethod = "")))
+                                                 isample = 300L, covMethod = "", gammaRule = "floor")))
     .b <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 5L,
                                                  isample = rep(300L, .n),
-                                                 covMethod = "")))
+                                                 covMethod = "", gammaRule = "floor")))
     expect_equal(.b$objf, .a$objf, tolerance = 1e-10)
     expect_equal(unname(.b$theta), unname(.a$theta), tolerance = 1e-10)
   })
@@ -194,18 +205,18 @@ nmTest({
     .g <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 8L,
                                                  isample = 300L, covMethod = "",
-                                                 auto = FALSE)))
+                                                 auto = FALSE, gammaRule = "floor")))
     .k0 <- .g$env$impPsisK
     expect_gt(sum(.k0 > 0.7), 0L)                     # premise
     .iv <- rep(300L, .n); .iv[.k0 > 0.7] <- 3000L
     .boost <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                        impmapControl(print = 0L, nIter = 8L,
                                                      isample = .iv, covMethod = "",
-                                                     auto = FALSE)))
+                                                     auto = FALSE, gammaRule = "floor")))
     .t <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 8L,
                                                  isample = 300L, covMethod = "",
-                                                 auto = FALSE, df = 20)))
+                                                 auto = FALSE, df = 20, gammaRule = "floor")))
     # the heavier tail is at least as good as 10x the draws ...
     expect_lte(max(.t$env$impPsisK), max(.boost$env$impPsisK) + 1e-8)
     # ... and clears the unreliable regime at the ORIGINAL sample count

@@ -6,6 +6,17 @@
 # infinite-variance weights.  AUTO therefore also escalates df from the Pareto
 # k-hat diagnostic, which NONMEM has no equivalent of.  That escalation is
 # nlmixr2's, not a reproduction of NONMEM.
+# NOTE ON gammaRule.  These tests exercise the TAIL machinery -- the t proposal
+# (df), Pareto k-hat, and AUTO's df escalation -- all of which need a Gaussian
+# proposal that actually FAILS in order to have anything to repair.  The default
+# rule is now "target", which drives xi onto iaccept and in doing so repairs the
+# tail itself: on the 3-ETA theophylline fixture it takes max k-hat from 0.836 to
+# about -0.4, leaving these premises unsatisfiable.  So they pin
+# gammaRule = "floor" deliberately.
+#
+# That overlap is a real consequence of the default change, not a test artifact:
+# with "target" as the default the df/AUTO tail machinery is a secondary safety
+# net rather than the primary remedy.
 nmTest({
 
   # One eta on theophylline has NO tail failure (max k-hat about -1.8, nothing
@@ -41,15 +52,15 @@ nmTest({
                        ...) {
     suppressWarnings(nlmixr2(model, data, "impmap",
                              impmapControl(print = 0L, nIter = nIter, isample = 300L,
-                                           covMethod = "", auto = auto, ...)))
+                                           covMethod = "", auto = auto, ..., gammaRule = "floor")))
   }
 
   test_that("auto control round-trips and defaults off", {
     expect_true(impmapControl()$auto)
-    expect_false(impmapControl(auto = FALSE)$auto)
-    expect_true(impmapControl(auto = TRUE)$auto)
-    expect_true(do.call(impmapControl, impmapControl(auto = TRUE))$auto)
-    expect_error(impmapControl(auto = "yes"))
+    expect_false(impmapControl(auto = FALSE, gammaRule = "floor")$auto)
+    expect_true(impmapControl(auto = TRUE, gammaRule = "floor")$auto)
+    expect_true(do.call(impmapControl, impmapControl(auto = TRUE, gammaRule = "floor"))$auto)
+    expect_error(impmapControl(auto = "yes", gammaRule = "floor"))
     expect_true(all(c("auto", "autoNonNormal") %in% .impmapIsControlNames))
   })
 
@@ -138,14 +149,14 @@ nmTest({
 
   test_that("autoDfPatience controls withdrawal and round-trips", {
     expect_equal(impmapControl()$autoDfPatience, 2L)
-    expect_equal(impmapControl(autoDfPatience = 0L)$autoDfPatience, 0L)
+    expect_equal(impmapControl(autoDfPatience = 0L, gammaRule = "floor")$autoDfPatience, 0L)
     expect_equal(do.call(impmapControl,
-                         impmapControl(autoDfPatience = 3L))$autoDfPatience, 3L)
-    expect_error(impmapControl(autoDfPatience = -1L))
-    expect_error(impmapControl(autoDfPatience = "two"))
+                         impmapControl(autoDfPatience = 3L, gammaRule = "floor"))$autoDfPatience, 3L)
+    expect_error(impmapControl(autoDfPatience = -1L, gammaRule = "floor"))
+    expect_error(impmapControl(autoDfPatience = "two", gammaRule = "floor"))
     expect_false(impmapControl()$autoNonmemSparse)
-    expect_true(impmapControl(autoNonmemSparse = TRUE)$autoNonmemSparse)
-    expect_error(impmapControl(autoNonmemSparse = "yes"))
+    expect_true(impmapControl(autoNonmemSparse = TRUE, gammaRule = "floor")$autoNonmemSparse)
+    expect_error(impmapControl(autoNonmemSparse = "yes", gammaRule = "floor"))
     expect_true(all(c("autoNonmemSparse", "autoDfPatience") %in%
                       .impmapIsControlNames))
   })
@@ -176,7 +187,7 @@ nmTest({
     }
     .f <- suppressWarnings(nlmixr2(.m, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 8L, isample = 300L,
-                                                 covMethod = "", auto = TRUE)))
+                                                 covMethod = "", auto = TRUE, gammaRule = "floor")))
     expect_true(all(.f$env$impDfInd > 0))          # every subject gets a t proposal
     # iaccept is NOT dropped to 0.2 up front any more.  Lowering it forces gamma
     # wide, and widening a Gaussian was measured not to fix tails while costing
@@ -193,7 +204,7 @@ nmTest({
     .fp <- suppressWarnings(nlmixr2(.m, .d, "impmap",
                                     impmapControl(print = 0L, nIter = 8L, isample = 300L,
                                                   covMethod = "", auto = TRUE,
-                                                  autoDfPatience = 1L)))
+                                                  autoDfPatience = 1L, gammaRule = "floor")))
     expect_true(all(.fp$env$impDfInd > 0))
   })
 
