@@ -3180,7 +3180,21 @@ static inline int innerOpt1(int id, int likId) {
     if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], op_focei.neta, 0.0);
     if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], op_focei.neta, 0.0);
   }
-  if (ISNA(LikInner2(fInd->eta, likId, id))) return 0;
+  if (ISNA(LikInner2(fInd->eta, likId, id))) {
+    if (!_finalObfCalc) return 0;
+    // Returning 0 makes the caller RESET this subject's etas, so a failure here would let
+    // the final objective disturb the estimates it is reporting on.  The evaluation path
+    // (innerEval's caller) meets the same failure by retrying with the generalized
+    // Cholesky and keeping the etas; do the same, so the two paths recover identically
+    // as well as differencing at the same eta.  Falling back to the step the optimization
+    // settled on would NOT work: the evaluation path has no such step, so the two would
+    // disagree again -- which is exactly the path dependence this is here to remove.
+    int doCholSave = fInd->doChol;
+    fInd->doChol = 0;
+    double lik = LikInner2(fInd->eta, likId, id);
+    fInd->doChol = doCholSave;
+    if (ISNA(lik)) return 0;
+  }
   return 1;
 }
 
