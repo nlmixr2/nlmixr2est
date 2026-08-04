@@ -2002,7 +2002,10 @@ double likInner0(double *eta, int id) {
       } else {
         iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
       }
-      int dist=0, yj0=0, yj = 0;
+      // dist defaults to normal, not 0: it is read per OBSERVATION below, but the
+      // FO branch tests it after the loop, so a subject with only dose rows must
+      // still look normal there (0 is "unset" and would trip the FO guard).
+      int dist=rxDistributionNorm, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
       // Pooled table: re-base CMT to the basis of whichever model is about to be
       // read, so its endpoint switch (and rx_yj_) resolve as they would on that
@@ -2013,8 +2016,6 @@ double likInner0(double *eta, int id) {
         kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
         dv0 = getIndDv(ind, kk);
-        yj = getIndYj(ind);
-        _splitYj(&yj, &dist,  &yj0);
         // predSolve reads through the scope (which may need a private buffer);
         // the plain inner solve reads rxode2's slice as before.
         double *lhs = neqGuard ? neqGuard->lhs() : getIndLhs(ind);
@@ -2044,6 +2045,14 @@ double likInner0(double *eta, int id) {
           } else {
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
+          // Read the endpoint's distribution/transform AFTER calc_lhs: rx_yj_ (and
+          // rx_lambda_/rx_hi_/rx_low_) are model assignments, so ind->yj describes THIS
+          // row only once calc_lhs has run.  A single endpoint makes rx_yj_ a constant
+          // installed at init, which hid this; with several it is a CMT switch, so
+          // reading first gave the previous row's endpoint -- and the first observation
+          // the unset 0, i.e. normal (nlmixr2/nlmixr2est#838).
+          yj = getIndYj(ind);
+          _splitYj(&yj, &dist,  &yj0);
 
           f = lhs[op_focei.predOffset]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
