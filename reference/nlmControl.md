@@ -29,7 +29,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -201,12 +201,9 @@ nlmControl(
 
 - sensMethod:
 
-  Method used to compute the ODE parameter sensitivities: \`"default"\`
-  (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
-  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
-  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
-  adjoint (\`s\`) method.
+  Method used to compute the ODE parameter sensitivities. \`"forward"\`
+  uses the classic variational (forward) sensitivity ODEs; \`"default"\`
+  is the same thing.
 
 - useColor:
 
@@ -443,10 +440,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3926134 1.601976  6.462e-06      0.051       0.006  0.03    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3459465 0.5548384  7.213e-06      0.046       0.006 0.025    0.001
 #>              other
-#> elapsed 0.09740361
+#> elapsed 0.08820793
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

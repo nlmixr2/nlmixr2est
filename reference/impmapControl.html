@@ -64,8 +64,11 @@ score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
 <span>  mapIter <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  gamma <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  gammaMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"global"</span>, <span class="st">"individual"</span><span class="op">)</span>,</span>
+<span>  gammaRule <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"target"</span>, <span class="st">"floor"</span><span class="op">)</span>,</span>
 <span>  df <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  auto <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  autoNonmemSparse <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  autoDfPatience <span class="op">=</span> <span class="fl">2L</span>,</span>
 <span>  iscaleMin <span class="op">=</span> <span class="fl">0.1</span>,</span>
 <span>  iscaleMax <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  iaccept <span class="op">=</span> <span class="fl">0.4</span>,</span>
@@ -170,6 +173,54 @@ matrix at the mode.</p></dd>
   These are not comparable; the fit's `$runInfo` says which is in force.</p></dd>
 
 
+<dt id="arg-gammarule">gammaRule<a class="anchor" aria-label="anchor" href="#arg-gammarule"></a></dt>
+<dd><p>How the SHARED (`gammaMethod="global"`) proposal scale is
+  adapted.  Ignored for `gammaMethod="individual"`, which always follows
+  NONMEM's two-sided per-subject rule.</p>
+<p>`"floor"` treats `iaccept` as a one-sided FLOOR on the mean Kish
+  effective-sample fraction: `gamma` stays at its efficient starting value
+  while coverage is healthy and is inflated only when coverage drops below the
+  floor.  It never comes back down.</p>
+<p>`"target"` (default) follows the NM7 Technical Guide, which says `gamma` is
+  "continually adjusted so that xi_i approximates IACCEPT" – adapted BOTH
+  ways, on `xi` rather than the Kish fraction, using the same analytic
+  inversion as the per-subject controller (`gamma * (xi/iaccept)^(2/neta)`,
+  capped 1.25x each way and clamped to `[iscaleMin, iscaleMax]`).</p>
+<p>The two rules settle at different operating points, so they are not
+  interchangeable, and constants tuned against one do not carry over to the
+  other.</p>
+<p>**Measured trade-off** (theophylline, 6 seeds, `isample = 300`, RMSE against
+  an `isample = 6000` reference):</p>
+<p></p><ul><li><p>3 ETAs – `"floor"`: theta RMSE 0.00185, `Omega` RMSE 0.00298, max
+      Pareto k-hat 0.604, 0.33 subjects above 0.7, converged 100<!-- % of seeds. -->
+      `"target"`: theta RMSE 0.00257, `Omega` RMSE 0.00378, max k-hat -0.491,
+      0 subjects above 0.7, converged 0<!-- %. --></p></li>
+<li><p>8 ETAs – `"floor"` never adapts at all (`gamma` pinned at 1.0 with
+      `xi` 1.35, i.e. a proposal far too narrow), because it watches the mean
+      Kish fraction, which stays healthy while `xi` says the proposal is
+      wrong.  `"target"` moves `gamma` to 1.25 and puts `xi` on 0.41.</p></li>
+</ul><p>So `"target"` fixes the tail and is the only rule that reacts at high ETA
+  dimension, but it pays for it: putting `xi` on `iaccept` deliberately widens
+  the proposal (`gamma` 1.79 on the 3-ETA fixture), which costs effective
+  sample size (0.96 to 0.70) and adds Monte-Carlo noise to the objective –
+  enough that the fit often does not meet `ctol` within `nIter`.</p>
+<p>`"target"` is the default: tuned against tuned, it wins every column at 3
+  ETAs and is the only rule that adapts at all at 8 ETAs.  Its cost is on the
+  1-ETA fixture, where it roughly doubles theta RMSE (0.00113 to 0.00224) and
+  takes about twice as many iterations.  That trade follows the same weighting
+  `auto` uses: weights with infinite variance are a correctness problem whose
+  error is unbounded, while the extra Monte-Carlo noise is bounded and
+  measurable.</p>
+<p>Choose `"floor"` for the previous behaviour – a proposal left at its
+  efficient starting value while coverage is healthy.  It is also what the
+  tail-machinery tests pin, because `"target"` repairs the tail itself and
+  leaves the `df` ladder nothing to fix.</p>
+<p>**The tuned constants travel with the rule.**  Selecting a rule also selects
+  its tuned defaults (`nConvWindow` 20 for `"target"`, 10 for `"floor"`), so
+  switching to the NONMEM method does not silently run NONMEM's law on the
+  other rule's tuning.  An explicitly supplied value always wins.</p></dd>
+
+
 <dt id="arg-df">df<a class="anchor" aria-label="anchor" href="#arg-df"></a></dt>
 <dd><p>Degrees of freedom of the importance-sampling proposal (NONMEM
   `DF`).  `0` (default) uses a multivariate **normal** proposal; any value
@@ -192,10 +243,13 @@ matrix at the mode.</p></dd>
 <dd><p>NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
   freedom, the sample count and the acceptance target **per subject** rather
   than applying one global setting to everybody.</p>
-<p>* **`df`** – a subject whose observation count is below the number of
-    random effects, or any subject when the model is not transformably
-    normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
-    ("fewer data points than there are ETAs ... or data are categorical").
+<p>* **`df`** – any subject gets a heavy-tailed t proposal when the model is
+    not transformably normal, and any subject whose Pareto k-hat reports tail
+    failure gets one on that evidence.  The tutorial's other trigger, "fewer
+    data points than there are ETAs", is **not** applied on its own – see
+    `autoNonmemSparse`.  An escalation that fails to improve k-hat over two
+    iterations is withdrawn, since a heavy tail the data creates is not
+    repairable by proposal shape.
   * **`isample`** – the total sample budget (`isample * nsub`) is
     reallocated toward subjects whose effective-sample fraction is lowest,
     the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
@@ -204,7 +258,7 @@ matrix at the mode.</p></dd>
     draws (see `df`).
   * **`iaccept`** – lowered to 0.2 for the same sparse/categorical
     subjects, per the tutorial.</p>
-<p>The concrete values (`df = 4`, the `nobs &lt; neta` test, the budget
+<p>The concrete values (the `df` ladder, the k-hat thresholds, the budget
   reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
   `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
   documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
@@ -214,28 +268,63 @@ matrix at the mode.</p></dd>
   `fit$env$impNsampleInd` and `fit$env$impIacceptInd`.</p>
 <p>**Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
   behaviour of the importance weights and the accuracy of `Omega`, at some
-  cost in Monte-Carlo noise on the objective.  On theophylline, against a
-  reference computed at `isample = 20000` (which agrees to 0.0003 across
-  Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+  cost in Monte-Carlo noise on the objective.  On theophylline with three
+  ETAs – a one-ETA model has no tail failure to fix, so it shows nothing
+  either way – against a reference computed at `isample = 8000`, over 8
   seeds:</p>
-<p></p><ul><li><p>`auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
-      objective RMSE 0.0315, `Omega` RMSE 0.00247</p></li>
-<li><p>`auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
-      objective RMSE 0.0376, `Omega` RMSE 0.00198</p></li>
-</ul><p>So `auto` removes the tail failure and estimates `Omega` about 20<!-- % more -->
-  accurately, for about 19<!-- % more Monte-Carlo noise on the objective.  It is -->
+<p></p><ul><li><p>`auto = FALSE`: max Pareto k-hat 0.941, 2.38 subjects above 0.7;
+      objective RMSE 0.0113, `Omega` RMSE 0.00406</p></li>
+<li><p>`auto = TRUE`: max Pareto k-hat 0.571, 0.25 subjects above 0.7;
+      objective RMSE 0.0165, `Omega` RMSE 0.00301</p></li>
+</ul><p>So `auto` removes the tail failure and estimates `Omega` about 26<!-- % more -->
+  accurately, for about 46<!-- % more Monte-Carlo noise on the objective.  It is -->
   on by default because weights with infinite variance are a correctness
   problem – their error is unbounded in the worst case – whereas the extra
-  noise is a bounded, measurable cost.</p>
+  noise is a bounded, measurable cost.  Setting `df` globally gives a better
+  objective still on a model that is uniformly heavy-tailed, but costs 75<!-- % -->
+  more objective RMSE on one that is not, which is why it is not the default.</p>
 <p>Set `auto = FALSE` to recover the previous behaviour exactly (that path
   remains bit-identical to earlier versions), which is worth doing when you
   want the tightest possible objective on a model whose `fit$env$impPsisK`
   values are already comfortably below 0.7.</p></dd>
 
 
+<dt id="arg-autononmemsparse">autoNonmemSparse<a class="anchor" aria-label="anchor" href="#arg-autononmemsparse"></a></dt>
+<dd><p>Apply the NONMEM tutorial's `nobs &lt; neta` trigger
+  unconditionally, so a subject with fewer observations than random effects
+  always gets a t proposal.  `FALSE` (default) leaves such subjects to the
+  Pareto k-hat evidence like any other, and withdraws an escalation that does
+  not improve k-hat within two iterations.</p>
+<p>The default diverges from the tutorial deliberately, on measurement.  On a
+  fixture built to the tutorial's own definition of sparse (2 observations, 3
+  etas), 8 seeds against an `isample = 8000` reference, applying the rule made
+  every number worse – objective RMSE 0.1517 -&gt; 0.2059, `Omega` RMSE 0.02379
+  -&gt; 0.03163, and *more* failing subjects (3.88 -&gt; 4.88).  With fewer
+  observations than random effects the individual posterior is not identified,
+  so the heavy tail is structural and no proposal shape repairs it; the
+  reference itself still reads max k-hat 0.794.</p>
+<p>Set `TRUE` to get the documented NONMEM rule anyway.  NONMEM's own testing
+  is not published and was not done on these models, so someone who measures
+  the opposite on their own problem should be able to have it.</p></dd>
+
+
+<dt id="arg-autodfpatience">autoDfPatience<a class="anchor" aria-label="anchor" href="#arg-autodfpatience"></a></dt>
+<dd><p>Number of consecutive iterations an escalated `df` may
+  fail to improve Pareto k-hat before that escalation is withdrawn and the
+  subject returned to the proposal it had without it.  `0` never withdraws.
+  Withdrawal is final, so escalation and withdrawal cannot oscillate, and it
+  never goes below the `df` the model itself requires – a non-normal endpoint
+  keeps its t proposal.</p>
+<p>A rung is judged against what the subject manages WITHOUT any escalation,
+  measured while it sits there, so deterioration that happens before any
+  escalation is tracked and an escalation is never credited for it.</p></dd>
+
+
 <dt id="arg-iscalemin-iscalemax">iscaleMin, iscaleMax<a class="anchor" aria-label="anchor" href="#arg-iscalemin-iscalemax"></a></dt>
 <dd><p>Lower/upper bounds for the adapted `gamma`
-(NONMEM ISCALE_MIN / ISCALE_MAX).</p></dd>
+(NONMEM ISCALE_MIN / ISCALE_MAX).  Both bounds are reachable under
+`gammaRule="target"`; under `"floor"` `gamma` only ever moves up, so only
+`iscaleMax` can bind.</p></dd>
 
 
 <dt id="arg-iaccept">iaccept<a class="anchor" aria-label="anchor" href="#arg-iaccept"></a></dt>
@@ -525,7 +614,7 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5566fd4801d8&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x560cb0bf60f8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1222,11 +1311,20 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> $gammaMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $gammaRule</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "target"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $df</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $auto</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoNonmemSparse</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoDfPatience</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $iscaleMin</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.1</span>
@@ -1238,7 +1336,7 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.4</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $nConvWindow</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $impSeed</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 42</span>

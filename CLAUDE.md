@@ -131,6 +131,16 @@ Three rules, each of which has caused a real bug:
   symbols by NAME, so the same model can re-resolve to a different dll’s
   `calc_lhs` later in a session. `odeSwapCheckLhsWidth()` probes it;
   skipping the check reads columns nobody wrote.
+- **`OdeSwapScope` is NOT enough on its own – the pool also rebases
+  COMPARTMENT NUMBERS.** `OdeSwapScope` fixes the neq stride;
+  `OdeSwapCmtScope` puts the CMT basis back to the solved model’s. A
+  solve that guards only the stride reads the right columns of the wrong
+  compartment, so a SINGLE-endpoint model looks fine and a
+  MULTI-endpoint one is silently corrupted. Both guards must span the
+  reads, not just the solve. `KNOWN GAP`: `nlmSolveFid`
+  (`src/nlm.cpp:396`) takes `OdeSwapScope` with no `OdeSwapCmtScope`.
+  `likInner0`’s pred fallback is covered (`src/inner.cpp:2004` rebases
+  inside the `calc_lhs` loop).
 
 **Do NOT convert these to the batched/deferred form** – they are correct
 as inline per-individual scopes and were deliberately left that way:

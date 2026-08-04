@@ -65,13 +65,13 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#>  
+#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
-#>  
-#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> covMethod="sa" could not be computed; using the linearized FIM
@@ -108,10 +108,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1270678 3.4905e-05 0.01300498      0.081     0.737 6.777       1.038
+#>            setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.100643 2.8063e-05 0.01700453      0.087     0.272 6.704       0.482
 #>         table compress     other time2 time1
-#> elapsed 0.063    0.136 0.1558923 1.002 1.001
+#> elapsed 0.047     0.13 0.1363244 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

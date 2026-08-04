@@ -33,7 +33,7 @@ n1qn1Control(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
@@ -208,12 +208,9 @@ n1qn1Control(
 
 - sensMethod:
 
-  Method used to compute the ODE parameter sensitivities: \`"default"\`
-  (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
-  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
-  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
-  adjoint (\`s\`) method.
+  Method used to compute the ODE parameter sensitivities. \`"forward"\`
+  uses the classic variational (forward) sensitivity ODEs; \`"default"\`
+  is the same thing.
 
 - calcTables:
 
@@ -349,10 +346,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3967137 1.573341  7.474e-06      0.049       0.007 0.031    0.001
-#>             other
-#> elapsed 0.1079374
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3366438 0.5402377  6.652e-06      0.046       0.006 0.024    0.001
+#>              other
+#> elapsed 0.08811177
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

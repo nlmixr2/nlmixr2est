@@ -20,8 +20,11 @@ impmapControl(
   mapIter = 1L,
   gamma = 1,
   gammaMethod = c("auto", "global", "individual"),
+  gammaRule = c("target", "floor"),
   df = 0,
   auto = TRUE,
+  autoNonmemSparse = FALSE,
+  autoDfPatience = 2L,
   iscaleMin = 0.1,
   iscaleMax = 10,
   iaccept = 0.4,
@@ -131,6 +134,68 @@ impmapControl(
   Kish effective-sample fraction. These are not comparable; the fit's
   \`\$runInfo\` says which is in force.
 
+- gammaRule:
+
+  How the SHARED (\`gammaMethod="global"\`) proposal scale is adapted.
+  Ignored for \`gammaMethod="individual"\`, which always follows
+  NONMEM's two-sided per-subject rule.
+
+  \`"floor"\` treats \`iaccept\` as a one-sided FLOOR on the mean Kish
+  effective-sample fraction: \`gamma\` stays at its efficient starting
+  value while coverage is healthy and is inflated only when coverage
+  drops below the floor. It never comes back down.
+
+  \`"target"\` (default) follows the NM7 Technical Guide, which says
+  \`gamma\` is "continually adjusted so that xi_i approximates IACCEPT"
+  – adapted BOTH ways, on \`xi\` rather than the Kish fraction, using
+  the same analytic inversion as the per-subject controller (\`gamma \*
+  (xi/iaccept)^(2/neta)\`, capped 1.25x each way and clamped to
+  \`\[iscaleMin, iscaleMax\]\`).
+
+  The two rules settle at different operating points, so they are not
+  interchangeable, and constants tuned against one do not carry over to
+  the other.
+
+  \*\*Measured trade-off\*\* (theophylline, 6 seeds, \`isample = 300\`,
+  RMSE against an \`isample = 6000\` reference):
+
+  - 3 ETAs – \`"floor"\`: theta RMSE 0.00185, \`Omega\` RMSE 0.00298,
+    max Pareto k-hat 0.604, 0.33 subjects above 0.7, converged 100
+    \`"target"\`: theta RMSE 0.00257, \`Omega\` RMSE 0.00378, max k-hat
+    -0.491, 0 subjects above 0.7, converged 0
+
+  - 8 ETAs – \`"floor"\` never adapts at all (\`gamma\` pinned at 1.0
+    with \`xi\` 1.35, i.e. a proposal far too narrow), because it
+    watches the mean Kish fraction, which stays healthy while \`xi\`
+    says the proposal is wrong. \`"target"\` moves \`gamma\` to 1.25 and
+    puts \`xi\` on 0.41.
+
+  So \`"target"\` fixes the tail and is the only rule that reacts at
+  high ETA dimension, but it pays for it: putting \`xi\` on \`iaccept\`
+  deliberately widens the proposal (\`gamma\` 1.79 on the 3-ETA
+  fixture), which costs effective sample size (0.96 to 0.70) and adds
+  Monte-Carlo noise to the objective – enough that the fit often does
+  not meet \`ctol\` within \`nIter\`.
+
+  \`"target"\` is the default: tuned against tuned, it wins every column
+  at 3 ETAs and is the only rule that adapts at all at 8 ETAs. Its cost
+  is on the 1-ETA fixture, where it roughly doubles theta RMSE (0.00113
+  to 0.00224) and takes about twice as many iterations. That trade
+  follows the same weighting \`auto\` uses: weights with infinite
+  variance are a correctness problem whose error is unbounded, while the
+  extra Monte-Carlo noise is bounded and measurable.
+
+  Choose \`"floor"\` for the previous behaviour – a proposal left at its
+  efficient starting value while coverage is healthy. It is also what
+  the tail-machinery tests pin, because \`"target"\` repairs the tail
+  itself and leaves the \`df\` ladder nothing to fix.
+
+  \*\*The tuned constants travel with the rule.\*\* Selecting a rule
+  also selects its tuned defaults (\`nConvWindow\` 20 for \`"target"\`,
+  10 for \`"floor"\`), so switching to the NONMEM method does not
+  silently run NONMEM's law on the other rule's tuning. An explicitly
+  supplied value always wins.
+
 - df:
 
   Degrees of freedom of the importance-sampling proposal (NONMEM
@@ -160,22 +225,24 @@ impmapControl(
   the sample count and the acceptance target \*\*per subject\*\* rather
   than applying one global setting to everybody.
 
-  \* \*\*\`df\`\*\* – a subject whose observation count is below the
-  number of random effects, or any subject when the model is not
-  transformably normal, gets a heavy-tailed t proposal. This is the
-  tutorial's trigger ("fewer data points than there are ETAs ... or data
-  are categorical"). \* \*\*\`isample\`\*\* – the total sample budget
-  (\`isample \* nsub\`) is reallocated toward subjects whose
-  effective-sample fraction is lowest, the tutorial's "many ETAs or ...
-  large stochastic fluctuations". It is load-balancing, not a cost
-  increase. Note sample count is deliberately \*not\* driven by Pareto
-  k-hat: a heavy tail is not repairable by more draws (see \`df\`). \*
-  \*\*\`iaccept\`\*\* – lowered to 0.2 for the same sparse/categorical
-  subjects, per the tutorial.
+  \* \*\*\`df\`\*\* – any subject gets a heavy-tailed t proposal when
+  the model is not transformably normal, and any subject whose Pareto
+  k-hat reports tail failure gets one on that evidence. The tutorial's
+  other trigger, "fewer data points than there are ETAs", is \*\*not\*\*
+  applied on its own – see \`autoNonmemSparse\`. An escalation that
+  fails to improve k-hat over two iterations is withdrawn, since a heavy
+  tail the data creates is not repairable by proposal shape. \*
+  \*\*\`isample\`\*\* – the total sample budget (\`isample \* nsub\`) is
+  reallocated toward subjects whose effective-sample fraction is lowest,
+  the tutorial's "many ETAs or ... large stochastic fluctuations". It is
+  load-balancing, not a cost increase. Note sample count is deliberately
+  \*not\* driven by Pareto k-hat: a heavy tail is not repairable by more
+  draws (see \`df\`). \* \*\*\`iaccept\`\*\* – lowered to 0.2 for the
+  same sparse/categorical subjects, per the tutorial.
 
-  The concrete values (\`df = 4\`, the \`nobs \< neta\` test, the budget
-  reallocation rule) are \*\*nlmixr2's choices\*\*. NONMEM does not
-  publish what \`AUTO=1\` picks internally; only the triggers and
+  The concrete values (the \`df\` ladder, the k-hat thresholds, the
+  budget reallocation rule) are \*\*nlmixr2's choices\*\*. NONMEM does
+  not publish what \`AUTO=1\` picks internally; only the triggers and
   \`IACCEPT ~ 0.2\` are documented. Unlike NONMEM's AUTO, which its own
   tutorial warns "may result in lack of stochastic reproducibility",
   this remains seeded and thread-count independent.
@@ -186,30 +253,72 @@ impmapControl(
   \*\*Measured trade-off.\*\* \`auto = TRUE\` (the default) improves the
   \*tail\* behaviour of the importance weights and the accuracy of
   \`Omega\`, at some cost in Monte-Carlo noise on the objective. On
-  theophylline, against a reference computed at \`isample = 20000\`
-  (which agrees to 0.0003 across Gaussian, \`df = 8\` and \`df = 20\`
-  proposals, so it is trustworthy), over 20 seeds:
+  theophylline with three ETAs – a one-ETA model has no tail failure to
+  fix, so it shows nothing either way – against a reference computed at
+  \`isample = 8000\`, over 8 seeds:
 
-  - \`auto = FALSE\`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
-    objective RMSE 0.0315, \`Omega\` RMSE 0.00247
+  - \`auto = FALSE\`: max Pareto k-hat 0.941, 2.38 subjects above 0.7;
+    objective RMSE 0.0113, \`Omega\` RMSE 0.00406
 
-  - \`auto = TRUE\`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
-    objective RMSE 0.0376, \`Omega\` RMSE 0.00198
+  - \`auto = TRUE\`: max Pareto k-hat 0.571, 0.25 subjects above 0.7;
+    objective RMSE 0.0165, \`Omega\` RMSE 0.00301
 
-  So \`auto\` removes the tail failure and estimates \`Omega\` about 20
-  accurately, for about 19 on by default because weights with infinite
+  So \`auto\` removes the tail failure and estimates \`Omega\` about 26
+  accurately, for about 46 on by default because weights with infinite
   variance are a correctness problem – their error is unbounded in the
   worst case – whereas the extra noise is a bounded, measurable cost.
+  Setting \`df\` globally gives a better objective still on a model that
+  is uniformly heavy-tailed, but costs 75 more objective RMSE on one
+  that is not, which is why it is not the default.
 
   Set \`auto = FALSE\` to recover the previous behaviour exactly (that
   path remains bit-identical to earlier versions), which is worth doing
   when you want the tightest possible objective on a model whose
   \`fit\$env\$impPsisK\` values are already comfortably below 0.7.
 
+- autoNonmemSparse:
+
+  Apply the NONMEM tutorial's \`nobs \< neta\` trigger unconditionally,
+  so a subject with fewer observations than random effects always gets a
+  t proposal. \`FALSE\` (default) leaves such subjects to the Pareto
+  k-hat evidence like any other, and withdraws an escalation that does
+  not improve k-hat within two iterations.
+
+  The default diverges from the tutorial deliberately, on measurement.
+  On a fixture built to the tutorial's own definition of sparse (2
+  observations, 3 etas), 8 seeds against an \`isample = 8000\`
+  reference, applying the rule made every number worse – objective RMSE
+  0.1517 -\> 0.2059, \`Omega\` RMSE 0.02379 -\> 0.03163, and \*more\*
+  failing subjects (3.88 -\> 4.88). With fewer observations than random
+  effects the individual posterior is not identified, so the heavy tail
+  is structural and no proposal shape repairs it; the reference itself
+  still reads max k-hat 0.794.
+
+  Set \`TRUE\` to get the documented NONMEM rule anyway. NONMEM's own
+  testing is not published and was not done on these models, so someone
+  who measures the opposite on their own problem should be able to have
+  it.
+
+- autoDfPatience:
+
+  Number of consecutive iterations an escalated \`df\` may fail to
+  improve Pareto k-hat before that escalation is withdrawn and the
+  subject returned to the proposal it had without it. \`0\` never
+  withdraws. Withdrawal is final, so escalation and withdrawal cannot
+  oscillate, and it never goes below the \`df\` the model itself
+  requires – a non-normal endpoint keeps its t proposal.
+
+  A rung is judged against what the subject manages WITHOUT any
+  escalation, measured while it sits there, so deterioration that
+  happens before any escalation is tracked and an escalation is never
+  credited for it.
+
 - iscaleMin, iscaleMax:
 
   Lower/upper bounds for the adapted \`gamma\` (NONMEM ISCALE_MIN /
-  ISCALE_MAX).
+  ISCALE_MAX). Both bounds are reachable under \`gammaRule="target"\`;
+  under \`"floor"\` \`gamma\` only ever moves up, so only \`iscaleMax\`
+  can bind.
 
 - iaccept:
 
@@ -500,7 +609,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5566fd4801d8>
+#> <bytecode: 0x560cb0bf60f8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1197,11 +1306,20 @@ impmapControl()
 #> $gammaMethod
 #> [1] "auto"
 #> 
+#> $gammaRule
+#> [1] "target"
+#> 
 #> $df
 #> [1] 0
 #> 
 #> $auto
 #> [1] TRUE
+#> 
+#> $autoNonmemSparse
+#> [1] FALSE
+#> 
+#> $autoDfPatience
+#> [1] 2
 #> 
 #> $iscaleMin
 #> [1] 0.1
@@ -1213,7 +1331,7 @@ impmapControl()
 #> [1] 0.4
 #> 
 #> $nConvWindow
-#> [1] 10
+#> [1] 20
 #> 
 #> $impSeed
 #> [1] 42

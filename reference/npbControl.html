@@ -58,6 +58,8 @@ are added in a later milestone.</p>
 <span>  muExpand <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="fl">1e-04</span>,</span>
+<span>  <span class="va">gamma</span>,</span>
+<span>  <span class="va">df</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -140,8 +142,20 @@ matching the optimizer convergence tolerance `10^(-sigdig)` at
 `sigdig = 4` (npb has no `sigdig`, so this is not derived from it).</p></dd>
 
 
+<dt id="arg-gamma-df">gamma, df<a class="anchor" aria-label="anchor" href="#arg-gamma-df"></a></dt>
+<dd><p>Declared only so they are REJECTED rather than partially
+matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+formal R bound `gamma = 2` to it and silently turned the assay-error
+optimisation off; `df` is an importance-sampling proposal control a
+nonparametric engine never builds.  Passing either is an error.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Parameters passed to [impmapControl()].</p></dd>
+<dd><p>Parameters passed to [impmapControl()], for the shared FOCEI-family
+scaffolding only.  The importance-sampling controls are **rejected** rather
+than accepted – see [npagControl()] – as are `cycles` and `gammaOptimize`,
+which this signature carries but `npb` does not use.  `impSeed` is rejected
+pointing at `seed`.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -363,7 +377,7 @@ or to Pmetrics NPAG.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5566fd4801d8&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x560cb0bf60f8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1060,11 +1074,20 @@ or to Pmetrics NPAG.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $gammaMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $gammaRule</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "target"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $df</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $auto</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoNonmemSparse</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoDfPatience</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $iscaleMin</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.1</span>
@@ -1076,7 +1099,7 @@ or to Pmetrics NPAG.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.4</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $nConvWindow</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $impSeed</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 42</span>

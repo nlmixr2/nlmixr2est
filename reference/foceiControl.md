@@ -146,7 +146,7 @@ foceiControl(
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   zeroTheta = 0.001,
   boundedTransform = TRUE
 )
@@ -1063,12 +1063,9 @@ foceiControl(
 
 - sensMethod:
 
-  Method used to compute the ODE parameter sensitivities: \`"default"\`
-  (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
-  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
-  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
-  adjoint (\`s\`) method.
+  Method used to compute the ODE parameter sensitivities. \`"forward"\`
+  uses the classic variational (forward) sensitivity ODEs; \`"default"\`
+  is the same thing.
 
 - zeroTheta:
 

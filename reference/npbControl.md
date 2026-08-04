@@ -21,6 +21,8 @@ npbControl(
   muExpand = FALSE,
   cores = NULL,
   rhoend = 1e-04,
+  gamma,
+  df,
   ...
 )
 ```
@@ -105,9 +107,21 @@ npbControl(
   \`sigdig = 4\` (npb has no \`sigdig\`, so this is not derived from
   it).
 
+- gamma, df:
+
+  Declared only so they are REJECTED rather than partially matched.
+  \`gamma\` is a prefix of \`gammaOptimize\`, so without an explicit
+  formal R bound \`gamma = 2\` to it and silently turned the assay-error
+  optimisation off; \`df\` is an importance-sampling proposal control a
+  nonparametric engine never builds. Passing either is an error.
+
 - ...:
 
-  Parameters passed to \[impmapControl()\].
+  Parameters passed to \[impmapControl()\], for the shared FOCEI-family
+  scaffolding only. The importance-sampling controls are
+  \*\*rejected\*\* rather than accepted – see \[npagControl()\] – as are
+  \`cycles\` and \`gammaOptimize\`, which this signature carries but
+  \`npb\` does not use. \`impSeed\` is rejected pointing at \`seed\`.
 
 ## Value
 
@@ -328,7 +342,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5566fd4801d8>
+#> <bytecode: 0x560cb0bf60f8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1025,11 +1039,20 @@ npbControl()
 #> $gammaMethod
 #> [1] "auto"
 #> 
+#> $gammaRule
+#> [1] "target"
+#> 
 #> $df
 #> [1] 0
 #> 
 #> $auto
 #> [1] TRUE
+#> 
+#> $autoNonmemSparse
+#> [1] FALSE
+#> 
+#> $autoDfPatience
+#> [1] 2
 #> 
 #> $iscaleMin
 #> [1] 0.1
@@ -1041,7 +1064,7 @@ npbControl()
 #> [1] 0.4
 #> 
 #> $nConvWindow
-#> [1] 10
+#> [1] 20
 #> 
 #> $impSeed
 #> [1] 42

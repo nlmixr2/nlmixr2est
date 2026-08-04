@@ -55,6 +55,8 @@ support-point knobs are added in a later milestone.</p>
 <span>  dfScan <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span>,</span>
 <span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="fl">1e-04</span>,</span>
+<span>  <span class="va">gamma</span>,</span>
+<span>  <span class="va">df</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -77,12 +79,14 @@ override.</p></dd>
 
 
 <dt id="arg-gammaoptimize">gammaOptimize<a class="anchor" aria-label="anchor" href="#arg-gammaoptimize"></a></dt>
-<dd><p>Use a global assay-error multiplier (gamma) as a per-cycle
+<dd><p>Use a global assay-error multiplier as a per-cycle
 warm start for the overall residual magnitude, folded into the variance-scale
 coefficients (`add`/`prop`/`lnorm`).  The per-endpoint values, the add/prop
 ratio, and the transform/autocorrelation parameters come from
 <code>residOptimize</code>.  Only valid for normal endpoints; censoring and
-transform-both-sides are supported.</p></dd>
+transform-both-sides are supported.  Unrelated to [impmapControl()]'s
+`gamma`, which inflates an importance-sampling proposal's variance and has
+no meaning here.</p></dd>
 
 
 <dt id="arg-residoptimize">residOptimize<a class="anchor" aria-label="anchor" href="#arg-residoptimize"></a></dt>
@@ -155,8 +159,28 @@ likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
 `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).</p></dd>
 
 
+<dt id="arg-gamma-df">gamma, df<a class="anchor" aria-label="anchor" href="#arg-gamma-df"></a></dt>
+<dd><p>Declared only so they are REJECTED rather than partially
+matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+formal R bound `gamma = 2` to it and silently turned the assay-error
+optimisation off; `df` is an importance-sampling proposal control a
+nonparametric engine never builds.  Passing either is an error.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Parameters passed to [impmapControl()].</p></dd>
+<dd><p>Parameters passed to [impmapControl()], for the shared FOCEI-family
+  scaffolding only (the inner MAP problem, mu-referencing, the residual error
+  model, threads).  The importance-sampling controls are **rejected** rather
+  than accepted: `isample`, `df`, `auto`, `iaccept`, `gamma`, `qr`, `sir` and
+  the rest configure a proposal density that a nonparametric engine never
+  builds, so passing one is an error rather than a silent no-op.  Where an np
+  control does the job the message names it (`nIter` -&gt; `cycles`,
+  `ctol` -&gt; `rhoend`).</p>
+<p>Note `gamma` is NOT `gammaOptimize`: `gamma` is impmap's proposal-variance
+  inflation (NONMEM `ISCALE`), while `gammaOptimize` is a global assay-error
+  multiplier on the residual magnitude.  They are unrelated, and `gamma` is a
+  prefix of `gammaOptimize`, so it is rejected explicitly to stop R's partial
+  matching from silently binding one to the other.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -390,7 +414,7 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5566fd4801d8&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x560cb0bf60f8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1087,11 +1111,20 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $gammaMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $gammaRule</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "target"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $df</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $auto</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoNonmemSparse</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $autoDfPatience</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $iscaleMin</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.1</span>
@@ -1103,7 +1136,7 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.4</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $nConvWindow</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $impSeed</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 42</span>

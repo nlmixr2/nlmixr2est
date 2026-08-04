@@ -35,7 +35,7 @@ lbfgsb3cControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", ""),
@@ -222,12 +222,9 @@ lbfgsb3cControl(
 
 - sensMethod:
 
-  Method used to compute the ODE parameter sensitivities: \`"default"\`
-  (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
-  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
-  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
-  adjoint (\`s\`) method.
+  Method used to compute the ODE parameter sensitivities. \`"forward"\`
+  uses the classic variational (forward) sensitivity ODEs; \`"default"\`
+  is the same thing.
 
 - calcTables:
 
@@ -355,9 +352,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.3949056 1.596713  7.354e-06      0.055       0.007  0.03    0.001
+#> elapsed 0.3696986 1.498528  6.362e-06      0.047       0.006 0.027    0.001
 #>              other
-#> elapsed 0.09937392
+#> elapsed 0.09076696
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

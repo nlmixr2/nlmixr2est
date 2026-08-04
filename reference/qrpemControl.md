@@ -251,7 +251,7 @@ qrpemControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5566fd4801d8>
+#> <bytecode: 0x560cb0bf60f8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -948,11 +948,20 @@ qrpemControl()
 #> $gammaMethod
 #> [1] "auto"
 #> 
+#> $gammaRule
+#> [1] "target"
+#> 
 #> $df
 #> [1] 0
 #> 
 #> $auto
 #> [1] TRUE
+#> 
+#> $autoNonmemSparse
+#> [1] FALSE
+#> 
+#> $autoDfPatience
+#> [1] 2
 #> 
 #> $iscaleMin
 #> [1] 0.1
@@ -964,7 +973,7 @@ qrpemControl()
 #> [1] 0.4
 #> 
 #> $nConvWindow
-#> [1] 10
+#> [1] 20
 #> 
 #> $impSeed
 #> [1] 42
