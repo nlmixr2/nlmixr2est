@@ -581,9 +581,17 @@ struct focei_options {
   std::vector<int> impNsampleVec;
   bool impAuto = false;      // AUTO=1: adapt df / isample / iaccept per subject
   bool impAutoNonNormal = false; // model is not transformably normal (categorical etc.)
+  bool impAutoNonmemSparse = false; // apply the tutorial's nobs<neta trigger unconditionally
+  int impAutoDfPatience = 2; // non-improving iterations tolerated before withdrawing an escalation
   // "global" (one shared gamma, inflate-only on the mean Kish ESS fraction) or
   // "individual" (per-subject gamma_i, two-sided on that subject's xi -- NONMEM)
   std::string impGammaMethod = "global";
+  // "floor"  -- iaccept is a one-sided FLOOR on the mean Kish ESS fraction: gamma
+  //             inflates when coverage drops below it and never comes back down.
+  // "target" -- NONMEM's rule: gamma is adjusted BOTH ways so xi approximates
+  //             IACCEPT, using the same analytic inversion the per-subject branch
+  //             uses.  Selected by impmapControl(gammaRule=).
+  std::string impGammaRule = "floor";
   double impIscaleMin = 0.1; // lower bound for adapted gamma
   double impIscaleMax = 10.0;// upper bound for adapted gamma
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
@@ -3160,7 +3168,33 @@ static inline int innerOpt1(int id, int likId) {
   // Use saved Hessian on next opimization.
   fInd->mode=2;
   fInd->uzm =0;
-  if (ISNA(LikInner2(fInd->eta, likId, id))) return 0;
+  // The shi21 steps (etahf/etahr for the eta gradient, etahh for the FD Hessian) are
+  // searched once per subject and then reused, so whichever call comes first fixes them
+  // -- during optimization that is warmZm or an early n1qn1 iterate, at an eta that is
+  // not the one being reported.  foceiOuterFinal zeroes all three so the final objective
+  // is reproducible; do it again here or the optimization re-freezes them before
+  // LikInner2 below recomputes the reported objective.  Without this the objective
+  // depends on how the etas were reached rather than on (theta, eta) alone.
+  if (_finalObfCalc) {
+    if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], op_focei.neta, 0.0);
+    if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], op_focei.neta, 0.0);
+    if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], op_focei.neta, 0.0);
+  }
+  if (ISNA(LikInner2(fInd->eta, likId, id))) {
+    if (!_finalObfCalc) return 0;
+    // Returning 0 makes the caller RESET this subject's etas, so a failure here would let
+    // the final objective disturb the estimates it is reporting on.  The evaluation path
+    // (innerEval's caller) meets the same failure by retrying with the generalized
+    // Cholesky and keeping the etas; do the same, so the two paths recover identically
+    // as well as differencing at the same eta.  Falling back to the step the optimization
+    // settled on would NOT work: the evaluation path has no such step, so the two would
+    // disagree again -- which is exactly the path dependence this is here to remove.
+    int doCholSave = fInd->doChol;
+    fInd->doChol = 0;
+    double lik = LikInner2(fInd->eta, likId, id);
+    fInd->doChol = doCholSave;
+    if (ISNA(lik)) return 0;
+  }
   return 1;
 }
 
@@ -5716,6 +5750,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
     if (foceiO.containsElementNamed("autoNonNormal"))
       op_focei.impAutoNonNormal = as<bool>(foceiO["autoNonNormal"]);
+    if (foceiO.containsElementNamed("autoNonmemSparse"))
+      op_focei.impAutoNonmemSparse = as<bool>(foceiO["autoNonmemSparse"]);
+    if (foceiO.containsElementNamed("autoDfPatience"))
+      op_focei.impAutoDfPatience = as<int>(foceiO["autoDfPatience"]);
     if (foceiO.containsElementNamed("isample")) {
       IntegerVector isv = as<IntegerVector>(foceiO["isample"]);
       op_focei.impNsampleVec.clear();
@@ -5725,6 +5763,8 @@ NumericVector foceiSetup_(const RObject &obj,
     }
     if (foceiO.containsElementNamed("gammaMethod") && TYPEOF(foceiO["gammaMethod"]) == STRSXP)
       op_focei.impGammaMethod = as<std::string>(foceiO["gammaMethod"]);
+    if (foceiO.containsElementNamed("gammaRule") && TYPEOF(foceiO["gammaRule"]) == STRSXP)
+      op_focei.impGammaRule = as<std::string>(foceiO["gammaRule"]);
     if (foceiO.containsElementNamed("iscaleMin")) op_focei.impIscaleMin = as<double>(foceiO["iscaleMin"]);
     if (foceiO.containsElementNamed("iscaleMax")) op_focei.impIscaleMax = as<double>(foceiO["iscaleMax"]);
     if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
@@ -5748,10 +5788,37 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("impOmegaFixedEta"))
       op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
   }
+  // The nonparametric engines are NOT isImpmap, but they do call the shared
+  // M-step helpers: npagOuter runs impMuInterceptStep() (which iterates
+  // op_focei.impMuThetaIdx) and impGetOmegaFixedEta().  R computes both maps for
+  // np in .npFamilyControl (R/npCommon.R), so leaving them inside the isImpmap
+  // block silently discarded them: in a clean session the mu-intercept loop ran
+  // zero times and no eta was reported as omega-fixed, and after an impmap fit in
+  // the SAME session op_focei still held that fit's indices, so np indexed
+  // fullTheta with another model's map.
+  if ((op_focei.isNpag || op_focei.isNpb)) {
+    if (foceiO.containsElementNamed("impMuThetaIdx"))
+      op_focei.impMuThetaIdx = as<IntegerVector>(foceiO["impMuThetaIdx"]);
+    else op_focei.impMuThetaIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impMuEtaIdx"))
+      op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
+    else op_focei.impMuEtaIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
+    if (foceiO.containsElementNamed("impOmegaFixedEta"))
+      op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
+    else op_focei.impOmegaFixedEta = IntegerVector(0);
+  }
   // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
   // population gradient, but is not isImpmap; load the index here too.
-  if (op_focei.isAdvi && foceiO.containsElementNamed("impThetaSensIdx")) {
-    op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+  if (op_focei.isAdvi) {
+    // Clear on absence, like the np branch above: op_focei is a process global,
+    // so without the else an advi fit whose control carries no impThetaSensIdx
+    // silently inherits the previous fit's indices.
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
   }
 
   op_focei.zeroGrad = false;
@@ -9095,6 +9162,10 @@ void foceiFinalizeTables(Environment e){
     e["fullCor"] = getCor(e["cov"]);
     arma::mat cor = as<arma::mat>(e["fullCor"]);
     cor.diag().ones();
+    // guard against tiny numerical asymmetry -- the covariance this is derived from is
+    // assembled elementwise (and may come from an FD sandwich), so the two triangles can
+    // differ in the last bits and eig_sym then warns.  Same guard as the FOCEi Hessian.
+    cor = 0.5 * (cor + cor.t());
     arma::vec eigval;
     arma::mat eigvec;
     eig_sym(eigval, eigvec, cor);
@@ -9123,7 +9194,7 @@ void foceiFinalizeTables(Environment e){
     arma::vec eigval;
     arma::mat eigvec;
 
-    eig_sym(eigval, eigvec, cov);
+    eig_sym(eigval, eigvec, arma::symmatu(cov));   // guard against tiny numerical asymmetry
     e["eigenCov"] = eigval;
     e["eigenVecCov"] = eigvec;
     unsigned int k=0;
@@ -9678,6 +9749,8 @@ double impIaccept() { return op_focei.impIaccept; }
 double impDf() { return op_focei.impDf; }
 bool impAutoEnabled() { return op_focei.impAuto; }
 bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
+bool impAutoNonmemSparse() { return op_focei.impAutoNonmemSparse; }
+int  impAutoDfPatience() { return op_focei.impAutoDfPatience; }
 void impNsampleVecGet(std::vector<int>& out) { out = op_focei.impNsampleVec; }
 
 // Observation count for subject id -- AUTO uses nobs/neta to decide whether a
@@ -9689,6 +9762,9 @@ int impNobs(int id) {
 // TRUE when the per-subject (NONMEM) gamma controller is selected.  Queried once
 // per EM iteration, not in the sampling loop, so the string compare is free.
 bool impGammaIndividual() { return op_focei.impGammaMethod == "individual"; }
+// TRUE when the shared ("global") scale tracks xi -> iaccept two-sided (NONMEM),
+// FALSE for the one-sided Kish-ESS floor.  Queried once per EM iteration.
+bool impGammaRuleTarget() { return op_focei.impGammaRule == "target"; }
 double impIscaleMin() { return op_focei.impIscaleMin; }
 double impIscaleMax() { return op_focei.impIscaleMax; }
 int impNconvWindow() { return op_focei.impNconvWindow; }

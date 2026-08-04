@@ -47,7 +47,7 @@ nlminbControl(
   gradTo = 1,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   calcTables = TRUE,
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),
@@ -223,12 +223,9 @@ sd, c = power exponent (1 in the proportional case).}
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
 
-\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
-`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
-(`s`) method.}
+`"default"` is the same thing.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

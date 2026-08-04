@@ -35,8 +35,14 @@ nmTest({
   test_that("the AGQ branch with a single node reproduces the FOCEI branch exactly", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
+    ## sigdig=6, NOT the default: the identity below holds only up to this fit's eta
+    ## stationarity residual, so the assertion is only meaningful at a solve accurate
+    ## enough to make that residual smaller than the tolerance.  Measured max|rel| of
+    ## Ragq vs Rfocei by requested digits -- 7.9e-3 (sigdig=3, the default), 4.7e-4
+    ## (4), 2.5e-6 (6); at 8 the augmented solve declines.  A structural break in the
+    ## collapse is O(1) and stays caught with ~40x margin at sigdig=6.
     fit <- suppressMessages(nlmixr(.agq_cov_mod, nlmixr2data::theo_sd, "focei",
-                                   foceiControl(print = 0L, covMethod = "")))
+                                   foceiControl(print = 0L, covMethod = "", sigdig = 6)))
     ui <- rxode2::rxUiDecompress(fit$finalUi)
     dirs <- paste0("ETA_", 1:3, "_")
     am <- .foceiAnalyticAugModelDirs(ui, dirs)

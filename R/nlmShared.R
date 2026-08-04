@@ -81,15 +81,6 @@
   if (any(names(.f) == "thetaGrad")) {
     .env$predOnly <- .f$predOnly
     nlmixr2global$nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
-    ## sensMethod="adjoint": the thetaGrad model carries the rx__adjFX_* sweep
-    ## lhs, so it must be solved with the matching in-engine discrete-adjoint
-    ## (s) method.  nlm.cpp calls rxSolve_ directly (bypassing rxSolve's method
-    ## auto-upgrade), so set the s-method on rxControl here for every nlm-family
-    ## method that consumes thetaGrad.
-    .adj <- .nlmAdjointResolve(ui)
-    if (isTRUE(.adj$useAdjoint)) {
-      .env$rxControl$method <- .adj$sMethodInt
-    }
   } else {
     nlmixr2global$nlmEnv$model <- .env$predOnly <- .f$predOnly
   }
@@ -97,8 +88,8 @@
   ## history is recorded and interpolated (also by the forward-sensitivity /
   ## jump-sensitivity states).  nlm.cpp calls rxSolve_ directly, bypassing
   ## rxSolve()'s hasDelay enforcement, so replicate it here: dense dop853 (which
-  ## needs no analytic Jacobian) unless a discrete-adjoint method (>=200) is
-  ## already selected -- those record their own dense history.
+  ## needs no analytic Jacobian) unless an in-engine sensitivity method (>=200)
+  ## is already selected -- those record their own dense history.
   if (isTRUE(rxode2::rxModelVars(nlmixr2global$nlmEnv$model)$flags[["hasDelay"]] == 1L)) {
     .env$rxControl$dense <- TRUE
     if (is.null(.env$rxControl$method) || .env$rxControl$method < 200L) {

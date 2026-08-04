@@ -5,6 +5,17 @@
 # estimates the tail index of the weight distribution and can.  These tests pin
 # that the estimator actually recovers a known tail index, because a biased
 # diagnostic is worse than no diagnostic.
+# NOTE ON gammaRule.  These tests exercise the TAIL machinery -- the t proposal
+# (df), Pareto k-hat, and AUTO's df escalation -- all of which need a Gaussian
+# proposal that actually FAILS in order to have anything to repair.  The default
+# rule is now "target", which drives xi onto iaccept and in doing so repairs the
+# tail itself: on the 3-ETA theophylline fixture it takes max k-hat from 0.836 to
+# about -0.4, leaving these premises unsatisfiable.  So they pin
+# gammaRule = "floor" deliberately.
+#
+# That overlap is a real consequence of the default change, not a test artifact:
+# with "target" as the default the df/AUTO tail machinery is a secondary safety
+# net rather than the primary remedy.
 nmTest({
 
   .rgpd <- function(n, k) ((1 - stats::runif(n))^(-k) - 1) / k
@@ -70,7 +81,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .f <- suppressWarnings(nlmixr2(.m, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 6L,
-                                                 isample = 300L, covMethod = "")))
+                                                 isample = 300L, covMethod = "", gammaRule = "floor")))
     .E <- .f$env
     expect_equal(length(.E$impPsisK), length(unique(.d$ID)))
     # all three diagnostics are present and per-subject
@@ -91,14 +102,21 @@ nmTest({
     # This is the premise for the t-distribution proposal (NONMEM's DF): the
     # fix has to make the proposal's tails HEAVIER than the target's, which
     # widening a Gaussian by gamma cannot do.
+    # THREE etas, and auto = FALSE.  One eta on theophylline has no tail failure
+    # left to see (max k-hat about -1.8), and `auto` is on by default -- it would
+    # escalate the proposal and repair the very thing this test exists to
+    # observe.  Both matter: the fixture has to fail, and the failure has to be
+    # left alone.
     .m <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
-      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45
+           eta.ka ~ 0.3; eta.cl ~ 0.1; eta.v ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
              linCmt() ~ add(add.sd)})
     }
     .f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, "impmap",
                                    impmapControl(print = 0L, nIter = 6L,
-                                                 isample = 300L, covMethod = "")))
+                                                 isample = 300L, covMethod = "",
+                                                 auto = FALSE, gammaRule = "floor")))
     .E <- .f$env
     .bad <- which(.E$impPsisK > 0.7)
     # at least one subject is in the unreliable regime
@@ -109,24 +127,47 @@ nmTest({
     expect_true(all((.E$impNeff / .E$impNsample)[.bad] > 0.9))
   })
 
-  test_that("the k-hat alarm persists as isample grows (not a small-tail artifact)", {
-    # A genuinely heavy tail is revealed MORE by extra samples; small-sample
-    # noise would wash out.  Measured: max k-hat 2.49 (isample 300) -> 3.31
-    # (1000) -> 3.76 (4000).
+  test_that("a STRUCTURAL tail failure persists as isample grows; noise washes out", {
+    # The original form of this test asserted max k-hat > 1 at isample 300 AND
+    # 2000 on one-eta theophylline, citing 2.49 -> 3.31 -> 3.76 as k-hat GROWING
+    # with more draws.  That growth was itself a symptom of the pooling bug: a
+    # well-behaved sampler improves with more draws, it does not degrade.  The
+    # claim worth testing now is the discriminating one -- a tail failure the
+    # DATA creates survives more sampling, while one that is sampling noise does
+    # not.
     skip_on_cran()
     .m <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
-      model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45
+           eta.ka ~ 0.3; eta.cl ~ 0.1; eta.v ~ 0.1; add.sd <- 0.7})
+      model({ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
              linCmt() ~ add(add.sd)})
     }
-    .maxK <- function(ns) {
-      .f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, "impmap",
+    # nobs < neta: two observations against three etas, so the individual
+    # posterior is not identified and the heavy tail is a property of the model,
+    # not of the proposal.
+    set.seed(42)
+    .sparse <- do.call(rbind, lapply(split(nlmixr2data::theo_sd,
+                                           nlmixr2data::theo_sd$ID), function(d) {
+      .obs <- d[d$EVID == 0, , drop = FALSE]
+      rbind(d[d$EVID != 0, , drop = FALSE],
+            .obs[sort(sample(seq_len(nrow(.obs)), 2L)), , drop = FALSE])
+    }))
+    .maxK <- function(dat, ns) {
+      .f <- suppressWarnings(nlmixr2(.m, dat, "impmap",
                                      impmapControl(print = 0L, nIter = 5L,
-                                                   isample = ns, covMethod = "")))
+                                                   isample = ns, covMethod = "",
+                                                   auto = FALSE, gammaRule = "floor")))
       max(.f$env$impPsisK)
     }
-    expect_gt(.maxK(300L), 1.0)
-    expect_gt(.maxK(2000L), 1.0)
+    # structural: still unreliable at 300 and at 2000 (and the isample = 8000
+    # reference for this fixture reads 0.794, i.e. it never clears)
+    expect_gt(.maxK(.sparse, 300L), 0.7)
+    expect_gt(.maxK(.sparse, 2000L), 0.7)
+    # and the contrast: on data that DOES identify each subject, an apparent
+    # failure at 300 washes out by 2000 -- which is why "k-hat > 0.7 once" is
+    # not on its own evidence of a structural problem
+    expect_gt(.maxK(nlmixr2data::theo_sd, 300L), 0.7)
+    expect_lt(.maxK(nlmixr2data::theo_sd, 2000L), 0.7)
   })
 
 })

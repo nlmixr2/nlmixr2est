@@ -334,12 +334,168 @@
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
 
+# Importance-sampling controls that npag/npb ACCEPT (they are impmapControl
+# arguments) but never read.  There is no proposal density under a nonparametric
+# engine, so none of these can mean anything; silently ignoring them let someone
+# tune a fit with knobs that did nothing.  See plans/np-impmap-control-surface.md.
+.npInertImpCtl <- c("isample", "gamma", "gammaMethod", "df", "auto",
+                    "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
+                    "iscaleMin", "iscaleMax", "iaccept", "mapIter",
+                    "qr", "qrShift", "qrRefresh", "sir", "sirSample")
+
+# Inert too, but with a real np counterpart worth naming.  npag has no seed of
+# its own -- its grid is Sobol-deterministic -- so impSeed only remaps under npb.
+.npRemapImpCtl <- c(nIter = "cycles", ctol = "rhoend", nConvWindow = "cycles")
+.npRemapImpCtlNpb <- c(.npRemapImpCtl, impSeed = "seed")
+
+# npbControl carries these as FORMALS and documents them unused for npb.
+# list(), NOT c(): c(100L, FALSE) coerces to numeric, so gammaOptimize would be
+# compared as 0 and all.equal(FALSE, 0) fails on mode -- rejecting every npb
+# control that carried its own default.
+.npbInertFormals <- list(cycles = 100L, gammaOptimize = FALSE)
+
+# impmapControl()'s defaults, computed once.  Validation compares VALUES against
+# these rather than trying to detect a "rebuild": a control being rebuilt carries
+# the constructor's own defaults, while a caller asking for something carries a
+# value that differs.  An earlier version keyed on the presence of an internal
+# field (impCov) instead, which was bypassable in both directions --
+# npagControl(isample = 500, impCov = TRUE) skipped validation entirely, and a
+# pre-built impmapControl(isample = 500) handed to npag did too.
+# Fields that .impmapFamilyFit RESOLVES or STAMPS onto a RUNTIME control, so
+# their value on a real fit's control legitimately differs from what
+# impmapControl() would return: gammaMethod is resolved from "auto" to
+# "global"/"individual", and autoNonNormal/gammaMethodUser are stamped and are
+# not impmapControl() arguments at all.  Comparing those against the constructor
+# defaults rejected a completed fit's own control on re-validation.  For these,
+# only a name the caller actually TYPED counts.
+.npRuntimeStamped <- c("gammaMethod", "gammaMethodUser", "autoNonNormal")
+
+.npImpDefEnv <- new.env(parent = emptyenv())
+.npImpDefaults <- function() {
+  if (is.null(.npImpDefEnv$d)) .npImpDefEnv$d <- impmapControl()
+  .npImpDefEnv$d
+}
+
+#' Literal argument names of a call, defeating partial matching.
+#'
+#' `match.call()` normalises partial matching away, so a caller writing `gamma`
+#' would arrive as `gammaOptimize`.  `sys.call()` keeps what was typed.  This
+#' only sees a DIRECT call -- through a forwarding wrapper the names live in the
+#' wrapper's call, which is why `gamma`/`df` are also declared as explicit inert
+#' formals on the constructors (an exact match beats a partial one, on every
+#' path).
+#' @param sc the caller's own `sys.call()`
+#' @return character vector of supplied argument names
+#' @noRd
+.npCallNames <- function(sc) {
+  if (is.null(sc)) return(character(0))
+  .n <- names(as.list(sc)[-1L])
+  if (is.null(.n)) character(0) else .n[nzchar(.n)]
+}
+
+#' Reject importance-sampling controls a nonparametric engine cannot use
+#'
+#' @param vals named list of supplied control values (from `...`, a control
+#'   object, or a raw list).  Names with no value -- e.g. literal names
+#'   recovered from `sys.call()` -- may be supplied as `NA`.
+#' @param engine estimation string; the mu/irls sugar (`mnpag`, `inpb`, ...) is
+#'   normalised, so `impSeed` remaps under every npb flavour.
+#' @return invisible(TRUE), or throws
+#' @noRd
+.npAssertImpCtl <- function(vals, engine = "npag", explicit = character(0)) {
+  if (length(vals) == 0L && length(explicit) == 0L) return(invisible(TRUE))
+  if (length(vals) && is.null(names(vals))) return(invisible(TRUE))
+  .isNpb <- grepl("npb$", engine)
+  .map <- if (.isNpb) .npRemapImpCtlNpb else .npRemapImpCtl
+  .def <- .npImpDefaults()
+  # A name only counts as "asked for" when its value differs from the default
+  # the constructor would have produced anyway.
+  # A name TYPED by the caller counts however it was valued -- asking for
+  # mapIter = 1 is still asking for something inapplicable, even though 1 is its
+  # default.  A name that only arrived because a control object carries it counts
+  # solely when its value differs from what the constructor would have produced.
+  .asked <- function(n) {
+    if (n %in% explicit) return(TRUE)
+    # resolved/stamped at fit time -- a differing value is the fit's doing, not
+    # the caller's, so only an explicitly typed name counts (handled above)
+    if (n %in% .npRuntimeStamped) return(FALSE)
+    if (!n %in% names(vals)) return(FALSE)
+    .v <- vals[[n]]
+    if (length(.v) == 1L && is.atomic(.v) && is.na(.v)) return(TRUE)  # name-only
+    if (!n %in% names(.def)) return(TRUE)
+    !isTRUE(all.equal(.v, .def[[n]]))
+  }
+  .nms <- Filter(.asked, union(names(vals), explicit))
+  .bad <- intersect(.nms, .npInertImpCtl)
+  if (!.isNpb) .bad <- union(.bad, intersect(.nms, "impSeed"))
+  .remap <- intersect(.nms, names(.map))
+  # npb's own inert formals reach here too, so a raw list gets the same check
+  .npbBad <- character(0)
+  if (.isNpb) {
+    .npbBad <- Filter(function(n) {
+      n %in% explicit ||
+        (n %in% names(vals) && !isTRUE(all.equal(vals[[n]], .npbInertFormals[[n]])))
+    }, union(intersect(names(vals), names(.npbInertFormals)),
+             intersect(explicit, names(.npbInertFormals))))
+  }
+  if (length(.bad) == 0L && length(.remap) == 0L && length(.npbBad) == 0L) {
+    return(invisible(TRUE))
+  }
+  .msg <- character(0)
+  if (length(.bad)) {
+    .msg <- c(.msg, paste0("'", paste(.bad, collapse="', '"),
+                           "' configure the importance-sampling proposal, which est=\"",
+                           engine, "\" does not build"))
+  }
+  if (length(.remap)) {
+    .msg <- c(.msg, paste0("use ",
+                           paste(paste0("'", unname(.map[.remap]), "'"), collapse=", "),
+                           " instead of '", paste(.remap, collapse="', '"), "'"))
+  }
+  if (length(.npbBad)) {
+    .msg <- c(.msg, paste0("'", paste(.npbBad, collapse="', '"),
+                           "' is not used by est=\"", engine, "\""))
+  }
+  stop(paste(.msg, collapse="; "), call. = FALSE)
+}
+
+#' Reject inert controls that actually TOOK EFFECT on a built control
+#'
+#' The name-based check cannot see everything: R partial-matches `isampl` to
+#' `isample` inside `impmapControl()`, and a forwarding wrapper hides the literal
+#' names from `sys.call()`.  Checking the RESULT closes both, and is the more
+#' honest question anyway -- an inert control matters exactly when it changed
+#' something.  A value equal to the default changed nothing, so there is nothing
+#' to report.
+#' @param ctl a control built by impmapControl()
+#' @param engine estimation string
+#' @return invisible(TRUE), or throws
+#' @noRd
+.npAssertBuilt <- function(ctl, engine = "npag") {
+  .def <- .npImpDefaults()
+  .chk <- setdiff(union(.npInertImpCtl, names(.npRemapImpCtlNpb)), .npRuntimeStamped)
+  .bad <- Filter(function(n) {
+    n %in% names(ctl) && n %in% names(.def) &&
+      !isTRUE(all.equal(ctl[[n]], .def[[n]]))
+  }, .chk)
+  # sirSample is DERIVED from isample, so it always travels with it; naming both
+  # is noise when isample is already the thing that was set
+  if (length(.bad) > 1L && "isample" %in% .bad) .bad <- setdiff(.bad, "sirSample")
+  if (length(.bad) == 0L) return(invisible(TRUE))
+  stop(paste0("'", paste(.bad, collapse = "', '"),
+              "' configure the importance-sampling proposal, which est=\"",
+              engine, "\" does not build"), call. = FALSE)
+}
+
 # Validate a control for a nonparametric engine.  The impmap validator rebuilds
 # the control via do.call(impmapControl, .), which rejects the npag-only fields
 # (points/cycles/gammaOptimize/est), so strip them first, then re-attach.
 #' @noRd
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
+  # raw lists reach here without passing through npagControl()/npbControl(), so
+  # this is the path a bare list(isample = 500) would otherwise slip through
+  if (is.list(.in)) .npAssertImpCtl(.in, est)
   .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
               residOptimize = "alternate", muExpand = FALSE,
               gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,

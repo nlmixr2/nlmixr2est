@@ -745,19 +745,14 @@
   }
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  ## FOCE (interaction = 0) is OUT OF SCOPE for the analytic outer gradient.
-  ##
-  ## Its frozen-R0 EBE Newton cannot reach its score target at the default solve
-  ## precision -- |S| is assembled from the ODE solve and so floors around 5e-3 at
-  ## rtol = 1e-3, against a 1e-9 target (nlmixr2/nlmixr2est#836; a backtracking line
-  ## search was implemented and ruled out overshoot as the cause).  Attempting it anyway
-  ## costs a full augmented population solve per outer iteration that is then thrown away
-  ## before falling back to finite differences, so declining up front is strictly faster
-  ## and gives the same numbers.
-  ##
-  ## Note this is reached only for the Gaussian FOCE path: an ll()/generalized endpoint
-  ## also reports interaction = 0 but returns above, and is unaffected.
-  if (interaction == 0L) return(NULL)
+  ## FOCE (interaction = 0) was declined here up front: its frozen-R0 EBE Newton could
+  ## not reach the 1e-9 score target at the default solve, |S| flooring near 5e-3 at
+  ## rtol = 1e-3 (nlmixr2/nlmixr2est#836).  That was measured BEFORE the shared ODE solve
+  ## pool was fixed (#839), where a peer solve run under another slot's event-sensitivity
+  ## shape corrupted the scratch the score is assembled from.  The gate is lifted so FOCE
+  ## goes through gradPooledCore's isFoce/foceEbeNewton path like any other shape; a
+  ## Newton that still cannot converge declines per fit at its own site rather than
+  ## being refused for the whole method.
   nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
   # agqControl() forces interaction=TRUE, so only the FOCEI (f,R) kernel has a quadrature
   # form -- a FOCE-AGQ combination cannot arise.
@@ -952,10 +947,17 @@
     ## yields a gradient that runs (nAnalyticGradDirect > 0, "grad: analytic") but does
     ## NOT verify -- on a 2-endpoint warfarin ll() model, analytic vs central differences
     ## was off by 7.6x on tcl and ~370x on add.pd.  So the mechanism works and the
-    ## mathematics does not; the per-endpoint log-density contributions are evidently not
-    ## being combined the way the single-endpoint core assumes.  Unlike the GAUSSIAN
-    ## multi-endpoint case (which the R route already served, and which the pooled route
-    ## reproduces bit-identically), there is no shipping reference here to fall back on.
+    ## mathematics does not.  Unlike the GAUSSIAN multi-endpoint case (which the R route
+    ## already served, and which the pooled route reproduces bit-identically), there is
+    ## no shipping reference here to fall back on.
+    ##
+    ## Re-measured after the solve-pool fix (#839) and the multi-endpoint pooling / CMT
+    ## re-basing: tcl is now correct (7.6x -> 0.36%), but add.pd is still ~373x off and
+    ## tka/tv/add.pk are 4.2x/1.9x/2.5x off.  What is right is tcl (the only structural
+    ## theta carrying an eta) plus the PD-only algebraic thetas; what is wrong is the
+    ## non-eta structural thetas and the per-endpoint RESIDUAL thetas.  That is direction
+    ## bookkeeping, not pooling -- see the thPos/gMap note in .foceiGradPooledSetup, which
+    ## is single-endpoint-shaped.  nlmixr2/nlmixr2est#838.
     if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) return(FALSE)  # Gaussian -> (f,R) path
     # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
     # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2

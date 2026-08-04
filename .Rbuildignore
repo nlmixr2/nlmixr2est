@@ -113,3 +113,11 @@ BinaryFiles$
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$
 ^vignettes/$
+# Generated test fixtures.  helper-zzz-fits.R prefits ~10 models and helper-gradref.R
+# caches numeric references; both are keyed on a hash of R/ and src/ and regenerate on
+# first use, so they are local build artifacts, not package content.  They are
+# gitignored, but R CMD build takes whatever is in the working tree -- 28MB of .rds in
+# a 29MB tarball, entirely from whatever the last local test run happened to leave.
+# The fixtures CRAN's own checks read are the CHECKED-IN csv references
+# (npag/pmetrics_reference.csv, npag/ipm/burke-golden.csv) and are kept.
+^tests/testthat/fixtures/.*\.rds$

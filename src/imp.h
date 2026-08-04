@@ -41,7 +41,10 @@ void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = us
 int impNobs(int id);      // observation count for subject id (AUTO's sparsity test)
 bool impAutoEnabled();    // AUTO=1 equivalent: per-subject df / isample / iaccept
 bool impAutoNonNormal();  // model not transformably normal (tutorial's "categorical" trigger)
+bool impAutoNonmemSparse(); // apply the tutorial's nobs<neta df trigger unconditionally
+int  impAutoDfPatience();   // non-improving iterations tolerated before withdrawing df
 bool impGammaIndividual();// TRUE for gammaMethod="individual" (per-subject NONMEM gamma_i)
+bool impGammaRuleTarget();// TRUE for gammaRule="target" (two-sided xi -> iaccept)
 double impIscaleMin();    // lower bound for the adapted gamma
 double impIscaleMax();    // upper bound for the adapted gamma
 int impNconvWindow();     // trailing-iteration window for the convergence check

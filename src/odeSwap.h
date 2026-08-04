@@ -32,6 +32,7 @@
 // component removes.
 #include "inner.h"
 #include <vector>
+#include <utility>
 #include <string>
 
 // Registered peer solvers.  Add a slot here and register it -- nothing else in
@@ -122,8 +123,10 @@ struct OdeSwapEsBatch {
   ~OdeSwapEsBatch();
   bool armed() const { return armed_; }
 private:
+  bool saveLive();
   int prevSlot_;      // previous ROLE
-  int prevSlotIdx_;   // previous SLOT -- what restoring actually needs
+  int prevSlotIdx_;   // previous SLOT -- fallback when the snapshot is unavailable
+  std::vector<char> prevShape_;   // the shape live on entry (rxode2EventSensShapeSave)
   bool armed_;
   OdeSwapEsBatch(const OdeSwapEsBatch &);
   OdeSwapEsBatch &operator=(const OdeSwapEsBatch &);
@@ -191,6 +194,8 @@ private:
   int _delta = 0;
   int _nPhys = 0;
   void shift(int by);
+  void unshift();                                  // restore what shift() overwrote
+  std::vector<std::pair<int,int> > _saved;         // (row, pool-basis CMT) shift() wrote
 };
 const char *odeSwapName(int slot);
 SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
@@ -425,6 +430,5 @@ long odeSwapPooledSolveN();    // completed pooled outer solves; survives teardo
 void odeSwapNotePooledSolve();
 long odeSwapPinCalledN();
 int  odeSwapPinDeny();   // cumulative pins; survives teardown, unlike odeSwapPinned()
-void odeSwapResetCounters();
 
 #endif // __ODESWAP_H__

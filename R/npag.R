@@ -45,12 +45,14 @@
 #'   the auto size floors at 2028 and scales up per added eta.  Supply an integer to
 #'   override.
 #' @param cycles Maximum adaptive-grid cycles.
-#' @param gammaOptimize Use a global assay-error multiplier (gamma) as a per-cycle
+#' @param gammaOptimize Use a global assay-error multiplier as a per-cycle
 #'   warm start for the overall residual magnitude, folded into the variance-scale
 #'   coefficients (`add`/`prop`/`lnorm`).  The per-endpoint values, the add/prop
 #'   ratio, and the transform/autocorrelation parameters come from
 #'   \code{residOptimize}.  Only valid for normal endpoints; censoring and
-#'   transform-both-sides are supported.
+#'   transform-both-sides are supported.  Unrelated to [impmapControl()]'s
+#'   `gamma`, which inflates an importance-sampling proposal's variance and has
+#'   no meaning here.
 #' @param residOptimize How to estimate the residual-error thetas (every endpoint's
 #'   `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support points
 #'   and weights held fixed, using bounded \code{minqa::bobyqa} on the EXTENDED LEAST
@@ -100,7 +102,25 @@
 #'   `bobyqa` that fits the residual-error thetas each cycle.  A fixed default of
 #'   `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at
 #'   `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).
-#' @param ... Parameters passed to [impmapControl()].
+#' @param gamma,df Declared only so they are REJECTED rather than partially
+#'   matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+#'   formal R bound `gamma = 2` to it and silently turned the assay-error
+#'   optimisation off; `df` is an importance-sampling proposal control a
+#'   nonparametric engine never builds.  Passing either is an error.
+#' @param ... Parameters passed to [impmapControl()], for the shared FOCEI-family
+#'   scaffolding only (the inner MAP problem, mu-referencing, the residual error
+#'   model, threads).  The importance-sampling controls are **rejected** rather
+#'   than accepted: `isample`, `df`, `auto`, `iaccept`, `gamma`, `qr`, `sir` and
+#'   the rest configure a proposal density that a nonparametric engine never
+#'   builds, so passing one is an error rather than a silent no-op.  Where an np
+#'   control does the job the message names it (`nIter` -> `cycles`,
+#'   `ctol` -> `rhoend`).
+#'
+#'   Note `gamma` is NOT `gammaOptimize`: `gamma` is impmap's proposal-variance
+#'   inflation (NONMEM `ISCALE`), while `gammaOptimize` is a global assay-error
+#'   multiplier on the residual magnitude.  They are unrelated, and `gamma` is a
+#'   prefix of `gammaOptimize`, so it is rejected explicitly to stop R's partial
+#'   matching from silently binding one to the other.
 #' @return An `impmapControl` object tagged for the npag engine.
 #' @export
 #' @author Matthew L. Fidler
@@ -111,8 +131,29 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
                         residOptimize = c("alternate", "final", "none"),
                         muExpand = FALSE, gridWidth = 4,
                         gridBounds = c("auto", "ini", "both"), dfScan = -1L,
-                        cores = NULL, rhoend = 1e-4, ...) {
+                        cores = NULL, rhoend = 1e-4,
+                        gamma, df, ...) {
+  # `gamma` and `df` are declared ONLY to be rejected.  They are prefixes of the
+  # real formals gammaOptimize and dfScan, so without them R partial-matches and
+  # npagControl(gamma = 2) silently sets gammaOptimize = isTRUE(2) = FALSE.  An
+  # exact match beats a partial one, so declaring them catches the name on every
+  # path -- including through a forwarding wrapper, where sys.call() cannot see
+  # it.  They are missing() unless supplied, so they cost nothing otherwise.
+  .npDots <- list(...)
+  # validation list is SEPARATE from the construction list: it carries the
+  # literal call names (as NA, meaning "asked for, value unknown"), which must
+  # not be forwarded to impmapControl()
+  # gamma/df are inert formals with NO legitimate use here, so their PRESENCE is
+  # the request -- comparing values would let foo(gamma = 1) through a wrapper
+  # merely because 1 is impmap's default for it.
+  .npExp <- .npCallNames(sys.call())
+  if (!missing(gamma)) .npExp <- union(.npExp, "gamma")
+  if (!missing(df)) .npExp <- union(.npExp, "df")
+  .npAssertImpCtl(.npDots, "npag", explicit = .npExp)
   .ctl <- impmapControl(...)
+  # outcome check: catches an abbreviated name R partial-matched inside
+  # impmapControl(), and a wrapper that hid the literal names from sys.call()
+  .npAssertBuilt(.ctl, "npag")
   .ctl$est <- "npag"
   checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
   .ctl$rhoend <- as.numeric(rhoend)

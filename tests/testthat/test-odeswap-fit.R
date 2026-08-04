@@ -30,10 +30,19 @@ nmTest({
         cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)
       })
     }
-    suppressWarnings(suppressMessages(
+    ## The odeSwap counters are PROCESS-cumulative and nothing clears them, so a
+    ## fit earlier in this worker leaves its arming behind.  Assert the DELTA
+    ## across THIS fit; the absolute value only reads as 0 when the file happens
+    ## to run before anything else that arms an override, which made it pass or
+    ## fail on test-file scheduling rather than on behavior.
+    .b <- .odeSwapInfo()
+    .fit0 <- suppressWarnings(suppressMessages(
       nlmixr2(m, nlmixr2data::theo_sd, "impmap",
               impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
-    i <- .odeSwapInfo()
+    # Read the fit's OWN captured layout, not the process-global registry: the
+    # registry describes the most recent registration, and impmap's post-fit
+    # objective recompute runs a nested focei fit that re-registers the slots.
+    i <- .fit0$env$odeSwapInfo
     ts <- i$models[i$models$name %in% "thetaSens", ]
     inr <- i$models[i$models$name %in% "inner", ]
     expect_identical(nrow(ts), 1L)
@@ -45,7 +54,7 @@ nmTest({
     expect_identical(i$scratchNlhs, ts$nlhs)
     # and the private buffer was actually taken during the fit -- without this the
     # test would still pass if OdeSwapScope silently handed back rxode2's slice
-    expect_gt(i$scratchUsedN, 0)
+    expect_gt(i$scratchUsedN - .b$scratchUsedN, 0)
     # The neqOverride is NOT armed here, and must not be asserted to be.  Arming is
     # gated on the event-sensitivity path matching (odeSwap.cpp: `_pathMatches`) -- the
     # slot must either be pred, which is exempt, or want the ES model that is currently
@@ -55,8 +64,8 @@ nmTest({
     # a different installed model overruns it.  Declining is the correct outcome, and
     # scratchUsedN above already proves the private lhs buffer -- what this test is
     # actually about -- was taken.
-    expect_identical(i$overrideArmedN, 0)
-    expect_identical(i$scratchResizeN, 0)   # the plan sized it correctly up front
+    expect_identical(i$overrideArmedN - .b$overrideArmedN, 0)
+    expect_identical(i$scratchResizeN - .b$scratchResizeN, 0)   # the plan sized it correctly up front
   })
 
   test_that("a fit does not inherit the previous fit's registered peers", {
@@ -103,10 +112,11 @@ nmTest({
         cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)
       })
     }
-    suppressWarnings(suppressMessages(
+    .fitInv <- suppressWarnings(suppressMessages(
       nlmixr2(inv, d, "impmap",
               impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
-    expect_true(odeSwapInfo_()$models$loaded[3])   # thetaSens registered
+    # the fit's own captured layout -- see the note above
+    expect_true(.fitInv$env$odeSwapInfo$models$loaded[3])   # thetaSens registered
 
     # ... and the next plain fit must be unaffected by it
     after <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))

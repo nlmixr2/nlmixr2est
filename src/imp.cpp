@@ -842,6 +842,12 @@ void impOuter(Environment e) {
 
   // Convergence controller + proposal-scale adaptation (NONMEM ISCALE/IACCEPT/CTYPE).
   double iaccept = impIaccept();
+  // Drift tolerance on the gamma window mean for gammaRule="target".  Looser than
+  // the floor rule's 1e-3 because that rule's gamma is exactly constant once
+  // coverage is healthy, while a target-tracking gamma carries the Monte-Carlo
+  // noise of xi.  PROVISIONAL -- a constant tuned for this rule, to be re-measured
+  // with the rest of the target-rule set.
+  const double gammaTargetTol = 1e-2;
   double iscaleMin = impIscaleMin();
   double iscaleMax = impIscaleMax();
   int nConvWindow = impNconvWindow();
@@ -883,6 +889,20 @@ void impOuter(Environment e) {
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
+  // Improvability state for the AUTO df escalation (see AUTO step 3).  noImp
+  // counts consecutive iterations in which the current rung has failed to
+  // improve on what the subject manages without any escalation.
+  // Lowest df a subject may be returned to.  Withdrawal undoes the k-hat
+  // ESCALATION, never the df that step 1 assigned: a non-normal endpoint needs a
+  // heavy-tailed proposal by construction, so dropping it to a Gaussian because
+  // k-hat did not improve would break the model, not repair it.
+  arma::vec dfFloor(nExp); dfFloor.fill(impDf());
+  // What this subject's k-hat looks like WITHOUT any escalation -- the
+  // counterfactual withdrawal has to judge a rung against.  Refreshed on every
+  // iteration the subject spends at its floor, and frozen while it is escalated.
+  arma::vec kAtFloor(nExp); kAtFloor.fill(NA_REAL);
+  arma::ivec noImp(nExp, arma::fill::zeros);
+  arma::ivec escDead(nExp, arma::fill::zeros);   // 1 = escalation withdrawn, do not retry
   arma::vec iacceptVec(nExp); iacceptVec.fill(iaccept);
   bool autoOn = impAutoEnabled();
   int isampleBudget = isample * nExp;   // AUTO reallocates within this total
@@ -962,10 +982,37 @@ void impOuter(Environment e) {
   // effective sample size, so a heavier default is safe and cheap.  Any
   // comparison against NONMEM should treat these numbers as nlmixr2's, not as
   // a reproduction of NONMEM's internals.
+  // The nobs<neta half of that trigger is GATED by default, and this is a
+  // deliberate divergence from the tutorial.  Measured on a fixture built to the
+  // tutorial's own definition of sparse (2 observations, 3 etas), 8 seeds vs an
+  // isample=8000 reference, applying it makes every number worse:
+  //
+  //                     objRMSE   OmegaRMSE   max k-hat   subjects k>0.7
+  //   no adaptation      0.1517     0.02379      1.065         3.88
+  //   global df 30       0.1666     0.02695      1.075         5.00
+  //   AUTO (this rule)   0.2059     0.03163      1.088         4.88
+  //
+  // The reason is visible in the reference, which itself reads max k-hat 0.794:
+  // with fewer observations than random effects the individual posterior is not
+  // identified, so the heavy tail is STRUCTURAL and no proposal shape repairs
+  // it.  Escalating there spends accuracy on a problem the proposal does not
+  // own.  So sparsity alone no longer assigns a t proposal; k-hat has to ask for
+  // it, and the improvability check below withdraws it if it does not help.
+  //
+  // The categorical/non-normal half is NOT gated -- measured on a sparse Poisson
+  // fixture AUTO is the best of the three methods (objRMSE 0.00341 vs 0.00525
+  // for no adaptation), even though its k-hat never fails.
+  //
+  // impmapControl(autoNonmemSparse=TRUE) restores the unconditional tutorial
+  // behavior.  It is a real option, not a courtesy: NONMEM's own testing is not
+  // published, the models it was tuned on are not ours, and someone who measures
+  // the reverse on their own problem should be able to have the documented rule.
+  const bool nonmemSparse = impAutoNonmemSparse();
+  const int dfPatience = impAutoDfPatience();  // <= 0 disables withdrawal entirely
   if (autoOn) {
     bool nonNormal = impAutoNonNormal();
     for (int i = 0; i < nsub; ++i) {
-      bool sparse = impNobs(i) < neta;
+      bool sparse = nonmemSparse && (impNobs(i) < neta);
       // TUNED: start at a MILD t (df 20) rather than the heaviest.  df 20 was
       // measured to clear every failing subject on theophylline for 0.25% of
       // the effective sample size, whereas df 4 costs far more Monte-Carlo
@@ -976,7 +1023,10 @@ void impOuter(Environment e) {
       // 2.58 -> -0.02, bad subjects 2.08 -> 0.08) for a 7% RMSE cost
       // (0.0240 -> 0.0257).  Entering at 20 costs 33% and at 8 costs 3x for no
       // extra tail benefit, so the earlier ladder was simply mistuned.
-      double dfI = (sparse || nonNormal) ? 30.0 : 0.0;
+      // impDf() rather than 0 for the untriggered case: a global df= is an
+      // explicit request and must survive auto=TRUE.  At the default df = 0
+      // this is identical to the old expression.
+      double dfI = (sparse || nonNormal) ? 30.0 : impDf();
       // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
       // wide, and widening a Gaussian is the lever measured NOT to fix tails
       // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
@@ -986,6 +1036,7 @@ void impOuter(Environment e) {
       double iaI = iaccept;
       for (int j = 0; j < Nmix; ++j) {
         dfVec[i + j * nsub] = dfI;
+        dfFloor[i + j * nsub] = dfI;   // withdrawal may not go below this
         iacceptVec[i + j * nsub] = iaI;
       }
     }
@@ -1073,26 +1124,148 @@ void impOuter(Environment e) {
       // one at 3.0, and any subject that did not need a t proposal kept paying
       // for it.  Both waste accuracy, which is what the gate was failing on.
       //
-      // Mapping comes from the df sweep (theophylline, 12 seeds, RMSE vs an
-      // isample=20000 reference): df 30 already takes max k-hat 2.58 -> -0.02
-      // for a 7% RMSE cost, while df 8 costs 3x for no extra tail benefit.  So
-      // heavier rungs are reserved for k-hat that df 30 has NOT settled.
+      // Mapping re-derived after the imp/impmap/focei pooling fixes, which removed
+      // the tail failures the ORIGINAL sweep was calibrated on -- see
+      // plans/imp-auto-reinstrument.md and the appendix in the nlmixr2 imp article.
+      // Sweep: theophylline + 3 etas, 8 seeds, RMSE vs an isample=8000 reference.
+      //
+      //   df   objRMSE   omegaRMSE   max k-hat   subjects k>0.7
+      //    0    0.0113     0.00406      0.941        2.38
+      //   30    0.0095     0.00281      0.593        0.25
+      //   20    0.0097     0.00255      0.484        0.12
+      //   12    0.0105     0.00224      0.405        0.00
+      //    8    0.0116     0.00223      0.273        0.00
+      //
+      // The objective RMSE is MINIMIZED at df 30 and degrades past it -- df 8 is
+      // worse than no t proposal at all -- while the tail and Omega keep improving.
+      // 30/20 is that trade-off's sweet spot; heavier rungs buy Omega at a real
+      // objective cost.
+      //
+      // The old k>2 -> df 12 rung is gone.  Post-fix nothing in the sweep exceeds
+      // k-hat ~1.1 (theophylline 3-eta peaks at 0.94, a deliberately sparse
+      // nobs<neta fixture at 1.07), so it was unreachable, and where df 12 could be
+      // measured it was worse than 20 on the objective.  An unreachable rung
+      // calibrated on a regime that no longer occurs is not a safety margin.
       for (int id = 0; id < nExp; ++id) {
         double kh = KhatExp[id];
         if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
+        if (escDead[id]) continue;                // measured not to help here
+        // IMPROVABILITY.  A t proposal repairs a tail the proposal shape is
+        // missing; it cannot repair one the DATA creates.  With fewer
+        // observations than random effects the individual posterior is not
+        // identified and k-hat stays high however heavy the proposal gets
+        // (measured: 1.065 under a Gaussian, 1.075 at df 30, 1.088 under AUTO --
+        // and the isample=8000 reference itself reads 0.794).  Escalating there
+        // costs accuracy for nothing, so withdraw it once the evidence is in.
+        //
+        // This is NOT the circular relaxation the note below rejects.  That one
+        // backs off because k-hat became GOOD, which is evidence the remedy is
+        // working.  This backs off because k-hat stayed BAD after escalating,
+        // which is evidence the remedy does not apply.  Withdrawal is final so
+        // the pair cannot oscillate.
+        //
+        // Both halves are load bearing, and gating the trigger alone is NOT
+        // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
+        // the tutorial rule applied, 0.181 gating it but never withdrawing,
+        // 0.152 with AUTO off entirely, 0.102 gating AND withdrawing.  Gating on
+        // its own is still worse than not adapting at all; the withdrawal is
+        // what turns it into a win.
+        //
+        // autoDfPatience TUNED to 2 (sweep over 0,1,2,3,5; 8 seeds):
+        //
+        //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
+        //   patience   sparse obj   theo3 obj   sparse k>0.7   theo3 k>0.7
+        //     0 (off)     0.18065      0.01654        5.12          0.25
+        //     1           0.18740      0.01418        4.50          0.50
+        //     2           0.10198      0.01588        4.62          0.38
+        //     3           0.12873      0.01654        5.00          0.25
+        //     5           0.18267      0.01654        5.12          0.25
+        //
+        // 2 is the sparse optimum, and the curve rises either side of it.  It is
+        // not the best objective on theo3 (1 is), but 1 has the worst tail on
+        // every fixture, and tail behaviour is weighted higher: infinite-variance
+        // weights are a correctness problem with unbounded error while
+        // Monte-Carlo noise is bounded.  Same reasoning that puts auto on at all.
+        //
+        // Measured BEFORE the monotone-baseline fix, 1 looked best on sparse
+        // (0.097 against 0.142).  That was the easy-baseline bug withdrawing at
+        // roughly the right moment by accident; with the bar correct the ordering
+        // inverts.  A reminder that a constant tuned against unverified code is
+        // only as good as the code under it.
+        //
+        // Patience also interacts with nIter: at 3 and 5 the counter cannot
+        // accumulate inside a 12-iteration fit on a fixture whose k-hat does
+        // improve, which is why those rows match switching withdrawal off.
+        // Establish the baseline for a df that step 1 pre-assigned (the
+        // Decide the rung this k-hat asks for FIRST, because withdrawal must not
+        // pre-empt an escalation that is still available.  Running the withdrawal
+        // check first retired a subject at df 30 carrying its last strike the
+        // moment its k-hat crossed 1.0 -- it went to the floor and escDead
+        // without ever trying df 20, which is precisely the rung that k-hat was
+        // asking for.
+        double want = 0.0;
+        bool wantEsc = false;
         if (kh > 0.7) {
-          // pick the lightest tail plausibly heavy enough for this severity
-          double want = (kh > 2.0) ? 12.0 : (kh > 1.0 ? 20.0 : 30.0);
-          // only ever go heavier here; escalation must not oscillate
-          if (dfVec[id] <= 0.0 || want < dfVec[id]) dfVec[id] = want;
+          // lightest tail plausibly heavy enough for this severity
+          want = (kh > 1.0) ? 20.0 : 30.0;
+          // one-way: only ever go heavier, so the shape cannot oscillate
+          wantEsc = (dfVec[id] <= 0.0 || want < dfVec[id]);
         }
-        // NOTE deliberately one-way.  Relaxing on a low k-hat is circular: once
-        // a t proposal is in place k-hat drops precisely BECAUSE it is working
-        // (measured -1.3 to -1.9 on subjects that read 2.03 under a Gaussian),
-        // so "safe now" is evidence the fix is needed, not that it is not.
-        // Relaxing on it walks straight back into the failure and oscillates.
-        // Efficiency comes from picking the right rung immediately -- the
-        // severity mapping above -- not from backing off afterwards.
+
+        // The counterfactual, kept FRESH.  Three separate review findings all
+        // reduce to getting this value wrong:
+        //   * frozen at a pre-deterioration reading, a rung that genuinely
+        //     repairs a since-degraded subject scores as failing and is
+        //     withdrawn;
+        //   * taken from the k-hat at the moment of escalation, a noise spike
+        //     sets an easy bar and a subject stalls at a proposal achieving
+        //     nothing;
+        //   * taken as the running minimum, an old good value is pinned and a
+        //     working rung is withdrawn again.
+        // Recording it while the subject sits at its floor solves all three: it
+        // tracks deterioration that happens BEFORE any escalation, and it stops
+        // tracking the moment an escalation could be responsible for the value.
+        if (dfVec[id] == dfFloor[id]) kAtFloor[id] = kh;
+
+        // Withdrawal.  Only for a subject actually moved off its floor -- testing
+        // dfVec > 0 instead stranded subjects that were never escalated at all --
+        // and only once the ladder is EXHAUSTED (!wantEsc), so "this is not
+        // helping" means the heaviest applicable rung is not helping.  Note
+        // "escalated" is dfVec != dfFloor, not an inequality: escalating a
+        // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS it
+        // (30 -> 20).
+        if (!nonmemSparse && dfPatience > 0 && !wantEsc &&
+            dfVec[id] != dfFloor[id] && R_finite(kAtFloor[id])) {
+          // Non-strict on the margin: a rung that buys exactly the 0.1 it is
+          // asked for has earned its place.  Strict `<` withdrew a proposal that
+          // took k-hat 1.25 -> 0.75 against a floor of 0.85.
+          bool improved = (kh <= 0.7) || (kh <= kAtFloor[id] - 0.1);
+          if (improved) {
+            noImp[id] = 0;
+          } else if (++noImp[id] >= dfPatience) {
+            // back to the step-1 floor, NOT to 0: for a non-normal endpoint that
+            // floor is the t proposal the model requires, and withdrawal is
+            // permanent (escDead), so dropping below it could never be undone.
+            dfVec[id] = dfFloor[id];
+            escDead[id] = 1;
+            continue;
+          }
+        }
+
+        if (wantEsc) {
+          // Each rung gets a full patience window; inheriting strikes withdrew a
+          // heavier rung after a single iteration for want of an improvement it
+          // had not had time to deliver.
+          noImp[id] = 0;
+          dfVec[id] = want;
+        }
+        // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
+        // circular: once a t proposal is in place k-hat drops precisely BECAUSE
+        // it is working (measured -1.3 to -1.9 on subjects that read 2.03 under a
+        // Gaussian), so "safe now" is evidence the fix is needed, not that it is
+        // not.  Relaxing on it walks straight back into the failure and
+        // oscillates.  Efficiency comes from picking the right rung immediately
+        // -- the severity mapping above -- not from backing off afterwards.
       }
     }
 
@@ -1294,9 +1467,31 @@ void impOuter(Environment e) {
     if (nConvWindow > 0 && R_finite(obj) &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();
-      double s = 0.0;
-      for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
-      double objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
+      double objMetric;
+      if (impGammaRuleTarget() && nConvWindow >= 2) {
+        // TARGET rule: mean|delta obj| is a NOISE measure, not a drift measure --
+        // it has a floor at the Monte-Carlo noise level and never reaches ctol no
+        // matter how settled the fit is.  The target rule deliberately widens the
+        // proposal to put xi on iaccept, which costs effective sample size and so
+        // RAISES that floor: measured on the 3-eta theophylline fixture,
+        // mean|delta| is 0.00055-0.00093 under "floor" (ESS 0.95-0.96, all below
+        // a ctol of 1e-3) against 0.00181-0.00264 under "target" (ESS 0.69-0.71,
+        // all above it), so the fit could never converge however long it ran.
+        // Use the drift of the window MEAN instead -- the same noise-robust form
+        // the gamma gate below uses.  Scoped to this rule so the floor rule's
+        // tuned behaviour is bit-identical.
+        int hw = nConvWindow / 2;
+        double mNew = 0.0, mOld = 0.0;
+        for (int k = n - hw; k < n; ++k) mNew += objTrace[k];
+        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += objTrace[k];
+        mNew /= (double)hw;
+        mOld /= (double)(nConvWindow - hw);
+        objMetric = std::fabs(mNew - mOld) / std::max(1.0, std::fabs(obj));
+      } else {
+        double s = 0.0;
+        for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
+        objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
+      }
       const arma::vec& parOld = parHist[n - nConvWindow - 1];
       double parMetric = arma::max(arma::abs(parNow - parOld) / (arma::abs(parOld) + 1e-8));
       // A settled parameter still has ~1-2% Monte-Carlo net drift across the
@@ -1309,9 +1504,36 @@ void impOuter(Environment e) {
       // across subjects could look settled while individual scales are still
       // swinging.  Gate on the largest per-subject step the controller actually
       // applied instead, which cannot be masked that way.
-      bool gammaStable = gammaInd
-        ? (gammaStepPrev <= 1e-3)
-        : (std::fabs(gamma - gWin0) <= 1e-3 * std::max(1.0, gWin0));
+      // gammaRule="target" tracks a MONTE-CARLO statistic, so gamma keeps jittering
+      // around its fixed point and never stops moving the way the one-sided floor
+      // rule's gamma does (which is literally constant on a healthy model, making
+      // the window test below vacuous).  Gate it on the drift of the window MEAN
+      // instead: noise averages out over nConvWindow, a genuine trend does not.
+      bool gammaStable;
+      if (gammaInd) {
+        gammaStable = (gammaStepPrev <= 1e-3);
+      } else if (impGammaRuleTarget() && nConvWindow >= 2) {
+        // Split the window in half and compare the two means.  BOTH halves must be
+        // non-empty: at nConvWindow=1 the older half has no elements, mOld stays 0,
+        // and the test degenerates to gamma <= gammaTargetTol -- unsatisfiable,
+        // since gamma is bounded below by iscaleMin (0.1 by default), so the fit
+        // could never converge.  Hence the nConvWindow >= 2 guard here and the
+        // fall-through to the instantaneous test below.
+        int hw = nConvWindow / 2;              // >= 1, and nConvWindow - hw >= 1
+        double mNew = 0.0, mOld = 0.0;
+        for (int k = n - hw; k < n; ++k) mNew += gammaTrace[k];
+        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += gammaTrace[k];
+        mNew /= (double)hw;
+        mOld /= (double)(nConvWindow - hw);
+        gammaStable = (std::fabs(mNew - mOld) <= gammaTargetTol * std::max(1.0, mOld));
+      } else {
+        // Instantaneous test.  The floor rule's gamma is exactly constant once
+        // coverage is healthy so 1e-3 is ample; a target-tracking gamma carries
+        // xi's Monte-Carlo noise, so it gets the same looser tolerance the
+        // window-mean test uses (without it, nConvWindow=1 could never converge).
+        double tol = impGammaRuleTarget() ? gammaTargetTol : 1e-3;
+        gammaStable = (std::fabs(gamma - gWin0) <= tol * std::max(1.0, gWin0));
+      }
       if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
     }
 
@@ -1324,7 +1546,18 @@ void impOuter(Environment e) {
     // drops below the floor (heavy-tailed/skewed posterior), with a gentle
     // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
     // correct for gamma, so this changes only the variance, not the estimates.
-    if (gammaInd) {
+    //
+    // Iteration 0 does not adapt.  Its weights are normalized against the STARTING
+    // mode/Hessian at the initial estimates, which is not yet a meaningful
+    // reference, so both statistics the controller reads are transients: measured
+    // on theophylline, xi = 4.1e6 against a settled ~0.39 and accFrac = 0.257
+    // against a settled ~0.53.  Adapting off that inflated gamma to 1.248
+    // (sqrt(0.4/0.257), just under the 1.25 cap) on a problem whose proposal is
+    // healthy from iteration 1 onward -- and the "global" branch below is
+    // one-sided, so it could never come back down.
+    if (iter == 0) {
+      // nothing to adapt from yet
+    } else if (gammaInd) {
       // xi_i falls monotonically as the proposal
       // widens, so xi_i ABOVE the target means subject i's proposal is too
       // narrow for its posterior (the heavy-tail case) and gamma_i must grow;
@@ -1377,7 +1610,48 @@ void impOuter(Environment e) {
         gammaVec[id] = g;
       }
       gammaStepPrev = maxStep;
+    } else if (impGammaRuleTarget()) {
+      // gammaRule="target" -- NONMEM's rule for the SHARED scale.  The NM7
+      // Technical Guide (note after eq. 1.76) says gamma is "continually adjusted
+      // so that xi_i approximates IACCEPT", i.e. two-sided on xi, not one-sided on
+      // the Kish fraction.  Reuse the per-subject branch's analytic inversion:
+      // xi = gamma^(-neta/2) inverts exactly, so pExp = 2/neta gives an error
+      // multiplier of 0 at every dimension.  A FIXED exponent (the sqrt the
+      // "floor" branch below uses) is the form measured to enter a period-2 limit
+      // cycle at neta >= 8, which one-sidedness is currently the only thing
+      // suppressing -- so the two-sided rule must NOT reuse it.
+      //
+      // xiMean is NA when no subject had a usable xi, and a single non-finite
+      // subject would otherwise poison gamma for the rest of the fit through
+      // pow(NaN, .), so guard before applying.
+      //
+      // LIMIT OF THE SHARED FORM.  The exponent 2/neta inverts xi = gamma^(-neta/2)
+      // exactly for ONE posterior.  Over heterogeneous subjects sharing one gamma
+      // the mean responds with an effective exponent sum(w_i d_i); if a
+      // heavy-tailed subject with d_i > neta/2 dominates the mean enough that
+      // sum(w_i d_i) > neta, the linearized map has eigenvalue < -1 and gamma
+      // oscillates between the caps instead of settling.  The 1.25x caps bound it
+      // (it cannot diverge) and the window-mean gate below will simply not report
+      // convergence.  gammaMethod="individual" has no such exposure -- each
+      // subject inverts its own xi -- so that is the remedy when it bites.
+      if (iaccept > 0 && R_finite(xiMean) && xiMean > 0.0) {
+        const double pExp = 2.0 / std::max(1.0, (double)neta);
+        double fac = std::pow(xiMean / iaccept, pExp);
+        if (fac > 1.25) fac = 1.25;
+        else if (fac < 1.0 / 1.25) fac = 1.0 / 1.25;
+        double g = gamma * fac;
+        if (g < iscaleMin) g = iscaleMin;
+        if (g > iscaleMax) g = iscaleMax;
+        // measure the step AFTER clamping, so a gamma pinned at a bound reads as
+        // settled rather than as perpetually moving (mirrors gammaStepPrev in the
+        // per-subject branch); the convergence gate compares gamma across the
+        // window, which a clamped gamma satisfies for free.
+        gamma = g;
+      }
     } else if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
+      // gammaRule="floor" (default) -- iaccept is a one-sided FLOOR on the mean
+      // Kish effective-sample fraction: gamma is left at its efficient starting
+      // value while coverage is healthy and inflated only when it drops below.
       double fac = std::sqrt(iaccept / accFrac);
       if (fac > 1.25) fac = 1.25;
       gamma *= fac;

@@ -18,6 +18,8 @@ npbControl(
   muExpand = FALSE,
   cores = NULL,
   rhoend = 1e-04,
+  gamma,
+  df,
   ...
 )
 }
@@ -70,7 +72,17 @@ bit-for-bit identical regardless of the thread count.}
 matching the optimizer convergence tolerance `10^(-sigdig)` at
 `sigdig = 4` (npb has no `sigdig`, so this is not derived from it).}
 
-\item{...}{Parameters passed to [impmapControl()].}
+\item{gamma, df}{Declared only so they are REJECTED rather than partially
+matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+formal R bound `gamma = 2` to it and silently turned the assay-error
+optimisation off; `df` is an importance-sampling proposal control a
+nonparametric engine never builds.  Passing either is an error.}
+
+\item{...}{Parameters passed to [impmapControl()], for the shared FOCEI-family
+scaffolding only.  The importance-sampling controls are **rejected** rather
+than accepted -- see [npagControl()] -- as are `cycles` and `gammaOptimize`,
+which this signature carries but `npb` does not use.  `impSeed` is rejected
+pointing at `seed`.}
 }
 \value{
 An `impmapControl` object tagged for the npb engine.

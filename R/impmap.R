@@ -9,7 +9,9 @@
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod", "gammaMethodUser", "df", "auto", "autoNonNormal",
+                           "gammaMethod", "gammaMethodUser", "gammaRule",
+                           "df", "auto", "autoNonNormal",
+                           "autoNonmemSparse", "autoDfPatience",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
@@ -69,10 +71,13 @@
 #'   freedom, the sample count and the acceptance target **per subject** rather
 #'   than applying one global setting to everybody.
 #'
-#'   * **`df`** -- a subject whose observation count is below the number of
-#'     random effects, or any subject when the model is not transformably
-#'     normal, gets a heavy-tailed t proposal.  This is the tutorial's trigger
-#'     ("fewer data points than there are ETAs ... or data are categorical").
+#'   * **`df`** -- any subject gets a heavy-tailed t proposal when the model is
+#'     not transformably normal, and any subject whose Pareto k-hat reports tail
+#'     failure gets one on that evidence.  The tutorial's other trigger, "fewer
+#'     data points than there are ETAs", is **not** applied on its own -- see
+#'     `autoNonmemSparse`.  An escalation that fails to improve k-hat over two
+#'     iterations is withdrawn, since a heavy tail the data creates is not
+#'     repairable by proposal shape.
 #'   * **`isample`** -- the total sample budget (`isample * nsub`) is
 #'     reallocated toward subjects whose effective-sample fraction is lowest,
 #'     the tutorial's "many ETAs or ... large stochastic fluctuations".  It is
@@ -82,7 +87,7 @@
 #'   * **`iaccept`** -- lowered to 0.2 for the same sparse/categorical
 #'     subjects, per the tutorial.
 #'
-#'   The concrete values (`df = 4`, the `nobs < neta` test, the budget
+#'   The concrete values (the `df` ladder, the k-hat thresholds, the budget
 #'   reallocation rule) are **nlmixr2's choices**.  NONMEM does not publish what
 #'   `AUTO=1` picks internally; only the triggers and `IACCEPT ~ 0.2` are
 #'   documented.  Unlike NONMEM's AUTO, which its own tutorial warns "may result
@@ -94,28 +99,58 @@
 #'
 #'   **Measured trade-off.**  `auto = TRUE` (the default) improves the *tail*
 #'   behaviour of the importance weights and the accuracy of `Omega`, at some
-#'   cost in Monte-Carlo noise on the objective.  On theophylline, against a
-#'   reference computed at `isample = 20000` (which agrees to 0.0003 across
-#'   Gaussian, `df = 8` and `df = 20` proposals, so it is trustworthy), over 20
+#'   cost in Monte-Carlo noise on the objective.  On theophylline with three
+#'   ETAs -- a one-ETA model has no tail failure to fix, so it shows nothing
+#'   either way -- against a reference computed at `isample = 8000`, over 8
 #'   seeds:
 #'
 #'   \itemize{
-#'     \item `auto = FALSE`: max Pareto k-hat 2.44, 2.20 subjects above 0.7;
-#'       objective RMSE 0.0315, `Omega` RMSE 0.00247
-#'     \item `auto = TRUE`: max Pareto k-hat 0.49, 0.05 subjects above 0.7;
-#'       objective RMSE 0.0376, `Omega` RMSE 0.00198
+#'     \item `auto = FALSE`: max Pareto k-hat 0.941, 2.38 subjects above 0.7;
+#'       objective RMSE 0.0113, `Omega` RMSE 0.00406
+#'     \item `auto = TRUE`: max Pareto k-hat 0.571, 0.25 subjects above 0.7;
+#'       objective RMSE 0.0165, `Omega` RMSE 0.00301
 #'   }
 #'
-#'   So `auto` removes the tail failure and estimates `Omega` about 20% more
-#'   accurately, for about 19% more Monte-Carlo noise on the objective.  It is
+#'   So `auto` removes the tail failure and estimates `Omega` about 26% more
+#'   accurately, for about 46% more Monte-Carlo noise on the objective.  It is
 #'   on by default because weights with infinite variance are a correctness
 #'   problem -- their error is unbounded in the worst case -- whereas the extra
-#'   noise is a bounded, measurable cost.
+#'   noise is a bounded, measurable cost.  Setting `df` globally gives a better
+#'   objective still on a model that is uniformly heavy-tailed, but costs 75%
+#'   more objective RMSE on one that is not, which is why it is not the default.
 #'
 #'   Set `auto = FALSE` to recover the previous behaviour exactly (that path
 #'   remains bit-identical to earlier versions), which is worth doing when you
 #'   want the tightest possible objective on a model whose `fit$env$impPsisK`
 #'   values are already comfortably below 0.7.
+#' @param autoNonmemSparse Apply the NONMEM tutorial's `nobs < neta` trigger
+#'   unconditionally, so a subject with fewer observations than random effects
+#'   always gets a t proposal.  `FALSE` (default) leaves such subjects to the
+#'   Pareto k-hat evidence like any other, and withdraws an escalation that does
+#'   not improve k-hat within two iterations.
+#'
+#'   The default diverges from the tutorial deliberately, on measurement.  On a
+#'   fixture built to the tutorial's own definition of sparse (2 observations, 3
+#'   etas), 8 seeds against an `isample = 8000` reference, applying the rule made
+#'   every number worse -- objective RMSE 0.1517 -> 0.2059, `Omega` RMSE 0.02379
+#'   -> 0.03163, and *more* failing subjects (3.88 -> 4.88).  With fewer
+#'   observations than random effects the individual posterior is not identified,
+#'   so the heavy tail is structural and no proposal shape repairs it; the
+#'   reference itself still reads max k-hat 0.794.
+#'
+#'   Set `TRUE` to get the documented NONMEM rule anyway.  NONMEM's own testing
+#'   is not published and was not done on these models, so someone who measures
+#'   the opposite on their own problem should be able to have it.
+#' @param autoDfPatience Number of consecutive iterations an escalated `df` may
+#'   fail to improve Pareto k-hat before that escalation is withdrawn and the
+#'   subject returned to the proposal it had without it.  `0` never withdraws.
+#'   Withdrawal is final, so escalation and withdrawal cannot oscillate, and it
+#'   never goes below the `df` the model itself requires -- a non-normal endpoint
+#'   keeps its t proposal.
+#'
+#'   A rung is judged against what the subject manages WITHOUT any escalation,
+#'   measured while it sits there, so deterioration that happens before any
+#'   escalation is tracked and an escalation is never credited for it.
 #' @param gammaMethod How the proposal scale `gamma` is adapted during the EM.
 #'
 #'   `"auto"` (default) picks per model: `"individual"` when the model is not
@@ -153,8 +188,66 @@
 #'   targets `xi` (the mean normalized importance weight, NONMEM's `IACCEPT`
 #'   quantity) while `"global"` targets the Kish effective-sample fraction.
 #'   These are not comparable; the fit's `$runInfo` says which is in force.
+#' @param gammaRule How the SHARED (`gammaMethod="global"`) proposal scale is
+#'   adapted.  Ignored for `gammaMethod="individual"`, which always follows
+#'   NONMEM's two-sided per-subject rule.
+#'
+#'   `"floor"` treats `iaccept` as a one-sided FLOOR on the mean Kish
+#'   effective-sample fraction: `gamma` stays at its efficient starting value
+#'   while coverage is healthy and is inflated only when coverage drops below the
+#'   floor.  It never comes back down.
+#'
+#'   `"target"` (default) follows the NM7 Technical Guide, which says `gamma` is
+#'   "continually adjusted so that xi_i approximates IACCEPT" -- adapted BOTH
+#'   ways, on `xi` rather than the Kish fraction, using the same analytic
+#'   inversion as the per-subject controller (`gamma * (xi/iaccept)^(2/neta)`,
+#'   capped 1.25x each way and clamped to `[iscaleMin, iscaleMax]`).
+#'
+#'   The two rules settle at different operating points, so they are not
+#'   interchangeable, and constants tuned against one do not carry over to the
+#'   other.
+#'
+#'   **Measured trade-off** (theophylline, 6 seeds, `isample = 300`, RMSE against
+#'   an `isample = 6000` reference):
+#'
+#'   \itemize{
+#'     \item 3 ETAs -- `"floor"`: theta RMSE 0.00185, `Omega` RMSE 0.00298, max
+#'       Pareto k-hat 0.604, 0.33 subjects above 0.7, converged 100% of seeds.
+#'       `"target"`: theta RMSE 0.00257, `Omega` RMSE 0.00378, max k-hat -0.491,
+#'       0 subjects above 0.7, converged 0%.
+#'     \item 8 ETAs -- `"floor"` never adapts at all (`gamma` pinned at 1.0 with
+#'       `xi` 1.35, i.e. a proposal far too narrow), because it watches the mean
+#'       Kish fraction, which stays healthy while `xi` says the proposal is
+#'       wrong.  `"target"` moves `gamma` to 1.25 and puts `xi` on 0.41.
+#'   }
+#'
+#'   So `"target"` fixes the tail and is the only rule that reacts at high ETA
+#'   dimension, but it pays for it: putting `xi` on `iaccept` deliberately widens
+#'   the proposal (`gamma` 1.79 on the 3-ETA fixture), which costs effective
+#'   sample size (0.96 to 0.70) and adds Monte-Carlo noise to the objective --
+#'   enough that the fit often does not meet `ctol` within `nIter`.
+#'
+#'   `"target"` is the default: tuned against tuned, it wins every column at 3
+#'   ETAs and is the only rule that adapts at all at 8 ETAs.  Its cost is on the
+#'   1-ETA fixture, where it roughly doubles theta RMSE (0.00113 to 0.00224) and
+#'   takes about twice as many iterations.  That trade follows the same weighting
+#'   `auto` uses: weights with infinite variance are a correctness problem whose
+#'   error is unbounded, while the extra Monte-Carlo noise is bounded and
+#'   measurable.
+#'
+#'   Choose `"floor"` for the previous behaviour -- a proposal left at its
+#'   efficient starting value while coverage is healthy.  It is also what the
+#'   tail-machinery tests pin, because `"target"` repairs the tail itself and
+#'   leaves the `df` ladder nothing to fix.
+#'
+#'   **The tuned constants travel with the rule.**  Selecting a rule also selects
+#'   its tuned defaults (`nConvWindow` 20 for `"target"`, 10 for `"floor"`), so
+#'   switching to the NONMEM method does not silently run NONMEM's law on the
+#'   other rule's tuning.  An explicitly supplied value always wins.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
-#'   (NONMEM ISCALE_MIN / ISCALE_MAX).
+#'   (NONMEM ISCALE_MIN / ISCALE_MAX).  Both bounds are reachable under
+#'   `gammaRule="target"`; under `"floor"` `gamma` only ever moves up, so only
+#'   `iscaleMax` can bind.
 #' @param iaccept Minimum importance-sampling effective-sample fraction
 #'   (NONMEM IACCEPT).  The proposal scale `gamma` is kept at its efficient
 #'   starting value while the achieved fraction stays at or above `iaccept`, and
@@ -210,8 +303,11 @@ impmapControl <- function(sigdig=3,
                           mapIter=1L,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
+                          gammaRule=c("target", "floor"),
                           df=0,
                           auto=TRUE,
+                          autoNonmemSparse=FALSE,
+                          autoDfPatience=2L,
                           iscaleMin=0.1,
                           iscaleMax=10.0,
                           iaccept=0.4,
@@ -227,6 +323,26 @@ impmapControl <- function(sigdig=3,
                           muModel=c("lin", "none")) {
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
+  gammaRule <- match.arg(gammaRule)
+  # RULE-DEPENDENT DEFAULTS.  The tuned constants belong to the RULE, so switching
+  # to the NONMEM rule must bring its constants with it -- otherwise the user gets
+  # NONMEM's law running on the floor rule's tuning, which is the unfair pairing
+  # this whole comparison was redone to avoid.  Only defaults are substituted: an
+  # explicitly supplied value always wins (and a control round-tripped through
+  # do.call(impmapControl, ctl) supplies everything, so it is idempotent).
+  #
+  # nConvWindow: 10 for "floor", 20 for "target".  The target rule tracks a
+  # Monte-Carlo statistic, so it needs a longer window to average the noise out.
+  # Measured (3 ETAs, 6 seeds, isample=300, RMSE vs an isample=6000 reference):
+  #
+  #   target w=10   thetaRMSE 0.00196  omegaRMSE 0.00266  maxK -0.356  iter 16
+  #   target w=20   thetaRMSE 0.00167  omegaRMSE 0.00196  maxK -0.429  iter 27
+  #   target w=30   thetaRMSE 0.00199  omegaRMSE 0.00291  maxK -0.451  iter 34
+  #
+  # w=20 is the accuracy optimum; w=30 costs iterations for nothing.
+  if (identical(gammaRule, "target") && missing(nConvWindow)) {
+    nConvWindow <- 20L
+  }
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
@@ -267,6 +383,13 @@ impmapControl <- function(sigdig=3,
   # to foceiControl, which has no such argument.
   .gammaMethodUser <- .dots$gammaMethodUser
   .dots$gammaMethodUser <- NULL
+  # autoNonNormal is likewise stamped on the RUNTIME control (it records whether
+  # the resolved gammaMethod came out "individual"), and is not an argument here
+  # either.  Without this, do.call(impmapControl, <a fit's own control>) died
+  # with "unused argument: 'autoNonNormal'" -- so re-validating a completed fit's
+  # control never worked.
+  .autoNonNormal <- .dots$autoNonNormal
+  .dots$autoNonNormal <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -284,14 +407,22 @@ impmapControl <- function(sigdig=3,
                       c(list(sigdig=sigdig), .dots,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
+  if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
   .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
+  .control$gammaRule <- gammaRule
   .control$df <- as.double(df)
   checkmate::assertLogical(auto, any.missing=FALSE, len=1, .var.name="auto")
+  checkmate::assertLogical(autoNonmemSparse, any.missing=FALSE, len=1,
+                           .var.name="autoNonmemSparse")
+  checkmate::assertIntegerish(autoDfPatience, lower=0, len=1, any.missing=FALSE,
+                              .var.name="autoDfPatience")
   .control$auto <- auto
+  .control$autoNonmemSparse <- autoNonmemSparse
+  .control$autoDfPatience <- as.integer(autoDfPatience)
   if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
@@ -393,7 +524,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' `rxode2::assertRxUiTransformNormal()` draws between transformably-normal and
 #' general likelihoods.
 #'
-#' @param gammaMethod User setting: "auto", "global" or "individual".
+#' @param gammaMethod Requested setting: "auto", "global" or "individual".
 #' @param ui rxode2 ui object
 #' @return "global" or "individual"
 #' @noRd
@@ -436,7 +567,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' which.
 #'
 #' @param resolved Resolved gammaMethod: "global" or "individual".
-#' @param user What the user asked for ("auto", "global", "individual").
+#' @param user What was requested ("auto", "global", "individual").
 #' @param iaccept Target/floor value.
 #' @return A single-line character message.
 #' @noRd
@@ -572,6 +703,16 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
   .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
+  # Capture THIS fit's pooled-solve layout before anything else runs.  The odeSwap
+  # registry is process-global and describes the most recent registration, so the
+  # objective recompute below -- which runs a nested focei fit -- re-registers the
+  # slots and the global view stops describing this fit.  Stash it here so the
+  # diagnostic travels with the fit and cannot be overwritten by a later one.
+  tryCatch({
+    .fenv0 <- .fit$env
+    if (is.environment(.fenv0)) assign("odeSwapInfo", .odeSwapInfo(), envir=.fenv0)
+  }, error=function(e) NULL)
+  .impmapRecomputeObjf(.fit)
   # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
   # stashed final-iteration weights so it costs nothing during the EM.
   tryCatch({
@@ -583,12 +724,94 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .fit
 }
 
-#' Restore the user's covMethod on the fit env's stored control
+#' Publish the objective as a FOCEi evaluation at the converged estimates.
+#'
+#' The in-C++ finalize (`impMapPass` -> `foceiOuterFinal`) computes the individual
+#' objective from an eta-Hessian that never receives its data term on this path:
+#' `fInd->a` (d(pred)/d(eta)) is left at allocation residue, so
+#' `sum(cHff * a * a)` vanishes and `H` collapses to `Omega^-1` alone.  Measured on
+#' theophylline with one random effect: `log|H|` reads 2.17048 for EVERY subject
+#' instead of the correct 3.63-3.96, and the published objective comes out 19.96
+#' too LOW (173.63 against 193.60).  Models with 2+ random effects are unaffected.
+#'
+#' Rather than repair that C++ state, take the objective the same way `setOfv()`
+#' does for SAEM (`.setOfvFo`, `R/ofv.R`): re-evaluate through the ordinary
+#' `nlmixr2()` FOCEi path at the converged estimates.  `maxOuterIterations = 0`
+#' pins the thetas and Omega; the INNER problem is deliberately left to optimize,
+#' because the FOCEi objective is defined with the etas at their conditional mode
+#' -- freezing them at the importance-sampling conditional means is a different
+#' (and worse) quantity, measured at 193.615 against 193.601 for the mode.
+#'
+#' The EM's own estimates are untouched: only the published objective is replaced.
+#' `$impObj` (the importance-sampling estimate) is left alone, so the two remain
+#' separately readable.
+#'
+#' @param fit completed impmap-family fit
+#' @return invisibly TRUE when the objective was replaced
+#' @noRd
+.impmapRecomputeObjf <- function(fit) {
+  .env <- tryCatch(fit$env, error=function(e) NULL)
+  if (!is.environment(.env)) return(invisible(FALSE))
+  # deep-copy the UI: the nested re-fit must not mutate THIS fit's UI
+  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
+                  error=function(e) NULL)
+  if (is.null(.ui)) return(invisible(FALSE))
+  .sigdig <- tryCatch(fit$foceiControl$sigdig, error=function(e) NULL)
+  # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
+  # including the timing environment (dropping the outer fit's "other" timing row)
+  # and nlmixr2objectName (which would report ".ui" instead of the user's symbol).
+  # Snapshot and restore the whole thing, plus the mu-referencing global.
+  .savedMuRef <- .muRefTrans$cur
+  on.exit(.muRefTrans$cur <- .savedMuRef, add=TRUE)
+  .savedGlobal <- as.list(nlmixr2global, all.names=TRUE)
+  on.exit({
+    rm(list=ls(nlmixr2global, all.names=TRUE), envir=nlmixr2global)
+    for (.gn in names(.savedGlobal)) assign(.gn, .savedGlobal[[.gn]], envir=nlmixr2global)
+  }, add=TRUE)
+  .ctl <- try(foceiControl(print=0L, covMethod="", maxOuterIterations=0L,
+                           calcTables=FALSE, compress=FALSE,
+                           sigdig=if (is.null(.sigdig)) 4 else .sigdig),
+              silent=TRUE)
+  if (inherits(.ctl, "try-error")) return(invisible(FALSE))
+  .f2 <- try(suppressMessages(suppressWarnings(
+    nlmixr2(.ui, data=nlme::getData(fit), est="focei", control=.ctl))),
+    silent=TRUE)
+  if (inherits(.f2, "try-error")) return(invisible(FALSE))
+  .e2 <- tryCatch(.f2$env, error=function(e) NULL)
+  if (!is.environment(.e2)) return(invisible(FALSE))
+  # carry the objective AND the per-subject quantities derived from the same
+  # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
+  for (.n in c("objective", "OBJF", "objf", "logLik", "AIC", "BIC",
+               "etaObf", "etaObfFull", "phiH", "phiC", "phiR", "phiSE", "phiRSE")) {
+    if (exists(.n, envir=.e2, inherits=FALSE)) {
+      assign(.n, get(.n, envir=.e2), envir=.env)
+    }
+  }
+  # objDf is MERGED, not replaced: the re-fit runs covMethod="" so its objDf has no
+  # Condition#(Cov)/Condition#(Cor), and replacing wholesale would drop the columns
+  # the imp covariance had already filled in.
+  if (exists("objDf", envir=.e2, inherits=FALSE)) {
+    .newObjDf <- get("objDf", envir=.e2)
+    .oldObjDf <- tryCatch(get("objDf", envir=.env, inherits=FALSE), error=function(e) NULL)
+    if (is.data.frame(.oldObjDf) && is.data.frame(.newObjDf) &&
+          nrow(.oldObjDf) == nrow(.newObjDf)) {
+      for (.c in intersect(names(.newObjDf), names(.oldObjDf))) {
+        .oldObjDf[[.c]] <- .newObjDf[[.c]]
+      }
+      assign("objDf", .oldObjDf, envir=.env)
+    } else {
+      assign("objDf", .newObjDf, envir=.env)
+    }
+  }
+  invisible(TRUE)
+}
+
+#' Restore the requested covMethod on the fit env's stored control
 #'
 #' The estimation pass forces covMethod=0L (the in-fit C++ step would bail on
 #' muModel="lin"), and that runtime control is what gets stored on the fit env;
 #' the post-fit recompute (.foceiRecomputeMuCov) reads the covMethod from there,
-#' so put the user's choice back.
+#' so put the requested choice back.
 #' @noRd
 .impRestoreCovMethod <- function(fit, covMethod) {
   .fenv <- tryCatch(fit$env, error = function(e) NULL)

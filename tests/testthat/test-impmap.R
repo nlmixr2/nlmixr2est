@@ -16,7 +16,10 @@ nmTest({
     expect_identical(.ctl$iscaleMax, 10.0)
     expect_identical(.ctl$iaccept, 0.4)
     expect_null(.ctl$ctol)
-    expect_identical(.ctl$nConvWindow, 10L)
+    # nConvWindow is a RULE-DEPENDENT default: the "target" rule (now the default)
+    # tracks a Monte-Carlo statistic and needs a longer window to average it out.
+    expect_identical(.ctl$nConvWindow, 20L)
+    expect_identical(impmapControl(gammaRule = "floor")$nConvWindow, 10L)
     expect_identical(.ctl$impSeed, 42L)
 
     # round-trips through do.call (used by getValidNlmixrCtl / .foceiFamilyControl)
@@ -412,7 +415,11 @@ nmTest({
     # effective sample size regardless of thread count.
     .neffFrac <- .fi$env$impNeff / .fi$env$impNsample
     expect_false(anyNA(.neffFrac))
-    expect_true(min(.neffFrac) > 0.9)
+    # The default rule ("target") drives xi onto iaccept, which deliberately
+    # widens the proposal and so LOWERS the Kish effective-sample fraction -- that
+    # is the trade it makes to bound the weights, not a defect.  The bound below
+    # is a sanity floor; pin gammaRule = "floor" if you want the old >0.9.
+    expect_true(min(.neffFrac) > 0.4)
     # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
     expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
                  fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
@@ -450,9 +457,14 @@ nmTest({
     expect_length(.E$impObjTrace, .E$impIter)
     expect_length(.E$impGammaTrace, .E$impIter)
     expect_length(.E$impNeffFrac, .E$impIter)
-    # gamma stays within the ISCALE bounds; a well-covered proposal is not inflated
+    # gamma stays within the ISCALE bounds
     expect_true(all(.E$impGammaTrace >= 0.1 - 1e-8 & .E$impGammaTrace <= 10 + 1e-8))
-    expect_equal(unname(.E$impGammaUsed), 1.0, tolerance = 1e-8)
+    # "a well-covered proposal is not inflated" is the FLOOR rule's semantics, and
+    # this fit runs the default "target" rule, which adjusts gamma both ways until
+    # xi approximates iaccept -- so assert THAT instead.  The floor behaviour is
+    # covered by the gammaRule test in test-imp-xi-gamma.R.
+    expect_equal(unname(tail(.E$impXiTrace, 1)),
+                 .E$impmapControl$iaccept, tolerance = 0.1)
     # and the early-stopped fit still matches FOCEI
     expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)

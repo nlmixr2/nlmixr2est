@@ -1,6 +1,7 @@
 ## End-to-end hockey-stick covariate selection.  The unit-level pieces (shape
 ## expressions, block feasibility, the branch-and-bound) live in
-## test-vae-cov-shapes.R / test-vae-covariates.R / test-vae-cov-groups.R; this
+## test-vae-cov-shapes.R / test-vae-covariate-accessor.R / test-vae-cov-groups.R;
+## this
 ## file checks the whole path on data with a KNOWN answer.  (Slow: trains a
 ## moderate schedule, so it runs in a weekly batch rather than on every push.)
 

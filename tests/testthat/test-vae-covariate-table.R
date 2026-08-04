@@ -3,7 +3,7 @@
 ## Bug 1 -- injected covariate-coefficient thetas (beta.<par>.<cov>) must survive
 ##   into the population-parameter table; they were dropped from parFixedDf when a
 ##   population parameter was fixed (literalFix reindex, see the slow end-to-end
-##   test in test-vae-covariate.R).  Here we assert the precondition: .vaeUpdateModel
+##   test in test-vae-covariate-selection.R).  Here we assert the precondition: .vaeUpdateModel
 ##   adds them as real thetas of the augmented ui (so they reach $theta/$cov).
 ##
 ## Bug 2 -- covariate terms must be injected FLAT (exp(theta + beta*cov + eta)),

@@ -70,13 +70,20 @@ nmTest({
 
     ETA <- matrix(c(-0.147736086922763, -0.294637022436797), ncol = 2)
 
+    ## sigdig pinned: this asserts the CONVERGED inner objective to three
+    ## decimals, and sigdig drives the solver tolerances (rtol = 10^-sigdig).
+    ## At the sigdig=3 default (rtol=1e-3) the solve cannot resolve that third
+    ## decimal -- it returns 418.9344 where sigdig 4/5/6 all give 418.9353 -- so
+    ## the assertion failed on solver precision, not on the objective.  The
+    ## reference value is unchanged; only the solve is now tight enough to
+    ## reproduce it independently of whatever the default sigdig happens to be.
     fitPi <- .nlmixr(
       m1, w7,
       est="focei",
       foceiControl(
         etaMat = ETA,
         maxOuterIterations = 0, maxInnerIterations = 0,
-        covMethod = ""
+        covMethod = "", sigdig = 6
       )
     )
 

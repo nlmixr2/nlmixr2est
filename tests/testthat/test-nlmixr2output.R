@@ -99,26 +99,32 @@ test_that("formatMinWidth in parFixed", {
 
   # Simple ----
   fit <- .nlmixr(one.compartment, theo_sd, est="focei", control = foceiControlFast)
+  ## $parFixed formats with control$sigdigTable (see .updateParFixedApplySig in
+  ## R/nlmixr2output.R), which defaults to foceiControl(sigdig=).  That default
+  ## moved 4 -> 3 in 7d3c7b62d and this expectation kept its hardcoded 4, so the
+  ## file failed on every run.  Read it off the fit: the point of the test is
+  ## that $parFixed agrees with formatMinWidth at the fit's OWN digits, not that
+  ## the digits take any particular value.
+  .digits <- fit$control$sigdigTable
   expect_equal(
     fit$parFixed,
     structure(
       list(
-        # focei defaults to sigdigTable = 4 (see foceiControlFast)
-        Est. = formatMinWidth(fit$parFixedDf$Estimate, digits = 4),
-        SE = formatMinWidth(fit$parFixedDf$SE, digits = 4, naValue = ""),
-        `%RSE` = formatMinWidth(fit$parFixedDf$`%RSE`, digits = 4, naValue = ""),
+        Est. = formatMinWidth(fit$parFixedDf$Estimate, digits = .digits),
+        SE = formatMinWidth(fit$parFixedDf$SE, digits = .digits, naValue = ""),
+        `%RSE` = formatMinWidth(fit$parFixedDf$`%RSE`, digits = .digits, naValue = ""),
         `Back-transformed(95%CI)` =
           c(
             sprintf(
               "%s (%s, %s)",
-              formatMinWidth(fit$parFixedDf$`Back-transformed`, digits = 4),
-              formatMinWidth(fit$parFixedDf$`CI Lower`, digits = 4),
-              formatMinWidth(fit$parFixedDf$`CI Upper`, digits = 4)
+              formatMinWidth(fit$parFixedDf$`Back-transformed`, digits = .digits),
+              formatMinWidth(fit$parFixedDf$`CI Lower`, digits = .digits),
+              formatMinWidth(fit$parFixedDf$`CI Upper`, digits = .digits)
             )[!is.na(fit$parFixedDf$`CI Upper`)],
-            formatMinWidth(fit$parFixedDf$`Back-transformed`[is.na(fit$parFixedDf$`CI Upper`)], digits = 4)
+            formatMinWidth(fit$parFixedDf$`Back-transformed`[is.na(fit$parFixedDf$`CI Upper`)], digits = .digits)
           ),
-        `BSV(CV%)` = formatMinWidth(fit$parFixedDf$`BSV(CV%)`, digits = 4, naValue = ""),
-        `Shrink(SD)%` = paste0(formatMinWidth(fit$parFixedDf$`Shrink(SD)%`, digits = 4, naValue = ""), c("", ">", "", ""))
+        `BSV(CV%)` = formatMinWidth(fit$parFixedDf$`BSV(CV%)`, digits = .digits, naValue = ""),
+        `Shrink(SD)%` = paste0(formatMinWidth(fit$parFixedDf$`Shrink(SD)%`, digits = .digits, naValue = ""), c("", ">", "", ""))
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -149,17 +155,16 @@ test_that("formatMinWidth in parFixed", {
     fitFixed$parFixed,
     structure(
       list(
-        # focei defaults to sigdigTable = 4 (see foceiControlFast)
-        Est. = formatMinWidth(fitFixed$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:4], digits = 4)),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:4], digits = 4)),
+        Est. = formatMinWidth(fitFixed$parFixedDf$Estimate, digits = .digits),
+        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:4], digits = .digits)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:4], digits = .digits)),
         `Back-transformed(95%CI)` = c(
-          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1], digits = 4),
+          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1], digits = .digits),
           sprintf(
             "%s (%s, %s)",
-            formatMinWidth(fitFixed$parFixedDf$`Back-transformed`, digits = 4),
-            formatMinWidth(fitFixed$parFixedDf$`CI Lower`, digits = 4),
-            formatMinWidth(fitFixed$parFixedDf$`CI Upper`, digits = 4)
+            formatMinWidth(fitFixed$parFixedDf$`Back-transformed`, digits = .digits),
+            formatMinWidth(fitFixed$parFixedDf$`CI Lower`, digits = .digits),
+            formatMinWidth(fitFixed$parFixedDf$`CI Upper`, digits = .digits)
           )[2:4]
         )
       ),
@@ -193,17 +198,16 @@ test_that("formatMinWidth in parFixed", {
     structure(
       list(
         Parameter = c("ka", "clearance", "", ""),
-        # focei defaults to sigdigTable = 4 (control = list(print = 0))
-        Est. = formatMinWidth(fitFixedLabel$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:4], digits = 4)),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:4], digits = 4)),
+        Est. = formatMinWidth(fitFixedLabel$parFixedDf$Estimate, digits = .digits),
+        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:4], digits = .digits)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:4], digits = .digits)),
         `Back-transformed(95%CI)` = c(
-          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[1], digits = 4),
+          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[1], digits = .digits),
           sprintf(
             "%s (%s, %s)",
-            formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`, digits = 4),
-            formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`, digits = 4),
-            formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`, digits = 4)
+            formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`, digits = .digits),
+            formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`, digits = .digits),
+            formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`, digits = .digits)
           )[2:4]
         )
       ),
@@ -214,22 +218,27 @@ test_that("formatMinWidth in parFixed", {
 
   # Works with .ret$control$ci and .ret$control$sigdig ----
   fitFixedLabelCI <- .nlmixr(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0, ci = 0.9, sigdig = 4))
+  # digits from THIS fit, not the one at the top of the file: fitFixedLabelCI is
+  # built with its own sigdig, so formatting the expectation with the other fit's
+  # sigdigTable compares a table rendered at one precision against one checked at
+  # another.  Same principle as the .digits comment above -- read it off the fit.
+  .digitsCI <- fitFixedLabelCI$control$sigdigTable
   expect_equal(
     fitFixedLabelCI$parFixed,
     structure(
       list(
         Parameter = c("ka", "clearance", "", ""),
-        Est. = formatMinWidth(fitFixedLabelCI$parFixedDf$Estimate, digits = 4),
-        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:4], digits = 4)),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:4], digits = 4)),
+        Est. = formatMinWidth(fitFixedLabelCI$parFixedDf$Estimate, digits = .digitsCI),
+        SE = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$SE[2:4], digits = .digitsCI)),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabelCI$parFixedDf$`%RSE`[2:4], digits = .digitsCI)),
         `Back-transformed(90%CI)` =
           c(
-            formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[1], digits = 4),
+            formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`[1], digits = .digitsCI),
             sprintf(
               "%s (%s, %s)",
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = 4),
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = 4),
-              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = 4)
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`Back-transformed`, digits = .digitsCI),
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Lower`, digits = .digitsCI),
+              formatMinWidth(fitFixedLabelCI$parFixedDf$`CI Upper`, digits = .digitsCI)
             )[2:4])
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
@@ -248,7 +257,7 @@ test_that("formatMinWidth in parFixed", {
   expect_equal(unname(fitNoLiteralFix$parFixed["tka", "SE"]), "FIXED")
   expect_equal(unname(fitNoLiteralFix$parFixed["tka", "%RSE"]), "FIXED")
   expect_equal(unname(fitNoLiteralFix$parFixed["tcl", "SE"]),
-               formatMinWidth(fitNoLiteralFix$parFixedDf["tcl", "SE"], digits = 4))
+               formatMinWidth(fitNoLiteralFix$parFixedDf["tcl", "SE"], digits = .digits))
 
   # nlmixr2est#355: without etas the BSV/shrinkage columns are always blank
   expect_false(any(startsWith(names(fitFixed$parFixed), "BSV(")))

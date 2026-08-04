@@ -15,6 +15,8 @@ npagControl(
   dfScan = -1L,
   cores = NULL,
   rhoend = 1e-04,
+  gamma,
+  df,
   ...
 )
 }
@@ -28,12 +30,14 @@ override.}
 
 \item{cycles}{Maximum adaptive-grid cycles.}
 
-\item{gammaOptimize}{Use a global assay-error multiplier (gamma) as a per-cycle
+\item{gammaOptimize}{Use a global assay-error multiplier as a per-cycle
 warm start for the overall residual magnitude, folded into the variance-scale
 coefficients (`add`/`prop`/`lnorm`).  The per-endpoint values, the add/prop
 ratio, and the transform/autocorrelation parameters come from
 \code{residOptimize}.  Only valid for normal endpoints; censoring and
-transform-both-sides are supported.}
+transform-both-sides are supported.  Unrelated to [impmapControl()]'s
+`gamma`, which inflates an importance-sampling proposal's variance and has
+no meaning here.}
 
 \item{residOptimize}{How to estimate the residual-error thetas (every endpoint's
 `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support points
@@ -91,7 +95,26 @@ likelihood solves.  `NULL` (default) uses the current `rxode2` thread count
 `1e-4`, matching the optimizer convergence tolerance `10^(-sigdig)` at
 `sigdig = 4` (npag has no `sigdig`, so this is not derived from it).}
 
-\item{...}{Parameters passed to [impmapControl()].}
+\item{gamma, df}{Declared only so they are REJECTED rather than partially
+matched.  `gamma` is a prefix of `gammaOptimize`, so without an explicit
+formal R bound `gamma = 2` to it and silently turned the assay-error
+optimisation off; `df` is an importance-sampling proposal control a
+nonparametric engine never builds.  Passing either is an error.}
+
+\item{...}{Parameters passed to [impmapControl()], for the shared FOCEI-family
+  scaffolding only (the inner MAP problem, mu-referencing, the residual error
+  model, threads).  The importance-sampling controls are **rejected** rather
+  than accepted: `isample`, `df`, `auto`, `iaccept`, `gamma`, `qr`, `sir` and
+  the rest configure a proposal density that a nonparametric engine never
+  builds, so passing one is an error rather than a silent no-op.  Where an np
+  control does the job the message names it (`nIter` -> `cycles`,
+  `ctol` -> `rhoend`).
+
+  Note `gamma` is NOT `gammaOptimize`: `gamma` is impmap's proposal-variance
+  inflation (NONMEM `ISCALE`), while `gammaOptimize` is a global assay-error
+  multiplier on the residual magnitude.  They are unrelated, and `gamma` is a
+  prefix of `gammaOptimize`, so it is rejected explicitly to stop R's partial
+  matching from silently binding one to the other.}
 }
 \value{
 An `impmapControl` object tagged for the npag engine.

@@ -27,22 +27,29 @@
         PACKAGE = "nlmixr2est")
 }
 
-# This will be saved when compiled
-rxode2.api <- names(rxode2::.rxode2ptrs())
-
+## DO NOT re-add an rxode2 API version/name check here.
+##
+## There used to be one: the NAMES of rxode2's function-pointer table were captured
+## into `rxode2.api` when nlmixr2est was compiled, and .onLoad refused to start
+## ("nlmixr2est needs a different version of rxode2 api") whenever the live table's
+## names did not match that snapshot.
+##
+## It is the wrong check, and it was the approach that caused the ABI problems the
+## current design was requested to solve.  The table is read POSITIONALLY and is
+## ADDITIVE -- new entry points are appended, so an older consumer reads the lower
+## indices and ignores the rest, which is what makes an rxode2 upgrade safe without
+## rebuilding every downstream package.  Names are documentation, not the contract:
+## rxode2 5.1.6 corrected two drifted slot LABELS (slot 8 was mislabeled
+## `getSolvingOptionsInd` when it is `getSolvingOptions`, slot 9 named an export that
+## no longer exists) and the guard then refused a combination that was completely
+## sound, taking down every fresh-session test with it.
+##
+## The reverse case is not a reason to bring it back either: a downstream package
+## built against MORE slots than the installed rxode2 provides is caught where it
+## matters, by rxode2's own build-time check that no slot is left unset and by the
+## DESCRIPTION version requirement -- not by string-comparing a snapshot at load.
 .iniRxode2Ptr <- function() {
-  .ptr <- rxode2::.rxode2ptrs()
-  .nptr <- names(.ptr)
-  if (length(rxode2.api) > length(.nptr)) {
-    stop("nlmixr2est requires a newer version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2", call.=FALSE)
-  } else {
-    .nptr <- .nptr[seq_along(rxode2.api)]
-    if (!identical(rxode2.api, .nptr)) {
-      .bad <- TRUE
-      stop("nlmixr2est needs a different version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2, or update both packages", call.=FALSE)
-    }
-  }
-  .Call(`_nlmixr2est_iniRxodePtrs`, .ptr,
+  .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(),
         PACKAGE = "nlmixr2est")
 }
 
@@ -121,12 +128,6 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
-  ## Global default policy for the ODE parameter sensitivity method, used by the
-  ## nlm-family and focei/foce when a control's `sensMethod` is not set directly
-  ## (i.e. left at "default").  Either "forward" (the default) or "adjoint".
-  if (is.null(getOption("nlmixr2est.adjoint"))) {
-    options(nlmixr2est.adjoint = "forward")
-  }
 }
 
 ## Stamp type/description attrs onto the built-in nlmixr2Est.* methods at

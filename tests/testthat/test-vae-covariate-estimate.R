@@ -3,7 +3,8 @@
 ## regress M-step regardless of nonMuTheta -- previously they were held fixed
 ## under "none" and errored under "fix"/"eta".  Covariate identity is read from
 ## the shared muRefCovariateDataFrame/allCovs (never mutated).  Fast: no fit; the
-## end-to-end "coefficient moves" checks live in the slow test-vae-covariate.R.
+## end-to-end "coefficient moves" checks live in the slow
+## test-vae-covariate-selection.R.
 
 nmTest({
   ## linear (rxode2 records it in muRefCovariateDataFrame) covariate on cl

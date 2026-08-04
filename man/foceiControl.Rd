@@ -145,7 +145,7 @@ foceiControl(
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   zeroTheta = 0.001,
   boundedTransform = TRUE
 )
@@ -816,12 +816,9 @@ gnlmm it was -700.}
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
 
-\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
-`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
-(`s`) method.}
+`"default"` is the same thing.}
 
 \item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
 population parameter (`theta`) whose initial estimate is exactly `0`

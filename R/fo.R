@@ -116,8 +116,7 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
   ## FO linearizes at eta=0 and does not run the conditional inner sensitivity
-  ## problem, so it always uses forward sensitivities (the adjoint inner path
-  ## does not apply).
+  ## problem, so it always uses forward sensitivities.
   rxode2::rxAssignControlValue(.ui, "sensMethod", "forward")
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
   rxode2::rxAssignControlValue(.ui, "compress", 0L)
