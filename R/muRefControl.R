@@ -731,6 +731,11 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
   .cls <- class(ctl)[1]
   .ctl <- unclass(ctl)
   if (identical(.cls, target)) return(do.call(target, .ctl))
+  # foceiControl is the BASE control: its defaults are neutral and encode no method
+  # identity of their own (interaction/nAGQ/foce are ordinary user settings there), so
+  # every field passes through -- which is also exactly what shipped before this helper
+  # existed.  Only the DERIVED family controls record their method in their defaults.
+  if (identical(.cls, "foceiControl")) return(do.call(target, .ctl))
   .src <- tryCatch(unclass(do.call(.cls, list())), error = function(e) NULL)
   if (is.null(.src)) return(do.call(target, .ctl))
   .keep <- vapply(names(.ctl), function(.n) {
