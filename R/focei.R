@@ -2693,8 +2693,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
     # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +
     # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
-    # out-of-scope cases (multiple endpoints, censoring, nAGQ>1, IOV), where the
-    # augmented `..outer` model cannot supply the gradient and the fit uses finite
+    # out-of-scope cases (censoring, nAGQ>1, IOV), where the augmented `..outer` model
+    # cannot supply the gradient and the fit uses finite
     # differences.  (linCmt() passes the scope gate but its unsupported 2nd-order
     # expansion makes it fall back to finite differences at build time.)
     if (isTRUE(.control$fast) && !.foceiLLGradInScope(.ui)) {

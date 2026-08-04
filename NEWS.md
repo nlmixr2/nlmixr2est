@@ -1172,6 +1172,12 @@
   This affected such fits at **any** `foceiControl(fast=)` setting.  Models with
   a single endpoint, and models whose endpoints are all Gaussian, are unchanged.
 
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
+  general-likelihood models with **more than one endpoint**, which previously
+  fell back to finite differences.  It was gated off as unverifiable, but what
+  did not verify was the objective above rather than the gradient; against
+  central differences of the corrected objective it agrees to 8e-3 relative.
+
 - `covMethod="analytic"` now works for models with an **estimated `boxCox()` or
   `yeoJohnson()` lambda**, which previously always fell back to the
   finite-difference covariance.  The augmented model emits a residual-variance
