@@ -191,7 +191,16 @@ static bool odeSwapEsInstall(int slot) {
 }
 
 static void odeSwapEsDeactivate() {
+#ifdef NLMIXR2EST_HAS_ESSHAPE
   rxode2EventSensDeactivate();
+#else
+  try {                                   // COMPATIBILITY (rxode2 5.1.5): via R
+    Environment _rx = Environment::namespace_env("rxode2");
+    Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
+    _f();
+  } catch (...) {
+  }
+#endif
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
@@ -225,11 +234,18 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
 
 // Capture the live shape into prevShape_ (called before anything is installed).
 bool OdeSwapEsBatch::saveLive() {
+#ifdef NLMIXR2EST_HAS_ESSHAPE
   int sz = rxode2EventSensShapeSize();
   if (sz <= 0) return false;
   prevShape_.resize((size_t)sz);
   if (!rxode2EventSensShapeSave(prevShape_.data(), sz)) { prevShape_.clear(); return false; }
   return true;
+#else
+  // rxode2 5.1.5: no way to snapshot the shape, so the destructor falls back to
+  // reconstructing which slot to reinstall (see below).  COMPATIBILITY -- remove with
+  // the follow-up issue.
+  return false;
+#endif
 }
 
 OdeSwapEsBatch::~OdeSwapEsBatch() {
@@ -240,9 +256,13 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
   // what was there rather than reconstructing who put it there.  Leaving the
   // batch's shape live would mis-specify every inner solve after the first
   // gradient call of an iterating fit.
-  if (!prevShape_.empty() &&
-      rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size())) {
-    // restored
+  bool restored = false;
+#ifdef NLMIXR2EST_HAS_ESSHAPE
+  restored = !prevShape_.empty() &&
+    rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size());
+#endif
+  if (restored) {
+    // put back verbatim -- covers a shape installed outside the registry
   } else if (prevSlotIdx_ >= 0) {
     odeSwapEsInstall(prevSlotIdx_);          // a SLOT, never a role
   } else if (prevSlot_ == odeEsInner && odeSwapHasEs(odeSlotInner)) {
@@ -313,21 +333,41 @@ int odeSwapCmtDelta(int slot) {
 // Only this subject's rows are touched, so it stays safe inside the per-subject
 // parallel regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets
 // the other way.
+// COMPATIBILITY (remove with the follow-up issue): rxode2 5.1.6 added setIndCmt(),
+// the writer half of the accessor pair.  Use it when the header has it; on 5.1.5 fall
+// back to the ABI-linked field access this used to do.  Reading is always through
+// getIndCmt(), which both versions have -- only the WRITE needed the new entry point.
+static inline int odeCmtGet(rx_solving_options *op, rx_solving_options_ind *ind, int kk) {
+  return getIndCmt(op, ind, kk);
+}
+static inline void odeCmtSet(rx_solving_options *op, rx_solving_options_ind *ind,
+                             int kk, int cmt) {
+#ifdef NLMIXR2EST_HAS_SETINDCMT
+  setIndCmt(op, ind, kk, cmt);
+#else
+  if (op == NULL || op->cmtCov < 0 || ind == NULL || ind->cov_ptr == NULL) return;
+  int n = getIndNallTimes(ind);
+  if (kk < 0 || kk >= n) return;
+  ind->cov_ptr[(size_t)n * (size_t)op->cmtCov + (size_t)kk] = (double) cmt;
+#endif
+}
+
 void OdeSwapCmtScope::shift(int by) {
   if (by == 0 || _op == NULL || _ind == NULL) return;
   int n = getIndNallTimes(_ind);
   if (n <= 0) return;
   _saved.clear();
   for (int kk = 0; kk < n; ++kk) {
-    int v = getIndCmt(_op, _ind, kk);
-    // A missing CMT reads as NA_INTEGER (rxode2 >= 5.1.6).  It MUST be skipped: it is
-    // INT_MIN, so the `v < -_nPhys` test below would otherwise accept it and write back
-    // INT_MIN +/- by as if it were a real compartment.
+    int v = odeCmtGet(_op, _ind, kk);
+    // rxode2 >= 5.1.6 reports a missing CMT as NA_INTEGER; 5.1.5 reports it as 1, which
+    // the |v| > _nPhys test below already skips (1 is physical for any real model, which
+    // is why the constructor requires _nPhys >= 1).  Handle the new value explicitly: it
+    // is INT_MIN, so `v < -_nPhys` would otherwise ACCEPT it and write back garbage.
     if (v == NA_INTEGER) continue;
     // dose / physical compartments are left alone -- the macro does not offset them
     if (!(v > _nPhys || v < -_nPhys)) continue;
     _saved.push_back(std::make_pair(kk, v));      // remember the pool-basis value
-    setIndCmt(_op, _ind, kk, (v < 0) ? v - by : v + by);
+    odeCmtSet(_op, _ind, kk, (v < 0) ? v - by : v + by);
   }
 }
 
@@ -345,7 +385,7 @@ void OdeSwapCmtScope::shift(int by) {
 void OdeSwapCmtScope::unshift() {
   if (_op == NULL || _ind == NULL) return;
   for (size_t i = 0; i < _saved.size(); ++i) {
-    setIndCmt(_op, _ind, _saved[i].first, _saved[i].second);
+    odeCmtSet(_op, _ind, _saved[i].first, _saved[i].second);
   }
   _saved.clear();
 }
