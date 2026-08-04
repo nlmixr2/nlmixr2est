@@ -53,7 +53,10 @@ arma::mat decorrelateNpdeEigenMat(arma::mat& varsim, unsigned int& warn) {
   // false, which would silently yield a 0x0 decorrelation matrix and later abort
   // the NPDE matrix multiply. Treat failure as an exception so decorrelateNpdeMat
   // falls through to its cholSE__/diagonal fallbacks.
-  if (!arma::eig_sym(eigval, eigvec, varsim, "std")) {
+  // symmatu(): varsim is accumulated from simulated replicates, so its two triangles can
+  // differ in the last bits and eig_sym warns "given matrix is not symmetric" (it would
+  // then silently use one triangle anyway).  Same guard as the FOCEi Hessian.
+  if (!arma::eig_sym(eigval, eigvec, arma::symmatu(varsim), "std")) {
     throw std::runtime_error("eig_sym failed");
   }
   eigval = sqrt(eigval);

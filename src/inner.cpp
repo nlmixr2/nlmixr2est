@@ -9162,6 +9162,10 @@ void foceiFinalizeTables(Environment e){
     e["fullCor"] = getCor(e["cov"]);
     arma::mat cor = as<arma::mat>(e["fullCor"]);
     cor.diag().ones();
+    // guard against tiny numerical asymmetry -- the covariance this is derived from is
+    // assembled elementwise (and may come from an FD sandwich), so the two triangles can
+    // differ in the last bits and eig_sym then warns.  Same guard as the FOCEi Hessian.
+    cor = 0.5 * (cor + cor.t());
     arma::vec eigval;
     arma::mat eigvec;
     eig_sym(eigval, eigvec, cor);
@@ -9190,7 +9194,7 @@ void foceiFinalizeTables(Environment e){
     arma::vec eigval;
     arma::mat eigvec;
 
-    eig_sym(eigval, eigvec, cov);
+    eig_sym(eigval, eigvec, arma::symmatu(cov));   // guard against tiny numerical asymmetry
     e["eigenCov"] = eigval;
     e["eigenVecCov"] = eigvec;
     unsigned int k=0;
