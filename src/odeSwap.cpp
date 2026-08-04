@@ -158,12 +158,23 @@ int odeSwapEsModelForSlot(int slot) {
 int  odeSwapEsInstalledModel()          { return _odeEsSlot; }
 void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx = -1; }
 
-// Install a slot's ES shape.  rxode2's rxode2EventSensLoad/SetActive are not
-// linkable from here, so this goes through the R entry point -- which is also
-// more complete: it sets nParam3 and useCalcJac, which the C signature omits.
-// An R round trip is acceptable BECAUSE this is a batch boundary: it runs once
-// per model batch, outside any parallel region.  It must never be called from
-// inside an OpenMP loop (Rcpp::Function is not safe there).
+// Install a slot's ES shape.
+//
+// The INSTALL still goes through R: rxode2EventSensLoadFull() wants all six dims and
+// they are derived from model$eventSensInfo, an R-level structure that
+// rxEventSensLoadModel() already knows how to read.  Acceptable because this is a
+// batch boundary -- once per model batch, outside any parallel region.  It must never
+// be called from inside an OpenMP loop (Rcpp::Function is not safe there).
+//
+// The RESTORE is what moved onto the new C API (rxode2 5.1.6, PR #1175): see
+// OdeSwapEsBatch, which snapshots the live shape with rxode2EventSensShapeSave().
+//
+// Per-slot shape buffers were tried and REMOVED.  They would have taken R off this
+// path entirely, but a saved shape holds pointers into the model's shared library and
+// rxUnloadAll()/rxUnload() is driven from R without going through odeSwapClear(), so a
+// cache entry can outlive the library it points into and the next restore would install
+// dangling function pointers.  The short-lived snapshot below cannot: it is taken and
+// consumed inside one batch scope.
 static bool odeSwapEsInstall(int slot) {
   if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return false;
   SEXP _m = odeSwapModelSEXP(slot);
@@ -180,21 +191,20 @@ static bool odeSwapEsInstall(int slot) {
 }
 
 static void odeSwapEsDeactivate() {
-  try {
-    Environment _rx = Environment::namespace_env("rxode2");
-    Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
-    _f();
-  } catch (...) {
-  }
+  rxode2EventSensDeactivate();
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
   : prevSlot_(_odeEsSlot), prevSlotIdx_(_odeEsSlotIdx), armed_(false) {
+  // Snapshot whatever shape is live, whoever installed it.  This is what lets the
+  // destructor put back a shape the registry never saw -- focei.R's fit-wide
+  // rxEventSensLoadModel(model$inner) -- without having to recognize it.
   int want = odeSwapEsModelForSlot(slot);
   // Compare the SLOT, not the role: thetaSens/outer/outerNode/outerCov all share the
   // odeEsOuter role but are DIFFERENT compiled models with different ES shapes, so a
   // role match would skip installing the one we are about to solve.
   if (slot == _odeEsSlotIdx) return;                       // already this model
+  saveLive();                        // BEFORE anything is installed over it
   bool esOk = true;
   if (odeSwapHasEs(slot)) {
     esOk = odeSwapEsInstall(slot);
@@ -213,16 +223,29 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
   armed_ = true;
 }
 
+// Capture the live shape into prevShape_ (called before anything is installed).
+bool OdeSwapEsBatch::saveLive() {
+  int sz = rxode2EventSensShapeSize();
+  if (sz <= 0) return false;
+  prevShape_.resize((size_t)sz);
+  if (!rxode2EventSensShapeSave(prevShape_.data(), sz)) { prevShape_.clear(); return false; }
+  return true;
+}
+
 OdeSwapEsBatch::~OdeSwapEsBatch() {
   if (!armed_) return;
-  if (prevSlotIdx_ >= 0) {
+  // Restore the exact shape that was live on entry.  The snapshot covers the case
+  // the old code had to special-case -- a shape installed OUTSIDE the registry, by
+  // focei.R's fit-wide rxEventSensLoadModel(model$inner) -- because it puts back
+  // what was there rather than reconstructing who put it there.  Leaving the
+  // batch's shape live would mis-specify every inner solve after the first
+  // gradient call of an iterating fit.
+  if (!prevShape_.empty() &&
+      rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size())) {
+    // restored
+  } else if (prevSlotIdx_ >= 0) {
     odeSwapEsInstall(prevSlotIdx_);          // a SLOT, never a role
   } else if (prevSlot_ == odeEsInner && odeSwapHasEs(odeSlotInner)) {
-    // prevSlot_ == -1 means the pre-batch shape was installed OUTSIDE the
-    // registry -- the fit-wide load of the INNER model's sensitivities
-    // (focei.R's rxEventSensLoadModel(model$inner)).  Restore that, not
-    // nothing: leaving the batch's shape live would mis-specify every inner
-    // solve after the first gradient call of an iterating fit.
     odeSwapEsInstall(odeSlotInner);
   } else {
     odeSwapEsDeactivate();
@@ -276,56 +299,75 @@ int odeSwapCmtDelta(int slot) {
 
 // Re-base the endpoint rows of one subject's CMT covariate column.  See odeSwap.h.
 //
-// ABI WARNING -- this is the ONLY place nlmixr2est reaches into rxode2's structs
-// by field (`op->cmtCov`, `ind->cov_ptr`), so it is ABI-linked: a layout change in
-// rxode2 silently miscompiles it rather than failing to build.  rxode2 already
-// exposes the READ half through the function-pointer table (`getIndCmt(op, ind,
-// kk)`, rx2api.c:267, slot 82); what is missing is the matching writer.
+// Goes through rxode2's accessor pair getIndCmt()/setIndCmt() (function-pointer
+// table), so nothing here is ABI-linked to op->cmtCov / ind->cov_ptr any more --
+// setIndCmt() landed in rxode2 5.1.6 (PR #1175) as the writer this needed.  Both
+// no-op for a model with no CMT covariate and for an individual with no covariate
+// array, so the callers need no separate guard for those.
 //
-// UPSTREAM API REQUEST (rxode2): add `void setIndCmt(rx_solving_options *op,
-// rx_solving_options_ind *ind, int kk, int cmt)` as a peer of getIndCmt, and
-// register it in the pointer table.  That encapsulates both fields, keeps this
-// out of the ABI, and is the exact inverse of an accessor that already exists.
-// Everything else here already goes through the public accessors.
+// NA rows: getIndCmt() reports a missing CMT as 1 -- it cannot distinguish NA from
+// compartment 1 -- but 1 is a physical compartment for any real model, so the
+// |cmt| > nPhys test below skips those rows exactly as reading the raw NA did.
+// That reasoning needs nPhys >= 1, which the constructor now requires.
 //
-// Layout, per rx2api.c getIndCmt: covariates are stored per individual,
-// covariate-major -- ind->cov_ptr[n_all_times * op->cmtCov + kk] -- so this
-// touches only this subject's slice and is safe inside the per-subject parallel
-// regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets the
-// other way.
+// Only this subject's rows are touched, so it stays safe inside the per-subject
+// parallel regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets
+// the other way.
 void OdeSwapCmtScope::shift(int by) {
   if (by == 0 || _op == NULL || _ind == NULL) return;
-  int cc = _op->cmtCov;                       // ABI: no accessor exists yet
-  if (cc < 0) return;
   int n = getIndNallTimes(_ind);
-  double *cov = _ind->cov_ptr;                // ABI: no accessor exists yet
-  if (n <= 0 || cov == NULL) return;
-  size_t off = (size_t)n * (size_t)cc;
+  if (n <= 0) return;
+  _saved.clear();
   for (int kk = 0; kk < n; ++kk) {
-    double v = cov[off + (size_t)kk];
-    if (ISNA(v)) continue;
+    int v = getIndCmt(_op, _ind, kk);
+    // A missing CMT reads as NA_INTEGER (rxode2 >= 5.1.6).  It MUST be skipped: it is
+    // INT_MIN, so the `v < -_nPhys` test below would otherwise accept it and write back
+    // INT_MIN +/- by as if it were a real compartment.
+    if (v == NA_INTEGER) continue;
     // dose / physical compartments are left alone -- the macro does not offset them
-    if (!(v > (double)_nPhys || v < -(double)_nPhys)) continue;
-    cov[off + (size_t)kk] = (v < 0) ? v - (double)by : v + (double)by;
+    if (!(v > _nPhys || v < -_nPhys)) continue;
+    _saved.push_back(std::make_pair(kk, v));      // remember the pool-basis value
+    setIndCmt(_op, _ind, kk, (v < 0) ? v - by : v + by);
   }
+}
+
+// Put back exactly what shift() overwrote.
+//
+// Restoring the SAVED value rather than shifting again is what makes this exact.  Two
+// ways a recomputed reverse goes wrong:
+//   * re-testing |v| > _nPhys on the SHIFTED value: a pool-basis CMT just above _nPhys
+//     can land at or below it after shift(-delta), so the reverse pass would classify it
+//     as physical and skip it, leaving the column in the peer's basis for every later
+//     reader;
+//   * re-deriving the direction from the shifted value: a positive CMT that shifts below
+//     zero would take the negative branch and move further away instead of back.
+// Neither can arise when the original value is simply written back.
+void OdeSwapCmtScope::unshift() {
+  if (_op == NULL || _ind == NULL) return;
+  for (size_t i = 0; i < _saved.size(); ++i) {
+    setIndCmt(_op, _ind, _saved[i].first, _saved[i].second);
+  }
+  _saved.clear();
 }
 
 OdeSwapCmtScope::OdeSwapCmtScope(int slot, rx_solving_options *op,
                                  rx_solving_options_ind *ind) {
   int d = odeSwapCmtDelta(slot);
-  if (d == 0 || op == NULL || ind == NULL || op->cmtCov < 0) return;
+  if (d == 0 || op == NULL || ind == NULL) return;   // no cmtCov -> accessors no-op
   const OdePoolPlan &p = odeSwapPlan();
   // physical compartments = states that are not sensitivities; identical for every
   // peer (they share one user model), so the pool's own counts define it
   int nPhys = odeSwapNeq(p.poolSlot) - odeSwapNSens(p.poolSlot);
-  if (nPhys < 0) return;
+  // >= 1, not >= 0: shift() relies on compartment 1 being physical so that an NA
+  // CMT (which getIndCmt reports as 1) is skipped rather than shifted.
+  if (nPhys < 1) return;
   _op = op; _ind = ind; _delta = d; _nPhys = nPhys;
   shift(-_delta);                 // pool basis -> this peer's basis
 }
 
 OdeSwapCmtScope::~OdeSwapCmtScope() {
   if (_delta == 0) return;
-  shift(_delta);                  // back to the pool basis for the next reader
+  unshift();                      // back to the pool basis for the next reader
   _delta = 0;
 }
 
