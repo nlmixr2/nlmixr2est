@@ -1,3 +1,27 @@
+# nlmixr2est 7.0.3
+
+## New features
+
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
+  general-likelihood models with **more than one endpoint**, which previously
+  fell back to finite differences.  It was gated off as unverifiable, but what
+  did not verify was the objective below rather than the gradient; against
+  central differences of the corrected objective it agrees to 8e-3 relative.
+
+## Bug fixes
+
+### Estimation
+
+- Fixed the objective function for a model that has a **general-likelihood
+  endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
+  Each observation's distribution was read one row before the model had been
+  evaluated for that row, so a subject's FIRST observation was scored as normal:
+  its log-density was treated as a prediction of `DV` against a variance forced
+  to 1.  On a two-endpoint warfarin model the objective read 11,463,666 where the
+  correct value is 53,697, and the conditional estimates were shifted with it.
+  This affected such fits at **any** `foceiControl(fast=)` setting.  Models with
+  a single endpoint, and models whose endpoints are all Gaussian, are unchanged.
+
 # nlmixr2est 7.0.2
 
 ## Breaking changes
@@ -1161,22 +1185,6 @@
 ## Bug fixes
 
 ### Estimation
-
-- Fixed the objective function for a model that has a **general-likelihood
-  endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
-  Each observation's distribution was read one row before the model had been
-  evaluated for that row, so a subject's FIRST observation was scored as normal:
-  its log-density was treated as a prediction of `DV` against a variance forced
-  to 1.  On a two-endpoint warfarin model the objective read 11,463,666 where the
-  correct value is 53,697, and the conditional estimates were shifted with it.
-  This affected such fits at **any** `foceiControl(fast=)` setting.  Models with
-  a single endpoint, and models whose endpoints are all Gaussian, are unchanged.
-
-- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
-  general-likelihood models with **more than one endpoint**, which previously
-  fell back to finite differences.  It was gated off as unverifiable, but what
-  did not verify was the objective above rather than the gradient; against
-  central differences of the corrected objective it agrees to 8e-3 relative.
 
 - `covMethod="analytic"` now works for models with an **estimated `boxCox()` or
   `yeoJohnson()` lambda**, which previously always fell back to the
