@@ -192,15 +192,16 @@ static bool odeSwapEsInstall(int slot) {
 
 static void odeSwapEsDeactivate() {
 #ifdef NLMIXR2EST_HAS_ESSHAPE
-  rxode2EventSensDeactivate();
-#else
+  if (rxode2EventSensDeactivate != NULL) { rxode2EventSensDeactivate(); return; }
+#endif
+  {
   try {                                   // COMPATIBILITY (rxode2 5.1.5): via R
     Environment _rx = Environment::namespace_env("rxode2");
     Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
     _f();
   } catch (...) {
   }
-#endif
+  }
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
@@ -235,6 +236,7 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
 // Capture the live shape into prevShape_ (called before anything is installed).
 bool OdeSwapEsBatch::saveLive() {
 #ifdef NLMIXR2EST_HAS_ESSHAPE
+  if (rxode2EventSensShapeSize == NULL || rxode2EventSensShapeSave == NULL) return false;
   int sz = rxode2EventSensShapeSize();
   if (sz <= 0) return false;
   prevShape_.resize((size_t)sz);
@@ -258,7 +260,7 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
   // gradient call of an iterating fit.
   bool restored = false;
 #ifdef NLMIXR2EST_HAS_ESSHAPE
-  restored = !prevShape_.empty() &&
+  restored = rxode2EventSensShapeRestore != NULL && !prevShape_.empty() &&
     rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size());
 #endif
   if (restored) {
@@ -343,13 +345,19 @@ static inline int odeCmtGet(rx_solving_options *op, rx_solving_options_ind *ind,
 static inline void odeCmtSet(rx_solving_options *op, rx_solving_options_ind *ind,
                              int kk, int cmt) {
 #ifdef NLMIXR2EST_HAS_SETINDCMT
-  setIndCmt(op, ind, kk, cmt);
-#else
-  if (op == NULL || op->cmtCov < 0 || ind == NULL || ind->cov_ptr == NULL) return;
-  int n = getIndNallTimes(ind);
-  if (kk < 0 || kk >= n) return;
-  ind->cov_ptr[(size_t)n * (size_t)op->cmtCov + (size_t)kk] = (double) cmt;
+  // The #ifdef only says the header DECLARED it -- it does not say the installed
+  // rxode2 FILLED that slot.  nlmixr2est compiled against 5.1.6 can be loaded against
+  // 5.1.5 (DESCRIPTION allows it), where the pointer table is shorter and this stays
+  // NULL from iniRxodePtrs0(); calling it would segfault.  Compile-time decides what
+  // is compilable, runtime decides what is used.
+  if (setIndCmt != NULL) { setIndCmt(op, ind, kk, cmt); return; }
 #endif
+  {
+    if (op == NULL || op->cmtCov < 0 || ind == NULL || ind->cov_ptr == NULL) return;
+    int n = getIndNallTimes(ind);
+    if (kk < 0 || kk >= n) return;
+    ind->cov_ptr[(size_t)n * (size_t)op->cmtCov + (size_t)kk] = (double) cmt;
+  }
 }
 
 void OdeSwapCmtScope::shift(int by) {
