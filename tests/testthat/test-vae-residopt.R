@@ -37,12 +37,25 @@ nmTest({
       cp <- center / v
       cp ~ add(add.err) + prop(prop.err) })
   }
+  ## sigdig = 4 is pinned, not incidental.  The package default moved 4 -> 3 in
+  ## 7d3c7b62d, and at 3 the "moment" fit is under-resolved: it reports 131.80905
+  ## where every tighter solve puts it at 131.811, which flatters it enough to lose
+  ## the objective comparison below.  twoStage is unaffected (131.809 at every
+  ## tolerance -- vae seeds internally, so this is resolution, not sampling scatter):
+  ##
+  ##   sigdig   moment      twoStage    o - m
+  ##   3        131.80905   131.80927   +2.2e-04   <- moment flattered, comparison fails
+  ##   4        131.81100   131.80904   -2.0e-03
+  ##   5        131.81078   131.80926   -1.5e-03
+  ##   6        131.81081   131.80918   -1.6e-03
+  ##
+  ## At sigdig >= 4 twoStage wins by ~2e-3, about 2000x the 1e-6 bound.
   .fit <- function(mod, ro) {
     suppressMessages(suppressWarnings(nlmixr2(
       mod, nlmixr2data::theo_sd, est = "vae",
       control = vaeControl(print = 0L, calcTables = FALSE, residOptimize = ro,
-                           itersBurnIn = 40L, iters = 80L, klWarmup = 30L,
-                           gammaIter = 60L))))
+                           sigdig = 4, itersBurnIn = 40L, iters = 80L,
+                           klWarmup = 30L, gammaIter = 60L))))
   }
 
   test_that("residOptimize defaults to twoStage", {
