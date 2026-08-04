@@ -61,6 +61,7 @@ getValidNlmixrCtl.mfocei <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mfoceiControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mfoceiControl, .ctl)
   } else if (!inherits(.ctl, "mfoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -148,6 +149,7 @@ getValidNlmixrCtl.ifocei <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ifoceiControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ifoceiControl, .ctl)
   } else if (!inherits(.ctl, "ifoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -238,6 +240,7 @@ getValidNlmixrCtl.mfoce <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mfoceControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mfoceControl, .ctl)
   } else if (!inherits(.ctl, "mfoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -334,6 +337,7 @@ getValidNlmixrCtl.ifoce <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ifoceControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ifoceControl, .ctl)
   } else if (!inherits(.ctl, "ifoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -428,6 +432,7 @@ getValidNlmixrCtl.magq <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to magqControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(magqControl, .ctl)
   } else if (!inherits(.ctl, "magqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -522,6 +527,7 @@ getValidNlmixrCtl.iagq <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to iagqControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(iagqControl, .ctl)
   } else if (!inherits(.ctl, "iagqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -613,6 +619,7 @@ getValidNlmixrCtl.mlaplace <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mlaplaceControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mlaplaceControl, .ctl)
   } else if (!inherits(.ctl, "mlaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -698,6 +705,7 @@ getValidNlmixrCtl.ilaplace <- function(control) {
   if (inherits(.ctl, .foceiFamilyControlClasses)) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ilaplaceControl"))
     class(.ctl) <- NULL
+    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ilaplaceControl, .ctl)
   } else if (!inherits(.ctl, "ilaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -746,5 +754,16 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
 #' mu-referenced validator that tests only for `"foceiControl"` therefore treats a
 #' `foceControl()` as invalid and silently substitutes bare defaults.
 #' @noRd
-.foceiFamilyControlClasses <- c("foceiControl", "foceControl", "focepControl",
-                                "agqControl", "laplaceControl", "posthocControl")
+.foceiFamilyControlClasses <- setdiff(.nlmixrFoceiFamilyControlClasses, "posthocControl")
+
+#' Drop the fields that DEFINE a focei-family method before converting a control
+#'
+#' `do.call(<target>Control, .ctl)` matches `...` entries to the target's formals, so a
+#' `foceControl`'s `interaction=FALSE` would override `mfoceiControl`'s `interaction=TRUE`
+#' and silently run FOCE as FOCEI (likewise `nAGQ` for agq/laplace, `foce` for focep).
+#' Strip them so the target method keeps its own identity and only genuine user settings
+#' (sigdig, covMethod, tolerances) carry over.
+#' @noRd
+.foceiFamilyControlStripIdentity <- function(ctl) {
+  ctl[setdiff(names(ctl), c("interaction", "nAGQ", "foce", "foceType", "muModel", "est"))]
+}
