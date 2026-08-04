@@ -139,10 +139,13 @@ nmTest({
     # the whole failure was a data-sized excess (1.1e7 on an objective of 5.4e4), so a
     # loose relative tolerance still pins it; log|H| differs by O(1) between the two
     expect_equal(as.numeric(ll$objf), as.numeric(gs$objf), tolerance = 1e-3)
-    # per subject too -- a compensating error across subjects would pass the total
-    expect_equal(ll$env$etaObf$OBJI, gs$env$etaObf$OBJI, tolerance = 1e-2)
+    # per subject too -- a compensating error across subjects would pass the total.
+    # as.numeric(): only the numbers are under test here, so do not let names/classes
+    # carried by the accessor make the comparison fail for a non-numeric reason
+    expect_equal(as.numeric(ll$env$etaObf$OBJI), as.numeric(gs$env$etaObf$OBJI),
+                 tolerance = 1e-2)
     # and the conditional estimates agree (they differed by 0.17 while the bug was live)
-    expect_equal(ll$eta$eta.cl, gs$eta$eta.cl, tolerance = 1e-2)
+    expect_equal(as.numeric(ll$eta$eta.cl), as.numeric(gs$eta$eta.cl), tolerance = 1e-2)
     # the analytic gradient really was used for the ll() arm
     expect_gt(ll$env$nAnalyticGradDirect, 0L)
   })
@@ -159,7 +162,10 @@ nmTest({
       suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", .phCtl(TRUE))))$objf
     }
     h <- 1e-3
-    ## cached: a property of the model/data/theta, not of the gradient -- helper-gradref.R
+    ## cached: a property of the model/data/theta, not of the gradient -- helper-gradref.R.
+    ## The 2*length(theta) perturbed fits below therefore run only when the checked-in
+    ## baselines/gradref-ll-multiple-endpoint.rds is regenerated deliberately
+    ## (NLMIXR2EST_REGEN_GRADREF=TRUE), never on CI.
     fd <- .gradRef("ll-multiple-endpoint", function()
       vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h),
              numeric(1)))
