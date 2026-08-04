@@ -1183,6 +1183,21 @@
       optimized to those ETAs now agree exactly, where before they could differ
       by more than 100 objective units on an 8-ETA model.
 
+- The mu-referenced methods (`est="mfocei"`, `"ifocei"`, `"mfoce"`, `"ifoce"`,
+  `"mfocep"`, `"ifocep"`, `"magq"`, `"iagq"`, `"mlaplace"`, `"ilaplace"`) no longer
+  discard a control belonging to another method in the FOCEi family.  Each
+  `*Control()` replaces its class rather than appending, so a `foceControl()`,
+  `focepControl()`, `agqControl()` or `laplaceControl()` was treated as invalid and
+  silently replaced with defaults -- **`sigdig`, `covMethod`, `fast`, the tolerances
+  and the iteration caps were all dropped**, reported only as a note in the fit
+  output.  Such a control is now converted and the settings are kept.
+
+    - The conversion keeps the METHOD's identity.  A setting is carried over only
+      when it differs from the defaults of the control it came from, so a
+      `foceControl()` cannot quietly run `est="mfocei"` as FOCE, nor `est="magq"` as
+      FOCE in place of the quadrature -- while a deliberate `agqControl(nAGQ=5)` or
+      `foceiControl(interaction=FALSE)` is still honored.
+
 - The ETA-drift theta reset (`foceiControl(resetThetaP=)`,
   `resetThetaFinalP=`) now defaults to OFF.  It re-centered a mu-referenced
   theta by the mean ETA and restarted the fit, but when the ETAs cannot
