@@ -1162,6 +1162,21 @@
 
 ### Estimation
 
+- `covMethod="analytic"` now works for models with an **estimated `boxCox()` or
+  `yeoJohnson()` lambda**, which previously always fell back to the
+  finite-difference covariance.  The augmented model emits a residual-variance
+  sensitivity for every sigma parameter *including* lambda, while the shared
+  gradient/covariance model drops only the non-lambda sigma directions; the extra
+  column widened the per-subject sensitivities past the covariance buffers and the
+  assembly errored.  Only the dropped directions are restored now.
+
+- The analytic covariance says **why** it declined.  Errors raised while it is
+  assembled were caught and reported as the generic "not available for this
+  model", which is indistinguishable from a genuine out-of-scope model; they are
+  now reported as `analytic err<n>: <message>` in `$runInfo`, where `<n>` identifies
+  the entry point.  A dozen internal bail-outs that returned silently now name
+  their reason too.
+
 - The FOCEi-family objective function is now reproducible, and no longer depends
   on how the ETAs were reached.  The inner problem uses finite-difference steps
   (`etahf`/`etahr` for the ETA gradient, `etahh` for the FD Hessian) that are
