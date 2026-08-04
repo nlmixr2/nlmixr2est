@@ -22,6 +22,12 @@
   This affected such fits at **any** `foceiControl(fast=)` setting.  Models with
   a single endpoint, and models whose endpoints are all Gaussian, are unchanged.
 
+- `foceiControl(fo=TRUE)` now rejects a general-likelihood endpoint or a censored
+  observation wherever it appears in a subject, not only on that subject's last
+  observation.  Both guards tested the last row's value, so a subject whose final
+  observation was Gaussian and uncensored slipped past them and was fit with an
+  objective FO does not support.
+
 # nlmixr2est 7.0.2
 
 ## Breaking changes

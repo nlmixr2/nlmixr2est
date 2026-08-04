@@ -2002,10 +2002,14 @@ double likInner0(double *eta, int id) {
       } else {
         iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
       }
-      // dist defaults to normal, not 0: it is read per OBSERVATION below, but the
-      // FO branch tests it after the loop, so a subject with only dose rows must
-      // still look normal there (0 is "unset" and would trip the FO guard).
+      // dist is set per OBSERVATION below, before every use; normal rather than the
+      // old "unset" 0 so a subject with only dose rows carries a meaningful value.
       int dist=rxDistributionNorm, yj0=0, yj = 0;
+      // The FO branch after the loop rejects what it does not support.  `dist`/`cens`
+      // are per-observation and end the loop holding the LAST row's value, so a subject
+      // whose last observation is Gaussian and uncensored would walk straight past the
+      // guards with a mixed endpoint or a censored row.  Track "any" instead.
+      int anyNonNormal = 0, anyCens = 0;
       double *llikObs = fInd->llikObs;
       // Pooled table: re-base CMT to the basis of whichever model is about to be
       // read, so its endpoint switch (and rx_yj_) resolve as they would on that
@@ -2053,6 +2057,7 @@ double likInner0(double *eta, int id) {
           // the unset 0, i.e. normal (nlmixr2/nlmixr2est#838).
           yj = getIndYj(ind);
           _splitYj(&yj, &dist,  &yj0);
+          if (dist != rxDistributionNorm) anyNonNormal = 1;
 
           f = lhs[op_focei.predOffset]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
@@ -2092,6 +2097,7 @@ double likInner0(double *eta, int id) {
           }
           cens = 0;
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
+          if (cens != 0) anyCens = 1;
           tbsJac = tbsL(dv0);
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
@@ -2274,8 +2280,8 @@ double likInner0(double *eta, int id) {
           fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
         }
       } else if (op_focei.fo == 1) {
-        if (cens != 0) stop("FO censoring not supported.");
-        if (dist != rxDistributionNorm) stop("Generalized llik for FO is not supported");
+        if (anyCens) stop("FO censoring not supported.");
+        if (anyNonNormal) stop("Generalized llik for FO is not supported");
         mat Ci = a * op_focei.omega * trans(a) + Vid;
         mat cholCi = cholSE__(Ci, op_focei.cholSEtol);
         mat CiInv;
