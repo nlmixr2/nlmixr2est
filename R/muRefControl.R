@@ -54,14 +54,9 @@ getValidNlmixrCtl.mfocei <- function(control) {
   if (is.null(.ctl)) .ctl <- mfoceiControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("mfoceiControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mfoceiControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mfoceiControl, .ctl)
   } else if (!inherits(.ctl, "mfoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -142,14 +137,9 @@ getValidNlmixrCtl.ifocei <- function(control) {
   if (is.null(.ctl)) .ctl <- ifoceiControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("ifoceiControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ifoceiControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ifoceiControl, .ctl)
   } else if (!inherits(.ctl, "ifoceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -233,14 +223,9 @@ getValidNlmixrCtl.mfoce <- function(control) {
   if (is.null(.ctl)) .ctl <- mfoceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("mfoceControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mfoceControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mfoceControl, .ctl)
   } else if (!inherits(.ctl, "mfoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -330,14 +315,9 @@ getValidNlmixrCtl.ifoce <- function(control) {
   if (is.null(.ctl)) .ctl <- ifoceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("ifoceControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ifoceControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ifoceControl, .ctl)
   } else if (!inherits(.ctl, "ifoceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -425,14 +405,9 @@ getValidNlmixrCtl.magq <- function(control) {
   if (is.null(.ctl)) .ctl <- magqControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("magqControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to magqControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(magqControl, .ctl)
   } else if (!inherits(.ctl, "magqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -520,14 +495,9 @@ getValidNlmixrCtl.iagq <- function(control) {
   if (is.null(.ctl)) .ctl <- iagqControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("iagqControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to iagqControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(iagqControl, .ctl)
   } else if (!inherits(.ctl, "iagqControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -612,14 +582,9 @@ getValidNlmixrCtl.mlaplace <- function(control) {
   if (is.null(.ctl)) .ctl <- mlaplaceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("mlaplaceControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mlaplaceControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(mlaplaceControl, .ctl)
   } else if (!inherits(.ctl, "mlaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -698,14 +663,9 @@ getValidNlmixrCtl.ilaplace <- function(control) {
   if (is.null(.ctl)) .ctl <- ilaplaceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("ilaplaceControl", .ctl)
-  # accept any focei-family control (foceControl/focepControl/agqControl/... all set
-  # class() rather than appending, so they inherit none of the others).  Falling
-  # through to the "invalid control" branch below silently DISCARDS every setting
-  # the caller passed -- sigdig, covMethod, fast -- and refits with bare defaults.
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to ilaplaceControl"))
     class(.ctl) <- NULL
-    .ctl <- .foceiFamilyControlStripIdentity(.ctl)
     .ctl <- do.call(ilaplaceControl, .ctl)
   } else if (!inherits(.ctl, "ilaplaceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
@@ -745,25 +705,4 @@ nmObjGetControl.ilaplace <- function(x, ...) {
 nmObjGetFoceiControl.ilaplace <- function(x, ...) {
   .env <- x[[1]]
   .ilaplaceControlToFoceiControl(.env, assign=FALSE)
-}
-
-#' Control classes that are focei-family controls for conversion purposes
-#'
-#' Each `*Control()` in this family REPLACES the class rather than appending, so
-#' `inherits(x, "foceiControl")` is FALSE for a `foceControl()` object.  A
-#' mu-referenced validator that tests only for `"foceiControl"` therefore treats a
-#' `foceControl()` as invalid and silently substitutes bare defaults.
-#' @noRd
-.foceiFamilyControlClasses <- setdiff(.nlmixrFoceiFamilyControlClasses, "posthocControl")
-
-#' Drop the fields that DEFINE a focei-family method before converting a control
-#'
-#' `do.call(<target>Control, .ctl)` matches `...` entries to the target's formals, so a
-#' `foceControl`'s `interaction=FALSE` would override `mfoceiControl`'s `interaction=TRUE`
-#' and silently run FOCE as FOCEI (likewise `nAGQ` for agq/laplace, `foce` for focep).
-#' Strip them so the target method keeps its own identity and only genuine user settings
-#' (sigdig, covMethod, tolerances) carry over.
-#' @noRd
-.foceiFamilyControlStripIdentity <- function(ctl) {
-  ctl[setdiff(names(ctl), c("interaction", "nAGQ", "foce", "foceType", "muModel", "est"))]
 }

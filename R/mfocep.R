@@ -46,15 +46,15 @@ getValidNlmixrCtl.mfocep <- function(control) {
   if (is.null(.ctl)) .ctl <- mfocepControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("mfocepControl", .ctl)
-  if (inherits(.ctl, .foceiFamilyControlClasses)) {
+  if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to mfocepControl"))
     class(.ctl) <- NULL
-    .ctl <- do.call(mfocepControl, .foceiFamilyControlStripIdentity(.ctl))
+    .ctl <- do.call(mfocepControl, .ctl)
   } else if (!inherits(.ctl, "mfocepControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- mfocepControl()
   } else {
-    .ctl <- do.call(mfocepControl, .foceiFamilyControlStripIdentity(.ctl))
+    .ctl <- do.call(mfocepControl, .ctl)
   }
   .ctl
 }
