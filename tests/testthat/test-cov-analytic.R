@@ -909,6 +909,14 @@ nmTest({
     expect_equal(unname(seF), unname(seI), tolerance = 1e-4)
   })
 
+  # Verified NOT the cause (do not re-investigate): the direction set (ndir/dirTh are
+  # identical, .foceiAnalyticDirections has no interaction dependence); the ODE pool
+  # (every counter zero -- it is not exercised -- and both OdeSwapScope/OdeSwapCmtScope
+  # guards span the calc_lhs reads); the compartment basis (the augmented model APPENDS
+  # sensitivity states, so depot/center keep indices 1/2 and etTrans'd CMT values land
+  # correctly); Ath/Tn (identical, and Tn == Tnf for additive error); and EBE stationarity
+  # (|Phi_eta| at fit$eta is 2e-06..5e-05, so the envelope's dropped gPhi term is ~1e-06
+  # relative -- six orders below the observed error).
   # KNOWN FAILING (documented, not yet fixed): the FOCEI analytic R disagrees with an
   # independent brute-force FD Hessian -- irregular errors from 1.2% to 377%, on BOTH
   # theta-theta ([tcl,tv] 21.7%) and Omega ([om.eta.v,om.eta.cl] 377%) entries.  The FOCE
