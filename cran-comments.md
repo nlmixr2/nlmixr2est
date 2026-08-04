@@ -46,7 +46,22 @@ uses RDS files, and compressed fit components use base R serialization.  Neither
 
 ## R CMD check results
 
-<!-- filled in from the --as-cran run before submission -->
+`R CMD check --as-cran` on the submitted tarball: **Status: 1 NOTE**.
+
+```
+* checking compilation flags used ... NOTE
+Compilation used the following non-portable flag(s):
+  '-mno-omit-leaf-frame-pointer'
+```
+
+That flag is not set by this package.  It comes from the R installation used for
+the check (it is in that platform's `Makeconf` `CFLAGS`), so it reflects the local
+build environment rather than anything in `src/Makevars`.  We expect it not to
+appear on CRAN's builders.
+
+There are no other NOTEs, WARNINGs or ERRORs; `checking CRAN incoming feasibility`,
+`checking compiled code`, `checking examples` and `checking examples with
+--run-donttest` [119s] are all OK.
 
 ## Reverse dependencies
 
