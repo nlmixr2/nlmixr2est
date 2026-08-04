@@ -78,6 +78,23 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
+  # The endpoint's distribution and DV transform, emitted like the inner/pred models do
+  # (suppressed with `~`, so no output column and no offset shift).  rx_yj_ is a CMT
+  # switch when there are several endpoints, and the M-step reads ind->yj / ind->lambda
+  # per row off this model's calc_lhs.  Without these lines those fields keep whatever
+  # the last OTHER model left, so every observation was scored with one arbitrary
+  # endpoint's distribution and DV transform -- a lnorm() endpoint alongside an add()
+  # one had its DV left untransformed (nlmixr2/nlmixr2est#838).
+  # `$` through an intermediate, like rx_pred_/rx_r_ above -- base get() is shadowed
+  # in this environment.
+  .yj <- .s$`rx_yj_`
+  .lambda <- .s$`rx_lambda_`
+  .hi <- .s$`rx_hi_`
+  .low <- .s$`rx_low_`
+  .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
+            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
+            paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
+            paste0("rx_low_~", rxode2::rxFromSE(.low)))
   # Also output the residual variance V so the M-step gradient reads f and V from
   # this one solve (no separate inner solve / context interleave).
   .rvar <- .s$`rx_r_`
@@ -98,7 +115,8 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }, character(1))
   .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .rr, .dfOut, .dvOut, ""), collapse = "\n")
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, ""),
+                          collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
   ##

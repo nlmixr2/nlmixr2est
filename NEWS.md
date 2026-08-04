@@ -22,6 +22,16 @@
   This affected such fits at **any** `foceiControl(fast=)` setting.  Models with
   a single endpoint, and models whose endpoints are all Gaussian, are unchanged.
 
+- Fixed the `est="imp"`/`"impmap"`/`"qrpem"` theta score for **endpoints with
+  different `DV` transforms**, e.g. an `lnorm()` PK endpoint alongside an `add()`
+  PD one.  The M-step read each observation's transform and distribution without
+  evaluating the model for that row, and the theta-sensitivity model did not emit
+  `rx_yj_`/`rx_lambda_` at all, so every observation was scored with one arbitrary
+  endpoint's transform -- on a 2-endpoint PK/PD fit that put `tka` at -47.6 and
+  the residual sigma at 2.8e4 where FOCEI gives 0.53 and 0.11.  The two now agree
+  to 1e-3.  Models with a single endpoint, or whose endpoints share a transform,
+  are unchanged.
+
 - `foceiControl(fo=TRUE)` now rejects a general-likelihood endpoint or a censored
   observation wherever it appears in a subject, not only on that subject's last
   observation.  Both guards tested the last row's value, so a subject whose final
