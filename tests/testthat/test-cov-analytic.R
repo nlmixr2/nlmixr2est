@@ -423,8 +423,16 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # needs the rxode2 .rxFromSEnum empty-operand fix (nlmixr2/rxode2#1109) for the 2nd-order
     # sensitivities of a log/logit-transformed prediction; older rxode2 falls back to FD
+    # eta.v ~ 0.1 (not 0.05): at 0.05 the om.eta.v direction of the FOCE observed
+    # information is not identified -- its eigenvalue is resolved only to ~6e-3 while
+    # its own magnitude is ~1e-4, so it flips sign with the solve tolerance (sigdig
+    # 4 and 7 positive-definite, 5 and 6 not) and the PD guard bows out to the FD
+    # covariance.  The finite-difference "r" reference agrees it is unidentified: it
+    # returns no Omega SEs at all for that arm.  This test is about the lnorm/logitNorm
+    # transform machinery, so identify the variance rather than assert PD-ness of a
+    # singular direction.
     mLnorm <- function() {
-      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.05
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.1
             lnorm.sd <- 0.7 })
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center

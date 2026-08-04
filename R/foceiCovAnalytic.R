@@ -319,7 +319,7 @@
     eta0Mat <- .foceiAnalyticFoceEbeBatch(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
                                           solveTol, foceType = foceType, E0all = E0all)   # batched EBE re-solve
     if (is.null(eta0Mat))
-      return(.foceiAnalyticFallback("an unconverged EBE re-solve"))
+      return(.foceiAnalyticFallback("an EBE re-solve that will not solve"))
     .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
     .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE,
                                                    sigSel = .sigSel) else NULL
@@ -2390,12 +2390,14 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   }
   eta <- eta0
   sh <- .SH(eta); if (is.null(sh)) return(NULL)
+  if (!all(is.finite(sh$S))) return(NULL)              # unsolvable subject -> non-finite score
   if (max(abs(sh$S)) < skip) return(eta0)              # already FOCE-stationary (additive/FOCEI) -> no-op
   for (it in seq_len(maxit)) {
     step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL)
     if (is.null(step)) return(NULL)
     eta <- eta - step
     sh <- .SH(eta); if (is.null(sh)) return(NULL)
+    if (!all(is.finite(sh$S))) return(NULL)            # unsolvable subject -> non-finite score
     if (max(abs(sh$S)) < conv) break
   }
   if (max(abs(sh$S)) >= conv) return(NULL)               # Newton did not converge -> FD fallback
@@ -2433,6 +2435,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     if (is.null(Es)) return(NULL)
     for (i in which(active)) {
       sh <- .SHi(Es[[i]], eta[i, ], i)
+      # a subject that cannot be solved gives a non-finite score; max(abs(S)) is then NA
+      # and the test below would error rather than fall back
+      if (!all(is.finite(sh$S))) return(NULL)
       if (max(abs(sh$S)) < (if (it == 1L) skip else conv)) { active[i] <- FALSE; next }
       if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
       step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL); if (is.null(step)) return(NULL)
