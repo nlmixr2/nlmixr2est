@@ -12,6 +12,20 @@
 
 ### Estimation
 
+- `covMethod="analytic"` now solves at the tolerance it asks for.  The augmented
+  solves behind the analytic R matrix are central-differenced twice and Richardson
+  extrapolated to recover a 3rd-order tensor, so they are run at
+  `foceiControl(covSolveTol=)` -- or, unset, a value tightened from `sigdig`.
+  Whenever the shared ODE solve pool was available that tolerance was dropped and
+  the fit's own, much looser, tolerance was used instead.  Two consequences, both
+  gone: standard errors carried the fit's solve error rather than the
+  covariance's (1.7e-2 relative on a 5-ETA 2-compartment model at the default
+  `sigdig`), and since the pool is only available with `fast = TRUE`,
+  **`foceiControl(fast=)` changed the standard errors**.  The pooled and
+  unpooled routes now agree exactly.  The covariance step does slightly more work
+  as a result -- measured at about 4% of that step, which is inside its
+  run-to-run noise; set `covSolveTol` to trade accuracy back for speed.
+
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
   Each observation's distribution was read one row before the model had been

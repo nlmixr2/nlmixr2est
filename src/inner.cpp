@@ -12385,7 +12385,8 @@ static void outerSolveFill(int slot, rxSolveF *fns,
 }
 
 //[[Rcpp::export]]
-RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores) {
+RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int cores,
+                       double tol = NA_REAL) {
   // Structural gate, replacing the session-scoped .vaeGradEnv$active flag: this
   // solve is only valid if the augmented model is registered AND the pool is at
   // least its size.  odeSwapCanPool says exactly that -- a model larger than the
@@ -12408,8 +12409,18 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // from the outer model to the inner one, inside this one gradient call, is exactly
   // what the shared-pool machinery exists for.
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
-  // Reset to the fit's tolerance for this solve -- see OdeFitTolGuard.
-  OdeFitTolGuard _tolGuard;
+  // Tolerance for this batch.  A GRADIENT caller passes no tolerance and gets the fit's
+  // (OdeFitTolGuard): the gradient has to be the gradient of the objective the optimizer
+  // is minimizing.  The COVARIANCE passes its own -- covSolveTol, else tightened from
+  // sigdig (.foceiAnalyticSolveTol) -- because it Richardson-differences these 2nd-order
+  // sensitivities to recover the 3rd-order tensor, so the solve error IS the answer's
+  // error.  Solving it at the fit's tolerance moved the SEs by 1.7e-2 on a 5-eta 2-cmt
+  // model, and made foceiControl(fast=) change the standard errors, since fast=FALSE
+  // never pools and so kept the tight route.
+  std::unique_ptr<OdeFitTolGuard>   _fitTol;
+  std::unique_ptr<OdeSolveTolGuard> _covTol;
+  if (R_FINITE(tol) && tol > 0) _covTol.reset(new OdeSolveTolGuard(tol));
+  else                          _fitTol.reset(new OdeFitTolGuard());
   if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
   // Does the BOUND calc_lhs actually belong to the model the registry describes?

@@ -1183,4 +1183,39 @@ nmTest({
     expect_equal(E$f[1], 5, tolerance = 1e-4)   # A(0) = A0
     expect_true(E$f[2] < E$f[1])                # the ODE evolves away from the IC
   })
+
+  test_that("covMethod='analytic' SEs do not depend on foceiControl(fast=)", {
+    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    # The augmented solves are run at solveTol (covSolveTol, else tightened from sigdig)
+    # because the 3rd-order tensor is recovered by differencing them twice.  The pooled
+    # route used to drop that and solve at the FIT's tolerance instead, and since the
+    # pool is only available with fast=TRUE, `fast=` moved the standard errors -- 1.7e-2
+    # on a 5-ETA 2-compartment model, and it TRACKED sigdig, which is what identified the
+    # tolerance as the cause.  Both routes now solve at solveTol.
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    .d <- nlmixr2data::theo_sd
+    # fit ONCE, then evaluate the covariance at that theta under both settings, so the
+    # optimizer cannot contribute a difference of its own
+    .f0 <- suppressMessages(suppressWarnings(nlmixr2(.m, .d, "focei",
+             foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4))))
+    .se <- function(fast) {
+      .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
+              foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
+                           maxOuterIterations = 0L))))
+      expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
+      sqrt(diag(.f$cov))
+    }
+    .sT <- .se(TRUE); .sF <- .se(FALSE)
+    .n <- intersect(names(.sT), names(.sF))
+    expect_gt(length(.n), 0L)
+    # 1e-4 is far below the 1.7e-2 defect and far above the ~4e-6 that separates two
+    # independent solves of the same quantity
+    expect_equal(unname(.sT[.n]), unname(.sF[.n]), tolerance = 1e-4)
+  })
 })

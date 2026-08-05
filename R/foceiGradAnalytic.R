@@ -604,11 +604,17 @@
       .nc <- tryCatch({ .c <- am$cores
         if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c) },
         error = function(e) 1L)
-      ## No tolerance argument: the pooled solve runs at the FIT's tolerance (C++
-      ## OdeFitTolGuard resets to it), because the gradient must be the gradient of the
-      ## objective the optimizer is minimizing.  `tol` below still tunes the rxSolve
-      ## fallback and the covariance path.
-      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc),
+      ## `tol` reaches the pooled solve too, not just the rxSolve fallback below.  It
+      ## used to be dropped here, so the pooled route silently ran at the FIT's
+      ## tolerance -- right for a gradient, wrong for the covariance, which is every
+      ## caller of this function (the gradient has been all-C++ since the R core was
+      ## deleted).  Pass NA to ask for the fit's tolerance; see vaeOuterSolve_.
+      ## min(): the guard sets atol and rtol together, while the rxSolve fallback below
+      ## reads a 2-vector as (atol, rtol).  Every caller passes a scalar, so this only
+      ## decides an unused corner -- take the tighter one rather than half the request.
+      .tolP <- suppressWarnings(min(as.numeric(tol)))
+      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
+                                     if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP),
                       error = function(e) NULL)
       ## vaeOuterSolve_ now flags failed subjects per individual (attr "ok") rather
       ## than discarding the whole gradient.  Until the Phase 8D2 finite-difference
