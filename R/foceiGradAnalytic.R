@@ -581,7 +581,11 @@
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
   ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
-  ## Used by BOTH est="vae"'s M-step and focei's own fast gradient.
+  ##
+  ## `tol` is the tolerance to solve at, and applies to BOTH routes; pass NA to solve
+  ## at the fit's instead.  A covariance caller wants its own (covSolveTol, else
+  ## tightened from sigdig) because it differences these solves; a gradient caller
+  ## wants the fit's, so that it differentiates the objective being minimized.
   ##
   ## No session flag guards this any more.  vaeOuterSolve_ refuses unless the
   ## augmented model is registered AND the pool is at least its size
@@ -601,23 +605,17 @@
   {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
-      ## cores = 0 is rxControl's default and MEANS "use rxode2's thread setting" -- the
-      ## rxSolve fallback below passes the 0 through and gets a threaded solve.  Coercing
-      ## it to 1 here made the pooled route single-threaded over subjects
-      ## (outerSolveFill: doParallel = cores > 1), i.e. the pool's whole reason for
-      ## existing was off by default.  Resolve 0 the same way rxSolve does; C++ still
-      ## caps it with min2(cores, getOpCores(op)).
+      ## cores = 0 is rxControl's default and means "use rxode2's thread setting", which
+      ## the rxSolve fallback below passes through.  Coercing it to 1 here left the
+      ## pooled route single-threaded over subjects (outerSolveFill: doParallel =
+      ## cores > 1).  Resolve it the same way rxSolve does; C++ still caps the result
+      ## with min2(cores, getOpCores(op)).
       .nc <- tryCatch({ .c <- am$cores
-        if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::rxCores()) else as.integer(.c) },
+        if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c) },
         error = function(e) 1L)
-      ## `tol` reaches the pooled solve too, not just the rxSolve fallback below.  It
-      ## used to be dropped here, so the pooled route silently ran at the FIT's
-      ## tolerance -- right for a gradient, wrong for the covariance, which is every
-      ## caller of this function (the gradient has been all-C++ since the R core was
-      ## deleted).  Pass NA to ask for the fit's tolerance; see vaeOuterSolve_.
-      ## min(): the guard sets atol and rtol together, while the rxSolve fallback below
-      ## reads a 2-vector as (atol, rtol).  Every caller passes a scalar, so this only
-      ## decides an unused corner -- take the tighter one rather than half the request.
+      ## The pooled solve takes one tolerance for atol and rtol both, while the rxSolve
+      ## fallback below reads a 2-vector as (atol, rtol).  Every caller passes a scalar;
+      ## take the tighter of a pair rather than half the request.
       .tolP <- suppressWarnings(min(as.numeric(tol)))
       .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
                                      if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP),

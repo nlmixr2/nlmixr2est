@@ -12,26 +12,21 @@
 
 ### Estimation
 
-- `covMethod="analytic"` now solves at the tolerance it asks for.  The augmented
-  solves behind the analytic R matrix are central-differenced twice and Richardson
-  extrapolated to recover a 3rd-order tensor, so they are run at
-  `foceiControl(covSolveTol=)` -- or, unset, a value tightened from `sigdig`.
-  Whenever the shared ODE solve pool was available that tolerance was dropped and
-  the fit's own, much looser, tolerance was used instead.  Two consequences, both
-  gone: standard errors carried the fit's solve error rather than the
-  covariance's (1.7e-2 relative on a 5-ETA 2-compartment model at the default
-  `sigdig`), and since the pool is only available with `fast = TRUE`,
-  **`foceiControl(fast=)` changed the standard errors**.  The pooled and
-  unpooled routes now agree exactly.  The covariance step does slightly more work
-  as a result -- measured at about 4% of that step, which is inside its
-  run-to-run noise; set `covSolveTol` to trade accuracy back for speed.
+- Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever the
+  shared ODE solve pool was available, solving at the fit's much looser tolerance
+  instead of `foceiControl(covSolveTol=)` (or, unset, a value tightened from
+  `sigdig`).  The augmented solves are differenced twice to recover a 3rd-order
+  tensor, so their error is the standard errors' error: they carried the fit's
+  instead, and because the pool needs `fast = TRUE`, **`foceiControl(fast=)`
+  changed the standard errors** (1.7e-2 relative on a 5-ETA 2-compartment model
+  at the default `sigdig`).  Both routes now agree exactly.  Set `covSolveTol` to
+  trade accuracy back for the slightly larger covariance step.
 
-- `covMethod="analytic"` solves in parallel again.  The pooled covariance solve
-  coerced `rxControl(cores = 0)` -- the default, which means "use rxode2's thread
-  setting" -- to a literal 1, so it ran **single-threaded over subjects** while the
-  `rxSolve` route it replaced honoured the 0 and ran threaded.  The shared pool's
-  parallelism was therefore off by default here.  A 5-ETA 2-compartment covariance
-  goes from 1.04s to 0.71s, and from slower than the unpooled route to faster.
+- Fixed the pooled `covMethod="analytic"` solve running single-threaded.  It
+  coerced `rxControl(cores = 0)` -- the default, meaning "use rxode2's thread
+  setting" -- to a literal 1, so its loop over subjects never went parallel,
+  while the `rxSolve` route it replaced passed the 0 through and did.  A 5-ETA
+  2-compartment covariance goes from 1.04s to 0.71s.
 
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.

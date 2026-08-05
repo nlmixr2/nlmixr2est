@@ -5622,12 +5622,8 @@ static bool restoreFitSolve_() {
   }
 }
 
-// RAII: tighten the ODE solve tolerances to covSolveTol for the covariance-step
-// finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
-// user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
-// own augmented solves (.foceiAnalyticSolveTol).
-// Set atol/rtol for the duration of a pooled batch solve, restoring the fit's
-// values afterwards.  Same mechanism as CovSolveTolGuard, driven by an explicit
+// RAII: set atol/rtol for the duration of a pooled batch solve, restoring the live
+// values afterwards.  Same mechanism as CovSolveTolGuard below, driven by an explicit
 // tolerance rather than a control field.
 struct OdeSolveTolGuard {
   bool active = false;
@@ -5646,10 +5642,10 @@ struct OdeSolveTolGuard {
 
 // Solve the augmented model at the FIT's own tolerance.
 //
-// There is deliberately NO separate "analytic" tolerance.  The gradient has to be the
-// gradient of the objective the optimizer is actually minimizing, so it is solved the
-// way that objective is solved; a tightened tolerance here would describe a different
-// objective than the one being optimized.  (This branch briefly did exactly that.)
+// This is what a GRADIENT wants: it has to be the gradient of the objective the
+// optimizer is actually minimizing, so it is solved the way that objective is solved,
+// and a tightened tolerance here would describe a different objective.  A caller that
+// DIFFERENCES the solves instead (the analytic covariance) wants OdeSolveTolGuard above.
 //
 // It still SETS the tolerance rather than leaving the live values alone, so a tolerance
 // shift earlier in the fit cannot leak in -- this is a RESET, not an override.  The
@@ -5670,6 +5666,10 @@ struct OdeFitTolGuard {
   ~OdeFitTolGuard() { if (active) rxSetSolveAtolRtol(savAtol, savRtol); }
 };
 
+// RAII: tighten the ODE solve tolerances to covSolveTol for the covariance-step
+// finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
+// user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
+// own augmented solves (.foceiAnalyticSolveTol).
 struct CovSolveTolGuard {
   bool active = false;
   double savAtol = NA_REAL, savRtol = NA_REAL;
@@ -12409,14 +12409,12 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // from the outer model to the inner one, inside this one gradient call, is exactly
   // what the shared-pool machinery exists for.
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
-  // Tolerance for this batch.  A GRADIENT caller passes no tolerance and gets the fit's
-  // (OdeFitTolGuard): the gradient has to be the gradient of the objective the optimizer
-  // is minimizing.  The COVARIANCE passes its own -- covSolveTol, else tightened from
-  // sigdig (.foceiAnalyticSolveTol) -- because it Richardson-differences these 2nd-order
-  // sensitivities to recover the 3rd-order tensor, so the solve error IS the answer's
-  // error.  Solving it at the fit's tolerance moved the SEs by 1.7e-2 on a 5-eta 2-cmt
-  // model, and made foceiControl(fast=) change the standard errors, since fast=FALSE
-  // never pools and so kept the tight route.
+  // Tolerance for this batch.  A caller passing NA gets the fit's (OdeFitTolGuard),
+  // which is what a gradient needs.  The covariance passes its own -- covSolveTol, else
+  // tightened from sigdig (.foceiAnalyticSolveTol) -- because it Richardson-differences
+  // these 2nd-order sensitivities to recover the 3rd-order tensor, so the solve error IS
+  // the answer's error.  Dropping it here moved the SEs by 1.7e-2 on a 5-eta 2-cmt model
+  // and made foceiControl(fast=) change them, since fast=FALSE never pools.
   std::unique_ptr<OdeFitTolGuard>   _fitTol;
   std::unique_ptr<OdeSolveTolGuard> _covTol;
   if (R_FINITE(tol) && tol > 0) _covTol.reset(new OdeSolveTolGuard(tol));
