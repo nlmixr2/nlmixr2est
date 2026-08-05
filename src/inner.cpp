@@ -16072,6 +16072,7 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   if (nchain < 1 || etaCur.nrow() != nchain*nsub || etaCur.ncol() != neta ||
       cholGamma.nrow() != nsub || cholGamma.ncol() != neta*neta ||
       mprior.nrow() != nsub || mprior.ncol() < neta || etaHat.ncol() != neta ||
+      ((int)nbd.size() != 0 && (int)nbd.size() != neta) ||
       ((int)nbd.size() == neta &&
        ((int)lower.size() < neta || (int)upper.size() < neta))) {
     stop("fsaemImhKernel_: dimensions disagree (neta=%d nsub=%d nchain=%d; "

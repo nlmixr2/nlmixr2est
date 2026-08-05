@@ -1161,6 +1161,8 @@ public:
       if (fsaemNoCov) {
         fsaemInnerEnv   = x["fsaemInnerEnv"];
         fsaemStructPos  = as<ivec>(x["fsaemStructPos"]);
+        fsaemThetaIni   = x.containsElementNamed("fsaemThetaIni") ?
+          as<vec>(x["fsaemThetaIni"]) : vec();
         fsaemResidPos   = as<ivec>(x["fsaemResidPos"]);
         fsaemResidIsAdd = as<ivec>(x["fsaemResidIsAdd"]);
         fsaemResidEp    = as<ivec>(x["fsaemResidEp"]);
@@ -3476,6 +3478,7 @@ private:
   // C++-native direct-call state (no-covariate path)
   int fsaemNoCov = 0;
   RObject fsaemInnerEnv = R_NilValue;
+  vec fsaemThetaIni;
   ivec fsaemStructPos, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
   vec fsaemLower, fsaemUpper;
   int fsaemNTheta = 0, fsaemNsweep = 5, fsaemNRetry = 10, fsaemCores = 1;
@@ -3717,7 +3720,12 @@ private:
       // No per-iteration R round-trip: build the inner THETA (structural
       // positions <- population phi = mprior_phi1 row 0; residual positions <-
       // ares/bres) and call the C++ orchestration directly.
+      // Seed from the ini estimates so a fix()ed structural theta keeps its own
+      // value; only the estimated structural and residual slots are overwritten.
       NumericVector theta(fsaemNTheta);
+      if ((int)fsaemThetaIni.n_elem == fsaemNTheta) {
+        for (int i = 0; i < fsaemNTheta; i++) theta[i] = fsaemThetaIni(i);
+      }
       // current population value for each structural theta, in phi order: phi1
       // params from mprior_phi1, phi0 params (fixed effects with no random effect,
       // e.g. a general-likelihood SD) from mprior_phi0.  The old code indexed

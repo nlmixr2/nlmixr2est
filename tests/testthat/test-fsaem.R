@@ -521,6 +521,37 @@ nmTest({
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.1)
   })
 
+  test_that("est='fsaem' handles a fix()ed structural theta", {
+    skip_if_not_installed("nlmixr2data")
+    # A fix()ed structural theta is NOT in phi1/phi0, so counting it among the
+    # structural positions made their number exceed nphi1 + nphi0, tripped the
+    # C++ length guard, and filled EVERY structural slot from the fallback -- and
+    # the fixed theta itself was left at 0 rather than its own value.
+    .fixm <- function() {
+      ini({
+        tka <- 0.45; tcl <- fix(1); tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- saemControl(nBurn = 100, nEm = 50, nmc = 3, seed = 42, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(.fixm, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .ctl))
+    .ss <- suppressMessages(nlmixr2(.fixm, nlmixr2data::theo_sd, est = "saem",
+                                    control = .ctl))
+    # the kernel is healthy -- a mis-filled inner theta shows up here first
+    expect_gt(.fs$fsaemDiag$accRate, 0.5)
+    expect_equal(.fs$fsaemDiag$nMapFail, 0)
+    # the fixed value is honored, and the rest agrees with plain SAEM
+    expect_equal(unname(fixef(.fs)[["tcl"]]), 1)
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
+  })
+
   test_that("est='fsaem' rejects a correlated omega from the fast kernel", {
     # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
     # off-diagonal block would have the IMH scoring against a different prior

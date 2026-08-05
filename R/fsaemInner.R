@@ -258,10 +258,16 @@
   # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
   # the current population phi (mprior row 1); residual positions take the
   # current additive (ares) / proportional (bres) estimate for their endpoint.
-  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "name", "err", "condition")]
+  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta),
+                       c("ntheta", "name", "est", "fix", "err", "condition")]
   .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
   .nTheta <- nrow(.thetaDf)
-  .structPos <- which(is.na(.thetaDf$err))
+  # Only ESTIMATED structural thetas have a phi: a fix()ed one is not in
+  # phi1/phi0, so counting it here made length(structPos) exceed nphi1 + nphi0,
+  # tripped the C++ length guard, and filled EVERY structural slot from the
+  # fallback.  The fixed theta also has to keep its own value, which is why the
+  # inner theta is seeded from the ini estimates rather than from zeros.
+  .structPos <- which(is.na(.thetaDf$err) & !.thetaDf$fix)
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
@@ -270,8 +276,8 @@
   .upper <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
   .nbd   <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
   cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
-    .theta <- numeric(.nTheta)
-    .theta[.structPos] <- mpriorMat[1, ]
+    .theta <- as.numeric(.thetaDf$est)     # fix()ed thetas keep their value
+    .theta[.structPos] <- mpriorMat[1, seq_along(.structPos)]
     if (length(.residPos)) {
       .theta[.residPos] <- ifelse(.residIsAdd, ares[.residEp], bres[.residEp])
     }
@@ -294,6 +300,7 @@
   # the acceptance rate from 0.88 to 0.02 on a model whose ini() and eta orders
   # differ, which is what pins this down.  See the permuted-ini regression test.
   cfg$fsaemStructPos  <- as.integer(.structPos - 1L)
+  cfg$fsaemThetaIni   <- as.numeric(.thetaDf$est)
   cfg$fsaemResidPos   <- as.integer(.residPos - 1L)
   cfg$fsaemResidIsAdd <- as.integer(.residIsAdd)
   cfg$fsaemResidEp    <- as.integer(.residEp - 1L)
