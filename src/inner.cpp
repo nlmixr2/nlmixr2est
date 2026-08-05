@@ -5604,24 +5604,6 @@ static void releaseCovSolveArgs_() {
     covSolveArgs_ = R_NilValue;
   }
 }
-static bool restoreFitSolve_() {
-  if (covSolveArgs_ == R_NilValue) return false;
-  try {
-    List args = as<List>(covSolveArgs_);
-    RObject obj = args[0]; List rxControl = as<List>(args[1]);
-    RObject params = args[2]; RObject data = args[3];
-    rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
-    rx = getRxSolve_();
-    return true;
-  } catch (Rcpp::internal::InterruptedException&) {
-    throw;   // Ctrl-C: Rcpp requires the interrupt to propagate, never swallow it
-  } catch (Rcpp::LongjumpException&) {
-    throw;   // Rcpp longjump protocol must be rethrown intact, not turned into false
-  } catch (...) {
-    return false;   // genuine solve error -> report a failed restore
-  }
-}
-
 // Record the fit's ODE tolerances, once per fit.
 //
 // op_focei.fitAtol/fitRtol are reset to NA per fit (rxOptionsFreeFocei) and filled in
@@ -5634,6 +5616,39 @@ static inline void foceiNoteFitTol(double atol, double rtol) {
   if (!R_FINITE(atol) || !R_FINITE(rtol)) return;
   if (R_FINITE(op_focei.fitAtol) && R_FINITE(op_focei.fitRtol)) return;
   op_focei.fitAtol = atol; op_focei.fitRtol = rtol;
+}
+
+static bool restoreFitSolve_() {
+  if (covSolveArgs_ == R_NilValue) return false;
+  try {
+    List args = as<List>(covSolveArgs_);
+    RObject obj = args[0]; List rxControl = as<List>(args[1]);
+    RObject params = args[2]; RObject data = args[3];
+    // Rebuilding from the fit's rxControl also resets atol/rtol to the fit's, which
+    // silently cancels whatever tolerance regime the caller has in force.  Both call
+    // sites are inside CovSolveTolGuard, so without this the finite-difference cov step
+    // it runs on afterwards drops foceiControl(covSolveTol=) -- the same defect this
+    // restores the solve in the middle of.  Carry the live tolerance across the rebuild.
+    double liveAtol = NA_REAL, liveRtol = NA_REAL;
+    rxGetSolveAtolRtol(&liveAtol, &liveRtol);
+    rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+    rx = getRxSolve_();
+    // Straight off the fit's own rxControl, so this is the most authoritative reading of
+    // the fit tolerance there is -- better than any guard's capture of whatever was live.
+    {
+      double fitAtol = NA_REAL, fitRtol = NA_REAL;
+      rxGetSolveAtolRtol(&fitAtol, &fitRtol);
+      foceiNoteFitTol(fitAtol, fitRtol);
+    }
+    if (R_FINITE(liveAtol) && R_FINITE(liveRtol)) rxSetSolveAtolRtol(liveAtol, liveRtol);
+    return true;
+  } catch (Rcpp::internal::InterruptedException&) {
+    throw;   // Ctrl-C: Rcpp requires the interrupt to propagate, never swallow it
+  } catch (Rcpp::LongjumpException&) {
+    throw;   // Rcpp longjump protocol must be rethrown intact, not turned into false
+  } catch (...) {
+    return false;   // genuine solve error -> report a failed restore
+  }
 }
 
 // RAII: set atol/rtol for the duration of a pooled batch solve, restoring the live

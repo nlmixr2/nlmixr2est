@@ -22,6 +22,12 @@
   at the default `sigdig`).  Both routes now agree exactly.  Set `covSolveTol` to
   trade accuracy back for the slightly larger covariance step.
 
+- Fixed `foceiControl(covSolveTol=)` being dropped part-way through the
+  covariance step.  Once the analytic route had restored the fit's ODE solve --
+  which it does whether it succeeded or declined -- the finite-difference
+  covariance work after that point ran at the fit's tolerance again, because
+  rebuilding the solve resets the tolerances along with it.
+
 - Fixed a subject whose pooled augmented solve failed being scored into
   `covMethod="analytic"` as zeros -- no prediction and no sensitivity -- instead
   of sending the covariance to its fallback.  The zero fill was written for the
