@@ -1752,6 +1752,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemDiagReset_
+RObject saemDiagReset_();
+RcppExport SEXP _nlmixr2est_saemDiagReset_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemDiagReset_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemDiag_
+List saemDiag_();
+RcppExport SEXP _nlmixr2est_saemDiag_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemDiag_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // saem_do_pred
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt);
 RcppExport SEXP _nlmixr2est_saem_do_pred(SEXP in_phiSEXP, SEXP in_evtSEXP, SEXP in_optSEXP) {

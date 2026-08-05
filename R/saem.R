@@ -303,6 +303,10 @@
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
+    # Metropolis acceptance counters for THIS fit; snapshotted onto the fit env in
+    # .saemFamilyFit.  They are the only signal that would catch a kernel scoring
+    # its proposals against a stale chain state (which accepts nearly everything).
+    saemDiagReset_()
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       fsaemDiagReset_()
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
@@ -321,6 +325,7 @@
   if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
     try(vaeInnerFree_(), silent = TRUE)
   }
+
   .saemRes
   })
 }
@@ -1164,6 +1169,17 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  # Snapshot THIS fit's kernel counters before anything else can run.  They are
+  # process globals reset at the top of .saemFitModel, so a later fit would
+  # overwrite them; stashing them on the fit env makes them `fit$saemDiag` /
+  # `fit$fsaemDiag` through nmObjGet.default.  Same reasoning as impmap's
+  # odeSwapInfo (R/impmap.R).
+  tryCatch({
+    assign("saemDiag", saemDiag_(), envir=.ret)
+    if (isTRUE(.control$fast)) {
+      assign("fsaemDiag", fsaemDiag_(), envir=.ret)
+    }
+  }, error=function(e) NULL)
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct

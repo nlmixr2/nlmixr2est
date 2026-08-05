@@ -54,10 +54,10 @@ nmTest({
     }
     .ctl <- saemControl(nBurn=200, nEm=100, nmc=3, seed=42, print=0L, calcTables=FALSE)
     .fs <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="fsaem", control=.ctl))
-    # The kernel's own counters, read before any other fit resets them.  Estimates
-    # alone cannot tell a working IMH kernel from a silent degrade to plain SAEM.
-    .diag <- nlmixr2est:::fsaemDiag_()
     .ss <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="saem", control=.ctl))
+    # The kernel's own counters, snapshotted onto each fit env.  Estimates alone
+    # cannot tell a working IMH kernel from a silent degrade to plain SAEM.
+    .diag <- .fs$fsaemDiag
     # fast flag flows through to the stored control (mechanism is wired up)
     expect_true(.fs$saemControl$fast)
     expect_false(.ss$saemControl$fast)
@@ -70,6 +70,20 @@ nmTest({
     # posterior accepts most of what it proposes (the paper reports ~0.9); a low
     # rate would mean the proposal was built at the wrong parameterization
     expect_gt(.diag$accRate, 0.5)
+    # The IMH move must be followed by a rescore of the predictions / observation
+    # loss / per-subject llik, or the random walks below it score their proposals
+    # against the PREVIOUS state.  One rescore per fast iteration, and it really
+    # is correcting something (measured max ~22 nats on this model).  Do NOT
+    # assert on the acceptance rate instead: do_mcmc writes U_y(ind)=Uc_y(ind) on
+    # every acceptance, so a stale entry self-heals the first time a subject
+    # accepts and the aggregate rate barely moves (measured 0.2369 vs 0.2344
+    # without the rescore) -- the symptom is a shifted answer, not over-acceptance.
+    expect_equal(.fs$saemDiag$nRescore, .diag$nStep)
+    expect_gt(.fs$saemDiag$uYStaleMax, 0)
+    expect_equal(.ss$saemDiag$nRescore, 0)             # plain saem never rescores
+    # and the composite kernel behaves like plain saem's: adding the IMH must not
+    # change how readily the random walks accept
+    expect_lt(max(abs(.fs$saemDiag$accRate - .ss$saemDiag$accRate)), 0.1)
     # the fast kernel changes the simulation trajectory (it fired) -- so fsaem is
     # NOT bit-identical to saem, but converges to the same MLE
     expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))
@@ -230,9 +244,9 @@ nmTest({
                         calcTables = FALSE)
     .fs <- suppressMessages(nlmixr2(lagm, nlmixr2data::theo_sd, est = "fsaem",
                                     control = .ctl))
-    .diag <- nlmixr2est:::fsaemDiag_()
     .ss <- suppressMessages(nlmixr2(lagm, nlmixr2data::theo_sd, est = "saem",
                                     control = .ctl))
+    .diag <- .fs$fsaemDiag
     # the kernel fired on a model that DOES have event sensitivities
     expect_gt(.diag$nStep, 0)
     expect_gt(.diag$accRate, 0.3)

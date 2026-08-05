@@ -550,6 +550,51 @@ uvec getObsIdx(umat m) {
 }
 
 
+// SAEM Metropolis acceptance counters, indexed by kernel method (1..3 -> 0..2).
+// do_mcmc carries no other acceptance signal -- rmcmc is a fixed constant and
+// nothing adapts from a measured rate -- so a kernel that accepts nearly
+// everything, which is exactly what scoring proposals against a stale U_y
+// causes, is otherwise invisible.  Reset by saemDiagReset_(), read by saemDiag_().
+static double _saemNProp[3] = {0, 0, 0};
+static double _saemNAcc[3]  = {0, 0, 0};
+
+// Post-IMH rescore, the f-SAEM correctness invariant: after the fast kernel moves
+// phiM, the predictions / observation loss / per-subject llik handed to the random
+// walks must belong to the NEW state.  nRescore counts the corrections; uYStaleMax
+// is the largest per-subject discrepancy one of them removed, i.e. how wrong
+// do_mcmc's "current state" would otherwise have been.
+//
+// MEASURED (theo_sd, 40 fast iterations of 45): omitting the rescore does NOT
+// inflate the aggregate acceptance rate -- do_mcmc writes U_y(ind)=Uc_y(ind) on
+// every acceptance, so a stale entry self-heals the first time that subject
+// accepts anything, and the damage is diluted to noise across the sweep
+// (m2 0.2369 vs 0.2344 for plain saem).  The observable symptom is a shifted
+// answer, not a visibly over-accepting kernel.  Assert on nRescore/uYStaleMax
+// rather than on accRate.
+static double _saemNRescore   = 0;
+static double _saemUYStaleMax = 0;
+
+//[[Rcpp::export]]
+RObject saemDiagReset_() {
+  for (int i = 0; i < 3; ++i) { _saemNProp[i] = 0; _saemNAcc[i] = 0; }
+  _saemNRescore = 0;
+  _saemUYStaleMax = 0;
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+List saemDiag_() {
+  NumericVector nProp(3), nAcc(3), accRate(3);
+  for (int i = 0; i < 3; ++i) {
+    nProp[i] = _saemNProp[i];
+    nAcc[i]  = _saemNAcc[i];
+    accRate[i] = (_saemNProp[i] > 0) ? _saemNAcc[i]/_saemNProp[i] : NA_REAL;
+  }
+  return List::create(_["nProp"] = nProp, _["nAcc"] = nAcc, _["accRate"] = accRate,
+                      _["nRescore"] = _saemNRescore,
+                      _["uYStaleMax"] = _saemUYStaleMax);
+}
+
 // f-SAEM: forward declarations so the SAEM loop can restore the SAEM model as the
 // current global solve after the fast R closure re-points it to the FOCEi inner.
 void setupRx(List &opt, SEXP evt, int nmc, int N);
@@ -2247,13 +2292,20 @@ public:
           fsaemImhStep(phiM, (int)kiter);
           // phiM moved, so the predictions, the observation loss and the
           // per-subject llik all belong to the OLD state.  Recompute them for
-          // every distribution: the phi0/phi1 random walks that follow read
-          // U_y/DYF/fsave as "the current state", and a stale (worse-fitting)
-          // U_y makes them accept nearly every proposal, which turns the
-          // additive kernel into a drift and leaves fsaem worse than saem.
+          // every distribution: the phi0/phi1 random walks below read
+          // U_y/DYF/fsave as "the current state", so leaving them stale scores
+          // each candidate against a DIFFERENT state's likelihood.  See the
+          // _saemNRescore note above for why the damage does not show up as an
+          // inflated acceptance rate.
+          arma::vec uYPre = U_y;      // what do_mcmc would have been handed
           fsave = user_fn(phiM, evt, optM).col(0);
           if (!rebuildDYF(fsave)) return;
           U_y = sum(DYF, 0).t();
+          _saemNRescore += 1;
+          if (U_y.n_elem == uYPre.n_elem && U_y.n_elem > 0) {
+            double m = arma::abs(U_y - uYPre).max();
+            if (m > _saemUYStaleMax) _saemUYStaleMax = m;
+          }
         }
         if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;
@@ -3849,6 +3901,10 @@ private:
         }
 
         ind=find( deltu < -log(accU) );
+        // every subject-by-chain row is proposed in this block, so accU.n_elem is
+        // the denominator; count before ind is reused for the observation index
+        _saemNProp[method-1] += (double)accU.n_elem;
+        _saemNAcc[method-1]  += (double)ind.n_elem;
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -4118,6 +4174,8 @@ private:
         }
 
         ind = find(deltu < -log(accU));
+        _saemNProp[method-1] += (double)accU.n_elem;
+        _saemNAcc[method-1]  += (double)ind.n_elem;
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {

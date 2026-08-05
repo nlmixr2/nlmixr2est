@@ -66,6 +66,8 @@ extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoopFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoopFB_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviOptimize_(SEXP);
+extern SEXP _nlmixr2est_saemDiagReset_(void);
+extern SEXP _nlmixr2est_saemDiag_(void);
 extern SEXP _nlmixr2est_fsaemDiagReset_(void);
 extern SEXP _nlmixr2est_fsaemDiag_(void);
 extern SEXP _nlmixr2est_fsaemInnerMap_(SEXP);
@@ -234,6 +236,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_adviLoopFR_", (DL_FUNC) &_nlmixr2est_adviLoopFR_, 27},
   {"_nlmixr2est_adviLoopFB_", (DL_FUNC) &_nlmixr2est_adviLoopFB_, 30},
   {"_nlmixr2est_adviOptimize_", (DL_FUNC) &_nlmixr2est_adviOptimize_, 1},
+  {"_nlmixr2est_saemDiagReset_", (DL_FUNC) &_nlmixr2est_saemDiagReset_, 0},
+  {"_nlmixr2est_saemDiag_", (DL_FUNC) &_nlmixr2est_saemDiag_, 0},
   {"_nlmixr2est_fsaemDiagReset_", (DL_FUNC) &_nlmixr2est_fsaemDiagReset_, 0},
   {"_nlmixr2est_fsaemDiag_", (DL_FUNC) &_nlmixr2est_fsaemDiag_, 0},
   {"_nlmixr2est_fsaemInnerMap_", (DL_FUNC) &_nlmixr2est_fsaemInnerMap_, 1},

@@ -691,6 +691,14 @@ rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
 
+saemDiagReset_ <- function() {
+    .Call(`_nlmixr2est_saemDiagReset_`)
+}
+
+saemDiag_ <- function() {
+    .Call(`_nlmixr2est_saemDiag_`)
+}
+
 saem_do_pred <- function(in_phi, in_evt, in_opt) {
     .Call(`_nlmixr2est_saem_do_pred`, in_phi, in_evt, in_opt)
 }
