@@ -13,6 +13,21 @@
 # The npag Psi sums the inner per-observation llikObs, which for a non-normal
 # endpoint is exactly the user's log-likelihood -- so the nonparametric objective
 # is already correct; the residual-error (gamma) scaling is a no-op (r == 1).
+#' Does the installed rxode2 understand `safeLog = 2` (floor at zero, but NaN for a
+#' NEGATIVE argument)?  Older builds validate `safeLog` as a 0/1 logical and error on 2,
+#' so probe once and cache the answer.
+#' @noRd
+.rxode2HasSafeLogDomain <- function() {
+  if (is.null(nlmixr2global$rxSafeLogDomain)) {
+    nlmixr2global$rxSafeLogDomain <-
+      tryCatch({
+        rxode2::rxControl(safeLog = 2L)
+        TRUE
+      }, error = function(e) FALSE)
+  }
+  isTRUE(nlmixr2global$rxSafeLogDomain)
+}
+
 #' @noRd
 .npIsGeneralLik <- function(ui) {
   .dist <- tryCatch(ui$predDfFocei$distribution, error = function(e) NULL)
