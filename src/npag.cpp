@@ -58,12 +58,27 @@ namespace {
     return v;                                                           // lambda etc.
   }
 
+  // Reference objective at the optimizer's starting point, used to scale the
+  // out-of-domain penalty below.  R_PosInf when unset (nothing to scale against yet).
+  double gNpResidRef = R_PosInf;
+
   double npResidObjVal(const double *p) {
     for (size_t j = 0; j < gNpOptIdx.size(); ++j)
       impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
     if (gNpReDerive)
       gNpPostEta = npPosteriorEta(*gNpSupport, *gNpWeights, gNpCores);
-    return npResidELS(gNpPostEta);
+    double v = npResidELS(gNpPostEta);
+    if (std::isfinite(v)) return v;
+    // A candidate the model itself rejects -- e.g. a hand-written ll() taking log() of
+    // a parameter that went negative, which rxode2's safeLog=2 turns into NaN.  bobyqa
+    // builds a quadratic from 2n+1 sampled points, so handing it R_PosInf makes the
+    // interpolation coefficients NaN and the whole step is then garbage rather than a
+    // rejection -- which is how a negative SD still survived the domain check.  Give it
+    // a large FINITE value instead, scaled to the objective so it dominates without
+    // wrecking conditioning.  It is a flat plateau: it stops the infeasible region from
+    // attracting the optimizer, but carries no gradient back toward feasibility.
+    if (!std::isfinite(gNpResidRef)) return 1e10;
+    return gNpResidRef + 1e4 * (1.0 + std::fabs(gNpResidRef));
   }
   double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
 }
@@ -137,6 +152,14 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (!std::isfinite(hi[j])) hi[j] = v + 6.0;
     }
   }
+  // Scale for the out-of-domain penalty in npResidObjVal: the objective at the START,
+  // which is feasible by construction (it is the current fit).  Reset per call so a
+  // previous subject/cycle cannot leak its scale in.
+  gNpResidRef = R_PosInf;
+  {
+    double f0 = npResidELS(gNpPostEta);
+    if (std::isfinite(f0)) gNpResidRef = f0;
+  }
   // PIN the current solve for a residual-only optimization: the err params do not
   // change f, so cache each subject's (per-component) states at the posterior
   // etas and freeze the ODE -- npResidELS then recomputes only r, no
@@ -159,7 +182,19 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   if (!ISNA(f)) {
     Rcpp::NumericVector x = ret["x"];
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
-    return f;
+    // The optimizer's answer is only usable if the MODEL accepts it.  bobyqa returns the
+    // best point it sampled, and with an out-of-domain penalty that is still a finite
+    // number -- so `f` being non-NA says nothing about feasibility.  Committing an
+    // infeasible x is how a hand-written ll() ended up fit at a NEGATIVE standard
+    // deviation (nlmixr2/nlmixr2est#850): every later Psi was then built at a parameter
+    // the likelihood cannot evaluate.  Re-check the committed point and fall back to the
+    // start, which is feasible by construction, when it does not hold up.
+    double fx = npResidELS(gNpPostEta);
+    if (!std::isfinite(fx)) {
+      for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
+      return R_PosInf;
+    }
+    return fx;
   }
   for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
   return R_PosInf;
