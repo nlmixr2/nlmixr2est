@@ -15908,6 +15908,31 @@ List adviOptimize_(List args) {
   return res;
 }
 
+// f-SAEM run diagnostics.  The counters are the only evidence a test has that the
+// fast kernel actually FIRED inside a fit (and how well it mixed) -- the estimates
+// alone cannot distinguish a working IMH kernel from a silent degrade to plain
+// SAEM.  Reset by fsaemDiagReset_(), read by fsaemDiag_().
+static double _fsaemNStep = 0;      // MAP+IMH steps (one per fast SAEM iteration)
+static double _fsaemNProp = 0;      // proposals drawn
+static double _fsaemNAcc  = 0;      // proposals accepted
+static double _fsaemNMapFail = 0;   // subjects whose MAP did not converge
+static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covariance
+
+//[[Rcpp::export]]
+RObject fsaemDiagReset_() {
+  _fsaemNStep = _fsaemNProp = _fsaemNAcc = _fsaemNMapFail = _fsaemNBadGamma = 0;
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+List fsaemDiag_() {
+  return List::create(_["nStep"] = _fsaemNStep, _["nProp"] = _fsaemNProp,
+                      _["nAcc"] = _fsaemNAcc,
+                      _["accRate"] = (_fsaemNProp > 0) ? _fsaemNAcc/_fsaemNProp : NA_REAL,
+                      _["nMapFail"] = _fsaemNMapFail,
+                      _["nBadGamma"] = _fsaemNBadGamma);
+}
+
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
 // subject, optimize the conditional MAP of the random effects and return that
 // MAP together with the FOCEi inner information matrix H = Gamma_i^-1 (the
@@ -15933,6 +15958,7 @@ List fsaemInnerMap_(int cores) {
   _finalObfCalc = true; // make LikInner2 stash H into op_focei.gH
   for (int id = 0; id < nsub; ++id) {
     ok[id] = innerOpt1(id, 0);
+    if (!ok[id]) _fsaemNMapFail += 1;
     focei_ind *fInd = &(inds_focei[id]);
     for (int j = 0; j < neta; ++j) etaHat(id, j) = fInd->eta[j];
     if (ok[id]) {
@@ -15997,6 +16023,7 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
     for (int id = 0; id < nsub; ++id) {
       int row = c*nsub + id;
       if (!good[id]) continue; // no valid proposal -> keep current state
+      _fsaemNProp += 1;
       // reproducible per-(call, chain, subject) threefry stream
       setSeedEng1(base + (uint32_t)(c*nsub + id));
       arma::vec ecur(neta), ehat(neta), z(neta);
@@ -16036,6 +16063,7 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
       if (R_FINITE(fCur) ? (std::log(u) < logAlpha) : true) {
         for (int j = 0; j < neta; ++j) etaOut(row, j) = eprop(j);
         nAcc[id]++;
+        _fsaemNAcc += 1;
       }
     }
   }
@@ -16075,8 +16103,10 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
       if (!arma::inv(G, H)) bad = true;
       else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
     }
+    if (bad) _fsaemNBadGamma += 1;
     for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
   }
+  _fsaemNStep += 1;
   NumericMatrix eta = clone(etaCur);
   for (int s = 0; s < nsweep; ++s) {
     double streamBase = seed + ((double)kiter * nsweep + s) * ((double)nchain * nsub);

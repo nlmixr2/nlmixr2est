@@ -304,6 +304,7 @@
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      fsaemDiagReset_()
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
     }
     .saemCheckCfg(.cfg)
@@ -314,6 +315,9 @@
   })
   # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
   # down so it does not leak into a later fit's solve state (reproducibility).
+  # The kernel counters (fsaemDiag_(), reset above) survive the teardown and are
+  # the only evidence that the fast kernel fired rather than silently degrading
+  # to plain SAEM.
   if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
     try(vaeInnerFree_(), silent = TRUE)
   }

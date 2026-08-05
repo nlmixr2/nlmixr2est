@@ -2,6 +2,18 @@
 
 ## New features
 
+- `est = "fsaem"` (equivalently `saemControl(fast = TRUE)`) is back.  It is the
+  fast SAEM of Karimi, Lavielle and Moulines (2020): the MCMC simulation step
+  proposes each subject's random effects from an independent Metropolis-Hastings
+  kernel centered at that subject's conditional MAP, with the FOCEi inner
+  information as the proposal covariance -- the linearization form (paper Eq 17)
+  for continuous endpoints and the Laplace/Hessian form (Eq 13) for a general
+  log-likelihood (`ll()`) endpoint, selected by `saemControl(fastCov=)`.
+  `fastKernel` chooses the schedule (`"firstN"` for the first `fastIter`
+  iterations, `"throughout"`, or `"additive"`), and `fastLik` chooses which
+  FOCEi-family inner likelihood builds the proposal.  Standard SAEM is unchanged
+  and remains the default.
+
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
   general-likelihood models with **more than one endpoint**, which previously
   fell back to finite differences.  It was gated off as unverifiable, but what

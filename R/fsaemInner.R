@@ -156,9 +156,8 @@
 
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
-    .minfo(paste0("f-SAEM (fast=TRUE) fast kernel not yet supported for this model ",
-                  "(needs a single additive-error continuous endpoint, no covariates/mixtures); ",
-                  "running standard SAEM"))
+    .minfo(paste0("fast kernel needs one endpoint with add/prop error (or ll()) ",
+                  "and no mixture; running standard SAEM"))
     return(cfg)
   }
   .iniDf <- ui$iniDf

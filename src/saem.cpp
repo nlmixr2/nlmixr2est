@@ -2159,8 +2159,12 @@ public:
           fsM = join_cols(fsM, fk_w);
         }
       } else {
-        vec f = fsave;
-        fsave = f;
+        // Rebuild DYF (the per-observation loss) from a prediction vector.  Run
+        // once for the current phiM, and again whenever the f-SAEM IMH kernel
+        // moves phiM -- the RWM kernels below score their proposals against
+        // U_y/DYF/fsave, so leaving them at the pre-IMH state compares each
+        // candidate with a DIFFERENT chain state's likelihood.
+        auto rebuildDYF = [&](const vec &f) -> bool {
         if (distribution == 1){
           // Build yt once: does not depend on chain index k
           vec yt = hasFixedObsTransform ? yTrans : y;
@@ -2222,8 +2226,11 @@ public:
         }
         else {
           RSprintf("unknown distribution (id=%d)\n", distribution);
-          return;
+          return false;
         }
+        return true;
+        };
+        if (!rebuildDYF(fsave)) return;
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
 
@@ -2238,18 +2245,15 @@ public:
         bool imhReplacesRwm = (imhFired && distribution == 4);
         if (imhFired) {
           fsaemImhStep(phiM, (int)kiter);
-          if (imhReplacesRwm) {
-            // refresh predictions + DYF/U_y to match the IMH-updated phiM so the
-            // phi0 update and the M-step statistics stay consistent
-            fsave = user_fn(phiM, evt, optM).col(0);
-            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
-            for (int k = 0; k < nmc; k++) {
-              vec fk = fsave.subvec(k * ntotal, (k + 1) * ntotal - 1);
-              uvec indio_k = indio + (arma::uword)k * stride;
-              DYF(indio_k) = -fk;
-            }
-            U_y = sum(DYF, 0).t();
-          }
+          // phiM moved, so the predictions, the observation loss and the
+          // per-subject llik all belong to the OLD state.  Recompute them for
+          // every distribution: the phi0/phi1 random walks that follow read
+          // U_y/DYF/fsave as "the current state", and a stale (worse-fitting)
+          // U_y makes them accept nearly every proposal, which turns the
+          // additive kernel into a drift and leaves fsaem worse than saem.
+          fsave = user_fn(phiM, evt, optM).col(0);
+          if (!rebuildDYF(fsave)) return;
+          U_y = sum(DYF, 0).t();
         }
         if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;

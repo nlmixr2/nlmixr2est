@@ -359,6 +359,14 @@ adviOptimize_ <- function(args) {
     .Call(`_nlmixr2est_adviOptimize_`, args)
 }
 
+fsaemDiagReset_ <- function() {
+    .Call(`_nlmixr2est_fsaemDiagReset_`)
+}
+
+fsaemDiag_ <- function() {
+    .Call(`_nlmixr2est_fsaemDiag_`)
+}
+
 fsaemInnerMap_ <- function(cores) {
     .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
 }
