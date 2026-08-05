@@ -13646,7 +13646,13 @@ struct NpInnerParallelScope {
 // Conditional log-likelihood log p(y_i | eta) for subject id (no Omega prior).
 // Returns -Inf if any observation had a non-finite density (e.g. a bad solve).
 double npEvalCondLik(double *eta, int id) {
-  likInner0(eta, id);
+  // Honor likInner0's refusal.  It has several mid-loop `return NA_REAL` exits (a bad
+  // solve, a non-finite f, an NA r); on those the rows AFTER the abort still hold
+  // llikObs from the previous successful evaluation, because llikObs is initialized
+  // only once at setup.  Dropping the return therefore summed a stale-but-finite blend
+  // of two evaluations, which the finite check below could never detect.
+  double li = likInner0(eta, id);
+  if (ISNA(li)) return R_NegInf;
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
   focei_ind *fInd = &(inds_focei[id]);
