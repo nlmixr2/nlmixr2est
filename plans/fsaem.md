@@ -437,3 +437,52 @@ pool (`odeSwap`) is in place.  Worktree `~/src/nlmixr2est-fsaem`, branch
   methods sit at SAEM's Monte-Carlo noise floor (RMSE ~0.01).  On the collinear
   2-cmt N=60 model issue #845 cites, fsaem is clearly ahead at reduced
   iterations.  The "converges faster" unit test is rewritten accordingly.
+
+## Phase S -- issue #845 options + verifying the over-acceptance fix (2026-08-05)
+
+Continues Phase R on the same branch (`feat/fsaem-restore`, PR #852).
+
+- **S1 (acceptance instrumentation)**: `do_mcmc` carried NO acceptance signal --
+  `rmcmc` is a fixed 0.5 and nothing adapts from a measured rate -- so the stale
+  `U_y` defect had nothing that could have caught it.  Adds per-kernel
+  proposal/acceptance counters, plus `nRescore`/`uYStaleMax` on the post-IMH
+  rescore, exposed as `fit$saemDiag`; `fit$fsaemDiag` moves onto the fit env too
+  (the impmap `odeSwapInfo` pattern) instead of a `:::` global a later fit
+  overwrites.
+
+  **The predicted symptom was wrong.**  Omitting the rescore does NOT inflate the
+  acceptance rate: `do_mcmc` writes `U_y(ind)=Uc_y(ind)` on every acceptance, so
+  a stale entry self-heals the first time that subject accepts anything and the
+  damage is diluted to noise (method-2 acceptance 0.2369 without the rescore
+  against 0.2344 for plain saem, with the kernel firing on 40 of 45 iterations).
+  The real symptom is a shifted answer -- tka 0.4362 against 0.4620.  So the
+  regression test asserts `nRescore == nStep` and `uYStaleMax > 0` (~22 nats),
+  NOT an acceptance bound.
+- **S2 (options carrier)**: `fsaemMapImh` is reached through two registered entry
+  points with hand-maintained arities in `src/init.c`, so one `fsaemSetOpts_()`
+  setter carries all four new tunables as file statics -- one `init.c` row
+  instead of four rounds of `compileAttributes` + `init.c` edits.  Reset per fit
+  alongside the counters.
+- **S3 (`nu[4]`)**: the sweep count, previously hardcoded 5 in four places.
+  Sweep count ONLY -- the kernel is still switched on by `fast=TRUE`.  Relaxes
+  the three `len=3` assertions, and fixes the `mcmc=` passthrough branch, which
+  validated `mcmc$nu` but never assigned it.  The covariate path could not honor
+  a sweep count at all before this (it returns before `cfg$fsaemNsweep` is
+  attached and its closure is called with 8 arguments).
+- **S4 (`fastFallback`)**: `"prior"` proposes from `N(centre, Omega)` for a
+  subject with no usable Gamma.  Omega comes from the inner's own omega inverse,
+  so no entry point widens.  Also counts a fourth failure mode that was
+  invisible: a finite Cholesky that will not itself invert.
+
+  **Not covered end to end**: `H = J' Sigma^-1 J + Omega^-1` is PD by
+  construction, so no healthy fit produces a bad Gamma -- measured 0 on the
+  exponential-TTE general likelihood, on 2-obs-per-subject theo_sd, and on the
+  same with `fastCov="hessian"`.  Driving the prior term to zero fails earlier in
+  SAEM's own nearPD.  The test asserts the option is INERT.
+- **S5/S6 (`fastMode`, `fastHRefresh`)**: chain-mean centring, and reusing the
+  MAP + Gamma between refreshes.  Both are safe because an independent MH
+  proposal need not equal the target; they cost acceptance, not correctness.
+  `fastHRefresh` must NOT skip the per-iteration re-parameterization -- likInner0
+  has to score at the current theta/omega -- and does not.  Measured (theo_sd, 20
+  fast iterations, all the same MLE): default accRate 0.882 / reuse 0;
+  chainMean 0.594; hRefresh=5 0.671 / reuse 16; both 0.458 / reuse 16.

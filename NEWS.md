@@ -14,6 +14,22 @@
   FOCEi-family inner likelihood builds the proposal.  Standard SAEM is unchanged
   and remains the default.
 
+  Four opt-in refinements are available, all leaving the default behavior
+  unchanged: `saemControl(nu=)` accepts a fourth element giving the IMH sweeps
+  per iteration (default 5); `fastFallback = "prior"` proposes from the prior
+  `N(centre, Omega)` for a subject whose own proposal covariance is unusable
+  instead of holding it still; `fastMode = "chainMean"` centres the proposal on
+  the subject's mean over the chains rather than its conditional mode; and
+  `fastHRefresh = k` recomputes the mode and proposal covariance every `k`
+  iterations rather than every one, saving an inner optimization per subject in
+  between.  The last three trade acceptance for work or robustness, never
+  correctness -- an independent Metropolis-Hastings proposal need not match the
+  target, and the acceptance ratio is computed from the proposal actually used.
+
+- `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
+  and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
+  fast kernel's own step, proposal, acceptance and failure counts.
+
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
   general-likelihood models with **more than one endpoint**, which previously
   fell back to finite differences.  It was gated off as unverifiable, but what
