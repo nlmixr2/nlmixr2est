@@ -930,9 +930,9 @@
 #' The ll() objective uses the EXACT inner Hessian (needOptimHess), so `rx_pred_`
 #' is the per-observation log-density and the gradient is assembled by
 #' the log-density core (differentiating it directly) rather than
-#' the Gaussian (f,R) path.  Phase 1 scope: a single non-Gaussian endpoint, no
-#' linCmt/bounded transform/IOV/FO, at least one eta.  (Multi-endpoint, censoring,
-#' and nAGQ are handled by falling back to the finite-difference gradient.)
+#' the Gaussian (f,R) path.  Scope: at least one non-Gaussian endpoint, no
+#' linCmt/bounded transform/IOV/FO, at least one eta.  (Censoring and nAGQ are
+#' handled by falling back to the finite-difference gradient.)
 #'
 #' `caller` only reaches the bounded-transform gate, which focei must fail and
 #' the VAE need not -- see `.analyticGradAllowsBoundedTr`.  Defaulted, so the
@@ -942,22 +942,18 @@
   tryCatch({
     if (!.hasRxSens()) return(FALSE)
     .pd <- ui$predDfFocei
-    if (is.null(.pd) || nrow(.pd) != 1L) return(FALSE)
-    ## Single endpoint.  Multi-endpoint ll() was TRIED and reverted: lifting this gate
-    ## yields a gradient that runs (nAnalyticGradDirect > 0, "grad: analytic") but does
-    ## NOT verify -- on a 2-endpoint warfarin ll() model, analytic vs central differences
-    ## was off by 7.6x on tcl and ~370x on add.pd.  So the mechanism works and the
-    ## mathematics does not.  Unlike the GAUSSIAN multi-endpoint case (which the R route
-    ## already served, and which the pooled route reproduces bit-identically), there is
-    ## no shipping reference here to fall back on.
-    ##
-    ## Re-measured after the solve-pool fix (#839) and the multi-endpoint pooling / CMT
-    ## re-basing: tcl is now correct (7.6x -> 0.36%), but add.pd is still ~373x off and
-    ## tka/tv/add.pk are 4.2x/1.9x/2.5x off.  What is right is tcl (the only structural
-    ## theta carrying an eta) plus the PD-only algebraic thetas; what is wrong is the
-    ## non-eta structural thetas and the per-endpoint RESIDUAL thetas.  That is direction
-    ## bookkeeping, not pooling -- see the thPos/gMap note in .foceiGradPooledSetup, which
-    ## is single-endpoint-shaped.  nlmixr2/nlmixr2est#838.
+    if (is.null(.pd) || nrow(.pd) < 1L) return(FALSE)
+    ## Multiple endpoints ARE in scope.  They were gated off on the reading that the
+    ## multi-endpoint gradient did not verify -- against central differences, add.pd was
+    ## ~373x off and tka/tv/add.pk 4.2x/1.9x/2.5x off, while tcl (the only theta carrying
+    ## an eta) was right.  The gradient was right and the OBJECTIVE it was differenced
+    ## against was wrong: the endpoint's distribution was read one row early, so one
+    ## observation per subject was scored as normal (nlmixr2/nlmixr2est#838, fixed in
+    ## likInner0).  It looked like direction bookkeeping because the corrupted row is the
+    ## subject's FIRST, which biases whichever endpoint that row belongs to.  With the
+    ## objective fixed the analytic gradient matches central differences to 8e-3 relative
+    ## on the 2-endpoint warfarin ll() model, the residual being the reference's own
+    ## step noise.
     if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) return(FALSE)  # Gaussian -> (f,R) path
     # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
     # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2

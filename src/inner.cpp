@@ -2002,7 +2002,14 @@ double likInner0(double *eta, int id) {
       } else {
         iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
       }
-      int dist=0, yj0=0, yj = 0;
+      // dist is set per OBSERVATION below, before every use; normal rather than the
+      // old "unset" 0 so a subject with only dose rows carries a meaningful value.
+      int dist=rxDistributionNorm, yj0=0, yj = 0;
+      // The FO branch after the loop rejects what it does not support.  `dist`/`cens`
+      // are per-observation and end the loop holding the LAST row's value, so a subject
+      // whose last observation is Gaussian and uncensored would walk straight past the
+      // guards with a mixed endpoint or a censored row.  Track "any" instead.
+      int anyNonNormal = 0, anyCens = 0;
       double *llikObs = fInd->llikObs;
       // Pooled table: re-base CMT to the basis of whichever model is about to be
       // read, so its endpoint switch (and rx_yj_) resolve as they would on that
@@ -2013,8 +2020,6 @@ double likInner0(double *eta, int id) {
         kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
         dv0 = getIndDv(ind, kk);
-        yj = getIndYj(ind);
-        _splitYj(&yj, &dist,  &yj0);
         // predSolve reads through the scope (which may need a private buffer);
         // the plain inner solve reads rxode2's slice as before.
         double *lhs = neqGuard ? neqGuard->lhs() : getIndLhs(ind);
@@ -2044,6 +2049,15 @@ double likInner0(double *eta, int id) {
           } else {
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
+          // Read the endpoint's distribution/transform AFTER calc_lhs: rx_yj_ (and
+          // rx_lambda_/rx_hi_/rx_low_) are model assignments, so ind->yj describes THIS
+          // row only once calc_lhs has run.  A single endpoint makes rx_yj_ a constant
+          // installed at init, which hid this; with several it is a CMT switch, so
+          // reading first gave the previous row's endpoint -- and the first observation
+          // the unset 0, i.e. normal (nlmixr2/nlmixr2est#838).
+          yj = getIndYj(ind);
+          _splitYj(&yj, &dist,  &yj0);
+          if (dist != rxDistributionNorm) anyNonNormal = 1;
 
           f = lhs[op_focei.predOffset]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
@@ -2083,6 +2097,7 @@ double likInner0(double *eta, int id) {
           }
           cens = 0;
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
+          if (cens != 0) anyCens = 1;
           tbsJac = tbsL(dv0);
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
@@ -2265,8 +2280,8 @@ double likInner0(double *eta, int id) {
           fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
         }
       } else if (op_focei.fo == 1) {
-        if (cens != 0) stop("FO censoring not supported.");
-        if (dist != rxDistributionNorm) stop("Generalized llik for FO is not supported");
+        if (anyCens) stop("FO censoring not supported.");
+        if (anyNonNormal) stop("Generalized llik for FO is not supported");
         mat Ci = a * op_focei.omega * trans(a) + Vid;
         mat cholCi = cholSE__(Ci, op_focei.cholSEtol);
         mat CiInv;
@@ -10204,33 +10219,39 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
     curTheta[t] = op_focei.fullTheta[t];
     setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
   }
-  // per-observation DV and censoring info (same across samples), on the
-  // transformed scale -- matching how the inner problem reads them.
+  // Per-observation censoring flag and RAW DV/limit (same across samples).  Only the
+  // model-INDEPENDENT part is read here: the transformed DV/limit and the endpoint's
+  // distribution come from ind->lambda / ind->yj, which are model assignments
+  // (rx_lambda_, rx_yj_) and so describe a row only once calc_lhs has run for it.
+  // They are filled by rowInfoAt() below, off a real per-row calc_lhs pass.  Reading
+  // them here scored every observation with whatever endpoint happened to be current
+  // -- the previous solve's last row -- which for multiple endpoints is the wrong one
+  // (nlmixr2/nlmixr2est#838).
+  std::vector<double> dvRaw, limRaw;
   { int kk;
     for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj);
       if (getIndEvid(ind, kk) == 0) {
-        out.dvv.push_back(tbs(getIndDv(ind, kk)));
+        dvRaw.push_back(getIndDv(ind, kk));
         double lim = R_NegInf;
         if (hasRxLimit(rx)) {
           lim = getIndLimit(ind, kk);
           if (ISNA(lim)) lim = R_NegInf;
-          else if (R_FINITE(lim)) lim = tbs(lim);
         }
-        out.limv.push_back(lim);
+        limRaw.push_back(lim);
         out.censv.push_back(hasRxCens(rx) ? getIndCens(ind, kk) : 0);
-        // per-obs distribution: a general (non-normal) log-likelihood endpoint
-        // outputs rx_pred_ = the ll and rx_r_ = 0 (vs a normal endpoint's mean f
-        // / variance V), so the M-step score below must branch on this.
-        int _yj = getIndYj(ind), _dist = 0, _yj0 = 0;
-        _splitYj(&_yj, &_dist, &_yj0);
-        out.distv.push_back(_dist);
       }
     }
   }
-  int nobs = (int)out.dvv.size();
+  int nobs = (int)dvRaw.size();
   out.nobs = nobs;
   if (nobs == 0) return;
+  // Filled by fillRowInfo(); pre-sized so a fill that cannot complete leaves the
+  // single-endpoint-equivalent values rather than a short vector.
+  out.dvv.assign(dvRaw.begin(), dvRaw.end());
+  out.limv.assign(limRaw.begin(), limRaw.end());
+  out.distv.assign(nobs, rxDistributionNorm);
+  bool rowInfoDone = false;
   out.fvec.resize(nsamp); out.Vvec.resize(nsamp);
   out.dfmat.resize(nsamp); out.dVmat.resize(nsamp);
   out.sampleOk.assign(nsamp, 0);
@@ -10249,6 +10270,17 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // never writes into the shared inner-sized per-thread pool slice (a data race under
   // the parallel M-step) while avoiding a per-sample heap allocation in the hot path.
   // lhs buffer comes from the scope (see odeSwap.h); read AFTER iniSubjectE below.
+
+  // Transform observation ko's DV/limit and read its endpoint distribution.  Call ONLY
+  // from a pass that has just run calc_lhs for that row: rx_yj_/rx_lambda_/rx_low_/
+  // rx_hi_ are model assignments, so ind->yj / ind->lambda describe the row only then.
+  auto rowInfoAt = [&](int ko) {
+    out.dvv[ko] = tbs(dvRaw[ko]);
+    if (R_FINITE(limRaw[ko])) out.limv[ko] = tbs(limRaw[ko]);
+    int _yj = getIndYj(ind), _dist = rxDistributionNorm, _yj0 = 0;
+    _splitYj(&_yj, &_dist, &_yj0);
+    out.distv[ko] = _dist;
+  };
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
       setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
@@ -10293,6 +10325,10 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
           continue;
         } else if (getIndEvid(ind, kk) == 0) {
           rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          // ind->yj / ind->lambda now describe THIS row -- the only point in the
+          // subject where that is true, so take the per-obs DV transform and
+          // distribution here (once; they do not vary across samples).
+          if (!rowInfoDone) rowInfoAt(ko);
           fvec[ko] = lhs[op_focei.thetaSensPredOffset];
           Vvec[ko] = lhs[op_focei.thetaSensROffset];
           for (int s = 0; s < nSens; ++s) {
@@ -10302,6 +10338,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
           ko++;
         }
       }
+      if (ko == nobs) rowInfoDone = true;
     } else {
       // sensitivity ODE unsolvable: central FD on the pred model.  Flag it as an
       // optimization problem (same warning as the inner FD fallback).
@@ -10317,6 +10354,27 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       out.fvec[k] = fvec; out.Vvec[k] = Vvec;
       out.dfmat[k] = dfmat; out.dVmat[k] = dVmat;
       out.sampleOk[k] = 1;
+    }
+  }
+  if (!rowInfoDone) {
+    // Every sample fell back to FD, so no read pass ran and the per-obs transform and
+    // distribution are still unfilled.  Walk the rows once purely for their
+    // rx_yj_/rx_lambda_, which are functions of CMT and the thetas and NOT of the ODE
+    // state -- so the values are right even though the sensitivity solve behind this
+    // buffer failed.  f/V/df/dV are not read here; they come from the FD fallback.
+    iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
+    OdeSwapCmtScope _riCmt(odeSlotThetaSens, op, ind);
+    double *lhs = neqGuard.lhs();
+    int ko = 0, kk;
+    double curT;
+    for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
+      setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
+      if (!isDose(getIndEvid(ind, kk)) && getIndEvid(ind, kk) != 0) continue;
+      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+      if (getIndEvid(ind, kk) == 0) {
+        rowInfoAt(ko);
+        ko++;
+      }
     }
   }
 }
