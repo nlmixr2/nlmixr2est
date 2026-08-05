@@ -104,6 +104,74 @@ nmTest({
     expect_equal(fixef(.pr), fixef(.sk))
   })
 
+  test_that("fastMode='chainMean' centres the proposal on the chain mean", {
+    skip_if_not_installed("nlmixr2data")
+    expect_equal(saemControl()$fastMode, "map")
+    expect_equal(do.call(saemControl, saemControl(fastMode = "chainMean"))$fastMode,
+                 "chainMean")
+    expect_error(saemControl(fastMode = "nope"))
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .b <- function(...) saemControl(nBurn = 100, nEm = 50, nmc = 3, seed = 42,
+                                    print = 0L, calcTables = FALSE, ...)
+    .map <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                     control = .b()))
+    .cm <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .b(fastMode = "chainMean")))
+    # the centre really moved: same work, different (lower) acceptance, because
+    # the chain mean is a worse centre than the mode on a well-behaved posterior
+    expect_equal(.cm$fsaemDiag$nStep, .map$fsaemDiag$nStep)
+    expect_lt(.cm$fsaemDiag$accRate, .map$fsaemDiag$accRate)
+    # still an efficient sampler, and still the same MLE -- a centre only costs
+    # acceptance, never correctness, since the ratio uses whatever was proposed from
+    expect_gt(.cm$fsaemDiag$accRate, 0.3)
+    expect_lt(max(abs(fixef(.cm) - fixef(.map))), 0.05)
+  })
+
+  test_that("fastHRefresh reuses the MAP + Gamma between refreshes", {
+    skip_if_not_installed("nlmixr2data")
+    expect_equal(saemControl()$fastHRefresh, 1L)
+    expect_equal(do.call(saemControl, saemControl(fastHRefresh = 5))$fastHRefresh, 5L)
+    expect_error(saemControl(fastHRefresh = 0))
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .b <- function(...) saemControl(nBurn = 100, nEm = 50, nmc = 3, seed = 42,
+                                    print = 0L, calcTables = FALSE, ...)
+    .f1 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .b()))
+    .f5 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .b(fastHRefresh = 5)))
+    # default never reuses; k=5 over the 20 fast iterations recomputes at
+    # kiter 0/5/10/15 and reuses the other 16
+    expect_equal(.f1$fsaemDiag$nMapReuse, 0)
+    expect_equal(.f5$fsaemDiag$nStep, .f1$fsaemDiag$nStep)
+    expect_equal(.f5$fsaemDiag$nMapReuse, 16)
+    # a stale proposal costs acceptance, not correctness
+    expect_lt(.f5$fsaemDiag$accRate, .f1$fsaemDiag$accRate)
+    expect_gt(.f5$fsaemDiag$accRate, 0.3)
+    expect_lt(max(abs(fixef(.f5) - fixef(.f1))), 0.05)
+  })
+
   test_that("fsaemControl forces fast=TRUE and validates as an fsaem control", {
     .fc <- fsaemControl(fast=FALSE, nBurn=7)
     expect_s3_class(.fc, "fsaemControl")

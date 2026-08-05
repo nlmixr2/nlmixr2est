@@ -61,6 +61,8 @@ saemControl(
   fastIter = 20L,
   fastLik = c("focei", "foce", "focep"),
   fastFallback = c("skip", "prior"),
+  fastMode = c("map", "chainMean"),
+  fastHRefresh = 1L,
   lbfgsLmm = 5L,
   lbfgsFactr = NULL,
   lbfgsPgtol = NULL,
@@ -502,6 +504,24 @@ Hessian path is active, reported by SAEM).}
 
   * `"prior"`: propose from the prior `N(centre, Omega)` instead, which is
     always positive definite, so the subject keeps moving.}
+
+\item{fastMode}{Where the f-SAEM independent Metropolis-Hastings proposal is
+  centered:
+
+  * `"map"` (default): each subject's conditional MAP, from the FOCEi inner
+    optimizer.
+
+  * `"chainMean"`: that subject's mean over the `nmc` chains.  The proposal
+    covariance still comes from the MAP's information matrix; only the center
+    changes.  Can mix better when the posterior mode is a poor summary.}
+
+\item{fastHRefresh}{Integer (default `1L`).  How often the f-SAEM kernel
+recomputes the per-subject MAP and proposal covariance, in active
+iterations: `1` recomputes every iteration, `k` reuses the previous ones for
+`k - 1` iterations in between.  A reused proposal is still a valid
+independent Metropolis-Hastings kernel -- it costs acceptance, not
+correctness -- and saves one inner optimization per subject per skipped
+iteration.}
 
 \item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
 memory) used when refining the fixed-effect-only parameters of a general

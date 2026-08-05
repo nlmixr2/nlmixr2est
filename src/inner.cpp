@@ -15920,6 +15920,22 @@ static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covarian
 static double _fsaemNMapReuse = 0;  // steps that reused a cached MAP + Gamma
 static double _fsaemNPriorFallback = 0; // bad-Gamma subjects rescued by the prior
 
+// fastHRefresh cache: the MAP centres and proposal Choleskys from the last step
+// that actually recomputed them.  Only the MAP optimization and the inv/chol are
+// cached -- the caller's per-iteration re-parameterization still runs, because
+// likInner0 must score candidates at the CURRENT theta/omega.
+static NumericMatrix _fsaemCacheEtaHat;
+static NumericMatrix _fsaemCacheChol;
+static int _fsaemCacheNsub = -1;
+static int _fsaemCacheNeta = -1;
+
+static void fsaemCacheClear() {
+  _fsaemCacheEtaHat = NumericMatrix(0, 0);
+  _fsaemCacheChol = NumericMatrix(0, 0);
+  _fsaemCacheNsub = -1;
+  _fsaemCacheNeta = -1;
+}
+
 // Tunables for the fast kernel, set once per fit by fsaemSetOpts_().
 //
 // They live here as statics rather than as arguments because fsaemMapImh() is
@@ -15964,6 +15980,7 @@ RObject fsaemDiagReset_() {
   _fsaemNStep = _fsaemNProp = _fsaemNAcc = _fsaemNMapFail = _fsaemNBadGamma = 0;
   _fsaemNMapReuse = 0;
   _fsaemNPriorFallback = 0;
+  fsaemCacheClear();
   // the options are per-fit too: a later fit must not inherit the previous one's
   fsaemResetOpts();
   return R_NilValue;
@@ -16133,12 +16150,51 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
   // last model to be dyn-loaded left in rxode2's globals.  Serial code, so this is
   // outside any parallel region, as OdeSwapEsBatch requires.
   OdeSwapEsBatch esBatch(odeSlotInner);
+  const int netaNow = op_focei.neta;
+  // fastHRefresh > 1: reuse the last computed MAP + Gamma on the iterations in
+  // between, skipping one inner optimization per subject.  Still a valid
+  // independent-MH kernel -- the proposal need not equal the target -- so this
+  // trades acceptance for work, never correctness.  The caller has ALREADY
+  // re-parameterized the inner for this iteration, which is what must not be
+  // skipped: likInner0 has to score candidates at the current theta/omega.
+  bool reuse = (_fsaemHRefresh > 1) && (kiter % _fsaemHRefresh != 0) &&
+    (_fsaemCacheNsub > 0) && (_fsaemCacheNeta == netaNow);
+  if (reuse) {
+    _fsaemNStep += 1;
+    _fsaemNMapReuse += 1;
+    NumericMatrix eta = clone(etaCur);
+    for (int sw = 0; sw < nsweep; ++sw) {
+      double streamBase = seed + ((double)kiter * nsweep + sw) *
+        ((double)nchain * _fsaemCacheNsub);
+      List r = fsaemImhKernel_(eta, _fsaemCacheEtaHat, _fsaemCacheChol, nchain, cores,
+                               mprior, lower, upper, nbd, streamBase, nRetry);
+      eta = as<NumericMatrix>(r["eta"]);
+    }
+    return eta;
+  }
   List mapL = fsaemInnerMap_(cores);
   NumericMatrix etaHat = mapL["eta"];
   NumericMatrix hess = mapL["hess"];
   IntegerVector ok = mapL["ok"];
   const int neta = op_focei.neta;
   const int nsub = etaHat.nrow();
+  // fastMode="chainMean": centre the proposal on the subject's mean over the nmc
+  // chains instead of its MAP (issue #845 / the paper's cross-chain-mean mode).
+  // Gamma still comes from the MAP's H -- only the CENTRE moves.  This stays a
+  // valid independent-MH kernel either way: an independent proposal need not
+  // equal the target, and the acceptance ratio is computed from whatever ehat and
+  // L were actually proposed from, so a worse centre costs efficiency, never
+  // correctness.  etaCur is chain-major, row = c*nsub + id.
+  if (_fsaemMode == 1 && nchain > 0 && etaCur.nrow() == nchain*nsub &&
+      etaCur.ncol() == neta) {
+    for (int id = 0; id < nsub; ++id) {
+      for (int j = 0; j < neta; ++j) {
+        double acc = 0.0;
+        for (int c = 0; c < nchain; ++c) acc += etaCur(c*nsub + id, j);
+        etaHat(id, j) = acc / (double)nchain;
+      }
+    }
+  }
   // cholGamma row id = vec(lower Cholesky of Gamma_i = H_i^-1); NA where the MAP
   // failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
   // symmatu() reproduces that input and "lower" == t(chol()).
@@ -16180,6 +16236,12 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
     for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
   }
   _fsaemNStep += 1;
+  if (_fsaemHRefresh > 1) {
+    _fsaemCacheEtaHat = clone(etaHat);
+    _fsaemCacheChol = clone(cholGamma);
+    _fsaemCacheNsub = nsub;
+    _fsaemCacheNeta = neta;
+  }
   NumericMatrix eta = clone(etaCur);
   for (int s = 0; s < nsweep; ++s) {
     double streamBase = seed + ((double)kiter * nsweep + s) * ((double)nchain * nsub);

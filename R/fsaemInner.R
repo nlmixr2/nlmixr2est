@@ -203,7 +203,10 @@
   fsaemSetOpts_(list(
     nsweep = .nsweep,
     fallback = as.integer(identical(rxode2::rxGetControl(ui, "fastFallback", "skip"),
-                                    "prior"))))
+                                    "prior")),
+    mode = as.integer(identical(rxode2::rxGetControl(ui, "fastMode", "map"),
+                                "chainMean")),
+    hRefresh = as.integer(rxode2::rxGetControl(ui, "fastHRefresh", 1L))))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
