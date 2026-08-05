@@ -32,6 +32,13 @@
 #' @return the rxControl
 #' @noRd
 .npSafeLogDomain <- function(rxControl, ui) {
+  # The `safeLog %in% names()` test is REQUIRED, not defensive tidiness, and must not be
+  # replaced by an unconditional assignment after the capability probe: rxode2 reads this
+  # list POSITIONALLY -- `rxControl[Rxc_safeLog]` with `Rxc_safeLog == 93`
+  # (rxode2 src/rxData.cpp, inst/include/rxode2_control.h).  Assigning into a list that
+  # does not already carry the element APPENDS it, leaving index 93 holding some other
+  # control's value: a silently corrupted solve rather than a merely missing option.
+  # Replacing an element that is already present keeps its position, so only that is safe.
   if (is.null(rxControl) || !("safeLog" %in% names(rxControl))) return(rxControl)
   if (!.npIsGeneralLik(ui)) return(rxControl)
   if (!.rxode2HasSafeLogDomain()) return(rxControl)

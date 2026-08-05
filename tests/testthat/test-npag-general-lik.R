@@ -107,13 +107,23 @@ nmTest({
     rxode2::rxSetSeed(42); .fl <- suppressWarnings(nlmixr2(.ll, .dat, "npag", .ctl()))
     .lg <- as.numeric(.fg$env$npagLogLik)
     .ll2 <- as.numeric(.fl$env$npagLogLik)
-    # a per-observation log-density cannot exceed -log(sd) - 0.5*log(2*pi), so no fit
-    # of this data can clear this bound.  The defect cleared it by more than 2000.
-    .maxLL <- -.nObs * 0.5 * log(2 * pi) - 96 * log(0.4) - 96 * log(2)
-    expect_lt(.ll2, .maxLL)
-    # every scale stays in its domain -- this is what actually went wrong
+    # every scale stays in its domain -- this is what actually went wrong, and the
+    # bound below is only well defined once it holds
     expect_gt(unname(fixef(.fl)["pdadd.sd"]), 0)
     expect_gt(unname(fixef(.fl)["add.sd"]), 0)
+    # A per-observation normal log-density cannot exceed -log(sd) - 0.5*log(2*pi), so the
+    # total cannot exceed the sum of those maxima.  Take the sd's from the FIT, not from
+    # the simulation: the fit chooses its own, and pdadd.sd lands near 0.76 against the
+    # simulated 2 -- a bound built on the simulation values would be one this fit is
+    # entitled to beat, and would fail for a legitimate reason.  At the fitted sd's this
+    # is a theorem.  The defect cleared even the looser bound by more than 2000.
+    .nPk <- sum(.dat$evid == 0 & .dat$cmt == 2)
+    .nPd <- sum(.dat$evid == 0 & .dat$cmt == 3)
+    expect_equal(.nPk + .nPd, .nObs)
+    .maxLL <- -.nObs * 0.5 * log(2 * pi) -
+      .nPk * log(unname(fixef(.fl)["add.sd"])) -
+      .nPd * log(unname(fixef(.fl)["pdadd.sd"]))
+    expect_lt(.ll2, .maxLL)
     # the twin: the ONLY admissible difference is the 2*pi term the Gaussian path omits
     expect_equal(.lg - .ll2, .nObs * 0.5 * log(2 * pi), tolerance = 0.02)
     expect_equal(unname(fixef(.fl)["add.sd"]), unname(fixef(.fg)["add.sd"]),

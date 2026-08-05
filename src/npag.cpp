@@ -62,6 +62,22 @@ namespace {
   // out-of-domain penalty below.  R_PosInf when unset (nothing to scale against yet).
   double gNpResidRef = R_PosInf;
 
+  // Out-of-domain penalty shape.  The penalty is
+  //     ref + NP_RESID_PENALTY_MULT * (1 + |ref|)
+  // which is strictly worse than `ref` for either sign of ref, and worse than any
+  // objective within a factor of NP_RESID_PENALTY_MULT of the starting point -- the
+  // multiplier is what buys the margin, so it wants to be large relative to how far a
+  // feasible objective can move during one residual step, and small enough not to
+  // wreck bobyqa's quadratic conditioning.  1e4 sits comfortably between: residual
+  // steps move the objective by O(1)-O(100) here.
+  const double NP_RESID_PENALTY_MULT = 1e4;
+  // Unscaled fallback, used only if gNpResidRef were somehow unset.  npOptimizeResid
+  // returns early when the starting objective is non-finite, so this is unreachable;
+  // it is kept so the function is total.  It is deliberately NOT the primary path: an
+  // absolute constant can be SMALLER than a legitimate objective on a large problem,
+  // which would make the infeasible region look attractive.
+  const double NP_RESID_PENALTY_ABS = 1e10;
+
   double npResidObjVal(const double *p) {
     for (size_t j = 0; j < gNpOptIdx.size(); ++j)
       impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
@@ -77,8 +93,8 @@ namespace {
     // a large FINITE value instead, scaled to the objective so it dominates without
     // wrecking conditioning.  It is a flat plateau: it stops the infeasible region from
     // attracting the optimizer, but carries no gradient back toward feasibility.
-    if (!std::isfinite(gNpResidRef)) return 1e10;
-    return gNpResidRef + 1e4 * (1.0 + std::fabs(gNpResidRef));
+    if (!std::isfinite(gNpResidRef)) return NP_RESID_PENALTY_ABS;
+    return gNpResidRef + NP_RESID_PENALTY_MULT * (1.0 + std::fabs(gNpResidRef));
   }
   double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
 }
