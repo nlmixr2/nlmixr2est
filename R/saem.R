@@ -253,7 +253,15 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
+                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
+                        # a general log-likelihood endpoint has no normal do_mcmc
+                        # fallback, so the fast kernel must run every iteration
+                        fastKernel=if (.saemGeneralLik(ui)) "throughout"
+                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
+                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -295,12 +303,20 @@
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })
   .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
+  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
+  # down so it does not leak into a later fit's solve state (reproducibility).
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+    try(vaeInnerFree_(), silent = TRUE)
+  }
   .saemRes
   })
 }

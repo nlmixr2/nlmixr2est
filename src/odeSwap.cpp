@@ -204,6 +204,12 @@ static void odeSwapEsDeactivate() {
   }
 }
 
+void odeSwapEsOff() {
+  odeSwapEsDeactivate();
+  _odeEsSlot = odeEsUnknown;
+  _odeEsSlotIdx = -1;
+}
+
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
   : prevSlot_(_odeEsSlot), prevSlotIdx_(_odeEsSlotIdx), armed_(false) {
   // Snapshot whatever shape is live, whoever installed it.  This is what lets the
