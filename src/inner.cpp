@@ -12409,16 +12409,21 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   // from the outer model to the inner one, inside this one gradient call, is exactly
   // what the shared-pool machinery exists for.
   std::unique_ptr<OdeSwapEsBatch> _esBatch(new OdeSwapEsBatch(odeSlotOuter));
-  // Tolerance for this batch.  A caller passing NA gets the fit's (OdeFitTolGuard),
-  // which is what a gradient needs.  The covariance passes its own -- covSolveTol, else
-  // tightened from sigdig (.foceiAnalyticSolveTol) -- because it Richardson-differences
-  // these 2nd-order sensitivities to recover the 3rd-order tensor, so the solve error IS
-  // the answer's error.  Dropping it here moved the SEs by 1.7e-2 on a 5-eta 2-cmt model
-  // and made foceiControl(fast=) change them, since fast=FALSE never pools.
-  std::unique_ptr<OdeFitTolGuard>   _fitTol;
+  // Tolerance for this batch.  A caller passing NA solves at the fit's, which is what a
+  // gradient needs.  The covariance passes its own -- covSolveTol, else tightened from
+  // sigdig (.foceiAnalyticSolveTol) -- because it Richardson-differences these 2nd-order
+  // sensitivities to recover the 3rd-order tensor, so the solve error IS the answer's
+  // error.  Dropping it here moved the SEs by 1.7e-2 on a 5-eta 2-cmt model and made
+  // foceiControl(fast=) change them, since fast=FALSE never pools.
+  //
+  // The fit guard is taken UNCONDITIONALLY and FIRST, even when it is about to be
+  // overridden: op_focei.fitAtol/fitRtol are captured lazily by whichever guard runs
+  // first in a fit, so tightening ahead of that capture would record the tight value as
+  // the FIT's for everything after it -- including the per-individual finite difference
+  // below, which takes its own OdeFitTolGuard while this one is live.
+  OdeFitTolGuard _fitTol;
   std::unique_ptr<OdeSolveTolGuard> _covTol;
   if (R_FINITE(tol) && tol > 0) _covTol.reset(new OdeSolveTolGuard(tol));
-  else                          _fitTol.reset(new OdeFitTolGuard());
   if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
   rx = getRxSolve_();
   // Does the BOUND calc_lhs actually belong to the model the registry describes?
