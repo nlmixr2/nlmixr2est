@@ -108,7 +108,8 @@
 #' mprior data + residual theta + omega and re-solves; the inner model is reused
 #' (cache-safe, no recompile).
 #' @noRd
-.fsaemInnerUpdateCov <- function(setup, mpriorMat, ares, bres, plambda, omega) {
+.fsaemInnerUpdateCov <- function(setup, mpriorMat, ares, bres, plambda, omega,
+                                 kiter = 1L) {
   .data <- .fsaemSetMpriorData(setup$data0, mpriorMat, setup$built)
   # inner theta: residuals from ares/bres; time-varying covariate betas from the
   # live Plambda (falling back to the ini value until Plambda is populated);
@@ -120,12 +121,13 @@
     .isAdd <- .it$err[.residW] == "add"
     .theta[.residW] <- ifelse(.isAdd, ares[1], bres[1])
   }
-  # "Not populated yet" is the WHOLE vector still at zero, not an individual
-  # coefficient that happens to be zero -- testing per element conflated an
-  # estimate of exactly 0 with a missing one, and silently kept the ini value in
-  # the inner while the SAEM chain used 0.  The IMH would then have been built
-  # around a different target than the chain it preconditions.
-  .havePlambda <- length(plambda) > 0L && any(is.finite(plambda) & plambda != 0)
+  # Plambda is zeroed at setup (Plambda.zeros(nlambda)) and first filled by the
+  # M-step at the end of iteration 0, so "populated" is exactly kiter >= 1 -- a
+  # signal that does not depend on the VALUES.  Testing the values instead (per
+  # element, as this once did) conflated an estimate of exactly 0 with a missing
+  # one and silently kept the ini value in the inner while the SAEM chain used 0,
+  # building the IMH around a different target than the chain it preconditions.
+  .havePlambda <- length(plambda) > 0L && kiter >= 1L
   if (.havePlambda) {
     for (i in seq_along(setup$betaW)) {
       .pp <- setup$betaPlambda[i]

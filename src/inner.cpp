@@ -15919,6 +15919,7 @@ static double _fsaemNMapFail = 0;   // subjects whose MAP did not converge
 static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covariance
 static double _fsaemNMapReuse = 0;  // steps that reused a cached MAP + Gamma
 static double _fsaemNPriorFallback = 0; // bad-Gamma subjects rescued by the prior
+static double _fsaemNBoundFail = 0;     // proposals abandoned after nRetry out-of-bounds draws
 
 // fastHRefresh cache: the MAP centres and proposal Choleskys from the last step
 // that actually recomputed them.  Only the MAP optimization and the inv/chol are
@@ -15980,6 +15981,7 @@ RObject fsaemDiagReset_() {
   _fsaemNStep = _fsaemNProp = _fsaemNAcc = _fsaemNMapFail = _fsaemNBadGamma = 0;
   _fsaemNMapReuse = 0;
   _fsaemNPriorFallback = 0;
+  _fsaemNBoundFail = 0;
   fsaemCacheClear();
   // the options are per-fit too: a later fit must not inherit the previous one's
   fsaemResetOpts();
@@ -15994,7 +15996,8 @@ List fsaemDiag_() {
                       _["nMapFail"] = _fsaemNMapFail,
                       _["nBadGamma"] = _fsaemNBadGamma,
                       _["nMapReuse"] = _fsaemNMapReuse,
-                      _["nPriorFallback"] = _fsaemNPriorFallback);
+                      _["nPriorFallback"] = _fsaemNPriorFallback,
+                      _["nBoundFail"] = _fsaemNBoundFail);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
@@ -16068,7 +16071,9 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   // reading and writing out of bounds -- Rcpp's operator() does not check.
   if (nchain < 1 || etaCur.nrow() != nchain*nsub || etaCur.ncol() != neta ||
       cholGamma.nrow() != nsub || cholGamma.ncol() != neta*neta ||
-      mprior.nrow() != nsub || etaHat.ncol() != neta) {
+      mprior.nrow() != nsub || mprior.ncol() < neta || etaHat.ncol() != neta ||
+      ((int)nbd.size() == neta &&
+       ((int)lower.size() < neta || (int)upper.size() < neta))) {
     stop("fsaemImhKernel_: dimensions disagree (neta=%d nsub=%d nchain=%d; "
          "etaCur %dx%d etaHat %dx%d cholGamma %dx%d mprior %dx%d)",
          neta, nsub, nchain, etaCur.nrow(), etaCur.ncol(),
@@ -16123,12 +16128,14 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
         if (inBounds) break;
       }
       if (hasBounds && !inBounds) {
-        // retries exhausted: clamp each violated component to its boundary
-        for (int j = 0; j < neta; ++j) {
-          double phi = mprior(id, j) + eprop(j);
-          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) eprop(j) = lower[j] - mprior(id, j);
-          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) eprop(j) = upper[j] - mprior(id, j);
-        }
+        // Retries exhausted.  This used to CLAMP each violated component to its
+        // boundary, but the acceptance ratio below is computed from z -- the
+        // Gaussian draw -- and a clamped eprop is no longer ehat + L*z, so the
+        // ratio described a point that was not the one being proposed and the
+        // kernel targeted the wrong distribution.  Holding the current state is
+        // an exact Metropolis outcome (a rejected proposal), so do that instead.
+        _fsaemNBoundFail += 1;
+        continue;
       }
       std::vector<double> ec(neta), ep(neta);
       for (int j = 0; j < neta; ++j) { ec[j] = ecur(j); ep[j] = eprop(j); }

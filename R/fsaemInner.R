@@ -59,6 +59,12 @@
   .env$control$needOptimHess <-
     isTRUE(any(.ui$predDfFocei$distribution != "norm")) ||
     identical(control$fastCov, "hessian")
+  # A non-normal endpoint has no Gaussian add/prop error machinery, so focei.R
+  # turns interaction off whenever needOptimHess is set.  The fast inner has to
+  # agree or it asks for an interaction Hessian a general likelihood cannot give.
+  if (isTRUE(any(.ui$predDfFocei$distribution != "norm"))) {
+    .env$control$interaction <- 0L
+  }
   .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
   .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
@@ -117,6 +123,12 @@
   .pred <- ui$predDf
   if (is.null(.pred) || length(.pred$cond) != 1L) return(FALSE) # single endpoint
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
+  # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
+  # off-diagonal block would leave the IMH scoring against a different prior than
+  # the SAEM chain -- i.e. the composed kernel would not target the chain's
+  # distribution.  Degrade rather than silently mis-target.
+  .om <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
+  if (nrow(.om) > 0L && any(.om$neta1 != .om$neta2)) return(FALSE)
   # General log-likelihood endpoint (ll() ~ expr, distribution=="LL"): the inner
   # supplies the observation likelihood, so the fast kernel handles it even
   # though plain saem cannot.  It must run throughout (distribution=4 path) --
@@ -231,7 +243,7 @@
     cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
       # R re-parameterizes the mprior-as-data inner (data rebuild + setup); the
       # numeric MAP + IMH orchestration then runs in C++ (fsaemMapImhCpp_).
-      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
+      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega, kiter)
       .cores <- as.integer(rxode2::getRxThreads())
       if (is.na(.cores) || .cores < 1L) .cores <- 1L
       fsaemMapImhCpp_(mpriorMat, etaCur, as.integer(nchain), as.integer(nsweep), .cores,
@@ -246,7 +258,7 @@
   # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
   # the current population phi (mprior row 1); residual positions take the
   # current additive (ares) / proportional (bres) estimate for their endpoint.
-  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "err", "condition")]
+  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "name", "err", "condition")]
   .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
   .nTheta <- nrow(.thetaDf)
   .structPos <- which(is.na(.thetaDf$err))
@@ -275,6 +287,12 @@
   # (no per-iteration Rcpp::Function round-trip), which is safe for dynamic
   # iteration changes.  The closure above is retained for the covariate path.
   cfg$fsaemNoCov      <- 1L
+  # phiPop is read POSITIONALLY (phi column j <-> structural theta j) and that is
+  # correct: the phi vector follows the ini (ntheta) order, the same order
+  # .structPos is built in.  It is NOT the eta order -- ui$muRefDataFrame can
+  # disagree with ini() -- and mapping through muRefDataFrame instead collapses
+  # the acceptance rate from 0.88 to 0.02 on a model whose ini() and eta orders
+  # differ, which is what pins this down.  See the permuted-ini regression test.
   cfg$fsaemStructPos  <- as.integer(.structPos - 1L)
   cfg$fsaemResidPos   <- as.integer(.residPos - 1L)
   cfg$fsaemResidIsAdd <- as.integer(.residIsAdd)

@@ -3726,6 +3726,11 @@ private:
       arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
       for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
       for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
+      // phi column j IS structural theta j: the phi vector follows the ini
+      // (ntheta) order that fsaemStructPos is built in, not the eta order.
+      // Verified by construction: routing through ui$muRefDataFrame instead
+      // drops acceptance from 0.88 to 0.02 when ini() and the eta declarations
+      // disagree.
       bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
       for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
         theta[fsaemStructPos(j)] =

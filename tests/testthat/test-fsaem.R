@@ -413,6 +413,45 @@ nmTest({
     }
   })
 
+  test_that("est='fsaem' is correct when ini() and eta order disagree", {
+    skip_if_not_installed("nlmixr2data")
+    # The inner's structural theta is filled from phiPop POSITIONALLY -- phi
+    # column j is structural theta j.  That holds because the phi vector follows
+    # the ini (ntheta) order, NOT the eta order, and the two can differ:
+    # ini(tka, tv, tcl) with etas declared (ka, cl, v) gives
+    # ui$muRefDataFrame$theta = tka, tcl, tv.  Routing phiPop through
+    # muRefDataFrame "to fix the mismatch" drops acceptance from 0.88 to 0.02,
+    # which is what proves the positional read is the correct one.  This pins it.
+    .perm <- function() {
+      ini({
+        tka <- 0.45; tv <- 3.45; tcl <- 1        # deliberately NOT eta order
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.perm))
+    .th <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .th <- .th[order(.th$ntheta), ]
+    # the premise of the test: the two orders really do disagree here
+    expect_false(identical(.th$name[is.na(.th$err)], .ui$muRefDataFrame$theta))
+
+    .ctl <- saemControl(nBurn = 100, nEm = 50, nmc = 3, seed = 42, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(.perm, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .ctl))
+    .ss <- suppressMessages(nlmixr2(.perm, nlmixr2data::theo_sd, est = "saem",
+                                    control = .ctl))
+    # a transposed inner parameterization shows up as a collapsed acceptance
+    # rate long before it shows up in the estimates
+    expect_gt(.fs$fsaemDiag$accRate, 0.5)
+    expect_equal(.fs$fsaemDiag$nMapFail, 0)
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
+  })
+
   test_that("est='fsaem' converges with the Hessian proposal (fastCov='hessian')", {
     # the Hessian proposal path (calcEtaHessian, interaction=1) is the general
     # covariance route; on a continuous model it must converge to the same MLE
@@ -480,6 +519,45 @@ nmTest({
     expect_equal(.diag$nMapFail, 0)
     # and the SAEM solve was not corrupted by the inner's jump shape: same MLE
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.1)
+  })
+
+  test_that("est='fsaem' rejects a correlated omega from the fast kernel", {
+    # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
+    # off-diagonal block would have the IMH scoring against a different prior
+    # than the SAEM chain -- the composed kernel would not target the chain's
+    # distribution.  .fsaemSupported must degrade instead.
+    .corr <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka + eta.cl ~ c(0.6, 0.01, 0.3)      # correlated block
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.corr))
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    expect_false(nlmixr2est:::.fsaemSupported(.ui))
+
+    .diag <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .u2 <- rxode2::rxUiDecompress(rxode2::rxode2(.diag))
+    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.u2, character(0))
+    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.u2), add = TRUE)
+    expect_true(nlmixr2est:::.fsaemSupported(.u2))
   })
 
   test_that("est='fsaem' rejects unsupported models (mixture) from the fast kernel", {
