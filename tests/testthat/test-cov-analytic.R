@@ -1189,9 +1189,15 @@ nmTest({
     # The augmented solves are run at solveTol (covSolveTol, else tightened from sigdig)
     # because the 3rd-order tensor is recovered by differencing them twice.  The pooled
     # route used to drop that and solve at the FIT's tolerance instead, and since the
-    # pool is only available with fast=TRUE, `fast=` moved the standard errors -- 1.7e-2
-    # on a 5-ETA 2-compartment model, and it TRACKED sigdig, which is what identified the
-    # tolerance as the cause.  Both routes now solve at solveTol.
+    # pool is only available with fast=TRUE, `fast=` moved the standard errors.  Both
+    # routes now solve at solveTol.
+    #
+    # On THIS model at sigdig = 4 the defect is 1.16e-5 relative and what is left after
+    # the fix is 5.6e-8 (two different code paths integrating the same quantity at the
+    # same tolerance), so 1e-6 below has ~18x margin under it and ~12x over it.  Do not
+    # loosen it without re-measuring: the gap TRACKS the fit tolerance, and at sigdig = 3
+    # the defect is only 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA
+    # 2-compartment model would pass with the bug still in.
     .m <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
@@ -1205,17 +1211,20 @@ nmTest({
     .f0 <- suppressMessages(suppressWarnings(nlmixr2(.m, .d, "focei",
              foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4))))
     .se <- function(fast) {
+      .n0 <- .odeSwapInfo()$pooledSolveN
       .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
               foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
                            maxOuterIterations = 0L))))
       expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
-      sqrt(diag(.f$cov))
+      list(se = sqrt(diag(.f$cov)), pooled = .odeSwapInfo()$pooledSolveN - .n0)
     }
-    .sT <- .se(TRUE); .sF <- .se(FALSE)
-    .n <- intersect(names(.sT), names(.sF))
+    .rT <- .se(TRUE); .rF <- .se(FALSE)
+    # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
+    # two runs would be the same route and would agree no matter what tolerance it used.
+    expect_gt(.rT$pooled, 0L)
+    expect_equal(.rF$pooled, 0L)
+    .n <- intersect(names(.rT$se), names(.rF$se))
     expect_gt(length(.n), 0L)
-    # 1e-4 is far below the 1.7e-2 defect and far above the ~4e-6 that separates two
-    # independent solves of the same quantity
-    expect_equal(unname(.sT[.n]), unname(.sF[.n]), tolerance = 1e-4)
+    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-6)
   })
 })
