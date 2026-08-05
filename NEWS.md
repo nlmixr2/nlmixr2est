@@ -2,6 +2,12 @@
 
 ## New features
 
+- `est="npag"` / `est="npb"` now support a hand-written general likelihood
+  (`ll()`) properly.  A model whose `ll()` is written as the exact normal
+  log-density now agrees with the equivalent `add()` model to the known
+  `0.5*log(2*pi)` per observation, at every grid size.  Requires rxode2 5.1.7 for
+  the `safeLog=2` log-domain mode.
+
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
   general-likelihood models with **more than one endpoint**, which previously
   fell back to finite differences.  It was gated off as unverifiable, but what
@@ -11,6 +17,27 @@
 ## Bug fixes
 
 ### Estimation
+
+- Fixed `est="npag"` / `est="npb"` reporting a log-likelihood **above its
+  analytic maximum** for a model with a hand-written general likelihood, with the
+  residual parameters driven out of domain -- including to a **negative standard
+  deviation**.  On a 2-endpoint PK/PD fit the log-likelihood read +2364 to +2831
+  where the data bounds it at -155.  Three causes: the residual step scored every
+  row with a Gaussian extended-least-squares form even where `rx_pred_` is a
+  log-density (the same defect class as #838, in a function that fix did not
+  touch); the moment warm start took a moment of a log-density; and rxode2's
+  `safeLog` turned `log(negative)` into a large finite value, so an invalid
+  negative SD was *rewarded* by about +36 per observation rather than rejected.
+
+- Fixed npag's reported objective being inflated whenever a **residual variance
+  collapsed**, general likelihood or not.  `likInner0` floored the variance `r` to
+  1 for the `err^2/r` term but took `log()` of the *unfloored* value, so the two
+  terms disagreed -- and the disagreement paid +18.02 per affected observation.
+
+- The nonparametric engines no longer accept an evaluation the inner problem
+  refused.  `npEvalCondLik` discarded `likInner0`'s `NA` return, and because the
+  per-observation likelihoods are initialized only once, a rejected evaluation
+  summed a finite blend of two different parameter vectors.
 
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
