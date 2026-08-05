@@ -12381,7 +12381,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
   // through R -- so once the all-C++ gradient became the normal path the counter tracked
   // the R FALLBACK rather than the pooled route, and the tests asserting "the pooled
   // solve really ran" were satisfied by exactly the thing they existed to rule out.
-  odeSwapNotePooledSolve();
+  odeSwapNotePooledSolve(doParallel ? cores : 1);
 }
 
 //[[Rcpp::export]]

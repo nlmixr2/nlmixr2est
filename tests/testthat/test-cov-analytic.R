@@ -1216,8 +1216,9 @@ nmTest({
               foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
                            maxOuterIterations = 0L))))
       expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
-      list(se = sqrt(diag(.f$cov)), pooled = .odeSwapInfo()$pooledSolveN - .n0,
-           bailed = .foceiOuterFlagged$n - .b0)
+      .i <- .odeSwapInfo()
+      list(se = sqrt(diag(.f$cov)), pooled = .i$pooledSolveN - .n0,
+           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores)
     }
     .rT <- .se(TRUE); .rF <- .se(FALSE)
     # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
@@ -1227,6 +1228,12 @@ nmTest({
     expect_gt(.rT$pooled, 0L)
     expect_equal(.rT$bailed, 0L)
     expect_equal(.rF$pooled, 0L)
+    # ... and that the pooled solve is actually threaded.  pooledSolveCores is the count
+    # its subject loop ran with AFTER every clamp, so this covers the whole chain the
+    # unit test on .foceiPoolCores() cannot reach: rxControl(cores = 0) -> rxode2's
+    # threads -> min2(cores, getOpCores(op)) -> doParallel.  Measured 11 with the fix and
+    # 1 without, on a host reporting 11 threads.
+    if (rxode2::getRxThreads() > 1L) expect_gt(.rT$cores, 1L)
     .n <- intersect(names(.rT$se), names(.rF$se))
     expect_gt(length(.n), 0L)
     expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-6)
