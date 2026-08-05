@@ -26,6 +26,13 @@
   as a result -- measured at about 4% of that step, which is inside its
   run-to-run noise; set `covSolveTol` to trade accuracy back for speed.
 
+- `covMethod="analytic"` solves in parallel again.  The pooled covariance solve
+  coerced `rxControl(cores = 0)` -- the default, which means "use rxode2's thread
+  setting" -- to a literal 1, so it ran **single-threaded over subjects** while the
+  `rxSolve` route it replaced honoured the 0 and ran threaded.  The shared pool's
+  parallelism was therefore off by default here.  A 5-ETA 2-compartment covariance
+  goes from 1.04s to 0.71s, and from slower than the unpooled route to faster.
+
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
   Each observation's distribution was read one row before the model had been

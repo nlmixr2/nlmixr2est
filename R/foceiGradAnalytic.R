@@ -601,8 +601,14 @@
   {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
+      ## cores = 0 is rxControl's default and MEANS "use rxode2's thread setting" -- the
+      ## rxSolve fallback below passes the 0 through and gets a threaded solve.  Coercing
+      ## it to 1 here made the pooled route single-threaded over subjects
+      ## (outerSolveFill: doParallel = cores > 1), i.e. the pool's whole reason for
+      ## existing was off by default.  Resolve 0 the same way rxSolve does; C++ still
+      ## caps it with min2(cores, getOpCores(op)).
       .nc <- tryCatch({ .c <- am$cores
-        if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c) },
+        if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::rxCores()) else as.integer(.c) },
         error = function(e) 1L)
       ## `tol` reaches the pooled solve too, not just the rxSolve fallback below.  It
       ## used to be dropped here, so the pooled route silently ran at the FIT's
