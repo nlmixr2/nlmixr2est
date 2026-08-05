@@ -573,9 +573,29 @@
 #' Recorded here rather than acted on in the solve loop: that loop runs inside
 #' OdeSwapEsBatch(odeSlotOuter), and the finite difference needs the INNER problem's
 #' event sensitivities, which can only be installed at a batch boundary.
+#'
+#' `n` counts pooled solves abandoned because of a flag, and only ever grows.  A test
+#' that wants to prove the POOLED result was used, rather than merely attempted, has to
+#' check this too: `pooledSolveN` counts the attempt and rises either way.
 #' @noRd
 .foceiOuterFlagged <- new.env(parent = emptyenv())
 .foceiOuterFlagged$ids <- integer(0)
+.foceiOuterFlagged$n <- 0L
+
+#' Threads for the pooled augmented solve, from the fit's `rxControl(cores=)`.
+#'
+#' `0` (rxControl's default) and `NA` mean "use rxode2's thread setting", the same
+#' reading `rxSolve` gives them; anything >= 1 is taken literally.  Resolving 0 to a
+#' literal 1 is what left the pooled route serial.  C++ still caps the result with
+#' min2(cores, getOpCores(op)).
+#' @noRd
+.foceiPoolCores <- function(cores) {
+  tryCatch({
+    .c <- suppressWarnings(as.integer(cores)[1L])       # a NULL/character cores -> NA
+    if (is.na(.c)) return(as.integer(rxode2::getRxThreads()))
+    if (.c < 1L) as.integer(rxode2::getRxThreads()) else .c
+  }, error = function(e) 1L)
+}
 
 .foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
@@ -605,14 +625,7 @@
   {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
-      ## cores = 0 is rxControl's default and means "use rxode2's thread setting", which
-      ## the rxSolve fallback below passes through.  Coercing it to 1 here left the
-      ## pooled route single-threaded over subjects (outerSolveFill: doParallel =
-      ## cores > 1).  Resolve it the same way rxSolve does; C++ still caps the result
-      ## with min2(cores, getOpCores(op)).
-      .nc <- tryCatch({ .c <- am$cores
-        if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c) },
-        error = function(e) 1L)
+      .nc <- .foceiPoolCores(am$cores)   # 0 means rxode2's threads, not one
       ## The pooled solve takes one tolerance for atol and rtol both, while the rxSolve
       ## fallback below reads a 2-vector as (atol, rtol).  Every caller passes a scalar;
       ## take the tighter of a pair rather than half the request.
@@ -634,6 +647,7 @@
         .ok <- attr(.Ec, "ok")
         .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
         if (length(.foceiOuterFlagged$ids) == 0L) return(.Ec)
+        .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
       }
     }
   }

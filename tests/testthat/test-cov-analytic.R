@@ -1211,17 +1211,21 @@ nmTest({
     .f0 <- suppressMessages(suppressWarnings(nlmixr2(.m, .d, "focei",
              foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4))))
     .se <- function(fast) {
-      .n0 <- .odeSwapInfo()$pooledSolveN
+      .n0 <- .odeSwapInfo()$pooledSolveN; .b0 <- .foceiOuterFlagged$n
       .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
               foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
                            maxOuterIterations = 0L))))
       expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
-      list(se = sqrt(diag(.f$cov)), pooled = .odeSwapInfo()$pooledSolveN - .n0)
+      list(se = sqrt(diag(.f$cov)), pooled = .odeSwapInfo()$pooledSolveN - .n0,
+           bailed = .foceiOuterFlagged$n - .b0)
     }
     .rT <- .se(TRUE); .rF <- .se(FALSE)
     # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
     # two runs would be the same route and would agree no matter what tolerance it used.
+    # pooledSolveN counts the ATTEMPT, so it rises even when a flagged subject sends the
+    # population back to rxSolve; $n counts exactly those, and must not move.
     expect_gt(.rT$pooled, 0L)
+    expect_equal(.rT$bailed, 0L)
     expect_equal(.rF$pooled, 0L)
     .n <- intersect(names(.rT$se), names(.rF$se))
     expect_gt(length(.n), 0L)
