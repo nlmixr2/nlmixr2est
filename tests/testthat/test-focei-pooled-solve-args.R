@@ -17,4 +17,24 @@ nmTest({
     expect_silent(expect_equal(.foceiPoolCores("nope"), .n))
     expect_equal(.foceiPoolCores(c(2L, 4L)), 2L)
   })
+
+  test_that("covSolveTol beats the sigdig default for the augmented solve tolerance", {
+    # The tolerance the pooled route was ignoring.  Both sources reach it through the same
+    # `solveTol` argument, so there is no branch that could honour one and drop the other
+    # -- what needs pinning is which of the two wins, and that it tracks sigdig rather
+    # than a frozen literal.  No fit: this is control plumbing.
+    .m <- function() {
+      ini({ tka <- 0.45; add.sd <- 0.7; eta.ka ~ 0.6 })
+      model({ ka <- exp(tka + eta.ka); cp <- ka; cp ~ add(add.sd) })
+    }
+    .ui <- suppressMessages(rxode2::rxUiDecompress(nlmixr2(.m)))
+    .tol <- function(...) { .u <- .ui; .u$control <- foceiControl(...)
+      .foceiAnalyticSolveTol(.u) }
+    expect_equal(.tol(sigdig = 3), 1e-9)
+    expect_equal(.tol(sigdig = 4), 1e-10)
+    expect_equal(.tol(sigdig = 6), 1e-12)
+    # an explicit covSolveTol wins, and does not move with sigdig
+    expect_equal(.tol(covSolveTol = 1e-7), 1e-7)
+    expect_equal(.tol(covSolveTol = 1e-7, sigdig = 6), 1e-7)
+  })
 })

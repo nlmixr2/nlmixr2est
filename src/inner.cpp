@@ -5622,6 +5622,20 @@ static bool restoreFitSolve_() {
   }
 }
 
+// Record the fit's ODE tolerances, once per fit.
+//
+// op_focei.fitAtol/fitRtol are reset to NA per fit (rxOptionsFreeFocei) and filled in
+// here by whichever tolerance guard runs first.  EVERY guard that is about to overwrite
+// the live values must call this with what it read BEFORE overwriting them -- a guard
+// that tightens without recording leaves the next one to capture the tightened value and
+// pin it as the fit's for everything after.  CovSolveTolGuard wraps the whole covariance
+// step, so it can be the first guard of a fit and reach vaeOuterSolve_ already tightened.
+static inline void foceiNoteFitTol(double atol, double rtol) {
+  if (!R_FINITE(atol) || !R_FINITE(rtol)) return;
+  if (R_FINITE(op_focei.fitAtol) && R_FINITE(op_focei.fitRtol)) return;
+  op_focei.fitAtol = atol; op_focei.fitRtol = rtol;
+}
+
 // RAII: set atol/rtol for the duration of a pooled batch solve, restoring the live
 // values afterwards.  Same mechanism as CovSolveTolGuard below, driven by an explicit
 // tolerance rather than a control field.
@@ -5632,6 +5646,7 @@ struct OdeSolveTolGuard {
     if (!R_FINITE(tol) || tol <= 0) return;
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve
+    foceiNoteFitTol(savAtol, savRtol);
     rxSetSolveAtolRtol(tol, tol);
     active = true;
   }
@@ -5657,9 +5672,7 @@ struct OdeFitTolGuard {
   OdeFitTolGuard() {
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;    // no live solve
-    if (!R_FINITE(op_focei.fitAtol) || !R_FINITE(op_focei.fitRtol)) {
-      op_focei.fitAtol = savAtol; op_focei.fitRtol = savRtol;
-    }
+    foceiNoteFitTol(savAtol, savRtol);
     rxSetSolveAtolRtol(op_focei.fitAtol, op_focei.fitRtol);
     active = true;
   }
@@ -5683,6 +5696,10 @@ struct CovSolveTolGuard {
     if (!R_FINITE(tol) || tol <= 0) return;
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve to retune
+    // This guard wraps the WHOLE covariance step, so on a fit that never ran an analytic
+    // gradient it is the first to touch the tolerances -- record the fit's before
+    // tightening, or vaeOuterSolve_ inside it captures covSolveTol as the fit's.
+    foceiNoteFitTol(savAtol, savRtol);
     rxSetSolveAtolRtol(tol, tol);
     active = true;
   }
