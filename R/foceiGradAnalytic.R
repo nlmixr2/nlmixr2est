@@ -620,37 +620,20 @@
       .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
                                      if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP),
                       error = function(e) NULL)
-      ## vaeOuterSolve_ now flags failed subjects per individual (attr "ok") rather
-      ## than discarding the whole gradient.  Until the Phase 8D2 finite-difference
-      ## phase consumes those flags, a flagged subject still falls through to the
-      ## rxSolve route, i.e. behaviour is unchanged -- but the flags are here.
+      ## vaeOuterSolve_ flags failed subjects per individual (attr "ok") rather than
+      ## discarding the whole population.  Nothing here consumes the flags yet, so a
+      ## flagged subject falls THROUGH to the rxSolve route below -- all or nothing.
+      ##
+      ## This branch used to zero-fill a flagged subject's E and return it, on the
+      ## grounds that its column is replaced wholesale by the per-individual finite
+      ## difference in foceiGradAllFR_.  That was the R gradient, which is gone; every
+      ## caller now reads the E structures as they stand, so the zeros went straight
+      ## into the covariance as a subject with no prediction and no sensitivity -- and
+      ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
       if (!is.null(.Ec) && length(.Ec) > 0L) {
         .ok <- attr(.Ec, "ok")
-        if (is.null(.ok) || all(.ok == 1L)) {
-          .foceiOuterFlagged$ids <- integer(0)
-          return(.Ec)
-        }
-        ## A flagged subject has no E.  Give it a zero-filled one of the right shape so
-        ## the assembly below keeps working; its gradient column is replaced wholesale in
-        ## foceiGradAllFR_ by the per-individual finite difference, so these zeros never
-        ## reach the result.
-        .good <- which(.ok == 1L)
-        if (length(.good) > 0L) {
-          .tmpl <- .Ec[[.good[1L]]]
-          for (.i in which(.ok == 0L)) {
-            .nobsI <- length(obsTimes[[.i]])
-            .z <- lapply(.tmpl, function(.x) {
-              if (is.null(dim(.x))) numeric(.nobsI)
-              else array(0, c(.nobsI, dim(.x)[-1]))
-            })
-            .z <- .z[names(.tmpl)]
-            if (!is.null(.tmpl$trans)) .z$trans <- .tmpl$trans
-            .Ec[[.i]] <- .z
-          }
-          .foceiOuterFlagged$ids <- which(.ok == 0L)
-          attr(.Ec, "ok") <- .ok
-          return(.Ec)
-        }
+        .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
+        if (length(.foceiOuterFlagged$ids) == 0L) return(.Ec)
       }
     }
   }

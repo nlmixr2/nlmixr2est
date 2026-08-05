@@ -22,6 +22,13 @@
   at the default `sigdig`).  Both routes now agree exactly.  Set `covSolveTol` to
   trade accuracy back for the slightly larger covariance step.
 
+- Fixed a subject whose pooled augmented solve failed being scored into
+  `covMethod="analytic"` as zeros -- no prediction and no sensitivity -- instead
+  of sending the covariance to its fallback.  The zero fill was written for the
+  R outer gradient, which replaced such a subject's column by a finite
+  difference; that gradient is gone, and zeros are finite, so nothing downstream
+  noticed.  Such a population now falls back to the unpooled solve.
+
 - Fixed the pooled `covMethod="analytic"` solve running single-threaded.  It
   coerced `rxControl(cores = 0)` -- the default, meaning "use rxode2's thread
   setting" -- to a literal 1, so its loop over subjects never went parallel,
