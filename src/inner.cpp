@@ -13809,19 +13809,32 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
   for (int i = 0; i < nsub; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
     double cl = npEvalCondLik(&eta[0], i);
+    // A likelihood-form model has NO prediction to take a moment of.  When any endpoint
+    // is non-normal, rxUiGet.predDfFocei rewrites every endpoint to dnorm, so rx_pred_
+    // is a log-DENSITY for all of them and `f - dv` below is a log-density minus a DV --
+    // meaningless, and it corrupts the bucket of whichever endpoint the row belongs to.
+    // likInner0 counts such observations, so use that rather than guessing per row.
+    // Leaving the buckets empty makes npOptimizeResid drop the warm start and its
+    // single-scale fast path, which is exactly right here (mirrors saem.cpp's
+    // whole-model residWarmStart guard).
+    bool skipMoments = (inds_focei[i].nNonNormal > 0);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
-    arma::mat fr = grabRFmatFromInner(i, false);
+    arma::mat fr;
+    if (!skipMoments) fr = grabRFmatFromInner(i, false);
     int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
+      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+      // skipped subject or every later subject's rows land in the wrong endpoint.
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      obsIdx++;
+      if (skipMoments) continue;
       double dv = tbs(getIndDv(ind, kk));
       double f = fr(ko, 0);
       ko++;
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
-      obsIdx++;
       if (e < 0 || e >= nEnd) continue;
       if (!std::isfinite(cl) || !std::isfinite(f)) continue;
       double err = f - dv;
