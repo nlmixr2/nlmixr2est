@@ -15918,6 +15918,7 @@ static double _fsaemNAcc  = 0;      // proposals accepted
 static double _fsaemNMapFail = 0;   // subjects whose MAP did not converge
 static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covariance
 static double _fsaemNMapReuse = 0;  // steps that reused a cached MAP + Gamma
+static double _fsaemNPriorFallback = 0; // bad-Gamma subjects rescued by the prior
 
 // Tunables for the fast kernel, set once per fit by fsaemSetOpts_().
 //
@@ -15962,6 +15963,7 @@ RObject fsaemSetOpts_(List opts) {
 RObject fsaemDiagReset_() {
   _fsaemNStep = _fsaemNProp = _fsaemNAcc = _fsaemNMapFail = _fsaemNBadGamma = 0;
   _fsaemNMapReuse = 0;
+  _fsaemNPriorFallback = 0;
   // the options are per-fit too: a later fit must not inherit the previous one's
   fsaemResetOpts();
   return R_NilValue;
@@ -15974,7 +15976,8 @@ List fsaemDiag_() {
                       _["accRate"] = (_fsaemNProp > 0) ? _fsaemNAcc/_fsaemNProp : NA_REAL,
                       _["nMapFail"] = _fsaemNMapFail,
                       _["nBadGamma"] = _fsaemNBadGamma,
-                      _["nMapReuse"] = _fsaemNMapReuse);
+                      _["nMapReuse"] = _fsaemNMapReuse,
+                      _["nPriorFallback"] = _fsaemNPriorFallback);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
@@ -16053,6 +16056,9 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
     if (Lid.is_finite()) {
       arma::mat Li;
       if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
+      // a finite Cholesky that will not invert -- a fourth way to lose a subject,
+      // and the only one the builder above cannot see
+      else _fsaemNBadGamma += 1;
     }
   }
   const bool hasBounds = ((int)nbd.size() == neta);
@@ -16137,6 +16143,14 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
   // failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
   // symmatu() reproduces that input and "lower" == t(chol()).
   NumericMatrix cholGamma(nsub, neta * neta);
+  // fastFallback="prior": a subject with no usable Gamma proposes from the prior
+  // N(centre, Omega) rather than freezing for the whole sweep -- issue #845 /
+  // paper Prop 1.  Omega is recovered from the inner's own omega inverse, which
+  // the caller's re-parameterization refreshed for THIS iteration, so it is
+  // current on both the plain and the covariate path with no extra argument.
+  // Built lazily: a fit where every subject is fine never pays for it.
+  arma::mat priorL;
+  int priorLstate = 0;                        // 0 not tried, 1 usable, -1 failed
   for (int id = 0; id < nsub; ++id) {
     bool bad = (ok[id] == 0);
     arma::mat L(neta, neta, arma::fill::zeros);
@@ -16147,7 +16161,22 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
       if (!arma::inv(G, H)) bad = true;
       else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
     }
-    if (bad) _fsaemNBadGamma += 1;
+    if (bad) {
+      _fsaemNBadGamma += 1;                   // this subject's OWN Gamma was unusable
+      if (_fsaemFallback == 1) {
+        if (priorLstate == 0) {
+          priorLstate = -1;
+          arma::mat Om;
+          arma::mat oi = arma::symmatu(op_focei.omegaInv);
+          if ((arma::inv_sympd(Om, oi) || arma::inv(Om, oi)) &&
+              arma::chol(priorL, arma::symmatu(Om), "lower") &&
+              (int)priorL.n_rows == neta) {
+            priorLstate = 1;
+          }
+        }
+        if (priorLstate == 1) { L = priorL; bad = false; _fsaemNPriorFallback += 1; }
+      }
+    }
     for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
   }
   _fsaemNStep += 1;

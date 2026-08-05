@@ -67,6 +67,43 @@ nmTest({
     expect_lt(max(abs(fixef(.f5) - fixef(.f2))), 0.1)
   })
 
+  test_that("fastFallback validates and is inert when every Gamma is usable", {
+    skip_if_not_installed("nlmixr2data")
+    expect_equal(saemControl()$fastFallback, "skip")
+    expect_equal(saemControl(fastFallback = "prior")$fastFallback, "prior")
+    expect_equal(do.call(saemControl, saemControl(fastFallback = "prior"))$fastFallback,
+                 "prior")
+    expect_error(saemControl(fastFallback = "nope"))
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .b <- function(...) saemControl(nBurn = 40, nEm = 10, nmc = 3, seed = 42,
+                                    print = 0L, calcTables = FALSE, ...)
+    .sk <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .b()))
+    .pr <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .b(fastFallback = "prior")))
+    # NOTE: no subject on a healthy fit has an unusable Gamma -- the FOCEi inner
+    # information carries the prior term (H = J' Sigma^-1 J + Omega^-1), so it is
+    # positive definite by construction.  Reaching the rescue needs an inner
+    # optimizer failure, which is not reachable from the control surface, so this
+    # asserts the option is INERT rather than exercising the rescue itself.
+    expect_equal(.sk$fsaemDiag$nBadGamma, 0)
+    expect_equal(.pr$fsaemDiag$nBadGamma, 0)
+    expect_equal(.pr$fsaemDiag$nPriorFallback, 0)
+    # inert means bit-identical, not merely close
+    expect_equal(fixef(.pr), fixef(.sk))
+  })
+
   test_that("fsaemControl forces fast=TRUE and validates as an fsaem control", {
     .fc <- fsaemControl(fast=FALSE, nBurn=7)
     expect_s3_class(.fc, "fsaemControl")

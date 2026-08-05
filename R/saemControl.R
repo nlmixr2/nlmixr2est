@@ -310,6 +310,18 @@
 #'   individual likelihood is reused to build the proposal (and, when the
 #'   Hessian path is active, reported by SAEM).
 #'
+#' @param fastFallback What the f-SAEM kernel does with a subject whose
+#'   proposal covariance is unusable (its information matrix will not invert, or
+#'   the result is not positive definite):
+#'
+#'   * `"skip"` (default): the subject keeps its current value for that
+#'     iteration.  For a continuous endpoint the standard random-walk kernels
+#'     still move it; for a general log-likelihood, where the IMH replaces the
+#'     walk, it does not move.
+#'
+#'   * `"prior"`: propose from the prior `N(centre, Omega)` instead, which is
+#'     always positive definite, so the subject keeps moving.
+#'
 #' @param lbfgsLmm Integer number of BFGS corrections (the L-BFGS-B `lmm`
 #'   memory) used when refining the fixed-effect-only parameters of a general
 #'   log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
@@ -403,6 +415,7 @@ saemControl <- function(seed = 99,
                         fastCov = c("auto", "jacobian", "hessian"),
                         fastIter = 20L,
                         fastLik = c("focei", "foce", "focep"),
+                        fastFallback = c("skip", "prior"),
                         lbfgsLmm = 5L,
                         lbfgsFactr = NULL,
                         lbfgsPgtol = NULL,
@@ -489,6 +502,7 @@ saemControl <- function(seed = 99,
   fastCov <- match.arg(fastCov)
   checkmate::assertIntegerish(fastIter, any.missing=FALSE, len=1, lower=1)
   fastLik <- match.arg(fastLik)
+  fastFallback <- match.arg(fastFallback)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -632,6 +646,7 @@ saemControl <- function(seed = 99,
     fastCov=fastCov,
     fastIter=as.integer(fastIter),
     fastLik=fastLik,
+    fastFallback=fastFallback,
     lbfgsLmm=as.integer(lbfgsLmm),
     lbfgsFactr=lbfgsFactr,
     lbfgsPgtol=lbfgsPgtol,

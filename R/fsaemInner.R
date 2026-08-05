@@ -200,7 +200,10 @@
   .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
   # IMH sweeps per iteration: saemControl(nu=) 4th element, else 5
   .nsweep <- .fsaemNsweep(ui)
-  fsaemSetOpts_(list(nsweep = .nsweep))
+  fsaemSetOpts_(list(
+    nsweep = .nsweep,
+    fallback = as.integer(identical(rxode2::rxGetControl(ui, "fastFallback", "skip"),
+                                    "prior"))))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
