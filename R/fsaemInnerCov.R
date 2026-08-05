@@ -120,10 +120,18 @@
     .isAdd <- .it$err[.residW] == "add"
     .theta[.residW] <- ifelse(.isAdd, ares[1], bres[1])
   }
-  for (i in seq_along(setup$betaW)) {
-    .pp <- setup$betaPlambda[i]
-    if (!is.na(.pp) && .pp <= length(plambda) && is.finite(plambda[.pp]) && plambda[.pp] != 0) {
-      .theta[setup$betaW[i]] <- plambda[.pp]
+  # "Not populated yet" is the WHOLE vector still at zero, not an individual
+  # coefficient that happens to be zero -- testing per element conflated an
+  # estimate of exactly 0 with a missing one, and silently kept the ini value in
+  # the inner while the SAEM chain used 0.  The IMH would then have been built
+  # around a different target than the chain it preconditions.
+  .havePlambda <- length(plambda) > 0L && any(is.finite(plambda) & plambda != 0)
+  if (.havePlambda) {
+    for (i in seq_along(setup$betaW)) {
+      .pp <- setup$betaPlambda[i]
+      if (!is.na(.pp) && .pp <= length(plambda) && is.finite(plambda[.pp])) {
+        .theta[setup$betaW[i]] <- plambda[.pp]
+      }
     }
   }
   setup$env <- .fsaemInnerSetup(setup$built$ui, .data, matrix(0, nrow(mpriorMat), setup$neta),

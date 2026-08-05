@@ -16063,6 +16063,18 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   const int neta = op_focei.neta;
   if (neta == 0) stop("fsaemImhKernel_ requires a model with random effects");
   const int nsub = etaHat.nrow();
+  // etaCur is chain-major (row = c*nsub + id), so a caller whose etaHat and
+  // etaCur disagree would index past the end.  Fail loudly rather than silently
+  // reading and writing out of bounds -- Rcpp's operator() does not check.
+  if (nchain < 1 || etaCur.nrow() != nchain*nsub || etaCur.ncol() != neta ||
+      cholGamma.nrow() != nsub || cholGamma.ncol() != neta*neta ||
+      mprior.nrow() != nsub || etaHat.ncol() != neta) {
+    stop("fsaemImhKernel_: dimensions disagree (neta=%d nsub=%d nchain=%d; "
+         "etaCur %dx%d etaHat %dx%d cholGamma %dx%d mprior %dx%d)",
+         neta, nsub, nchain, etaCur.nrow(), etaCur.ncol(),
+         etaHat.nrow(), etaHat.ncol(), cholGamma.nrow(), cholGamma.ncol(),
+         mprior.nrow(), mprior.ncol());
+  }
   NumericMatrix etaOut = clone(etaCur);
   IntegerVector nAcc(nsub);
   std::vector<arma::mat> L(nsub), Linv(nsub);
@@ -16157,15 +16169,25 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
   // trades acceptance for work, never correctness.  The caller has ALREADY
   // re-parameterized the inner for this iteration, which is what must not be
   // skipped: likInner0 has to score candidates at the current theta/omega.
+  // The cache must match THIS call's dimensions, not merely be non-empty.  A
+  // cached nsub larger than the current one would make fsaemImhKernel_ loop over
+  // the cached subject count and index etaCur past its last row -- Rcpp does not
+  // bounds check, so that is a silent out-of-bounds read AND write.  Reachable
+  // only through a direct fsaemStepCpp_/fsaemMapImhCpp_ call today (every fit
+  // through nlmixr2() clears the cache first), which is exactly why it is
+  // checked here rather than assumed.
+  const int nsubNow = mprior.nrow();
   bool reuse = (_fsaemHRefresh > 1) && (kiter % _fsaemHRefresh != 0) &&
-    (_fsaemCacheNsub > 0) && (_fsaemCacheNeta == netaNow);
+    (nsubNow > 0) && (_fsaemCacheNsub == nsubNow) && (_fsaemCacheNeta == netaNow) &&
+    (_fsaemCacheEtaHat.nrow() == nsubNow) && (_fsaemCacheChol.nrow() == nsubNow) &&
+    (etaCur.nrow() == nchain * nsubNow);
   if (reuse) {
     _fsaemNStep += 1;
     _fsaemNMapReuse += 1;
     NumericMatrix eta = clone(etaCur);
     for (int sw = 0; sw < nsweep; ++sw) {
       double streamBase = seed + ((double)kiter * nsweep + sw) *
-        ((double)nchain * _fsaemCacheNsub);
+        ((double)nchain * nsubNow);
       List r = fsaemImhKernel_(eta, _fsaemCacheEtaHat, _fsaemCacheChol, nchain, cores,
                                mprior, lower, upper, nbd, streamBase, nRetry);
       eta = as<NumericMatrix>(r["eta"]);

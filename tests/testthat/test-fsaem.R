@@ -331,6 +331,88 @@ nmTest({
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.07)
   })
 
+  test_that("est='fsaem' handles a TIME-VARYING mu-ref covariate end to end", {
+    skip_if_not_installed("nlmixr2data")
+    # A time-varying mu-ref covariate is the one covariate shape that is NOT
+    # absorbed into the per-subject mprior data -- it stays a beta regressor in
+    # the inner and is refreshed from the live Plambda every iteration
+    # (.fsaemInnerUpdateCov).  Nothing else fits one end to end, so that refresh
+    # could regress silently.
+    tvm <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; cl.tv <- 0.1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + cl.tv * TVC)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .d$TVC <- as.numeric(scale(.d$TIME))            # varies WITHIN subject
+    .ctl <- saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 5, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(tvm, .d, est = "fsaem", control = .ctl))
+    .ss <- suppressMessages(nlmixr2(tvm, .d, est = "saem", control = .ctl))
+    # the fast kernel really ran on this model rather than degrading
+    expect_gt(.fs$fsaemDiag$nStep, 0)
+    expect_gt(.fs$fsaemDiag$accRate, 0.3)
+    expect_equal(.fs$fsaemDiag$nMapFail, 0)
+    # and the time-varying coefficient agrees with plain SAEM's
+    expect_true("cl.tv" %in% names(fixef(.fs)))
+    expect_true(is.finite(fixef(.fs)[["cl.tv"]]))
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.1)
+  })
+
+  test_that("fastLik selects the inner likelihood family", {
+    skip_if_not_installed("nlmixr2data")
+    # foceiControl(foce=) is IGNORED when interaction is on, so a fastLik that
+    # did not also turn interaction off was a no-op on the hessian path --
+    # "focei" and "foce" built an identical inner.  Check each value now reaches
+    # a distinct foceiControl.
+    .mk <- function(lik, cov = "hessian") {
+      nlmixr2est:::.fsaemInnerFoceiControl(
+        list(rxControl = rxode2::rxControl(), fastCov = cov, fastLik = lik,
+             fastInnerIt = 100L, sumProd = FALSE, optExpression = TRUE,
+             literalFix = FALSE, addProp = "combined2", eventSens = "jump",
+             indTolRelax = TRUE, maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5))
+    }
+    expect_equal(.mk("focei")$interaction, 1L)
+    expect_equal(.mk("foce")$interaction, 0L)          # was 1L -- the no-op
+    expect_equal(.mk("focep")$interaction, 0L)
+    expect_equal(.mk("foce")$foce, "nonmem")
+    expect_equal(.mk("focep")$foce, "foce+")
+    # jacobian is already a no-interaction form, so fastLik only picks the variant
+    expect_equal(.mk("focei", "jacobian")$interaction, 0L)
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .b <- function(...) saemControl(nBurn = 100, nEm = 50, nmc = 3, seed = 42,
+                                    print = 0L, calcTables = FALSE, ...)
+    .ss <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
+                                    control = .b()))
+    for (.lik in c("foce", "focep")) {
+      .f <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                     control = .b(fastLik = .lik)))
+      expect_equal(.f$saemControl$fastLik, .lik)
+      # a different likelihood family still gives a usable proposal and the MLE
+      expect_gt(.f$fsaemDiag$accRate, 0.3)
+      expect_equal(.f$fsaemDiag$nMapFail, 0)
+      expect_lt(max(abs(fixef(.f) - fixef(.ss))), 0.05)
+    }
+  })
+
   test_that("est='fsaem' converges with the Hessian proposal (fastCov='hessian')", {
     # the Hessian proposal path (calcEtaHessian, interaction=1) is the general
     # covariance route; on a continuous model it must converge to the same MLE

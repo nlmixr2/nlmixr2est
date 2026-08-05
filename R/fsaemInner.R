@@ -7,15 +7,22 @@
 
 #' foceiControl for the f-SAEM inner MAP + proposal covariance.
 #'
-#' `fastCov`/`fastLik` map to the inner interaction/foce settings:
+#' `fastCov` picks the form of the proposal information matrix:
 #'   - "jacobian": interaction=0 -- H = J' Sigma^-1 J + Omega^-1 (paper Eq 17/19)
 #'   - "hessian":  interaction=1 -- Gauss-Newton/Laplace Hessian (paper Eq 13);
 #'                 non-normal endpoints force the exact finite-diff inner Hessian.
+#'
+#' `fastLik` picks the likelihood family, and the FOCE members of it necessarily
+#' mean interaction=0, so they override `fastCov="hessian"`.  Without that,
+#' `fastLik` was silently a no-op on the hessian path: `foceiControl(foce=)` is
+#' IGNORED when interaction is on, so "focei" and "foce" produced an identical
+#' inner and only "focep" ever differed (and only on the jacobian path).
 #' @noRd
 .fsaemInnerFoceiControl <- function(control) {
   .cov <- control$fastCov
   .lik <- control$fastLik
   .interaction <- if (identical(.cov, "jacobian")) 0L else 1L
+  if (identical(.lik, "foce") || identical(.lik, "focep")) .interaction <- 0L
   .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
   .maxInner <- control$fastInnerIt
   if (is.null(.maxInner) || is.na(.maxInner) || .maxInner < 1L) .maxInner <- 100L
@@ -299,12 +306,17 @@
                       kiter = 0L) {
   .neta <- ncol(map$eta)
   .nsub <- nrow(map$eta)
-  # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed)
-  .cholGamma <- t(vapply(seq_len(.nsub), function(i) {
+  # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed),
+  # one subject per ROW.  vapply returns a (neta^2 x nsub) matrix only when
+  # neta^2 > 1 -- for a single eta it returns a plain vector, and t() then gives
+  # 1 x nsub, the transpose of what the kernel documents.  That happened to index
+  # identically for one column, so it went unnoticed; build the shape explicitly.
+  .cg <- vapply(seq_len(.nsub), function(i) {
     .g <- map$gamma[[i]]
     .L <- tryCatch(t(chol(.g)), error = function(e) matrix(NA_real_, .neta, .neta))
     as.numeric(.L)
-  }, numeric(.neta*.neta)))
+  }, numeric(.neta*.neta))
+  .cholGamma <- matrix(.cg, nrow = .nsub, ncol = .neta*.neta, byrow = TRUE)
   .mp <- if (is.null(mprior)) matrix(0, .nsub, .neta) else mprior
   .lower <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$lower)
   .upper <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$upper)

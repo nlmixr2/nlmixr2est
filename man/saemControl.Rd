@@ -488,10 +488,12 @@ only consulted when `fast=TRUE`.}
 when `fastKernel="firstN"` (default 20).  Ignored by the other
 schedules.}
 
-\item{fastLik}{Inner likelihood used for the Hessian proposal path, one of
-`"focei"` (default), `"foce"` or `"focep"`.  Selects which FOCEI-family
-individual likelihood is reused to build the proposal (and, when the
-Hessian path is active, reported by SAEM).}
+\item{fastLik}{Which FOCEI-family individual likelihood is reused to build
+the f-SAEM proposal, one of `"focei"` (default), `"foce"` or `"focep"`.
+`"foce"` and `"focep"` are no-interaction likelihoods, so they imply the
+linearization form of the proposal covariance and override
+`fastCov = "hessian"`; `"focep"` additionally evaluates the residual
+variance the `foce = "foce+"` way rather than NONMEM's.}
 
 \item{fastFallback}{What the f-SAEM kernel does with a subject whose
   proposal covariance is unusable (its information matrix will not invert, or
