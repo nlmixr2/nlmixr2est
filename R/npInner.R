@@ -26,19 +26,7 @@
 .npInnerSetup <- function(ui, data, etaMat, control) {
   .ui <- rxode2::rxUiDecompress(ui)
   .fc <- .npInnerFoceiControl(control)
-  # A hand-written ll() commonly writes -log(sigma), and rxode2's default safeLog returns
-  # log(.Machine$double.eps) for any NON-POSITIVE argument -- so an invalid negative sigma
-  # comes back as about +36 per observation, a large REWARD rather than a rejection, and
-  # the optimizer settles there (nlmixr2/nlmixr2est#850).  safeLog=2 keeps the floor at
-  # exactly 0 (a benign numerical touch) but makes a negative argument NaN, which
-  # likInner0 already refuses.  Only for a general likelihood: a Gaussian endpoint never
-  # takes log() of an estimated parameter, so normal fits are untouched.  Guarded on the
-  # name so an older rxode2 (which rejects safeLog=2) is left alone.
-  if (.npIsGeneralLik(.ui) && !is.null(.fc$rxControl) &&
-        "safeLog" %in% names(.fc$rxControl) &&
-        .rxode2HasSafeLogDomain()) {
-    .fc$rxControl$safeLog <- 2L
-  }
+  .fc$rxControl <- .npSafeLogDomain(.fc$rxControl, .ui)
   .fc$est <- "focei"
   .ui$control <- .fc
   .env <- .ui$foceiOptEnv

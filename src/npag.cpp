@@ -152,13 +152,21 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (!std::isfinite(hi[j])) hi[j] = v + 6.0;
     }
   }
-  // Scale for the out-of-domain penalty in npResidObjVal: the objective at the START,
-  // which is feasible by construction (it is the current fit).  Reset per call so a
-  // previous subject/cycle cannot leak its scale in.
+  // Scale for the out-of-domain penalty in npResidObjVal: the objective at the START.
+  // Reset per call so a previous cycle (or the other engine -- npb shares this file's
+  // statics) cannot leak its scale in.  If the START itself is infeasible there is
+  // nothing to scale against and no feasible point to improve on, so do not run the
+  // optimizer at all: leave the thetas where they are and report failure.  That also
+  // keeps npResidObjVal's unscaled fallback unreachable, so it cannot ever be smaller
+  // than a legitimate objective.
   gNpResidRef = R_PosInf;
   {
     double f0 = npResidELS(gNpPostEta);
-    if (std::isfinite(f0)) gNpResidRef = f0;
+    if (!std::isfinite(f0)) {
+      for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
+      return R_PosInf;
+    }
+    gNpResidRef = f0;
   }
   // PIN the current solve for a residual-only optimization: the err params do not
   // change f, so cache each subject's (per-component) states at the posterior
@@ -178,10 +186,16 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
                                                                      Rcpp::_["rhoend"] = rhoend));
   if (doFreeze) npResidFreezeClear();   // unfreezes op_focei.freezeOde
   double f = as<double>(ret["value"]);
+  bool didReDerive = gNpReDerive;
   gNpReDerive = false;
   if (!ISNA(f)) {
     Rcpp::NumericVector x = ret["x"];
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
+    // With a regressor, gNpPostEta was re-derived for every candidate bobyqa sampled, so
+    // it currently belongs to the LAST point tried -- which is not the optimum it
+    // returned.  Re-derive at the committed thetas before judging them, or the check
+    // pairs the new thetas with someone else's etas.
+    if (didReDerive) gNpPostEta = npPosteriorEta(*gNpSupport, *gNpWeights, gNpCores);
     // The optimizer's answer is only usable if the MODEL accepts it.  bobyqa returns the
     // best point it sampled, and with an out-of-domain penalty that is still a finite
     // number -- so `f` being non-NA says nothing about feasibility.  Committing an
