@@ -401,3 +401,39 @@ Scope = the *general* FOCEi likelihood surface (any inner-supported endpoint) no
 TTE-only, since the inner handles them uniformly; Weibull TTE is the validation
 gate. Endpoints whose inner likelihood needs the Hessian proposal use
 `fastCov` auto -> hessian (already validated on continuous).
+
+## Phase R -- restoration (issue #845, 2026-08-05)
+
+`est="fsaem"` was removed in 76a539b8f because it showed no early-convergence
+advantage over plain SAEM.  Issue #845 asks for it back now that the shared ODE
+pool (`odeSwap`) is in place.  Worktree `~/src/nlmixr2est-fsaem`, branch
+`feat/fsaem-restore`.
+
+- **R1 (revert)**: revert 76a539b8f onto main.  `.saemGeneralLik` keeps its
+  post-removal name and home -- plain saem fits `ll()` endpoints now, so the
+  detector is shared rather than duplicated.  NEWS goes under 7.0.3 (7.0.2 is the
+  in-flight CRAN submission).
+- **R2 (odeSwap audit)**: the pool itself is INERT for fsaem -- `.odeSwapInfo()`
+  after a fit shows one registered slot (`inner`), `overrideNeeded=FALSE`,
+  `scratchNlhs=0`, `lhsWidthMismatchN=0`, `activeOverride` all -1.  What IS
+  shared and was wrong is the event-sensitivity ("jump") shape: setting up the
+  FOCEi inner points rxode2's globals at the inner, and the SAEM model -- which
+  has none -- was solved under it.  Fixed with `odeSwapEsOff()` at every SAEM
+  solve setup/restore plus an explicit `OdeSwapEsBatch(odeSlotInner)` around the
+  MAP+IMH step.  Only reachable for a model with modeled dosing (lag/f/rate);
+  a plain bolus model has `eventSensInfo` NULL, which is why every existing
+  fsaem test was blind to it.
+- **R3 (stale chain likelihood)**: only the general-likelihood branch rescored
+  the chain after the IMH move.  For a normal endpoint the kernel is additive and
+  the random walks still run, so `do_mcmc` was scoring proposals against the
+  PRE-IMH `U_y`/`DYF`/`fsave`.  The DYF rebuild is now a lambda re-run after the
+  move for every distribution.
+- **R4 (diagnostics)**: `fsaemDiag_()`/`fsaemDiagReset_()` expose steps,
+  proposals, acceptances, MAP failures and non-PD proposal covariances -- the
+  only evidence a test has that the kernel fired rather than silently degrading.
+- **R5 (benchmark)**: the removal benchmark (theo_sd 1-cmt) cannot discriminate.
+  It is well identified, 20 burn-in iterations already reach the MLE, and the
+  f-SAEM paper itself reports "no regression" (i.e. no gain) there -- both
+  methods sit at SAEM's Monte-Carlo noise floor (RMSE ~0.01).  On the collinear
+  2-cmt N=60 model issue #845 cites, fsaem is clearly ahead at reduced
+  iterations.  The "converges faster" unit test is rewritten accordingly.

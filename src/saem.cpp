@@ -2165,70 +2165,70 @@ public:
         // U_y/DYF/fsave, so leaving them at the pre-IMH state compares each
         // candidate with a DIFFERENT chain state's likelihood.
         auto rebuildDYF = [&](const vec &f) -> bool {
-        if (distribution == 1){
-          // Build yt once: does not depend on chain index k
-          vec yt = hasFixedObsTransform ? yTrans : y;
-          if (!hasFixedObsTransform) {
-            for (int i = ntotal; i--;) {
-              int cur = ix_endpnt(i);
-              yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          if (distribution == 1){
+            // Build yt once: does not depend on chain index k
+            vec yt = hasFixedObsTransform ? yTrans : y;
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              }
+            }
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
+              for (int j = ntotal; j--;) {
+                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
+            }
+          } else if (distribution == 2){
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -y % log(fk) + fk;
+            }
+          } else if (distribution == 3) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+            }
+          } else if (distribution == 4) {
+            // General log-likelihood endpoint (ll() ~ expr): the model returns the
+            // per-observation log-likelihood as its prediction (rx_pred_ ~ <ll>), so
+            // the observation loss is simply -ll and the standard RWM kernels run
+            // unchanged.  Reachable for est="saem"/"fsaem" when .saemGeneralLik(ui)
+            // is true (the transform-normal assertion is skipped for such a model);
+            // under fsaem the IMH kernel replaces the phi1 random walk.
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -fk;
             }
           }
-          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
-          for (int k = 0; k < nmc; k++) {
-            int obs_start = k * ntotal;
-            vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
-            const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
-            const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-            _scratch_ft = fk;
-            _scratch_limitT = limitk;
-            for (int i = ntotal; i--;) {
-              int cur = ix_endpnt(i);
-              _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
-            }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
-            _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
-            _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
-            _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
-            _scratch_indio = indio + (arma::uword)k * stride;
-            DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-            }
+          else {
+            RSprintf("unknown distribution (id=%d)\n", distribution);
+            return false;
           }
-        } else if (distribution == 2){
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -y % log(fk) + fk;
-          }
-        } else if (distribution == 3) {
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
-          }
-        } else if (distribution == 4) {
-          // General log-likelihood endpoint (ll() ~ expr): the model returns the
-          // per-observation log-likelihood as its prediction (rx_pred_ ~ <ll>), so
-          // the observation loss is simply -ll and the standard RWM kernels run
-          // unchanged.  Reachable for est="saem"/"fsaem" when .saemGeneralLik(ui)
-          // is true (the transform-normal assertion is skipped for such a model);
-          // under fsaem the IMH kernel replaces the phi1 random walk.
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -fk;
-          }
-        }
-        else {
-          RSprintf("unknown distribution (id=%d)\n", distribution);
-          return false;
-        }
-        return true;
+          return true;
         };
         if (!rebuildDYF(fsave)) return;
         //U_y is a vec of subject llik; summed over obs for each subject

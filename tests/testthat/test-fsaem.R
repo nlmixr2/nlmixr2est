@@ -54,19 +54,41 @@ nmTest({
     }
     .ctl <- saemControl(nBurn=200, nEm=100, nmc=3, seed=42, print=0L, calcTables=FALSE)
     .fs <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="fsaem", control=.ctl))
+    # The kernel's own counters, read before any other fit resets them.  Estimates
+    # alone cannot tell a working IMH kernel from a silent degrade to plain SAEM.
+    .diag <- nlmixr2est:::fsaemDiag_()
     .ss <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est="saem", control=.ctl))
     # fast flag flows through to the stored control (mechanism is wired up)
     expect_true(.fs$saemControl$fast)
     expect_false(.ss$saemControl$fast)
+    # one MAP+IMH step per fast iteration, and every subject got a proposal
+    expect_equal(.diag$nStep, 20)                      # fastIter default
+    expect_gt(.diag$nProp, 0)
+    expect_equal(.diag$nMapFail, 0)
+    expect_equal(.diag$nBadGamma, 0)
+    # an independent sampler drawn from the Laplace approximation of the actual
+    # posterior accepts most of what it proposes (the paper reports ~0.9); a low
+    # rate would mean the proposal was built at the wrong parameterization
+    expect_gt(.diag$accRate, 0.5)
     # the fast kernel changes the simulation trajectory (it fired) -- so fsaem is
     # NOT bit-identical to saem, but converges to the same MLE
     expect_false(isTRUE(all.equal(unname(fixef(.fs)), unname(fixef(.ss)))))
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
   })
 
-  test_that("est='fsaem' converges faster than saem from poor starts (the point)", {
-    # deliberately poor initial estimates; with a short burn-in the f-SAEM IMH
-    # kernel should land closer to the MLE than the standard random-walk SAEM.
+  test_that("est='fsaem' reaches the MLE from poor starts at a short burn-in", {
+    # Deliberately poor initial estimates and a short burn-in.
+    #
+    # This asserts CONVERGENCE, not a speedup.  theo_sd is a well-identified
+    # 1-cmt model: 20 burn-in iterations already put BOTH methods at the MLE
+    # (measured RMSE ~0.01 for each, which is SAEM's own Monte-Carlo noise
+    # floor), so a "fsaem beats saem" inequality here compares two draws from
+    # the same noise -- it flips with the seed and says nothing about the
+    # kernel.  The f-SAEM paper reports exactly this ("no regression") for a
+    # well-identified model; the gain is on ill-conditioned / sparse ones, e.g.
+    # the collinear 2-cmt N=60 case in issue #845, which is too slow to fit
+    # twice in a test.  The kernel's own counters in the test above are what
+    # prove it fired.
     poor <- function() {
       ini({
         tka <- 0.1; tcl <- 0.5; tv <- 3.0
@@ -87,7 +109,13 @@ nmTest({
                               calcTables = FALSE, fastIter = nb)))
       sqrt(sum((fixef(.f) - .ref)^2))
     }
-    expect_lt(.short("fsaem", 20L), .short("saem", 20L))
+    .fs <- .short("fsaem", 20L)
+    .ss <- .short("saem", 20L)
+    # both land at the MLE; the bound is well outside the seed-to-seed spread of
+    # either method (measured max ~0.04 over six seeds) and well inside the
+    # distance a broken kernel would leave (the poor start is ~0.8 away)
+    expect_lt(.fs, 0.1)
+    expect_lt(.ss, 0.1)
   })
 
   test_that("est='fsaem' supports proportional and combined error", {
@@ -173,6 +201,44 @@ nmTest({
     # the Hessian-proposal fast kernel fires but converges to the SAEM MLE
     expect_false(isTRUE(all.equal(unname(fixef(.fh)), unname(fixef(.ss)))))
     expect_lt(max(abs(fixef(.fh) - fixef(.ss))), 0.05)
+  })
+
+  test_that("est='fsaem' fits a modeled-lag model (event-sensitivity path)", {
+    skip_if_not_installed("nlmixr2data")
+    # A model with modeled dosing (lag/f/rate) is the ONLY kind whose FOCEi inner
+    # carries event ("jump") sensitivities -- a plain bolus linCmt() model has
+    # eventSensInfo NULL.  The jump shape is a process global, so setting the
+    # inner up leaves it pointing at the inner; the SAEM model has no jump
+    # sensitivities and must not be solved under it.  Every other fsaem test uses
+    # a bolus model, so this is the one that exercises that path.
+    lagm <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tlag <- -0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        lag(depot) <- exp(tlag)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ctl <- saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 11, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(lagm, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .ctl))
+    .diag <- nlmixr2est:::fsaemDiag_()
+    .ss <- suppressMessages(nlmixr2(lagm, nlmixr2data::theo_sd, est = "saem",
+                                    control = .ctl))
+    # the kernel fired on a model that DOES have event sensitivities
+    expect_gt(.diag$nStep, 0)
+    expect_gt(.diag$accRate, 0.3)
+    expect_equal(.diag$nMapFail, 0)
+    # and the SAEM solve was not corrupted by the inner's jump shape: same MLE
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.1)
   })
 
   test_that("est='fsaem' rejects unsupported models (mixture) from the fast kernel", {
