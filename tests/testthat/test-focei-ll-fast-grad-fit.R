@@ -90,4 +90,88 @@ nmTest({
     expect_gt(fT$env$nAnalyticGradDirect, 0L)
   })
 
+  ## ---- multiple endpoints (#838) -------------------------------------------------
+  ## An ll() endpoint written as the exact normal log-density is the SAME likelihood as
+  ## the equivalent add() endpoint, so the two objectives may differ only by the small
+  ## log|H| term (FOCEi's Gauss-Newton Hessian vs the ll() path's exact one).  That makes
+  ## the Gaussian twin a self-validating reference -- no checked-in constant to drift.
+  ##
+  ## It is what caught #838: the endpoint's distribution was read one row before
+  ## calc_lhs() evaluated rx_yj_, so a subject's FIRST observation was scored as normal.
+  ## For a general-likelihood endpoint that treats rx_pred_ (a log density, down to -557
+  ## here) as a prediction against DV with rx_r_ = 0 forced to variance 1, contributing
+  ## -0.5*(logDensity - DV)^2.  Measured objf 11,463,665.75 against the twin's 53,695.56.
+  ## Single-endpoint models were immune: with one endpoint rx_yj_ is a constant that is
+  ## already installed at init, so nothing depended on the stale read.
+  .pkpdLL <- function() {
+    ini({ tka <- 0.5; tcl <- -2; tv <- 2; emax <- 2; ec50 <- 1
+          add.pk <- 1; add.pd <- 3; eta.cl ~ 0.1 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; pca <- emax * cp / (ec50 + cp)
+            ll(cp)  ~ -0.5 * log(2 * pi) - log(add.pk) - 0.5 * ((DV - cp) / add.pk)^2
+            ll(pca) ~ -0.5 * log(2 * pi) - log(add.pd) - 0.5 * ((DV - pca) / add.pd)^2 })
+  }
+  .pkpdGauss <- function() {
+    ini({ tka <- 0.5; tcl <- -2; tv <- 2; emax <- 2; ec50 <- 1
+          add.pk <- 1; add.pd <- 3; eta.cl ~ 0.1 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; pca <- emax * cp / (ec50 + cp)
+            cp ~ add(add.pk) | cp
+            pca ~ add(add.pd) | pca })
+  }
+  .phCtl <- function(fast) foceiControl(print = 0L, covMethod = "", fast = fast, sigdig = 4,
+                                        maxOuterIterations = 0L, maxInnerIterations = 100L)
+
+  test_that("multi-endpoint ll() objective matches its Gaussian twin (#838)", {
+    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    d <- nlmixr2data::warfarin
+    ## The twin is fitted LIVE, deliberately not cached through helper-gradref.R.  It is
+    ## the reference's whole value that it is derived, not frozen: a cached twin recorded
+    ## during a bad run silently becomes the thing under test (observed once -- objf
+    ## 61316 with every eta exactly 0 -- and it persists).
+    ll <- suppressMessages(suppressWarnings(nlmixr2(.pkpdLL, d, "focei", .phCtl(TRUE))))
+    gs <- suppressMessages(suppressWarnings(nlmixr2(.pkpdGauss, d, "focei", .phCtl(TRUE))))
+    # guard the reference itself: a collapsed fit must fail loudly here, not silently
+    # agree with a collapsed ll() arm
+    expect_true(all(abs(gs$eta$eta.cl) > 1e-8))
+    # the whole failure was a data-sized excess (1.1e7 on an objective of 5.4e4), so a
+    # loose relative tolerance still pins it; log|H| differs by O(1) between the two
+    expect_equal(as.numeric(ll$objf), as.numeric(gs$objf), tolerance = 1e-3)
+    # per subject too -- a compensating error across subjects would pass the total.
+    # as.numeric(): only the numbers are under test here, so do not let names/classes
+    # carried by the accessor make the comparison fail for a non-numeric reason
+    expect_equal(as.numeric(ll$env$etaObf$OBJI), as.numeric(gs$env$etaObf$OBJI),
+                 tolerance = 1e-2)
+    # and the conditional estimates agree (they differed by 0.17 while the bug was live)
+    expect_equal(as.numeric(ll$eta$eta.cl), as.numeric(gs$eta$eta.cl), tolerance = 1e-2)
+    # the analytic gradient really was used for the ll() arm
+    expect_gt(ll$env$nAnalyticGradDirect, 0L)
+  })
+
+  test_that("multi-endpoint ll() analytic gradient matches FD (#838)", {
+    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    d <- nlmixr2data::warfarin
+    ph <- suppressMessages(suppressWarnings(nlmixr2(.pkpdLL, d, "focei", .phCtl(TRUE))))
+    g <- .foceiGradDirect(ph)
+    expect_false(is.null(g))
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", .phCtl(TRUE))))$objf
+    }
+    h <- 1e-3
+    ## cached: a property of the model/data/theta, not of the gradient -- helper-gradref.R.
+    ## The 2*length(theta) perturbed fits below therefore run only when the checked-in
+    ## baselines/gradref-ll-multiple-endpoint.rds is regenerated deliberately
+    ## (NLMIXR2EST_REGEN_GRADREF=TRUE), never on CI.
+    fd <- .gradRef("ll-multiple-endpoint", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h),
+             numeric(1)))
+    # 2% -- the reference's own step noise is ~1% on tcl (h=1e-3 vs 1e-4); before the
+    # objective fix the worst component was off by 373x
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
+
 })
