@@ -359,6 +359,14 @@ adviOptimize_ <- function(args) {
     .Call(`_nlmixr2est_adviOptimize_`, args)
 }
 
+#' Set the f-SAEM fast-kernel tunables for this fit.
+#' @param opts list with any of nsweep, fallback, mode, hRefresh
+#' @return NULL, called for side effects
+#' @noRd
+fsaemSetOpts_ <- function(opts) {
+    .Call(`_nlmixr2est_fsaemSetOpts_`, opts)
+}
+
 fsaemDiagReset_ <- function() {
     .Call(`_nlmixr2est_fsaemDiagReset_`)
 }

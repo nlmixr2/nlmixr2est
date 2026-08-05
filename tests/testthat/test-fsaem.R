@@ -27,6 +27,46 @@ nmTest({
     expect_error(saemControl(fastIter=0), "fastIter")
   })
 
+  test_that("nu may carry a 4th element: the f-SAEM IMH sweep count", {
+    expect_equal(saemControl()$mcmc$nu, c(2, 2, 2))
+    .c4 <- saemControl(fast = TRUE, nu = c(2, 2, 2, 3))
+    expect_equal(.c4$mcmc$nu, c(2, 2, 2, 3))
+    # survives the control round-trip getValidNlmixrCtl does
+    expect_equal(do.call(saemControl, .c4)$mcmc$nu, c(2, 2, 2, 3))
+    # still exactly 3 or 4
+    expect_error(saemControl(nu = c(2, 2)))
+    expect_error(saemControl(nu = c(2, 2, 2, 3, 4)))
+    # nu[4] is the sweep count ONLY -- it does not switch the kernel on
+    expect_false(saemControl(nu = c(2, 2, 2, 3))$fast)
+  })
+
+  test_that("nu[4] sets the number of IMH sweeps per iteration", {
+    skip_if_not_installed("nlmixr2data")
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .base <- function(...) saemControl(nBurn = 40, nEm = 10, nmc = 3, seed = 42,
+                                       print = 0L, calcTables = FALSE, ...)
+    .f5 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .base()))
+    .f2 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fsaem",
+                                    control = .base(nu = c(2, 2, 2, 2))))
+    # same number of MAP+IMH steps, but 2 proposals per subject per chain per
+    # step instead of the default 5
+    expect_equal(.f5$fsaemDiag$nStep, .f2$fsaemDiag$nStep)
+    expect_equal(.f5$fsaemDiag$nProp / .f2$fsaemDiag$nProp, 5 / 2)
+    # fewer sweeps still converges to the same place
+    expect_lt(max(abs(fixef(.f5) - fixef(.f2))), 0.1)
+  })
+
   test_that("fsaemControl forces fast=TRUE and validates as an fsaem control", {
     .fc <- fsaemControl(fast=FALSE, nBurn=7)
     expect_s3_class(.fc, "fsaemControl")

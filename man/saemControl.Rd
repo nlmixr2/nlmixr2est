@@ -96,7 +96,13 @@ computation.  In Monolix this is equivalent to \code{L}.}
     dimensional random walk Gibbs samples are taken.
 
     The third value represents the number of bootstrap/reshuffling or
-    uni-dimensional random samples are taken.}
+    uni-dimensional random samples are taken.
+
+    An optional fourth value is the number of f-SAEM independent
+    Metropolis-Hastings sweeps run per iteration (default 5).  It is only
+    consulted when the fast kernel is on (`fast=TRUE` or `est="fsaem"`); it
+    does not switch the kernel on by itself, and unlike the first three it is
+    not multiplied by 20 on the first iteration.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built

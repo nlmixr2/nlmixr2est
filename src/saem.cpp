@@ -1662,7 +1662,9 @@ public:
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
       set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0);
 
-      // CHG hard coded 20
+      // CHG hard coded 20.  nu may carry a 4th element (the f-SAEM IMH sweep
+      // count); it belongs to the fast kernel and is resolved in R, so only
+      // nu(0..2) are read here.
       int nu1, nu2, nu3;
       if (kiter==0) {
         nu1=20*nu(0);

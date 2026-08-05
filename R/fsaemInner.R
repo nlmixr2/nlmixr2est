@@ -154,6 +154,18 @@
                         ifelse(is.finite(.hi), 3L, 0L)))))
 }
 
+#' IMH sweeps per iteration for the fast kernel.
+#'
+#' `saemControl(nu=)` may carry a 4th element; it is the sweep count and nothing
+#' else (the kernel is switched on by `fast=TRUE` / `est="fsaem"`).  Falls back to
+#' 5, which is what the kernel always used before the option existed.
+#' @noRd
+.fsaemNsweep <- function(ui) {
+  .nu <- rxode2::rxGetControl(ui, "mcmc", list())$nu
+  if (length(.nu) >= 4L && !is.na(.nu[4L]) && .nu[4L] >= 1L) return(as.integer(.nu[4L]))
+  5L
+}
+
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
     .minfo(paste0("fast kernel needs one endpoint with add/prop error (or ll()) ",
@@ -186,6 +198,9 @@
   .bounds <- if (.saemGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
   .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
   .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
+  # IMH sweeps per iteration: saemControl(nu=) 4th element, else 5
+  .nsweep <- .fsaemNsweep(ui)
+  fsaemSetOpts_(list(nsweep = .nsweep))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
@@ -200,7 +215,7 @@
     .lo <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
     .up <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
     .nb <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
-    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
+    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
       # R re-parameterizes the mprior-as-data inner (data rebuild + setup); the
       # numeric MAP + IMH orchestration then runs in C++ (fsaemMapImhCpp_).
       .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega)
@@ -229,7 +244,7 @@
   .lower <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
   .upper <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
   .nbd   <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
-  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = 5L) {
+  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
     .theta <- numeric(.nTheta)
     .theta[.structPos] <- mpriorMat[1, ]
     if (length(.residPos)) {
@@ -255,7 +270,7 @@
   cfg$fsaemLower      <- .lower
   cfg$fsaemUpper      <- .upper
   cfg$fsaemNbd        <- .nbd
-  cfg$fsaemNsweep     <- 5L
+  cfg$fsaemNsweep     <- .nsweep
   cfg$fsaemNRetry     <- as.integer(.nRetry)
   cfg$fsaemCores      <- {
     .c <- as.integer(rxode2::getRxThreads()); if (is.na(.c) || .c < 1L) 1L else .c

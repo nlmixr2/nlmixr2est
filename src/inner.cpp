@@ -15917,10 +15917,53 @@ static double _fsaemNProp = 0;      // proposals drawn
 static double _fsaemNAcc  = 0;      // proposals accepted
 static double _fsaemNMapFail = 0;   // subjects whose MAP did not converge
 static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covariance
+static double _fsaemNMapReuse = 0;  // steps that reused a cached MAP + Gamma
+
+// Tunables for the fast kernel, set once per fit by fsaemSetOpts_().
+//
+// They live here as statics rather than as arguments because fsaemMapImh() is
+// reached through two REGISTERED entry points -- fsaemStepCpp_ (14 args) and
+// fsaemMapImhCpp_ (11) -- whose arities are hand-maintained in src/init.c.  One
+// options setter costs one init.c row; threading four scalars through both entry
+// points would cost four rounds of compileAttributes plus init.c edits, and the
+// covariate path would still need its R closure widened.
+static int _fsaemNsweepOpt = 5;   // IMH sweeps per iteration (saemControl nu[4])
+static int _fsaemFallback  = 0;   // 0 = skip the subject, 1 = propose from the prior
+static int _fsaemMode      = 0;   // 0 = MAP centre, 1 = cross-chain mean centre
+static int _fsaemHRefresh  = 1;   // recompute MAP + Gamma every k active iterations
+
+static void fsaemResetOpts() {
+  _fsaemNsweepOpt = 5;
+  _fsaemFallback = 0;
+  _fsaemMode = 0;
+  _fsaemHRefresh = 1;
+}
+
+//' Set the f-SAEM fast-kernel tunables for this fit.
+//' @param opts list with any of nsweep, fallback, mode, hRefresh
+//' @return NULL, called for side effects
+//' @noRd
+//[[Rcpp::export]]
+RObject fsaemSetOpts_(List opts) {
+  if (opts.containsElementNamed("nsweep")) {
+    int v = as<int>(opts["nsweep"]);
+    if (v >= 1) _fsaemNsweepOpt = v;
+  }
+  if (opts.containsElementNamed("fallback")) _fsaemFallback = as<int>(opts["fallback"]);
+  if (opts.containsElementNamed("mode")) _fsaemMode = as<int>(opts["mode"]);
+  if (opts.containsElementNamed("hRefresh")) {
+    int v = as<int>(opts["hRefresh"]);
+    if (v >= 1) _fsaemHRefresh = v;
+  }
+  return R_NilValue;
+}
 
 //[[Rcpp::export]]
 RObject fsaemDiagReset_() {
   _fsaemNStep = _fsaemNProp = _fsaemNAcc = _fsaemNMapFail = _fsaemNBadGamma = 0;
+  _fsaemNMapReuse = 0;
+  // the options are per-fit too: a later fit must not inherit the previous one's
+  fsaemResetOpts();
   return R_NilValue;
 }
 
@@ -15930,7 +15973,8 @@ List fsaemDiag_() {
                       _["nAcc"] = _fsaemNAcc,
                       _["accRate"] = (_fsaemNProp > 0) ? _fsaemNAcc/_fsaemNProp : NA_REAL,
                       _["nMapFail"] = _fsaemNMapFail,
-                      _["nBadGamma"] = _fsaemNBadGamma);
+                      _["nBadGamma"] = _fsaemNBadGamma,
+                      _["nMapReuse"] = _fsaemNMapReuse);
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical

@@ -29,6 +29,12 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
+#'     An optional fourth value is the number of f-SAEM independent
+#'     Metropolis-Hastings sweeps run per iteration (default 5).  It is only
+#'     consulted when the fast kernel is on (`fast=TRUE` or `est="fsaem"`); it
+#'     does not switch the kernel on by itself, and unlike the first three it is
+#'     not multiplied by 20 on the first iteration.
+#'
 #' @inheritParams iterPrintParams
 #'
 #' @param trace An integer indicating if you want to trace(1) the
@@ -422,12 +428,16 @@ saemControl <- function(seed = 99,
     nEm   <- .xtra$mcmc$niter[2]
     checkmate::assertIntegerish(.xtra$mcmc$nmc, len=1, lower=1, any.missing=FALSE, .var.name="mcmc$nmc")
     nmc <- .xtra$mcmc$nmc
-    checkmate::assertIntegerish(.xtra$mcmc$nu, len=3, lower=1, any.missing=FALSE, .var.name="mcmc$nu")
+    checkmate::assertIntegerish(.xtra$mcmc$nu, min.len=3, max.len=4, lower=1,
+                                any.missing=FALSE, .var.name="mcmc$nu")
+    # this branch validated mcmc$nu but never used it, unlike niter/nmc above
+    nu <- .xtra$mcmc$nu
   }
   checkmate::assertIntegerish(nBurn, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nEm, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
+  # a 4th element is the f-SAEM IMH sweep count; the three RWM kernels ignore it
+  checkmate::assertIntegerish(nu, any.missing=FALSE, min.len=3, max.len=4, lower=1)
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
   # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl

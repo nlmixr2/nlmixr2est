@@ -45,8 +45,9 @@
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
   .nmc <- cfg$nmc
-  # nu is the number of selection for each probability type.
-  checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
+  # nu is the number of selection for each probability type; an optional 4th
+  # element is the f-SAEM IMH sweep count (read in R, not by the SAEM C++ loop).
+  checkmate::assertIntegerish(cfg$nu, lower=0, min.len=3, max.len=4, .var.name="saem.cfg$nu")
   # Overall number of iterations
   checkmate::assertIntegerish(cfg$niter, lower=0,  len=1, .var.name="saem.cfg$niter")
   # Number of iterations where the correlation is ignored
@@ -305,11 +306,13 @@
     }
     # Metropolis acceptance counters for THIS fit; snapshotted onto the fit env in
     # .saemFamilyFit.  They are the only signal that would catch a kernel scoring
-    # its proposals against a stale chain state (which accepts nearly everything).
+    # its proposals against a stale chain state.
     saemDiagReset_()
     if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
       fsaemDiagReset_()
       .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    } else if (length(.cfg$nu) >= 4L) {
+      .minfo("nu[4] sets the f-SAEM sweeps; needs est=\"fsaem\" or fast=TRUE")
     }
     .saemCheckCfg(.cfg)
     .cfg

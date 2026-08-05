@@ -1057,6 +1057,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// fsaemSetOpts_
+RObject fsaemSetOpts_(List opts);
+RcppExport SEXP _nlmixr2est_fsaemSetOpts_(SEXP optsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type opts(optsSEXP);
+    rcpp_result_gen = Rcpp::wrap(fsaemSetOpts_(opts));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fsaemDiagReset_
 RObject fsaemDiagReset_();
 RcppExport SEXP _nlmixr2est_fsaemDiagReset_() {
