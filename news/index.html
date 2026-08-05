@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.0.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,11 +28,28 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v7.0.2/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="7.0.2" id="nlmixr2est-702">nlmixr2est 7.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-702"></a></h2>
+<h2 class="pkg-version" data-toc-text="7.0.3" id="nlmixr2est-703">nlmixr2est 7.0.3<a class="anchor" aria-label="anchor" href="#nlmixr2est-703"></a></h2>
+<div class="section level3">
+<h3 id="new-features-7-0-3">New features<a class="anchor" aria-label="anchor" href="#new-features-7-0-3"></a></h3>
+<ul><li>
+<code>foceiControl(fast = TRUE)</code> now uses the analytic outer gradient for general-likelihood models with <strong>more than one endpoint</strong>, which previously fell back to finite differences. It was gated off as unverifiable, but what did not verify was the objective below rather than the gradient; against central differences of the corrected objective it agrees to 8e-3 relative.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="bug-fixes-7-0-3">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-7-0-3"></a></h3>
+<div class="section level4">
+<h4 id="estimation-7-0-3">Estimation<a class="anchor" aria-label="anchor" href="#estimation-7-0-3"></a></h4>
+<ul><li><p>Fixed the objective function for a model that has a <strong>general-likelihood endpoint (<code>ll()</code>, <code>pois()</code>, <code>binom()</code>, …) alongside any other endpoint</strong>. Each observation’s distribution was read one row before the model had been evaluated for that row, so a subject’s FIRST observation was scored as normal: its log-density was treated as a prediction of <code>DV</code> against a variance forced to 1. On a two-endpoint warfarin model the objective read 11,463,666 where the correct value is 53,697, and the conditional estimates were shifted with it. This affected such fits at <strong>any</strong> <code>foceiControl(fast=)</code> setting. Models with a single endpoint, and models whose endpoints are all Gaussian, are unchanged.</p></li>
+<li><p>Fixed the <code>est="imp"</code>/<code>"impmap"</code>/<code>"qrpem"</code> theta score for <strong>endpoints with different <code>DV</code> transforms</strong>, e.g. an <code>lnorm()</code> PK endpoint alongside an <code>add()</code> PD one. The M-step read each observation’s transform and distribution without evaluating the model for that row, and the theta-sensitivity model did not emit <code>rx_yj_</code>/<code>rx_lambda_</code> at all, so every observation was scored with one arbitrary endpoint’s transform – on a 2-endpoint PK/PD fit that put <code>tka</code> at -47.6 and the residual sigma at 2.8e4 where FOCEI gives 0.53 and 0.11. The two now agree to 1e-3. Models with a single endpoint, or whose endpoints share a transform, are unchanged.</p></li>
+<li><p><code>foceiControl(fo=TRUE)</code> now rejects a general-likelihood endpoint or a censored observation wherever it appears in a subject, not only on that subject’s last observation. Both guards tested the last row’s value, so a subject whose final observation was Gaussian and uncensored slipped past them and was fit with an objective FO does not support.</p></li>
+</ul></div>
+</div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="7.0.2" id="nlmixr2est-702">nlmixr2est 7.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-702"></a></h2><p class="text-muted">CRAN release: 2026-08-04</p>
 <div class="section level3">
 <h3 id="breaking-changes-7-0-2">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-7-0-2"></a></h3>
 <ul><li><p><code>est="vae"</code>: naming a covariate in <code>vaeControl(shapes=)</code> now also <strong>limits the search to it</strong>. The list form gained a <code>fixCov</code> element defaulting to <code>TRUE</code>, so <code>shapes = list(WT = "power")</code> searches <code>WT</code> and nothing else, where previously it searched every covariate with <code>WT</code> restricted to <code>"power"</code>. Add <code>fixCov = FALSE</code> to restore the old meaning. Excluded covariates are listed in <code>$runInfo</code>. A character vector (<code>shapes = c("power", "lin")</code>) names no covariate and is unaffected.</p></li>
