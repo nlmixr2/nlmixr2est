@@ -597,15 +597,17 @@
   }, error = function(e) 1L)
 }
 
-.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
+.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
   ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
   ##
-  ## `tol` is the tolerance to solve at, and applies to BOTH routes; pass NA to solve
-  ## at the fit's instead.  A covariance caller wants its own (covSolveTol, else
-  ## tightened from sigdig) because it differences these solves; a gradient caller
-  ## wants the fit's, so that it differentiates the objective being minimized.
+  ## `tol` is the tolerance to solve at and applies to BOTH routes; pass NA to solve at
+  ## the fit's instead.  A covariance caller wants its own (covSolveTol, else tightened
+  ## from sigdig) because it differences these solves; a gradient caller wants the fit's,
+  ## so that it differentiates the objective being minimized.  It has NO DEFAULT on
+  ## purpose -- the two answers are different numbers and there is no value that is right
+  ## for both, so the choice is the caller's to state.
   ##
   ## No session flag guards this any more.  vaeOuterSolve_ refuses unless the
   ## augmented model is registered AND the pool is at least its size
