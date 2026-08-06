@@ -17,11 +17,16 @@ extern "C" SEXP _nlmixr2est_uninformativeEta(SEXP rhoS) {
   NumericVector val = as<NumericVector>(rho["val"]);
   NumericMatrix ret=NumericMatrix(nid, neta);
   std::fill(ret.begin(), ret.end(), 0.0);
+  // size of the predictions `ret` is built from, to tell "the eta does not move the
+  // prediction" apart from "there is no prediction to move"
+  NumericMatrix scale=NumericMatrix(nid, neta);
+  std::fill(scale.begin(), scale.end(), 0.0);
   IntegerMatrix retL=IntegerMatrix(nid, neta);
   for (int i = 0; i < simId.size(); i++) {
     int curid = id[i] - 1;
     int curpm = pm[i];
     int cureta = w[i] - 1;
+    scale(curid, cureta) += std::abs(val[i]);
     switch (curpm) {
     case -1:
     case 1:
@@ -33,7 +38,10 @@ extern "C" SEXP _nlmixr2est_uninformativeEta(SEXP rhoS) {
   }
   for (int i = 0; i < nid; ++i) {
     for (int j = 0; j < neta; ++j) {
-      retL(i, j) = std::abs(ret(i, j)) > tol;
+      // This runs once, at the initial estimates.  If those are poor enough that the
+      // prediction underflows at every observed time, perturbing the eta moves nothing
+      // for a reason unrelated to the eta -- do not freeze it for the whole fit on that.
+      retL(i, j) = (std::abs(ret(i, j)) > tol) || !(scale(i, j) > tol);
     }
   }
   return as<SEXP>(retL);

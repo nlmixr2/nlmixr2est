@@ -83,3 +83,34 @@ nmTest({
 
   })
 })
+
+nmTest({
+  test_that("an eta is not called uninformative when the predictions underflow", {
+
+    ## Call the informativeness test with the environment .uninformativeEtas() builds for it:
+    ## one subject, one eta, three rows (eta-, eta+, eta0).  The statistic is
+    ## pred(-) + pred(+) - 2 * pred(0); the eta is informative when it exceeds tol.
+    .ue <- function(val, tol = 1e-7) {
+      .env <- new.env(parent = emptyenv())
+      .env$nid <- 1L
+      .env$neta <- 1L
+      .env$simId <- 1:3
+      .env$id <- rep(1L, 3)
+      .env$w <- rep(1L, 3)
+      .env$pm <- c(-1L, 1L, 0L)
+      .env$val <- val
+      .env$tol <- tol
+      .Call("_nlmixr2est_uninformativeEta", .env)[1, 1]
+    }
+
+    ## real predictions, perturbing the eta does nothing -- still uninformative
+    expect_equal(.ue(c(10, 10, 10)), 0L)
+
+    ## real predictions that move with the eta -- informative
+    expect_equal(.ue(c(12, 8, 9)), 1L)
+
+    ## poor initial estimates can underflow every prediction; the statistic then vanishes for a
+    ## reason that has nothing to do with the eta, so it must not be frozen
+    expect_equal(.ue(c(4e-11, 4e-11, 2e-11)), 1L)
+  })
+})

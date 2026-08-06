@@ -12,6 +12,17 @@
 
 ### Estimation
 
+- `saem`'s uninformative-eta detection
+  (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
+  that the data does inform.  The test asks whether perturbing an eta moves the
+  prediction, and it is run once, at the **initial** estimates; when those are
+  poor enough that the prediction underflows at the observed times, nothing
+  moves and the eta is frozen at its mu for the whole fit.  The verdict is now
+  only taken when the predictions themselves are above the tolerance.  On a
+  warfarin fit started from `k=1/h` (true value near `0.02/h`) this froze the
+  volume eta for 19 of 32 subjects, biasing the population estimates and
+  shrinking that eta's variance about fourfold.
+
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
   Each observation's distribution was read one row before the model had been
