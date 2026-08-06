@@ -2159,14 +2159,15 @@ double likInner0(double *eta, int id) {
             // FOCE: log(R) from `r`, which already holds the mode-appropriate R
             // (eta=0 frozen for "nonmem", live conditional for "foce+"); FOCEI keeps lhs
             if (dist == rxDistributionNorm) {
-              if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
-                lnr = _safe_log(r);
-              } else {
-                // npResidScale (npag/npb gamma) scales the log-variance to match
-                // the scaled r used in the err^2/r term; 1.0 for every other method.
-                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1] *
-                                op_focei.npResidScale * op_focei.npResidScale);
-              }
+              // Take the log of `r` ITSELF.  It already holds the mode-appropriate
+              // variance (eta=0 frozen for "nonmem" FOCE, live conditional for FOCEI and
+              // "foce+"), with npResidScale (npag/npb gamma) folded in AND the
+              // small-variance floor applied above.  Logging the RAW lhs instead made the
+              // two terms disagree exactly when it matters: a collapsing residual
+              // variance floors r to 1 (so err^2/r stays finite) while _safe_log(0)
+              // returns log(DBL_EPSILON), and -0.5*lnr then PAYS +18.02 per observation
+              // for driving the residual to zero.
+              lnr = _safe_log(r);
             }
             else lnr = 0;
             // fInd->r(k, 0) = lhs[op_focei.neta+1];
@@ -13692,7 +13693,13 @@ struct NpInnerParallelScope {
 // Conditional log-likelihood log p(y_i | eta) for subject id (no Omega prior).
 // Returns -Inf if any observation had a non-finite density (e.g. a bad solve).
 double npEvalCondLik(double *eta, int id) {
-  likInner0(eta, id);
+  // Honor likInner0's refusal.  It has several mid-loop `return NA_REAL` exits (a bad
+  // solve, a non-finite f, an NA r); on those the rows AFTER the abort still hold
+  // llikObs from the previous successful evaluation, because llikObs is initialized
+  // only once at setup.  Dropping the return therefore summed a stale-but-finite blend
+  // of two evaluations, which the finite check below could never detect.
+  double li = likInner0(eta, id);
+  if (ISNA(li)) return R_NegInf;
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
   focei_ind *fInd = &(inds_focei[id]);
@@ -13771,22 +13778,34 @@ static inline void npRestoreFrozen(int i, int m, int nsub) {
 }
 
 // Residual objective at fixed per-subject etas (postEta, nsub x neta -- the
-// posterior-mean support eta of each subject).
+// posterior-mean support eta of each subject): the conditional negative log-likelihood
+// -sum_i log p(y_i | eta_i), which is exactly what the support step maximizes.  Both
+// branches now use the same quantity, so the residual step and the support step optimize
+// one function rather than two.
 //
-// Non-mixture (nMix == 1): the extended-least-squares normal negative log-likelihood
-// sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi)) at the individual predictions
-// (f, r from the inner solve; dv on the transform-both-sides scale).  The 0.5*log(r)
-// term penalizes r -> 0, so -- unlike the marginal likelihood on a flexible support,
-// which rewards a vanishing residual -- the residual scale settles at the spread of the
-// data around the individual fits, as in saem/focei.
+// Non-mixture (nMix == 1): -npEvalCondLik, i.e. -sum of likInner0's per-observation
+// llikObs.  This USED to be an extended-least-squares form,
+// sum_obs(0.5*(f-dv)^2/r + 0.5*log(r) + 0.5*log(2*pi)), read back through
+// grabRFmatFromInner.  That was wrong for any model carrying a general likelihood:
+// rxUiGet.predDfFocei rewrites EVERY endpoint to dnorm as soon as one is non-normal, so
+// likInner0 puts a log-DENSITY in rx_pred_ for every row and sets r == 1 -- and the ELS
+// form then scored 0.5*(logLik - DV)^2, the same defect class as #838.  It also silently
+// dropped the transform-both-sides Jacobian (so a boxCox/yeoJohnson lambda was not
+// identifiable here) and ignored censoring, both of which likInner0 already folds into
+// llikObs.  Dropping the read-back also removes a second full calc_lhs sweep per subject
+// per optimizer candidate.  For an all-normal model the two differ by the constant
+// nObs*log(sqrt(2*pi)), and npOptimizeResid's return value is discarded at every call
+// site, so nothing observable moves.
 //
 // Mixture (nMix > 1): the EXACT mixture negative log-likelihood -sum_i log(sum_m a_m
 // exp(cll_m)) (npMixCondLik; NONMEM7 eq 1.182), marginalizing over the components with
 // the CURRENT mixture probabilities a_m (held here; the component structural parameters
 // that move each f_m are what this objective optimizes, so the components are estimated
-// rather than held).  The per-component cll_m carries the -0.5*log(r) penalty, so the
-// residual does not collapse.  The ELS approximation is not used for a mixture because
-// it evaluates a single component, which would not marginalize the proportions.
+// rather than held).
+//
+// The -0.5*log(r) inside llikObs still penalizes r -> 0, so -- unlike the marginal
+// likelihood on a flexible support, which rewards a vanishing residual -- the residual
+// scale settles at the spread of the data around the individual fits, as in saem/focei.
 //
 // Evaluated at the fixed posterior-mean etas, so a structural/component regressor that
 // re-solves the ODE is reflected; returns R_PosInf on a bad solve (bobyqa rejects it).
@@ -13812,21 +13831,7 @@ double npResidELS(const arma::mat& postEta) {
     npRestoreFrozen(i, 0, nsub);   // frozen resid opt: reuse cached states
     double cl = npEvalCondLik(&eta[0], i);
     if (!std::isfinite(cl)) return R_PosInf;
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
-    arma::mat fr = grabRFmatFromInner(i, false);   // nObs x 2 (f, r), transformed scale
-    int ko = 0;
-    int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;      // observations only
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0), r = fr(ko, 1);
-      ko++;
-      if (!std::isfinite(r) || r <= 0.0) r = 1.0;
-      double e = f - dv;
-      nll += 0.5 * e * e / r + 0.5 * std::log(r) + M_LN_SQRT_2PI;
-    }
+    nll += -cl;
   }
   return nll;
 }
@@ -13850,19 +13855,32 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
   for (int i = 0; i < nsub; ++i) {
     for (int j = 0; j < neta; ++j) eta[j] = postEta(i, j);
     double cl = npEvalCondLik(&eta[0], i);
+    // A likelihood-form model has NO prediction to take a moment of.  When any endpoint
+    // is non-normal, rxUiGet.predDfFocei rewrites every endpoint to dnorm, so rx_pred_
+    // is a log-DENSITY for all of them and `f - dv` below is a log-density minus a DV --
+    // meaningless, and it corrupts the bucket of whichever endpoint the row belongs to.
+    // likInner0 counts such observations, so use that rather than guessing per row.
+    // Leaving the buckets empty makes npOptimizeResid drop the warm start and its
+    // single-scale fast path, which is exactly right here (mirrors saem.cpp's
+    // whole-model residWarmStart guard).
+    bool skipMoments = (inds_focei[i].nNonNormal > 0);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
-    arma::mat fr = grabRFmatFromInner(i, false);
+    arma::mat fr;
+    if (!skipMoments) fr = grabRFmatFromInner(i, false);
     int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && ko < (int)fr.n_rows; ++j) {
+    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
+      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+      // skipped subject or every later subject's rows land in the wrong endpoint.
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      obsIdx++;
+      if (skipMoments) continue;
       double dv = tbs(getIndDv(ind, kk));
       double f = fr(ko, 0);
       ko++;
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
-      obsIdx++;
       if (e < 0 || e >= nEnd) continue;
       if (!std::isfinite(cl) || !std::isfinite(f)) continue;
       double err = f - dv;
