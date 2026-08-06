@@ -16,27 +16,12 @@ are compiled to rxode2 C code at runtime.
 
 ``` r
 
-# Load package for interactive development
-devtools::load_all()
-
-# Run all tests
-devtools::test()
-
-# Run a single test file
-testthat::test_file("tests/testthat/test-focei-1.R")
-
-# Build documentation (regenerates NAMESPACE via roxygen2)
-devtools::document()
-
-# Full R CMD check
-devtools::check()
-
 # Set the number of threads for parallel processing (e.g., SAEM)
 rxode2::setRxThreads(threads = 4)  # Use 4 threads
 ```
 
-The package requires compilation (`NeedsCompilation: yes`). C++17 is
-required (set in `src/Makevars`). After changing C++ files,
+The standard `devtools` workflow applies (`load_all`, `test`,
+`document`, `check`). After changing C++ files,
 [`devtools::load_all()`](https://devtools.r-lib.org/reference/load_all.html)
 recompiles.
 
