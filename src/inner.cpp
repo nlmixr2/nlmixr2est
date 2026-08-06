@@ -5059,7 +5059,7 @@ void numericGrad(double *theta, double *g){
             if (R_FINITE(op_focei.gradTrim)){
               if (g[cpar] > op_focei.gradTrim){
                 g[cpar]=op_focei.gradTrim;
-              } else if (g[cpar] < op_focei.gradTrim){
+              } else if (g[cpar] < -op_focei.gradTrim){
                 g[cpar]=-op_focei.gradTrim;
               }
             }
@@ -5077,7 +5077,7 @@ void numericGrad(double *theta, double *g){
             if (R_FINITE(op_focei.gradTrim)){
               if (g[cpar] > op_focei.gradTrim){
                 g[cpar]=op_focei.gradTrim;
-              } else if (g[cpar] < op_focei.gradTrim){
+              } else if (g[cpar] < -op_focei.gradTrim){
                 g[cpar]=-op_focei.gradTrim;
               }
             }
@@ -5091,7 +5091,7 @@ void numericGrad(double *theta, double *g){
             if(op_focei.slow)  op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
-            } else if (g[cpar] < op_focei.gradTrim){
+            } else if (g[cpar] < -op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
             }
           } else {
@@ -5105,7 +5105,7 @@ void numericGrad(double *theta, double *g){
             if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
-            } else if (g[cpar] < op_focei.gradTrim){
+            } else if (g[cpar] < -op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
             }
           } else {
