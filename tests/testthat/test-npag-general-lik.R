@@ -95,7 +95,7 @@ nmTest({
 
   test_that("est='npag' scores a general likelihood alongside a second endpoint (#850)", {
     skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
-    skip_if_not(nlmixr2est:::.rxode2HasSafeLogDomain(),
+    skip_if_not(.rxode2HasSafeLogDomain(),
                 "rxode2 too old for the safeLog log-domain mode")
     .gauss <- .npMkPkPd(quote(effect ~ add(pdadd.sd) | effect))
     .ll <- .npMkPkPd(quote(ll(effect) ~ -0.5 * log(2 * pi) - log(pdadd.sd) -
