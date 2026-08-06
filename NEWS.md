@@ -18,14 +18,9 @@
 
 ### Estimation
 
-- Fixed `foceiControl(gradTrim=)` clamping gradient components to `-gradTrim`
-  that it should have left alone.  The lower clamp tested `g < gradTrim` rather
-  than `g < -gradTrim`, and since the branch above it had already caught
-  everything over `+gradTrim`, every remaining component was replaced by
-  `-gradTrim` -- so a small positive gradient could reach the optimizer as a
-  large negative one.  Only reachable with a finite `gradTrim` (the default is
-  `Inf`, which skips these branches entirely) and only on the paths that
-  re-difference a component before clamping it.
+- Fixed `foceiControl(gradTrim=)` lower gradient clamping (`g < -gradTrim`), which previously tested
+  `g < gradTrim` and could replace small gradients by `-gradTrim` when `gradTrim` was
+  finite (the default `Inf` skips clamping).
 
 - Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever the
   shared ODE solve pool was available, solving at the fit's much looser tolerance
