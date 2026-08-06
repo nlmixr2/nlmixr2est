@@ -645,6 +645,9 @@
       ## caller now reads the E structures as they stand, so the zeros went straight
       ## into the covariance as a subject with no prediction and no sensitivity -- and
       ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
+      ##
+      ## The per-individual finite difference lives on the all-C++ route, which owns the
+      ## per-subject gradient columns; this assembly has none to substitute into.
       if (!is.null(.Ec) && length(.Ec) > 0L) {
         .ok <- attr(.Ec, "ok")
         .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)

@@ -139,8 +139,6 @@ struct focei_options {
   double *gtryEta = NULL;
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
-  double *gouterThetaHf = NULL;   // [npars * nsub], backs fInd->outerThetaHf
-  bool mGouterThetaHf = false;
   bool mGthetaGrad = false;
   // n1qn1 specific vectors
   double *gZm = NULL;
@@ -293,6 +291,31 @@ struct focei_options {
   std::atomic<int> curAnalyticRelax{0};   // some subject's solve needed a looser tolerance
   int curAnalyticFd = 0;                  // some subject fell back to finite differences
   int curAnalyticChartrand = 0;           // ... and that FD used the Chartrand TV derivative
+  // Subjects whose augmented solve failed in THIS evaluation, and the running count of
+  // per-subject finite-difference substitutions actually applied over the fit.  The
+  // count is what distinguishes "one subject was finite-differenced and the rest stayed
+  // analytic" from "the whole gradient declined", which previously looked identical.
+  std::vector<int> outerFdIds;
+  int nOuterFdInd = 0;
+  // Per-subject ANALYTIC slopes for the subjects that DID solve, full-theta indexed, row
+  // per solved subject.  This is the reference distribution the FD outlier pass tests
+  // against: judging the finite-differenced subjects only against each other would let a
+  // whole bad group look normal, and with one or two flagged subjects there is no
+  // distribution at all.
+  std::vector<double> outerFdRef;
+  int outerFdRefN = 0;
+  // The FD fallback's step per full-theta parameter (theta block then omega block), and the
+  // flagged set it was searched against.
+  //
+  // SHARED, not per subject: the step is chosen on the SUM over the flagged subjects, so it
+  // is a property of that set.  Keyed on the set because the set changes with theta -- a step
+  // searched against the sum over {A} is not the step for the sum over {A,B} -- and a stale
+  // step would be reused silently.  0 = not yet chosen; only a step that PASSED the bound
+  // test is ever stored, so a clamped search is retried at the next theta instead of
+  // disabling the parameter for the rest of the fit.
+  std::vector<double> outerFdStep;
+  std::vector<int> outerFdStepIds;
+  int nFdStepClamped = 0;   // searches that ended on hMin/hMax, so the column was declined
   // Why the direct route DECLINED, counted over the fit.  A decline sends the whole
   // gradient to finite differences, which is safe but slow, and without these the only
   // visible symptom is a fit that is unexpectedly not analytic.
@@ -612,6 +635,13 @@ struct focei_options {
 
 focei_options op_focei;
 
+// Width of one subject's outer-FD row: the whole full-theta vector, theta block then
+// omega block.  foceiOuterFdInd_ differences both, and the step cache is indexed the
+// same way.
+static inline size_t foceiOuterFdN() {
+  return (size_t)op_focei.ntheta + (size_t)op_focei.omegan;
+}
+
 static inline size_t getRxNsubAndMix(rx_solve* rx) {
   return (size_t)getRxNsub(rx) * (op_focei.mixIdxN + 1);
 }
@@ -647,12 +677,6 @@ struct focei_ind {
   double *etahf;
   double *etahr;
   double *etahh;
-  //
-  // Per-subject Gill step sizes for the outer d(llik)/d(theta) FD fallback.
-  // Per SUBJECT as well as per theta: a subject only reaches this path because
-  // its augmented solve failed, so its usable step is its own property and must
-  // not be shared with subjects that solved cleanly.  0 = not yet chosen.
-  double *outerThetaHf;
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
   //
@@ -848,9 +872,6 @@ extern "C" void rxOptionsFreeFocei() {
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
   op_focei.gthetaGrad = NULL;
-  if (op_focei.gouterThetaHf != NULL && op_focei.mGouterThetaHf) R_Free(op_focei.gouterThetaHf);
-  op_focei.gouterThetaHf = NULL;
-  op_focei.mGouterThetaHf = false;
   op_focei.mGthetaGrad = false;
 
   // Eq-48 warm-start buffers (standalone, not part of the contiguous per-subject block)
@@ -1127,6 +1148,26 @@ static inline double scalePar(double *x, int i){
 }
 
 
+// Install the Omega-derived globals from an omega block on the ESTIMATION scale (the
+// parameterization op_focei.fullTheta[ntheta..] carries).  The theta -> Omega map lives in
+// the R-side _rxInv handle, so this cannot run inside a parallel region -- the FD-full
+// covariance's foceiFdSetOmega() is its variance-covariance-scale, pure-C++ sibling.
+// Shared by updateTheta(), the final-Omega refresh and the per-individual FD's omega phase,
+// which all used to inline the same five lines.
+static void foceiOmegaFromTheta(const double *omBlock) {
+  if (op_focei.omegan == 0) return;
+  NumericVector omegaTheta(op_focei.omegan);
+  std::copy(omBlock, omBlock + op_focei.omegan, omegaTheta.begin());
+  setOmegaTheta(omegaTheta);
+  if (op_focei.fo == 1) {
+    op_focei.omega = getOmegaMat();
+  } else {
+    op_focei.omegaInv = getOmegaInv();
+    op_focei.cholOmegaInv = getCholOmegaInv();
+    op_focei.logDetOmegaInv5 = getOmegaDet();
+  }
+}
+
 void updateTheta(double *theta){
   // Theta is the acutal theta
   unsigned int j, k;
@@ -1171,18 +1212,7 @@ void updateTheta(double *theta){
   }
   // Update setOmegaTheta
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {
-    NumericVector omegaTheta(op_focei.omegan);
-    std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
-              &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
-              omegaTheta.begin());
-    setOmegaTheta(omegaTheta);
-    if (op_focei.fo == 1){
-      op_focei.omega = getOmegaMat();
-    } else {
-      op_focei.omegaInv = getOmegaInv();
-      op_focei.cholOmegaInv = getCholOmegaInv();
-      op_focei.logDetOmegaInv5 = getOmegaDet();
-    }
+    foceiOmegaFromTheta(&op_focei.fullTheta[0] + op_focei.ntheta);
   }
   //Now Setup Last theta
   if (!op_focei.calcGrad){
@@ -1298,7 +1328,9 @@ struct FdInnerStateGuard {
   double lik[3];
   unsigned int setup, uzm;
   int mode, stickyRecalcN2;
-  FdInnerStateGuard(int cid) {
+  double tolFactor;
+  int cid_;
+  FdInnerStateGuard(int cid) : cid_(cid) {
     fInd = &(inds_focei[cid]);
     int ne = op_focei.neta;
     if (fInd->eta != NULL && ne > 0) eta.assign(&fInd->eta[0], &fInd->eta[0] + ne);
@@ -1331,6 +1363,13 @@ struct FdInnerStateGuard {
     // odeSwapSolveRetry() increments this by reference on a hard solve; once it passes
     // op_focei.stickyRecalcN the subject's tolerance stays loosened for the whole fit.
     stickyRecalcN2 = fInd->stickyRecalcN2;
+    // The subject's per-individual ODE tolerance factor.  Saved for the same reason as
+    // stickyRecalcN2: the FD phase pins it (see fdPinRefEtaForce) so every leg is taken at the
+    // fit's tolerance, and whatever rung 2 left on the subject must survive that.
+    {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid));
+      tolFactor = (ind == NULL) ? 1.0 : getIndTolFactor(ind);
+    }
   }
   ~FdInnerStateGuard() {
     if (!eta.empty()) std::copy(eta.begin(), eta.end(), &fInd->eta[0]);
@@ -1344,6 +1383,10 @@ struct FdInnerStateGuard {
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
     fInd->stickyRecalcN2 = stickyRecalcN2;
+    {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid_));
+      if (ind != NULL) setIndTolFactor(ind, tolFactor);
+    }
   }
 };
 
@@ -1362,16 +1405,24 @@ struct FdPhaseStateGuard {
   arma::mat etaM, etaS;
   int didEtaReset, didHessianReset, didEtaNudge;
   int innerPar;
-  FdPhaseStateGuard() {
+  bool sorted;
+  // `par` is whether this phase will actually fork threads.  The sortIds(rx,2)/sortIds(rx,0)
+  // pairing is taken HERE rather than by hand so it spans every parallel region in the phase:
+  // the FD fallback has several (theta legs, theta TV grid, omega legs, omega TV grid) and a
+  // hand-placed un-sort in the middle used to leave the later ones outside the pairing, unlike
+  // every other parallel site in this file.  RAII also puts it back on a throw.
+  explicit FdPhaseStateGuard(bool par = false) : sorted(par) {
     n = op_focei.n; etaM = op_focei.etaM; etaS = op_focei.etaS;
     didEtaReset = op_focei.didEtaReset.load(std::memory_order_relaxed);
     didHessianReset = op_focei.didHessianReset.load(std::memory_order_relaxed);
     didEtaNudge = op_focei.didEtaNudge.load(std::memory_order_relaxed);
     innerPar = _innerParallel.load(std::memory_order_acquire);
+    if (sorted) sortIds(rx, 2);      // only initializes if rx->ordId == NULL
     _innerParallel.store(1, std::memory_order_release);
   }
   ~FdPhaseStateGuard() {
     _innerParallel.store(innerPar, std::memory_order_release);
+    if (sorted) sortIds(rx, 0);
     op_focei.n = n; op_focei.etaM = etaM; op_focei.etaS = etaS;
     op_focei.didEtaReset.store(didEtaReset, std::memory_order_relaxed);
     op_focei.didHessianReset.store(didHessianReset, std::memory_order_relaxed);
@@ -1594,6 +1645,46 @@ static inline int innerOpt1(int id, int likId);   // defined below; used by shi2
 // did not.  Set by foceiOuterFdInd_() per subject, before its loop.
 static thread_local std::vector<double> _fdRefEta;
 
+// Pin one subject to a reference eta and force the next inner evaluation to recompute.
+// Shared by every per-individual difference (theta and omega), because both need the same
+// two things and for the same two reasons:
+//
+//   * every evaluation must START from the same eta, so a central difference is taken about
+//     one point rather than along a drifting path.  Both stores are written: par_ptr is what
+//     the ODE solve reads, but innerOpt1() starts from fInd->eta, so pinning par_ptr alone
+//     still lets the optimizer begin wherever the previous perturbation finished.
+//   * likInner0() decides whether to recompute by comparing the trial eta against oldEta,
+//     and NEITHER THETA NOR OMEGA IS PART OF THAT CHECK.  Pinning the reference eta makes a
+//     match the common case, so without this the previous perturbation's likelihood is
+//     returned and the difference is silently zero.  NA_REAL rather than the -42 sentinel
+//     used elsewhere: any comparison against NaN is unequal, so the recompute is forced
+//     exactly rather than merely made unlikely.  The caller's FdInnerStateGuard restores
+//     oldEta.
+static inline void fdPinRefEtaForce(focei_ind *fInd, rx_solving_options_ind *ind,
+                                    const std::vector<double> &refEta) {
+  if ((int)refEta.size() == op_focei.neta) {
+    for (int i = 0; i < op_focei.neta; ++i) {
+      setIndParPtr(ind, op_focei.etaTrans[i], refEta[(size_t)i]);
+      if (fInd->eta != NULL) fInd->eta[i] = refEta[(size_t)i];
+    }
+  }
+  if (fInd->oldEta != NULL && op_focei.neta > 0) {
+    std::fill_n(&fInd->oldEta[0], op_focei.neta, NA_REAL);
+  }
+  // Pin the ODE tolerance to the FIT's, for the same reason the reference eta is pinned: the
+  // legs must be evaluated on ONE function.
+  //
+  // Two ways they otherwise are not.  A subject reaches this path after rung 2 loosened its
+  // tolerance, so without this it INHERITS that factor and the FD reports a derivative of a
+  // looser function than the analytic terms it is summed with.  Worse, the retry inside
+  // likInner0 can loosen again part-way through a phase, leaving the +h and -h legs at
+  // DIFFERENT tolerances -- a central difference across a tolerance change is noise.
+  // Resetting here, before every evaluation, makes each leg start from the fit's tolerance and
+  // retry independently if it must.  FdInnerStateGuard restores what rung 2 left.
+  setIndTolFactor(ind, 1.0);
+  setIndSolve(ind, -1);            // re-solve: this parameter is not the cached one
+}
+
 arma::vec shi21LikTheta(arma::vec &theta, int id) {
   arma::vec ret(1);
   if (inds_focei == NULL) { ret(0) = NA_REAL; return ret; }
@@ -1614,28 +1705,7 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
   for (int t = 0; t < (int)op_focei.ntheta && t < (int)theta.size(); ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
-  // Start every evaluation from the SAME eta, so a central difference is taken about
-  // one point rather than along a drifting path.  Both stores must be set: par_ptr is
-  // what the ODE solve reads, but innerOpt1() starts its optimization from fInd->eta,
-  // so pinning par_ptr alone still lets the optimizer begin wherever the previous
-  // perturbation happened to finish.
-  if ((int)_fdRefEta.size() == op_focei.neta) {
-    for (int i = 0; i < op_focei.neta; ++i) {
-      setIndParPtr(ind, op_focei.etaTrans[i], _fdRefEta[(size_t)i]);
-      if (fInd->eta != NULL) fInd->eta[i] = _fdRefEta[(size_t)i];
-    }
-  }
-  // likInner0() decides whether to recompute by comparing the trial eta against
-  // fInd->oldEta -- and THETA IS NOT PART OF THAT CHECK.  Pinning the reference eta
-  // above makes a match the common case, so without this the cached likelihood from the
-  // PREVIOUS theta is returned and the difference is silently zero.  NA_REAL rather than
-  // the -42 sentinel used elsewhere: any comparison against NaN is unequal, so the
-  // recompute is forced exactly rather than merely made unlikely.  The caller's
-  // FdInnerStateGuard puts oldEta back.
-  if (fInd->oldEta != NULL && op_focei.neta > 0) {
-    std::fill_n(&fInd->oldEta[0], op_focei.neta, NA_REAL);
-  }
-  setIndSolve(ind, -1);            // re-solve: this theta is not the cached one
+  fdPinRefEtaForce(fInd, ind, _fdRefEta);
   if (!innerOpt1(id, 0)) { ret(0) = NA_REAL; return ret; }
   // lik[0] on this path is the individual's log-likelihood; the outer objective (and so
   // the analytic gradient this must match) is -2LL.
@@ -4826,6 +4896,10 @@ static bool analyticOuterGrad(double *theta, double *g) {
   op_focei.curAnalyticRelax.store(0, std::memory_order_relaxed);
   op_focei.curAnalyticFd = 0;
   op_focei.curAnalyticChartrand = 0;
+  // Per EVALUATION: an early decline can return before gradPooledCore reaches the
+  // point where it records these, and a stale list would finite-difference a subject
+  // that solved fine this time.
+  op_focei.outerFdIds.clear();
   {
     int _nw = op_focei.nDeclineNewton, _n0 = op_focei.nDeclineE0;
     if (analyticOuterGradDirect(theta, g)) {
@@ -4857,6 +4931,25 @@ void numericGrad(double *theta, double *g){
   if (analyticOuterGrad(theta, g)) {
     op_focei.curAnalytic=1;
     op_focei.nAnalyticGrad++;
+    // The same two safety nets the finite-difference branches below apply, which this route
+    // used to return past entirely: gradTrim clamps a runaway component, and a zero or
+    // non-finite component sets zeroGrad, which the optimizer reads as a reset request.  The
+    // analytic gradient is not immune -- a per-subject FD substitution can put a large or NaN
+    // component into an otherwise analytic sum -- and the same numbers would be caught here on
+    // the non-fast path.
+    for (int cpar = (int)op_focei.npars; cpar--;) {
+      if (R_FINITE(op_focei.gradTrim)) {
+        if (g[cpar] > op_focei.gradTrim) {
+          g[cpar] = op_focei.gradTrim;
+        } else if (g[cpar] < -op_focei.gradTrim) {
+          g[cpar] = -op_focei.gradTrim;
+        }
+      }
+      if (g[cpar] == 0.0 || std::isnan(g[cpar]) || ISNA(g[cpar]) || !R_FINITE(g[cpar])) {
+        op_focei.zeroGrad = 1;
+        break;
+      }
+    }
     // analyticOuterGrad set calcGrad=1 for its internal foceiOfv0; the finite-difference
     // gradient paths below reset it to 0 before returning, so restore that invariant here
     // (the objective-only evaluations that follow must run with calcGrad=0 -- the analytic
@@ -5455,13 +5548,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
   op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
   op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(getRxNsub(rx) + 1)
-  // Per-subject Gill steps for the outer FD fallback.  Its own allocation rather
-  // than a slice of the big block: it is sized by npars (not neta) and only the
-  // subjects that fail the augmented solve ever write to it.
-  if (op_focei.gouterThetaHf != NULL && op_focei.mGouterThetaHf) R_Free(op_focei.gouterThetaHf);
-  op_focei.gouterThetaHf =
-    R_Calloc((size_t)op_focei.npars * (size_t)(getRxNsubAndMix(rx) + 1), double);
-  op_focei.mGouterThetaHf = true;
+  // (The per-subject outer-FD step store was here.  The FD fallback's step is searched on the
+  // SUM over the flagged subjects, so it is a property of that set, not of a subject; it now
+  // lives in op_focei.outerFdStep, keyed on the set.)
   op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(getRxNsubAndMix(rx) + 1); // nz
   op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * getRxNall(rx)]
   op_focei.gc       = op_focei.ga + op_focei.neta * getRxNallAndMix(rx);//[op_focei.neta * getRxNall(rx)]
@@ -5571,8 +5660,6 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       6*(op_focei.neta + 1)+1;
 
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
-    fInd->outerThetaHf = (op_focei.gouterThetaHf == NULL) ? NULL :
-      &op_focei.gouterThetaHf[jj];
     jj+= op_focei.npars;
 
     fInd->mode = 1;
@@ -6735,12 +6822,10 @@ void foceiOuterFinal(double *x, Environment e){
   // This will give reproducible likelihoods with fd events
   std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
-  // Same reason for the outer theta FD steps: they are cached per subject across the
-  // fit, so the final objective must not inherit a step chosen at some earlier theta.
-  if (op_focei.gouterThetaHf != NULL && rx != NULL) {
-    std::fill_n(op_focei.gouterThetaHf,
-                (size_t)op_focei.npars * (size_t)(getRxNsubAndMix(rx) + 1), 0.0);
-  }
+  // Same reason for the outer FD fallback's steps: they are cached across the fit, so the
+  // final objective must not inherit a step chosen at some earlier theta.
+  op_focei.outerFdStep.clear();
+  op_focei.outerFdStepIds.clear();
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
   _finalObfCalc = true;
@@ -7074,6 +7159,11 @@ Environment foceiOuter(Environment e){
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
+  op_focei.nOuterFdInd=0;
+  op_focei.outerFdIds.clear();
+  op_focei.outerFdStep.clear();
+  op_focei.outerFdStepIds.clear();
+  op_focei.nFdStepClamped=0;
   op_focei.nNewtonMaxit=0;
   op_focei.nNewtonSolve=0;
   op_focei.nNewtonSingular=0;
@@ -8039,6 +8129,7 @@ int foceiCalcR(Environment e){
   }
   return 1;
 }
+
 
 // Necessary for S-matrix calculation
 int foceiS(double *theta, Environment e, bool &hasZero){
@@ -9665,6 +9756,11 @@ void foceiFinalizeTables(Environment e){
         // than only that the numbers were right (a silent fallback looks identical).
         e["nAnalyticGrad"] = IntegerVector::create(op_focei.nAnalyticGrad);
         e["nAnalyticGradDirect"] = IntegerVector::create(op_focei.nAnalyticGradDirect);
+        // Per-subject finite-difference substitutions applied over the fit.  Nonzero
+        // means the analytic gradient SURVIVED a failed subject; the alternative -- the
+        // whole evaluation declining to a finite-difference gradient -- is what
+        // nAnalyticGradDirect == 0 shows, and the two used to be indistinguishable.
+        e["nOuterFdInd"] = IntegerVector::create(op_focei.nOuterFdInd);
         e["nGradDecline"] = IntegerVector::create(
           _["newton"] = op_focei.nDeclineNewton,
           _["e0"] = op_focei.nDeclineE0,
@@ -9676,7 +9772,11 @@ void foceiFinalizeTables(Environment e){
           _["backtrack"] = op_focei.nNewtonBacktrack);
         e["nFdOutlier"] = IntegerVector::create(
           _["params"] = op_focei.nFdOutlierParam,
-          _["chartrandSlopes"] = op_focei.nFdChartrand);
+          _["chartrandSlopes"] = op_focei.nFdChartrand,
+          // Step searches that ended on hMin/hMax.  Each one declines that parameter, and so
+          // the whole gradient evaluation, to finite differences -- the only visible symptom
+          // otherwise is a fit that is unexpectedly slow.
+          _["stepClamped"] = op_focei.nFdStepClamped);
         e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
@@ -11704,20 +11804,13 @@ static arma::vec tvSolveAlpha(const arma::mat &A, const arma::mat &AtA, const ar
   return u;
 }
 
-static double fdTvDeriv(arma::vec &theta, int id, int j, double span,
-                        int N, double alphaFixed, int iters) {
-  if (!R_finite(span) || span <= 0 || N < 6) return NA_REAL;
-  double th0 = theta[j];
-  double dx = 2.0 * span / (double)N;
+// The TV solve proper, on samples ALREADY taken: f[i] is -2LL at grid point i of an evenly
+// spaced interval of N+1 points, dx apart.  Split out of fdTvDeriv so the theta path (one
+// subject per grid) and the omega path (one R-side Omega rebuild per grid point, shared by
+// every subject) run the same estimator rather than two copies of it.
+static double tvDerivFromSamples(arma::vec f, double dx, int N,
+                                 double alphaFixed, int iters) {
   int n1 = N + 1;
-  arma::vec f((size_t)n1);
-  arma::vec tk = theta;
-  for (int i = 0; i < n1; ++i) {
-    tk[j] = th0 - span + (double)i * dx;
-    double fi = shi21LikTheta(tk, id)(0);
-    if (!R_finite(fi)) return NA_REAL;
-    f[(size_t)i] = fi;
-  }
   f -= f[0];
   arma::mat A((size_t)n1, (size_t)n1, arma::fill::zeros);
   for (int i = 1; i < n1; ++i) {
@@ -11786,6 +11879,152 @@ static double fdTvDeriv(arma::vec &theta, int id, int j, double span,
   return R_finite(c) ? c : NA_REAL;
 }
 
+// (The per-subject sampler fdTvDeriv() lived here: one 41-point grid per outlier SUBJECT,
+// walked serially.  Superseded by fdThetaTvDeriv() below, which walks one grid for the whole
+// outlier set and evaluates every subject at each point in parallel.  Both feed the same
+// tvDerivFromSamples().)
+
+// ---- shared-step theta/sigma primitives ----------------------------------------------
+//
+// Same shape as the non-fast path's numericGrad(): a sequential loop over parameters, ONE
+// step search per parameter on a summed objective, and every likelihood evaluation parallel
+// over subjects.  numericGrad differences the TOTAL objective, so its step is shared across
+// subjects by construction; this is that design restricted to the flagged subset.
+//
+// Per-subject SLOPES are still produced -- the legs are evaluated and stored per subject --
+// so the across-subject outlier test and its TV repair keep working.  Only the STEP is
+// pooled.  What is lost relative to a per-subject search is the median-step repair of a
+// clamped step, since one shared step leaves no population of converged peers to repair
+// from; a clamped shared step is therefore rejected outright and the caller declines.
+static std::vector<int> _fdThIds;
+static std::vector< std::vector<double> > _fdThRefEta;
+static int _fdThCores = 1;
+static bool _fdThParallel = false;
+
+// The cache stores the step NORMALIZED by 1/(|par|+1) and reconstitutes it as
+// h = stored * (|par|+1), which is gill83's convention in this file (it sets
+// aEps = rEps = hf*err with err = 1/(|theta|+1), and the plain FD rebuilds
+// delta = |theta|*rEps + aEps -- the same product).  At the parameter value the step was
+// searched at the two agree exactly; the point is that the cache OUTLIVES that value.  The
+// step is reused across outer iterations while theta moves, and a bare absolute step
+// calibrated at tka = 0.45 is still that absolute step once tka has drifted.
+static inline double fdStepNorm(double parVal) { return 1.0 / (std::fabs(parVal) + 1.0); }
+
+// The shared step cache, keyed on the flagged set.  Returns the reconstituted step for
+// full-theta column `col`, or 0.0 when nothing usable is cached (the caller then searches).  A
+// set that differs from the cached one invalidates the whole vector rather than one column:
+// every column was searched against the same sum.
+static double fdStepCacheGet(const std::vector<int> &ids, int col, double parVal) {
+  if (op_focei.outerFdStepIds != ids ||
+      op_focei.outerFdStep.size() != foceiOuterFdN()) {
+    op_focei.outerFdStepIds = ids;
+    op_focei.outerFdStep.assign(foceiOuterFdN(), 0.0);
+    return 0.0;
+  }
+  if (col < 0 || (size_t)col >= op_focei.outerFdStep.size()) return 0.0;
+  const double s = op_focei.outerFdStep[(size_t)col];
+  if (!(s > 0.0)) return 0.0;
+  return s / fdStepNorm(parVal);
+}
+
+// Store a step that has already PASSED the bound test.  Nothing else is ever stored: caching
+// a clamped step would make the next evaluation skip the search, fail the same bound test and
+// decline again, for the rest of the fit.
+static void fdStepCachePut(int col, double h, double parVal) {
+  if (op_focei.outerFdStep.size() != foceiOuterFdN()) return;
+  if (col < 0 || (size_t)col >= op_focei.outerFdStep.size()) return;
+  op_focei.outerFdStep[(size_t)col] = h * fdStepNorm(parVal);
+}
+
+// Every flagged subject's -2LL at `tk`, parallel over subjects.
+//
+// Safe to share `tk` across workers: shi21LikTheta only READS it, and writes per-subject
+// state (par_ptr, fInd) plus the thread_local _fdRefEta -- it deliberately never writes
+// op_focei.fullTheta, which is what would race.  Each worker installs its own subject's
+// reference eta, which is why _fdThRefEta is kept per subject rather than in _fdRefEta.
+static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
+  const int nid = (int)_fdThIds.size();
+  out.assign((size_t)nid, NA_REAL);
+  arma::vec tw = tk;                 // shi21LikTheta takes a non-const reference
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    _fdRefEta = _fdThRefEta[(size_t)k];
+    out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(-1);
+#endif
+  }
+  // Serial retry, as the omega legs and foceiS do: the parallel and serial routes do not
+  // pick the same inner buffers, so a failure above is not necessarily one here.
+  for (int k = 0; k < nid; ++k) {
+    if (R_finite(out[(size_t)k])) continue;
+    _fdRefEta = _fdThRefEta[(size_t)k];
+    out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
+  }
+}
+
+// Summed -2LL over the flagged subjects, for the STEP SEARCH only.  Summed in a fixed
+// subject order, never by an OpenMP reduction, so the total is bit-identical across thread
+// counts.
+arma::vec shi21LikThetaSum(arma::vec &theta, int) {
+  arma::vec ret(1); ret(0) = NA_REAL;
+  std::vector<double> v;
+  fdThetaLikAll(theta, v);
+  double tot = 0.0;
+  for (size_t k = 0; k < v.size(); ++k) {
+    if (!R_finite(v[k])) return ret;
+    tot += v[k];
+  }
+  ret(0) = tot;
+  return ret;
+}
+
+// One leg at a settled step: per-subject -2LL with theta[j] shifted by delta.
+static void fdThetaLeg(const arma::vec &theta, int j, double delta,
+                       std::vector<double> &out) {
+  arma::vec tk = theta;
+  if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += delta;
+  fdThetaLikAll(tk, out);
+}
+
+// Theta counterpart of fdOmegaTvDeriv: one grid walked once, every outlier subject evaluated
+// at each point in parallel, feeding the shared tvDerivFromSamples.  Replaces the
+// per-subject fdTvDeriv loop, which paid N+1 solves per outlier subject serially.
+static void fdThetaTvDeriv(const arma::vec &theta, int j,
+                           const std::vector<char> &isOutlier,
+                           const std::vector<int> &thK,
+                           double span, int N, double alphaFixed, int iters,
+                           std::vector<double> &dOut) {
+  const size_t nFd = _fdThIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (!R_finite(span) || span <= 0 || N < 6 || nFd == 0) return;
+  const int n1 = N + 1;
+  const double dx = 2.0 * span / (double)N;
+  std::vector< std::vector<double> > samples((size_t)n1);
+  for (int i = 0; i < n1; ++i) {
+    fdThetaLeg(theta, j, -span + (double)i * dx, samples[(size_t)i]);
+    if (samples[(size_t)i].size() != nFd) return;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)thK[r];
+    if (row >= isOutlier.size() || !isOutlier[row]) continue;
+    arma::vec f((size_t)n1);
+    bool ok = true;
+    for (int i = 0; i < n1; ++i) {
+      const double v = samples[(size_t)i][r];
+      if (!R_finite(v)) { ok = false; break; }
+      f[(size_t)i] = v;
+    }
+    if (!ok) continue;
+    dOut[r] = tvDerivFromSamples(f, dx, N, alphaFixed, iters);
+  }
+}
+
 // gill83's scalar objective for the per-individual FD: this subject's -2LL at `theta`.
 // Reuses shi21LikTheta(), so the theta install, the pinned reference eta and the
 // innerOpt1() re-optimization are identical to the shi path -- only the differencing
@@ -11842,78 +12081,202 @@ NumericVector foceiIndLik_(NumericVector thetaIn, IntegerVector ids0) {
   return out;
 }
 
-// The per-individual step search for the outer theta finite difference.
+// (The PER-SUBJECT theta step search lived here -- fdCentralAt(), calcOuterThetaHf() and
+// fdThetaOneSubject(), one shi21Central search per subject per parameter.  Replaced by the
+// shared-step primitives above, which follow numericGrad()'s shape instead.  What still
+// applies to the shared search, because it is the same shi21Central call on the same kind of
+// objective:
 //
-// Modelled on the etahf block in calcEtaHessian -- same shi21Central machinery, same
-// optimize-once/cache/reuse discipline -- but deliberately SEPARATE from it.  What is
-// differenced here is the individual's contribution to the OVERALL likelihood
-// (shi21LikTheta), not the inner problem's conditional objective that etahf is tuned
-// for, so the two are different functions and cannot share a step store.
+//   * Step bounds stay the fit's global shi21hMin/hMax, NOT a per-parameter rescaling.  Two
+//     heuristics were tried and REJECTED on measurement (theo_sd, 12 subjects): a floor of
+//     eps^(1/3)*max(|theta|,1) (~1.2e-5) on the premise that eps^(1/3) is the
+//     central-difference optimum -- wrong premise, this is a PROFILE likelihood whose noise
+//     floor is the inner optimizer's convergence, and lowering the floor took tka from ratio
+//     0.963 to 0.317, so the 1e-4 default is protective rather than restrictive; and a
+//     ceiling of 0.1*max(|theta|,1), which missed the runaway it targeted and clamped three
+//     subjects that were fine.
+//   * shi CENTRAL differences, not Gill83.  Gill was tried because it behaves better on the
+//     OUTER objective gradient and takes a scalar objective, which this is -- but on theo_sd
+//     it was worse in every direction (ratios -0.10/-0.018/0.86/1.28 against shi's
+//     0.963/-0.053/0.992/0.997).  gill83fnLik() is kept for re-testing that comparison.
+//   * Plain shi differences by default; the TV refinement runs ONLY where the across-subject
+//     pass flags the parameter, i.e. where the O(h^2) term is demonstrably material.)
+
+// ---- omega directions of the per-individual FD --------------------------------------
 //
-// Gated to the individual: every theta direction is searched inside ONE subject's
-// established inner problem, against one pinned reference eta and one f0.  Before this
-// the search was re-run from the outer theta loop on every gradient call, so the step
-// was re-chosen from whatever state that call happened to begin in -- the step, and so
-// the difference, was not a property of the subject but of the call.  Cached in
-// fInd->outerThetaHf and reused thereafter (reset in foceiOuterFinal, as etahf is).
-// One plain central difference of the individual likelihood at a GIVEN step.  Split out
-// because three callers need it: the cached-step branch below, the bound repair, and the
-// reuse path.  f0 is only consulted when a leg fails to solve (calcGradCentral falls back
-// to one-sided), so passing the subject's f0 from the reference point is correct.
-static double fdCentralAt(arma::vec &theta, int id, int j, double h, arma::vec &f0) {
-  arma::vec hTheta = theta, grPH, grMH;
-  hTheta[j] = theta[j] + h;
-  grPH = shi21LikTheta(hTheta, id);
-  hTheta[j] = theta[j] - h;
-  grMH = shi21LikTheta(hTheta, id);
-  arma::vec g = calcGradCentral(grMH, f0, grPH, h);
-  return g(0);
+// A theta perturbation is per subject: shi21LikTheta writes par_ptr, which nothing else
+// reads.  Omega is not -- it reaches an individual likelihood only through curOmegaInv()
+// and curLogDetOmegaInv5(), and building a perturbed Omega^-1 means setOmegaTheta(), which
+// calls R and so cannot run inside a parallel region.
+//
+// So the perturbed (Omega^-1, 0.5*log|Omega^-1|) pairs are built ONCE, serially, and then
+// installed per thread through OmegaScope while the subjects are differenced in parallel.
+// The step is therefore shared across the flagged subjects for a given parameter -- the same
+// arrangement the theta block now uses, so the two phases differ only in HOW an evaluation is
+// set up, not in how the step is chosen.  Less costly than it sounds: omega enters only
+// through eta' Omega^-1 eta and log|Omega|, so the per-perturbation ODE re-solve that makes
+// the theta directions rough is absent here.
+static std::vector<int> _fdOmIds;
+static std::vector< std::vector<double> > _fdOmRefEta;
+static std::vector<double> _fdOmBlock0;
+// The theta the omega block must be differenced AT.  Load bearing: shi21LikTheta writes its
+// perturbed theta into par_ptr and NOTHING puts it back -- EtaRestoreGuard covers etaTrans
+// only -- so by the time the omega phase runs, par_ptr still holds whatever the last theta
+// pass left (the outlier pass leaves theta_j + 0.05).  Both omega legs would share that
+// displacement, making the result a valid derivative of the WRONG function, biased by
+// d2(-2LL_i)/dOmega dTheta times the leftover step.  So the omega phase installs the base
+// theta itself rather than trusting what it inherits.
+static std::vector<double> _fdOmTheta0;
+
+// Omega^-1 and its half-log-determinant for a perturbed omega block, WITHOUT leaving the
+// globals moved: only the R-side _rxInv state is written, and the caller rebuilds from
+// _fdOmBlock0 when it is done.
+static bool fdOmegaBuild(const std::vector<double> &blk, arma::mat &oiOut, double &ldOut) {
+  if (op_focei.omegan == 0) return false;
+  NumericVector ot((int)op_focei.omegan);
+  for (unsigned int q = 0; q < op_focei.omegan; ++q) ot[(int)q] = blk[(size_t)q];
+  setOmegaTheta(ot);
+  oiOut = getOmegaInv();
+  ldOut = getOmegaDet();
+  return oiOut.is_finite() && R_finite(ldOut);
 }
 
-static void calcOuterThetaHf(int id, arma::vec &theta, arma::vec &f0, int nth,
-                             double *grOut, double *hOut) {
+// One flagged subject's -2LL under a thread-local perturbed Omega.  op_focei.cholOmegaInv
+// is deliberately NOT perturbed: it is read by the eta-reset bound test, not by the
+// likelihood, so leaving it fixed keeps both legs taking the same reset decisions, which
+// helps the difference cancel.
+static double fdOmegaLikOne(int id, const arma::mat &oi, double ld,
+                            const std::vector<double> &refEta) {
   focei_ind *fInd = &(inds_focei[id]);
-  arma::vec gr(1);
-  for (int j = 0; j < nth; ++j) {
-    double h = (fInd->outerThetaHf == NULL) ? 0.0 : fInd->outerThetaHf[j];
-    if (h == 0.0) {
-      // Not chosen yet for this subject/parameter.  Search, and take the search's own
-      // final central difference as the gradient -- the eta path does the same rather
-      // than spending another pair of evaluations on a step it just probed.
-      //
-      // Step bounds: the fit's global shi21hMin/hMax, NOT a per-parameter rescaling.
-      // Two heuristics were tried and REJECTED on measurement (theo_sd, 12 subjects):
-      //
-      //   floor eps^(1/3)*max(|theta|,1) (~1.2e-5): reasoning was that eps^(1/3) is the
-      //     central-difference optimum so the 1e-4 default sat above it.  Wrong premise
-      //     -- this objective is a PROFILE likelihood, so its noise floor is set by the
-      //     inner optimizer's convergence, not by machine epsilon.  Lowering the floor
-      //     let the search into that noise and took tka from ratio 0.963 to 0.317.  The
-      //     1e-4 default is protective here, not restrictive.
-      //   ceiling 0.1*max(|theta|,1): did not catch the runaway it targeted (tcl's bad
-      //     subject sits at h=0.0263, under the bound) and clamped three tka subjects
-      //     that were fine.
-      //
-      // The remaining outliers are large relative to the OTHER SUBJECTS' steps for the
-      // same parameter, not in absolute terms, so a fixed multiple of the parameter
-      // cannot separate them -- that is what the across-subject pass below is for.
-      double hNew = shi21Central(shi21LikTheta, theta, h,
-                                 f0, gr, id, j,
-                                 op_focei.hessEps,
-                                 1.5,   // rl
-                                 4.5,   // ru
-                                 3.0,   // nu
-                                 op_focei.shi21maxFD,
-                                 op_focei.shi21hMax, op_focei.shi21hMin);
-      if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hNew;
-      grOut[j] = gr(0);
-      hOut[j] = hNew;
-      continue;
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  if (ind == NULL) return NA_REAL;
+  OmegaScope omScope(oi, ld);
+  // Install the BASE theta.  par_ptr still holds whatever the theta phase last perturbed
+  // (see _fdOmTheta0): inheriting it would difference omega at a displaced theta.
+  for (size_t t = 0; t < _fdOmTheta0.size(); ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], _fdOmTheta0[t]);
+  }
+  fdPinRefEtaForce(fInd, ind, refEta);
+  if (!innerOpt1(id, 0)) return NA_REAL;
+  return -2.0 * fInd->lik[0];
+}
+
+// Summed -2LL over the flagged subjects, for the omega STEP SEARCH only.  The per-subject
+// values come from two explicit legs at the step this settles on.
+//
+// Only the R-side Omega REBUILD is serial (once per evaluation, before the loop); the
+// per-subject sweep is pure C++ -- fdOmegaLikOne installs the perturbed Omega through the
+// thread_local OmegaScope -- so it parallelizes exactly like fdOmegaLeg.  Summed afterwards
+// in a fixed subject order, never by an OpenMP reduction, so the total is bit-identical
+// across thread counts.
+arma::vec shi21LikOmegaSum(arma::vec &om, int) {
+  arma::vec ret(1); ret(0) = NA_REAL;
+  std::vector<double> blk = _fdOmBlock0;
+  for (unsigned int q = 0; q < op_focei.omegan && q < om.size(); ++q) blk[(size_t)q] = om[q];
+  arma::mat oi; double ld;
+  if (!fdOmegaBuild(blk, oi, ld)) return ret;
+  const int nid = (int)_fdOmIds.size();
+  std::vector<double> v((size_t)nid, NA_REAL);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    v[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(-1);
+#endif
+  }
+  for (int k = 0; k < nid; ++k) {
+    if (R_finite(v[(size_t)k])) continue;
+    v[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
+  }
+  double tot = 0.0;
+  for (int k = 0; k < nid; ++k) {
+    if (!R_finite(v[(size_t)k])) return ret;
+    tot += v[(size_t)k];
+  }
+  ret(0) = tot;
+  return ret;
+}
+
+// One omega leg at a settled step: build the perturbed Omega once, then difference every
+// flagged subject.  Parallel over subjects -- the perturbation is a thread-local
+// OmegaScope inside fdOmegaLikOne, and each iteration writes only its own slot.
+static void fdOmegaLeg(int j, double delta, int fdCores, bool fdParallel,
+                       std::vector<double> &out) {
+  out.assign(_fdOmIds.size(), NA_REAL);
+  std::vector<double> blk = _fdOmBlock0;
+  blk[(size_t)j] += delta;
+  arma::mat oi; double ld;
+  if (!fdOmegaBuild(blk, oi, ld)) return;
+  const int nid = (int)_fdOmIds.size();
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (fdParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    out[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
+#ifdef _OPENMP
+    if (fdParallel) setRxThreadId(-1);
+#endif
+  }
+  // Serial retry, as foceiS does for its own parallel pass: the parallel and serial routes
+  // pick different inner buffers, so a failure above is not necessarily a failure here.
+  for (int k = 0; k < nid; ++k) {
+    if (R_finite(out[(size_t)k])) continue;
+    out[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
+  }
+}
+
+// Puts the R-side Omega, and every global derived from it, back on ANY exit from the omega
+// phase.  Everything else in this phase is RAII-guarded; this was the one restore still sitting
+// on the normal path only.  Always armed, because the phase's f0 leg perturbs before any
+// parameter loop runs.
+struct FdOmegaRestore {
+  ~FdOmegaRestore() { foceiOmegaFromTheta(_fdOmBlock0.data()); }
+};
+
+// Omega counterpart of fdTvDeriv's sampling loop, feeding the same tvDerivFromSamples.
+//
+// The grid is walked ONCE for the whole flagged set: a grid point costs one serial R-side
+// Omega rebuild plus a parallel sweep over subjects (fdOmegaLeg), so N+1 rebuilds cover
+// every outlier subject.  The theta path instead pays N+1 solves per outlier subject, which
+// is why applying this to omega is cheaper per subject than the theta pass it mirrors.
+//
+// `isOutlier` is indexed by ROW OF `out` (like the theta pass), so omK maps a flagged-set
+// position to its row.  Non-outliers keep their central difference and are never sampled.
+static void fdOmegaTvDeriv(int q, const std::vector<char> &isOutlier,
+                           const std::vector<int> &omK,
+                           double span, int N, double alphaFixed, int iters,
+                           int fdCores, bool fdParallel,
+                           std::vector<double> &dOut) {
+  const size_t nFd = _fdOmIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (!R_finite(span) || span <= 0 || N < 6 || nFd == 0) return;
+  const int n1 = N + 1;
+  const double dx = 2.0 * span / (double)N;
+  std::vector< std::vector<double> > samples((size_t)n1);
+  for (int i = 0; i < n1; ++i) {
+    fdOmegaLeg(q, -span + (double)i * dx, fdCores, fdParallel, samples[(size_t)i]);
+    if (samples[(size_t)i].size() != nFd) return;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)omK[r];
+    if (row >= isOutlier.size() || !isOutlier[row]) continue;
+    arma::vec f((size_t)n1);
+    bool ok = true;
+    for (int i = 0; i < n1; ++i) {
+      const double v = samples[(size_t)i][r];
+      if (!R_finite(v)) { ok = false; break; }
+      f[(size_t)i] = v;
     }
-    // Cached step: a plain central difference about the pinned reference point, which
-    // is what makes repeat gradient calls at the same theta reproduce each other.
-    grOut[j] = fdCentralAt(theta, id, j, h, f0);
-    hOut[j] = h;
+    if (!ok) continue;
+    dOut[r] = tvDerivFromSamples(f, dx, N, alphaFixed, iters);
   }
 }
 
@@ -11925,38 +12288,109 @@ static void calcOuterThetaHf(int id, arma::vec &theta, arma::vec &f0, int nth,
 //' process global that only changes at a batch boundary, so the two cannot interleave.
 //' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
 //'
-//' Differences the subject's own likelihood with shi CENTRAL differences at an
-//' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
-//' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
-//' difference a different problem than the inner problem's etahf is tuned for, so
-//' sharing one store would mis-size both.
+//' Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
+//' optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
+//' flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
+//' subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
+//' differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
+//' the across-subject outlier pass and its TV refinement still work; only the step is pooled.
 //'
-//' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
-//' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
-//' this per-subject phase.  Until that lands the caller must still treat an omega
-//' direction as unavailable.
+//' Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
+//' see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
+//' R call, so it is built once per evaluation outside the parallel region).
 //' @param ids0 0-based subject ids to difference
-//' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
-//'   re-optimized even at a perturbed theta
+//' @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
+//'   the reference distribution of the outlier pass; may be a 0 x 0 matrix
+//' @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
+//'   block then omega block), natural parameter scale.  NA where a subject could not be
+//'   re-optimized even at a perturbed parameter
 //' @noRd
 //[[Rcpp::export]]
 NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   int nid = ids0.size();
   int nth = (int)op_focei.ntheta;
-  NumericMatrix out(nid, nth);
-  NumericMatrix hOut(nid, nth);     // the step shi actually settled on, for diagnostics
+  int nom = (int)op_focei.omegan;
+  int nAll = nth + nom;
+  NumericMatrix out(nid, nAll);
+  NumericMatrix hOut(nid, nAll);    // the step shi actually settled on, for diagnostics
   std::fill(out.begin(), out.end(), NA_REAL);
   std::fill(hOut.begin(), hOut.end(), NA_REAL);
   if (nid == 0 || nth == 0 || inds_focei == NULL) return out;
   rx = getRxSolve_();
   if (rx == NULL) return out;
   int nsub = foceiIndSetupN(rx);
+  // TEST HOOKS (removable) -- the oracle for this phase.
+  //
+  // The accuracy of a difference here is a question about (subject, parameter, step), and
+  // nothing outside could see any of the three: the step was chosen internally and discarded,
+  // so "is this slope wrong because the step is wrong" was unanswerable from R.  An external
+  // hand-difference is NOT a substitute -- one written through foceiIndLik_ reproduced the
+  // analytic slope only for a parameter with no eta attached, because it does not establish
+  // calcGrad=1 and innerOpt1 then discards the pinned reference eta.  So the probe has to run
+  // THROUGH this function, guards and all.
+  //
+  //   NLMIXR2EST_OUTER_FD_H     force this step for every parameter, skipping the search, the
+  //                             cache and the bound test -- so a plateau can be swept
+  //   NLMIXR2EST_OUTER_FD_SPAN  override the TV refinement's interval half-width
+  //
+  // The settled steps come back as the "h" attribute of the returned matrix (see the end),
+  // which needs no arity change and so no src/init.c edit.
+  double _fdForceH = 0.0, _fdSpanOverride = 0.0;
+  {
+    const char *e_ = getenv("NLMIXR2EST_OUTER_FD_H");
+    if (e_ != NULL && e_[0] != '\0') _fdForceH = atof(e_);
+    const char *s_ = getenv("NLMIXR2EST_OUTER_FD_SPAN");
+    if (s_ != NULL && s_[0] != '\0') _fdSpanOverride = atof(s_);
+  }
   // The inner problem's event-sensitivity shape, installed once for the whole phase --
   // outside any parallel region, as OdeSwapEsBatch requires.
   OdeSwapEsBatch esBatch(odeSlotInner);
+  // A profile derivative is only defined with the inner problem SOLVED at each perturbed
+  // parameter.  maxInnerIterations feeds n1qn1's cap directly, and .foceiGradDirect() pins
+  // it to 0 ("evaluate at the fit's EBEs, do not re-optimize") -- right for the analytic
+  // path, which reads the EBEs it is handed, but it freezes the EBE here.  For a
+  // mu-referenced theta the eta must move to absorb the perturbation; holding it drops the
+  // (dObj/deta)(deta*/dtheta) term, which is O(1) for exactly those parameters because the
+  // objective's log|H| is not stationary in eta.
+  // The bump is REQUIRED, not optional: the non-fast FD differences foceiOfv0, which runs
+  // innerOpt() and re-optimizes every subject's eta at the perturbed theta.  A per-subject
+  // difference has to do the same or it differences a fixed-eta function that nothing
+  // minimizes.  maxInnerIterations == 0 arriving here is the ANALYTIC arm's setting (
+  // .foceiGradDirect: "read the EBEs you are handed"), which must not be inherited.
+  //
+  // TEST HOOK (removable): NLMIXR2EST_OUTER_FD_MAXINNER=<n> overrides the cap, so "is 100
+  // iterations from a PINNED start enough for a badly conditioned subject" can be measured.
+  // Unlike innerOpt(), this path re-pins the eta to saveEta before every evaluation, so it
+  // never warm-starts -- an under-converged re-optimization would look like a stable but wrong
+  // derivative.
+  struct InnerItGuard {
+    int saved;
+    InnerItGuard() : saved(op_focei.maxInnerIterations) {
+      int want = 100;
+      const char *e_ = getenv("NLMIXR2EST_OUTER_FD_MAXINNER");
+      if (e_ != NULL && e_[0] != '\0') want = atoi(e_);
+      if (want >= 0 && op_focei.maxInnerIterations < want) op_focei.maxInnerIterations = want;
+      if (want == 0) op_focei.maxInnerIterations = 0;   // deliberate freeze, for contrast only
+    }
+    ~InnerItGuard() { op_focei.maxInnerIterations = saved; }
+  } _itGuard;
+  // Own calcGrad rather than inheriting it.  With calcGrad == 0 innerOpt1 takes the Almquist
+  // warm start and the standardized-eta reset branch, both of which DISCARD the reference eta
+  // fdPinRefEtaForce just pinned -- so the two legs would be taken about different points,
+  // which is the exact defect the pin exists to remove.  analyticOuterGrad already sets it, so
+  // this only matters for the exported/diagnostic entries; foceiS guards the same way.
+  struct CalcGradGuard {
+    int saved;
+    CalcGradGuard() : saved(op_focei.calcGrad) { op_focei.calcGrad = 1; }
+    ~CalcGradGuard() { op_focei.calcGrad = saved; }
+  } _cgGuard;
   arma::vec theta((size_t)nth);
   std::vector<double> theta0((size_t)nth);
   for (int t = 0; t < nth; ++t) { theta[t] = op_focei.fullTheta[t]; theta0[t] = theta[t]; }
+  // Omega block, on the natural scale, as found.  Every omega leg rebuilds from this.
+  _fdOmBlock0.assign((size_t)nom, 0.0);
+  for (int q = 0; q < nom; ++q) _fdOmBlock0[(size_t)q] = op_focei.fullTheta[nth + q];
+  _fdOmTheta0.assign(theta0.begin(), theta0.end());
   // innerOpt1() must be called under the SAME bracketing the inner problem uses, or it
   // reads the wrong per-thread state.  Two parts, both load bearing:
   //   * _innerParallel is set UNCONDITIONALLY (as innerOpt does): it gates how the inner
@@ -11972,174 +12406,174 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   int fdCores = getOpCores(op0);
   if (fdCores < 1) fdCores = 1;
   const bool fdParallel = (fdCores > 1) && solveMethodThreadSafe(op0);
-  if (fdParallel) sortIds(rx, 2);
-  // Covers the WHOLE phase, serial passes included -- see FdPhaseStateGuard.  It also
-  // sets _innerParallel, which is why that store is no longer done by hand here.
-  FdPhaseStateGuard phaseGuard;
-  // INVARIANT for bit-identical results across thread counts: this region performs NO
-  // reduction.  Each iteration writes only its own subject's slots (out(k,.), hOut(k,.)),
-  // and every sum over subjects is taken AFTER the region, in a fixed order.  An OpenMP
-  // reduction would accumulate in whatever order the threads finish, so the total would
-  // depend on the thread count in the last bits; storing per subject and summing
-  // afterwards makes the result identical by construction rather than by luck.  The
-  // batched analytic kernel follows the same pattern (gmat.col(i) in the region,
-  // sum(gmat, 1) after it), and any future wiring of these values into the gradient must
-  // keep it.
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
-#endif
+  // Covers the WHOLE phase, serial passes included -- see FdPhaseStateGuard.  It also sets
+  // _innerParallel and takes the sortIds pairing, which is why neither is done by hand here.
+  FdPhaseStateGuard phaseGuard(fdParallel);
+  // The GLOBAL atol/rtol back to the fit's for the whole phase; fdPinRefEtaForce does the
+  // per-individual factor.  Both are needed: rung 2 uses odeRelaxInd (per subject), but an
+  // earlier global loosening would otherwise leak in here too.  Reused from the cov path.
+  OdeFitTolGuard fdTolGuard;
+  // INVARIANT: no parallel region here performs a REDUCTION.  Each iteration writes only its
+  // own subject's slot, and every sum over subjects is taken AFTER the region, in a fixed
+  // subject order.  An OpenMP reduction would accumulate in whatever order the threads finish,
+  // so the total would depend on the thread count in the last bits; storing per subject and
+  // summing afterwards makes it identical by construction rather than by luck.  The batched
+  // analytic kernel follows the same pattern (gmat.col(i) in the region, sum(gmat, 1) after
+  // it), and any future wiring of these values into the gradient must keep it.
+  //
+  // This makes the ARITHMETIC thread-count independent; it does NOT make the whole phase so.
+  // The serial retries re-run a subject that failed in the parallel pass, and the parallel and
+  // serial routes do not pick the same inner buffers, so a fit with intermittent bad solves can
+  // still differ between thread counts.  foceiS has the same property.
+  _fdThIds.clear();
+  _fdThRefEta.clear();
+  std::vector<int> thK;                       // row of `out` each _fdThIds entry writes
   for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (fdParallel) setRxThreadId(omp_get_thread_num());
-#endif
     int id = ids0[k];
     if (id < 0 || id >= nsub) continue;
-    // PRIVATE copy of theta per subject.  shi21Central() takes its `t` by REFERENCE and
-    // perturbs t[idx] during the step search, so sharing one vector across threads lets
-    // each thread differentiate at another thread's perturbed theta.  Measured before
-    // this fix: per-subject slopes differing by factors of 3-6 between thread counts, on
-    // exactly the outlier subjects the correction depends on.
-    arma::vec thetaK = theta;
-    // The surrounding fit must not inherit ANY of what innerOpt1() moves: par_ptr's eta
-    // (EtaRestoreGuard) plus the inner optimizer's own state, its n1qn1 warm start and
-    // the subject's likelihood (FdInnerStateGuard).  op_focei.fullTheta is restored
-    // after the loop, since every subject perturbs the same global.
-    EtaRestoreGuard etaGuard(id);
-    FdInnerStateGuard fdGuard(id);
-    {
-      rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
-      _fdRefEta.assign((size_t)op_focei.neta, 0.0);
-      for (int i = 0; i < op_focei.neta; ++i) {
-        _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
-      }
-    }
-    arma::vec f0 = shi21LikTheta(thetaK, id);
-    if (!f0.is_finite()) continue;             // cannot even evaluate: leave NA
-    // shi CENTRAL differences, not Gill83.  Gill was tried here because it behaves
-    // better on the OUTER objective gradient and takes a scalar objective, which a
-    // per-subject likelihood is -- but measured on theo_sd it was worse in every
-    // direction (ratios -0.10/-0.018/0.86/1.28 against shi's 0.963/-0.053/0.992/0.997),
-    // so shi stays.  gill83fnLik() is kept for re-testing that comparison.
-    // The step search itself is per individual (calcOuterThetaHf): it runs here, inside
-    // this subject's established inner problem, and caches its step for reuse.
-    //
-    // Plain shi differences here.  Richardson/TV is applied ONLY where the across-subject
-    // pass below flags the parameter -- i.e. where the O(h^2) term is demonstrably
-    // material.  Applying it everywhere was measured to cost accuracy on the directions
-    // that were already right (tka 0.963 -> 0.844, tv 0.992 -> 0.913): it trades bias for
-    // variance on subjects whose h^2 term was already negligible.
-    std::vector<double> grK((size_t)nth, NA_REAL), hK((size_t)nth, NA_REAL);
-    calcOuterThetaHf(id, thetaK, f0, nth, grK.data(), hK.data());
-    for (int j = 0; j < nth; ++j) {
-      out(k, j) = grK[(size_t)j];
-      hOut(k, j) = hK[(size_t)j];
-    }
-#ifdef _OPENMP
-    if (fdParallel) setRxThreadId(-1);
-#endif
+    _fdThIds.push_back(id);
+    thK.push_back(k);
   }
-  // ---- repair pass: subjects whose step search TERMINATED ON ITS BOUND -------------
-  //
-  // shi returns hMin (or hMax) exactly when its ratio test never landed in [rl, ru] and
-  // the clamp stopped it.  That is a FAILURE SIGNAL, not a chosen step: the search gave
-  // up, and hMin is far below where this profile likelihood is differentiable -- its
-  // noise floor is set by the inner optimizer's convergence, not by machine epsilon.
-  //
-  // Measured on theo_sd: subject 12 clamped to hMin=1e-4 for tka and tv, and that ONE
-  // subject carried essentially the entire error in both directions (tka -1.539 of a
-  // -1.546 total, tv -1.740 of -1.777).  Every unclamped subject agreed with a hand
-  // difference to ~1e-2 or better.
-  //
-  // The modified-z pass below CANNOT see this, and testing the slope harder would not
-  // help: subject 12's wrong tka slope (-0.897) is unremarkable among slopes spanning
-  // -5.0 to +2.7, so it is not an outlier in slope.  It is an outlier in STEP -- 1e-4
-  // against a median of 0.255, three and a half orders of magnitude.  Detecting it on
-  // the bound is exact and needs no threshold at all, which is why this is preferred
-  // over the median-step heuristic tried earlier.
-  //
-  // Repair at the median step of the subjects whose search DID converge for the same
-  // parameter: those are steps this objective demonstrably supports in that direction,
-  // and the usable window is per parameter (measured: tka wants ~1e-1, tv ~3e-3).
-  {
-    std::vector<double> hRepair((size_t)nth, 0.0);
-    for (int j = 0; j < nth; ++j) {
-      std::vector<double> ok;
-      for (int k = 0; k < nid; ++k) {
-        double hv = hOut(k, j);
-        if (!R_finite(hv) || hv <= 0) continue;
-        if (hv <= op_focei.shi21hMin || hv >= op_focei.shi21hMax) continue;
-        ok.push_back(hv);
-      }
-      if (ok.empty()) continue;      // nothing converged: leave the clamped values alone
-      std::sort(ok.begin(), ok.end());
-      hRepair[(size_t)j] = ok[ok.size() / 2];
+  _fdThCores = fdCores;
+  _fdThParallel = fdParallel;
+  // Guards span the WHOLE theta phase, its outlier pass included -- the parallel region now
+  // lives inside each evaluation, so per-subject state must not be restored between them.
+  // Explicitly released before the omega phase (see the clear() below): omega captures its
+  // own reference etas from par_ptr and must not inherit a perturbed one.
+  std::vector< std::unique_ptr<EtaRestoreGuard> > thEtaGuards;
+  std::vector< std::unique_ptr<FdInnerStateGuard> > thGuards;
+  if (!_fdThIds.empty()) {
+    thEtaGuards.reserve(_fdThIds.size());
+    thGuards.reserve(_fdThIds.size());
+    for (size_t q = 0; q < _fdThIds.size(); ++q) {
+      thEtaGuards.push_back(std::unique_ptr<EtaRestoreGuard>(new EtaRestoreGuard(_fdThIds[q])));
+      thGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_fdThIds[q])));
     }
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
-#endif
-    for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-      if (fdParallel) setRxThreadId(omp_get_thread_num());
-#endif
-      int id = ids0[k];
-      if (id < 0 || id >= nsub) continue;
-      bool any = false;
-      for (int j = 0; j < nth && !any; ++j) {
-        double hv = hOut(k, j);
-        if (hRepair[(size_t)j] > 0 && R_finite(hv) &&
-            (hv <= op_focei.shi21hMin || hv >= op_focei.shi21hMax)) any = true;
-      }
-      if (!any) continue;
-      arma::vec thetaK = theta;
-      focei_ind *fInd = &(inds_focei[id]);
-      EtaRestoreGuard etaGuard(id);
-      FdInnerStateGuard fdGuard(id);
-      {
-        rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
-        _fdRefEta.assign((size_t)op_focei.neta, 0.0);
+    // The eta every evaluation must start from, captured BEFORE anything perturbs it.  One
+    // vector per subject because _fdRefEta is thread_local and installed per worker.
+    //
+    // From saveEta, which is the eta at which lik[0] was computed -- the SAME point the
+    // analytic arm differentiates at (it builds `ebes` from saveEta and declines if it is
+    // NULL, so it is populated whenever this runs).  fInd->eta is the inner optimizer's
+    // working vector and can sit elsewhere, and par_ptr only happens to agree because
+    // outerSolveFill just wrote ebes into it -- neither is guaranteed on the R-facing entry.
+    // The FD slopes are summed with, and outlier-tested against, the analytic ones, so they
+    // must be taken about the same point.
+    _fdThRefEta.assign(_fdThIds.size(), std::vector<double>());
+    for (size_t q = 0; q < _fdThIds.size(); ++q) {
+      focei_ind *fI = &(inds_focei[_fdThIds[q]]);
+      _fdThRefEta[q].assign((size_t)op_focei.neta, 0.0);
+      if (fI->saveEta != NULL) {
+        for (int i = 0; i < op_focei.neta; ++i) _fdThRefEta[q][(size_t)i] = fI->saveEta[i];
+      } else {
+        rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(_fdThIds[q]));
         for (int i = 0; i < op_focei.neta; ++i) {
-          _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
+          _fdThRefEta[q][(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
         }
       }
-      arma::vec f0 = shi21LikTheta(thetaK, id);
-      if (!f0.is_finite()) continue;
-      for (int j = 0; j < nth; ++j) {
-        double hv = hOut(k, j), hr = hRepair[(size_t)j];
-        if (!(hr > 0) || !R_finite(hv)) continue;
-        if (hv > op_focei.shi21hMin && hv < op_focei.shi21hMax) continue;
-        double dv = fdCentralAt(thetaK, id, j, hr, f0);
-        if (!R_finite(dv)) continue;
-        out(k, j) = dv;
-        hOut(k, j) = hr;
-        // Overwrite the cache too: leaving the degenerate step there would hand the
-        // same bad value straight back on the next call, which reuses it by design.
-        if (fInd->outerThetaHf != NULL) fInd->outerThetaHf[j] = hr;
+    }
+    // Unperturbed values: the sum drives the step search, the per-subject values are
+    // calcGradCentral's one-sided fallback.  The omega phase computes its own the same way.
+    std::vector<double> f0Ind;
+    fdThetaLikAll(theta, f0Ind);
+    double f0tot = 0.0;
+    bool f0ok = !f0Ind.empty();
+    for (size_t q = 0; q < f0Ind.size(); ++q) {
+      if (!R_finite(f0Ind[q])) { f0ok = false; break; }
+      f0tot += f0Ind[q];
+    }
+    if (f0ok) {
+      arma::vec f0(1); f0(0) = f0tot;
+      // Only the parameters the OPTIMIZER MOVES.  The fold-in reads fdg(k, fixedTrans[i]) for
+      // i < npars, so differencing a FIXED (or mu-group-skipped) theta is a shi search plus
+      // two summed legs whose result is discarded -- and it can trip the outlier pass into a
+      // 41-point TV grid and a misleading nFdOutlierParam.  numericGrad loops the free set
+      // for the same reason.
+      // Carried ACROSS parameters, as numericGrad carries its `h` by reference through its own
+      // parameter loop: a step this objective already supports is a better starting guess than
+      // the ef formula, and the ratio test corrects it where the scale differs.  Not carried
+      // into the omega block -- that is a different parameter scale.
+      double hWarm = 0.0;
+      for (int i = 0; i < op_focei.npars; ++i) {
+        const int j = op_focei.fixedTrans[i];
+        if (j < 0 || j >= nth) continue;                // omega columns: handled below
+        double h = (_fdForceH > 0.0) ? _fdForceH : fdStepCacheGet(_fdThIds, j, theta[j]);
+        if (_fdForceH <= 0.0 && h == 0.0) {
+          arma::vec gr(1);
+          arma::vec tw = theta;
+          double hs = hWarm;
+          // shi21Central, NOT the forward search numericGrad uses.  Forward differencing was
+          // tried here (one leg per parameter instead of two, escalating to central on a large
+          // slope, exactly numericGrad's arrangement) and MEASURED WORSE across the board:
+          // FD-vs-analytic grading went 19 PASS/2 MARGINAL to 14/6, degrading 2x to 81x on 19
+          // of 20 cases.  Expected in hindsight -- forward carries O(h) against central's
+          // O(h^2), and this path exists for accuracy on the few subjects whose solve already
+          // failed, so halving an already-rare cost is the wrong side of the trade.
+          h = shi21Central(shi21LikThetaSum, tw, hs, f0, gr, _fdThIds[0], j,
+                           std::pow(DBL_EPSILON, 0.25),
+                           1.5,   // rl
+                           4.5,   // ru
+                           3.0,   // nu
+                           op_focei.shi21maxFD,
+                           op_focei.shi21hMax, op_focei.shi21hMin);
+          // A step that terminated ON ITS BOUND is a failure signal, not a chosen step, so it
+          // is NEITHER used NOR cached -- see fdStepCachePut.  The per-subject search used to
+          // repair such a step from the median of the peers whose search converged; one
+          // shared step leaves no such population, so the column is left NA and the caller
+          // declines to a full FD gradient rather than reporting the noise of a step three
+          // decades below where this profile likelihood is differentiable.  Not softened into
+          // "use it and flag it": the measurement is that one clamped subject carried
+          // essentially the whole error in tka and tv.
+          if (!R_finite(h) || h <= 0.0 ||
+              h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+            op_focei.nFdStepClamped++;
+            continue;
+          }
+          fdStepCachePut(j, h, theta[j]);
+          hWarm = h;
+        }
+        std::vector<double> up, dn;
+        fdThetaLeg(theta, j,  h, up);
+        fdThetaLeg(theta, j, -h, dn);
+        if (up.size() != _fdThIds.size() || dn.size() != _fdThIds.size()) continue;
+        for (size_t q = 0; q < _fdThIds.size(); ++q) {
+          if (!R_finite(up[q]) && !R_finite(dn[q])) continue;
+          // calcGradCentral silently degrades to a one-sided difference when a leg did not
+          // solve; numericGrad records every such degradation in mixDeriv, and it is reported
+          // to the user, so record it here too.
+          if (!R_finite(up[q]) || !R_finite(dn[q])) op_focei.mixDeriv = 1;
+          arma::vec grPH(1), grMH(1), fb(1);
+          grPH(0) = up[q]; grMH(0) = dn[q]; fb(0) = f0Ind[q];
+          arma::vec g = calcGradCentral(grMH, fb, grPH, h);
+          if (!R_finite(g(0))) continue;
+          out(thK[q], j) = g(0);
+          hOut(thK[q], j) = h;
+        }
       }
-#ifdef _OPENMP
-      if (fdParallel) setRxThreadId(-1);
-#endif
     }
   }
-  if (fdParallel) sortIds(rx, 0);
+  // (The per-subject median-step repair of a CLAMPED step lived here.  It read the steps of
+  // the peers whose search converged for the same parameter, which a single shared step per
+  // parameter does not provide -- so the clamp is now rejected at the search instead, above.
+  // The measurement that motivated it still stands as the reason for rejecting rather than
+  // using a clamped step: on theo_sd one subject clamped to hMin carried essentially the
+  // entire error in tka and tv, while every unclamped subject agreed with a hand difference
+  // to ~1e-2.  Note the slope-outlier pass below cannot substitute: that subject's wrong
+  // slope was unremarkable among slopes spanning -5.0 to +2.7.  It was an outlier in STEP,
+  // not in slope.)
   // ---- second pass: rein in steps whose RATE is an outlier across subjects --------
   //
   // shi's step selection is harmonic-mean corrected (src/shi21.cpp), so the natural
   // linear scale for these steps is the RATE r = 1/h, not h itself: a harmonic mean of
-  // h is an arithmetic mean of r.  Testing on r therefore lets a normal two-sided
-  // criterion do the work, instead of the arbitrary "20x the median" it replaces.
+  // h is an arithmetic mean of r.  (An earlier version tested the RATE r = 1/h against a
+  // normal two-sided criterion and re-differenced at the central rate; the test below is on
+  // the SLOPE, and the repair is the TV derivative, so that reasoning is history.)
   //
-  // A subject is an outlier when |r_i - mean(r)| > z(1 - p/2) * sd(r), two-sided at
-  // p = 0.05.  Both tails matter: too small a step (large rate) sits in the noise, too
-  // large a step (small rate) leaves the region where the local model holds.  Flagged
-  // subjects are re-differenced at the CENTRAL rate, 1/mean(r), and Richardson-
-  // extrapolated there -- the extrapolation is applied only to these, since applying it
-  // everywhere costs accuracy on the directions whose h^2 term is already negligible.
   // Iglewicz-Hoaglin MODIFIED z-score, M_i = 0.6745 * (x_i - median) / MAD, with the
-  // conventional 3.5 cut.  Preferred over a normal two-sided p here because both the
-  // centre and the scale are robust, so a single bad subject cannot widen the interval
-  // that is supposed to catch it -- which is exactly how mean/sd failed (one 23.72
-  // inflated sd to ~8 and hid inside its own bound).  Tunable, like the other critical
-  // values in the algorithm.
+  // conventional 3.5 cut.  Preferred over a normal two-sided p because both the centre and
+  // the scale are robust, so a single bad subject cannot widen the interval that is supposed
+  // to catch it -- which is exactly how mean/sd failed (one 23.72 inflated sd to ~8 and hid
+  // inside its own bound).  Tunable, like the other critical values in the algorithm.
   const double _fdOutlierMz = 3.5;
   for (int j = 0; j < nth; ++j) {
     // Test the SLOPE itself, on a ROBUST centre and scale.
@@ -12172,12 +12606,12 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     if (r.size() < 3) continue;
     std::vector<double> rs = r;
     std::sort(rs.begin(), rs.end());
-    double mean = rs[rs.size() / 2];                 // median as the centre
+    double med = rs[rs.size() / 2];                  // median as the centre
     std::vector<double> ad(r.size());
-    for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - mean);
+    for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - med);
     std::sort(ad.begin(), ad.end());
     double mad = ad[ad.size() / 2];                  // raw MAD, as the modified z uses
-    if (!R_finite(mean)) continue;
+    if (!R_finite(med)) continue;
     // MAD == 0 when more than half the subjects share a slope to the bit.  Not seen on
     // theo_sd, but it is reachable (e.g. a direction most subjects are insensitive to),
     // and dividing by it would make every differing subject infinitely extreme.  Floor
@@ -12185,44 +12619,20 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // large modified z and is treated as the outlier it is, while identical subjects
     // score 0 and are left alone.
     if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
-    // Re-difference the flagged subjects at the median step for this parameter: the
-    // rate test says their SLOPE is the outlier, so the step is what gets standardized.
-    std::vector<double> hs;
-    for (int k = 0; k < nid; ++k) {
-      double hv = hOut(k, j);
-      if (R_finite(hv) && hv > 0) hs.push_back(hv);
-    }
-    if (hs.empty()) continue;
-    std::sort(hs.begin(), hs.end());
-    double hCentral = hs[hs.size() / 2];
-    // An outlier is a DIAGNOSTIC ABOUT THE PARAMETER, not about the subject.  If any
-    // subject's slope is an outlier for this theta, the central difference is inadequate
-    // for this theta, so Richardson is applied to EVERY subject for it.  If no subject
-    // is an outlier the plain central difference is adequate and Richardson is skipped
-    // -- which matters, because applying it where it is not needed costs accuracy
-    // (measured: tka 0.963 -> 0.844, tv 0.992 -> 0.913).
-    // Flag the OUTLIER SUBJECTS, and correct only those.
+    // Only the OUTLIER SUBJECTS are corrected, not every finite-differenced subject for a
+    // parameter where one of them is an outlier: a subject whose slope sits inside the robust
+    // interval has an adequate central difference, and the TV grid costs N+1 evaluations.
     //
-    // This used to apply the TV derivative to every finite-differenced subject as soon as
-    // ONE of them was an outlier for this parameter.  Narrowed to the outliers because a
-    // subject whose slope sits inside the robust interval has an adequate central
-    // difference, and because fdTvDeriv is a 40-point grid with 12 lagged-diffusivity
-    // iterations PER SUBJECT -- one outlier used to pay for all of them.
-    //
-    // DO NOT cite the tka 0.963 -> 0.844 / tv 0.992 -> 0.913 numbers above as evidence
-    // for anything.  They were measured while the likelihood was corrupt and the shi step
-    // selection was broken, so they say nothing about the present code.
-    //
-    // It is kept ON by default anyway, and controllable: a pass that does not fire on
-    // ordinary fits may still matter on an extreme one, and the outlier test gates it so
-    // the default costs nothing where it is not needed.  nFdOutlierParam counts
-    // detections regardless of whether the refinement runs.
+    // Kept ON by default and controllable (fdChartrand): a pass that does not fire on ordinary
+    // fits may still matter on an extreme one, and the outlier test gates it so the default
+    // costs nothing where it is not needed.  nFdOutlierParam counts detections regardless of
+    // whether the refinement runs.
     std::vector<char> isOutlier((size_t)nid, 0);
     bool anyOutlier = false;
     for (int k = 0; k < nid; ++k) {
       double dv = out(k, j);
       if (!R_finite(dv)) continue;
-      if (std::fabs(0.6745 * (dv - mean) / mad) > _fdOutlierMz) {
+      if (std::fabs(0.6745 * (dv - med) / mad) > _fdOutlierMz) {
         isOutlier[(size_t)k] = 1;
         anyOutlier = true;
       }
@@ -12238,37 +12648,220 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // Only the finite-differenced OUTLIERS are recomputed.  The analytic subjects are
     // exact -- they contribute to the statistics, never to the correction -- and the
     // in-range finite-differenced subjects keep their central difference.
-    for (int k = 0; k < nid; ++k) {
-      if (!isOutlier[(size_t)k]) continue;
-      int id = ids0[k];
-      if (id < 0 || id >= nsub) continue;
-      double hUse = hOut(k, j);
-      if (!R_finite(hUse) || hUse <= 0) continue;
-      EtaRestoreGuard etaGuard(id);
-      FdInnerStateGuard fdGuard(id);
-      rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(id));
-      _fdRefEta.assign((size_t)op_focei.neta, 0.0);
-      for (int i = 0; i < op_focei.neta; ++i) {
-        _fdRefEta[(size_t)i] = getIndParPtr(indR, op_focei.etaTrans[i]);
-      }
-      // Span-preserving Lanczos generalized derivative: the outermost evaluation stays
-      // at shi's tuned step and the stencil subdivides INSIDE it (h = span/m).  m is
-      // TV-regularized differentiation on a WIDE interval (Chartrand).  The span is
-      // deliberately much wider than shi's step: TV wants signal-to-noise and absorbs
-      // the curvature itself through u varying across the interval.  alpha <= 0 selects
-      // it by the discrepancy principle.  Candidates for control arguments alongside
-      // the other tunables.
-      const double _span = 0.05;      // interval half-width
-      const int    _N     = 40;       // grid points across it
-      const double _alpha = -1.0;     // <=0: choose alpha from the data
-      const int    _iters = 12;       // lagged-diffusivity iterations
-      double dR = fdTvDeriv(theta, id, j, _span, _N, _alpha, _iters);
-      if (R_finite(dR)) { out(k, j) = dR; op_focei.curAnalyticChartrand = 1; op_focei.nFdChartrand++; }
+    //
+    // TV-regularized differentiation on a WIDE interval (Chartrand).  The span is
+    // deliberately much wider than shi's step: TV wants signal-to-noise and absorbs the
+    // curvature itself through u varying across the interval.  alpha <= 0 selects it by the
+    // discrepancy principle.  Candidates for control arguments alongside the other tunables.
+    // The grid is walked once for the whole outlier set and every subject evaluated at each
+    // point in parallel, so it no longer costs N+1 solves PER outlier subject.
+    const double _span = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;  // half-width
+    const int    _N     = 40;       // grid points across it
+    const double _alpha = -1.0;     // <=0: choose alpha from the data
+    const int    _iters = 12;       // lagged-diffusivity iterations
+    std::vector<double> dTv;
+    fdThetaTvDeriv(theta, j, isOutlier, thK, _span, _N, _alpha, _iters, dTv);
+    for (size_t q = 0; q < dTv.size(); ++q) {
+      if (!R_finite(dTv[q])) continue;
+      out(thK[q], j) = dTv[q];
+      op_focei.curAnalyticChartrand = 1;
+      op_focei.nFdChartrand++;
     }
   }
   _fdRefEta.clear();
+  // Release the theta phase's guards HERE, before the omega phase: they restore par_ptr's
+  // eta, and the omega phase captures its own reference etas from par_ptr -- inheriting a
+  // perturbed one would difference omega about the wrong point.
+  thGuards.clear();
+  thEtaGuards.clear();
+  // EtaRestoreGuard covers par_ptr's ETA only, so put the THETA back too.  Otherwise a flagged
+  // subject keeps the last perturbed theta in par_ptr: harmless while the omega phase follows
+  // (it installs _fdOmTheta0) or updateTheta runs next, but with nom == 0 there is no omega
+  // phase and nothing else here writes it.
+  for (size_t q = 0; q < _fdThIds.size(); ++q) {
+    rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(_fdThIds[q]));
+    if (indR == NULL) continue;
+    for (int t = 0; t < nth; ++t) setIndParPtr(indR, op_focei.thetaTrans[t], theta0[(size_t)t]);
+  }
+  // ---- omega directions ---------------------------------------------------------------
+  //
+  // One step per omega parameter rather than one per subject: the search needs an R-side
+  // Omega rebuild per evaluation, so a per-subject search cannot run inside the parallel
+  // region.  The two legs at the settled step DO run parallel over subjects, with the
+  // perturbed Omega installed thread-locally.
+  //
+  // A clamped step is rejected outright rather than repaired -- see the bound test below.
+  if (nom > 0 && op_focei.neta > 0) {
+    _fdOmIds.clear();
+    _fdOmRefEta.clear();
+    std::vector<int> omK;                       // row of `out` each _fdOmIds entry writes
+    for (int k = 0; k < nid; ++k) {
+      int id = ids0[k];
+      if (id < 0 || id >= nsub) continue;
+      focei_ind *fI = &(inds_focei[id]);
+      _fdOmIds.push_back(id);
+      omK.push_back(k);
+      // saveEta, matching the theta block and the analytic arm -- NOT fInd->eta, which is the
+      // inner optimizer's working vector and can sit at a different point.  Both blocks and
+      // the analytic sum must difference about one eta.
+      std::vector<double> re;
+      if (fI->saveEta != NULL) {
+        re.assign(&fI->saveEta[0], &fI->saveEta[0] + op_focei.neta);
+      } else if (fI->eta != NULL) {
+        re.assign(&fI->eta[0], &fI->eta[0] + op_focei.neta);
+      }
+      _fdOmRefEta.push_back(re);
+    }
+    // innerOpt1() moves each subject's eta, warm start, step caches, llikObs and lik[] --
+    // none of which may reach the fit.  Held for the whole omega phase, unlike the theta
+    // phase where each subject is guarded inside its own iteration.
+    FdOmegaRestore omRestore;
+    std::vector< std::unique_ptr<FdInnerStateGuard> > omGuards;
+    std::vector< std::unique_ptr<EtaRestoreGuard> > omEtaGuards;
+    omGuards.reserve(_fdOmIds.size());
+    omEtaGuards.reserve(_fdOmIds.size());
+    for (size_t q = 0; q < _fdOmIds.size(); ++q) {
+      omEtaGuards.push_back(std::unique_ptr<EtaRestoreGuard>(new EtaRestoreGuard(_fdOmIds[q])));
+      omGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_fdOmIds[q])));
+    }
+    arma::vec om((unsigned int)nom);
+    for (int q = 0; q < nom; ++q) om[(unsigned int)q] = _fdOmBlock0[(size_t)q];
+    // ONE unperturbed sweep, summed afterwards -- as the theta block does.  Calling
+    // shi21LikOmegaSum here as well would recompute exactly these per-subject values and keep
+    // only their sum, i.e. a whole redundant pass over the flagged subjects.
+    std::vector<double> f0Ind;
+    fdOmegaLeg(0, 0.0, fdCores, fdParallel, f0Ind);
+    double f0tot = 0.0;
+    bool omF0ok = !f0Ind.empty();
+    for (size_t r = 0; r < f0Ind.size(); ++r) {
+      if (!R_finite(f0Ind[r])) { omF0ok = false; break; }
+      f0tot += f0Ind[r];
+    }
+    arma::vec f0(1); f0(0) = f0tot;
+    if (omF0ok) {
+      // Free omega parameters only, for the reason given in the theta block.  Its own warm
+      // start: an omega estimation-scale entry is not on the theta scale, so chaining a theta
+      // step in here would start every search in the wrong place.
+      double hWarmOm = 0.0;
+      for (int i = 0; i < op_focei.npars; ++i) {
+        const int col = op_focei.fixedTrans[i];
+        if (col < nth || col >= nAll) continue;         // theta columns: handled above
+        const int q = col - nth;
+        double h = (_fdForceH > 0.0) ? _fdForceH
+          : fdStepCacheGet(_fdOmIds, col, _fdOmBlock0[(size_t)q]);
+        if (_fdForceH <= 0.0 && h == 0.0) {
+          arma::vec gr(1);
+          // ef is the assumed RELATIVE ACCURACY of f, and f here is an inner-optimized
+          // profile likelihood: its noise floor is set by the inner optimizer and the ODE
+          // tolerance, not by machine precision.  hessEps (eps^(1/3)) overstates it enough
+          // that the chosen step can land in that noise on a poorly conditioned subject,
+          // which shows up as a sign-flipped omega derivative.
+          double hs = hWarmOm;
+          // Central, not forward -- see the theta block for the measurement that rejected the
+          // forward arrangement.
+          h = shi21Central(shi21LikOmegaSum, om, hs, f0, gr, _fdOmIds[0], q,
+                           std::pow(DBL_EPSILON, 0.25),
+                           1.5,   // rl
+                           4.5,   // ru
+                           3.0,   // nu
+                           op_focei.shi21maxFD,
+                           op_focei.shi21hMax, op_focei.shi21hMin);
+          // Clamped: neither used nor cached, exactly as in the theta block.
+          if (!R_finite(h) || h <= 0.0 ||
+              h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+            op_focei.nFdStepClamped++;
+            continue;
+          }
+          fdStepCachePut(col, h, _fdOmBlock0[(size_t)q]);
+          hWarmOm = h;
+        }
+        std::vector<double> up, dn;
+        fdOmegaLeg(q, h, fdCores, fdParallel, up);
+        fdOmegaLeg(q, -h, fdCores, fdParallel, dn);
+        if (up.size() != _fdOmIds.size() || dn.size() != _fdOmIds.size()) continue;
+        // Through calcGradCentral, not by hand: it is what every other difference in this
+        // file uses, and it degrades to a one-sided difference against f0Ind when a leg
+        // fails to solve rather than losing the subject.  Its both-legs-failed return is a
+        // plain zero, which a true zero derivative is indistinguishable from, so that case
+        // is caught on the legs instead and left NA.
+        for (size_t r = 0; r < _fdOmIds.size(); ++r) {
+          if (!R_finite(up[r]) && !R_finite(dn[r])) continue;
+          if (!R_finite(up[r]) || !R_finite(dn[r])) op_focei.mixDeriv = 1;
+          arma::vec grPH(1), grMH(1), f0i(1);
+          grPH(0) = up[r]; grMH(0) = dn[r]; f0i(0) = f0Ind[r];
+          arma::vec g = calcGradCentral(grMH, f0i, grPH, h);
+          if (!R_finite(g(0))) continue;
+          out(omK[r], col) = g(0);
+          hOut(omK[r], col) = h;
+        }
+      }
+    }
+    // ---- omega second pass: the same across-subject outlier test as the theta block -----
+    //
+    // Criterion, reference distribution and repair are all the theta pass's: modified
+    // z on a median/MAD centre and scale at the shared 3.5 cut, analytic subjects included
+    // in the distribution, Chartrand TV derivative on the flagged subjects only, and the
+    // same fdChartrand opt-out and counters.  Only the SAMPLING differs (see
+    // fdOmegaTvDeriv).  A shared step makes this pass matter more here than for theta: one
+    // step cannot suit every subject, so a subject whose slope it mis-sizes is exactly what
+    // the outlier test is for.
+    for (int q = 0; q < nom; ++q) {
+      const int col = nth + q;
+      std::vector<double> r;
+      for (int k = 0; k < analyticRef.nrow(); ++k) {
+        if (col < analyticRef.ncol()) {
+          double av = analyticRef(k, col);
+          if (R_finite(av)) r.push_back(av);
+        }
+      }
+      for (int k = 0; k < nid; ++k) {
+        double dv = out(k, col);
+        if (R_finite(dv)) r.push_back(dv);
+      }
+      if (r.size() < 3) continue;
+      std::vector<double> rs = r;
+      std::sort(rs.begin(), rs.end());
+      double med = rs[rs.size() / 2];
+      if (!R_finite(med)) continue;
+      std::vector<double> ad(r.size());
+      for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - med);
+      std::sort(ad.begin(), ad.end());
+      double mad = ad[ad.size() / 2];
+      if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
+      std::vector<char> isOut((size_t)nid, 0);
+      bool anyOut = false;
+      for (int k = 0; k < nid; ++k) {
+        double dv = out(k, col);
+        if (!R_finite(dv)) continue;
+        if (std::fabs(0.6745 * (dv - med) / mad) > _fdOutlierMz) {
+          isOut[(size_t)k] = 1;
+          anyOut = true;
+        }
+      }
+      if (!anyOut) continue;
+      op_focei.nFdOutlierParam++;
+      if (!op_focei.fdChartrand) continue;
+      const double _spanOm  = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;
+      const int    _NOm     = 40;
+      const double _alphaOm = -1.0;
+      const int    _itersOm = 12;
+      std::vector<double> dTv;
+      fdOmegaTvDeriv(q, isOut, omK, _spanOm, _NOm, _alphaOm, _itersOm,
+                     fdCores, fdParallel, dTv);
+      for (size_t rr = 0; rr < dTv.size(); ++rr) {
+        if (!R_finite(dTv[rr])) continue;
+        out(omK[rr], col) = dTv[rr];
+        op_focei.curAnalyticChartrand = 1;
+        op_focei.nFdChartrand++;
+      }
+    }
+    // The R-side Omega is put back by FdOmegaRestore, above, on every exit path.
+    _fdOmIds.clear();
+    _fdOmRefEta.clear();
+  }
   // Every subject perturbed the shared fullTheta; put it back exactly as found.
   for (int t = 0; t < nth; ++t) op_focei.fullTheta[t] = theta0[t];
+  for (int q = 0; q < nom; ++q) op_focei.fullTheta[nth + q] = _fdOmBlock0[(size_t)q];
   out.attr("h") = hOut;
   out.attr("hMin") = op_focei.shi21hMin;
   out.attr("hMax") = op_focei.shi21hMax;
@@ -12300,6 +12893,30 @@ static void outerSolveFill(int slot, rxSolveF *fns,
   if (fns == NULL || fns->calc_lhs == NULL) return;   // Es stay ok=false
   cores = min2(cores, getOpCores(op));
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  // TEST HOOK (removable): force these subjects' augmented solves to count as failed, so the
+  // per-subject fallback can be exercised deterministically.  A hook is needed because
+  // no model-level knob reaches this state -- the augmented and the inner solve fail at
+  // the SAME maxsteps threshold (theo_sd: 80 both fail, 85 both fine), the step sequence
+  // being set by the base dynamics with the eta-sensitivity equations cheap linear
+  // additions on top.  Comma-separated 0-based ids.  Mirrors NLMIXR2EST_GRAD_DECLINE.
+  //
+  // tests/testthat/test-focei-outer-fd-fallback.R is the only consumer; grep "TEST HOOK" for
+  // the pair of them (this and NLMIXR2EST_OUTER_FD_SKIP).  Both can go once the path has been
+  // exercised another way -- the test file goes with them.
+  std::vector<int> _failIds;
+  {
+    const char *e_ = getenv("NLMIXR2EST_OUTER_FAIL_ID");
+    if (e_ != NULL && e_[0] != '\0') {
+      for (const char *p = e_; *p != '\0'; ) {
+        char *endp = NULL;
+        long v = strtol(p, &endp, 10);
+        if (endp == p) { p++; continue; }
+        _failIds.push_back((int)v);
+        p = endp;
+        while (*p == ',' || *p == ' ') p++;
+      }
+    }
+  }
   if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
@@ -12345,11 +12962,19 @@ static void outerSolveFill(int slot, rxSolveF *fns,
                         foceiOuterRetryOpts(), _ohk);
     }
     double *solve0 = getIndSolve(ind);
-    if (getOpNeq(op) > 0 && ISNA(solve0[0])) { E.ok = false; continue; }
+    // Count the observations BEFORE the bad-solve exit.  A flagged subject still needs
+    // its row slot: the stacking allocates rows for it, leaves them zero, skips filling
+    // them (`if (!E.ok) continue`) and takes its gradient column from the per-subject
+    // finite difference -- which is exactly what the comment at that stacking loop
+    // describes.  Counting AFTER the `continue` left a flagged subject at nobs = 0, and
+    // `if (nobsAll[i] <= 0) return` on the next line then rejected precisely the subject
+    // the fallback exists for.  The whole per-subject FD path was unreachable because of
+    // this statement order.
     int nobs = 0;
     for (int q = 0; q < getIndNallTimes(ind); ++q)
       if (getIndEvid(ind, getIndIx(ind, q)) == 0) nobs++;
     E.nobs = nobs;
+    if (getOpNeq(op) > 0 && ISNA(solve0[0])) { E.ok = false; continue; }
     // Allocated unconditionally, including for an order-1 model whose map carries no
     // f2 / rvar2 / rsig2 columns.  vaeOuterSolve_ wraps A / AR / Rsig2 for R without
     // checking, and .foceiAnalyticSolveAll builds a FAILED subject's zero-fill from
@@ -12403,7 +13028,34 @@ static void outerSolveFill(int slot, rxSolveF *fns,
       if (hasT) for (int c = 0; c < 4; ++c) E.trans(ko, c) = lhs[C.tr[c]];
       ko++;
     }
-    E.ok = (ko == nobs);
+    // `ko == nobs` on its own can never be false: nobs counts the evid==0 rows over
+    // getIndNallTimes(ind) and this loop walks the same range with the same predicate.
+    // So the only flag left was ISNA(solve[0]) -- and ISNA is R's NA specifically, not a
+    // general NaN.  A solve that gave up and left NaN/Inf therefore came back "ok", its
+    // NaNs flowed through the kernel, and the failure surfaced only at gradPooledCore's
+    // closing gOut.is_finite() -- as a whole-gradient decline, never as a flag.  Judge
+    // the values that were actually read.  Unfilled corners of A/AR/Rsig2 are zeros, so
+    // a non-finite here always came from calc_lhs.
+    bool fin = E.f.is_finite() && E.a.is_finite() && E.A.is_finite();
+    if (fin && hasR) {
+      fin = E.R.is_finite() && E.aR.is_finite() && E.AR.is_finite();
+      if (fin && nsig > 0)
+        fin = E.Rsig.is_finite() && E.RsigDir.is_finite() && E.Rsig2.is_finite();
+    }
+    if (fin && hasT) fin = E.trans.is_finite();
+    E.ok = (ko == nobs) && fin;
+    // Test hook: force this subject's augmented solve to count as failed, so the
+    // per-subject fallback can be exercised deterministically.  It needs a hook because
+    // NO model-level knob reaches this state: the augmented solve and the inner solve
+    // fail at the same threshold (measured on theo_sd, maxsteps 80 -> both fail,
+    // 100 -> both fine), since the step sequence is set by the base dynamics and the
+    // sensitivity equations are cheap linear additions on top.  Comma-separated 0-based
+    // ids.  Mirrors NLMIXR2EST_GRAD_DECLINE; costs one getenv per fill.
+    // Parsed once per fill, ABOVE the parallel region: a function-local static latched
+    // the env var on the FIRST fill of the session, so any healthy fit earlier in the
+    // script silently disarmed the hook.
+    for (size_t q = 0; q < _failIds.size(); ++q)
+      if (_failIds[q] == id) { E.ok = false; break; }
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(-1);
 #endif
@@ -12515,29 +13167,11 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
     out[i] = Ei;
   }
   out.attr("ok") = okv;         // 1 = solved, 0 = flagged for the per-individual FD
-  // ---- swap the pool: outer -> inner, and finite-difference the flagged subjects ----
-  //
-  // Done HERE, in the gradient call that already owns the pool, rather than downstream:
-  // the augmented solve above ran under the OUTER model's event-sensitivity shape, and a
-  // subject that failed it needs the INNER problem re-established before its likelihood
-  // can be differenced.  Closing the outer batch and opening an inner one is the model
-  // swap the shared pool was built to make cheap.
-  {
-    std::vector<int> flagged;
-    for (int i = 0; i < nsub; ++i) if (okv[i] == 0) flagged.push_back(i);
-    if (!flagged.empty()) {
-      _esBatch.reset();                       // close the OUTER shape before swapping
-      IntegerVector fids((R_xlen_t)flagged.size());
-      for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
-      // Per-subject analytic slopes are not decomposed out of the batched kernel yet, so
-      // the outlier statistics currently see only the differenced subjects; passing them
-      // in is the remaining piece (see plans/dry-ode-swap-phaseC.md).
-      NumericMatrix aref(0, 0);
-      NumericMatrix fd = foceiOuterFdInd_(fids, aref);   // opens the INNER shape itself
-      out.attr("fd") = fd;
-      out.attr("fdIds") = fids;
-    }
-  }
+  // No per-individual finite difference here.  This entry point hands the per-subject Es
+  // back to the R assembly, which has no per-subject gradient column to substitute into --
+  // it declines the whole gradient when anything is flagged, and the caller finite-
+  // differences it.  The substitution belongs where the per-subject columns exist, which is
+  // analyticOuterGradDirect on the all-C++ route.
   return out;
 }
 
@@ -13032,16 +13666,13 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // Ht, so the whole evaluation declines below.  Bail before running that pass rather
   // than paying for it and discarding the result.
   if (isAgq && !flagged.empty()) return declineHere(11);
-  NumericMatrix fd; IntegerVector fids;
-  if (!flagged.empty()) {
-    _esBatch.reset();
-    fids = IntegerVector((R_xlen_t)flagged.size());
-    for (size_t q = 0; q < flagged.size(); ++q) fids[(R_xlen_t)q] = flagged[q];
-    NumericMatrix aref(0, 0);
-    op_focei.curAnalyticFd = 1;
-    fd = foceiOuterFdInd_(fids, aref);
-    if (fd.nrow() != (int)flagged.size()) return declineHere(12);
-  }
+  // The substitution itself is NOT done here.  It needs the INNER event-sensitivity
+  // shape while this function runs under the OUTER one, and the shape is a process
+  // global that only changes at a batch boundary -- so it runs in analyticOuterGradDirect
+  // after this returns and `_esBatch` has been destroyed.  A flagged subject's kernel
+  // column stays zero (the stacking skips it and the kernel `continue`s past it), and
+  // its contribution is added there, in the optimizer's parameter space.
+  op_focei.outerFdIds = flagged;
 
   // ---- stack ------------------------------------------------------------------------
   std::vector<int> nobsAll((size_t)nsub, 0);
@@ -13272,19 +13903,43 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       gmat.col(i).fill(arma::datum::nan); etaPOut.slice(i).fill(arma::datum::nan);
     }
   }
-  // finite-differenced subjects: only the theta block is available, which is what the
-  // zero column already says for sigma/omega.
-  for (int q = 0; q < (int)flagged.size(); ++q) {
-    int i = flagged[(size_t)q];
-    for (int t = 0; t < nth && t < fd.ncol(); ++t) {
-      double v = fd(q, t);
-      if (!R_finite(v)) return declineHere(23);
-      gmat(t, i) = v;
+  // A flagged subject's column stays ZERO here; the whole column is supplied in
+  // analyticOuterGradDirect from foceiOuterFdInd_, which covers the omega block too.
+  //
+  // Harvest the SOLVED subjects' per-subject slopes on the way past, in full-theta indexing
+  // -- these are exact, and they are what the FD outlier pass judges a differenced subject
+  // against.
+  {
+    const int npAll = (int)foceiOuterFdN();
+    op_focei.outerFdRef.clear();
+    op_focei.outerFdRefN = 0;
+    if (!flagged.empty() && npAll > 0 && (int)G.gMap.size() == op_focei.npars) {
+      op_focei.outerFdRef.assign((size_t)nsub * (size_t)npAll, NA_REAL);
+      int row = 0;
+      for (int i = 0; i < nsub; ++i) {
+        if (!Es[(size_t)i].ok) continue;
+        for (int p = 0; p < (int)op_focei.npars; ++p) {
+          int ks = G.gMap[(size_t)p];
+          int jf = op_focei.fixedTrans[p];
+          if (ks < 0 || ks >= (int)gmat.n_rows || jf < 0 || jf >= npAll) continue;
+          op_focei.outerFdRef[(size_t)row * (size_t)npAll + (size_t)jf] = gmat(ks, i);
+        }
+        row++;
+      }
+      op_focei.outerFdRefN = row;
     }
   }
   gOut = arma::sum(gmat, 1);
-  return gOut.is_finite();
+  // The one `false` here that never named a site.  A subject that failed without being
+  // flagged (rxode2 leaves NaN/Inf rather than R's NA) used to land exactly here, so the
+  // decline diagnostics showed the CALLER's site with nothing before it and the cause
+  // was invisible.
+  if (!gOut.is_finite()) return declineHere(23);
+  return true;
 }
+
+
+
 
 // The all-C++ outer gradient, called straight from analyticOuterGrad.
 //
@@ -13366,6 +14021,67 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
     if (k < 0 || k >= nKer) return declineHere(111);
     gp[i] = gv[k];
     if (!R_finite(gp[i])) return declineHere(112);
+  }
+  // Subjects whose augmented solve failed contributed a ZERO column to the analytic sum
+  // above; add their finite-differenced contribution here.
+  //
+  // TWO things made the pre-existing substitution unreachable, and both are fixed:
+  //   * outerSolveFill bailed on a failed solve BEFORE assigning E.nobs, so a flagged subject
+  //     arrived with nobs == 0 and the stacking loop's `nobsAll[i] <= 0` guard declined the
+  //     whole evaluation -- throwing away the finite difference it had just computed.  E.nobs
+  //     is now assigned before the bail, which is the whole of what made this reachable.
+  //   * gradPooledCore's substitution wrote gmat rows by KERNEL slot from full-theta-indexed
+  //     FD columns, so it could only ever cover the theta block.  This fold-in goes through
+  //     fixedTrans and covers the whole row, omega included.
+  //
+  // Folded into gp, BEFORE firstDirectGrad is recorded and before the rescale.  Adding
+  // it to g[] afterwards instead left `.gradDirectFirst` -- which is what
+  // .foceiGradDirect() reports and what the tests read -- holding the analytic sum with
+  // the flagged subject's column still zero.  fdg is on the NATURAL scale, which is what gp
+  // holds at this point, so it is added as-is and the rescale below covers both terms.
+  if (!op_focei.outerFdIds.empty()) {
+    // TEST HOOK (removable): flag the subjects but do NOT add their finite difference, leaving
+    // the analytic sum over the REMAINING subjects.  With g_skip in hand and a failure
+    // injected into a subject that actually solved, the substituted column is isolated
+    // exactly -- An_i = gRef - g_skip, FD_i = gOne - g_skip -- instead of being measured
+    // through a total where 11 correct subjects dilute it.  The `aref` built below is the
+    // per-subject analytic reference foceiOuterFdInd_'s outlier pass tests against;
+    // foceiAnalyticGradPooled_ is the one remaining call site that passes it empty.
+    const char *_fdSkip = getenv("NLMIXR2EST_OUTER_FD_SKIP");
+    if (_fdSkip != NULL && _fdSkip[0] == '1') {
+      op_focei.curAnalyticFd = 1;
+      op_focei.nOuterFdInd += (int)op_focei.outerFdIds.size();
+    } else {
+    const int nFd = (int)op_focei.outerFdIds.size();
+    const int npAll = (int)foceiOuterFdN();
+    IntegerVector fids((R_xlen_t)nFd);
+    for (int k = 0; k < nFd; ++k) fids[(R_xlen_t)k] = op_focei.outerFdIds[(size_t)k];
+    // The solved subjects' exact slopes, as the outlier pass's reference distribution.
+    NumericMatrix aref(op_focei.outerFdRefN,
+                       op_focei.outerFdRefN > 0 ? npAll : 0);
+    for (int r = 0; r < op_focei.outerFdRefN; ++r)
+      for (int j = 0; j < npAll; ++j)
+        aref(r, j) = op_focei.outerFdRef[(size_t)r * (size_t)npAll + (size_t)j];
+    NumericMatrix fdg = foceiOuterFdInd_(fids, aref);
+    if (fdg.nrow() != nFd || fdg.ncol() != npAll) return declineHere(115);
+    // fdg is d(-2LL_i)/d(fullTheta_j) on the NATURAL scale, which is exactly what gp holds;
+    // the scaled gradient the optimizer sees is formed from gp below.  fixedTrans maps an
+    // optimizer parameter to its full-theta slot.
+    for (int i = 0; i < npars; ++i) {
+      int jf = op_focei.fixedTrans[i];
+      if (jf < 0 || jf >= npAll) return declineHere(117);
+      double acc = 0.0;
+      for (int k = 0; k < nFd; ++k) {
+        double v = fdg(k, jf);
+        if (!R_finite(v)) return declineHere(114);
+        acc += v;
+      }
+      gp[i] += acc;
+      if (!R_finite(gp[i])) return declineHere(116);
+    }
+    op_focei.curAnalyticFd = 1;
+    op_focei.nOuterFdInd += nFd;
+    }  // end (!NLMIXR2EST_OUTER_FD_SKIP)
   }
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
@@ -13645,15 +14361,23 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
     }
   }
   // ---- substitute the finite-differenced subjects -----------------------------------
-  // Only the theta block is available from the per-individual FD; a flagged subject
-  // contributes nothing to the sigma/omega directions, which is what the zero column
-  // already says.
-  for (int q = 0; q < (int)flagged.size(); ++q) {
-    int i = flagged[(size_t)q];
-    for (int t = 0; t < nth && t < fd.ncol(); ++t) {
-      double v = fd(q, t);
-      if (!R_finite(v)) return R_NilValue;  // an un-differenced subject: fall back to R
-      gmat(t, i) = v;
+  // fd is full-theta indexed over the WHOLE parameter vector (theta block then omega
+  // block); gmat is in the kernel's (nth, nsg, nom) slot order.  The two are not the same
+  // space, so the scatter goes through both maps: optimizer parameter p sits in full-theta
+  // slot fixedTrans[p] and in kernel slot gMap[p].  Substituting fd's column t straight
+  // into gmat row t conflated them, and left the sigma/omega slots at zero besides.
+  {
+    const int npAll = (int)foceiOuterFdN();
+    if ((int)_gcols.gMap.size() != (int)op_focei.npars) return R_NilValue;
+    for (int q = 0; q < (int)flagged.size(); ++q) {
+      int i = flagged[(size_t)q];
+      for (int p = 0; p < (int)op_focei.npars; ++p) {
+        int ks = _gcols.gMap[(size_t)p], jf = op_focei.fixedTrans[p];
+        if (ks < 0 || ks >= (int)gmat.n_rows || jf < 0 || jf >= npAll) return R_NilValue;
+        double v = fd(q, jf);
+        if (!R_finite(v)) return R_NilValue;  // an un-differenced subject: fall back to R
+        gmat(ks, i) = v;
+      }
     }
   }
   arma::vec g = arma::sum(gmat, 1);
