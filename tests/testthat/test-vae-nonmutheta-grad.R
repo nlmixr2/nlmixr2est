@@ -235,11 +235,11 @@ nmTest({
 
   test_that("a vae grad fit does not leak into a later focei fast fit", {
     skip_on_cran()
-    ## .foceiAnalyticSolveAll is SHARED with focei's own fast gradient, so a vae
-    ## grad fit must not leave the pooled-solve branch armed for the next focei
+    ## A vae grad fit must not leave the pooled-solve branch armed for the next focei
     ## fit.  This used to be a session flag (.vaeGradEnv$active); it is now the
     ## structural odeSwapCanPool(odeSlotOuter) check in C++, and this test pins
-    ## that the replacement holds.
+    ## that the replacement holds.  (Written when .foceiAnalyticSolveAll was the shared
+    ## route; both fits now reach the pool through foceiGradPooledDirect_.)
     .n0 <- .odeSwapInfo()$pooledSolveN
     .ref <- suppressMessages(
       nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
