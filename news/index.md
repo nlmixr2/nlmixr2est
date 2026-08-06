@@ -21,6 +21,38 @@
 
 #### Estimation
 
+- Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever
+  the shared ODE solve pool was available, solving at the fit’s much
+  looser tolerance instead of `foceiControl(covSolveTol=)` (or, unset, a
+  value tightened from `sigdig`). The augmented solves are differenced
+  twice to recover a 3rd-order tensor, so their error is the standard
+  errors’ error: they carried the fit’s instead, and because the pool
+  needs `fast = TRUE`, **`foceiControl(fast=)` changed the standard
+  errors** (1.7e-2 relative on a 5-ETA 2-compartment model at the
+  default `sigdig`). Both routes now agree exactly. Set `covSolveTol` to
+  trade accuracy back for the slightly larger covariance step.
+
+- Fixed `foceiControl(covSolveTol=)` being dropped part-way through the
+  covariance step. Once the analytic route had restored the fit’s ODE
+  solve – which it does whether it succeeded or declined – the
+  finite-difference covariance work after that point ran at the fit’s
+  tolerance again, because rebuilding the solve resets the tolerances
+  along with it.
+
+- Fixed a subject whose pooled augmented solve failed being scored into
+  `covMethod="analytic"` as zeros – no prediction and no sensitivity –
+  instead of sending the covariance to its fallback. The zero fill was
+  written for the R outer gradient, which replaced such a subject’s
+  column by a finite difference; that gradient is gone, and zeros are
+  finite, so nothing downstream noticed. Such a population now falls
+  back to the unpooled solve.
+
+- Fixed the pooled `covMethod="analytic"` solve running single-threaded.
+  It coerced `rxControl(cores = 0)` – the default, meaning “use rxode2’s
+  thread setting” – to a literal 1, so its loop over subjects never went
+  parallel, while the `rxSolve` route it replaced passed the 0 through
+  and did. A 5-ETA 2-compartment covariance goes from 1.04s to 0.71s.
+
 - Fixed `est="npag"` / `est="npb"` reporting a log-likelihood **above
   its analytic maximum** for a model with a hand-written general
   likelihood, with the residual parameters driven out of domain –
