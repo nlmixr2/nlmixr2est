@@ -245,8 +245,8 @@ foceiOuterFdInd_ <- function(ids0, analyticRef) {
     .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
 }
 
-vaeOuterSolve_ <- function(thVals, ebes, cols, cores) {
-    .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores)
+vaeOuterSolve_ <- function(thVals, ebes, cols, cores, tol = NA_real_) {
+    .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores, tol)
 }
 
 #' Analytic outer gradient at a caller-supplied theta / eta / omega

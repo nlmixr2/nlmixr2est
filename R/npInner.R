@@ -27,6 +27,7 @@
 .npInnerSetup <- function(ui, data, etaMat, control) {
   .ui <- rxode2::rxUiDecompress(ui)
   .fc <- .npInnerFoceiControl(control)
+  .fc$rxControl <- .npSafeLogDomain(.fc$rxControl, .ui)
   .fc$est <- "focei"
   .ui$control <- .fc
   .env <- .ui$foceiOptEnv

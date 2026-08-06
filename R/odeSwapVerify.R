@@ -11,7 +11,8 @@
 #' @return list with `models` (a data.frame of slot/name/neq/nlhs/loaded/
 #'   sizesPool/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/`poolNlhs`,
 #'   `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`, `overrideNeeded`,
-#'   `nLoaded`, and the live `opNeq`/`opNlhs`.
+#'   `nLoaded`, the live `opNeq`/`opNlhs`, and `pooledSolveCores` (the thread
+#'   count the last pooled solve ran with, after every clamp).
 #' @noRd
 .odeSwapInfo <- function() odeSwapInfo_()
 

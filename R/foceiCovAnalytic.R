@@ -1570,7 +1570,7 @@
 #' batched Ath reproduces the per-subject adaptive-Shi Ath (the FOCEI-vs-FOCE analytic-R agreement,
 #' not just the SEs).  Returns the per-subject E-list with `Ath` attached, or NULL (-> per-subject).
 #' @noRd
-.foceiAnalyticSolveAllFD3 <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10,
+.foceiAnalyticSolveAllFD3 <- function(am, thv, ebes, ids, data, obsTimes, tol,
                                       fdEps = 1e-3, withR = FALSE, sigSel = NULL) {
   dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
   E0 <- .foceiAnalyticSolveAll(am, thv, ebes, ids, data, obsTimes, tol)

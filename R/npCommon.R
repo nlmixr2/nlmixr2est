@@ -13,6 +13,54 @@
 # The npag Psi sums the inner per-observation llikObs, which for a non-normal
 # endpoint is exactly the user's log-likelihood -- so the nonparametric objective
 # is already correct; the residual-error (gamma) scaling is a no-op (r == 1).
+#' Ask rxode2 to treat a negative `log()` argument as a domain error, for a general
+#' likelihood only.
+#'
+#' A hand-written `ll()` commonly writes `-log(sigma)`.  rxode2's default `safeLog`
+#' returns `log(.Machine$double.eps)` for ANY non-positive argument, so an invalid
+#' negative sigma comes back as about +36 per observation -- a large REWARD rather than a
+#' rejection, and the optimizer settles there (nlmixr2/nlmixr2est#850).  `safeLog = 2`
+#' keeps the floor at exactly 0 (a benign numerical touch) but makes a negative argument
+#' `NaN`, which `likInner0` already refuses.
+#'
+#' Gaussian endpoints never take `log()` of an estimated parameter, so those fits are
+#' left alone.  Older rxode2 validates `safeLog` as a 0/1 logical and errors on 2, so the
+#' probe below keeps this a no-op there.
+#'
+#' @param rxControl the rxControl to adjust (returned unchanged when not applicable)
+#' @param ui decompressed rxode2 ui
+#' @return the rxControl
+#' @noRd
+.npSafeLogDomain <- function(rxControl, ui) {
+  # The `safeLog %in% names()` test is REQUIRED, not defensive tidiness, and must not be
+  # replaced by an unconditional assignment after the capability probe: rxode2 reads this
+  # list POSITIONALLY -- `rxControl[Rxc_safeLog]` with `Rxc_safeLog == 93`
+  # (rxode2 src/rxData.cpp, inst/include/rxode2_control.h).  Assigning into a list that
+  # does not already carry the element APPENDS it, leaving index 93 holding some other
+  # control's value: a silently corrupted solve rather than a merely missing option.
+  # Replacing an element that is already present keeps its position, so only that is safe.
+  if (is.null(rxControl) || !("safeLog" %in% names(rxControl))) return(rxControl)
+  if (!.npIsGeneralLik(ui)) return(rxControl)
+  if (!.rxode2HasSafeLogDomain()) return(rxControl)
+  rxControl$safeLog <- 2L
+  rxControl
+}
+
+#' Does the installed rxode2 understand `safeLog = 2` (floor at zero, but NaN for a
+#' NEGATIVE argument)?  Older builds validate `safeLog` as a 0/1 logical and error on 2,
+#' so probe once and cache the answer.
+#' @noRd
+.rxode2HasSafeLogDomain <- function() {
+  if (is.null(nlmixr2global$rxSafeLogDomain)) {
+    nlmixr2global$rxSafeLogDomain <-
+      tryCatch({
+        rxode2::rxControl(safeLog = 2L)
+        TRUE
+      }, error = function(e) FALSE)
+  }
+  isTRUE(nlmixr2global$rxSafeLogDomain)
+}
+
 #' @noRd
 .npIsGeneralLik <- function(ui) {
   .dist <- tryCatch(ui$predDfFocei$distribution, error = function(e) NULL)
@@ -165,6 +213,9 @@
   }
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L  # covariance is computed post-fit (.foceiRecomputeMuCov)
+  # This is the control that reaches foceiFitCpp_ -> foceiSetup_ -> rxSolve_, so it is
+  # where the log-domain request has to be made (see .npSafeLogDomain).
+  .control$rxControl <- .npSafeLogDomain(.control$rxControl, ui)
   .env <- ui$foceiOptEnv     # builds foceiMuGroupTheta (covariate mu-groups)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]

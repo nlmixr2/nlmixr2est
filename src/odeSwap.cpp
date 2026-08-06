@@ -543,6 +543,7 @@ static std::atomic<long> _odePinnedN(0);
 // a test can tell a working pooled path from a silent fallback to rxode2::rxSolve
 // -- the two are numerically equivalent, which is how a dead path went unnoticed.
 static std::atomic<long> _odePooledSolveN(0);
+static std::atomic<int>  _odePooledSolveCores(NA_INTEGER);
 static std::atomic<long> _odePinCalledN(0);
 static std::atomic<int>  _odePinDeny(0);
 
@@ -587,7 +588,15 @@ long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_re
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
 long odeSwapPinnedN()        { return _odePinnedN.load(std::memory_order_relaxed); }
 long odeSwapPooledSolveN()   { return _odePooledSolveN.load(std::memory_order_relaxed); }
-void odeSwapNotePooledSolve() { _odePooledSolveN.fetch_add(1, std::memory_order_relaxed); }
+// The thread count the last pooled solve actually ran its subject loop with, AFTER every
+// clamp.  Recorded because the R-side cores it was asked for proves nothing on its own:
+// the request is capped again in C++, and a cap back to 1 is exactly the defect that made
+// this loop serial for the whole covariance step.
+int  odeSwapPooledSolveCores() { return _odePooledSolveCores.load(std::memory_order_relaxed); }
+void odeSwapNotePooledSolve(int cores) {
+  _odePooledSolveN.fetch_add(1, std::memory_order_relaxed);
+  _odePooledSolveCores.store(cores, std::memory_order_relaxed);
+}
 long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_relaxed); }
 int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
 
@@ -902,6 +911,7 @@ List odeSwapInfo_() {
     _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
     _["pinnedN"] = (double)odeSwapPinnedN(),
     _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
+    _["pooledSolveCores"] = odeSwapPooledSolveCores(),
     _["pinCalledN"] = (double)odeSwapPinCalledN(),
     _["pinDeny"] = (double)odeSwapPinDeny());
 }
