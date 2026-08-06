@@ -10,17 +10,17 @@ nmTest({
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covm))
     # no time-varying covariates: muRefFinal keeps the full mu-ref set
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
+    .nlmixrSetMuRefTimeVarying(.ui, character(0))
     expect_true(exists("muRefFinal", envir = .ui))
     expect_equal(nrow(.ui$muRefFinal), nrow(.ui$muRefCovariateDataFrame))
-    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+    .nlmixrRmMuRefTimeVarying(.ui)
     expect_false(exists("muRefFinal", envir = .ui, inherits = FALSE))
 
     # WT treated as time-varying: it drops out of the absorbed (mu-ref) set
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, "WT")
+    .nlmixrSetMuRefTimeVarying(.ui, "WT")
     expect_false("WT" %in% .ui$muRefFinal$covariate)
     expect_equal(.ui$timeVaryingCovariates, "WT")
-    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+    .nlmixrRmMuRefTimeVarying(.ui)
   })
 
   test_that("vae warns and excludes time-varying covariates from the search", {
@@ -33,14 +33,14 @@ nmTest({
     .ctl <- vaeControl()
     .d <- nlmixr2data::theo_sd
     .testSeed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
-    expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d, .ctl),
+    expect_warning(.p <- .vaeDataPrep(.ui, .d, .ctl),
                    "time-varying covariate.*not searched: TVCOV")
     # covNames are SEARCH COLUMNS (one per shape family, <cov>_<shape>), so
     # check membership on the raw covariate each column came from
     expect_false("TVCOV" %in% .p$covRaw)              # excluded
     expect_true("WT" %in% .p$covRaw)                  # subject-constant kept
     # subject-constant only: no warning
-    expect_silent(suppressMessages(nlmixr2est:::.vaeDataPrep(.ui, nlmixr2data::theo_sd, .ctl)))
+    expect_silent(suppressMessages(.vaeDataPrep(.ui, nlmixr2data::theo_sd, .ctl)))
   })
 
   test_that("saem recovers a non-time-varying covariate effect", {
@@ -67,7 +67,7 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(tvm))
     .d <- nlmixr2data::theo_sd
     .d$TVC <- as.numeric(scale(.d$TIME))               # varies within subject
-    .tv <- nlmixr2est:::.nlmixrTimeVaryingCovariates(.d, .ui, rxode2::rxControl())
+    .tv <- .nlmixrTimeVaryingCovariates(.d, .ui, rxode2::rxControl())
     expect_true("TVC" %in% .tv)
     .f <- suppressMessages(nlmixr2(tvm, .d, est = "saem",
       control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 5, print = 0L, calcTables = FALSE)))
@@ -81,15 +81,15 @@ nmTest({
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.wt*WT); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covm))
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
-    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    .nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
     # saem: mu-ref etas and covariates both dropped (phi model)
-    .saem <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = FALSE),
+    .saem <- vapply(.saemDropMuRefFromModel(.ui, keepEtas = FALSE),
                     function(e) paste(deparse(e), collapse = ""), character(1))
     expect_true(any(grepl("cl <- exp\\(tcl\\)$", .saem)))
     # fsaem inner: covariate absorbed, but eta kept (distinct from the plain
     # focei inner where the covariate stays in the model)
-    .inner <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = TRUE),
+    .inner <- vapply(.saemDropMuRefFromModel(.ui, keepEtas = TRUE),
                      function(e) paste(deparse(e), collapse = ""), character(1))
     expect_true(any(grepl("cl <- exp\\(tcl \\+ eta.cl\\)$", .inner)))
     expect_false(any(grepl("cl.wt", .inner)))          # covariate absorbed
@@ -104,23 +104,23 @@ nmTest({
 
     # non-time-varying: covariate absorbed into the per-subject mprior data,
     # mu-ref intercepts become nlmixrMprior* data columns, etas kept
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
-    .r <- nlmixr2est:::.fsaemInnerMpriorUi(.ui)
+    .nlmixrSetMuRefTimeVarying(.ui, character(0))
+    .r <- .fsaemInnerMpriorUi(.ui)
     .m <- vapply(.r$ui$lstExpr, function(e) paste(deparse(e), collapse = ""), character(1))
     expect_true(any(grepl("cl <- exp\\(nlmixrMprior2 \\+ eta.cl\\)$", .m)))
     expect_false(any(grepl("cl.wt", .m)))                 # absorbed
     expect_equal(unname(.r$mpriorCols[["tcl"]]), "nlmixrMprior2")
     expect_false("cl.wt" %in% .r$ui$iniDf$name)
     expect_true(all(c("eta.ka", "eta.cl", "eta.v", "add.sd") %in% .r$ui$iniDf$name))
-    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+    .nlmixrRmMuRefTimeVarying(.ui)
 
     # time-varying: covariate kept as a beta regressor, beta stays in the ini
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, "WT")
-    .r2 <- nlmixr2est:::.fsaemInnerMpriorUi(.ui)
+    .nlmixrSetMuRefTimeVarying(.ui, "WT")
+    .r2 <- .fsaemInnerMpriorUi(.ui)
     .m2 <- vapply(.r2$ui$lstExpr, function(e) paste(deparse(e), collapse = ""), character(1))
     expect_true(any(grepl("cl.wt \\* WT", .m2)))
     expect_true("cl.wt" %in% .r2$ui$iniDf$name)
-    nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui)
+    .nlmixrRmMuRefTimeVarying(.ui)
   })
 
   test_that("time-varying covariate parameters are named in the correct order", {

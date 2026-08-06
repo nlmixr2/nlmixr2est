@@ -373,7 +373,7 @@ nmTest({
     # "focei" and "foce" built an identical inner.  Check each value now reaches
     # a distinct foceiControl.
     .mk <- function(lik, cov = "hessian") {
-      nlmixr2est:::.fsaemInnerFoceiControl(
+      .fsaemInnerFoceiControl(
         list(rxControl = rxode2::rxControl(), fastCov = cov, fastLik = lik,
              fastInnerIt = 100L, sumProd = FALSE, optExpression = TRUE,
              literalFix = FALSE, addProp = "combined2", eventSens = "jump",
@@ -570,9 +570,9 @@ nmTest({
       })
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.corr))
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
-    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
-    expect_false(nlmixr2est:::.fsaemSupported(.ui))
+    .nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    expect_false(.fsaemSupported(.ui))
 
     .diag <- function() {
       ini({
@@ -586,9 +586,9 @@ nmTest({
       })
     }
     .u2 <- rxode2::rxUiDecompress(rxode2::rxode2(.diag))
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.u2, character(0))
-    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.u2), add = TRUE)
-    expect_true(nlmixr2est:::.fsaemSupported(.u2))
+    .nlmixrSetMuRefTimeVarying(.u2, character(0))
+    on.exit(.nlmixrRmMuRefTimeVarying(.u2), add = TRUE)
+    expect_true(.fsaemSupported(.u2))
   })
 
   test_that("est='fsaem' rejects unsupported models (mixture) from the fast kernel", {
@@ -608,8 +608,8 @@ nmTest({
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mixm))
     expect_true(length(.ui$mixProbs) > 0L)
-    nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
-    on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
-    expect_false(nlmixr2est:::.fsaemSupported(.ui))
+    .nlmixrSetMuRefTimeVarying(.ui, character(0))
+    on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
+    expect_false(.fsaemSupported(.ui))
   })
 })
