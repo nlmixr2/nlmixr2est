@@ -12349,7 +12349,9 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   NumericMatrix hOut(nid, nAll);    // the step shi actually settled on, for diagnostics
   std::fill(out.begin(), out.end(), NA_REAL);
   std::fill(hOut.begin(), hOut.end(), NA_REAL);
-  if (nid == 0 || nth == 0 || inds_focei == NULL) return out;
+  // nAll, not nth: the omega block is differenced independently of the theta block, so a
+  // model with no theta directions can still have omega ones to fill.
+  if (nid == 0 || nAll == 0 || inds_focei == NULL) return out;
   rx = getRxSolve_();
   if (rx == NULL) return out;
   int nsub = foceiIndSetupN(rx);
@@ -12476,7 +12478,7 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   // own reference etas from par_ptr and must not inherit a perturbed one.
   std::vector< std::unique_ptr<EtaRestoreGuard> > thEtaGuards;
   std::vector< std::unique_ptr<FdInnerStateGuard> > thGuards;
-  if (!_fdThIds.empty()) {
+  if (nth > 0 && !_fdThIds.empty()) {
     thEtaGuards.reserve(_fdThIds.size());
     thGuards.reserve(_fdThIds.size());
     for (size_t q = 0; q < _fdThIds.size(); ++q) {
@@ -12726,15 +12728,17 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   //
   // A clamped step is rejected outright rather than repaired -- see the bound test below.
   if (nom > 0 && op_focei.neta > 0) {
-    _fdOmIds.clear();
+    // TAKEN from the theta phase's set, not re-derived from ids0 by a second copy of the
+    // same filter.  fdStepCacheGet keys the shared step store on the id set, so the two
+    // phases MUST agree: if they ever diverged, each phase would invalidate the other's
+    // steps and every parameter would be re-searched on every evaluation.  Sharing the
+    // vector makes that structural instead of a coincidence of two identical loops.
+    _fdOmIds = _fdThIds;
+    std::vector<int> omK = thK;                 // row of `out` each _fdOmIds entry writes
     _fdOmRefEta.clear();
-    std::vector<int> omK;                       // row of `out` each _fdOmIds entry writes
-    for (int k = 0; k < nid; ++k) {
-      int id = ids0[k];
-      if (id < 0 || id >= nsub) continue;
-      focei_ind *fI = &(inds_focei[id]);
-      _fdOmIds.push_back(id);
-      omK.push_back(k);
+    _fdOmRefEta.reserve(_fdOmIds.size());
+    for (size_t q = 0; q < _fdOmIds.size(); ++q) {
+      focei_ind *fI = &(inds_focei[_fdOmIds[q]]);
       // saveEta, matching the theta block and the analytic arm -- NOT fInd->eta, which is the
       // inner optimizer's working vector and can sit at a different point.  Both blocks and
       // the analytic sum must difference about one eta.
@@ -13070,14 +13074,22 @@ static void outerSolveFill(int slot, rxSolveF *fns,
     // closing gOut.is_finite() -- as a whole-gradient decline, never as a flag.  Judge
     // the values that were actually read.  Unfilled corners of A/AR/Rsig2 are zeros, so
     // a non-finite here always came from calc_lhs.
-    bool fin = E.f.is_finite() && E.a.is_finite() && E.A.is_finite();
-    if (fin && hasR) {
-      fin = E.R.is_finite() && E.aR.is_finite() && E.AR.is_finite();
-      if (fin && nsig > 0)
-        fin = E.Rsig.is_finite() && E.RsigDir.is_finite() && E.Rsig2.is_finite();
+    //
+    // Gated on `ko == nobs` rather than &&-ed with it: E.f and E.R are set_size (NOT
+    // zeroed), so short of that invariant the is_finite() scan below reads uninitialized
+    // memory.  The result would still be correct -- ok is false either way -- but the read
+    // itself is undefined, and it is exactly what a sanitizer build is for.
+    bool fin = (ko == nobs);
+    if (fin) {
+      fin = E.f.is_finite() && E.a.is_finite() && E.A.is_finite();
+      if (fin && hasR) {
+        fin = E.R.is_finite() && E.aR.is_finite() && E.AR.is_finite();
+        if (fin && nsig > 0)
+          fin = E.Rsig.is_finite() && E.RsigDir.is_finite() && E.Rsig2.is_finite();
+      }
+      if (fin && hasT) fin = E.trans.is_finite();
     }
-    if (fin && hasT) fin = E.trans.is_finite();
-    E.ok = (ko == nobs) && fin;
+    E.ok = fin;
     // Test hook: force this subject's augmented solve to count as failed, so the
     // per-subject fallback can be exercised deterministically.  It needs a hook because
     // NO model-level knob reaches this state: the augmented solve and the inner solve

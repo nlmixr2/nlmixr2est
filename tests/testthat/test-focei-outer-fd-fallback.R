@@ -141,7 +141,12 @@ nmTest({
                    shi21hMin = 1.9, shi21hMax = 2.0))))
     .fbClearHooks()
     expect_true(is.finite(fit$objf))
-    # Every clamp is counted, so a silently self-disabling fallback is visible.
-    expect_true(is.finite(as.integer(fit$env$nFdOutlier[["stepClamped"]])))
+    # The clamp actually FIRED -- otherwise this test proves nothing about the caching of a
+    # clamped step, it just re-runs the previous test with different control arguments.
+    expect_gt(as.integer(fit$env$nFdOutlier[["stepClamped"]]), 0L)
+    # ... and it kept firing rather than being cached once and skipped thereafter.  A cached
+    # clamp would make every later evaluation skip the search, so the count would stall at
+    # the number of free parameters searched in the FIRST flagged evaluation.
+    expect_gt(as.integer(fit$env$nFdOutlier[["stepClamped"]]), 7L)
   })
 })
