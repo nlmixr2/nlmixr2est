@@ -16122,6 +16122,70 @@ List fsaemInnerMap_(int cores) {
 // lower/upper on the phi scale, from the theta iniDf, matching the L-BFGS-B
 // bounds) is violated the normal draw is repeated up to `nRetry` times, then the
 // value is clamped to the boundary it last violated.
+// etaCur is chain-major (row = c*nsub + id), so a caller whose etaHat and etaCur
+// disagree would index past the end.  Fail loudly rather than silently reading and
+// writing out of bounds -- Rcpp's operator() does not check.
+static void fsaemImhCheckDims(NumericMatrix etaCur, NumericMatrix etaHat,
+                              NumericMatrix cholGamma, NumericMatrix mprior,
+                              NumericVector lower, NumericVector upper,
+                              IntegerVector nbd, int neta, int nsub, int nchain) {
+  bool bad = (nchain < 1 || etaCur.nrow() != nchain*nsub || etaCur.ncol() != neta ||
+              cholGamma.nrow() != nsub || cholGamma.ncol() != neta*neta ||
+              mprior.nrow() != nsub || mprior.ncol() < neta || etaHat.ncol() != neta ||
+              ((int)nbd.size() != 0 && (int)nbd.size() != neta) ||
+              ((int)nbd.size() == neta &&
+               ((int)lower.size() < neta || (int)upper.size() < neta)));
+  if (!bad) return;
+  stop("fsaemImhKernel_: dimensions disagree (neta=%d nsub=%d nchain=%d; "
+       "etaCur %dx%d etaHat %dx%d cholGamma %dx%d mprior %dx%d)",
+       neta, nsub, nchain, etaCur.nrow(), etaCur.ncol(),
+       etaHat.nrow(), etaHat.ncol(), cholGamma.nrow(), cholGamma.ncol(),
+       mprior.nrow(), mprior.ncol());
+}
+
+// Per-subject proposal factors from the vectorized lower Cholesky rows: L and its
+// inverse, plus whether the subject has a usable proposal at all.
+static void fsaemImhProposalChol(NumericMatrix cholGamma, int neta, int nsub,
+                                 std::vector<arma::mat>& L,
+                                 std::vector<arma::mat>& Linv,
+                                 std::vector<bool>& good) {
+  for (int id = 0; id < nsub; ++id) {
+    arma::mat Lid(neta, neta);
+    for (int j = 0; j < neta*neta; ++j) Lid(j) = cholGamma(id, j);
+    if (!Lid.is_finite()) continue;
+    arma::mat Li;
+    if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
+    // a finite Cholesky that will not invert -- a fourth way to lose a subject,
+    // and the only one the builder above cannot see
+    else _fsaemNBadGamma += 1;
+  }
+}
+
+// One bounded Gaussian draw: eprop = ehat + L z, repeated up to nRetry times while
+// the implied phi = mprior + eprop violates a bound.  Returns whether the draw that
+// z and eprop are left holding is in bounds (always true when the model is
+// unbounded).  z is an output too -- the acceptance ratio is computed from it.
+static bool fsaemImhDraw(const arma::vec& ehat, const arma::mat& L,
+                         NumericMatrix mprior, IntegerVector nbd,
+                         NumericVector lower, NumericVector upper,
+                         int id, int neta, int nRetry, bool hasBounds,
+                         arma::vec& z, arma::vec& eprop) {
+  bool inBounds = true;
+  for (int attempt = 0; attempt <= nRetry; ++attempt) {
+    for (int j = 0; j < neta; ++j) z(j) = rxNormEng(0.0, 1.0);
+    eprop = ehat + L*z;
+    if (!hasBounds) break;
+    inBounds = true;
+    for (int j = 0; j < neta; ++j) {
+      double phi = mprior(id, j) + eprop(j);
+      if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) inBounds = false;
+      if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) inBounds = false;
+    }
+    if (inBounds) break;
+  }
+  return inBounds;
+}
+
 //[[Rcpp::export]]
 List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
                      NumericMatrix cholGamma, int nchain, int cores,
@@ -16130,36 +16194,13 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   const int neta = op_focei.neta;
   if (neta == 0) stop("fsaemImhKernel_ requires a model with random effects");
   const int nsub = etaHat.nrow();
-  // etaCur is chain-major (row = c*nsub + id), so a caller whose etaHat and
-  // etaCur disagree would index past the end.  Fail loudly rather than silently
-  // reading and writing out of bounds -- Rcpp's operator() does not check.
-  if (nchain < 1 || etaCur.nrow() != nchain*nsub || etaCur.ncol() != neta ||
-      cholGamma.nrow() != nsub || cholGamma.ncol() != neta*neta ||
-      mprior.nrow() != nsub || mprior.ncol() < neta || etaHat.ncol() != neta ||
-      ((int)nbd.size() != 0 && (int)nbd.size() != neta) ||
-      ((int)nbd.size() == neta &&
-       ((int)lower.size() < neta || (int)upper.size() < neta))) {
-    stop("fsaemImhKernel_: dimensions disagree (neta=%d nsub=%d nchain=%d; "
-         "etaCur %dx%d etaHat %dx%d cholGamma %dx%d mprior %dx%d)",
-         neta, nsub, nchain, etaCur.nrow(), etaCur.ncol(),
-         etaHat.nrow(), etaHat.ncol(), cholGamma.nrow(), cholGamma.ncol(),
-         mprior.nrow(), mprior.ncol());
-  }
+  fsaemImhCheckDims(etaCur, etaHat, cholGamma, mprior, lower, upper, nbd,
+                    neta, nsub, nchain);
   NumericMatrix etaOut = clone(etaCur);
   IntegerVector nAcc(nsub);
   std::vector<arma::mat> L(nsub), Linv(nsub);
   std::vector<bool> good(nsub, false);
-  for (int id = 0; id < nsub; ++id) {
-    arma::mat Lid(neta, neta);
-    for (int j = 0; j < neta*neta; ++j) Lid(j) = cholGamma(id, j);
-    if (Lid.is_finite()) {
-      arma::mat Li;
-      if (arma::inv(Li, arma::trimatl(Lid))) { L[id] = Lid; Linv[id] = Li; good[id] = true; }
-      // a finite Cholesky that will not invert -- a fourth way to lose a subject,
-      // and the only one the builder above cannot see
-      else _fsaemNBadGamma += 1;
-    }
-  }
+  fsaemImhProposalChol(cholGamma, neta, nsub, L, Linv, good);
   const bool hasBounds = ((int)nbd.size() == neta);
   const uint32_t base = (uint32_t)streamBase;
   // Pin thread 0 (this kernel is serial) so setSeedEng1/rxNormEng use a fixed
@@ -16179,19 +16220,8 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
       for (int j = 0; j < neta; ++j) { ecur(j) = etaOut(row, j); ehat(j) = etaHat(id, j); }
       arma::vec eprop(neta);
       // draw the Gaussian proposal, repeating on bound violation up to nRetry
-      bool inBounds = true;
-      for (int attempt = 0; attempt <= nRetry; ++attempt) {
-        for (int j = 0; j < neta; ++j) z(j) = rxNormEng(0.0, 1.0);
-        eprop = ehat + L[id]*z;
-        if (!hasBounds) break;
-        inBounds = true;
-        for (int j = 0; j < neta; ++j) {
-          double phi = mprior(id, j) + eprop(j);
-          if ((nbd[j] == 1 || nbd[j] == 2) && phi < lower[j]) inBounds = false;
-          if ((nbd[j] == 3 || nbd[j] == 2) && phi > upper[j]) inBounds = false;
-        }
-        if (inBounds) break;
-      }
+      bool inBounds = fsaemImhDraw(ehat, L[id], mprior, nbd, lower, upper,
+                                   id, neta, nRetry, hasBounds, z, eprop);
       if (hasBounds && !inBounds) {
         // Retries exhausted.  This used to CLAMP each violated component to its
         // boundary, but the acceptance ratio below is computed from z -- the
@@ -16222,6 +16252,115 @@ List fsaemImhKernel_(NumericMatrix etaCur, NumericMatrix etaHat,
   return List::create(_["eta"] = etaOut, _["nAcc"] = nAcc, _["nchain"] = nchain);
 }
 
+// fastHRefresh > 1: reuse the last computed MAP + Gamma on the iterations in
+// between, skipping one inner optimization per subject.  Still a valid
+// independent-MH kernel -- the proposal need not equal the target -- so this
+// trades acceptance for work, never correctness.  The caller has ALREADY
+// re-parameterized the inner for this iteration, which is what must not be
+// skipped: likInner0 has to score candidates at the current theta/omega.
+// The cache must match THIS call's dimensions, not merely be non-empty.  A cached
+// nsub larger than the current one would make fsaemImhKernel_ loop over the cached
+// subject count and index etaCur past its last row -- Rcpp does not bounds check,
+// so that is a silent out-of-bounds read AND write.  Reachable only through a
+// direct fsaemStepCpp_/fsaemMapImhCpp_ call today (every fit through nlmixr2()
+// clears the cache first), which is exactly why it is checked here.
+static bool fsaemCacheUsable(NumericMatrix etaCur, int nsubNow, int netaNow,
+                             int nchain, int kiter) {
+  return (_fsaemHRefresh > 1) && (kiter % _fsaemHRefresh != 0) &&
+    (nsubNow > 0) && (_fsaemCacheNsub == nsubNow) && (_fsaemCacheNeta == netaNow) &&
+    (_fsaemCacheEtaHat.nrow() == nsubNow) && (_fsaemCacheChol.nrow() == nsubNow) &&
+    (etaCur.nrow() == nchain * nsubNow);
+}
+
+// fastMode="chainMean": centre the proposal on the subject's mean over the nmc
+// chains instead of its MAP (issue #845 / the paper's cross-chain-mean mode).
+// Gamma still comes from the MAP's H -- only the CENTRE moves.  This stays a valid
+// independent-MH kernel either way: an independent proposal need not equal the
+// target, and the acceptance ratio is computed from whatever ehat and L were
+// actually proposed from, so a worse centre costs efficiency, never correctness.
+// etaCur is chain-major, row = c*nsub + id.
+static void fsaemCentreOnChainMean(NumericMatrix etaHat, NumericMatrix etaCur,
+                                   int nchain, int nsub, int neta) {
+  if (!(_fsaemMode == 1 && nchain > 0 && etaCur.nrow() == nchain*nsub &&
+        etaCur.ncol() == neta)) return;
+  for (int id = 0; id < nsub; ++id) {
+    for (int j = 0; j < neta; ++j) {
+      double acc = 0.0;
+      for (int c = 0; c < nchain; ++c) acc += etaCur(c*nsub + id, j);
+      etaHat(id, j) = acc / (double)nchain;
+    }
+  }
+}
+
+// The prior proposal factor for fastFallback="prior": lower Cholesky of Omega,
+// recovered from the inner's own omega inverse, which the caller's
+// re-parameterization refreshed for THIS iteration -- so it is current on both the
+// plain and the covariate path with no extra argument.  Built lazily via state: 0
+// not tried, 1 usable, -1 failed, so a fit where every subject is fine never pays.
+static bool fsaemPriorChol(arma::mat& priorL, int& state, int neta) {
+  if (state == 0) {
+    state = -1;
+    arma::mat Om;
+    arma::mat oi = arma::symmatu(op_focei.omegaInv);
+    if ((arma::inv_sympd(Om, oi) || arma::inv(Om, oi)) &&
+        arma::chol(priorL, arma::symmatu(Om), "lower") &&
+        (int)priorL.n_rows == neta) {
+      state = 1;
+    }
+  }
+  return state == 1;
+}
+
+// cholGamma row id = vec(lower Cholesky of Gamma_i = H_i^-1); NA where the MAP
+// failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
+// symmatu() reproduces that input and "lower" == t(chol()).  A subject with no
+// usable Gamma falls back to the prior N(centre, Omega) under
+// fastFallback="prior" rather than freezing for the whole sweep (issue #845 /
+// paper Prop 1).
+static NumericMatrix fsaemBuildCholGamma(NumericMatrix hess, IntegerVector ok,
+                                         int nsub, int neta) {
+  NumericMatrix cholGamma(nsub, neta * neta);
+  arma::mat priorL;
+  int priorLstate = 0;
+  for (int id = 0; id < nsub; ++id) {
+    bool bad = (ok[id] == 0);
+    arma::mat L(neta, neta, arma::fill::zeros);
+    if (!bad) {
+      arma::mat H(neta, neta);
+      for (int j = 0; j < neta * neta; ++j) H(j) = hess(id, j);
+      arma::mat G;
+      if (!arma::inv(G, H)) bad = true;
+      else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
+    }
+    if (bad) {
+      _fsaemNBadGamma += 1;                   // this subject's OWN Gamma was unusable
+      if (_fsaemFallback == 1 && fsaemPriorChol(priorL, priorLstate, neta)) {
+        L = priorL; bad = false; _fsaemNPriorFallback += 1;
+      }
+    }
+    for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
+  }
+  return cholGamma;
+}
+
+// The iteration-indexed IMH sweeps.  streamBase is derived per (call, sweep) so the
+// threefry stream is reproducible regardless of thread count.
+static NumericMatrix fsaemRunSweeps(NumericMatrix etaCur, NumericMatrix etaHat,
+                                    NumericMatrix cholGamma, int nchain, int nsweep,
+                                    int cores, NumericMatrix mprior,
+                                    NumericVector lower, NumericVector upper,
+                                    IntegerVector nbd, double seed, int nRetry,
+                                    int kiter, int nsub) {
+  NumericMatrix eta = clone(etaCur);
+  for (int sw = 0; sw < nsweep; ++sw) {
+    double streamBase = seed + ((double)kiter * nsweep + sw) * ((double)nchain * nsub);
+    List r = fsaemImhKernel_(eta, etaHat, cholGamma, nchain, cores,
+                             mprior, lower, upper, nbd, streamBase, nRetry);
+    eta = as<NumericMatrix>(r["eta"]);
+  }
+  return eta;
+}
+
 // MAP + proposal covariance (Gamma_i = H_i^-1, lower Cholesky) + iteration-indexed
 // IMH sweeps, for an inner that is ALREADY re-parameterized.  Shared by the
 // no-covariate step (fsaemStepCpp_) and the covariate step (fsaemMapImhCpp_,
@@ -16235,36 +16374,13 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
   // outside any parallel region, as OdeSwapEsBatch requires.
   OdeSwapEsBatch esBatch(odeSlotInner);
   const int netaNow = op_focei.neta;
-  // fastHRefresh > 1: reuse the last computed MAP + Gamma on the iterations in
-  // between, skipping one inner optimization per subject.  Still a valid
-  // independent-MH kernel -- the proposal need not equal the target -- so this
-  // trades acceptance for work, never correctness.  The caller has ALREADY
-  // re-parameterized the inner for this iteration, which is what must not be
-  // skipped: likInner0 has to score candidates at the current theta/omega.
-  // The cache must match THIS call's dimensions, not merely be non-empty.  A
-  // cached nsub larger than the current one would make fsaemImhKernel_ loop over
-  // the cached subject count and index etaCur past its last row -- Rcpp does not
-  // bounds check, so that is a silent out-of-bounds read AND write.  Reachable
-  // only through a direct fsaemStepCpp_/fsaemMapImhCpp_ call today (every fit
-  // through nlmixr2() clears the cache first), which is exactly why it is
-  // checked here rather than assumed.
   const int nsubNow = mprior.nrow();
-  bool reuse = (_fsaemHRefresh > 1) && (kiter % _fsaemHRefresh != 0) &&
-    (nsubNow > 0) && (_fsaemCacheNsub == nsubNow) && (_fsaemCacheNeta == netaNow) &&
-    (_fsaemCacheEtaHat.nrow() == nsubNow) && (_fsaemCacheChol.nrow() == nsubNow) &&
-    (etaCur.nrow() == nchain * nsubNow);
-  if (reuse) {
+  if (fsaemCacheUsable(etaCur, nsubNow, netaNow, nchain, kiter)) {
     _fsaemNStep += 1;
     _fsaemNMapReuse += 1;
-    NumericMatrix eta = clone(etaCur);
-    for (int sw = 0; sw < nsweep; ++sw) {
-      double streamBase = seed + ((double)kiter * nsweep + sw) *
-        ((double)nchain * nsubNow);
-      List r = fsaemImhKernel_(eta, _fsaemCacheEtaHat, _fsaemCacheChol, nchain, cores,
-                               mprior, lower, upper, nbd, streamBase, nRetry);
-      eta = as<NumericMatrix>(r["eta"]);
-    }
-    return eta;
+    return fsaemRunSweeps(etaCur, _fsaemCacheEtaHat, _fsaemCacheChol, nchain, nsweep,
+                          cores, mprior, lower, upper, nbd, seed, nRetry, kiter,
+                          nsubNow);
   }
   List mapL = fsaemInnerMap_(cores);
   NumericMatrix etaHat = mapL["eta"];
@@ -16272,63 +16388,8 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
   IntegerVector ok = mapL["ok"];
   const int neta = op_focei.neta;
   const int nsub = etaHat.nrow();
-  // fastMode="chainMean": centre the proposal on the subject's mean over the nmc
-  // chains instead of its MAP (issue #845 / the paper's cross-chain-mean mode).
-  // Gamma still comes from the MAP's H -- only the CENTRE moves.  This stays a
-  // valid independent-MH kernel either way: an independent proposal need not
-  // equal the target, and the acceptance ratio is computed from whatever ehat and
-  // L were actually proposed from, so a worse centre costs efficiency, never
-  // correctness.  etaCur is chain-major, row = c*nsub + id.
-  if (_fsaemMode == 1 && nchain > 0 && etaCur.nrow() == nchain*nsub &&
-      etaCur.ncol() == neta) {
-    for (int id = 0; id < nsub; ++id) {
-      for (int j = 0; j < neta; ++j) {
-        double acc = 0.0;
-        for (int c = 0; c < nchain; ++c) acc += etaCur(c*nsub + id, j);
-        etaHat(id, j) = acc / (double)nchain;
-      }
-    }
-  }
-  // cholGamma row id = vec(lower Cholesky of Gamma_i = H_i^-1); NA where the MAP
-  // failed.  R did solve(H) then t(chol(.)); chol reads the upper triangle, so
-  // symmatu() reproduces that input and "lower" == t(chol()).
-  NumericMatrix cholGamma(nsub, neta * neta);
-  // fastFallback="prior": a subject with no usable Gamma proposes from the prior
-  // N(centre, Omega) rather than freezing for the whole sweep -- issue #845 /
-  // paper Prop 1.  Omega is recovered from the inner's own omega inverse, which
-  // the caller's re-parameterization refreshed for THIS iteration, so it is
-  // current on both the plain and the covariate path with no extra argument.
-  // Built lazily: a fit where every subject is fine never pays for it.
-  arma::mat priorL;
-  int priorLstate = 0;                        // 0 not tried, 1 usable, -1 failed
-  for (int id = 0; id < nsub; ++id) {
-    bool bad = (ok[id] == 0);
-    arma::mat L(neta, neta, arma::fill::zeros);
-    if (!bad) {
-      arma::mat H(neta, neta);
-      for (int j = 0; j < neta * neta; ++j) H(j) = hess(id, j);
-      arma::mat G;
-      if (!arma::inv(G, H)) bad = true;
-      else if (!arma::chol(L, arma::symmatu(G), "lower")) bad = true;
-    }
-    if (bad) {
-      _fsaemNBadGamma += 1;                   // this subject's OWN Gamma was unusable
-      if (_fsaemFallback == 1) {
-        if (priorLstate == 0) {
-          priorLstate = -1;
-          arma::mat Om;
-          arma::mat oi = arma::symmatu(op_focei.omegaInv);
-          if ((arma::inv_sympd(Om, oi) || arma::inv(Om, oi)) &&
-              arma::chol(priorL, arma::symmatu(Om), "lower") &&
-              (int)priorL.n_rows == neta) {
-            priorLstate = 1;
-          }
-        }
-        if (priorLstate == 1) { L = priorL; bad = false; _fsaemNPriorFallback += 1; }
-      }
-    }
-    for (int j = 0; j < neta * neta; ++j) cholGamma(id, j) = bad ? NA_REAL : L(j);
-  }
+  fsaemCentreOnChainMean(etaHat, etaCur, nchain, nsub, neta);
+  NumericMatrix cholGamma = fsaemBuildCholGamma(hess, ok, nsub, neta);
   _fsaemNStep += 1;
   if (_fsaemHRefresh > 1) {
     _fsaemCacheEtaHat = clone(etaHat);
@@ -16336,14 +16397,8 @@ static NumericMatrix fsaemMapImh(NumericMatrix mprior, NumericMatrix etaCur, int
     _fsaemCacheNsub = nsub;
     _fsaemCacheNeta = neta;
   }
-  NumericMatrix eta = clone(etaCur);
-  for (int s = 0; s < nsweep; ++s) {
-    double streamBase = seed + ((double)kiter * nsweep + s) * ((double)nchain * nsub);
-    List r = fsaemImhKernel_(eta, etaHat, cholGamma, nchain, cores,
-                             mprior, lower, upper, nbd, streamBase, nRetry);
-    eta = as<NumericMatrix>(r["eta"]);
-  }
-  return eta;
+  return fsaemRunSweeps(etaCur, etaHat, cholGamma, nchain, nsweep, cores, mprior,
+                        lower, upper, nbd, seed, nRetry, kiter, nsub);
 }
 
 // C++-native f-SAEM step: the whole no-covariate per-iteration orchestration that

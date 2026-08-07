@@ -3703,6 +3703,38 @@ private:
   // + proposal covariance, and runs the IMH kernel), and writes the accepted etas
   // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
   // now (guarded by the caller / closure arg length).
+  // Inner THETA for the no-covariate fast step: structural positions <- the current
+  // population phi, residual positions <- ares/bres.  Seeded from the ini estimates
+  // so a fix()ed structural theta keeps its own value; only the estimated
+  // structural and residual slots are overwritten.
+  NumericVector fsaemBuildInnerTheta() {
+    NumericVector theta(fsaemNTheta);
+    if ((int)fsaemThetaIni.n_elem == fsaemNTheta) {
+      for (int i = 0; i < fsaemNTheta; i++) theta[i] = fsaemThetaIni(i);
+    }
+    // current population value for each structural theta, in phi order: phi1 params
+    // from mprior_phi1, phi0 params (fixed effects with no random effect, e.g. a
+    // general-likelihood SD) from mprior_phi0.  The old code indexed mprior_phi1 for
+    // EVERY structural position, which ran past nphi1 whenever a general-likelihood
+    // model had a structural phi0 parameter.
+    arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
+    for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
+    for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
+    // phi column j IS structural theta j: the phi vector follows the ini (ntheta)
+    // order that fsaemStructPos is built in, not the eta order.  Verified by
+    // construction: routing through ui$muRefDataFrame instead drops acceptance from
+    // 0.88 to 0.02 when ini() and the eta declarations disagree.
+    bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
+    for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
+      theta[fsaemStructPos(j)] =
+        phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
+    for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
+      int ep = fsaemResidEp(j);
+      theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
+    }
+    return theta;
+  }
+
   void fsaemImhStep(mat &phiM, int kiter) {
     // Pass the full per-subject prior mean mprior_phi1 (N x nphi1).  For a
     // no-covariate model every row is the same population phi; for a covariate
@@ -3717,36 +3749,9 @@ private:
     }
     arma::mat acc;
     if (fsaemNoCov) {
-      // No per-iteration R round-trip: build the inner THETA (structural
-      // positions <- population phi = mprior_phi1 row 0; residual positions <-
-      // ares/bres) and call the C++ orchestration directly.
-      // Seed from the ini estimates so a fix()ed structural theta keeps its own
-      // value; only the estimated structural and residual slots are overwritten.
-      NumericVector theta(fsaemNTheta);
-      if ((int)fsaemThetaIni.n_elem == fsaemNTheta) {
-        for (int i = 0; i < fsaemNTheta; i++) theta[i] = fsaemThetaIni(i);
-      }
-      // current population value for each structural theta, in phi order: phi1
-      // params from mprior_phi1, phi0 params (fixed effects with no random effect,
-      // e.g. a general-likelihood SD) from mprior_phi0.  The old code indexed
-      // mprior_phi1 for EVERY structural position, which ran past nphi1 whenever a
-      // general-likelihood model had a structural phi0 parameter.
-      arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
-      for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
-      for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
-      // phi column j IS structural theta j: the phi vector follows the ini
-      // (ntheta) order that fsaemStructPos is built in, not the eta order.
-      // Verified by construction: routing through ui$muRefDataFrame instead
-      // drops acceptance from 0.88 to 0.02 when ini() and the eta declarations
-      // disagree.
-      bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
-      for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
-        theta[fsaemStructPos(j)] =
-          phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
-      for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
-        int ep = fsaemResidEp(j);
-        theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
-      }
+      // No per-iteration R round-trip: build the inner THETA and call the C++
+      // orchestration directly.
+      NumericVector theta = fsaemBuildInnerTheta();
       Environment innerEnv(fsaemInnerEnv);
       NumericMatrix accNM =
         fsaemStepCpp_(innerEnv, theta, NumericVector(omega.begin(), omega.end()),
