@@ -46,6 +46,7 @@ saemControl(
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
+  revisitUninformativeEtas = FALSE,
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
@@ -408,6 +409,23 @@ saemControl(
 
   boolean that tells nlmixr2's saem to calculate uninformative etas and
   handle them specially (default is \`TRUE\`).
+
+- revisitUninformativeEtas:
+
+  boolean (default \`FALSE\`); when \`TRUE\` the uninformative-eta test
+  is run a second time at the end of burn-in and that verdict replaces
+  the first. The test asks whether perturbing an eta moves the subject's
+  prediction, and it is otherwise only run at the \*initial\* estimates
+  – so those decide, for the whole fit, which etas \`saem\` may sample.
+  Re-running it once \`theta\` has moved decides on the estimates the
+  data supports instead. It reuses the fit's own model evaluation, so it
+  costs a few extra solves at a single iteration and leaves the random
+  number stream unchanged; where it changes no verdict the fit is
+  identical. It is off by default because the two verdicts only disagree
+  when \`theta\` moved a long way during burn-in, which usually means it
+  has not settled – and the second verdict can freeze an eta for the
+  rest of the fit. Skipped for mixture models and when
+  \`handleUninformativeEtas=FALSE\`.
 
 - iovXform:
 

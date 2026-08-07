@@ -79,6 +79,7 @@
 <span>  muRefCov <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  handleUninformativeEtas <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  revisitUninformativeEtas <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
@@ -412,6 +413,24 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <dd><p>boolean that tells nlmixr2's saem to
 calculate uninformative etas and handle them specially (default
 is `TRUE`).</p></dd>
+
+
+<dt id="arg-revisituninformativeetas">revisitUninformativeEtas<a class="anchor" aria-label="anchor" href="#arg-revisituninformativeetas"></a></dt>
+<dd><p>boolean (default `FALSE`); when
+`TRUE` the uninformative-eta test is run a second time at the end
+of burn-in and that verdict replaces the first.  The test asks
+whether perturbing an eta moves the subject's prediction, and it is
+otherwise only run at the *initial* estimates – so those decide,
+for the whole fit, which etas `saem` may sample.  Re-running it
+once `theta` has moved decides on the estimates the data supports
+instead.  It reuses the fit's own model evaluation, so it costs a
+few extra solves at a single iteration and leaves the random number
+stream unchanged; where it changes no verdict the fit is identical.
+It is off by default because the two verdicts only disagree when
+`theta` moved a long way during burn-in, which usually means it has
+not settled – and the second verdict can freeze an eta for the
+rest of the fit.  Skipped for mixture models and when
+`handleUninformativeEtas=FALSE`.</p></dd>
 
 
 <dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
