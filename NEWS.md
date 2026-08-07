@@ -34,7 +34,9 @@
   forward difference falls below `foceiControl(gradCalcCentralSmall=)`.  The
   confirming central difference overwrote the objective at `theta+delta` with the
   forward gradient before using it, so it returned roughly `-objective/(2*h)`
-  rather than a derivative, and that value was left unclamped by `gradTrim`.
+  rather than a derivative, and that value was left unclamped by `gradTrim`.  The
+  confirmation now also keeps the gradient it started from when its own solve
+  fails, rather than replacing it with a non-finite value that resets the fit.
 
 - Fixed the outer finite-difference gradient returning a sign-reversed or stale
   derivative when a central-difference term came back non-finite.  The one-sided

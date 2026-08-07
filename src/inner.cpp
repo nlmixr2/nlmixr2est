@@ -5134,7 +5134,11 @@ void numericGrad(double *theta, double *g){
           double gForward   = g[cpar];
           g[cpar]           = (tmp-foceiOfv0(theta))/(2*delta);
           if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-          if (fabs(gForward) > fabs(g[cpar])) g[cpar] = gForward;
+          // this is a confirmation, so it may never lose information: the branch
+          // condition makes gForward finite, while the central difference can go
+          // non-finite from a failed cur-delta solve or from a tmp that the NA
+          // rescue above already left non-finite.  Keep what we had.
+          if (!R_FINITE(g[cpar]) || fabs(gForward) > fabs(g[cpar])) g[cpar] = gForward;
           if (R_FINITE(op_focei.gradTrim)){
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
