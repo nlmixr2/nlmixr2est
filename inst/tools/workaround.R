@@ -30,26 +30,6 @@ close(md5file)
 .in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
 .in <- gsub("@EG@", file.path(find.package("RcppEigen"),"include"), .in)
 
-## COMPATIBILITY PROBE -- remove with the layers it gates (see the follow-up issue).
-##
-## rxode2 5.1.6 added setIndCmt() and the event-sensitivity shape save/restore entry
-## points to the linked function-pointer table.  nlmixr2est uses them when they are
-## there and falls back to what it did before when they are not, so one source tree
-## builds against both 5.1.5 and 5.1.6 -- which is what lets the two packages be
-## submitted to CRAN at the same time.
-##
-## Probe the HEADER rather than packageVersion(): the header is what the compile
-## actually sees, and a source install of an in-between rxode2 can carry either.
-.rxh <- file.path(find.package("rxode2"), "include", "rxode2ptr.h")
-.rxsrc <- if (file.exists(.rxh)) paste(readLines(.rxh, warn = FALSE), collapse = "\n") else ""
-.hasCmtW <- grepl("setIndCmt_t", .rxsrc, fixed = TRUE)
-.hasShape <- grepl("rxode2EventSensShapeSave_t", .rxsrc, fixed = TRUE)
-.compat <- character(0)
-if (.hasCmtW)  .compat <- c(.compat, "-DNLMIXR2EST_HAS_SETINDCMT")
-if (.hasShape) .compat <- c(.compat, "-DNLMIXR2EST_HAS_ESSHAPE")
-message("nlmixr2est: rxode2 API probe -- setIndCmt=", .hasCmtW, " esShape=", .hasShape)
-.in <- gsub("@RXCOMPAT@", paste(.compat, collapse = " "), .in)
-
 
 if (.Platform$OS.type == "windows") {
   .makevars <- file("src/Makevars.win", "wb")
