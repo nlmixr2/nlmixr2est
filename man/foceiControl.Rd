@@ -31,6 +31,8 @@ foceiControl(
   covFull = TRUE,
   fast = FALSE,
   fdOutlierZ = 3.5,
+  fdChartrandAll = FALSE,
+  fdOutlierAny = FALSE,
   fdIndividualStep = TRUE,
   fdChartrand = TRUE,
   foceEbeTol = NULL,
@@ -315,6 +317,16 @@ whether a finite-differenced subject's slope is an outlier against the exact
 analytic slopes, and so whether `fdChartrand` refines it.  The conventional
 3.5; lower it to make the pass fire more readily (and to exercise it), raise
 it to suppress it without turning `fdChartrand` off.}
+
+\item{fdChartrandAll}{When the outlier pass fires for a parameter, refine
+**every** finite-differenced subject with the Chartrand TV derivative rather
+than only the outlying ones.  Subjects whose augmented solve succeeded keep
+their exact analytic gradient either way -- only finite differences are ever
+recomputed.  Default `FALSE` (refine the outliers only).}
+
+\item{fdOutlierAny}{Let an outlier among the **exact analytic** slopes fire the
+outlier pass as well, not only an outlier among the finite differences.
+Still only the finite differences are recomputed.  Default `FALSE`.}
 
 \item{fdIndividualStep}{For the per-subject finite-difference fallback of the
 analytic outer gradient (`fast=TRUE`), search the shi step size separately

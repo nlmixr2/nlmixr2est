@@ -424,6 +424,13 @@ struct focei_options {
   int fdIndividualStep = 1;
   // Modified-z cut of the FD slope outlier test; see foceiControl(fdOutlierZ=).
   double fdOutlierZ = 3.5;
+  // Once the pass fires for a parameter, refine EVERY finite-differenced subject rather than
+  // only the outlying ones; see foceiControl(fdChartrandAll=).
+  int fdChartrandAll = 0;
+  // Let an outlier among the EXACT analytic slopes fire the pass too, not only one among the
+  // finite differences; see foceiControl(fdOutlierAny=).
+  int fdOutlierAny = 0;
+  int nFdOutlierAnalytic = 0;   // times the analytic-side trigger is what fired
   int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
   int nAnalyticGrad = 0;    // # outer gradients from the analytic path
   // # of those that came from the ALL-C++ direct path.  Separate from nAnalyticGrad
@@ -6602,6 +6609,10 @@ NumericVector foceiSetup_(const RObject &obj,
     as<int>(foceiO["fdIndividualStep"]) : 1;
   op_focei.fdOutlierZ=foceiO.containsElementNamed("fdOutlierZ") ?
     as<double>(foceiO["fdOutlierZ"]) : 3.5;
+  op_focei.fdChartrandAll=foceiO.containsElementNamed("fdChartrandAll") ?
+    as<int>(foceiO["fdChartrandAll"]) : 0;
+  op_focei.fdOutlierAny=foceiO.containsElementNamed("fdOutlierAny") ?
+    as<int>(foceiO["fdOutlierAny"]) : 0;
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
@@ -7241,6 +7252,7 @@ Environment foceiOuter(Environment e){
   op_focei.outerFdStepPerNsub=0;
   op_focei.nFdStepClamped=0;
   op_focei.nFdRefDegraded=0;
+  op_focei.nFdOutlierAnalytic=0;
   op_focei.nNewtonMaxit=0;
   op_focei.nNewtonSolve=0;
   op_focei.nNewtonSingular=0;
@@ -9857,7 +9869,9 @@ void foceiFinalizeTables(Environment e){
           _["stepClamped"] = op_focei.nFdStepClamped,
           // Outlier tests that had no usable analytic reference and fell back to judging the
           // finite differences against themselves.
-          _["refDegraded"] = op_focei.nFdRefDegraded);
+          _["refDegraded"] = op_focei.nFdRefDegraded,
+          // Times the pass fired because an EXACT slope was the outlier (fdOutlierAny)
+          _["analyticTrigger"] = op_focei.nFdOutlierAnalytic);
         e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
@@ -12300,6 +12314,54 @@ static bool fdFlagOutliers(const std::vector<double> &ref, const std::vector<dou
   return any;
 }
 
+// Decide whether the outlier pass fires for full-theta column `col`, and WHICH
+// finite-differenced subjects are refined.
+//
+// `isOut` is sized by the FLAGGED set, so an analytic subject can never be selected for
+// refinement: its slope is EXACT, and replacing it with a regularized numerical derivative
+// would be strictly worse.  That holds under every option below -- the analytic gradient is
+// always retained, only which finite differences are recomputed changes.
+static bool fdOutlierDecide(const NumericMatrix &analyticRef, const NumericMatrix &out,
+                            int col, int nid, const std::vector<double> &r, double mz,
+                            std::vector<char> &isOut) {
+  std::vector<double> slopes((size_t)nid, NA_REAL);
+  for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col);
+  isOut.assign((size_t)nid, 0);
+  bool any = fdFlagOutliers(r, slopes, mz, isOut);
+  // foceiControl(fdOutlierAny=): an outlier among the EXACT slopes says the per-subject
+  // slopes for this parameter are badly dispersed, which is a reason to distrust the finite
+  // differences even though none of THEM looked extreme.  Only the finite differences are
+  // ever recomputed; the analytic slope that tripped it is untouched.  Off by default --
+  // dispersion across subjects is ordinary (a slope scales with a subject's information
+  // content), so this fires on healthy fits and is a diagnostic knob, not a default.
+  if (op_focei.fdOutlierAny && !any) {
+    std::vector<double> aslp;
+    for (int k = 0; k < analyticRef.nrow(); ++k) {
+      if (col < analyticRef.ncol()) {
+        const double av = analyticRef(k, col);
+        if (R_finite(av)) aslp.push_back(av);
+      }
+    }
+    std::vector<char> ignored((size_t)aslp.size(), 0);
+    if (fdFlagOutliers(r, aslp, mz, ignored)) {
+      any = true;
+      op_focei.nFdOutlierAnalytic++;
+    }
+  }
+  if (!any) return false;
+  // foceiControl(fdChartrandAll=): refine EVERY finite-differenced subject for this
+  // parameter, not only the outlying ones.  The default refines just the outliers, on the
+  // grounds that a subject inside the robust interval already has an adequate central
+  // difference and the TV grid costs N+1 evaluations per parameter.  This makes the other
+  // choice available: if one subject's difference is bad enough to be an outlier, the step
+  // that produced it was shared with (or searched the same way as) its peers, so their
+  // differences are suspect too.
+  if (op_focei.fdChartrandAll) {
+    for (int k = 0; k < nid; ++k) isOut[(size_t)k] = R_finite(out(k, col)) ? 1 : 0;
+  }
+  return true;
+}
+
 // gill83's scalar objective for the per-individual FD: this subject's -2LL at `theta`.
 // Reuses shi21LikTheta(), so the theta install, the pinned reference eta and the
 // innerOpt1() re-optimization are identical to the shi path -- only the differencing
@@ -12974,10 +13036,8 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
     // fits may still matter on an extreme one, and the outlier test gates it so the default
     // costs nothing where it is not needed.  nFdOutlierParam counts detections regardless of
     // whether the refinement runs.
-    std::vector<double> slopes((size_t)nid, NA_REAL);
-    for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, j);
-    std::vector<char> isOutlier((size_t)nid, 0);
-    if (!fdFlagOutliers(r, slopes, _fdOutlierMz, isOutlier)) continue;
+    std::vector<char> isOutlier;
+    if (!fdOutlierDecide(analyticRef, out, j, nid, r, _fdOutlierMz, isOutlier)) continue;
     op_focei.nFdOutlierParam++;
     // OPT-OUT (foceiControl(fdChartrand = FALSE)).  On by default because the outlier
     // test above is the gate: a well-behaved problem flags nothing and reaches here
@@ -13156,10 +13216,8 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
       bool refDegraded = false;
       fdBuildOutlierRef(analyticRef, out, col, nid, r, refDegraded);
       if (refDegraded) op_focei.nFdRefDegraded++;
-      std::vector<double> slopes((size_t)nid, NA_REAL);
-      for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col);
-      std::vector<char> isOut((size_t)nid, 0);
-      if (!fdFlagOutliers(r, slopes, _fdOutlierMz, isOut)) continue;
+      std::vector<char> isOut;
+      if (!fdOutlierDecide(analyticRef, out, col, nid, r, _fdOutlierMz, isOut)) continue;
       op_focei.nFdOutlierParam++;
       if (!op_focei.fdChartrand) continue;
       const double _spanOm  = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;

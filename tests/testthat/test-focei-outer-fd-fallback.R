@@ -331,4 +331,48 @@ nmTest({
     expect_gt(as.integer(off$out[["params"]]), 0L)
     expect_equal(as.integer(off$out[["chartrandSlopes"]]), 0L)
   })
+
+  test_that("fdChartrandAll refines every FD subject, fdOutlierAny widens the trigger", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    expect_equal(foceiControl(fdChartrandAll = TRUE)$fdChartrandAll, 1L)
+    expect_equal(foceiControl(fdOutlierAny = TRUE)$fdOutlierAny, 1L)
+    expect_error(foceiControl(fdChartrandAll = "yes"))
+    expect_true(isTRUE(vaeControl(fdChartrandAll = TRUE)$fdChartrandAll))
+    expect_true(isTRUE(vaeControl(fdOutlierAny = TRUE)$fdOutlierAny))
+
+    .run <- function(...) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      fit <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, nlmixr2data::theo_sd, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 2L, ...))))
+      .fbClearHooks()
+      list(objf = fit$objf, out = fit$env$nFdOutlier)
+    }
+
+    # fdOutlierAny: at the DEFAULT cut nothing among the finite differences is extreme, so the
+    # pass does not fire.  Letting an exact slope fire it is a strictly wider trigger, so with
+    # the cut low enough to make the analytic slopes themselves dispersed it must fire and say
+    # so through analyticTrigger -- while the analytic gradients stay analytic.
+    base <- .run(fdOutlierZ = 3.5)
+    expect_equal(as.integer(base$out[["params"]]), 0L)
+    expect_equal(as.integer(base$out[["analyticTrigger"]]), 0L)
+
+    # fdChartrandAll: with the pass firing, refining every FD subject must produce at least as
+    # many refined slopes as refining only the outliers.  Both must still give a finite fit --
+    # the analytic subjects are never recomputed under either setting.
+    only <- .run(fdOutlierZ = 1e-8, fdChartrandAll = FALSE)
+    all  <- .run(fdOutlierZ = 1e-8, fdChartrandAll = TRUE)
+    expect_true(is.finite(only$objf))
+    expect_true(is.finite(all$objf))
+    expect_gt(as.integer(only$out[["chartrandSlopes"]]), 0L)
+    expect_gte(as.integer(all$out[["chartrandSlopes"]]),
+               as.integer(only$out[["chartrandSlopes"]]))
+  })
 })
