@@ -18,9 +18,24 @@
 
 ### Estimation
 
-- Fixed `foceiControl(gradTrim=)` lower gradient clamping (`g < -gradTrim`), which previously tested
-  `g < gradTrim` and could replace small gradients by `-gradTrim` when `gradTrim` was
-  finite (the default `Inf` skips clamping).
+- Fixed `foceiControl(gradTrim=)` lower gradient clamp testing `g < gradTrim`
+  instead of `g < -gradTrim`.  Since the branch above it had already caught
+  everything over `+gradTrim`, every remaining component was replaced by
+  `-gradTrim`, so a small positive gradient could reach the optimizer as a large
+  negative one.  Only reachable with a finite `gradTrim`; the default `Inf` skips
+  these branches.
+
+- Fixed the outer finite-difference gradient corrupting any component whose
+  forward difference falls below `foceiControl(gradCalcCentralSmall=)`.  The
+  confirming central difference overwrote the objective at `theta+delta` with the
+  forward gradient before using it, so it returned roughly `-objective/(2*h)`
+  rather than a derivative, and that value was left unclamped by `gradTrim`.
+
+- Fixed the outer finite-difference gradient returning a sign-reversed or stale
+  derivative when a central-difference term came back non-finite.  The one-sided
+  rescue used an objective that is never filled in on the central path, and on the
+  path switched to central by `foceiControl(gradCalcCentralLarge=)` it read the
+  previous parameter's perturbed objective.
 
 - Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever the
   shared ODE solve pool was available, solving at the fit's much looser tolerance
