@@ -56,10 +56,19 @@ saemControl(
   nonMuTheta = c("regress", "eta"),
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
+  fast = FALSE,
+  fastKernel = c("firstN", "throughout", "additive"),
+  fastCov = c("auto", "jacobian", "hessian"),
+  fastIter = 20L,
+  fastLik = c("focei", "foce", "focep"),
+  fastFallback = c("skip", "prior"),
+  fastMode = c("map", "chainMean"),
+  fastHRefresh = 1L,
   lbfgsLmm = 5L,
   lbfgsFactr = NULL,
   lbfgsPgtol = NULL,
   lbfgsMaxIter = 20L,
+  nRetry = 10L,
   ...
 )
 }
@@ -91,7 +100,13 @@ computation.  In Monolix this is equivalent to \code{L}.}
     dimensional random walk Gibbs samples are taken.
 
     The third value represents the number of bootstrap/reshuffling or
-    uni-dimensional random samples are taken.}
+    uni-dimensional random samples are taken.
+
+    An optional fourth value is the number of f-SAEM independent
+    Metropolis-Hastings sweeps run per iteration (default 5).  It is only
+    consulted when the fast kernel is on (`fast=TRUE` or `est="fsaem"`); it
+    does not switch the kernel on by itself, and unlike the first three it is
+    not multiplied by 20 on the first iteration.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
@@ -449,6 +464,84 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
 
+\item{fast}{Boolean enabling the fast-SAEM (f-SAEM) simulation step
+(Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+simulation of the individual random effects uses an independent
+Metropolis-Hastings proposal centered at each subject's conditional
+MAP estimate with a Laplace/linearization covariance, which converges
+in far fewer SAEM iterations than the default random-walk Metropolis.
+The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+default this is `FALSE` (standard SAEM).  The `fast*` options below are
+only consulted when `fast=TRUE`.}
+
+\item{fastKernel}{Schedule for the f-SAEM independent Metropolis-Hastings
+  (IMH) kernel:
+
+  * `"firstN"` (default): use the IMH kernel for the first `fastIter`
+    iterations, then revert to the standard random-walk kernels.  This is
+    the recipe used in the f-SAEM paper -- the early iterations only need
+    an approximate posterior, so the fast kernel accelerates the initial
+    convergence and the steady-state behavior is unchanged.
+
+  * `"throughout"`: use the IMH kernel on every iteration for the whole
+    run.  Simpler, but recomputing the MAP/covariance every iteration is
+    costlier and unnecessary near convergence.
+
+  * `"additive"`: append the IMH kernel alongside the standard random-walk
+    kernels on every iteration.  Most mixing, most cost.}
+
+\item{fastCov}{Covariance used for the IMH Gaussian proposal:
+
+  * `"auto"` (default): Jacobian linearization for continuous-data
+    endpoints, Hessian (Laplace) for non-continuous endpoints.
+
+  * `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
+    structural-model Jacobian at the MAP (continuous data only).
+
+  * `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
+    individual log-likelihood at the MAP (any data type).}
+
+\item{fastIter}{Integer number of initial iterations to run the IMH kernel
+when `fastKernel="firstN"` (default 20).  Ignored by the other
+schedules.}
+
+\item{fastLik}{Which FOCEI-family individual likelihood is reused to build
+the f-SAEM proposal, one of `"focei"` (default), `"foce"` or `"focep"`.
+`"foce"` and `"focep"` are no-interaction likelihoods, so they imply the
+linearization form of the proposal covariance and override
+`fastCov = "hessian"`; `"focep"` additionally evaluates the residual
+variance the `foce = "foce+"` way rather than NONMEM's.}
+
+\item{fastFallback}{What the f-SAEM kernel does with a subject whose
+  proposal covariance is unusable (its information matrix will not invert, or
+  the result is not positive definite):
+
+  * `"skip"` (default): the subject keeps its current value for that
+    iteration.  For a continuous endpoint the standard random-walk kernels
+    still move it; for a general log-likelihood, where the IMH replaces the
+    walk, it does not move.
+
+  * `"prior"`: propose from the prior `N(centre, Omega)` instead, which is
+    always positive definite, so the subject keeps moving.}
+
+\item{fastMode}{Where the f-SAEM independent Metropolis-Hastings proposal is
+  centered:
+
+  * `"map"` (default): each subject's conditional MAP, from the FOCEi inner
+    optimizer.
+
+  * `"chainMean"`: that subject's mean over the `nmc` chains.  The proposal
+    covariance still comes from the MAP's information matrix; only the center
+    changes.  Can mix better when the posterior mode is a poor summary.}
+
+\item{fastHRefresh}{Integer (default `1L`).  How often the f-SAEM kernel
+recomputes the per-subject MAP and proposal covariance, in active
+iterations: `1` recomputes every iteration, `k` reuses the previous ones for
+`k - 1` iterations in between.  A reused proposal is still a valid
+independent Metropolis-Hastings kernel -- it costs acceptance, not
+correctness -- and saves one inner optimization per subject per skipped
+iteration.}
+
 \item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
 memory) used when refining the fixed-effect-only parameters of a general
 log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
@@ -465,6 +558,10 @@ derived from `sigdig` (`10^(-sigdig)`).}
 
 \item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
 refinement.  Default 20.}
+
+\item{nRetry}{Integer number of times a bounded log-likelihood parameter's
+f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+bounds before being clamped to the violated boundary.  Default 10.}
 
 \item{...}{Other arguments to control SAEM.}
 }

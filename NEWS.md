@@ -2,6 +2,34 @@
 
 ## New features
 
+- `est = "fsaem"` (equivalently `saemControl(fast = TRUE)`) is back.  It is the
+  fast SAEM of Karimi, Lavielle and Moulines (2020): the MCMC simulation step
+  proposes each subject's random effects from an independent Metropolis-Hastings
+  kernel centered at that subject's conditional MAP, with the FOCEi inner
+  information as the proposal covariance -- the linearization form (paper Eq 17)
+  for continuous endpoints and the Laplace/Hessian form (Eq 13) for a general
+  log-likelihood (`ll()`) endpoint, selected by `saemControl(fastCov=)`.
+  `fastKernel` chooses the schedule (`"firstN"` for the first `fastIter`
+  iterations, `"throughout"`, or `"additive"`), and `fastLik` chooses which
+  FOCEi-family inner likelihood builds the proposal.  Standard SAEM is unchanged
+  and remains the default.
+
+  Four opt-in refinements are available, all leaving the default behavior
+  unchanged: `saemControl(nu=)` accepts a fourth element giving the IMH sweeps
+  per iteration (default 5); `fastFallback = "prior"` proposes from the prior
+  `N(centre, Omega)` for a subject whose own proposal covariance is unusable
+  instead of holding it still; `fastMode = "chainMean"` centres the proposal on
+  the subject's mean over the chains rather than its conditional mode; and
+  `fastHRefresh = k` recomputes the mode and proposal covariance every `k`
+  iterations rather than every one, saving an inner optimization per subject in
+  between.  The last three trade acceptance for work or robustness, never
+  correctness -- an independent Metropolis-Hastings proposal need not match the
+  target, and the acceptance ratio is computed from the proposal actually used.
+
+- `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
+  and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
+  fast kernel's own step, proposal, acceptance and failure counts.
+
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity
   shape swap and the CMT re-basing of the shared solve pool always go through

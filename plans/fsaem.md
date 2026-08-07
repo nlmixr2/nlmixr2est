@@ -401,3 +401,88 @@ Scope = the *general* FOCEi likelihood surface (any inner-supported endpoint) no
 TTE-only, since the inner handles them uniformly; Weibull TTE is the validation
 gate. Endpoints whose inner likelihood needs the Hessian proposal use
 `fastCov` auto -> hessian (already validated on continuous).
+
+## Phase R -- restoration (issue #845, 2026-08-05)
+
+`est="fsaem"` was removed in 76a539b8f because it showed no early-convergence
+advantage over plain SAEM.  Issue #845 asks for it back now that the shared ODE
+pool (`odeSwap`) is in place.  Worktree `~/src/nlmixr2est-fsaem`, branch
+`feat/fsaem-restore`.
+
+- **R1 (revert)**: revert 76a539b8f onto main.  `.saemGeneralLik` keeps its
+  post-removal name and home -- plain saem fits `ll()` endpoints now, so the
+  detector is shared rather than duplicated.  NEWS goes under 7.0.3 (7.0.2 is the
+  in-flight CRAN submission).
+- **R2 (odeSwap audit)**: the pool itself is INERT for fsaem -- `.odeSwapInfo()`
+  after a fit shows one registered slot (`inner`), `overrideNeeded=FALSE`,
+  `scratchNlhs=0`, `lhsWidthMismatchN=0`, `activeOverride` all -1.  What IS
+  shared and was wrong is the event-sensitivity ("jump") shape: setting up the
+  FOCEi inner points rxode2's globals at the inner, and the SAEM model -- which
+  has none -- was solved under it.  Fixed with `odeSwapEsOff()` at every SAEM
+  solve setup/restore plus an explicit `OdeSwapEsBatch(odeSlotInner)` around the
+  MAP+IMH step.  Only reachable for a model with modeled dosing (lag/f/rate);
+  a plain bolus model has `eventSensInfo` NULL, which is why every existing
+  fsaem test was blind to it.
+- **R3 (stale chain likelihood)**: only the general-likelihood branch rescored
+  the chain after the IMH move.  For a normal endpoint the kernel is additive and
+  the random walks still run, so `do_mcmc` was scoring proposals against the
+  PRE-IMH `U_y`/`DYF`/`fsave`.  The DYF rebuild is now a lambda re-run after the
+  move for every distribution.
+- **R4 (diagnostics)**: `fsaemDiag_()`/`fsaemDiagReset_()` expose steps,
+  proposals, acceptances, MAP failures and non-PD proposal covariances -- the
+  only evidence a test has that the kernel fired rather than silently degrading.
+- **R5 (benchmark)**: the removal benchmark (theo_sd 1-cmt) cannot discriminate.
+  It is well identified, 20 burn-in iterations already reach the MLE, and the
+  f-SAEM paper itself reports "no regression" (i.e. no gain) there -- both
+  methods sit at SAEM's Monte-Carlo noise floor (RMSE ~0.01).  On the collinear
+  2-cmt N=60 model issue #845 cites, fsaem is clearly ahead at reduced
+  iterations.  The "converges faster" unit test is rewritten accordingly.
+
+## Phase S -- issue #845 options + verifying the over-acceptance fix (2026-08-05)
+
+Continues Phase R on the same branch (`feat/fsaem-restore`, PR #852).
+
+- **S1 (acceptance instrumentation)**: `do_mcmc` carried NO acceptance signal --
+  `rmcmc` is a fixed 0.5 and nothing adapts from a measured rate -- so the stale
+  `U_y` defect had nothing that could have caught it.  Adds per-kernel
+  proposal/acceptance counters, plus `nRescore`/`uYStaleMax` on the post-IMH
+  rescore, exposed as `fit$saemDiag`; `fit$fsaemDiag` moves onto the fit env too
+  (the impmap `odeSwapInfo` pattern) instead of a `:::` global a later fit
+  overwrites.
+
+  **The predicted symptom was wrong.**  Omitting the rescore does NOT inflate the
+  acceptance rate: `do_mcmc` writes `U_y(ind)=Uc_y(ind)` on every acceptance, so
+  a stale entry self-heals the first time that subject accepts anything and the
+  damage is diluted to noise (method-2 acceptance 0.2369 without the rescore
+  against 0.2344 for plain saem, with the kernel firing on 40 of 45 iterations).
+  The real symptom is a shifted answer -- tka 0.4362 against 0.4620.  So the
+  regression test asserts `nRescore == nStep` and `uYStaleMax > 0` (~22 nats),
+  NOT an acceptance bound.
+- **S2 (options carrier)**: `fsaemMapImh` is reached through two registered entry
+  points with hand-maintained arities in `src/init.c`, so one `fsaemSetOpts_()`
+  setter carries all four new tunables as file statics -- one `init.c` row
+  instead of four rounds of `compileAttributes` + `init.c` edits.  Reset per fit
+  alongside the counters.
+- **S3 (`nu[4]`)**: the sweep count, previously hardcoded 5 in four places.
+  Sweep count ONLY -- the kernel is still switched on by `fast=TRUE`.  Relaxes
+  the three `len=3` assertions, and fixes the `mcmc=` passthrough branch, which
+  validated `mcmc$nu` but never assigned it.  The covariate path could not honor
+  a sweep count at all before this (it returns before `cfg$fsaemNsweep` is
+  attached and its closure is called with 8 arguments).
+- **S4 (`fastFallback`)**: `"prior"` proposes from `N(centre, Omega)` for a
+  subject with no usable Gamma.  Omega comes from the inner's own omega inverse,
+  so no entry point widens.  Also counts a fourth failure mode that was
+  invisible: a finite Cholesky that will not itself invert.
+
+  **Not covered end to end**: `H = J' Sigma^-1 J + Omega^-1` is PD by
+  construction, so no healthy fit produces a bad Gamma -- measured 0 on the
+  exponential-TTE general likelihood, on 2-obs-per-subject theo_sd, and on the
+  same with `fastCov="hessian"`.  Driving the prior term to zero fails earlier in
+  SAEM's own nearPD.  The test asserts the option is INERT.
+- **S5/S6 (`fastMode`, `fastHRefresh`)**: chain-mean centring, and reusing the
+  MAP + Gamma between refreshes.  Both are safe because an independent MH
+  proposal need not equal the target; they cost acceptance, not correctness.
+  `fastHRefresh` must NOT skip the per-iteration re-parameterization -- likInner0
+  has to score at the current theta/omega -- and does not.  Measured (theo_sd, 20
+  fast iterations, all the same MLE): default accRate 0.882 / reuse 0;
+  chainMean 0.594; hRefresh=5 0.671 / reuse 16; both 0.458 / reuse 16.

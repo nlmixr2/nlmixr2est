@@ -45,8 +45,9 @@
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
   .nmc <- cfg$nmc
-  # nu is the number of selection for each probability type.
-  checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
+  # nu is the number of selection for each probability type; an optional 4th
+  # element is the f-SAEM IMH sweep count (read in R, not by the SAEM C++ loop).
+  checkmate::assertIntegerish(cfg$nu, lower=0, min.len=3, max.len=4, .var.name="saem.cfg$nu")
   # Overall number of iterations
   checkmate::assertIntegerish(cfg$niter, lower=0,  len=1, .var.name="saem.cfg$niter")
   # Number of iterations where the correlation is ignored
@@ -258,7 +259,15 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
+                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
+                        # a general log-likelihood endpoint has no normal do_mcmc
+                        # fallback, so the fast kernel must run every iteration
+                        fastKernel=if (.saemGeneralLik(ui)) "throughout"
+                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
+                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -300,12 +309,31 @@
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
+    # Metropolis acceptance counters for THIS fit; snapshotted onto the fit env in
+    # .saemFamilyFit.  They are the only signal that would catch a kernel scoring
+    # its proposals against a stale chain state.
+    saemDiagReset_()
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      fsaemDiagReset_()
+      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    } else if (length(.cfg$nu) >= 4L) {
+      .minfo("nu[4] sets the f-SAEM sweeps; needs est=\"fsaem\" or fast=TRUE")
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })
   .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
+  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
+  # down so it does not leak into a later fit's solve state (reproducibility).
+  # The kernel counters (fsaemDiag_(), reset above) survive the teardown and are
+  # the only evidence that the fast kernel fired rather than silently degrading
+  # to plain SAEM.
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+    try(vaeInnerFree_(), silent = TRUE)
+  }
+
   .saemRes
   })
 }
@@ -1149,6 +1177,17 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  # Snapshot THIS fit's kernel counters before anything else can run.  They are
+  # process globals reset at the top of .saemFitModel, so a later fit would
+  # overwrite them; stashing them on the fit env makes them `fit$saemDiag` /
+  # `fit$fsaemDiag` through nmObjGet.default.  Same reasoning as impmap's
+  # odeSwapInfo (R/impmap.R).
+  tryCatch({
+    assign("saemDiag", saemDiag_(), envir=.ret)
+    if (isTRUE(.control$fast)) {
+      assign("fsaemDiag", fsaemDiag_(), envir=.ret)
+    }
+  }, error=function(e) NULL)
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct

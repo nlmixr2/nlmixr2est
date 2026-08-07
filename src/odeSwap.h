@@ -117,6 +117,13 @@ int  odeSwapEsModelForSlot(int slot);
 int  odeSwapEsInstalledModel();
 // Record a role installed outside the registry (focei.R's fit-wide load).
 void odeSwapEsNoteInstalled(int esModel);
+// Turn the shape OFF and forget who installed it.  For handing the process back to
+// a model that carries no event sensitivities and is solved outside the registry:
+// est="fsaem" returns the solve to the SAEM model after every fast iteration, and
+// setting up the FOCEi inner has already pointed the globals at the inner's shape.
+// An OdeSwapEsBatch cannot cover that -- it restores whatever was live when IT was
+// constructed, which on that path is already the inner's.
+void odeSwapEsOff();
 
 struct OdeSwapEsBatch {
   explicit OdeSwapEsBatch(int slot);

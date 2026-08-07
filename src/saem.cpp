@@ -550,6 +550,76 @@ uvec getObsIdx(umat m) {
 }
 
 
+// SAEM Metropolis acceptance counters, indexed by kernel method (1..3 -> 0..2).
+// do_mcmc carries no other acceptance signal -- rmcmc is a fixed constant and
+// nothing adapts from a measured rate -- so a kernel that accepts nearly
+// everything, which is exactly what scoring proposals against a stale U_y
+// causes, is otherwise invisible.  Reset by saemDiagReset_(), read by saemDiag_().
+static double _saemNProp[3] = {0, 0, 0};
+static double _saemNAcc[3]  = {0, 0, 0};
+
+// Post-IMH rescore, the f-SAEM correctness invariant: after the fast kernel moves
+// phiM, the predictions / observation loss / per-subject llik handed to the random
+// walks must belong to the NEW state.  nRescore counts the corrections; uYStaleMax
+// is the largest per-subject discrepancy one of them removed, i.e. how wrong
+// do_mcmc's "current state" would otherwise have been.
+//
+// MEASURED (theo_sd, 40 fast iterations of 45): omitting the rescore does NOT
+// inflate the aggregate acceptance rate -- do_mcmc writes U_y(ind)=Uc_y(ind) on
+// every acceptance, so a stale entry self-heals the first time that subject
+// accepts anything, and the damage is diluted to noise across the sweep
+// (m2 0.2369 vs 0.2344 for plain saem).  The observable symptom is a shifted
+// answer, not a visibly over-accepting kernel.  Assert on nRescore/uYStaleMax
+// rather than on accRate.
+static double _saemNRescore   = 0;
+static double _saemUYStaleMax = 0;
+
+//[[Rcpp::export]]
+RObject saemDiagReset_() {
+  for (int i = 0; i < 3; ++i) { _saemNProp[i] = 0; _saemNAcc[i] = 0; }
+  _saemNRescore = 0;
+  _saemUYStaleMax = 0;
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+List saemDiag_() {
+  NumericVector nProp(3), nAcc(3), accRate(3);
+  for (int i = 0; i < 3; ++i) {
+    nProp[i] = _saemNProp[i];
+    nAcc[i]  = _saemNAcc[i];
+    accRate[i] = (_saemNProp[i] > 0) ? _saemNAcc[i]/_saemNProp[i] : NA_REAL;
+  }
+  return List::create(_["nProp"] = nProp, _["nAcc"] = nAcc, _["accRate"] = accRate,
+                      _["nRescore"] = _saemNRescore,
+                      _["uYStaleMax"] = _saemUYStaleMax);
+}
+
+// f-SAEM: forward declarations so the SAEM loop can restore the SAEM model as the
+// current global solve after the fast R closure re-points it to the FOCEi inner.
+void setupRx(List &opt, SEXP evt, int nmc, int N);
+extern rx_solve* _rx;
+// odeSwap.h: the SAEM model carries NO event ("jump") sensitivities, but setting up
+// the FOCEi inner points rxode2's event-sensitivity globals at the inner's shape.
+// Solving the SAEM model under it mis-specifies its jumps, so the shape is turned
+// off wherever the SAEM solve is restored.
+void odeSwapEsOff();
+
+// Restore the SAEM (N*nmc) solve as the current global one after a fast iteration
+// re-pointed it at the FOCEi inner, and drop the inner's event-sensitivity shape.
+static inline void fsaemRestoreSaemSolve(List &opt, SEXP evt, int nmc, int N) {
+  setupRx(opt, evt, nmc, N);
+  _rx = getRxSolve_();
+  odeSwapEsOff();
+}
+
+// C++-native f-SAEM step (inner.cpp): the whole per-iteration orchestration, so
+// the SAEM loop can drive the fast kernel without a per-iteration R closure.
+NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector omega,
+                            NumericMatrix mprior, NumericMatrix etaCur, int nchain,
+                            int nsweep, int cores, NumericVector lower, NumericVector upper,
+                            IntegerVector nbd, double seed, int nRetry, int kiter);
+
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
 // via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
 // Rcpp::InternalFunction.  Defined after the class body.
@@ -843,6 +913,11 @@ public:
     // across the design even when its coordinate never moved.
     vec mcov0Fixed;
     if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
+    // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
+    // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
+    if (!Rf_isNull(fsaemStepFn)) {
+      fsaemRestoreSaemSolve(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    }
     // Decide whether to freeze the ODE during the phi0 optimization.  General-
     // likelihood phi0 params (a likelihood SD) never enter the ODE.  For a
     // normal model under nonMuTheta="regress", phi0 thetas that drive the ODE
@@ -1196,6 +1271,37 @@ public:
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
+    if (x.containsElementNamed("fast")) {
+      fsaemFast = as<int>(x["fast"]);
+      fsaemFastIter = as<int>(x["fastIter"]);
+      fsaemFastKernel = as<std::string>(x["fastKernel"]);
+      fsaemFastCov = as<std::string>(x["fastCov"]);
+      fsaemFastLik = as<std::string>(x["fastLik"]);
+      if (x.containsElementNamed("fsaemStep")) {
+        fsaemStepFn = x["fsaemStep"];
+        fsaemSaemOpt = as<List>(x["opt"]);
+        fsaemSaemEvt = x["evt"];
+      }
+      // C++-native direct-call fields (no-covariate path): the loop calls
+      // fsaemStepCpp_ itself, with no per-iteration Rcpp::Function round-trip.
+      fsaemNoCov = x.containsElementNamed("fsaemNoCov") ? as<int>(x["fsaemNoCov"]) : 0;
+      if (fsaemNoCov) {
+        fsaemInnerEnv   = x["fsaemInnerEnv"];
+        fsaemStructPos  = as<ivec>(x["fsaemStructPos"]);
+        fsaemThetaIni   = x.containsElementNamed("fsaemThetaIni") ?
+          as<vec>(x["fsaemThetaIni"]) : vec();
+        fsaemResidPos   = as<ivec>(x["fsaemResidPos"]);
+        fsaemResidIsAdd = as<ivec>(x["fsaemResidIsAdd"]);
+        fsaemResidEp    = as<ivec>(x["fsaemResidEp"]);
+        fsaemNTheta     = as<int>(x["fsaemNTheta"]);
+        fsaemLower      = as<vec>(x["fsaemLower"]);
+        fsaemUpper      = as<vec>(x["fsaemUpper"]);
+        fsaemNbdVec     = as<ivec>(x["fsaemNbd"]);
+        fsaemNsweep     = as<int>(x["fsaemNsweep"]);
+        fsaemNRetry     = as<int>(x["fsaemNRetry"]);
+        fsaemCores      = as<int>(x["fsaemCores"]);
+      }
+    }
     niter = as<int>(x["niter"]);
     saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
@@ -1649,7 +1755,21 @@ public:
       }
     }
     if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    if (fsaemFast != 0 && DEBUG > 0) {
+      RSprintf("f-SAEM enabled: kernel=%s cov=%s lik=%s fastIter=%d\n",
+               fsaemFastKernel.c_str(), fsaemFastCov.c_str(), fsaemFastLik.c_str(), fsaemFastIter);
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
+      // f-SAEM: whether the fast IMH kernel is active on this iteration.  For now
+      // the live kernel is not yet wired, so this only selects the (identical)
+      // standard path -- it establishes the schedule/degrade branch point.
+      bool fsaemActive = false;
+      if (fsaemFast != 0) {
+        if (fsaemFastKernel == "firstN") fsaemActive = ((int)kiter < fsaemFastIter);
+        else if (fsaemFastKernel == "throughout") fsaemActive = (kiter < (unsigned int)niter);
+        else if (fsaemFastKernel == "additive") fsaemActive = (kiter < (unsigned int)niter);
+      }
+      (void)fsaemActive;
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
       if (nSaCov > 0 && kiter == (unsigned int)niter) {
@@ -1681,7 +1801,9 @@ public:
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
       set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0);
 
-      // CHG hard coded 20
+      // CHG hard coded 20.  nu may carry a 4th element (the f-SAEM IMH sweep
+      // count); it belongs to the fast kernel and is resolved in R, so only
+      // nu(0..2) are read here.
       int nu1, nu2, nu3;
       if (kiter==0) {
         nu1=20*nu(0);
@@ -2223,74 +2345,110 @@ public:
           fsM = join_cols(fsM, fk_w);
         }
       } else {
-        vec f = fsave;
-        fsave = f;
-        if (distribution == 1){
-          // Build yt once: does not depend on chain index k
-          vec yt = hasFixedObsTransform ? yTrans : y;
-          if (!hasFixedObsTransform) {
-            for (int i = ntotal; i--;) {
-              int cur = ix_endpnt(i);
-              yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+        // Rebuild DYF (the per-observation loss) from a prediction vector.  Run
+        // once for the current phiM, and again whenever the f-SAEM IMH kernel
+        // moves phiM -- the RWM kernels below score their proposals against
+        // U_y/DYF/fsave, so leaving them at the pre-IMH state compares each
+        // candidate with a DIFFERENT chain state's likelihood.
+        auto rebuildDYF = [&](const vec &f) -> bool {
+          if (distribution == 1){
+            // Build yt once: does not depend on chain index k
+            vec yt = hasFixedObsTransform ? yTrans : y;
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              }
+            }
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
+              for (int j = ntotal; j--;) {
+                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
+            }
+          } else if (distribution == 2){
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -y % log(fk) + fk;
+            }
+          } else if (distribution == 3) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+            }
+          } else if (distribution == 4) {
+            // General log-likelihood endpoint (ll() ~ expr): the model returns the
+            // per-observation log-likelihood as its prediction (rx_pred_ ~ <ll>), so
+            // the observation loss is simply -ll and the standard RWM kernels run
+            // unchanged.  Reachable for est="saem"/"fsaem" when .saemGeneralLik(ui)
+            // is true (the transform-normal assertion is skipped for such a model);
+            // under fsaem the IMH kernel replaces the phi1 random walk.
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYF(indio_k) = -fk;
             }
           }
-          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
-          for (int k = 0; k < nmc; k++) {
-            int obs_start = k * ntotal;
-            vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
-            const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
-            const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-            _scratch_ft = fk;
-            _scratch_limitT = limitk;
-            for (int i = ntotal; i--;) {
-              int cur = ix_endpnt(i);
-              _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
-            }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
-            _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
-            _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
-            _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
-            _scratch_indio = indio + (arma::uword)k * stride;
-            DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-            }
+          else {
+            RSprintf("unknown distribution (id=%d)\n", distribution);
+            return false;
           }
-        } else if (distribution == 2){
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -y % log(fk) + fk;
-          }
-        } else if (distribution == 3) {
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
-          }
-        } else if (distribution == 4) {
-          // General log-likelihood endpoint (ll() ~ expr): the model returns the
-          // per-observation log-likelihood as its prediction (rx_pred_ ~ <ll>), so
-          // the observation loss is simply -ll and the standard RWM kernels run
-          // unchanged.  Reachable for est="saem" when .saemGeneralLik(ui) is true
-          // (the transform-normal assertion is skipped for such a model).
-          for (int k = 0; k < nmc; k++) {
-            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -fk;
-          }
-        }
-        else {
-          RSprintf("unknown distribution (id=%d)\n", distribution);
-          return;
-        }
+          return true;
+        };
+        if (!rebuildDYF(fsave)) return;
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
 
-        if(nphi1>0) {
+        // f-SAEM: on active iterations, precondition phiM's random-effect columns
+        // with the independent Metropolis-Hastings kernel (via the R closure that
+        // reuses the FOCEi inner MAP + proposal).  For NORMAL data this is the
+        // additive form -- the random-walk kernels below still run.  For a GENERAL
+        // likelihood (distribution==4) the IMH proposal is already the calibrated
+        // posterior kernel, so it REPLACES the phi1 random walk: running both
+        // stacks extra exploration and inflates the between-subject variance.
+        bool imhFired = (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn));
+        bool imhReplacesRwm = (imhFired && distribution == 4);
+        if (imhFired) {
+          fsaemImhStep(phiM, (int)kiter);
+          // phiM moved, so the predictions, the observation loss and the
+          // per-subject llik all belong to the OLD state.  Recompute them for
+          // every distribution: the phi0/phi1 random walks below read
+          // U_y/DYF/fsave as "the current state", so leaving them stale scores
+          // each candidate against a DIFFERENT state's likelihood.  See the
+          // _saemNRescore note above for why the damage does not show up as an
+          // inflated acceptance rate.
+          arma::vec uYPre = U_y;      // what do_mcmc would have been handed
+          fsave = user_fn(phiM, evt, optM).col(0);
+          if (!rebuildDYF(fsave)) return;
+          U_y = sum(DYF, 0).t();
+          _saemNRescore += 1;
+          if (U_y.n_elem == uYPre.n_elem && U_y.n_elem > 0) {
+            double m = arma::abs(U_y - uYPre).max();
+            if (m > _saemUYStaleMax) _saemUYStaleMax = m;
+          }
+        }
+        if(nphi1>0 && !imhReplacesRwm) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
@@ -2501,7 +2659,8 @@ public:
       // (saemix ind.fix10).  Enabled for general log-likelihood models
       // (distribution==4) and, via nonMuTheta="regress", for normal models --
       // keeping non-mu thetas as directly-optimized, bound-respecting regressors
-      // instead of stochastic phi0 draws.
+      // instead of stochastic phi0 draws.  refinePhi0Lik restores the SAEM solve
+      // first, so it is safe under the f-SAEM fast kernel too.
       if ((distribution == 4 || nonMuThetaRegress) &&
           nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
         refinePhi0Lik(kiter, pas);
@@ -3451,6 +3610,26 @@ private:
   int nmc;
   int nM;
 
+  // f-SAEM (Karimi, Lavielle & Moulines 2020) fast simulation options.  When
+  // fsaemFast is set, the first fsaemFastIter iterations replace the random-walk
+  // simulation with the independent Metropolis-Hastings kernel; later iterations
+  // (and fsaemFast == 0) degrade to the standard do_mcmc kernels.
+  int fsaemFast = 0;
+  int fsaemFastIter = 0;
+  std::string fsaemFastKernel = "firstN";
+  std::string fsaemFastCov = "auto";
+  std::string fsaemFastLik = "focei";
+  RObject fsaemStepFn = R_NilValue; // R closure: (theta, omega, etaCur, nchain) -> accepted etas
+  List fsaemSaemOpt;                // x["opt"] -- to restore the SAEM solve after the fast step
+  RObject fsaemSaemEvt = R_NilValue;// x["evt"]
+  // C++-native direct-call state (no-covariate path)
+  int fsaemNoCov = 0;
+  RObject fsaemInnerEnv = R_NilValue;
+  vec fsaemThetaIni;
+  ivec fsaemStructPos, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
+  vec fsaemLower, fsaemUpper;
+  int fsaemNTheta = 0, fsaemNsweep = 5, fsaemNRetry = 10, fsaemCores = 1;
+
   int ntotal, N, mlen;
   vec y, ys;    //ys is y sorted by endpnt
   mat evt;
@@ -3663,6 +3842,95 @@ private:
     }
   }
 
+  // f-SAEM independent Metropolis-Hastings preconditioning of phiM's mu-referenced
+  // random-effect columns.  Reconstructs the inner's current parameterization from
+  // the live SAEM estimate (theta = [population phi (mprior row 0), additive
+  // residual]; omega = Gamma2_phi1 diagonal), hands the current etas to the R
+  // closure (which re-parameterizes the FOCEi inner, optimizes the per-subject MAP
+  // + proposal covariance, and runs the IMH kernel), and writes the accepted etas
+  // back as phi = mprior + eta.  Non-covariate, single additive endpoint only for
+  // now (guarded by the caller / closure arg length).
+  // Inner THETA for the no-covariate fast step: structural positions <- the current
+  // population phi, residual positions <- ares/bres.  Seeded from the ini estimates
+  // so a fix()ed structural theta keeps its own value; only the estimated
+  // structural and residual slots are overwritten.
+  NumericVector fsaemBuildInnerTheta() {
+    NumericVector theta(fsaemNTheta);
+    if ((int)fsaemThetaIni.n_elem == fsaemNTheta) {
+      for (int i = 0; i < fsaemNTheta; i++) theta[i] = fsaemThetaIni(i);
+    }
+    // current population value for each structural theta, in phi order: phi1 params
+    // from mprior_phi1, phi0 params (fixed effects with no random effect, e.g. a
+    // general-likelihood SD) from mprior_phi0.  The old code indexed mprior_phi1 for
+    // EVERY structural position, which ran past nphi1 whenever a general-likelihood
+    // model had a structural phi0 parameter.
+    arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
+    for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
+    for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
+    // phi column j IS structural theta j: the phi vector follows the ini (ntheta)
+    // order that fsaemStructPos is built in, not the eta order.  Verified by
+    // construction: routing through ui$muRefDataFrame instead drops acceptance from
+    // 0.88 to 0.02 when ini() and the eta declarations disagree.
+    bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
+    for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
+      theta[fsaemStructPos(j)] =
+        phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
+    for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
+      int ep = fsaemResidEp(j);
+      theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
+    }
+    return theta;
+  }
+
+  void fsaemImhStep(mat &phiM, int kiter) {
+    // Pass the full per-subject prior mean mprior_phi1 (N x nphi1).  For a
+    // no-covariate model every row is the same population phi; for a covariate
+    // model the time-invariant covariate effect is absorbed here per subject.
+    // The R closure decides how to use it (constant intercept vs mprior-as-data
+    // inner) and returns the accepted etas.
+    arma::vec omega = Gamma2_phi1.diag();
+    arma::mat etaCur(phiM.n_rows, nphi1);
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) etaCur(r, j) = phiM(r, i1(j)) - mprior_phi1(subj, j);
+    }
+    arma::mat acc;
+    if (fsaemNoCov) {
+      // No per-iteration R round-trip: build the inner THETA and call the C++
+      // orchestration directly.
+      NumericVector theta = fsaemBuildInnerTheta();
+      Environment innerEnv(fsaemInnerEnv);
+      NumericMatrix accNM =
+        fsaemStepCpp_(innerEnv, theta, NumericVector(omega.begin(), omega.end()),
+                      wrap(mprior_phi1), wrap(etaCur), nmc, fsaemNsweep, fsaemCores,
+                      NumericVector(fsaemLower.begin(), fsaemLower.end()),
+                      NumericVector(fsaemUpper.begin(), fsaemUpper.end()),
+                      IntegerVector(fsaemNbdVec.begin(), fsaemNbdVec.end()),
+                      (double)saemSeed, fsaemNRetry, kiter);
+      acc = as<arma::mat>(accNM);
+    } else {
+      // Covariate path: still via the R closure (mprior-as-data inner).  Plambda
+      // carries the current structural fixed effects (time-varying cov betas).
+      Rcpp::Function stepFn(fsaemStepFn);
+      acc = as<arma::mat>(stepFn(wrap(mprior_phi1),
+                                 NumericVector(ares.begin(), ares.end()),
+                                 NumericVector(bres.begin(), bres.end()),
+                                 NumericVector(omega.begin(), omega.end()),
+                                 NumericVector(Plambda.begin(), Plambda.end()),
+                                 wrap(etaCur), nmc, kiter));
+    }
+    // the fast kernel re-pointed the global solve to the FOCEi inner (N subjects);
+    // restore the SAEM model's (N*nmc) solve as current BEFORE any early return so
+    // the E-step / M-step (and a general-likelihood user_fn) always read the right
+    // solve, even when the proposal is rejected (acc dimension mismatch).
+    fsaemRestoreSaemSolve(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
+    if ((int)acc.n_rows != (int)phiM.n_rows || (int)acc.n_cols != nphi1) return;
+    for (unsigned int r = 0; r < phiM.n_rows; r++) {
+      int subj = (int)(r % (unsigned int)N);
+      for (int j = 0; j < nphi1; j++) phiM(r, i1(j)) = acc(r, j) + mprior_phi1(subj, j);
+    }
+  }
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -3800,6 +4068,10 @@ private:
         }
 
         ind=find( deltu < -log(accU) );
+        // every subject-by-chain row is proposed in this block, so accU.n_elem is
+        // the denominator; count before ind is reused for the observation index
+        _saemNProp[method-1] += (double)accU.n_elem;
+        _saemNAcc[method-1]  += (double)ind.n_elem;
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -4069,6 +4341,8 @@ private:
         }
 
         ind = find(deltu < -log(accU));
+        _saemNProp[method-1] += (double)accU.n_elem;
+        _saemNAcc[method-1]  += (double)ind.n_elem;
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {
@@ -4292,6 +4566,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   saem_lhs = rxInner.calc_lhs;
   saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
+  odeSwapEsOff();  // the SAEM model has no jump sensitivities -- see fsaemRestoreSaemSolve
   mat evt = as<mat>(in_evt);
   saem_state_t dummy_st;
   if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
@@ -4316,6 +4591,10 @@ SEXP saem_fit(SEXP xSEXP) {
   saem_lhs = rxInner.calc_lhs;
   saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
+  // est="fsaem" sets the FOCEi inner up BEFORE this point (.fsaemInstallStep runs
+  // while the cfg is built), which leaves the inner's event-sensitivity shape live.
+  // The SAEM model has none, so drop it -- a no-op for plain saem.
+  odeSwapEsOff();
 
   saem_state_t dummy_st;
   if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
