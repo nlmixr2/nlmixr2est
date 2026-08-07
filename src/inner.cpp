@@ -4997,6 +4997,9 @@ void numericGrad(double *theta, double *g){
     int cpar;
     double cur, delta, tmp, tmp0=NA_REAL;
     double f=0;
+    // f is only filled in on the forward path; the NA fallback below needs it on
+    // the central path too, so track whether it holds the unperturbed objective
+    bool haveF=false;
     // Do Forward difference if the OBJF for *theta has already been calculated.
     bool doForward=false;
     if (op_focei.derivMethod == 0) {
@@ -5018,6 +5021,7 @@ void numericGrad(double *theta, double *g){
         op_focei.calcGrad=1;
         doForward=true;
       }
+      haveF=true;
     }
     for (cpar = npars; cpar--;) {
       if (mixGrad(theta, g, cpar) == 1) {
@@ -5045,7 +5049,11 @@ void numericGrad(double *theta, double *g){
         if (doForward && fabs(g[cpar]) > op_focei.gradCalcCentralLarge){
           doForward = false;
           theta[cpar] = cur - delta;
-          g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
+          // adopt the central-difference convention (tmp0 above, tmp below) so the
+          // NA fallback that follows picks the surviving side rather than a stale tmp0
+          tmp0 = tmp;
+          tmp = foceiOfv0(theta);
+          g[cpar] = (tmp0-tmp)/(2*delta);
           if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           op_focei.mixDeriv=1;
         }
@@ -5059,7 +5067,7 @@ void numericGrad(double *theta, double *g){
             if (R_FINITE(op_focei.gradTrim)){
               if (g[cpar] > op_focei.gradTrim){
                 g[cpar]=op_focei.gradTrim;
-              } else if (g[cpar] < op_focei.gradTrim){
+              } else if (g[cpar] < -op_focei.gradTrim){
                 g[cpar]=-op_focei.gradTrim;
               }
             }
@@ -5067,6 +5075,13 @@ void numericGrad(double *theta, double *g){
             // We are using the central difference AND there is an NA in one of the terms
             // g[cpar] = (tmp0-tmp)/(2*delta);
             op_focei.mixDeriv=1;
+            if (!haveF){
+              // one-sided rescue needs the unperturbed objective
+              theta[cpar] = cur;
+              f = foceiOfv0(theta);
+              if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+              haveF=true;
+            }
             if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
               // Backward
               g[cpar] = (f-tmp)/delta;
@@ -5077,7 +5092,7 @@ void numericGrad(double *theta, double *g){
             if (R_FINITE(op_focei.gradTrim)){
               if (g[cpar] > op_focei.gradTrim){
                 g[cpar]=op_focei.gradTrim;
-              } else if (g[cpar] < op_focei.gradTrim){
+              } else if (g[cpar] < -op_focei.gradTrim){
                 g[cpar]=-op_focei.gradTrim;
               }
             }
@@ -5087,11 +5102,15 @@ void numericGrad(double *theta, double *g){
           if (doForward){
             op_focei.mixDeriv=1;
             theta[cpar] = cur - delta;
+            double gForward = g[cpar];
             g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
             if(op_focei.slow)  op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            // a failed cur-delta solve must not turn a finite over-trim gradient
+            // into a NaN the clamps below cannot catch
+            if (!R_FINITE(g[cpar])) g[cpar] = gForward;
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
-            } else if (g[cpar] < op_focei.gradTrim){
+            } else if (g[cpar] < -op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
             }
           } else {
@@ -5101,11 +5120,13 @@ void numericGrad(double *theta, double *g){
           if (doForward){
             op_focei.mixDeriv=1;
             theta[cpar] = cur - delta;
+            double gForward = g[cpar];
             g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
             if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            if (!R_FINITE(g[cpar])) g[cpar] = gForward;
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
-            } else if (g[cpar] < op_focei.gradTrim){
+            } else if (g[cpar] < -op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
             }
           } else {
@@ -5114,10 +5135,23 @@ void numericGrad(double *theta, double *g){
         } else if (doForward && fabs(g[cpar]) < op_focei.gradCalcCentralSmall){
           op_focei.mixDeriv = 1;
           theta[cpar]       = cur - delta;
-          tmp = g[cpar];
+          // keep the forward gradient in its own variable -- tmp still has to hold
+          // the objective at cur+delta for the central difference on the next line
+          double gForward   = g[cpar];
           g[cpar]           = (tmp-foceiOfv0(theta))/(2*delta);
           if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-          if (fabs(tmp) > fabs(g[cpar])) g[cpar] = tmp;
+          // this is a confirmation, so it may never lose information: the branch
+          // condition makes gForward finite, while the central difference can go
+          // non-finite from a failed cur-delta solve or from a tmp that the NA
+          // rescue above already left non-finite.  Keep what we had.
+          if (!R_FINITE(g[cpar]) || fabs(gForward) > fabs(g[cpar])) g[cpar] = gForward;
+          if (R_FINITE(op_focei.gradTrim)){
+            if (g[cpar] > op_focei.gradTrim){
+              g[cpar]=op_focei.gradTrim;
+            } else if (g[cpar] < -op_focei.gradTrim){
+              g[cpar]=-op_focei.gradTrim;
+            }
+          }
         } else if (doForward) {
           if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         }

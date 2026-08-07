@@ -820,125 +820,134 @@ export(vpcSimExpand)
 export(yeoJohnson)
 import(nlmixr2data)
 importFrom(Rcpp,evalCpp)
-importFrom(graphics,abline)
-importFrom(graphics,lines)
-importFrom(graphics,matplot)
-importFrom(graphics,plot)
-importFrom(graphics,points)
-importFrom(graphics,title)
+importFrom(graphics,
+  abline,
+  lines,
+  matplot,
+  plot,
+  points,
+  title
+)
 importFrom(lbfgsb3c,lbfgsb3c)
 importFrom(methods,is)
 importFrom(n1qn1,n1qn1)
-importFrom(nlme,ACF)
-importFrom(nlme,VarCorr)
-importFrom(nlme,augPred)
-importFrom(nlme,fixed.effects)
-importFrom(nlme,fixef)
-importFrom(nlme,getData)
-importFrom(nlme,getVarCov)
-importFrom(nlme,groupedData)
-importFrom(nlme,nlme)
-importFrom(nlme,pdBlocked)
-importFrom(nlme,pdCompSymm)
-importFrom(nlme,pdConstruct)
-importFrom(nlme,pdDiag)
-importFrom(nlme,pdFactor)
-importFrom(nlme,pdIdent)
-importFrom(nlme,pdLogChol)
-importFrom(nlme,pdMat)
-importFrom(nlme,pdMatrix)
-importFrom(nlme,pdNatural)
-importFrom(nlme,pdSymm)
-importFrom(nlme,random.effects)
-importFrom(nlme,ranef)
-importFrom(nlme,reStruct)
-importFrom(nlme,varComb)
-importFrom(nlme,varConstPower)
-importFrom(nlme,varExp)
-importFrom(nlme,varFixed)
-importFrom(nlme,varFunc)
-importFrom(nlme,varIdent)
-importFrom(nlme,varPower)
-importFrom(nlme,varWeights)
-importFrom(rxode2,.malert)
-importFrom(rxode2,.minfo)
-importFrom(rxode2,.msuccess)
-importFrom(rxode2,.mwarn)
-importFrom(rxode2,RxODE)
-importFrom(rxode2,add.dosing)
-importFrom(rxode2,add.sampling)
-importFrom(rxode2,as.rxUi)
-importFrom(rxode2,et)
-importFrom(rxode2,eventTable)
-importFrom(rxode2,expit)
-importFrom(rxode2,geom_amt)
-importFrom(rxode2,geom_cens)
-importFrom(rxode2,ini)
-importFrom(rxode2,logit)
-importFrom(rxode2,lotri)
-importFrom(rxode2,model)
-importFrom(rxode2,probit)
-importFrom(rxode2,probitInv)
-importFrom(rxode2,rxCat)
-importFrom(rxode2,rxClean)
-importFrom(rxode2,rxControl)
-importFrom(rxode2,rxInit)
-importFrom(rxode2,rxLhs)
-importFrom(rxode2,rxModelVars)
-importFrom(rxode2,rxModelVarsS3)
-importFrom(rxode2,rxParam)
-importFrom(rxode2,rxParams)
-importFrom(rxode2,rxSolve)
-importFrom(rxode2,rxState)
-importFrom(rxode2,rxUiDeparse)
-importFrom(rxode2,rxUiGet)
-importFrom(rxode2,rxode)
-importFrom(rxode2,rxode2)
-importFrom(rxode2,stat_amt)
-importFrom(rxode2,stat_cens)
-importFrom(stats,AIC)
-importFrom(stats,BIC)
-importFrom(stats,anova)
-importFrom(stats,approxfun)
-importFrom(stats,as.formula)
-importFrom(stats,asOneSidedFormula)
-importFrom(stats,coef)
-importFrom(stats,cov)
-importFrom(stats,cov2cor)
-importFrom(stats,dlnorm)
-importFrom(stats,end)
-importFrom(stats,fitted)
-importFrom(stats,logLik)
-importFrom(stats,median)
-importFrom(stats,na.fail)
-importFrom(stats,na.omit)
-importFrom(stats,nlminb)
-importFrom(stats,nobs)
-importFrom(stats,optim)
-importFrom(stats,optimHess)
-importFrom(stats,pchisq)
-importFrom(stats,predict)
-importFrom(stats,qchisq)
-importFrom(stats,qnorm)
-importFrom(stats,quantile)
-importFrom(stats,resid)
-importFrom(stats,rnorm)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stats,simulate)
-importFrom(stats,start)
-importFrom(stats,terms)
-importFrom(stats,time)
-importFrom(stats,var)
+importFrom(nlme,
+  ACF,
+  VarCorr,
+  augPred,
+  fixed.effects,
+  fixef,
+  getData,
+  getVarCov,
+  groupedData,
+  nlme,
+  pdBlocked,
+  pdCompSymm,
+  pdConstruct,
+  pdDiag,
+  pdFactor,
+  pdIdent,
+  pdLogChol,
+  pdMat,
+  pdMatrix,
+  pdNatural,
+  pdSymm,
+  random.effects,
+  ranef,
+  reStruct,
+  varComb,
+  varConstPower,
+  varExp,
+  varFixed,
+  varFunc,
+  varIdent,
+  varPower,
+  varWeights
+)
+importFrom(rxode2,
+  .malert,
+  .minfo,
+  .msuccess,
+  .mwarn,
+  RxODE,
+  add.dosing,
+  add.sampling,
+  as.rxUi,
+  et,
+  eventTable,
+  expit,
+  geom_amt,
+  geom_cens,
+  ini,
+  logit,
+  lotri,
+  model,
+  probit,
+  probitInv,
+  rxCat,
+  rxClean,
+  rxControl,
+  rxInit,
+  rxLhs,
+  rxModelVars,
+  rxModelVarsS3,
+  rxParam,
+  rxParams,
+  rxSolve,
+  rxState,
+  rxUiDeparse,
+  rxUiGet,
+  rxode,
+  rxode2,
+  stat_amt,
+  stat_cens
+)
+importFrom(stats,
+  AIC,
+  BIC,
+  anova,
+  approxfun,
+  as.formula,
+  asOneSidedFormula,
+  coef,
+  cov,
+  cov2cor,
+  dlnorm,
+  end,
+  fitted,
+  logLik,
+  median,
+  na.fail,
+  na.omit,
+  nlminb,
+  nobs,
+  optim,
+  optimHess,
+  pchisq,
+  predict,
+  qchisq,
+  qnorm,
+  quantile,
+  resid,
+  rnorm,
+  sd,
+  setNames,
+  simulate,
+  start,
+  terms,
+  time,
+  var
+)
 importFrom(symengine,S)
-importFrom(utils,.DollarNames)
-importFrom(utils,capture.output)
-importFrom(utils,getFromNamespace)
-importFrom(utils,getParseData)
-importFrom(utils,head)
-importFrom(utils,removeSource)
-importFrom(utils,sessionInfo)
-importFrom(utils,stack)
-importFrom(utils,str)
-importFrom(utils,tail)
+importFrom(utils,
+  .DollarNames,
+  capture.output,
+  getFromNamespace,
+  getParseData,
+  head,
+  sessionInfo,
+  stack,
+  str,
+  tail
+)
 useDynLib(nlmixr2est, .registration=TRUE)

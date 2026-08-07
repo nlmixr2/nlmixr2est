@@ -132,7 +132,7 @@ struct OdeSwapEsBatch {
 private:
   bool saveLive();
   int prevSlot_;      // previous ROLE
-  int prevSlotIdx_;   // previous SLOT -- fallback when the snapshot is unavailable
+  int prevSlotIdx_;   // previous SLOT -- what the constructor compares against
   std::vector<char> prevShape_;   // the shape live on entry (rxode2EventSensShapeSave)
   bool armed_;
   OdeSwapEsBatch(const OdeSwapEsBatch &);
