@@ -48,8 +48,11 @@ nmTest({
 
     # raising gradCalcCentralSmall above every |forward difference| sends EVERY
     # component through the central-difference confirmation instead -- the branch
-    # reports itself as a mixed gradient, which is the evidence it ran
-    forced <- run(gradCalcCentralSmall = 1e10)
+    # reports itself as a mixed gradient, which is the evidence it ran.
+    # gradCalcCentralLarge is pushed out of reach at the same time: it is the only
+    # other branch that can set the mixed label from a forward difference, so
+    # disabling it makes the label unambiguous.
+    forced <- run(gradCalcCentralSmall = 1e10, gradCalcCentralLarge = 1e300)
     mixed <- gradRows(forced, "Mixed Gradient")
     expect_true(nrow(mixed) > 0)
     expect_equal(nrow(gradRows(forced, "Forward Difference")), 0L)
@@ -64,12 +67,14 @@ nmTest({
     expect_true(any(unlist(mixed) > 0))
   })
 
-  # NOTE: this does not reproduce the `g < gradTrim` sign slip itself.  That needs
-  # a component whose forward difference clears gradTrim while its recomputed
-  # central difference lands back inside the band, which is not arrangeable from
-  # a control setting.  It does pin the clamp bounds, so a lost or re-broken
-  # lower clamp shows up here.
-  test_that("a finite gradTrim bounds the outer gradient symmetrically", {
+  # NOTE: a bounds guard, NOT a reproduction of the `g < gradTrim` sign slip.
+  # Reproducing that needs a component whose forward difference clears gradTrim
+  # while its recomputed central difference lands back inside the band, which is
+  # not arrangeable from a control setting -- rebuilding with the unfixed clamps
+  # leaves this fit bit-identical.  The assertions below are also aggregate, so a
+  # single mis-clamped component can hide behind witnesses from other components.
+  # What this does catch is a clamp that goes missing or stops being symmetric.
+  test_that("a finite gradTrim keeps the outer gradient inside the band", {
     skip_on_cran()
     one.cmt <- function() {
       ini({
