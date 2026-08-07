@@ -208,4 +208,5 @@ nmTest({
     expect_lt(relL2(1L:3L), 0.05)   # theta + sigma
     expect_lt(relL2(4L:6L), 0.05)   # omega
   })
+
 })

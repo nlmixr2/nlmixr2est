@@ -11964,6 +11964,22 @@ static std::vector<int> _fdThIds;
 static std::vector< std::vector<double> > _fdThRefEta;
 static int _fdThCores = 1;
 static bool _fdThParallel = false;
+// Omega to evaluate the THETA legs under, when the caller's point carries one that is not
+// the inner problem's (est="vae", nonMuTheta="grad" differences at an omega that moves every
+// M-step).  NULL -- the FOCEi entry -- means "use op_focei's", which is what curOmegaInv()
+// returns with no override active.  Set SERIALLY before the phase and only read inside it;
+// each worker installs it through its own thread_local OmegaScope, exactly as fdOmegaLikOne
+// does, because _omegaOv is thread_local and a master-thread scope would not reach the
+// workers.
+static const arma::mat *_fdThOmegaInv = NULL;
+static double _fdThOmegaLogDet5 = 0.0;
+
+// Install the caller's Omega for this worker, if there is one.  Returned by value so the
+// scope lives for the caller's statement block.
+static inline std::unique_ptr<OmegaScope> fdThOmegaScope() {
+  if (_fdThOmegaInv == NULL) return std::unique_ptr<OmegaScope>();
+  return std::unique_ptr<OmegaScope>(new OmegaScope(*_fdThOmegaInv, _fdThOmegaLogDet5));
+}
 
 // The cache stores the step NORMALIZED by 1/(|par|+1) and reconstitutes it as
 // h = stored * (|par|+1), which is gill83's convention in this file (it sets
@@ -12045,7 +12061,8 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
     if (_fdThParallel) setRxThreadId(omp_get_thread_num());
 #endif
     _fdRefEta = _fdThRefEta[(size_t)k];
-    out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
+    { std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
+      out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0); }
 #ifdef _OPENMP
     if (_fdThParallel) setRxThreadId(-1);
 #endif
@@ -12055,6 +12072,7 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   for (int k = 0; k < nid; ++k) {
     if (R_finite(out[(size_t)k])) continue;
     _fdRefEta = _fdThRefEta[(size_t)k];
+    std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
   }
 }
@@ -12103,6 +12121,7 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
     arma::vec tw = theta, gr(1), f0(1);
     f0(0) = f0Ind[(size_t)k];
     double hs = 0.0;
+    std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     // shi21Central, NOT the forward search numericGrad uses.  Forward differencing was tried
     // here and MEASURED WORSE across the board: FD-vs-analytic grading went 19 PASS/2 MARGINAL
     // to 14/6, degrading 2x to 81x on 19 of 20 cases.  Forward carries O(h) against central's
@@ -12134,6 +12153,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
 #endif
     if (hPer[(size_t)k] > 0.0) {
       _fdRefEta = _fdThRefEta[(size_t)k];
+      std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       arma::vec tk = theta;
       if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
       out[(size_t)k] = shi21LikTheta(tk, _fdThIds[(size_t)k])(0);
@@ -12147,6 +12167,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   for (int k = 0; k < nid; ++k) {
     if (hPer[(size_t)k] <= 0.0 || R_finite(out[(size_t)k])) continue;
     _fdRefEta = _fdThRefEta[(size_t)k];
+    std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     arma::vec tk = theta;
     if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
     out[(size_t)k] = shi21LikTheta(tk, _fdThIds[(size_t)k])(0);
@@ -12484,6 +12505,26 @@ static void fdOmegaTvDeriv(int q, const std::vector<char> &isOutlier,
   }
 }
 
+// The POINT a per-individual difference is taken at.
+//
+// The FOCEi entry differences the inner problem as it stands, so every field is empty and the
+// core reads op_focei / saveEta -- byte for byte what it did before this existed.  The pooled
+// entry (est="vae", nonMuTheta="grad") is handed a theta, an eta matrix and an omega that are
+// deliberately NOT the inner problem's, and must difference THERE; summing a derivative taken
+// at one point with an analytic term taken at another is worse than declining, which is what
+// that entry used to do.
+struct FdIndPoint;
+static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analyticRef,
+                                         const struct FdIndPoint &pt);
+
+struct FdIndPoint {
+  std::vector<double> theta;                  // empty -> op_focei.fullTheta
+  std::vector< std::vector<double> > refEta;  // empty -> each subject's saveEta; else per ids0
+  const arma::mat *omegaInv = NULL;           // NULL  -> op_focei's (no override)
+  double omegaLogDet5 = 0.0;
+  bool doOmega = true;                        // false -> skip the omega phase entirely
+};
+
 //' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
 //'
 //' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
@@ -12511,6 +12552,12 @@ static void fdOmegaTvDeriv(int q, const std::vector<char> &isOutlier,
 //' @noRd
 //[[Rcpp::export]]
 NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
+  FdIndPoint _pt;                       // all defaults: the inner problem's own point
+  return foceiOuterFdIndCore(ids0, analyticRef, _pt);
+}
+
+static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analyticRef,
+                                         const FdIndPoint &pt) {
   int nid = ids0.size();
   int nth = (int)op_focei.ntheta;
   int nom = (int)op_focei.omegan;
@@ -12592,7 +12639,11 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   } _cgGuard;
   arma::vec theta((size_t)nth);
   std::vector<double> theta0((size_t)nth);
-  for (int t = 0; t < nth; ++t) { theta[t] = op_focei.fullTheta[t]; theta0[t] = theta[t]; }
+  const bool _ptTheta = ((int)pt.theta.size() == nth);
+  for (int t = 0; t < nth; ++t) {
+    theta[t] = _ptTheta ? pt.theta[(size_t)t] : op_focei.fullTheta[t];
+    theta0[t] = theta[t];
+  }
   // Omega block, on the natural scale, as found.  Every omega leg rebuilds from this.
   _fdOmBlock0.assign((size_t)nom, 0.0);
   for (int q = 0; q < nom; ++q) _fdOmBlock0[(size_t)q] = op_focei.fullTheta[nth + q];
@@ -12619,6 +12670,12 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   // per-individual factor.  Both are needed: rung 2 uses odeRelaxInd (per subject), but an
   // earlier global loosening would otherwise leak in here too.  Reused from the cov path.
   OdeFitTolGuard fdTolGuard;
+  // The caller's Omega, if it brought one, for the whole theta phase.  Cleared on every exit
+  // so a later FOCEi-entry difference cannot inherit it.
+  struct FdThOmegaGuard {
+    FdThOmegaGuard(const arma::mat *oi, double ld) { _fdThOmegaInv = oi; _fdThOmegaLogDet5 = ld; }
+    ~FdThOmegaGuard() { _fdThOmegaInv = NULL; _fdThOmegaLogDet5 = 0.0; }
+  } _fdThOmGuard(pt.omegaInv, pt.omegaLogDet5);
   // INVARIANT: no parallel region here performs a REDUCTION.  Each iteration writes only its
   // own subject's slot, and every sum over subjects is taken AFTER the region, in a fixed
   // subject order.  An OpenMP reduction would accumulate in whatever order the threads finish,
@@ -12666,10 +12723,22 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // The FD slopes are summed with, and outlier-tested against, the analytic ones, so they
     // must be taken about the same point.
     _fdThRefEta.assign(_fdThIds.size(), std::vector<double>());
+    // pt.refEta is indexed by POSITION IN ids0, so thK maps a flagged-set entry back to the
+    // row of ids0 the caller supplied it for.  A caller-supplied eta wins: it is the point the
+    // caller's analytic terms were taken at, and saveEta is the inner problem's, which for the
+    // pooled entry is a different eta entirely.
+    const bool _ptEta = (pt.refEta.size() == (size_t)nid);
     for (size_t q = 0; q < _fdThIds.size(); ++q) {
       focei_ind *fI = &(inds_focei[_fdThIds[q]]);
       _fdThRefEta[q].assign((size_t)op_focei.neta, 0.0);
-      if (fI->saveEta != NULL) {
+      const std::vector<double> *src = NULL;
+      if (_ptEta) {
+        const std::vector<double> &e = pt.refEta[(size_t)thK[q]];
+        if ((int)e.size() == op_focei.neta) src = &e;
+      }
+      if (src != NULL) {
+        for (int i = 0; i < op_focei.neta; ++i) _fdThRefEta[q][(size_t)i] = (*src)[(size_t)i];
+      } else if (fI->saveEta != NULL) {
         for (int i = 0; i < op_focei.neta; ++i) _fdThRefEta[q][(size_t)i] = fI->saveEta[i];
       } else {
         rx_solving_options_ind *indR = getSolvingOptionsInd(rx, getRxId(_fdThIds[q]));
@@ -12889,7 +12958,10 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   // perturbed Omega installed thread-locally.
   //
   // A clamped step is rejected outright rather than repaired -- see the bound test below.
-  if (nom > 0 && op_focei.neta > 0) {
+  // pt.doOmega == false: the caller's omega is not the inner problem's and cannot be
+  // rebuilt through setOmegaTheta(), so those columns are left NA rather than differenced at
+  // the wrong omega.  The caller decides what to do with an NA omega column.
+  if (pt.doOmega && nom > 0 && op_focei.neta > 0) {
     // TAKEN from the theta phase's set, not re-derived from ids0 by a second copy of the
     // same filter.  fdStepCacheGet keys the shared step store on the id set, so the two
     // phases MUST agree: if they ever diverged, each phase would invalidate the other's
@@ -14405,27 +14477,78 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
     ok = gradPooledCore(G, thv, eb, oi, dOi, tr, cores, gv, etaP, jacSum);
   } catch (...) { return R_NilValue; }
   if (!ok || (int)gv.n_elem != np) return R_NilValue;
-  // A flagged subject leaves a ZERO column in the kernel, and gradPooledCore no longer
-  // substitutes it -- that moved to analyticOuterGradDirect, which owns the per-subject
-  // columns.  So DECLINE here rather than returning a sum that is silently missing a
-  // subject: zeros are finite, so the is_finite() check below would pass it through.
+  // ---- substitute the finite-differenced subjects, at THIS caller's point ---------------
   //
-  // The fold-in cannot simply be repeated here.  foceiOuterFdInd_ differences the INNER
-  // problem as it currently stands (op_focei.fullTheta, each subject's saveEta), while this
-  // entry point is handed thVals/ebes/Oi that are deliberately NOT that point -- est="vae"
-  // with nonMuTheta="grad" evaluates at the encoder's etas and an omega that moves every
-  // M-step.  Differencing at one point and summing it with an analytic term taken at another
-  // is worse than declining.  The caller (vaeGrad.R) treats NULL as "no analytic gradient
-  // this step", which is what main did here too -- its `nobsAll[i] <= 0` guard declined the
-  // whole evaluation before any substitution was reached.
-  if (!op_focei.outerFdIds.empty()) return R_NilValue;
+  // A flagged subject leaves a ZERO column in the kernel (the stacking skips it), and
+  // gradPooledCore no longer substitutes -- that moved to analyticOuterGradDirect.  Returning
+  // gv as-is handed back a sum silently missing a whole subject, and zeros are finite so the
+  // is_finite() check below passed it through.
+  //
+  // The difference has to be taken at the point THIS entry was called with, not at the inner
+  // problem's: est="vae" with nonMuTheta="grad" evaluates at the encoder's etas and an omega
+  // that moves every M-step.  foceiOuterFdIndCore takes that point explicitly, so the same
+  // implementation serves both entries instead of one of them declining.
+  //
+  // OMEGA is NOT differenced here (pt.doOmega = false).  A perturbed Omega^-1 has to be built
+  // through setOmegaTheta(), which needs the estimation-scale omega vector; this entry is
+  // handed Oi as a matrix and cannot rebuild it.  Those kernel slots are set NA rather than
+  // left at the analytic sum's incomplete value, so a consumer that uses them fails visibly.
+  // The VAE M-step regresses over THETAS and drops the omega names before its own finite
+  // check, so it is unaffected.
+  if (!op_focei.outerFdIds.empty()) {
+    const int nFd = (int)op_focei.outerFdIds.size();
+    const int npAll = (int)foceiOuterFdN();
+    const int nsubG = (int)getRxNsub(getRxSolve_());
+    if (npAll <= 0 || (int)G.gMap.size() != (int)op_focei.npars) return R_NilValue;
+    IntegerVector fids((R_xlen_t)nFd);
+    FdIndPoint pt;
+    pt.theta = thv;
+    pt.doOmega = false;
+    pt.refEta.resize((size_t)nFd);
+    for (int k = 0; k < nFd; ++k) {
+      const int id = op_focei.outerFdIds[(size_t)k];
+      fids[(R_xlen_t)k] = id;
+      if (id < 0 || id >= nsubG || id >= (int)eb.n_rows) return R_NilValue;
+      pt.refEta[(size_t)k].assign((size_t)neta, 0.0);
+      for (int j = 0; j < neta; ++j) pt.refEta[(size_t)k][(size_t)j] = eb(id, j);
+    }
+    // 0.5*log|Omega^-1|, the same quantity op_focei.logDetOmegaInv5 holds, so the perturbed
+    // likelihood is on the caller's omega throughout.
+    double _ld = 0.0, _sgn = 0.0;
+    if (!arma::log_det(_ld, _sgn, oi) || !(_sgn > 0) || !R_finite(_ld)) return R_NilValue;
+    pt.omegaLogDet5 = 0.5 * _ld;
+    pt.omegaInv = &oi;
+    NumericMatrix aref(0, 0);
+    NumericMatrix fdg = foceiOuterFdIndCore(fids, aref, pt);
+    if (fdg.nrow() != nFd || fdg.ncol() != npAll) return R_NilValue;
+    for (int i = 0; i < (int)op_focei.npars; ++i) {
+      const int ks = G.gMap[(size_t)i], jf = op_focei.fixedTrans[i];
+      if (ks < 0 || ks >= np || jf < 0 || jf >= npAll) return R_NilValue;
+      if (jf >= (int)op_focei.ntheta) { gv[ks] = NA_REAL; continue; }   // omega: not covered
+      double acc = 0.0;
+      for (int k = 0; k < nFd; ++k) {
+        const double v = fdg(k, jf);
+        if (!R_finite(v)) return R_NilValue;
+        acc += v;
+      }
+      gv[ks] += acc;
+    }
+    op_focei.curAnalyticFd = 1;
+    op_focei.nOuterFdInd += nFd;
+  }
   if (G.nLam > 0) {                     // transform Jacobian, on the lambda directions
     for (size_t q = 0; q < G.lamDir.size(); ++q) {
       int d = G.lamDir[q] - 1;
       if (d >= 0 && d < np) gv[d] -= 2.0 * jacSum;
     }
   }
-  if (!gv.is_finite()) return R_NilValue;
+  // NOT gv.is_finite(): the omega slots are deliberately NA when a subject was
+  // finite-differenced (see above).  Every other slot must still be finite.
+  for (int i = 0; i < (int)gv.n_elem; ++i) {
+    if (R_finite(gv[i])) continue;
+    if (!op_focei.outerFdIds.empty() && ISNA(gv[i])) continue;   // the flagged omega slots
+    return R_NilValue;
+  }
   return wrap(NumericVector(gv.begin(), gv.end()));
 }
 
