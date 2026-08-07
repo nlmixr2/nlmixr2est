@@ -258,7 +258,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x558e52629808>
+#> <bytecode: 0x5639fe89ead0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
