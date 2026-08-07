@@ -297,6 +297,11 @@ struct focei_options {
   // analytic" from "the whole gradient declined", which previously looked identical.
   std::vector<int> outerFdIds;
   int nOuterFdInd = 0;
+  // Subjects whose augmented solve produced a non-finite read and was RESCUED by the
+  // per-individual tolerance relaxation instead of being written off to the finite
+  // difference.  "Relaxation saved it" and "it was finite-differenced" are different
+  // outcomes that otherwise both look like silence.
+  int nOuterSolveRelaxed = 0;
   // Per-subject ANALYTIC slopes for the subjects that DID solve, full-theta indexed, row
   // per solved subject.  This is the reference distribution the FD outlier pass tests
   // against: judging the finite-differenced subjects only against each other would let a
@@ -4931,12 +4936,19 @@ void numericGrad(double *theta, double *g){
   if (analyticOuterGrad(theta, g)) {
     op_focei.curAnalytic=1;
     op_focei.nAnalyticGrad++;
-    // The same two safety nets the finite-difference branches below apply, which this route
-    // used to return past entirely: gradTrim clamps a runaway component, and a zero or
-    // non-finite component sets zeroGrad, which the optimizer reads as a reset request.  The
-    // analytic gradient is not immune -- a per-subject FD substitution can put a large or NaN
-    // component into an otherwise analytic sum -- and the same numbers would be caught here on
-    // the non-fast path.
+    // The safety nets the finite-difference branches below apply, which this route used to
+    // return past entirely: gradTrim clamps a runaway component, and a NON-FINITE component
+    // sets zeroGrad, which the optimizer reads as a reset request.  The analytic gradient is
+    // not immune to either -- a per-subject FD substitution can put a large or NaN component
+    // into an otherwise analytic sum.
+    //
+    // The FD branches ALSO set zeroGrad on an exact g[cpar] == 0.0.  That test is deliberately
+    // NOT copied here, because it does not mean the same thing on the two routes.  A finite
+    // difference of a nonlinear objective essentially cannot land on exact zero, so there it
+    // is a reliable tell that the direction is dead.  An analytic gradient reaches exact zero
+    // by ordinary algebra -- a parameter the data does not inform, a structurally cancelling
+    // term -- and treating that as a reset request would fire thetaResetZero() on fast=TRUE
+    // fits that have nothing wrong with them, changing convergence for a legitimate value.
     for (int cpar = (int)op_focei.npars; cpar--;) {
       if (R_FINITE(op_focei.gradTrim)) {
         if (g[cpar] > op_focei.gradTrim) {
@@ -4945,7 +4957,7 @@ void numericGrad(double *theta, double *g){
           g[cpar] = -op_focei.gradTrim;
         }
       }
-      if (g[cpar] == 0.0 || std::isnan(g[cpar]) || ISNA(g[cpar]) || !R_FINITE(g[cpar])) {
+      if (std::isnan(g[cpar]) || ISNA(g[cpar]) || !R_FINITE(g[cpar])) {
         op_focei.zeroGrad = 1;
         break;
       }
@@ -7194,6 +7206,7 @@ Environment foceiOuter(Environment e){
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
   op_focei.nOuterFdInd=0;
+  op_focei.nOuterSolveRelaxed=0;
   op_focei.outerFdIds.clear();
   op_focei.outerFdStep.clear();
   op_focei.outerFdStepIds.clear();
@@ -9795,6 +9808,7 @@ void foceiFinalizeTables(Environment e){
         // whole evaluation declining to a finite-difference gradient -- is what
         // nAnalyticGradDirect == 0 shows, and the two used to be indistinguishable.
         e["nOuterFdInd"] = IntegerVector::create(op_focei.nOuterFdInd);
+        e["nOuterSolveRelaxed"] = IntegerVector::create(op_focei.nOuterSolveRelaxed);
         e["nGradDecline"] = IntegerVector::create(
           _["newton"] = op_focei.nDeclineNewton,
           _["e0"] = op_focei.nDeclineE0,
@@ -13033,6 +13047,11 @@ static void outerSolveFill(int slot, rxSolveF *fns,
     if (hasT) E.trans.zeros(nobs, 4);
     // OUR lhs buffer, this model's width -- never rxode2's inner-sized slice
     double *lhs = neqGuard.lhs();   // private buffer, this model's width
+    // Read the solve table back into E and judge what was read.  A lambda because the
+    // non-finite rescue below has to be able to run it again after re-solving; the body is
+    // unchanged from when it was straight-line code, and the FIRST call below sits exactly
+    // where that code did.
+    auto fillFromSolve = [&]() -> bool {
     // pooled table -> THIS model's CMT basis (no-op when it is itself the pool)
     OdeSwapCmtScope _cmtScope(slot, op, ind);
     iniSubjectE(_rxId, 1, ind, op, rx, fns->update_inis);
@@ -13091,6 +13110,49 @@ static void outerSolveFill(int slot, rxSolveF *fns,
           fin = E.Rsig.is_finite() && E.RsigDir.is_finite() && E.Rsig2.is_finite();
       }
       if (fin && hasT) fin = E.trans.is_finite();
+    }
+    return fin;
+    };
+    bool fin = fillFromSolve();
+    // ---- rung 2b: a NON-FINITE read earns the same relaxation a failed solve gets -------
+    //
+    // rxode2's bad-solve test asks whether the INTEGRATION failed.  A solve can pass it and
+    // still hand back non-finite lhs values, and before this that subject went STRAIGHT to
+    // the per-subject finite difference -- taking the tolerance relaxation away from exactly
+    // the subjects it was measured on.  Loosen and re-read, on the same ladder and the same
+    // per-subject counter, and only fall through to FD if that still does not produce finite
+    // values.
+    //
+    // Written as a rescue AFTER the normal path rather than by folding the read into the
+    // retry predicate: the fold-in changes when odeSwapIndBadSolve is sampled relative to
+    // iniSubjectE/calc_lhs, which perturbs which subjects are retried on solves that are
+    // fine today and measurably degraded the analytic gradient.  This form cannot touch a
+    // subject that already reads finite.
+    if (!fin) {
+      const OdeRetryOpts _o = foceiOuterRetryOpts();
+      int &_perN2 = (id < (int)op_focei.outerStickyRecalcN2Per.size()) ?
+        op_focei.outerStickyRecalcN2Per[(size_t)id] : _outerRetryScratch;
+      const double _tol0 = getIndTolFactor(ind);
+      for (int _j = 0; !fin && _perN2 <= _o.stickyRecalcN && _j < _o.maxOdeRecalc; ++_j) {
+        _perN2++;
+        setIndTolFactor(ind, getIndTolFactor(ind) * _o.odeRecalcFactor);
+        setIndSolve(ind, -1);
+        if (_o.resetBadSolveEachRetry) resetOpBadSolve(op);
+        iniSubjectE(_rxId, 1, ind, op, rx, fns->update_inis);
+        odeSwapSolveInd(slot, _rxId);
+        double *_s0 = getIndSolve(ind);
+        if (getOpNeq(op) > 0 && ISNA(_s0[0])) continue;   // nothing usable to read back
+        fin = fillFromSolve();
+      }
+      if (fin) {
+        // Rescued.  Restore the tolerance on success, as odeSwapRetryCore does, so the
+        // loosening does not leak into this subject's later solves.
+        if (_o.restoreTolOnSuccess && _perN2 <= _o.stickyRecalcN) setIndTolFactor(ind, _tol0);
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+        op_focei.nOuterSolveRelaxed++;
+      }
     }
     E.ok = fin;
     // Test hook: force this subject's augmented solve to count as failed, so the
