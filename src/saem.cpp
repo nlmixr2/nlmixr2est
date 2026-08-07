@@ -713,21 +713,90 @@ public:
   // iteration -- so this adds no rxSolve of its own and no R callback: the cached _rx
   // and rxode2's solve state are untouched.  user_fn draws no random numbers, so the
   // RNG stream (and hence the rest of the fit) is unchanged.
-  void revisitUninformativeEtas() {
-    if (ueRevisitCols.n_elem == 0 || N <= 0 || nmc <= 0 || ntotal <= 0) return;
-    // the mask is (N*nmc) x nphi; anything else means the two sides disagree about the
-    // layout and writing into it would be writing somewhere else entirely
+  // The revisit writes into the mask and reads the flat prediction vector through
+  // ix_idM, so both have to have the layout it assumes; anything else means the two
+  // sides disagree and writing would be writing somewhere else entirely.
+  bool ueRevisitLayoutOk() {
+    if (ueRevisitCols.n_elem == 0 || N <= 0 || nmc <= 0 || ntotal <= 0) return false;
     if (current_saem_state->_saemUE.n_rows != (unsigned int)(N * nmc) ||
-        current_saem_state->_saemUE.n_cols != (unsigned int)nphi) return;
+        current_saem_state->_saemUE.n_cols != (unsigned int)nphi) return false;
     // ix_idM is indexed by PSEUDO-subject (chain c, subject i) at row c*N+i and already
     // carries that chain's offset into the flat prediction vector -- do not re-derive it
-    if (ix_idM.n_rows != (unsigned int)(N * nmc)) return;
-    if (ueDelta.n_elem != ueRevisitCols.n_elem) return;
-    ueRevisitRan = 1;
-    const unsigned int nc = ueRevisitCols.n_elem;
+    if (ix_idM.n_rows != (unsigned int)(N * nmc)) return false;
+    return ueDelta.n_elem == ueRevisitCols.n_elem;
+  }
+
+  // Read one solved perturbation level back into the accumulators: chain `c` of the
+  // solve carries level `l` of column `jj`.
+  void ueProbeAccum(const vec &g, unsigned int jj, int c, int l,
+                    mat &ret, mat &scl, umat &bad) {
+    const double sgn[3] = {1.0, -2.0, 1.0};  // pred(-) + pred(+) - 2*pred(0)
+    for (int i = 0; i < N; ++i) {
+      unsigned int row = (unsigned int)(c * N + i);
+      unsigned int st = ix_idM(row, 0), en = ix_idM(row, 1);
+      // en < st is how a subject with no observations arrives (end = start - 1,
+      // which wraps); either way there is nothing to read and nothing to judge
+      if (en < st || en >= g.n_elem) { bad(i, jj) = 1; continue; }
+      for (unsigned int idx = st; idx <= en; ++idx) {
+        double p = g(idx);
+        // user_fn substitutes 1e99 for a NaN prediction, so a failed solve
+        // arrives finite and huge rather than as NaN -- catch the sentinel.
+        if (!R_finite(p) || std::abs(p) >= 1.0e99) { bad(i, jj) = 1; continue; }
+        ret(i, jj) += sgn[l] * p;
+        double a = std::abs(p);
+        if (a > scl(i, jj)) scl(i, jj) = a;
+      }
+    }
+  }
+
+  // Accumulate the second-difference statistic for one eta column, spreading the three
+  // perturbation levels across the MCMC chains so each solve carries up to three of them.
+  void ueProbeCol(unsigned int jj, unsigned int col, const mat &phiBase,
+                  mat &ret, mat &scl, umat &bad) {
+    // The probe half-width comes from the INITIAL Omega, exactly as the first test's
+    // does, so the two evaluations differ only in theta -- which is the whole point.
+    // Reading the CURRENT Omega instead would make the revisit fight itself: a frozen
+    // eta contributes nothing to its own variance, so Omega shrinks, the probe narrows,
+    // and the eta looks even less informative the longer it has been frozen.
+    double delta = ueDelta(jj);
+    if (!R_finite(delta) || delta <= 0) return;
     const int nLev = std::min(nmc, 3);      // perturbation levels carried per solve
     const double lev[3] = {-1.0, 0.0, 1.0};
-    const double sgn[3] = {1.0, -2.0, 1.0}; // pred(-) + pred(+) - 2*pred(0)
+    for (int l0 = 0; l0 < 3; l0 += nLev) {
+      mat phiProbe(N * nmc, nphi);
+      for (int c = 0; c < nmc; ++c) {
+        int l = std::min(l0 + (c % nLev), 2);   // pad any unused tail chains
+        phiProbe.rows(c * N, c * N + N - 1) = phiBase;
+        phiProbe.submat(c * N, col, c * N + N - 1, col) += lev[l] * delta;
+      }
+      vec g = user_fn(phiProbe, evt, optM).col(0);
+      for (int c = 0; c < nLev && l0 + c < 3; ++c) {
+        ueProbeAccum(g, jj, c, l0 + c, ret, scl, bad);
+      }
+    }
+  }
+
+  // Same verdict as _nlmixr2est_uninformativeEta: only take "uninformative" when the
+  // predictions it is built from are real.
+  void ueApplyMask(unsigned int jj, unsigned int col,
+                   const mat &ret, const mat &scl, const umat &bad) {
+    for (int i = 0; i < N; ++i) {
+      bool havePred = !bad(i, jj) && R_finite(ret(i, jj)) &&
+        R_finite(scl(i, jj)) && scl(i, jj) > ueTol;
+      double m = ((std::abs(ret(i, jj)) > ueTol) || !havePred) ? 1.0 : 0.0;
+      double was = current_saem_state->_saemUE(i, col);
+      if (was == 0.0 && m == 1.0) ueRevisitUnfroze++;
+      else if (was == 1.0 && m == 0.0) ueRevisitFroze++;
+      for (int c = 0; c < nmc; ++c) {
+        current_saem_state->_saemUE(c * N + i, col) = m;
+      }
+    }
+  }
+
+  void revisitUninformativeEtas() {
+    if (!ueRevisitLayoutOk()) return;
+    ueRevisitRan = 1;
+    const unsigned int nc = ueRevisitCols.n_elem;
 
     // base phi at eta = 0: each subject's mu-referenced population value
     mat phiBase(N, nphi, fill::zeros);
@@ -742,62 +811,14 @@ public:
     _saemFreezeOde = false;                 // the probe needs a live re-solve
     for (unsigned int jj = 0; jj < nc; ++jj) {
       unsigned int col = ueRevisitCols(jj);
-      if (col >= (unsigned int)nphi) continue;
-      // The probe half-width comes from the INITIAL Omega, exactly as the first test's
-      // does, so the two evaluations differ only in theta -- which is the whole point.
-      // Reading the CURRENT Omega instead would make the revisit fight itself: a frozen
-      // eta contributes nothing to its own variance, so Omega shrinks, the probe narrows,
-      // and the eta looks even less informative the longer it has been frozen.
-      double delta = ueDelta(jj);
-      if (!R_finite(delta) || delta <= 0) continue;
-      for (int l0 = 0; l0 < 3; l0 += nLev) {
-        mat phiProbe(N * nmc, nphi);
-        for (int c = 0; c < nmc; ++c) {
-          int l = std::min(l0 + (c % nLev), 2);   // pad any unused tail chains
-          phiProbe.rows(c * N, c * N + N - 1) = phiBase;
-          phiProbe.submat(c * N, col, c * N + N - 1, col) += lev[l] * delta;
-        }
-        vec g = user_fn(phiProbe, evt, optM).col(0);
-        for (int c = 0; c < nLev && l0 + c < 3; ++c) {
-          int l = l0 + c;
-          for (int i = 0; i < N; ++i) {
-            unsigned int row = (unsigned int)(c * N + i);
-            unsigned int st = ix_idM(row, 0), en = ix_idM(row, 1);
-            // en < st is how a subject with no observations arrives (end = start - 1,
-            // which wraps); either way there is nothing to read and nothing to judge
-            if (en < st || en >= g.n_elem) { bad(i, jj) = 1; continue; }
-            for (unsigned int idx = st; idx <= en; ++idx) {
-              double p = g(idx);
-              // user_fn substitutes 1e99 for a NaN prediction, so a failed solve
-              // arrives finite and huge rather than as NaN -- catch the sentinel.
-              if (!R_finite(p) || std::abs(p) >= 1.0e99) { bad(i, jj) = 1; continue; }
-              ret(i, jj) += sgn[l] * p;
-              double a = std::abs(p);
-              if (a > scl(i, jj)) scl(i, jj) = a;
-            }
-          }
-        }
-      }
+      if (col < (unsigned int)nphi) ueProbeCol(jj, col, phiBase, ret, scl, bad);
     }
     { mat _t = user_fn(phiM, evt, optM); (void)_t; }  // restore states at the true phiM
     _saemFreezeOde = savedFreeze;
 
-    // Same verdict as _nlmixr2est_uninformativeEta: only take "uninformative" when the
-    // predictions it is built from are real.
     for (unsigned int jj = 0; jj < nc; ++jj) {
       unsigned int col = ueRevisitCols(jj);
-      if (col >= (unsigned int)nphi) continue;
-      for (int i = 0; i < N; ++i) {
-        bool havePred = !bad(i, jj) && R_finite(ret(i, jj)) &&
-          R_finite(scl(i, jj)) && scl(i, jj) > ueTol;
-        double m = ((std::abs(ret(i, jj)) > ueTol) || !havePred) ? 1.0 : 0.0;
-        double was = current_saem_state->_saemUE(i, col);
-        if (was == 0.0 && m == 1.0) ueRevisitUnfroze++;
-        else if (was == 1.0 && m == 0.0) ueRevisitFroze++;
-        for (int c = 0; c < nmc; ++c) {
-          current_saem_state->_saemUE(c * N + i, col) = m;
-        }
-      }
+      if (col < (unsigned int)nphi) ueApplyMask(jj, col, ret, scl, bad);
     }
   }
 
