@@ -535,6 +535,44 @@ nmTest({
     expect_equal(unname(seA[nm]), unname(seFd[nm]), tolerance = 0.05)  # matches the finite-difference cov
   })
 
+  test_that("a theta shared by two random effects stays analytic (own direction)", {
+    skip_on_cran()
+    skip_on_ci()
+    # tx is the mu-reference of BOTH eta.cl (in cl) and eta.v (in v), so df/dtx is the SUM
+    # df/d(eta.cl) + df/d(eta.v).  The direction map cannot reuse a single eta column for that
+    # (which used to decline to FD as "a theta shared by two random effects"); tx takes its own
+    # true-sensitivity direction, where the augmented model differentiates df/dtx symbolically --
+    # the correct sum.  Gradient and covariance stay analytic and match the finite-difference cov.
+    mSharedTh <- function() {
+      ini({ tka <- log(1.5); tx <- 1.0; eta.cl ~ 0.1; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka); cl <- exp(tx + eta.cl); v <- exp(tx + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    # Data GENERATED from the shared-theta structure: theo_sd would force cl = v = exp(tx) and
+    # converge to a near-singular point where the cov itself declines, which is not what this
+    # tests.  Seeded so the reference is stable.
+    rxode2::rxSetSeed(1L); set.seed(1L)
+    sim <- rxode2::rxode2({ka <- exp(log(1.5)); cl <- exp(1 + eta.cl); v <- exp(1 + eta.v)
+      d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center; cp <- center / v})
+    ev <- rxode2::et(amt = 100) |> rxode2::et(c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24)) |> rxode2::et(id = 1:24)
+    s <- rxode2::rxSolve(sim, ev, omega = lotri::lotri(eta.cl ~ 0.1, eta.v ~ 0.1),
+                         returnType = "data.frame", atol = 1e-8, rtol = 1e-8)
+    s <- s[s$time > 0, ]
+    dat <- rbind(data.frame(ID = 1:24, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+                 data.frame(ID = s$id, TIME = s$time, DV = s$cp + stats::rnorm(nrow(s), 0, 0.7), AMT = 0, EVID = 0))
+    dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
+    ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 4)
+    ctlFd <- foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 4)
+    fitA <- suppressMessages(nlmixr2(mSharedTh, dat, "focei", ctlA))
+    expect_identical(fitA$covMethod, "analytic")           # engaged analytic (not the FD fallback)
+    seA <- sqrt(diag(fitA$cov))
+    seFd <- sqrt(diag(suppressMessages(nlmixr2(mSharedTh, dat, "focei", ctlFd))$cov))
+    nm <- intersect(names(seA), names(seFd))
+    expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
+    expect_equal(unname(seA[nm]), unname(seFd[nm]), tolerance = 0.05)  # matches the finite-difference cov
+  })
+
   test_that("the standalone analytic covariance declines gracefully out of scope (FO fit)", {
     skip_on_cran()
     skip_on_ci()
@@ -766,35 +804,6 @@ nmTest({
     # SEs identical to the 1..N fit (a wrong join would silently pair the wrong events)
     expect_equal(sqrt(diag(f2$cov)), sqrt(diag(f1$cov)))
     expect_equal(sqrt(diag(f3$cov)), sqrt(diag(f1$cov)))
-  })
-
-  test_that("covMethod='analytic' falls back to FD when a theta is shared by two etas", {
-    skip_on_cran()
-    skip_if_not_installed("nlmixr2data")
-    # tcl mu-references BOTH eta.cl and eta.v: the analytic direction map cannot send one
-    # theta down two eta routes, so it must bow out to the (correct) finite-difference cov.
-    twoEta <- function() {
-      ini({ tka <- log(1.5); tcl <- log(2.7)
-            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
-      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tcl + eta.v)
-        d/dt(depot)  <- -ka * depot
-        d/dt(center) <-  ka * depot - cl / v * center
-        cp <- center / v; cp ~ add(add.sd) })
-    }
-    fit <- suppressWarnings(suppressMessages(nlmixr(twoEta, nlmixr2data::theo_sd, "focei",
-                            foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", covFull = TRUE))))
-    expect_true(is.matrix(fit$cov))
-    # .analyticCov is stashed only after the analytic engine's deciding inversion
-    # succeeds, so its absence proves the engine never ran -- covMethod alone
-    # would not, since the analytic can also run and then be rejected by its own
-    # PD guard without ever setting covMethod.
-    expect_false(exists(".analyticCov", envir = fit$env, inherits = FALSE))
-    expect_false(identical(fit$covMethod, "analytic"))
-    # Do NOT assert the absence of "om." rows: whether the covFull FD cov is ALSO
-    # installed turns on the positive-definiteness guard in
-    # .foceiInstallFdFullCov(), and this deliberately over-parameterized model
-    # (tcl shared by two etas) sits right at that boundary -- its min eigenvalue
-    # straddles 0, so the outcome varies run to run.
   })
 
   test_that("covMethod='analytic' falls back to FD under a bounded-parameter transform", {

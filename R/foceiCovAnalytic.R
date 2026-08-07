@@ -187,8 +187,6 @@
   dirTh <- integer(nth); nonMuTheta <- character(0)
   for (p in seq_len(nth)) {
     .mt <- which(thetaForEta == thStruct[p])        # eta(s) this theta mu-references
-    if (length(.mt) > 1L)                           # shared by >1 eta -> summing routes NYI, fall back to FD
-      return(.foceiAnalyticFallback("a theta shared by two random effects"))
     k <- if (length(.mt) == 1L) .mt else NA_integer_
     # A mu-ref theta reuses its eta's state-sensitivity direction for free (df/dtheta = df/deta,
     # since theta and eta enter the mu identically) -- but ONLY when the eta enters the model in a
@@ -196,7 +194,10 @@
     # parameter only) differ from df/deta (all parameters the eta appears in), so the reuse is
     # invalid; treat the theta as non-mu and give it its OWN true-sensitivity direction (the eta
     # keeps its own, correct, direction).  Stays analytic -- just one extra direction for that
-    # theta, only in the rare shared-eta case.
+    # theta, only in the rare shared-eta case.  A theta that is the mu-reference of MORE THAN ONE
+    # eta (e.g. one typical value entering two parameters, each with its own eta) is the same
+    # situation: k is NA, so it too takes its own direction, where the augmented model
+    # differentiates df/dtheta symbolically -- the correct sum over the etas it mu-references.
     .reuse <- !is.na(k) && !(k <= length(sharedEta) && isTRUE(sharedEta[k]))
     if (.reuse) {
       dirTh[p] <- k                                 # reuse eta k's direction (free)
