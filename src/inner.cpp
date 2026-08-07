@@ -5102,8 +5102,12 @@ void numericGrad(double *theta, double *g){
           if (doForward){
             op_focei.mixDeriv=1;
             theta[cpar] = cur - delta;
+            double gForward = g[cpar];
             g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
             if(op_focei.slow)  op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            // a failed cur-delta solve must not turn a finite over-trim gradient
+            // into a NaN the clamps below cannot catch
+            if (!R_FINITE(g[cpar])) g[cpar] = gForward;
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
             } else if (g[cpar] < -op_focei.gradTrim){
@@ -5116,8 +5120,10 @@ void numericGrad(double *theta, double *g){
           if (doForward){
             op_focei.mixDeriv=1;
             theta[cpar] = cur - delta;
+            double gForward = g[cpar];
             g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
             if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            if (!R_FINITE(g[cpar])) g[cpar] = gForward;
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
             } else if (g[cpar] < -op_focei.gradTrim){
