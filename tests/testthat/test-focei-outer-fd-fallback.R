@@ -209,4 +209,126 @@ nmTest({
     expect_lt(relL2(4L:6L), 0.05)   # omega
   })
 
+
+  test_that("the pooled/VAE M-step keeps its analytic gradient when a subject is flagged", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    # foceiGradPooledDirect_ is the entry est="vae", nonMuTheta="grad" uses each M-step.  It is
+    # handed a theta/eta/omega that are deliberately NOT the inner problem's, so the fold-in
+    # has to be taken at THAT point -- which is why the FD core takes its point explicitly
+    # instead of reading op_focei.  Two things this pins, neither visible in the fitted values:
+    #
+    #   * before the fold-in existed here, a flagged subject made this entry return the kernel
+    #     sum with that subject's column still ZERO.  Zeros are finite, so a gradient silently
+    #     missing a whole subject reached the M-step.
+    #   * the stopgap for that was to decline, which sends every M-step to the bobyqa
+    #     regression -- correct but a different optimizer.  nRegFallback counts exactly that,
+    #     so "the analytic gradient survived the flagged subject" is testable rather than
+    #     inferred from the fitted values.
+    .vMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- c(2, 3.45, 5); add.sd <- c(0, 0.7, 5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .vCtl <- vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
+                        returnVae = TRUE, itersBurnIn = 10L, iters = 30L,
+                        klWarmup = 5L, gammaIter = 20L)
+
+    Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+    r <- suppressWarnings(suppressMessages(
+      nlmixr2(.vMod(), nlmixr2data::theo_sd, est = "vae", control = .vCtl)))
+    .fbClearHooks()
+
+    # The M-steps used the analytic gradient and NONE fell back -- i.e. the entry substituted
+    # the flagged subjects instead of declining.
+    expect_gt(r$nRegGrad, 0L)
+    expect_equal(r$nRegFallback, 0L)
+    expect_true(is.finite(r$regressTheta[["tv"]]))
+  })
+
+  test_that("fdIndividualStep switches the step search and both routes agree", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    expect_true(foceiControl(fdIndividualStep = TRUE)$fdIndividualStep == 1L)
+    expect_true(foceiControl(fdIndividualStep = FALSE)$fdIndividualStep == 0L)
+    expect_error(foceiControl(fdIndividualStep = "yes"))
+    expect_true(isTRUE(vaeControl(fdIndividualStep = TRUE)$fdIndividualStep))
+    expect_false(isTRUE(vaeControl(fdIndividualStep = FALSE)$fdIndividualStep))
+
+    # Both routes must produce a usable substituted gradient.  They are NOT expected to agree
+    # to the bit -- a per-subject step and a shared one are different differences -- but they
+    # difference the same function, so they must agree to the accuracy this path claims.
+    .g <- function(indiv) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      fit <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, nlmixr2data::theo_sd, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 3L,
+                     fdIndividualStep = indiv))))
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      .foceiGradDirect(fit)
+    }
+    gInd <- .g(TRUE)
+    gSha <- .g(FALSE)
+    expect_equal(length(gInd), 7L)
+    expect_equal(length(gSha), 7L)
+    expect_true(all(is.finite(gInd)))
+    expect_true(all(is.finite(gSha)))
+    expect_lt(max(abs(gInd - gSha) / pmax(abs(gInd), 1e-8)), 0.05)
+  })
+
+  test_that("fdOutlierZ makes the Chartrand refinement reachable, and fdChartrand gates it", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    expect_equal(foceiControl(fdOutlierZ = 1.0)$fdOutlierZ, 1.0)
+    expect_error(foceiControl(fdOutlierZ = -1))
+    expect_equal(vaeControl(fdOutlierZ = 1.0)$fdOutlierZ, 1.0)
+
+    # On a well-behaved fit the outlier test never fires at the conventional 3.5 cut, so the
+    # TV refinement it gates was unreachable and therefore untestable.  Driving the cut to ~0
+    # makes every differenced slope an outlier, which is what lets the pass be exercised at
+    # all -- and then fdChartrand=FALSE must still record the DETECTION while performing no
+    # refinement, which is the contract that separates the two knobs.
+    .run <- function(z, chartrand) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      fit <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, nlmixr2data::theo_sd, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 2L,
+                     fdOutlierZ = z, fdChartrand = chartrand))))
+      .fbClearHooks()
+      list(objf = fit$objf, out = fit$env$nFdOutlier)
+    }
+
+    hi <- .run(3.5, TRUE)          # the default: nothing flagged on this fit
+    expect_true(is.finite(hi$objf))
+    expect_equal(as.integer(hi$out[["params"]]), 0L)
+    expect_equal(as.integer(hi$out[["chartrandSlopes"]]), 0L)
+
+    lo <- .run(1e-8, TRUE)         # everything flagged: the pass runs
+    expect_true(is.finite(lo$objf))
+    expect_gt(as.integer(lo$out[["params"]]), 0L)
+    expect_gt(as.integer(lo$out[["chartrandSlopes"]]), 0L)
+
+    off <- .run(1e-8, FALSE)       # detected but NOT refined
+    expect_true(is.finite(off$objf))
+    expect_gt(as.integer(off$out[["params"]]), 0L)
+    expect_equal(as.integer(off$out[["chartrandSlopes"]]), 0L)
+  })
 })

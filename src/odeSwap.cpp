@@ -499,6 +499,19 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   int want = odeSwapNlhs(slot);
   int room = getOpNlhs(op);
   if (want <= 0 || room < want) return false;
+  // The STATE buffer has to be checked too, not just the lhs one.  calc_lhs below reads
+  // __zzStateVar__ = ind->solve, which is sized by the POOL, while `want` above only covers
+  // the lhs vector it WRITES.  Probing a slot whose model needs more states than the pool was
+  // sized for reads off the end of ind->solve and SEGFAULTS inside the generated calc_lhs --
+  // i.e. the check written to avoid reading columns nobody wrote could itself crash before it
+  // returned an answer.  Reachable whenever the pool was sized for a smaller peer than the
+  // slot being probed (an inner-sized pool against the augmented outer model, which is what
+  // .vaeInnerSetup produces unless the augmented model was declared first).  Declining is the
+  // safe direction and what every other failure here does: the caller falls back to the
+  // rxode2::rxSolve reference path.
+  int wantNeq = odeSwapNeq(slot);
+  int roomNeq = getOpNeq(op);
+  if (wantNeq <= 0 || roomNeq < wantNeq) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
   double *st = getIndSolve(ind);

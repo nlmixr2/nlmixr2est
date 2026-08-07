@@ -467,6 +467,8 @@ vaeControl <- function(seed = 42L,
                        maxOdeRecalc = 5,
                        odeRecalcFactor = 10^(0.5),
                        outerStickyRecalcN = 4,
+                       fdIndividualStep = TRUE,
+                       fdOutlierZ = 3.5,
                        outerMaxOdeRecalc = 5,
                        outerOdeRecalcFactor = 10^(0.5),
                        indTolRelax = TRUE,
@@ -543,6 +545,8 @@ vaeControl <- function(seed = 42L,
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(outerStickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(fdIndividualStep, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(fdOutlierZ, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(outerMaxOdeRecalc, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(outerOdeRecalcFactor, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
@@ -665,6 +669,8 @@ vaeControl <- function(seed = 42L,
                maxOdeRecalc = as.integer(maxOdeRecalc),
                odeRecalcFactor = odeRecalcFactor,
                outerStickyRecalcN = as.integer(outerStickyRecalcN),
+               fdIndividualStep = fdIndividualStep,
+               fdOutlierZ = as.double(fdOutlierZ),
                outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
                outerOdeRecalcFactor = outerOdeRecalcFactor,
                indTolRelax = indTolRelax,

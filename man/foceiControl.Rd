@@ -30,6 +30,8 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  fdOutlierZ = 3.5,
+  fdIndividualStep = TRUE,
   fdChartrand = TRUE,
   foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
@@ -307,6 +309,21 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
+whether a finite-differenced subject's slope is an outlier against the exact
+analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+3.5; lower it to make the pass fire more readily (and to exercise it), raise
+it to suppress it without turning `fdChartrand` off.}
+
+\item{fdIndividualStep}{For the per-subject finite-difference fallback of the
+analytic outer gradient (`fast=TRUE`), search the shi step size separately
+for every flagged subject (`TRUE`, the default) rather than once on the
+summed objective over them.  The subjects that reach this path are the badly
+conditioned ones, so one shared step cannot suit them all; a per-subject
+search also supplies the population of converged peers a clamped step is
+repaired from.  `FALSE` restores the single shared step, which costs fewer
+evaluations.}
 
 \item{fdChartrand}{Refine finite-difference slopes that the robust outlier
     test flags (default \code{TRUE}).  When a subject's per-parameter slope

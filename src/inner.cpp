@@ -419,6 +419,11 @@ struct focei_options {
   int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
   int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
   int fdChartrand = 1;      // TV-regularized refinement of outlier FD slopes (opt-OUT)
+  // Search the FD step per SUBJECT (default) or once on the summed objective.  See
+  // foceiControl(fdIndividualStep=).
+  int fdIndividualStep = 1;
+  // Modified-z cut of the FD slope outlier test; see foceiControl(fdOutlierZ=).
+  double fdOutlierZ = 3.5;
   int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
   int nAnalyticGrad = 0;    // # outer gradients from the analytic path
   // # of those that came from the ALL-C++ direct path.  Separate from nAnalyticGrad
@@ -6593,6 +6598,10 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.fast=foceiO.containsElementNamed("fast") ? as<int>(foceiO["fast"]) : 0;
   op_focei.fdChartrand=foceiO.containsElementNamed("fdChartrand") ?
     as<int>(foceiO["fdChartrand"]) : 1;
+  op_focei.fdIndividualStep=foceiO.containsElementNamed("fdIndividualStep") ?
+    as<int>(foceiO["fdIndividualStep"]) : 1;
+  op_focei.fdOutlierZ=foceiO.containsElementNamed("fdOutlierZ") ?
+    as<double>(foceiO["fdOutlierZ"]) : 3.5;
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
@@ -12813,6 +12822,31 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
         // theta is a search plus two legs whose result is discarded -- and it can trip the
         // outlier pass into a 41-point TV grid and a misleading nFdOutlierParam.
         std::vector<double> hPer((size_t)_fdThIds.size(), 0.0);
+        if (!op_focei.fdIndividualStep) {
+          // foceiControl(fdIndividualStep = FALSE): ONE step for the whole flagged set,
+          // searched on their SUMMED -2LL, as numericGrad's step is shared across subjects by
+          // construction.  Fewer evaluations, but one step cannot suit a heterogeneous flagged
+          // set, and a clamped step has no population of converged peers to be repaired from --
+          // so it is rejected outright and the column left NA, as before.
+          double h = (_fdForceH > 0.0) ? _fdForceH : fdStepCacheGet(_fdThIds, j, theta[j]);
+          if (_fdForceH <= 0.0 && h == 0.0) {
+            arma::vec gr(1), tw = theta, f0s(1);
+            double f0tot2 = 0.0;
+            for (size_t q = 0; q < f0Ind.size(); ++q) f0tot2 += f0Ind[q];
+            f0s(0) = f0tot2;
+            double hs = 0.0;
+            h = shi21Central(shi21LikThetaSum, tw, hs, f0s, gr, _fdThIds[0], j,
+                             std::pow(DBL_EPSILON, 0.25), 1.5, 4.5, 3.0,
+                             op_focei.shi21maxFD, op_focei.shi21hMax, op_focei.shi21hMin);
+            if (!R_finite(h) || h <= 0.0 ||
+                h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+              op_focei.nFdStepClamped++;
+              continue;
+            }
+            fdStepCachePut(j, h, theta[j]);
+          }
+          for (size_t q = 0; q < hPer.size(); ++q) hPer[q] = h;
+        } else {
         bool needSearch = false;
         for (size_t q = 0; q < _fdThIds.size(); ++q) {
           hPer[q] = (_fdForceH > 0.0) ? _fdForceH
@@ -12857,6 +12891,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
           for (size_t q = 0; q < _fdThIds.size(); ++q)
             if (hPer[q] > 0.0) fdStepPerPut(nsub, _fdThIds[q], j, hPer[q], theta[j]);
         }
+        }   // end fdIndividualStep branch
         bool anyH = false;
         for (size_t q = 0; q < _fdThIds.size(); ++q) if (hPer[q] > 0.0) { anyH = true; break; }
         if (!anyH) continue;
@@ -12905,7 +12940,11 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
   // the scale are robust, so a single bad subject cannot widen the interval that is supposed
   // to catch it -- which is exactly how mean/sd failed (one 23.72 inflated sd to ~8 and hid
   // inside its own bound).  Tunable, like the other critical values in the algorithm.
-  const double _fdOutlierMz = 3.5;
+  // foceiControl(fdOutlierZ=).  Tunable rather than hardcoded: on a well-behaved fit the pass
+  // never fires, so the Chartrand refinement it gates is unreachable -- and therefore
+  // untestable -- without being able to lower this.
+  const double _fdOutlierMz = (R_finite(op_focei.fdOutlierZ) && op_focei.fdOutlierZ > 0.0)
+    ? op_focei.fdOutlierZ : 3.5;
   for (int j = 0; j < nth; ++j) {
     // Test the SLOPE itself, on a ROBUST centre and scale.
     //
@@ -14487,6 +14526,24 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
   if (ebes.ncol() != neta) return R_NilValue;
   if (Oi.nrow() != neta || Oi.ncol() != neta) return R_NilValue;
   if ((int)dOiEst.size() != nom || (int)tr28.size() != nom) return R_NilValue;
+  // ---- the setup must describe the LIVE inner problem ---------------------------------
+  //
+  // Everything below indexes inds_focei, the solve pool and op_focei's transforms using
+  // dimensions taken from `G`.  If the loaded setup was built from a DIFFERENT ui than the
+  // one the pool and inds_focei were built for -- easy to do, since foceiGradPooledSetupLoad_
+  // and the inner setup are separate calls -- those reads run off the end and SEGFAULT rather
+  // than declining.  analyticOuterGradDirect has always checked these (declineHere 103/104);
+  // this entry is the one an external caller reaches and did not.
+  if (inds_focei == NULL) return R_NilValue;
+  rx = getRxSolve_();
+  if (rx == NULL) return R_NilValue;
+  if (neta != op_focei.neta) return R_NilValue;
+  if ((int)G.gMap.size() != (int)op_focei.npars) return R_NilValue;
+  const int nsubLive = (int)getRxNsub(rx);
+  if (nsubLive <= 0 || (int)ebes.nrow() != nsubLive) return R_NilValue;
+  // thVals is installed as the point the difference is taken at; a short vector would
+  // silently fall back to op_focei.fullTheta, i.e. difference at the wrong theta.
+  if ((int)thVals.size() != (int)op_focei.ntheta) return R_NilValue;
   std::vector<double> thv(thVals.begin(), thVals.end());
   arma::mat eb = as<arma::mat>(ebes);
   arma::mat oi = as<arma::mat>(Oi);
@@ -14525,7 +14582,7 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
   if (!op_focei.outerFdIds.empty()) {
     const int nFd = (int)op_focei.outerFdIds.size();
     const int npAll = (int)foceiOuterFdN();
-    const int nsubG = (int)getRxNsub(getRxSolve_());
+    const int nsubG = nsubLive;
     if (npAll <= 0 || (int)G.gMap.size() != (int)op_focei.npars) return R_NilValue;
     IntegerVector fids((R_xlen_t)nFd);
     FdIndPoint pt;

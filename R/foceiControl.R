@@ -103,6 +103,19 @@
 #'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
 #'     installs only the structural-theta block (the historical shape).
 #'
+#' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
+#'   whether a finite-differenced subject's slope is an outlier against the exact
+#'   analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+#'   3.5; lower it to make the pass fire more readily (and to exercise it), raise
+#'   it to suppress it without turning `fdChartrand` off.
+#' @param fdIndividualStep For the per-subject finite-difference fallback of the
+#'   analytic outer gradient (`fast=TRUE`), search the shi step size separately
+#'   for every flagged subject (`TRUE`, the default) rather than once on the
+#'   summed objective over them.  The subjects that reach this path are the badly
+#'   conditioned ones, so one shared step cannot suit them all; a per-subject
+#'   search also supplies the population of converged peers a clamped step is
+#'   repaired from.  `FALSE` restores the single shared step, which costs fewer
+#'   evaluations.
 #' @param fdChartrand Refine finite-difference slopes that the robust outlier
 #'     test flags (default \code{TRUE}).  When a subject's per-parameter slope
 #'     sits far outside the modified z-score interval of the others, its central
@@ -766,6 +779,8 @@ foceiControl <- function(sigdig = 3, #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
+                         fdOutlierZ = 3.5, #
+                         fdIndividualStep = TRUE, #
                          fdChartrand = TRUE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
@@ -985,6 +1000,8 @@ foceiControl <- function(sigdig = 3, #
     covTryHarder <- as.integer(covTryHarder)
   } else {
     checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
+    checkmate::assertNumeric(fdOutlierZ, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdIndividualStep, any.missing=FALSE, len=1)
     checkmate::assertLogical(fdChartrand, any.missing=FALSE, len=1)
     covTryHarder <- as.integer(covTryHarder)
   }
@@ -1436,6 +1453,8 @@ foceiControl <- function(sigdig = 3, #
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,
+    fdOutlierZ = as.double(fdOutlierZ),
+    fdIndividualStep = as.integer(fdIndividualStep),
     fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,

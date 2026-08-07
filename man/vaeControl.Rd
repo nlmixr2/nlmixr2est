@@ -62,6 +62,8 @@ vaeControl(
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
   outerStickyRecalcN = 4,
+  fdIndividualStep = TRUE,
+  fdOutlierZ = 3.5,
   outerMaxOdeRecalc = 5,
   outerOdeRecalcFactor = 10^(0.5),
   indTolRelax = TRUE,
@@ -583,6 +585,21 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 \item{outerStickyRecalcN}{The number of bad analytic outer solves
 for a subject before its loosened tolerance is kept for the rest
 of the problem; the outer counterpart of `stickyRecalcN`.}
+
+\item{fdIndividualStep}{For the per-subject finite-difference fallback of the
+analytic outer gradient (`fast=TRUE`), search the shi step size separately
+for every flagged subject (`TRUE`, the default) rather than once on the
+summed objective over them.  The subjects that reach this path are the badly
+conditioned ones, so one shared step cannot suit them all; a per-subject
+search also supplies the population of converged peers a clamped step is
+repaired from.  `FALSE` restores the single shared step, which costs fewer
+evaluations.}
+
+\item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
+whether a finite-differenced subject's slope is an outlier against the exact
+analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+3.5; lower it to make the pass fire more readily (and to exercise it), raise
+it to suppress it without turning `fdChartrand` off.}
 
 \item{outerMaxOdeRecalc}{Maximum number of times to reduce the ODE
 tolerances for a single subject and retry when the analytic
