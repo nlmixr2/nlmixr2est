@@ -12059,6 +12059,49 @@ static void fdThetaTvDeriv(const arma::vec &theta, int j,
   }
 }
 
+// Sample median of `v`, which this destroys.  The FD outlier passes used v[n/2], the upper
+// of the two middle order statistics for an even n -- not the median the Iglewicz-Hoaglin
+// formula they cite is written in terms of.  Even n is the common case here (the reference
+// distribution is one entry per subject), so state the estimator once and share it.
+static double fdMedian(std::vector<double> &v) {
+  const size_t n = v.size();
+  if (n == 0) return NA_REAL;
+  std::sort(v.begin(), v.end());
+  if (n % 2 == 1) return v[n / 2];
+  return 0.5 * (v[n / 2 - 1] + v[n / 2]);
+}
+
+// Flag the entries of `slopes` that are outliers against the reference distribution `ref`,
+// by the Iglewicz-Hoaglin modified z-score M = 0.6745 * (x - median) / MAD at the `mz` cut.
+// Shared by the theta and the omega pass, which ran two copies of this.
+//
+// Returns whether anything was flagged.  `isOut` is sized by the caller and indexed the same
+// way as `slopes`; non-finite slopes are never flagged (they have no central difference to
+// repair).
+static bool fdFlagOutliers(const std::vector<double> &ref, const std::vector<double> &slopes,
+                           double mz, std::vector<char> &isOut) {
+  if (ref.size() < 3) return false;
+  std::vector<double> work = ref;
+  const double med = fdMedian(work);
+  if (!R_finite(med)) return false;
+  work.assign(ref.size(), 0.0);
+  for (size_t i = 0; i < ref.size(); ++i) work[i] = std::fabs(ref[i] - med);
+  double mad = fdMedian(work);
+  // MAD == 0 when more than half the subjects share a slope to the bit.  Reachable (a
+  // direction most subjects are insensitive to), and dividing by it would make every
+  // differing subject infinitely extreme.  Floor it at sqrt(eps): a deviation genuinely
+  // above the numerical noise still scores a large modified z, while identical subjects
+  // score 0 and are left alone.
+  if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
+  bool any = false;
+  for (size_t k = 0; k < slopes.size() && k < isOut.size(); ++k) {
+    const double dv = slopes[k];
+    if (!R_finite(dv)) continue;
+    if (std::fabs(0.6745 * (dv - med) / mad) > mz) { isOut[k] = 1; any = true; }
+  }
+  return any;
+}
+
 // gill83's scalar objective for the per-individual FD: this subject's -2LL at `theta`.
 // Reuses shi21LikTheta(), so the theta install, the pinned reference eta and the
 // innerOpt1() re-optimization are identical to the shi path -- only the differencing
@@ -12639,22 +12682,6 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       double dv = out(k, j);
       if (R_finite(dv)) r.push_back(dv);
     }
-    if (r.size() < 3) continue;
-    std::vector<double> rs = r;
-    std::sort(rs.begin(), rs.end());
-    double med = rs[rs.size() / 2];                  // median as the centre
-    std::vector<double> ad(r.size());
-    for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - med);
-    std::sort(ad.begin(), ad.end());
-    double mad = ad[ad.size() / 2];                  // raw MAD, as the modified z uses
-    if (!R_finite(med)) continue;
-    // MAD == 0 when more than half the subjects share a slope to the bit.  Not seen on
-    // theo_sd, but it is reachable (e.g. a direction most subjects are insensitive to),
-    // and dividing by it would make every differing subject infinitely extreme.  Floor
-    // it at sqrt(eps): any deviation genuinely above the numerical noise still scores a
-    // large modified z and is treated as the outlier it is, while identical subjects
-    // score 0 and are left alone.
-    if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
     // Only the OUTLIER SUBJECTS are corrected, not every finite-differenced subject for a
     // parameter where one of them is an outlier: a subject whose slope sits inside the robust
     // interval has an adequate central difference, and the TV grid costs N+1 evaluations.
@@ -12663,17 +12690,10 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
     // fits may still matter on an extreme one, and the outlier test gates it so the default
     // costs nothing where it is not needed.  nFdOutlierParam counts detections regardless of
     // whether the refinement runs.
+    std::vector<double> slopes((size_t)nid, NA_REAL);
+    for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, j);
     std::vector<char> isOutlier((size_t)nid, 0);
-    bool anyOutlier = false;
-    for (int k = 0; k < nid; ++k) {
-      double dv = out(k, j);
-      if (!R_finite(dv)) continue;
-      if (std::fabs(0.6745 * (dv - med) / mad) > _fdOutlierMz) {
-        isOutlier[(size_t)k] = 1;
-        anyOutlier = true;
-      }
-    }
-    if (!anyOutlier) continue;
+    if (!fdFlagOutliers(r, slopes, _fdOutlierMz, isOutlier)) continue;
     op_focei.nFdOutlierParam++;
     // OPT-OUT (foceiControl(fdChartrand = FALSE)).  On by default because the outlier
     // test above is the gate: a well-behaved problem flags nothing and reaches here
@@ -12856,27 +12876,10 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
         double dv = out(k, col);
         if (R_finite(dv)) r.push_back(dv);
       }
-      if (r.size() < 3) continue;
-      std::vector<double> rs = r;
-      std::sort(rs.begin(), rs.end());
-      double med = rs[rs.size() / 2];
-      if (!R_finite(med)) continue;
-      std::vector<double> ad(r.size());
-      for (size_t i = 0; i < r.size(); ++i) ad[i] = std::fabs(r[i] - med);
-      std::sort(ad.begin(), ad.end());
-      double mad = ad[ad.size() / 2];
-      if (!(mad > 0.0)) mad = std::sqrt(DBL_EPSILON);
+      std::vector<double> slopes((size_t)nid, NA_REAL);
+      for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col);
       std::vector<char> isOut((size_t)nid, 0);
-      bool anyOut = false;
-      for (int k = 0; k < nid; ++k) {
-        double dv = out(k, col);
-        if (!R_finite(dv)) continue;
-        if (std::fabs(0.6745 * (dv - med) / mad) > _fdOutlierMz) {
-          isOut[(size_t)k] = 1;
-          anyOut = true;
-        }
-      }
-      if (!anyOut) continue;
+      if (!fdFlagOutliers(r, slopes, _fdOutlierMz, isOut)) continue;
       op_focei.nFdOutlierParam++;
       if (!op_focei.fdChartrand) continue;
       const double _spanOm  = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;
@@ -14212,6 +14215,20 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
     ok = gradPooledCore(G, thv, eb, oi, dOi, tr, cores, gv, etaP, jacSum);
   } catch (...) { return R_NilValue; }
   if (!ok || (int)gv.n_elem != np) return R_NilValue;
+  // A flagged subject leaves a ZERO column in the kernel, and gradPooledCore no longer
+  // substitutes it -- that moved to analyticOuterGradDirect, which owns the per-subject
+  // columns.  So DECLINE here rather than returning a sum that is silently missing a
+  // subject: zeros are finite, so the is_finite() check below would pass it through.
+  //
+  // The fold-in cannot simply be repeated here.  foceiOuterFdInd_ differences the INNER
+  // problem as it currently stands (op_focei.fullTheta, each subject's saveEta), while this
+  // entry point is handed thVals/ebes/Oi that are deliberately NOT that point -- est="vae"
+  // with nonMuTheta="grad" evaluates at the encoder's etas and an omega that moves every
+  // M-step.  Differencing at one point and summing it with an analytic term taken at another
+  // is worse than declining.  The caller (vaeGrad.R) treats NULL as "no analytic gradient
+  // this step", which is what main did here too -- its `nobsAll[i] <= 0` guard declined the
+  // whole evaluation before any substitution was reached.
+  if (!op_focei.outerFdIds.empty()) return R_NilValue;
   if (G.nLam > 0) {                     // transform Jacobian, on the lambda directions
     for (size_t q = 0; q < G.lamDir.size(); ++q) {
       int d = G.lamDir[q] - 1;

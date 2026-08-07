@@ -72,6 +72,12 @@ nmTest({
     for (ids in list(2L, c(2L, 7L))) {
       gSkip <- .fbGrad(fit, ids, skip = TRUE)
       gOne  <- .fbGrad(fit, ids, skip = FALSE)
+      # LENGTH first, every time.  .foceiGradDirect returns NULL when the analytic route
+      # declined, and all(is.finite(NULL)) is TRUE -- so without this the finiteness and
+      # subtraction assertions below pass vacuously on a gradient that was never computed,
+      # i.e. the test would report success for a fallback that is entirely broken.
+      expect_equal(length(gSkip), np)
+      expect_equal(length(gOne), np)
       expect_true(all(is.finite(gSkip)))
       expect_true(all(is.finite(gOne)))
 
@@ -148,5 +154,58 @@ nmTest({
     # clamp would make every later evaluation skip the search, so the count would stall at
     # the number of free parameters searched in the FIRST flagged evaluation.
     expect_gt(as.integer(fit$env$nFdOutlier[["stepClamped"]]), 7L)
+  })
+
+  test_that("the fallback is correct when a theta is fix()ed", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    # The step store used to be allocated per OPTIMIZER parameter but indexed by FULL-THETA
+    # position, so any fix()ed parameter made the last free one write past its end.  Every
+    # other case here estimates all four thetas, where the two indexings coincide and the
+    # bug is invisible.  tv fixed puts add.sd at full-theta slot 3 with only 3 free thetas,
+    # so the old store (length 3 for the theta block) was overrun by exactly one.
+    .fbFixModel <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- fix(3.45); add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot)  <- -ka * depot
+        d/dt(center) <-  ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      .fbFixModel, nlmixr2data::theo_sd, "focei",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                   calcTables = FALSE, maxOuterIterations = 3L))))
+
+    gRef <- .fbGrad(fit)
+    # 3 free thetas (tka tcl add.sd) + 3 omega entries; tv is fixed and carries no column.
+    expect_equal(length(gRef), 6L)
+    expect_true(all(is.finite(gRef)))
+
+    ids <- 2L
+    gSkip <- .fbGrad(fit, ids, skip = TRUE)
+    gOne  <- .fbGrad(fit, ids, skip = FALSE)
+    expect_true(all(is.finite(gSkip)))
+    expect_true(all(is.finite(gOne)))
+    expect_false(isTRUE(all.equal(gSkip, gOne, tolerance = 1e-12)))
+
+    an <- gRef - gSkip
+    fd <- gOne - gSkip
+    # The FIXED parameter must not consume a column: if the fold-in walked full-theta
+    # positions instead of the free set, add.sd's contribution would land in tv's slot and
+    # the last component would be left at zero.
+    expect_true(all(abs(fd) > 0))
+    relL2 <- function(idx) sqrt(sum((fd[idx] - an[idx])^2)) / sqrt(sum(an[idx]^2))
+    expect_lt(relL2(1L:3L), 0.05)   # theta + sigma
+    expect_lt(relL2(4L:6L), 0.05)   # omega
   })
 })
