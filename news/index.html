@@ -35,7 +35,8 @@
 <h2 class="pkg-version" data-toc-text="7.0.3" id="nlmixr2est-703">nlmixr2est 7.0.3<a class="anchor" aria-label="anchor" href="#nlmixr2est-703"></a></h2>
 <div class="section level3">
 <h3 id="new-features-7-0-3">New features<a class="anchor" aria-label="anchor" href="#new-features-7-0-3"></a></h3>
-<ul><li><p><code>est="npag"</code> / <code>est="npb"</code> now support a hand-written general likelihood (<code>ll()</code>) properly. A model whose <code>ll()</code> is written as the exact normal log-density now agrees with the equivalent <code>add()</code> model to the known <code>0.5*log(2*pi)</code> per observation, at every grid size. Requires rxode2 5.1.7 for the <code>safeLog=2</code> log-domain mode.</p></li>
+<ul><li><p>Requires <code>rxode2</code> (&gt;= 5.1.7). The compatibility layer that also let this package build and run against 5.1.5 has been removed, so the event-sensitivity shape swap and the CMT re-basing of the shared solve pool always go through rxode2’s C API instead of writing its structures by field.</p></li>
+<li><p><code>est="npag"</code> / <code>est="npb"</code> now support a hand-written general likelihood (<code>ll()</code>) properly. A model whose <code>ll()</code> is written as the exact normal log-density now agrees with the equivalent <code>add()</code> model to the known <code>0.5*log(2*pi)</code> per observation, at every grid size. Requires rxode2 5.1.7 for the <code>safeLog=2</code> log-domain mode.</p></li>
 <li><p><code>foceiControl(fast = TRUE)</code> now uses the analytic outer gradient for general-likelihood models with <strong>more than one endpoint</strong>, which previously fell back to finite differences. It was gated off as unverifiable, but what did not verify was the objective below rather than the gradient; against central differences of the corrected objective it agrees to 8e-3 relative.</p></li>
 </ul></div>
 <div class="section level3">

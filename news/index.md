@@ -4,6 +4,12 @@
 
 ### New features
 
+- Requires `rxode2` (\>= 5.1.7). The compatibility layer that also let
+  this package build and run against 5.1.5 has been removed, so the
+  event-sensitivity shape swap and the CMT re-basing of the shared solve
+  pool always go through rxode2’s C API instead of writing its
+  structures by field.
+
 - `est="npag"` / `est="npb"` now support a hand-written general
   likelihood (`ll()`) properly. A model whose `ll()` is written as the
   exact normal log-density now agrees with the equivalent `add()` model
