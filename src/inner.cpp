@@ -320,6 +320,18 @@ struct focei_options {
   // disabling the parameter for the rest of the fit.
   std::vector<double> outerFdStep;
   std::vector<int> outerFdStepIds;
+  // PER-SUBJECT steps for the theta/sigma block, [id * (ntheta+omegan) + col].
+  //
+  // A shared step searched on the SUM over the flagged subjects is not a substitute: the
+  // subjects that reach this path are the badly conditioned ones, so one step cannot suit
+  // them all, and a subject the shared step mis-sizes is silently wrong unless the slope
+  // outlier pass happens to catch it.  Sized by SUBJECT (not by npars, which is what the
+  // original store got wrong -- it was npars wide but indexed by full-theta position, so any
+  // fix()ed parameter wrote past its end).  Omega keeps the shared step: its perturbation
+  // needs an R-side Omega rebuild, so it cannot be searched per subject inside the parallel
+  // region.  0 = not yet chosen.
+  std::vector<double> outerFdStepPer;
+  int outerFdStepPerNsub = 0;
   int nFdStepClamped = 0;   // searches that ended on hMin/hMax, so the column was declined
   // Why the direct route DECLINED, counted over the fit.  A decline sends the whole
   // gradient to finite differences, which is safe but slow, and without these the only
@@ -6872,6 +6884,8 @@ void foceiOuterFinal(double *x, Environment e){
   // final objective must not inherit a step chosen at some earlier theta.
   op_focei.outerFdStep.clear();
   op_focei.outerFdStepIds.clear();
+  op_focei.outerFdStepPer.clear();
+  op_focei.outerFdStepPerNsub=0;
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
   _finalObfCalc = true;
@@ -7210,6 +7224,8 @@ Environment foceiOuter(Environment e){
   op_focei.outerFdIds.clear();
   op_focei.outerFdStep.clear();
   op_focei.outerFdStepIds.clear();
+  op_focei.outerFdStepPer.clear();
+  op_focei.outerFdStepPerNsub=0;
   op_focei.nFdStepClamped=0;
   op_focei.nNewtonMaxit=0;
   op_focei.nNewtonSolve=0;
@@ -11984,6 +12000,33 @@ static void fdStepCachePut(int col, double h, double parVal) {
   op_focei.outerFdStep[(size_t)col] = h * fdStepNorm(parVal);
 }
 
+// Per-subject step cache, [id * (ntheta+omegan) + col], normalized the same way the shared
+// one is (see fdStepNorm).  Returns 0.0 when nothing usable is stored.
+static double fdStepPerGet(int nsub, int id, int col, double parVal) {
+  const size_t nAll = foceiOuterFdN();
+  if (nAll == 0 || nsub <= 0) return 0.0;
+  if (op_focei.outerFdStepPerNsub != nsub ||
+      op_focei.outerFdStepPer.size() != (size_t)nsub * nAll) {
+    op_focei.outerFdStepPerNsub = nsub;
+    op_focei.outerFdStepPer.assign((size_t)nsub * nAll, 0.0);
+    return 0.0;
+  }
+  if (id < 0 || id >= nsub || col < 0 || (size_t)col >= nAll) return 0.0;
+  const double v = op_focei.outerFdStepPer[(size_t)id * nAll + (size_t)col];
+  if (!(v > 0.0)) return 0.0;
+  return v / fdStepNorm(parVal);
+}
+
+// Store a step that PASSED the bound test (or was repaired from the converged peers).
+static void fdStepPerPut(int nsub, int id, int col, double h, double parVal) {
+  const size_t nAll = foceiOuterFdN();
+  if (nAll == 0 || nsub <= 0) return;
+  if (op_focei.outerFdStepPerNsub != nsub ||
+      op_focei.outerFdStepPer.size() != (size_t)nsub * nAll) return;
+  if (id < 0 || id >= nsub || col < 0 || (size_t)col >= nAll) return;
+  op_focei.outerFdStepPer[(size_t)id * nAll + (size_t)col] = h * fdStepNorm(parVal);
+}
+
 // Every flagged subject's -2LL at `tk`, parallel over subjects.
 //
 // Safe to share `tk` across workers: shi21LikTheta only READS it, and writes per-subject
@@ -12038,6 +12081,76 @@ static void fdThetaLeg(const arma::vec &theta, int j, double delta,
   arma::vec tk = theta;
   if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += delta;
   fdThetaLikAll(tk, out);
+}
+
+// PER-SUBJECT shi step search for theta column j, parallel over subjects.  Each subject's
+// search is an independent sequence of evaluations of ITS OWN profile likelihood
+// (shi21LikTheta), so the searches parallelize exactly as the legs do.  This is what a step
+// searched on the summed objective cannot give: a step sized to the subject it is used on.
+static void fdThetaStepPer(const arma::vec &theta, int j,
+                           const std::vector<double> &f0Ind,
+                           std::vector<double> &hPerOut) {
+  const int nid = (int)_fdThIds.size();
+  hPerOut.assign((size_t)nid, 0.0);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    _fdRefEta = _fdThRefEta[(size_t)k];
+    arma::vec tw = theta, gr(1), f0(1);
+    f0(0) = f0Ind[(size_t)k];
+    double hs = 0.0;
+    // shi21Central, NOT the forward search numericGrad uses.  Forward differencing was tried
+    // here and MEASURED WORSE across the board: FD-vs-analytic grading went 19 PASS/2 MARGINAL
+    // to 14/6, degrading 2x to 81x on 19 of 20 cases.  Forward carries O(h) against central's
+    // O(h^2), and this path exists for accuracy on the few subjects whose solve already
+    // failed, so halving an already-rare cost is the wrong side of the trade.
+    hPerOut[(size_t)k] = shi21Central(shi21LikTheta, tw, hs, f0, gr,
+                                      _fdThIds[(size_t)k], j,
+                                      std::pow(DBL_EPSILON, 0.25),
+                                      1.5, 4.5, 3.0, op_focei.shi21maxFD,
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(-1);
+#endif
+  }
+}
+
+// One leg at PER-SUBJECT steps: subject k is evaluated at theta[j] + sign*hPer[k].
+static void fdThetaLegPer(const arma::vec &theta, int j,
+                          const std::vector<double> &hPer, double sign,
+                          std::vector<double> &out) {
+  const int nid = (int)_fdThIds.size();
+  out.assign((size_t)nid, NA_REAL);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
+#endif
+  for (int k = 0; k < nid; ++k) {
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    if (hPer[(size_t)k] > 0.0) {
+      _fdRefEta = _fdThRefEta[(size_t)k];
+      arma::vec tk = theta;
+      if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
+      out[(size_t)k] = shi21LikTheta(tk, _fdThIds[(size_t)k])(0);
+    }
+#ifdef _OPENMP
+    if (_fdThParallel) setRxThreadId(-1);
+#endif
+  }
+  // Serial retry, as the omega legs and foceiS do: the parallel and serial routes do not
+  // pick the same inner buffers, so a failure above is not necessarily one here.
+  for (int k = 0; k < nid; ++k) {
+    if (hPer[(size_t)k] <= 0.0 || R_finite(out[(size_t)k])) continue;
+    _fdRefEta = _fdThRefEta[(size_t)k];
+    arma::vec tk = theta;
+    if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
+    out[(size_t)k] = shi21LikTheta(tk, _fdThIds[(size_t)k])(0);
+  }
 }
 
 // Theta counterpart of fdOmegaTvDeriv: one grid walked once, every outlier subject evaluated
@@ -12582,54 +12695,68 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       // two summed legs whose result is discarded -- and it can trip the outlier pass into a
       // 41-point TV grid and a misleading nFdOutlierParam.  numericGrad loops the free set
       // for the same reason.
-      // Carried ACROSS parameters, as numericGrad carries its `h` by reference through its own
-      // parameter loop: a step this objective already supports is a better starting guess than
-      // the ef formula, and the ratio test corrects it where the scale differs.  Not carried
-      // into the omega block -- that is a different parameter scale.
-      double hWarm = 0.0;
       for (int i = 0; i < op_focei.npars; ++i) {
         const int j = op_focei.fixedTrans[i];
         if (j < 0 || j >= nth) continue;                // omega columns: handled below
-        double h = (_fdForceH > 0.0) ? _fdForceH : fdStepCacheGet(_fdThIds, j, theta[j]);
-        if (_fdForceH <= 0.0 && h == 0.0) {
-          arma::vec gr(1);
-          arma::vec tw = theta;
-          double hs = hWarm;
-          // shi21Central, NOT the forward search numericGrad uses.  Forward differencing was
-          // tried here (one leg per parameter instead of two, escalating to central on a large
-          // slope, exactly numericGrad's arrangement) and MEASURED WORSE across the board:
-          // FD-vs-analytic grading went 19 PASS/2 MARGINAL to 14/6, degrading 2x to 81x on 19
-          // of 20 cases.  Expected in hindsight -- forward carries O(h) against central's
-          // O(h^2), and this path exists for accuracy on the few subjects whose solve already
-          // failed, so halving an already-rare cost is the wrong side of the trade.
-          h = shi21Central(shi21LikThetaSum, tw, hs, f0, gr, _fdThIds[0], j,
-                           std::pow(DBL_EPSILON, 0.25),
-                           1.5,   // rl
-                           4.5,   // ru
-                           3.0,   // nu
-                           op_focei.shi21maxFD,
-                           op_focei.shi21hMax, op_focei.shi21hMin);
-          // A step that terminated ON ITS BOUND is a failure signal, not a chosen step, so it
-          // is NEITHER used NOR cached -- see fdStepCachePut.  The per-subject search used to
-          // repair such a step from the median of the peers whose search converged; one
-          // shared step leaves no such population, so the column is left NA and the caller
-          // declines to a full FD gradient rather than reporting the noise of a step three
-          // decades below where this profile likelihood is differentiable.  Not softened into
-          // "use it and flag it": the measurement is that one clamped subject carried
-          // essentially the whole error in tka and tv.
-          if (!R_finite(h) || h <= 0.0 ||
-              h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
-            op_focei.nFdStepClamped++;
-            continue;
-          }
-          fdStepCachePut(j, h, theta[j]);
-          hWarm = h;
+        // PER-SUBJECT steps.  Only the parameters the OPTIMIZER MOVES: the fold-in reads
+        // fdg(k, fixedTrans[i]) for i < npars, so differencing a FIXED (or mu-group-skipped)
+        // theta is a search plus two legs whose result is discarded -- and it can trip the
+        // outlier pass into a 41-point TV grid and a misleading nFdOutlierParam.
+        std::vector<double> hPer((size_t)_fdThIds.size(), 0.0);
+        bool needSearch = false;
+        for (size_t q = 0; q < _fdThIds.size(); ++q) {
+          hPer[q] = (_fdForceH > 0.0) ? _fdForceH
+            : fdStepPerGet(nsub, _fdThIds[q], j, theta[j]);
+          if (!(hPer[q] > 0.0)) needSearch = true;
         }
+        if (_fdForceH <= 0.0 && needSearch) {
+          std::vector<double> hNew;
+          fdThetaStepPer(theta, j, f0Ind, hNew);
+          // A step that terminated ON ITS BOUND is a failure signal, not a chosen step, so it
+          // is neither used as found nor cached: caching it would make every later evaluation
+          // skip the search, fail the same bound test and decline, for the rest of the fit.
+          // The measurement behind this: on theo_sd one subject clamped to hMin carried
+          // essentially the entire error in tka and tv, while every unclamped subject agreed
+          // with a hand difference to ~1e-2.  Note the slope-outlier pass cannot substitute --
+          // that subject's slope was unremarkable among slopes spanning -5.0 to +2.7.  It was
+          // an outlier in STEP, not in slope.
+          std::vector<double> converged;
+          for (size_t q = 0; q < _fdThIds.size(); ++q) {
+            if (hPer[q] > 0.0) continue;                // already had a cached step
+            const double h = hNew[q];
+            if (!R_finite(h) || h <= 0.0 ||
+                h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+              op_focei.nFdStepClamped++;                // leave hPer[q] == 0 for the repair
+            } else {
+              hPer[q] = h;
+              converged.push_back(h);
+            }
+          }
+          // Repair a clamped step from the MEDIAN of the peers whose search converged for the
+          // same parameter -- the population a per-subject search provides and a single shared
+          // step does not.  A subject with no converged peer at all keeps h == 0 and is left
+          // NA, so the caller declines rather than reporting the noise of a step three decades
+          // below where this profile likelihood is differentiable.
+          if (!converged.empty()) {
+            std::vector<double> work = converged;
+            const double hMed = fdMedian(work);
+            if (R_finite(hMed) && hMed > 0.0) {
+              for (size_t q = 0; q < _fdThIds.size(); ++q) if (!(hPer[q] > 0.0)) hPer[q] = hMed;
+            }
+          }
+          for (size_t q = 0; q < _fdThIds.size(); ++q)
+            if (hPer[q] > 0.0) fdStepPerPut(nsub, _fdThIds[q], j, hPer[q], theta[j]);
+        }
+        bool anyH = false;
+        for (size_t q = 0; q < _fdThIds.size(); ++q) if (hPer[q] > 0.0) { anyH = true; break; }
+        if (!anyH) continue;
         std::vector<double> up, dn;
-        fdThetaLeg(theta, j,  h, up);
-        fdThetaLeg(theta, j, -h, dn);
+        fdThetaLegPer(theta, j, hPer,  1.0, up);
+        fdThetaLegPer(theta, j, hPer, -1.0, dn);
         if (up.size() != _fdThIds.size() || dn.size() != _fdThIds.size()) continue;
         for (size_t q = 0; q < _fdThIds.size(); ++q) {
+          const double h = hPer[q];
+          if (!(h > 0.0)) continue;
           if (!R_finite(up[q]) && !R_finite(dn[q])) continue;
           // calcGradCentral silently degrades to a one-sided difference when a leg did not
           // solve; numericGrad records every such degradation in mixDeriv, and it is reported
@@ -12645,7 +12772,8 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
       }
     }
   }
-  // (The per-subject median-step repair of a CLAMPED step lived here.  It read the steps of
+  // (The per-subject median-step repair of a CLAMPED step now lives in the theta loop above,
+  // where the per-subject search provides the population of converged peers it needs.  It read the steps of
   // the peers whose search converged for the same parameter, which a single shared step per
   // parameter does not provide -- so the clamp is now rejected at the search instead, above.
   // The measurement that motivated it still stands as the reason for rejecting rather than
