@@ -333,6 +333,10 @@ struct focei_options {
   std::vector<double> outerFdStepPer;
   int outerFdStepPerNsub = 0;
   int nFdStepClamped = 0;   // searches that ended on hMin/hMax, so the column was declined
+  // Parameters whose outlier test fell back to judging the FD slopes against THEMSELVES
+  // because fewer than 3 exact analytic slopes were available -- a materially weaker screen,
+  // and one that also fires when gradPooledCore's gMap arity check leaves outerFdRef empty.
+  int nFdRefDegraded = 0;
   // Why the direct route DECLINED, counted over the fit.  A decline sends the whole
   // gradient to finite differences, which is safe but slow, and without these the only
   // visible symptom is a fit that is unexpectedly not analytic.
@@ -7227,6 +7231,7 @@ Environment foceiOuter(Environment e){
   op_focei.outerFdStepPer.clear();
   op_focei.outerFdStepPerNsub=0;
   op_focei.nFdStepClamped=0;
+  op_focei.nFdRefDegraded=0;
   op_focei.nNewtonMaxit=0;
   op_focei.nNewtonSolve=0;
   op_focei.nNewtonSingular=0;
@@ -9840,7 +9845,10 @@ void foceiFinalizeTables(Environment e){
           // Step searches that ended on hMin/hMax.  Each one declines that parameter, and so
           // the whole gradient evaluation, to finite differences -- the only visible symptom
           // otherwise is a fit that is unexpectedly slow.
-          _["stepClamped"] = op_focei.nFdStepClamped);
+          _["stepClamped"] = op_focei.nFdStepClamped,
+          // Outlier tests that had no usable analytic reference and fell back to judging the
+          // finite differences against themselves.
+          _["refDegraded"] = op_focei.nFdRefDegraded);
         e["newtonWorstS"] = NumericVector::create(op_focei.newtonWorstS);
         if (op_focei.firstDirectGradSet) {
           e[".gradDirectFirst"] = NumericVector(op_focei.firstDirectGrad.begin(),
@@ -12219,6 +12227,39 @@ static double fdMedian(std::vector<double> &v) {
   return 0.5 * (v[n / 2 - 1] + v[n / 2]);
 }
 
+// The reference distribution the outlier test judges a finite-differenced slope against, for
+// full-theta column `col`.
+//
+// PREFER the analytic slopes alone.  Those are exact, and they are what a finite-differenced
+// subject for this parameter should look like.  The FD slopes are the values being JUDGED, so
+// including them lets a subject contribute to its own centre and scale.  That is tolerable
+// while the flagged set is a small minority -- median/MAD only break down near 50% -- but this
+// path exists for fits where subjects fail, which is exactly where the assumption stops
+// holding: a consistently biased group of FD slopes pulls the median toward itself and none of
+// them is detected, which is the failure the analytic reference was introduced to avoid.
+//
+// Fall back to including them only when the analytic slopes cannot support the test at all
+// (fewer than 3, e.g. almost every subject flagged, or the caller passed no reference), so
+// such a fit still gets some screen rather than none.  `degraded` records that: a silently
+// weaker test is indistinguishable from a strong one otherwise, and the caller counts it.
+static void fdBuildOutlierRef(const NumericMatrix &analyticRef, const NumericMatrix &out,
+                              int col, int nid, std::vector<double> &r, bool &degraded) {
+  r.clear();
+  degraded = false;
+  for (int k = 0; k < analyticRef.nrow(); ++k) {
+    if (col < analyticRef.ncol()) {
+      const double av = analyticRef(k, col);
+      if (R_finite(av)) r.push_back(av);
+    }
+  }
+  if (r.size() >= 3) return;
+  degraded = true;
+  for (int k = 0; k < nid; ++k) {
+    const double dv = out(k, col);
+    if (R_finite(dv)) r.push_back(dv);
+  }
+}
+
 // Flag the entries of `slopes` that are outliers against the reference distribution `ref`,
 // by the Iglewicz-Hoaglin modified z-score M = 0.6745 * (x - median) / MAD at the `mz` cut.
 // Shared by the theta and the omega pass, which ran two copies of this.
@@ -12883,16 +12924,9 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
     // finite-differenced subject should look like.  Judging the FD subjects only
     // against each other would let a whole group of bad differences look normal.
     std::vector<double> r;
-    for (int k = 0; k < analyticRef.nrow(); ++k) {
-      if (j < analyticRef.ncol()) {
-        double av = analyticRef(k, j);
-        if (R_finite(av)) r.push_back(av);
-      }
-    }
-    for (int k = 0; k < nid; ++k) {
-      double dv = out(k, j);
-      if (R_finite(dv)) r.push_back(dv);
-    }
+    bool refDegraded = false;
+    fdBuildOutlierRef(analyticRef, out, j, nid, r, refDegraded);
+    if (refDegraded) op_focei.nFdRefDegraded++;
     // Only the OUTLIER SUBJECTS are corrected, not every finite-differenced subject for a
     // parameter where one of them is an outlier: a subject whose slope sits inside the robust
     // interval has an adequate central difference, and the TV grid costs N+1 evaluations.
@@ -13080,16 +13114,9 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
     for (int q = 0; q < nom; ++q) {
       const int col = nth + q;
       std::vector<double> r;
-      for (int k = 0; k < analyticRef.nrow(); ++k) {
-        if (col < analyticRef.ncol()) {
-          double av = analyticRef(k, col);
-          if (R_finite(av)) r.push_back(av);
-        }
-      }
-      for (int k = 0; k < nid; ++k) {
-        double dv = out(k, col);
-        if (R_finite(dv)) r.push_back(dv);
-      }
+      bool refDegraded = false;
+      fdBuildOutlierRef(analyticRef, out, col, nid, r, refDegraded);
+      if (refDegraded) op_focei.nFdRefDegraded++;
       std::vector<double> slopes((size_t)nid, NA_REAL);
       for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col);
       std::vector<char> isOut((size_t)nid, 0);
