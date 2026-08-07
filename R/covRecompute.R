@@ -49,6 +49,13 @@
   .a <- .covPinnedRefitArgs(fit)
   if (is.null(.a)) return(NULL)
   if (useEtaMat && !is.null(.a$etaMat)) control$etaMat <- .a$etaMat
+  # This re-fit is pinned at the converged estimates but still takes a frozen EM / SA
+  # step, so it CAN move a theta.  For a hand-written likelihood that means it can step a
+  # scale out of its domain, where rxode2's default safeLog hands back a large finite
+  # reward instead of a rejection -- and the covariance would then be formed around a
+  # point the likelihood cannot evaluate (nlmixr2/nlmixr2est#850).  Ask for the
+  # log-domain mode here too; a no-op while every parameter stays valid.
+  control$rxControl <- .npSafeLogDomain(control$rxControl, .a$ui)
   # the nested re-fit resets mu-referencing global state; save + restore
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)

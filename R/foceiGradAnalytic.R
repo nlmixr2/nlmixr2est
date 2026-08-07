@@ -573,15 +573,41 @@
 #' Recorded here rather than acted on in the solve loop: that loop runs inside
 #' OdeSwapEsBatch(odeSlotOuter), and the finite difference needs the INNER problem's
 #' event sensitivities, which can only be installed at a batch boundary.
+#'
+#' `n` counts pooled solves abandoned because of a flag, and only ever grows.  A test
+#' that wants to prove the POOLED result was used, rather than merely attempted, has to
+#' check this too: `pooledSolveN` counts the attempt and rises either way.
 #' @noRd
 .foceiOuterFlagged <- new.env(parent = emptyenv())
 .foceiOuterFlagged$ids <- integer(0)
+.foceiOuterFlagged$n <- 0L
 
-.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
+#' Threads for the pooled augmented solve, from the fit's `rxControl(cores=)`.
+#'
+#' `0` (rxControl's default) and `NA` mean "use rxode2's thread setting", the same
+#' reading `rxSolve` gives them; anything >= 1 is taken literally.  Resolving 0 to a
+#' literal 1 is what left the pooled route serial.  C++ still caps the result with
+#' min2(cores, getOpCores(op)).
+#' @noRd
+.foceiPoolCores <- function(cores) {
+  tryCatch({
+    .c <- suppressWarnings(as.integer(cores)[1L])       # a NULL/character cores -> NA
+    if (is.na(.c)) return(as.integer(rxode2::getRxThreads()))
+    if (.c < 1L) as.integer(rxode2::getRxThreads()) else .c
+  }, error = function(e) 1L)
+}
+
+.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
   ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
-  ## Used by BOTH est="vae"'s M-step and focei's own fast gradient.
+  ##
+  ## `tol` is the tolerance to solve at and applies to BOTH routes; pass NA to solve at
+  ## the fit's instead.  A covariance caller wants its own (covSolveTol, else tightened
+  ## from sigdig) because it differences these solves; a gradient caller wants the fit's,
+  ## so that it differentiates the objective being minimized.  It has NO DEFAULT on
+  ## purpose -- the two answers are different numbers and there is no value that is right
+  ## for both, so the choice is the caller's to state.
   ##
   ## No session flag guards this any more.  vaeOuterSolve_ refuses unless the
   ## augmented model is registered AND the pool is at least its size
@@ -601,46 +627,29 @@
   {
     .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
     if (!is.null(.cols)) {
-      .nc <- tryCatch({ .c <- am$cores
-        if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c) },
-        error = function(e) 1L)
-      ## No tolerance argument: the pooled solve runs at the FIT's tolerance (C++
-      ## OdeFitTolGuard resets to it), because the gradient must be the gradient of the
-      ## objective the optimizer is minimizing.  `tol` below still tunes the rxSolve
-      ## fallback and the covariance path.
-      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc),
+      .nc <- .foceiPoolCores(am$cores)   # 0 means rxode2's threads, not one
+      ## The pooled solve takes one tolerance for atol and rtol both, while the rxSolve
+      ## fallback below reads a 2-vector as (atol, rtol).  Every caller passes a scalar;
+      ## take the tighter of a pair rather than half the request.
+      .tolP <- suppressWarnings(min(as.numeric(tol)))
+      .Ec <- tryCatch(vaeOuterSolve_(as.numeric(thv), as.matrix(ebes), .cols, .nc,
+                                     if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP),
                       error = function(e) NULL)
-      ## vaeOuterSolve_ now flags failed subjects per individual (attr "ok") rather
-      ## than discarding the whole gradient.  Until the Phase 8D2 finite-difference
-      ## phase consumes those flags, a flagged subject still falls through to the
-      ## rxSolve route, i.e. behaviour is unchanged -- but the flags are here.
+      ## vaeOuterSolve_ flags failed subjects per individual (attr "ok") rather than
+      ## discarding the whole population.  Nothing here consumes the flags yet, so a
+      ## flagged subject falls THROUGH to the rxSolve route below -- all or nothing.
+      ##
+      ## This branch used to zero-fill a flagged subject's E and return it, on the
+      ## grounds that its column is replaced wholesale by the per-individual finite
+      ## difference in foceiGradAllFR_.  That was the R gradient, which is gone; every
+      ## caller now reads the E structures as they stand, so the zeros went straight
+      ## into the covariance as a subject with no prediction and no sensitivity -- and
+      ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
       if (!is.null(.Ec) && length(.Ec) > 0L) {
         .ok <- attr(.Ec, "ok")
-        if (is.null(.ok) || all(.ok == 1L)) {
-          .foceiOuterFlagged$ids <- integer(0)
-          return(.Ec)
-        }
-        ## A flagged subject has no E.  Give it a zero-filled one of the right shape so
-        ## the assembly below keeps working; its gradient column is replaced wholesale in
-        ## foceiGradAllFR_ by the per-individual finite difference, so these zeros never
-        ## reach the result.
-        .good <- which(.ok == 1L)
-        if (length(.good) > 0L) {
-          .tmpl <- .Ec[[.good[1L]]]
-          for (.i in which(.ok == 0L)) {
-            .nobsI <- length(obsTimes[[.i]])
-            .z <- lapply(.tmpl, function(.x) {
-              if (is.null(dim(.x))) numeric(.nobsI)
-              else array(0, c(.nobsI, dim(.x)[-1]))
-            })
-            .z <- .z[names(.tmpl)]
-            if (!is.null(.tmpl$trans)) .z$trans <- .tmpl$trans
-            .Ec[[.i]] <- .z
-          }
-          .foceiOuterFlagged$ids <- which(.ok == 0L)
-          attr(.Ec, "ok") <- .ok
-          return(.Ec)
-        }
+        .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
+        if (length(.foceiOuterFlagged$ids) == 0L) return(.Ec)
+        .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
       }
     }
   }

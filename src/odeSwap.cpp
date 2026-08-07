@@ -191,17 +191,7 @@ static bool odeSwapEsInstall(int slot) {
 }
 
 static void odeSwapEsDeactivate() {
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  if (rxode2EventSensDeactivate != NULL) { rxode2EventSensDeactivate(); return; }
-#endif
-  {
-  try {                                   // COMPATIBILITY (rxode2 5.1.5): via R
-    Environment _rx = Environment::namespace_env("rxode2");
-    Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
-    _f();
-  } catch (...) {
-  }
-  }
+  rxode2EventSensDeactivate();
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
@@ -235,19 +225,11 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
 
 // Capture the live shape into prevShape_ (called before anything is installed).
 bool OdeSwapEsBatch::saveLive() {
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  if (rxode2EventSensShapeSize == NULL || rxode2EventSensShapeSave == NULL) return false;
   int sz = rxode2EventSensShapeSize();
   if (sz <= 0) return false;
   prevShape_.resize((size_t)sz);
   if (!rxode2EventSensShapeSave(prevShape_.data(), sz)) { prevShape_.clear(); return false; }
   return true;
-#else
-  // rxode2 5.1.5: no way to snapshot the shape, so the destructor falls back to
-  // reconstructing which slot to reinstall (see below).  COMPATIBILITY -- remove with
-  // the follow-up issue.
-  return false;
-#endif
 }
 
 OdeSwapEsBatch::~OdeSwapEsBatch() {
@@ -258,18 +240,11 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
   // what was there rather than reconstructing who put it there.  Leaving the
   // batch's shape live would mis-specify every inner solve after the first
   // gradient call of an iterating fit.
-  bool restored = false;
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  restored = rxode2EventSensShapeRestore != NULL && !prevShape_.empty() &&
+  bool restored = !prevShape_.empty() &&
     rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size());
-#endif
-  if (restored) {
-    // put back verbatim -- covers a shape installed outside the registry
-  } else if (prevSlotIdx_ >= 0) {
-    odeSwapEsInstall(prevSlotIdx_);          // a SLOT, never a role
-  } else if (prevSlot_ == odeEsInner && odeSwapHasEs(odeSlotInner)) {
-    odeSwapEsInstall(odeSlotInner);
-  } else {
+  if (!restored) {
+    // saveLive() is unconditional and rxode2 only rejects a buffer it did not write,
+    // so this does not happen; deactivate rather than leave the batch's shape live.
     odeSwapEsDeactivate();
   }
   _odeEsSlot = prevSlot_;
@@ -335,47 +310,21 @@ int odeSwapCmtDelta(int slot) {
 // Only this subject's rows are touched, so it stays safe inside the per-subject
 // parallel regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets
 // the other way.
-// COMPATIBILITY (remove with the follow-up issue): rxode2 5.1.6 added setIndCmt(),
-// the writer half of the accessor pair.  Use it when the header has it; on 5.1.5 fall
-// back to the ABI-linked field access this used to do.  Reading is always through
-// getIndCmt(), which both versions have -- only the WRITE needed the new entry point.
-static inline int odeCmtGet(rx_solving_options *op, rx_solving_options_ind *ind, int kk) {
-  return getIndCmt(op, ind, kk);
-}
-static inline void odeCmtSet(rx_solving_options *op, rx_solving_options_ind *ind,
-                             int kk, int cmt) {
-#ifdef NLMIXR2EST_HAS_SETINDCMT
-  // The #ifdef only says the header DECLARED it -- it does not say the installed
-  // rxode2 FILLED that slot.  nlmixr2est compiled against 5.1.6 can be loaded against
-  // 5.1.5 (DESCRIPTION allows it), where the pointer table is shorter and this stays
-  // NULL from iniRxodePtrs0(); calling it would segfault.  Compile-time decides what
-  // is compilable, runtime decides what is used.
-  if (setIndCmt != NULL) { setIndCmt(op, ind, kk, cmt); return; }
-#endif
-  {
-    if (op == NULL || op->cmtCov < 0 || ind == NULL || ind->cov_ptr == NULL) return;
-    int n = getIndNallTimes(ind);
-    if (kk < 0 || kk >= n) return;
-    ind->cov_ptr[(size_t)n * (size_t)op->cmtCov + (size_t)kk] = (double) cmt;
-  }
-}
-
 void OdeSwapCmtScope::shift(int by) {
   if (by == 0 || _op == NULL || _ind == NULL) return;
   int n = getIndNallTimes(_ind);
   if (n <= 0) return;
   _saved.clear();
   for (int kk = 0; kk < n; ++kk) {
-    int v = odeCmtGet(_op, _ind, kk);
-    // rxode2 >= 5.1.6 reports a missing CMT as NA_INTEGER; 5.1.5 reports it as 1, which
-    // the |v| > _nPhys test below already skips (1 is physical for any real model, which
-    // is why the constructor requires _nPhys >= 1).  Handle the new value explicitly: it
-    // is INT_MIN, so `v < -_nPhys` would otherwise ACCEPT it and write back garbage.
+    int v = getIndCmt(_op, _ind, kk);
+    // A missing CMT reads as NA_INTEGER (rxode2 >= 5.1.6).  It MUST be skipped: it is
+    // INT_MIN, so the `v < -_nPhys` test below would otherwise accept it and write back
+    // INT_MIN +/- by as if it were a real compartment.
     if (v == NA_INTEGER) continue;
     // dose / physical compartments are left alone -- the macro does not offset them
     if (!(v > _nPhys || v < -_nPhys)) continue;
     _saved.push_back(std::make_pair(kk, v));      // remember the pool-basis value
-    odeCmtSet(_op, _ind, kk, (v < 0) ? v - by : v + by);
+    setIndCmt(_op, _ind, kk, (v < 0) ? v - by : v + by);
   }
 }
 
@@ -393,7 +342,7 @@ void OdeSwapCmtScope::shift(int by) {
 void OdeSwapCmtScope::unshift() {
   if (_op == NULL || _ind == NULL) return;
   for (size_t i = 0; i < _saved.size(); ++i) {
-    odeCmtSet(_op, _ind, _saved[i].first, _saved[i].second);
+    setIndCmt(_op, _ind, _saved[i].first, _saved[i].second);
   }
   _saved.clear();
 }
@@ -537,6 +486,7 @@ static std::atomic<long> _odePinnedN(0);
 // a test can tell a working pooled path from a silent fallback to rxode2::rxSolve
 // -- the two are numerically equivalent, which is how a dead path went unnoticed.
 static std::atomic<long> _odePooledSolveN(0);
+static std::atomic<int>  _odePooledSolveCores(NA_INTEGER);
 static std::atomic<long> _odePinCalledN(0);
 static std::atomic<int>  _odePinDeny(0);
 
@@ -581,7 +531,15 @@ long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_re
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
 long odeSwapPinnedN()        { return _odePinnedN.load(std::memory_order_relaxed); }
 long odeSwapPooledSolveN()   { return _odePooledSolveN.load(std::memory_order_relaxed); }
-void odeSwapNotePooledSolve() { _odePooledSolveN.fetch_add(1, std::memory_order_relaxed); }
+// The thread count the last pooled solve actually ran its subject loop with, AFTER every
+// clamp.  Recorded because the R-side cores it was asked for proves nothing on its own:
+// the request is capped again in C++, and a cap back to 1 is exactly the defect that made
+// this loop serial for the whole covariance step.
+int  odeSwapPooledSolveCores() { return _odePooledSolveCores.load(std::memory_order_relaxed); }
+void odeSwapNotePooledSolve(int cores) {
+  _odePooledSolveN.fetch_add(1, std::memory_order_relaxed);
+  _odePooledSolveCores.store(cores, std::memory_order_relaxed);
+}
 long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_relaxed); }
 int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
 
@@ -896,6 +854,7 @@ List odeSwapInfo_() {
     _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
     _["pinnedN"] = (double)odeSwapPinnedN(),
     _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
+    _["pooledSolveCores"] = odeSwapPooledSolveCores(),
     _["pinCalledN"] = (double)odeSwapPinCalledN(),
     _["pinDeny"] = (double)odeSwapPinDeny());
 }

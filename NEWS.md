@@ -2,6 +2,17 @@
 
 ## New features
 
+- Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
+  package build and run against 5.1.5 has been removed, so the event-sensitivity
+  shape swap and the CMT re-basing of the shared solve pool always go through
+  rxode2's C API instead of writing its structures by field.
+  
+- `est="npag"` / `est="npb"` now support a hand-written general likelihood
+  (`ll()`) properly.  A model whose `ll()` is written as the exact normal
+  log-density now agrees with the equivalent `add()` model to the known
+  `0.5*log(2*pi)` per observation, at every grid size.  Requires rxode2 5.1.7 for
+  the `safeLog=2` log-domain mode.
+
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
   general-likelihood models with **more than one endpoint**, which previously
   fell back to finite differences.  It was gated off as unverifiable, but what
@@ -11,7 +22,6 @@
 ## Bug fixes
 
 ### Estimation
-
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
@@ -22,6 +32,55 @@
   warfarin fit started from `k=1/h` (true value near `0.02/h`) this froze the
   volume eta for 19 of 32 subjects, biasing the population estimates and
   shrinking that eta's variance about fourfold.
+  
+- Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever the
+  shared ODE solve pool was available, solving at the fit's much looser tolerance
+  instead of `foceiControl(covSolveTol=)` (or, unset, a value tightened from
+  `sigdig`).  The augmented solves are differenced twice to recover a 3rd-order
+  tensor, so their error is the standard errors' error: they carried the fit's
+  instead, and because the pool needs `fast = TRUE`, **`foceiControl(fast=)`
+  changed the standard errors** (1.7e-2 relative on a 5-ETA 2-compartment model
+  at the default `sigdig`).  Both routes now agree exactly.  Set `covSolveTol` to
+  trade accuracy back for the slightly larger covariance step.
+
+- Fixed `foceiControl(covSolveTol=)` being dropped part-way through the
+  covariance step.  Once the analytic route had restored the fit's ODE solve --
+  which it does whether it succeeded or declined -- the finite-difference
+  covariance work after that point ran at the fit's tolerance again, because
+  rebuilding the solve resets the tolerances along with it.
+
+- Fixed a subject whose pooled augmented solve failed being scored into
+  `covMethod="analytic"` as zeros -- no prediction and no sensitivity -- instead
+  of sending the covariance to its fallback.  The zero fill was written for the
+  R outer gradient, which replaced such a subject's column by a finite
+  difference; that gradient is gone, and zeros are finite, so nothing downstream
+  noticed.  Such a population now falls back to the unpooled solve.
+
+- Fixed the pooled `covMethod="analytic"` solve running single-threaded.  It
+  coerced `rxControl(cores = 0)` -- the default, meaning "use rxode2's thread
+  setting" -- to a literal 1, so its loop over subjects never went parallel,
+  while the `rxSolve` route it replaced passed the 0 through and did.  A 5-ETA
+  2-compartment covariance goes from 1.04s to 0.71s.
+- Fixed `est="npag"` / `est="npb"` reporting a log-likelihood **above its
+  analytic maximum** for a model with a hand-written general likelihood, with the
+  residual parameters driven out of domain -- including to a **negative standard
+  deviation**.  On a 2-endpoint PK/PD fit the log-likelihood read +2364 to +2831
+  where the data bounds it at -155.  Three causes: the residual step scored every
+  row with a Gaussian extended-least-squares form even where `rx_pred_` is a
+  log-density (the same defect class as #838, in a function that fix did not
+  touch); the moment warm start took a moment of a log-density; and rxode2's
+  `safeLog` turned `log(negative)` into a large finite value, so an invalid
+  negative SD was *rewarded* by about +36 per observation rather than rejected.
+
+- Fixed npag's reported objective being inflated whenever a **residual variance
+  collapsed**, general likelihood or not.  `likInner0` floored the variance `r` to
+  1 for the `err^2/r` term but took `log()` of the *unfloored* value, so the two
+  terms disagreed -- and the disagreement paid +18.02 per affected observation.
+
+- The nonparametric engines no longer accept an evaluation the inner problem
+  refused.  `npEvalCondLik` discarded `likInner0`'s `NA` return, and because the
+  per-observation likelihoods are initialized only once, a rejected evaluation
+  summed a finite blend of two different parameter vectors.
 
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.

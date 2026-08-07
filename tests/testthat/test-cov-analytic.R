@@ -1183,4 +1183,59 @@ nmTest({
     expect_equal(E$f[1], 5, tolerance = 1e-4)   # A(0) = A0
     expect_true(E$f[2] < E$f[1])                # the ODE evolves away from the IC
   })
+
+  test_that("covMethod='analytic' SEs do not depend on foceiControl(fast=)", {
+    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    # The augmented solves are run at solveTol (covSolveTol, else tightened from sigdig)
+    # because the 3rd-order tensor is recovered by differencing them twice.  The pooled
+    # route used to drop that and solve at the FIT's tolerance instead, and since the
+    # pool is only available with fast=TRUE, `fast=` moved the standard errors.  Both
+    # routes now solve at solveTol.
+    #
+    # On THIS model at sigdig = 4 the defect is 1.16e-5 relative and what is left after
+    # the fix is 5.6e-8 (two different code paths integrating the same quantity at the
+    # same tolerance), so 1e-6 below has ~18x margin under it and ~12x over it.  Do not
+    # loosen it without re-measuring: the gap TRACKS the fit tolerance, and at sigdig = 3
+    # the defect is only 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA
+    # 2-compartment model would pass with the bug still in.
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) })
+    }
+    .d <- nlmixr2data::theo_sd
+    # fit ONCE, then evaluate the covariance at that theta under both settings, so the
+    # optimizer cannot contribute a difference of its own
+    .f0 <- suppressMessages(suppressWarnings(nlmixr2(.m, .d, "focei",
+             foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4))))
+    .se <- function(fast) {
+      .n0 <- .odeSwapInfo()$pooledSolveN; .b0 <- .foceiOuterFlagged$n
+      .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
+              foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
+                           maxOuterIterations = 0L))))
+      expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
+      .i <- .odeSwapInfo()
+      list(se = sqrt(diag(.f$cov)), pooled = .i$pooledSolveN - .n0,
+           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores)
+    }
+    .rT <- .se(TRUE); .rF <- .se(FALSE)
+    # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
+    # two runs would be the same route and would agree no matter what tolerance it used.
+    # pooledSolveN counts the ATTEMPT, so it rises even when a flagged subject sends the
+    # population back to rxSolve; $n counts exactly those, and must not move.
+    expect_gt(.rT$pooled, 0L)
+    expect_equal(.rT$bailed, 0L)
+    expect_equal(.rF$pooled, 0L)
+    # ... and that the pooled solve is actually threaded.  pooledSolveCores is the count
+    # its subject loop ran with AFTER every clamp, so this covers the whole chain the
+    # unit test on .foceiPoolCores() cannot reach: rxControl(cores = 0) -> rxode2's
+    # threads -> min2(cores, getOpCores(op)) -> doParallel.  Measured 11 with the fix and
+    # 1 without, on a host reporting 11 threads.
+    if (rxode2::getRxThreads() > 1L) expect_gt(.rT$cores, 1L)
+    .n <- intersect(names(.rT$se), names(.rF$se))
+    expect_gt(length(.n), 0L)
+    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-6)
+  })
 })
