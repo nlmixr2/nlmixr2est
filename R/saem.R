@@ -251,7 +251,7 @@
                         # the mask is in force at all
                         revisitUninformativeEtas=
                           rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE) &&
-                          rxode2::rxGetControl(ui, "revisitUninformativeEtas", TRUE),
+                          rxode2::rxGetControl(ui, "revisitUninformativeEtas", FALSE),
                         mixProb=ui$saemMixProb,
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regress"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),

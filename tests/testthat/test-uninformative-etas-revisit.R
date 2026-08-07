@@ -1,8 +1,11 @@
 nmTest({
   test_that("saemControl exposes revisitUninformativeEtas", {
 
-    expect_true(saemControl()$revisitUninformativeEtas)
-    expect_false(saemControl(revisitUninformativeEtas = FALSE)$revisitUninformativeEtas)
+    ## off by default: the revisit can freeze an eta for the rest of the fit, and the
+    ## two verdicts only disagree when theta moved far enough during burn-in that it
+    ## has probably not settled
+    expect_false(saemControl()$revisitUninformativeEtas)
+    expect_true(saemControl(revisitUninformativeEtas = TRUE)$revisitUninformativeEtas)
     expect_error(saemControl(revisitUninformativeEtas = "yes"))
     expect_error(saemControl(revisitUninformativeEtas = c(TRUE, TRUE)))
     expect_error(saemControl(revisitUninformativeEtas = NA))
@@ -76,12 +79,15 @@ nmTest({
     expect_equal(unname(.off$saem$ueRevisitInfo[["ran"]]), 0L)
     expect_false(all(.off$etaObf$eta.ka[1:3] == 0))
 
-    ## With the revisit, burn-in moves tv somewhere sensible, the predictions become
-    ## real, and the test is re-run against them.
+    ## With the revisit the test is re-run against whatever burn-in reached, and the
+    ## IV subjects' eta.ka is frozen as it should have been from the start.  This pins
+    ## the MECHANISM, not an improvement: from a starting point this bad the fit does
+    ## not recover either way (tv stays near 20), and re-deciding here also freezes
+    ## etas the PO subjects can inform.  That is why the revisit is off by default.
     .on <- .fit(20, TRUE)
     expect_equal(unname(.on$saem$ueRevisitInfo[["ran"]]), 1L)
-    ## the mechanism must be shown to have DONE something -- an unchanged mask is
-    ## indistinguishable from a revisit that never happened
+    ## an unchanged mask is indistinguishable from a revisit that never happened, so
+    ## assert it actually changed a verdict
     expect_gt(.on$saem$ueRevisitInfo[["froze"]], 0L)
     expect_true(all(.on$etaObf$eta.ka[1:3] == 0))
 
@@ -127,14 +133,14 @@ nmTest({
                        control = .ctl(handleUninformativeEtas = FALSE))
     expect_equal(unname(.noMask$saem$ueRevisitInfo[["ran"]]), 0L)
 
-    ## Explicitly disabled.
-    .noRev <- .nlmixr(.m(), .d, "saem",
-                      control = .ctl(revisitUninformativeEtas = FALSE))
+    ## Off by default.
+    .noRev <- .nlmixr(.m(), .d, "saem", control = .ctl())
     expect_equal(unname(.noRev$saem$ueRevisitInfo[["ran"]]), 0L)
 
-    ## Enabled by default, and when it changes no verdict the fit is untouched --
-    ## the probe draws no random numbers, so the RNG stream does not shift.
-    .rev <- .nlmixr(.m(), .d, "saem", control = .ctl())
+    ## Explicitly enabled: it runs, and when it changes no verdict the fit is
+    ## untouched -- the probe draws no random numbers, so the RNG stream does not shift.
+    .rev <- .nlmixr(.m(), .d, "saem",
+                    control = .ctl(revisitUninformativeEtas = TRUE))
     expect_equal(unname(.rev$saem$ueRevisitInfo[["ran"]]), 1L)
     expect_equal(unname(.rev$saem$ueRevisitInfo[["unfroze"]]), 0L)
     expect_equal(unname(.rev$saem$ueRevisitInfo[["froze"]]), 0L)

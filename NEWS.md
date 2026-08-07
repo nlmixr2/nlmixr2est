@@ -19,6 +19,18 @@
   did not verify was the objective below rather than the gradient; against
   central differences of the corrected objective it agrees to 8e-3 relative.
 
+- `saemControl(revisitUninformativeEtas=)` (default `FALSE`) re-runs the
+  uninformative-eta test at the end of burn-in and replaces the verdict reached
+  at the initial estimates.  The test asks whether perturbing an eta moves that
+  subject's prediction, and is otherwise only run once, before the fit -- so the
+  initial estimates decide, for the whole fit, which etas `saem` may sample.  The
+  second test reuses the fit's own model evaluation, so it adds a few solves at
+  one iteration and leaves the random number stream alone: where it changes no
+  verdict the fit is identical.  It is off by default because the two verdicts
+  only disagree when `theta` moved a long way during burn-in, which usually means
+  it has not settled, and the second verdict can freeze an eta for the rest of
+  the fit.
+
 ## Bug fixes
 
 ### Estimation
