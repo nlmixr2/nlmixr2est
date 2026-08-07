@@ -701,6 +701,106 @@ public:
     return maxd > 1e-8;
   }
 
+  // Re-run the uninformative-eta test at the current estimates.
+  //
+  // The test (R/uninformativeEtas.R) perturbs each eta and asks whether the prediction
+  // moves, and it runs ONCE, at the INITIAL estimates.  Poor initial estimates make it
+  // answer a question about the estimates rather than about the eta, and whatever it
+  // decides is carried for the whole fit.  Probing again at the end of burn-in, with
+  // theta and Omega where SAEM has moved them, gets the verdict the data supports.
+  //
+  // Predictions come from user_fn -- the same evaluation the loop already does every
+  // iteration -- so this adds no rxSolve of its own and no R callback: the cached _rx
+  // and rxode2's solve state are untouched.  user_fn draws no random numbers, so the
+  // RNG stream (and hence the rest of the fit) is unchanged.
+  void revisitUninformativeEtas() {
+    if (ueRevisitCols.n_elem == 0 || N <= 0 || nmc <= 0 || ntotal <= 0) return;
+    // the mask is (N*nmc) x nphi; anything else means the two sides disagree about the
+    // layout and writing into it would be writing somewhere else entirely
+    if (current_saem_state->_saemUE.n_rows != (unsigned int)(N * nmc) ||
+        current_saem_state->_saemUE.n_cols != (unsigned int)nphi) return;
+    // ix_idM is indexed by PSEUDO-subject (chain c, subject i) at row c*N+i and already
+    // carries that chain's offset into the flat prediction vector -- do not re-derive it
+    if (ix_idM.n_rows != (unsigned int)(N * nmc)) return;
+    if (ueDelta.n_elem != ueRevisitCols.n_elem) return;
+    ueRevisitRan = 1;
+    const unsigned int nc = ueRevisitCols.n_elem;
+    const int nLev = std::min(nmc, 3);      // perturbation levels carried per solve
+    const double lev[3] = {-1.0, 0.0, 1.0};
+    const double sgn[3] = {1.0, -2.0, 1.0}; // pred(-) + pred(+) - 2*pred(0)
+
+    // base phi at eta = 0: each subject's mu-referenced population value
+    mat phiBase(N, nphi, fill::zeros);
+    phiBase.cols(i1) = mprior_phi1;
+    if (nphi0 > 0) phiBase.cols(i0) = mprior_phi0;
+
+    mat ret(N, nc, fill::zeros);            // the second-difference statistic
+    mat scl(N, nc, fill::zeros);            // largest |pred| it is built from
+    umat bad(N, nc, fill::zeros);           // a solve that failed anywhere in the cell
+
+    bool savedFreeze = _saemFreezeOde;
+    _saemFreezeOde = false;                 // the probe needs a live re-solve
+    for (unsigned int jj = 0; jj < nc; ++jj) {
+      unsigned int col = ueRevisitCols(jj);
+      if (col >= (unsigned int)nphi) continue;
+      // The probe half-width comes from the INITIAL Omega, exactly as the first test's
+      // does, so the two evaluations differ only in theta -- which is the whole point.
+      // Reading the CURRENT Omega instead would make the revisit fight itself: a frozen
+      // eta contributes nothing to its own variance, so Omega shrinks, the probe narrows,
+      // and the eta looks even less informative the longer it has been frozen.
+      double delta = ueDelta(jj);
+      if (!R_finite(delta) || delta <= 0) continue;
+      for (int l0 = 0; l0 < 3; l0 += nLev) {
+        mat phiProbe(N * nmc, nphi);
+        for (int c = 0; c < nmc; ++c) {
+          int l = std::min(l0 + (c % nLev), 2);   // pad any unused tail chains
+          phiProbe.rows(c * N, c * N + N - 1) = phiBase;
+          phiProbe.submat(c * N, col, c * N + N - 1, col) += lev[l] * delta;
+        }
+        vec g = user_fn(phiProbe, evt, optM).col(0);
+        for (int c = 0; c < nLev && l0 + c < 3; ++c) {
+          int l = l0 + c;
+          for (int i = 0; i < N; ++i) {
+            unsigned int row = (unsigned int)(c * N + i);
+            unsigned int st = ix_idM(row, 0), en = ix_idM(row, 1);
+            // en < st is how a subject with no observations arrives (end = start - 1,
+            // which wraps); either way there is nothing to read and nothing to judge
+            if (en < st || en >= g.n_elem) { bad(i, jj) = 1; continue; }
+            for (unsigned int idx = st; idx <= en; ++idx) {
+              double p = g(idx);
+              // user_fn substitutes 1e99 for a NaN prediction, so a failed solve
+              // arrives finite and huge rather than as NaN -- catch the sentinel.
+              if (!R_finite(p) || std::abs(p) >= 1.0e99) { bad(i, jj) = 1; continue; }
+              ret(i, jj) += sgn[l] * p;
+              double a = std::abs(p);
+              if (a > scl(i, jj)) scl(i, jj) = a;
+            }
+          }
+        }
+      }
+    }
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }  // restore states at the true phiM
+    _saemFreezeOde = savedFreeze;
+
+    // Same verdict as _nlmixr2est_uninformativeEta: only take "uninformative" when the
+    // predictions it is built from are real.
+    for (unsigned int jj = 0; jj < nc; ++jj) {
+      unsigned int col = ueRevisitCols(jj);
+      if (col >= (unsigned int)nphi) continue;
+      for (int i = 0; i < N; ++i) {
+        bool havePred = !bad(i, jj) && R_finite(ret(i, jj)) &&
+          R_finite(scl(i, jj)) && scl(i, jj) > ueTol;
+        double m = ((std::abs(ret(i, jj)) > ueTol) || !havePred) ? 1.0 : 0.0;
+        double was = current_saem_state->_saemUE(i, col);
+        if (was == 0.0 && m == 1.0) ueRevisitUnfroze++;
+        else if (was == 1.0 && m == 0.0) ueRevisitFroze++;
+        for (int c = 0; c < nmc; ++c) {
+          current_saem_state->_saemUE(c * N + i, col) = m;
+        }
+      }
+    }
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
     // A user-FIXED phi0 theta must not be touched here.  Once this refinement
@@ -1033,6 +1133,12 @@ public:
   mat get_par_hist() {
     return par_hist;
   }
+
+  IntegerVector get_ueRevisitInfo() {
+    return IntegerVector::create(_["ran"] = ueRevisitRan,
+                                 _["unfroze"] = ueRevisitUnfroze,
+                                 _["froze"] = ueRevisitFroze);
+  }
   mat get_HaSa() {
     return HaSa;
   }
@@ -1089,6 +1195,11 @@ public:
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
     // (missing, e.g. a saved cfg from an older version) disables the tag.
     nPhase1 = x.containsElementNamed("nPhase1") ? as<int>(x["nPhase1"]) : -1;
+    // uninformative-eta revisit (absent in a cfg saved by an older version -> off)
+    ueRevisitIter = x.containsElementNamed("ueRevisitIter") ? as<int>(x["ueRevisitIter"]) : -1;
+    if (x.containsElementNamed("ueRevisitCols")) ueRevisitCols = as<uvec>(x["ueRevisitCols"]);
+    if (x.containsElementNamed("ueDelta")) ueDelta = as<vec>(x["ueDelta"]);
+    if (x.containsElementNamed("ueTol")) ueTol = as<double>(x["ueTol"]);
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
     pas = as<vec>(x["pas"]);
@@ -1526,6 +1637,11 @@ public:
         _savMprior_phi0 = mprior_phi0; _savAres = ares; _savBres = bres; _savCres = cres;
         _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
         if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
+      }
+      // End of burn-in: re-decide which etas the data informs, now that theta and Omega
+      // have moved off the initial estimates the first test was run at.
+      if (ueRevisitIter >= 0 && kiter == (unsigned int)ueRevisitIter) {
+        revisitUninformativeEtas();
       }
       IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
       gamma2_phi1=Gamma2_phi1.diag();
@@ -3289,6 +3405,16 @@ private:
   int niter;
   int saemSeed = 99;
   int nPhase1;
+  // uninformative-eta revisit: re-run the informativeness test at the end of burn-in
+  // (see revisitUninformativeEtas).  ueRevisitIter < 0 disables it.
+  int ueRevisitIter = -1;
+  uvec ueRevisitCols;
+  vec ueDelta;                            // probe half-width per revisited column
+  double ueTol = 1e-7;
+  // diagnostics: whether the revisit ran, and how many (subject, eta) verdicts it
+  // changed in each direction.  Tests assert on these -- a mask that is unchanged is
+  // indistinguishable from a revisit that never happened.
+  int ueRevisitRan = 0, ueRevisitUnfroze = 0, ueRevisitFroze = 0;
   int nb_sa;
   int nb_correl;
   int nb_fixOmega;
@@ -4201,6 +4327,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("ueRevisitInfo") = saem.get_ueRevisitInfo(),
     Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,

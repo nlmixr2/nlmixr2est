@@ -247,6 +247,11 @@
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
+                        # the revisit re-decides the same mask, so it only applies where
+                        # the mask is in force at all
+                        revisitUninformativeEtas=
+                          rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE) &&
+                          rxode2::rxGetControl(ui, "revisitUninformativeEtas", TRUE),
                         mixProb=ui$saemMixProb,
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regress"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),

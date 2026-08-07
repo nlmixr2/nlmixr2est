@@ -183,6 +183,10 @@
                        perFixResid=0.75,
                        resFixed,
                        ue,
+                       revisitUninformativeEtas=FALSE,
+                       ueAlpha=0.05,
+                       ueQ=sqrt(3/5),
+                       ueTol=1e-7,
                        mixProb = numeric(0),
                        mixProbMethod = c("regress", "regularized", "annealed"),
                        mixProbStepExp = 1,
@@ -530,6 +534,17 @@
                           rep(1L, length(ue[, 1]))
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
+  # phi columns the initial test decided (0-based), and the iteration to re-decide at.
+  # Mixture models are excluded: their initial test runs through a separate pruned
+  # model (R/uninformativeEtas.R) that the in-loop probe does not reproduce.
+  .ueRevisitCols <- which(names(model$log.eta) %in% .dim) - 1L
+  # the same probe half-width the first test used: qnorm(1-alpha/2) * sd * q, from the
+  # INITIAL omega, so the revisit differs from the first test only in theta
+  .ueDelta <- qnorm(1 - ueAlpha / 2) * sqrt(inits$omega[.ueRevisitCols + 1L]) * ueQ
+  .ueRevisitIter <- -1L
+  if (revisitUninformativeEtas && length(mixProb) == 0L && length(.ueRevisitCols) > 0L) {
+    .ueRevisitIter <- as.integer(mcmc$niter[1])
+  }
 
   # threefry-engine draw (seeded by the rxWithSeed wrapper), so saem's RNG no
   # longer depends on R's set.seed -- all deviates come from the rxode2 engine
@@ -602,6 +617,14 @@
   cfg <- list(
     rxControl = rxControl,
     ue=.ue,
+    # end-of-burn-in re-run of the uninformative-eta test (src/saem.cpp
+    # revisitUninformativeEtas).  ueRevisitIter < 0 disables it; the columns are the
+    # 0-based phi columns the FIRST test actually decided, so a column it never
+    # covered is not newly frozen by the revisit.
+    ueRevisitIter = .ueRevisitIter,
+    ueRevisitCols = .ueRevisitCols,
+    ueDelta = .ueDelta,
+    ueTol = ueTol,
     inits = inits.save,
     nu = mcmc$nu,
     niter = niter,

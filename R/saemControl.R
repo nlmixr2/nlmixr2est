@@ -169,6 +169,18 @@
 #'   calculate uninformative etas and handle them specially (default
 #'   is `TRUE`).
 #'
+#' @param revisitUninformativeEtas boolean; when `TRUE` (default) the
+#'   uninformative-eta test is run a second time at the end of burn-in
+#'   and that verdict replaces the first.  The test asks whether
+#'   perturbing an eta moves the subject's prediction, and it is
+#'   otherwise only run at the *initial* estimates -- so those decide,
+#'   for the whole fit, which etas `saem` may sample.  Re-running it
+#'   once `theta` and `omega` have moved decides on the estimates the
+#'   data supports instead.  The second test reuses the fit's own model
+#'   evaluation, so it costs a few extra solves at a single iteration
+#'   and leaves the random number stream unchanged.  Skipped for
+#'   mixture models and when `handleUninformativeEtas=FALSE`.
+#'
 #' @param mixProbMethod For mixture models (`mix()`, more than one
 #'   component), stabilizes the mixing-probability estimate against
 #'   collapsing onto a single component (the responsibility used to
@@ -332,6 +344,7 @@ saemControl <- function(seed = 99,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
                         handleUninformativeEtas=TRUE,
+                        revisitUninformativeEtas=TRUE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
@@ -409,6 +422,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
   checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
+  checkmate::assertLogical(revisitUninformativeEtas, any.missing=FALSE, len=1)
   checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
   eventSens <- match.arg(eventSens)
   mixProbMethod <- match.arg(mixProbMethod)
@@ -546,6 +560,7 @@ saemControl <- function(seed = 99,
     muRefCov=muRefCov,
     muRefCovAlg=muRefCovAlg,
     handleUninformativeEtas=handleUninformativeEtas,
+    revisitUninformativeEtas=revisitUninformativeEtas,
     iovXform=iovXform,
     boundedTransform=boundedTransform,
     eventSens=eventSens,
