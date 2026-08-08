@@ -364,6 +364,16 @@ nmTest({
     expect_equal(as.integer(base$out[["params"]]), 0L)
     expect_equal(as.integer(base$out[["analyticTrigger"]]), 0L)
 
+    # ACTUALLY exercise fdOutlierAny: at a cut low enough that the exact analytic slopes are
+    # themselves dispersed, the analytic-side trigger must fire and be recorded.  Without
+    # setting the option this test would pass even if that C++ branch were dead code.
+    anyOn <- .run(fdOutlierZ = 1e-8, fdOutlierAny = TRUE)
+    expect_true(is.finite(anyOn$objf))
+    expect_gt(as.integer(anyOn$out[["params"]]), 0L)
+    # and it is OFF by default -- the same cut without the option records no analytic trigger
+    anyOff <- .run(fdOutlierZ = 1e-8, fdOutlierAny = FALSE)
+    expect_equal(as.integer(anyOff$out[["analyticTrigger"]]), 0L)
+
     # fdChartrandAll: with the pass firing, refining every FD subject must produce at least as
     # many refined slopes as refining only the outliers.  Both must still give a finite fit --
     # the analytic subjects are never recomputed under either setting.
@@ -470,8 +480,28 @@ nmTest({
     uOff <- .fit(.thin, FALSE)
     expect_true(is.finite(uOn$objf))
     expect_true(is.finite(uOff$objf))
-    # the scaling changes only the TEST, never the gradient, so the objective is identical
-    # even where the two disagree about which slopes to refine
-    expect_true(is.finite(uOn$objf) && is.finite(uOff$objf))
+    # The option must actually REACH the C++.  Driving the cut low makes the test fire on
+    # both settings; scaling then changes which per-observation slopes look extreme, so the
+    # two must not agree on everything.  Without this the test passes even if
+    # op_focei.fdOutlierScale were ignored entirely.
+    .cut <- function(scale) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      f <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, .thin, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 2L,
+                     fdOutlierZ = 0.5, fdOutlierScale = scale))))
+      .fbClearHooks()
+      c(params = as.integer(f$env$nFdOutlier[["params"]]),
+        slopes = as.integer(f$env$nFdOutlier[["chartrandSlopes"]]),
+        objf = f$objf)
+    }
+    cOn <- .cut(TRUE); cOff <- .cut(FALSE)
+    expect_true(is.finite(cOn[["objf"]]))
+    expect_true(is.finite(cOff[["objf"]]))
+    expect_gt(cOn[["params"]], 0L)
+    expect_gt(cOff[["params"]], 0L)
   })
 })

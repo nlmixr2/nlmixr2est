@@ -12017,7 +12017,10 @@ static double tvDerivFromSamples(arma::vec f, double dx, int N,
 // clamped step, since one shared step leaves no population of converged peers to repair
 // from; a clamped shared step is therefore rejected outright and the caller declines.
 static std::vector<int> _fdThIds;
-// Observations per FLAGGED subject, in _fdThIds order.  The outlier test needs it: a
+// Observations per flagged subject, indexed by ROW OF `out` (i.e. by position in the caller's
+// ids0), NOT by position in _fdThIds.  The two coincide only while every id passes the
+// id < 0 || id >= nsub filter; the outlier test walks rows of `out`, so row indexing is the
+// one that is always right.  The outlier test needs it: a
 // per-subject slope is NOT exchangeable across subjects, it scales with how much data the
 // subject carries, so raw slopes from a 3-observation and a 20-observation subject are not
 // draws from one distribution.  See foceiControl(fdOutlierScale=).
@@ -12376,6 +12379,21 @@ static double fdMedian(std::vector<double> &v) {
   return 0.5 * (v[n / 2 - 1] + v[n / 2]);
 }
 
+// Per-observation scale for the flagged subject at flagged-set position k, or 1.0 when the
+// scaling is off or the count is unknown.
+static inline double fdOutlierScaleOf(int k, int col) {
+  if (!op_focei.fdOutlierScale) return 1.0;
+  // THETA/SIGMA only.  Those enter through the observation likelihood, so a subject's slope
+  // scales with how many observations it has.  OMEGA does not: it reaches an individual
+  // likelihood through the per-SUBJECT prior terms (eta' Omega^-1 eta and log|Omega|), so the
+  // natural unit there is per subject and dividing by nobs would introduce exactly the
+  // distortion this is meant to remove.
+  if (col >= (int)op_focei.ntheta) return 1.0;
+  if (k < 0 || (size_t)k >= _fdThNobs.size()) return 1.0;
+  const int n = _fdThNobs[(size_t)k];
+  return (n > 0) ? (double)n : 1.0;
+}
+
 // The reference distribution the outlier test judges a finite-differenced slope against, for
 // full-theta column `col`.
 //
@@ -12403,9 +12421,13 @@ static void fdBuildOutlierRef(const NumericMatrix &analyticRef, const NumericMat
   }
   if (r.size() >= 3) return;
   degraded = true;
+  // Scaled EXACTLY as the candidates are in fdOutlierDecide.  The analytic rows above are
+  // packed per-observation where that applies, so pushing raw finite differences here would
+  // compare scaled candidates against unscaled reference values -- different units, and the
+  // modified-z test (and any refinement it triggers) would be made on them.
   for (int k = 0; k < nid; ++k) {
     const double dv = out(k, col);
-    if (R_finite(dv)) r.push_back(dv);
+    if (R_finite(dv)) r.push_back(dv / fdOutlierScaleOf(k, col));
   }
 }
 
@@ -12447,15 +12469,6 @@ static bool fdFlagOutliers(const std::vector<double> &ref, const std::vector<dou
 // refinement: its slope is EXACT, and replacing it with a regularized numerical derivative
 // would be strictly worse.  That holds under every option below -- the analytic gradient is
 // always retained, only which finite differences are recomputed changes.
-// Per-observation scale for the flagged subject at flagged-set position k, or 1.0 when the
-// scaling is off or the count is unknown.
-static inline double fdOutlierScaleOf(int k) {
-  if (!op_focei.fdOutlierScale) return 1.0;
-  if (k < 0 || (size_t)k >= _fdThNobs.size()) return 1.0;
-  const int n = _fdThNobs[(size_t)k];
-  return (n > 0) ? (double)n : 1.0;
-}
-
 static bool fdOutlierDecide(const NumericMatrix &analyticRef, const NumericMatrix &out,
                             int col, int nid, const std::vector<double> &r, double mz,
                             std::vector<char> &isOut) {
@@ -12463,7 +12476,7 @@ static bool fdOutlierDecide(const NumericMatrix &analyticRef, const NumericMatri
   // for having a larger slope.  Only the TEST is scaled -- `out` keeps the real derivative,
   // and the reference in `r` was scaled the same way where it was built.
   std::vector<double> slopes((size_t)nid, NA_REAL);
-  for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col) / fdOutlierScaleOf(k);
+  for (int k = 0; k < nid; ++k) slopes[(size_t)k] = out(k, col) / fdOutlierScaleOf(k, col);
   isOut.assign((size_t)nid, 0);
   bool any = fdFlagOutliers(r, slopes, mz, isOut);
   // foceiControl(fdOutlierAny=): an outlier among the EXACT slopes says the per-subject
@@ -13013,7 +13026,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
   // still differ between thread counts.  foceiS has the same property.
   _fdThIds.clear();
   _fdThRefEta.clear();
-  _fdThNobs.clear();
+  _fdThNobs.assign((size_t)nid, 0);          // row-indexed; see the declaration
   std::vector<int> thK;                       // row of `out` each _fdThIds entry writes
   for (int k = 0; k < nid; ++k) {
     int id = ids0[k];
@@ -13027,7 +13040,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
       for (int q = 0; q < getIndNallTimes(_indN); ++q)
         if (getIndEvid(_indN, getIndIx(_indN, q)) == 0) _nob++;
     }
-    _fdThNobs.push_back(_nob);
+    _fdThNobs[(size_t)k] = _nob;
   }
   _fdThCores = fdCores;
   _fdThParallel = fdParallel;
@@ -14611,9 +14624,13 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
           // a per-subject slope scales with the subject's data, so raw slopes across
           // subjects are not draws from one distribution.  Only the reference DISTRIBUTION
           // is scaled -- gmat itself is untouched and still carries the real gradient.
+          // Theta/sigma only -- see fdOutlierScaleOf(): omega reaches the likelihood through
+          // per-subject prior terms, so per-observation is the wrong unit for it.
           const int _nobI = nobsAll[(size_t)i];
+          const bool _scaleI = op_focei.fdOutlierScale && _nobI > 0 &&
+            jf < (int)op_focei.ntheta;
           op_focei.outerFdRef[(size_t)row * (size_t)npAll + (size_t)jf] =
-            (op_focei.fdOutlierScale && _nobI > 0) ? gmat(ks, i) / (double)_nobI : gmat(ks, i);
+            _scaleI ? gmat(ks, i) / (double)_nobI : gmat(ks, i);
         }
         row++;
       }
