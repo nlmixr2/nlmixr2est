@@ -13,6 +13,17 @@
   `0.5*log(2*pi)` per observation, at every grid size.  Requires rxode2 5.1.7 for
   the `safeLog=2` log-domain mode.
 
+- `foceiControl(fast = TRUE)` now keeps the analytic outer gradient when a
+  subject's augmented sensitivity solve fails, instead of sending the whole
+  gradient evaluation to finite differences.  Such a subject is finite-differenced
+  on its own and folded into the otherwise-analytic sum, covering the omega
+  directions as well as theta and sigma.  The per-subject machinery was present
+  but could never apply: a failed solve left the subject with no observation count,
+  and the assembly declined the whole evaluation before reaching the substitution.
+  `fit$env$nOuterFdInd` counts the substitutions applied, so "one subject was
+  finite-differenced and the rest stayed analytic" is now distinguishable from
+  "the gradient declined" -- the two previously looked identical.
+
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
   general-likelihood models with **more than one endpoint**, which previously
   fell back to finite differences.  It was gated off as unverifiable, but what
@@ -115,6 +126,16 @@
   refused.  `npEvalCondLik` discarded `likInner0`'s `NA` return, and because the
   per-observation likelihoods are initialized only once, a rejected evaluation
   summed a finite blend of two different parameter vectors.
+
+- The per-subject finite differences are taken at the **fit's** ODE tolerance.  A
+  subject only reaches this path after its tolerance was loosened to try to rescue
+  the failed solve, so it would otherwise be differenced on a looser function than
+  the analytic terms it is summed with -- and a retry part-way through could leave
+  the two legs of one central difference at different tolerances.
+
+- Fixed the outer finite-difference step store being allocated per optimizer
+  parameter but indexed by full-theta position, so a fit with any `fix`ed
+  parameter wrote past the end of it.
 
 - Fixed the objective function for a model that has a **general-likelihood
   endpoint (`ll()`, `pois()`, `binom()`, ...) alongside any other endpoint**.
