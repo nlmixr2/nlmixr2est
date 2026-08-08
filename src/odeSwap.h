@@ -136,6 +136,7 @@ bool odeSwapHasEs(int slot);
 
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
+int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter count
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
 

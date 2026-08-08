@@ -64,6 +64,7 @@ vaeControl(
   outerStickyRecalcN = 4,
   fdIndividualStep = TRUE,
   fdOutlierZ = 3.5,
+  fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
   fdChartrandAll = FALSE,
   fdOutlierAny = FALSE,
@@ -603,6 +604,15 @@ whether a finite-differenced subject's slope is an outlier against the exact
 analytic slopes, and so whether `fdChartrand` refines it.  The conventional
 3.5; lower it to make the pass fire more readily (and to exercise it), raise
 it to suppress it without turning `fdChartrand` off.}
+
+\item{fdOutlierScale}{Test the outlier criterion on the **per-observation**
+slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+scales with how much data that subject carries, so raw slopes from a
+3-observation and a 20-observation subject are not draws from one
+distribution -- pooling them makes a legitimately large slope look like an
+outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+itself is untouched.  On balanced data this changes nothing, since dividing
+every slope by the same count leaves the modified z-score unchanged.}
 
 \item{fdRefine}{Estimator used to recompute a finite-differenced slope once
   the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the

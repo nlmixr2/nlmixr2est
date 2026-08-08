@@ -108,6 +108,14 @@
 #'   analytic slopes, and so whether `fdChartrand` refines it.  The conventional
 #'   3.5; lower it to make the pass fire more readily (and to exercise it), raise
 #'   it to suppress it without turning `fdChartrand` off.
+#' @param fdOutlierScale Test the outlier criterion on the **per-observation**
+#'   slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+#'   scales with how much data that subject carries, so raw slopes from a
+#'   3-observation and a 20-observation subject are not draws from one
+#'   distribution -- pooling them makes a legitimately large slope look like an
+#'   outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+#'   itself is untouched.  On balanced data this changes nothing, since dividing
+#'   every slope by the same count leaves the modified z-score unchanged.
 #' @param fdRefine Estimator used to recompute a finite-differenced slope once
 #'   the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
 #'   ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
@@ -812,6 +820,7 @@ foceiControl <- function(sigdig = 3, #
                          covFull = TRUE, #
                          fast = FALSE, #
                          fdOutlierZ = 3.5, #
+                         fdOutlierScale = TRUE, #
                          fdRefine = c("chartrand", "lanczos", "richardson"), #
                          fdLanczosM = 2L, #
                          fdRichardsonR = 2L, #
@@ -1039,6 +1048,7 @@ foceiControl <- function(sigdig = 3, #
   } else {
     checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
     checkmate::assertNumeric(fdOutlierZ, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdOutlierScale, any.missing=FALSE, len=1)
     fdRefine <- match.arg(fdRefine)
     checkmate::assertIntegerish(fdLanczosM, lower=1, any.missing=FALSE, len=1)
     checkmate::assertIntegerish(fdRichardsonR, lower=1, any.missing=FALSE, len=1)
@@ -1504,6 +1514,7 @@ foceiControl <- function(sigdig = 3, #
     # arguments -- every field here must be a formal, which is why there is no companion
     # "fdRefineMethod" field), and match.arg() on an integer yields NA silently rather than
     # erroring, so the setting was quietly lost and the default estimator used.
+    fdOutlierScale = as.integer(fdOutlierScale),
     fdRefine = fdRefine,
     fdLanczosM = as.integer(fdLanczosM),
     fdRichardsonR = as.integer(fdRichardsonR),

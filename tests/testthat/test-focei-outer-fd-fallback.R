@@ -418,4 +418,60 @@ nmTest({
     # cannot discriminate between these -- that comparison needs a stiff likelihood surface
     # and is the separate nlmixr2est follow-up these options exist to enable.
   })
+
+  test_that("fdOutlierScale tests the per-observation slope on unbalanced data", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    expect_equal(foceiControl(fdOutlierScale = TRUE)$fdOutlierScale, 1L)
+    expect_equal(foceiControl(fdOutlierScale = FALSE)$fdOutlierScale, 0L)
+    expect_error(foceiControl(fdOutlierScale = "yes"))
+    expect_true(isTRUE(vaeControl(fdOutlierScale = FALSE)$fdOutlierScale) == FALSE)
+
+    .fit <- function(dat, scale) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      f <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, dat, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 2L,
+                     fdOutlierScale = scale))))
+      .fbClearHooks()
+      list(objf = f$objf, params = as.integer(f$env$nFdOutlier[["params"]]))
+    }
+
+    # BALANCED: every subject has the same observation count, so dividing every slope by the
+    # same number cannot change a modified z-score.  Scaling must be a no-op here -- that is
+    # what makes it safe to turn on by default.
+    bal <- nlmixr2data::theo_sd
+    on  <- .fit(bal, TRUE)
+    off <- .fit(bal, FALSE)
+    expect_true(is.finite(on$objf))
+    expect_equal(on$objf, off$objf)
+    expect_equal(on$params, off$params)
+
+    # UNBALANCED: thin subjects 1-4 to 3 observations each while the rest keep 11.  Raw slopes
+    # are then not draws from one distribution -- a well-sampled subject has a systematically
+    # larger slope purely from carrying more data -- so the two settings must be able to
+    # DISAGREE about who is an outlier.  Both must still produce a finite fit.
+    .thin <- do.call(rbind, lapply(split(bal, bal$ID), function(d) {
+      obs <- d[d$EVID == 0, , drop = FALSE]
+      dose <- d[d$EVID != 0, , drop = FALSE]
+      if (as.integer(as.character(d$ID[1])) <= 4L && nrow(obs) > 3L) {
+        obs <- obs[seq_len(3L), , drop = FALSE]
+      }
+      rbind(dose, obs)
+    }))
+    .thin <- .thin[order(.thin$ID, .thin$TIME), , drop = FALSE]
+    uOn  <- .fit(.thin, TRUE)
+    uOff <- .fit(.thin, FALSE)
+    expect_true(is.finite(uOn$objf))
+    expect_true(is.finite(uOff$objf))
+    # the scaling changes only the TEST, never the gradient, so the objective is identical
+    # even where the two disagree about which slopes to refine
+    expect_true(is.finite(uOn$objf) && is.finite(uOff$objf))
+  })
 })

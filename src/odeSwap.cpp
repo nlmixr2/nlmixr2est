@@ -19,6 +19,12 @@ struct OdeModelReg {
   std::vector<std::string> lhsNames;
   int neq = 0;
   int nlhs = 0;
+  // Parameter count from the model's own modelVars, captured at DECLARE time.  The lhs and
+  // state widths alone do not make the calc_lhs probe in odeSwapCheckLhsWidth safe: generated
+  // calc_lhs reads par_ptr too, and par_ptr is sized by whichever model the pool was built
+  // for.  A slot wanting more parameters than that reads off the end and segfaults inside
+  // generated code.
+  int npars = 0;
   // Endpoint (CMT) rebasing -- see odeSwapCmtRebase().  rxode2 compiles each
   // model's endpoint switch against the USER compartment numbering and emits
   //   #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
@@ -69,6 +75,7 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   // disabling every compaction.
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
+  m.npars = as<CharacterVector>(mv["params"]).size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
   // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
@@ -255,7 +262,7 @@ void odeSwapClear(int slot) {
   if (!odeSlotOk(slot)) return;
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
-  m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
+  m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.npars = 0; m.loaded = false;
   m.nSens = 0; m.cmtPar = -1;
   m.lhsNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
@@ -370,6 +377,7 @@ OdeSwapCmtScope::~OdeSwapCmtScope() {
 
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
 int  odeSwapNlhs(int slot)   { return odeSwapLoaded(slot) ? _odeReg[slot].nlhs : 0; }
+int  odeSwapNpars(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].npars : 0; }
 const char *odeSwapName(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].name : NULL; }
 
 SEXP odeSwapModelSEXP(int slot) {
@@ -512,6 +520,18 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   int wantNeq = odeSwapNeq(slot);
   int roomNeq = getOpNeq(op);
   if (wantNeq <= 0 || roomNeq < wantNeq) return false;
+  // ...and the PARAMETER vector, which is the remaining way this probe can crash.  Compared
+  // against the POOL SLOT's model rather than an rxode2 accessor, because the pool slot is
+  // what determined the allocation.  Observed: a pooled setup loaded from a different ui than
+  // the live inner problem segfaulted inside generated calc_lhs here, i.e. the check written
+  // to avoid reading columns nobody wrote crashed before it could return an answer.
+  {
+    const OdePoolPlan &_pp = odeSwapPlan();
+    if (_pp.poolSlot >= 0 && _pp.poolSlot != slot) {
+      const int wantP = odeSwapNpars(slot), roomP = odeSwapNpars(_pp.poolSlot);
+      if (wantP > 0 && roomP > 0 && wantP > roomP) return false;
+    }
+  }
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
   double *st = getIndSolve(ind);
