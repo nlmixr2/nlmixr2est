@@ -364,15 +364,21 @@ nmTest({
     expect_equal(as.integer(base$out[["params"]]), 0L)
     expect_equal(as.integer(base$out[["analyticTrigger"]]), 0L)
 
-    # ACTUALLY exercise fdOutlierAny: at a cut low enough that the exact analytic slopes are
-    # themselves dispersed, the analytic-side trigger must fire and be recorded.  Without
-    # setting the option this test would pass even if that C++ branch were dead code.
-    anyOn <- .run(fdOutlierZ = 1e-8, fdOutlierAny = TRUE)
+    # ACTUALLY exercise fdOutlierAny, and assert the counter that proves the branch ran.
+    # It fires at the DEFAULT 3.5 cut on theo_sd, which is itself the point: the EXACT
+    # per-subject slopes are dispersed enough to be outliers against each other, because a
+    # subject's slope scales with the data it carries.  With the option off the same fit
+    # flags nothing, so this is a clean on/off pair rather than a threshold trick.
+    anyOn <- .run(fdOutlierZ = 3.5, fdOutlierAny = TRUE)
     expect_true(is.finite(anyOn$objf))
+    expect_gt(as.integer(anyOn$out[["analyticTrigger"]]), 0L)
     expect_gt(as.integer(anyOn$out[["params"]]), 0L)
-    # and it is OFF by default -- the same cut without the option records no analytic trigger
-    anyOff <- .run(fdOutlierZ = 1e-8, fdOutlierAny = FALSE)
-    expect_equal(as.integer(anyOff$out[["analyticTrigger"]]), 0L)
+    # ... and it is the ANALYTIC side that fired: no finite difference was an outlier, so
+    # nothing is refined.  fdOutlierAny on its own DETECTS; it only changes the gradient when
+    # paired with fdChartrandAll, which is what makes every FD subject eligible.
+    expect_equal(as.integer(anyOn$out[["chartrandSlopes"]]), 0L)
+    anyBoth <- .run(fdOutlierZ = 3.5, fdOutlierAny = TRUE, fdChartrandAll = TRUE)
+    expect_gt(as.integer(anyBoth$out[["chartrandSlopes"]]), 0L)
 
     # fdChartrandAll: with the pass firing, refining every FD subject must produce at least as
     # many refined slopes as refining only the outliers.  Both must still give a finite fit --
@@ -503,5 +509,9 @@ nmTest({
     expect_true(is.finite(cOff[["objf"]]))
     expect_gt(cOn[["params"]], 0L)
     expect_gt(cOff[["params"]], 0L)
+    # The option must CHANGE which slopes look extreme on unbalanced data -- otherwise this
+    # passes even if op_focei.fdOutlierScale were ignored entirely in C++.
+    expect_false(cOn[["params"]] == cOff[["params"]] &&
+                 cOn[["slopes"]] == cOff[["slopes"]])
   })
 })
