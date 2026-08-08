@@ -1499,10 +1499,12 @@ foceiControl <- function(sigdig = 3, #
     covFull = covFull,
     fast = fast,
     fdOutlierZ = as.double(fdOutlierZ),
-    # integer for C++; the control list is re-passed as NAMED ARGUMENTS, so every field here
-    # must be a formal of this function -- an extra "fdRefineMethod" companion field fails
-    # with `unused argument`
-    fdRefine = as.integer(match(fdRefine, c("chartrand", "lanczos", "richardson")) - 1L),
+    # Kept as the CHARACTER name, and read as a string in C++.  Storing the integer code
+    # instead does not round-trip: a control is re-passed through foceiControl() (as named
+    # arguments -- every field here must be a formal, which is why there is no companion
+    # "fdRefineMethod" field), and match.arg() on an integer yields NA silently rather than
+    # erroring, so the setting was quietly lost and the default estimator used.
+    fdRefine = fdRefine,
     fdLanczosM = as.integer(fdLanczosM),
     fdRichardsonR = as.integer(fdRichardsonR),
     fdRichardsonV = as.double(fdRichardsonV),

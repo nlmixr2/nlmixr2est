@@ -6619,8 +6619,14 @@ NumericVector foceiSetup_(const RObject &obj,
     as<int>(foceiO["fdChartrandAll"]) : 0;
   op_focei.fdOutlierAny=foceiO.containsElementNamed("fdOutlierAny") ?
     as<int>(foceiO["fdOutlierAny"]) : 0;
-  op_focei.fdRefine=foceiO.containsElementNamed("fdRefine") ?
-    as<int>(foceiO["fdRefine"]) : 0;
+  // Read by NAME, not as an integer code -- see the note in foceiControl(): a control is
+  // re-passed through foceiControl() and an integer would not survive its match.arg().
+  op_focei.fdRefine = 0;
+  if (foceiO.containsElementNamed("fdRefine")) {
+    std::string _fr = as<std::string>(foceiO["fdRefine"]);
+    if (_fr == "lanczos") op_focei.fdRefine = 1;
+    else if (_fr == "richardson") op_focei.fdRefine = 2;
+  }
   op_focei.fdLanczosM=foceiO.containsElementNamed("fdLanczosM") ?
     as<int>(foceiO["fdLanczosM"]) : 2;
   op_focei.fdRichardsonR=foceiO.containsElementNamed("fdRichardsonR") ?

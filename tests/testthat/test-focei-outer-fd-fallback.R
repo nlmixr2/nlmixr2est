@@ -382,9 +382,12 @@ nmTest({
     .fbClearHooks()
     on.exit(.fbClearHooks(), add = TRUE)
 
-    expect_equal(foceiControl(fdRefine = "chartrand")$fdRefine, 0L)
-    expect_equal(foceiControl(fdRefine = "lanczos")$fdRefine, 1L)
-    expect_equal(foceiControl(fdRefine = "richardson")$fdRefine, 2L)
+    expect_equal(foceiControl(fdRefine = "chartrand")$fdRefine, "chartrand")
+    expect_equal(foceiControl(fdRefine = "lanczos")$fdRefine, "lanczos")
+    # A control is re-passed through foceiControl(); an integer code would come back NA from
+    # match.arg() SILENTLY and fall back to the default estimator.
+    expect_equal(do.call(foceiControl, foceiControl(fdRefine = "richardson"))$fdRefine,
+                 "richardson")
     expect_error(foceiControl(fdRefine = "spline"))
     expect_error(foceiControl(fdRichardsonV = 1))     # v must exceed 1 to shrink the step
     expect_equal(vaeControl(fdRefine = "lanczos")$fdRefine, "lanczos")
