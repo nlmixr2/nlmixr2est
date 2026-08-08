@@ -108,6 +108,30 @@
 #'   analytic slopes, and so whether `fdChartrand` refines it.  The conventional
 #'   3.5; lower it to make the pass fire more readily (and to exercise it), raise
 #'   it to suppress it without turning `fdChartrand` off.
+#' @param fdRefine Estimator used to recompute a finite-differenced slope once
+#'   the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+#'   ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+#'
+#'   * `"richardson"` -- Richardson extrapolation of central differences at
+#'     `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+#'     turn.  Cheapest, and right when the surface is smooth and only truncation
+#'     matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+#'     is the wrong instrument when the noise floor is what limits the difference.
+#'   * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+#'     through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+#'     lower variance, since independent evaluation noise averages down as points
+#'     are added rather than being amplified.  The middle rung.
+#'   * `"chartrand"` (default) -- total-variation regularized differentiation over
+#'     a wide interval, which absorbs curvature through the regularized derivative
+#'     itself instead of assuming a stencil.  Most expensive and most robust to a
+#'     genuinely rough surface.
+#'
+#'   All three apply identically: they are gated by the same outlier test, touch
+#'   only the finite-differenced subjects, and never recompute a subject whose
+#'   analytic gradient is available.
+#' @param fdLanczosM Half-width `m` of the `"lanczos"` estimator (`2m` evaluations).
+#' @param fdRichardsonR Depth of the `"richardson"` extrapolation table.
+#' @param fdRichardsonV Step-shrink ratio `v` of the `"richardson"` estimator.
 #' @param fdChartrandAll When the outlier pass fires for a parameter, refine
 #'   **every** finite-differenced subject with the Chartrand TV derivative rather
 #'   than only the outlying ones.  Subjects whose augmented solve succeeded keep
@@ -788,6 +812,10 @@ foceiControl <- function(sigdig = 3, #
                          covFull = TRUE, #
                          fast = FALSE, #
                          fdOutlierZ = 3.5, #
+                         fdRefine = c("chartrand", "lanczos", "richardson"), #
+                         fdLanczosM = 2L, #
+                         fdRichardsonR = 2L, #
+                         fdRichardsonV = 2.0, #
                          fdChartrandAll = FALSE, #
                          fdOutlierAny = FALSE, #
                          fdIndividualStep = TRUE, #
@@ -1011,6 +1039,11 @@ foceiControl <- function(sigdig = 3, #
   } else {
     checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
     checkmate::assertNumeric(fdOutlierZ, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+    fdRefine <- match.arg(fdRefine)
+    checkmate::assertIntegerish(fdLanczosM, lower=1, any.missing=FALSE, len=1)
+    checkmate::assertIntegerish(fdRichardsonR, lower=1, any.missing=FALSE, len=1)
+    checkmate::assertNumeric(fdRichardsonV, lower=1.0000001, finite=TRUE,
+                             any.missing=FALSE, len=1)
     checkmate::assertLogical(fdChartrandAll, any.missing=FALSE, len=1)
     checkmate::assertLogical(fdOutlierAny, any.missing=FALSE, len=1)
     checkmate::assertLogical(fdIndividualStep, any.missing=FALSE, len=1)
@@ -1466,6 +1499,13 @@ foceiControl <- function(sigdig = 3, #
     covFull = covFull,
     fast = fast,
     fdOutlierZ = as.double(fdOutlierZ),
+    # integer for C++; the control list is re-passed as NAMED ARGUMENTS, so every field here
+    # must be a formal of this function -- an extra "fdRefineMethod" companion field fails
+    # with `unused argument`
+    fdRefine = as.integer(match(fdRefine, c("chartrand", "lanczos", "richardson")) - 1L),
+    fdLanczosM = as.integer(fdLanczosM),
+    fdRichardsonR = as.integer(fdRichardsonR),
+    fdRichardsonV = as.double(fdRichardsonV),
     fdChartrandAll = as.integer(fdChartrandAll),
     fdOutlierAny = as.integer(fdOutlierAny),
     fdIndividualStep = as.integer(fdIndividualStep),

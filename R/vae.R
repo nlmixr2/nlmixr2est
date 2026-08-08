@@ -469,6 +469,7 @@ vaeControl <- function(seed = 42L,
                        outerStickyRecalcN = 4,
                        fdIndividualStep = TRUE,
                        fdOutlierZ = 3.5,
+                       fdRefine = c("chartrand", "lanczos", "richardson"),
                        fdChartrandAll = FALSE,
                        fdOutlierAny = FALSE,
                        outerMaxOdeRecalc = 5,
@@ -549,6 +550,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertIntegerish(outerStickyRecalcN, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertLogical(fdIndividualStep, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(fdOutlierZ, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  fdRefine <- match.arg(fdRefine)
   checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
   checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(outerMaxOdeRecalc, lower = 0, any.missing = FALSE, len = 1)
@@ -675,6 +677,7 @@ vaeControl <- function(seed = 42L,
                outerStickyRecalcN = as.integer(outerStickyRecalcN),
                fdIndividualStep = fdIndividualStep,
                fdOutlierZ = as.double(fdOutlierZ),
+               fdRefine = fdRefine,
                fdChartrandAll = fdChartrandAll,
                fdOutlierAny = fdOutlierAny,
                outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),

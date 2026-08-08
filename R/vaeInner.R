@@ -35,6 +35,8 @@
                                   else isTRUE(control$fdIndividualStep),
                fdOutlierZ = if (is.null(control$fdOutlierZ)) 3.5
                             else as.double(control$fdOutlierZ),
+               fdRefine = if (is.null(control$fdRefine)) "chartrand"
+                          else as.character(control$fdRefine),
                fdChartrandAll = isTRUE(control$fdChartrandAll),
                fdOutlierAny = isTRUE(control$fdOutlierAny),
                print = 0L)

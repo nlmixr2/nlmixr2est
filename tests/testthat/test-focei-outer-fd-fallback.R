@@ -375,4 +375,44 @@ nmTest({
     expect_gte(as.integer(all$out[["chartrandSlopes"]]),
                as.integer(only$out[["chartrandSlopes"]]))
   })
+
+  test_that("fdRefine selects richardson/lanczos/chartrand and all three refine", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+
+    expect_equal(foceiControl(fdRefine = "chartrand")$fdRefine, 0L)
+    expect_equal(foceiControl(fdRefine = "lanczos")$fdRefine, 1L)
+    expect_equal(foceiControl(fdRefine = "richardson")$fdRefine, 2L)
+    expect_error(foceiControl(fdRefine = "spline"))
+    expect_error(foceiControl(fdRichardsonV = 1))     # v must exceed 1 to shrink the step
+    expect_equal(vaeControl(fdRefine = "lanczos")$fdRefine, "lanczos")
+
+    # Each estimator must actually run and produce a finite substituted gradient.  The cut is
+    # driven to ~0 so the pass fires at all -- at the default nothing on this fit is an
+    # outlier, which is exactly why these were unreachable before fdOutlierZ existed.
+    .g <- function(meth) {
+      .fbClearHooks()
+      on.exit(.fbClearHooks(), add = TRUE)
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
+      fit <- suppressMessages(suppressWarnings(nlmixr2(
+        .fbModel, nlmixr2data::theo_sd, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
+                     calcTables = FALSE, maxOuterIterations = 2L,
+                     fdOutlierZ = 1e-8, fdRefine = meth))))
+      .fbClearHooks()
+      list(objf = fit$objf, n = as.integer(fit$env$nFdOutlier[["chartrandSlopes"]]))
+    }
+    for (m in c("chartrand", "lanczos", "richardson")) {
+      r <- .g(m)
+      expect_true(is.finite(r$objf))
+      # the counter is the shared "a slope was recomputed" counter, whichever estimator ran
+      expect_gt(r$n, 0L)
+    }
+
+    # No accuracy ordering is asserted.  theo_sd is a smooth, well-conditioned surface and
+    # cannot discriminate between these -- that comparison needs a stiff likelihood surface
+    # and is the separate nlmixr2est follow-up these options exist to enable.
+  })
 })

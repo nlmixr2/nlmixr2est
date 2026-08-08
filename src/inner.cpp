@@ -431,6 +431,12 @@ struct focei_options {
   // finite differences; see foceiControl(fdOutlierAny=).
   int fdOutlierAny = 0;
   int nFdOutlierAnalytic = 0;   // times the analytic-side trigger is what fired
+  // Which estimator the refinement uses: 0 chartrand (default), 1 lanczos, 2 richardson.
+  // See foceiControl(fdRefine=).
+  int fdRefine = 0;
+  int fdLanczosM = 2;        // Lanczos half-width: 2m evaluations
+  int fdRichardsonR = 2;     // Richardson depth
+  double fdRichardsonV = 2.0;// Richardson step-shrink ratio
   int curAnalytic = 0;      // this gradient came from the analytic ("fast") path
   int nAnalyticGrad = 0;    // # outer gradients from the analytic path
   // # of those that came from the ALL-C++ direct path.  Separate from nAnalyticGrad
@@ -6613,6 +6619,14 @@ NumericVector foceiSetup_(const RObject &obj,
     as<int>(foceiO["fdChartrandAll"]) : 0;
   op_focei.fdOutlierAny=foceiO.containsElementNamed("fdOutlierAny") ?
     as<int>(foceiO["fdOutlierAny"]) : 0;
+  op_focei.fdRefine=foceiO.containsElementNamed("fdRefine") ?
+    as<int>(foceiO["fdRefine"]) : 0;
+  op_focei.fdLanczosM=foceiO.containsElementNamed("fdLanczosM") ?
+    as<int>(foceiO["fdLanczosM"]) : 2;
+  op_focei.fdRichardsonR=foceiO.containsElementNamed("fdRichardsonR") ?
+    as<int>(foceiO["fdRichardsonR"]) : 2;
+  op_focei.fdRichardsonV=foceiO.containsElementNamed("fdRichardsonV") ?
+    as<double>(foceiO["fdRichardsonV"]) : 2.0;
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
@@ -12205,6 +12219,102 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   }
 }
 
+// ---- alternative refinement estimators -----------------------------------------------
+//
+// The Chartrand TV derivative is the default because it was the best of the three on the
+// surfaces tried when this was written.  It is also the most expensive (N+1 evaluations per
+// parameter) and the most heavily parameterized (span, grid, alpha, iterations).  Richardson
+// and Lanczos are the cheaper rungs, and it is genuinely unresolved whether Chartrand's
+// advantage is a property of hard likelihood surfaces or of the pooling not having been set
+// up well at the time -- which is what these exist to let someone settle.
+//
+// Roughly, on noisy / hard-to-solve surfaces: Richardson < Lanczos < Chartrand.
+//
+//   RICHARDSON extrapolates central differences at h, h/v, h/v^2, ... toward h -> 0,
+//     cancelling the h^2, h^4, ... truncation terms in turn.  Exactly the wrong instrument
+//     when the noise floor is what limits the difference, because it extrapolates INTO the
+//     noise: measured here, r = 4 (reaching h/8) was worse than r = 2.  Cheapest, and right
+//     when the surface is smooth and only truncation matters.
+//   LANCZOS fits a least-squares slope through 2m+1 points, f' ~ sum k*f(x+kh) / (h sum k^2).
+//     Same O(h^2) truncation as a central difference but LOWER VARIANCE: independent
+//     evaluation noise averages down as points are added rather than being amplified.  The
+//     middle rung -- it tolerates noise but still commits to one spread.
+//   CHARTRAND (below) regularizes the derivative itself over a wide interval, so it absorbs
+//     curvature through u varying across the interval rather than assuming a stencil.
+//
+// Both are evaluated at the SAME per-subject steps the central difference used, and both are
+// parallel over subjects through fdThetaLegPer, so they cost legs rather than solves-per-
+// subject.  Like Chartrand they touch ONLY the finite-differenced subjects.
+static void fdThetaLanczos(const arma::vec &theta, int j, const std::vector<double> &hPer,
+                           const std::vector<char> &isOutlier, const std::vector<int> &thK,
+                           int m, std::vector<double> &dOut) {
+  const size_t nFd = _fdThIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (m < 1 || nFd == 0) return;
+  std::vector< std::vector<double> > leg((size_t)(2 * m));
+  int idx = 0;
+  for (int k = -m; k <= m; ++k) {
+    if (k == 0) continue;
+    fdThetaLegPer(theta, j, hPer, (double)k, leg[(size_t)idx]);
+    if (leg[(size_t)idx].size() != nFd) return;
+    idx++;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)thK[r];
+    if (row >= isOutlier.size() || !isOutlier[row] || !(hPer[r] > 0.0)) continue;
+    double num = 0.0, den = 0.0;
+    bool ok = true;
+    idx = 0;
+    for (int k = -m; k <= m; ++k) {
+      if (k == 0) continue;
+      const double v = leg[(size_t)idx][r];
+      if (!R_finite(v)) { ok = false; break; }
+      num += (double)k * v;
+      den += (double)(k * k);
+      idx++;
+    }
+    if (!ok || !(den > 0.0)) continue;
+    const double d = num / (hPer[r] * den);
+    if (R_finite(d)) dOut[r] = d;
+  }
+}
+
+static void fdThetaRichardson(const arma::vec &theta, int j, const std::vector<double> &hPer,
+                              const std::vector<char> &isOutlier, const std::vector<int> &thK,
+                              int rN, double v, std::vector<double> &dOut) {
+  const size_t nFd = _fdThIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (rN < 1 || !(v > 1.0) || nFd == 0) return;
+  std::vector< std::vector<double> > up((size_t)rN), dn((size_t)rN);
+  double sc = 1.0;
+  for (int i = 0; i < rN; ++i) {
+    fdThetaLegPer(theta, j, hPer,  sc, up[(size_t)i]);
+    fdThetaLegPer(theta, j, hPer, -sc, dn[(size_t)i]);
+    if (up[(size_t)i].size() != nFd || dn[(size_t)i].size() != nFd) return;
+    sc /= v;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)thK[r];
+    if (row >= isOutlier.size() || !isOutlier[row] || !(hPer[r] > 0.0)) continue;
+    std::vector<double> a((size_t)rN, NA_REAL);
+    bool ok = true;
+    double hh = hPer[r];
+    for (int i = 0; i < rN; ++i) {
+      const double fp = up[(size_t)i][r], fm = dn[(size_t)i][r];
+      if (!R_finite(fp) || !R_finite(fm)) { ok = false; break; }
+      a[(size_t)i] = (fp - fm) / (2.0 * hh);
+      hh /= v;
+    }
+    if (!ok) continue;
+    for (int m = 1; m < rN; ++m) {
+      const double w = std::pow(v, 2.0 * (double)m);
+      for (int i = 0; i < rN - m; ++i)
+        a[(size_t)i] = (a[(size_t)(i + 1)] * w - a[(size_t)i]) / (w - 1.0);
+    }
+    if (R_finite(a[0])) dOut[r] = a[0];
+  }
+}
+
 // Theta counterpart of fdOmegaTvDeriv: one grid walked once, every outlier subject evaluated
 // at each point in parallel, feeding the shared tvDerivFromSamples.  Replaces the
 // per-subject fdTvDeriv loop, which paid N+1 solves per outlier subject serially.
@@ -12577,6 +12687,79 @@ static void fdOmegaLeg(int j, double delta, int fdCores, bool fdParallel,
 struct FdOmegaRestore {
   ~FdOmegaRestore() { foceiOmegaFromTheta(_fdOmBlock0.data()); }
 };
+
+// Omega counterparts of fdThetaLanczos / fdThetaRichardson.  Omega uses ONE shared step (its
+// perturbation needs an R-side rebuild, so it cannot be searched per subject), so the step is
+// a scalar here and every subject is evaluated at the same offsets.
+static void fdOmegaLanczos(int q, double h, const std::vector<char> &isOutlier,
+                           const std::vector<int> &omK, int m,
+                           int fdCores, bool fdParallel, std::vector<double> &dOut) {
+  const size_t nFd = _fdOmIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (m < 1 || nFd == 0 || !(h > 0.0)) return;
+  std::vector< std::vector<double> > leg((size_t)(2 * m));
+  int idx = 0;
+  for (int k = -m; k <= m; ++k) {
+    if (k == 0) continue;
+    fdOmegaLeg(q, (double)k * h, fdCores, fdParallel, leg[(size_t)idx]);
+    if (leg[(size_t)idx].size() != nFd) return;
+    idx++;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)omK[r];
+    if (row >= isOutlier.size() || !isOutlier[row]) continue;
+    double num = 0.0, den = 0.0;
+    bool ok = true;
+    idx = 0;
+    for (int k = -m; k <= m; ++k) {
+      if (k == 0) continue;
+      const double v = leg[(size_t)idx][r];
+      if (!R_finite(v)) { ok = false; break; }
+      num += (double)k * v;
+      den += (double)(k * k);
+      idx++;
+    }
+    if (!ok || !(den > 0.0)) continue;
+    const double d = num / (h * den);
+    if (R_finite(d)) dOut[r] = d;
+  }
+}
+
+static void fdOmegaRichardson(int q, double h, const std::vector<char> &isOutlier,
+                              const std::vector<int> &omK, int rN, double v,
+                              int fdCores, bool fdParallel, std::vector<double> &dOut) {
+  const size_t nFd = _fdOmIds.size();
+  dOut.assign(nFd, NA_REAL);
+  if (rN < 1 || !(v > 1.0) || nFd == 0 || !(h > 0.0)) return;
+  std::vector< std::vector<double> > up((size_t)rN), dn((size_t)rN);
+  double hh = h;
+  for (int i = 0; i < rN; ++i) {
+    fdOmegaLeg(q,  hh, fdCores, fdParallel, up[(size_t)i]);
+    fdOmegaLeg(q, -hh, fdCores, fdParallel, dn[(size_t)i]);
+    if (up[(size_t)i].size() != nFd || dn[(size_t)i].size() != nFd) return;
+    hh /= v;
+  }
+  for (size_t r = 0; r < nFd; ++r) {
+    const size_t row = (size_t)omK[r];
+    if (row >= isOutlier.size() || !isOutlier[row]) continue;
+    std::vector<double> a((size_t)rN, NA_REAL);
+    bool ok = true;
+    double hcur = h;
+    for (int i = 0; i < rN; ++i) {
+      const double fp = up[(size_t)i][r], fm = dn[(size_t)i][r];
+      if (!R_finite(fp) || !R_finite(fm)) { ok = false; break; }
+      a[(size_t)i] = (fp - fm) / (2.0 * hcur);
+      hcur /= v;
+    }
+    if (!ok) continue;
+    for (int m = 1; m < rN; ++m) {
+      const double w = std::pow(v, 2.0 * (double)m);
+      for (int i = 0; i < rN - m; ++i)
+        a[(size_t)i] = (a[(size_t)(i + 1)] * w - a[(size_t)i]) / (w - 1.0);
+    }
+    if (R_finite(a[0])) dOut[r] = a[0];
+  }
+}
 
 // Omega counterpart of fdTvDeriv's sampling loop, feeding the same tvDerivFromSamples.
 //
@@ -13059,8 +13242,23 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
     const int    _N     = 40;       // grid points across it
     const double _alpha = -1.0;     // <=0: choose alpha from the data
     const int    _iters = 12;       // lagged-diffusivity iterations
+    // The step each subject's central difference for this parameter actually settled on,
+    // read back from the h matrix the differencing loop records.  NA where the subject had no
+    // usable step; the estimators skip those (they require h > 0).
+    std::vector<double> hPerCur((size_t)_fdThIds.size(), NA_REAL);
+    for (size_t q = 0; q < _fdThIds.size(); ++q) hPerCur[q] = hOut(thK[q], j);
     std::vector<double> dTv;
-    fdThetaTvDeriv(theta, j, isOutlier, thK, _span, _N, _alpha, _iters, dTv);
+    // Same gate, same subjects, same counters -- only the ESTIMATOR differs.  hPerCur is the
+    // step this parameter's central differences actually used, so the alternatives refine at
+    // the step that produced the slope being refined.
+    if (op_focei.fdRefine == 1) {
+      fdThetaLanczos(theta, j, hPerCur, isOutlier, thK, op_focei.fdLanczosM, dTv);
+    } else if (op_focei.fdRefine == 2) {
+      fdThetaRichardson(theta, j, hPerCur, isOutlier, thK,
+                        op_focei.fdRichardsonR, op_focei.fdRichardsonV, dTv);
+    } else {
+      fdThetaTvDeriv(theta, j, isOutlier, thK, _span, _N, _alpha, _iters, dTv);
+    }
     for (size_t q = 0; q < dTv.size(); ++q) {
       if (!R_finite(dTv[q])) continue;
       out(thK[q], j) = dTv[q];
@@ -13224,9 +13422,24 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
       const int    _NOm     = 40;
       const double _alphaOm = -1.0;
       const int    _itersOm = 12;
+      // Omega uses ONE shared step per parameter, so any subject's recorded h is that step.
+      double hOmCur = NA_REAL;
+      for (int k = 0; k < nid; ++k) {
+        const double hv = hOut(k, col);
+        if (R_finite(hv) && hv > 0.0) { hOmCur = hv; break; }
+      }
       std::vector<double> dTv;
-      fdOmegaTvDeriv(q, isOut, omK, _spanOm, _NOm, _alphaOm, _itersOm,
-                     fdCores, fdParallel, dTv);
+      if (op_focei.fdRefine == 1) {
+        fdOmegaLanczos(q, hOmCur, isOut, omK, op_focei.fdLanczosM,
+                       fdCores, fdParallel, dTv);
+      } else if (op_focei.fdRefine == 2) {
+        fdOmegaRichardson(q, hOmCur, isOut, omK,
+                          op_focei.fdRichardsonR, op_focei.fdRichardsonV,
+                          fdCores, fdParallel, dTv);
+      } else {
+        fdOmegaTvDeriv(q, isOut, omK, _spanOm, _NOm, _alphaOm, _itersOm,
+                       fdCores, fdParallel, dTv);
+      }
       for (size_t rr = 0; rr < dTv.size(); ++rr) {
         if (!R_finite(dTv[rr])) continue;
         out(omK[rr], col) = dTv[rr];

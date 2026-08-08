@@ -64,6 +64,7 @@ vaeControl(
   outerStickyRecalcN = 4,
   fdIndividualStep = TRUE,
   fdOutlierZ = 3.5,
+  fdRefine = c("chartrand", "lanczos", "richardson"),
   fdChartrandAll = FALSE,
   fdOutlierAny = FALSE,
   outerMaxOdeRecalc = 5,
@@ -602,6 +603,28 @@ whether a finite-differenced subject's slope is an outlier against the exact
 analytic slopes, and so whether `fdChartrand` refines it.  The conventional
 3.5; lower it to make the pass fire more readily (and to exercise it), raise
 it to suppress it without turning `fdChartrand` off.}
+
+\item{fdRefine}{Estimator used to recompute a finite-differenced slope once
+  the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+  ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+
+  * `"richardson"` -- Richardson extrapolation of central differences at
+    `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+    turn.  Cheapest, and right when the surface is smooth and only truncation
+    matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+    is the wrong instrument when the noise floor is what limits the difference.
+  * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+    through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+    lower variance, since independent evaluation noise averages down as points
+    are added rather than being amplified.  The middle rung.
+  * `"chartrand"` (default) -- total-variation regularized differentiation over
+    a wide interval, which absorbs curvature through the regularized derivative
+    itself instead of assuming a stencil.  Most expensive and most robust to a
+    genuinely rough surface.
+
+  All three apply identically: they are gated by the same outlier test, touch
+  only the finite-differenced subjects, and never recompute a subject whose
+  analytic gradient is available.}
 
 \item{fdChartrandAll}{When the outlier pass fires for a parameter, refine
 **every** finite-differenced subject with the Chartrand TV derivative rather
