@@ -90,7 +90,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit"),
   # batch 6
   c("focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
-    "posthoc", "ar-est", "mu-family"),
+    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit"),
   # batch 7
   c("mu-plain-fit", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
     "vae-errmodel", "table-cmt", "vae-covariate-selection"),

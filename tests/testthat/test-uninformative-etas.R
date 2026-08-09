@@ -83,3 +83,81 @@ nmTest({
 
   })
 })
+
+nmTest({
+  test_that("an eta is not called uninformative when the predictions underflow", {
+
+    ## Call the informativeness test with the environment .uninformativeEtas() builds for it:
+    ## one subject, one eta, three rows (eta-, eta+, eta0).  The statistic is
+    ## pred(-) + pred(+) - 2 * pred(0); the eta is informative when it exceeds tol.
+    .ue <- function(val, tol = 1e-7) {
+      .env <- new.env(parent = emptyenv())
+      .env$nid <- 1L
+      .env$neta <- 1L
+      .env$simId <- 1:3
+      .env$id <- rep(1L, 3)
+      .env$w <- rep(1L, 3)
+      .env$pm <- c(-1L, 1L, 0L)
+      .env$val <- val
+      .env$tol <- tol
+      .Call("_nlmixr2est_uninformativeEta", .env)[1, 1]
+    }
+
+    ## real predictions, perturbing the eta does nothing -- still uninformative
+    expect_equal(.ue(c(10, 10, 10)), 0L)
+
+    ## real predictions that move with the eta -- informative
+    expect_equal(.ue(c(12, 8, 9)), 1L)
+
+    ## poor initial estimates can underflow every prediction; the statistic then vanishes for a
+    ## reason that has nothing to do with the eta, so it must not be frozen
+    expect_equal(.ue(c(4e-11, 4e-11, 2e-11)), 1L)
+
+    ## a solve that failed or overflowed is not evidence the eta is uninformative either,
+    ## whether it failed on every perturbation arm or on only one of them
+    expect_equal(.ue(c(NaN, NaN, NaN)), 1L)
+    expect_equal(.ue(c(NA_real_, NA_real_, NA_real_)), 1L)
+    expect_equal(.ue(c(Inf, Inf, Inf)), 1L)
+    expect_equal(.ue(c(10, 10, NaN)), 1L)
+    expect_equal(.ue(c(NaN, 10, 10)), 1L)
+    expect_equal(.ue(c(10, NA_real_, 10)), 1L)
+    expect_equal(.ue(c(10, 10, Inf)), 1L)
+  })
+})
+
+nmTest({
+  test_that("the informativeness verdict does not depend on the observation count", {
+
+    ## Same as above, but with `n` observations per subject, laid out the way
+    ## .uninformativeEtasExpand() does: all eta- rows, then all eta0, then all eta+.
+    .ueN <- function(predPm, pred0, n, tol = 1e-7) {
+      .env <- new.env(parent = emptyenv())
+      .env$nid <- 1L
+      .env$neta <- 1L
+      .env$simId <- seq_len(3L * n)
+      .env$id <- rep(1L, 3L * n)
+      .env$w <- rep(1L, 3L * n)
+      .env$pm <- rep(c(-1L, 0L, 1L), each = n)
+      .env$val <- rep(c(predPm, pred0, predPm), each = n)
+      .env$tol <- tol
+      .Call("_nlmixr2est_uninformativeEta", .env)[1, 1]
+    }
+
+    ## The predictions underflow, so the eta must stay free no matter how richly the
+    ## subject was sampled.  An accumulated (rather than largest) prediction crosses
+    ## `tol` on sample count alone and freezes it again from about n = 834.
+    for (.n in c(1L, 10L, 833L, 1000L, 5000L)) {
+      expect_equal(.ueN(4e-11, 4e-11, .n), 1L)
+    }
+
+    ## real predictions the eta does not move -- uninformative at every n
+    for (.n in c(1L, 10L, 1000L)) {
+      expect_equal(.ueN(10, 10, .n), 0L)
+    }
+
+    ## real predictions the eta does move -- informative at every n
+    for (.n in c(1L, 10L, 1000L)) {
+      expect_equal(.ueN(10, 9, .n), 1L)
+    }
+  })
+})

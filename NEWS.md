@@ -30,6 +30,11 @@
   and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
   fast kernel's own step, proposal, acceptance and failure counts.
 
+- Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
+  package build and run against 5.1.5 has been removed, so the event-sensitivity
+  shape swap and the CMT re-basing of the shared solve pool always go through
+  rxode2's C API instead of writing its structures by field.
+  
 - `est="npag"` / `est="npb"` now support a hand-written general likelihood
   (`ll()`) properly.  A model whose `ll()` is written as the exact normal
   log-density now agrees with the equivalent `add()` model to the known
@@ -42,9 +47,53 @@
   did not verify was the objective below rather than the gradient; against
   central differences of the corrected objective it agrees to 8e-3 relative.
 
+- `saemControl(revisitUninformativeEtas=)` (default `FALSE`) re-runs the
+  uninformative-eta test at the end of burn-in and replaces the verdict reached
+  at the initial estimates.  The test asks whether perturbing an eta moves that
+  subject's prediction, and is otherwise only run once, before the fit -- so the
+  initial estimates decide, for the whole fit, which etas `saem` may sample.  The
+  second test reuses the fit's own model evaluation, so it adds a few solves at
+  one iteration and leaves the random number stream alone: where it changes no
+  verdict the fit is identical.  It is off by default because the two verdicts
+  only disagree when `theta` moved a long way during burn-in, which usually means
+  it has not settled, and the second verdict can freeze an eta for the rest of
+  the fit.
+
 ## Bug fixes
 
 ### Estimation
+
+- `saem`'s uninformative-eta detection
+  (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
+  that the data does inform.  The test asks whether perturbing an eta moves the
+  prediction, and it is run once, at the **initial** estimates; when those are
+  poor enough that the prediction underflows at the observed times, nothing
+  moves and the eta is frozen at its mu for the whole fit.  The verdict is now
+  only taken when the subject's largest prediction is finite and itself above
+  the tolerance.  On a warfarin fit started from `k=1/h` (true value near `0.02/h`)
+  this froze the volume eta for 19 of 32 subjects, biasing the population
+  estimates and shrinking that eta's variance about fourfold.
+- Fixed `foceiControl(gradTrim=)` lower gradient clamp testing `g < gradTrim`
+  instead of `g < -gradTrim`.  Since the branch above it had already caught
+  everything over `+gradTrim`, every remaining component was replaced by
+  `-gradTrim`, so a small positive gradient could reach the optimizer as a large
+  negative one.  Only reachable with a finite `gradTrim`; the default `Inf` skips
+  these branches.
+
+- Fixed the outer finite-difference gradient corrupting any component whose
+  forward difference falls below `foceiControl(gradCalcCentralSmall=)`.  The
+  confirming central difference overwrote the objective at `theta+delta` with the
+  forward gradient before using it, so it returned roughly `-objective/(2*h)`
+  rather than a derivative, and that value was left unclamped by `gradTrim`.  The
+  confirmation now also keeps the gradient it started from when its own solve
+  fails, rather than replacing it with a non-finite value that resets the fit --
+  the same rescue the two `gradTrim` recomputations were missing.
+
+- Fixed the outer finite-difference gradient returning a sign-reversed or stale
+  derivative when a central-difference term came back non-finite.  The one-sided
+  rescue used an objective that is never filled in on the central path, and on the
+  path switched to central by `foceiControl(gradCalcCentralLarge=)` it read the
+  previous parameter's perturbed objective.
 
 - Fixed `covMethod="analytic"` ignoring its own solve tolerance whenever the
   shared ODE solve pool was available, solving at the fit's much looser tolerance
