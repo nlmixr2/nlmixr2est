@@ -247,6 +247,9 @@
   if (is.null(model$res.mod)) {
     model$res.mod <- rep(1, model$nendpnt)
   }
+  if (is.null(model$distEp)) {
+    model$distEp <- rep(as.integer(distribution), model$nendpnt)
+  }
   if (is.null(inits$omega)) {
     inits$omega <- rep(1, model$N.eta) * 4
   }
@@ -700,6 +703,7 @@
     statphi02 = statphi02,
     statphi12 = statphi12,
     res.mod = model$res.mod,
+    distEp = as.integer(model$distEp),
     ares = inits$ares,
     bres = inits$bres,
     cres = inits$cres,

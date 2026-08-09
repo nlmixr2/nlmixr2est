@@ -172,13 +172,52 @@ nmGetDistributionSaemLines.default  <- function(line) {
   stop("Distribution not supported")
 }
 
-#' TRUE when the fit uses a general log-likelihood endpoint (distribution=4 path)
+#' TRUE when EVERY endpoint is a general log-likelihood (the scalar
+#' distribution=4 path).
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .saemGeneralLik <- function(ui) {
   .pred <- ui$predDf
-  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution == "LL"
+  !is.null(.pred) && length(.pred$cond) >= 1L && all(.pred$distribution == "LL")
+}
+
+#' TRUE when ANY endpoint is a general log-likelihood.
+#'
+#' A mixed normal + `ll()` model keeps the normal observation loss and overrides
+#' only the `ll()` observations, so it is not `.saemGeneralLik()` -- but it still
+#' has to skip the transform-normal assertion on those endpoints and run the
+#' fast kernel throughout.
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.saemAnyGeneralLik <- function(ui) {
+  .pred <- ui$predDf
+  !is.null(.pred) && any(.pred$distribution == "LL")
+}
+
+#' Assert every endpoint is one saem can score.
+#'
+#' `rxode2::assertRxUiTransformNormal()` is whole-UI, so it rejects a model that
+#' mixes a normal endpoint with an `ll()` one.  Apply it only when there is no
+#' `ll()` endpoint at all, and otherwise check the remaining endpoints here so the
+#' familiar message survives for the common case.
+#' @param ui rxode2 ui
+#' @param est estimation method name, for the message
+#' @return `ui`, invisibly
+#' @noRd
+.saemAssertEndpointDist <- function(ui, est) {
+  if (!.saemAnyGeneralLik(ui)) {
+    rxode2::assertRxUiTransformNormal(ui, paste0(" for the estimation routine '", est, "'"),
+                                      .var.name=ui$modelName)
+    return(invisible(ui))
+  }
+  .dist <- ui$predDf$distribution
+  if (!all(.dist %in% c("norm", "LL"))) {
+    stop("'", ui$modelName, "' needs (transformably) normal or ll() endpoints",
+         " for the estimation routine '", est, "'", call.=FALSE)
+  }
+  invisible(ui)
 }
 
 #' @export

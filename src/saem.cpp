@@ -721,6 +721,13 @@ public:
       fk = fk(ix_sorting);
       for (int b = 0; b < nendpnt; b++) {
         int nb = (int)(y_offset(b + 1) - y_offset(b));
+        if (distEp(b) == 4) {
+          // general log-likelihood endpoint: the prediction IS the per-obs
+          // loglik, so it enters this objective as -ll rather than through a
+          // residual SD it does not have
+          for (int i = 0; i < nb; i++) v -= fk(y_offset(b) + i);
+          continue;
+        }
         for (int i = 0; i < nb; i++) {
           double fi = fk(y_offset(b) + i);
           double ft = _powerD(fi, lambda(b), yj(b), low(b), hi(b));
@@ -948,6 +955,10 @@ public:
     // trust region around the current value (intersected with any ini bounds)
     // so the SA iteration refines it gradually, like a clamped regression step.
     // General-likelihood phi0 (distribution==4) keeps the original wide bounds.
+    // A MIXED normal + ll() model does not: its phi0 params are optimized by the
+    // same regress path as a normal model's, and an ll() parameter is exactly the
+    // kind that runs away without the radius (measured: an SD reaching 360 for a
+    // truth of 4).
     bool localTrust = (distribution != 4) && nonMuThetaRegress;
     for (int c = 0; c < nphi0; c++) {
       par0[c] = mprior_phi0(0, c);
@@ -1456,6 +1467,23 @@ public:
     arPrev=as<arma::ivec>(x["arPrev"]);
     arDt=as<vec>(x["arDt"]);
     hasAr = (int)accu(arActive);
+    // Per-endpoint distribution.  Absent in a cfg saved by an older version, in
+    // which case every endpoint takes the scalar.
+    if (x.containsElementNamed("distEp")) {
+      distEp = as<ivec>(x["distEp"]);
+    } else {
+      distEp = ivec(nendpnt); distEp.fill(distribution);
+    }
+    {
+      std::vector<arma::uword> _ll;
+      bool _anyNorm = false;
+      for (int i = 0; i < ntotal; ++i) {
+        if (distEp((arma::uword)ix_endpnt(i)) == 4) _ll.push_back((arma::uword)i);
+        else _anyNorm = true;
+      }
+      distMixed = _anyNorm && !_ll.empty();
+      llObsIdx = distMixed ? arma::conv_to<uvec>::from(_ll) : uvec();
+    }
     hasFixedObsTransform = true;
     for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
       if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
@@ -1600,6 +1628,7 @@ public:
     vec fk = fsaveFull.subvec(0, ntotal - 1);
     fk = fk(ix_sorting);
     for (int b = 0; b < nendpnt; b++) {
+      if (distEp(b) == 4) continue;   // no residual params to warm start
       int rm = (int)res_mod(b);
       bool hasAdd = (rm==rmAdd || rm==rmAddProp || rm==rmAddPow ||
                      rm==rmAddLam || rm==rmAddPropLam || rm==rmAddPowLam);
@@ -1904,6 +1933,7 @@ public:
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
               }
+              applyLLObsLoss(DYFhyp, _scratch_indio, fk);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -2104,6 +2134,7 @@ public:
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
               }
+              applyLLObsLoss(cur_DYF, _scratch_indio, fk);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -2384,6 +2415,7 @@ public:
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
               }
+              applyLLObsLoss(DYF, _scratch_indio, fk);
             }
           } else if (distribution == 2){
             for (int k = 0; k < nmc; k++) {
@@ -2486,11 +2518,13 @@ public:
           vec gk, y_cur, f_cur;
           double ft, fa;
           //loop thru endpoints here
-          // general log-likelihood (distribution==4) has no residual error, so
-          // skip the residual SSR accumulation entirely (fsM above is kept for
-          // downstream predictions)
+          // A general log-likelihood endpoint has no residual error, so it
+          // contributes nothing to the residual SSR -- skipped per ENDPOINT so a
+          // model that mixes the two still accumulates its normal ones (fsM
+          // above is kept for downstream predictions either way)
           if (distribution != 4)
           for(int b=0; b<nendpnt; ++b) {
+            if (distEp(b) == 4) continue;
             if (hasFixedObsTransform) {
               y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
             } else {
@@ -2543,7 +2577,11 @@ public:
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
           vec d1_logsigma2(1);
-          // general log-likelihood: no residual param, so its FIM row is 0
+          // general log-likelihood: no residual param, so its FIM row is 0.
+          // The row has been single-sigma since before multiple endpoints (the
+          // standing FIXME on the next line); a mixed normal + ll() model
+          // inherits that rather than adding to it, with resy(k) now holding the
+          // last NORMAL endpoint's residual.
           d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
@@ -2656,12 +2694,14 @@ public:
       // The sampled-mean update above only weakly informs fixed-effect-only
       // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
       // refine them by a direct bounded optimization with the ODE states frozen
-      // (saemix ind.fix10).  Enabled for general log-likelihood models
-      // (distribution==4) and, via nonMuTheta="regress", for normal models --
-      // keeping non-mu thetas as directly-optimized, bound-respecting regressors
-      // instead of stochastic phi0 draws.  refinePhi0Lik restores the SAEM solve
-      // first, so it is safe under the f-SAEM fast kernel too.
-      if ((distribution == 4 || nonMuThetaRegress) &&
+      // (saemix ind.fix10).  Enabled whenever the model has a general
+      // log-likelihood endpoint -- on its own (distribution==4) or alongside a
+      // normal one (distMixed), where a phi0 feeding the ll() is informed the
+      // same way -- and, via nonMuTheta="regress", for normal models, keeping
+      // non-mu thetas as directly-optimized, bound-respecting regressors instead
+      // of stochastic phi0 draws.  refinePhi0Lik restores the SAEM solve first,
+      // so it is safe under the f-SAEM fast kernel too.
+      if ((distribution == 4 || distMixed || nonMuThetaRegress) &&
           nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
         refinePhi0Lik(kiter, pas);
       }
@@ -3707,6 +3747,16 @@ private:
   mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
+  // Per-endpoint distribution, and the observation rows belonging to a general
+  // log-likelihood endpoint.  `distribution` is ONE scalar and cannot describe a
+  // model that mixes a normal endpoint with an ll() one, so it stays the DEFAULT
+  // loss (1 when any endpoint is normal, 4 when they are all ll()) and llObsIdx
+  // names the rows whose loss has to be overridden with -ll instead.  For an
+  // all-normal or an all-ll() model distMixed is false and nothing below runs,
+  // which is why an unmixed fit stays bit-identical.
+  ivec distEp;
+  uvec llObsIdx;                 // 0-based observation rows with an ll() endpoint
+  bool distMixed = false;        // has a normal endpoint AND an ll() one
   // nonMuTheta="regress": estimate the fixed-effect-only (phi0) parameters by
   // the bounded direct optimizer (refinePhi0Lik) for NORMAL models too, instead
   // of only the stochastic phi0 block.  Keeps such thetas as plain regressors
@@ -3834,6 +3884,19 @@ private:
     mphi1.Gdiag_phi.zeros(nphi1, nphi1);
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
+  }
+
+  // Override one chain's ll() observation rows in a DYF block.  A mixed
+  // normal + ll() model computes the normal loss over every observation first --
+  // cheaper and simpler than branching per row -- and then replaces the ll()
+  // ones, whose "prediction" IS the per-observation log-likelihood, so the loss
+  // is just -ll.  No-op unless the model actually mixes the two.
+  inline void applyLLObsLoss(mat &DYFm, const uvec &indioK, const vec &fk) const {
+    if (!distMixed) return;
+    for (arma::uword t = 0; t < llObsIdx.n_elem; ++t) {
+      arma::uword j = llObsIdx(t);
+      DYFm(indioK(j)) = -fk(j);
+    }
   }
 
   static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
@@ -4021,6 +4084,7 @@ private:
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                        DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
               }
+              applyLLObsLoss(DYF, _scratch_indio, fsk);
             }
           }
           break;
@@ -4136,6 +4200,7 @@ private:
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                      DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
             }
+            applyLLObsLoss(DYFm, _scratch_indio, fsk);
           }
         }
         break;
@@ -4249,6 +4314,7 @@ private:
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                    DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
           }
+          applyLLObsLoss(DYFhyp, _scratch_indio, fk);
         }
       } else if (distribution == 2) {
         for (int k = 0; k < nmc; k++) {

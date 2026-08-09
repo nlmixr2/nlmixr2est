@@ -486,3 +486,64 @@ Continues Phase R on the same branch (`feat/fsaem-restore`, PR #852).
   has to score at the current theta/omega -- and does not.  Measured (theo_sd, 20
   fast iterations, all the same MLE): default accRate 0.882 / reuse 0;
   chainMean 0.594; hRefresh=5 0.671 / reuse 16; both 0.458 / reuse 16.
+
+## Phase M -- multiple endpoints (2026-08-09)
+
+Lifts the single-endpoint gate.  Supported: any number of `add`/`prop` normal
+endpoints, any number of `ll()` ones, and any mix of the two.  Mixtures, a
+declared off-diagonal omega, and residual kinds outside `add`/`prop` still
+degrade to standard SAEM.
+
+- **M1 (nothing in the numerics changed).**  `likInner0` reads each observation's
+  own transform and variance (`src/inner.cpp:2052-2059`, the #838 fix), so the
+  FOCEi inner information `H = Gamma_i^-1` is already the sum over that subject's
+  observations whatever endpoints they belong to; `fsaemInnerMap_`,
+  `fsaemImhKernel_` and `fsaemBuildCholGamma` are pure eta-space.  The SAEM chain
+  has always carried per-endpoint `ares/bres/yj/lambda` indexed by `ix_endpnt`,
+  and `fsaemBuildInnerTheta` already indexed `ares(ep)` via `fsaemResidEp`.
+  What was single-endpoint was the `.fsaemSupported` gate and the COVARIATE
+  path, which rebuilt the inner THETA with `ares[1]`/`bres[1]` for every
+  residual.  `.fsaemSupported` also now degrades when `predDf` is not in
+  compartment order: per-endpoint quantities are built in predDf ROW order but
+  indexed by `ix_endpnt = as.factor(CMT)`, so an out-of-order `predDf` would pair
+  an endpoint with another endpoint's residual.
+
+- **M2 (per-endpoint `distribution`).**  `distribution` is ONE scalar in
+  `src/saem.cpp`, and `R/saem.R` used to set it to `"general"` when ANY endpoint
+  was `ll()` -- which would have scored a normal endpoint's prediction as a log
+  density.  It now picks the DEFAULT loss (`"normal"` unless every endpoint is
+  `ll()`) and `cfg$distEp` (new, `rxUiGet.saemDistEp`) names each endpoint's
+  distribution.  `applyLLObsLoss()` overrides the `ll()` observations' rows after
+  the normal block at every DYF site (`rebuildDYF`, `do_mcmc`, `mixObsLoss`, the
+  MSAEM E-step, `mixNaiveClassify`); it is a no-op unless the model actually
+  mixes the two, so an unmixed fit stays bit-identical.  The residual M-step, the
+  residual warm start and `phi0NormalSSR` skip `ll()` endpoints per endpoint
+  instead of per fit.  `assertRxUiTransformNormal` is whole-UI and would reject a
+  mixed model, so `.saemAssertEndpointDist()` applies it only when there is no
+  `ll()` endpoint.
+
+  **Dead end recorded**: `skipStochPhi0` and `localTrust` were first extended
+  with `&& !distMixed`, on the reasoning that an `ll()` parameter is not a
+  `nonMuTheta="regress"` regressor.  That is backwards.  Both guards are what
+  keeps a phi0 in range, and turning them off let the `ll()` endpoint's SD reach
+  360 for a truth of 4 while the stochastic update fought the optimizer.  Leave
+  them keyed on `distribution` alone.
+
+- **M3 (fsaem envelope).**  `.saemAnyGeneralLik()` (new) is what forces
+  `fastKernel="throughout"` and the phi1 proposal bounds; `.saemGeneralLik()`
+  keeps its all-`ll()` meaning and is what still decides `imhReplacesRwm`, so a
+  mixed model keeps the IMH kernel ADDITIVE (the phi1 random walks still run) --
+  replacing the walk is only justified when the IMH is the sole phi1 kernel.
+
+- **Known gap (pre-existing, not introduced here)**: the FIM's residual row uses
+  `sigma2[0]`/`resy(k)` (`src/saem.cpp`, two standing FIXMEs).  It has been
+  single-sigma since before multiple endpoints; a mixed model inherits it, with
+  `resy(k)` now holding the last NORMAL endpoint's.
+
+- **What the tests can and cannot pin.**  A wrong IMH proposal costs acceptance,
+  not correctness -- an independent Metropolis-Hastings proposal need not match
+  the target -- so the `ares[1]` bug is invisible at fit level (measured
+  acceptance 0.95 against 0.96).  `test-fsaem-multi.R` therefore pins the inner
+  THETA directly, and checks `H` against a `numDeriv` Eq-17 with a BLOCK-diagonal
+  Sigma; the two endpoints' residual SDs differ by 10x, so one used for both is
+  off by ~100x.  The mixed model's reference is its own Gaussian twin.

@@ -42,10 +42,9 @@ nmTest({
     expect_true(.supports(.comb))
   })
 
-  test_that(".fsaemSupported still rejects what the kernel cannot target", {
-    # A general log-likelihood endpoint is only supported ALONE: SAEM carries one
-    # scalar `distribution`, so a normal endpoint sitting next to an ll() one has
-    # no representation on the chain side and would be scored as a log-likelihood.
+  test_that(".fsaemSupported accepts a normal endpoint beside an ll() one", {
+    # SAEM carries one scalar `distribution`, so a mixed model stays on the normal
+    # path and cfg$distEp overrides only the ll() observations' loss.
     .mixed <- function() {
       ini({
         tcl <- -3.2; tv <- -1; tlam <- 3
@@ -62,7 +61,19 @@ nmTest({
         ll(eff) ~ -log(lam) - time / lam
       })
     }
-    expect_false(.supports(.mixed))
+    expect_true(.supports(.mixed))
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mixed))
+    # the per-endpoint distribution the kernel dispatches on, and its per-endpoint
+    # residual count (an ll() endpoint has no residual theta)
+    expect_equal(rxUiGet.saemDistEp(list(.ui)), c(1L, 4L))
+    expect_equal(unname(rxUiGet.saemModNumEst(list(.ui))), c(1L, 0L))
+    # .saemGeneralLik is all-ll(); .saemAnyGeneralLik is what forces the fast
+    # kernel to run throughout and skips the transform-normal assertion
+    expect_false(.saemGeneralLik(.ui))
+    expect_true(.saemAnyGeneralLik(.ui))
+  })
+
+  test_that(".fsaemSupported still rejects what the kernel cannot target", {
     # a transform-normal residual is outside the add/prop envelope on either endpoint
     .tbs <- function() {
       ini({

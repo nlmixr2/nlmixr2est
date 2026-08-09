@@ -134,16 +134,14 @@
   # distribution.  Degrade rather than silently mis-target.
   .om <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
   if (nrow(.om) > 0L && any(.om$neta1 != .om$neta2)) return(FALSE)
-  # General log-likelihood endpoint (ll() ~ expr, distribution=="LL"): the inner
-  # supplies the observation likelihood, so the fast kernel handles it even
-  # though plain saem cannot.  It must run throughout (distribution=4 path) --
-  # forced in .saemGeneralLik / the control.  Only when EVERY endpoint is one:
-  # SAEM carries a single scalar `distribution`, so a mixed normal + ll() model
-  # has no representation on the chain side.
-  if (any(.pred$distribution == "LL")) {
-    return(all(.pred$distribution == "LL") && length(.pred$cond) == 1L)
-  }
-  if (!all(.pred$distribution == "norm")) return(FALSE)         # else continuous normal
+  # General log-likelihood endpoints (ll() ~ expr, distribution=="LL") are
+  # supported alone, together, or alongside normal ones: the model emits the
+  # per-observation log-likelihood as that endpoint's prediction and the kernel
+  # uses -ll as its observation loss.  The fast kernel must then run throughout
+  # (forced from .saemAnyGeneralLik in the control).
+  if (!all(.pred$distribution %in% c("norm", "LL"))) return(FALSE)
+  # Residual thetas belong to the normal endpoints only (an LL endpoint has
+  # none), so this stays a whole-model check.
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
@@ -223,7 +221,7 @@
   # Boundary clamping is ONLY for general log-likelihood models: for normal
   # (add/prop/combined) data the residual error optimizer does the clamping, so
   # the IMH proposal stays unconstrained there.
-  .bounds <- if (.saemGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
+  .bounds <- if (.saemAnyGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
   .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
   .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
   # IMH sweeps per iteration: saemControl(nu=) 4th element, else 5

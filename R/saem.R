@@ -146,6 +146,8 @@
   checkmate::assertIntegerish(cfg$y_offset, .var.name="saem.cfg$y_offset")
   # The should match the number of endpoints
   checkmate::assertIntegerish(cfg$res.mod, len=.nendpnt, .var.name="saem.cfg$res.mod")
+  checkmate::assertIntegerish(cfg$distEp, len=.nendpnt, lower=1, upper=4,
+                              .var.name="saem.cfg$distEp")
   checkmate::assertNumeric(cfg$ares, len=.nendpnt, .var.name="saem.cfg$ares")
   checkmate::assertNumeric(cfg$bres, len=.nendpnt, .var.name="saem.cfg$bres")
   checkmate::assertNumeric(cfg$cres, len=.nendpnt, .var.name="saem.cfg$cres")
@@ -220,7 +222,13 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
+                        # The scalar picks the DEFAULT observation loss; a model
+                        # that mixes a normal endpoint with an ll() one stays on
+                        # the normal path and the kernel overrides the ll()
+                        # observations from cfg$distEp.  Using "general" for a
+                        # mixed model would score the normal endpoint's
+                        # prediction as if it were a log-likelihood.
+                        distribution=if (.saemGeneralLik(ui)) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -264,7 +272,7 @@
                         fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
                         # a general log-likelihood endpoint has no normal do_mcmc
                         # fallback, so the fast kernel must run every iteration
-                        fastKernel=if (.saemGeneralLik(ui)) "throughout"
+                        fastKernel=if (.saemAnyGeneralLik(ui)) "throughout"
                                    else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
                         fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
                         fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
@@ -1269,10 +1277,8 @@ nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
   # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
   # (the model returns the per-obs loglik; the RWM kernels use -ll as the
-  # observation loss); only require normality for the ordinary case.
-  if (!.saemGeneralLik(.ui)) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-  }
+  # observation loss), including alongside normal endpoints.
+  .saemAssertEndpointDist(.ui, "saem")
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)

@@ -2,6 +2,15 @@
 
 ## New features
 
+- `est="saem"` now fits a model that mixes a normal endpoint with a general
+  log-likelihood (`ll()`) one.  The observation loss is chosen per endpoint
+  rather than per fit, so the normal endpoint keeps its residual error model
+  while the `ll()` endpoint contributes `-ll`.  Previously such a model was
+  rejected outright, and the scalar it would have been given treats every
+  endpoint as a log-likelihood.  Note that an SD written inside an `ll()` is an
+  ordinary parameter with no positivity constraint, so carry it on the log
+  scale.
+
 - `est = "fsaem"` (equivalently `saemControl(fast = TRUE)`) is back.  It is the
   fast SAEM of Karimi, Lavielle and Moulines (2020): the MCMC simulation step
   proposes each subject's random effects from an independent Metropolis-Hastings
@@ -25,6 +34,10 @@
   between.  The last three trade acceptance for work or robustness, never
   correctness -- an independent Metropolis-Hastings proposal need not match the
   target, and the acceptance ratio is computed from the proposal actually used.
+
+  The fast kernel now also covers models with more than one endpoint -- any mix
+  of `add`/`prop` normal endpoints and `ll()` ones -- which previously degraded
+  to standard SAEM with a message.
 
 - `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
   and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the

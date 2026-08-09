@@ -585,6 +585,59 @@ nmTest({
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.15)
   })
 
+  test_that("saem and fsaem fit a normal endpoint beside an ll() one", {
+    # SAEM carries one scalar `distribution`; a mixed model stays on the normal
+    # path and only the ll() observations' loss is overridden with -ll (from
+    # cfg$distEp).  The reference is the model's own Gaussian twin: writing the
+    # PD endpoint as its exact normal log-density must recover the same
+    # parameters, INCLUDING the SD that now lives inside the ll() as a phi0.
+    #
+    # The SD is carried on the log scale deliberately.  The residual machinery
+    # keeps a normal endpoint's SD positive; an ll() parameter has no such
+    # constraint, so an SD written directly hits log(negative) and the fit
+    # diverges.  That is a property of writing the endpoint as ll(), not of the
+    # mixing.
+    .d <- mkPkpdTwoEndpointData(n = 20L)
+    .mixed <- function() {
+      ini({
+        tcl <- -3.2; tv <- -1; tec50 <- 0.5
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        pk.sd <- 0.4; lpd.sd <- log(4)
+      })
+      model({
+        ka <- exp(0.5); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        e0 <- 100; ec50 <- exp(tec50); pd.sd <- exp(lpd.sd)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- e0 * (1 - cp / (ec50 + cp))
+        cp ~ add(pk.sd) | cp
+        ll(eff) ~ -0.5 * log(2 * pi) - lpd.sd - 0.5 * ((DV - eff) / pd.sd)^2
+      })
+    }
+    .ctl <- saemControl(nBurn = 60, nEm = 30, nmc = 3, seed = 7, print = 0L,
+                        calcTables = FALSE)
+    .gs <- suppressMessages(nlmixr2(pkpd.two.endpoint, .d, est = "saem", control = .ctl))
+    .ms <- suppressMessages(nlmixr2(.mixed, .d, est = "saem", control = .ctl))
+    .mf <- suppressMessages(nlmixr2(.mixed, .d, est = "fsaem", control = .ctl))
+    .cmp <- function(f) unname(fixef(f)[c("tcl", "tv", "tec50", "pk.sd")])
+    # the normal endpoint is NOT scored as a log-likelihood: it still recovers the
+    # twin's structural parameters and its own residual
+    expect_lt(max(abs(.cmp(.ms) - .cmp(.gs))), 0.15)
+    expect_lt(max(abs(.cmp(.mf) - .cmp(.gs))), 0.15)
+    # and the ll() endpoint's SD comes back on its own scale
+    expect_lt(abs(exp(fixef(.ms)[["lpd.sd"]]) - fixef(.gs)[["pd.sd"]]), 0.5)
+    expect_lt(abs(exp(fixef(.mf)[["lpd.sd"]]) - fixef(.gs)[["pd.sd"]]), 0.5)
+    # An ll() endpoint anywhere forces the fast kernel to run throughout, since
+    # there is no residual M-step for it to fall back on.  That is forced into
+    # the cfg, not written back to the stored control (which still reads
+    # "firstN"), so the step count is the assertion: one MAP+IMH step per
+    # iteration over all nBurn + nEm of them, rather than fastIter=20.
+    expect_equal(.mf$fsaemDiag$nStep, 90)
+    expect_gt(.mf$fsaemDiag$accRate, 0.5)
+    expect_equal(.mf$fsaemDiag$nMapFail, 0)
+  })
+
   test_that("est='fsaem' fits two endpoints with a mu-referenced covariate", {
     # Exercises the mprior-as-data inner (the covariate path), which is the one
     # that reconstructs the inner THETA from ares/bres per endpoint.

@@ -465,14 +465,19 @@ SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
 
 \item{fast}{Boolean enabling the fast-SAEM (f-SAEM) simulation step
-(Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
-simulation of the individual random effects uses an independent
-Metropolis-Hastings proposal centered at each subject's conditional
-MAP estimate with a Laplace/linearization covariance, which converges
-in far fewer SAEM iterations than the default random-walk Metropolis.
-The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
-default this is `FALSE` (standard SAEM).  The `fast*` options below are
-only consulted when `fast=TRUE`.}
+  (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+  simulation of the individual random effects uses an independent
+  Metropolis-Hastings proposal centered at each subject's conditional
+  MAP estimate with a Laplace/linearization covariance, which converges
+  in far fewer SAEM iterations than the default random-walk Metropolis.
+  The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+  default this is `FALSE` (standard SAEM).  The `fast*` options below are
+  only consulted when `fast=TRUE`.
+
+  The fast kernel covers any number of endpoints, each either `add`/`prop`
+  normal or a general log-likelihood (`ll()`).  A mixture model, a declared
+  off-diagonal `omega` block, or any other residual kind degrades to standard
+  SAEM with a message.}
 
 \item{fastKernel}{Schedule for the f-SAEM independent Metropolis-Hastings
   (IMH) kernel:
