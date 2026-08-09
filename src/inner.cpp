@@ -14746,6 +14746,36 @@ static bool gradDirectGather(const FoceiGradPooledSetup &G, const arma::vec &gv,
 // .foceiGradDirect() reports and what the tests read -- holding the analytic sum with
 // the flagged subject's column still zero.  fdg is on the NATURAL scale, which is what gp
 // holds at this point, so it is added as-is and the caller's rescale covers both terms.
+// The solved subjects' exact slopes, as the outlier pass's reference distribution.
+static NumericMatrix gradDirectFdRef(int npAll) {
+  NumericMatrix aref(op_focei.outerFdRefN,
+                     op_focei.outerFdRefN > 0 ? npAll : 0);
+  for (int r = 0; r < op_focei.outerFdRefN; ++r)
+    for (int j = 0; j < npAll; ++j)
+      aref(r, j) = op_focei.outerFdRef[(size_t)r * (size_t)npAll + (size_t)j];
+  return aref;
+}
+
+// fdg is d(-2LL_i)/d(fullTheta_j) on the NATURAL scale, which is exactly what gp holds;
+// the scaled gradient the optimizer sees is formed from gp by the caller.  fixedTrans maps
+// an optimizer parameter to its full-theta slot.
+static bool gradDirectFdAdd(NumericMatrix fdg, int nFd, int npAll, int npars,
+                            arma::vec &gp) {
+  for (int i = 0; i < npars; ++i) {
+    int jf = op_focei.fixedTrans[i];
+    if (jf < 0 || jf >= npAll) return declineHere(117);
+    double acc = 0.0;
+    for (int k = 0; k < nFd; ++k) {
+      double v = fdg(k, jf);
+      if (!R_finite(v)) return declineHere(114);
+      acc += v;
+    }
+    gp[i] += acc;
+    if (!R_finite(gp[i])) return declineHere(116);
+  }
+  return true;
+}
+
 static bool gradDirectFoldFd(int npars, arma::vec &gp) {
   if (op_focei.outerFdIds.empty()) return true;
   // TEST HOOK (removable): flag the subjects but do NOT add their finite difference, leaving
@@ -14765,29 +14795,9 @@ static bool gradDirectFoldFd(int npars, arma::vec &gp) {
   const int npAll = (int)foceiOuterFdN();
   IntegerVector fids((R_xlen_t)nFd);
   for (int k = 0; k < nFd; ++k) fids[(R_xlen_t)k] = op_focei.outerFdIds[(size_t)k];
-  // The solved subjects' exact slopes, as the outlier pass's reference distribution.
-  NumericMatrix aref(op_focei.outerFdRefN,
-                     op_focei.outerFdRefN > 0 ? npAll : 0);
-  for (int r = 0; r < op_focei.outerFdRefN; ++r)
-    for (int j = 0; j < npAll; ++j)
-      aref(r, j) = op_focei.outerFdRef[(size_t)r * (size_t)npAll + (size_t)j];
-  NumericMatrix fdg = foceiOuterFdInd_(fids, aref);
+  NumericMatrix fdg = foceiOuterFdInd_(fids, gradDirectFdRef(npAll));
   if (fdg.nrow() != nFd || fdg.ncol() != npAll) return declineHere(115);
-  // fdg is d(-2LL_i)/d(fullTheta_j) on the NATURAL scale, which is exactly what gp holds;
-  // the scaled gradient the optimizer sees is formed from gp by the caller.  fixedTrans maps
-  // an optimizer parameter to its full-theta slot.
-  for (int i = 0; i < npars; ++i) {
-    int jf = op_focei.fixedTrans[i];
-    if (jf < 0 || jf >= npAll) return declineHere(117);
-    double acc = 0.0;
-    for (int k = 0; k < nFd; ++k) {
-      double v = fdg(k, jf);
-      if (!R_finite(v)) return declineHere(114);
-      acc += v;
-    }
-    gp[i] += acc;
-    if (!R_finite(gp[i])) return declineHere(116);
-  }
+  if (!gradDirectFdAdd(fdg, nFd, npAll, npars, gp)) return false;
   op_focei.curAnalyticFd = 1;
   op_focei.nOuterFdInd += nFd;
   return true;
