@@ -502,12 +502,13 @@ long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_
 long odeSwapLhsWidthMismatchN() { return _odeLhsWidthMismatchN.load(std::memory_order_relaxed); }
 long odeSwapOverrideNeutralizedN() { return _odeOverrideNeutralizedN.load(std::memory_order_relaxed); }
 
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
-  if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
-  int want = odeSwapNlhs(slot);
-  int room = getOpNlhs(op);
+// Every buffer the calc_lhs probe in odeSwapCheckLhsWidth touches must be big enough for
+// `slot`'s model before that probe may run: the lhs vector it writes, plus the state and
+// parameter vectors it reads.
+static bool odeSwapProbeRoom(int slot, rx_solving_options *op) {
+  const int want = odeSwapNlhs(slot), room = getOpNlhs(op);
   if (want <= 0 || room < want) return false;
-  // The STATE buffer has to be checked too, not just the lhs one.  calc_lhs below reads
+  // The STATE buffer has to be checked too, not just the lhs one.  calc_lhs reads
   // __zzStateVar__ = ind->solve, which is sized by the POOL, while `want` above only covers
   // the lhs vector it WRITES.  Probing a slot whose model needs more states than the pool was
   // sized for reads off the end of ind->solve and SEGFAULTS inside the generated calc_lhs --
@@ -517,21 +518,31 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // .vaeInnerSetup produces unless the augmented model was declared first).  Declining is the
   // safe direction and what every other failure here does: the caller falls back to the
   // rxode2::rxSolve reference path.
-  int wantNeq = odeSwapNeq(slot);
-  int roomNeq = getOpNeq(op);
+  const int wantNeq = odeSwapNeq(slot), roomNeq = getOpNeq(op);
   if (wantNeq <= 0 || roomNeq < wantNeq) return false;
   // ...and the PARAMETER vector, which is the remaining way this probe can crash.  Compared
   // against the POOL SLOT's model rather than an rxode2 accessor, because the pool slot is
   // what determined the allocation.  Observed: a pooled setup loaded from a different ui than
   // the live inner problem segfaulted inside generated calc_lhs here, i.e. the check written
   // to avoid reading columns nobody wrote crashed before it could return an answer.
-  {
-    const OdePoolPlan &_pp = odeSwapPlan();
-    if (_pp.poolSlot >= 0 && _pp.poolSlot != slot) {
-      const int wantP = odeSwapNpars(slot), roomP = odeSwapNpars(_pp.poolSlot);
-      if (wantP > 0 && roomP > 0 && wantP > roomP) return false;
-    }
-  }
+  const OdePoolPlan &_pp = odeSwapPlan();
+  if (_pp.poolSlot < 0 || _pp.poolSlot == slot) return true;
+  const int wantP = odeSwapNpars(slot), roomP = odeSwapNpars(_pp.poolSlot);
+  return !(wantP > 0 && roomP > 0 && wantP > roomP);
+}
+
+// Did the probe write every lhs slot the slot's model declares?  EVERY declared slot must
+// be written, not merely the last one -- a writer that assigns lhs[0] and lhs[want-1] while
+// skipping the middle would otherwise pass.
+static bool odeSwapProbeAllWritten(const std::vector<double> &probe, int want, double sent) {
+  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == sent) return false;
+  return true;
+}
+
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+  if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
+  if (!odeSwapProbeRoom(slot, op)) return false;
+  const int want = odeSwapNlhs(slot), room = getOpNlhs(op);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
   double *st = getIndSolve(ind);
@@ -543,11 +554,7 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
-  // EVERY declared slot must be written, not merely the last one -- a writer that
-  // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
-  int missing = 0;
-  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
-  if (missing > 0) {
+  if (!odeSwapProbeAllWritten(probe, want, _sent)) {
     // A model whose lhs are all inside conditional branches could in principle
     // report missing here and lose the pooled route.  That is the safe direction:
     // the caller then takes the rxode2::rxSolve reference path, which is correct,
