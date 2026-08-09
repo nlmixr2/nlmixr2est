@@ -121,8 +121,13 @@
 #' @noRd
 .fsaemSupported <- function(ui) {
   .pred <- ui$predDf
-  if (is.null(.pred) || length(.pred$cond) != 1L) return(FALSE) # single endpoint
+  if (is.null(.pred) || length(.pred$cond) < 1L) return(FALSE)
   if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
+  # Per-endpoint quantities (ares/bres/yj/lambda/...) are built in predDf ROW
+  # order, but the kernel indexes them with ix_endpnt = as.factor(CMT) - 1.  The
+  # two agree only when predDf is already in compartment order; degrade rather
+  # than score an endpoint against another endpoint's residual.
+  if (!is.null(.pred$cmt) && is.unsorted(.pred$cmt)) return(FALSE)
   # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
   # off-diagonal block would leave the IMH scoring against a different prior than
   # the SAEM chain -- i.e. the composed kernel would not target the chain's
@@ -132,8 +137,12 @@
   # General log-likelihood endpoint (ll() ~ expr, distribution=="LL"): the inner
   # supplies the observation likelihood, so the fast kernel handles it even
   # though plain saem cannot.  It must run throughout (distribution=4 path) --
-  # forced in .saemGeneralLik / the control.
-  if (.pred$distribution == "LL") return(TRUE)
+  # forced in .saemGeneralLik / the control.  Only when EVERY endpoint is one:
+  # SAEM carries a single scalar `distribution`, so a mixed normal + ll() model
+  # has no representation on the chain side.
+  if (any(.pred$distribution == "LL")) {
+    return(all(.pred$distribution == "LL") && length(.pred$cond) == 1L)
+  }
   if (!all(.pred$distribution == "norm")) return(FALSE)         # else continuous normal
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
@@ -187,7 +196,7 @@
 
 .fsaemInstallStep <- function(ui, data, rxControl, cfg) {
   if (!.fsaemSupported(ui)) {
-    .minfo(paste0("fast kernel needs one endpoint with add/prop error (or ll()) ",
+    .minfo(paste0("fast kernel needs add/prop endpoints (or one ll()) ",
                   "and no mixture; running standard SAEM"))
     return(cfg)
   }

@@ -201,11 +201,7 @@ static void odeSwapEsDeactivate() {
 // can assert the invariant directly instead of inferring it from a fit's estimates.
 static int odeSwapEsLiveDims(int *nState, int *nParam) {
   int active = 0, ns = 0, np = 0, np2 = 0, np3 = 0, jac = 0;
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  if (rxode2EventSensGetDims != NULL) {
-    rxode2EventSensGetDims(&active, &ns, &np, &np2, &np3, &jac);
-  }
-#endif
+  rxode2EventSensGetDims(&active, &ns, &np, &np2, &np3, &jac);
   if (nState != NULL) *nState = ns;
   if (nParam != NULL) *nParam = np;
   return active;

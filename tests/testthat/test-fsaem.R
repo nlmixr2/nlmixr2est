@@ -561,6 +561,67 @@ nmTest({
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
   })
 
+  test_that("est='fsaem' fits a two-endpoint model", {
+    # The two endpoints' residual SDs differ by 10x, so pairing an endpoint with
+    # the wrong residual is not subtle.  The unit-level pins for the multi-endpoint
+    # work (the Eq-17 proposal precision across both endpoints, and the covariate
+    # inner's per-endpoint residual) are in test-fsaem-multi.R; this is the
+    # end-to-end fit.
+    .d <- mkPkpdTwoEndpointData(n = 20L)
+    .ctl <- saemControl(nBurn = 60, nEm = 30, nmc = 3, seed = 7, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(pkpd.two.endpoint, .d, est = "fsaem", control = .ctl))
+    .ss <- suppressMessages(nlmixr2(pkpd.two.endpoint, .d, est = "saem", control = .ctl))
+    .diag <- .fs$fsaemDiag
+    # the fast kernel ran on a multi-endpoint model rather than degrading
+    expect_equal(.diag$nStep, 20)
+    expect_gt(.diag$accRate, 0.5)
+    expect_equal(.diag$nMapFail, 0)
+    expect_equal(.diag$nBadGamma, 0)
+    expect_equal(.fs$saemDiag$nRescore, .diag$nStep)
+    # both endpoints' residuals are recovered, each on its own scale
+    expect_lt(abs(fixef(.fs)[["pk.sd"]] - 0.4), 0.2)
+    expect_lt(abs(fixef(.fs)[["pd.sd"]] - 4), 1.5)
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.15)
+  })
+
+  test_that("est='fsaem' fits two endpoints with a mu-referenced covariate", {
+    # Exercises the mprior-as-data inner (the covariate path), which is the one
+    # that reconstructs the inner THETA from ares/bres per endpoint.
+    .d <- mkPkpdTwoEndpointData(n = 20L)
+    set.seed(3)
+    .wt <- stats::setNames(stats::runif(20, 50, 100), as.character(1:20))
+    .d$WT <- unname(.wt[as.character(.d$id)])
+    .covm <- function() {
+      ini({
+        tcl <- -3.2; tv <- -1; tec50 <- 0.5; cl.wt <- 0.5
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        pk.sd <- 0.4; pd.sd <- 4
+      })
+      model({
+        ka <- exp(0.5)
+        cl <- exp(tcl + eta.cl + cl.wt * log(WT / 70))
+        v <- exp(tv + eta.v)
+        e0 <- 100; ec50 <- exp(tec50)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- e0 * (1 - cp / (ec50 + cp))
+        cp ~ add(pk.sd) | cp
+        eff ~ add(pd.sd) | eff
+      })
+    }
+    .ctl <- saemControl(nBurn = 60, nEm = 30, nmc = 3, seed = 7, print = 0L,
+                        calcTables = FALSE)
+    .fs <- suppressMessages(nlmixr2(.covm, .d, est = "fsaem", control = .ctl))
+    .ss <- suppressMessages(nlmixr2(.covm, .d, est = "saem", control = .ctl))
+    expect_gt(.fs$fsaemDiag$nStep, 0)
+    expect_gt(.fs$fsaemDiag$accRate, 0.5)
+    expect_equal(.fs$fsaemDiag$nMapFail, 0)
+    expect_true("cl.wt" %in% names(fixef(.fs)))
+    expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.15)
+  })
+
   test_that("est='fsaem' rejects a correlated omega from the fast kernel", {
     # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
     # off-diagonal block would have the IMH scoring against a different prior

@@ -100,8 +100,18 @@
   # refreshed from the live estimate each iteration.
   .betaW <- which(is.na(.innerTheta$err))
   .betaPlambda <- if (length(.betaW)) match(.innerTheta$name[.betaW], ui$saemParamsToEstimate) else integer(0)
+  # Residual inner thetas, mapped to the endpoint they belong to.  Matched
+  # through the ORIGINAL ui by residual theta NAME: .fsaemInnerMpriorUi
+  # regenerates the inner ui from model text, so its own condition strings are
+  # not a safe key.  Without this every endpoint took endpoint 1's residual.
+  .residW <- which(!is.na(.innerTheta$err))
+  .residEp <- if (length(.residW)) {
+    match(ui$iniDf$condition[match(.innerTheta$name[.residW], ui$iniDf$name)],
+          ui$predDf$cond)
+  } else integer(0)
   list(env = .env, built = .built, control = control, neta = .neta,
-       data0 = data, innerTheta = .innerTheta, betaW = .betaW, betaPlambda = .betaPlambda)
+       data0 = data, innerTheta = .innerTheta, betaW = .betaW, betaPlambda = .betaPlambda,
+       residW = .residW, residEp = .residEp)
 }
 
 #' Refresh the covariate-aware inner at a new estimate.  Rewrites the per-subject
@@ -116,10 +126,11 @@
   # structural intercepts are the per-subject mprior data.
   .it <- setup$innerTheta
   .theta <- as.numeric(.it$est)
-  .residW <- which(!is.na(.it$err))
+  .residW <- setup$residW
   if (length(.residW)) {
     .isAdd <- .it$err[.residW] == "add"
-    .theta[.residW] <- ifelse(.isAdd, ares[1], bres[1])
+    .ep <- setup$residEp
+    .theta[.residW] <- ifelse(.isAdd, ares[.ep], bres[.ep])
   }
   # Plambda is zeroed at setup (Plambda.zeros(nlambda)) and first filled by the
   # M-step at the end of iteration 0, so "populated" is exactly kiter >= 1 -- a
