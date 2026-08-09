@@ -115,6 +115,12 @@ enum OdeEsModel {
 int  odeSwapEsModelForSlot(int slot);
 // Which ROLE is installed right now (odeEsUnknown when we have not recorded it).
 int  odeSwapEsInstalledModel();
+// Which SLOT installed it (-1 when unrecorded).
+int  odeSwapEsInstalledSlot();
+// odeSwapEsOff() call counts; esDropped only counts calls that took a LIVE shape
+// down, i.e. the ones where the guard was load-bearing.  Reported by odeSwapInfo_().
+long odeSwapEsOffN();
+long odeSwapEsDroppedN();
 // Record a role installed outside the registry (focei.R's fit-wide load).
 void odeSwapEsNoteInstalled(int esModel);
 // Turn the shape OFF and forget who installed it.  For handing the process back to

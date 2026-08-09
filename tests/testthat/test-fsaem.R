@@ -487,10 +487,13 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     # A model with modeled dosing (lag/f/rate) is the ONLY kind whose FOCEi inner
     # carries event ("jump") sensitivities -- a plain bolus linCmt() model has
-    # eventSensInfo NULL.  The jump shape is a process global, so setting the
-    # inner up leaves it pointing at the inner; the SAEM model has no jump
-    # sensitivities and must not be solved under it.  Every other fsaem test uses
-    # a bolus model, so this is the one that exercises that path.
+    # eventSensInfo NULL.  Every other fsaem test uses a bolus model, so this is
+    # the one that fits the event-sensitivity path end to end.
+    #
+    # It does NOT pin the odeSwapEsOff() guard, and must not be read as doing so:
+    # removing that guard entirely leaves this fit bit-identical (measured), because
+    # the fit's first load of the SAEM model rebinds rxode2's event globals anyway.
+    # test-fsaem-es.R constructs the re-entry case the guard actually covers.
     lagm <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45; tlag <- -0.7
@@ -517,7 +520,13 @@ nmTest({
     expect_gt(.diag$nStep, 0)
     expect_gt(.diag$accRate, 0.3)
     expect_equal(.diag$nMapFail, 0)
-    # and the SAEM solve was not corrupted by the inner's jump shape: same MLE
+    # the post-IMH rescore runs here too -- elsewhere it is only asserted on a
+    # bolus model, so this is the one fit where the event-sensitivity path and
+    # the rescore are both live
+    expect_equal(.fs$saemDiag$nRescore, .diag$nStep)
+    expect_gt(.fs$saemDiag$uYStaleMax, 0)
+    # nothing is left installed for the next fit in the session to inherit
+    expect_equal(.odeSwapInfo()$esLive, 0L)
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.1)
   })
 

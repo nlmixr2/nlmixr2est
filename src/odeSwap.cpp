@@ -156,6 +156,7 @@ int odeSwapEsModelForSlot(int slot) {
 }
 
 int  odeSwapEsInstalledModel()          { return _odeEsSlot; }
+int  odeSwapEsInstalledSlot()           { return _odeEsSlotIdx; }
 void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx = -1; }
 
 // Install a slot's ES shape.
@@ -204,7 +205,35 @@ static void odeSwapEsDeactivate() {
   }
 }
 
+// Is a jump shape live right now, and with what dims?  rxode2EventSensShapeSize()
+// is the SAVE BUFFER's size (a constant), not a liveness signal -- the active flag
+// out of rxode2EventSensGetDims() is.  Reported through odeSwapInfo_() so a test
+// can assert the invariant directly instead of inferring it from a fit's estimates.
+static int odeSwapEsLiveDims(int *nState, int *nParam) {
+  int active = 0, ns = 0, np = 0, np2 = 0, np3 = 0, jac = 0;
+#ifdef NLMIXR2EST_HAS_ESSHAPE
+  if (rxode2EventSensGetDims != NULL) {
+    rxode2EventSensGetDims(&active, &ns, &np, &np2, &np3, &jac);
+  }
+#endif
+  if (nState != NULL) *nState = ns;
+  if (nParam != NULL) *nParam = np;
+  return active;
+}
+
+// odeSwapEsOff() call counters.  esDroppedN is the one with teeth: it counts the
+// calls that actually took a live shape down, i.e. where the guard was
+// load-bearing.  Only a model with modeled dosing (lag/f/rate) can make it
+// non-zero, which is exactly the case the fsaem tests used to miss.
+static std::atomic<long> _odeEsOffN(0);
+static std::atomic<long> _odeEsDroppedN(0);
+
+long odeSwapEsOffN()     { return _odeEsOffN.load(); }
+long odeSwapEsDroppedN() { return _odeEsDroppedN.load(); }
+
 void odeSwapEsOff() {
+  ++_odeEsOffN;
+  if (odeSwapEsLiveDims(NULL, NULL) != 0) ++_odeEsDroppedN;
   odeSwapEsDeactivate();
   _odeEsSlot = odeEsUnknown;
   _odeEsSlotIdx = -1;
@@ -855,7 +884,7 @@ RObject odeSwapEsNoteInstalled_(int slot) {
 List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
   CharacterVector nm(odeSlotN);
-  IntegerVector neq(odeSlotN), nlhs(odeSlotN), deny(odeSlotN);
+  IntegerVector neq(odeSlotN), nlhs(odeSlotN), deny(odeSlotN), esActive(odeSlotN);
   LogicalVector loaded(odeSlotN), sizesPool(odeSlotN);
   for (int s = 0; s < odeSlotN; ++s) {
     nm[s] = _odeReg[s].name == NULL ? NA_STRING : Rf_mkChar(_odeReg[s].name);
@@ -864,11 +893,12 @@ List odeSwapInfo_() {
     loaded[s] = _odeReg[s].loaded;
     sizesPool[s] = (s == p.poolSlot);
     deny[s] = odeSwapCanPool(s);
+    esActive[s] = _odeReg[s].esActive;
   }
   List models = List::create(_["slot"] = seq_len(odeSlotN) - 1, _["name"] = nm,
                              _["neq"] = neq, _["nlhs"] = nlhs,
                              _["loaded"] = loaded, _["sizesPool"] = sizesPool,
-                             _["deny"] = deny);
+                             _["deny"] = deny, _["esActive"] = esActive);
   models.attr("class") = "data.frame";
   models.attr("row.names") = IntegerVector::create(NA_INTEGER, -odeSlotN);
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
@@ -887,6 +917,8 @@ List odeSwapInfo_() {
       }
     }
   }
+  int esNstate = 0, esNparam = 0;
+  int esLive = odeSwapEsLiveDims(&esNstate, &esNparam);
   return List::create(
     _["models"] = models,
     _["poolSlot"] = p.poolSlot,
@@ -913,5 +945,16 @@ List odeSwapInfo_() {
     _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
     _["pooledSolveCores"] = odeSwapPooledSolveCores(),
     _["pinCalledN"] = (double)odeSwapPinCalledN(),
-    _["pinDeny"] = (double)odeSwapPinDeny());
+    _["pinDeny"] = (double)odeSwapPinDeny(),
+    // The live event-sensitivity ("jump") shape.  esLive is rxode2's own active
+    // flag, so it is the ground truth for "is a shape installed"; esSlotIdx /
+    // esSlot are what the registry believes.  esDroppedN counts the odeSwapEsOff()
+    // calls that really took a shape down.
+    _["esLive"] = esLive,
+    _["esLiveNstate"] = esNstate,
+    _["esLiveNparam"] = esNparam,
+    _["esSlot"] = odeSwapEsInstalledModel(),
+    _["esSlotIdx"] = odeSwapEsInstalledSlot(),
+    _["esOffN"] = (double)odeSwapEsOffN(),
+    _["esDroppedN"] = (double)odeSwapEsDroppedN());
 }
