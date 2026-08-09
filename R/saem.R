@@ -590,6 +590,19 @@
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
+  # The FIM carries ONE residual slot, and the kernel fills it only for a single
+  # additive normal endpoint (fimSigma2Ok).  Otherwise it arrives as a zero row
+  # and column, which would make solve() singular and lose the whole method.
+  # Drop it BEFORE inverting so theta + Omega still invert cleanly; the residual
+  # block then comes from the linearized FIM via .saemSpliceLinFimVar().  Those
+  # SEs are conditional on the residual rather than marginal over it, but the two
+  # blocks are close to orthogonal here (measured 4% on the affected theta), and
+  # the alternative was inverting a row built from one endpoint's variance
+  # against another endpoint's residual.
+  .n <- nrow(.H)
+  if (.n > 1L && all(.H[.n, ] == 0) && all(.H[, .n] == 0)) {
+    .H <- .H[-.n, -.n, drop = FALSE]
+  }
   # covariance = inverse of the FIM, in (theta, log-Omega-variance, log-sigma2) coords
   .C <- suppressWarnings(tryCatch(solve(.H), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)

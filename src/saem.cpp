@@ -1484,6 +1484,31 @@ public:
       distMixed = _anyNorm && !_ll.empty();
       llObsIdx = distMixed ? arma::conv_to<uvec>::from(_ll) : uvec();
     }
+    // The FIM carries exactly ONE residual slot (nb_param = nphi1 + nlambda + 1),
+    // so it can only describe a model with ONE estimated residual: a single
+    // normal endpoint with a pure additive error.  d1_logsigma2 is
+    // 0.5*resy/sigma2 - 0.5*ntotal, which mixes endpoint 0's variance with
+    // whichever endpoint resy last held and counts EVERY observation.  Outside
+    // that one case the slot is left at zero and .saemFimToCov() drops the row
+    // before inverting, so theta + Omega still come out clean and the residual
+    // block comes from the linearized FIM instead.
+    //
+    // Worth what it is worth: on a 2-endpoint PK/PD model the bogus row moved the
+    // second endpoint's theta SE by ~4% (0.0561 -> 0.0539).  It is NOT why that
+    // SE differs from the linearized FIM's 0.106 -- that is a real difference
+    // between the stochastic-approximation FIM and the linearization on a weakly
+    // identified phi0, and a single additive endpoint shows the same character on
+    // its own residual.  Leaving the zero row IN, though, makes the matrix exactly
+    // singular and loses covMethod="fim"/"sa" outright, which is what used to
+    // happen to every ll() model.
+    {
+      int _nResidEp = 0, _theB = -1;
+      for (int b = 0; b < nendpnt; ++b) {
+        if (distEp(b) == 4) continue;       // ll() endpoint: no residual param
+        ++_nResidEp; _theB = b;
+      }
+      fimSigma2Ok = (_nResidEp == 1) && ((int)res_mod(_theB) == rmAdd);
+    }
     hasFixedObsTransform = true;
     for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
       if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
@@ -2060,7 +2085,8 @@ public:
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
           vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          // only for a single additive normal endpoint -- see fimSigma2Ok
+          d1_logsigma2[0] = fimSigma2Ok ? 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal : 0.0;
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2075,7 +2101,7 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
+          d2logk(nb_param - 1, nb_param - 1) = fimSigma2Ok ? -0.5 * resy(k) / sigma2[0] : 0.0;
           D2 = D2 + d2logk;
         }
       } else if (nMix > 1) {
@@ -2344,7 +2370,8 @@ public:
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
           vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          // only for a single additive normal endpoint -- see fimSigma2Ok
+          d1_logsigma2[0] = fimSigma2Ok ? 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal : 0.0;
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2359,7 +2386,7 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
+          d2logk(nb_param - 1, nb_param - 1) = fimSigma2Ok ? -0.5 * resy(k) / sigma2[0] : 0.0;
           D2 = D2 + d2logk;
         }
         for (int k = 0; k < nmc; k++) {
@@ -2582,7 +2609,7 @@ public:
           // standing FIXME on the next line); a mixed normal + ll() model
           // inherits that rather than adding to it, with resy(k) now holding the
           // last NORMAL endpoint's residual.
-          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          d1_logsigma2[0] = fimSigma2Ok ? 0.5*resy(k)/sigma2[0]-0.5*ntotal : 0.0;
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -2597,7 +2624,7 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
+          d2logk(nb_param-1,nb_param-1) = fimSigma2Ok ? -0.5*resy(k)/sigma2[0] : 0.0;
           D2=D2+d2logk;
         }
       }//k
@@ -3757,6 +3784,8 @@ private:
   ivec distEp;
   uvec llObsIdx;                 // 0-based observation rows with an ll() endpoint
   bool distMixed = false;        // has a normal endpoint AND an ll() one
+  // May the FIM's single residual slot be filled?  See the note where it is set.
+  bool fimSigma2Ok = false;
   // nonMuTheta="regress": estimate the fixed-effect-only (phi0) parameters by
   // the bounded direct optimizer (refinePhi0Lik) for NORMAL models too, instead
   // of only the stochastic phi0 block.  Keeps such thetas as plain regressors

@@ -535,10 +535,25 @@ degrade to standard SAEM.
   mixed model keeps the IMH kernel ADDITIVE (the phi1 random walks still run) --
   replacing the walk is only justified when the IMH is the sole phi1 kernel.
 
-- **Known gap (pre-existing, not introduced here)**: the FIM's residual row uses
-  `sigma2[0]`/`resy(k)` (`src/saem.cpp`, two standing FIXMEs).  It has been
-  single-sigma since before multiple endpoints; a mixed model inherits it, with
-  `resy(k)` now holding the last NORMAL endpoint's.
+- **M4 (the FIM's single residual slot).**  `nb_param = nphi1 + nlambda + 1`, so
+  the SAEM information matrix has exactly ONE residual slot, and
+  `d1_logsigma2 = 0.5*resy/sigma2 - 0.5*ntotal` mixes endpoint 0's variance with
+  whichever endpoint `resy` last held while counting EVERY observation.  It only
+  describes a single additive residual.  `fimSigma2Ok` now gates the three FIM
+  sites on exactly that (one endpoint with a residual, `res_mod == rmAdd`), and
+  `.saemFimToCov()` drops a zero trailing row BEFORE inverting -- leaving it in
+  makes the matrix singular and loses `covMethod="fim"`/`"sa"` altogether, which
+  is what happened to every `ll()` model.
+
+  MEASURED, so the change is not oversold: on a 2-endpoint PK/PD model the
+  bogus row moved the second endpoint's theta SE by ~4% (0.0561 -> 0.0539).  The
+  remaining 2x gap against `linFim` (0.106) is NOT this -- it is a genuine
+  difference between the stochastic-approximation FIM and the linearization on a
+  weakly-identified phi0 parameter, and a single-endpoint additive model shows
+  the same kind of gap on its residual (0.0478 vs 0.0354).  The dropped-row SEs
+  are conditional on the residual rather than marginal over it; the two blocks
+  are near-orthogonal here, and `calc.COV` (the default `linFim`) was always
+  per-endpoint and is untouched.
 
 - **What the tests can and cannot pin.**  A wrong IMH proposal costs acceptance,
   not correctness -- an independent Metropolis-Hastings proposal need not match

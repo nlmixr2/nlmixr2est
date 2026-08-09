@@ -76,6 +76,19 @@
 
 ### Estimation
 
+- `saemControl(covMethod="fim")` and `"sa"` no longer invert a residual row that
+  does not describe the model.  The SAEM information matrix carries exactly one
+  residual slot, built from the first endpoint's variance against the total
+  observation count, so it only describes a model with a single additive
+  residual; for anything else it was filled anyway and inverted together with
+  the parameters that do get reported.  It is now filled only in that case and
+  dropped from the matrix otherwise, leaving the fixed-effect and Omega blocks
+  uncontaminated -- the residual block already came from the linearized FIM.  A
+  model with a general log-likelihood endpoint gains `covMethod="fim"` outright:
+  its residual slot was already empty, which made the matrix singular and lost
+  the method entirely.  `covMethod="linFim"` (the default) is unaffected; its
+  `calc.COV()` linearization was always per-endpoint.
+
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
