@@ -73,6 +73,32 @@ nmTest({
     expect_true(.saemAnyGeneralLik(.ui))
   })
 
+  test_that(".fsaemSupported accepts several ll() endpoints", {
+    # All-ll() stays on the scalar distribution=4 path, where every observation's
+    # loss is -ll regardless of endpoint, so the endpoint count does not matter.
+    .allLL <- function() {
+      ini({
+        tcl <- -3.2; tv <- -1
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        lpk <- log(0.4); lpd <- log(4)
+      })
+      model({
+        ka <- exp(0.5); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- 100 * (1 - cp / (1.65 + cp))
+        s1 <- exp(lpk); s2 <- exp(lpd)
+        ll(cp)  ~ -0.5 * log(2 * pi) - lpk - 0.5 * ((DV - cp) / s1)^2
+        ll(eff) ~ -0.5 * log(2 * pi) - lpd - 0.5 * ((DV - eff) / s2)^2
+      })
+    }
+    expect_true(.supports(.allLL))
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.allLL))
+    expect_equal(rxUiGet.saemDistEp(list(.ui)), c(4L, 4L))
+    expect_true(.saemGeneralLik(.ui))
+  })
+
   test_that(".fsaemSupported still rejects what the kernel cannot target", {
     # a transform-normal residual is outside the add/prop envelope on either endpoint
     .tbs <- function() {
