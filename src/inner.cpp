@@ -13909,15 +13909,13 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       if (getIndEvid(ind, kk) != 0) continue;
       // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
       // skipped subject or every later subject's rows land in the wrong endpoint.
-      // No map at all is unambiguous only for a single endpoint; running off the end
-      // of one means the map does not describe this solve, so drop the row (-1)
-      // rather than filing it under endpoint 0 (issue #856).
-      int e;
-      if (obsEndpoint.n_elem == 0) {
-        e = (nEnd <= 1) ? 0 : -1;
-      } else {
-        e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
-      }
+      // No map at all means no per-observation endpoint was supplied; running off the
+      // end of one means the map does not describe this solve.  Either way the row is
+      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+      // scale (the rest fixed) also gives 1.
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
       obsIdx++;
       if (skipMoments) continue;
       double dv = tbs(getIndDv(ind, kk));
