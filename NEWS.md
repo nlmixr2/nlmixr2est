@@ -89,6 +89,14 @@
   the method entirely.  `covMethod="linFim"` (the default) is unaffected; its
   `calc.COV()` linearization was always per-endpoint.
 
+- `est="saem"` now skips a general log-likelihood (`ll()`) endpoint per endpoint
+  in the residual M-step and in both mixture AE-steps, instead of only when the
+  whole model is `ll()`.  A model that mixes a normal and an `ll()` endpoint
+  stored `sigma2 = 0` for the `ll()` one, and a mixture model accumulated a
+  meaningless residual sum of squares there, which then also perturbed the
+  stochastic-approximation FIM.  The `ll()` endpoint's residual bookkeeping is
+  now left alone, as it already was for an all-`ll()` model.
+
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
