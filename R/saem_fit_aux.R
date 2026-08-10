@@ -21,11 +21,12 @@
          call. = FALSE)
   }
   if (!is.null(.resMod)) {
-    .mask <- .resMod[ixEndpnt] == 0L
-    # a general-likelihood fit whose res.mod marks no ll() row was not built from
-    # the ui; scoring those rows as normal is exactly the defect
-    if (.gen && !any(.mask)) .bad()
-    return(.mask)
+    # a general-likelihood fit whose res.mod marks no ll() ENDPOINT was not built
+    # from the ui; scoring those rows as normal is exactly the defect.  Test the
+    # cfg, not the observations -- an ll() endpoint with no rows in this data set
+    # is legitimately an all-FALSE mask.
+    if (.gen && !any(.resMod == 0L)) .bad()
+    return(.resMod[ixEndpnt] == 0L)
   }
   if (!.gen) return(rep(FALSE, length(ixEndpnt)))
   if (max(ixEndpnt) > 1L) .bad()
