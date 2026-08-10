@@ -13972,7 +13972,13 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       if (getIndEvid(ind, kk) != 0) continue;
       // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
       // skipped subject or every later subject's rows land in the wrong endpoint.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      // No map at all means no per-observation endpoint was supplied; running off the
+      // end of one means the map does not describe this solve.  Either way the row is
+      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+      // scale (the rest fixed) also gives 1.
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
       obsIdx++;
       if (skipMoments) continue;
       double dv = tbs(getIndDv(ind, kk));
@@ -13993,30 +13999,56 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
   return mom;
 }
 
+// 0-based endpoint of one observation's cmt, or -1 when it belongs to no endpoint.
+// endpointCmt holds the cmt of each endpoint in predDf order (distinct, not
+// necessarily sequential).  A single-endpoint model has no CMT covariate, so
+// getIndCmt returns 1 rather than predDf$cmt -- there is nothing to match, and every
+// observation is that one endpoint.  With no endpoint at all, or a cmt that names
+// none of them (including NA_INTEGER, "no compartment recorded here"), the answer is
+// -1 so the caller can EXCLUDE the observation; laundering it into 0 filed it under
+// the first endpoint (issue #856).
+int npEndpointForCmt(int cmt, const std::vector<int>& endpointCmt) {
+  if (endpointCmt.size() == 1) return 0;
+  if (cmt == NA_INTEGER) return -1;
+  for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
+    if (endpointCmt[ee] == cmt) return (int)ee;
+  }
+  return -1;
+}
+
+//[[Rcpp::export]]
+Rcpp::IntegerVector npEndpointForCmt_(Rcpp::IntegerVector cmt,
+                                      Rcpp::IntegerVector endpointCmt) {
+  std::vector<int> ec(endpointCmt.begin(), endpointCmt.end());
+  Rcpp::IntegerVector ret(cmt.size());
+  for (R_xlen_t i = 0; i < cmt.size(); ++i) ret[i] = npEndpointForCmt(cmt[i], ec);
+  return ret;
+}
+
 // Per-observation 0-based endpoint index in the subject-major getIndIx order that
-// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  endpointCmt gives
-// the cmt value of each endpoint in predDf order (cmt values are distinct, not
-// necessarily sequential); each observation's cmt is matched to it.  A single-endpoint
-// model has no CMT covariate, so getIndCmt returns 1 and every observation maps to
-// endpoint 0.  Lets the moment warm start be per-endpoint for a multi-endpoint model.
+// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  Unmatched
+// observations come back as -1 (npResidMoments skips those).  Lets the moment warm
+// start be per-endpoint for a multi-endpoint model.
 arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int nsub = (int)getRxNsub(rx);
   std::vector<int> out;
+  int nUnmatched = 0;
   for (int i = 0; i < nsub; ++i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     int n = getIndNallTimes(ind);
     for (int j = 0; j < n; ++j) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;   // observations only, matching npResidMoments
-      int cmt = getIndCmt(op, ind, kk);
-      int e = 0;
-      for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
-        if (endpointCmt[ee] == cmt) { e = (int)ee; break; }
-      }
+      int e = npEndpointForCmt(getIndCmt(op, ind, kk), endpointCmt);
+      if (e < 0) nUnmatched++;
       out.push_back(e);
     }
+  }
+  if (nUnmatched > 0) {
+    Rf_warning("%d obs. match no endpoint, dropped from the residual warm start",
+               nUnmatched);
   }
   arma::ivec ret((arma::uword)out.size());
   for (size_t k = 0; k < out.size(); ++k) ret[k] = out[k];

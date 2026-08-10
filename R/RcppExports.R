@@ -302,6 +302,10 @@ foceiAnalyticGradPooled_ <- function(thVals, ebes, cols, cores, Oi, dOiEst, tr28
     .Call(`_nlmixr2est_foceiAnalyticGradPooled_`, thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir)
 }
 
+npEndpointForCmt_ <- function(cmt, endpointCmt) {
+    .Call(`_nlmixr2est_npEndpointForCmt_`, cmt, endpointCmt)
+}
+
 #' Build the nonparametric Psi (conditional-likelihood) matrix
 #'
 #' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates

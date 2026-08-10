@@ -841,6 +841,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// npEndpointForCmt_
+Rcpp::IntegerVector npEndpointForCmt_(Rcpp::IntegerVector cmt, Rcpp::IntegerVector endpointCmt);
+RcppExport SEXP _nlmixr2est_npEndpointForCmt_(SEXP cmtSEXP, SEXP endpointCmtSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type cmt(cmtSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type endpointCmt(endpointCmtSEXP);
+    rcpp_result_gen = Rcpp::wrap(npEndpointForCmt_(cmt, endpointCmt));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npBuildPsi
 NumericMatrix npBuildPsi(NumericMatrix etaPoints, int cores);
 RcppExport SEXP _nlmixr2est_npBuildPsi(SEXP etaPointsSEXP, SEXP coresSEXP) {

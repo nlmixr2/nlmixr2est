@@ -170,4 +170,95 @@ nmTest({
     expect_equal(unname(sqrt(diag(fS$cov[.vn, .vn]))),
                  unname(sqrt(diag(.vc))), tolerance = 1e-6)
   })
+
+  test_that("a general log-likelihood endpoint is scored by its own density (#871)", {
+    # calc.2LL and calc.COV used to build a Gaussian residual SD for every row.  An
+    # ll() endpoint has res.mod == 0, so the residual M-step never runs and ares/bres
+    # keep their placeholder 10/1 -- every log-density was scored as a normal mean
+    # with SD 10 + |ll|.  Both are checked against an exponential time-to-event model
+    # whose marginal likelihood is a one-dimensional quadrature, so the reference is
+    # closed form rather than a second fit.
+    .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
+      .testSeed(seed)
+      do.call(rbind, lapply(seq_len(n), function(i) {
+        lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
+        data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)
+      }))
+    }
+    expTte <- function() {
+      ini({ tlam <- log(25); eta.lam ~ 0.2 })
+      model({
+        lam <- exp(tlam + eta.lam)
+        ll(dv) ~ -log(lam) - time / lam
+      })
+    }
+    .d <- .mkTte(1L)
+    # covMethod="sa" is the saemControl default; it must route to linFim here
+    .f <- .nlmixr(expTte, .d, est = "saem",
+                  control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1,
+                                        print = 0L, calcTables = FALSE,
+                                        covMethod = "sa"))
+
+    # the per-observation ll() mask needs res.mod to survive into the trimmed
+    # post-fit saem.cfg -- without it neither function can tell the rows apart
+    expect_false(is.null(attr(.f$saem, "saem.cfg")$res.mod))
+    expect_equal(attr(.f$saem, "saem.cfg")$res.mod, 0L)
+    # sa/fim are refused for a general likelihood (the Louis correction has no
+    # residual error to anchor it); linFim is what gets reported
+    expect_equal(.f$covMethod, "linFim")
+
+    .tlam <- fixef(.f)[["tlam"]]
+    .om <- .f$omega[1, 1]
+    # exact marginal -2LL and its observed information, by quadrature over the eta
+    .nll <- function(p) {
+      if (p[2] <= 0) return(1e10)
+      .s <- sqrt(p[2])
+      -sum(vapply(.d$TIME, function(t)
+        log(integrate(function(e) {
+          .lam <- exp(p[1] + e)
+          exp(-log(.lam) - t / .lam) * dnorm(e, 0, .s)
+        }, -8 * .s, 8 * .s, rel.tol = 1e-10)$value), numeric(1)))
+    }
+
+    # objective: a fine quadrature must reproduce the exact marginal -2LL.  Before
+    # the fix this read 1124 against an exact 1392.
+    expect_equal(calc.2LL(.f$saem, nnodes.gq = 13, nsd.gq = 5, .f$phiM),
+                 2 * .nll(c(.tlam, .om)), tolerance = 1e-3)
+
+    # standard errors: the linearized FIM must approximate the exact observed
+    # information.  Before the fix these were off by roughly the placeholder SD.
+    .se <- sqrt(diag(solve(optimHess(c(.tlam, .om), .nll))))
+    .got <- sqrt(diag(.f$cov))
+    expect_equal(length(.got), 2L)
+    expect_equal(unname(.got), unname(.se), tolerance = 0.25)
+    # a hard guard: the pre-fix values were an order of magnitude out
+    expect_true(all(.got / .se > 0.5 & .got / .se < 2))
+
+    # "fim" is refused for the same reason as "sa"
+    .ff <- .nlmixr(expTte, .d, est = "saem",
+                   control = saemControl(nBurn = 40, nEm = 20, nmc = 3, seed = 1,
+                                         print = 0L, calcTables = FALSE,
+                                         covMethod = "fim"))
+    expect_equal(.ff$covMethod, "linFim")
+  })
+
+  test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
+    .ix <- c(1L, 1L, 2L, 2L)
+    # res.mod present: per-observation, res.mod == 0 marks the ll() endpoint
+    expect_equal(.saemLlObsMask(list(res.mod = c(0L, 1L), opt = list(distribution = 4)), .ix),
+                 c(TRUE, TRUE, FALSE, FALSE))
+    expect_equal(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 1)), .ix),
+                 rep(FALSE, 4))
+    # res.mod missing (a fit stored before it was kept): a single endpoint can be
+    # attributed from the scalar distribution, more than one cannot
+    expect_equal(.saemLlObsMask(list(opt = list(distribution = 4)), c(1L, 1L)), c(TRUE, TRUE))
+    expect_equal(.saemLlObsMask(list(opt = list(distribution = 1)), .ix), rep(FALSE, 4))
+    expect_error(.saemLlObsMask(list(opt = list(distribution = 4)), .ix), "res.mod")
+    # a general-likelihood cfg whose res.mod marks no ll() row is inconsistent;
+    # scoring those rows as normal is the defect, so fail instead
+    expect_error(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 4)), .ix),
+                 "res.mod")
+    # no distribution at all (an old cfg) must not error
+    expect_equal(.saemLlObsMask(list(opt = list()), .ix), rep(FALSE, 4))
+  })
 })

@@ -3075,7 +3075,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .saemCfg <- attr(.saem, "saem.cfg")
       # Delete unneeded variables
       .saemCfg2 <- list()
-      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables")) {
+      # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
+      # observation from a normally-distributed one
+      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables", "res.mod")) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
       attr(.saem, "saem.cfg") <- .saemCfg2
