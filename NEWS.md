@@ -69,6 +69,22 @@
   the tolerance.  On a warfarin fit started from `k=1/h` (true value near `0.02/h`)
   this froze the volume eta for 19 of 32 subjects, biasing the population
   estimates and shrinking that eta's variance about fourfold.
+- Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
+  discarding a usable analytic outer gradient and paying for a full
+  finite-difference gradient instead.  FOCE freezes the residual variance, so its
+  mode is not the inner problem's and an inner Newton has to find it; that Newton
+  demanded a score below `foceiControl(foceEbeTol=)` (`1e-9`) even though the
+  score is computed from the ODE solve and cannot be driven below the solve's own
+  noise.  On the reported model it reached `|S| = 1.5e-9` and then threw the whole
+  gradient away over a Newton decrement -- the objective the point still had left
+  to give -- of `2e-15`.  A stalled subject is now accepted at its best iterate
+  when that decrement is negligible, and the iterate itself is kept rather than
+  wherever the exhausted line search stopped.  `mfoce` reaches a pure analytic
+  gradient on the reported model, and the 3-ETA theophylline fit's
+  finite-difference fallbacks drop from 16 to 1 while `mfoce` and `ifoce` -- which
+  solve the same problem -- now agree with each other instead of landing 6.7
+  objective-function units apart.  A genuinely unconverged mode still declines.
+
 - Fixed `foceiControl(gradTrim=)` lower gradient clamp testing `g < gradTrim`
   instead of `g < -gradTrim`.  Since the branch above it had already caught
   everything over `+gradTrim`, every remaining component was replaced by
