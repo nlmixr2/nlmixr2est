@@ -49,24 +49,14 @@ nmTest({
       .nFd <- sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
                              "Forward Difference", "Central Difference"))
       expect_match(fF$extra, "grad: analytic", info = est)
-      if (est == "mfoce") {
-        # FOCE may decline the analytic gradient on some evaluations -- measured 2 of
-        # 7 here, BOTH attributed to the inner Newton solve (nGradDecline["newton"]).
-        # What matters for issue #838 is not that a fallback never happens, but that
-        # it is never SILENT: every decline must be attributed and the fit must say
-        # so.  Assert that contract rather than a zero it does not promise.
-        expect_gt(fF$env$nAnalyticGradDirect, 0, label = est)
-        expect_equal(unname(fF$env$nFDGradFast), .nFd, info = est)
-        expect_equal(sum(fF$env$nGradDecline), unname(fF$env$nFDGradFast), info = est)
-        if (.nFd > 0) expect_match(fF$extra, "grad: analytic\\+fd", info = est)
-        # See nlmixr2est issue on the FOCE Newton decline: if that is fixed this
-        # method should reach a pure analytic gradient and join the branch below.
-      } else {
-        # mfocei / ifocei reach a PURE analytic gradient -- no fallback at all
-        expect_equal(.nFd, 0, info = est)
-        expect_equal(unname(fF$env$nFDGradFast), 0L, info = est)
-        expect_false(grepl("analytic\\+fd", fF$extra), label = est)
-      }
+      # All three reach a PURE analytic gradient -- no fallback at all.  mfoce used to
+      # decline 2 of 7 here (issue #843): its inner Newton reached |S| = 1.5e-9 against
+      # a 1e-9 target, could not cross the ODE solve's noise floor, and threw the whole
+      # gradient away over a Newton decrement of 2e-15.
+      expect_equal(.nFd, 0, info = est)
+      expect_equal(unname(fF$env$nFDGradFast), 0L, info = est)
+      expect_equal(sum(fF$env$nGradDecline), 0L, info = est)
+      expect_false(grepl("analytic\\+fd", fF$extra), label = est)
       expect_match(fF$extra, if (grepl("^i", est)) "mu: irls" else "mu: lin", info = est)
     }
   })

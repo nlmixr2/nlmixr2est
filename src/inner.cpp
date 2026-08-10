@@ -305,6 +305,8 @@ struct focei_options {
   int nNewtonSingular = 0;  // Hf could not be factored, or S/Hf went non-finite
   double newtonWorstS = 0;  // largest |S| left on the table by a maxit failure
   int nNewtonBacktrack = 0; // damped (halved) Newton steps taken
+  int nNewtonStall = 0;     // subjects accepted at the solve's noise floor (#843)
+  double newtonStallS = 0;  // largest |S| accepted that way
   int nFdOutlierParam = 0;  // parameters whose FD slopes had a modified-z outlier
   int nFdChartrand = 0;     // subject-parameter slopes replaced by the TV derivative
   std::atomic<int> outerStickyTol{0};
@@ -4844,7 +4846,7 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // ordinary finite-difference gradient, which is correct -- just slower.
   if (!op_focei.warnedAnalyticFallback) {
     op_focei.warnedAnalyticFallback = 1;
-    Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+    Rf_warning("analytic outer gradient declined; used finite differences");
   }
   return false;
 }
@@ -7113,6 +7115,8 @@ Environment foceiOuter(Environment e){
   op_focei.nNewtonSingular=0;
   op_focei.newtonWorstS=0;
   op_focei.nNewtonBacktrack=0;
+  op_focei.nNewtonStall=0;
+  op_focei.newtonStallS=0;
   op_focei.nFdOutlierParam=0;
   op_focei.nFdChartrand=0;
   op_focei.firstDirectGrad.clear();
@@ -9708,6 +9712,10 @@ void foceiFinalizeTables(Environment e){
           _["solve"] = op_focei.nNewtonSolve,
           _["singular"] = op_focei.nNewtonSingular,
           _["backtrack"] = op_focei.nNewtonBacktrack);
+        // Subjects the Newton accepted at the solve's noise floor rather than declining
+        // the gradient over an unreachable score tolerance -- see foceEbeNewton.
+        e["nNewtonStall"] = IntegerVector::create(op_focei.nNewtonStall);
+        e["newtonStallS"] = NumericVector::create(op_focei.newtonStallS);
         e["nFdOutlier"] = IntegerVector::create(
           _["params"] = op_focei.nFdOutlierParam,
           _["chartrandSlopes"] = op_focei.nFdChartrand);
@@ -12669,6 +12677,12 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   std::vector<double> alpha((size_t)nsub, 1.0);
   std::vector<int> nback((size_t)nsub, 0);
   std::vector<char> haveStep((size_t)nsub, 0);
+  // Best (lowest |S|) iterate seen, with its Newton decrement.  A stalled subject returns
+  // this rather than wherever the exhausted line search happened to stop -- that point is
+  // by construction WORSE than the reference it failed to beat.
+  arma::mat bestEta = ebes;
+  std::vector<double> bestS((size_t)nsub, R_PosInf);
+  std::vector<double> bestLam2((size_t)nsub, R_PosInf);
   for (int it = 0; it <= maxit; ++it) {
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, etaOut, G, cores, op, nsub, neta, Es);
     bool any = false;
@@ -12710,19 +12724,49 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; return false; }
       double sMax = arma::abs(S).max();
       if (sMax < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
-      if (it == maxit) {                             // did not converge
+      // The Newton decrement lam2 = S' Hf^-1 S is how much of the objective this point
+      // still has left to give -- the frozen-variance objective is on the -LL scale, so
+      // lam2 is the remaining -2LL decrease.  Unlike |S| it is invariant to how eta and
+      // omega are scaled, which is what makes it the right thing to judge a stall by.
+      // Recorded with the LOWEST-|S| iterate, since that is the eta a stall returns.
+      arma::vec step;
+      double lam2 = R_PosInf;
+      const bool haveSolve = arma::solve(step, Hf, S);
+      if (haveSolve) {
+        lam2 = arma::dot(S, step);
+        if (sMax < bestS[(size_t)i]) {
+          bestS[(size_t)i] = sMax;
+          bestLam2[(size_t)i] = lam2;
+          bestEta.row(i) = etaOut.row(i);
+        }
+      }
+      // Out of iterations, or the line search has run out of halvings: either way the
+      // Newton has reached the precision the ODE solve allows, and |S| cannot be pushed
+      // below the solve's own noise (nlmixr2/nlmixr2est#843 -- FOCE reached |S| = 1.5e-9
+      // against convTol = 1e-9 and declined the whole gradient over the last factor of
+      // 1.5).  So judge the stall by what is actually at stake: accept the best iterate
+      // when its remaining objective decrease is below convTol and its score is inside
+      // the loose stationarity band the first iteration already trusts, and decline only
+      // when the mode genuinely was not reached.  The gradient error an off-mode eta
+      // causes is S'(deta/dtheta), which sqrt(lam2) bounds in the Hf metric.
+      const bool stalled = (it == maxit) ||
+        (haveStep[(size_t)i] && sMax >= prevS[(size_t)i] && nback[(size_t)i] >= maxBack);
+      if (stalled) {
+        if (bestS[(size_t)i] < skipTol && bestLam2[(size_t)i] >= 0 &&
+            bestLam2[(size_t)i] <= convTol) {
+          etaOut.row(i) = bestEta.row(i);
+          active[(size_t)i] = 0;
+          op_focei.nNewtonStall++;
+          if (bestS[(size_t)i] > op_focei.newtonStallS) op_focei.newtonStallS = bestS[(size_t)i];
+          continue;
+        }
         op_focei.nNewtonMaxit++;
-        if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
+        if (bestS[(size_t)i] > op_focei.newtonWorstS) op_focei.newtonWorstS = bestS[(size_t)i];
         return false;
       }
       // Did the last step actually reduce |S|?  If not, undo it and retry at half the
       // length; the Newton DIRECTION is kept, only its magnitude is cut.
       if (haveStep[(size_t)i] && sMax >= prevS[(size_t)i]) {
-        if (nback[(size_t)i] >= maxBack) {         // damping exhausted: give up honestly
-          op_focei.nNewtonMaxit++;
-          if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
-          return false;
-        }
         etaOut.row(i) += alpha[(size_t)i] * lastStep[(size_t)i].t();   // undo
         alpha[(size_t)i] *= 0.5;
         etaOut.row(i) -= alpha[(size_t)i] * lastStep[(size_t)i].t();   // reapply, shorter
@@ -12731,8 +12775,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         any = true;
         continue;                                  // re-solve and re-judge the same step
       }
-      arma::vec step;
-      if (!arma::solve(step, Hf, S)) { op_focei.nNewtonSingular++; return false; }
+      if (!haveSolve) { op_focei.nNewtonSingular++; return false; }
       prevS[(size_t)i] = sMax;                     // reference for judging this new step
       lastStep[(size_t)i] = step;
       alpha[(size_t)i] = 1.0;
