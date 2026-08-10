@@ -660,8 +660,8 @@ nlmeControl()
 #> [1] 1e-07
 #> 
 #> $indLinMatExpType
-#> expokit 
-#>       2 
+#> Al-Mohy 
+#>       3 
 #> 
 #> $indLinMatExpOrder
 #> [1] 6
@@ -863,6 +863,24 @@ nlmeControl()
 #> 
 #> $.zeros
 #> NULL
+#> 
+#> $zeroVarParamHandle
+#> [1] "warn"
+#> 
+#> $indLinStepSearch
+#> [1] 1
+#> 
+#> $indLinMaxIter
+#> [1] 20
+#> 
+#> $indLinRichardson
+#> [1] 2
+#> 
+#> $indLinIteration
+#> [1] 3
+#> 
+#> $indLinJac
+#> [1] 0
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
@@ -1180,8 +1198,8 @@ nlmixr2NlmeControl()
 #> [1] 1e-07
 #> 
 #> $indLinMatExpType
-#> expokit 
-#>       2 
+#> Al-Mohy 
+#>       3 
 #> 
 #> $indLinMatExpOrder
 #> [1] 6
@@ -1383,6 +1401,24 @@ nlmixr2NlmeControl()
 #> 
 #> $.zeros
 #> NULL
+#> 
+#> $zeroVarParamHandle
+#> [1] "warn"
+#> 
+#> $indLinStepSearch
+#> [1] 1
+#> 
+#> $indLinMaxIter
+#> [1] 20
+#> 
+#> $indLinRichardson
+#> [1] 2
+#> 
+#> $indLinIteration
+#> [1] 3
+#> 
+#> $indLinJac
+#> [1] 0
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

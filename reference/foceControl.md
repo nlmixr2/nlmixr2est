@@ -247,7 +247,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55ed417d1cc8>
+#> <bytecode: 0x55dba96b9260>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -653,8 +653,8 @@ foceControl()
 #> [1] 1e-07
 #> 
 #> $indLinMatExpType
-#> expokit 
-#>       2 
+#> Al-Mohy 
+#>       3 
 #> 
 #> $indLinMatExpOrder
 #> [1] 6
@@ -856,6 +856,24 @@ foceControl()
 #> 
 #> $.zeros
 #> NULL
+#> 
+#> $zeroVarParamHandle
+#> [1] "warn"
+#> 
+#> $indLinStepSearch
+#> [1] 1
+#> 
+#> $indLinMaxIter
+#> [1] 20
+#> 
+#> $indLinRichardson
+#> [1] 2
+#> 
+#> $indLinIteration
+#> [1] 3
+#> 
+#> $indLinJac
+#> [1] 0
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
