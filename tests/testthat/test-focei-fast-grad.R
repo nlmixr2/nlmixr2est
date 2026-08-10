@@ -360,10 +360,21 @@ nmTest({
       foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
                    maxInnerIterations = 300L, ...))))
     .ok <- .at(fast = TRUE)                          # default tolerance: no stall
-    .st <- .at(fast = TRUE, foceEbeTol = 1e-13)      # unreachable target: stalls
+    .st <- .at(fast = TRUE, foceEbeTol = 1e-13)      # unreachable target: stalls, accepted
+    .no <- .at(fast = TRUE, foceEbeTol = 1e-30)      # ...and a decrement bound nothing meets
     expect_equal(unname(.ok$env$nNewtonStall), 0L)
     expect_gt(unname(.st$env$nNewtonStall), 0L)      # the acceptance really ran
     expect_equal(unname(.st$env$nFDGradFast), 0L)    # ...and did not decline
+    expect_equal(unname(.st$env$nNewtonFail[["maxit"]]), 0L)
+    # The gate must still be able to say NO, or "an unconverged mode declines" is
+    # untested and a regression that accepts everything would look identical.  Same
+    # stall, decrement bound driven below anything the solve can deliver: rejected,
+    # and attributed to the Newton rather than lost.
+    expect_equal(unname(.no$env$nNewtonStall), 0L)
+    expect_gt(.no$env$nNewtonFail[["maxit"]], 0L)
+    expect_equal(.no$env$nGradDecline[["newton"]], .no$env$nNewtonFail[["maxit"]])
+    expect_equal(.no$env$nNewtonFail[["singular"]], 0L)   # rejected by the gate, not by Hf
+    expect_null(.foceiGradDirect(.no))                    # ...so no analytic gradient
     gOk <- .foceiGradDirect(.ok)
     gSt <- .foceiGradDirect(.st)
     expect_false(is.null(gOk))

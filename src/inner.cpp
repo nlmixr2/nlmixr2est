@@ -12729,14 +12729,20 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       // lam2 is the remaining -2LL decrease.  Unlike |S| it is invariant to how eta and
       // omega are scaled, which is what makes it the right thing to judge a stall by.
       // Recorded with the LOWEST-|S| iterate, since that is the eta a stall returns.
+      //
+      // Solve only where the point can BE that iterate.  A backtracking point has
+      // sMax >= prevS, and prevS is the best seen (it is only ever lowered by a step that
+      // improved on it), so such a point never wins the comparison below -- solving there
+      // would be work thrown away, and arma::solve warns to stderr on a singular system,
+      // which is exactly the region an overshot step lands in.
+      const bool backtracking = haveStep[(size_t)i] && sMax >= prevS[(size_t)i];
       arma::vec step;
-      double lam2 = R_PosInf;
-      const bool haveSolve = arma::solve(step, Hf, S);
-      if (haveSolve) {
-        lam2 = arma::dot(S, step);
-        if (sMax < bestS[(size_t)i]) {
+      bool haveSolve = false;
+      if (!backtracking) {
+        haveSolve = arma::solve(step, Hf, S);
+        if (haveSolve && sMax < bestS[(size_t)i]) {
           bestS[(size_t)i] = sMax;
-          bestLam2[(size_t)i] = lam2;
+          bestLam2[(size_t)i] = arma::dot(S, step);
           bestEta.row(i) = etaOut.row(i);
         }
       }
@@ -12749,8 +12755,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       // the loose stationarity band the first iteration already trusts, and decline only
       // when the mode genuinely was not reached.  The gradient error an off-mode eta
       // causes is S'(deta/dtheta), which sqrt(lam2) bounds in the Hf metric.
-      const bool stalled = (it == maxit) ||
-        (haveStep[(size_t)i] && sMax >= prevS[(size_t)i] && nback[(size_t)i] >= maxBack);
+      const bool stalled = (it == maxit) || (backtracking && nback[(size_t)i] >= maxBack);
       if (stalled) {
         if (bestS[(size_t)i] < skipTol && bestLam2[(size_t)i] >= 0 &&
             bestLam2[(size_t)i] <= convTol) {
@@ -12766,7 +12771,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       }
       // Did the last step actually reduce |S|?  If not, undo it and retry at half the
       // length; the Newton DIRECTION is kept, only its magnitude is cut.
-      if (haveStep[(size_t)i] && sMax >= prevS[(size_t)i]) {
+      if (backtracking) {
         etaOut.row(i) += alpha[(size_t)i] * lastStep[(size_t)i].t();   // undo
         alpha[(size_t)i] *= 0.5;
         etaOut.row(i) -= alpha[(size_t)i] * lastStep[(size_t)i].t();   // reapply, shorter
