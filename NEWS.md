@@ -111,6 +111,15 @@
     the matrix otherwise, leaving the fixed-effect and Omega blocks
     uncontaminated.
 
+  - When that residual slot **is** filled, it is now built from its own
+    endpoint's variance and observation count rather than the first endpoint's
+    variance and the total observation count, and the delta method that maps it
+    to a reported standard deviation reads the same endpoint's row.  A model
+    mixing a normal and an `ll()` endpoint has exactly one estimated residual, so
+    the slot is filled, but the endpoint carrying it need not be the first: with
+    the `ll()` endpoint on the lower compartment the residual standard error came
+    back roughly 1.7 times too large under `covMethod="sa"`/`"fim"` (#872).
+
   - `covMethod="fim"` and `"sa"` now say plainly that they do not apply to an
     `ll()` endpoint and use the linearized Fisher information, instead of
     reporting that the covariance "could not be computed".  The

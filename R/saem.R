@@ -632,7 +632,15 @@
   # single additive residual: log-sigma2 -> reported SD, d(sd)/d(log sigma2) = 0.5 sd
   .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
   if (nrow(.ri) == 1L && .np == .nth + .nEta + 1L && !grepl("prop|pow", .ri$err)) {
-    .ares <- tryCatch(.saem$resMat[1, 1], error = function(e) NA_real_)
+    # resMat rows follow predDf's endpoint order, and the one estimated residual
+    # is not necessarily endpoint 1: a mixed normal + ll() model has a single
+    # residual row here while the ll() endpoint keeps its untouched resMat init.
+    .b <- match(.ri$condition, .ui$predDf$cond)
+    .ares <- if (length(.b) == 1L && !is.na(.b)) {
+      tryCatch(.saem$resMat[.b, 1], error = function(e) NA_real_)
+    } else {
+      NA_real_
+    }
     if (is.finite(.ares) && .ares > 0) {
       .idx <- c(.idx, .np); .nm <- c(.nm, .ri$name); .jac <- c(.jac, 0.5 * .ares)
     }
