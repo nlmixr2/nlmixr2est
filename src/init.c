@@ -60,6 +60,7 @@ extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
 extern SEXP _nlmixr2est_foceiOuterFdInd_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiIndLik_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
+extern SEXP _nlmixr2est_odeSwapParLayoutFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapRetryTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -222,6 +223,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiOuterFdInd_", (DL_FUNC) &_nlmixr2est_foceiOuterFdInd_, 2},
   {"_nlmixr2est_foceiIndLik_", (DL_FUNC) &_nlmixr2est_foceiIndLik_, 2},
   {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
+  {"_nlmixr2est_odeSwapParLayoutFor_", (DL_FUNC) &_nlmixr2est_odeSwapParLayoutFor_, 2},
   {"_nlmixr2est_odeSwapRetryTest_", (DL_FUNC) &_nlmixr2est_odeSwapRetryTest_, 7},
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},
   {"_nlmixr2est_adviElboGradFR_", (DL_FUNC) &_nlmixr2est_adviElboGradFR_, 6},

@@ -234,6 +234,12 @@ SEXP odeSwapPoolModelSEXP();
 // Pure form, so the tie-break and the scratch inversion are testable without a fit.
 OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs);
 
+// May a peer whose parameters are `m` index a parameter vector laid out for `pool`?
+// Pure, for the same reason.  An empty `m` is readable (it indexes nothing); a
+// non-empty `m` against an empty `pool` is UNVERIFIABLE, hence refused.
+bool odeSwapParLayoutMatch(const std::vector<std::string> &m,
+                           const std::vector<std::string> &pool);
+
 int odeSwapCanPool(int slot);   // OdeSwapDeny reason code
 
 // ---- per-individual solve scope ----------------------------------------

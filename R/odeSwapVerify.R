@@ -31,6 +31,21 @@
   odeSwapPlanFor_(as.integer(neq), as.integer(nlhs))
 }
 
+#' May a peer's parameter layout be read in a pool built for another model?
+#'
+#' Pure form of the lhs probe's parameter check.  `calc_lhs` reads `par_ptr` BY
+#' INDEX, so a peer is only readable when its parameters sit at the pool model's
+#' positions -- which a count cannot establish.  Takes the two `rxModelVars$params`
+#' vectors directly, so both directions are testable without rigging a registry.
+#'
+#' @param model peer model's parameter names
+#' @param pool pool model's parameter names
+#' @return TRUE when the peer may index the pool's parameter vector
+#' @noRd
+.odeSwapParLayoutFor <- function(model, pool) {
+  odeSwapParLayoutFor_(as.character(model), as.character(pool))
+}
+
 #' Slot names in registry order, matching the C++ `OdeSwapSlot` enum.
 #'
 #' The last three are the analytic path's augmented models: the order-2 gradient

@@ -1608,6 +1608,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// odeSwapParLayoutFor_
+bool odeSwapParLayoutFor_(CharacterVector model, CharacterVector pool);
+RcppExport SEXP _nlmixr2est_odeSwapParLayoutFor_(SEXP modelSEXP, SEXP poolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< CharacterVector >::type model(modelSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type pool(poolSEXP);
+    rcpp_result_gen = Rcpp::wrap(odeSwapParLayoutFor_(model, pool));
+    return rcpp_result_gen;
+END_RCPP
+}
 // odeSwapEsNoteInstalled_
 RObject odeSwapEsNoteInstalled_(int slot);
 RcppExport SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP slotSEXP) {

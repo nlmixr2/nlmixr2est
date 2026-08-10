@@ -154,7 +154,9 @@
   matches the one the pool's parameter vector was filled with (`calc_lhs` reads
   it by index, so a same-width model in a different order mis-reads).  Fits are
   unchanged; `.odeSwapInfo()` reports the new `npars`/`parLayoutOk` columns and
-  the `probeIniN`/`probeDenyN` counters.
+  the `probeIniN`/`probeDenyN` counters.  The lhs column map, which is installed
+  separately from the model it describes, is now checked against that model's
+  width at the pooled entries as well.
 
 # nlmixr2est 7.0.2
 

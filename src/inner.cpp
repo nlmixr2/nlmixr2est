@@ -4724,6 +4724,11 @@ static bool outerColsWithin(const OuterCols &C, int nlhs) {
   if (nlhs <= 0) return false;
   const std::vector<int> *vs[] = {&C.f1, &C.f2, &C.rvar1, &C.rvar2, &C.rsig, &C.rsig2, &C.tr};
   const size_t nvs = sizeof(vs) / sizeof(vs[0]);
+  // predf/rvarf are read unconditionally (lhs[predf], lhs[rvarf]), and both default to
+  // -1 -- so they need their OWN negative test, not just the running maximum: another
+  // map pushing that maximum non-negative would otherwise pass a lhs[-1] read.
+  if (C.predf < 0) return false;
+  if (C.hasR && C.rvarf < 0) return false;
   int mx = C.predf;
   if (C.hasR && C.rvarf > mx) mx = C.rvarf;
   for (size_t v = 0; v < nvs; ++v) {

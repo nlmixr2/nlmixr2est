@@ -418,21 +418,29 @@ static std::string odeSwapCanonPar(const std::string &s) {
 //
 // The pool model's own slot always matches itself, so a plain single-model fit and
 // every standalone solve answer true without comparing anything.
+// Pure form, so the comparison is testable without a fit -- as odeSwapPlanFor is for
+// the pool decision.  `m` is the peer's parameter names, `pool` the pool model's.
+bool odeSwapParLayoutMatch(const std::vector<std::string> &m,
+                           const std::vector<std::string> &pool) {
+  // A peer that reads NO parameters cannot mis-read them, whatever the pool holds.
+  if (m.empty()) return true;
+  // ... but a peer that DOES read them and has nothing to be checked against is
+  // unverifiable, and unverifiable must decline.  Answering "true" here would accept
+  // exactly the case this exists to catch.
+  if (pool.empty() || m.size() > pool.size()) return false;
+  for (size_t i = 0; i < m.size(); ++i) {
+    if (odeSwapCanonPar(m[i]) != odeSwapCanonPar(pool[i])) return false;
+  }
+  return true;
+}
+
 static bool odeSwapParLayoutOk(int slot, rx_solve *rx) {
   if (rx == NULL || !odeSwapLoaded(slot)) return false;
   const OdeModelReg &m = _odeReg[slot];
   if (m.npars > getRxNpars(rx)) return false;
   const OdePoolPlan &p = odeSwapPlan();
   if (p.poolSlot < 0 || p.poolSlot == slot) return true;
-  const OdeModelReg &pm = _odeReg[p.poolSlot];
-  // Nothing to compare against (a registry that predates parNames, or a model with no
-  // params at all) -- the width check above is then all that can be verified.
-  if (pm.parNames.empty() || m.parNames.empty()) return true;
-  if (m.parNames.size() > pm.parNames.size()) return false;
-  for (size_t i = 0; i < m.parNames.size(); ++i) {
-    if (odeSwapCanonPar(m.parNames[i]) != odeSwapCanonPar(pm.parNames[i])) return false;
-  }
-  return true;
+  return odeSwapParLayoutMatch(m.parNames, _odeReg[p.poolSlot].parNames);
 }
 
 SEXP odeSwapModelSEXP(int slot) {
@@ -894,6 +902,23 @@ List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs) {
                       _["needsScratch"] = (p.scratchNlhs > 0),
                       _["nLoaded"] = p.nLoaded,
                       _["overrideNeeded"] = p.overrideNeeded);
+}
+
+//' Would `model`'s parameter layout be readable in a pool built for `pool`?
+//'
+//' The pure form of the lhs probe's parameter check, so both directions -- accept a
+//' peer that only spells the same slots differently, refuse one whose order differs --
+//' are testable without rigging a live registry.
+//' @param model peer model's `rxModelVars$params`
+//' @param pool pool model's `rxModelVars$params`
+//' @return TRUE when the peer may index the pool's parameter vector
+//' @noRd
+//[[Rcpp::export]]
+bool odeSwapParLayoutFor_(CharacterVector model, CharacterVector pool) {
+  std::vector<std::string> m((size_t)model.size()), p((size_t)pool.size());
+  for (int i = 0; i < model.size(); ++i) m[(size_t)i] = as<std::string>(model[i]);
+  for (int i = 0; i < pool.size(); ++i) p[(size_t)i] = as<std::string>(pool[i]);
+  return odeSwapParLayoutMatch(m, p);
 }
 
 //' Record which model role rxode2's event path is bound to (R-side installs).

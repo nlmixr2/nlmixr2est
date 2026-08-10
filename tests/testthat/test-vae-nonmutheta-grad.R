@@ -305,6 +305,20 @@ nmTest({
     expect_true(all(is.finite(o$obj)))
     g2 <- .vaeGradEval(as.numeric(ui$theta), ebes, diag(c(0.6, 0.3)))
     expect_equal(g, g2, tolerance = 1e-8)
+
+    ## The lhs COLUMN MAP is installed separately from the model it describes, and the
+    ## reader indexes the lhs buffer with it unbounded.  A map naming a column past the
+    ## bound model's width must decline, not read past the buffer.  Asserted against a
+    ## LIVE pool (the same one that just worked), so it is the map that is rejected.
+    .cols <- .vaeGradEnv$outerCols
+    skip_if(is.null(.cols))
+    expect_false(is.null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .cols, 1L)))
+    .bad <- .cols
+    .bad$predf <- 10000L                       # far past any real lhs width
+    expect_null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .bad, 1L))
+    .bad2 <- .cols
+    .bad2$predf <- -1L                         # "absent", read unconditionally as lhs[-1]
+    expect_null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .bad2, 1L))
   })
 
   test_that("in scope, the gradient path is actually taken", {
