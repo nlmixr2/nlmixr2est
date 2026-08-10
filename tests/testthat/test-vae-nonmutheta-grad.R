@@ -269,6 +269,44 @@ nmTest({
     expect_gt(.odeSwapInfo()$pooledSolveN, .n2)
   })
 
+  test_that("the pooled gradient runs on a pool that has not solved yet (#870)", {
+    skip_on_cran()
+    ## foceiGradPooledDirect_ SEGFAULTED when the inner problem had been set up but
+    ## nothing had solved in it yet.  odeSwapCheckLhsWidth answers by CALLING the
+    ## model's calc_lhs, and generated calc_lhs dereferences ind->on -- a pointer
+    ## iniSubject binds, not the pool build -- so the gate written to make a
+    ## mismatched model decline safely crashed instead.  The fit path always solves
+    ## first, which is why only this sequence reached it.
+    ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.odeMod()))
+    ctl <- vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
+                      covariateSelection = FALSE)
+    d <- nlmixr2data::theo_sd
+    prep <- .vaeDataPrep(ui, d, ctl)
+    env <- .vaeInnerSetup(ui, d, matrix(0, prep$N, prep$zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    on.exit(.vaeGradReset(), add = TRUE)
+    .vaeGradInit(ui, d, "tv")
+    ebes <- matrix(0, length(unique(env$dataSav$ID)), 2L)
+    .b <- .odeSwapInfo()
+    g <- .vaeGradEval(as.numeric(ui$theta), ebes, diag(c(0.6, 0.3)))
+    .a <- .odeSwapInfo()
+    ## the probe bound subject 0 itself instead of faulting on it ...
+    expect_gt(.a$probeIniN, .b$probeIniN)
+    ## ... nothing was declined on a size/layout guard ...
+    expect_equal(.a$probeDenyN, .b$probeDenyN)
+    ## ... and the POOLED route then ran and returned a usable gradient, rather
+    ## than the entry declining to the rxSolve fallback
+    expect_gt(.a$pooledSolveN, .b$pooledSolveN)
+    expect_equal(length(g), 1L)
+    expect_true(all(is.finite(g)))
+    ## Same value the pool gives once a solve HAS bound the subject: the probe's
+    ## iniSubjectE has to leave the individual usable, not merely non-crashing.
+    o <- vaeInnerLik(ebes, 1L, FALSE, FALSE)
+    expect_true(all(is.finite(o$obj)))
+    g2 <- .vaeGradEval(as.numeric(ui$theta), ebes, diag(c(0.6, 0.3)))
+    expect_equal(g, g2, tolerance = 1e-8)
+  })
+
   test_that("in scope, the gradient path is actually taken", {
     skip_on_cran()
     r <- suppressWarnings(suppressMessages(

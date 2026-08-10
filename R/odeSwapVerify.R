@@ -8,11 +8,13 @@
 #' Counters that survive teardown (`pinnedN`, `pinCalledN`, `pooledSolveN`)
 #' let a test tell a working pooled solve from a silent rxSolve fallback.
 #'
-#' @return list with `models` (a data.frame of slot/name/neq/nlhs/loaded/
-#'   sizesPool/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/`poolNlhs`,
-#'   `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`, `overrideNeeded`,
-#'   `nLoaded`, the live `opNeq`/`opNlhs`, and `pooledSolveCores` (the thread
-#'   count the last pooled solve ran with, after every clamp).
+#' @return list with `models` (a data.frame of slot/name/neq/nlhs/npars/loaded/
+#'   sizesPool/parLayoutOk/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/
+#'   `poolNlhs`, `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`,
+#'   `overrideNeeded`, `nLoaded`, the live `opNeq`/`opNlhs`/`rxNpars`,
+#'   `probeIniN`/`probeDenyN` (the lhs probe's own counters), and
+#'   `pooledSolveCores` (the thread count the last pooled solve ran with, after
+#'   every clamp).
 #' @noRd
 .odeSwapInfo <- function() odeSwapInfo_()
 

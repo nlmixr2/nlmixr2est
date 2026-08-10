@@ -4711,6 +4711,38 @@ static std::vector<int> _ivFrom(SEXP x) {
   return o;
 }
 
+// Does every lhs column this map names exist in a model `nlhs` wide?
+//
+// The column map is installed SEPARATELY from the model it describes
+// (foceiGradPooledSetupLoad_ takes a list built in R, and the augmented model is
+// registered by the setup path), so a map built for a different model than the one
+// bound indexes columns nobody wrote -- past the end of the lhs buffer once it is
+// wider.  outerSolveFill reads every index below with no bound of its own, so this is
+// checked at the entries, which decline to the rxode2::rxSolve route.  Companion to
+// odeSwapCheckLhsWidth, which answers the same question about the MODEL (#870).
+static bool outerColsWithin(const OuterCols &C, int nlhs) {
+  if (nlhs <= 0) return false;
+  const std::vector<int> *vs[] = {&C.f1, &C.f2, &C.rvar1, &C.rvar2, &C.rsig, &C.rsig2, &C.tr};
+  const size_t nvs = sizeof(vs) / sizeof(vs[0]);
+  int mx = C.predf;
+  if (C.hasR && C.rvarf > mx) mx = C.rvarf;
+  for (size_t v = 0; v < nvs; ++v) {
+    for (size_t k = 0; k < vs[v]->size(); ++k) {
+      int c = (*vs[v])[k];
+      if (c < 0) return false;
+      if (c > mx) mx = c;
+    }
+  }
+  for (size_t s = 0; s < C.rsig1.size(); ++s) {
+    for (size_t k = 0; k < C.rsig1[s].size(); ++k) {
+      int c = C.rsig1[s][k];
+      if (c < 0) return false;
+      if (c > mx) mx = c;
+    }
+  }
+  return mx >= 0 && mx < nlhs;
+}
+
 // Flatten an R lhs column map into the POD.  Shared by the per-fit cache below and by
 // vaeOuterSolve_, which still receives its map from R.
 static void colsFromList(List cols, OuterCols &C) {
@@ -12509,6 +12541,8 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   const int neta = (int)op_focei.neta;
   std::vector<VaeOuterE> Es((size_t)nsub);
   FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  // ... and the map R just handed us must name columns this model actually has
+  if (!outerColsWithin(_gcols, op_focei.vaeOuterNlhs)) return R_NilValue;
   std::vector<double> _thv((size_t)thVals.size());
   for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
   arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
@@ -12868,6 +12902,8 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   if (rx == NULL) return false;
   rx_solving_options *op = getSolvingOptions(rx);
   if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  // ... and the installed column map must name columns that model actually has
+  if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return false;
   const int nsub = (int)getRxNsub(rx);
   if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
   // Censored (M2/M3/M4) observations enter an ll() objective as -logPhi, a contribution
@@ -13028,6 +13064,8 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   if (rx == NULL) return declineHere(6);
   rx_solving_options *op = getSolvingOptions(rx);
   if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return declineHere(7);
+  // ... and the installed column map must name columns that model actually has
+  if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return declineHere(24);
   const int nsub = (int)getRxNsub(rx);
   const int neta = G.neta, nth = G.nth, nsg = G.nsg, nom = G.nom, nd = G.nd;
   const int np = nth + nsg + nom;
@@ -13213,6 +13251,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     // here, outside outerSolveFill's OpenMP region, because the shape is a process
     // global; the destructor restores the outer slot for the assembly below.
     if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return declineHere(21);
+    if (!outerColsWithin(G.colsNode, odeSwapNlhs(odeSlotOuterNode))) return declineHere(25);
     OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
     Ek.resize((size_t)nn);
     for (int k = 0; k < nn; ++k) {
@@ -13547,6 +13586,8 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
   if (!hasR) return R_NilValue;            // (f,R) kernel only; the FOCE path stays in R
   std::vector<VaeOuterE> Es((size_t)nsub);
   FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  // ... and the map R just handed us must name columns this model actually has
+  if (!outerColsWithin(_gcols, op_focei.vaeOuterNlhs)) return R_NilValue;
   std::vector<double> _thv((size_t)thVals.size());
   for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
   arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());

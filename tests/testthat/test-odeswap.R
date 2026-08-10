@@ -293,11 +293,21 @@ nmTest({
     ## fast=TRUE pools: the augmented model sizes the pool
     expect_identical(.odeSwapInfo()$poolName, "outer")
     .n0 <- .odeSwapInfo()$pooledSolveN
+    .d0 <- .odeSwapInfo()$probeDenyN
     gPool <- .foceiGradDirect(f)
     expect_false(is.null(gPool))
     expect_true(all(is.finite(gPool)))
     ## and the pooled solve must actually have run, or this asserts nothing about pooling
     expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
+    ## The lhs probe checks the parameter LAYOUT before it indexes par_ptr (calc_lhs
+    ## reads it by index, so a same-width peer in a different order mis-reads).  Every
+    ## peer of this fit must pass it: the inner/pred models spell their parameters
+    ## THETA[k]/ETA[k] and the augmented pool model spells the same slots THETA_k_/ETA_k_,
+    ## so a literal name comparison would decline them all and quietly cost the pooled
+    ## route -- measured as 28 refused hess2 probes on an ll() fit.
+    .i <- .odeSwapInfo()
+    expect_true(all(.i$models$parLayoutOk[.i$models$loaded]))
+    expect_equal(.i$probeDenyN, .d0)
     ## This used to also compare against .foceiAnalyticGradViaRxSolve(), the same gradient
     ## forced through rxode2::rxSolve instead of the pool.  That route was the R gradient
     ## implementation, which is gone -- the pooled solve is now the only one -- so the

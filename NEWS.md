@@ -142,6 +142,20 @@
   observation was Gaussian and uncensored slipped past them and was fit with an
   objective FO does not support.
 
+### Crashes and stability
+
+- The shared solve pool's lhs-width probe could **segfault** instead of
+  declining.  It verifies a model by calling that model's `calc_lhs`, and
+  generated `calc_lhs` dereferences per-subject pointers that are bound by a
+  solve, not by building the pool -- so an inner problem that had been set up but
+  had not solved yet crashed inside the check written to make a mismatched model
+  fall back safely.  The probe now binds the subject itself, and additionally
+  verifies that the pool holds the model's states and that its parameter layout
+  matches the one the pool's parameter vector was filled with (`calc_lhs` reads
+  it by index, so a same-width model in a different order mis-reads).  Fits are
+  unchanged; `.odeSwapInfo()` reports the new `npars`/`parLayoutOk` columns and
+  the `probeIniN`/`probeDenyN` counters.
+
 # nlmixr2est 7.0.2
 
 ## Breaking changes
