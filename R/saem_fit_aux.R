@@ -271,6 +271,119 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
   x
 }
 
+#' Second derivatives of the per-observation log-likelihood with respect to phi
+#'
+#' Central differences of `dopred()`, which for an `ll()` endpoint returns the
+#' log-density itself.  The step is `|phi|*1e-4` (about `eps^(1/4)`, the scale a
+#' second derivative wants) rather than the `1e-4` used for the first-difference
+#' `DF`, which is a coincidence of magnitude, not the same quantity.
+#'
+#' @param dopred saem prediction function, `attr(fit, "dopred")`
+#' @param saemCfg saem configuration list
+#' @param hatPhi N x nphi matrix of conditional modes
+#' @param id 1-based subject index, one element per observation
+#' @param nphi number of phi columns
+#' @return ntotal x nphi x nphi array of second derivatives
+#' @noRd
+.saemLlObsHess <- function(dopred, saemCfg, hatPhi, id, nphi) {
+  .h <- cutoff(abs(hatPhi) * 1e-4, 1e-10)
+  .ev <- function(.j, .sj, .k = NULL, .sk = 0) {
+    .p <- hatPhi
+    .p[, .j] <- .p[, .j] + .sj * .h[, .j]
+    if (!is.null(.k)) .p[, .k] <- .p[, .k] + .sk * .h[, .k]
+    as.vector(dopred(.p, saemCfg$evt, saemCfg$opt))
+  }
+  .l0 <- as.vector(dopred(hatPhi, saemCfg$evt, saemCfg$opt))
+  .lp <- lapply(seq_len(nphi), function(.j) .ev(.j, 1))
+  .lm <- lapply(seq_len(nphi), function(.j) .ev(.j, -1))
+  .ret <- array(0, c(length(.l0), nphi, nphi))
+  for (.j in seq_len(nphi)) {
+    .ret[, .j, .j] <- (.lp[[.j]] - 2 * .l0 + .lm[[.j]]) / (.h[id, .j]^2)
+  }
+  if (nphi > 1L) {
+    for (.j in seq_len(nphi - 1L)) {
+      for (.k in seq(.j + 1L, nphi)) {
+        .v <- (.ev(.j, 1, .k, 1) - .ev(.j, 1, .k, -1) -
+                 .ev(.j, -1, .k, 1) + .ev(.j, -1, .k, -1)) /
+          (4 * .h[id, .j] * .h[id, .k])
+        .ret[, .j, .k] <- .v
+        .ret[, .k, .j] <- .v
+      }
+    }
+  }
+  .ret
+}
+
+#' One subject's contribution to the linearized FIM when any row is an `ll()` row
+#'
+#' Builds the conditional information of `phi` -- `DF' diag(g^2)^-1 DF` over the
+#' normal rows plus the observed information over the `ll()` rows -- and
+#' marginalizes over the random effects with the same Schur complement the
+#' Gaussian route reaches through `Vi` and the Woodbury identity, so a normal
+#' model computed either way agrees.  The result is returned as a matrix square
+#' root so the caller's `.nlmixr2RobustCov()` (and its rank-deficiency handling)
+#' is unchanged.
+#'
+#' @param i subject index
+#' @param ix logical, this subject's observation rows
+#' @param DF per-observation first differences with respect to phi
+#' @param g per-observation residual SD (normal rows)
+#' @param isLL per-observation `ll()` mask
+#' @param d2LL second derivatives from [.saemLlObsHess()]
+#' @param omega Omega matrix
+#' @param iOmega `solve(omega)`
+#' @param nphi,i1 number of phi columns; indexes of the random-effect columns
+#' @param mcov `saem.cfg$Mcovariables`
+#' @param covEstIx estimated covariate-parameter mask
+#' @param doVar assemble the variance block?
+#' @param nom,omPairs number of Omega pairs and the pairs themselves
+#' @return list with `x` (square-root block) and `b` (variance FIM, or `NULL`)
+#' @noRd
+.saemLlSubjectPart <- function(i, ix, DF, g, isLL, d2LL, omega, iOmega, nphi, i1,
+                               mcov, covEstIx, doVar, nom, omPairs) {
+  .H <- matrix(0, nphi, nphi)
+  .gx <- which(ix & !isLL)
+  if (length(.gx) > 0L) {
+    .DFg <- DF[.gx, , drop = FALSE]
+    dim(.DFg) <- c(length(.gx), nphi)
+    .H <- crossprod(.DFg / g[.gx])
+  }
+  .lx <- which(ix & isLL)
+  if (length(.lx) > 0L) {
+    .H <- .H - apply(d2LL[.lx, , , drop = FALSE], c(2, 3), sum)
+  }
+  .H <- 0.5 * (.H + t(.H))
+  # marginalize the random effects: M = H - H[,i1] (Omega^-1 + H[i1,i1])^-1 H[i1,]
+  .M <- .H - .H[, i1, drop = FALSE] %*%
+    solve(iOmega + .H[i1, i1, drop = FALSE]) %*% .H[i1, , drop = FALSE]
+  .M <- 0.5 * (.M + t(.M))
+  .e <- eigen(.M, symmetric = TRUE)
+  # a user ll() is not required to be concave, so drop any negative direction
+  # rather than take the square root of a negative eigenvalue
+  .S <- sqrt(pmax(.e$values, 0)) * t(.e$vectors)
+  .Ai <- kronecker(diag(nphi), mcov[i, ])
+  .b <- NULL
+  if (doVar && nom > 0L) {
+    # tr(Vi^-1 dVi/da Vi^-1 dVi/db) = tr(E_a M11 E_b M11) with M11 = M[i1, i1]
+    .M11 <- .M[i1, i1, drop = FALSE]
+    .A <- vector("list", nom)
+    for (pp in seq_len(nom)) {
+      .a <- omPairs[pp, 1]; .bb <- omPairs[pp, 2]
+      .E <- matrix(0, length(i1), length(i1))
+      .E[.a, .bb] <- 1
+      if (.a != .bb) .E[.bb, .a] <- 1
+      .A[[pp]] <- .E %*% .M11
+    }
+    .b <- matrix(0, nom, nom)
+    for (ii in seq_len(nom)) for (ij in ii:nom) {
+      .val <- sum(.A[[ii]] * t(.A[[ij]])) / 2
+      .b[ii, ij] <- .b[ij, ii] <- .val
+    }
+  }
+  rxode2::rxTick()
+  list(x = .S %*% t(.Ai[covEstIx, , drop = FALSE]), b = .b)
+}
+
 ##' Covariance matrix by Fisher Information Matrix via linearization
 ##'
 ##' Get the covariance matrix of fixed effect estimates via calculating Fisher Information Matrix by linearization
@@ -323,6 +436,7 @@ calc.COV <- function(fit0) {
   yj <- yj[ix_endpnt]
   low <- low[ix_endpnt]
   hi <- hi[ix_endpnt]
+  .isLL <- .saemLlObsMask(saem.cfg, ix_endpnt)
   if (is.null(names(saem.cfg$inits$theta))) {
     names(saem.cfg$inits$theta) <- rep("", length(saem.cfg$inits$theta))
   }
@@ -355,6 +469,12 @@ calc.COV <- function(fit0) {
   f0 <- .Call(`_nlmixr2est_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
   DF <- (f1 - f0) / dphi[id, ]
   g <- ares + bres * abs(f0s)
+  # An ll() endpoint has no mean to linearize and no residual variance -- dopred()
+  # returns the log-density itself -- so those rows contribute the observed
+  # information of their own log-likelihood instead (#871).
+  .anyLL <- any(.isLL)
+  .d2LL <- if (.anyLL) .saemLlObsHess(dopred, saem.cfg, hat.phi, id, nphi) else NULL
+  .iOmega <- if (.anyLL) solve(omega) else NULL
 
   # covFull: also assemble the variance block (residual + Omega) of the linearized
   # FIM (saemix func_FIM.R blocB), returned as attributes on the theta cov.  The FIM
@@ -382,11 +502,19 @@ calc.COV <- function(fit0) {
   .nom <- if (is.null(.omPairs)) 0L else nrow(.omPairs)
   .nvar <- length(.resNames) + .nom
   .doVar <- .covFull && .nvar > 0L
+  # the residual entries of the variance block are built in observation space from
+  # dVi/da, dVi/db, which have no counterpart once any row is a log-density; a
+  # pure-ll() model has no residual parameters, so only a future mixed model loses
+  # the block rather than reporting a wrong one
+  if (.anyLL && length(.resNames) > 0L) .doVar <- FALSE
   .absF0 <- abs(f0s)
 
   # spectral decom for invVi, idea from saemix; also accumulates the variance FIM (blocB)
   .parts <- lapply(1:N, function(i) {
     ix <- id == i
+    if (.anyLL) return(.saemLlSubjectPart(i, ix, DF, g, .isLL, .d2LL, omega, .iOmega,
+                                          nphi, i1, saem.cfg$Mcovariables, cov.est.ix,
+                                          .doVar, .nom, .omPairs))
     nobs <- sum(ix)
     DFi <- DF[ix, ]
     dim(DFi) <- c(nobs, nphi)
