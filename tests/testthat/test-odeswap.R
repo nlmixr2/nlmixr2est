@@ -51,6 +51,34 @@ nmTest({
     expect_identical(p$scratchNlhs, 0L)
   })
 
+  test_that("the parameter-layout check accepts spellings and refuses reorderings", {
+    ## calc_lhs reads par_ptr BY INDEX, and par_ptr is laid out for the POOL model, so
+    ## the probe has to compare POSITIONS.  Both directions are asserted here: a fit
+    ## only ever exercises the accept side, so without this a broken (or deleted)
+    ## check would still pass the whole suite.
+    inner <- c("THETA[1]", "THETA[2]", "ETA[1]", "ETA[2]")
+    outer <- c("THETA_1_", "THETA_2_", "ETA_1_", "ETA_2_")
+    ## the two spellings of the same slot are the same slot
+    expect_true(.odeSwapParLayoutFor(inner, outer))
+    expect_true(.odeSwapParLayoutFor(outer, inner))
+    expect_true(.odeSwapParLayoutFor(inner, inner))
+    ## same NAMES, same COUNT, different ORDER -- what counting cannot catch
+    expect_false(.odeSwapParLayoutFor(inner, c("THETA[2]", "THETA[1]", "ETA[1]", "ETA[2]")))
+    ## covariates and DV compare literally, at their own positions
+    expect_true(.odeSwapParLayoutFor(c(inner, "WT"), c(outer, "WT")))
+    expect_false(.odeSwapParLayoutFor(c(inner, "WT"), c(outer, "AGE")))
+    ## a peer WIDER than the pool would index past the subject's slice
+    expect_false(.odeSwapParLayoutFor(c(inner, "WT"), outer))
+    ## a peer that reads no parameters cannot mis-read them ...
+    expect_true(.odeSwapParLayoutFor(character(0), outer))
+    ## ... but one that does, with nothing to check against, is unverifiable
+    expect_false(.odeSwapParLayoutFor(inner, character(0)))
+    ## near-misses of the canonical form stay literal rather than collapsing together
+    expect_false(.odeSwapParLayoutFor("THETA[1]", "THETA[11]"))
+    expect_false(.odeSwapParLayoutFor("THETAX_1_", "THETA_1_"))
+    expect_true(.odeSwapParLayoutFor("THETAX_1_", "THETAX_1_"))
+  })
+
   test_that("a loaded model with zero ODE states still counts", {
     # A solved-form (linCmt) or purely algebraic model has neq == 0 but real lhs
     # outputs.  Treating neq == 0 as "not loaded" would drop it from maxNlhs and
@@ -293,11 +321,21 @@ nmTest({
     ## fast=TRUE pools: the augmented model sizes the pool
     expect_identical(.odeSwapInfo()$poolName, "outer")
     .n0 <- .odeSwapInfo()$pooledSolveN
+    .d0 <- .odeSwapInfo()$probeDenyN
     gPool <- .foceiGradDirect(f)
     expect_false(is.null(gPool))
     expect_true(all(is.finite(gPool)))
     ## and the pooled solve must actually have run, or this asserts nothing about pooling
     expect_gt(.odeSwapInfo()$pooledSolveN, .n0)
+    ## The lhs probe checks the parameter LAYOUT before it indexes par_ptr (calc_lhs
+    ## reads it by index, so a same-width peer in a different order mis-reads).  Every
+    ## peer of this fit must pass it: the inner/pred models spell their parameters
+    ## THETA[k]/ETA[k] and the augmented pool model spells the same slots THETA_k_/ETA_k_,
+    ## so a literal name comparison would decline them all and quietly cost the pooled
+    ## route -- measured as 28 refused hess2 probes on an ll() fit.
+    .i <- .odeSwapInfo()
+    expect_true(all(.i$models$parLayoutOk[.i$models$loaded]))
+    expect_equal(.i$probeDenyN, .d0)
     ## This used to also compare against .foceiAnalyticGradViaRxSolve(), the same gradient
     ## forced through rxode2::rxSolve instead of the pool.  That route was the R gradient
     ## implementation, which is gone -- the pooled solve is now the only one -- so the

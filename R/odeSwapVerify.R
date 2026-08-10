@@ -8,11 +8,13 @@
 #' Counters that survive teardown (`pinnedN`, `pinCalledN`, `pooledSolveN`)
 #' let a test tell a working pooled solve from a silent rxSolve fallback.
 #'
-#' @return list with `models` (a data.frame of slot/name/neq/nlhs/loaded/
-#'   sizesPool/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/`poolNlhs`,
-#'   `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`, `overrideNeeded`,
-#'   `nLoaded`, the live `opNeq`/`opNlhs`, and `pooledSolveCores` (the thread
-#'   count the last pooled solve ran with, after every clamp).
+#' @return list with `models` (a data.frame of slot/name/neq/nlhs/npars/loaded/
+#'   sizesPool/parLayoutOk/deny), the chosen `poolSlot`/`poolName`/`poolNeq`/
+#'   `poolNlhs`, `maxNlhs`/`maxNlhsSlot`, `scratchNlhs`/`needsScratch`,
+#'   `overrideNeeded`, `nLoaded`, the live `opNeq`/`opNlhs`/`rxNpars`,
+#'   `probeIniN`/`probeDenyN` (the lhs probe's own counters), and
+#'   `pooledSolveCores` (the thread count the last pooled solve ran with, after
+#'   every clamp).
 #' @noRd
 .odeSwapInfo <- function() odeSwapInfo_()
 
@@ -27,6 +29,21 @@
 #' @noRd
 .odeSwapPlanFor <- function(neq, nlhs) {
   odeSwapPlanFor_(as.integer(neq), as.integer(nlhs))
+}
+
+#' May a peer's parameter layout be read in a pool built for another model?
+#'
+#' Pure form of the lhs probe's parameter check.  `calc_lhs` reads `par_ptr` BY
+#' INDEX, so a peer is only readable when its parameters sit at the pool model's
+#' positions -- which a count cannot establish.  Takes the two `rxModelVars$params`
+#' vectors directly, so both directions are testable without rigging a registry.
+#'
+#' @param model peer model's parameter names
+#' @param pool pool model's parameter names
+#' @return TRUE when the peer may index the pool's parameter vector
+#' @noRd
+.odeSwapParLayoutFor <- function(model, pool) {
+  odeSwapParLayoutFor_(as.character(model), as.character(pool))
 }
 
 #' Slot names in registry order, matching the C++ `OdeSwapSlot` enum.

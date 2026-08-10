@@ -136,6 +136,7 @@ bool odeSwapHasEs(int slot);
 
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
+int  odeSwapNpars(int slot);     // 0 when unloaded; length($params)
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
 
@@ -232,6 +233,12 @@ SEXP odeSwapPoolModelSEXP();
 
 // Pure form, so the tie-break and the scratch inversion are testable without a fit.
 OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs);
+
+// May a peer whose parameters are `m` index a parameter vector laid out for `pool`?
+// Pure, for the same reason.  An empty `m` is readable (it indexes nothing); a
+// non-empty `m` against an empty `pool` is UNVERIFIABLE, hence refused.
+bool odeSwapParLayoutMatch(const std::vector<std::string> &m,
+                           const std::vector<std::string> &pool);
 
 int odeSwapCanPool(int slot);   // OdeSwapDeny reason code
 
@@ -415,14 +422,18 @@ long odeSwapOverrideNeutralizedN();
 // rxUpdateFuns resolves symbols with R_GetCCallable(lib, name) -- BY NAME -- so the
 // same model can re-resolve to another dll's symbol later in a session.  Returns
 // false on a mismatch, and the caller must then refuse to pool.
+//
+// It answers by CALLING calc_lhs, so it first has to make that call SAFE: the model's
+// states and its parameter layout have to fit the pool it would read them from, and
+// subject 0's per-thread pointers have to be bound (a pool that was set up but never
+// solved leaves ind->on NULL, which generated code dereferences).  All of that is
+// handled here rather than left to the caller -- a gate that can crash instead of
+// declining is worse than no gate.
 bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
-// Number of times a bound calc_lhs was found NOT to match its registry width.
-long odeSwapLhsWidthMismatchN();
-// Verify the function pointers bound for `slot` really write the registry's nlhs.
-// R_GetCCallable() resolves by symbol NAME, so a peer can silently re-resolve to a
-// different model's dll within one session.  Returns false on a mismatch (caller
-// must refuse to pool); the probe runs once per call and costs one calc_lhs.
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
+// Times the probe bound subject 0 (iniSubjectE) before calling calc_lhs.
+long odeSwapProbeIniN();
+// Times the probe refused to run because the pool cannot hold what the model reads.
+long odeSwapProbeDenyN();
 long odeSwapScratchUsedN();
 long odeSwapScratchResizeN();
 long odeSwapPinnedN();
