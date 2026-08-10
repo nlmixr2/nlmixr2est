@@ -50,8 +50,21 @@ jobs:
             local::.
           needs: website
 
+      # pkgdown downloads its JS assets (fuse.js, autocomplete.js, headroom, ...)
+      # from cdnjs into R_user_dir("pkgdown", "cache") on every cold run; caching
+      # them keeps a slow CDN from failing the build.
+      - name: Cache pkgdown assets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/pkgdown
+          key: pkgdown-assets-${{ runner.os }}-${{ hashFiles('_pkgdown.yml') }}
+          restore-keys: pkgdown-assets-${{ runner.os }}-
+
       - name: Build site
-        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        run: |
+          # R's 60s default download timeout is not enough for a slow cdnjs
+          options(timeout = max(600, getOption("timeout")))
+          pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
         shell: Rscript {0}
 
       - name: Deploy to GitHub pages 🚀

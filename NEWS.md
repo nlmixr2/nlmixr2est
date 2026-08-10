@@ -142,6 +142,16 @@
   observation was Gaussian and uncensored slipped past them and was fit with an
   objective FO does not support.
 
+- `est="npag"` / `est="npb"` now **exclude** an observation or a residual
+  parameter whose endpoint cannot be determined from the residual moment warm
+  start, instead of attributing it to the first endpoint.  Both the observation
+  `CMT` lookup and the residual parameter's `condition` lookup resolved "no
+  match" to endpoint 0, which is indistinguishable from the correct answer for a
+  single-endpoint model; on a multi-endpoint model that warm-started (and, where
+  there is a lone scale per endpoint, estimated) one endpoint's residual SD from
+  another endpoint's residuals.  Anything dropped this way is now reported in
+  `$runInfo` rather than being silent.
+
 # nlmixr2est 7.0.2
 
 ## Breaking changes
