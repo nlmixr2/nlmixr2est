@@ -35,6 +35,30 @@
 
 ### Estimation
 
+- Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
+  Gaussian observation** in both its objective function and its standard errors.
+  Such an endpoint estimates no residual error, so the residual step never runs
+  and the placeholder values it starts from survive: every log-density was scored
+  as a normal mean with standard deviation `10 + |ll|`.  The reported
+  `objf`/`logLik`/`AIC`/`BIC` and every standard error were meaningless, on the
+  default path -- `covMethod="sa"` cannot be computed for these models and
+  already fell back to the linearized Fisher information, which is where the
+  defect lives.  An `ll()` row now contributes its own log-density to the
+  objective, with the `log(2*pi)` normalizer applied only to normally-distributed
+  rows, and contributes the observed information of that log-density to the
+  covariance.  On an exponential time-to-event model with a closed-form marginal
+  likelihood the reported -2LL goes from 1124 to within 1e-3 of the exact 1392;
+  against the Gaussian twin of a one-compartment model (an `ll()` written as the
+  exact normal log-density versus the equivalent `add()` model) the standard
+  error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
+  values now agree outright rather than up to a constant.
+
+- `saemControl(covMethod=)` `"sa"` and `"fim"` now say plainly that they do not
+  apply to a general log-likelihood endpoint and use the linearized Fisher
+  information, instead of reporting that the covariance "could not be computed".
+  The stochastic-approximation covariance phase is also skipped for such a model
+  rather than run and discarded.
+
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
