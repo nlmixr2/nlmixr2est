@@ -247,7 +247,10 @@
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
                         maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
                         indTolRelax=rxode2::rxGetControl(ui, "indTolRelax", TRUE),
-                        nSaCov=if (identical(rxode2::rxGetControl(ui, "covMethod", "linFim"), "sa"))
+                        # a general likelihood discards the SA covariance phase
+                        # (.saemCalcCov), so do not pay for it either
+                        nSaCov=if (identical(rxode2::rxGetControl(ui, "covMethod", "linFim"), "sa") &&
+                                     !.saemGeneralLik(ui))
                                  as.integer(rxode2::rxGetControl(ui, "nSaCov", 500L)) else 0L,
                         nres=ui$saemModNumEst,
                         perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
@@ -690,6 +693,17 @@
     # (.saemInstallAnalyticCov, once the fit object exists); compute the
     # linearized FIM now as the ready fallback and flag the analytic attempt
     assign(".saemCovAnalyticPending", TRUE, envir = env)
+    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    .cm <- "linFim"
+  }
+  if (.cm %in% c("sa", "fim") && .saemGeneralLik(.ui)) {
+    # The complete-data Louis FIM behind "sa"/"fim" subtracts the information lost
+    # to the latent eta as Var[score], estimated from a handful of MCMC chains.  A
+    # general log-likelihood endpoint carries no residual error to anchor that, and
+    # measured against an exact marginal likelihood the result is several-fold too
+    # small (0.41 and 0.14 of the true SEs on an exponential TTE model), where the
+    # linearized FIM lands at 0.93 and 0.82.  Go straight to it.
+    message(sprintf("covMethod=\"%s\" is not supported with a general likelihood; using the linearized FIM", .cm))
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
     .cm <- "linFim"
   }

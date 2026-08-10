@@ -82,6 +82,13 @@ Three rules, each of which has caused a real bug:
 - **Check the lhs width before reading.**  `rxUpdateFuns` resolves symbols by NAME, so the
   same model can re-resolve to a different dll's `calc_lhs` later in a session.
   `odeSwapCheckLhsWidth()` probes it; skipping the check reads columns nobody wrote.
+  The probe answers by CALLING `calc_lhs`, so it must first make that call safe --
+  the pool has to hold the model's states, the model's parameter layout has to match
+  the pool model's (`calc_lhs` reads `par_ptr` BY INDEX, so equal widths in a
+  different order mis-read), and subject 0's per-thread pointers (`ind->on`,
+  `ind->lhs`) have to be bound with `iniSubjectE`.  Those pointers come from a
+  SOLVE, not from building the pool, so a set-up-but-never-solved pool segfaulted
+  inside the probe (#870).  A gate that can crash is worse than no gate.
 - **`OdeSwapScope` is NOT enough on its own -- the pool also rebases COMPARTMENT
   NUMBERS.**  `OdeSwapScope` fixes the neq stride; `OdeSwapCmtScope` puts the CMT basis
   back to the solved model's.  A solve that guards only the stride reads the right

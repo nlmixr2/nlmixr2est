@@ -302,6 +302,10 @@ foceiAnalyticGradPooled_ <- function(thVals, ebes, cols, cores, Oi, dOiEst, tr28
     .Call(`_nlmixr2est_foceiAnalyticGradPooled_`, thVals, ebes, cols, cores, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, censOpt, lamDir)
 }
 
+npEndpointForCmt_ <- function(cmt, endpointCmt) {
+    .Call(`_nlmixr2est_npEndpointForCmt_`, cmt, endpointCmt)
+}
+
 #' Build the nonparametric Psi (conditional-likelihood) matrix
 #'
 #' For an already set-up FOCEi inner problem (\code{vaeInnerSetup_}), evaluates
@@ -664,6 +668,19 @@ odeSwapRetryTest_ <- function(nFail, maxOdeRecalc, stickyRecalcN, odeRecalcFacto
 
 odeSwapPlanFor_ <- function(neq, nlhs) {
     .Call(`_nlmixr2est_odeSwapPlanFor_`, neq, nlhs)
+}
+
+#' Would `model`'s parameter layout be readable in a pool built for `pool`?
+#'
+#' The pure form of the lhs probe's parameter check, so both directions -- accept a
+#' peer that only spells the same slots differently, refuse one whose order differs --
+#' are testable without rigging a live registry.
+#' @param model peer model's `rxModelVars$params`
+#' @param pool pool model's `rxModelVars$params`
+#' @return TRUE when the peer may index the pool's parameter vector
+#' @noRd
+odeSwapParLayoutFor_ <- function(model, pool) {
+    .Call(`_nlmixr2est_odeSwapParLayoutFor_`, model, pool)
 }
 
 #' Record which model role rxode2's event path is bound to (R-side installs).

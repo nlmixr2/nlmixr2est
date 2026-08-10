@@ -340,6 +340,66 @@ nmTest({
     }, numeric(1)))
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
+  test_that("FOCE inner Newton accepts a noise-floor stall without moving the gradient", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # Issue #843.  FOCE's frozen-variance Newton drives |S| down until it hits the ODE
+    # solve's own noise, then cannot reach convTol however it steps -- and the whole
+    # gradient used to go to finite differences over a residual score of 1.5e-9.  It now
+    # accepts the best iterate when the Newton DECREMENT (the objective it still has left
+    # to give) is negligible.
+    #
+    # The stall is a mid-fit event, so force it here instead of hunting for the theta
+    # that produces it: foceEbeTol both sets the unreachable score target and bounds the
+    # decrement, so a tiny value makes every subject stall AND keeps the acceptance
+    # meaningful.  Asserting only that the counter moved would prove the branch ran, never
+    # that it was right, so the gradient is checked two ways -- against the non-stalling
+    # run at the same theta, and against central differences.
+    d <- nlmixr2data::theo_sd
+    .at <- function(...) suppressMessages(suppressWarnings(nlmixr2(.fast_one_cmt, d, "foce",
+      foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
+                   maxInnerIterations = 300L, ...))))
+    .ok <- .at(fast = TRUE)                          # default tolerance: no stall
+    .st <- .at(fast = TRUE, foceEbeTol = 1e-13)      # unreachable target: stalls, accepted
+    .no <- .at(fast = TRUE, foceEbeTol = 1e-30)      # ...and a decrement bound nothing meets
+    expect_equal(unname(.ok$env$nNewtonStall), 0L)
+    expect_gt(unname(.st$env$nNewtonStall), 0L)      # the acceptance really ran
+    expect_equal(unname(.st$env$nFDGradFast), 0L)    # ...and did not decline
+    expect_equal(unname(.st$env$nNewtonFail[["maxit"]]), 0L)
+    # The gate must still be able to say NO, or "an unconverged mode declines" is
+    # untested and a regression that accepts everything would look identical.  Same
+    # stall, decrement bound driven below anything the solve can deliver: rejected,
+    # and attributed to the Newton rather than lost.
+    expect_equal(unname(.no$env$nNewtonStall), 0L)
+    expect_gt(.no$env$nNewtonFail[["maxit"]], 0L)
+    expect_equal(.no$env$nGradDecline[["newton"]], .no$env$nNewtonFail[["maxit"]])
+    expect_equal(.no$env$nNewtonFail[["singular"]], 0L)   # rejected by the gate, not by Hf
+    expect_null(.foceiGradDirect(.no))                    # ...so no analytic gradient
+    gOk <- .foceiGradDirect(.ok)
+    gSt <- .foceiGradDirect(.st)
+    expect_false(is.null(gOk))
+    expect_false(is.null(gSt))
+    # accepting at the noise floor must not move the gradient it hands back
+    expect_equal(unname(gSt), unname(gOk), tolerance = 1e-6)
+    base <- fixef(.ok)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(.ok$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
+                     maxInnerIterations = 300L))))$objf
+    }
+    # h = 1e-4, not the 1e-3 used elsewhere: at this theta a 1e-3 step on add.sd puts the
+    # central difference 15% off its own h -> 0 limit (measured 4.88 at 1e-3 vs 4.247 at
+    # 1e-4 and 4.249 analytic), identically so under est="focei" -- a step-size artifact
+    # in the reference, not a property of FOCE.
+    h <- 1e-4
+    ## cached: a property of the model/data/theta, not of the gradient -- helper-gradref.R
+    fd <- .gradRef("foce-newton-stall", function()
+      vapply(names(base), function(nm)
+        (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
+    expect_equal(unname(gSt[names(base)]), unname(fd), tolerance = 0.01)
+  })
+
   test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

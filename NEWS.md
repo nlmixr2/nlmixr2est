@@ -83,11 +83,9 @@
   residual; for anything else it was filled anyway and inverted together with
   the parameters that do get reported.  It is now filled only in that case and
   dropped from the matrix otherwise, leaving the fixed-effect and Omega blocks
-  uncontaminated -- the residual block already came from the linearized FIM.  A
-  model with a general log-likelihood endpoint gains `covMethod="fim"` outright:
-  its residual slot was already empty, which made the matrix singular and lost
-  the method entirely.  `covMethod="linFim"` (the default) is unaffected; its
-  `calc.COV()` linearization was always per-endpoint.
+  uncontaminated -- the residual block already came from the linearized FIM.
+  `covMethod="linFim"` (the default) is unaffected; its `calc.COV()`
+  linearization was always per-endpoint.
 
 - `est="saem"` now skips a general log-likelihood (`ll()`) endpoint per endpoint
   in the residual M-step and in both mixture AE-steps, instead of only when the
@@ -96,6 +94,30 @@
   meaningless residual sum of squares there, which then also perturbed the
   stochastic-approximation FIM.  The `ll()` endpoint's residual bookkeeping is
   now left alone, as it already was for an all-`ll()` model.
+
+- Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
+  Gaussian observation** in both its objective function and its standard errors.
+  Such an endpoint estimates no residual error, so the residual step never runs
+  and the placeholder values it starts from survive: every log-density was scored
+  as a normal mean with standard deviation `10 + |ll|`.  The reported
+  `objf`/`logLik`/`AIC`/`BIC` and every standard error were meaningless, on the
+  default path -- `covMethod="sa"` cannot be computed for these models and
+  already fell back to the linearized Fisher information, which is where the
+  defect lives.  An `ll()` row now contributes its own log-density to the
+  objective, with the `log(2*pi)` normalizer applied only to normally-distributed
+  rows, and contributes the observed information of that log-density to the
+  covariance.  On an exponential time-to-event model with a closed-form marginal
+  likelihood the reported -2LL goes from 1124 to within 1e-3 of the exact 1392;
+  against the Gaussian twin of a one-compartment model (an `ll()` written as the
+  exact normal log-density versus the equivalent `add()` model) the standard
+  error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
+  values now agree outright rather than up to a constant.
+
+- `saemControl(covMethod=)` `"sa"` and `"fim"` now say plainly that they do not
+  apply to a general log-likelihood endpoint and use the linearized Fisher
+  information, instead of reporting that the covariance "could not be computed".
+  The stochastic-approximation covariance phase is also skipped for such a model
+  rather than run and discarded.
 
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
@@ -107,6 +129,22 @@
   the tolerance.  On a warfarin fit started from `k=1/h` (true value near `0.02/h`)
   this froze the volume eta for 19 of 32 subjects, biasing the population
   estimates and shrinking that eta's variance about fourfold.
+- Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
+  discarding a usable analytic outer gradient and paying for a full
+  finite-difference gradient instead.  FOCE freezes the residual variance, so its
+  mode is not the inner problem's and an inner Newton has to find it; that Newton
+  demanded a score below `foceiControl(foceEbeTol=)` (`1e-9`) even though the
+  score is computed from the ODE solve and cannot be driven below the solve's own
+  noise.  On the reported model it reached `|S| = 1.5e-9` and then threw the whole
+  gradient away over a Newton decrement -- the objective the point still had left
+  to give -- of `2e-15`.  A stalled subject is now accepted at its best iterate
+  when that decrement is negligible, and the iterate itself is kept rather than
+  wherever the exhausted line search stopped.  `mfoce` reaches a pure analytic
+  gradient on the reported model, and the 3-ETA theophylline fit's
+  finite-difference fallbacks drop from 16 to 1 while `mfoce` and `ifoce` -- which
+  solve the same problem -- now agree with each other instead of landing 6.7
+  objective-function units apart.  A genuinely unconverged mode still declines.
+
 - Fixed `foceiControl(gradTrim=)` lower gradient clamp testing `g < gradTrim`
   instead of `g < -gradTrim`.  Since the branch above it had already caught
   everything over `+gradTrim`, every remaining component was replaced by
@@ -203,6 +241,31 @@
   observation.  Both guards tested the last row's value, so a subject whose final
   observation was Gaussian and uncensored slipped past them and was fit with an
   objective FO does not support.
+
+### Crashes and stability
+
+- The shared solve pool's lhs-width probe could **segfault** instead of
+  declining.  It verifies a model by calling that model's `calc_lhs`, and
+  generated `calc_lhs` dereferences per-subject pointers that are bound by a
+  solve, not by building the pool -- so an inner problem that had been set up but
+  had not solved yet crashed inside the check written to make a mismatched model
+  fall back safely.  The probe now binds the subject itself, and additionally
+  verifies that the pool holds the model's states and that its parameter layout
+  matches the one the pool's parameter vector was filled with (`calc_lhs` reads
+  it by index, so a same-width model in a different order mis-reads).  Fits are
+  unchanged; `.odeSwapInfo()` reports the new `npars`/`parLayoutOk` columns and
+  the `probeIniN`/`probeDenyN` counters.  The lhs column map, which is installed
+  separately from the model it describes, is now checked against that model's
+  width at the pooled entries as well.
+- `est="npag"` / `est="npb"` now **exclude** an observation or a residual
+  parameter whose endpoint cannot be determined from the residual moment warm
+  start, instead of attributing it to the first endpoint.  Both the observation
+  `CMT` lookup and the residual parameter's `condition` lookup resolved "no
+  match" to endpoint 0, which is indistinguishable from the correct answer for a
+  single-endpoint model; on a multi-endpoint model that warm-started (and, where
+  there is a lone scale per endpoint, estimated) one endpoint's residual SD from
+  another endpoint's residuals.  Anything dropped this way is now reported in
+  `$runInfo` rather than being silent.
 
 # nlmixr2est 7.0.2
 

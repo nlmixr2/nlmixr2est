@@ -305,6 +305,8 @@ struct focei_options {
   int nNewtonSingular = 0;  // Hf could not be factored, or S/Hf went non-finite
   double newtonWorstS = 0;  // largest |S| left on the table by a maxit failure
   int nNewtonBacktrack = 0; // damped (halved) Newton steps taken
+  int nNewtonStall = 0;     // subjects accepted at the solve's noise floor (#843)
+  double newtonStallS = 0;  // largest |S| accepted that way
   int nFdOutlierParam = 0;  // parameters whose FD slopes had a modified-z outlier
   int nFdChartrand = 0;     // subject-parameter slopes replaced by the TV derivative
   std::atomic<int> outerStickyTol{0};
@@ -4711,6 +4713,43 @@ static std::vector<int> _ivFrom(SEXP x) {
   return o;
 }
 
+// Does every lhs column this map names exist in a model `nlhs` wide?
+//
+// The column map is installed SEPARATELY from the model it describes
+// (foceiGradPooledSetupLoad_ takes a list built in R, and the augmented model is
+// registered by the setup path), so a map built for a different model than the one
+// bound indexes columns nobody wrote -- past the end of the lhs buffer once it is
+// wider.  outerSolveFill reads every index below with no bound of its own, so this is
+// checked at the entries, which decline to the rxode2::rxSolve route.  Companion to
+// odeSwapCheckLhsWidth, which answers the same question about the MODEL (#870).
+static bool outerColsWithin(const OuterCols &C, int nlhs) {
+  if (nlhs <= 0) return false;
+  const std::vector<int> *vs[] = {&C.f1, &C.f2, &C.rvar1, &C.rvar2, &C.rsig, &C.rsig2, &C.tr};
+  const size_t nvs = sizeof(vs) / sizeof(vs[0]);
+  // predf/rvarf are read unconditionally (lhs[predf], lhs[rvarf]), and both default to
+  // -1 -- so they need their OWN negative test, not just the running maximum: another
+  // map pushing that maximum non-negative would otherwise pass a lhs[-1] read.
+  if (C.predf < 0) return false;
+  if (C.hasR && C.rvarf < 0) return false;
+  int mx = C.predf;
+  if (C.hasR && C.rvarf > mx) mx = C.rvarf;
+  for (size_t v = 0; v < nvs; ++v) {
+    for (size_t k = 0; k < vs[v]->size(); ++k) {
+      int c = (*vs[v])[k];
+      if (c < 0) return false;
+      if (c > mx) mx = c;
+    }
+  }
+  for (size_t s = 0; s < C.rsig1.size(); ++s) {
+    for (size_t k = 0; k < C.rsig1[s].size(); ++k) {
+      int c = C.rsig1[s][k];
+      if (c < 0) return false;
+      if (c > mx) mx = c;
+    }
+  }
+  return mx >= 0 && mx < nlhs;
+}
+
 // Flatten an R lhs column map into the POD.  Shared by the per-fit cache below and by
 // vaeOuterSolve_, which still receives its map from R.
 static void colsFromList(List cols, OuterCols &C) {
@@ -4844,7 +4883,7 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // ordinary finite-difference gradient, which is correct -- just slower.
   if (!op_focei.warnedAnalyticFallback) {
     op_focei.warnedAnalyticFallback = 1;
-    Rf_warning("fast=TRUE: the analytic outer gradient could not be solved at this point; using the finite-difference gradient for the affected iteration(s)");
+    Rf_warning("analytic outer gradient declined; used finite differences");
   }
   return false;
 }
@@ -7113,6 +7152,8 @@ Environment foceiOuter(Environment e){
   op_focei.nNewtonSingular=0;
   op_focei.newtonWorstS=0;
   op_focei.nNewtonBacktrack=0;
+  op_focei.nNewtonStall=0;
+  op_focei.newtonStallS=0;
   op_focei.nFdOutlierParam=0;
   op_focei.nFdChartrand=0;
   op_focei.firstDirectGrad.clear();
@@ -9708,6 +9749,10 @@ void foceiFinalizeTables(Environment e){
           _["solve"] = op_focei.nNewtonSolve,
           _["singular"] = op_focei.nNewtonSingular,
           _["backtrack"] = op_focei.nNewtonBacktrack);
+        // Subjects the Newton accepted at the solve's noise floor rather than declining
+        // the gradient over an unreachable score tolerance -- see foceEbeNewton.
+        e["nNewtonStall"] = IntegerVector::create(op_focei.nNewtonStall);
+        e["newtonStallS"] = NumericVector::create(op_focei.newtonStallS);
         e["nFdOutlier"] = IntegerVector::create(
           _["params"] = op_focei.nFdOutlierParam,
           _["chartrandSlopes"] = op_focei.nFdChartrand);
@@ -12509,6 +12554,8 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   const int neta = (int)op_focei.neta;
   std::vector<VaeOuterE> Es((size_t)nsub);
   FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  // ... and the map R just handed us must name columns this model actually has
+  if (!outerColsWithin(_gcols, op_focei.vaeOuterNlhs)) return R_NilValue;
   std::vector<double> _thv((size_t)thVals.size());
   for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
   arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
@@ -12669,6 +12716,12 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   std::vector<double> alpha((size_t)nsub, 1.0);
   std::vector<int> nback((size_t)nsub, 0);
   std::vector<char> haveStep((size_t)nsub, 0);
+  // Best (lowest |S|) iterate seen, with its Newton decrement.  A stalled subject returns
+  // this rather than wherever the exhausted line search happened to stop -- that point is
+  // by construction WORSE than the reference it failed to beat.
+  arma::mat bestEta = ebes;
+  std::vector<double> bestS((size_t)nsub, R_PosInf);
+  std::vector<double> bestLam2((size_t)nsub, R_PosInf);
   for (int it = 0; it <= maxit; ++it) {
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, etaOut, G, cores, op, nsub, neta, Es);
     bool any = false;
@@ -12710,19 +12763,54 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; return false; }
       double sMax = arma::abs(S).max();
       if (sMax < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
-      if (it == maxit) {                             // did not converge
+      // The Newton decrement lam2 = S' Hf^-1 S is how much of the objective this point
+      // still has left to give -- the frozen-variance objective is on the -LL scale, so
+      // lam2 is the remaining -2LL decrease.  Unlike |S| it is invariant to how eta and
+      // omega are scaled, which is what makes it the right thing to judge a stall by.
+      // Recorded with the LOWEST-|S| iterate, since that is the eta a stall returns.
+      //
+      // Solve only where the point can BE that iterate.  A backtracking point has
+      // sMax >= prevS, and prevS is the best seen (it is only ever lowered by a step that
+      // improved on it), so such a point never wins the comparison below -- solving there
+      // would be work thrown away, and arma::solve warns to stderr on a singular system,
+      // which is exactly the region an overshot step lands in.
+      const bool backtracking = haveStep[(size_t)i] && sMax >= prevS[(size_t)i];
+      arma::vec step;
+      bool haveSolve = false;
+      if (!backtracking) {
+        haveSolve = arma::solve(step, Hf, S);
+        if (haveSolve && sMax < bestS[(size_t)i]) {
+          bestS[(size_t)i] = sMax;
+          bestLam2[(size_t)i] = arma::dot(S, step);
+          bestEta.row(i) = etaOut.row(i);
+        }
+      }
+      // Out of iterations, or the line search has run out of halvings: either way the
+      // Newton has reached the precision the ODE solve allows, and |S| cannot be pushed
+      // below the solve's own noise (nlmixr2/nlmixr2est#843 -- FOCE reached |S| = 1.5e-9
+      // against convTol = 1e-9 and declined the whole gradient over the last factor of
+      // 1.5).  So judge the stall by what is actually at stake: accept the best iterate
+      // when its remaining objective decrease is below convTol and its score is inside
+      // the loose stationarity band the first iteration already trusts, and decline only
+      // when the mode genuinely was not reached.  The gradient error an off-mode eta
+      // causes is S'(deta/dtheta), which sqrt(lam2) bounds in the Hf metric.
+      const bool stalled = (it == maxit) || (backtracking && nback[(size_t)i] >= maxBack);
+      if (stalled) {
+        if (bestS[(size_t)i] < skipTol && bestLam2[(size_t)i] >= 0 &&
+            bestLam2[(size_t)i] <= convTol) {
+          etaOut.row(i) = bestEta.row(i);
+          active[(size_t)i] = 0;
+          op_focei.nNewtonStall++;
+          if (bestS[(size_t)i] > op_focei.newtonStallS) op_focei.newtonStallS = bestS[(size_t)i];
+          continue;
+        }
         op_focei.nNewtonMaxit++;
-        if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
+        if (bestS[(size_t)i] > op_focei.newtonWorstS) op_focei.newtonWorstS = bestS[(size_t)i];
         return false;
       }
       // Did the last step actually reduce |S|?  If not, undo it and retry at half the
       // length; the Newton DIRECTION is kept, only its magnitude is cut.
-      if (haveStep[(size_t)i] && sMax >= prevS[(size_t)i]) {
-        if (nback[(size_t)i] >= maxBack) {         // damping exhausted: give up honestly
-          op_focei.nNewtonMaxit++;
-          if (sMax > op_focei.newtonWorstS) op_focei.newtonWorstS = sMax;
-          return false;
-        }
+      if (backtracking) {
         etaOut.row(i) += alpha[(size_t)i] * lastStep[(size_t)i].t();   // undo
         alpha[(size_t)i] *= 0.5;
         etaOut.row(i) -= alpha[(size_t)i] * lastStep[(size_t)i].t();   // reapply, shorter
@@ -12731,8 +12819,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         any = true;
         continue;                                  // re-solve and re-judge the same step
       }
-      arma::vec step;
-      if (!arma::solve(step, Hf, S)) { op_focei.nNewtonSingular++; return false; }
+      if (!haveSolve) { op_focei.nNewtonSingular++; return false; }
       prevS[(size_t)i] = sMax;                     // reference for judging this new step
       lastStep[(size_t)i] = step;
       alpha[(size_t)i] = 1.0;
@@ -12868,6 +12955,8 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   if (rx == NULL) return false;
   rx_solving_options *op = getSolvingOptions(rx);
   if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  // ... and the installed column map must name columns that model actually has
+  if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return false;
   const int nsub = (int)getRxNsub(rx);
   if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
   // Censored (M2/M3/M4) observations enter an ll() objective as -logPhi, a contribution
@@ -13028,6 +13117,8 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   if (rx == NULL) return declineHere(6);
   rx_solving_options *op = getSolvingOptions(rx);
   if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return declineHere(7);
+  // ... and the installed column map must name columns that model actually has
+  if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return declineHere(24);
   const int nsub = (int)getRxNsub(rx);
   const int neta = G.neta, nth = G.nth, nsg = G.nsg, nom = G.nom, nd = G.nd;
   const int np = nth + nsg + nom;
@@ -13213,6 +13304,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     // here, outside outerSolveFill's OpenMP region, because the shape is a process
     // global; the destructor restores the outer slot for the assembly below.
     if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return declineHere(21);
+    if (!outerColsWithin(G.colsNode, odeSwapNlhs(odeSlotOuterNode))) return declineHere(25);
     OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
     Ek.resize((size_t)nn);
     for (int k = 0; k < nn; ++k) {
@@ -13495,6 +13587,31 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
 }
 
 
+// Everything foceiAnalyticGradPooled_ must establish before it commits to a solve: the
+// augmented model is bound and its bound code matches the registry, the live pool is the
+// one the registry describes, the caller's etas match the problem, and the column map
+// names columns this model actually has.  Hands back the pieces the caller then needs
+// (`op`, `nsub`, the flattened map) so nothing is read twice.
+//
+// Split out of the entry rather than inlined: these are the checks, and keeping them
+// here leaves the entry itself about the gradient.  `rx` is the file-scope global the
+// rest of this file reads, and is assigned here exactly as before.
+static bool analyticGradPooledReady(const NumericMatrix &ebes, const List &cols, int neta,
+                                    rx_solving_options *&op, int &nsub,
+                                    FoceiGradPooledSetup &gcols) {
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return false;
+  rx = getRxSolve_();
+  if (rx == NULL) return false;
+  op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  nsub = (int)getRxNsub(rx);
+  if (ebes.nrow() != nsub || (int)ebes.ncol() != neta) return false;
+  if (!as<bool>(cols["hasR"])) return false;  // (f,R) kernel only; the FOCE path stays in R
+  colsFromList(cols, gcols);
+  // ... and the map R just handed us must name columns this model actually has
+  return outerColsWithin(gcols, op_focei.vaeOuterNlhs);
+}
+
 //' FOCEI analytic outer gradient, computed entirely in C++.
 //'
 //' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
@@ -13534,19 +13651,13 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
   // The fit's tolerance, reset for this solve -- there is no separate analytic
   // tolerance; see OdeFitTolGuard.
   OdeFitTolGuard _tolGuard;
-  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
-  rx = getRxSolve_();
-  if (rx == NULL) return R_NilValue;
-  rx_solving_options *op = getSolvingOptions(rx);
-  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
-  const int nsub = (int)getRxNsub(rx);
-  if (ebes.nrow() != nsub || (int)ebes.ncol() != neta) return R_NilValue;
+  rx_solving_options *op = NULL;
+  int nsub = 0;
+  FoceiGradPooledSetup _gcols;
+  if (!analyticGradPooledReady(ebes, cols, neta, op, nsub, _gcols)) return R_NilValue;
   const int nd = as<int>(cols["nd"]);
-  const bool hasR = as<bool>(cols["hasR"]);
   const bool hasT = as<bool>(cols["hasT"]);
-  if (!hasR) return R_NilValue;            // (f,R) kernel only; the FOCE path stays in R
   std::vector<VaeOuterE> Es((size_t)nsub);
-  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
   std::vector<double> _thv((size_t)thVals.size());
   for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
   arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
@@ -13909,7 +14020,13 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       if (getIndEvid(ind, kk) != 0) continue;
       // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
       // skipped subject or every later subject's rows land in the wrong endpoint.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : 0;
+      // No map at all means no per-observation endpoint was supplied; running off the
+      // end of one means the map does not describe this solve.  Either way the row is
+      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+      // scale (the rest fixed) also gives 1.
+      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
       obsIdx++;
       if (skipMoments) continue;
       double dv = tbs(getIndDv(ind, kk));
@@ -13930,30 +14047,56 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
   return mom;
 }
 
+// 0-based endpoint of one observation's cmt, or -1 when it belongs to no endpoint.
+// endpointCmt holds the cmt of each endpoint in predDf order (distinct, not
+// necessarily sequential).  A single-endpoint model has no CMT covariate, so
+// getIndCmt returns 1 rather than predDf$cmt -- there is nothing to match, and every
+// observation is that one endpoint.  With no endpoint at all, or a cmt that names
+// none of them (including NA_INTEGER, "no compartment recorded here"), the answer is
+// -1 so the caller can EXCLUDE the observation; laundering it into 0 filed it under
+// the first endpoint (issue #856).
+int npEndpointForCmt(int cmt, const std::vector<int>& endpointCmt) {
+  if (endpointCmt.size() == 1) return 0;
+  if (cmt == NA_INTEGER) return -1;
+  for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
+    if (endpointCmt[ee] == cmt) return (int)ee;
+  }
+  return -1;
+}
+
+//[[Rcpp::export]]
+Rcpp::IntegerVector npEndpointForCmt_(Rcpp::IntegerVector cmt,
+                                      Rcpp::IntegerVector endpointCmt) {
+  std::vector<int> ec(endpointCmt.begin(), endpointCmt.end());
+  Rcpp::IntegerVector ret(cmt.size());
+  for (R_xlen_t i = 0; i < cmt.size(); ++i) ret[i] = npEndpointForCmt(cmt[i], ec);
+  return ret;
+}
+
 // Per-observation 0-based endpoint index in the subject-major getIndIx order that
-// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  endpointCmt gives
-// the cmt value of each endpoint in predDf order (cmt values are distinct, not
-// necessarily sequential); each observation's cmt is matched to it.  A single-endpoint
-// model has no CMT covariate, so getIndCmt returns 1 and every observation maps to
-// endpoint 0.  Lets the moment warm start be per-endpoint for a multi-endpoint model.
+// npResidMoments iterates, from the cached CMT covariate (getIndCmt).  Unmatched
+// observations come back as -1 (npResidMoments skips those).  Lets the moment warm
+// start be per-endpoint for a multi-endpoint model.
 arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int nsub = (int)getRxNsub(rx);
   std::vector<int> out;
+  int nUnmatched = 0;
   for (int i = 0; i < nsub; ++i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     int n = getIndNallTimes(ind);
     for (int j = 0; j < n; ++j) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;   // observations only, matching npResidMoments
-      int cmt = getIndCmt(op, ind, kk);
-      int e = 0;
-      for (size_t ee = 0; ee < endpointCmt.size(); ++ee) {
-        if (endpointCmt[ee] == cmt) { e = (int)ee; break; }
-      }
+      int e = npEndpointForCmt(getIndCmt(op, ind, kk), endpointCmt);
+      if (e < 0) nUnmatched++;
       out.push_back(e);
     }
+  }
+  if (nUnmatched > 0) {
+    Rf_warning("%d obs. match no endpoint, dropped from the residual warm start",
+               nUnmatched);
   }
   arma::ivec ret((arma::uword)out.size());
   for (size_t k = 0; k < out.size(); ++k) ret[k] = out[k];

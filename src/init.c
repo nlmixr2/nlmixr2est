@@ -60,6 +60,7 @@ extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
 extern SEXP _nlmixr2est_foceiOuterFdInd_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiIndLik_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
+extern SEXP _nlmixr2est_odeSwapParLayoutFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapRetryTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -193,6 +194,7 @@ SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
 SEXP _nlmixr2est_npIpmBurke(SEXP);
 SEXP _nlmixr2est_npBuildPsi(SEXP, SEXP);
+SEXP _nlmixr2est_npEndpointForCmt_(SEXP, SEXP);
 SEXP _nlmixr2est_npSobolGrid_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_npCondense_(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_npagCycle_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -231,6 +233,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiOuterFdInd_", (DL_FUNC) &_nlmixr2est_foceiOuterFdInd_, 2},
   {"_nlmixr2est_foceiIndLik_", (DL_FUNC) &_nlmixr2est_foceiIndLik_, 2},
   {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
+  {"_nlmixr2est_odeSwapParLayoutFor_", (DL_FUNC) &_nlmixr2est_odeSwapParLayoutFor_, 2},
   {"_nlmixr2est_odeSwapRetryTest_", (DL_FUNC) &_nlmixr2est_odeSwapRetryTest_, 7},
   {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},
   {"_nlmixr2est_adviElboGradFR_", (DL_FUNC) &_nlmixr2est_adviElboGradFR_, 6},
@@ -336,6 +339,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nmNearPD_", (DL_FUNC) &_nlmixr2est_nmNearPD_, 10},
   {"_nlmixr2est_npIpmBurke", (DL_FUNC) &_nlmixr2est_npIpmBurke, 1},
   {"_nlmixr2est_npBuildPsi", (DL_FUNC) &_nlmixr2est_npBuildPsi, 2},
+  {"_nlmixr2est_npEndpointForCmt_", (DL_FUNC) &_nlmixr2est_npEndpointForCmt_, 2},
   {"_nlmixr2est_npSobolGrid_", (DL_FUNC) &_nlmixr2est_npSobolGrid_, 3},
   {"_nlmixr2est_npCondense_", (DL_FUNC) &_nlmixr2est_npCondense_, 4},
   {"_nlmixr2est_npagCycle_", (DL_FUNC) &_nlmixr2est_npagCycle_, 6},

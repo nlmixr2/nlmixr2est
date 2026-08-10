@@ -152,6 +152,10 @@ typical fitting.}
  between-subject variability dominates the residual), so those variance-block standard
  errors are spliced in from the linearized FIM (\code{linFim}).
 
+ Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
+ no residual error to anchor the complete-data correction; such a model goes
+ straight to \code{linFim} with a message.
+
  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 
  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}

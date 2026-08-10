@@ -154,7 +154,9 @@
 #'     first iteration uses a looser \code{1e-3} so an already-stationary eta is
 #'     returned untouched.  Unlike the solver and optimizer tolerances this is not
 #'     derived from \code{sigdig} -- it is a convergence target on an inner Newton
-#'     rather than a precision request.  Set it explicitly to test whether a fit's
+#'     rather than a precision request.  It also bounds the Newton decrement at
+#'     which a stalled subject is accepted at the ODE solve's noise floor rather
+#'     than declining the gradient.  Set it explicitly to test whether a fit's
 #'     finite-difference fallbacks are tolerance-driven.
 #'
 #' @param hessEps is a double value representing the epsilon for the

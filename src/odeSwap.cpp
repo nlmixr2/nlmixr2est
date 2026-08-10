@@ -19,6 +19,14 @@ struct OdeModelReg {
   std::vector<std::string> lhsNames;
   int neq = 0;
   int nlhs = 0;
+  // The model's OWN parameter layout, from rxModelVars$params.  Generated calc_lhs
+  // reads par_ptr BY INDEX (`THETA_1_ = _PP[0]` ...), while par_ptr is filled for
+  // whichever model the pool was built from -- so the width alone does not make a
+  // peer safe to read, its parameter ORDER has to be the pool's too.  Recorded
+  // here (declare time, no DLL load) so odeSwapCheckLhsWidth can verify the layout
+  // it is about to index into instead of trusting a count.
+  int npars = 0;
+  std::vector<std::string> parNames;
   // Endpoint (CMT) rebasing -- see odeSwapCmtRebase().  rxode2 compiles each
   // model's endpoint switch against the USER compartment numbering and emits
   //   #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
@@ -75,10 +83,15 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   m.nSens = mv.containsElementNamed("sens") ?
     as<CharacterVector>(mv["sens"]).size() : 0;
   m.cmtPar = -1;
+  m.npars = 0;
+  m.parNames.clear();
   if (mv.containsElementNamed("params")) {
     CharacterVector pars = as<CharacterVector>(mv["params"]);
+    m.npars = pars.size();
+    m.parNames.resize((size_t)pars.size());
     for (int i = 0; i < pars.size(); ++i) {
-      if (as<std::string>(pars[i]) == "CMT") { m.cmtPar = i; break; }
+      m.parNames[(size_t)i] = as<std::string>(pars[i]);
+      if (m.parNames[(size_t)i] == "CMT") m.cmtPar = i;
     }
   }
   // Record only WHETHER this model carries event ("jump") sensitivities.  The
@@ -287,8 +300,9 @@ void odeSwapClear(int slot) {
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
-  m.nSens = 0; m.cmtPar = -1;
+  m.nSens = 0; m.cmtPar = -1; m.npars = 0;
   m.lhsNames.clear();
+  m.parNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
   _odePlanStale = true;
 }
@@ -401,7 +415,64 @@ OdeSwapCmtScope::~OdeSwapCmtScope() {
 
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
 int  odeSwapNlhs(int slot)   { return odeSwapLoaded(slot) ? _odeReg[slot].nlhs : 0; }
+int  odeSwapNpars(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].npars : 0; }
 const char *odeSwapName(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].name : NULL; }
+
+// `THETA[k]`/`ETA[k]` and `THETA_k_`/`ETA_k_` name the SAME par_ptr position.  The
+// inner/pred/hess2 models carry rxode2's bracketed spelling; the augmented models are
+// generated with the underscore one because param() cannot declare a bracketed name.
+// Canonicalize so the layout comparison below sees positions rather than spellings --
+// measured: every peer of a fast=TRUE fit differs from the pool model in spelling only.
+static std::string odeSwapCanonPar(const std::string &s) {
+  static const char *pre[2] = {"THETA", "ETA"};
+  for (int i = 0; i < 2; ++i) {
+    std::string p(pre[i]);
+    if (s.size() <= p.size() + 2 || s.compare(0, p.size(), p) != 0) continue;
+    std::string rest = s.substr(p.size());
+    char a = rest[0], b = rest[rest.size() - 1];
+    if (!((a == '[' && b == ']') || (a == '_' && b == '_'))) continue;
+    std::string num = rest.substr(1, rest.size() - 2);
+    if (num.find_first_not_of("0123456789") != std::string::npos) continue;
+    return p + ":" + num;
+  }
+  return s;
+}
+
+// Does `slot`'s parameter layout match the one par_ptr was filled with?
+//
+// par_ptr is a per-subject slice of one gpars block, stride rx->npars, laid out for
+// the model rxSolve_ was given -- the POOL model.  A peer's calc_lhs indexes it with
+// ITS own positions, so the peer is only readable when its parameters are the pool's,
+// name for name, at the same indices.  A wider peer runs off its subject's slice into
+// the next one (past the end entirely for the last subject); an equally wide peer with
+// a different ORDER reads finite garbage, which counting cannot catch.
+//
+// The pool model's own slot always matches itself, so a plain single-model fit and
+// every standalone solve answer true without comparing anything.
+// Pure form, so the comparison is testable without a fit -- as odeSwapPlanFor is for
+// the pool decision.  `m` is the peer's parameter names, `pool` the pool model's.
+bool odeSwapParLayoutMatch(const std::vector<std::string> &m,
+                           const std::vector<std::string> &pool) {
+  // A peer that reads NO parameters cannot mis-read them, whatever the pool holds.
+  if (m.empty()) return true;
+  // ... but a peer that DOES read them and has nothing to be checked against is
+  // unverifiable, and unverifiable must decline.  Answering "true" here would accept
+  // exactly the case this exists to catch.
+  if (pool.empty() || m.size() > pool.size()) return false;
+  for (size_t i = 0; i < m.size(); ++i) {
+    if (odeSwapCanonPar(m[i]) != odeSwapCanonPar(pool[i])) return false;
+  }
+  return true;
+}
+
+static bool odeSwapParLayoutOk(int slot, rx_solve *rx) {
+  if (rx == NULL || !odeSwapLoaded(slot)) return false;
+  const OdeModelReg &m = _odeReg[slot];
+  if (m.npars > getRxNpars(rx)) return false;
+  const OdePoolPlan &p = odeSwapPlan();
+  if (p.poolSlot < 0 || p.poolSlot == slot) return true;
+  return odeSwapParLayoutMatch(m.parNames, _odeReg[p.poolSlot].parNames);
+}
 
 SEXP odeSwapModelSEXP(int slot) {
   if (!odeSwapLoaded(slot) || _odeModels == R_NilValue) return R_NilValue;
@@ -520,24 +591,83 @@ static std::atomic<long> _odePooledSolveN(0);
 static std::atomic<int>  _odePooledSolveCores(NA_INTEGER);
 static std::atomic<long> _odePinCalledN(0);
 static std::atomic<int>  _odePinDeny(0);
+// The probe bound subject 0 (iniSubjectE) before calling calc_lhs on it.
+static std::atomic<long> _odeProbeIniN(0);
+// The probe refused to run at all: the pool cannot hold what this model reads.
+static std::atomic<long> _odeProbeDenyN(0);
 
 long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_relaxed); }
 long odeSwapLhsWidthMismatchN() { return _odeLhsWidthMismatchN.load(std::memory_order_relaxed); }
 long odeSwapOverrideNeutralizedN() { return _odeOverrideNeutralizedN.load(std::memory_order_relaxed); }
+long odeSwapProbeIniN()  { return _odeProbeIniN.load(std::memory_order_relaxed); }
+long odeSwapProbeDenyN() { return _odeProbeDenyN.load(std::memory_order_relaxed); }
+
+static inline bool probeDeny() {
+  _odeProbeDenyN.fetch_add(1, std::memory_order_relaxed);
+  return false;
+}
+
+// Can the probe below safely CALL this slot's calc_lhs at all?
+//
+// Everything that call READS has to fit, not just the lhs vector it writes -- a buffer
+// that is too small, or laid out for someone else, faults before the probe can return an
+// answer, which is the one thing a gate like this must never do.
+//
+//   states:     it reads __zzStateVar__ = ind->solve, sized by the POOL;
+//   parameters: it reads par_ptr by index, filled for the POOL model.
+//
+// Declining is the safe direction and what every other failure here does: the caller
+// falls back to the rxode2::rxSolve reference path, which is correct, just slower.
+static bool odeSwapProbeFits(int slot, rx_solve *rx, rx_solving_options *op,
+                             int wantLhs) {
+  if (wantLhs <= 0 || getOpNlhs(op) < wantLhs) return false;
+  // neq == 0 is legitimate, not a failure: an ODE-free model (a pure `ll()` regression)
+  // has real lhs outputs and symbolic sensitivities, and pools like any other -- see
+  // test-focei-ll-fast-grad-fit.R.  It simply reads no state.
+  int wantNeq = odeSwapNeq(slot);
+  if (wantNeq < 0 || getOpNeq(op) < wantNeq) return probeDeny();
+  if (!odeSwapParLayoutOk(slot, rx)) return probeDeny();
+  return true;
+}
+
+// Bind subject 0's PER-THREAD pointers (ind->on, ind->lhs, the tolerance slices).
+//
+// iniSubject binds them; building the pool does NOT -- rx->subjects comes back zeroed
+// from a fresh pool, and generated calc_lhs dereferences ind->on for every state it
+// reports.  That is the crash in #870: the fit paths only ever probed after their inner
+// solve, so the probe had never met a pool that had been set up and not yet solved.
+//
+// Done the way every real read site does it, rather than declining, so the probe still
+// answers.  Unconditionally, NOT only when the pointers read NULL: rx->subjects is freed
+// and re-allocated per pool, so a stale non-NULL pointer into a previous pool's buffers
+// is just as unusable and cannot be told apart by inspection.
+//
+// tolFactor is pinned to 1 across the call because iniSubject MULTIPLIES this
+// individual's tolerance slices by it in place.  Without the pin, probing would loosen
+// subject 0's tolerances one extra step per gradient evaluation -- the probe would be
+// changing the fit it exists to guard.
+static void odeSwapProbeBind(rx_solving_options_ind *ind, rx_solve *rx,
+                             rx_solving_options *op, rxSolveF *fns) {
+  _odeProbeIniN.fetch_add(1, std::memory_order_relaxed);
+  double tf = getIndTolFactor(ind);
+  setIndTolFactor(ind, 1.0);
+  iniSubjectE(0, 1, ind, op, rx, fns->update_inis);
+  setIndTolFactor(ind, tf);
+}
 
 bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
   if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
   int want = odeSwapNlhs(slot);
-  int room = getOpNlhs(op);
-  if (want <= 0 || room < want) return false;
+  if (!odeSwapProbeFits(slot, rx, op, want)) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
+  odeSwapProbeBind(ind, rx, op, fns);
   double *st = getIndSolve(ind);
-  if (st == NULL) return false;
+  if (getIndLhs(ind) == NULL || st == NULL) return probeDeny();
   // Only WHICH slots get written matters, not the values -- so use a sentinel no
   // model produces.  NaN would compare unequal and so read as "written".
   static const double _sent = -9.87654321e37;
-  std::vector<double> probe((size_t)room, _sent);
+  std::vector<double> probe((size_t)getOpNlhs(op), _sent);
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
@@ -545,18 +675,16 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
   int missing = 0;
   for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
-  if (missing > 0) {
-    // A model whose lhs are all inside conditional branches could in principle
-    // report missing here and lose the pooled route.  That is the safe direction:
-    // the caller then takes the rxode2::rxSolve reference path, which is correct,
-    // just slower -- and the counter plus the warning make it visible rather than
-    // silent.  odeSwapCanPool() computes deny reasons on demand.
-    if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
-      Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
-    }
-    return false;
+  if (missing == 0) return true;
+  // A model whose lhs are all inside conditional branches could in principle
+  // report missing here and lose the pooled route.  That is the safe direction:
+  // the caller then takes the rxode2::rxSolve reference path, which is correct,
+  // just slower -- and the counter plus the warning make it visible rather than
+  // silent.  odeSwapCanPool() computes deny reasons on demand.
+  if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
+    Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
   }
-  return true;
+  return false;
 }
 long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
@@ -814,6 +942,23 @@ List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs) {
                       _["overrideNeeded"] = p.overrideNeeded);
 }
 
+//' Would `model`'s parameter layout be readable in a pool built for `pool`?
+//'
+//' The pure form of the lhs probe's parameter check, so both directions -- accept a
+//' peer that only spells the same slots differently, refuse one whose order differs --
+//' are testable without rigging a live registry.
+//' @param model peer model's `rxModelVars$params`
+//' @param pool pool model's `rxModelVars$params`
+//' @return TRUE when the peer may index the pool's parameter vector
+//' @noRd
+//[[Rcpp::export]]
+bool odeSwapParLayoutFor_(CharacterVector model, CharacterVector pool) {
+  std::vector<std::string> m((size_t)model.size()), p((size_t)pool.size());
+  for (int i = 0; i < model.size(); ++i) m[(size_t)i] = as<std::string>(model[i]);
+  for (int i = 0; i < pool.size(); ++i) p[(size_t)i] = as<std::string>(pool[i]);
+  return odeSwapParLayoutMatch(m, p);
+}
+
 //' Record which model role rxode2's event path is bound to (R-side installs).
 //' Roles: -1 unknown, 0 pred, 1 inner, 2 outer, 3 hess2.
 //' @param slot role id
@@ -829,30 +974,36 @@ RObject odeSwapEsNoteInstalled_(int slot) {
 List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
   CharacterVector nm(odeSlotN);
-  IntegerVector neq(odeSlotN), nlhs(odeSlotN), deny(odeSlotN), esActive(odeSlotN);
-  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN);
+  IntegerVector neq(odeSlotN), nlhs(odeSlotN), npars(odeSlotN), deny(odeSlotN),
+    esActive(odeSlotN);
+  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN), parLayoutOk(odeSlotN);
+  rx_solve *_rxl = getRxSolve_();
   for (int s = 0; s < odeSlotN; ++s) {
     nm[s] = _odeReg[s].name == NULL ? NA_STRING : Rf_mkChar(_odeReg[s].name);
     neq[s] = _odeReg[s].neq;
     nlhs[s] = _odeReg[s].nlhs;
+    npars[s] = _odeReg[s].npars;
     loaded[s] = _odeReg[s].loaded;
     sizesPool[s] = (s == p.poolSlot);
     deny[s] = odeSwapCanPool(s);
     esActive[s] = _odeReg[s].esActive;
+    parLayoutOk[s] = _odeReg[s].loaded ? odeSwapParLayoutOk(s, _rxl) : NA_LOGICAL;
   }
   List models = List::create(_["slot"] = seq_len(odeSlotN) - 1, _["name"] = nm,
-                             _["neq"] = neq, _["nlhs"] = nlhs,
+                             _["neq"] = neq, _["nlhs"] = nlhs, _["npars"] = npars,
                              _["loaded"] = loaded, _["sizesPool"] = sizesPool,
+                             _["parLayoutOk"] = parLayoutOk,
                              _["deny"] = deny, _["esActive"] = esActive);
   models.attr("class") = "data.frame";
   models.attr("row.names") = IntegerVector::create(NA_INTEGER, -odeSlotN);
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
-  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER;
-  rx_solve *rxl = getRxSolve_();
+  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER, rxNpars = NA_INTEGER;
+  rx_solve *rxl = _rxl;
   IntegerVector activeOv(0);
   if (rxl != NULL) {
     rx_solving_options *op = getSolvingOptions(rxl);
     if (op != NULL) { opNeq = getOpNeq(op); opNlhs = getOpNlhs(op); }
+    rxNpars = getRxNpars(rxl);
     int nsub = (int)getRxNsub(rxl);
     if (nsub > 0) {
       activeOv = IntegerVector(nsub);
@@ -875,7 +1026,7 @@ List odeSwapInfo_() {
     _["needsScratch"] = (p.scratchNlhs > 0),
     _["overrideNeeded"] = p.overrideNeeded,
     _["nLoaded"] = p.nLoaded,
-    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs,
+    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs, _["rxNpars"] = rxNpars,
     _["pinned"] = odeSwapPinned(),
     _["pinnedSlot"] = odeSwapPinnedSlot(),
     // -1 per subject means "no override in force"; a non -1 left behind after a
@@ -884,6 +1035,8 @@ List odeSwapInfo_() {
     _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
     _["overrideNeutralizedN"] = (double)odeSwapOverrideNeutralizedN(),
     _["lhsWidthMismatchN"] = (double)odeSwapLhsWidthMismatchN(),
+    _["probeIniN"] = (double)odeSwapProbeIniN(),
+    _["probeDenyN"] = (double)odeSwapProbeDenyN(),
     _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
     _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
     _["pinnedN"] = (double)odeSwapPinnedN(),

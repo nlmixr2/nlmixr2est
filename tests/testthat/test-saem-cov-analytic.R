@@ -159,11 +159,12 @@ nmTest({
     expect_equal(.pr$covMethod, "fim")
   })
 
-  test_that("covMethod='fim' survives a general log-likelihood endpoint", {
+  test_that("covMethod='fim' is refused for a general log-likelihood endpoint", {
     skip_on_cran(); skip_if_not_installed("nlmixr2data")
-    # An ll() endpoint has no residual parameter, so the slot was already zeroed
-    # -- which made the FIM exactly singular and lost covMethod="fim" entirely.
-    # Dropping the row before inverting keeps it.
+    # An ll() endpoint has no residual parameter, so the slot is already zeroed and
+    # dropping it before inverting would make the FIM invertible.  Measured against
+    # an exact marginal likelihood that answer is several-fold too small (#871), so
+    # the combination is refused up front and the linearized FIM is used instead.
     .d <- mkPkpdTwoEndpointData(n = 20L)
     .pk <- .d[.d$dvid == "cp" | .d$evid == 1, ]
     .llm <- function() {
@@ -185,7 +186,7 @@ nmTest({
       nlmixr2(.llm, .pk, est = "saem",
               control = saemControl(nBurn = 60, nEm = 30, nmc = 3, seed = 7,
                                     print = 0L, covMethod = "fim"))))
-    expect_equal(.f$covMethod, "fim")
+    expect_equal(.f$covMethod, "linFim")
     expect_true(all(is.finite(stats::na.omit(.f$parFixedDf$SE))))
   })
 })
