@@ -576,58 +576,67 @@ static inline bool probeDeny() {
   return false;
 }
 
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
-  if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
-  int want = odeSwapNlhs(slot);
-  int room = getOpNlhs(op);
-  if (want <= 0 || room < want) return false;
-  // Everything the calc_lhs below READS has to be checked too, not just the lhs vector
-  // it writes -- this probe answers by CALLING the model, so any buffer that is too
-  // small or laid out for someone else faults before it can return an answer, which is
-  // the one thing a gate like this must never do.
-  //
-  //   states:     it reads __zzStateVar__ = ind->solve, sized by the POOL;
-  //   parameters: it reads par_ptr by index, filled for the POOL model.
-  //
-  // Declining is the safe direction and what every other failure here does: the caller
-  // falls back to the rxode2::rxSolve reference path, which is correct, just slower.
+// Can the probe below safely CALL this slot's calc_lhs at all?
+//
+// Everything that call READS has to fit, not just the lhs vector it writes -- a buffer
+// that is too small, or laid out for someone else, faults before the probe can return an
+// answer, which is the one thing a gate like this must never do.
+//
+//   states:     it reads __zzStateVar__ = ind->solve, sized by the POOL;
+//   parameters: it reads par_ptr by index, filled for the POOL model.
+//
+// Declining is the safe direction and what every other failure here does: the caller
+// falls back to the rxode2::rxSolve reference path, which is correct, just slower.
+static bool odeSwapProbeFits(int slot, rx_solve *rx, rx_solving_options *op,
+                             int wantLhs) {
+  if (wantLhs <= 0 || getOpNlhs(op) < wantLhs) return false;
   // neq == 0 is legitimate, not a failure: an ODE-free model (a pure `ll()` regression)
   // has real lhs outputs and symbolic sensitivities, and pools like any other -- see
   // test-focei-ll-fast-grad-fit.R.  It simply reads no state.
   int wantNeq = odeSwapNeq(slot);
   if (wantNeq < 0 || getOpNeq(op) < wantNeq) return probeDeny();
   if (!odeSwapParLayoutOk(slot, rx)) return probeDeny();
+  return true;
+}
+
+// Bind subject 0's PER-THREAD pointers (ind->on, ind->lhs, the tolerance slices).
+//
+// iniSubject binds them; building the pool does NOT -- rx->subjects comes back zeroed
+// from a fresh pool, and generated calc_lhs dereferences ind->on for every state it
+// reports.  That is the crash in #870: the fit paths only ever probed after their inner
+// solve, so the probe had never met a pool that had been set up and not yet solved.
+//
+// Done the way every real read site does it, rather than declining, so the probe still
+// answers.  Unconditionally, NOT only when the pointers read NULL: rx->subjects is freed
+// and re-allocated per pool, so a stale non-NULL pointer into a previous pool's buffers
+// is just as unusable and cannot be told apart by inspection.
+//
+// tolFactor is pinned to 1 across the call because iniSubject MULTIPLIES this
+// individual's tolerance slices by it in place.  Without the pin, probing would loosen
+// subject 0's tolerances one extra step per gradient evaluation -- the probe would be
+// changing the fit it exists to guard.
+static void odeSwapProbeBind(rx_solving_options_ind *ind, rx_solve *rx,
+                             rx_solving_options *op, rxSolveF *fns) {
+  _odeProbeIniN.fetch_add(1, std::memory_order_relaxed);
+  double tf = getIndTolFactor(ind);
+  setIndTolFactor(ind, 1.0);
+  iniSubjectE(0, 1, ind, op, rx, fns->update_inis);
+  setIndTolFactor(ind, tf);
+}
+
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+  if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
+  int want = odeSwapNlhs(slot);
+  if (!odeSwapProbeFits(slot, rx, op, want)) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
-  // A subject's PER-THREAD pointers (ind->on, ind->lhs, the tolerance slices) are bound
-  // by iniSubject, not by building the pool: rx->subjects comes back zeroed from a fresh
-  // pool, and generated calc_lhs dereferences ind->on for every state it reports.  That
-  // is the crash in #870 -- the fit paths only ever probed after their inner solve, so
-  // the probe had never met a pool that had been set up and not yet solved.
-  //
-  // Bind them here the way every real read site does, rather than declining, so the probe
-  // still answers.  Unconditionally, NOT only when they read NULL: rx->subjects is freed
-  // and re-allocated per pool, so a stale non-NULL pointer into a previous pool's buffers
-  // is just as unusable and cannot be told apart by inspection.
-  //
-  // tolFactor is pinned to 1 across the call because iniSubject MULTIPLIES this
-  // individual's tolerance slices by it in place.  Without the pin, probing would loosen
-  // subject 0's tolerances one extra step per gradient evaluation -- the probe would be
-  // changing the fit it exists to guard.
-  _odeProbeIniN.fetch_add(1, std::memory_order_relaxed);
-  {
-    double _tf = getIndTolFactor(ind);
-    setIndTolFactor(ind, 1.0);
-    iniSubjectE(0, 1, ind, op, rx, fns->update_inis);
-    setIndTolFactor(ind, _tf);
-  }
-  if (getIndLhs(ind) == NULL) return probeDeny();
+  odeSwapProbeBind(ind, rx, op, fns);
   double *st = getIndSolve(ind);
-  if (st == NULL) return false;
+  if (getIndLhs(ind) == NULL || st == NULL) return probeDeny();
   // Only WHICH slots get written matters, not the values -- so use a sentinel no
   // model produces.  NaN would compare unequal and so read as "written".
   static const double _sent = -9.87654321e37;
-  std::vector<double> probe((size_t)room, _sent);
+  std::vector<double> probe((size_t)getOpNlhs(op), _sent);
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
@@ -635,18 +644,16 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
   int missing = 0;
   for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
-  if (missing > 0) {
-    // A model whose lhs are all inside conditional branches could in principle
-    // report missing here and lose the pooled route.  That is the safe direction:
-    // the caller then takes the rxode2::rxSolve reference path, which is correct,
-    // just slower -- and the counter plus the warning make it visible rather than
-    // silent.  odeSwapCanPool() computes deny reasons on demand.
-    if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
-      Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
-    }
-    return false;
+  if (missing == 0) return true;
+  // A model whose lhs are all inside conditional branches could in principle
+  // report missing here and lose the pooled route.  That is the safe direction:
+  // the caller then takes the rxode2::rxSolve reference path, which is correct,
+  // just slower -- and the counter plus the warning make it visible rather than
+  // silent.  odeSwapCanPool() computes deny reasons on demand.
+  if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
+    Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
   }
-  return true;
+  return false;
 }
 long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }

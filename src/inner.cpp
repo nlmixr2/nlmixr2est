@@ -13539,6 +13539,31 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
 }
 
 
+// Everything foceiAnalyticGradPooled_ must establish before it commits to a solve: the
+// augmented model is bound and its bound code matches the registry, the live pool is the
+// one the registry describes, the caller's etas match the problem, and the column map
+// names columns this model actually has.  Hands back the pieces the caller then needs
+// (`op`, `nsub`, the flattened map) so nothing is read twice.
+//
+// Split out of the entry rather than inlined: these are the checks, and keeping them
+// here leaves the entry itself about the gradient.  `rx` is the file-scope global the
+// rest of this file reads, and is assigned here exactly as before.
+static bool analyticGradPooledReady(const NumericMatrix &ebes, const List &cols, int neta,
+                                    rx_solving_options *&op, int &nsub,
+                                    FoceiGradPooledSetup &gcols) {
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return false;
+  rx = getRxSolve_();
+  if (rx == NULL) return false;
+  op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return false;
+  nsub = (int)getRxNsub(rx);
+  if (ebes.nrow() != nsub || (int)ebes.ncol() != neta) return false;
+  if (!as<bool>(cols["hasR"])) return false;  // (f,R) kernel only; the FOCE path stays in R
+  colsFromList(cols, gcols);
+  // ... and the map R just handed us must name columns this model actually has
+  return outerColsWithin(gcols, op_focei.vaeOuterNlhs);
+}
+
 //' FOCEI analytic outer gradient, computed entirely in C++.
 //'
 //' Phase 8E.  Solves the augmented model in the shared pool, finite-differences the
@@ -13578,21 +13603,13 @@ RObject foceiAnalyticGradPooled_(NumericVector thVals, NumericMatrix ebes, List 
   // The fit's tolerance, reset for this solve -- there is no separate analytic
   // tolerance; see OdeFitTolGuard.
   OdeFitTolGuard _tolGuard;
-  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return R_NilValue;
-  rx = getRxSolve_();
-  if (rx == NULL) return R_NilValue;
-  rx_solving_options *op = getSolvingOptions(rx);
-  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return R_NilValue;
-  const int nsub = (int)getRxNsub(rx);
-  if (ebes.nrow() != nsub || (int)ebes.ncol() != neta) return R_NilValue;
+  rx_solving_options *op = NULL;
+  int nsub = 0;
+  FoceiGradPooledSetup _gcols;
+  if (!analyticGradPooledReady(ebes, cols, neta, op, nsub, _gcols)) return R_NilValue;
   const int nd = as<int>(cols["nd"]);
-  const bool hasR = as<bool>(cols["hasR"]);
   const bool hasT = as<bool>(cols["hasT"]);
-  if (!hasR) return R_NilValue;            // (f,R) kernel only; the FOCE path stays in R
   std::vector<VaeOuterE> Es((size_t)nsub);
-  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
-  // ... and the map R just handed us must name columns this model actually has
-  if (!outerColsWithin(_gcols, op_focei.vaeOuterNlhs)) return R_NilValue;
   std::vector<double> _thv((size_t)thVals.size());
   for (int t = 0; t < thVals.size(); ++t) _thv[(size_t)t] = thVals[t];
   arma::mat _eb((unsigned int)ebes.nrow(), (unsigned int)ebes.ncol());
