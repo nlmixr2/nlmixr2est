@@ -275,8 +275,9 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
 #'
 #' Central differences of `dopred()`, which for an `ll()` endpoint returns the
 #' log-density itself.  The step is `|phi|*1e-4` (about `eps^(1/4)`, the scale a
-#' second derivative wants) rather than the `1e-4` used for the first-difference
-#' `DF`, which is a coincidence of magnitude, not the same quantity.
+#' second derivative wants), floored at `1e-4` absolute rather than at the `1e-10`
+#' the first-difference `DF` uses: a second difference divides by the SQUARE of
+#' the step, so a phi near zero would divide roundoff by 1e-20.
 #'
 #' @param dopred saem prediction function, `attr(fit, "dopred")`
 #' @param saemCfg saem configuration list
@@ -286,7 +287,7 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
 #' @return ntotal x nphi x nphi array of second derivatives
 #' @noRd
 .saemLlObsHess <- function(dopred, saemCfg, hatPhi, id, nphi) {
-  .h <- cutoff(abs(hatPhi) * 1e-4, 1e-10)
+  .h <- cutoff(abs(hatPhi) * 1e-4, 1e-4)
   .ev <- function(.j, .sj, .k = NULL, .sk = 0) {
     .p <- hatPhi
     .p[, .j] <- .p[, .j] + .sj * .h[, .j]
