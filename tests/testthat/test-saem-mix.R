@@ -615,6 +615,48 @@ nmTest({
     expect_true(clMuLinear[1] < 2)
     expect_true(clMuLinear[2] > 4)
   })
+
+  test_that("the mixture AE-step skips an ll() endpoint's residual SSR (#873)", {
+    # The two mixture AE loops accumulated statr[b] over EVERY endpoint, so for an
+    # ll() endpoint they summed (y - _powerD(loglik))^2 -- a quantity with no
+    # meaning -- and carried it into statrese[b] and then sigma2[b].  The
+    # non-mixture branch already skipped per endpoint.
+    .d <- mkPkpdTwoEndpointData(n = 12L)
+    twoPopMixedLl <- function() {
+      ini({
+        tcl1 <- -3.2; tcl2 <- -2.2; tv <- -1; tec50 <- 0.5
+        p1 <- 0.5
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        pk.sd <- 0.4; pd.sd <- 4
+      })
+      model({
+        ka <- exp(0.5)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        e0 <- 100; ec50 <- exp(tec50)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- e0 * (1 - cp / (ec50 + cp))
+        cp ~ add(pk.sd) | cp
+        ll(eff) ~ -log(pd.sd) - 0.5*log(2*pi) - 0.5*((DV - eff)/pd.sd)^2
+      })
+    }
+    # "parallel" and "msaem" have their own AE loop, and both were missing the skip
+    for (.m in c("parallel", "msaem")) {
+      .f <- suppressMessages(.nlmixr(twoPopMixedLl, .d, est = "saem",
+                                     saemControl(print = 0, seed = 1, nBurn = 10, nEm = 5,
+                                                 nmc = 3, calcTables = FALSE, covMethod = 0L,
+                                                 mixSampleMethod = .m)))
+      .r <- .f$saem$res_info
+      expect_equal(as.integer(.r$res_mod), c(1L, 0L))
+      # untouched initialization for the ll() endpoint; the bug left an accumulated
+      # residual here instead
+      expect_equal(as.numeric(.r$sigma2)[2], 10)
+      expect_true(is.finite(as.numeric(.r$sigma2)[1]))
+      expect_gt(as.numeric(.r$sigma2)[1], 0)
+    }
+  })
 })
 
 

@@ -2059,6 +2059,7 @@ public:
           Statphi02 = Statphi02 + phi0k.t() * phi0k;
 
           for (int b = 0; b < nendpnt; b++) {
+            if (distEp(b) == 4) continue;   // ll() endpoint: no residual SSR
             double resk = 0.0;
             for (int mHyp = 0; mHyp < nMix; mHyp++) {
               vec fk = fsave_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
@@ -2346,6 +2347,7 @@ public:
           }
 
           for (int b = 0; b < nendpnt; b++) {
+            if (distEp(b) == 4) continue;   // ll() endpoint: no residual SSR
             double resk = 0.0;
             for (int jMix = 0; jMix < nMix; jMix++) {
               vec fk = fsave_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
@@ -2873,6 +2875,10 @@ public:
       // general log-likelihood (distribution==4): no residual error params to update
       if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
+        // Skipped per ENDPOINT, so a mixed norm + ll() model updates only its
+        // normal endpoints; without this sigma2[b] is stored as 0 for the ll()
+        // endpoint (nothing accumulates into statrese[b]).
+        if (distEp(b) == 4) continue;
         // AR(1): update the correlation from this iteration's residual pairs
         // (grid-search profile likelihood + stochastic approximation).  statrese
         // already holds the whitened SSR, so sig2 below is the marginal variance.
