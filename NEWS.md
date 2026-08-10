@@ -76,48 +76,49 @@
 
 ### Estimation
 
-- `saemControl(covMethod="fim")` and `"sa"` no longer invert a residual row that
-  does not describe the model.  The SAEM information matrix carries exactly one
-  residual slot, built from the first endpoint's variance against the total
-  observation count, so it only describes a model with a single additive
-  residual; for anything else it was filled anyway and inverted together with
-  the parameters that do get reported.  It is now filled only in that case and
-  dropped from the matrix otherwise, leaving the fixed-effect and Omega blocks
-  uncontaminated -- the residual block already came from the linearized FIM.
-  `covMethod="linFim"` (the default) is unaffected; its `calc.COV()`
+- Fixed `est="saem"`'s handling of a **general log-likelihood (`ll()`)
+  endpoint**, which was wrong in its objective, its standard errors, and its
+  residual bookkeeping, and fixed the information matrix's single residual slot
+  being filled when it does not describe the model:
+
+  - An `ll()` row was scored as a Gaussian observation.  Such an endpoint
+    estimates no residual error, so the residual step never runs and the
+    placeholder it starts from survived: every log-density was scored as a normal
+    mean with standard deviation `10 + |ll|`, leaving the reported
+    `objf`/`logLik`/`AIC`/`BIC` and every standard error meaningless on the
+    default path.  An `ll()` row now contributes its own log-density to the
+    objective, with the `log(2*pi)` normalizer applied only to normally
+    distributed rows, and the observed information of that log-density to the
+    covariance.  On an exponential time-to-event model with a closed-form
+    marginal likelihood the reported -2LL goes from 1124 to within 1e-3 of the
+    exact 1392; against the Gaussian twin of a one-compartment model (an `ll()`
+    written as the exact normal log-density versus the equivalent `add()` model)
+    the standard error ratios go from 4.0-80.5 to 0.99-1.02, and the two
+    objective function values now agree outright rather than up to a constant.
+
+  - The residual M-step and both mixture AE-steps now skip an `ll()` endpoint per
+    endpoint, instead of only when the whole model is `ll()`.  A model mixing a
+    normal and an `ll()` endpoint stored `sigma2 = 0` for the `ll()` one, and a
+    mixture model accumulated a meaningless residual sum of squares there, which
+    then also perturbed the stochastic-approximation FIM.
+
+  - `covMethod="fim"` and `"sa"` no longer invert a residual row that does not
+    describe the model.  The SAEM information matrix carries exactly one residual
+    slot, built from the first endpoint's variance against the total observation
+    count, so it only describes a model with a single additive residual; for
+    anything else it was filled anyway and inverted together with the parameters
+    that do get reported.  It is now filled only in that case and dropped from
+    the matrix otherwise, leaving the fixed-effect and Omega blocks
+    uncontaminated.
+
+  - `covMethod="fim"` and `"sa"` now say plainly that they do not apply to an
+    `ll()` endpoint and use the linearized Fisher information, instead of
+    reporting that the covariance "could not be computed".  The
+    stochastic-approximation covariance phase is skipped for such a model rather
+    than run and discarded.
+
+  `covMethod="linFim"` (the default) is unaffected throughout; its `calc.COV()`
   linearization was always per-endpoint.
-
-- `est="saem"` now skips a general log-likelihood (`ll()`) endpoint per endpoint
-  in the residual M-step and in both mixture AE-steps, instead of only when the
-  whole model is `ll()`.  A model that mixes a normal and an `ll()` endpoint
-  stored `sigma2 = 0` for the `ll()` one, and a mixture model accumulated a
-  meaningless residual sum of squares there, which then also perturbed the
-  stochastic-approximation FIM.  The `ll()` endpoint's residual bookkeeping is
-  now left alone, as it already was for an all-`ll()` model.
-
-- Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
-  Gaussian observation** in both its objective function and its standard errors.
-  Such an endpoint estimates no residual error, so the residual step never runs
-  and the placeholder values it starts from survive: every log-density was scored
-  as a normal mean with standard deviation `10 + |ll|`.  The reported
-  `objf`/`logLik`/`AIC`/`BIC` and every standard error were meaningless, on the
-  default path -- `covMethod="sa"` cannot be computed for these models and
-  already fell back to the linearized Fisher information, which is where the
-  defect lives.  An `ll()` row now contributes its own log-density to the
-  objective, with the `log(2*pi)` normalizer applied only to normally-distributed
-  rows, and contributes the observed information of that log-density to the
-  covariance.  On an exponential time-to-event model with a closed-form marginal
-  likelihood the reported -2LL goes from 1124 to within 1e-3 of the exact 1392;
-  against the Gaussian twin of a one-compartment model (an `ll()` written as the
-  exact normal log-density versus the equivalent `add()` model) the standard
-  error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
-  values now agree outright rather than up to a constant.
-
-- `saemControl(covMethod=)` `"sa"` and `"fim"` now say plainly that they do not
-  apply to a general log-likelihood endpoint and use the linearized Fisher
-  information, instead of reporting that the covariance "could not be computed".
-  The stochastic-approximation covariance phase is also skipped for such a model
-  rather than run and discarded.
 
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
