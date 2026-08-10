@@ -88,18 +88,25 @@ nmTest({
     # loop used to run over the ll() endpoint as well.  Nothing accumulates into
     # statrese for that endpoint, so it stored sigma2 = 0 -- the value the FIM's
     # residual slot then divides by.
-    .d <- mkPkpdTwoEndpointData(n = 12L)
-    .f <- suppressMessages(nlmixr2(mixedNormLl, .d, est = "saem",
-      control = saemControl(nBurn = 10, nEm = 5, nmc = 3, seed = 1, print = 0L,
-                            calcTables = FALSE, covMethod = 0L)))
-    .r <- .f$saem$res_info
+    .fitOn <- function(.d) {
+      .f <- suppressMessages(nlmixr2(mixedNormLl, .d, est = "saem",
+        control = saemControl(nBurn = 10, nEm = 5, nmc = 3, seed = 1, print = 0L,
+                              calcTables = FALSE, covMethod = 0L)))
+      .f$saem$res_info
+    }
+    .r1 <- .fitOn(mkPkpdTwoEndpointData(n = 12L))
+    .r2 <- .fitOn(mkPkpdTwoEndpointData(n = 12L, seed = 7L))
     # endpoint 1 is the additive normal one, endpoint 2 the ll()
-    expect_equal(as.integer(.r$res_mod), c(1L, 0L))
-    # the ll() endpoint keeps saem's sigma2 initialization (10) untouched, the
-    # way an all-ll() model does; the bug drove it to exactly 0
-    expect_equal(as.numeric(.r$sigma2)[2], 10)
+    expect_equal(as.integer(.r1$res_mod), c(1L, 0L))
+    # the mechanism, without pinning saem's sigma2 initialization constant: the
+    # ll() endpoint's slot is untouched by the M-step, so it cannot depend on the
+    # data, while the normal endpoint's does.  The bug drove the ll() slot to
+    # exactly 0 -- also data-independent, hence the second assertion.
+    expect_equal(as.numeric(.r1$sigma2)[2], as.numeric(.r2$sigma2)[2])
+    expect_gt(as.numeric(.r1$sigma2)[2], 0)
+    expect_false(isTRUE(all.equal(as.numeric(.r1$sigma2)[1], as.numeric(.r2$sigma2)[1])))
     # and the normal endpoint is still estimated
-    expect_true(is.finite(as.numeric(.r$sigma2)[1]))
-    expect_gt(as.numeric(.r$sigma2)[1], 0)
+    expect_true(is.finite(as.numeric(.r1$sigma2)[1]))
+    expect_gt(as.numeric(.r1$sigma2)[1], 0)
   })
 })

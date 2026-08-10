@@ -643,19 +643,26 @@ nmTest({
       })
     }
     # "parallel" and "msaem" have their own AE loop, and both were missing the skip
-    for (.m in c("parallel", "msaem")) {
+    .r <- lapply(c("parallel", "msaem"), function(.m) {
       .f <- suppressMessages(.nlmixr(twoPopMixedLl, .d, est = "saem",
                                      saemControl(print = 0, seed = 1, nBurn = 10, nEm = 5,
                                                  nmc = 3, calcTables = FALSE, covMethod = 0L,
                                                  mixSampleMethod = .m)))
-      .r <- .f$saem$res_info
-      expect_equal(as.integer(.r$res_mod), c(1L, 0L))
-      # untouched initialization for the ll() endpoint; the bug left an accumulated
-      # residual here instead
-      expect_equal(as.numeric(.r$sigma2)[2], 10)
-      expect_true(is.finite(as.numeric(.r$sigma2)[1]))
-      expect_gt(as.numeric(.r$sigma2)[1], 0)
+      .f$saem$res_info
+    })
+    for (.i in seq_along(.r)) {
+      expect_equal(as.integer(.r[[.i]]$res_mod), c(1L, 0L))
+      expect_gt(as.numeric(.r[[.i]]$sigma2)[2], 0)
+      expect_true(is.finite(as.numeric(.r[[.i]]$sigma2)[1]))
+      expect_gt(as.numeric(.r[[.i]]$sigma2)[1], 0)
     }
+    # The mechanism, without pinning saem's sigma2 initialization constant: the two
+    # sampling methods run different chains, so the normal endpoint's residual
+    # differs between them while the ll() endpoint's slot -- never written -- is
+    # identical.  Accumulating the ll() SSR made it chain-dependent too.
+    expect_equal(as.numeric(.r[[1]]$sigma2)[2], as.numeric(.r[[2]]$sigma2)[2])
+    expect_false(isTRUE(all.equal(as.numeric(.r[[1]]$sigma2)[1],
+                                  as.numeric(.r[[2]]$sigma2)[1])))
   })
 })
 
