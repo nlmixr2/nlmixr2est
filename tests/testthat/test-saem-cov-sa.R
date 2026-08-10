@@ -233,5 +233,32 @@ nmTest({
     expect_equal(unname(.got), unname(.se), tolerance = 0.25)
     # a hard guard: the pre-fix values were an order of magnitude out
     expect_true(all(.got / .se > 0.5 & .got / .se < 2))
+
+    # "fim" is refused for the same reason as "sa"
+    .ff <- .nlmixr(expTte, .d, est = "saem",
+                   control = saemControl(nBurn = 40, nEm = 20, nmc = 3, seed = 1,
+                                         print = 0L, calcTables = FALSE,
+                                         covMethod = "fim"))
+    expect_equal(.ff$covMethod, "linFim")
+  })
+
+  test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
+    .ix <- c(1L, 1L, 2L, 2L)
+    # res.mod present: per-observation, res.mod == 0 marks the ll() endpoint
+    expect_equal(.saemLlObsMask(list(res.mod = c(0L, 1L), opt = list(distribution = 4)), .ix),
+                 c(TRUE, TRUE, FALSE, FALSE))
+    expect_equal(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 1)), .ix),
+                 rep(FALSE, 4))
+    # res.mod missing (a fit stored before it was kept): a single endpoint can be
+    # attributed from the scalar distribution, more than one cannot
+    expect_equal(.saemLlObsMask(list(opt = list(distribution = 4)), c(1L, 1L)), c(TRUE, TRUE))
+    expect_equal(.saemLlObsMask(list(opt = list(distribution = 1)), .ix), rep(FALSE, 4))
+    expect_error(.saemLlObsMask(list(opt = list(distribution = 4)), .ix), "res.mod")
+    # a general-likelihood cfg whose res.mod marks no ll() row is inconsistent;
+    # scoring those rows as normal is the defect, so fail instead
+    expect_error(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 4)), .ix),
+                 "res.mod")
+    # no distribution at all (an old cfg) must not error
+    expect_equal(.saemLlObsMask(list(opt = list()), .ix), rep(FALSE, 4))
   })
 })

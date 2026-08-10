@@ -3,18 +3,33 @@
 #' Per-observation mask of general log-likelihood (`ll()`) rows
 #'
 #' `res.mod == 0` marks an `ll()` endpoint and `ix_endpnt` maps each observation
-#' to its endpoint.  A fit stored before `res.mod` was kept in `saem.cfg` falls
-#' back to the scalar `distribution == 4`, which on such a fit implies every
-#' endpoint is `ll()`.
+#' to its endpoint.  `distribution == 4` says only that SOME endpoint is `ll()`,
+#' so it can stand in for a missing `res.mod` (a fit stored before it was kept in
+#' `saem.cfg`) only when there is one endpoint to attribute it to.  Anything
+#' ambiguous fails rather than guessing: guessing wrong in either direction
+#' silently reinstates the defect this mask exists to prevent.
 #'
 #' @param saemCfg saem configuration list (`attr(fit, "saem.cfg")`)
 #' @param ixEndpnt 1-based per-observation endpoint index
 #' @return logical vector, one element per observation
 #' @noRd
 .saemLlObsMask <- function(saemCfg, ixEndpnt) {
+  .gen <- isTRUE(saemCfg$opt$distribution == 4)
   .resMod <- saemCfg$res.mod
-  if (!is.null(.resMod)) return(.resMod[ixEndpnt] == 0L)
-  rep(isTRUE(saemCfg$opt$distribution == 4), length(ixEndpnt))
+  .bad <- function() {
+    stop("saem.cfg has a general likelihood but no 'res.mod'; cannot tell ll() observations apart",
+         call. = FALSE)
+  }
+  if (!is.null(.resMod)) {
+    .mask <- .resMod[ixEndpnt] == 0L
+    # a general-likelihood fit whose res.mod marks no ll() row was not built from
+    # the ui; scoring those rows as normal is exactly the defect
+    if (.gen && !any(.mask)) .bad()
+    return(.mask)
+  }
+  if (!.gen) return(rep(FALSE, length(ixEndpnt)))
+  if (max(ixEndpnt) > 1L) .bad()
+  rep(TRUE, length(ixEndpnt))
 }
 
 ##' Log-likelihood using Gaussian Quadrature
@@ -279,6 +294,9 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
 #' the first-difference `DF` uses: a second difference divides by the SQUARE of
 #' the step, so a phi near zero would divide roundoff by 1e-20.
 #'
+#' Costs `2*nphi^2` population solves against the Gaussian route's `nphi`, paid
+#' once per covariance step.
+#'
 #' @param dopred saem prediction function, `attr(fit, "dopred")`
 #' @param saemCfg saem configuration list
 #' @param hatPhi N x nphi matrix of conditional modes
@@ -365,8 +383,10 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
   .Ai <- kronecker(diag(nphi), mcov[i, ])
   .b <- NULL
   if (doVar && nom > 0L) {
-    # tr(Vi^-1 dVi/da Vi^-1 dVi/db) = tr(E_a M11 E_b M11) with M11 = M[i1, i1]
-    .M11 <- .M[i1, i1, drop = FALSE]
+    # tr(Vi^-1 dVi/da Vi^-1 dVi/db) = tr(E_a M11 E_b M11) with M11 = M[i1, i1].
+    # Take it from the clamped M the theta block uses, not the raw one -- a
+    # negative direction there would put a negative variance in the block.
+    .M11 <- crossprod(.S)[i1, i1, drop = FALSE]
     .A <- vector("list", nom)
     for (pp in seq_len(nom)) {
       .a <- omPairs[pp, 1]; .bb <- omPairs[pp, 2]
