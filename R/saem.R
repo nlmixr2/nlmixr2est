@@ -635,8 +635,11 @@
     # resMat rows follow predDf's endpoint order, and the one estimated residual
     # is not necessarily endpoint 1: a mixed normal + ll() model has a single
     # residual row here while the ll() endpoint keeps its untouched resMat init.
-    .b <- match(.ri$condition, .ui$predDf$cond)
-    .ares <- if (length(.b) == 1L && !is.na(.b)) {
+    # Pick the row the way the kernel picks fimResidEp -- the endpoint that is not
+    # ll() -- rather than by matching condition names, so no naming convention can
+    # silently drop the residual.
+    .b <- which(.ui$predDf$distribution != "LL")
+    .ares <- if (length(.b) == 1L) {
       tryCatch(.saem$resMat[.b, 1], error = function(e) NA_real_)
     } else {
       NA_real_
