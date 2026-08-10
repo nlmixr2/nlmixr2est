@@ -159,6 +159,10 @@ saemControl(
   variance-block standard errors are spliced in from the linearized FIM
   (`linFim`).
 
+  Neither is used for a general log-likelihood endpoint (`ll()`), which
+  has no residual error to anchor the complete-data correction; such a
+  model goes straight to `linFim` with a message.
+
   "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
   \\R^-1 \times S \times R^-1\\
 

@@ -181,6 +181,9 @@ typical fitting.</p></dd>
  estimated reliably by the simulation FIM (the complete-data correction is unstable when
  between-subject variability dominates the residual), so those variance-block standard
  errors are spliced in from the linearized FIM (<code>linFim</code>).</p>
+<p>Neither is used for a general log-likelihood endpoint (<code>ll()</code>), which has
+ no residual error to anchor the complete-data correction; such a model goes
+ straight to <code>linFim</code> with a message.</p>
 <p>"<code>r,s</code>" Uses the sandwich matrix to calculate the covariance, that is: \(R^-1 \times S \times R^-1\)</p>
 <p>"<code>r</code>" Uses the Hessian matrix to calculate the covariance as \(2\times R^-1\)</p>
 <p>"<code>s</code>" Uses the crossproduct matrix to calculate the covariance as \(4\times S^-1\)</p>
