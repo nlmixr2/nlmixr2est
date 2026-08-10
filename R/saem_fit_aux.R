@@ -1,5 +1,22 @@
 ## FIXME: g by endpoint
 
+#' Per-observation mask of general log-likelihood (`ll()`) rows
+#'
+#' `res.mod == 0` marks an `ll()` endpoint and `ix_endpnt` maps each observation
+#' to its endpoint.  A fit stored before `res.mod` was kept in `saem.cfg` falls
+#' back to the scalar `distribution == 4`, which on such a fit implies every
+#' endpoint is `ll()`.
+#'
+#' @param saemCfg saem configuration list (`attr(fit, "saem.cfg")`)
+#' @param ixEndpnt 1-based per-observation endpoint index
+#' @return logical vector, one element per observation
+#' @noRd
+.saemLlObsMask <- function(saemCfg, ixEndpnt) {
+  .resMod <- saemCfg$res.mod
+  if (!is.null(.resMod)) return(.resMod[ixEndpnt] == 0L)
+  rep(isTRUE(saemCfg$opt$distribution == 4), length(ixEndpnt))
+}
+
 ##' Log-likelihood using Gaussian Quadrature
 ##'
 ##' Estimate the log-likelihood using Gaussian Quadrature (multidimensional
@@ -47,6 +64,10 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   low <- low[ix_endpnt]
   hi <- hi[ix_endpnt]
   i1 <- saem.cfg$i1 + 1
+  # an ll() row's prediction IS its log-density; scoring it as a normal mean
+  # would use the placeholder residual (ares=10, bres=1) the M-step never updates
+  .isLL <- .saemLlObsMask(saem.cfg, ix_endpnt)
+  .nGauss <- sum(!.isLL)
 
   phi <- fit$mpost_phi
   IOmega.phi1 <- solve(fit$Gamma2_phi1)
@@ -96,7 +117,9 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     f <- .Call(`_nlmixr2est_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
     g <- ares + bres * abs(fsave)
     g[g < 1.0e-200] <- 1.0e-200
-    DYF[ind.io] <- -0.5 * ((yobs - f) / g)^2 - log(g)
+    .dyf <- -0.5 * ((yobs - f) / g)^2 - log(g)
+    .dyf[.isLL] <- fsave[.isLL]
+    DYF[ind.io] <- .dyf
     ly <- colSums(DYF)
     dphi1 <- phi[, i1] - fit$mprior_phi[, i1]
     lphi1 <- -0.5 * rowSums((dphi1 %*% IOmega.phi1) * dphi1)
@@ -107,7 +130,9 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   }
   rxode2::rxProgressStop()
   # - 2 * saem.cfg$extraLL
-  ll2 <- 2 * sum(log(Q) + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + ntotal) * log(2 * pi) -
+  # only a Gaussian row's DYF omits its -0.5*log(2*pi); an ll() row already
+  # carries the constant its own expression supplies
+  ll2 <- 2 * sum(log(Q) + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + .nGauss) * log(2 * pi) -
     2 * .Call(`_nlmixr2est_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
   -ll2
 }
