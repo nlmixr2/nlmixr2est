@@ -35,9 +35,15 @@ void npResidFreezeClear();
 // residual optimization.
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd);
 
+// 0-based endpoint of one observation's cmt within endpointCmt (per-endpoint cmt
+// values, predDf order), or -1 when it matches none of them.  Always 0 for a
+// single-endpoint model (which carries no CMT covariate to match on).
+int npEndpointForCmt(int cmt, const std::vector<int>& endpointCmt);
+
 // Per-observation 0-based endpoint index (subject-major getIndIx order) from the cached
 // CMT covariate (rxode2 getIndCmt): matches each observation's cmt to endpointCmt (the
-// per-endpoint cmt values, predDf order).  All-zeros for a single-endpoint model.
+// per-endpoint cmt values, predDf order).  All-zeros for a single-endpoint model;
+// -1 for an observation matching no endpoint, which npResidMoments then skips.
 arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt);
 
 // Build the Psi matrix (nSub x nPoint) on the already set-up FOCEi inner solve:

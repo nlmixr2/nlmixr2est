@@ -187,6 +187,23 @@
   .npFamilyFit(env, .ui, ...)
 }
 
+# 0-based endpoint (predDf row order) of each residual parameter, from the `condition`
+# of its ini row; `endVar` is predDf$cond.  A condition naming no endpoint -- including
+# the case where predDf was unavailable, so endVar is empty -- becomes -1, the "not a
+# variance scale" sentinel the C++ warm start already skips.  Coercing it to 0 instead
+# charged that parameter's moment to the FIRST endpoint (nlmixr2/nlmixr2est#856).
+#' @noRd
+.npResidEndpointIdx <- function(errCond, endVar) {
+  .end <- match(as.character(errCond), as.character(endVar)) - 1L
+  .bad <- is.na(.end)
+  if (any(.bad)) {
+    warning("residual param endpoint unknown; moment warm start skipped",
+            call. = FALSE)
+    .end[.bad] <- -1L
+  }
+  as.integer(.end)
+}
+
 # Fit driver for the nonparametric engines.  Turns off the FOCEI outer optimizer
 # (npagOuter/npbOuter drive the cycle), builds the 0-based mu index maps that the
 # finalization (impMuInterceptStep) reuses, and -- unlike .impmapFamilyFit --
@@ -270,10 +287,8 @@
   # endpoint variable; a proportional term uses (err/f), everything else (additive,
   # lognormal, box-cox -- all additive on the transform-both-sides scale) uses err.
   .endVar <- tryCatch(as.character(ui$predDf$cond), error = function(e) character(0))
-  .errCond <- as.character(.thOrd$condition[.errOpt])
-  .errEnd <- match(.errCond, .endVar) - 1L
-  .errEnd[is.na(.errEnd)] <- 0L
-  .control$npResidOptEnd <- as.integer(.errEnd)
+  .control$npResidOptEnd <-
+    .npResidEndpointIdx(.thOrd$condition[.errOpt], .endVar)
   .control$npResidOptProp <- as.integer(startsWith(.optType, "prop"))
   # per-endpoint compartment (predDf order) so the C++ side can map each observation's
   # cmt (rxode2 getIndCmt, the CMT time-varying covariate) to its endpoint index for the
