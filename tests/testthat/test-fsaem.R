@@ -556,13 +556,14 @@ nmTest({
     # the kernel is healthy -- a mis-filled inner theta shows up here first
     expect_gt(.fs$fsaemDiag$accRate, 0.5)
     expect_equal(.fs$fsaemDiag$nMapFail, 0)
-    # and the inner really was built at the fit's own thetas: tv used to come
-    # back as tcl's fixed 1 rather than log(V)
+    # and the inner really was built at the fit's own thetas.  fastKernel is
+    # "firstN" here, so lastTheta is the chain at iteration 20, not the final
+    # estimate -- but tv is well identified and never near tcl's fixed 1, which
+    # is exactly what the positional fill used to hand it.
     .lt <- .fs$fsaemDiag$lastTheta
     expect_equal(length(.lt), 4L)
     expect_equal(.lt[2], 1)
-    expect_lt(max(abs(.lt[c(1, 3, 4)] -
-                        fixef(.fs)[c("tka", "tv", "add.sd")])), 0.05)
+    expect_lt(abs(.lt[3] - fixef(.fs)[["tv"]]), 0.5)
     # the fixed value is honored, and the rest agrees with plain SAEM
     expect_equal(unname(fixef(.fs)[["tcl"]]), 1)
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
