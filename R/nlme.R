@@ -526,13 +526,15 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   .ret$extra <- paste0(" by ", crayon::bold$yellow(ifelse(.control$method == "REML", "REML", "maximum likelihood")))
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
   .ret$est <- "nlme"
   # There is no parameter history for nlme
   .ret$objective <- -2 * as.numeric(logLik(.ret$nlme))
   .ret$model <- .ui$ebe
+  # The control must stay on the ui until the EBE model is built; the build reads
+  # optExpression/sumProd/predMinusDv/eventSens off of it (#864)
+  if (exists("control", .ui)) {
+    rm(list="control", envir=.ui)
+  }
   .ret$est <- "nlme"
   .ret$ofvType <- "nlme"
   .nlmeControlToFoceiControl(.ret)
