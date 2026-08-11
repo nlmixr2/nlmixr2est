@@ -532,10 +532,10 @@ nmTest({
 
   test_that("est='fsaem' handles a fix()ed structural theta", {
     skip_if_not_installed("nlmixr2data")
-    # A fix()ed structural theta is NOT in phi1/phi0, so counting it among the
-    # structural positions made their number exceed nphi1 + nphi0, tripped the
-    # C++ length guard, and filled EVERY structural slot from the fallback -- and
-    # the fixed theta itself was left at 0 rather than its own value.
+    # A fix()ed structural theta keeps its phi column (saemControl's default is
+    # literalFix=FALSE) but drops out of the structural positions, so the two
+    # lists stop lining up.  Filling the inner positionally then walked past the
+    # fixed theta and handed tv the value of tcl.
     .fixm <- function() {
       ini({
         tka <- 0.45; tcl <- fix(1); tv <- 3.45
@@ -556,6 +556,13 @@ nmTest({
     # the kernel is healthy -- a mis-filled inner theta shows up here first
     expect_gt(.fs$fsaemDiag$accRate, 0.5)
     expect_equal(.fs$fsaemDiag$nMapFail, 0)
+    # and the inner really was built at the fit's own thetas: tv used to come
+    # back as tcl's fixed 1 rather than log(V)
+    .lt <- .fs$fsaemDiag$lastTheta
+    expect_equal(length(.lt), 4L)
+    expect_equal(.lt[2], 1)
+    expect_lt(max(abs(.lt[c(1, 3, 4)] -
+                        fixef(.fs)[c("tka", "tv", "add.sd")])), 0.05)
     # the fixed value is honored, and the rest agrees with plain SAEM
     expect_equal(unname(fixef(.fs)[["tcl"]]), 1)
     expect_lt(max(abs(fixef(.fs) - fixef(.ss))), 0.05)
