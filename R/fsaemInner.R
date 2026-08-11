@@ -40,15 +40,19 @@
 #' Set up the FOCEi inner problem for the f-SAEM proposal at `ui`'s current
 #' ini() estimates.  Mirrors `.vaeInnerSetup` but keeps a live inner optimizer.
 #' Returns the setup env (keep alive until `.fsaemInnerFree()`).
+#'
+#' `copyUi=FALSE` says the caller's `ui` is already private to the inner.
 #' @noRd
-.fsaemInnerSetup <- function(ui, data, etaMat, control) {
-  # A PRIVATE copy.  The inner replaces $control with its own foceiControl, and
-  # rxUiDecompress hands back the SAME environment for an already-decompressed
-  # ui, so without the copy the fit's saemControl is gone for the rest of the
-  # run -- everything read from the control after the fast kernel is installed
-  # (addProp included, which the inner now deliberately sets differently) would
-  # come from the inner's control instead.
-  .ui <- rxode2::.copyUi(rxode2::rxUiDecompress(ui))
+.fsaemInnerSetup <- function(ui, data, etaMat, control, copyUi = TRUE) {
+  # The inner replaces $control with its own foceiControl, and rxUiDecompress
+  # hands back the SAME environment for an already-decompressed ui -- so on the
+  # fit's ui that control would BE the fit's for the rest of the run, and
+  # everything read from it after the fast kernel is installed (addProp
+  # included, which the inner now deliberately sets differently) would come from
+  # the inner instead.  The covariate path opts out: its ui is its own, and it
+  # re-enters here every iteration.
+  .ui <- rxode2::rxUiDecompress(ui)
+  if (copyUi) .ui <- rxode2::.copyUi(.ui)
   .fc <- .fsaemInnerFoceiControl(control)
   .fc$est <- "focei"
   .ui$control <- .fc

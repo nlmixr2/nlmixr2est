@@ -132,7 +132,8 @@ nmTest({
     .data <- nlmixr2data::theo_sd
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(comb))
     # combined2 is saemControl()'s default, i.e. what the inner used to inherit
-    .ui$control <- saemControl(addProp = "combined2", print = 0L, calcTables = FALSE)
+    .ui$control <- saemControl(fast = TRUE, addProp = "combined2", print = 0L,
+                               calcTables = FALSE)
     .neta <- 3L
     .N <- length(unique(.data$ID))
 
@@ -146,6 +147,9 @@ nmTest({
     expect_s3_class(.ui$control, "saemControl")
     expect_equal(.ui$control$addProp, "combined2")
     expect_equal(as.integer(.ui$saemAddProp), 2L)
+    # the inner teardown after a fast fit is gated on this read, and a
+    # foceiControl answers FALSE
+    expect_true(rxode2::rxGetControl(.ui, "fast", FALSE))
     .hessInstalled <- .fsaemInnerMap(list(rxControl = rxode2::rxControl()), .neta)$hess
     .fsaemInnerFree()
 

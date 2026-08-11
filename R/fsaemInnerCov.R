@@ -89,7 +89,10 @@
   .built <- .fsaemInnerMpriorUi(ui)
   .neta <- nrow(ui$muRefDataFrame)
   .data <- .fsaemSetMpriorData(data, mpriorMat, .built)
-  .env <- .fsaemInnerSetup(.built$ui, .data, matrix(0, nrow(mpriorMat), .neta), control)
+  # .built$ui is rebuilt from model text by .fsaemInnerMpriorUi, so it is the
+  # inner's own already -- no copy (this is re-entered every iteration).
+  .env <- .fsaemInnerSetup(.built$ui, .data, matrix(0, nrow(mpriorMat), .neta), control,
+                           copyUi = FALSE)
   # inner THETA vector template (residual + any time-varying betas), in the inner
   # ui's ntheta order; refreshed each iteration.
   .innerTheta <- .built$ui$iniDf
@@ -148,7 +151,7 @@
     }
   }
   setup$env <- .fsaemInnerSetup(setup$built$ui, .data, matrix(0, nrow(mpriorMat), setup$neta),
-                                setup$control)
+                                setup$control, copyUi = FALSE)
   .fsaemInnerUpdate(setup$env, .theta, omega, matrix(0, nrow(mpriorMat), setup$neta))
   invisible(setup)
 }
