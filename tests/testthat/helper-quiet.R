@@ -10,7 +10,9 @@
     suppressWarnings(nlmixr(...)),
     message = function(m) {
       .msg <<- c(.msg, conditionMessage(m))
-      invokeRestart("muffleMessage")
+      # tryInvokeRestart: a condition signaled with signalCondition() has no
+      # muffleMessage restart, and invokeRestart() would error on it
+      tryInvokeRestart("muffleMessage")
     })
   list(fit = .fit, msg = .msg)
 }
