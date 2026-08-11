@@ -530,8 +530,11 @@
       .nsd <- 1.6
       .ctl <- .env$control
       if (inherits(.ctl, "saemControl")) {
-        if (!is.null(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
-        if (!is.null(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
+        # a control restored from an older fit can be missing either field; a
+        # non-finite value would reach `if (.nnodes == 1)` as NA
+        .keep <- function(x) length(x) == 1L && is.numeric(x) && is.finite(x)
+        if (.keep(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
+        if (.keep(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
       }
       if (.nnodes == 1) {
         .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)
