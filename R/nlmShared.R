@@ -507,9 +507,6 @@
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list = "control", envir = .ui)
-  }
   .ret$est <- method
   if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
@@ -518,6 +515,11 @@
   .ret$model <- nlmixrWithTiming("setup", {
     .ui$ebe
   })
+  # The control must stay on the ui until the EBE model is built; the build reads
+  # optExpression/sumProd/eventSens off of it (#864)
+  if (exists("control", .ui)) {
+    rm(list = "control", envir = .ui)
+  }
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame

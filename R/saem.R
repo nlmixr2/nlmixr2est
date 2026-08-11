@@ -1192,11 +1192,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ui <- .ret$ui
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
+    .ret$theta <- .ui$saemThetaDataFrame
+    .ret$model <- .ui$saemModelPred
+    # The control must stay on the ui until the predOnly model is built; the build
+    # reads optExpression/sumProd off of it (#864)
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm(list="control", envir=.ui)
     }
-    .ret$theta <- .ui$saemThetaDataFrame
-    .ret$model <- .ui$saemModelPred
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
