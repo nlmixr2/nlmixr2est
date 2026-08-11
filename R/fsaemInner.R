@@ -182,6 +182,12 @@
   # mu-ref covariates are supported: non-time-varying ones are absorbed into the
   # per-subject mprior data, time-varying ones are kept as inner regressor betas
   # refreshed from the live Plambda each iteration.
+  #
+  # M2/M3/M4 censoring is supported and deliberately NOT gated (#876): the chain
+  # and the IMH acceptance both score a censored row with doCensNormal1 on the
+  # same f and variance, so the composed kernel still targets the chain's
+  # distribution.  test-fsaem-inner.R pins the inner's censored term against an
+  # independent evaluation and test-focei-cens.R pins fsaem to saem on M3 data.
   TRUE
 }
 
