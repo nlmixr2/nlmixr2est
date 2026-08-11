@@ -1,5 +1,17 @@
 # nlmixr2est 7.0.3
 
+## Breaking changes
+
+- `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have been
+  removed and now error as unused arguments.  They were announced in 7.0.2 as
+  controlling a bounded L-BFGS-B refinement of the fixed-effect-only (`phi0`)
+  parameters of a general log-likelihood model, but no such refinement was ever
+  implemented: the options were validated and stored and then read by nothing.
+  That `phi0` step is optimized by the bounded derivative-free routine (`bobyqa`,
+  or `stats::optimize` for a single parameter), which honors the `ini`-block
+  bounds and takes no L-BFGS-B settings.  Passing any of the four never changed a
+  fit, so removing them changes no result.
+
 ## New features
 
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
@@ -1320,9 +1332,11 @@
   `parHistData` records off-diagonal Omega block covariances.
 
 - `saem` fits general log-likelihood endpoints (`ll(name) ~ <expr>`,
-  e.g. time-to-event); fixed-effect-only parameters are refined by bounded
-  L-BFGS-B (`saemControl()` gains `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/
-  `lbfgsMaxIter`).
+  e.g. time-to-event); fixed-effect-only parameters are refined by a bounded
+  derivative-free optimization honoring the `ini`-block bounds.  (This entry
+  originally said the refinement used bounded L-BFGS-B and that `saemControl()`
+  gained `lbfgsLmm`/`lbfgsFactr`/`lbfgsPgtol`/`lbfgsMaxIter`; that was never
+  true, and those options are removed in 7.0.3.)
 
 ### matExp() / indLin()
 

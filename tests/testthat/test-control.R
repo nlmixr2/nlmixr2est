@@ -72,6 +72,17 @@ nmTest({
     expect_error(saemControl(foceiControl="matt"))
   })
 
+  test_that("saemControl rejects the withdrawn lbfgs* options (#878)", {
+    ## announced in 7.0.2 but never implemented; they must not silently be
+    ## accepted and stored again
+    expect_error(saemControl(lbfgsLmm=5L), "unused argument")
+    expect_error(saemControl(lbfgsFactr=1e7), "unused argument")
+    expect_error(saemControl(lbfgsPgtol=0), "unused argument")
+    expect_error(saemControl(lbfgsMaxIter=20L), "unused argument")
+    expect_false(any(c("lbfgsLmm", "lbfgsFactr", "lbfgsPgtol", "lbfgsMaxIter")
+                     %in% names(saemControl())))
+  })
+
   test_that("nlmixr2NlmeControl sanity", {
     expect_error(nlmixr2NlmeControl(), NA)
     nlmixrControlTest(nlmixr2NlmeControl())
