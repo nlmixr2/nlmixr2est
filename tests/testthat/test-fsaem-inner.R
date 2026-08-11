@@ -174,6 +174,36 @@ nmTest({
     expect_false(isTRUE(all.equal(.h1, .h2)))
   })
 
+  test_that("the covariate inner is combined1 too, and leaves the fit alone", {
+    skip_if_not_installed("nlmixr2data")
+    # the covariate path builds its inner on a ui rebuilt from model text
+    # (.fsaemInnerMpriorUi), so it takes no copy -- check that ui really is its
+    # own and that the residual form still follows the E-step
+    covMod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.3; prop.sd <- 0.1
+        dclWt <- 0.75
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + dclWt * WT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covMod))
+    .ui$control <- saemControl(fast = TRUE, addProp = "combined2", print = 0L,
+                               calcTables = FALSE)
+    expect_true(nrow(.ui$muRefCovariateDataFrame) > 0L)
+    .cfg <- .fsaemInstallStep(.ui, nlmixr2data::theo_sd, rxode2::rxControl(), list())
+    on.exit(.fsaemInnerFree(), add = TRUE)
+    expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined1")
+    expect_s3_class(.ui$control, "saemControl")
+    expect_true(rxode2::rxGetControl(.ui, "fast", FALSE))
+  })
+
   test_that("a model DECLARING combined2 degrades instead of mis-targeting", {
     # the control cannot override a model-level declaration, so such an endpoint
     # falls back to standard SAEM rather than building a combined2 proposal
