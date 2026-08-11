@@ -226,6 +226,17 @@
   uncensored slipped past them and was fit with an objective FO does not
   support.
 
+- `optExpression=FALSE` (and `sumProd=TRUE`) are now honored for the
+  last model each fit builds: the EBE / Llik EBE models of the
+  nlm-family estimators (`bobyqa`, `newuoa`, `n1qn1`, `nlm`, `nlminb`,
+  `optim`, `uobyqa`, `lbfgsb3c`, `nls`) and `nlme`, plus the `saem`
+  `predOnly` model. The control was removed from the model while
+  finalizing the fit, before those models were built, so the build read
+  the defaults instead (issue
+  [\#864](https://github.com/nlmixr2/nlmixr2est/issues/864)). This
+  matters because `optExpression=FALSE` is the workaround for a
+  delay-differential model whose `past()` duration is an expression.
+
 #### Crashes and stability
 
 - The shared solve pool’s lhs-width probe could **segfault** instead of
