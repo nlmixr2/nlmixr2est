@@ -523,13 +523,15 @@
     .tmp <- obj$saem
     .curObj <- get("objective", .env)
     if (is.na(.curObj)) {
+      # the quadrature settings live on the fit's saemControl; the fit
+      # environment itself never held them, so both lookups always missed and
+      # this deferred path silently ran at the defaults (#903)
       .nnodes <- 3
-      if (exists("nnodesGq", .env)) {
-        .nnodes <- .env$nnodesGq
-      }
       .nsd <- 1.6
-      if (exists("nsd.gq", .env)) {
-        .nsd <- .env$nsd.gq
+      .ctl <- .env$control
+      if (inherits(.ctl, "saemControl")) {
+        if (!is.null(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
+        if (!is.null(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
       }
       if (.nnodes == 1) {
         .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)

@@ -25,9 +25,23 @@ nmTest({
     }))
   }
 
-  # -2*log(marginal likelihood) of the ORIGINAL DV.  The log-normal density
-  # carries the 1/DV Jacobian, which is exactly what powerL supplies.
-  # `jacobian=FALSE` gives the likelihood on the transformed scale instead.
+  # additive residuals, for the untransformed control case
+  .mkBolusAdd <- function(seed, n, om, sd, times) {
+    .testSeed(seed)
+    .eta <- rnorm(n, 0, sqrt(om))
+    do.call(rbind, lapply(seq_len(n), function(i) {
+      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * times)
+      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+            data.frame(ID = i, TIME = times,
+                       DV = .f + rnorm(length(times), 0, sd),
+                       AMT = 0, EVID = 0))
+    }))
+  }
+
+  # -2*log(marginal likelihood) of the ORIGINAL DV.  `tr` is the both-sides
+  # transform and `ljac` its log-Jacobian log|dt/dy| -- what powerL supplies.
+  # The defaults are lnorm; `ljac = .noJac` drops the Jacobian, giving the
+  # likelihood on the transformed scale instead.
   #
   # The integrand is handled in the log domain, and the integration window is
   # placed around the mode using the local curvature: with many observations
@@ -35,15 +49,16 @@ nmTest({
   # integrating the raw density over the prior range makes stats::integrate()
   # miss the spike and return 0.  The per-subject modes come back in the
   # "logMax" attribute.
-  .refM2ll <- function(obs, tcl, om, sd, jacobian = TRUE) {
+  .noJac <- function(y) rep(0, length(y))
+  .refM2ll <- function(obs, tcl, om, sd, tr = log,
+                       ljac = function(y) -log(y)) {
     .mx <- numeric(0)
     .ll <- vapply(unique(obs$ID), function(i) {
       .d <- obs[obs$ID == i, ]
       .lg <- function(e) {
         .f <- .dose / .v * exp(-exp(tcl + e) / .v * .d$TIME)
-        .lp <- sum(stats::dnorm(log(.d$DV), log(.f), sd, log = TRUE))
-        if (jacobian) .lp <- .lp - sum(log(.d$DV))
-        .lp + stats::dnorm(e, 0, sqrt(om), log = TRUE)
+        sum(stats::dnorm(tr(.d$DV), tr(.f), sd, log = TRUE)) +
+          sum(ljac(.d$DV)) + stats::dnorm(e, 0, sqrt(om), log = TRUE)
       }
       .lim <- 8 * sqrt(om)
       .grid <- seq(-.lim, .lim, length.out = 2001L)
@@ -116,12 +131,45 @@ nmTest({
     # Jacobian is applied; check the Jacobian moves it in the direction the
     # untransformed density requires
     .refNoJac <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
-                                     .f$theta[["lnorm.sd"]], jacobian = FALSE))
+                                     .f$theta[["lnorm.sd"]], ljac = .noJac))
     expect_equal(.ref, .refNoJac + 2 * sum(log(.obs$DV)), tolerance = 1e-4)
 
     # and the fit's own reported likelihood is the same corrected quantity (its
     # default quadrature is much coarser, hence the loose tolerance)
     expect_equal(-2 * as.numeric(logLik(.f)), .ref, tolerance = 2)
+  })
+
+  test_that("an untransformed add() endpoint is untouched by the Jacobian term (#903)", {
+    # powerL is 0 for an untransformed endpoint, so the added term has to be
+    # exactly zero and this likelihood has to be identical before and after the
+    # sign fix.  Guards the other direction of #903: a Jacobian that leaks into
+    # an add()/prop()/ll() fit.
+    .addBolus <- function() {
+      ini({
+        tcl <- log(4)
+        eta.cl ~ 0.09
+        add.sd <- 0.2
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- 70
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- .mkBolusAdd(42L, 12L, 0.09, 0.2, c(0.5, 1, 2, 4, 7, 12, 24))
+    .obs <- .d[.d$EVID == 0, ]
+    .f <- suppressMessages(nlmixr2(.addBolus, .d, est = "saem",
+      control = saemControl(nBurn = 60, nEm = 60, seed = 1, print = 0L,
+                            calcTables = FALSE)))
+    .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
+                                .f$theta[["add.sd"]], tr = identity,
+                                ljac = .noJac))
+    .got <- suppressMessages(nlmixr2est:::calc.2LL(.f$saem, nnodes.gq = 25,
+                                                  nsd.gq = 5, .f$phiM))
+    expect_equal(.got, .ref, tolerance = 1e-5)
+    # the transform is recorded as "no transform" (yj == 2), which is what makes
+    # powerL return 0
+    expect_equal(.f$saem$transMat[1, 2], 2)
   })
 
   test_that("the quadrature survives log-densities that overflow exp() (#903)", {
