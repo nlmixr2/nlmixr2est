@@ -65,6 +65,26 @@
   error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
   values now agree outright rather than up to a constant.
 
+- Fixed `est="saem"` applying the **transform-both-sides log-Jacobian with the
+  wrong sign** in its Gaussian-quadrature likelihood, so the reported
+  `objf`/`logLik`/`AIC`/`BIC` for an `lnorm()`, `boxCox()`, `yeoJohnson()`,
+  `logitNorm()` or `probitNorm()` endpoint was off by `4*sum(log|dt/dy|)`.  The
+  quadrature builds the likelihood of the transformed observations, so the
+  Jacobian has to be added to reach the likelihood of the original data -- the
+  convention FOCEi already uses.  On a one-compartment `lnorm()` fit whose exact
+  marginal likelihood is a one-dimensional integral, the reported -2LL goes from
+  -214.37 to 113.86 against an exact 113.86.  `add()`, `prop()` and `ll()`
+  endpoints have a zero Jacobian and are unaffected.
+
+- The `saem` quadrature likelihood now accumulates in the log domain.  A
+  transformed endpoint with many observations per subject makes the
+  per-subject log-density large enough that the old `exp()` accumulation
+  overflowed, and the whole fit reported an infinite objective function.
+
+- `saemControl(nsdGq=)` is now honored when the likelihood is calculated with
+  the fit; it was read under a name the control never stored, so any value other
+  than the default was silently ignored.
+
 - `saemControl(covMethod=)` `"sa"` and `"fim"` now say plainly that they do not
   apply to a general log-likelihood endpoint and use the linearized Fisher
   information, instead of reporting that the covariance "could not be computed".
