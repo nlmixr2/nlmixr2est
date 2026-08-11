@@ -41,7 +41,9 @@
 
 - `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
   and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
-  fast kernel's own step, proposal, acceptance and failure counts.
+  fast kernel's own step, proposal, acceptance and failure counts, plus
+  `lastTheta`, the inner `THETA` the last fast step was built with (the counts
+  show the kernel fired; only `lastTheta` shows what it was fired at).
 
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity
