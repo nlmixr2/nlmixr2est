@@ -34,6 +34,11 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.0.3" id="nlmixr2est-703">nlmixr2est 7.0.3<a class="anchor" aria-label="anchor" href="#nlmixr2est-703"></a></h2>
 <div class="section level3">
+<h3 id="breaking-changes-7-0-3">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-7-0-3"></a></h3>
+<ul><li>
+<code>saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)</code> have been removed and now error as unused arguments. They were announced in 7.0.2 as controlling a bounded L-BFGS-B refinement of the fixed-effect-only (<code>phi0</code>) parameters of a general log-likelihood model, but no such refinement was ever implemented: the options were validated and stored and then read by nothing. That <code>phi0</code> step is optimized by the bounded derivative-free routine (<code>bobyqa</code>, or <code><a href="https://rdrr.io/r/stats/optimize.html" class="external-link">stats::optimize</a></code> for a single parameter), which honors the <code>ini</code>-block bounds and takes no L-BFGS-B settings. Passing any of the four never changed a fit, so removing them changes no result.</li>
+</ul></div>
+<div class="section level3">
 <h3 id="new-features-7-0-3">New features<a class="anchor" aria-label="anchor" href="#new-features-7-0-3"></a></h3>
 <ul><li><p>Requires <code>rxode2</code> (&gt;= 5.1.7). The compatibility layer that also let this package build and run against 5.1.5 has been removed, so the event-sensitivity shape swap and the CMT re-basing of the shared solve pool always go through rxode2’s C API instead of writing its structures by field.</p></li>
 <li><p><code>est="npag"</code> / <code>est="npb"</code> now support a hand-written general likelihood (<code>ll()</code>) properly. A model whose <code>ll()</code> is written as the exact normal log-density now agrees with the equivalent <code>add()</code> model to the known <code>0.5*log(2*pi)</code> per observation, at every grid size. Requires rxode2 5.1.7 for the <code>safeLog=2</code> log-domain mode.</p></li>
@@ -256,7 +261,7 @@
 <div class="section level4">
 <h4 id="saem-7-0-2">SAEM<a class="anchor" aria-label="anchor" href="#saem-7-0-2"></a></h4>
 <ul><li><p><code>saemControl(covFull = TRUE)</code> (default): full theta + residual + Omega covariance from the linearized FIM. New <code>covMethod = "sa"</code> (stochastic-approximation Fisher information, Kuhn &amp; Lavielle 2005). <code>parHistData</code> records off-diagonal Omega block covariances.</p></li>
-<li><p><code>saem</code> fits general log-likelihood endpoints (<code>ll(name) ~ &lt;expr&gt;</code>, e.g. time-to-event); fixed-effect-only parameters are refined by bounded L-BFGS-B (<code><a href="../reference/saemControl.html">saemControl()</a></code> gains <code>lbfgsLmm</code>/<code>lbfgsFactr</code>/<code>lbfgsPgtol</code>/ <code>lbfgsMaxIter</code>).</p></li>
+<li><p><code>saem</code> fits general log-likelihood endpoints (<code>ll(name) ~ &lt;expr&gt;</code>, e.g. time-to-event); fixed-effect-only parameters are refined by a bounded derivative-free optimization honoring the <code>ini</code>-block bounds. (This entry originally said the refinement used bounded L-BFGS-B and that <code><a href="../reference/saemControl.html">saemControl()</a></code> gained <code>lbfgsLmm</code>/<code>lbfgsFactr</code>/<code>lbfgsPgtol</code>/<code>lbfgsMaxIter</code>; that was never true, and those options are removed in 7.0.3.)</p></li>
 </ul></div>
 <div class="section level4">
 <h4 id="matexp--indlin-7-0-2">matExp() / indLin()<a class="anchor" aria-label="anchor" href="#matexp--indlin-7-0-2"></a></h4>
