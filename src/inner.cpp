@@ -16161,6 +16161,10 @@ static double _fsaemNBadGamma = 0;  // subjects with no usable proposal covarian
 static double _fsaemNMapReuse = 0;  // steps that reused a cached MAP + Gamma
 static double _fsaemNPriorFallback = 0; // bad-Gamma subjects rescued by the prior
 static double _fsaemNBoundFail = 0;     // proposals abandoned after nRetry out-of-bounds draws
+// The inner THETA the last no-covariate step was re-parameterized with.  The
+// counters prove the kernel fired; only this shows it was handed the RIGHT
+// population values (issue #875), which is what a wrong phi -> theta map breaks.
+static std::vector<double> _fsaemLastTheta;
 
 // fastHRefresh cache: the MAP centres and proposal Choleskys from the last step
 // that actually recomputed them.  Only the MAP optimization and the inv/chol are
@@ -16223,6 +16227,7 @@ RObject fsaemDiagReset_() {
   _fsaemNMapReuse = 0;
   _fsaemNPriorFallback = 0;
   _fsaemNBoundFail = 0;
+  _fsaemLastTheta.clear();
   fsaemCacheClear();
   // the options are per-fit too: a later fit must not inherit the previous one's
   fsaemResetOpts();
@@ -16238,7 +16243,8 @@ List fsaemDiag_() {
                       _["nBadGamma"] = _fsaemNBadGamma,
                       _["nMapReuse"] = _fsaemNMapReuse,
                       _["nPriorFallback"] = _fsaemNPriorFallback,
-                      _["nBoundFail"] = _fsaemNBoundFail);
+                      _["nBoundFail"] = _fsaemNBoundFail,
+                      _["lastTheta"] = wrap(_fsaemLastTheta));
 }
 
 // f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder: for each physical
@@ -16589,6 +16595,7 @@ NumericMatrix fsaemStepCpp_(Environment env, NumericVector theta, NumericVector 
                             IntegerVector nbd, double seed, int nRetry, int kiter) {
   // ---- re-parameterize the inner (mirror .fsaemInnerUpdate) ----
   int nth = theta.size();
+  _fsaemLastTheta.assign(theta.begin(), theta.end());
   NumericVector th = clone(theta);
   CharacterVector thNames(nth);
   for (int i = 0; i < nth; ++i) thNames[i] = "THETA[" + std::to_string(i + 1) + "]";
