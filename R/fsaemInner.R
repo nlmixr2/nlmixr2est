@@ -40,9 +40,19 @@
 #' Set up the FOCEi inner problem for the f-SAEM proposal at `ui`'s current
 #' ini() estimates.  Mirrors `.vaeInnerSetup` but keeps a live inner optimizer.
 #' Returns the setup env (keep alive until `.fsaemInnerFree()`).
+#'
+#' `copyUi=FALSE` says the caller's `ui` is already private to the inner.
 #' @noRd
-.fsaemInnerSetup <- function(ui, data, etaMat, control) {
+.fsaemInnerSetup <- function(ui, data, etaMat, control, copyUi = TRUE) {
+  # The inner replaces $control with its own foceiControl, and rxUiDecompress
+  # hands back the SAME environment for an already-decompressed ui -- so on the
+  # fit's ui that control would BE the fit's for the rest of the run, and
+  # everything read from it after the fast kernel is installed (addProp
+  # included, which the inner now deliberately sets differently) would come from
+  # the inner instead.  The covariate path opts out: its ui is its own, and it
+  # re-enters here every iteration.
   .ui <- rxode2::rxUiDecompress(ui)
+  if (copyUi) .ui <- rxode2::.copyUi(.ui)
   .fc <- .fsaemInnerFoceiControl(control)
   .fc$est <- "focei"
   .ui$control <- .fc
@@ -113,6 +123,21 @@
   list(eta = .r$eta, gamma = .gamma, hess = .hess, ok = .r$ok)
 }
 
+#' Which endpoints really carry BOTH an additive and a proportional residual?
+#'
+#' combined1 and combined2 coincide unless both are present, so only these
+#' endpoints care which of the two the inner is built with.
+#' @return logical, one per `predDf` row
+#' @noRd
+.fsaemCombinedEndpoint <- function(ui) {
+  .pred <- ui$predDf
+  if (is.null(.pred) || length(.pred$cond) < 1L) return(logical(0))
+  vapply(.pred$cond, function(.cnd) {
+    .e <- ui$iniDf$err[which(ui$iniDf$condition == .cnd)]
+    any(.e %in% "add") && any(.e %in% "prop")
+  }, logical(1), USE.NAMES = FALSE)
+}
+
 #' Is `ui` within the current f-SAEM fast-kernel support envelope?
 #'
 #' The C++ side reconstructs the inner's theta as [population phi (constant across
@@ -145,6 +170,15 @@
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
+  # The inner is built combined1 to match the E-step's residual SD, which the
+  # control can only impose on an endpoint that leaves addProp at "default".  An
+  # endpoint that DECLARES combined2 keeps it (the declaration wins over the
+  # control), so the proposal would score a variance the chain never uses --
+  # degrade rather than mis-target.  Only a real add+prop endpoint cares: with
+  # one of the two the two forms coincide.
+  .ap <- as.character(.pred$addProp)
+  if (any(.fsaemCombinedEndpoint(ui) & !is.na(.ap) &
+          !(.ap %in% c("default", "combined1")))) return(FALSE)
   # mu-ref covariates are supported: non-time-varying ones are absorbed into the
   # per-subject mprior data, time-varying ones are kept as inner regressor betas
   # refreshed from the live Plambda each iteration.
@@ -201,6 +235,17 @@
   .iniDf <- ui$iniDf
   .neta <- sum(.iniDf$neta1 == .iniDf$neta2, na.rm = TRUE)
   .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
+  # The SAEM E-step's residual SD is unconditionally combined1
+  # (g = ares + bres*|f|, src/saem.cpp), so the inner asks for combined1 rather
+  # than the fit's addProp; a combined2 inner would precondition the IMH kernel
+  # against a variance the chain it guides never uses.  Left at the fit's value
+  # when no endpoint is really add+prop: the two forms coincide there, and
+  # diverging from it would only cost the focei model cache a duplicate build.
+  .addProp <- if (any(.fsaemCombinedEndpoint(ui))) {
+    "combined1"
+  } else {
+    rxode2::rxGetControl(ui, "addProp", "combined2")
+  }
   .fc <- list(rxControl = rxControl,
               fastCov = rxode2::rxGetControl(ui, "fastCov", "auto"),
               fastLik = rxode2::rxGetControl(ui, "fastLik", "focei"),
@@ -208,7 +253,7 @@
               sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
               optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
               literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
-              addProp = rxode2::rxGetControl(ui, "addProp", "combined2"),
+              addProp = .addProp,
               eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
               indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
               maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),

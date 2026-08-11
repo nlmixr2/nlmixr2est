@@ -110,4 +110,153 @@ nmTest({
     expect_lt(sum(abs(.tight)), sum(abs(.wide)))
     expect_gt(mean(abs(.tight) <= abs(.wide) + 1e-8), 0.6)
   })
+
+  # issue #874: the SAEM E-step's residual SD is unconditionally combined1
+  # (ares + bres*|f|), so the f-SAEM inner has to be built combined1 too or the
+  # IMH proposal is preconditioned against a variance the chain never uses.  A
+  # wrong proposal costs acceptance, not the estimate, so pin the inner itself.
+  test_that("fsaem inner is combined1 whatever addProp the fit asks for", {
+    skip_if_not_installed("nlmixr2data")
+
+    comb <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.3; prop.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    .data <- nlmixr2data::theo_sd
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(comb))
+    # combined2 is saemControl()'s default, i.e. what the inner used to inherit
+    .ui$control <- saemControl(fast = TRUE, addProp = "combined2", print = 0L,
+                               calcTables = FALSE)
+    .neta <- 3L
+    .N <- length(unique(.data$ID))
+
+    .cfg <- .fsaemInstallStep(.ui, .data, rxode2::rxControl(), list())
+    expect_false(is.null(.cfg$fsaemStep))
+    # the mechanism: the inner's own foceiControl, not the fit's addProp
+    expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined1")
+    # ...and the fit keeps ITS addProp.  The inner works on a copy of the ui; on
+    # the ui itself the foceiControl it installs would BE the fit's control for
+    # the rest of the run, so the M-step would silently follow the inner.
+    expect_s3_class(.ui$control, "saemControl")
+    expect_equal(.ui$control$addProp, "combined2")
+    expect_equal(as.integer(.ui$saemAddProp), 2L)
+    # the inner teardown after a fast fit is gated on this read, and a
+    # foceiControl answers FALSE
+    expect_true(rxode2::rxGetControl(.ui, "fast", FALSE))
+    .hessInstalled <- .fsaemInnerMap(list(rxControl = rxode2::rxControl()), .neta)$hess
+    .fsaemInnerFree()
+
+    # ...and the proposal precision it produces is the one a combined1 inner
+    # gives, not a combined2 one.  Compared against the inner built each way
+    # rather than an analytic Eq-17 -- the control has to survive the focei
+    # model cache, which keys on it, and reach the residual the MAP is scored
+    # against.
+    .innerHess <- function(addProp) {
+      .ctl <- list(rxControl = rxode2::rxControl(), fastCov = "jacobian", fastLik = "focei",
+                   fastInnerIt = 100L, sumProd = FALSE, optExpression = TRUE, literalFix = FALSE,
+                   addProp = addProp, eventSens = "jump", indTolRelax = TRUE,
+                   maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5)
+      .fsaemInnerSetup(.ui, .data, matrix(0, .N, .neta), .ctl)
+      on.exit(.fsaemInnerFree(), add = TRUE)
+      .fsaemInnerMap(.ctl, .neta)$hess
+    }
+    .h1 <- .innerHess("combined1")
+    .h2 <- .innerHess("combined2")
+    expect_equal(.hessInstalled, .h1)
+    # the two residual forms really are distinguishable here (guards the guard)
+    expect_false(isTRUE(all.equal(.h1, .h2)))
+  })
+
+  test_that("the covariate inner is combined1 too, and leaves the fit alone", {
+    skip_if_not_installed("nlmixr2data")
+    # the covariate path builds its inner on a ui rebuilt from model text
+    # (.fsaemInnerMpriorUi), so it takes no copy -- check that ui really is its
+    # own and that the residual form still follows the E-step
+    covMod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.3; prop.sd <- 0.1
+        dclWt <- 0.75
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + dclWt * WT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(covMod))
+    .ui$control <- saemControl(fast = TRUE, addProp = "combined2", print = 0L,
+                               calcTables = FALSE)
+    expect_true(nrow(.ui$muRefCovariateDataFrame) > 0L)
+    .cfg <- .fsaemInstallStep(.ui, nlmixr2data::theo_sd, rxode2::rxControl(), list())
+    on.exit(.fsaemInnerFree(), add = TRUE)
+    expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined1")
+    expect_s3_class(.ui$control, "saemControl")
+    expect_true(rxode2::rxGetControl(.ui, "fast", FALSE))
+  })
+
+  test_that("a model DECLARING combined2 degrades instead of mis-targeting", {
+    # the control cannot override a model-level declaration, so such an endpoint
+    # falls back to standard SAEM rather than building a combined2 proposal
+    default <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3; prop.sd <- 0.1})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    declared1 <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3; prop.sd <- 0.1})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd) + prop(prop.sd) + combined1()
+      })
+    }
+    declared2 <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3; prop.sd <- 0.1})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd) + prop(prop.sd) + combined2()
+      })
+    }
+    .sup <- function(m) .fsaemSupported(rxode2::rxUiDecompress(rxode2::rxode2(m)))
+    expect_true(.sup(default))     # default -> the control makes it combined1
+    expect_true(.sup(declared1))   # declared, and it agrees with the E-step
+    expect_false(.sup(declared2))  # declared, and it does not
+
+    # a lone add() endpoint is unaffected: the two forms coincide there
+    addOnly <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd) + combined2()
+      })
+    }
+    expect_true(.fsaemSupported(rxode2::rxUiDecompress(rxode2::rxode2(addOnly))))
+
+    # ...and its inner keeps the fit's addProp rather than diverging for nothing:
+    # the focei model cache keys on addProp, so forcing combined1 where the two
+    # forms coincide would only buy a duplicate build of the same model.
+    skip_if_not_installed("nlmixr2data")
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }))
+    .ui$control <- saemControl(addProp = "combined2", print = 0L, calcTables = FALSE)
+    .cfg <- .fsaemInstallStep(.ui, nlmixr2data::theo_sd, rxode2::rxControl(), list())
+    on.exit(.fsaemInnerFree(), add = TRUE)
+    expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined2")
+  })
 })
