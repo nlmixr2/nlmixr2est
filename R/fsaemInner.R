@@ -263,10 +263,14 @@
   if (identical(.fc$fastCov, "auto")) {
     .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
   }
-  # bound-respecting reproducible IMH proposals (threefry seeded by the SAEM seed).
-  # Boundary clamping is ONLY for general log-likelihood models: for normal
-  # (add/prop/combined) data the residual error optimizer does the clamping, so
-  # the IMH proposal stays unconstrained there.
+  # Reproducible IMH proposals (threefry seeded by the SAEM seed), optionally
+  # bounded.  In practice the bound vectors come back all-zero (nbd = 0): fsaem
+  # is an "unbounded" method, so preProcessBoundedTransform has already rewritten
+  # every finite structural-theta bound into an unconstrained internal parameter
+  # by the time the kernel is installed, and the bound is then enforced by the
+  # back-transform rather than by the proposal.  Kept for the general-likelihood
+  # family, whose thetas the kernel scores directly; the kernel's own clamping is
+  # covered in test-fsaem-imh.R.
   .bounds <- if (.saemAnyGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
   .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
   .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
@@ -280,6 +284,14 @@
                                 "chainMean")),
     hRefresh = as.integer(rxode2::rxGetControl(ui, "fastHRefresh", 1L))))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
+  if (.hasCov && nrow(ui$muRefDataFrame) != .neta) {
+    # The covariate inner absorbs each mu-ref intercept into a per-subject data
+    # column, so it is sized by muRefDataFrame -- an eta with no mu-ref row (a
+    # nonMuEta; every IOV eta is one) leaves the inner short of etas and the
+    # setup dies on "etaMat must have the same number of ETAs".  Degrade.
+    .minfo("fast kernel needs mu-ref etas with covariates; running standard SAEM")
+    return(cfg)
+  }
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
     # per-subject prior mean, so the inner is built on the mprior-as-data model
