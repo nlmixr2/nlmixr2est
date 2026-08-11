@@ -681,6 +681,10 @@ public:
 
   ~SAEM() {}
 
+  // Is the f-SAEM fast kernel installed?  The no-covariate path is driven from
+  // C++ (fsaemNoCov) and has no R closure; the covariate path is the closure.
+  bool fsaemInstalled() { return fsaemNoCov != 0 || !Rf_isNull(fsaemStepFn); }
+
   // Total observation -log-likelihood at candidate fixed-effect (phi0) values p,
   // holding the current phi1 samples fixed (general-likelihood / distribution==4:
   // the model prediction column is the per-observation log-likelihood).  Summed
@@ -922,7 +926,7 @@ public:
     if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
     // If the fast kernel re-pointed the global solve to the FOCEi inner, restore
     // the SAEM (N*nmc) solve before the direct-optim user_fn calls.
-    if (!Rf_isNull(fsaemStepFn)) {
+    if (fsaemInstalled()) {
       fsaemRestoreSaemSolve(fsaemSaemOpt, fsaemSaemEvt, nmc, N);
     }
     // Decide whether to freeze the ODE during the phi0 optimization.  General-
@@ -1288,17 +1292,22 @@ public:
       fsaemFastKernel = as<std::string>(x["fastKernel"]);
       fsaemFastCov = as<std::string>(x["fastCov"]);
       fsaemFastLik = as<std::string>(x["fastLik"]);
-      if (x.containsElementNamed("fsaemStep")) {
-        fsaemStepFn = x["fsaemStep"];
-        fsaemSaemOpt = as<List>(x["opt"]);
-        fsaemSaemEvt = x["evt"];
-      }
+      if (x.containsElementNamed("fsaemStep")) fsaemStepFn = x["fsaemStep"];
       // C++-native direct-call fields (no-covariate path): the loop calls
       // fsaemStepCpp_ itself, with no per-iteration Rcpp::Function round-trip.
       fsaemNoCov = x.containsElementNamed("fsaemNoCov") ? as<int>(x["fsaemNoCov"]) : 0;
+      if (fsaemInstalled()) {
+        // needed by BOTH paths: the fast step re-points the global solve to the
+        // FOCEi inner, and this is what puts the SAEM solve back
+        fsaemSaemOpt = as<List>(x["opt"]);
+        fsaemSaemEvt = x["evt"];
+      }
       if (fsaemNoCov) {
         fsaemInnerEnv   = x["fsaemInnerEnv"];
         fsaemStructPos  = as<ivec>(x["fsaemStructPos"]);
+        fsaemStructPhi  = as<ivec>(x["fsaemStructPhi"]);
+        if (fsaemStructPhi.n_elem != fsaemStructPos.n_elem)
+          stop("fsaem: the structural theta -> phi map is the wrong length");
         fsaemThetaIni   = x.containsElementNamed("fsaemThetaIni") ?
           as<vec>(x["fsaemThetaIni"]) : vec();
         fsaemResidPos   = as<ivec>(x["fsaemResidPos"]);
@@ -1435,6 +1444,10 @@ public:
     nlambda = nlambda1 + nlambda0;
     nb_param = nphi1 + nlambda + 1;
     nphi = nphi1+nphi0;
+    // fsaemStructPhi indexes the phi vector, whose length is only known now
+    for (arma::uword _j = 0; _j < fsaemStructPhi.n_elem; _j++)
+      if (fsaemStructPhi(_j) < 0 || fsaemStructPhi(_j) >= nphi)
+        stop("fsaem: the structural theta -> phi map is out of range");
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
     ilambda0 = as<uvec>(x["ilambda0"]);
@@ -2496,7 +2509,7 @@ public:
         // likelihood (distribution==4) the IMH proposal is already the calibrated
         // posterior kernel, so it REPLACES the phi1 random walk: running both
         // stacks extra exploration and inflates the between-subject variance.
-        bool imhFired = (fsaemActive && nphi1 > 0 && !Rf_isNull(fsaemStepFn));
+        bool imhFired = (fsaemActive && nphi1 > 0 && fsaemInstalled());
         bool imhReplacesRwm = (imhFired && distribution == 4);
         if (imhFired) {
           fsaemImhStep(phiM, (int)kiter);
@@ -3704,7 +3717,7 @@ private:
   int fsaemNoCov = 0;
   RObject fsaemInnerEnv = R_NilValue;
   vec fsaemThetaIni;
-  ivec fsaemStructPos, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
+  ivec fsaemStructPos, fsaemStructPhi, fsaemResidPos, fsaemResidEp, fsaemResidIsAdd, fsaemNbdVec;
   vec fsaemLower, fsaemUpper;
   int fsaemNTheta = 0, fsaemNsweep = 5, fsaemNRetry = 10, fsaemCores = 1;
 
@@ -3972,14 +3985,15 @@ private:
     arma::vec phiPop(nphi1 + nphi0, arma::fill::zeros);
     for (int k = 0; k < nphi1; k++) phiPop(i1(k)) = mprior_phi1(0, k);
     for (int k = 0; k < nphi0; k++) phiPop(i0(k)) = mprior_phi0(0, k);
-    // phi column j IS structural theta j: the phi vector follows the ini (ntheta)
-    // order that fsaemStructPos is built in, not the eta order.  Verified by
-    // construction: routing through ui$muRefDataFrame instead drops acceptance from
-    // 0.88 to 0.02 when ini() and the eta declarations disagree.
-    bool phiPopOk = ((int)fsaemStructPos.n_elem == nphi1 + nphi0);
+    // fsaemStructPhi(j) is the phi column holding structural theta
+    // fsaemStructPos(j)'s population value, matched by NAME in R.  The map is
+    // the identity for a plain mu-referenced model, but the phi vector is NOT a
+    // positional copy of the structural thetas: nonMuEtas (every IOV eta) append
+    // phi columns with no theta, and a fix()ed theta keeps its phi column while
+    // leaving the structural set.  Reading it positionally handed the inner
+    // another parameter's value -- IOV sd = 0, or a phi0 theta = 0 (#875).
     for (int j = 0; j < (int)fsaemStructPos.n_elem; j++)
-      theta[fsaemStructPos(j)] =
-        phiPopOk ? phiPop((arma::uword)j) : mprior_phi1(0, std::min(j, nphi1 - 1));
+      theta[fsaemStructPos(j)] = phiPop((arma::uword)fsaemStructPhi(j));
     for (int j = 0; j < (int)fsaemResidPos.n_elem; j++) {
       int ep = fsaemResidEp(j);
       theta[fsaemResidPos(j)] = fsaemResidIsAdd(j) ? ares(ep) : bres(ep);
