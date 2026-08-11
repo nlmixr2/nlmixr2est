@@ -57,7 +57,9 @@ nmTest({
     # the inner carries all five thetas (tka, tcl, tv, prop.sd, iov.cl) ...
     .lt <- .fs$fsaemDiag$lastTheta
     expect_equal(length(.lt), 5L)
-    # ... the structural + residual ones at the fit's own values ...
+    # ... the structural + residual ones at the fit's own values.  A regression
+    # guard, not the pin: every mu-ref theta here is a leading phi1 column, so
+    # the old positional fill got these four right by accident.
     .fe <- fixef(.fs)
     expect_lt(max(abs(.lt[1:4] - .fe[c("tka", "tcl", "tv", "prop.sd")])), 0.05)
     # ... and the IOV magnitude at the chain's live value, not the 0 the
