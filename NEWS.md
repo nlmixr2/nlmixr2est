@@ -129,6 +129,16 @@
   `covMethod="linFim"` (the default) is unaffected throughout; its `calc.COV()`
   linearization was always per-endpoint.
 
+- `est="fsaem"`'s Metropolis-Hastings proposal is now built against the residual
+  variance the SAEM chain actually uses.  The FOCEi inner behind the proposal was
+  built with the fit's `addProp`, whose default is `"combined2"`, while the SAEM
+  simulation step's residual standard deviation is unconditionally `"combined1"`
+  (`ares + bres*|f|`); on an `add()` + `prop()` model the kernel was therefore
+  preconditioned against a different variance than the chain it guides, costing
+  acceptance.  The inner is now always `"combined1"`, and a model that *declares*
+  `combined2()` on such an endpoint -- which the control cannot override --
+  degrades to standard SAEM instead (#874).
+
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
