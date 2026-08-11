@@ -51,6 +51,23 @@ After the fix the same default fit reports -2LL = 113.734 against the
 reference 113.861 (gauss3_1.6 quadrature error); before the fix it reported
 -214.499.
 
+## Found while measuring, NOT fixed here (separate defects)
+
+- `saem` never propagates a `boxCox()`/`yeoJohnson()` lambda into `transMat`.
+  `src/saem.cpp` sets the `lambda` member once from the input list (line 1340)
+  and never updates it from `lres`, where the estimated -- or even `fixed()` --
+  lambda actually lives (`resMat[, 4]`).  So `transMat[, 1]` stays 1 and
+  `calc.2LL` evaluates the likelihood at lambda = 1 regardless of what the fit
+  reports.  A `boxCox(lambda = fixed(0.5))` fit on data simulated at
+  lambda = 0.5 recovers `tcl = 2.006` against a true 1.386 and
+  `omega = 0.0036` against a true 0.09, which is what a fit with the transform
+  effectively switched off looks like.
+- A `logitNorm(sd, 0, 10)` saem fit dies with "missing value where TRUE/FALSE
+  needed" during fit finalization.  Verified to fail identically on `main`.
+
+Both are why the new test covers `lnorm()` and `add()` rather than a wider
+sweep of transforms; neither is caused by this change.
+
 ## Phases
 
 1. [x] Measure (above).
