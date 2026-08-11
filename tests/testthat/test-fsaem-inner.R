@@ -140,6 +140,12 @@ nmTest({
     expect_false(is.null(.cfg$fsaemStep))
     # the mechanism: the inner's own foceiControl, not the fit's addProp
     expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined1")
+    # ...and the fit keeps ITS addProp.  The inner works on a copy of the ui; on
+    # the ui itself the foceiControl it installs would BE the fit's control for
+    # the rest of the run, so the M-step would silently follow the inner.
+    expect_s3_class(.ui$control, "saemControl")
+    expect_equal(.ui$control$addProp, "combined2")
+    expect_equal(as.integer(.ui$saemAddProp), 2L)
     .hessInstalled <- .fsaemInnerMap(list(rxControl = rxode2::rxControl()), .neta)$hess
     .fsaemInnerFree()
 
@@ -202,5 +208,21 @@ nmTest({
       })
     }
     expect_true(.fsaemSupported(rxode2::rxUiDecompress(rxode2::rxode2(addOnly))))
+
+    # ...and its inner keeps the fit's addProp rather than diverging for nothing:
+    # the focei model cache keys on addProp, so forcing combined1 where the two
+    # forms coincide would only buy a duplicate build of the same model.
+    skip_if_not_installed("nlmixr2data")
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; add.sd <- 0.3})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }))
+    .ui$control <- saemControl(addProp = "combined2", print = 0L, calcTables = FALSE)
+    .cfg <- .fsaemInstallStep(.ui, nlmixr2data::theo_sd, rxode2::rxControl(), list())
+    on.exit(.fsaemInnerFree(), add = TRUE)
+    expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined2")
   })
 })

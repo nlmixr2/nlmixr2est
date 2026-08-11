@@ -139,6 +139,14 @@
   `combined2()` on such an endpoint -- which the control cannot override --
   degrades to standard SAEM instead (#874).
 
+- `est="fsaem"` no longer replaces the fit's own control while installing its
+  fast kernel.  The FOCEi inner behind the proposal was set up on the fit's `ui`
+  rather than a copy, so the `foceiControl` it installs there *became* the fit's
+  control: everything read from the control after that point saw the inner's
+  settings.  The visible consequence was that the teardown of the inner problem
+  is gated on `fast`, which the inner's control reports as `FALSE`, so the FOCEi
+  inner state was left standing after every fast fit instead of being freed.
+
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta
   that the data does inform.  The test asks whether perturbing an eta moves the
