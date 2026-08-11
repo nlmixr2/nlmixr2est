@@ -41,7 +41,9 @@
 
 - `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
   and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
-  fast kernel's own step, proposal, acceptance and failure counts.
+  fast kernel's own step, proposal, acceptance and failure counts, plus
+  `lastTheta`, the inner `THETA` the last fast step was built with (the counts
+  show the kernel fired; only `lastTheta` shows what it was fired at).
 
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity
@@ -138,6 +140,27 @@
   acceptance.  The inner is now always `"combined1"`, and a model that *declares*
   `combined2()` on such an endpoint -- which the control cannot override --
   degrades to standard SAEM instead (#874).
+
+- `est="fsaem"` now builds its Metropolis-Hastings proposal at the fit's own
+  population parameters when the model has a parameter the SAEM phi vector does
+  not line up with positionally.  The fast kernel filled the FOCEi inner's
+  `THETA` by walking the structural thetas and the phi columns in parallel, and
+  that pairing breaks three ways: a non-mu eta (every **IOV** eta is one) appends
+  a phi column with no theta, a `fix()`ed theta keeps its phi column but leaves
+  the structural list, and a theta with no eta shifts every later index.  The
+  inner was then handed some other parameter's value -- an IOV model got
+  `iov sd = 0`, an IOV model with a no-eta theta got `V = 1`, and a `fix()`ed
+  `tcl` gave `tv` tcl's fixed value -- which costs acceptance and moves the
+  target without erroring.  Each structural theta is now matched to its own phi
+  column by name; on an IOV model with a no-eta theta the acceptance rate goes
+  from 0.50 to 0.89 (#875).
+
+- `est="fsaem"` on a model with **both a mu-referenced covariate and an IOV**
+  (or any other non-mu) eta ran the standard SAEM kernel instead of aborting the
+  fit.  The covariate proposal's inner absorbs each mu-referenced intercept into
+  a per-subject data column and is sized from those, so an eta with no such
+  column left it short and the fit died with "etaMat must have the same number
+  of ETAs (cols) as the model" (#875).
 
 - `est="fsaem"` no longer replaces the fit's own control while installing its
   fast kernel.  The FOCEi inner behind the proposal was set up on the fit's `ui`

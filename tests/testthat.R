@@ -89,7 +89,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit"),
   # batch 6
-  c("focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
+  c("focei-llik", "iov", "iov-zero-eta", "fsaem-iov", "saem-mix", "saem-mix-regress",
     "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit"),
   # batch 7
   c("mu-plain-fit", "vae-fit", "focei-wang2007-basic", "vae-neonatal",

@@ -138,7 +138,10 @@ nmTest({
     .N <- length(unique(.data$ID))
 
     .cfg <- .fsaemInstallStep(.ui, .data, rxode2::rxControl(), list())
-    expect_false(is.null(.cfg$fsaemStep))
+    # the fast kernel really was installed (the no-covariate path is driven from
+    # C++ and carries no R closure)
+    expect_equal(.cfg$fsaemNoCov, 1L)
+    expect_false(is.null(.cfg$fsaemInnerEnv))
     # the mechanism: the inner's own foceiControl, not the fit's addProp
     expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined1")
     # ...and the fit keeps ITS addProp.  The inner works on a copy of the ui; on

@@ -187,12 +187,13 @@
 
 #' Build the f-SAEM fast-simulation step for a SAEM fit and attach it to `cfg`.
 #'
-#' Sets up the FOCEi inner once and returns a closure the C++ SAEM loop calls
-#' each fast iteration with the current estimate.  The closure re-parameterizes
-#' the inner (theta = [structural fixed effects, residual] in THETA order; omega
-#' = current diagonal), optimizes the per-subject MAP + proposal covariance, and
-#' runs the independent Metropolis-Hastings kernel over the chains.
-#' @return `cfg` with `$fsaemStep` (closure) and `$fsaemInnerEnv` (keep-alive).
+#' Sets up the FOCEi inner once so the C++ SAEM loop can re-parameterize it each
+#' fast iteration (theta = [structural fixed effects, residual] in THETA order;
+#' omega = current diagonal), optimize the per-subject MAP + proposal
+#' covariance, and run the independent Metropolis-Hastings kernel over the
+#' chains.  The covariate path additionally needs an R closure (`$fsaemStep`)
+#' because its inner is rebuilt from data each iteration.
+#' @return `cfg` with the fast-kernel fields and `$fsaemInnerEnv` (keep-alive).
 #' @noRd
 #' Phi1 (random-effect) parameter bounds in inner-eta order, from the mu-ref
 #' theta iniDf bounds (the same bounds L-BFGS-B uses for phi0).  Used to keep the
@@ -262,10 +263,14 @@
   if (identical(.fc$fastCov, "auto")) {
     .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
   }
-  # bound-respecting reproducible IMH proposals (threefry seeded by the SAEM seed).
-  # Boundary clamping is ONLY for general log-likelihood models: for normal
-  # (add/prop/combined) data the residual error optimizer does the clamping, so
-  # the IMH proposal stays unconstrained there.
+  # Reproducible IMH proposals (threefry seeded by the SAEM seed), optionally
+  # bounded.  In practice the bound vectors come back all-zero (nbd = 0): fsaem
+  # is an "unbounded" method, so preProcessBoundedTransform has already rewritten
+  # every finite structural-theta bound into an unconstrained internal parameter
+  # by the time the kernel is installed, and the bound is then enforced by the
+  # back-transform rather than by the proposal.  Kept for the general-likelihood
+  # family, whose thetas the kernel scores directly; the kernel's own clamping is
+  # covered in test-fsaem-imh.R.
   .bounds <- if (.saemAnyGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
   .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
   .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
@@ -279,6 +284,14 @@
                                 "chainMean")),
     hRefresh = as.integer(rxode2::rxGetControl(ui, "fastHRefresh", 1L))))
   .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
+  if (.hasCov && nrow(ui$muRefDataFrame) != .neta) {
+    # The covariate inner absorbs each mu-ref intercept into a per-subject data
+    # column, so it is sized by muRefDataFrame -- an eta with no mu-ref row (a
+    # nonMuEta; every IOV eta is one) leaves the inner short of etas and the
+    # setup dies on "etaMat must have the same number of ETAs".  Degrade.
+    .minfo("fast kernel needs mu-ref etas with covariates; running standard SAEM")
+    return(cfg)
+  }
   if (.hasCov) {
     # Covariate path: the time-invariant covariate effect is absorbed into the
     # per-subject prior mean, so the inner is built on the mprior-as-data model
@@ -314,12 +327,25 @@
                        c("ntheta", "name", "est", "fix", "err", "condition")]
   .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
   .nTheta <- nrow(.thetaDf)
-  # Only ESTIMATED structural thetas have a phi: a fix()ed one is not in
-  # phi1/phi0, so counting it here made length(structPos) exceed nphi1 + nphi0,
-  # tripped the C++ length guard, and filled EVERY structural slot from the
-  # fallback.  The fixed theta also has to keep its own value, which is why the
-  # inner theta is seeded from the ini estimates rather than from zeros.
+  # A fix()ed theta keeps its own value, which is why the inner theta is seeded
+  # from the ini estimates rather than from zeros.
   .structPos <- which(is.na(.thetaDf$err) & !.thetaDf$fix)
+  # Which SAEM phi column holds each of those thetas' population value.  Matched
+  # BY NAME against the phi vector, because position does not survive: a
+  # nonMuEta (every IOV eta is one) appends phi columns that have no theta, a
+  # fix()ed theta keeps its phi column but leaves .structPos, and a phi0 shifts
+  # the phi1 indices.  All three made the inner read some other parameter's
+  # population value -- IOV handed the inner iov sd = 0 (#875).  Matching the
+  # phi NAMES is not the muRefDataFrame route: this is the phi vector itself,
+  # which follows ini (ntheta) order, so a mu-ref model maps to the identity.
+  .structPhi <- match(.thetaDf$name[.structPos], ui$saemParamsToEstimateCov)
+  if (anyNA(.structPhi)) {
+    # nothing reaching here should hit this (mixtures and the covariate path are
+    # already handled), but leaving such a theta at its ini value silently would
+    # be the very failure #875 was
+    .minfo("fast kernel: a structural theta has no phi; running standard SAEM")
+    return(cfg)
+  }
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
@@ -327,31 +353,14 @@
   .lower <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
   .upper <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
   .nbd   <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
-  cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
-    .theta <- as.numeric(.thetaDf$est)     # fix()ed thetas keep their value
-    .theta[.structPos] <- mpriorMat[1, seq_along(.structPos)]
-    if (length(.residPos)) {
-      .theta[.residPos] <- ifelse(.residIsAdd, ares[.residEp], bres[.residEp])
-    }
-    .cores <- as.integer(rxode2::getRxThreads())
-    if (is.na(.cores) || .cores < 1L) .cores <- 1L
-    # whole per-iteration orchestration in C++ (inner update + MAP + IMH)
-    fsaemStepCpp_(.env, as.numeric(.theta), as.numeric(omega), mpriorMat, etaCur,
-                  as.integer(nchain), as.integer(nsweep), .cores,
-                  .lower, .upper, .nbd, as.double(.seed), as.integer(.nRetry),
-                  as.integer(kiter))
-  }
-  # C++-native direct-call fields: the SAEM C++ loop calls fsaemStepCpp_ itself
-  # (no per-iteration Rcpp::Function round-trip), which is safe for dynamic
-  # iteration changes.  The closure above is retained for the covariate path.
+  # C++-native direct-call fields: the SAEM C++ loop builds the inner theta and
+  # calls fsaemStepCpp_ itself (no per-iteration Rcpp::Function round-trip),
+  # which is what makes a dynamic iteration count safe.  There is deliberately
+  # no R closure on this path -- a second copy of the phi -> theta map is a
+  # second place to get it wrong, and it carried the pre-#875 positional read.
   cfg$fsaemNoCov      <- 1L
-  # phiPop is read POSITIONALLY (phi column j <-> structural theta j) and that is
-  # correct: the phi vector follows the ini (ntheta) order, the same order
-  # .structPos is built in.  It is NOT the eta order -- ui$muRefDataFrame can
-  # disagree with ini() -- and mapping through muRefDataFrame instead collapses
-  # the acceptance rate from 0.88 to 0.02 on a model whose ini() and eta orders
-  # differ, which is what pins this down.  See the permuted-ini regression test.
   cfg$fsaemStructPos  <- as.integer(.structPos - 1L)
+  cfg$fsaemStructPhi  <- as.integer(.structPhi - 1L)
   cfg$fsaemThetaIni   <- as.numeric(.thetaDf$est)
   cfg$fsaemResidPos   <- as.integer(.residPos - 1L)
   cfg$fsaemResidIsAdd <- as.integer(.residIsAdd)
