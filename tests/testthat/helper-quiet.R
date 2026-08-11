@@ -2,6 +2,19 @@
   suppressWarnings(suppressMessages(nlmixr(...)))
 }
 
+# Fit while collecting the messages the run emitted; returns list(fit=, msg=).
+# Used to assert on the model-build messages (e.g. "duplicate expressions").
+.nlmixrMsg <- function(...) {
+  .msg <- character()
+  .fit <- withCallingHandlers(
+    suppressWarnings(nlmixr(...)),
+    message = function(m) {
+      .msg <<- c(.msg, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    })
+  list(fit = .fit, msg = .msg)
+}
+
 # Drop-in replacement for set.seed() inside tests.  Sets the R RNG seed exactly
 # like set.seed(), but also snapshots the R and rxode2 RNG state and restores
 # both when the enclosing test (or calling frame) exits.  This keeps a test's
