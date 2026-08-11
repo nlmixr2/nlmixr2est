@@ -91,6 +91,16 @@ nmTest({
     # a proportional residual SD is a fraction, not a count
     expect_lt(fixef(f.saemM3)[["prop.sd"]], 1)
     expect_lt(f.saemM3$omega[1, 1], 1)
+
+    # M4 is its own branch (a limit turns the tail into a difference of two), so
+    # it needs its own case
+    .m4 <- .m3
+    .m4$limit <- ifelse(.m4$cens == 1, 0, NA)
+    f.saemM4 <- suppressWarnings(suppressMessages(nlmixr(f, .m4, "saem", control = .m3ctl)))
+    f.foceiM4 <- suppressWarnings(suppressMessages(nlmixr(f, .m4, "focei")))
+    ct(f.saemM4, "M4 censoring")
+    expect_equal(fixef(f.saemM4)[["tvK"]], fixef(f.foceiM4)[["tvK"]], tolerance = 0.2)
+    expect_lt(fixef(f.saemM4)[["prop.sd"]], 1)
   })
 
   test_that("M3 censoring - fsaem lands where saem does", {
