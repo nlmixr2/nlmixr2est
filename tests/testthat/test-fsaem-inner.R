@@ -262,4 +262,76 @@ nmTest({
     on.exit(.fsaemInnerFree(), add = TRUE)
     expect_equal(.cfg$fsaemInnerEnv$control$addProp, "combined2")
   })
+
+  # The IMH acceptance ratio is a difference of likInner0 values, so what the
+  # kernel targets on a censored dataset is whatever likInner0 does with a
+  # censored row.  Check that against an independent R evaluation of the exact
+  # M3 term (#876): the chain scores the same row with the same doCensNormal1,
+  # so agreement here is what lets censored data through .fsaemSupported.
+  test_that("the inner objective the IMH scores carries the exact M3 term", {
+    skip_if_not_installed("nlmixr2data")
+
+    one.cmt <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.3; add.sd <- 0.7})
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(one.cmt))
+    .sd <- 0.7
+    .loq <- 3
+
+    # one dataset with the low observations flagged BQL, one with the SAME DV
+    # values and no flag.  Differencing the two objectives isolates the censored
+    # term; differencing THAT across two etas drops every eta-free constant
+    # (the adjLik offset, the transform Jacobian, the eta prior).
+    .datC <- nlmixr2data::theo_sd
+    .obs <- .datC$EVID == 0
+    .datC$cens <- 0L
+    .datC$cens[.obs & .datC$DV < .loq] <- 1L
+    .datC$DV[.datC$cens == 1L] <- .loq
+    .datN <- .datC
+    .datN$cens <- 0L
+    expect_gt(sum(.datC$cens), 0)
+
+    .N <- length(unique(.datC$ID))
+    .ctl <- list(rxControl = rxode2::rxControl(), fastCov = "jacobian", fastLik = "focei",
+                 fastInnerIt = 100L, sumProd = FALSE, optExpression = TRUE, literalFix = FALSE,
+                 addProp = "combined2", eventSens = "jump", indTolRelax = TRUE,
+                 maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5)
+    .e1 <- matrix(0, .N, 1)
+    .e2 <- matrix(0.35, .N, 1)
+
+    .run <- function(d) {
+      .fsaemInnerSetup(.ui, d, matrix(0, .N, 1), .ctl)
+      on.exit(.fsaemInnerFree())
+      .a <- vaeInnerLik(.e1, 1L, FALSE, TRUE)
+      .b <- vaeInnerLik(.e2, 1L, FALSE, TRUE)
+      list(o1 = .a$obj, o2 = .b$obj, f1 = .a$f, f2 = .b$f)
+    }
+    .rC <- suppressWarnings(.run(.datC))
+    .rN <- suppressWarnings(.run(.datN))
+    # flagging a row censored must not move the prediction
+    expect_identical(.rC$f1, .rN$f1)
+    expect_identical(.rC$f2, .rN$f2)
+
+    .cens <- split(.datC$cens[.obs], .datC$ID[.obs])
+    .dv <- split(.datC$DV[.obs], .datC$ID[.obs])
+    # per subject: sum over its BQL rows of (M3 loss - the normal loss it replaces)
+    .censLoss <- function(fl) {
+      vapply(seq_len(.N), function(i) {
+        .w <- which(.cens[[i]] == 1L)
+        if (length(.w) == 0L) return(0)
+        .z <- (.dv[[i]][.w] - fl[[i]][.w]) / .sd
+        sum(-stats::pnorm(.z, log.p = TRUE) - (0.5 * .z^2 + log(.sd)))
+      }, numeric(1))
+    }
+    # tolerance: the uncensored branch reproduces from the returned predictions
+    # to the same ~1e-4 relative, so this is the reference's own accuracy, not
+    # the censored term's.  A flipped sign or an SD-for-variance swap is O(1).
+    expect_equal((.rC$o1 - .rN$o1) - (.rC$o2 - .rN$o2),
+                 .censLoss(.rC$f1) - .censLoss(.rC$f2),
+                 tolerance = 1e-3)
+  })
 })
