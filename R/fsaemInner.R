@@ -145,6 +145,18 @@
   .err <- ui$iniDf$err
   .err <- .err[!is.na(.err)]
   if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
+  # The inner is built combined1 to match the E-step's residual SD, which the
+  # control can only impose on an endpoint that leaves addProp at "default".  An
+  # endpoint that DECLARES combined2 keeps it (the declaration wins over the
+  # control), so the proposal would score a variance the chain never uses --
+  # degrade rather than mis-target.  Only a real add+prop endpoint cares: with
+  # one of the two the two forms coincide.
+  .ap <- as.character(.pred$addProp)
+  .combined <- vapply(.pred$cond, function(.cnd) {
+    .e <- ui$iniDf$err[which(ui$iniDf$condition == .cnd)]
+    any(.e %in% "add") && any(.e %in% "prop")
+  }, logical(1), USE.NAMES = FALSE)
+  if (any(.combined & !is.na(.ap) & !(.ap %in% c("default", "combined1")))) return(FALSE)
   # mu-ref covariates are supported: non-time-varying ones are absorbed into the
   # per-subject mprior data, time-varying ones are kept as inner regressor betas
   # refreshed from the live Plambda each iteration.
@@ -208,7 +220,11 @@
               sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
               optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
               literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
-              addProp = rxode2::rxGetControl(ui, "addProp", "combined2"),
+              # NOT the user's addProp: the SAEM E-step's residual SD is
+              # unconditionally combined1 (g = ares + bres*|f|, src/saem.cpp),
+              # so an inner built combined2 would precondition the IMH kernel
+              # against a different variance than the chain it guides.
+              addProp = "combined1",
               eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
               indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
               maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),
