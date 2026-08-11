@@ -339,8 +339,13 @@
   # phi NAMES is not the muRefDataFrame route: this is the phi vector itself,
   # which follows ini (ntheta) order, so a mu-ref model maps to the identity.
   .structPhi <- match(.thetaDf$name[.structPos], ui$saemParamsToEstimateCov)
-  .structPos <- .structPos[!is.na(.structPhi)]
-  .structPhi <- .structPhi[!is.na(.structPhi)]
+  if (anyNA(.structPhi)) {
+    # nothing reaching here should hit this (mixtures and the covariate path are
+    # already handled), but leaving such a theta at its ini value silently would
+    # be the very failure #875 was
+    .minfo("fast kernel: a structural theta has no phi; running standard SAEM")
+    return(cfg)
+  }
   .residPos <- which(!is.na(.thetaDf$err))
   .residIsAdd <- .thetaDf$err[.residPos] == "add"
   .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
