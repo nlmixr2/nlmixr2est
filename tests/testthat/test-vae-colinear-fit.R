@@ -201,6 +201,43 @@ nmTest({
     expect_false(any(grepl("declare an omega block", f$runInfo)))
   })
 
+  test_that("a bounded intercept is held, and an emptied support survives it", {
+    skip_on_cran()
+    ## When a joint candidate would push a population intercept past its ini()
+    ## bound, that intercept is HELD at the bound and the candidate re-scored --
+    ## the per-dim path clamps AFTER scoring, which is harmless there but not
+    ## here, where the score decides between moves.
+    ##
+    ## This also covers the case that used to break: holding the intercept drops
+    ## the intercept column, and a DROP move can leave a support with no columns
+    ## at all.  Nothing else in this file declares bounds, so without this test
+    ## the held-intercept path never runs.
+    .bounded <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl <- c(-Inf, log(2.7), log(2.0))   # upper bound below the truth
+        tv <- c(-Inf, log(31), log(25))      # so both intercepts clamp
+        eta.ka ~ 0.3
+        eta.cl + eta.v ~ c(0.09,
+                           0.07, 0.09)
+        add.sd <- 0.3
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(.bounded, .phiData(seed = 31L), est = "vae", control = .phiCtl())))
+    cd <- f$vae$colinear
+    ## the refinement ran AND took the held-intercept branch
+    expect_gt(cd$nPhiTest, 0L)
+    expect_gt(cd$nPhiClamp, 0L)
+    ## and the bounds are actually respected in what comes back
+    expect_lte(f$vae$zPop[2], log(2.0) + 1e-8)
+    expect_lte(f$vae$zPop[3], log(25) + 1e-8)
+  })
+
   test_that("a group larger than covSelectPhiMaxDim is skipped, not split", {
     skip_on_cran()
     ## Splitting an over-large correlated group would need an arbitrary
