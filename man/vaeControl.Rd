@@ -16,11 +16,28 @@ vaeControl(
   burnInLearningRate = 0.008,
   sigma0 = NULL,
   covariateSelection = TRUE,
+  pinCovariates = TRUE,
+  muRefCovAlg = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center", "hockey"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
   covSelectAlpha = 2,
+  covSelectSmooth = TRUE,
+  gammaSeries = c("reference", "saem"),
+  sigma0Interp = c("sd", "reference"),
+  residOptimize = c("twoStage", "moment", "optimize"),
+  residRhoend = NULL,
+  omegaUpdate = c("suffStat", "blend"),
+  perNoCor = 0.75,
+  inputScale = c("reference", "observed"),
+  covSelectMethod = c("auto", "bnb", "l0learn"),
+  covSelectMaxExact = 17L,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
-  nonMuTheta = c("regress", "eta", "fix", "none"),
+  nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
+  mStepObjective = c("outer", "elbo"),
   likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
   nIsSample = 3000L,
@@ -38,12 +55,15 @@ vaeControl(
   compress = FALSE,
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = NULL,
+  sigdig = 3,
   sigdigTable = NULL,
   rhoend = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
@@ -86,12 +106,259 @@ covariate coefficients (both linear `beta*WT` effects and transformed ones
 such as `beta*log(WT/70)`) are estimated in place by the regress M-step
 regardless of `nonMuTheta`; a `ini(... ~ fix())` coefficient stays fixed.}
 
+\item{pinCovariates}{When `TRUE` (default) and the model already declares
+covariate effects, restrict the automatic covariate selection to only the
+covariate/parameter pairs written in the model -- the branch-and-bound
+search may still drop a declared covariate, but can never add one the model
+did not specify.  A declared covariate that is not a valid search candidate
+(time-varying, or a raw-linear form that does not match the `log`/centered
+encoding) is estimated in place by the regress M-step instead, with a note
+in `$runInfo`.  When the model declares no covariates there is nothing to
+pin and the full search runs.  Has no effect when `covariateSelection` is
+`FALSE`.}
+
+\item{muRefCovAlg}{When `TRUE` (default) an algebraic/centered covariate
+effect written in the model (e.g. `wt.cl*(WT/70)` or `wt.cl*log(WT/70)`) is
+handled as a mu2/mu3 reference: the covariate expression -- including its
+centering -- is evaluated into an internal `nlmixrMuDerCov#` data column and
+the model uses the linear `wt.cl*nlmixrMuDerCov#` form during fitting, so the
+VAE covariate search never re-centers it.  The original expression is
+restored in the reported model.}
+
+\item{shapes}{Which parameterizations ("shapes") of a continuous covariate
+  the automatic search may consider, using the same vocabulary as
+  `nlmixr2scm::runSCM()`: `"power"` (`beta*log(COV/ctr)`), `"lin"`
+  (`beta*(COV - ctr)`), `"log"` (`beta*log(COV)`), `"identity"` (`beta*COV`)
+  and `"center"` (`beta*(COV/ctr)`).  `"hockey"` is a two-armed piecewise
+  linear relationship knotted at the centering value, written as
+  `beta.low*(COV < ctr)*(COV - ctr) + beta.hi*(COV >= ctr)*(COV - ctr)`; both
+  arms enter or neither does, and it is skipped for a covariate with fewer
+  than `catCutoff` of the subjects on one side of the knot.  At most one shape
+  of a covariate may enter a given parameter.  Because the selection objective
+  is an ordinary least squares fit with a free intercept, `"power"`/`"log"`
+  span the same model, as do `"lin"`/`"identity"`/`"center"`; the shape
+  therefore decides how an accepted relationship is written back, and when
+  several eligible shapes span the same model the one listed first wins.
+  `"hockey"` spans a strictly larger model than the linear shapes and costs
+  two coefficients rather than one.
+
+  May also be a **list**, whose elements are dispatched individually so the
+  two forms mix freely: an element named by covariate (`WT = "power"`) is
+  shorthand for the covariate-wide rule `list(covar = "WT", shapes =
+  "power")`, and a `list(var=, covar=, shapes=)` element restricts one
+  parameter/covariate pair.  The most specific rule wins -- `var`+`covar`
+  beats `covar`, which beats `var`, which beats a rule naming neither -- and
+  ties go to the rule listed last.
+
+  In the list form, **naming a covariate also puts it in the search**.
+  `fixCov = TRUE` (the default, given as an element of the list) fixes the
+  searched set to exactly the covariates named, so
+  `shapes = list(WT = "power")` searches `WT` and nothing else.  Add
+  `fixCov = FALSE` to restrict parameterizations without restricting the
+  search, which is what the list form meant previously.  A shape value of
+  `TRUE` means "eligible, default shapes", and is how a categorical covariate
+  is named (`list(WT = "power", SEX = TRUE)`) since a categorical takes no
+  parameterization.  A `var`-only rule makes every covariate eligible on that
+  parameter alone; a rule naming neither `var` nor `covar` contradicts
+  `fixCov = TRUE` and is an error.  A character vector names no covariate, so
+  `fixCov` does not apply and every covariate stays searchable.
+
+  `fixCov` is ignored when the model itself declares covariate effects: that
+  already restricts the search (see `pinCovariates`) and the declaration is
+  the more specific statement.  The disagreement is reported in `$runInfo`,
+  as is every covariate `fixCov` excludes.  Categorical covariates always
+  enter as indicators and take no shape, but `fixCov` still governs whether
+  they are searched at all.}
+
+\item{covCenterType}{Statistic used to center a continuous covariate,
+`"median"` (default) or `"mean"`, computed over subjects rather than rows.}
+
+\item{covCenter}{Named numeric vector of centering values overriding
+`covCenterType` for those covariates, e.g. `c(WT = 70)`.  Names are matched
+case-insensitively.}
+
+\item{catCutoff}{Minimum proportion of subjects a non-reference level must
+hold to get its own indicator.  Rarer levels are lumped with the reference.
+Default `0.05`; `0` tests every level.}
+
 \item{covSelectAlpha}{Starting multiplier for the covariate-selection L0
 penalty, ramped linearly from `covSelectAlpha` down to `1` over the
 `klWarmup` warmup iterations and held at `1` afterward (matching the
 reference implementation's `linspace(alpha, 1, kl_iter)`).  Values `> 1`
 penalize covariate entry more heavily early in training; `1` disables the
 ramp.}
+
+\item{covSelectSmooth}{When `TRUE` (default) the covariate selection regresses
+the SAEM sufficient statistic -- an exponential moving average of the
+posterior means, updated with the same gain as the M-step -- rather than the
+current posterior means.  This matches the reference implementation
+(Rohleff et al. 2025), which is the reason for the default.  In practice it
+changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
+equals the posterior mean for most of a run and is averaged only over the
+closing tail.  `FALSE` regresses the current posterior means.}
+
+\item{gammaSeries}{Decaying step-size series used once the smoothing phase
+  starts (after `gammaIter`); the gain is 1 throughout the EM phase either way.
+
+  * `"reference"` (default): `1/(iter - gammaIter)`, the textbook
+    Kuhn-Lavielle series the reference implementation uses.  The first
+    smoothing step is still a full replacement, and the decay follows.
+  * `"saem"`: `1/(1 + iter - gammaIter)`, the CONTINUATION form
+    \code{\link{saemControl}()} uses -- nlmixr2est's SAEM builds its series so
+    it continues rather than repeating a gain of 1, so the decay begins at
+    `1/2`.  Select this to match the step-size convention of the other
+    nlmixr2 estimation methods rather than the reference.}
+
+\item{sigma0Interp}{How `sigma0` is turned into the encoder's initial posterior
+  spread.  The encoder head emits `logSigma` and forms `diag(L) = exp(logSigma)`,
+  so `diag(L)` is the posterior standard deviation.
+
+  * `"sd"` (default): the bias is `log(sigma0)`, so the initial posterior SD is
+    `sigma0` -- what the argument says it is.
+  * `"reference"`: the bias is `log(sigma0^2)`, matching the reference
+    implementation, whose initial posterior SD is therefore `sigma0` SQUARED
+    (`1e-6` rather than `1e-3` for the first neonatal dimension).  The
+    reference documents `sigma0` as a standard deviation, so this appears to be
+    unintended there; it is offered only to reproduce its published behavior.}
+
+\item{residOptimize}{How the residual-error parameters are estimated.
+
+  Residual forms the optimizer estimates: `add`, `prop`, `add + prop`, `pow`,
+  `lnorm`, and a `boxCox` or `yeoJohnson` lambda (bounded to `(-2, 2)`).  For
+  a transform-both-sides model the objective transforms `dv` only and carries
+  the log-Jacobian, since `f` leaves the solve already on the transformed
+  scale.
+
+  `nonMuTheta = "grad"` bypasses this entirely: the analytic outer gradient
+  already carries a residual sigma and a transform lambda as its own
+  directions, so those parameters are stepped by the gradient through Adam and
+  the two-stage path never runs.  Which converges better is model-dependent.
+
+  * `"moment"`: the closed-form moment estimator.  For a model with
+    a single additive error this is exactly the optimum (`sqrt(SSE/n)`); for
+    any other error model it is either a different estimator or, for the forms
+    with no closed form (`pow`, Box-Cox, Yeo-Johnson), no estimator at all --
+    the parameter stays at its `ini()` value.  There is no moment estimator for
+    a log-likelihood (`ll()`) parameter either, so those also stay at `ini()`;
+    use `"twoStage"` for such a model.
+  * `"twoStage"` (default): block coordinate descent, as `npag`'s
+    `residOptimize = "alternate"` does.  Stage
+    one optimizes the non-mu-referenced structural thetas with the residual
+    parameters held, so it is driven by `(dv - f)`; stage two then holds those
+    and optimizes the residual parameters alone against the extended
+    least-squares objective `sum[(y-f)^2/r + log r]` over the CACHED `(y, f)`
+    pairs.  Because `f` is fixed by stage one, stage two needs no ODE re-solve
+    -- the same structure SAEM uses.  On `theo_sd` this beats the moment
+    estimator on both a pure-additive model (objective 131.79 vs 131.81) and a
+    combined one (121.03 vs 122.47).
+
+    Which parameters stage two owns is decided per parameter: an error
+    parameter, or one that no `d/dt()` right-hand side, initial condition or
+    dosing modifier can reach.  The second case is what a log-likelihood
+    (`ll()`) or generalized endpoint needs -- its residual-like parameters are
+    plain thetas with no error row, and on the error-only rule stage two was
+    empty for such a model, silently making `"twoStage"` behave like
+    `"optimize"`.  When no regressed theta qualifies (every one feeds the
+    solve) stage two has nothing to do and `residOptimize` has no effect.
+  * `"optimize"` (EXPERIMENTAL, diagnostic): a single JOINT solve over the
+    structural and residual parameters together, against the full outer
+    objective.  Fine with one free residual parameter, but with `add` and
+    `prop` both free it diverges -- they are near-collinear, and routing the
+    residual through the full outer objective lets the Laplace terms move with
+    it at frozen etas (objective 320.7 against the moment estimator's 122.5).
+    Retained for comparison; prefer `"twoStage"`.}
+
+\item{residRhoend}{Final trust-region radius (`rhoend`) of the bounded
+`bobyqa` that estimates the residual parameters -- its convergence
+tolerance.  `NULL` (default) derives it from `sigdig` (`10^(-sigdig)`), the
+same way every other optimizer tolerance in the package is derived, so
+`sigdig` stays the single knob that moves them together.  Set it explicitly
+when the residual step should converge tighter than the rest: it runs with
+the ODE frozen, so tightening it is far cheaper than tightening `rhoend`,
+which also tightens the structural regression that re-solves per candidate.}
+
+\item{omegaUpdate}{How the population variances are updated in the covariate
+  M-step.  `"suffStat"` (default) follows the reference: `omega` is formed from
+  the EMA sufficient statistics and ASSIGNED outright.  `"blend"` is the
+  historic behavior, blending the freshly computed `omega` with the previous
+  value at the M-step gain (so it is smoothed twice).  Applies to `omega` only.
+
+  Note this option reaches only ONE of the two omega M-steps.  Which one runs
+  is decided by `covariateSelection`: with `TRUE` the covariate M-step runs and
+  honors `omegaUpdate`; with `FALSE` the plain closed-form M-step runs, whose
+  variances are always raw posterior moments blended at the gain.  A declared
+  correlated block's OFF-diagonals always follow whichever estimator that
+  branch's diagonal used -- estimating the two halves of one block by different
+  estimators need not even give a positive-definite result.
+
+  The two settings are the SAME update while the gain is 1, which it is
+  throughout burn-in and the EM phase (assigning a value and blending it in
+  with weight 1 are the same operation); they differ only once `gammaIter`
+  decays the gain.  A short run at default settings will show no difference.
+
+  `mStepObjective` does not enter the omega update at all -- it scores the
+  non-mu theta M-step.  Omega has a closed-form EM update from the variational
+  posterior either way.
+
+  The residual error estimate is still EMA-smoothed on the standard-deviation
+  scale, where the reference smooths the residual sum of squares and takes the
+  root afterwards -- a known remaining difference.  Matching it would need
+  per-endpoint sufficient statistics plus an optimizer branch for the error
+  models with no closed form (`add + prop`, `add + pow`, Box-Cox /
+  Yeo-Johnson), as \code{\link{saemControl}()} does.}
+
+\item{perNoCor}{Fraction of the EM phase (`gammaIter` iterations) over which a
+  declared correlated `omega` block is held at zero correlation, letting the
+  variances settle before the correlations are estimated.  This is
+  \code{\link{saemControl}()}'s `perNoCor` rule (0.75 there as well); it has no
+  effect on a model with no declared off-diagonals.
+
+  Held at ZERO, following saem, not at the `ini()` value: retaining an initial
+  covariance while the variances shrink around it can leave the block
+  non-positive-definite.  A `fixed()` covariance is exempt -- it is not being
+  estimated, so it keeps its value through the hold and out the other side.
+
+  The fraction is of the EM phase, `min(gammaIter, iters)`, not of the whole
+  run.  That matters: the gain is 1 for `it <= gammaIter`, so the release
+  point falls while the gain is still 1 and the correlations are estimable the
+  moment they are unfrozen.  (This is why no gain restart is needed here,
+  whereas \code{\link{emviControl}()} -- whose run has no separate unit-gain
+  phase -- has to restart the off-diagonal gain at release.)
+
+  A value greater than 1 is an ABSOLUTE iteration count rather than a fraction,
+  and must be a whole number.  Prefer the absolute form whenever a run may be
+  resumed or reproduced at a different length: a fraction of a shorter run is a
+  different schedule, not the same one truncated.}
+
+\item{inputScale}{Which observations the encoder-input centering and scaling
+are computed over.  `"reference"` (default) matches the reference
+implementation, which takes the mean and SD across the whole padded
+observation matrix, so the zero padding of subjects with fewer observations
+enters both statistics.  On a ragged dataset that is a materially different
+scale from `"observed"`, which uses only the observed values (on the neonatal
+case study the SD is 1582 against 506).  Affects only the encoder's inputs,
+never the likelihood.}
+
+\item{covSelectMethod}{How the covariate M-step searches subsets.  `"bnb"` is
+the exact branch-and-bound; it becomes impractical past a few dozen candidate
+covariates.  `"l0learn"` has the `L0Learn` package propose supports, which
+are then scored and polished with the same exact objective -- so the search
+is approximate but the scoring is not.  `"auto"` (default) uses `"l0learn"`
+for a latent dimension with at least `covSelectMaxExact` candidate
+covariates and `"bnb"` otherwise.  Set `covSelectMaxExact = Inf` to force
+the exact search everywhere.}
+
+\item{covSelectMaxExact}{Search size at or above which
+`covSelectMethod = "auto"` switches a latent dimension to `L0Learn` (default
+`17`, just above the measured wall-clock crossover of roughly 16 bits --
+see `tools/benchVaeCovSelect.R`, which finds the same crossover in bits
+whether a covariate carries one shape or two).  Measured in bits of
+feasible-support space -- `sum over covariates of log2(1 + shapes tried)` --
+after `pinCovariates` trimming, so it is the size of the search actually
+run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
+single shape this is a plain candidate count; two shape families of one
+covariate cost `log2(3)`, keeping the exact search's worst-case node budget
+the same either way.  `Inf` forces the exact branch-and-bound everywhere.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),
@@ -123,10 +390,34 @@ results.}
 
   * `"regress"` (default, matching `saemControl(nonMuTheta=)`): no eta is
     injected; instead each such theta is estimated directly, re-optimized every
-    M-step by a bounded `bobyqa` regression against the FOCEi inner likelihood
-    (bounds from the `ini()` lower/upper), blended with the M-step gain.  This
+    M-step by a bounded `bobyqa` regression against the full FOCEi outer
+    objective (bounds from the `ini()` lower/upper), blended with the M-step gain.
+    `mStepObjective` selects which objective that regression targets.  This
     recovers a no-random-effect population parameter without adding a spurious
     random effect.  `nonMuEtaOmega` is unused in this mode.
+  * `"grad"`: same target as `"regress"` but stepped with the EXACT analytic
+    outer gradient (Almquist sensitivity equations, the machinery behind
+    `foceiControl(fast=TRUE)`) instead of a derivative-free search: one
+    augmented sensitivity solve per M-step replaces the bobyqa sweep.  Both
+    modes optimize the same full outer objective (with every mu-referenced
+    theta held at its current M-step value), so this changes the optimizer,
+    not the target.  It is also the more natural fit for the method: the
+    gradient is handed to the SAME Adam machinery that moves the encoder
+    weights, so the parameter is learned alongside the rest of the model on a
+    shared schedule (same gain, same KL warmup gate), whereas `"regress"`
+    pauses each M-step to run a separate derivative-free optimizer to
+    convergence and adopts its answer.  This is NOT a speed option -- it is
+    measurably SLOWER than
+    `"regress"` (on `theo_sd`, 1.47x with one non-mu theta and 1.13x with
+    three; the gap narrows as the number grows, since bobyqa's cost scales in
+    it and a single solve does not, but it does not close).  Choose it for
+    accuracy: the exact gradient lands closer to the maximum-likelihood value
+    than the derivative-free search (`theo_sd` non-mu `tv`: 3.4294 vs 3.4324,
+    against a FOCEi MLE of 3.4293).  Applies to a conditionally Gaussian model
+    and to a single non-Gaussian (`ll()`/generalized) endpoint, which
+    differentiates the log-density directly.  Falls back to `"regress"` when
+    the model is out of analytic scope (`linCmt()`, IOV, `fo`, a
+    multi-endpoint or censored `ll()` model, ...); `nonMuEtaOmega` is unused.
   * `"eta"`: inject the eta with an ESTIMATED omega (starting at
     `nonMuEtaOmega`); the typical value is estimated and appears in the
     iteration table.
@@ -140,6 +431,31 @@ results.}
 \item{nonMuEtaOmega}{Variance of the eta injected for a non-mu-referenced theta
 (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 unused for `"regress"`).}
+
+\item{mStepObjective}{Objective the non-mu-referenced theta M-step
+  (`nonMuTheta = "regress"` or `"grad"`) is optimized against.  It has no
+  effect when there is no non-mu-referenced structural theta, and it never
+  changes the encoder/ELBO training step or the covariate branch-and-bound
+  criterion, both of which always follow the reference.
+
+  * `"outer"` (default): the full FOCEi outer objective -- the frozen-eta
+    joint likelihood PLUS the Laplace determinant, `0.5*log|Omega^-1|` and the
+    DV-transform Jacobian.  This is a deliberate deviation from Rohleff et al.
+    (2025): it keeps the quantity being optimized equal to the objective the
+    fit reports, and it is the functional the analytic outer gradient
+    differentiates, so `nonMuTheta = "grad"` optimizes one target rather than
+    stepping one and scoring another.
+  * `"elbo"`: the reference behavior -- the plain variational bound
+    (frozen-eta joint likelihood, no Laplace term), matching the M-step in
+    Rohleff et al. (2025).  Use it to reproduce the reference implementation.
+    The analytic outer gradient does not apply to this objective, so
+    `nonMuTheta = "grad"` is downgraded to `"regress"` with a note in
+    `$runInfo`.
+
+  The two objectives differ by terms that depend on the non-mu thetas through
+  the eta Hessian, so they can land on different estimates, and -- because
+  those estimates feed the latent means the covariate search regresses on --
+  on different covariate sets.}
 
 \item{likelihood}{Inner likelihood used for the objective, EBEs, and
 gradients, all run through the same FOCEi inner interface: `"focei"`
@@ -208,16 +524,42 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Specifies the "significant digits" that the ode
-solving requests.  When specified this controls the relative and
-absolute tolerances of the ODE solvers.  By default the tolerance
-is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
-sensitivity equations the default is \verb{0.5*10\\^(-sigdig-1.5)}
-(sensitivity changes only applicable for liblsoda).  This also
-controls the \code{atol}/\code{rtol} of the steady state solutions. The
-\code{ssAtol}/\code{ssRtol} is \verb{0.5*10\\^(-sigdig)} and for the sensitivities
-\verb{0.5*10\\^(-sigdig+0.625)}.  By default
-this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.}
+\item{sigdig}{Specifies the "significant digits" that the ODE
+solving requests.  This is \code{NULL} by default, and while it is
+\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
+\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
+tolerances).  \code{sigdig} only changes a tolerance when you ask for
+it explicitly.
+
+When it is supplied, the tolerances are derived with one
+solver-independent formula -- the same for stiff, non-stiff and
+auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below it:
+\itemize{
+\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
+\item the sensitivity tolerances match the main solve, so
+\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
+covariances are built from them)
+\item the steady-state tolerances run one order looser than the
+corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
+and \code{ssAtol = ssAtolSens = 10*atol}
+}
+
+Each of these is set only when you did not pass that tolerance
+yourself; a tolerance you supply always wins.  Because they are
+resolved independently, an explicit \code{atol}/\code{rtol} overrides the
+main solve but does \emph{not} propagate to the sensitivity or
+steady-state tolerances -- set those directly if you need them
+changed too.
+
+This mapping matches how \code{nlmixr2est} derives solver tolerances
+from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
+and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
+thing.  Note it is keyed to \code{sigdig} as a request for that many
+significant digits, and is looser than the \code{atol}/\code{rtol} defaults
+for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
+against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
+\code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
@@ -237,6 +579,22 @@ ODE solve.}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{outerStickyRecalcN}{The number of bad analytic outer solves
+for a subject before its loosened tolerance is kept for the rest
+of the problem; the outer counterpart of `stickyRecalcN`.}
+
+\item{outerMaxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances for a single subject and retry when the analytic
+outer (augmented sensitivity) solve fails.  Tracked separately
+from `maxOdeRecalc`, which governs the inner problem.  A subject
+that solves after loosening still contributes an analytic
+gradient instead of dropping the whole gradient to finite
+differences.}
+
+\item{outerOdeRecalcFactor}{The factor the atol/rtol is loosened by
+on each analytic outer retry; the outer counterpart of
+`odeRecalcFactor`.}
 
 \item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
 solve produced NaN/Inf have their tolerances relaxed, and the

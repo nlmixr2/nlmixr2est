@@ -60,7 +60,7 @@ attr(rxUiGet.saemCovars, "rstudio") <- "char"
 
 #' @export
 rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
-  .mod <- rxode2::rxode2(rxUiGet.saemModel(x, ...))
+  .mod <- .nlmixr2estRxode2(rxUiGet.saemModel(x, ...), "rxSaem")
   .fnPred <- bquote(function(a, b, c) {
     rxode2::rxLoad(.(.mod))
     rxode2::rxLock(.(.mod))

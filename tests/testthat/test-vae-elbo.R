@@ -25,7 +25,9 @@ nmTest({
     expect_equal(prep$neta, 3L)
     am <- .vaeDecoderModel(ui)
 
-    zDim <- prep$zDim; hDim <- 6L; nCov <- 0L
+    ## nCov MUST come from the prep -- the encoder head is [hDim + nCov] wide and
+    ## the encoder is conditioned on the covariates (as in the reference)
+    zDim <- prep$zDim; hDim <- 6L; nCov <- ncol(prep$covIn)
     .testSeed(7)
     params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim))
     .testSeed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)

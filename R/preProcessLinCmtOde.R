@@ -18,7 +18,7 @@
 .linCmtOdeEstFamily <- c(
   # FOCEi family -- .foceiFamilyControl()
   "focei", "foce", "focep", "fo", "foi", "laplace", "agq", "posthoc",
-  "impmap", "imp", "qrpem", "npb", "npag", "advi",
+  "impmap", "imp", "qrpem", "npb", "npag", "emvi", "fbvi",
   "mfocei", "mfoce", "mfocep", "mlaplace", "magq", "mnpb", "mnpag",
   "ifocei", "ifoce", "ifocep", "ilaplace", "iagq", "inpb", "inpag",
   "foceif", "focef", "focepf", "mfoceif", "mfocef", "mfocepf",

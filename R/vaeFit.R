@@ -5,7 +5,9 @@
 
 #' Initialize encoder parameters (RNG seeded once by the caller under rxWithSeed)
 #' @noRd
-.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0) {
+.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0,
+                                  sigma0Interp = c("sd", "reference")) {
+  sigma0Interp <- match.arg(sigma0Interp)
   nOff <- as.integer(zDim * (zDim - 1L) / 2L)
   outDim <- 2L * zDim + nOff
   .sd <- 1 / sqrt(hDim)
@@ -15,7 +17,15 @@
     bih = numeric(4L * hDim),
     bhh = numeric(4L * hDim),
     fcW = matrix(stats::rnorm(outDim * (hDim + nCov), 0, 1e-2), outDim, hDim + nCov),
-    fcB = c(zPop, log(sigma0), numeric(nOff))
+    ## The head emits logSigma and the encoder forms diag(L) = exp(logSigma), so
+    ## diag(L) is the posterior SD (the entropy term uses 2*log(diag(L))).  Under
+    ## "sd" the bias is log(sigma0), making the initial posterior SD sigma0 --
+    ## what `sigma0` says it is.  Under "reference" it is log(sigma0^2), matching
+    ## the reference implementation, whose initial posterior SD is therefore
+    ## sigma0 SQUARED.
+    fcB = c(zPop,
+            if (sigma0Interp == "reference") log(sigma0^2) else log(sigma0),
+            numeric(nOff))
   )
 }
 
@@ -124,9 +134,22 @@
 #' training loop's closed-form error M-step: 0 = additive, 1 = proportional,
 #' 2 = other (kept at its current value). Order matches `prep$errType`.
 #' @noRd
+## Error-model classification consumed by the C++ M-step and the two-stage ELS
+## objective.  0=add, 1=prop, 3=pow scale, 4=pow exponent, 5=lnorm; 2 is
+## "not handled", which leaves the parameter at its ini() value.
 .vaeErrTypeCode <- function(errType) {
-  vapply(errType, function(t) if (identical(t, "add")) 0L else if (identical(t, "prop")) 1L else 2L,
-         integer(1), USE.NAMES = FALSE)
+  vapply(errType, function(t) {
+    if (identical(t, "add")) 0L
+    else if (identical(t, "prop")) 1L
+    else if (identical(t, "pow")) 3L
+    else if (identical(t, "pow2")) 4L
+    else if (identical(t, "lnorm")) 5L
+    ## boxCox / yeoJohnson lambda: the stage-2 ELS objective transforms dv with
+    ## rxode2's _powerD and carries the log-Jacobian from _powerL.  f is NOT
+    ## transformed -- it leaves the solve already on the transformed scale.
+    else if (identical(t, "boxCox") || identical(t, "yeoJohnson")) 6L
+    else 2L
+  }, integer(1), USE.NAMES = FALSE)
 }
 
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
@@ -142,8 +165,19 @@
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
+  ## as a std::logic_error and aborts the session, so check it here
+  .vaeCheckEncoderDims <- function(params) {
+    if (ncol(params$fcW) != hDim + nCov) {
+      stop("vae encoder head is ", ncol(params$fcW), " wide but needs hiddenDim + ncol(covIn) = ",
+           hDim + nCov, call. = FALSE)
+    }
+    invisible(TRUE)
+  }
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0)
+  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0,
+                                  if (is.null(control$sigma0Interp)) "sd" else control$sigma0Interp)
+  .vaeCheckEncoderDims(params)
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
   ## via the shared iteration-print machinery (scale.h), so the walk prints like
@@ -178,10 +212,79 @@
   ## nonMuTheta="regress": 0-based full-theta indices + ini bounds of the fixed
   ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
+  prepC$regressErrIdx0 <- as.integer(prep$regressErrIdx0)
+  ## residOptimize="twoStage": which of those go to stage 2 (the frozen-ODE block)
+  prepC$regressStage2 <- as.integer(prep$regressStage2)
   prepC$regressLower <- as.numeric(prep$regressLower)
   prepC$regressUpper <- as.numeric(prep$regressUpper)
   ## latent dims whose structural theta is fixed (held at ini by the M-step)
   prepC$zPopFix <- as.logical(prep$zPopFix)
+  ## pinned covariate selection: per-(eta x covariate) allow-mask restricting the
+  ## branch-and-bound to model-declared pairs.  Drop the NULL placeholder when
+  ## pinning is inactive so the C++ containsElementNamed guard sees no mask and
+  ## runs the full search.
+  prepC$covAllow <- NULL
+  if (!is.null(prep$covAllow)) {
+    prepC$covAllow <- matrix(as.integer(prep$covAllow), prep$zDim, ncol(prep$covMat))
+  }
+  ## mutual-exclusion groups: alternate shapes of one covariate share a group id,
+  ## so at most one of them can be selected.  Dropped when every column is its own
+  ## group -- that is the unconstrained search and skipping the field keeps the
+  ## historic code path bit-identical.
+  prepC$covGroup <- NULL
+  if (!is.null(prep$covGroup) && anyDuplicated(prep$covGroup) > 0L) {
+    prepC$covGroup <- as.integer(prep$covGroup)
+  }
+  ## Likewise for covBlock: every column its own block IS the historic search, so
+  ## send it only when some block actually holds more than one column.
+  prepC$covBlock <- NULL
+  if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
+    prepC$covBlock <- as.integer(prep$covBlock)
+  }
+
+  ## covSelectMethod: pick the search per latent dimension from the number of
+  ## candidates that dimension actually has (after any pinCovariates trimming),
+  ## then hand the C++ M-step a closure proposing supports for the L0Learn
+  ## dimensions.  Those are candidates only -- C++ scores every one of them
+  ## against the same exact objective the branch-and-bound uses.
+  ## Search size is measured in BITS of feasible-support space, not columns:
+  ## exclusion groups mean a covariate with two shape families offers 3 states
+  ## (neither, log, linear), not 4.  One column per group costs exactly 1 bit, so
+  ## a single-shape search is the historic candidate count and covSelectMaxExact
+  ## keeps its old meaning there.  The unit of choice is the BLOCK, so a hockey
+  ## covariate offers 4 states (neither, log, linear, hockey) rather than the 5
+  ## its column count would suggest -- counting columns would overstate the
+  ## search and push a dimension onto the approximate engine too early.
+  .nCov <- ncol(prep$covMat)
+  .grp <- prep$covGroup
+  if (is.null(.grp) || length(.grp) != .nCov) .grp <- seq_len(.nCov)
+  .blk <- prep$covBlock
+  if (is.null(.blk) || length(.blk) != .nCov) .blk <- seq_len(.nCov)
+  .bitsOf <- function(cols) {
+    if (length(cols) == 0L) return(0)
+    ## one entry per distinct block, counted into that block's group
+    .b <- !duplicated(.blk[cols])
+    sum(log2(1 + as.numeric(table(.grp[cols][.b]))))
+  }
+  .allowed <- NULL
+  .nCand <- rep(.bitsOf(seq_len(.nCov)), prep$zDim)
+  if (!is.null(prepC$covAllow)) {
+    .allowed <- lapply(seq_len(prep$zDim), function(k) which(prepC$covAllow[k, ] == 1L) - 1L)
+    .nCand <- vapply(.allowed, function(a) .bitsOf(a + 1L), numeric(1))
+  }
+  ## a free (mixture) or fixed dimension never runs the search
+  .nCand[as.logical(prep$isFree) | as.logical(prep$zPopFix)] <- 0
+  if (!isTRUE(control$covariateSelection) || .nCov == 0L) .nCand[] <- 0
+  .modes <- .vaeCovSelectModes(.nCand, control)
+  for (.m in .modes$msg) warning(.m, call. = FALSE)
+  prepC$covSelectMode <- .modes$mode
+  prepC$l0Fn <- NULL
+  if (any(.modes$mode == 1L)) {
+    .covMat <- prep$covMat
+    .mode <- .modes$mode
+    .allow <- .allowed
+    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow)
+  }
 
   .cores <- tryCatch({
     .c <- control$rxControl$cores
@@ -200,17 +303,32 @@
   ## surface it as control$print for the C++ loop's final parHist print gate
   control$print <- as.integer(control$iterPrintControl$every)
 
+  ## nonMuTheta="grad": stash the per-fit context the analytic outer-gradient
+  ## M-step reads; the C++ loop then passes only theta/eta/omega per M-step
+  if (identical(control$nonMuTheta, "grad") && length(prep$regressNames)) {
+    .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames)
+    ## .vaeGradEnv lives for the SESSION; drop the fit-specific state when this
+    ## fit ends so a later focei fast fit cannot see it (see .foceiAnalyticSolveAll)
+    on.exit(.vaeGradReset(), add = TRUE)
+  }
+
   .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),
                        .cores, .row0, names(.row0), control$iterPrintControl,
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  .omMat <- .fit$omegaMat
+  dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
+       omegaMat = .omMat,
        a = setNames(as.numeric(.fit$a), names(prep$a)),
        intercept = as.numeric(.fit$intercept), beta = .fit$beta, selected = .selected,
        covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
        mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
+       nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
+       nStage2 = as.integer(.fit$nStage2),
+       covSelectMethodUsed = .modes$used,
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

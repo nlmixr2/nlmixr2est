@@ -43,8 +43,23 @@
 #' @noRd
 .foceiInstallFdFullCov <- function(.ret) {
   if (!exists(".fdFullCov", envir = .ret, inherits = FALSE)) return(invisible())
-  .cm <- if (exists("covMethod", envir = .ret, inherits = FALSE)) .ret$covMethod else ""
-  if (length(.cm) != 1L || is.na(.cm)) .cm <- ""
+  # The fit env's covMethod records what the NATIVE theta-only step produced, not what was
+  # asked for -- C++ downgrades it to "s" when that step's "r" fails.  The full R/S pieces
+  # used below are computed independently of that step, so route on the REQUESTED control;
+  # otherwise a requested "r,s" silently installs solve(S) with a usable .Rinv in hand.
+  # foceiControl() stores covMethod as an integer code ("r,s"=1, "r"=2, "s"=3, ""=0) with
+  # covType separating "r" from "analytic", so decode it rather than reading a string.
+  .env <- if (exists("covMethod", envir = .ret, inherits = FALSE)) .ret$covMethod else ""
+  if (length(.env) != 1L || !is.character(.env) || is.na(.env)) .env <- ""
+  .cm <- .env
+  .code <- tryCatch(rxode2::rxGetControl(.ret$ui, "covMethod", NA_integer_),
+                    error = function(e) NA_integer_)
+  .cty <- tryCatch(rxode2::rxGetControl(.ret$ui, "covType", "fd"), error = function(e) "fd")
+  if (is.numeric(.code) && length(.code) == 1L && !is.na(.code) &&
+      !identical(.cty, "analytic")) {
+    .req <- switch(as.character(as.integer(.code)), "1" = "r,s", "2" = "r", "3" = "s", "")
+    if (nzchar(.req)) .cm <- .req
+  }
   # native covMethod strings: r|r+||r| , s|s+||s| , and "<r>,<s>" for the sandwich.
   .type <- if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", .cm)) "r,s"
     else if (grepl("^(r\\+?|\\|r\\|)$", .cm)) "r"
@@ -64,6 +79,13 @@
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible())
   .ret$cov <- .cov
+  # Keep the reported covMethod consistent with what was installed: routing on the
+  # requested control can install a sandwich where the env still says "s".  Only rewrite
+  # when the TYPE differs, so the env's "r+"/"|r|" decorations survive when they agree.
+  .envType <- if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", .env)) "r,s"
+    else if (grepl("^(r\\+?|\\|r\\|)$", .env)) "r"
+    else if (grepl("^(s\\+?|\\|s\\|)$", .env)) "s" else ""
+  if (!identical(.type, .envType)) .ret$covMethod <- .type
   .ret$covR <- .Rinv
   if (!is.null(.covS)) {
     dimnames(.covS) <- dimnames(.Rinv)

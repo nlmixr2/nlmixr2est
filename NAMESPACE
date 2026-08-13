@@ -27,7 +27,6 @@ S3method(getBaseSimModelFit,foi)
 S3method(getBaseSimModelFit,posthoc)
 S3method(getData,nlmixr2FitCore)
 S3method(getData,nlmixr2FitCoreSilent)
-S3method(getValidNlmixrCtl,advi)
 S3method(getValidNlmixrCtl,agq)
 S3method(getValidNlmixrCtl,agqf)
 S3method(getValidNlmixrCtl,bfgs)
@@ -35,6 +34,8 @@ S3method(getValidNlmixrCtl,bobyqa)
 S3method(getValidNlmixrCtl,brent)
 S3method(getValidNlmixrCtl,cg)
 S3method(getValidNlmixrCtl,default)
+S3method(getValidNlmixrCtl,emvi)
+S3method(getValidNlmixrCtl,fbvi)
 S3method(getValidNlmixrCtl,fo)
 S3method(getValidNlmixrCtl,foce)
 S3method(getValidNlmixrCtl,focef)
@@ -104,9 +105,9 @@ S3method(model,nlmixr2FitCoreSilent)
 S3method(model,nlmixr2FitData)
 S3method(nlmixr2,"function")
 S3method(nlmixr2,nlmixr2FitCore)
+S3method(nlmixr2,nlmixr2FitCoreSilent)
 S3method(nlmixr2,nlmixr2FitData)
 S3method(nlmixr2,rxUi)
-S3method(nlmixr2Est,advi)
 S3method(nlmixr2Est,agq)
 S3method(nlmixr2Est,agqf)
 S3method(nlmixr2Est,bfgs)
@@ -114,6 +115,8 @@ S3method(nlmixr2Est,bobyqa)
 S3method(nlmixr2Est,brent)
 S3method(nlmixr2Est,cg)
 S3method(nlmixr2Est,default)
+S3method(nlmixr2Est,emvi)
+S3method(nlmixr2Est,fbvi)
 S3method(nlmixr2Est,fo)
 S3method(nlmixr2Est,foce)
 S3method(nlmixr2Est,focef)
@@ -239,10 +242,11 @@ S3method(nmObjGet,simulationModel)
 S3method(nmObjGet,ui)
 S3method(nmObjGet,uiIni)
 S3method(nmObjGet,warnings)
-S3method(nmObjGetControl,advi)
 S3method(nmObjGetControl,agq)
 S3method(nmObjGetControl,bobyqa)
 S3method(nmObjGetControl,default)
+S3method(nmObjGetControl,emvi)
+S3method(nmObjGetControl,fbvi)
 S3method(nmObjGetControl,fo)
 S3method(nmObjGetControl,foce)
 S3method(nmObjGetControl,focei)
@@ -326,10 +330,10 @@ S3method(nmObjGetIpredModel,saem)
 S3method(nmObjGetPredOnly,default)
 S3method(nmObjGetPredOnly,saem)
 S3method(nmObjGetRxSolve,default)
-S3method(nmObjHandleControlObject,adviControl)
 S3method(nmObjHandleControlObject,agqControl)
 S3method(nmObjHandleControlObject,bobyqaControl)
 S3method(nmObjHandleControlObject,default)
+S3method(nmObjHandleControlObject,emviControl)
 S3method(nmObjHandleControlObject,foControl)
 S3method(nmObjHandleControlObject,foceControl)
 S3method(nmObjHandleControlObject,foceiControl)
@@ -393,9 +397,9 @@ S3method(rxGetDistributionNlsLines,rxUi)
 S3method(rxModelVarsS3,nlmixr2FitCore)
 S3method(rxModelVarsS3,nlmixr2FitCoreSilent)
 S3method(rxParams,nlmixr2FitData)
-S3method(rxUiDeparse,adviControl)
 S3method(rxUiDeparse,agqControl)
 S3method(rxUiDeparse,bobyqaControl)
+S3method(rxUiDeparse,emviControl)
 S3method(rxUiDeparse,foceiControl)
 S3method(rxUiDeparse,iagqControl)
 S3method(rxUiDeparse,ilaplaceControl)
@@ -424,6 +428,7 @@ S3method(rxUiGet,foceiEtaNames)
 S3method(rxUiGet,foceiEtaS)
 S3method(rxUiGet,foceiFixed)
 S3method(rxUiGet,foceiHdEta)
+S3method(rxUiGet,foceiHdEta2)
 S3method(rxUiGet,foceiModel)
 S3method(rxUiGet,foceiModel0)
 S3method(rxUiGet,foceiModel0ll)
@@ -617,7 +622,6 @@ export(add.sampling)
 export(addCwres)
 export(addNpde)
 export(addTable)
-export(adviControl)
 export(agqControl)
 export(as.rxUi)
 export(assertNlmixrFit)
@@ -626,15 +630,19 @@ export(augPred)
 export(bobyqaControl)
 export(boxCox)
 export(cholSE)
+export(emviControl)
 export(et)
 export(eventTable)
 export(expit)
+export(fbviControl)
 export(fixed.effects)
 export(fixef)
 export(foControl)
 export(foceControl)
 export(foceiControl)
 export(foceiFitCpp_)
+export(foceiGradPooledDirect_)
+export(foceiGradPooledSetupLoad_)
 export(foceiLikLoad)
 export(foceiLikRun)
 export(foceiLikUnload)
@@ -810,126 +818,136 @@ export(vpcSimExpand)
 export(yeoJohnson)
 import(nlmixr2data)
 importFrom(Rcpp,evalCpp)
-importFrom(graphics,abline)
-importFrom(graphics,lines)
-importFrom(graphics,matplot)
-importFrom(graphics,plot)
-importFrom(graphics,points)
-importFrom(graphics,title)
+importFrom(graphics,
+  abline,
+  lines,
+  matplot,
+  plot,
+  points,
+  title
+)
 importFrom(lbfgsb3c,lbfgsb3c)
 importFrom(methods,is)
 importFrom(n1qn1,n1qn1)
-importFrom(nlme,ACF)
-importFrom(nlme,VarCorr)
-importFrom(nlme,augPred)
-importFrom(nlme,fixed.effects)
-importFrom(nlme,fixef)
-importFrom(nlme,getData)
-importFrom(nlme,getVarCov)
-importFrom(nlme,groupedData)
-importFrom(nlme,nlme)
-importFrom(nlme,pdBlocked)
-importFrom(nlme,pdCompSymm)
-importFrom(nlme,pdConstruct)
-importFrom(nlme,pdDiag)
-importFrom(nlme,pdFactor)
-importFrom(nlme,pdIdent)
-importFrom(nlme,pdLogChol)
-importFrom(nlme,pdMat)
-importFrom(nlme,pdMatrix)
-importFrom(nlme,pdNatural)
-importFrom(nlme,pdSymm)
-importFrom(nlme,random.effects)
-importFrom(nlme,ranef)
-importFrom(nlme,reStruct)
-importFrom(nlme,varComb)
-importFrom(nlme,varConstPower)
-importFrom(nlme,varExp)
-importFrom(nlme,varFixed)
-importFrom(nlme,varFunc)
-importFrom(nlme,varIdent)
-importFrom(nlme,varPower)
-importFrom(nlme,varWeights)
-importFrom(rxode2,.malert)
-importFrom(rxode2,.minfo)
-importFrom(rxode2,.msuccess)
-importFrom(rxode2,.mwarn)
-importFrom(rxode2,RxODE)
-importFrom(rxode2,add.dosing)
-importFrom(rxode2,add.sampling)
-importFrom(rxode2,as.rxUi)
-importFrom(rxode2,et)
-importFrom(rxode2,eventTable)
-importFrom(rxode2,expit)
-importFrom(rxode2,geom_amt)
-importFrom(rxode2,geom_cens)
-importFrom(rxode2,ini)
-importFrom(rxode2,logit)
-importFrom(rxode2,lotri)
-importFrom(rxode2,model)
-importFrom(rxode2,probit)
-importFrom(rxode2,probitInv)
-importFrom(rxode2,rxCat)
-importFrom(rxode2,rxClean)
-importFrom(rxode2,rxControl)
-importFrom(rxode2,rxInit)
-importFrom(rxode2,rxLhs)
-importFrom(rxode2,rxModelVars)
-importFrom(rxode2,rxModelVarsS3)
-importFrom(rxode2,rxParam)
-importFrom(rxode2,rxParams)
-importFrom(rxode2,rxSolve)
-importFrom(rxode2,rxState)
-importFrom(rxode2,rxUiDeparse)
-importFrom(rxode2,rxUiGet)
-importFrom(rxode2,rxode)
-importFrom(rxode2,rxode2)
-importFrom(rxode2,stat_amt)
-importFrom(rxode2,stat_cens)
-importFrom(stats,AIC)
-importFrom(stats,BIC)
-importFrom(stats,anova)
-importFrom(stats,approxfun)
-importFrom(stats,as.formula)
-importFrom(stats,asOneSidedFormula)
-importFrom(stats,coef)
-importFrom(stats,cov)
-importFrom(stats,cov2cor)
-importFrom(stats,dlnorm)
-importFrom(stats,end)
-importFrom(stats,fitted)
-importFrom(stats,logLik)
-importFrom(stats,median)
-importFrom(stats,na.fail)
-importFrom(stats,na.omit)
-importFrom(stats,nlminb)
-importFrom(stats,nobs)
-importFrom(stats,optim)
-importFrom(stats,optimHess)
-importFrom(stats,pchisq)
-importFrom(stats,predict)
-importFrom(stats,qchisq)
-importFrom(stats,qnorm)
-importFrom(stats,quantile)
-importFrom(stats,resid)
-importFrom(stats,rnorm)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stats,simulate)
-importFrom(stats,start)
-importFrom(stats,terms)
-importFrom(stats,time)
-importFrom(stats,var)
+importFrom(nlme,
+  ACF,
+  VarCorr,
+  augPred,
+  fixed.effects,
+  fixef,
+  getData,
+  getVarCov,
+  groupedData,
+  nlme,
+  pdBlocked,
+  pdCompSymm,
+  pdConstruct,
+  pdDiag,
+  pdFactor,
+  pdIdent,
+  pdLogChol,
+  pdMat,
+  pdMatrix,
+  pdNatural,
+  pdSymm,
+  random.effects,
+  ranef,
+  reStruct,
+  varComb,
+  varConstPower,
+  varExp,
+  varFixed,
+  varFunc,
+  varIdent,
+  varPower,
+  varWeights
+)
+importFrom(rxode2,
+  .malert,
+  .minfo,
+  .msuccess,
+  .mwarn,
+  RxODE,
+  add.dosing,
+  add.sampling,
+  as.rxUi,
+  et,
+  eventTable,
+  expit,
+  geom_amt,
+  geom_cens,
+  ini,
+  logit,
+  lotri,
+  model,
+  probit,
+  probitInv,
+  rxCat,
+  rxClean,
+  rxControl,
+  rxInit,
+  rxLhs,
+  rxModelVars,
+  rxModelVarsS3,
+  rxParam,
+  rxParams,
+  rxSolve,
+  rxState,
+  rxUiDeparse,
+  rxUiGet,
+  rxode,
+  rxode2,
+  stat_amt,
+  stat_cens
+)
+importFrom(stats,
+  AIC,
+  BIC,
+  anova,
+  approxfun,
+  as.formula,
+  asOneSidedFormula,
+  coef,
+  cov,
+  cov2cor,
+  dlnorm,
+  end,
+  fitted,
+  logLik,
+  median,
+  na.fail,
+  na.omit,
+  nlminb,
+  nobs,
+  optim,
+  optimHess,
+  pchisq,
+  predict,
+  qchisq,
+  qnorm,
+  quantile,
+  resid,
+  rnorm,
+  sd,
+  setNames,
+  simulate,
+  start,
+  terms,
+  time,
+  var
+)
 importFrom(symengine,S)
-importFrom(utils,.DollarNames)
-importFrom(utils,capture.output)
-importFrom(utils,getFromNamespace)
-importFrom(utils,getParseData)
-importFrom(utils,head)
-importFrom(utils,sessionInfo)
-importFrom(utils,stack)
-importFrom(utils,str)
-importFrom(utils,tail)
+importFrom(utils,
+  .DollarNames,
+  capture.output,
+  getFromNamespace,
+  getParseData,
+  head,
+  sessionInfo,
+  stack,
+  str,
+  tail
+)
 useDynLib(nlmixr2est, .registration=TRUE)
 export(registerEstInterceptor)
 export(removeEstInterceptor)

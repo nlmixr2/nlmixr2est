@@ -38,9 +38,12 @@ nmTest({
     skip_on_cran()
     skip_on_ci()
     .dat <- .dde_focei_data()
+    # the delayed-sensitivity augmented solve needs an accurate tolerance to keep
+    # the observed information PD; at the sigdig=4 default it diverges enough to
+    # fall back to the "r" covariance, so pin sigdig=6 to exercise the analytic path.
     fit <- suppressWarnings(suppressMessages(
       nlmixr(.dde_focei_mod, .dat, "focei",
-             foceiControl(print = 0L, fast = TRUE, covMethod = "analytic"))))
+             foceiControl(print = 0L, fast = TRUE, covMethod = "analytic", sigdig = 6))))
     # the augmented delayed-sensitivity solve fed the covariance without diverging
     expect_equal(fit$covMethod, "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))

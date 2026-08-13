@@ -21,29 +21,35 @@ nmTest({
         cp ~ add(add.err)
       })
     }
+    ## shapes/covCenterType pinned as in test-vae-covariate-selection.R: the
+    ## expanded shape
+    ## search would otherwise decide the coefficient NAMES (lka picks "lin" and
+    ## lV "power" by default), making this test about which shape wins rather
+    ## than about the fit accessors it is here to check.
     f <- nlmixr2(theo, nlmixr2data::theo_sd, est = "vae",
                  control = vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                                      iters = 160L, hiddenDim = 25L, seed = 1L))
+                                      iters = 160L, hiddenDim = 25L, seed = 1L,
+                                      shapes = "power", covCenterType = "mean"))
     expect_s3_class(f, "nlmixr2FitData")
 
     ## selected covariate coefficients are population parameters in the fit
     .pf <- if (is.null(rownames(f$parFixed))) f$parFixed$Parameter else rownames(f$parFixed)
-    expect_true(all(c("beta_lka_WT", "beta_lV_WT") %in% .pf))
+    expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% .pf))
     ## objDf / objective present, tagged est = vae
     expect_true(is.finite(f$objDf$OBJF[1]))
 
     ## FINAL model carries the exact centered covariate expression
     .fin <- vapply(f$finalUi$lstExpr, function(e) deparse1(e), character(1))
-    expect_true(any(grepl("beta_lka_WT \\* log\\(WT/", .fin)))
-    expect_true(any(grepl("beta_lV_WT \\* log\\(WT/", .fin)))
+    expect_true(any(grepl("beta.lka.WT.power \\* log\\(WT/", .fin, fixed = FALSE)))
+    expect_true(any(grepl("beta.lV.WT.power \\* log\\(WT/", .fin, fixed = FALSE)))
     expect_true(any(grepl("^ke <- exp\\(lke \\+ eta.ke\\)$", .fin)))
 
     ## ORIGINAL model recoverable via $uiIni (structure differs -- no covariates)
     .ini <- vapply(f$uiIni$lstExpr, function(e) deparse1(e), character(1))
-    expect_false(any(grepl("beta_lka_WT", .ini)))
+    expect_false(any(grepl("beta.lka.WT", .ini, fixed = TRUE)))
     expect_true(any(grepl("^ka <- exp\\(lka \\+ eta.ka\\)$", .ini)))
     ## $iniDf0 is the ORIGINAL model's iniDf (no covariate thetas)
-    expect_false(any(grepl("^beta_", f$iniDf0$name)))
+    expect_false(any(grepl("^beta\\.", f$iniDf0$name)))
     expect_true(all(c("lka", "lke", "lV") %in% f$iniDf0$name))
 
     ## EBEs from the encoder

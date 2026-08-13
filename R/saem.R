@@ -238,7 +238,10 @@
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
                         maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
                         indTolRelax=rxode2::rxGetControl(ui, "indTolRelax", TRUE),
-                        nSaCov=if (identical(rxode2::rxGetControl(ui, "covMethod", "linFim"), "sa"))
+                        # a general likelihood discards the SA covariance phase
+                        # (.saemCalcCov), so do not pay for it either
+                        nSaCov=if (identical(rxode2::rxGetControl(ui, "covMethod", "linFim"), "sa") &&
+                                     !.saemGeneralLik(ui))
                                  as.integer(rxode2::rxGetControl(ui, "nSaCov", 500L)) else 0L,
                         nres=ui$saemModNumEst,
                         perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
@@ -247,6 +250,11 @@
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=as.integer(ui$saemResFixed),
                         ue=.ue,
+                        # the revisit re-decides the same mask, so it only applies where
+                        # the mask is in force at all
+                        revisitUninformativeEtas=
+                          rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE) &&
+                          rxode2::rxGetControl(ui, "revisitUninformativeEtas", FALSE),
                         mixProb=ui$saemMixProb,
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regress"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
@@ -639,6 +647,17 @@
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
     .cm <- "linFim"
   }
+  if (.cm %in% c("sa", "fim") && .saemGeneralLik(.ui)) {
+    # The complete-data Louis FIM behind "sa"/"fim" subtracts the information lost
+    # to the latent eta as Var[score], estimated from a handful of MCMC chains.  A
+    # general log-likelihood endpoint carries no residual error to anchor that, and
+    # measured against an exact marginal likelihood the result is several-fold too
+    # small (0.41 and 0.14 of the true SEs on an exponential TTE model), where the
+    # linearized FIM lands at 0.93 and 0.82.  Go straight to it.
+    message(sprintf("covMethod=\"%s\" is not supported with a general likelihood; using the linearized FIM", .cm))
+    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    .cm <- "linFim"
+  }
   if (.cm %in% c("sa", "fim")) {
     # Both invert a SAEM observed-information matrix (.saemFimToCov): "sa" uses the
     # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
@@ -898,7 +917,9 @@
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
-  .nsdGq <- rxode2::rxGetControl(.ui, "nsd.gq", 1.6)
+  # saemControl() stores this as nsdGq; the old "nsd.gq" spelling never matched,
+  # so a user-supplied nsdGq was silently ignored
+  .nsdGq <- rxode2::rxGetControl(.ui, "nsdGq", 1.6)
   if (is.na(.obf)) {
     .saemObf <- NA_real_
   } else if (is.null(.obf)) {
@@ -1068,26 +1089,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   # surface the residual (error-model theta) SEs in the parameter table from the full
   # cov -- these are theta rows with a missing SE (Omega variances are reported as BSV,
   # with their SEs available in $cov).
-  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
-    .pf <- .env$parFixedDf
-    .se <- sqrt(diag(.full))
-    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)), error = function(e) 0.95)
-    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
-    for (.n in rownames(.pf)) {
-      if (.n %in% names(.se) && "SE" %in% names(.pf) &&
-            (is.na(.pf[.n, "SE"]) || !is.finite(.pf[.n, "SE"]) || .pf[.n, "SE"] < 1e-100)) {
-        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
-        .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
-        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-          .pf[.n, "CI Lower"] <- .e - .qn * .s
-          .pf[.n, "CI Upper"] <- .e + .qn * .s
-        }
-      }
-    }
-    .env$parFixedDf <- .pf
-  }
+  .updateParFixedRefreshSeFromCov(.env, .full, onlyMissing = TRUE)
   invisible()
 }
 
@@ -1135,26 +1137,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .env$covMethod <- "analytic"
   assign(".covAnalytic", .r, envir = .env)                 # getVarCov()/$cov reuse it
   # overwrite the parameter-table SEs from the analytic covariance
-  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
-    .pf <- .env$parFixedDf
-    .se <- sqrt(diag(.cov))
-    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)),
-                    error = function(e) 0.95)
-    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
-    for (.n in rownames(.pf)) {
-      if (.n %in% names(.se) && "SE" %in% names(.pf)) {
-        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
-        .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
-        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-          .pf[.n, "CI Lower"] <- .e - .qn * .s
-          .pf[.n, "CI Upper"] <- .e + .qn * .s
-        }
-      }
-    }
-    .env$parFixedDf <- .pf
-  }
+  .updateParFixedRefreshSeFromCov(.env, .cov)
   .nlmixr2CovConditionUpdate(.env)
   invisible()
 }
@@ -1211,11 +1194,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ui <- .ret$ui
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
+    .ret$theta <- .ui$saemThetaDataFrame
+    .ret$model <- .ui$saemModelPred
+    # The control must stay on the ui until the predOnly model is built; the build
+    # reads optExpression/sumProd off of it (#864)
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm(list="control", envir=.ui)
     }
-    .ret$theta <- .ui$saemThetaDataFrame
-    .ret$model <- .ui$saemModelPred
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)

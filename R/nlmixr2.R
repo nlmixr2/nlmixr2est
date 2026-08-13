@@ -448,3 +448,15 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
 #' @rdname nlmixr2
 #' @export
 nlmixr2.nlmixr2FitData <- nlmixr2.nlmixr2FitCore
+
+# A fit read back from an RDS in a fresh session is a "nlmixr2FitCoreSilent", and
+# reading any objective-derived element off it re-enters here: `$objf` ->
+# `$.nlmixr2FitCore` -> nmObjGet -> .nmObjEnsureObjective -> setOfv(., "focei") ->
+# .setOfvFo, which calls nlmixr2() on the fit.  Without this alias that dispatch
+# fails with "no applicable method for 'nlmixr2' applied to an object of class
+# nlmixr2FitCoreSilent", so a saved fit whose objective still has to be computed
+# cannot be read back at all.  Every other generic the reloaded object needs is
+# already aliased the same way (ini, update, model, getVarCov, fixef, VarCorr, $).
+#' @rdname nlmixr2
+#' @export
+nlmixr2.nlmixr2FitCoreSilent <- nlmixr2.nlmixr2FitCore

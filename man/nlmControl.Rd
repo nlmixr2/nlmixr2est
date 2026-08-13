@@ -28,7 +28,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -50,7 +50,7 @@ nlmControl(
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
-  sigdig = 4,
+  sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...
@@ -156,12 +156,9 @@ finite-difference Hessian that already reflects censoring exactly.}
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
 
-\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
-`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
-(`s`) method.}
+`"default"` is the same thing.}
 
 \item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
 iteration print. `NULL` (default) defers to [crayon::has_color()].}
@@ -262,11 +259,13 @@ consistent formula, the inner/outer optimizer convergence tolerance
 and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
 \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
 \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
-steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
+order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the

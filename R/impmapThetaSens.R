@@ -78,6 +78,23 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
+  # The endpoint's distribution and DV transform, emitted like the inner/pred models do
+  # (suppressed with `~`, so no output column and no offset shift).  rx_yj_ is a CMT
+  # switch when there are several endpoints, and the M-step reads ind->yj / ind->lambda
+  # per row off this model's calc_lhs.  Without these lines those fields keep whatever
+  # the last OTHER model left, so every observation was scored with one arbitrary
+  # endpoint's distribution and DV transform -- a lnorm() endpoint alongside an add()
+  # one had its DV left untransformed (nlmixr2/nlmixr2est#838).
+  # `$` through an intermediate, like rx_pred_/rx_r_ above -- base get() is shadowed
+  # in this environment.
+  .yj <- .s$`rx_yj_`
+  .lambda <- .s$`rx_lambda_`
+  .hi <- .s$`rx_hi_`
+  .low <- .s$`rx_low_`
+  .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
+            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
+            paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
+            paste0("rx_low_~", rxode2::rxFromSE(.low)))
   # Also output the residual variance V so the M-step gradient reads f and V from
   # this one solve (no separate inner solve / context interleave).
   .rvar <- .s$`rx_r_`
@@ -98,9 +115,24 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }, character(1))
   .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .rr, .dfOut, .dvOut, ""), collapse = "\n")
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, ""),
+                          collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
-  .s
+  ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
+  ##
+  ## rxUiGet caches a handler's return value on the `ui`, and `.s` carries the
+  ## full AST/expression trees for d(f)/d(theta) and d(V)/d(theta).  Caching it
+  ## meant a later `ui` holding an earlier one also held that earlier model's
+  ## entire tree, so memory DOUBLED with every distinct model fitted in a session
+  ## (measured x1.97, x1.99, x2.00) -- 41GB across test-impmap.R's ~21 models on
+  ## theo_sd, which is 12 subjects.  focei stayed flat because its cached
+  ## handlers return lightweight compiled-model wrappers.
+  ##
+  ## Model development -- fitting a series of related models in one session -- is
+  ## exactly the workflow that leaked, so this was user-facing, not just a test
+  ## problem.  Anything registered as an rxUiGet method must return a lightweight
+  ## value for the same reason.
+  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx)
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
@@ -114,8 +146,19 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 .impmapThetaSensModel <- function(ui) {
   .s <- rxUiGet.impmapThetaSens(list(ui))
   if (is.null(.s)) return(NULL)
+  ## Interpolation is carried like the inner model does; splitBolus() is not --
+  ## this model solves the pre-split events, so declaring it would split the
+  ## doses twice (see .foceiPreProcessData())
+  .cmt <- ui$foceiCmtPreModel
+  .interp <- ui$interpLinesStr
+  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
   nlmixr2global$toRxParam <-
-    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", ui$foceiCmtPreModel, "\n")
+    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
-  .toRx(.s$..thetaSens, "compiling sensitivity model...")
+  # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
+  # with another build of the same text (nlmixr2/rxode2#1171).  eventSens is left at
+  # the default: switching it to "jump" here changes the impmap thetaSens codegen and
+  # broke 5 assertions in test-impmap.R, so that is a separate question from the
+  # artifact-name collision this fixes.
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
 }

@@ -152,4 +152,41 @@ nmTest({
     expect_true(any(grepl("<=0 prediction|0-prediction obs", f$runInfo)))
   })
 
+  test_that("est='npag' buckets the residual moment per endpoint", {
+    ## nlmixr2/nlmixr2est#856 turned "this observation matches no endpoint" into a
+    ## -1 drop instead of a silent endpoint-0 filing; this pins that a real
+    ## multi-endpoint model still maps every observation to its own endpoint.  eff
+    ## is cp scaled by 0.1 with the DV scaled to match, so the two additive SDs
+    ## come out in the same 10:1 ratio, and nothing is reported as unmatched.
+    .d <- nlmixr2data::theo_sd
+    .obs <- .d[.d$EVID == 0, ]
+    .obs$CMT <- "cp"
+    .obs2 <- .obs
+    .obs2$CMT <- "eff"
+    .obs2$DV <- 1 + 0.1 * .obs2$DV
+    .dose <- .d[.d$EVID != 0, ]
+    .dose$CMT <- "depot"
+    .d <- rbind(.dose, .obs, .obs2)
+    .d <- .d[order(.d$ID, .d$TIME), ]
+    .m <- function() {
+      ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08)
+        add.sd<-2.0; eff.sd<-1.0
+        eta.ka~0.3; eta.ke~0.1 })
+      model({ ka<-exp(tka+eta.ka); v<-exp(tv); ke<-exp(tke+eta.ke)
+        d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
+        cp<-center/v
+        eff <- 1 + 0.1*cp
+        cp~add(add.sd)
+        eff~add(eff.sd) })
+    }
+    f <- nlmixr2(.m, .d, est="npag",
+                 control=npagControl(points=300L, cycles=15L, gammaOptimize=TRUE, muExpand=FALSE))
+    expect_s3_class(f, "nlmixr2FitData")
+    .add <- unname(f$parFixedDf["add.sd", "Estimate"])
+    .eff <- unname(f$parFixedDf["eff.sd", "Estimate"])
+    expect_equal(.eff, 0.1 * .add, tolerance = 1e-3)
+    ## every observation matched an endpoint, so nothing was dropped
+    expect_false(any(grepl("match no endpoint", f$runInfo)))
+  })
+
 })

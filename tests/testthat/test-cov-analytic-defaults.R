@@ -10,9 +10,10 @@ test_that("per-family covMethod defaults", {
   expect_identical(nlmeControl()$covMethod, "nlme")
   ## vae now defaults to the r,s sandwich
   expect_identical(vaeControl()$covMethod, "r,s")
-  ## advi keeps its own variational covariance first, with analytic second
-  expect_identical(adviControl()$covMethod, "advi")
-  expect_identical(adviControl(covMethod = "analytic")$covMethod, "analytic")
+  ## the variational methods keep their own variational covariance first,
+  ## with analytic second
+  expect_identical(emviControl()$covMethod, "vi")
+  expect_identical(emviControl(covMethod = "analytic")$covMethod, "analytic")
   ## focei now defaults to the r,s sandwich (integer slot 1, finite-difference)
   expect_identical(foceiControl()$covMethod, 1L)
   expect_identical(foceiControl()$covType, "fd")

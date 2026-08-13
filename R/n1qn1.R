@@ -78,10 +78,10 @@ n1qn1Control <- function(epsilon = NULL,
                          literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
                          eventSens = c("jump", "fd"),
-                         sensMethod = c("default", "forward", "adjoint"),
+                         sensMethod = c("default", "forward"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
 
   # n1qn1 stopping tolerance from sigdig (FOCEi mechanism, matches foceiControl

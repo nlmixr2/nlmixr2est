@@ -93,10 +93,9 @@ if (rxode2hasLlik()) {
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
 
-      # warm="calc" optimizes the FD Hessian step (etahh) at the inner starting
-      # eta for the reference fit, while this maxInnerIterations=0 fit optimizes
-      # it at the supplied etas, so the objfs agree only to FD error
-      expect_equal(f$objf, of1, tolerance=1e-4)
+      # the inner FD steps are re-searched at the reported etas, so an optimized
+      # fit and a maxInnerIterations=0 evaluation at its etas agree to solver noise
+      expect_equal(f$objf, of1, tolerance=1e-6)
 
       one.cmt.ll |>
         ini(theta2) |>
@@ -110,7 +109,7 @@ if (rxode2hasLlik()) {
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
-      expect_equal(f$objf, of2, tolerance=1e-4)
+      expect_equal(f$objf, of2, tolerance=1e-6)
 
       # no etas test
       one.cmt.noeta <- function() {
@@ -375,9 +374,21 @@ if (rxode2hasLlik()) {
 
 
     test_that("objective values are equal for mixed ll", {
-      # etahh reference-point difference between warm="calc" and
-      # maxInnerIterations=0 fits; see the tolerance note above
-      expect_equal(f2$objf, of1, tolerance=1e-4)
+      # a mixed Gaussian + ll() model and the equivalent all-Gaussian model are the
+      # same likelihood, so at the same thetas/etas the objectives are identical
+      expect_equal(f2$objf, of1, tolerance=1e-6)
+    })
+
+    test_that("the objective does not depend on how the etas were reached", {
+      # same model, same thetas, same etas -- one optimized its way there, the
+      # other was handed the answer.  The inner FD steps are re-searched at the
+      # reported etas, so these must agree.
+      fPin <- .nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
+                      control=foceiControl(covMethod = "", etaMat = etaMat1,
+                                           maxInnerIterations = 0,
+                                           maxOuterIterations = 0))
+      expect_equal(as.matrix(fPin$eta[, -1]), etaMat1, tolerance = 1e-10)
+      expect_equal(fPin$objf, of1, tolerance = 1e-6)
     })
 
     fll <- addNpde(f2)

@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 4,
+  sigdig = 3,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -30,6 +30,8 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  fdChartrand = TRUE,
+  foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -58,8 +60,8 @@ foceiControl(
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
-  resetThetaP = 0.05,
-  resetThetaFinalP = 0.15,
+  resetThetaP = 0,
+  resetThetaFinalP = 0,
   diagOmegaBoundUpper = 5,
   diagOmegaBoundLower = 100,
   cholSEOpt = FALSE,
@@ -122,6 +124,9 @@ foceiControl(
   etaMat = NULL,
   repeatGillMax = 1,
   stickyRecalcN = 4,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
   indTolRelax = TRUE,
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
@@ -140,7 +145,7 @@ foceiControl(
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
-  sensMethod = c("default", "forward", "adjoint"),
+  sensMethod = c("default", "forward"),
   zeroTheta = 0.001,
   boundedTransform = TRUE
 )
@@ -152,11 +157,13 @@ consistent formula, the inner/outer optimizer convergence tolerance
 and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
 \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
 \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens}) and
-steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
+order looser.
 Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 4}
-this is \code{atol = 1e-7}, \code{rtol = 1e-4}.}
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{...}{Ignored parameters}
 
@@ -283,14 +290,54 @@ installs only the structural-theta block (the historical shape).}
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by
 finite differences, and use the Eq-48 random-effect extrapolation for the
-next inner-problem starting values.  Requires an analytic-scope model
-(single additive/proportional Gaussian endpoint); out-of-scope models fall
-back to the finite-difference gradient with a message (linCmt() and
-log-likelihood models downgrade to \code{fast=FALSE} up front).  When unspecified,
+next inner-problem starting values.  Requires an analytic-scope model.
+Conditionally Gaussian endpoints route through the general (f,R)
+assembler, which covers more than the plain add/prop case -- multiple
+endpoints, combined and power error, both-sides transforms and a single
+estimated boxCox/yeoJohnson lambda.  A single non-Gaussian
+(\code{ll()}/generalized) endpoint instead differentiates the
+log-density directly, giving an exact inner Hessian and analytic outer
+gradient.  Out of scope are \code{linCmt()}, \code{fo}, IOV, more than
+one estimated lambda, a theta mu-referenced by several random effects,
+and (for the non-Gaussian path) multiple endpoints, censoring or
+\code{nAGQ > 1}; those fall back to the finite-difference gradient with
+a message (linCmt() and out-of-scope log-likelihood models downgrade to
+\code{fast=FALSE} up front).  When unspecified,
 the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{fdChartrand}{Refine finite-difference slopes that the robust outlier
+    test flags (default \code{TRUE}).  When a subject's per-parameter slope
+    sits far outside the modified z-score interval of the others, its central
+    difference is suspect; those slopes -- and only those -- are recomputed
+    with a total-variation regularized derivative (Chartrand) on a wide
+    interval.  Set \code{FALSE} to keep the plain central difference.
+
+    On by default because the outlier test is itself the gate: a well-behaved
+    problem flags nothing and pays nothing, so the cost falls only on the
+    complex fits where a slope really is an outlier -- exactly where you would
+    want the refinement, and where a user is least likely to know to ask for
+    it.  \code{fit$env$nFdOutlier} reports flagged parameters and refined
+    slopes, so you can see whether it engaged for a given fit.
+
+    Worth knowing when judging it: the measurements that originally motivated
+    this refinement were taken while the likelihood and the Shi step selection
+    were both faulty, so they do not evidence its value on current code, and it
+    has not been observed to trigger on ordinary fits.}
+
+\item{foceEbeTol}{Convergence tolerance on the score of the FOCE
+frozen-variance EBE re-solve, which the analytic outer gradient
+(\code{fast=TRUE}, \code{interaction=FALSE}) needs because FOCE's mode is
+not the inner problem's mode.  \code{NULL} (default) uses \code{1e-9}; the
+first iteration uses a looser \code{1e-3} so an already-stationary eta is
+returned untouched.  Unlike the solver and optimizer tolerances this is not
+derived from \code{sigdig} -- it is a convergence target on an inner Newton
+rather than a precision request.  It also bounds the Newton decrement at
+which a stalled subject is accepted at the ODE solve's noise floor rather
+than declining the gradient.  Set it explicitly to test whether a fit's
+finite-difference fallbacks are tolerance-driven.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -338,7 +385,8 @@ suppressed).}
 
 \item{lbfgsFactr}{Convergence factor for "L-BFGS-B": converges when the
 objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-Default `1e10` (~4 sigdigs, \code{2e-6}).}
+Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
+the objective reduction target IS \code{10^-sigdig}.}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
@@ -420,11 +468,15 @@ or \code{eta/sd(allEtas)}. `0` = never reset, `1` = always reset.}
 
 \item{resetThetaP}{P-value for resetting mu-referenced THETAs based on
 ETA drift, checked at the start and near a local minimum (see
-\code{resetThetaCheckPer}). `0` = never reset; `1` is not allowed.}
+\code{resetThetaCheckPer}). `0` = never reset (the default); `1` is
+not allowed.  Defaults to off: when the etas cannot re-center the
+reset repeats without progress and can error the fit out, and where
+it converges it reaches a worse optimum than leaving it off.}
 
 \item{resetThetaFinalP}{represents the p-value for reseting the
 population mu-referenced THETA parameters based on ETA drift
-during optimization, and resetting the optimization one final time.}
+during optimization, and resetting the optimization one final time.
+`0` = never reset (the default); see \code{resetThetaP}.}
 
 \item{diagOmegaBoundUpper}{Upper bound of the diagonal omega matrix, as
 \code{diag(omega)*diagOmegaBoundUpper}. `1` = no upper bound.}
@@ -665,6 +717,22 @@ parameter.}
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
 
+\item{outerMaxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances for a single subject and retry when the analytic
+outer (augmented sensitivity) solve fails.  Tracked separately
+from `maxOdeRecalc`, which governs the inner problem.  A subject
+that solves after loosening still contributes an analytic
+gradient instead of dropping the whole gradient to finite
+differences.}
+
+\item{outerOdeRecalcFactor}{The factor the atol/rtol is loosened by
+on each analytic outer retry; the outer counterpart of
+`odeRecalcFactor`.}
+
+\item{outerStickyRecalcN}{The number of bad analytic outer solves
+for a subject before its loosened tolerance is kept for the rest
+of the problem; the outer counterpart of `stickyRecalcN`.}
+
 \item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
 solve produced NaN/Inf have their tolerances relaxed, and the
 relaxed tolerance persists across optimizer calls (sticky).
@@ -750,12 +818,9 @@ gnlmm it was -700.}
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
 
-\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
-`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
-(`s`) method.}
+`"default"` is the same thing.}
 
 \item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
 population parameter (`theta`) whose initial estimate is exactly `0`

@@ -61,14 +61,18 @@ nmTest({
     ## no eta injected: the UI still carries only the original eta.kout
     expect_equal(ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, "name"],
                  "eta.kout")
-    ## prep exposes the regress-target theta indices + ini bounds
+    ## prep exposes the regress-target theta indices + ini bounds.  Use
+    ## residOptimize="moment" here so regressNames reflects ONLY the nonMuTheta
+    ## structural contribution -- the default "twoStage" also folds every free
+    ## residual theta (prop.err) into the regress set, which is exercised in
+    ## test-vae-residopt.R, not here.
     p <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
-                      vaeControl(nonMuTheta = "regress"))
+                      vaeControl(nonMuTheta = "regress", residOptimize = "moment"))
     expect_setequal(p$regressNames, c("tR0", "tIC50"))
     expect_equal(length(p$regressThetaIdx0), 2L)
-    ## "eta" mode leaves the regress fields empty
+    ## "eta" mode leaves the regress fields empty (again with residuals excluded)
     p2 <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
-                       vaeControl(nonMuTheta = "eta"))
+                       vaeControl(nonMuTheta = "eta", residOptimize = "moment"))
     expect_equal(length(p2$regressNames), 0L)
   })
 

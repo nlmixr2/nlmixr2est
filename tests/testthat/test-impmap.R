@@ -16,7 +16,10 @@ nmTest({
     expect_identical(.ctl$iscaleMax, 10.0)
     expect_identical(.ctl$iaccept, 0.4)
     expect_null(.ctl$ctol)
-    expect_identical(.ctl$nConvWindow, 10L)
+    # nConvWindow is a RULE-DEPENDENT default: the "target" rule (now the default)
+    # tracks a Monte-Carlo statistic and needs a longer window to average it out.
+    expect_identical(.ctl$nConvWindow, 20L)
+    expect_identical(impmapControl(gammaRule = "floor")$nConvWindow, 10L)
     expect_identical(.ctl$impSeed, 42L)
 
     # round-trips through do.call (used by getValidNlmixrCtl / .foceiFamilyControl)
@@ -393,11 +396,16 @@ nmTest({
     .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
                   .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
     .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
+    # this ill-conditioned 2-endpoint model (more structural thetas than etas) has a
+    # residual sigma sensitive to solve accuracy, so pin sigdig=6 on both fits to
+    # compare the methods at a converged tolerance (the sigdig=4 default leaves the
+    # FOCEI add.sd ~25% off, which is solve noise, not a method difference).
     rxode2::rxSetSeed(42)
-    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei", foceiControl(print = 0L, covMethod = "")))
+    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei",
+                                    foceiControl(print = 0L, covMethod = "", sigdig = 6)))
     rxode2::rxSetSeed(42)
     .fi <- suppressWarnings(nlmixr2(mpkpd, .dat, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 300L)))
+                                    impmapControl(print = 0L, nIter = 20L, isample = 300L, sigdig = 6)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # This fit runs after a prior parallel FOCEI fit.  Two bugs used to degrade it
     # non-deterministically: the within-fit pool-sizing thread race (fixed by forcing
@@ -407,7 +415,11 @@ nmTest({
     # effective sample size regardless of thread count.
     .neffFrac <- .fi$env$impNeff / .fi$env$impNsample
     expect_false(anyNA(.neffFrac))
-    expect_true(min(.neffFrac) > 0.9)
+    # The default rule ("target") drives xi onto iaccept, which deliberately
+    # widens the proposal and so LOWERS the Kish effective-sample fraction -- that
+    # is the trade it makes to bound the weights, not a defect.  The bound below
+    # is a sanity floor; pin gammaRule = "floor" if you want the old >0.9.
+    expect_true(min(.neffFrac) > 0.4)
     # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
     expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
                  fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
@@ -415,6 +427,65 @@ nmTest({
     # impmapControl(impSeed=) so the fit is reproducible and thread-count independent)
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
     expect_equal(unname(fixef(.fi)["pdadd.sd"]), unname(fixef(.ff)["pdadd.sd"]), tolerance = 0.05)
+  })
+
+  test_that("M7b: multiple endpoints with DIFFERENT DV transforms (lnorm + add) (#838)", {
+    # The M-step read each observation's DV transform and distribution (ind->lambda /
+    # ind->yj) without evaluating the model for that row, and the theta-sensitivity
+    # model did not emit rx_yj_/rx_lambda_ at all -- so those fields kept whatever the
+    # last OTHER model left and EVERY row was scored with one arbitrary endpoint's
+    # transform.  The all-Gaussian same-transform cases above cannot see it: both
+    # endpoints answer identically.  A lnorm() PK endpoint alongside an add() PD one
+    # can, because only its yj differs (both are still dist == norm).  Measured with
+    # the defect: tka -47.6 and lnorm.sd 2.8e4 against FOCEI's 0.53 / 0.11.
+    skip_on_cran()
+    m <- function() {
+      ini({
+        tka <- 0.5; tcl <- -3.2; tv <- -0.7; tec50 <- 2; tkout <- -2; te0 <- 4.6
+        eta.cl ~ 0.09
+        lnorm.sd <- 0.3; pdadd.sd <- 3
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        ec50 <- exp(tec50); kout <- exp(tkout); e0 <- exp(te0)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        effect(0) <- e0
+        d/dt(effect) <- kout * (e0 * (1 - cp / (ec50 + cp)) - effect)
+        cp ~ lnorm(lnorm.sd) | center
+        effect ~ add(pdadd.sd) | effect
+      })
+    }
+    # simulate from the estimation model, so each endpoint carries residual error on
+    # its OWN (log / additive) scale -- that is what makes the transforms differ
+    .testSeed(1); rxode2::rxSetSeed(1)
+    .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
+    .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
+    .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
+    .d <- as.data.frame(rxode2::rxSolve(m, .ev, addDosing = TRUE))
+    .dose <- .d[.d$evid != 0, c("id", "time", "CMT", "amt", "evid")]
+    .dose$dv <- NA_real_
+    names(.dose)[names(.dose) == "CMT"] <- "cmt"
+    .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
+    .obs$amt <- 0; .obs$evid <- 0
+    names(.obs)[names(.obs) == "CMT"] <- "cmt"
+    names(.obs)[names(.obs) == "sim"] <- "dv"
+    .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
+                  .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
+    .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
+    rxode2::rxSetSeed(42)
+    .ff <- suppressWarnings(nlmixr2(m, .dat, "focei",
+                                    foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+    rxode2::rxSetSeed(42)
+    .fi <- suppressWarnings(nlmixr2(m, .dat, "impmap",
+                                    impmapControl(print = 0L, covMethod = "", nIter = 20L,
+                                                  isample = 300L, sigdig = 6)))
+    expect_true(all(is.finite(fixef(.fi))))
+    # every non-mu theta goes through the M-step sensitivity Newton step, and both
+    # residual sigmas are per-endpoint -- so a transform read off the wrong endpoint
+    # shows up in all of them
+    expect_equal(fixef(.fi), fixef(.ff), tolerance = 0.01)
   })
 
   test_that("M8: windowed convergence controller stops early and adapts gamma", {
@@ -445,9 +516,14 @@ nmTest({
     expect_length(.E$impObjTrace, .E$impIter)
     expect_length(.E$impGammaTrace, .E$impIter)
     expect_length(.E$impNeffFrac, .E$impIter)
-    # gamma stays within the ISCALE bounds; a well-covered proposal is not inflated
+    # gamma stays within the ISCALE bounds
     expect_true(all(.E$impGammaTrace >= 0.1 - 1e-8 & .E$impGammaTrace <= 10 + 1e-8))
-    expect_equal(unname(.E$impGammaUsed), 1.0, tolerance = 1e-8)
+    # "a well-covered proposal is not inflated" is the FLOOR rule's semantics, and
+    # this fit runs the default "target" rule, which adjusts gamma both ways until
+    # xi approximates iaccept -- so assert THAT instead.  The floor behaviour is
+    # covered by the gammaRule test in test-imp-xi-gamma.R.
+    expect_equal(unname(tail(.E$impXiTrace, 1)),
+                 .E$impmapControl$iaccept, tolerance = 0.1)
     # and the early-stopped fit still matches FOCEI
     expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)

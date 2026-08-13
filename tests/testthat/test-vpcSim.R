@@ -74,6 +74,14 @@ nmTest({
 
     expect_equal(tmp$dvid, tmp2$dvid)
 
+    # a valid extra merges in only the requested column (#830)
+    expect_equal(setdiff(names(tmp), c(names(f), "ID", "dvid")), character(0))
+
+    # an unknown extra warns and returns the simulation unchanged (#830)
+    expect_warning(tmp3 <- vpcSimExpand(fitKA1tr1_PDimmemax1_F, f, "NOSUCHCOL"),
+                   "NOSUCHCOL")
+    expect_identical(tmp3, f)
+
   })
 
   test_that("vpcSim works with etas that are set to zero (#341)", {

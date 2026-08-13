@@ -26,11 +26,15 @@ nmTest({
   }
   theo_sd <- nlmixr2data::theo_sd
 
-  fitFocei <- .getCachedFit(
-    name = "mu-plain-focei",
-    fitFn = function() .nlmixr(.ocmt, theo_sd, "focei", foceiControl(print = 0)),
-    cacheFile = "fit-mu-plain-focei.rds"
-  )
+  ## Plain-FOCEI reference for the mu-family equivalence checks below.  Cached as a
+  ## VALUE rather than via .getCachedFit(): that cache keys on a hash of R/ + src/, so
+  ## every source edit refits it -- but plain FOCEI's optimum on this model and data is a
+  ## property of the model, not of the mu-family code under test, and plain FOCEI is
+  ## covered extensively elsewhere.  See helper-gradref.R.
+  fitFocei <- .numRef("fit-mu-plain-focei", function() {
+    .f <- .nlmixr(.ocmt, theo_sd, "focei", foceiControl(print = 0))
+    list(theta = .f$theta, objf = .f$objf)
+  })
 
   test_that("ifocei profiles plain mu thetas out of the outer optimizer", {
     fit <- .getCachedFit(
@@ -143,6 +147,10 @@ nmTest({
                                                   calcTables = FALSE)),
       cacheFile = "fit-mu-plain-irls-bounded.rds"
     )
+    ## NOT cached: unlike fitFocei above, both arms here are ifocei -- the reference is
+    ## the very estimator under test, and the 1e-4 tolerance is a RELATIVE claim (an
+    ## inactive bound changes nothing).  Freezing it would turn that into a brittle
+    ## absolute pin that a legitimate ifocei change breaks.
     fitFree <- .getCachedFit(
       name = "mu-plain-irls-free",
       fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei",
@@ -175,13 +183,12 @@ nmTest({
     expect_true(grepl("'tka'", .notes))
     expect_true(grepl("final estimate at bound", .notes))
     # plain focei with the same bound ends at the same place
-    fitFocei2 <- .getCachedFit(
-      name = "mu-plain-focei-clamped",
-      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "focei",
-                                 foceiControl(print = 0, covMethod = "",
-                                              calcTables = FALSE)),
-      cacheFile = "fit-mu-plain-focei-clamped.rds"
-    )
+    ## plain-FOCEI reference, cached as a value -- see the note on fitFocei above
+    fitFocei2 <- .numRef("fit-mu-plain-focei-clamped", function() {
+      .f <- .nlmixr(.ocmtClamp, theo_sd, "focei",
+                    foceiControl(print = 0, covMethod = "", calcTables = FALSE))
+      list(theta = .f$theta, objf = .f$objf)
+    })
     expect_equal(unname(fitFocei2$theta["tka"]), 0.2, tolerance = 1e-3)
     expect_equal(fit$objf, fitFocei2$objf, tolerance = 0.5)
     # a single-pass clamp cap still yields a feasible (in-bounds) fit

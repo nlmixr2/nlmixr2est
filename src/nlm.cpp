@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "odeSwap.h"
 #include "rxomp.h"
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include <atomic>
@@ -17,8 +18,8 @@
 #include "scale.h"
 
 
-#define nlmOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
-#define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
+// Solves go through odeSwapSolveInd(slot, id) -- see the note in inner.cpp.  nlm's
+// "inner" slot holds the theta-sensitivity model (nlmSetup registers thetaGrad there).
 
 struct nlmOptions {
   unsigned int ntheta=0;
@@ -99,6 +100,9 @@ RObject nlmFree() {
   nlmOp.scaleC  = NULL;
 
   nlmOp.loaded = false;
+  // The registry's entry points come from this fit's model DLLs; nlmSetup()
+  // calls nlmFree() first, so clearing here also gives it a clean slate.
+  odeSwapClearAll();
   return R_NilValue;
 }
 
@@ -108,18 +112,16 @@ RObject nlmSetup(Environment e) {
   List control = e["control"];
 
   RObject pred = e["predOnly"];
-  List mvp = rxode2::rxModelVars_(pred);
-  rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
-  // Check if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2]) for censoring support
-  CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
-  nlmOp.hasFR = 0;
-  nlmOp.predOffset = 0;
-  for (int i = 0; i < predLhs.size(); ++i) {
-    std::string lhsName = as<std::string>(predLhs[i]);
-    if (lhsName == "rx_pred_f_" || lhsName == "rx_r_") nlmOp.hasFR++;
-    if (lhsName == "rx_pred_") nlmOp.predOffset = i;
+  // Loud, not silent: the old code called rxModelVars_ directly and would have
+  // thrown here, and a skipped registration would quietly zero predOffset/hasFR.
+  if (!odeSwapRegister(odeSlotPred, "pred", pred, &rxPred)) {
+    stop(_("nlm cannot be run without an rxode2 'predOnly' model"));
   }
-  nlmOp.hasFR = (nlmOp.hasFR == 2) ? 1 : 0;
+  // Check if predOnly model has rx_pred_f_ and rx_r_ for censoring support
+  nlmOp.hasFR = (odeSwapLhsIndex(odeSlotPred, "rx_pred_f_") >= 0 &&
+                 odeSwapLhsIndex(odeSlotPred, "rx_r_") >= 0) ? 1 : 0;
+  int _ip = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
+  nlmOp.predOffset = (_ip < 0) ? 0 : _ip;
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
@@ -127,15 +129,16 @@ RObject nlmSetup(Environment e) {
   nlmOp.gradOffset = 0;
   if (e.exists("thetaGrad")) {
     model = e["thetaGrad"];
-    List mv = rxode2::rxModelVars_(model);
-    rxUpdateFuns(as<SEXP>(mv["trans"]), &rxInner);
+    // The sensitivity model takes the inner slot: it is nlm's largest structure
+    // and (below) sizes the shared solve pool, exactly as rxInner does for focei.
+    if (!odeSwapRegister(odeSlotInner, "thetaGrad", model, &rxInner)) {
+      stop(_("nlm cannot be run without an rxode2 'thetaGrad' model"));
+    }
     // rx_pred_ is preceded by the intermediate parameter assignments the
     // sensitivity ODEs need; locate it by name (the sensitivity columns and
     // rx_pred_f_/rx_r_ follow contiguously).
-    CharacterVector gradLhs = as<CharacterVector>(mv["lhs"]);
-    for (int i = 0; i < gradLhs.size(); ++i) {
-      if (as<std::string>(gradLhs[i]) == "rx_pred_") { nlmOp.gradOffset = i; break; }
-    }
+    int _ig = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
+    nlmOp.gradOffset = (_ig < 0) ? 0 : _ig;
   } else {
     if (nlmOp.solveType != solveType_nls_pred) {
       nlmOp.solveType = solveType_pred;
@@ -170,7 +173,12 @@ RObject nlmSetup(Environment e) {
   nlmOp.hessErr = control["hessErr"];
 
 
-  rxode2::rxSolve_(model, rxControl,
+  // Size the pool for the largest registered model rather than assuming it is
+  // `model`.  Today thetaGrad always dominates predOnly, so this is the same
+  // object -- but now it is derived, not assumed.
+  SEXP _poolSEXP = odeSwapPoolModelSEXP();
+  RObject poolModel = (_poolSEXP == R_NilValue) ? model : RObject(_poolSEXP);
+  rxode2::rxSolve_(poolModel, rxControl,
                    R_NilValue,//const Nullable<CharacterVector> &specParams =
                    R_NilValue,//const Nullable<List> &extraArgs =
                    p,//const RObject &params =
@@ -311,66 +319,47 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-// Like inner.cpp's indHasBadSolve(): scan ind->solve for NaN/Inf instead of the
-// shared op->badSolve flag, which another thread can flip mid-loop.
+// Shared with inner.cpp: scan ind->solve for NaN/Inf over the span this
+// subject's solve actually wrote, instead of the shared op->badSolve flag which
+// another thread can flip mid-loop.
 static inline bool nlmIndHasBadSolve(rx_solving_options *op,
                                      rx_solving_options_ind *ind) {
-  int neq = getOpNeq(op);
-  if (neq <= 0) return false;
-  double *solve = getIndSolve(ind);
-  int n = neq * getIndNallTimes(ind);
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-      return true;
-    }
-  }
-  return false;
+  return odeSwapIndBadSolve(op, ind);
+}
+
+// nlm latches a different "reduced tolerance" flag per solve kind, and (unlike
+// FOCEi) never un-sticks a subject that recovered -- see OdeRetryOpts.
+struct NlmRetryHooks {
+  int *reducedFlag;
+  void onRetry() { *reducedFlag = 1; }
+  void onSticky() { nlmOp.stickyTol = 1; }
+};
+
+static inline OdeRetryOpts nlmRetryOpts() {
+  OdeRetryOpts o;
+  o.maxOdeRecalc = nlmOp.maxOdeRecalc;
+  o.stickyRecalcN = nlmOp.stickyRecalcN;
+  o.odeRecalcFactor = nlmOp.odeRecalcFactor;
+  o.relaxMode = odeRelaxGlobal;
+  o.restoreTolOnSuccess = false;
+  o.resetBadSolveEachRetry = false;
+  return o;
 }
 
 void nlmSolveNlm(int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
-  nlmOde(id);
-  int j=0;
-  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
-  while (perN <= nlmOp.stickyRecalcN &&
-         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
-    perN++;
-    nlmOp.reducedTol  = 1;
-    atolRtolFactor_(nlmOp.odeRecalcFactor);
-    setIndSolve(ind, -1);
-    nlmOde(id);
-    j++;
-  }
-  if (j != 0) {
-    // tolFactor persists on ind: stiff subjects retain loosened tolerance.
-    if (perN > nlmOp.stickyRecalcN) {
-      nlmOp.stickyTol=1;
-    }
-  }
+  NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol;
+  odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
+                    [&]{ odeSwapSolveInd(odeSlotInner, id); }, nlmRetryOpts(), hk);
 }
 
 void nlmSolvePred(int &id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
-  predOde(id);
-  int j=0;
-  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
-  while (perN <= nlmOp.stickyRecalcN &&
-         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
-    perN++;
-    nlmOp.reducedTol2 = 1;
-    atolRtolFactor_(nlmOp.odeRecalcFactor);
-    setIndSolve(ind, -1);
-    predOde(id);
-    j++;
-  }
-  if (j != 0) {
-    // tolFactor persists on ind: stiff subjects retain loosened tolerance.
-    if (perN > nlmOp.stickyRecalcN) {
-      nlmOp.stickyTol=1;
-    }
-  }
+  NlmRetryHooks hk; hk.reducedFlag = &nlmOp.reducedTol2;
+  odeSwapSolveRetry(op, ind, nlmOp.stickyRecalcN2Per[(size_t)id],
+                    [&]{ odeSwapSolveInd(odeSlotPred, id); }, nlmRetryOpts(), hk);
 }
 
 extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);
@@ -400,6 +389,13 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = getSolvingOptions(rx);
+  // The shared pool is sized for nlm's SENSITIVITY model (nlmSetup gives it the inner
+  // slot as nlm's largest structure), so a pred solve must be compacted to the pred
+  // model's own state count.  The guard is held for the WHOLE function, not just around
+  // the solve: getOpIndSolve() below strides ind->solve by the effective neq, so
+  // releasing it after nlmSolvePred() would read the predictions back at the sensitivity
+  // model's stride.  Same discipline as the inline pred fallback in likInner0.
+  OdeSwapScope neqGuard(odeSlotPred, ind, op);
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   nlmSolvePred(id);
   int kk, k=0;

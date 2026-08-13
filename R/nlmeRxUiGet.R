@@ -153,6 +153,8 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  ## no splitBolus() here -- the doses were already split when the data was
+  ## translated (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }

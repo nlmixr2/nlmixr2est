@@ -327,6 +327,99 @@
   ret
 }
 
+#' Refresh a fit's parameter-table SEs from an installed covariance
+#'
+#' Updates the numeric `$parFixedDf` and regenerates the formatted `$parFixed`
+#' so both carry `sqrt(diag(cov))` for every theta row named in `cov`
+#' (issue #816: a post-fit covariance install updated only `$parFixedDf`,
+#' leaving the displayed table stale).
+#'
+#' @param env fit environment carrying `$parFixedDf`, `$parFixed`, `$ui`
+#' @param cov named covariance matrix
+#' @param onlyMissing when `TRUE` update only rows whose SE is missing or
+#'   non-finite (used when `cov` adds rows -- e.g. residual thetas -- to a
+#'   table whose structural SEs are already correct)
+#' @return invisibly, called for side effects on `env`
+#' @noRd
+.updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE) {
+  if (!exists("parFixedDf", envir = env, inherits = FALSE)) return(invisible())
+  .pf <- env$parFixedDf
+  if (!is.matrix(cov) || is.null(rownames(cov)) ||
+        !is.data.frame(.pf) || !("SE" %in% names(.pf))) {
+    return(invisible())
+  }
+  .se <- sqrt(diag(cov))
+  # Resolve ci the way .updateParFixed does -- the fit's control first, then the
+  # ui.  The ui's control slot can still hold the default when the fit ran with
+  # e.g. saemControl(ci=0.8), and reading only the ui both relabels the column
+  # 95% and recomputes the CIs below at the wrong level.
+  .ci <- tryCatch({
+    .v <- env$control[["ci"]]
+    if (!(length(.v) == 1L && is.numeric(.v) && is.finite(.v))) {
+      .v <- suppressWarnings(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)))
+    }
+    if (length(.v) == 1L && is.numeric(.v) && is.finite(.v)) .v else 0.95
+  }, error = function(e) 0.95)
+  .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+  .changed <- FALSE
+  for (.n in intersect(rownames(.pf), names(.se))) {
+    if (onlyMissing) {
+      .cur <- .pf[.n, "SE"]
+      # denormal garbage from a pre-fix finalization also counts as missing
+      if (!(is.na(.cur) || !is.finite(.cur) || .cur < 1e-100)) next
+    }
+    .s <- .se[[.n]]
+    .e <- .pf[.n, "Estimate"]
+    .pf[.n, "SE"] <- .s
+    if ("%RSE" %in% names(.pf)) {
+      .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
+    }
+    if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf))) {
+      # recompute the CI when the default back-transform (identity/exp/expit/
+      # probitInv) reproduces the stored back-transformed value; rows with a
+      # manual backTransform keep their existing CI
+      .btf <- function(.v) {
+        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v),
+                 error = function(e) .v)
+      }
+      if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
+        .pf[.n, "CI Lower"] <- .btf(.e - .qn * .s)
+        .pf[.n, "CI Upper"] <- .btf(.e + .qn * .s)
+      }
+    }
+    .changed <- TRUE
+  }
+  if (!.changed) return(invisible())
+  env$parFixedDf <- .pf
+  # regenerate the formatted table; the FIXED / fix(...) decorations are
+  # re-derived from the existing formatted table (the numeric one lacks them)
+  if (exists("parFixed", envir = env, inherits = FALSE) &&
+        is.data.frame(env$parFixed)) {
+    .old <- env$parFixed
+    .fixedNames <- rownames(.old)[which(.old[["SE"]] == "FIXED")]
+    .bsvCol <- which(startsWith(names(.old), "BSV("))
+    .bsvFixedNames <- if (length(.bsvCol) == 1L) {
+      rownames(.old)[startsWith(as.character(.old[[.bsvCol]]), "fix(")]
+    } else {
+      character()
+    }
+    .digits <- tryCatch({
+      .v <- env$control[["sigdigTable"]]
+      if (length(.v) == 1L && is.finite(.v)) {
+        .v
+      } else {
+        rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
+      }
+    }, error = function(e) 3L)
+    .new <- .updateParFixedApplySig(.pf, digits = .digits, ci = .ci,
+                                    fixedNames = .fixedNames,
+                                    bsvFixedNames = .bsvFixedNames)
+    class(.new) <- class(.old)
+    env$parFixed <- .new
+  }
+  invisible()
+}
+
 #' Create the parFixed dataset
 #'
 #' @param .ret focei style environment
@@ -360,7 +453,7 @@
         check.rows = FALSE
       )
     # Keep estimated thetas absent from the (pre-literal-fix) model -- e.g. the
-    # covariate-coefficient thetas (beta_<par>_<cov>) est="vae" injects after
+    # covariate-coefficient thetas (beta.<par>.<cov>) est="vae" injects after
     # covariate selection.  They live in $theta/$cov but not in uiUnfix, so the
     # reindex below would silently drop them (leaving a covariate-free table).
     # Append them after the original theta order.
@@ -430,13 +523,18 @@
     .tmp <- obj$saem
     .curObj <- get("objective", .env)
     if (is.na(.curObj)) {
+      # the quadrature settings live on the fit's saemControl; the fit
+      # environment itself never held them, so both lookups always missed and
+      # this deferred path silently ran at the defaults (#903)
       .nnodes <- 3
-      if (exists("nnodesGq", .env)) {
-        .nnodes <- .env$nnodesGq
-      }
       .nsd <- 1.6
-      if (exists("nsd.gq", .env)) {
-        .nsd <- .env$nsd.gq
+      .ctl <- .env$control
+      if (inherits(.ctl, "saemControl")) {
+        # a control restored from an older fit can be missing either field; a
+        # non-finite value would reach `if (.nnodes == 1)` as NA
+        .keep <- function(x) length(x) == 1L && is.numeric(x) && is.finite(x)
+        if (.keep(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
+        if (.keep(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
       }
       if (.nnodes == 1) {
         .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)

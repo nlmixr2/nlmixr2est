@@ -2,7 +2,7 @@ if (FALSE) {
 
   nmTest({
 
-    skip_if_not(file.exists(test_path("test-saem-theo_sd.qs2")))
+    skip_if_not(file.exists(test_path("test-saem-theo_sd.rds")))
 
     mod <- function() {
       ini({
@@ -184,7 +184,7 @@ if (FALSE) {
       val[, .n] <- round(val[[.n]], 2)
     }
 
-    ##qs2::qs_save(val, file=test_path("test-saem-theo_sd.qs2"))
+    ##saveRDS(val, file=test_path("test-saem-theo_sd.rds"))
 
     .test <- readRDS(test_path("test-saem-theo_sd.rds"))
 

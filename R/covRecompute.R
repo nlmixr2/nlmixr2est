@@ -49,6 +49,13 @@
   .a <- .covPinnedRefitArgs(fit)
   if (is.null(.a)) return(NULL)
   if (useEtaMat && !is.null(.a$etaMat)) control$etaMat <- .a$etaMat
+  # This re-fit is pinned at the converged estimates but still takes a frozen EM / SA
+  # step, so it CAN move a theta.  For a hand-written likelihood that means it can step a
+  # scale out of its domain, where rxode2's default safeLog hands back a large finite
+  # reward instead of a rejection -- and the covariance would then be formed around a
+  # point the likelihood cannot evaluate (nlmixr2/nlmixr2est#850).  Ask for the
+  # log-domain mode here too; a no-op while every parameter stays valid.
+  control$rxControl <- .npSafeLogDomain(control$rxControl, .a$ui)
   # the nested re-fit resets mu-referencing global state; save + restore
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
@@ -142,28 +149,7 @@
   assign("cov", .cov, envir = env)
   assign("covMethod", r$covMethod, envir = env)
   # refresh SE/%RSE/CI on the fit's own parameter table from the new covariance
-  if (exists("parFixedDf", envir = env, inherits = FALSE)) {
-    .pf <- env$parFixedDf
-    .se <- sqrt(diag(.cov))
-    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)),
-                    error = function(e) 0.95)
-    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
-    for (.n in rownames(.pf)) {
-      if (.n %in% names(.se) && "SE" %in% names(.pf)) {
-        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
-        .pf[.n, "SE"] <- .s
-        if ("%RSE" %in% names(.pf)) {
-          .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
-        }
-        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
-              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
-          .pf[.n, "CI Lower"] <- .e - .qn * .s
-          .pf[.n, "CI Upper"] <- .e + .qn * .s
-        }
-      }
-    }
-    env$parFixedDf <- .pf
-  }
+  .updateParFixedRefreshSeFromCov(env, .cov)
   .nlmixr2CovConditionUpdate(env)
   invisible(TRUE)
 }
@@ -175,7 +161,7 @@
 #' @noRd
 .covGetDeferred <- function(fit) {
   # fit$control is the uniform per-method control accessor (nmObjGetControl);
-  # families that finalize through .foceiFamilyReturn (vae/advi/impmap/np) carry
+  # families that finalize through .foceiFamilyReturn (vae/vi/impmap/np) carry
   # the deferred request on the internal foceiControl instead.
   for (.acc in c("control", "foceiControl")) {
     .ctl <- tryCatch(do.call("$", list(fit, .acc)), error = function(e) NULL)

@@ -45,6 +45,7 @@ saemControl(
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
+  revisitUninformativeEtas = FALSE,
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
@@ -55,10 +56,6 @@ saemControl(
   nonMuTheta = c("regress", "eta"),
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
-  lbfgsLmm = 5L,
-  lbfgsFactr = NULL,
-  lbfgsPgtol = NULL,
-  lbfgsMaxIter = 20L,
   ...
 )
 }
@@ -135,6 +132,10 @@ typical fitting.}
  estimated reliably by the simulation FIM (the complete-data correction is unstable when
  between-subject variability dominates the residual), so those variance-block standard
  errors are spliced in from the linearized FIM (\code{linFim}).
+
+ Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
+ no residual error to anchor the complete-data correction; such a model goes
+ straight to \code{linFim} with a message.
 
  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 
@@ -248,16 +249,42 @@ exploration of the likelihood surface.}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
-\item{sigdig}{Specifies the "significant digits" that the ode
-solving requests.  When specified this controls the relative and
-absolute tolerances of the ODE solvers.  By default the tolerance
-is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
-sensitivity equations the default is \verb{0.5*10\\^(-sigdig-1.5)}
-(sensitivity changes only applicable for liblsoda).  This also
-controls the \code{atol}/\code{rtol} of the steady state solutions. The
-\code{ssAtol}/\code{ssRtol} is \verb{0.5*10\\^(-sigdig)} and for the sensitivities
-\verb{0.5*10\\^(-sigdig+0.625)}.  By default
-this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.}
+\item{sigdig}{Specifies the "significant digits" that the ODE
+solving requests.  This is \code{NULL} by default, and while it is
+\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
+\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
+tolerances).  \code{sigdig} only changes a tolerance when you ask for
+it explicitly.
+
+When it is supplied, the tolerances are derived with one
+solver-independent formula -- the same for stiff, non-stiff and
+auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below it:
+\itemize{
+\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
+\item the sensitivity tolerances match the main solve, so
+\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
+covariances are built from them)
+\item the steady-state tolerances run one order looser than the
+corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
+and \code{ssAtol = ssAtolSens = 10*atol}
+}
+
+Each of these is set only when you did not pass that tolerance
+yourself; a tolerance you supply always wins.  Because they are
+resolved independently, an explicit \code{atol}/\code{rtol} overrides the
+main solve but does \emph{not} propagate to the sensitivity or
+steady-state tolerances -- set those directly if you need them
+changed too.
+
+This mapping matches how \code{nlmixr2est} derives solver tolerances
+from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
+and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
+thing.  Note it is keyed to \code{sigdig} as a request for that many
+significant digits, and is looser than the \code{atol}/\code{rtol} defaults
+for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
+against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
+\code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
@@ -293,6 +320,22 @@ changes the system to a linear compartment model.  Therefore, by default this is
 \item{handleUninformativeEtas}{boolean that tells nlmixr2's saem to
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
+
+\item{revisitUninformativeEtas}{boolean (default `FALSE`); when
+`TRUE` the uninformative-eta test is run a second time at the end
+of burn-in and that verdict replaces the first.  The test asks
+whether perturbing an eta moves the subject's prediction, and it is
+otherwise only run at the *initial* estimates -- so those decide,
+for the whole fit, which etas `saem` may sample.  Re-running it
+once `theta` has moved decides on the estimates the data supports
+instead.  It reuses the fit's own model evaluation, so it costs a
+few extra solves at a single iteration and leaves the random number
+stream unchanged; where it changes no verdict the fit is identical.
+It is off by default because the two verdicts only disagree when
+`theta` moved a long way during burn-in, which usually means it has
+not settled -- and the second verdict can freeze an eta for the
+rest of the fit.  Skipped for mixture models and when
+`handleUninformativeEtas=FALSE`.}
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
 \code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
@@ -405,23 +448,6 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 \code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
-
-\item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
-memory) used when refining the fixed-effect-only parameters of a general
-log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
-optimization of the observation likelihood.  Default 5.}
-
-\item{lbfgsFactr}{Convergence tolerance on the relative reduction in the
-objective for that L-BFGS-B refinement (the `factr` control, in units of
-machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).}
-
-\item{lbfgsPgtol}{Convergence tolerance on the projected gradient for that
-L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-derived from `sigdig` (`10^(-sigdig)`).}
-
-\item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
-refinement.  Default 20.}
 
 \item{...}{Other arguments to control SAEM.}
 }

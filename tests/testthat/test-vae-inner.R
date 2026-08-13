@@ -86,6 +86,56 @@ nmTest({
     }
   })
 
+  test_that("vaeInnerUpdatePar_ fast path matches re-setup for a CORRELATED omega", {
+    ## The correlated branch packs chol(Omega^-1) onto the omega block by the
+    ## position list from the model structure; a row/column swap or a dropped
+    ## diagonal sqrt() would leave the fast path disagreeing with the full
+    ## rxSymInvCholCreate + foceiSetup_ re-setup.  A 3-eta block exercises a
+    ## packing order the diagonal case cannot.
+    theoCor <- function() {
+      ini({ lka <- log(1.8); lke <- log(0.086); lV <- log(32)
+        eta.ka + eta.ke + eta.V ~ c(0.3,
+                                    0.01, 0.03,
+                                    0.02, 0.005, 0.03)
+        add.err <- 0.7 })
+      model({ ka <- exp(lka + eta.ka); ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(theoCor)
+    ctl <- vaeControl()
+    N <- length(unique(nlmixr2data::theo_sd$ID))
+    .testSeed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    expect_true(.omegaHasOffDiag(prep$omegaMat))
+    env <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    ## exact at the setup parameter values
+    vaeInnerUpdatePar_(as.numeric(prep$th), prep$omegaMat)
+    rFast0 <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+    .vaeInnerUpdate(env, prep$th, prep$omegaMat, etaMat)
+    rRef0 <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+    expect_equal(rFast0$obj, rRef0$obj, tolerance = 1e-10)
+    expect_equal(rFast0$lp, rRef0$lp, tolerance = 1e-10)
+    ## and away from them, with the correlation itself perturbed
+    for (i in 1:3) {
+      .testSeed(i)
+      th <- prep$th * (1 + rnorm(length(prep$th), 0, 0.1))
+      om <- prep$omegaMat
+      diag(om) <- diag(om) * exp(rnorm(3, 0, 0.2))
+      om[1L, 2L] <- om[2L, 1L] <- om[1L, 2L] * (1 + rnorm(1, 0, 0.2))
+      vaeInnerUpdatePar_(as.numeric(th), om)
+      rFast <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+      .vaeInnerUpdate(env, th, om, etaMat)
+      rRef <- .vaeInnerEval(etaMat, ctl, grad = TRUE)
+      expect_lt(max(abs(rFast$obj - rRef$obj)), 1e-2)
+      expect_lt(max(abs(rFast$lp - rRef$lp)), 1e-2)
+    }
+    ## a wrongly sized omega is rejected, not read out of bounds
+    expect_error(vaeInnerUpdatePar_(as.numeric(prep$th), matrix(1, 1, 1)),
+                 "expected")
+  })
+
   test_that("vae inner driver selects mixture components per id", {
     mixmod <- function() {
       ini({ lka <- log(1.8); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32); p1 <- 0.6
@@ -185,13 +235,28 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(theo)
-    ctl <- vaeControl()
+    # sigdig = 6 is REQUIRED for the finite-difference check below, not cosmetic.
+    # The loss contains an ODE solve, so it carries a relative noise floor set by
+    # the solver tolerances (sigdig drives rtol/atol).  A central difference's
+    # roundoff error is noise/h, so at the default sigdig the h = 1e-5 step below
+    # is far inside the noise and the FD "reference" is meaningless -- measured
+    # relative error against the analytic gradient, same seed and step:
+    #
+    #   sigdig default   h=1e-3 1.0e-4 | h=1e-4 1.0e-3 | h=1e-5 1.0e-2   (~1e-7/h)
+    #   sigdig = 6       h=1e-3 1.1e-5 | h=1e-4 9.7e-8 | h=1e-5 5.8e-8
+    #
+    # i.e. the error scales as 1/h at the default (roundoff-dominated) and becomes
+    # a clean U-shape with its minimum at this step once the solve is tight enough.
+    # The analytic gradient is right either way -- it agrees to 6e-8 here.
+    ctl <- vaeControl(sigdig = 6)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     N <- prep$N; zDim <- prep$zDim; hDim <- 12L
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(1)
-    params <- .vaeEncoderInitParams(zDim, hDim, 0L, prep$zPop, rep(0.1, zDim))
+    ## nCov from the prep: the encoder head is [hDim + nCov] wide because the
+    ## encoder is conditioned on the covariates
+    params <- .vaeEncoderInitParams(zDim, hDim, ncol(prep$covIn), prep$zPop, rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
     st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)
 

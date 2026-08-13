@@ -70,6 +70,10 @@
 #'  between-subject variability dominates the residual), so those variance-block standard
 #'  errors are spliced in from the linearized FIM (\code{linFim}).
 #'
+#'  Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
+#'  no residual error to anchor the complete-data correction; such a model goes
+#'  straight to \code{linFim} with a message.
+#'
 #'  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 #'
 #'  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
@@ -169,6 +173,22 @@
 #'   calculate uninformative etas and handle them specially (default
 #'   is `TRUE`).
 #'
+#' @param revisitUninformativeEtas boolean (default `FALSE`); when
+#'   `TRUE` the uninformative-eta test is run a second time at the end
+#'   of burn-in and that verdict replaces the first.  The test asks
+#'   whether perturbing an eta moves the subject's prediction, and it is
+#'   otherwise only run at the *initial* estimates -- so those decide,
+#'   for the whole fit, which etas `saem` may sample.  Re-running it
+#'   once `theta` has moved decides on the estimates the data supports
+#'   instead.  It reuses the fit's own model evaluation, so it costs a
+#'   few extra solves at a single iteration and leaves the random number
+#'   stream unchanged; where it changes no verdict the fit is identical.
+#'   It is off by default because the two verdicts only disagree when
+#'   `theta` moved a long way during burn-in, which usually means it has
+#'   not settled -- and the second verdict can freeze an eta for the
+#'   rest of the fit.  Skipped for mixture models and when
+#'   `handleUninformativeEtas=FALSE`.
+#'
 #' @param mixProbMethod For mixture models (`mix()`, more than one
 #'   component), stabilizes the mixing-probability estimate against
 #'   collapsing onto a single component (the responsibility used to
@@ -258,23 +278,6 @@
 #'   the stochastic step a better starting residual scale.  Set `FALSE` to start
 #'   from the `ini`-block residual values instead.
 #'
-#' @param lbfgsLmm Integer number of BFGS corrections (the L-BFGS-B `lmm`
-#'   memory) used when refining the fixed-effect-only parameters of a general
-#'   log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
-#'   optimization of the observation likelihood.  Default 5.
-#'
-#' @param lbfgsFactr Convergence tolerance on the relative reduction in the
-#'   objective for that L-BFGS-B refinement (the `factr` control, in units of
-#'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-#'   same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).
-#'
-#' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
-#'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-#'   derived from `sigdig` (`10^(-sigdig)`).
-#'
-#' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
-#'   refinement.  Default 20.
-#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -332,6 +335,7 @@ saemControl <- function(seed = 99,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
                         handleUninformativeEtas=TRUE,
+                        revisitUninformativeEtas=FALSE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
@@ -342,10 +346,6 @@ saemControl <- function(seed = 99,
                         nonMuTheta = c("regress", "eta"),
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
-                        lbfgsLmm = 5L,
-                        lbfgsFactr = NULL,
-                        lbfgsPgtol = NULL,
-                        lbfgsMaxIter = 20L,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -409,6 +409,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
   checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
+  checkmate::assertLogical(revisitUninformativeEtas, any.missing=FALSE, len=1)
   checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
   eventSens <- match.arg(eventSens)
   mixProbMethod <- match.arg(mixProbMethod)
@@ -441,26 +442,7 @@ saemControl <- function(seed = 99,
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
-    # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
-    # derived from sigdig the same way foceiControl() does (factr = tol/eps)
-    if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
-    }
-    if (is.null(lbfgsPgtol)) {
-      lbfgsPgtol <- 10^(-sigdig)
-    }
   }
-  # defaults when sigdig is not supplied (~4 significant digits)
-  if (is.null(lbfgsFactr)) {
-    lbfgsFactr <- 1e7
-  }
-  if (is.null(lbfgsPgtol)) {
-    lbfgsPgtol <- 0
-  }
-  checkmate::assertIntegerish(lbfgsLmm, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(lbfgsFactr, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(lbfgsPgtol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(lbfgsMaxIter, lower=1, len=1, any.missing=FALSE)
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
@@ -546,6 +528,7 @@ saemControl <- function(seed = 99,
     muRefCov=muRefCov,
     muRefCovAlg=muRefCovAlg,
     handleUninformativeEtas=handleUninformativeEtas,
+    revisitUninformativeEtas=revisitUninformativeEtas,
     iovXform=iovXform,
     boundedTransform=boundedTransform,
     eventSens=eventSens,
@@ -554,11 +537,7 @@ saemControl <- function(seed = 99,
     mixProbPriorN=mixProbPriorN,
     mixSampleMethod=mixSampleMethod,
     nonMuTheta=nonMuTheta,
-    residWarmStart=residWarmStart,
-    lbfgsLmm=as.integer(lbfgsLmm),
-    lbfgsFactr=lbfgsFactr,
-    lbfgsPgtol=lbfgsPgtol,
-    lbfgsMaxIter=as.integer(lbfgsMaxIter)
+    residWarmStart=residWarmStart
   )
   class(.ret) <- "saemControl"
   .ret

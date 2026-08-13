@@ -30,7 +30,7 @@ jobs:
       matrix:
         # Must match the number of entries in `.slowBatches` in
         # tests/testthat.R.
-        batch: [1, 2, 3, 4, 5, 6, 7, 8]
+        batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -49,6 +49,11 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # Keep in step with R-CMD-check.yaml: the qs2/stringfish source pins are
+          # gone (PR #821 dropped that dependency, so they were force-building two
+          # C++ packages nothing uses), and rstan is not installed -- its only
+          # consumer, test-vi-stan.R, is guarded by skip_if_not_installed().
+          cache-version: 3
           extra-packages: |
             any::rcmdcheck
             nlmixr2/lbfgsb3c
@@ -59,6 +64,7 @@ jobs:
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             qs=?ignore
+            rstan=?ignore
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

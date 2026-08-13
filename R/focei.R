@@ -825,6 +825,77 @@ rxUiGet.foceiHdEta <- function(x, ...) {
 attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO related methods"
 attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 
+#' Second-order eta sensitivities of the prediction for the exact log-likelihood
+#' (`ll()`/generalized) inner Hessian under `fast=TRUE`.
+#'
+#' For a generalized endpoint `rx_pred_` is the per-observation log-density, so its
+#' second eta-derivatives `d2(rx_pred_)/deta_i deta_j` let `calcEtaHessian` assemble
+#' the exact inner Hessian `H = Omega^-1 - sum_obs d2(logLik)/deta2` analytically --
+#' mirroring the Gaussian Gauss-Newton `sum(cHff*a*a)+Omega^-1` assembly -- instead of
+#' the Shi21 finite difference of the inner gradient.  Reuses the augmented-model
+#' second-order chain (`.g2`, see [.foceiAnalyticAugModelDirs]).  Stores on the
+#' symengine env `..HdEta2` (the `rx__d2pred_i_j__` lhs lines, upper triangle i<=j) and
+#' `..sens2` (the second-order state-sensitivity ODEs).  Only built for a fast
+#' generalized fit; the ordinary inner model is unchanged.
+#'
+#' @param x list of rxode2 UI
+#' @param ... ignored
+#'
+#' @keywords internal
+#'
+#' @return symengine env with `..HdEta2` and `..sens2` added
+#'
+#' @export
+rxUiGet.foceiHdEta2 <- function(x, ...) .foceiAddHdEta2(rxUiGet.foceiEtaS(x))
+attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
+
+#' Add `..HdEta2`/`..sens2` to a symengine env that already carries the first-order
+#' eta sensitivities (i.e. the output of [rxUiGet.foceiHdEta]/[rxUiGet.foceiEtaS]).
+#' @noRd
+.foceiAddHdEta2 <- function(.s) {
+  .neta <- .s$..maxEta
+  .etaVars <- paste0("ETA_", seq_len(.neta), "_")
+  .st <- rxode2::rxStateOde(.s)
+  .s2 <- rxode2::.rxSens(.s, .etaVars, .etaVars)   # 2nd-order state-sensitivity ODEs (rx__sens_<st>_BY_ETA_i__BY_ETA_j__)
+  .pred <- get("rx_pred_", .s)
+  .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
+  .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
+  .toRx <- function(.l) rxode2::rxFromSE(.l)
+  # eta directions are always model directions, so the aug-model .g1/.g2 direction guards
+  # are unconditionally true here.
+  .g1 <- function(.ex, .p) { .e <- .Dn(.ex, .p); for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
+  .g2 <- function(.ex, .p, .q) { .gq <- .g1(.ex, .q); .e <- .Dn(.gq, .p)
+    for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
+    for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
+  .lines <- character(0)                           # upper triangle i<=j (C++ mirrors H(j,i)=H(i,j))
+  for (.j in seq_len(.neta)) for (.i in seq_len(.j)) {
+    .lines <- c(.lines, paste0("rx__d2pred_", .i, "_", .j, "__=", .toRx(.g2(.pred, .etaVars[.i], .etaVars[.j]))))
+  }
+  .s$..HdEta2 <- .lines
+  .s$..sens2 <- .s2
+  .s
+}
+
+#' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
+#' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
+#' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
+#' inner Hessian analytically instead of a Shi21 finite difference.  No-op otherwise (the
+#' ordinary Gaussian / non-fast inner model is unchanged).  Used by both the FOCEi
+#' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
+#' @noRd
+.foceiMaybeAddHdEta2 <- function(x, .s) {
+  if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
+        .foceiLLGradInScope(x[[1]])) {
+    .malert("calculate d2(f)/d(eta) for the analytic log-likelihood inner Hessian")
+    # A model whose 2nd-order symengine expansion is unsupported (e.g. some linCmt() /
+    # special-function forms) leaves ..HdEta2/..sens2 unset -> no innerHess2 is built and
+    # the objective's log|H| falls back to the Shi21 finite-difference Hessian, rather than
+    # erroring the fit.
+    .s <- tryCatch(.foceiAddHdEta2(.s), error = function(e) .s)
+  }
+  .s
+}
+
 
 #' Finalize inner rxode2 based on symengine saved info
 #'
@@ -853,14 +924,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
   if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
-  # sensMethod="adjoint": replace the forward variational block with the adjoint
-  # d/dt(rx__sens_*)=0 output states + df()/dy() Jacobian; the rx__adj* sweep lhs
-  # are kept SEPARATE (.adjLhs) and appended AFTER the inner objective lhs so
-  # they do not shift the fixed lhs offsets (pred, d(f)/d(eta), r, d(r)/d(eta))
-  # the FOCEi C++ reads.  The adjoint solver locates them by name (adjFxOff).
-  if (!is.null(.s$..adjSensStates)) .sens <- .s$..adjSensStates
-  .adjLhs <- .s$..adjSensLhs
-  if (is.null(.adjLhs)) .adjLhs <- character(0)
+  .adjLhs <- character(0)
   # Only matExp() models need the model LHS here: it defines the k_from_to rate
   # constants that the materialized d/dt() lines reference.  For ordinary models
   # the d/dt()/sensitivity equations are self-contained, so the LHS is omitted.
@@ -907,6 +971,37 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  # Exact log-likelihood inner Hessian (fast=TRUE generalized endpoint): a SEPARATE
+  # compiled model `..innerHess2` = the inner model plus the 2nd-order eta state-
+  # sensitivity ODEs (`..sens2`, riding with the 1st-order `.sens`) and the 2nd-order
+  # prediction lhs (`..HdEta2`, rx__d2pred_i_j__, APPENDED LAST so its columns follow the
+  # FOCEi block).  The cheap 1st-order `..inner` above drives the n1qn1 Newton; calcEtaHessian
+  # re-solves `..innerHess2` per subject at eta* for the exact Hessian.  NULL (no 2nd-order
+  # model) unless `.foceiMaybeAddHdEta2` populated `..sens2`/`..HdEta2`.
+  if (!is.null(.s$..HdEta2)) {
+    .s$..innerHess2 <- paste(c(
+      .preLhs,
+      .ddt,
+      .sens,
+      .s$..sens2,
+      .s$..pastLines,
+      .yj,
+      .lambda,
+      .hi,
+      .low,
+      .lagDefs,
+      .arEtaSens,
+      .prd,
+      .s$..HdEta,
+      .r,
+      .s$..REta,
+      .adjLhs,
+      .s$..HdEta2,
+      .s$..stateInfo["statef"],
+      .s$..stateInfo["dvid"],
+      ""
+    ), collapse = "\n")
+  }
   .s$..innerOeta <- paste(c(
     .preLhs,
     .ddt,
@@ -934,6 +1029,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .malert("stabilizing round off errors in inner problem...")
     .s$..inner <- rxode2::rxSumProdModel(.s$..inner)
     .s$..innerOeta <- rxode2::rxSumProdModel(.s$..innerOeta)
+    if (!is.null(.s$..innerHess2)) .s$..innerHess2 <- rxode2::rxSumProdModel(.s$..innerHess2)
     .msuccess("done")
   }
   if (optExpression) {
@@ -947,37 +1043,12 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
                                                                 "inner llik model",
                                                                 "inner model"),
                                                          parallel = cores))
+    if (!is.null(.s$..innerHess2)) {
+      suppressMessages(.s$..innerHess2 <- rxode2::rxOptExpr(.s$..innerHess2,
+                                                            "inner Hessian model",
+                                                            parallel = cores))
+    }
   }
-}
-
-#' Build the focei inner adjoint ETA-sensitivity block when sensMethod resolves
-#' to adjoint
-#'
-#' Differentiates the ODE by the ETA_n names the forward `.rxSens` uses (so the
-#' rx__sens_<state>_BY_ETA_n__ output states line up name-for-name) and splits
-#' the adjoint expansion into two parts stored on `.s`:
-#'   `..adjSensStates` -- the d/dt(rx__sens_*)=0 output states + df()/dy()
-#'      Jacobian, spliced in place of the forward `.sens`;
-#'   `..adjSensLhs` -- the rx__adj* sweep lhs, appended AFTER the inner objective
-#'      lhs by [.rxFinalizeInner()] so they keep FOCEi's fixed lhs offsets intact
-#'      while still being real output lhs the adjoint solver finds via adjFxOff.
-#' The auto decision compares the ETA count to the ODE state count.
-#'
-#' @param x rxode2 UI wrapper (`list(ui, ...)`)
-#' @param .s symengine environment for the focei inner model
-#' @return invisibly `NULL`; assigns `.s$..adjSensStates`/`..adjSensLhs`
-#' @author Matthew L. Fidler
-#' @noRd
-.foceiInnerAdjSens <- function(x, .s) {
-  if (!exists("..maxEta", .s) || .s$..maxEta <= 0L) return(invisible(NULL))
-  .adj <- .nlmAdjointResolve(x[[1]], nParam = .s$..maxEta)
-  if (!isTRUE(.adj$useAdjoint)) return(invisible(NULL))
-  .calcSens <- paste0("ETA_", seq_len(.s$..maxEta), "_")
-  .lines <- .rxAdjointSensLines(.foceiPrune(x), .calcSens, .adj$stiff)
-  .isAdjLhs <- grepl("^rx__adj", .lines)
-  .s$..adjSensStates <- .lines[!.isAdjLhs]
-  .s$..adjSensLhs <- .lines[.isAdjLhs]
-  invisible(NULL)
 }
 
 #' @export
@@ -1004,9 +1075,15 @@ rxUiGet.foceiEnv <- function(x, ...) {
 
   .s$..REta <- .ret
   rxode2::rxProgressStop()
+  # fast=TRUE generalized (ll()) endpoint: add the second-order eta expansion.  The exact
+  # d2(logLik)/deta2 (rx__d2pred_i_j__) is compiled into a SEPARATE model (..innerHess2),
+  # which calcEtaHessian re-solves per subject at eta* to assemble the EXACT inner Hessian
+  # analytically (H = Omega^-1 - sum d2), instead of the Shi21 finite difference.  Gated so
+  # the ordinary inner model is untouched; the model cache keys on `fast`
+  # (rxUiGet.foceiModelDigest) so a fast and a non-fast fit get distinct model bundles.
+  .s <- .foceiMaybeAddHdEta2(x, .s)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .foceiInnerAdjSens(x, .s)
   .cores <- .optExprCores(x[[1]])
   .rxFinalizeInner(.s, .sumProd, .optExpression, .cores)
   .rxFinalizePred(.s, .sumProd, .optExpression, .cores)
@@ -1020,6 +1097,7 @@ attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
+  .s <- .foceiMaybeAddHdEta2(x, .s)   # ll()/generalized (interaction=0) fast fits route through foce
   ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
   ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++
   ## (likInner0), not by rewriting the model here.  `foce = "nonmem"` freezes R at
@@ -1029,7 +1107,6 @@ rxUiGet.foceEnv <- function(x, ...) {
   ## second linCmt call that corrupted the gradients.
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .foceiInnerAdjSens(x, .s)
   .cores <- .optExprCores(x[[1]])
   .rxFinalizeInner(.s, .sumProd, .optExpression, .cores)
   .rxFinalizePred(.s, .sumProd, .optExpression, .cores)
@@ -1054,7 +1131,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg, eventSens = "fd") {
+.toRx <- function(x, msg, eventSens = "fd", role = NULL) {
   if (is.null(x)) {
     return(NULL)
   }
@@ -1064,9 +1141,14 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## sensitivities are computed analytically rather than by finite differences.
   ## Passed only for models that carry the sensitivity equations (the inner
   ## model); "fd" everywhere else preserves the legacy behavior.
-  .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
-                               nlmixr2global$toRxDvidCmt),
-                         eventSens = eventSens)
+  ## Role-tag the compiled artifact.  rxode2 names the .c/.so from the PARSED model
+  ## alone (.rxPre -> rx_<parsed_md5>_<arch>_), while the emitted C also depends on the
+  ## event-sensitivity code generated afterwards -- so two builds of one parsed model
+  ## whose event-sensitivity code differs share one .so and the later build wins for
+  ## both, silently.  See nlmixr2/rxode2#1171.  The md5 stays in the name so genuinely
+  ## different models still never share an artifact.
+  .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
+  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
   .msuccess("done")
   .ret
 }
@@ -1191,6 +1273,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
 }
 
 .innerInternal <- function(ui, s) {
+  ## Interpolation is carried into the generated models, splitBolus() is not:
+  ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
   .cmt <-  ui$foceiCmtPreModel
   .interp <- ui$interpLinesStr
   if (.interp != "") {
@@ -1213,22 +1297,16 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## Event-sensitivity method.  "jump" enables rxode2's analytic dosing-parameter
   ## (alag/F/rate/dur) sensitivities.
   .eventSens <- rxode2::rxGetControl(ui, "eventSens", "jump")
-  ## The adjoint inner fills the rx__sens dose-jump analytically via the backward
-  ## sweep (rx__adjDlag/rx__adjDrate/rx__adjdF), so it routes dosing-parameter
-  ## etas through the analytic path (NO finite-difference eventEta flags, like
-  ## "jump") but must NOT also inject the forward variational jump -- compile
-  ## with "fd".  Decouple the two uses of the flag.
-  .adjoint <- !is.null(s$..adjSensStates)
-  .compileEventSens <- if (.adjoint) "fd" else .eventSens
+  .compileEventSens <- .eventSens
   ## `eventEta`/`eventTheta` flag the parameters that enter a dosing expression
   ## (alag/F/rate/dur).  In the legacy "fd" path inner.cpp computes their
   ## sensitivity by finite differences (predOde) because the analytic `rx__sens`
-  ## states miss the event jump.  Under "jump" (and the adjoint) rxode2/the sweep
-  ## fills those `rx__sens` states analytically, so the analytic gradient is
+  ## states miss the event jump.  Under "jump" rxode2 fills those `rx__sens`
+  ## states analytically, so the analytic gradient is
   ## correct and the finite-difference fallback must be turned OFF -- otherwise
   ## the jump-corrected sensitivity is computed but never used.  Leaving the
   ## flags at zero routes every parameter through the analytic innerOde sensitivity.
-  if (!identical(.eventSens, "jump") && !.adjoint) {
+  if (!identical(.eventSens, "jump")) {
     for (.v in s$..eventVars) {
       .vars <- as.character(get(.v, envir = s))
       .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
@@ -1249,7 +1327,13 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens)
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens,
+                 role = "rxInner")
+  # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
+  innerHess2 <- if (!is.null(s$..innerHess2)) {
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens,
+          role = "rxHess2")
+  } else NULL
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
@@ -1283,36 +1367,87 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .predOnly <- if (.hasMix) {
     .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
                         collapse="\n")
-    .toRx(.prunedStr, ifelse(.getRxPredLlikOption(),
+    .toRx(.prunedStr, role = "rxPredPruned", ifelse(.getRxPredLlikOption(),
                              "compiling Llik EBE model (mixture)...",
                              "compiling EBE model (mixture)..."))
   } else {
-    .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+    .toRx(s$..pred, role = "rxPredOnly", ifelse(.getRxPredLlikOption(),
                            "compiling Llik EBE model...",
                            "compiling EBE model..."))
   }
   # Augmented outer-gradient model (fast=TRUE): built here, once, with the compiled
-  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
+  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's rxLoad reloads
   # it; the direction metadata travels separately in `outerMeta`.
   .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
   # AGQ (nAGQ>1) only: the 1st-order model the nodes solve on, built here so it rides in the
-  # qs2 cache next to `outer` rather than re-paying the symengine+gcc pass each session.
+  # disk cache next to `outer` rather than re-paying the symengine+gcc pass each session.
   .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
+    innerHess2 = innerHess2,
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
-    outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
+    # eventSens MUST be "jump" here, matching rxUiGet.foceiOuter's own build
+    # (foceiCovAnalytic.R).  rxode2 keys the generated .c/.so on the model TEXT and
+    # name only (rxCompile.character: prefix <- .rxPre(model, modName)) -- NOT on
+    # eventSensCode -- so compiling the same sensitivity model once with "jump" and
+    # once with "fd" writes BOTH builds to one .so path.  The second overwrites the
+    # first, and a model object bound earlier keeps resolving its entry points by
+    # name, so it silently executes the other variant: measured as an augmented
+    # model that declares 29 lhs whose calc_lhs computes only 4, which drops the
+    # analytic gradient for a whole fit.  Event sensitivities stay ON for every
+    # sensitivity (inner/outer) model so only one variant per text is ever built.
+    outer = if (is.null(.outerAm)) .toRx(s$..outer, "compiling outer model...",
+                                         eventSens = "jump",
+                                         role = "rxOuterFb") else .outerAm$augMod,
     # ALL the aug-model metadata except the compiled model itself: the batched
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
+    # May the augmented outer model be POOLED (size the shared solve and run
+    # through vaeOuterSolve_)?  Data flag only -- consumed by foceiFitCpp_.
+    #
+    # Multiple endpoints are excluded for MEMORY SAFETY, not for accuracy.
+    #
+    # Accuracy is fine: evaluating the analytic gradient twice on the SAME fit --
+    # once pooled, once through rxode2::rxSolve, so identical thetas and identical
+    # best etas with no inner re-optimisation -- gives bit-identical gradients for
+    # a two-endpoint model (all 8 components, relative error 0).  So the earlier
+    # justification for this exclusion was wrong, and so was the FD comparison it
+    # rested on: test-focei-fast-grad.R's ofvAt() refits WITHOUT fast=TRUE, so it
+    # references unpooled fits with re-optimised etas against a pooled analytic
+    # value, and its flat h=1e-3 divides by 2e-3, amplifying inner-optimisation
+    # noise ~500x on a component whose per-subject terms cancel to ~63.
+    #
+    # Multi-endpoint models DO pool, but only because OdeSwapCmtScope re-bases the
+    # CMT covariate per solving model (src/odeSwap.cpp).  Do not lift that and leave
+    # this enabled.
+    #
+    # rxode2 compiles a multi-endpoint model's endpoint switch in USER compartment
+    # numbering and emits, per model,
+    #     #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
+    # with nSens the sensitivity count of the model BEING COMPILED (codegen.c).  That
+    # is correct for any standalone solve -- npde, cwres, tables -- but a pooled fit
+    # translates the event table once, against whichever model sized the pool, and the
+    # peers have different nSens (here inner 2, outer 60).  Unre-based, the inner model
+    # computed 63 - 2 = 61, matching no endpoint: rx_pred_, rx_r_, d(f)/d(eta) and
+    # rx_yj_ all evaluated to 0, the EBEs collapsed to ~0 and yj = 0 silently
+    # log-transformed DV.  Measured then: objf -633.7157 / etas 3.1e-08 against
+    # fast=FALSE's 262.3697 / 1.548, 2.470.  With the re-base the two agree to 11
+    # digits and the multi-endpoint fit gets the analytic gradient.
+    # delay() models ARE in scope: focei forces the DDE configuration at the FIT level
+    # (the hasDelay block below -- method 0, stiff2 13, dense TRUE), so a delay fit's
+    # pool is built that way from the start and nothing needs changing per solve.  The
+    # delay-history column map is then built from a pool model that already carries the
+    # delays.  test-dde-focei.R covers it.
+    outerPoolOk = tryCatch(!is.null(ui$predDf) && nrow(ui$predDf) >= 1L,
+                           error = function(e) FALSE),
     # AGQ node model (1st order), NULL for nAGQ<=1.  Same split as outer/outerMeta: model at
-    # top level so the qs2 rxLoad reloads it, metadata separately.
+    # top level so the rxLoad reloads it, metadata separately.
     outerNode = if (is.null(.nodeAm)) NULL else .nodeAm$augMod,
     outerNodeMeta = if (is.null(.nodeAm)) NULL else .nodeAm[setdiff(names(.nodeAm), "augMod")],
-    predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
+    predNoLhs = .toRx(pred.opt, role = "rxPredNoLhs", ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
     theta = NULL,
@@ -1429,9 +1564,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## the eventEta/eventTheta finite-difference flags, so it must be part of the
   ## cache key -- otherwise a "jump" build would reuse a cached "fd" model.
   .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "jump")
-  ## sensMethod + the base ODE method change the inner model text (adjoint sweep
-  ## lhs, stiff df/dy) too, so they must also be part of the cache key -- else a
-  ## forward build would be reused for an adjoint fit (or vice versa).
+  ## The base ODE method can change the inner model text (stiff df/dy), so it is
+  ## part of the cache key; sensMethod is kept in the key as well since it is a
+  ## control the build reads.
   .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "default")
   .rxMethod <- rxode2::rxGetControl(.ui, "rxControl", rxode2::rxControl())$method
   ## fast=TRUE adds the augmented outer-gradient model (foceiModelList$outer), so it
@@ -1447,7 +1582,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## The augmented outer model (foceiModelList$outer) also depends on which covariates
   ## are subject-constant (analytic covariate-coefficient reuse scales those out of the
   ## symbolic sensitivity build) and on the sigma-skip toggle -- both change the outer model
-  ## text, so they must key the persisted (qs2) cache too, else two fits of the same model
+  ## text, so they must key the persisted cache too, else two fits of the same model
   ## whose datasets differ only in covariate-constancy would collide.
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   digest::digest(c(all(is.na(.iniDf$neta1)),
@@ -1465,7 +1600,7 @@ attr(rxUiGet.foceiModelDigest, "rstudio") <- "hash"
 #' @export
 rxUiGet.foceiModelCache <- function(x, ...) {
   file.path(rxode2::rxTempDir(),
-            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs2"))
+            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".rds"))
 }
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
@@ -1474,7 +1609,7 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
-    .ret <- qs2::qs_read(.cacheFile)
+    .ret <- readRDS(.cacheFile)
     lapply(seq_along(.ret), function(i) {
       if (inherits(.ret[[i]], "rxode2")) {
         rxode2::rxLoad(.ret[[i]])
@@ -1493,7 +1628,7 @@ rxUiGet.foceiModel <- function(x, ...) {
       .ret <- rxUiGet.foce(x, ...)
     }
   }
-  qs2::qs_save(.ret, .cacheFile)
+  saveRDS(.ret, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -1545,15 +1680,6 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       }
       .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
       .rxControl <- rxode2::rxControlUpdateSens(.rxControl, .len2, .len0)
-      ## adjoint inner model (carries the rx__adjFX_* sweep lhs): point the inner
-      ## solve at the matching discrete-adjoint (s) method.  focei's C++ calls
-      ## rxSolve_ directly, bypassing rxSolve's R-level method auto-upgrade.  The
-      ## s-method is TRANSIENT to the inner solve -- .foceiFamilyReturn restores
-      ## the base method (s - 200) before the table/residual step, which solves
-      ## the pred-only model (no rx__adjFX) and would fail on the raw s-method.
-      if (any(rxode2::rxModelVars(env$model$inner)$lhs == "rx__adjFX_0_0__")) {
-        .rxControl$method <- .nlmAdjointSMethod(ui)$sMethodInt
-      }
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
     }
   }
@@ -2036,6 +2162,8 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # impmap: add the dedicated theta-sensitivity model (d(f)/d(theta)) used by the
   # importance-sampling EM to update the non-mu structural thetas.  Built here,
   # after the inner model, in the symengine pipeline context.
+  # "advi" here is the INNER engine marker set by .adviInnerSetup, not a user
+  # `est=` value (est="emvi"/"fbvi" both set it); do not "modernize" it.
   if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") &&
         is.null(env$model$thetaSens)) {
     env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
@@ -2085,7 +2213,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     # plain-mu M-step (.impmapFamilyFit, R/impmap.R) built as muRefDataFrame
     # minus foceiMuGroupTheta, so plain pairs must stay out of their groups.
     # The control class is checked too: at .impmapFamilyFit's foceiOptEnv
-    # build the ui control (impmapControl/adviControl) does not carry est yet
+    # build the ui control (impmapControl/emviControl) does not carry est yet
     # (env$est is set after .foceiFamilyControl in the est methods).
     .ctlClass <- ""
     if (exists("control", envir = .x, inherits = FALSE)) {
@@ -2094,7 +2222,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muPlain <- !(rxode2::rxGetControl(.x, "est", "") %in%
                     c("impmap", "imp", "qrpem", "advi",
                       "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) &&
-      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "adviControl"))
+      !(.ctlClass %in% c("impmapControl", "impControl", "qrpemControl", "emviControl"))
     # muModel != "none" is the clamped family: bounded mu parameters stay
     # grouped and updateMuGroups() clamps their regression update
     .muGroupSetup <- .muRefCppGroupSetup(.x, plain = .muPlain, clamp = TRUE)
@@ -2189,6 +2317,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  ## The normModel carries splitBolus(), so the etTrans() below splits the doses
+  ## once here and $dataSav holds the split events for every estimation method.
+  ## That is why no generated model re-emits splitBolus() -- a generated model
+  ## that declares it splits the already-split doses a second time.
   .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
   .strCmpP <- .mod$strCmpParams
   .strCmpPNames <- tolower(names(.strCmpP))
@@ -2294,11 +2426,28 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error=function(e) FALSE)
     if (isTRUE(.esLoaded)) {
-      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+      ## Tell the C++ core which model the event path is now bound to.  handle_evid
+      ## sizes its scratch from the effective neq but calls the INSTALLED model's
+      ## dydt, so a solve may only be compacted when the two agree -- and the core
+      ## cannot see this R-side install on its own.  Roles: 0 pred, 1 inner,
+      ## 2 outer, 3 hess2 -- a focei problem sets up 1, 2 and 3.
+      odeSwapEsNoteInstalled_(1L)
+      on.exit({
+        rxode2::rxEventSensDeactivate()
+        odeSwapEsNoteInstalled_(-1L)
+      }, add=TRUE)
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
   nResets <- 0L
+  ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
+  ## read by C++ when the outer optimizer starts; after that every gradient evaluation
+  ## runs without touching R.  A NULL simply leaves the previous R-mediated route in
+  ## place, so this cannot break a fit.
+  if (isTRUE(tryCatch(.ret$control$fast, error = function(e) FALSE))) {
+    .gpSetup <- tryCatch(.foceiGradPooledSetup(.ret$ui, .ret), error = function(e) NULL)
+    if (!is.null(.gpSetup)) assign(".foceiGradPooledSetup", .gpSetup, envir = .ret)
+  }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
       nResets <- nResets + 1L
@@ -2325,6 +2474,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         }
       })
       if (this.env$err == "theta reset") {
+        # A restart must recompute its OWN objective.  nlmixr2EnvSetup() (inner.cpp)
+        # computes one only when the environment does not already carry it -- otherwise
+        # it adopts the existing value verbatim -- and this loop deliberately reuses
+        # `.ret` across calls (see the etaObf fixup in .foceiFitInternal).  A stale
+        # objective left by the aborted run therefore gets reported against the
+        # restarted fit's parameters, and every statistic derived from it (OBJF, AIC,
+        # BIC, logLik) inherits the error.
+        for (.stale in c("objective", "OBJF", "objf", "AIC", "BIC", "logLik", "adj")) {
+          if (exists(.stale, envir = .ret, inherits = FALSE)) {
+            rm(list = .stale, envir = .ret)
+          }
+        }
         .nm <- names(.ret$thetaIni)
         .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
         .ret$rxInv$theta <- .thetaReset$omegaTheta
@@ -2528,14 +2689,30 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
-    # a log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
-    # machinery (its inner Hessian is a finite-difference of the inner gradient), so
-    # the analytic outer gradient does not apply -- downgrade fast so the fit reports
-    # it and skips building the augmented `..outer` model.
-    if (isTRUE(.control$fast)) {
+    # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
+    # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
+    # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +
+    # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
+    # out-of-scope cases (censoring, nAGQ>1, IOV), where the augmented `..outer` model
+    # cannot supply the gradient and the fit uses finite
+    # differences.  (linCmt() passes the scope gate but its unsupported 2nd-order
+    # expansion makes it fall back to finite differences at build time.)
+    if (isTRUE(.control$fast) && !.foceiLLGradInScope(.ui)) {
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
       .control$fast <- FALSE
     }
+  }
+  # Mixture models are out of the fast path until the outer gradient has a proper
+  # treatment for them.  The mixture objective is a sum of component likelihoods
+  # WEIGHTED by each component's probability, so the outer gradient needs the
+  # weighted per-component contributions -- it is not "the eta of the winning
+  # component".  Both simple readings are wrong: indexing inds_focei[_id] takes
+  # component 0 regardless of which won, and picking the winner still drops the
+  # probability weighting and the derivative of the weights themselves.
+  if (isTRUE(.control$fast) &&
+        isTRUE(tryCatch(length(.ui$thetaMixIndex) > 0L, error = function(e) FALSE))) {
+    .minfo("mixture model: the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
+    .control$fast <- FALSE
   }
   # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
   # cannot be built -- downgrade fast once here (plain focei gradient) instead of
@@ -2590,7 +2767,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                                     levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
                                              "Central Difference", "Scaled", "Unscaled",
                                              "Back-Transformed", "Forward Sensitivity",
-                                             "Analytic Gradient"))
+                                             "Analytic Gradient",
+                                             "Analytic Gradient (relaxed)",
+                                             "Analytic Gradient (finite difference)",
+                                             "Analytic Gradient (Chartrand)"))
     .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }
@@ -2796,39 +2976,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }
-  ## The adjoint inner sensitivity solve is done.  Restore the base ODE method
-  ## (s - 200) everywhere it is stored, so the downstream table/residual/pred
-  ## solves -- which use the pred-only model (no rx__adjFX_*) -- are not run on
-  ## the raw discrete-adjoint s-method (which would hit the hard guard).  When a
-  ## residual step re-solves the adjoint model, R-level rxSolve re-upgrades it.
-  ## Only touch the stored controls when an adjoint (s) method (>= 200) is
-  ## actually present -- for forward fits (fo/foi and forward focei) this block
-  ## must be a strict no-op so it does not perturb where foceiControl0 gets
-  ## stored downstream (writing .env$control here otherwise breaks fo/foi tables).
-  .needsRestore <- function(.c) {
-    !is.null(.c) && !is.null(.c$rxControl) &&
-      isTRUE(as.integer(.c$rxControl$method) >= 200L)
-  }
-  if (.needsRestore(.control) ||
-        (is.environment(.env) && .needsRestore(.env$control)) ||
-        (is.environment(.ret0) && .needsRestore(.ret0$control))) {
-    .restoreBaseMethod <- function(.c) {
-      if (.needsRestore(.c)) {
-        .c$rxControl$method <- as.integer(.c$rxControl$method) - 200L
-      }
-      .c
-    }
-    .control <- .restoreBaseMethod(.control)
-    if (is.environment(.env)) {
-      if (!is.null(.env$control)) .env$control <- .restoreBaseMethod(.env$control)
-      if (exists("foceiControl0", envir=.env, inherits=FALSE)) {
-        assign("foceiControl0", .restoreBaseMethod(get("foceiControl0", envir=.env)), envir=.env)
-      }
-    }
-    if (is.environment(.ret0) && !is.null(.ret0$control)) {
-      .ret0$control <- .restoreBaseMethod(.ret0$control)
-    }
-  }
   .ret <- nlmixrWithTiming("postprocess", {
     .ret <- .ret0
     if (!is.null(method))
@@ -2928,7 +3075,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .saemCfg <- attr(.saem, "saem.cfg")
       # Delete unneeded variables
       .saemCfg2 <- list()
-      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables")) {
+      # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
+      # observation from a normally-distributed one
+      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables", "res.mod")) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
       attr(.saem, "saem.cfg") <- .saemCfg2
@@ -2941,13 +3090,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
           .type <- rxode2::rxGetDefaultSerialize()
+          # older rxode2 could return qs2/qdata here; those formats are no
+          # longer written (stringfish/qs2 dependency dropped)
+          if (!(.type %in% c("base", "bzip2", "xz"))) .type <- "bzip2"
           .objC <- switch(.type,
-                 qs2 = {
-                   qs2::qs_serialize(.obj)
-                 },
-                 qdata = {
-                   qs2::qd_serialize(.obj)
-                 },
                  bzip2 = {
                    memCompress(serialize(.obj, NULL), type="bzip2")
                  },
@@ -2956,9 +3102,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                  },
                  base = {
                    serialize(.obj, NULL)
-                 },
-                 stop("unknown serialization type") # nocov
-                 )
+                 })
           .size2 <- utils::object.size(.objC)
           if (.size2 < .size) {
             .size0 <- (.size - .size2)
