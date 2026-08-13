@@ -103,6 +103,104 @@ nmTest({
     expect_false(any(grepl("near-tied colinear", fOff$runInfo)))
   })
 
+  ## eta.cl and eta.v are correlated BY CONSTRUCTION, which is what the
+  ## cross-parameter refinement needs to have anything to arbitrate
+  .phiData <- function(nid = 45L, seed = 11L) {
+    .testSeed(seed)
+    wt <- round(stats::runif(nid, 50, 100), 1)
+    ctr <- stats::median(wt)
+    z <- MASS::mvrnorm(nid, c(0, 0), matrix(c(0.09, 0.075, 0.075, 0.09), 2, 2))
+    cl <- 2.7 * exp(0.7 * log(wt / ctr) + z[, 1])
+    v <- 31 * exp(z[, 2])
+    ka <- 1.5 * exp(stats::rnorm(nid, 0, 0.3))
+    tms <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
+    do.call(rbind, lapply(seq_len(nid), function(i) {
+      ke <- cl[i] / v[i]
+      f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
+      rbind(data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0, WT = wt[i]),
+            data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0,
+                       DV = f + stats::rnorm(length(tms), 0, 0.25), WT = wt[i]))
+    }))
+  }
+
+  .phiBlock <- function() {
+    ini({
+      tka <- log(1.5); tcl <- log(2.7); tv <- log(31)
+      eta.ka ~ 0.3
+      eta.cl + eta.v ~ c(0.09, 0.07, 0.09)
+      add.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  .phiDiag <- function() {
+    ini({
+      tka <- log(1.5); tcl <- log(2.7); tv <- log(31)
+      eta.ka ~ 0.3; eta.cl ~ 0.09; eta.v ~ 0.09
+      add.sd <- 0.3
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  .phiCtl <- function(...) {
+    vaeControl(iters = 60L, itersBurnIn = 15L, calcTables = FALSE,
+               covSelectPhiJoin = 0.5, covSelectPhiLeave = 0.4, ...)
+  }
+
+  test_that("a correlated omega lets the cross-parameter refinement run", {
+    skip_on_cran()
+    skip_if_not_installed("MASS")
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiBlock, .phiData(), est = "vae", control = .phiCtl())))
+    cd <- f$vae$colinear
+    ## the gate opened, because the model declares the correlation
+    expect_true(cd$omOff)
+    ## groups formed and moves were evaluated -- "the mechanism ran"
+    expect_gt(cd$nPhiPair, 0L)
+    expect_gt(cd$nPhiTest, 0L)
+    ## no advisory: the refinement was not skipped, so there is nothing to advise
+    expect_false(any(grepl("declare an omega block", f$runInfo)))
+  })
+
+  test_that("a diagonal omega detects the groups but skips the refinement", {
+    skip_on_cran()
+    skip_if_not_installed("MASS")
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiDiag, .phiData(), est = "vae", control = .phiCtl())))
+    cd <- f$vae$colinear
+    expect_false(cd$omOff)
+    ## the dims ARE correlated and that is reported...
+    expect_gt(cd$nPhiPair, 0L)
+    ## ...but with a diagonal omega the objective is separable across dims, so
+    ## not one move is scored -- this is a proof of the gate, not of an empty
+    ## result
+    expect_identical(cd$nPhiTest, 0L)
+    expect_identical(cd$nPhiMove, 0L)
+    ## and the modeler is told what would enable it
+    expect_match(f$runInfo, "declare an omega block", all = FALSE)
+  })
+
+  test_that("covSelectColinear=FALSE reaches the phi refinement too", {
+    skip_on_cran()
+    skip_if_not_installed("MASS")
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiBlock, .phiData(), est = "vae",
+              control = vaeControl(iters = 60L, itersBurnIn = 15L,
+                                   calcTables = FALSE,
+                                   covSelectColinear = FALSE))))
+    cd <- f$vae$colinear
+    ## not even the grouping is computed
+    expect_identical(cd$nPhiPair, 0L)
+    expect_identical(cd$nPhiTest, 0L)
+    expect_false(any(grepl("declare an omega block", f$runInfo)))
+  })
+
   test_that("hysteresis does not change a fit that has nothing to hold", {
     skip_on_cran()
     ## theo_sd offers one covariate group, so no cluster can bind and the whole

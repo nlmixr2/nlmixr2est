@@ -336,13 +336,23 @@
   for (.m in .vaeL0FailMsg(.l0Fail$n)) warning(.m, call. = FALSE)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  .cd <- .fit$covDiag
   .colinear <- list(cluster = prep$covCluster,
-                    nColinTest = as.integer(.fit$covDiag$nColinTest),
-                    nColinHold = as.integer(.fit$covDiag$nColinHold),
-                    alternates = .vaeColinearAlt(.fit$covDiag, .selected,
+                    nColinTest = as.integer(.cd$nColinTest),
+                    nColinHold = as.integer(.cd$nColinHold),
+                    nPhiPair = as.integer(.cd$nPhiPair),
+                    nPhiTest = as.integer(.cd$nPhiTest),
+                    nPhiMove = as.integer(.cd$nPhiMove),
+                    nPhiSkipBig = as.integer(.cd$nPhiSkipBig),
+                    nPhiClamp = as.integer(.cd$nPhiClamp),
+                    omOff = as.logical(.cd$omOff),
+                    alternates = .vaeColinearAlt(.cd, .selected,
                                                  prep$covCluster, prep$etaNames,
                                                  prep$covNames))
   for (.m in .vaeColinearMsg(nrow(.colinear$alternates))) warning(.m, call. = FALSE)
+  for (.m in .vaePhiDiagMsg(.colinear$nPhiPair, .colinear$omOff, any(.selected))) {
+    warning(.m, call. = FALSE)
+  }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),

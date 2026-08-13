@@ -81,6 +81,16 @@
 #' id repeats on every multi-shape covariate even when no cross-covariate
 #' colinearity exists at all, so that predicate would ship the vector on ordinary
 #' designs and silently switch the new mechanisms on everywhere.
+#' @param cluster from [.vaeCovCluster()]
+#' @param group `covGroup`
+#' @return single logical
+#' @noRd
+.vaeClusterBinds <- function(cluster, group) {
+  if (is.null(cluster) || is.null(group)) return(FALSE)
+  if (!length(cluster) || length(cluster) != length(group)) return(FALSE)
+  length(unique(cluster)) < length(unique(group))
+}
+
 #' Run-time note for near-tied colinear covariates.
 #'
 #' Pure: the caller raises it so it lands in the fit's `$runInfo`.
@@ -92,11 +102,30 @@
   "near-tied colinear covariates; see $vae$colinear$alternates"
 }
 
+#' Run-time note when correlated latent dims were found under a diagonal omega.
+#'
+#' With a diagonal omega the covariate objective is separable across latent
+#' dimensions, so the cross-parameter refinement provably cannot improve anything
+#' and is skipped.  Declaring the correlation is what enables it.
+#' @param nPair correlated pairs found
+#' @param omOff whether the model declares off-diagonal omega, as REPORTED by the
+#'   fit rather than re-derived: the C++ flag comes from the omega selection
+#'   structure, so a declared block whose ini covariance is exactly 0 would make
+#'   an R-side check disagree with the gate that actually ran
+#' @param anySel whether any covariate was selected at all
+#' @return character(0) or a single message
+#' @noRd
+.vaePhiDiagMsg <- function(nPair, omOff, anySel) {
+  if (!length(nPair) || is.na(nPair) || nPair <= 0L) return(character(0))
+  if (isTRUE(omOff) || !isTRUE(anySel)) return(character(0))
+  "correlated etas found; declare an omega block to refine jointly"
+}
+
 #' Near-tied alternates as a data frame.
 #'
 #' `altTie`/`altGap` mark the MATE; the covariate it stands in for is the
-#' selected column sharing its cluster on that latent dimension, so the pairing
-#' is reconstructed here rather than carried through C++.
+#' selected column sharing its cluster on that latent dimension, so the pairing is
+#' reconstructed here rather than carried through C++.
 #' @param diag `covDiag` from the C++ fit
 #' @param selected logical matrix, latent dims by covariate columns
 #' @param cluster covariate cluster ids
@@ -126,14 +155,4 @@
              alternate = covNames[.ix[.keep, 2L]],
              delta = .gap[.ix[.keep, , drop = FALSE]],
              row.names = NULL)
-}
-
-#' @param cluster from [.vaeCovCluster()]
-#' @param group `covGroup`
-#' @return single logical
-#' @noRd
-.vaeClusterBinds <- function(cluster, group) {
-  if (is.null(cluster) || is.null(group)) return(FALSE)
-  if (!length(cluster) || length(cluster) != length(group)) return(FALSE)
-  length(unique(cluster)) < length(unique(group))
 }

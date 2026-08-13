@@ -139,6 +139,33 @@ nmTest({
     expect_false(any(grepl("^vae", msg)))
   })
 
+  test_that("the diagonal-omega advisory fits the budget and gates correctly", {
+    ## fires only when correlated dims were found, omega is diagonal, and
+    ## something was actually selected -- with nothing selected there is nothing
+    ## a joint refinement could have done, so the advice would be noise
+    expect_identical(nlmixr2est:::.vaePhiDiagMsg(0L, FALSE, TRUE), character(0))
+    expect_identical(nlmixr2est:::.vaePhiDiagMsg(3L, TRUE, TRUE), character(0))
+    expect_identical(nlmixr2est:::.vaePhiDiagMsg(3L, FALSE, FALSE), character(0))
+    msg <- nlmixr2est:::.vaePhiDiagMsg(3L, FALSE, TRUE)
+    expect_gt(length(msg), 0L)
+    expect_true(all(nchar(msg) <= 75L))
+    expect_false(any(grepl("^vae", msg)))
+  })
+
+  test_that("the phi grouping knobs validate", {
+    expect_identical(vaeControl()$covSelectPhiCor, "suffStat")
+    expect_equal(vaeControl()$covSelectPhiJoin, 0.9)
+    expect_equal(vaeControl()$covSelectPhiLeave, 0.8)
+    expect_identical(vaeControl()$covSelectPhiMaxDim, 4L)
+    expect_error(vaeControl(covSelectPhiCor = "bogus"))
+    expect_error(vaeControl(covSelectPhiJoin = 1.5))
+    ## leaving above joining would make a pair join and leave on alternate
+    ## iterations, which is a bug rather than a schedule
+    expect_error(vaeControl(covSelectPhiJoin = 0.7, covSelectPhiLeave = 0.9),
+                 "must be <=")
+    expect_error(vaeControl(covSelectPhiMaxDim = 1L))
+  })
+
   test_that("alternates pair each mate with the covariate it stands in for", {
     ## C++ marks only the MATE; the covariate it is an alternative to is the
     ## selected column of the same cluster on that dimension
