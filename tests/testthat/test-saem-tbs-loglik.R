@@ -101,13 +101,12 @@ nmTest({
   test_that(".logspaceAdd matches the naive sum and does not overflow", {
     .a <- c(-3, 0, 12.5, -Inf, -Inf, 800)
     .b <- c(2, 0, -4, 1.25, -Inf, 801)
-    expect_equal(nlmixr2est:::.logspaceAdd(.a, .b),
+    expect_equal(.logspaceAdd(.a, .b),
                  c(log(exp(-3) + exp(2)), log(2), log(exp(12.5) + exp(-4)),
                    1.25, -Inf, log1p(exp(-1)) + 801))
     # the naive exp() form is Inf here; the log-domain form is finite
-    expect_true(is.finite(nlmixr2est:::.logspaceAdd(800, 801)))
-    expect_equal(nlmixr2est:::.logspaceAdd(800, 801),
-                 nlmixr2est:::.logspaceAdd(801, 800))
+    expect_true(is.finite(.logspaceAdd(800, 801)))
+    expect_equal(.logspaceAdd(800, 801), .logspaceAdd(801, 800))
   })
 
   test_that("saem calc.2LL for an lnorm() endpoint matches a closed-form reference (#903)", {
@@ -116,8 +115,8 @@ nmTest({
     .f <- .fitBolus(.d, nBurn = 60, nEm = 60)
     .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
                                 .f$theta[["lnorm.sd"]]))
-    .got <- suppressMessages(nlmixr2est:::calc.2LL(.f$saem, nnodes.gq = 25,
-                                                  nsd.gq = 5, .f$phiM))
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5,
+                                      .f$phiM))
     # quadrature error is the only difference left (measured ~2e-3)
     expect_equal(.got, .ref, tolerance = 1e-4)
 
@@ -164,8 +163,8 @@ nmTest({
     .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
                                 .f$theta[["add.sd"]], tr = identity,
                                 ljac = .noJac))
-    .got <- suppressMessages(nlmixr2est:::calc.2LL(.f$saem, nnodes.gq = 25,
-                                                  nsd.gq = 5, .f$phiM))
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5,
+                                      .f$phiM))
     expect_equal(.got, .ref, tolerance = 1e-5)
     # the transform is recorded as "no transform" (yj == 2), which is what makes
     # powerL return 0
@@ -179,8 +178,8 @@ nmTest({
     .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 500L))
     .obs <- .d[.d$EVID == 0, ]
     .f <- .fitBolus(.d)
-    .got <- suppressMessages(nlmixr2est:::calc.2LL(.f$saem, nnodes.gq = 9,
-                                                  nsd.gq = 3, .f$phiM))
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 9, nsd.gq = 3,
+                                      .f$phiM))
     .ref <- .refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
                      .f$theta[["lnorm.sd"]])
     # the exponent the accumulation has to carry (the mode of the log integrand,
