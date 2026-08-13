@@ -14,6 +14,31 @@
 
 ## New features
 
+- `est="vae"` covariate selection is now correlation-aware, which makes it less
+  likely to pick a false covariate when the candidates are colinear or the
+  individual parameters are correlated.  Near-interchangeable covariates are
+  grouped into colinearity clusters; within a cluster the covariate selected on
+  the previous iteration is not displaced by a mate that fails to beat it by
+  `vaeControl(covSelectHysteresis=)`, which stops the winner flipping from
+  iteration to iteration, and mates that scored within
+  `vaeControl(covSelectAltTol=)` are reported in `$vae$colinear$alternates` so a
+  near-arbitrary choice is visible rather than silent.  When the model declares
+  correlated etas, a further pass tests whether a covariate assigned to one
+  parameter is better explained on a correlated one -- something no
+  per-parameter search can see, because the coupling between them is held fixed
+  while each searches.  With a diagonal omega that pass cannot improve anything
+  and is skipped, with a note saying so.  Thresholds are
+  `vaeControl(covSelectColinearCut=, covSelectPhiJoin=, covSelectPhiLeave=,
+  covSelectPhiCor=, covSelectPhiMaxDim=)`, and
+  `vaeControl(covSelectColinear = FALSE)` restores the previous behavior
+  exactly.  `vaeCovariates()` gained a `cluster` column and a `colinearCut=`
+  argument so the clusters can be inspected from data alone.
+
+- `est="vae"` now reports when `L0Learn` returned no candidate supports for a
+  latent dimension.  That dimension searched from the intercept-only model
+  instead of from the proposals, which is a weaker search, and it previously
+  looked no different from an ordinary selection.
+
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity
   shape swap and the CMT re-basing of the shared solve pool always go through

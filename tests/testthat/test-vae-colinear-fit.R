@@ -109,7 +109,10 @@ nmTest({
     .testSeed(seed)
     wt <- round(stats::runif(nid, 50, 100), 1)
     ctr <- stats::median(wt)
-    z <- MASS::mvrnorm(nid, c(0, 0), matrix(c(0.09, 0.075, 0.075, 0.09), 2, 2))
+    ## correlated etas via a Cholesky factor rather than MASS::mvrnorm, which
+    ## would add a package dependency for one fixture
+    .sig <- matrix(c(0.09, 0.075, 0.075, 0.09), 2, 2)
+    z <- matrix(stats::rnorm(nid * 2L), nid, 2L) %*% chol(.sig)
     cl <- 2.7 * exp(0.7 * log(wt / ctr) + z[, 1])
     v <- 31 * exp(z[, 2])
     ka <- 1.5 * exp(stats::rnorm(nid, 0, 0.3))
@@ -155,7 +158,6 @@ nmTest({
 
   test_that("a correlated omega lets the cross-parameter refinement run", {
     skip_on_cran()
-    skip_if_not_installed("MASS")
     f <- suppressMessages(suppressWarnings(
       nlmixr2(.phiBlock, .phiData(), est = "vae", control = .phiCtl())))
     cd <- f$vae$colinear
@@ -170,7 +172,6 @@ nmTest({
 
   test_that("a diagonal omega detects the groups but skips the refinement", {
     skip_on_cran()
-    skip_if_not_installed("MASS")
     f <- suppressMessages(suppressWarnings(
       nlmixr2(.phiDiag, .phiData(), est = "vae", control = .phiCtl())))
     cd <- f$vae$colinear
@@ -188,7 +189,6 @@ nmTest({
 
   test_that("covSelectColinear=FALSE reaches the phi refinement too", {
     skip_on_cran()
-    skip_if_not_installed("MASS")
     f <- suppressMessages(suppressWarnings(
       nlmixr2(.phiBlock, .phiData(), est = "vae",
               control = vaeControl(iters = 60L, itersBurnIn = 15L,
@@ -199,6 +199,43 @@ nmTest({
     expect_identical(cd$nPhiPair, 0L)
     expect_identical(cd$nPhiTest, 0L)
     expect_false(any(grepl("declare an omega block", f$runInfo)))
+  })
+
+  test_that("the group-parallel refinement does not depend on the thread count", {
+    skip_on_cran()
+    ## The refinement runs one group per thread.  That is only sound because the
+    ## correlated-dim components PARTITION the latent dims, so no two groups
+    ## write the same cells, and because every group reads the residual snapshot
+    ## taken before the region rather than live state another group is mutating.
+    .old <- rxode2::rxCores()
+    on.exit(rxode2::setRxThreads(.old), add = TRUE)
+    d <- .phiData(seed = 31L)
+    ctl <- vaeControl(iters = 60L, itersBurnIn = 15L, calcTables = FALSE,
+                      covSelectPhiJoin = 0.4, covSelectPhiLeave = 0.3)
+    rxode2::setRxThreads(1L)
+    f1 <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiBlock, d, est = "vae", control = ctl)))
+    rxode2::setRxThreads(8L)
+    f8 <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiBlock, d, est = "vae", control = ctl)))
+    f8b <- suppressMessages(suppressWarnings(
+      nlmixr2(.phiBlock, d, est = "vae", control = ctl)))
+
+    ## the mechanism must actually have done something, or this proves nothing
+    expect_gt(f8$vae$colinear$nPhiMove, 0L)
+    ## identical work, and identical decisions, whatever the thread count
+    expect_identical(f1$vae$colinear$nPhiTest, f8$vae$colinear$nPhiTest)
+    expect_identical(f1$vae$colinear$nPhiMove, f8$vae$colinear$nPhiMove)
+    expect_identical(f1$vae$colinear$nPhiPair, f8$vae$colinear$nPhiPair)
+    expect_identical(f1$vae$selected, f8$vae$selected)
+    ## At a FIXED thread count the whole fit is bit-identical, which is the
+    ## sharpest statement available: across DIFFERENT thread counts the VAE has
+    ## pre-existing floating-point variation of order 1e-14 that predates this
+    ## feature (it is present with covSelectColinear = FALSE), so the estimates
+    ## are compared at a tolerance rather than for exact equality.
+    expect_identical(f8$vae$beta, f8b$vae$beta)
+    expect_identical(f8$vae$omega, f8b$vae$omega)
+    expect_equal(f1$vae$beta, f8$vae$beta, tolerance = 1e-8)
   })
 
   test_that("hysteresis does not change a fit that has nothing to hold", {

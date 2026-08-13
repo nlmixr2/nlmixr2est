@@ -344,6 +344,7 @@
                     nPhiTest = as.integer(.cd$nPhiTest),
                     nPhiMove = as.integer(.cd$nPhiMove),
                     nPhiSkipBig = as.integer(.cd$nPhiSkipBig),
+                    nPhiSkipDiag = as.integer(.cd$nPhiSkipDiag),
                     nPhiClamp = as.integer(.cd$nPhiClamp),
                     omOff = as.logical(.cd$omOff),
                     alternates = .vaeColinearAlt(.cd, .selected,

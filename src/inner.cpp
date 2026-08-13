@@ -18669,10 +18669,41 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           jc.allow = &covAllow; jc.haveAllow = haveCovAllow;
           jc.zPopLower = &zPopLower; jc.zPopUpper = &zPopUpper;
           jc.penalty = covPenalty; jc.nCov = nCov;
-          for (size_t gi = 0; gi < groups.size(); ++gi) {
-            const std::vector<int>& G = groups[gi];
+          // Parallel over GROUPS.  This is only safe because the components
+          // PARTITION the dims -- group g writes solely row/column k of the
+          // shared buffers for its own k -- so verify that rather than trusting
+          // it, since the whole argument rests on it.  Everything read inside
+          // the loop is either iteration-constant or the rBase snapshot taken
+          // above, so no group can observe another's writes and the result is
+          // identical to running the groups serially in any order.
+          const int nG = (int)groups.size();
+          {
+            std::vector<char> seen((size_t)zDim, 0);
+            for (int g2 = 0; g2 < nG; ++g2) {
+              for (size_t t = 0; t < groups[(size_t)g2].size(); ++t) {
+                const int k = groups[(size_t)g2][t];
+                if (seen[(size_t)k]) Rcpp::stop("vae: phi groups are not disjoint");
+                seen[(size_t)k] = 1;
+              }
+            }
+          }
+          // Counters go to per-group slots summed serially afterward: no
+          // atomics, and no reduction whose order could vary with thread count.
+          arma::ivec gTest((arma::uword)std::max(nG, 1), arma::fill::zeros);
+          arma::ivec gMove((arma::uword)std::max(nG, 1), arma::fill::zeros);
+          arma::ivec gClamp((arma::uword)std::max(nG, 1), arma::fill::zeros);
+          arma::ivec gBig((arma::uword)std::max(nG, 1), arma::fill::zeros);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1 && nG > 1)
+#endif
+          for (int gi = 0; gi < nG; ++gi) {
+            const std::vector<int>& G = groups[(size_t)gi];
             if (G.size() < 2) continue;
-            if ((int)G.size() > phiMaxDim) { ++nPhiSkipBig; continue; }
+            if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; continue; }
+            // an exception must never cross an OpenMP region; a group that
+            // fails numerically simply does nothing, which is the conservative
+            // answer anyway
+            try {
             // current supports, and the blocks in play anywhere in the group
             std::vector<std::vector<int> > sup(G.size());
             std::vector<int> bag;
@@ -18734,7 +18765,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                 if (R_FINITE(zPopLower[k]) && t0[a][0] < zPopLower[k]) fixv[a] = zPopLower[k];
                 else if (R_FINITE(zPopUpper[k]) && t0[a][0] > zPopUpper[k]) fixv[a] = zPopUpper[k];
               }
-              ++nPhiClamp;
+              ++gClamp[gi];
               return vaeJointScore(jc, G, s, th, &fixv, nullptr);
             };
             std::vector<arma::vec> thCur;
@@ -18761,7 +18792,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                     cand[c2] = addBlk(sup[c2], b);
                     if (!feasible(G[a], cand[a]) || !feasible(G[c2], cand[c2])) continue;
                     std::vector<arma::vec> th;
-                    ++nPhiTest;
+                    ++gTest[gi];
                     double q = scoreOf(cand, &th);
                     if (R_FINITE(q) && (q < bestScore ||
                                         (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
@@ -18773,7 +18804,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                     cand[a] = addBlk(sup[a], b);
                     if (feasible(G[a], cand[a])) {
                       std::vector<arma::vec> th;
-                      ++nPhiTest;
+                      ++gTest[gi];
                       double q = scoreOf(cand, &th);
                       if (R_FINITE(q) && (q < bestScore ||
                                           (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
@@ -18785,7 +18816,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                     cand[a] = dropBlk(sup[a], b);
                     if (feasible(G[a], cand[a])) {
                       std::vector<arma::vec> th;
-                      ++nPhiTest;
+                      ++gTest[gi];
                       double q = scoreOf(cand, &th);
                       if (R_FINITE(q) && (q < bestScore ||
                                           (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
@@ -18797,7 +18828,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               }
               if (!have || !(bestScore < best)) break;
               sup = bestSup; thCur = bestTh; best = bestScore;
-              moved = true; ++nPhiMove;
+              moved = true; ++gMove[gi];
             }
             // Write back ONLY when something was accepted.  The joint refit is a
             // GLS solve, not the per-dim OLS the loop ran, so re-deriving "the
@@ -18821,7 +18852,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               }
               zPopMat.col(k) = vaeJointZ(jc, sup[a]) * th;
             }
+            } catch (...) {
+              // leave this group exactly as the per-dim pass left it
+            }
           }
+          nPhiTest += (int)arma::accu(gTest);
+          nPhiMove += (int)arma::accu(gMove);
+          nPhiClamp += (int)arma::accu(gClamp);
+          nPhiSkipBig += (int)arma::accu(gBig);
           }
         }
       }
