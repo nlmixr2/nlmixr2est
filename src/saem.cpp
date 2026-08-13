@@ -1975,10 +1975,8 @@ public:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ft, _scratch_g);
               applyLLObsLoss(DYFhyp, _scratch_indio, fk);
             }
           } else if (distribution == 2) {
@@ -2178,10 +2176,8 @@ public:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(cur_DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ft, _scratch_g);
               applyLLObsLoss(cur_DYF, _scratch_indio, fk);
             }
           } else if (distribution == 2) {
@@ -2461,10 +2457,8 @@ public:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ft, _scratch_g);
               applyLLObsLoss(DYF, _scratch_indio, fk);
             }
           } else if (distribution == 2){
@@ -3954,9 +3948,23 @@ private:
     }
   }
 
-  static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
-    for (int j = (int)cens.size(); j--;) {
-      DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
+  // Replace the normal per-observation loss in `DYFm` with the censored one.
+  //
+  // doCensNormal1 speaks the FOCEi inner's language -- it takes and returns a
+  // LOG-LIKELIHOOD, wants the VARIANCE, and reads the DV on the transformed
+  // scale -- while the SAEM chain carries the NEGATED log-likelihood (a loss),
+  // the residual SD `g`, and the untransformed y.  Translating in both
+  // directions is what makes a censored row score the same here as in
+  // likInner0; that agreement is what f-SAEM's IMH acceptance needs, and
+  // without it M3/M4 came back with the censored term's sign flipped, which
+  // drove censored predictions to the wrong side of the limit.  An uncensored
+  // row comes back untouched.
+  inline void applyCensLoss(mat &DYFm, const uvec &indioK, const vec &censk,
+                            const vec &ytk, const vec &limT, const vec &ft,
+                            const vec &g) const {
+    for (int j = ntotal; j--;) {
+      DYFm(indioK(j)) = -doCensNormal1(censk[j], ytk[j], limT[j],
+                                       -DYFm(indioK(j)), ft[j], g[j]*g[j], 0);
     }
   }
 
@@ -4136,10 +4144,8 @@ private:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ft, _scratch_g);
               applyLLObsLoss(DYF, _scratch_indio, fsk);
             }
           }
@@ -4252,10 +4258,8 @@ private:
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
             DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                     DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-            }
+            applyCensLoss(DYFm, _scratch_indio, censk, yt, _scratch_limitT,
+                          _scratch_ft, _scratch_g);
             applyLLObsLoss(DYFm, _scratch_indio, fsk);
           }
         }
@@ -4366,10 +4370,8 @@ private:
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
           DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-          for (int j = ntotal; j--;) {
-            DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-          }
+          applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                        _scratch_ft, _scratch_g);
           applyLLObsLoss(DYFhyp, _scratch_indio, fk);
         }
       } else if (distribution == 2) {

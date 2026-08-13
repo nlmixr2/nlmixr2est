@@ -131,6 +131,21 @@
   `covMethod="linFim"` (the default) is unaffected throughout; its `calc.COV()`
   linearization was always per-endpoint.
 
+- `est="saem"` and `est="fsaem"` now score a **censored** observation the way the
+  rest of the package does.  The simulation step handed the shared censoring
+  likelihood the per-observation loss where it takes a log-likelihood, the
+  residual standard deviation where it takes a variance, and the untransformed
+  `DV`, then stored the log-likelihood it returned back as a loss.  M2 hid this,
+  since a limit well below the prediction leaves its tail probability at
+  essentially 1, but under M3/M4 the censored term arrived with its sign flipped
+  and the chain drove censored predictions to the wrong side of the limit: a
+  one-compartment M3 fit that FOCEi puts at `ke = 0.76` came back at `ke = -23`
+  with a proportional residual standard deviation in the thousands.  Censored
+  rows now score identically in the chain and in the FOCEi inner behind
+  `est="fsaem"`'s Metropolis-Hastings acceptance, so censored data stays on the
+  fast kernel rather than needing a gate.  An uncensored fit is bit-identical
+  (#876).
+
 - `est="fsaem"`'s Metropolis-Hastings proposal is now built against the residual
   variance the SAEM chain actually uses.  The FOCEi inner behind the proposal was
   built with the fit's `addProp`, whose default is `"combined2"`, while the SAEM
