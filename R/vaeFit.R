@@ -241,6 +241,15 @@
   if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
     prepC$covBlock <- as.integer(prep$covBlock)
   }
+  ## Colinearity clusters.  NOT gated on anyDuplicated() like the two above: a
+  ## cluster id repeats on every multi-shape covariate even with no
+  ## cross-covariate colinearity at all, so that test would ship the vector on
+  ## ordinary designs.  Only a cluster that MERGES TWO GROUPS has anything to say.
+  prepC$covCluster <- NULL
+  if (isTRUE(control$covSelectColinear) &&
+        .vaeClusterBinds(prep$covCluster, prep$covGroup)) {
+    prepC$covCluster <- as.integer(prep$covCluster)
+  }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
   ## candidates that dimension actually has (after any pinCovariates trimming),

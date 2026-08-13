@@ -347,6 +347,18 @@
 #'   single shape this is a plain candidate count; two shape families of one
 #'   covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 #'   the same either way.  `Inf` forces the exact branch-and-bound everywhere.
+#' @param covSelectColinear When `TRUE` (default) the covariate M-step is
+#'   correlation-aware: near-interchangeable covariates are grouped into
+#'   colinearity clusters, a selection is not displaced within a cluster by a
+#'   challenger that does not clearly beat it, and near-tied cluster mates are
+#'   reported.  `FALSE` reproduces the previous behavior exactly and is the only
+#'   supported way to do so.
+#' @param covSelectColinearCut `abs(cor)` at or above which two covariates form a
+#'   colinearity cluster (default `0.9`).  Compared only across covariates:
+#'   alternate shapes of one covariate are already arbitrated by the
+#'   mutual-exclusion groups and never cluster with each other.  The default is
+#'   measured rather than conventional -- see `tools/vaeColinearPreflight.R`,
+#'   where the most correlated design in the package reaches `0.775`.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -435,6 +447,8 @@ vaeControl <- function(seed = 42L,
                        inputScale = c("reference", "observed"),
                        covSelectMethod = c("auto", "bnb", "l0learn"),
                        covSelectMaxExact = 17L,
+                       covSelectColinear = TRUE,
+                       covSelectColinearCut = .vaeColinearCut,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -525,6 +539,9 @@ vaeControl <- function(seed = 42L,
     checkmate::assertIntegerish(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
     covSelectMaxExact <- as.integer(covSelectMaxExact)
   }
+  checkmate::assertLogical(covSelectColinear, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -640,6 +657,8 @@ vaeControl <- function(seed = 42L,
                inputScale = inputScale,
                covSelectMethod = covSelectMethod,
                covSelectMaxExact = covSelectMaxExact,
+               covSelectColinear = covSelectColinear,
+               covSelectColinearCut = covSelectColinearCut,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,

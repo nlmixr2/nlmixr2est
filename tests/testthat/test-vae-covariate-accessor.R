@@ -268,7 +268,7 @@ nmTest({
     res <- vaeCovariates(d)
     expect_equal(nrow(res), 0L)
     expect_equal(names(res), c("covariate", "raw", "shape", "level", "group",
-                               "block", "type", "center"))
+                               "block", "cluster", "type", "center"))
   })
 
   test_that("vaeCovariates requires an ID column", {
