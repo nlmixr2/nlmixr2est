@@ -201,6 +201,45 @@ nmTest({
     expect_false(any(grepl("declare an omega block", f$runInfo)))
   })
 
+  test_that("a group larger than covSelectPhiMaxDim is skipped, not split", {
+    skip_on_cran()
+    ## Splitting an over-large correlated group would need an arbitrary
+    ## tie-break on a near-tied graph, so the cap skips instead.  Without a test
+    ## a regression could silently start evaluating the group, or splitting it,
+    ## and nothing would fail.
+    .three <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31)
+        eta.ka + eta.cl + eta.v ~ c(0.09,
+                                    0.07, 0.09,
+                                    0.07, 0.07, 0.09)
+        add.sd <- 0.3
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    d <- .phiData(seed = 31L)
+    ## a low join threshold so all three dims land in one component
+    f <- suppressMessages(suppressWarnings(
+      nlmixr2(.three, d, est = "vae",
+              ## must run past klWarmup (50) or the refinement never gates on
+              control = vaeControl(iters = 60L, itersBurnIn = 15L,
+                                   calcTables = FALSE,
+                                   covSelectPhiJoin = 0.2,
+                                   covSelectPhiLeave = 0.1,
+                                   covSelectPhiMaxDim = 2L))))
+    cd <- f$vae$colinear
+    ## the group formed...
+    expect_gt(cd$nPhiPair, 0L)
+    ## ...was refused for being too large...
+    expect_gt(cd$nPhiSkipBig, 0L)
+    ## ...and no move was scored, which is what "skipped, not split" means
+    expect_identical(cd$nPhiTest, 0L)
+    expect_identical(cd$nPhiMove, 0L)
+  })
+
   test_that("the group-parallel refinement does not depend on the thread count", {
     skip_on_cran()
     ## The refinement runs one group per thread.  That is only sound because the

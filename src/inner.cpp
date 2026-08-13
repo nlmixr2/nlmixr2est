@@ -17559,6 +17559,15 @@ static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
   if (M <= 0) return std::numeric_limits<double>::infinity();
   arma::mat A(M, M, arma::fill::zeros);
   arma::vec b(M, arma::fill::zeros);
+  // Drop the intercept column when it is being held.  An intercept-only support
+  // leaves NO columns, and Armadillo's cols(1, 0) is out of bounds rather than
+  // empty -- which would throw straight into the catch-all below and silently
+  // disable the whole group.
+  auto stripIc = [](const arma::mat& Z, bool fixed) {
+    if (!fixed) return arma::mat(Z);
+    if (Z.n_cols <= 1) return arma::mat(Z.n_rows, 0);
+    return arma::mat(Z.cols(1, Z.n_cols - 1));
+  };
   // u_k: what the dims OUTSIDE the group leave for dim k to explain
   std::vector<arma::vec> u(m);
   for (size_t a = 0; a < m; ++a) {
@@ -17573,7 +17582,7 @@ static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
   for (size_t a = 0; a < m; ++a) {
     const int k = G[a];
     const bool fa = (icFix != nullptr && R_FINITE((*icFix)[a]));
-    arma::mat Za = fa ? arma::mat(Z[a].cols(1, Z[a].n_cols - 1)) : Z[a];
+    arma::mat Za = stripIc(Z[a], fa);
     arma::vec rhs = u[a];
     for (size_t c2 = 0; c2 < m; ++c2) {
       const int l = G[c2];
@@ -17583,7 +17592,7 @@ static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
         // a held intercept is known, so its column moves to the other side
         rhs -= (*jc.P)(k, l) * (*icFix)[c2] * arma::ones<arma::vec>(jc.resp->n_rows);
       }
-      arma::mat Zc = fc ? arma::mat(Z[c2].cols(1, Z[c2].n_cols - 1)) : Z[c2];
+      arma::mat Zc = stripIc(Z[c2], fc);
       if (Za.n_cols == 0 || Zc.n_cols == 0) continue;
       A.submat(off[a], off[c2], off[a + 1] - 1, off[c2 + 1] - 1) =
         (*jc.P)(k, l) * (Za.t() * Zc);
@@ -18851,6 +18860,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                 selected(k, sup[a][s2]) = 1;
               }
               zPopMat.col(k) = vaeJointZ(jc, sup[a]) * th;
+              // the near-tie report was computed against the support the
+              // per-dim pass chose; this dim no longer has that support, and a
+              // stale alternative is worse than none
+              covAltTie.row(k).zeros();
+              covAltGap.row(k).zeros();
             }
             } catch (...) {
               // leave this group exactly as the per-dim pass left it
