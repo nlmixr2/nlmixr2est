@@ -882,6 +882,9 @@ nlmeControl()
 #> $indLinJac
 #> [1] 0
 #> 
+#> $indLinForcing
+#> [1] 1
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -1419,6 +1422,9 @@ nlmixr2NlmeControl()
 #> 
 #> $indLinJac
 #> [1] 0
+#> 
+#> $indLinForcing
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

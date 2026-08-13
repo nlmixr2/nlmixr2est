@@ -247,7 +247,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5562d59a8b78>
+#> <bytecode: 0x55809c54f610>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -874,6 +874,9 @@ foceControl()
 #> 
 #> $indLinJac
 #> [1] 0
+#> 
+#> $indLinForcing
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

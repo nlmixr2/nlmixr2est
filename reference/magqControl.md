@@ -279,7 +279,7 @@ magqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5562d59a8b78>
+#> <bytecode: 0x55809c54f610>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -906,6 +906,9 @@ magqControl()
 #> 
 #> $indLinJac
 #> [1] 0
+#> 
+#> $indLinForcing
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
