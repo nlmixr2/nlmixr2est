@@ -15,8 +15,11 @@
 static inline void nlmixrLikContribGaussCotan(double cens, double dv, double limit,
                                               double f, double r,
                                               double *dLLdf, double *dLLdr) {
-  // censEst.h #undef's its _safe_zero macro at the end of the header, so spell
-  // the same zero guard out here.
+  // r == 0 guard.  This is censEst.h's _safe_zero, spelled out because that
+  // header #undef's the macro at its end.  DBL_EPSILON (not sqrt(DBL_EPSILON))
+  // is deliberate: dCensNormal1 applies _safe_zero to r internally, so the dll
+  // handed to it must use the same guard or the chain rule is inconsistent --
+  // and it matches what likInner0's base objective has always used.
   double rz = (r == 0.0) ? DBL_EPSILON : r;
   double err = f - dv;
   *dLLdf = dCensNormal1(cens, dv, limit, -err / rz, f, r, 1.0, 0.0);
