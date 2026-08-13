@@ -232,4 +232,50 @@ nmTest({
     expect_true(all(unlist(cand[[1]]) %in% c(0L, 1L)))
     expect_identical(cand[[2]], list(integer(0)))
   })
+
+  ## ---- a failed proposal must not be silent --------------------------------
+
+  test_that("an L0Learn failure is distinguished from unusable input", {
+    .testSeed(21L)
+    N <- 40L
+    X <- matrix(rnorm(N * 4L), N, 4L)
+    y <- as.numeric(X[, 1] + rnorm(N))
+    ## unusable input degrades WITHOUT being flagged -- there is nothing to
+    ## report, the design was never fit
+    expect_null(attr(nlmixr2est:::.vaeL0Supports(X[1:2, , drop = FALSE], y[1:2]),
+                     "vaeL0Fail"))
+    expect_null(attr(nlmixr2est:::.vaeL0Supports(matrix(0, N, 0L), y), "vaeL0Fail"))
+    ## a usable design on which every penalty path comes back empty IS flagged
+    testthat::local_mocked_bindings(.vaeL0Path = function(x, y, penalty) list())
+    got <- nlmixr2est:::.vaeL0Supports(X, y)
+    expect_true(isTRUE(attr(got, "vaeL0Fail")))
+    ## and it still returns the intercept-only support, never nothing
+    expect_identical(unclass(got)[[1]], integer(0))
+  })
+
+  test_that(".vaeL0Candidates counts failures and strips the marker", {
+    .testSeed(22L)
+    N <- 40L
+    covMat <- matrix(rnorm(N * 4L), N, 4L)
+    y <- matrix(rnorm(N * 2L), N, 2L)
+    env <- new.env(parent = emptyenv())
+    env$n <- 0L
+    testthat::local_mocked_bindings(.vaeL0Path = function(x, y, penalty) list())
+    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 1L),
+                                          allowed = NULL, failEnv = env)
+    ## one per latent dimension that fell back
+    expect_identical(env$n, 2L)
+    ## the marker must not ride along into C++, which reads a plain list
+    expect_null(attr(cand[[1]], "vaeL0Fail"))
+  })
+
+  test_that("the L0Learn fallback note fits the runInfo one-line budget", {
+    expect_identical(nlmixr2est:::.vaeL0FailMsg(0L), character(0))
+    expect_identical(nlmixr2est:::.vaeL0FailMsg(NA_integer_), character(0))
+    msg <- nlmixr2est:::.vaeL0FailMsg(3L)
+    expect_gt(length(msg), 0L)
+    expect_true(all(nchar(msg) <= 75L))
+    ## no method-name prefix: the fit already reports which method ran
+    expect_false(any(grepl("^vae", msg)))
+  })
 })

@@ -279,11 +279,17 @@
   for (.m in .modes$msg) warning(.m, call. = FALSE)
   prepC$covSelectMode <- .modes$mode
   prepC$l0Fn <- NULL
+  ## counts latent dimensions whose L0Learn proposals failed; the closure is
+  ## called once per training iteration from C++, so the tally has to live
+  ## outside it
+  .l0Fail <- new.env(parent = emptyenv())
+  .l0Fail$n <- 0L
   if (any(.modes$mode == 1L)) {
     .covMat <- prep$covMat
     .mode <- .modes$mode
     .allow <- .allowed
-    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow)
+    .fenv <- .l0Fail
+    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow, .fenv)
   }
 
   .cores <- tryCatch({
@@ -316,6 +322,10 @@
                        .cores, .row0, names(.row0), control$iterPrintControl,
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
+  ## a dimension whose L0Learn proposals failed searched from the intercept-only
+  ## model, which looks like an ordinary selection unless it says so
+  for (.m in .vaeL0FailMsg(.l0Fail$n)) warning(.m, call. = FALSE)
+
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
@@ -328,7 +338,7 @@
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
-       covSelectMethodUsed = .modes$used,
+       covSelectMethodUsed = .modes$used, nL0Fail = .l0Fail$n,
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

@@ -32,14 +32,35 @@
 #' @param x covariate matrix (no intercept column)
 #' @param y response vector
 #' @return list of ascending 0-based integer vectors, always including the empty
-#'   support so the intercept-only model is never lost
+#'   support so the intercept-only model is never lost.  Carries a
+#'   `vaeL0Fail` attribute when L0Learn was asked for proposals on a usable
+#'   design and returned none -- the caller counts those, because such a
+#'   dimension silently degrades to a local search from the intercept-only
+#'   model, which is a far weaker search than the one that was requested.
 #' @noRd
 .vaeL0Supports <- function(x, y) {
   .empty <- list(integer(0))
   if (!is.matrix(x) || ncol(x) == 0L || nrow(x) < 3L) return(.empty)
   if (!all(is.finite(x)) || !all(is.finite(y))) return(.empty)
-  .all <- c(.empty, .vaeL0Path(x, y, "L0"), .vaeL0Path(x, y, "L0L2"))
+  .p <- c(.vaeL0Path(x, y, "L0"), .vaeL0Path(x, y, "L0L2"))
+  ## Both penalty paths empty on a design that passed the guards above means
+  ## L0Learn itself failed (or proposed nothing), not that the input was
+  ## unusable -- the two cases must not be conflated, since only this one is
+  ## worth telling the user about.
+  if (!length(.p)) return(structure(.empty, vaeL0Fail = TRUE))
+  .all <- c(.empty, .p)
   .all[!duplicated(vapply(.all, paste, character(1), collapse = ","))]
+}
+
+#' Run-time note for latent dimensions whose L0Learn proposals failed.
+#'
+#' Pure: the caller raises it so it lands in the fit's `$runInfo`.
+#' @param n number of dimension-iterations that fell back
+#' @return character(0) or a single message
+#' @noRd
+.vaeL0FailMsg <- function(n) {
+  if (!length(n) || is.na(n) || n <= 0L) return(character(0))
+  "L0Learn proposed no supports; a weaker search was used"
 }
 
 #' Resolve the per-latent-dimension covariate-selection mode.
@@ -88,15 +109,25 @@
 #' @param mode per-dimension mode from [.vaeCovSelectModes()]
 #' @param allowed list of 0-based allowed covariate columns per dimension, or
 #'   `NULL` when every covariate is a candidate
+#' @param failEnv optional environment with an integer `n`, incremented once per
+#'   latent dimension whose L0Learn proposals failed.  An environment because
+#'   this is called once per training iteration from C++, so the count has to
+#'   survive across calls.
 #' @return list of length `ncol(y)`; each element is a list of candidate supports
 #'   indexed into that dimension's REDUCED design (the caller already maps those
 #'   back to global covariate columns), or `NULL` for a branch-and-bound dimension
 #' @noRd
-.vaeL0Candidates <- function(y, covMat, mode, allowed = NULL) {
+.vaeL0Candidates <- function(y, covMat, mode, allowed = NULL, failEnv = NULL) {
   lapply(seq_len(ncol(y)), function(k) {
     if (mode[k] != 1L) return(NULL)
     .cols <- if (is.null(allowed)) seq_len(ncol(covMat)) - 1L else allowed[[k]]
     if (!length(.cols)) return(list(integer(0)))
-    .vaeL0Supports(covMat[, .cols + 1L, drop = FALSE], y[, k])
+    .s <- .vaeL0Supports(covMat[, .cols + 1L, drop = FALSE], y[, k])
+    if (isTRUE(attr(.s, "vaeL0Fail"))) {
+      if (!is.null(failEnv)) failEnv$n <- failEnv$n + 1L
+      ## strip before it crosses into C++, which reads this as a plain list
+      attr(.s, "vaeL0Fail") <- NULL
+    }
+    .s
   })
 }
