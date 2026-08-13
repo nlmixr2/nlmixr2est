@@ -59,6 +59,36 @@ test_that("likelihood contributions reach the nonparametric objective (npag/npb)
   }
 })
 
+test_that("likelihood contributions survive the FO objective rebuild", {
+  skip_on_cran()
+
+  ## the FO branch rebuilds fInd->llik from its own matrix form instead of
+  ## finalizing the per-observation accumulation, so the contributed LL has to be
+  ## added back explicitly -- otherwise est="fo"/"foi" silently drop it and this
+  ## difference is 0.
+  .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  rxode2::setRxThreads(1L)
+  on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
+
+  .nObs <- sum(theo_sd$EVID == 0)
+  cc <- 0.01
+
+  for (.est in c("fo", "foi")) {
+    f0 <- .nlmixr(.likContribModel, theo_sd, est = .est,
+                  control = foceiControl(print = 0L))
+    .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
+    .Call("_nlmixr2est_setTestContribAddLL", cc, PACKAGE = "nlmixr2est")
+    f1 <- .nlmixr(.likContribModel, theo_sd, est = .est,
+                  control = foceiControl(print = 0L))
+    res <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")
+    .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
+
+    expect_equal(f1$objf - f0$objf, -2 * cc * .nObs, tolerance = 1e-5, info = .est)
+    expect_gt(res[[1]], 0)
+    expect_equal(res[[5]], res[[6]])
+  }
+})
+
 nmTest({
   test_that("likelihood contributions reach the analytic VAE decoder ELBO", {
     skip_on_cran()

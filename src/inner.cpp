@@ -639,6 +639,8 @@ struct focei_options {
   NumericVector probitThetaLow;
   double badSolveObjfAdj = 100;
   std::atomic<bool> didPredSolve{false};
+  // set when the outer NN hook had to skip an evaluation (mixture / FD fallback)
+  std::atomic<bool> nnOuterSkipped{false};
   // npag/npb: set when a transform-both-sides (log/boxCox) endpoint has a
   // non-positive untransformed prediction (rxode2's _powerD floors it at _eps
   // instead of returning -Inf).  Surfaced as a warning by the np driver.
@@ -1004,6 +1006,7 @@ extern "C" void rxOptionsFreeFocei() {
 
   op_focei.alloc = false;
   op_focei.didPredSolve = false;
+  op_focei.nnOuterSkipped = false;
   op_focei.npTbsDomainWarn = false;
 
   // Placement-new reset (copy-assignment is deleted by std::atomic members).
@@ -1642,11 +1645,12 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
 //                                fragile per-record covariate plumbing in C).
 // Method-agnostic: every estimator produces a prediction + states + lhs; the
 // method-specific dLL/d(rx_pred_) comes from the per-obs contribution hook.
+// Physical subjects only -- see nnOuterUsable(), which refuses a mixture fit.
 static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   rx_solving_options *op = getSolvingOptions(rx);
   int neq = getOpNeq(op);
   int nlhs = getRxNlhs(rx);
-  int nsub = (int) getRxNsubAndMix(rx);
+  int nsub = (int) getRxNsub(rx);
   // count observations (evid == 0)
   int nobs = 0;
   for (int id = 0; id < nsub; id++) {
@@ -1680,12 +1684,35 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   return mat;
 }
 
+// Can the rows assembleNnOuterMatrix() would emit be trusted?  Two cases where
+// ind->solve does not hold what the matrix claims:
+//   - a mixture fit: every (subject, component) shares one base rxode2 subject,
+//     so only the LAST component's solve survives and the matrix would be that
+//     one component repeated;
+//   - a subject that fell back to the FD path (fInd->doFD): likInner0 solved the
+//     PRED model into ind->solve, at the pred stride and with no sensitivity
+//     states, so reading it back at the inner model's layout yields garbage.
+// Either way the NN would train on values that are not what it asked for, so
+// skip the step and note it once at the end of the fit.
+static inline bool nnOuterUsable() {
+  int nsub = (int) getRxNsub(rx);
+  if ((int) getRxNsubAndMix(rx) != nsub) return false;
+  for (int id = 0; id < nsub; id++) {
+    if (inds_focei[id].doFD != 0) return false;
+  }
+  return true;
+}
+
 // Outer-problem NN training: hand the current per-observation prediction + state
 // matrix to the registered callback (nlmixr2nn) so it can step the network
 // weights.  Only on real objective evaluations (not gradient FD) and when the
 // solve is finite; a no-op when nothing is registered.
 static inline void nnOuterStep(double ret) {
   if (_nnOuterFn == NULL || op_focei.calcGrad || !std::isfinite(ret)) return;
+  if (!nnOuterUsable()) {
+    op_focei.nnOuterSkipped.store(true, std::memory_order_relaxed);
+    return;
+  }
   Rcpp::NumericMatrix nnMat = assembleNnOuterMatrix();
   Rcpp::Function fn(_nnOuterFn);
   fn(nnMat);
@@ -1943,13 +1970,15 @@ static void getPopR(int id, arma::vec &rPop) {
 // `a` is the base d(f)/d(eta) matrix and `llikObsK` points at this record's
 // llikObs slot.  Kept out of likInner0 so the hook does not thread extra branches
 // through an already-large per-observation loop.
-static inline void likInner0Contrib(int id, int k, int dist, int cens,
-                                    double f, double dv, double r, double limit,
-                                    const arma::mat &a,
-                                    std::vector<double> &dfdEta,
-                                    std::vector<double> &dEta,
-                                    focei_ind *fInd, double *llikObsK,
-                                    arma::mat &lp) {
+// Returns the added log-likelihood so the caller can keep a running total; the
+// FO branch rebuilds fInd->llik from its own matrix form and needs it back.
+static inline double likInner0Contrib(int id, int k, int dist, int cens,
+                                      double f, double dv, double r, double limit,
+                                      const arma::mat &a,
+                                      std::vector<double> &dfdEta,
+                                      std::vector<double> &dEta,
+                                      focei_ind *fInd, double *llikObsK,
+                                      arma::mat &lp) {
   // a general ll() endpoint keeps d(LL)/d(f) = 1 (f is itself the log-density)
   double dLLdf = 1.0, dLLdr = 0.0;
   if (dist == rxDistributionNorm) {
@@ -1967,6 +1996,7 @@ static inline void likInner0Contrib(int id, int k, int dist, int cens,
   // only records cotangents (e.g. nn weight-grad capture).
   *llikObsK += llAdd;
   for (int q = 0; q < neta; ++q) lp(q, 0) += dEta[q];
+  return llAdd;
 }
 
 double likInner0(double *eta, int id) {
@@ -2230,6 +2260,7 @@ double likInner0(double *eta, int id) {
       fInd->tbsLik=0.0;
       // external likelihood contributions (cycled in series); zero overhead when none
       const int _nContrib = _nlmixrNContrib;
+      double _cLLsum = 0.0;   // running total of the contributors' extra LL
       std::vector<double> _cDeta, _cDfdeta;
       if (_nContrib > 0) {
         _cDeta.assign(op_focei.neta, 0.0);
@@ -2516,8 +2547,8 @@ double likInner0(double *eta, int id) {
           // Base outputs f/dv/r and cotangents dLL/df, dLL/dr are read-only; the
           // contributor may add extra LL and dLL/deta (folded into fInd->llik/lp).
           if (_nContrib > 0 && getIndEvid(ind, kk) == 0) {
-            likInner0Contrib(id, k, dist, cens, f, dv, r, limit, a,
-                             _cDfdeta, _cDeta, fInd, &llikObs[kk], lp);
+            _cLLsum += likInner0Contrib(id, k, dist, cens, f, dv, r, limit, a,
+                                        _cDfdeta, _cDeta, fInd, &llikObs[kk], lp);
           }
           // k--;
           k++;
@@ -2553,8 +2584,11 @@ double likInner0(double *eta, int id) {
         // + t(.$Ri) %*% solve(Ci) %*% .$Ri
         mat rest =trans(B) * CiInv * B;
         lik += rest(0,0);
-        // lik = -2*ll
-        fInd->llik = -0.5*lik;
+        // lik = -2*ll.  This REBUILDS llik from the FO matrix form rather than
+        // finalizing the per-observation accumulation, so add the contributors'
+        // extra LL back explicitly -- otherwise est="fo"/"foi" silently drops it
+        // (+= would instead double-count the base per-obs terms).
+        fInd->llik = -0.5*lik + _cLLsum;
       } else {
         // Now finalize lp
         mat etam = arma::mat(op_focei.neta, 1);
@@ -11411,6 +11445,9 @@ Environment foceiFitCpp_(Environment e){
   }
   if (op_focei.didPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));
+  }
+  if (op_focei.nnOuterSkipped) {
+    warning(_("outer network step skipped (mixture or numeric-difference solve)"));
   }
   IntegerVector gillRetC(op_focei.ntheta+op_focei.omegan);
   bool warnGillC = false;
