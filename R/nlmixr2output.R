@@ -523,13 +523,18 @@
     .tmp <- obj$saem
     .curObj <- get("objective", .env)
     if (is.na(.curObj)) {
+      # the quadrature settings live on the fit's saemControl; the fit
+      # environment itself never held them, so both lookups always missed and
+      # this deferred path silently ran at the defaults (#903)
       .nnodes <- 3
-      if (exists("nnodesGq", .env)) {
-        .nnodes <- .env$nnodesGq
-      }
       .nsd <- 1.6
-      if (exists("nsd.gq", .env)) {
-        .nsd <- .env$nsd.gq
+      .ctl <- .env$control
+      if (inherits(.ctl, "saemControl")) {
+        # a control restored from an older fit can be missing either field; a
+        # non-finite value would reach `if (.nnodes == 1)` as NA
+        .keep <- function(x) length(x) == 1L && is.numeric(x) && is.finite(x)
+        if (.keep(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
+        if (.keep(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
       }
       if (.nnodes == 1) {
         .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)

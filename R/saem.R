@@ -917,7 +917,9 @@
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
-  .nsdGq <- rxode2::rxGetControl(.ui, "nsd.gq", 1.6)
+  # saemControl() stores this as nsdGq; the old "nsd.gq" spelling never matched,
+  # so a user-supplied nsdGq was silently ignored
+  .nsdGq <- rxode2::rxGetControl(.ui, "nsdGq", 1.6)
   if (is.na(.obf)) {
     .saemObf <- NA_real_
   } else if (is.null(.obf)) {

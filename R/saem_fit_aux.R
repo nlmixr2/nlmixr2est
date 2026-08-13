@@ -33,6 +33,20 @@
   rep(TRUE, length(ixEndpnt))
 }
 
+#' Elementwise log(exp(a) + exp(b)) without overflowing
+#'
+#' @param a,b numeric vectors of the same length
+#' @return numeric vector of `log(exp(a) + exp(b))`
+#' @noRd
+.logspaceAdd <- function(a, b) {
+  .m <- pmax(a, b)
+  .ret <- .m + log1p(exp(-abs(a - b)))
+  # both -Inf (or either +Inf) leaves a-b undefined; the max is the answer
+  .bad <- !is.finite(.m)
+  .ret[.bad] <- .m[.bad]
+  .ret
+}
+
 ##' Log-likelihood using Gaussian Quadrature
 ##'
 ##' Estimate the log-likelihood using Gaussian Quadrature (multidimensional
@@ -117,7 +131,10 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   b <- (xmax - xmin) / 2
   dim(b) <- c(N, nphi1)
 
-  Q <- 0
+  # accumulated in the LOG domain: a transformed endpoint with a small residual
+  # SD makes the per-subject log-density large enough that exp(ltot) overflows
+  # to Inf, which used to make the whole likelihood Inf (#903)
+  lQ <- rep(-Inf, N)
   if (nnodes.gq == 1) {
     message(sprintf("Calculating Laplace -2LL (nsd=%s)", nsd.gq))
   } else {
@@ -141,14 +158,19 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     lphi1 <- -0.5 * rowSums((dphi1 %*% IOmega.phi1) * dphi1)
     ltot <- ly + lphi1
     ltot[is.na(ltot)] <- -Inf
-    Q <- Q + w[j] * exp(ltot)
+    lQ <- .logspaceAdd(lQ, log(w[j]) + ltot)
     rxode2::rxTick()
   }
   rxode2::rxProgressStop()
   # - 2 * saem.cfg$extraLL
   # only a Gaussian row's DYF omits its -0.5*log(2*pi); an ll() row already
-  # carries the constant its own expression supplies
-  ll2 <- 2 * sum(log(Q) + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + .nGauss) * log(2 * pi) -
+  # carries the constant its own expression supplies.
+  #
+  # lQ is the likelihood of the TRANSFORMED observations, so the transform's
+  # log-Jacobian (what powerL returns, e.g. -log(y) for lnorm) is ADDED to get
+  # the likelihood of the original data -- the same convention FOCEi uses when
+  # it accumulates tbsLik (#903)
+  ll2 <- 2 * sum(lQ + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + .nGauss) * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
   -ll2
 }
