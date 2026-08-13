@@ -17310,6 +17310,191 @@ static void vaeLocalSearchL0(VaeBnbCtx& c, int maxPass = 100) {
   }
 }
 
+// ---- colinear hysteresis + near-tie reporting -------------------------------
+//
+// Colinear covariates score within noise of one another, so the exact minimizer
+// of a criterion built on a MOVING response (the posterior means shift every EM
+// iteration) flips between them.  This pass makes the answer settle: within a
+// colinearity cluster, the covariate selected last iteration is not displaced by
+// a mate that fails to beat it by a real margin.  It also records the mates that
+// came close, which is the diagnostic a modeler actually wants.
+//
+// It is applied to the support the search ALREADY RETURNED, and deliberately
+// lives outside vaeBnbLeaf / vaeBestSubsetL0 / vaeCandidateSubsetL0.  Those stay
+// pure minimizers of RSS/omega + penalty*|S|, so the exported kernels and the
+// brute-force oracle they are tested against are untouched.  A history-dependent
+// term inside the leaf would also break vaeBnbLowerBound's admissibility.
+struct VaeColinOut {
+  VaeSubsetFit fit;
+  int nTest;                   // swaps scored ("the pass ran")
+  int nHold;                   // incumbents retained ("it changed the answer")
+  std::vector<int> tieCol;     // near-tied mates, reduced column index
+  std::vector<double> tieGap;  // their score gap above the selected support
+};
+
+// Tolerances are in units of `penalty` (= log N), not fractions of the score:
+// rss/omega is order N at the optimum while the decision scale is log(N), so a
+// fraction of the score would silently mean something different at every sample
+// size.
+static VaeColinOut vaeColinStabilize(const VaeSubsetFit& fit,
+                                     const arma::mat& X, const arma::vec& y,
+                                     double omega, double penalty,
+                                     const std::vector<int>* grp,
+                                     const std::vector<int>* blk,
+                                     const std::vector<int>& cls,
+                                     const std::vector<char>& prevIn,
+                                     double holdTol, double tieTol,
+                                     bool doHold, bool doTies) {
+  VaeColinOut out;
+  out.fit = fit;
+  out.nTest = 0;
+  out.nHold = 0;
+  const int nCov = (int)X.n_cols - 1;
+  if (nCov <= 0 || (int)cls.size() != nCov) return out;
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
+  c.strategy = VAE_BNB_LIFO;   // unused: no search runs here
+  c.grp = grp;
+  vaeBnbSetBlocks(c, blk, nCov);
+  c.bestScore = std::numeric_limits<double>::infinity();
+  const int nBlk = (int)c.blocks.size();
+  // Every block lies inside one cluster: clusters are a COARSENING of the
+  // mutual-exclusion groups and a block never spans a group, so the cluster of a
+  // block is the cluster of any of its columns.
+  std::vector<int> clsOfBlk((size_t)nBlk, -1);
+  for (int b = 0; b < nBlk; ++b) clsOfBlk[(size_t)b] = cls[(size_t)c.blocks[(size_t)b][0]];
+  // A cluster contains whole GROUPS, so a covariate's own alternate shapes sit
+  // in it too.  Those are not interchangeable COVARIATES -- they are competing
+  // parameterizations of one, already arbitrated by mutual exclusion -- and they
+  // are near-tied on almost every model, so admitting them would make the
+  // diagnostic fire universally.  Every swap below is therefore cross-group.
+  // With no groups declared, each block is its own covariate.
+  std::vector<int> grpOfBlk((size_t)nBlk, -1);
+  for (int b = 0; b < nBlk; ++b) {
+    grpOfBlk[(size_t)b] = (c.grp == nullptr) ? -(b + 1)
+      : (*c.grp)[(size_t)c.blocks[(size_t)b][0]];
+  }
+
+  std::vector<int> cur = fit.sel;
+  arma::vec coefCur;
+  bool feas = false;
+  double scoreCur = vaeScoreSupport(c, cur, &coefCur, &feas);
+  if (!feas || !R_FINITE(scoreCur)) return out;
+
+  // cur with block bIn's columns replaced by block bAlt's, kept ascending
+  auto swapBlocks = [&](const std::vector<int>& s, int bIn, int bAlt) {
+    std::vector<int> t;
+    t.reserve(s.size() + c.blocks[(size_t)bAlt].size());
+    for (size_t u = 0; u < s.size(); ++u) {
+      if (c.blockOf[(size_t)s[u]] != bIn) t.push_back(s[u]);
+    }
+    const std::vector<int>& add = c.blocks[(size_t)bAlt];
+    t.insert(t.end(), add.begin(), add.end());
+    std::sort(t.begin(), t.end());
+    return t;
+  };
+  auto blkIn = [&](const std::vector<int>& s, int b) {
+    for (size_t u = 0; u < s.size(); ++u) if (c.blockOf[(size_t)s[u]] == b) return true;
+    return false;
+  };
+  auto allPrev = [&](int b) {
+    const std::vector<int>& cols = c.blocks[(size_t)b];
+    for (size_t u = 0; u < cols.size(); ++u) if (!prevIn[(size_t)cols[u]]) return false;
+    return true;
+  };
+  auto nonePrev = [&](int b) {
+    const std::vector<int>& cols = c.blocks[(size_t)b];
+    for (size_t u = 0; u < cols.size(); ++u) if (prevIn[(size_t)cols[u]]) return false;
+    return true;
+  };
+
+  // clusters present among the selected blocks, ascending -- a fixed order, so
+  // the outcome does not depend on how the support happens to be laid out
+  std::vector<int> clsSeen;
+  for (size_t u = 0; u < cur.size(); ++u) {
+    const int cl = cls[(size_t)cur[u]];
+    if (cl < 0) continue;
+    if (std::find(clsSeen.begin(), clsSeen.end(), cl) == clsSeen.end()) clsSeen.push_back(cl);
+  }
+  std::sort(clsSeen.begin(), clsSeen.end());
+
+  if (doHold && holdTol > 0) {
+    for (size_t t = 0; t < clsSeen.size(); ++t) {
+      const int cl = clsSeen[t];
+      double bestScore = 0;
+      std::vector<int> bestSel;
+      bool have = false;
+      for (int bIn = 0; bIn < nBlk; ++bIn) {
+        if (clsOfBlk[(size_t)bIn] != cl || !blkIn(cur, bIn)) continue;
+        // only a block the search ADDED this iteration can displace anything
+        if (!nonePrev(bIn)) continue;
+        for (int bAlt = 0; bAlt < nBlk; ++bAlt) {
+          if (bAlt == bIn || clsOfBlk[(size_t)bAlt] != cl) continue;
+          if (grpOfBlk[(size_t)bAlt] == grpOfBlk[(size_t)bIn]) continue;
+          if (blkIn(cur, bAlt) || !allPrev(bAlt)) continue;
+          std::vector<int> alt = swapBlocks(cur, bIn, bAlt);
+          arma::vec coefAlt;
+          bool ok = false;
+          double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
+          if (!ok || !R_FINITE(sAlt)) continue;
+          ++out.nTest;
+          if (sAlt - scoreCur > holdTol * penalty) continue;
+          // best-scoring revert in this cluster, ties broken order-independently
+          if (!have || sAlt < bestScore ||
+              (sAlt == bestScore && vaeSelLess(alt, bestSel))) {
+            have = true; bestScore = sAlt; bestSel = alt;
+          }
+        }
+      }
+      if (have) {
+        cur = bestSel;
+        arma::vec coefNew;
+        bool ok = false;
+        double sNew = vaeScoreSupport(c, cur, &coefNew, &ok);
+        if (ok && R_FINITE(sNew)) { scoreCur = sNew; coefCur = coefNew; ++out.nHold; }
+      }
+    }
+  }
+
+  if (doTies && tieTol > 0) {
+    // recomputed against the FINAL support, so the report describes what was
+    // actually selected
+    clsSeen.clear();
+    for (size_t u = 0; u < cur.size(); ++u) {
+      const int cl = cls[(size_t)cur[u]];
+      if (cl < 0) continue;
+      if (std::find(clsSeen.begin(), clsSeen.end(), cl) == clsSeen.end()) clsSeen.push_back(cl);
+    }
+    std::sort(clsSeen.begin(), clsSeen.end());
+    for (size_t t = 0; t < clsSeen.size(); ++t) {
+      const int cl = clsSeen[t];
+      for (int bIn = 0; bIn < nBlk; ++bIn) {
+        if (clsOfBlk[(size_t)bIn] != cl || !blkIn(cur, bIn)) continue;
+        for (int bAlt = 0; bAlt < nBlk; ++bAlt) {
+          if (bAlt == bIn || clsOfBlk[(size_t)bAlt] != cl || blkIn(cur, bAlt)) continue;
+          if (grpOfBlk[(size_t)bAlt] == grpOfBlk[(size_t)bIn]) continue;
+          std::vector<int> alt = swapBlocks(cur, bIn, bAlt);
+          arma::vec coefAlt;
+          bool ok = false;
+          double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
+          if (!ok || !R_FINITE(sAlt)) continue;
+          ++out.nTest;
+          if (sAlt - scoreCur > tieTol * penalty) continue;
+          const std::vector<int>& cols = c.blocks[(size_t)bAlt];
+          for (size_t u = 0; u < cols.size(); ++u) {
+            out.tieCol.push_back(cols[u]);
+            out.tieGap.push_back(sAlt - scoreCur);
+          }
+        }
+      }
+    }
+  }
+
+  c.bestSel = cur; c.bestCoef = coefCur; c.bestScore = scoreCur;
+  out.fit = vaeFinishSubset(c, y);
+  return out;
+}
+
 // Candidate-scoring counterpart of vaeBestSubsetL0: identical objective and
 // return layout, but the subsets come from `cands` (plus the local search)
 // instead of an exhaustive branch-and-bound.
@@ -17751,6 +17936,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covBlock[j] = -1;
     }
   }
+  // covCluster: colinearity cluster per covariate column.  R sends it ONLY when
+  // a cluster actually merges two mutual-exclusion groups, so an ordinary design
+  // omits the field entirely and every colinear mechanism below is unreachable.
+  std::vector<int> covCluster;
+  if (prep.containsElementNamed("covCluster") && !Rf_isNull(prep["covCluster"])) {
+    Rcpp::IntegerVector g = as<Rcpp::IntegerVector>(prep["covCluster"]);
+    covCluster.assign(g.begin(), g.end());
+    for (size_t j = 0; j < covCluster.size(); ++j) {
+      if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covCluster[j] = -1;
+    }
+  }
   // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
   // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
   // Resolved in R (that is where the suggested-package check and the $runInfo
@@ -17830,6 +18026,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // which is what control objects serialized before the option always did.
   const bool mStepOuter = !(control.containsElementNamed("mStepObjective") &&
                             as<std::string>(control["mStepObjective"]) == "elbo");
+  // Colinearity-aware covariate selection.  Every fallback below is the value
+  // that reproduces the behavior of control objects serialized before the
+  // options existed, so an old fit runs unchanged.
+  const bool colinearOn = control.containsElementNamed("covSelectColinear") &&
+    as<bool>(control["covSelectColinear"]);
+  const double colinHoldTol = control.containsElementNamed("covSelectHysteresis") ?
+    as<double>(control["covSelectHysteresis"]) : 0.0;
+  const double colinTieTol = control.containsElementNamed("covSelectAltTol") ?
+    as<double>(control["covSelectAltTol"]) : 0.0;
   arma::vec mixProb(mixProbR.begin(), mixProbR.size());
   const int nCov = covMat.n_cols;
   // Both are indexed by covariate column throughout the M-step (including under
@@ -17837,6 +18042,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // reads past the end rather than merely constraining the wrong column.  R
   // always sends them column-aligned; a hand-built or stale serialized prep may
   // not, and that must be an error rather than undefined behavior.
+  if (!covCluster.empty() && (int)covCluster.size() != nCov) {
+    Rcpp::stop("prep$covCluster must have one entry per covariate column (%d)", nCov);
+  }
   if (!covGroup.empty() && (int)covGroup.size() != nCov) {
     Rcpp::stop("prep$covGroup must have one entry per covariate column (%d)", nCov);
   }
@@ -17924,6 +18132,21 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::vec intercept = zPop;
   arma::mat beta(zDim, nCov, arma::fill::zeros);
   arma::umat selected(zDim, nCov, arma::fill::zeros);
+  // Colinear hysteresis needs LAST iteration's support, and `selected` is zeroed
+  // at the top of every covariate M-step, so it gets its own buffer -- assigned
+  // once per iteration after the M-step has finished writing.
+  arma::umat selPrev(zDim, nCov, arma::fill::zeros);
+  // Near-tied cluster mates of the final iteration's selection, and their score
+  // gaps.  Fixed size and written row-k only, so the per-dim parallel loop keeps
+  // its disjoint-write invariant.
+  arma::umat covAltTie(zDim, nCov, arma::fill::zeros);
+  arma::mat covAltGap(zDim, nCov, arma::fill::zeros);
+  // Per-dim slots summed serially after the loop: no atomics, and no
+  // floating-point reduction whose order could vary with the thread count.
+  arma::ivec nColinTestK(zDim, arma::fill::zeros);
+  arma::ivec nColinHoldK(zDim, arma::fill::zeros);
+  int nColinTest = 0, nColinHold = 0;
+  const bool haveColin = colinearOn && !covCluster.empty();
   arma::mat zPopArg(N, zDim); zPopArg.each_row() = zPop.t();
   bool isCovStep = false;
   arma::vec elboTrace(iters, arma::fill::zeros);
@@ -18001,6 +18224,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat X(N, 1 + nCov); X.col(0).ones(); if (nCov > 0) X.cols(1, nCov) = covMat;
       arma::mat zPopMat(N, zDim, arma::fill::zeros);
       intercept.zeros(); beta.zeros(); selected.zeros();
+      covAltTie.zeros(); covAltGap.zeros();
+      // Hold only after the penalty ramp has finished: during the covSelectAlpha
+      // warm-up the criterion is still moving, so freezing a ramp-era choice
+      // would lock in an answer the run never intended to keep.
+      const bool colinHold = haveColin && !covRamp && it > klWarmup &&
+        arma::any(arma::vectorise(selPrev) == 1);
       // Correlated etas: the covariate regression is a GLS in the FULL Omega,
       // not zDim independent weighted fits.  The reference whitens dim k by the
       // scalar 1/sqrt(omega_k) (`X = 1/omega_pop[k].sqrt()*C_regression[k]`),
@@ -18140,6 +18369,38 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           ? vaeCandidateSubsetL0(yk, Xuse, covVar[k], covPenalty, cands[(size_t)k], true,
                                  grpP, blkP)
           : vaeBestSubsetL0(yk, Xuse, covVar[k], covPenalty, bnbStrategy, grpP, blkP);
+        // Colinear hysteresis / near-tie report, applied to the support the
+        // search just returned.  Runs for BOTH engines, so the l0learn-vs-bnb
+        // parity contract still holds.
+        if (haveColin) {
+          std::vector<int> clsK;
+          std::vector<char> prevK;
+          if (haveCovAllow) {
+            clsK.resize(allowedG.n_elem);
+            prevK.resize(allowedG.n_elem);
+            for (size_t s = 0; s < allowedG.n_elem; ++s) {
+              clsK[s] = covCluster[(size_t)allowedG[s]];
+              prevK[s] = (char)(selPrev(k, allowedG[s]) == 1);
+            }
+          } else {
+            clsK = covCluster;
+            prevK.resize((size_t)nCov);
+            for (int j = 0; j < nCov; ++j) prevK[(size_t)j] = (char)(selPrev(k, j) == 1);
+          }
+          VaeColinOut co =
+            vaeColinStabilize(fit, Xuse, yk, covVar[k], covPenalty, grpP, blkP,
+                              clsK, prevK, colinHoldTol, colinTieTol,
+                              colinHold, colinTieTol > 0);
+          fit = co.fit;
+          nColinTestK[k] += co.nTest;
+          nColinHoldK[k] += co.nHold;
+          for (size_t s = 0; s < co.tieCol.size(); ++s) {
+            const int gj = haveCovAllow ? (int)allowedG[(size_t)co.tieCol[s]]
+              : co.tieCol[s];
+            covAltTie(k, gj) = 1;
+            covAltGap(k, gj) = co.tieGap[s];
+          }
+        }
         arma::vec bestCoef = fit.coef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
@@ -18183,6 +18444,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (!residByOpt) a = a + gamma * (aCur - a);
       isCovStep = true;
       baseline = arma::mean(zPopMat, 0).t();
+      // serial reduction of the per-dim slots, then snapshot the support this
+      // iteration settled on as next iteration's incumbent
+      if (haveColin) {
+        nColinTest += (int)arma::accu(nColinTestK);
+        nColinHold += (int)arma::accu(nColinHoldK);
+        nColinTestK.zeros(); nColinHoldK.zeros();
+        selPrev = selected;
+      }
     } else {
       // plain closed-form M-step (EMA gamma)
       arma::vec zPopCur = arma::mean(last.mu, 0).t();
@@ -18499,7 +18768,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
                       _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
-                      _["nStage2"] = nStage2);
+                      _["nStage2"] = nStage2,
+                      // one nested slot rather than several top-level ones, so
+                      // the return stays readable as this grows
+                      _["covDiag"] = List::create(
+                        _["nColinTest"] = nColinTest,
+                        _["nColinHold"] = nColinHold,
+                        _["altTie"] = covAltTie,
+                        _["altGap"] = covAltGap));
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

@@ -336,6 +336,13 @@
   for (.m in .vaeL0FailMsg(.l0Fail$n)) warning(.m, call. = FALSE)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  .colinear <- list(cluster = prep$covCluster,
+                    nColinTest = as.integer(.fit$covDiag$nColinTest),
+                    nColinHold = as.integer(.fit$covDiag$nColinHold),
+                    alternates = .vaeColinearAlt(.fit$covDiag, .selected,
+                                                 prep$covCluster, prep$etaNames,
+                                                 prep$covNames))
+  for (.m in .vaeColinearMsg(nrow(.colinear$alternates))) warning(.m, call. = FALSE)
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
@@ -348,6 +355,7 @@
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
        covSelectMethodUsed = .modes$used, nL0Fail = .l0Fail$n,
+       colinear = .colinear,
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 

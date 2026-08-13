@@ -359,6 +359,19 @@
 #'   mutual-exclusion groups and never cluster with each other.  The default is
 #'   measured rather than conventional -- see `tools/vaeColinearPreflight.R`,
 #'   where the most correlated design in the package reaches `0.775`.
+#' @param covSelectHysteresis Margin, in units of the per-covariate selection
+#'   penalty (`log(N)`), by which a colinearity-cluster mate must beat the
+#'   covariate selected on the previous iteration before it is allowed to
+#'   displace it (default `0.25`).  Colinear covariates score within noise of one
+#'   another, so the winner otherwise flips from iteration to iteration; this
+#'   makes the answer settle.  `0` disables the hold.  Expressed in penalty units
+#'   rather than as a fraction of the objective because the objective grows with
+#'   the number of subjects while the decision scale does not.
+#' @param covSelectAltTol Score window, in the same penalty units, within which a
+#'   cluster mate of a selected covariate is reported as a near-tied alternative
+#'   (default `0.10`).  These are the choices the data could not really
+#'   distinguish; they are listed in `$vae$colinear$alternates`.  `0` disables the
+#'   report.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -449,6 +462,8 @@ vaeControl <- function(seed = 42L,
                        covSelectMaxExact = 17L,
                        covSelectColinear = TRUE,
                        covSelectColinearCut = .vaeColinearCut,
+                       covSelectHysteresis = 0.25,
+                       covSelectAltTol = 0.1,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -541,6 +556,10 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertLogical(covSelectColinear, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectHysteresis, lower = 0, finite = TRUE, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectAltTol, lower = 0, finite = TRUE, len = 1,
                            any.missing = FALSE)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
@@ -659,6 +678,8 @@ vaeControl <- function(seed = 42L,
                covSelectMaxExact = covSelectMaxExact,
                covSelectColinear = covSelectColinear,
                covSelectColinearCut = covSelectColinearCut,
+               covSelectHysteresis = covSelectHysteresis,
+               covSelectAltTol = covSelectAltTol,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,

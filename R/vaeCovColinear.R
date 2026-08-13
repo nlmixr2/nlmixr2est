@@ -81,6 +81,53 @@
 #' id repeats on every multi-shape covariate even when no cross-covariate
 #' colinearity exists at all, so that predicate would ship the vector on ordinary
 #' designs and silently switch the new mechanisms on everywhere.
+#' Run-time note for near-tied colinear covariates.
+#'
+#' Pure: the caller raises it so it lands in the fit's `$runInfo`.
+#' @param nAlt number of near-tied alternates reported
+#' @return character(0) or a single message
+#' @noRd
+.vaeColinearMsg <- function(nAlt) {
+  if (!length(nAlt) || is.na(nAlt) || nAlt <= 0L) return(character(0))
+  "near-tied colinear covariates; see $vae$colinear$alternates"
+}
+
+#' Near-tied alternates as a data frame.
+#'
+#' `altTie`/`altGap` mark the MATE; the covariate it stands in for is the
+#' selected column sharing its cluster on that latent dimension, so the pairing
+#' is reconstructed here rather than carried through C++.
+#' @param diag `covDiag` from the C++ fit
+#' @param selected logical matrix, latent dims by covariate columns
+#' @param cluster covariate cluster ids
+#' @param etaNames,covNames row/column names
+#' @return data frame with `param`, `covariate`, `alternate`, `delta`; zero rows
+#'   when there is nothing to report, never `NULL`
+#' @noRd
+.vaeColinearAlt <- function(diag, selected, cluster, etaNames, covNames) {
+  .empty <- data.frame(param = character(0), covariate = character(0),
+                       alternate = character(0), delta = numeric(0))
+  if (is.null(diag) || is.null(diag$altTie) || !length(diag$altTie)) return(.empty)
+  .tie <- matrix(as.integer(diag$altTie), nrow = length(etaNames))
+  .gap <- matrix(as.numeric(diag$altGap), nrow = length(etaNames))
+  .ix <- which(.tie == 1L, arr.ind = TRUE)
+  if (!nrow(.ix)) return(.empty)
+  .of <- vapply(seq_len(nrow(.ix)), function(i) {
+    .k <- .ix[i, 1L]
+    .j <- .ix[i, 2L]
+    ## the selected column of the same cluster on this dimension
+    .c <- which(selected[.k, ] & cluster == cluster[.j])
+    if (!length(.c)) NA_character_ else covNames[.c[1L]]
+  }, character(1))
+  .keep <- !is.na(.of)
+  if (!any(.keep)) return(.empty)
+  data.frame(param = etaNames[.ix[.keep, 1L]],
+             covariate = .of[.keep],
+             alternate = covNames[.ix[.keep, 2L]],
+             delta = .gap[.ix[.keep, , drop = FALSE]],
+             row.names = NULL)
+}
+
 #' @param cluster from [.vaeCovCluster()]
 #' @param group `covGroup`
 #' @return single logical

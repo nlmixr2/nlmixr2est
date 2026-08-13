@@ -129,6 +129,48 @@ nmTest({
     expect_error(vaeCovariates(d, warn = FALSE, colinearCut = 1.5))
   })
 
+  test_that("the near-tie note fits the runInfo one-line budget", {
+    expect_identical(nlmixr2est:::.vaeColinearMsg(0L), character(0))
+    expect_identical(nlmixr2est:::.vaeColinearMsg(NA_integer_), character(0))
+    msg <- nlmixr2est:::.vaeColinearMsg(2L)
+    expect_gt(length(msg), 0L)
+    expect_true(all(nchar(msg) <= 75L))
+    ## no method-name prefix: the fit already reports which method ran
+    expect_false(any(grepl("^vae", msg)))
+  })
+
+  test_that("alternates pair each mate with the covariate it stands in for", {
+    ## C++ marks only the MATE; the covariate it is an alternative to is the
+    ## selected column of the same cluster on that dimension
+    etaNames <- c("eta.cl", "eta.v")
+    covNames <- c("WT_power", "LBM_power", "AGE_power")
+    cluster <- c(1L, 1L, 2L)
+    selected <- matrix(c(TRUE, FALSE, FALSE,
+                         FALSE, FALSE, TRUE), nrow = 2L, byrow = TRUE)
+    tie <- matrix(0L, 2L, 3L); tie[1L, 2L] <- 1L      # LBM near-ties WT on eta.cl
+    gap <- matrix(0, 2L, 3L);  gap[1L, 2L] <- 0.02
+    got <- nlmixr2est:::.vaeColinearAlt(list(altTie = tie, altGap = gap),
+                                        selected, cluster, etaNames, covNames)
+    expect_identical(nrow(got), 1L)
+    expect_identical(got$param, "eta.cl")
+    expect_identical(got$covariate, "WT_power")
+    expect_identical(got$alternate, "LBM_power")
+    expect_equal(got$delta, 0.02)
+  })
+
+  test_that("an empty alternates table is a zero-row frame, never NULL", {
+    e <- nlmixr2est:::.vaeColinearAlt(NULL, matrix(FALSE, 1L, 1L), 1L, "eta", "WT")
+    expect_s3_class(e, "data.frame")
+    expect_identical(nrow(e), 0L)
+    expect_identical(names(e), c("param", "covariate", "alternate", "delta"))
+    ## a marked mate with no selected cluster-mate is dropped rather than
+    ## producing an NA row
+    tie <- matrix(1L, 1L, 1L)
+    z <- nlmixr2est:::.vaeColinearAlt(list(altTie = tie, altGap = matrix(0, 1L, 1L)),
+                                      matrix(FALSE, 1L, 1L), 1L, "eta", "WT")
+    expect_identical(nrow(z), 0L)
+  })
+
   test_that("vaeControl exposes the colinearity knobs with measured defaults", {
     expect_true(vaeControl()$covSelectColinear)
     expect_equal(vaeControl()$covSelectColinearCut, 0.9)
@@ -139,5 +181,9 @@ nmTest({
     expect_error(vaeControl(covSelectColinearCut = 1.5))
     expect_error(vaeControl(covSelectColinearCut = -0.1))
     expect_error(vaeControl(covSelectColinear = "yes"))
+    expect_equal(vaeControl()$covSelectHysteresis, 0.25)
+    expect_equal(vaeControl()$covSelectAltTol, 0.1)
+    expect_error(vaeControl(covSelectHysteresis = -1))
+    expect_error(vaeControl(covSelectAltTol = -1))
   })
 })
