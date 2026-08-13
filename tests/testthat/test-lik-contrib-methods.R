@@ -35,6 +35,9 @@ test_that("likelihood contributions reach the nonparametric objective (npag/npb)
 
   .nObs <- sum(theo_sd$EVID == 0)
   cc <- 0.01
+  ## a fit that errors must not leave the hook registered for the rest of the
+  ## suite -- removal is idempotent, so an unconditional on.exit is safe
+  on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
 
   for (.est in c("npag", "npb")) {
     .ctl <- do.call(paste0(.est, "Control"), list(print = 0L))

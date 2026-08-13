@@ -138,6 +138,12 @@ into the accumulators (`llik`, `dLL/deta`, ...).  Registration is via
 `nlmixrRegisterLikContrib()` / `nlmixrRegisterEmLik()`; the registry is *cycled in
 series*, so several packages can contribute at once.
 
+Because the registry holds raw function pointers, the lifecycle matters in both
+directions: install the pointer table on **every** `.onLoad()` (a reloaded
+`nlmixr2est` hands back new addresses), and unregister every bundle in your
+`.onUnload()` -- `nlmixr2est` cannot tell that your DLL has gone away, so a
+bundle left behind is called on the next objective evaluation.
+
 This is a C-linkage API rather than an R one -- see `inst/include/nlmixr2estLikContrib.h`
 for the exact struct and the `nlmixr2nn` package (`src/*Contrib.c`) for a worked
 consumer.  The mechanism follows `rxode2`'s function-pointer-table convention

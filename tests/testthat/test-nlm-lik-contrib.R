@@ -29,8 +29,11 @@ test_that("nlm population objective fires the lik-contrib hook + one-shot setup 
   .nObs <- sum(theo_sd$EVID == 0)
   .nsub <- length(unique(theo_sd$ID))
 
-  ## a normal nlm fit fires the hook (the C++ cotangent capture path)
+  ## a normal nlm fit fires the hook (the C++ cotangent capture path).  The
+  ## on.exit removal is what keeps a failing fit from leaving the test hook
+  ## registered for the rest of the suite (removal is idempotent).
   .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
+  on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
   .fit <- suppressWarnings(suppressMessages(
     nlmixr2(pop.model, theo_sd, est = "nlm", control = nlmControl(print = 0L))))
   .resFit <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")

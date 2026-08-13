@@ -878,7 +878,10 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @keywords internal
 #' @author Matthew L. Fidler
 nlmObjectiveSetup <- function(ui, data, control = NULL) {
-  .ui <- rxode2::rxUiDecompress(ui)
+  ## .copyUi, not rxUiDecompress: decompressing an already-decompressed ui hands
+  ## back the SAME environment, so assigning $control below would permanently
+  ## rebind the caller's model to this control.
+  .ui <- rxode2::.copyUi(ui)
   if (is.null(control)) {
     control <- if (!is.null(.ui$control)) .ui$control else nlmControl()
   }
