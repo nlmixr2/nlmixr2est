@@ -201,6 +201,24 @@ nmTest({
     expect_false(any(grepl("declare an omega block", f$runInfo)))
   })
 
+  test_that("every covSelectPhiCor source drives the grouping in a real fit", {
+    skip_on_cran()
+    ## Each source builds the correlation matrix from a different quantity in
+    ## C++ -- the smoothed sufficient statistic, the raw posterior means, or the
+    ## means less the fitted covariate centers.  Only the default runs unless
+    ## this asks for the others, so the two alternative branches would otherwise
+    ## never execute.
+    d <- .phiData(seed = 31L)
+    for (src in c("suffStat", "mu", "resid")) {
+      f <- suppressMessages(suppressWarnings(
+        nlmixr2(.phiBlock, d, est = "vae",
+                control = .phiCtl(covSelectPhiCor = src))))
+      ## the branch ran and produced a grouping
+      expect_gt(f$vae$colinear$nPhiPair, 0L, label = src)
+      expect_gt(f$vae$colinear$nPhiTest, 0L, label = src)
+    }
+  })
+
   test_that("a bounded intercept is held, and an emptied support survives it", {
     skip_on_cran()
     ## When a joint candidate would push a population intercept past its ini()
