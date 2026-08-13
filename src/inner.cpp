@@ -16997,14 +16997,31 @@ static bool vaeSelLess(std::vector<int> a, std::vector<int> b) {
   return a < b;  // std::vector lexicographic compare
 }
 
+// Price the support `inSet` under the M-step objective, without touching the
+// incumbent.  Split out of vaeBnbLeaf so the colinear hysteresis and near-tie
+// passes can score a candidate the search has already rejected.  An infeasible
+// support scores +inf AND reports feasibility separately: the caller must not
+// treat it as a tie against an infinite incumbent (which is what bestScore is
+// before the first finite leaf), or an infeasible support could become the
+// incumbent through the vaeSelLess tie-break.
+static double vaeScoreSupport(const VaeBnbCtx& c, const std::vector<int>& inSet,
+                              arma::vec* coefOut, bool* feasOut = nullptr) {
+  if (!vaeGroupOk(c, inSet) ||          // infeasible: two shapes of one covariate
+      !vaeBlockOk(c, inSet)) {          // infeasible: half a hockey stick
+    if (feasOut != nullptr) *feasOut = false;
+    return std::numeric_limits<double>::infinity();
+  }
+  if (feasOut != nullptr) *feasOut = true;
+  double rss = vaeOlsRss(*c.X, vaeSubsetCols(inSet), *c.y, coefOut);
+  return rss / c.omega + c.penalty * (double)inSet.size();
+}
+
 // Evaluate the model whose support is exactly `inSet`; update the incumbent.
 static void vaeBnbLeaf(VaeBnbCtx& c, const std::vector<int>& inSet) {
-  if (!vaeGroupOk(c, inSet)) return;   // infeasible: two shapes of one covariate
-  if (!vaeBlockOk(c, inSet)) return;   // infeasible: half a hockey stick
-  arma::uvec cols = vaeSubsetCols(inSet);
   arma::vec coef;
-  double rss = vaeOlsRss(*c.X, cols, *c.y, &coef);
-  double score = rss / c.omega + c.penalty * (double)inSet.size();
+  bool feas = false;
+  double score = vaeScoreSupport(c, inSet, &coef, &feas);
+  if (!feas) return;
   if (score < c.bestScore ||
       (score == c.bestScore && vaeSelLess(inSet, c.bestSel))) {
     c.bestScore = score; c.bestSel = inSet; c.bestCoef = coef;
@@ -18001,9 +18018,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // diagonal Omega c_ik = 0 and 1/P_kk = omega_k -- exactly the old code.
       arma::mat covOffset(N, zDim, arma::fill::zeros);
       arma::vec covVar = omega;
+      // Kept outside the `if` so the cross-phi refinement can score against the
+      // SAME precision matrix the offsets were built from; havePom is what gates
+      // it, since a failed inv_sympd leaves the coupling undefined.
+      arma::mat Pom;
+      bool havePom = false;
       if (omOff) {
-        arma::mat P;
+        arma::mat& P = Pom;
         if (arma::inv_sympd(P, arma::symmatu(omFull()))) {
+          havePom = true;
           arma::mat resp = covSelectSmooth ? s1 : last.mu;
           arma::mat rPrev = resp - zPopArg;       // previous-iteration residuals
           for (int k = 0; k < zDim; ++k) {
