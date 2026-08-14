@@ -448,12 +448,6 @@
   }
   invisible()
 }
-#' Get SAEM omega
-#'
-#' @param env Environment that has ui and saem in it
-#' @return Nothing, environment is assigned the omega
-#' @author Matthew L. Fidler
-#' @noRd
 #' Note a degenerate final SAEM omega in the fit's $runInfo
 #'
 #' A collapsed (zero) or non-finite variance is the visible signature of an
@@ -488,6 +482,12 @@
   invisible()
 }
 
+#' Get SAEM omega
+#'
+#' @param env Environment that has ui and saem in it
+#' @return Nothing, environment is assigned the omega
+#' @author Matthew L. Fidler
+#' @noRd
 .getSaemOmega <- function(env) {
   ## Reorder based on translation
   .saem <- env$saem
@@ -1178,13 +1178,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
-#' Fit the saem family of models
-#'
-#' @param env Environment from nlmixr2Est
-#' @param ... Other arguments
-#' @return fit environment with $saem, $saemControl, $dataSav, $origData, $ui
-#' @author Matthew L. Fidler
-#' @noRd
 #' Build the saem fit object, degrading to a table-free fit on failure
 #'
 #' The SAEM run itself is finished by this point (thetas, omega and the
@@ -1220,6 +1213,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
+#' Fit the saem family of models
+#'
+#' @param env Environment from nlmixr2Est
+#' @param ... Other arguments
+#' @return fit environment with $saem, $saemControl, $dataSav, $origData, $ui
+#' @author Matthew L. Fidler
+#' @noRd
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
