@@ -13238,6 +13238,38 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   // fdOmegaTvDeriv).  A shared step makes this pass matter more here than for theta: one
   // step cannot suit every subject, so a subject whose slope it mis-sizes is exactly what
   // the outlier test is for.
+// Search the shi step for one omega column, honouring the cache and the warm start.
+// Returns the step, or 0 when the search terminated on its bound -- clamped steps are
+// neither used nor cached, exactly as in the theta block.
+static double foceiFdOmegaStep1(arma::vec &om, arma::vec &f0, int col, int q,
+                                double &hWarmOm) {
+  arma::vec gr(1);
+  // ef is the assumed RELATIVE ACCURACY of f, and f here is an inner-optimized
+  // profile likelihood: its noise floor is set by the inner optimizer and the ODE
+  // tolerance, not by machine precision.  hessEps (eps^(1/3)) overstates it enough
+  // that the chosen step can land in that noise on a poorly conditioned subject,
+  // which shows up as a sign-flipped omega derivative.
+  double hs = hWarmOm;
+  // Central, not forward -- see the theta block for the measurement that rejected the
+  // forward arrangement.
+  double h = shi21Central(shi21LikOmegaSum, om, hs, f0, gr, _fdOmIds[0], q,
+                   std::pow(DBL_EPSILON, 0.25),
+                   1.5,   // rl
+                   4.5,   // ru
+                   3.0,   // nu
+                   op_focei.shi21maxFD,
+                   op_focei.shi21hMax, op_focei.shi21hMin);
+  // Clamped: neither used nor cached, exactly as in the theta block.
+  if (!R_finite(h) || h <= 0.0 ||
+      h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+    op_focei.nFdStepClamped++;
+    return 0.0;
+  }
+  fdStepCachePut(col, h, _fdOmBlock0[(size_t)q]);
+  hWarmOm = h;
+  return h;
+}
+
 // The omega step search and its two legs.  Free omega parameters only, with its own
 // warm start: an omega estimation-scale entry is not on the theta scale, so chaining a
 // theta step in here would start every search in the wrong place.
@@ -13257,30 +13289,8 @@ static void foceiFdOmegaSteps(NumericMatrix out, NumericMatrix hOut,
     double h = (_fdForceH > 0.0) ? _fdForceH
       : fdStepCacheGet(_fdOmIds, col, _fdOmBlock0[(size_t)q]);
     if (_fdForceH <= 0.0 && h == 0.0) {
-      arma::vec gr(1);
-      // ef is the assumed RELATIVE ACCURACY of f, and f here is an inner-optimized
-      // profile likelihood: its noise floor is set by the inner optimizer and the ODE
-      // tolerance, not by machine precision.  hessEps (eps^(1/3)) overstates it enough
-      // that the chosen step can land in that noise on a poorly conditioned subject,
-      // which shows up as a sign-flipped omega derivative.
-      double hs = hWarmOm;
-      // Central, not forward -- see the theta block for the measurement that rejected the
-      // forward arrangement.
-      h = shi21Central(shi21LikOmegaSum, om, hs, f0, gr, _fdOmIds[0], q,
-                       std::pow(DBL_EPSILON, 0.25),
-                       1.5,   // rl
-                       4.5,   // ru
-                       3.0,   // nu
-                       op_focei.shi21maxFD,
-                       op_focei.shi21hMax, op_focei.shi21hMin);
-      // Clamped: neither used nor cached, exactly as in the theta block.
-      if (!R_finite(h) || h <= 0.0 ||
-          h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
-        op_focei.nFdStepClamped++;
-        continue;
-      }
-      fdStepCachePut(col, h, _fdOmBlock0[(size_t)q]);
-      hWarmOm = h;
+      h = foceiFdOmegaStep1(om, f0, col, q, hWarmOm);
+      if (h == 0.0) continue;                       // clamped: skip this column
     }
     std::vector<double> up, dn;
     fdOmegaLeg(q, h, fdCores, fdParallel, up);
