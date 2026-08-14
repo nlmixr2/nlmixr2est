@@ -17491,10 +17491,15 @@ static void vaeColinTiePass(VaeBnbCtx& c, const VaeColinScratch& sc,
         if (!ok || !R_FINITE(sAlt)) continue;
         ++(*nTest);
         if (sAlt - scoreCur > tieTol * c.penalty) continue;
+        // reported in the SAME units the tolerance is expressed in (penalties),
+        // so the two are directly comparable; a raw score gap would leave the
+        // reader comparing different scales
+        const double gap = (c.penalty > 0) ? (sAlt - scoreCur) / c.penalty
+          : (sAlt - scoreCur);
         const std::vector<int>& cols = c.blocks[(size_t)bAlt];
         for (size_t u = 0; u < cols.size(); ++u) {
           tieCol->push_back(cols[u]);
-          tieGap->push_back(sAlt - scoreCur);
+          tieGap->push_back(gap);
         }
       }
     }

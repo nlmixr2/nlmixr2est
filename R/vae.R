@@ -369,9 +369,13 @@
 #'   the number of subjects while the decision scale does not.
 #' @param covSelectAltTol Score window, in the same penalty units, within which a
 #'   cluster mate of a selected covariate is reported as a near-tied alternative
-#'   (default `0.10`).  These are the choices the data could not really
-#'   distinguish; they are listed in `$vae$colinear$alternates`.  `0` disables the
-#'   report.
+#'   (default `0.5`).  These are the choices the data could not really
+#'   distinguish; they are listed in `$vae$colinear$alternates`, whose `delta`
+#'   column is in these same units.  `0` disables the report.  The default is
+#'   measured: on a simulated pair correlated at `0.99` the selected covariate
+#'   changes from run to run, and the gap between the two averages about `0.39`
+#'   penalty units -- so a much tighter window stays silent in exactly the case
+#'   the report exists for.
 #' @param covSelectPhiCor Which quantity the correlation between latent
 #'   dimensions is computed from when grouping them for the cross-parameter
 #'   covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
@@ -484,7 +488,7 @@ vaeControl <- function(seed = 42L,
                        covSelectColinear = TRUE,
                        covSelectColinearCut = .vaeColinearCut,
                        covSelectHysteresis = 0.25,
-                       covSelectAltTol = 0.1,
+                       covSelectAltTol = 0.5,
                        covSelectPhiCor = c("suffStat", "mu", "resid"),
                        covSelectPhiJoin = 0.9,
                        covSelectPhiLeave = 0.8,

@@ -209,7 +209,7 @@ nmTest({
     expect_error(vaeControl(covSelectColinearCut = -0.1))
     expect_error(vaeControl(covSelectColinear = "yes"))
     expect_equal(vaeControl()$covSelectHysteresis, 0.25)
-    expect_equal(vaeControl()$covSelectAltTol, 0.1)
+    expect_equal(vaeControl()$covSelectAltTol, 0.5)
     expect_error(vaeControl(covSelectHysteresis = -1))
     expect_error(vaeControl(covSelectAltTol = -1))
   })

@@ -22,7 +22,8 @@
   `vaeControl(covSelectHysteresis=)`, which stops the winner flipping from
   iteration to iteration, and mates that scored within
   `vaeControl(covSelectAltTol=)` are reported in `$vae$colinear$alternates` so a
-  near-arbitrary choice is visible rather than silent.  When the model declares
+  near-arbitrary choice is visible rather than silent; the reported `delta` is in
+  the same units as that setting.  When the model declares
   correlated etas, a further pass tests whether a covariate assigned to one
   parameter is better explained on a correlated one -- something no
   per-parameter search can see, because the coupling between them is held fixed
