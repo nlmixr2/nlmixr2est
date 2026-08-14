@@ -301,7 +301,7 @@ agqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x561fa1ba1b40>
+#> <bytecode: 0x55e3867197b0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -931,6 +931,21 @@ agqControl()
 #> 
 #> $indLinForcing
 #> [1] 1
+#> 
+#> $usePrior
+#> [1] NA
+#> 
+#> $priorPdRetry
+#> [1] 10
+#> 
+#> $priorOmega
+#> NULL
+#> 
+#> $priorOmegaEl
+#> NULL
+#> 
+#> $priorSigmaEl
+#> NULL
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

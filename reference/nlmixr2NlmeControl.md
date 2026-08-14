@@ -885,6 +885,21 @@ nlmeControl()
 #> $indLinForcing
 #> [1] 1
 #> 
+#> $usePrior
+#> [1] NA
+#> 
+#> $priorPdRetry
+#> [1] 10
+#> 
+#> $priorOmega
+#> NULL
+#> 
+#> $priorOmegaEl
+#> NULL
+#> 
+#> $priorSigmaEl
+#> NULL
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -1425,6 +1440,21 @@ nlmixr2NlmeControl()
 #> 
 #> $indLinForcing
 #> [1] 1
+#> 
+#> $usePrior
+#> [1] NA
+#> 
+#> $priorPdRetry
+#> [1] 10
+#> 
+#> $priorOmega
+#> NULL
+#> 
+#> $priorOmegaEl
+#> NULL
+#> 
+#> $priorSigmaEl
+#> NULL
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
