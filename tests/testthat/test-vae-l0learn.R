@@ -11,7 +11,7 @@ nmTest({
     N <- 120L; p <- 12L
     X <- matrix(rnorm(N * p), N, p)
     y <- as.numeric(0.5 + X[, c(3, 7, 10)] %*% c(1.5, -2, 1) + rnorm(N, sd = 0.5))
-    s <- nlmixr2est:::.vaeL0Supports(X, y)
+    s <- .vaeL0Supports(X, y)
 
     expect_type(s, "list")
     expect_gt(length(s), 1L)
@@ -38,21 +38,21 @@ nmTest({
     X <- matrix(rnorm(N * p), N, p)
     y <- as.numeric(X[, 2] * 2 + rnorm(N))
     .seedBefore <- .Random.seed
-    a <- nlmixr2est:::.vaeL0Supports(X, y)
+    a <- .vaeL0Supports(X, y)
     expect_identical(.Random.seed, .seedBefore)  # no RNG consumption
-    b <- nlmixr2est:::.vaeL0Supports(X, y)
+    b <- .vaeL0Supports(X, y)
     expect_identical(a, b)
   })
 
   test_that(".vaeL0Supports degrades to the empty support on unusable input", {
     .empty <- list(integer(0))
-    expect_identical(nlmixr2est:::.vaeL0Supports(matrix(0, 10, 0), rnorm(10)), .empty)
-    expect_identical(nlmixr2est:::.vaeL0Supports(matrix(1, 2, 3), rnorm(2)), .empty)
+    expect_identical(.vaeL0Supports(matrix(0, 10, 0), rnorm(10)), .empty)
+    expect_identical(.vaeL0Supports(matrix(1, 2, 3), rnorm(2)), .empty)
     X <- matrix(rnorm(60), 20, 3); X[1, 1] <- NA_real_
-    expect_identical(nlmixr2est:::.vaeL0Supports(X, rnorm(20)), .empty)
+    expect_identical(.vaeL0Supports(X, rnorm(20)), .empty)
     X <- matrix(rnorm(60), 20, 3)
     y <- rnorm(20); y[3] <- Inf
-    expect_identical(nlmixr2est:::.vaeL0Supports(X, y), .empty)
+    expect_identical(.vaeL0Supports(X, y), .empty)
   })
 
   test_that(".vaeCovSelectModes resolves the per-eta mode", {
@@ -62,35 +62,35 @@ nmTest({
     nCand <- c(30L, 10L, 30L)
 
     ## explicit "bnb": nothing switches, whatever the size
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("bnb"))
+    m <- .vaeCovSelectModes(nCand, ctl("bnb"))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
     ## "auto": only the dimensions at/over the threshold switch
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"))
+    m <- .vaeCovSelectModes(nCand, ctl("auto"))
     expect_identical(m$mode, c(1L, 0L, 1L))
     expect_identical(m$used, "mixed")
     expect_match(m$msg, "not the exact search", all = FALSE)
 
     ## "auto" below the threshold everywhere: unchanged, silent
-    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"))
+    m <- .vaeCovSelectModes(c(5L, 10L), ctl("auto"))
     expect_identical(m$mode, c(0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
     ## covSelectMaxExact=Inf forces the exact search even for a wide problem
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf))
+    m <- .vaeCovSelectModes(nCand, ctl("auto", Inf))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
 
     ## explicit "l0learn": every dimension with candidates switches
-    m <- nlmixr2est:::.vaeCovSelectModes(c(3L, 0L), ctl("l0learn"))
+    m <- .vaeCovSelectModes(c(3L, 0L), ctl("l0learn"))
     expect_identical(m$mode, c(1L, 0L))
     expect_identical(m$used, "mixed")
 
     ## the threshold is honored
-    m <- nlmixr2est:::.vaeCovSelectModes(c(24L, 25L), ctl("auto"))
+    m <- .vaeCovSelectModes(c(24L, 25L), ctl("auto"))
     expect_identical(m$mode, c(0L, 1L))
   })
 
@@ -110,7 +110,7 @@ nmTest({
   test_that("the run-time message stays inside the runInfo one-line budget", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     ctl <- list(covSelectMethod = "auto", covSelectMaxExact = 25L)
-    msgs <- nlmixr2est:::.vaeCovSelectModes(30L, ctl)$msg
+    msgs <- .vaeCovSelectModes(30L, ctl)$msg
     expect_gt(length(msgs), 0L)
     expect_true(all(nchar(msgs) <= 75L))
   })
@@ -203,7 +203,7 @@ nmTest({
       y <- as.numeric(0.5 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) *
                         sample(c(-1, 1), k, TRUE) + rnorm(N, sd = 0.6))
       omega <- 0.5; penalty <- log(N)
-      cand <- nlmixr2est:::.vaeL0Supports(X, y)
+      cand <- .vaeL0Supports(X, y)
       got <- vaeScoreSupports_(y, X, omega, penalty, cand, polish = TRUE)
       ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
       expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]),
@@ -219,7 +219,7 @@ nmTest({
                as.numeric(covMat[, 9] * -3 + rnorm(N, sd = 0.3)))
 
     ## dim 1 uses L0Learn, dim 2 stays on the exact search -> NULL
-    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 0L))
+    cand <- .vaeL0Candidates(y, covMat, mode = c(1L, 0L))
     expect_length(cand, 2L)
     expect_null(cand[[2]])
     ## no pinning: reduced design == full design, so column 4 is index 3
@@ -228,7 +228,7 @@ nmTest({
     ## pinCovariates: indices are into the REDUCED design, so they stay in
     ## 0..(length(allowed)-1) -- the C++ caller maps them back to global columns
     allowed <- list(c(3L, 8L), integer(0))
-    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 1L), allowed = allowed)
+    cand <- .vaeL0Candidates(y, covMat, mode = c(1L, 1L), allowed = allowed)
     expect_true(all(unlist(cand[[1]]) %in% c(0L, 1L)))
     expect_identical(cand[[2]], list(integer(0)))
   })
@@ -242,12 +242,12 @@ nmTest({
     y <- as.numeric(X[, 1] + rnorm(N))
     ## unusable input degrades WITHOUT being flagged -- there is nothing to
     ## report, the design was never fit
-    expect_null(attr(nlmixr2est:::.vaeL0Supports(X[1:2, , drop = FALSE], y[1:2]),
+    expect_null(attr(.vaeL0Supports(X[1:2, , drop = FALSE], y[1:2]),
                      "vaeL0Fail"))
-    expect_null(attr(nlmixr2est:::.vaeL0Supports(matrix(0, N, 0L), y), "vaeL0Fail"))
+    expect_null(attr(.vaeL0Supports(matrix(0, N, 0L), y), "vaeL0Fail"))
     ## a usable design on which every penalty path comes back empty IS flagged
     testthat::local_mocked_bindings(.vaeL0Path = function(x, y, penalty) list())
-    got <- nlmixr2est:::.vaeL0Supports(X, y)
+    got <- .vaeL0Supports(X, y)
     expect_true(isTRUE(attr(got, "vaeL0Fail")))
     ## and it still returns the intercept-only support, never nothing
     expect_identical(unclass(got)[[1]], integer(0))
@@ -261,7 +261,7 @@ nmTest({
     env <- new.env(parent = emptyenv())
     env$n <- 0L
     testthat::local_mocked_bindings(.vaeL0Path = function(x, y, penalty) list())
-    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 1L),
+    cand <- .vaeL0Candidates(y, covMat, mode = c(1L, 1L),
                                           allowed = NULL, failEnv = env)
     ## one per latent dimension that fell back
     expect_identical(env$n, 2L)
@@ -270,9 +270,9 @@ nmTest({
   })
 
   test_that("the L0Learn fallback note fits the runInfo one-line budget", {
-    expect_identical(nlmixr2est:::.vaeL0FailMsg(0L), character(0))
-    expect_identical(nlmixr2est:::.vaeL0FailMsg(NA_integer_), character(0))
-    msg <- nlmixr2est:::.vaeL0FailMsg(3L)
+    expect_identical(.vaeL0FailMsg(0L), character(0))
+    expect_identical(.vaeL0FailMsg(NA_integer_), character(0))
+    msg <- .vaeL0FailMsg(3L)
     expect_gt(length(msg), 0L)
     expect_true(all(nchar(msg) <= 75L))
     ## no method-name prefix: the fit already reports which method ran

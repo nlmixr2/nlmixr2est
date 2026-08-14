@@ -55,7 +55,7 @@ nmTest({
     ## the design really is clustered, so a counter reaching zero would mean the
     ## mechanism never engaged rather than that there was nothing to do
     cv <- vaeCovariates(d, warn = FALSE)
-    expect_true(nlmixr2est:::.vaeClusterBinds(cv$cluster, cv$group))
+    expect_true(.vaeClusterBinds(cv$cluster, cv$group))
 
     ## a wide window so the report is exercised deterministically; the default is
     ## much tighter and correctly stays quiet on this fit

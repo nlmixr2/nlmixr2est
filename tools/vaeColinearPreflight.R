@@ -72,12 +72,15 @@ maxCrossGroupCor <- function(covMat, group) {
 staticRow <- function(label, data) {
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
+  ## a standalone script does not run inside the package namespace, so the two
+  ## internals it needs are fetched explicitly via an explicit namespace lookup
+  .search <- utils::getFromNamespace(".vaeCovariateSearch", "nlmixr2est")
+  .shapes <- utils::getFromNamespace(".vaeResolveShapes", "nlmixr2est")
   .cov <- tryCatch(
-    nlmixr2est:::.vaeCovariateSearch(d, unique(d$ID),
-                                     nlmixr2est:::.vaeResolveShapes(
-                                       c("power", "lin", "log", "identity",
-                                         "center", "hockey"))$rules,
-                                     "median", NULL, 0.05),
+    .search(d, unique(d$ID),
+            .shapes(c("power", "lin", "log", "identity",
+                      "center", "hockey"))$rules,
+            "median", NULL, 0.05),
     error = function(e) NULL)
   if (is.null(.cov) || ncol(.cov$covMat) == 0L) {
     return(data.frame(design = label, nCol = 0L, nGroup = 0L,

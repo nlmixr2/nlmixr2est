@@ -17336,6 +17336,164 @@ struct VaeColinOut {
 // rss/omega is order N at the optimum while the decision scale is log(N), so a
 // fraction of the score would silently mean something different at every sample
 // size.
+// Per-call scratch shared by the two swap passes: which cluster and which
+// mutual-exclusion group each BLOCK belongs to.  A cluster contains whole
+// groups, so a covariate's own alternate shapes sit in it too -- those are
+// competing parameterizations of one covariate, already arbitrated by mutual
+// exclusion and near-tied on almost every model, so every swap here is
+// cross-group.
+struct VaeColinScratch {
+  std::vector<int> clsOfBlk;
+  std::vector<int> grpOfBlk;
+  int nBlk;
+};
+
+static VaeColinScratch vaeColinScratchOf(const VaeBnbCtx& c,
+                                         const std::vector<int>& cls) {
+  VaeColinScratch sc;
+  sc.nBlk = (int)c.blocks.size();
+  sc.clsOfBlk.assign((size_t)sc.nBlk, -1);
+  sc.grpOfBlk.assign((size_t)sc.nBlk, -1);
+  for (int b = 0; b < sc.nBlk; ++b) {
+    const int col0 = c.blocks[(size_t)b][0];
+    sc.clsOfBlk[(size_t)b] = cls[(size_t)col0];
+    // with no groups declared, each block is its own covariate
+    sc.grpOfBlk[(size_t)b] = (c.grp == nullptr) ? -(b + 1) : (*c.grp)[(size_t)col0];
+  }
+  return sc;
+}
+
+// `s` with block bIn's columns replaced by block bAlt's, kept ascending
+static std::vector<int> vaeColinSwap(const VaeBnbCtx& c, const std::vector<int>& s,
+                                     int bIn, int bAlt) {
+  std::vector<int> t;
+  t.reserve(s.size() + c.blocks[(size_t)bAlt].size());
+  for (size_t u = 0; u < s.size(); ++u) {
+    if (c.blockOf[(size_t)s[u]] != bIn) t.push_back(s[u]);
+  }
+  const std::vector<int>& add = c.blocks[(size_t)bAlt];
+  t.insert(t.end(), add.begin(), add.end());
+  std::sort(t.begin(), t.end());
+  return t;
+}
+
+static bool vaeColinHasBlk(const VaeBnbCtx& c, const std::vector<int>& s, int b) {
+  for (size_t u = 0; u < s.size(); ++u) if (c.blockOf[(size_t)s[u]] == b) return true;
+  return false;
+}
+
+// were ALL (wantAll) / NONE (!wantAll) of block b's columns selected last time?
+static bool vaeColinPrev(const VaeBnbCtx& c, const std::vector<char>& prevIn,
+                         int b, bool wantAll) {
+  const std::vector<int>& cols = c.blocks[(size_t)b];
+  for (size_t u = 0; u < cols.size(); ++u) {
+    if (wantAll != (prevIn[(size_t)cols[u]] != 0)) return false;
+  }
+  return true;
+}
+
+// clusters present among the selected columns, ascending -- a fixed order, so
+// the outcome does not depend on how the support happens to be laid out
+static std::vector<int> vaeColinClusters(const std::vector<int>& cur,
+                                         const std::vector<int>& cls) {
+  std::vector<int> seen;
+  for (size_t u = 0; u < cur.size(); ++u) {
+    const int cl = cls[(size_t)cur[u]];
+    if (cl < 0) continue;
+    if (std::find(seen.begin(), seen.end(), cl) == seen.end()) seen.push_back(cl);
+  }
+  std::sort(seen.begin(), seen.end());
+  return seen;
+}
+
+// eligible partner for bIn: same cluster, different covariate, not already in
+static bool vaeColinPartner(const VaeColinScratch& sc, const VaeBnbCtx& c,
+                            const std::vector<int>& cur, int bIn, int bAlt) {
+  if (bAlt == bIn) return false;
+  if (sc.clsOfBlk[(size_t)bAlt] != sc.clsOfBlk[(size_t)bIn]) return false;
+  if (sc.grpOfBlk[(size_t)bAlt] == sc.grpOfBlk[(size_t)bIn]) return false;
+  return !vaeColinHasBlk(c, cur, bAlt);
+}
+
+// Hysteresis: within each cluster, revert to the covariate selected last
+// iteration when this iteration's winner failed to beat it by `holdTol`
+// penalties.  At most one revert per cluster, best-scoring, tie-broken
+// order-independently.
+static void vaeColinHoldPass(VaeBnbCtx& c, const VaeColinScratch& sc,
+                             const std::vector<int>& cls,
+                             const std::vector<char>& prevIn, double holdTol,
+                             std::vector<int>* cur, double* scoreCur,
+                             arma::vec* coefCur, int* nTest, int* nHold) {
+  std::vector<int> clsSeen = vaeColinClusters(*cur, cls);
+  for (size_t t = 0; t < clsSeen.size(); ++t) {
+    const int cl = clsSeen[t];
+    double bestScore = 0;
+    std::vector<int> bestSel;
+    bool have = false;
+    for (int bIn = 0; bIn < sc.nBlk; ++bIn) {
+      if (sc.clsOfBlk[(size_t)bIn] != cl || !vaeColinHasBlk(c, *cur, bIn)) continue;
+      // only a block the search ADDED this iteration can displace anything
+      if (!vaeColinPrev(c, prevIn, bIn, false)) continue;
+      for (int bAlt = 0; bAlt < sc.nBlk; ++bAlt) {
+        if (!vaeColinPartner(sc, c, *cur, bIn, bAlt)) continue;
+        if (!vaeColinPrev(c, prevIn, bAlt, true)) continue;
+        std::vector<int> alt = vaeColinSwap(c, *cur, bIn, bAlt);
+        arma::vec coefAlt;
+        bool ok = false;
+        double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
+        if (!ok || !R_FINITE(sAlt)) continue;
+        ++(*nTest);
+        if (sAlt - *scoreCur > holdTol * c.penalty) continue;
+        if (!have || sAlt < bestScore ||
+            (sAlt == bestScore && vaeSelLess(alt, bestSel))) {
+          have = true; bestScore = sAlt; bestSel = alt;
+        }
+      }
+    }
+    if (!have) continue;
+    *cur = bestSel;
+    arma::vec coefNew;
+    bool ok = false;
+    double sNew = vaeScoreSupport(c, *cur, &coefNew, &ok);
+    if (ok && R_FINITE(sNew)) { *scoreCur = sNew; *coefCur = coefNew; ++(*nHold); }
+  }
+}
+
+// Near-tie report, scored against the FINAL support so it describes what was
+// actually selected.
+static void vaeColinTiePass(VaeBnbCtx& c, const VaeColinScratch& sc,
+                            const std::vector<int>& cls,
+                            const std::vector<int>& cur, double scoreCur,
+                            double tieTol, int* nTest,
+                            std::vector<int>* tieCol, std::vector<double>* tieGap) {
+  std::vector<int> clsSeen = vaeColinClusters(cur, cls);
+  for (size_t t = 0; t < clsSeen.size(); ++t) {
+    const int cl = clsSeen[t];
+    for (int bIn = 0; bIn < sc.nBlk; ++bIn) {
+      if (sc.clsOfBlk[(size_t)bIn] != cl || !vaeColinHasBlk(c, cur, bIn)) continue;
+      for (int bAlt = 0; bAlt < sc.nBlk; ++bAlt) {
+        if (!vaeColinPartner(sc, c, cur, bIn, bAlt)) continue;
+        std::vector<int> alt = vaeColinSwap(c, cur, bIn, bAlt);
+        arma::vec coefAlt;
+        bool ok = false;
+        double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
+        if (!ok || !R_FINITE(sAlt)) continue;
+        ++(*nTest);
+        if (sAlt - scoreCur > tieTol * c.penalty) continue;
+        const std::vector<int>& cols = c.blocks[(size_t)bAlt];
+        for (size_t u = 0; u < cols.size(); ++u) {
+          tieCol->push_back(cols[u]);
+          tieGap->push_back(sAlt - scoreCur);
+        }
+      }
+    }
+  }
+}
+
+// Tolerances are in units of `penalty` (= log N), not fractions of the score:
+// rss/omega is order N at the optimum while the decision scale is log(N), so a
+// fraction of the score would silently mean something different at every sample
+// size.
 static VaeColinOut vaeColinStabilize(const VaeSubsetFit& fit,
                                      const arma::mat& X, const arma::vec& y,
                                      double omega, double penalty,
@@ -17357,23 +17515,7 @@ static VaeColinOut vaeColinStabilize(const VaeSubsetFit& fit,
   c.grp = grp;
   vaeBnbSetBlocks(c, blk, nCov);
   c.bestScore = std::numeric_limits<double>::infinity();
-  const int nBlk = (int)c.blocks.size();
-  // Every block lies inside one cluster: clusters are a COARSENING of the
-  // mutual-exclusion groups and a block never spans a group, so the cluster of a
-  // block is the cluster of any of its columns.
-  std::vector<int> clsOfBlk((size_t)nBlk, -1);
-  for (int b = 0; b < nBlk; ++b) clsOfBlk[(size_t)b] = cls[(size_t)c.blocks[(size_t)b][0]];
-  // A cluster contains whole GROUPS, so a covariate's own alternate shapes sit
-  // in it too.  Those are not interchangeable COVARIATES -- they are competing
-  // parameterizations of one, already arbitrated by mutual exclusion -- and they
-  // are near-tied on almost every model, so admitting them would make the
-  // diagnostic fire universally.  Every swap below is therefore cross-group.
-  // With no groups declared, each block is its own covariate.
-  std::vector<int> grpOfBlk((size_t)nBlk, -1);
-  for (int b = 0; b < nBlk; ++b) {
-    grpOfBlk[(size_t)b] = (c.grp == nullptr) ? -(b + 1)
-      : (*c.grp)[(size_t)c.blocks[(size_t)b][0]];
-  }
+  const VaeColinScratch sc = vaeColinScratchOf(c, cls);
 
   std::vector<int> cur = fit.sel;
   arma::vec coefCur;
@@ -17381,115 +17523,14 @@ static VaeColinOut vaeColinStabilize(const VaeSubsetFit& fit,
   double scoreCur = vaeScoreSupport(c, cur, &coefCur, &feas);
   if (!feas || !R_FINITE(scoreCur)) return out;
 
-  // cur with block bIn's columns replaced by block bAlt's, kept ascending
-  auto swapBlocks = [&](const std::vector<int>& s, int bIn, int bAlt) {
-    std::vector<int> t;
-    t.reserve(s.size() + c.blocks[(size_t)bAlt].size());
-    for (size_t u = 0; u < s.size(); ++u) {
-      if (c.blockOf[(size_t)s[u]] != bIn) t.push_back(s[u]);
-    }
-    const std::vector<int>& add = c.blocks[(size_t)bAlt];
-    t.insert(t.end(), add.begin(), add.end());
-    std::sort(t.begin(), t.end());
-    return t;
-  };
-  auto blkIn = [&](const std::vector<int>& s, int b) {
-    for (size_t u = 0; u < s.size(); ++u) if (c.blockOf[(size_t)s[u]] == b) return true;
-    return false;
-  };
-  auto allPrev = [&](int b) {
-    const std::vector<int>& cols = c.blocks[(size_t)b];
-    for (size_t u = 0; u < cols.size(); ++u) if (!prevIn[(size_t)cols[u]]) return false;
-    return true;
-  };
-  auto nonePrev = [&](int b) {
-    const std::vector<int>& cols = c.blocks[(size_t)b];
-    for (size_t u = 0; u < cols.size(); ++u) if (prevIn[(size_t)cols[u]]) return false;
-    return true;
-  };
-
-  // clusters present among the selected blocks, ascending -- a fixed order, so
-  // the outcome does not depend on how the support happens to be laid out
-  std::vector<int> clsSeen;
-  for (size_t u = 0; u < cur.size(); ++u) {
-    const int cl = cls[(size_t)cur[u]];
-    if (cl < 0) continue;
-    if (std::find(clsSeen.begin(), clsSeen.end(), cl) == clsSeen.end()) clsSeen.push_back(cl);
-  }
-  std::sort(clsSeen.begin(), clsSeen.end());
-
   if (doHold && holdTol > 0) {
-    for (size_t t = 0; t < clsSeen.size(); ++t) {
-      const int cl = clsSeen[t];
-      double bestScore = 0;
-      std::vector<int> bestSel;
-      bool have = false;
-      for (int bIn = 0; bIn < nBlk; ++bIn) {
-        if (clsOfBlk[(size_t)bIn] != cl || !blkIn(cur, bIn)) continue;
-        // only a block the search ADDED this iteration can displace anything
-        if (!nonePrev(bIn)) continue;
-        for (int bAlt = 0; bAlt < nBlk; ++bAlt) {
-          if (bAlt == bIn || clsOfBlk[(size_t)bAlt] != cl) continue;
-          if (grpOfBlk[(size_t)bAlt] == grpOfBlk[(size_t)bIn]) continue;
-          if (blkIn(cur, bAlt) || !allPrev(bAlt)) continue;
-          std::vector<int> alt = swapBlocks(cur, bIn, bAlt);
-          arma::vec coefAlt;
-          bool ok = false;
-          double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
-          if (!ok || !R_FINITE(sAlt)) continue;
-          ++out.nTest;
-          if (sAlt - scoreCur > holdTol * penalty) continue;
-          // best-scoring revert in this cluster, ties broken order-independently
-          if (!have || sAlt < bestScore ||
-              (sAlt == bestScore && vaeSelLess(alt, bestSel))) {
-            have = true; bestScore = sAlt; bestSel = alt;
-          }
-        }
-      }
-      if (have) {
-        cur = bestSel;
-        arma::vec coefNew;
-        bool ok = false;
-        double sNew = vaeScoreSupport(c, cur, &coefNew, &ok);
-        if (ok && R_FINITE(sNew)) { scoreCur = sNew; coefCur = coefNew; ++out.nHold; }
-      }
-    }
+    vaeColinHoldPass(c, sc, cls, prevIn, holdTol, &cur, &scoreCur, &coefCur,
+                     &out.nTest, &out.nHold);
   }
-
   if (doTies && tieTol > 0) {
-    // recomputed against the FINAL support, so the report describes what was
-    // actually selected
-    clsSeen.clear();
-    for (size_t u = 0; u < cur.size(); ++u) {
-      const int cl = cls[(size_t)cur[u]];
-      if (cl < 0) continue;
-      if (std::find(clsSeen.begin(), clsSeen.end(), cl) == clsSeen.end()) clsSeen.push_back(cl);
-    }
-    std::sort(clsSeen.begin(), clsSeen.end());
-    for (size_t t = 0; t < clsSeen.size(); ++t) {
-      const int cl = clsSeen[t];
-      for (int bIn = 0; bIn < nBlk; ++bIn) {
-        if (clsOfBlk[(size_t)bIn] != cl || !blkIn(cur, bIn)) continue;
-        for (int bAlt = 0; bAlt < nBlk; ++bAlt) {
-          if (bAlt == bIn || clsOfBlk[(size_t)bAlt] != cl || blkIn(cur, bAlt)) continue;
-          if (grpOfBlk[(size_t)bAlt] == grpOfBlk[(size_t)bIn]) continue;
-          std::vector<int> alt = swapBlocks(cur, bIn, bAlt);
-          arma::vec coefAlt;
-          bool ok = false;
-          double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
-          if (!ok || !R_FINITE(sAlt)) continue;
-          ++out.nTest;
-          if (sAlt - scoreCur > tieTol * penalty) continue;
-          const std::vector<int>& cols = c.blocks[(size_t)bAlt];
-          for (size_t u = 0; u < cols.size(); ++u) {
-            out.tieCol.push_back(cols[u]);
-            out.tieGap.push_back(sAlt - scoreCur);
-          }
-        }
-      }
-    }
+    vaeColinTiePass(c, sc, cls, cur, scoreCur, tieTol, &out.nTest,
+                    &out.tieCol, &out.tieGap);
   }
-
   c.bestSel = cur; c.bestCoef = coefCur; c.bestScore = scoreCur;
   out.fit = vaeFinishSubset(c, y);
   return out;
@@ -17540,99 +17581,146 @@ static arma::mat vaeJointZ(const VaeJointCtx& jc, const std::vector<int>& sup) {
 // `clamped` reports whether any intercept hit its bound: the caller re-scores
 // those with the intercept FIXED, because the per-dim path clamps after scoring
 // and a move must not win on a score its written parameters cannot achieve.
+// Is dim `a` of the group having its intercept held at a bound?
+static inline bool vaeJointHeld(const std::vector<double>* icFix, size_t a) {
+  return icFix != nullptr && R_FINITE((*icFix)[a]);
+}
+
+// Drop the intercept column when it is being held.  An intercept-only support
+// leaves NO columns, and Armadillo's cols(1, 0) is out of bounds rather than
+// empty -- which would throw into the caller's catch-all and silently disable a
+// whole refinement group.
+static arma::mat vaeJointStripIc(const arma::mat& Z, bool held) {
+  if (!held) return arma::mat(Z);
+  if (Z.n_cols <= 1) return arma::mat(Z.n_rows, 0);
+  return arma::mat(Z.cols(1, Z.n_cols - 1));
+}
+
+// Per-dim designs and the block offsets of the joint system; a held intercept
+// costs one column.  Returns the total width.
+static int vaeJointBlocks(const VaeJointCtx& jc,
+                          const std::vector<std::vector<int> >& sup,
+                          const std::vector<double>* icFix,
+                          std::vector<arma::mat>* Z, std::vector<int>* off) {
+  const size_t m = sup.size();
+  Z->resize(m);
+  off->assign(m + 1, 0);
+  for (size_t a = 0; a < m; ++a) {
+    (*Z)[a] = vaeJointZ(jc, sup[a]);
+    const int nc = (int)(*Z)[a].n_cols - (vaeJointHeld(icFix, a) ? 1 : 0);
+    (*off)[a + 1] = (*off)[a] + nc;
+  }
+  return (*off)[m];
+}
+
+// u_k: what the dims OUTSIDE the group leave for dim k to explain.  Read from
+// the frozen residual snapshot, never from live state.
+static std::vector<arma::vec> vaeJointOuter(const VaeJointCtx& jc,
+                                            const std::vector<int>& G) {
+  std::vector<arma::vec> u(G.size());
+  for (size_t a = 0; a < G.size(); ++a) {
+    arma::vec uk(jc.rBase->n_rows, arma::fill::zeros);
+    for (int j = 0; j < (int)jc.P->n_cols; ++j) {
+      if (std::find(G.begin(), G.end(), j) != G.end()) continue;
+      uk += (*jc.P)(G[a], j) * jc.rBase->col((arma::uword)j);
+    }
+    u[a] = uk;
+  }
+  return u;
+}
+
+// Normal equations of the group-restricted GLS:
+//   sum_l P_kl Z_k'Z_l theta_l = Z_k'( sum_l P_kl y_l + u_k )
+static void vaeJointAssemble(const VaeJointCtx& jc, const std::vector<int>& G,
+                             const std::vector<arma::mat>& Z,
+                             const std::vector<int>& off,
+                             const std::vector<arma::vec>& u,
+                             const std::vector<double>* icFix,
+                             arma::mat* A, arma::vec* b) {
+  const size_t m = G.size();
+  for (size_t a = 0; a < m; ++a) {
+    const int k = G[a];
+    arma::mat Za = vaeJointStripIc(Z[a], vaeJointHeld(icFix, a));
+    arma::vec rhs = u[a];
+    for (size_t c2 = 0; c2 < m; ++c2) {
+      const int l = G[c2];
+      rhs += (*jc.P)(k, l) * jc.resp->col((arma::uword)l);
+      const bool fc = vaeJointHeld(icFix, c2);
+      if (fc) {
+        // a held intercept is known, so its column moves to the other side
+        rhs -= (*jc.P)(k, l) * (*icFix)[c2] * arma::ones<arma::vec>(jc.resp->n_rows);
+      }
+      arma::mat Zc = vaeJointStripIc(Z[c2], fc);
+      if (Za.n_cols == 0 || Zc.n_cols == 0) continue;
+      A->submat(off[a], off[c2], off[a + 1] - 1, off[c2 + 1] - 1) =
+        (*jc.P)(k, l) * (Za.t() * Zc);
+    }
+    if (Za.n_cols > 0) b->subvec(off[a], off[a + 1] - 1) = Za.t() * rhs;
+  }
+}
+
+// Rebuild each dim's full coefficient vector (held intercept reinstated) and its
+// residual; reports whether any FREE intercept landed outside its bounds, and
+// returns the total number of selected columns.
+static int vaeJointUnpack(const VaeJointCtx& jc, const std::vector<int>& G,
+                          const std::vector<std::vector<int> >& sup,
+                          const std::vector<arma::mat>& Z,
+                          const std::vector<int>& off, const arma::vec& th,
+                          const std::vector<double>* icFix,
+                          std::vector<arma::vec>* r,
+                          std::vector<arma::vec>* thetaOut, bool* clamped) {
+  const size_t m = G.size();
+  r->resize(m);
+  if (thetaOut != nullptr) thetaOut->resize(m);
+  if (clamped != nullptr) *clamped = false;
+  int nSel = 0;
+  for (size_t a = 0; a < m; ++a) {
+    const int k = G[a];
+    arma::vec full(Z[a].n_cols, arma::fill::zeros);
+    if (vaeJointHeld(icFix, a)) {
+      full[0] = (*icFix)[a];
+      if (Z[a].n_cols > 1) full.subvec(1, Z[a].n_cols - 1) = th.subvec(off[a], off[a + 1] - 1);
+    } else {
+      full = th.subvec(off[a], off[a + 1] - 1);
+      if (clamped != nullptr &&
+          ((R_FINITE((*jc.zPopLower)[k]) && full[0] < (*jc.zPopLower)[k]) ||
+           (R_FINITE((*jc.zPopUpper)[k]) && full[0] > (*jc.zPopUpper)[k]))) {
+        *clamped = true;
+      }
+    }
+    (*r)[a] = jc.resp->col((arma::uword)k) - Z[a] * full;
+    if (thetaOut != nullptr) (*thetaOut)[a] = full;
+    nSel += (int)sup[a].size();
+  }
+  return nSel;
+}
+
 static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
                             const std::vector<std::vector<int> >& sup,
                             std::vector<arma::vec>* thetaOut,
                             const std::vector<double>* icFix,
                             bool* clamped) {
   const size_t m = G.size();
-  std::vector<arma::mat> Z(m);
-  std::vector<int> off(m + 1, 0);
-  for (size_t a = 0; a < m; ++a) {
-    Z[a] = vaeJointZ(jc, sup[a]);
-    // an intercept held at its bound leaves the solve, carried as an offset
-    const bool fx = (icFix != nullptr && R_FINITE((*icFix)[a]));
-    const int nc = (int)Z[a].n_cols - (fx ? 1 : 0);
-    off[a + 1] = off[a] + nc;
-  }
-  const int M = off[m];
+  std::vector<arma::mat> Z;
+  std::vector<int> off;
+  const int M = vaeJointBlocks(jc, sup, icFix, &Z, &off);
   // M == 0 is legitimate, not a failure: every dim in the group has an empty
   // support AND a held intercept, so there is nothing left to solve for but the
-  // score is perfectly well defined.  Returning +inf here priced the
-  // no-covariate model infinitely badly and blocked the refinement from ever
-  // dropping the last covariate out of a fully clamped group.
+  // score is still well defined.
   if (M < 0) return std::numeric_limits<double>::infinity();
+  std::vector<arma::vec> u = vaeJointOuter(jc, G);
   arma::mat A(M, M, arma::fill::zeros);
   arma::vec b(M, arma::fill::zeros);
-  // Drop the intercept column when it is being held.  An intercept-only support
-  // leaves NO columns, and Armadillo's cols(1, 0) is out of bounds rather than
-  // empty -- which would throw straight into the catch-all below and silently
-  // disable the whole group.
-  auto stripIc = [](const arma::mat& Z, bool fixed) {
-    if (!fixed) return arma::mat(Z);
-    if (Z.n_cols <= 1) return arma::mat(Z.n_rows, 0);
-    return arma::mat(Z.cols(1, Z.n_cols - 1));
-  };
-  // u_k: what the dims OUTSIDE the group leave for dim k to explain
-  std::vector<arma::vec> u(m);
-  for (size_t a = 0; a < m; ++a) {
-    const int k = G[a];
-    arma::vec uk(jc.rBase->n_rows, arma::fill::zeros);
-    for (int j = 0; j < (int)jc.P->n_cols; ++j) {
-      if (std::find(G.begin(), G.end(), j) != G.end()) continue;
-      uk += (*jc.P)(k, j) * jc.rBase->col((arma::uword)j);
-    }
-    u[a] = uk;
-  }
-  for (size_t a = 0; a < m; ++a) {
-    const int k = G[a];
-    const bool fa = (icFix != nullptr && R_FINITE((*icFix)[a]));
-    arma::mat Za = stripIc(Z[a], fa);
-    arma::vec rhs = u[a];
-    for (size_t c2 = 0; c2 < m; ++c2) {
-      const int l = G[c2];
-      rhs += (*jc.P)(k, l) * jc.resp->col((arma::uword)l);
-      const bool fc = (icFix != nullptr && R_FINITE((*icFix)[c2]));
-      if (fc) {
-        // a held intercept is known, so its column moves to the other side
-        rhs -= (*jc.P)(k, l) * (*icFix)[c2] * arma::ones<arma::vec>(jc.resp->n_rows);
-      }
-      arma::mat Zc = stripIc(Z[c2], fc);
-      if (Za.n_cols == 0 || Zc.n_cols == 0) continue;
-      A.submat(off[a], off[c2], off[a + 1] - 1, off[c2 + 1] - 1) =
-        (*jc.P)(k, l) * (Za.t() * Zc);
-    }
-    if (Za.n_cols > 0) b.subvec(off[a], off[a + 1] - 1) = Za.t() * rhs;
-  }
+  vaeJointAssemble(jc, G, Z, off, u, icFix, &A, &b);
   arma::vec th;
   if (M > 0) {
     bool ok = arma::solve(th, A, b);
     if (!ok) ok = arma::solve(th, A, b, arma::solve_opts::force_approx);
     if (!ok || !th.is_finite()) return std::numeric_limits<double>::infinity();
   }
-  // residuals, then Q = sum_kl P_kl r_k'r_l + 2 sum_k r_k'u_k
-  std::vector<arma::vec> r(m);
-  if (thetaOut != nullptr) thetaOut->resize(m);
-  if (clamped != nullptr) *clamped = false;
-  int nSel = 0;
-  for (size_t a = 0; a < m; ++a) {
-    const int k = G[a];
-    const bool fa = (icFix != nullptr && R_FINITE((*icFix)[a]));
-    arma::vec full(Z[a].n_cols, arma::fill::zeros);
-    if (fa) {
-      full[0] = (*icFix)[a];
-      if (Z[a].n_cols > 1) full.subvec(1, Z[a].n_cols - 1) = th.subvec(off[a], off[a + 1] - 1);
-    } else {
-      full = th.subvec(off[a], off[a + 1] - 1);
-      if (clamped != nullptr) {
-        if ((R_FINITE((*jc.zPopLower)[k]) && full[0] < (*jc.zPopLower)[k]) ||
-            (R_FINITE((*jc.zPopUpper)[k]) && full[0] > (*jc.zPopUpper)[k])) *clamped = true;
-      }
-    }
-    r[a] = jc.resp->col((arma::uword)k) - Z[a] * full;
-    if (thetaOut != nullptr) (*thetaOut)[a] = full;
-    nSel += (int)sup[a].size();
-  }
+  std::vector<arma::vec> r;
+  const int nSel = vaeJointUnpack(jc, G, sup, Z, off, th, icFix, &r, thetaOut, clamped);
+  // Q = sum_kl P_kl r_k'r_l + 2 sum_k r_k'u_k
   double Q = 0;
   for (size_t a = 0; a < m; ++a) {
     for (size_t c2 = 0; c2 < m; ++c2) Q += (*jc.P)(G[a], G[c2]) * arma::dot(r[a], r[c2]);
