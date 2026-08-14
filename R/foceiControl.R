@@ -1002,7 +1002,12 @@ foceiControl <- function(sigdig = 3, #
       # when the gradient is flat -- measured on a 2-cmt oral fit, that left 8.6
       # OFV units on the table (6 outer evaluations); at 10^-(sigdig+2) the same
       # fit beats the bobyqa reference in 13.  See plans/foceif-outer-opt-pgtol.md.
-      lbfgsFactr <- 10^(-sigdig - 2) / .Machine$double.eps
+      # Floor at 1: `factr` is a MULTIPLE of machine epsilon, so factr < 1 asks
+      # for a reduction smaller than eps itself.  That is unreachable, and since
+      # lbfgsPgtol is 0 by default it would leave L-BFGS-B with no active
+      # stopping rule at all.  Reached at sigdig >= 14 here (>= 16 before the
+      # two-order tightening).
+      lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
     }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)

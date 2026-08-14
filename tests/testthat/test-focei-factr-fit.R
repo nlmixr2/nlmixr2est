@@ -34,10 +34,14 @@ nmTest({
   }
 
   test_that("foceif reaches focei's optimum on a 2-cmt oral fit", {
+    # sigdig is pinned because the absolute objective below is a numeric literal
+    # and sigdig drives both the optimizer tolerances and the ODE rtol/atol
     .focei <- suppressWarnings(suppressMessages(
-      nlmixr2(.twoCmtOral, .dat, est = "focei", control = foceiControl(print = 0))))
+      nlmixr2(.twoCmtOral, .dat, est = "focei",
+              control = foceiControl(print = 0, sigdig = 3))))
     .foceif <- suppressWarnings(suppressMessages(
-      nlmixr2(.twoCmtOral, .dat, est = "foceif", control = foceiControl(print = 0))))
+      nlmixr2(.twoCmtOral, .dat, est = "foceif",
+              control = foceiControl(print = 0, sigdig = 3))))
 
     # the mechanism ran -- OFV agreement alone would not show the analytic
     # gradient was ever used
@@ -46,6 +50,14 @@ nmTest({
     # the defect was +8.63; anything under 1 OFV unit is not going to reorder
     # candidate models
     expect_lt(.foceif$objf - .focei$objf, 1)
+
+    # ... and an ABSOLUTE pin as well, because the relative check alone would
+    # pass if a future change degraded the likelihood engine for both methods
+    # together.  Measured 19592.53 (foceif) / 19592.63 (focei) at sigdig=3; the
+    # window is wide enough for solver-level jitter and far narrower than the
+    # +8.63 this test exists to catch.
+    expect_equal(.foceif$objf, 19592.5, tolerance = 1e-4)
+    expect_equal(.focei$objf, 19592.6, tolerance = 1e-4)
 
     # the old failure signature was 6 outer evaluations -- one per parameter-ish,
     # independent of the data
