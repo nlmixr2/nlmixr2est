@@ -1,5 +1,11 @@
 # nlmixr2est 7.0.3
 
+## Internal
+
+- `ini()` on a fit now calls `rxode2::.iniHandleLine()` rather than the
+  `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
+  function; this was the last caller of the old name anywhere in the
+  ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
 ## New features
 
 - A prior distribution given in the `ini({})` block is no longer silently

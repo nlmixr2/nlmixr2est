@@ -5,7 +5,7 @@ ini.nlmixr2FitCore <- function(x, ..., envir = parent.frame()) {
   .iniLines <- rxode2::.quoteCallInfoLines(match.call(expand.dots = TRUE)[-(1:2)],
                                            envir = envir)
   lapply(.iniLines, function(line) {
-    rxode2::.iniHandleFixOrUnfix(line, .ret, envir = envir)
+    rxode2::.iniHandleLine(line, .ret, envir = envir)
   })
   .ret
 }
