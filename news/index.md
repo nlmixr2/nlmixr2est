@@ -2,7 +2,16 @@
 
 ## nlmixr2est 7.0.3
 
-### New features
+### Internal
+
+- [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) on a
+  fit now calls
+  [`rxode2::.iniHandleLine()`](https://nlmixr2.github.io/rxode2/reference/dot-iniHandleLine.html)
+  rather than the
+  [`rxode2::.iniHandleFixOrUnfix()`](https://nlmixr2.github.io/rxode2/reference/dot-iniHandleLine.html)
+  alias for it. They are the same function; this was the last caller of
+  the old name anywhere in the ecosystem, so rxode2 can now drop it
+  (nlmixr2/rxode2#1250). \## New features
 
 - A prior distribution given in the `ini({})` block is no longer
   silently ignored.
