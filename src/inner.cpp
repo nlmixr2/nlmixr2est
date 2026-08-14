@@ -16017,6 +16017,18 @@ double npResidELS(const arma::mat& postEta) {
   return nll;
 }
 
+// Fold one observation into endpoint e's additive / proportional / count buckets.
+// The proportional denominator falls back to 1 when |f| is tiny, so a near-zero
+// prediction cannot blow up the proportional moment.
+static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
+  const double err = f - dv;
+  mom(e, 0) += err * err;
+  const double denom = (std::fabs(f) <= 1e-6) ? 1.0 : f;
+  const double ratio = err / denom;
+  if (std::isfinite(ratio)) mom(e, 1) += ratio * ratio;
+  mom(e, 2) += 1.0;
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
@@ -16070,14 +16082,7 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       ko++;
       if (e < 0 || e >= nEnd) continue;
       if (!std::isfinite(cl) || !std::isfinite(f)) continue;
-      double err = f - dv;
-      mom(e, 0) += err * err;
-      // proportional guard for f==0: denominator 1 when |f| is tiny so a
-      // near-zero prediction does not blow up the proportional moment.
-      double denom = (std::fabs(f) <= 1e-6) ? 1.0 : f;
-      double ratio = err / denom;
-      if (std::isfinite(ratio)) mom(e, 1) += ratio * ratio;
-      mom(e, 2) += 1.0;
+      npAccumMoment(mom, e, f, dv);
     }
   }
   return mom;
