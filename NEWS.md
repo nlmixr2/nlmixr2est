@@ -6,6 +6,26 @@
   `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
   function; this was the last caller of the old name anywhere in the
   ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
+## New features
+
+- A prior distribution given in the `ini({})` block is no longer silently
+  ignored.  `nlmixr2Est()` now refuses any prior the estimation method
+  cannot use before dispatching, so a model carrying one fails with an
+  explanation naming the parameter and the `est=` instead of being fit to
+  something other than what it says.
+
+  A method declares what it supports with an attribute on itself, so it
+  can opt in as it gains support:
+
+  ```r
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+  ```
+
+  The levels are `"none"` (the default when the attribute is absent),
+  `"normal"`, `"nwpri"` (normal priors plus omega degrees of freedom) and
+  `"all"`.  Because the check happens in the generic, methods registered
+  by other packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and
+  the rest -- are covered without any change of their own.
 
 ## Breaking changes
 
