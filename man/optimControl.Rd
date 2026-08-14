@@ -21,7 +21,7 @@ optimControl(
   type = NULL,
   lmm = 5,
   factr = NULL,
-  pgtol = 0,
+  pgtol = NULL,
   temp = 10,
   tmax = 10,
   stickyRecalcN = 4,
@@ -125,10 +125,12 @@ Convergence occurs when the reduction in the objective is within
 this factor of the machine tolerance. Default is `1e7`, that is a
 tolerance of about `1e-8`.}
 
-\item{pgtol}{helps control the convergence of the `"L-BFGS-B"`
-method.  It is a tolerance on the projected gradient in the
-current search direction. This defaults to zero, when the check
-is suppressed}
+\item{pgtol}{projected-gradient stopping tolerance for `"L-BFGS-B"`.
+Derived from `sigdig` as `10^-sigdig` when `method="L-BFGS-B"` and
+`solveType="grad"` supply an analytic gradient, and `0` (suppressed)
+otherwise, since `optim`'s own finite differences cannot support the test.
+It is a tolerance on the projected gradient in the current search
+direction; iteration stops when `max(| proj g_i |) <= pgtol`.}
 
 \item{temp}{controls the `"SANN"` method. It is the starting
 temperature for the cooling schedule. Defaults to `10`.}

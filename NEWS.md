@@ -58,6 +58,23 @@
 
 ### Estimation
 
+- Fixed the analytic-gradient methods (`est="foceif"` and the rest of the `*f`
+  family, or `foceiControl(fast=TRUE)`) **stopping well short of the optimum**,
+  after roughly as many outer evaluations as the model has parameters, regardless
+  of the data.  Their outer optimizer (`lbfgsb3c`) ran with `lbfgsPgtol=0`, which
+  suppresses the projected-gradient test and leaves `lbfgsFactr` as the only
+  stopping rule; `factr` tests the objective reduction of a single step, so the
+  fit stopped as soon as one step was small rather than when the gradient was
+  flat.  The projected-gradient test is now enabled wherever the gradient is
+  analytic and therefore precise enough to support it -- the new
+  `foceiControl(lbfgsPgtolOuter=)` under `fast=TRUE`, `foceiControl(lbfgsPgtol=)`
+  for the inner problem, `lbfgsb3cControl(pgtol=)`, and `optimControl(pgtol=)`
+  with `method="L-BFGS-B"` and `solveType="grad"` -- each derived from `sigdig` as
+  `10^-sigdig`.  Finite-difference paths keep the check suppressed, since an FD
+  gradient never falls below its own noise floor.  Fits that were stopping early
+  will now run further and report a lower objective function, which can change
+  model ranking.
+
 - Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
   Gaussian observation** in both its objective function and its standard errors.
   Such an endpoint estimates no residual error, so the residual step never runs

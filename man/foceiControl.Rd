@@ -50,7 +50,8 @@ foceiControl(
   eventSens = c("jump", "fd"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
-  lbfgsPgtol = 0,
+  lbfgsPgtol = NULL,
+  lbfgsPgtolOuter = NULL,
   lbfgsFactr = NULL,
   eigen = TRUE,
   diagXform = c("sqrt", "log", "identity"),
@@ -312,9 +313,11 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 \code{fast=FALSE} up front).  When unspecified,
-the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
-\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+\code{outerOpt} reverts to \code{fast=FALSE}.  \code{fast=TRUE} is also
+what makes the outer projected-gradient stopping test usable, so it sets
+\code{lbfgsPgtolOuter} (see there).  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
 
 \item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
@@ -449,10 +452,20 @@ absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.}
 \item{lbfgsLmm}{An integer giving the number of BFGS updates
 retained in the "L-BFGS-B" method, It defaults to 7.}
 
-\item{lbfgsPgtol}{Projected-gradient convergence tolerance for
-"L-BFGS-B": iteration stops when
-\code{max(| proj g_i |) <= lbfgsPgtol}. Defaults to `0` (check
-suppressed).}
+\item{lbfgsPgtol}{Projected-gradient convergence tolerance for the INNER
+(eta) problem when \code{innerOpt="BFGS"}: iteration stops when
+\code{max(| proj g_i |) <= lbfgsPgtol}.  The inner gradient always comes
+from the sensitivity equations, so this is derived from \code{sigdig} as
+\code{10^-sigdig}; \code{0} suppresses the check.}
+
+\item{lbfgsPgtolOuter}{Projected-gradient convergence tolerance for the OUTER
+(population) "L-BFGS-B" problem.  Defaults to \code{10^-sigdig} when
+\code{fast=TRUE} supplies an analytic outer gradient and to \code{0}
+(suppressed) otherwise, because a finite-difference outer gradient never
+drives \code{max(| proj g_i |)} below its own noise floor.  Without it
+\code{lbfgsFactr} is the only active stopping rule, and that tests a
+SINGLE step's objective reduction rather than stationarity -- so the fit
+stops as soon as one step is small, not when the gradient is flat.}
 
 \item{lbfgsFactr}{Convergence factor for "L-BFGS-B": converges when the
 objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.

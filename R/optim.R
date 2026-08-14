@@ -85,10 +85,8 @@
 #'   Derived from `sigdig` as `10^-sigdig` when `method="L-BFGS-B"` and
 #'   `solveType="grad"` supply an analytic gradient, and `0` (suppressed)
 #'   otherwise, since `optim`'s own finite differences cannot support the test.
-#'   It helps control the convergence of the `"L-BFGS-B"`
-#'   method.  It is a tolerance on the projected gradient in the
-#'   current search direction. This defaults to zero, when the check
-#'   is suppressed
+#'   It is a tolerance on the projected gradient in the current search
+#'   direction; iteration stops when `max(| proj g_i |) <= pgtol`.
 #'
 #' @param temp controls the `"SANN"` method. It is the starting
 #'   temperature for the cooling schedule. Defaults to `10`.

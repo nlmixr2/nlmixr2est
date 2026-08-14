@@ -7,7 +7,7 @@
 lbfgsb3cControl(
   trace = 0,
   factr = NULL,
-  pgtol = 0,
+  pgtol = NULL,
   abstol = 0,
   reltol = 0,
   lmm = 5L,
@@ -53,8 +53,11 @@ more detail (see source for "L-BFGS-B" trace levels).}
 the objective reduction is within this factor of machine tolerance
 (default 1e7, i.e. ~1e-8).}
 
-\item{pgtol}{Tolerance on the projected gradient for "L-BFGS-B"; 0
-(default) suppresses the check.}
+\item{pgtol}{Tolerance on the projected gradient for "L-BFGS-B".  This method
+always supplies the analytic theta gradient, so it is derived from
+\code{sigdig} as \code{10^-sigdig}; \code{0} suppresses the check, which
+leaves \code{factr} (a single-step objective-reduction test, not a
+stationarity test) as the only stopping rule.}
 
 \item{abstol}{Absolute x-value tolerance for "L-BFGS-B"; 0 (default)
 suppresses the check.}
