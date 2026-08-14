@@ -81,7 +81,11 @@
 #'   this factor of the machine tolerance. Default is `1e7`, that is a
 #'   tolerance of about `1e-8`.
 #'
-#' @param pgtol helps control the convergence of the `"L-BFGS-B"`
+#' @param pgtol projected-gradient stopping tolerance for `"L-BFGS-B"`.
+#'   Derived from `sigdig` as `10^-sigdig` when `method="L-BFGS-B"` and
+#'   `solveType="grad"` supply an analytic gradient, and `0` (suppressed)
+#'   otherwise, since `optim`'s own finite differences cannot support the test.
+#'   It helps control the convergence of the `"L-BFGS-B"`
 #'   method.  It is a tolerance on the projected gradient in the
 #'   current search direction. This defaults to zero, when the check
 #'   is suppressed
@@ -135,7 +139,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          type=NULL,
                          lmm=5,
                          factr=NULL,
-                         pgtol=0,
+                         pgtol=NULL,
                          temp=10,
                          tmax=10,
                          stickyRecalcN=4,
@@ -186,7 +190,8 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertIntegerish(maxit, len=1, any.missing=FALSE, lower=1)
   # optim tolerances from sigdig, matching optim's closest FOCEi outer optimizer:
   # abstol/reltol like foceiControl reltol, factr like foceiControl lbfgsFactr
-  # (pgtol stays at FOCEi's 0); a user value wins, sigdig=NULL keeps the defaults
+  # (pgtol is derived below, once method/solveType say whether the gradient handed
+  # to L-BFGS-B is analytic); a user value wins, sigdig=NULL keeps the defaults
   if (is.null(abstol)) abstol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
   if (is.null(reltol)) reltol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-8
   checkmate::assertNumeric(abstol, len=1, lower=0, any.missing=FALSE)
@@ -200,7 +205,6 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertIntegerish(lmm, len=1, lower=1, any.missing=FALSE)
   if (is.null(factr)) factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   checkmate::assertNumeric(factr, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(pgtol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(temp, len=1, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(tmax, len=1, lower=0, any.missing=FALSE)
 
@@ -211,6 +215,18 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
     solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
   }
   method <- match.arg(method)
+  # pgtol only applies to "L-BFGS-B", and only solveType="grad" hands it the
+  # analytic gradient (.nlmixrOptimGradC); every other combination leaves optim
+  # differencing the objective itself, whose noise floor no projected-gradient
+  # test can see past -- there it stays suppressed.
+  if (is.null(pgtol)) {
+    pgtol <- if (!is.null(sigdig) && method == "L-BFGS-B" && solveType == 2L) {
+      .sigdigPgtol(sigdig)
+    } else {
+      0
+    }
+  }
+  checkmate::assertNumeric(pgtol, len=1, lower=0, any.missing=FALSE)
   if (missing(covMethod) && any(solveType == 2:3) &&
         method %in% c("BFGS", "CG", "L-BFGS-B")) {
     covMethod <- "optim"

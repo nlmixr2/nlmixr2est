@@ -20,8 +20,11 @@
 #'   the objective reduction is within this factor of machine tolerance
 #'   (default 1e7, i.e. ~1e-8).
 #'
-#' @param pgtol Tolerance on the projected gradient for "L-BFGS-B"; 0
-#'   (default) suppresses the check.
+#' @param pgtol Tolerance on the projected gradient for "L-BFGS-B".  This method
+#'   always supplies the analytic theta gradient, so it is derived from
+#'   \code{sigdig} as \code{10^-sigdig}; \code{0} suppresses the check, which
+#'   leaves \code{factr} (a single-step objective-reduction test, not a
+#'   stationarity test) as the only stopping rule.
 #'
 #' @param abstol Absolute x-value tolerance for "L-BFGS-B"; 0 (default)
 #'   suppresses the check.
@@ -71,7 +74,7 @@
 #' }
 lbfgsb3cControl <- function(trace=0,
                             factr=NULL,
-                            pgtol=0,
+                            pgtol=NULL,
                             abstol=0,
                             reltol=0,
                             lmm=5L,
@@ -110,6 +113,10 @@ lbfgsb3cControl <- function(trace=0,
   # a user value wins, sigdig=NULL keeps the historic default
   if (is.null(factr)) factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   checkmate::assertNumeric(factr, len=1, any.missing=FALSE, lower=10)
+  # This method always hands lbfgsb3c the analytic theta gradient
+  # (.nlmixrOptimGradC), so the projected-gradient test is supportable and
+  # `factr` is not left as the only stopping rule.
+  if (is.null(pgtol)) pgtol <- if (!is.null(sigdig)) .sigdigPgtol(sigdig) else 0
   checkmate::assertNumeric(pgtol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(abstol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(reltol, len=1, any.missing=FALSE, lower=0)

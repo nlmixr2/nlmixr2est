@@ -22,7 +22,11 @@
                            "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault")
+                           "outerOptDefault",
+                           # TRUE when lbfgsPgtolOuter was defaulted; lets a later
+                           # fast=FALSE downgrade re-suppress the projected-gradient
+                           # test without overriding an explicit user value
+                           "lbfgsPgtolOuterDefault")
 
 #' Control Options for FOCEi
 #'
@@ -191,9 +195,11 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
-#'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+#'     \code{outerOpt} reverts to \code{fast=FALSE}.  \code{fast=TRUE} is also
+#'     what makes the outer projected-gradient stopping test usable, so it sets
+#'     \code{lbfgsPgtolOuter} (see there).  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
@@ -274,10 +280,20 @@
 #' @param lbfgsLmm An integer giving the number of BFGS updates
 #'     retained in the "L-BFGS-B" method, It defaults to 7.
 #'
-#' @param lbfgsPgtol Projected-gradient convergence tolerance for
-#'     "L-BFGS-B": iteration stops when
-#'     \code{max(| proj g_i |) <= lbfgsPgtol}. Defaults to `0` (check
-#'     suppressed).
+#' @param lbfgsPgtol Projected-gradient convergence tolerance for the INNER
+#'     (eta) problem when \code{innerOpt="BFGS"}: iteration stops when
+#'     \code{max(| proj g_i |) <= lbfgsPgtol}.  The inner gradient always comes
+#'     from the sensitivity equations, so this is derived from \code{sigdig} as
+#'     \code{10^-sigdig}; \code{0} suppresses the check.
+#'
+#' @param lbfgsPgtolOuter Projected-gradient convergence tolerance for the OUTER
+#'     (population) "L-BFGS-B" problem.  Defaults to \code{10^-sigdig} when
+#'     \code{fast=TRUE} supplies an analytic outer gradient and to \code{0}
+#'     (suppressed) otherwise, because a finite-difference outer gradient never
+#'     drives \code{max(| proj g_i |)} below its own noise floor.  Without it
+#'     \code{lbfgsFactr} is the only active stopping rule, and that tests a
+#'     SINGLE step's objective reduction rather than stationarity -- so the fit
+#'     stops as soon as one step is small, not when the gradient is flat.
 #'
 #' @param lbfgsFactr Convergence factor for "L-BFGS-B": converges when the
 #'     objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
@@ -844,7 +860,8 @@ foceiControl <- function(sigdig = 3, #
                          eventSens = c("jump", "fd"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
-                         lbfgsPgtol = 0, #
+                         lbfgsPgtol = NULL, #
+                         lbfgsPgtolOuter = NULL, #
                          lbfgsFactr = NULL, #
                          eigen = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
@@ -994,6 +1011,11 @@ foceiControl <- function(sigdig = 3, #
     if (is.null(lbfgsFactr)) {
       lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
     }
+    # The inner problem's eta gradient always comes from the sensitivity
+    # equations, so the projected-gradient test is always supportable here.
+    if (is.null(lbfgsPgtol)) {
+      lbfgsPgtol <- .sigdigPgtol(sigdig)
+    }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)
     }
@@ -1127,6 +1149,8 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
   lbfgsLmm <- as.integer(lbfgsLmm)
+  # sigdig=NULL keeps the historic "check suppressed" default
+  if (is.null(lbfgsPgtol)) lbfgsPgtol <- 0
   checkmate::assertNumeric(lbfgsPgtol, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(lbfgsFactr, lower=0, any.missing=FALSE, len=1)
   if (!checkmate::testIntegerish(eigen, lower=0, upper=1, any.missing=FALSE, len=1)) {
@@ -1339,6 +1363,21 @@ foceiControl <- function(sigdig = 3, #
             call.=FALSE)
     fast <- FALSE
   }
+  # The OUTER projected-gradient test only holds up on an analytic gradient
+  # (fast=TRUE).  A finite-difference outer gradient never drives max|proj g|
+  # below its own noise floor, so pgtol there would either never fire or fire on
+  # noise -- it stays suppressed.  `fast` can still be downgraded after the
+  # control is built (linCmt(), out-of-scope ll(), mixtures); .foceiFinalizeFast()
+  # re-zeroes this when that happens and the default was taken.
+  # `|| isTRUE(.xtra$...)` so a built control that took the default re-derives
+  # (rather than freezing the old value) when it is round-tripped under a
+  # different `fast`, exactly as outerOptDefault does for the optimizer.
+  .lbfgsPgtolOuterDefault <- is.null(lbfgsPgtolOuter) ||
+    isTRUE(.xtra$lbfgsPgtolOuterDefault)
+  if (.lbfgsPgtolOuterDefault) {
+    lbfgsPgtolOuter <- if (isTRUE(fast) && !is.null(sigdig)) .sigdigPgtol(sigdig) else 0
+  }
+  checkmate::assertNumeric(lbfgsPgtolOuter, lower=0, any.missing=FALSE, len=1)
   if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
@@ -1498,6 +1537,8 @@ foceiControl <- function(sigdig = 3, #
     iterPrintControl = .iterPrintControl,
     lbfgsLmm = as.integer(lbfgsLmm),
     lbfgsPgtol = as.double(lbfgsPgtol),
+    lbfgsPgtolOuter = as.double(lbfgsPgtolOuter),
+    lbfgsPgtolOuterDefault = .lbfgsPgtolOuterDefault,
     lbfgsFactr = as.double(lbfgsFactr),
     scaleTo = scaleTo,
     epsilon = epsilon,

@@ -521,7 +521,12 @@ struct focei_options {
 
   //
   double factr;
+  // pgtol drives the INNER eta problem (its gradient is always the sensitivity
+  // gradient); pgtolOuter drives the outer/population problem, where the
+  // projected-gradient test only holds up when fast=TRUE supplies an analytic
+  // gradient.  Kept separate because FdInnerTolGuard tightens the inner one.
   double pgtol;
+  double pgtolOuter;
   double abstol;
   double reltol;
   int lmm;
@@ -6940,6 +6945,7 @@ NumericVector foceiSetup_(const RObject &obj,
   // lbfgsb options
   op_focei.factr    = as<double>(foceiO["lbfgsFactr"]);
   op_focei.pgtol    = as<double>(foceiO["lbfgsPgtol"]);
+  op_focei.pgtolOuter = as<double>(foceiO["lbfgsPgtolOuter"]);
   op_focei.lmm      = as<int>(foceiO["lbfgsLmm"]);
   op_focei.covDerivMethod = as<int>(foceiO["covDerivMethod"]);
   int type = TYPEOF(foceiO["covMethod"]);
@@ -7535,7 +7541,7 @@ void foceiLbfgsb3(Environment e){
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
            op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
            outerGradNumOptim, &fail, ex, op_focei.factr,
-           op_focei.pgtol, &fncount, &grcount,
+           op_focei.pgtolOuter, &fncount, &grcount,
            op_focei.maxOuterIterations, msg, 0, -1,
            op_focei.abstol, op_focei.reltol, g.begin());
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
@@ -7560,7 +7566,7 @@ void foceiLbfgsb(Environment e){
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
            op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
            outerGradNumOptim, &fail, ex, op_focei.factr,
-           op_focei.pgtol, &fncount, &grcount,
+           op_focei.pgtolOuter, &fncount, &grcount,
            op_focei.maxOuterIterations, msg, 0, op_focei.maxOuterIterations+1);
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
