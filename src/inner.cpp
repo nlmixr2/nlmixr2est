@@ -13225,6 +13225,191 @@ NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   return foceiOuterFdIndCore(ids0, analyticRef, _pt);
 }
 
+// Omega directions.  One step per omega parameter rather than one per subject: the
+// search needs an R-side Omega rebuild per evaluation, so a per-subject search cannot run
+// inside the parallel region.  The two legs at the settled step DO run parallel over
+// subjects, with the perturbed Omega installed thread-locally.  A clamped step is
+// rejected outright rather than repaired.
+static void foceiFdOmegaPass(IntegerVector ids0, NumericMatrix out, NumericMatrix hOut,
+                             NumericMatrix analyticRef, const FdIndPoint &pt,
+                             const std::vector<int> &thK,
+                             int nid, int nth, int nom, int nAll,
+                             int fdCores, bool fdParallel,
+                             double _fdForceH, double _fdSpanOverride,
+                             double _fdOutlierMz) {
+// ---- omega directions ---------------------------------------------------------------
+//
+// One step per omega parameter rather than one per subject: the search needs an R-side
+// Omega rebuild per evaluation, so a per-subject search cannot run inside the parallel
+// region.  The two legs at the settled step DO run parallel over subjects, with the
+// perturbed Omega installed thread-locally.
+//
+// A clamped step is rejected outright rather than repaired -- see the bound test below.
+// pt.doOmega == false: the caller's omega is not the inner problem's and cannot be
+// rebuilt through setOmegaTheta(), so those columns are left NA rather than differenced at
+// the wrong omega.  The caller decides what to do with an NA omega column.
+if (pt.doOmega && nom > 0 && op_focei.neta > 0) {
+  // TAKEN from the theta phase's set, not re-derived from ids0 by a second copy of the
+  // same filter.  fdStepCacheGet keys the shared step store on the id set, so the two
+  // phases MUST agree: if they ever diverged, each phase would invalidate the other's
+  // steps and every parameter would be re-searched on every evaluation.  Sharing the
+  // vector makes that structural instead of a coincidence of two identical loops.
+  _fdOmIds = _fdThIds;
+  std::vector<int> omK = thK;                 // row of `out` each _fdOmIds entry writes
+  _fdOmRefEta.clear();
+  _fdOmRefEta.reserve(_fdOmIds.size());
+  for (size_t q = 0; q < _fdOmIds.size(); ++q) {
+    focei_ind *fI = &(inds_focei[_fdOmIds[q]]);
+    // saveEta, matching the theta block and the analytic arm -- NOT fInd->eta, which is the
+    // inner optimizer's working vector and can sit at a different point.  Both blocks and
+    // the analytic sum must difference about one eta.
+    std::vector<double> re;
+    if (fI->saveEta != NULL) {
+      re.assign(&fI->saveEta[0], &fI->saveEta[0] + op_focei.neta);
+    } else if (fI->eta != NULL) {
+      re.assign(&fI->eta[0], &fI->eta[0] + op_focei.neta);
+    }
+    _fdOmRefEta.push_back(re);
+  }
+  // innerOpt1() moves each subject's eta, warm start, step caches, llikObs and lik[] --
+  // none of which may reach the fit.  Held for the whole omega phase, unlike the theta
+  // phase where each subject is guarded inside its own iteration.
+  FdOmegaRestore omRestore;
+  std::vector< std::unique_ptr<FdInnerStateGuard> > omGuards;
+  std::vector< std::unique_ptr<EtaRestoreGuard> > omEtaGuards;
+  omGuards.reserve(_fdOmIds.size());
+  omEtaGuards.reserve(_fdOmIds.size());
+  for (size_t q = 0; q < _fdOmIds.size(); ++q) {
+    omEtaGuards.push_back(std::unique_ptr<EtaRestoreGuard>(new EtaRestoreGuard(_fdOmIds[q])));
+    omGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_fdOmIds[q])));
+  }
+  arma::vec om((unsigned int)nom);
+  for (int q = 0; q < nom; ++q) om[(unsigned int)q] = _fdOmBlock0[(size_t)q];
+  // ONE unperturbed sweep, summed afterwards -- as the theta block does.  Calling
+  // shi21LikOmegaSum here as well would recompute exactly these per-subject values and keep
+  // only their sum, i.e. a whole redundant pass over the flagged subjects.
+  std::vector<double> f0Ind;
+  fdOmegaLeg(0, 0.0, fdCores, fdParallel, f0Ind);
+  double f0tot = 0.0;
+  bool omF0ok = !f0Ind.empty();
+  for (size_t r = 0; r < f0Ind.size(); ++r) {
+    if (!R_finite(f0Ind[r])) { omF0ok = false; break; }
+    f0tot += f0Ind[r];
+  }
+  arma::vec f0(1); f0(0) = f0tot;
+  if (omF0ok) {
+    // Free omega parameters only, for the reason given in the theta block.  Its own warm
+    // start: an omega estimation-scale entry is not on the theta scale, so chaining a theta
+    // step in here would start every search in the wrong place.
+    double hWarmOm = 0.0;
+    for (int i = 0; i < op_focei.npars; ++i) {
+      const int col = op_focei.fixedTrans[i];
+      if (col < nth || col >= nAll) continue;         // theta columns: handled above
+      const int q = col - nth;
+      double h = (_fdForceH > 0.0) ? _fdForceH
+        : fdStepCacheGet(_fdOmIds, col, _fdOmBlock0[(size_t)q]);
+      if (_fdForceH <= 0.0 && h == 0.0) {
+        arma::vec gr(1);
+        // ef is the assumed RELATIVE ACCURACY of f, and f here is an inner-optimized
+        // profile likelihood: its noise floor is set by the inner optimizer and the ODE
+        // tolerance, not by machine precision.  hessEps (eps^(1/3)) overstates it enough
+        // that the chosen step can land in that noise on a poorly conditioned subject,
+        // which shows up as a sign-flipped omega derivative.
+        double hs = hWarmOm;
+        // Central, not forward -- see the theta block for the measurement that rejected the
+        // forward arrangement.
+        h = shi21Central(shi21LikOmegaSum, om, hs, f0, gr, _fdOmIds[0], q,
+                         std::pow(DBL_EPSILON, 0.25),
+                         1.5,   // rl
+                         4.5,   // ru
+                         3.0,   // nu
+                         op_focei.shi21maxFD,
+                         op_focei.shi21hMax, op_focei.shi21hMin);
+        // Clamped: neither used nor cached, exactly as in the theta block.
+        if (!R_finite(h) || h <= 0.0 ||
+            h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
+          op_focei.nFdStepClamped++;
+          continue;
+        }
+        fdStepCachePut(col, h, _fdOmBlock0[(size_t)q]);
+        hWarmOm = h;
+      }
+      std::vector<double> up, dn;
+      fdOmegaLeg(q, h, fdCores, fdParallel, up);
+      fdOmegaLeg(q, -h, fdCores, fdParallel, dn);
+      if (up.size() != _fdOmIds.size() || dn.size() != _fdOmIds.size()) continue;
+      // Through calcGradCentral, not by hand: it is what every other difference in this
+      // file uses, and it degrades to a one-sided difference against f0Ind when a leg
+      // fails to solve rather than losing the subject.  Its both-legs-failed return is a
+      // plain zero, which a true zero derivative is indistinguishable from, so that case
+      // is caught on the legs instead and left NA.
+      for (size_t r = 0; r < _fdOmIds.size(); ++r) {
+        if (!R_finite(up[r]) && !R_finite(dn[r])) continue;
+        if (!R_finite(up[r]) || !R_finite(dn[r])) op_focei.mixDeriv = 1;
+        arma::vec grPH(1), grMH(1), f0i(1);
+        grPH(0) = up[r]; grMH(0) = dn[r]; f0i(0) = f0Ind[r];
+        arma::vec g = calcGradCentral(grMH, f0i, grPH, h);
+        if (!R_finite(g(0))) continue;
+        out(omK[r], col) = g(0);
+        hOut(omK[r], col) = h;
+      }
+    }
+  }
+  // ---- omega second pass: the same across-subject outlier test as the theta block -----
+  //
+  // Criterion, reference distribution and repair are all the theta pass's: modified
+  // z on a median/MAD centre and scale at the shared 3.5 cut, analytic subjects included
+  // in the distribution, Chartrand TV derivative on the flagged subjects only, and the
+  // same fdChartrand opt-out and counters.  Only the SAMPLING differs (see
+  // fdOmegaTvDeriv).  A shared step makes this pass matter more here than for theta: one
+  // step cannot suit every subject, so a subject whose slope it mis-sizes is exactly what
+  // the outlier test is for.
+  for (int q = 0; q < nom; ++q) {
+    const int col = nth + q;
+    std::vector<double> r;
+    bool refDegraded = false;
+    fdBuildOutlierRef(analyticRef, out, col, nid, r, refDegraded);
+    if (refDegraded) op_focei.nFdRefDegraded++;
+    std::vector<char> isOut;
+    if (!fdOutlierDecide(analyticRef, out, col, nid, r, _fdOutlierMz, isOut)) continue;
+    op_focei.nFdOutlierParam++;
+    if (!op_focei.fdChartrand) continue;
+    const double _spanOm  = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;
+    const int    _NOm     = 40;
+    const double _alphaOm = -1.0;
+    const int    _itersOm = 12;
+    // Omega uses ONE shared step per parameter, so any subject's recorded h is that step.
+    double hOmCur = NA_REAL;
+    for (int k = 0; k < nid; ++k) {
+      const double hv = hOut(k, col);
+      if (R_finite(hv) && hv > 0.0) { hOmCur = hv; break; }
+    }
+    std::vector<double> dTv;
+    if (op_focei.fdRefine == 1) {
+      fdOmegaLanczos(q, hOmCur, isOut, omK, op_focei.fdLanczosM,
+                     fdCores, fdParallel, dTv);
+    } else if (op_focei.fdRefine == 2) {
+      fdOmegaRichardson(q, hOmCur, isOut, omK,
+                        op_focei.fdRichardsonR, op_focei.fdRichardsonV,
+                        fdCores, fdParallel, dTv);
+    } else {
+      fdOmegaTvDeriv(q, isOut, omK, _spanOm, _NOm, _alphaOm, _itersOm,
+                     fdCores, fdParallel, dTv);
+    }
+    for (size_t rr = 0; rr < dTv.size(); ++rr) {
+      if (!R_finite(dTv[rr])) continue;
+      out(omK[rr], col) = dTv[rr];
+      op_focei.curAnalyticChartrand = 1;
+      op_focei.nFdChartrand++;
+    }
+  }
+  // The R-side Omega is put back by FdOmegaRestore, above, on every exit path.
+  _fdOmIds.clear();
+  _fdOmRefEta.clear();
+}
+// Every subject perturbed the shared fullTheta; put it back exactly as found.
+}
+
 static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analyticRef,
                                          const FdIndPoint &pt) {
   int nid = ids0.size();
@@ -13664,177 +13849,8 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
     if (indR == NULL) continue;
     for (int t = 0; t < nth; ++t) setIndParPtr(indR, op_focei.thetaTrans[t], theta0[(size_t)t]);
   }
-  // ---- omega directions ---------------------------------------------------------------
-  //
-  // One step per omega parameter rather than one per subject: the search needs an R-side
-  // Omega rebuild per evaluation, so a per-subject search cannot run inside the parallel
-  // region.  The two legs at the settled step DO run parallel over subjects, with the
-  // perturbed Omega installed thread-locally.
-  //
-  // A clamped step is rejected outright rather than repaired -- see the bound test below.
-  // pt.doOmega == false: the caller's omega is not the inner problem's and cannot be
-  // rebuilt through setOmegaTheta(), so those columns are left NA rather than differenced at
-  // the wrong omega.  The caller decides what to do with an NA omega column.
-  if (pt.doOmega && nom > 0 && op_focei.neta > 0) {
-    // TAKEN from the theta phase's set, not re-derived from ids0 by a second copy of the
-    // same filter.  fdStepCacheGet keys the shared step store on the id set, so the two
-    // phases MUST agree: if they ever diverged, each phase would invalidate the other's
-    // steps and every parameter would be re-searched on every evaluation.  Sharing the
-    // vector makes that structural instead of a coincidence of two identical loops.
-    _fdOmIds = _fdThIds;
-    std::vector<int> omK = thK;                 // row of `out` each _fdOmIds entry writes
-    _fdOmRefEta.clear();
-    _fdOmRefEta.reserve(_fdOmIds.size());
-    for (size_t q = 0; q < _fdOmIds.size(); ++q) {
-      focei_ind *fI = &(inds_focei[_fdOmIds[q]]);
-      // saveEta, matching the theta block and the analytic arm -- NOT fInd->eta, which is the
-      // inner optimizer's working vector and can sit at a different point.  Both blocks and
-      // the analytic sum must difference about one eta.
-      std::vector<double> re;
-      if (fI->saveEta != NULL) {
-        re.assign(&fI->saveEta[0], &fI->saveEta[0] + op_focei.neta);
-      } else if (fI->eta != NULL) {
-        re.assign(&fI->eta[0], &fI->eta[0] + op_focei.neta);
-      }
-      _fdOmRefEta.push_back(re);
-    }
-    // innerOpt1() moves each subject's eta, warm start, step caches, llikObs and lik[] --
-    // none of which may reach the fit.  Held for the whole omega phase, unlike the theta
-    // phase where each subject is guarded inside its own iteration.
-    FdOmegaRestore omRestore;
-    std::vector< std::unique_ptr<FdInnerStateGuard> > omGuards;
-    std::vector< std::unique_ptr<EtaRestoreGuard> > omEtaGuards;
-    omGuards.reserve(_fdOmIds.size());
-    omEtaGuards.reserve(_fdOmIds.size());
-    for (size_t q = 0; q < _fdOmIds.size(); ++q) {
-      omEtaGuards.push_back(std::unique_ptr<EtaRestoreGuard>(new EtaRestoreGuard(_fdOmIds[q])));
-      omGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_fdOmIds[q])));
-    }
-    arma::vec om((unsigned int)nom);
-    for (int q = 0; q < nom; ++q) om[(unsigned int)q] = _fdOmBlock0[(size_t)q];
-    // ONE unperturbed sweep, summed afterwards -- as the theta block does.  Calling
-    // shi21LikOmegaSum here as well would recompute exactly these per-subject values and keep
-    // only their sum, i.e. a whole redundant pass over the flagged subjects.
-    std::vector<double> f0Ind;
-    fdOmegaLeg(0, 0.0, fdCores, fdParallel, f0Ind);
-    double f0tot = 0.0;
-    bool omF0ok = !f0Ind.empty();
-    for (size_t r = 0; r < f0Ind.size(); ++r) {
-      if (!R_finite(f0Ind[r])) { omF0ok = false; break; }
-      f0tot += f0Ind[r];
-    }
-    arma::vec f0(1); f0(0) = f0tot;
-    if (omF0ok) {
-      // Free omega parameters only, for the reason given in the theta block.  Its own warm
-      // start: an omega estimation-scale entry is not on the theta scale, so chaining a theta
-      // step in here would start every search in the wrong place.
-      double hWarmOm = 0.0;
-      for (int i = 0; i < op_focei.npars; ++i) {
-        const int col = op_focei.fixedTrans[i];
-        if (col < nth || col >= nAll) continue;         // theta columns: handled above
-        const int q = col - nth;
-        double h = (_fdForceH > 0.0) ? _fdForceH
-          : fdStepCacheGet(_fdOmIds, col, _fdOmBlock0[(size_t)q]);
-        if (_fdForceH <= 0.0 && h == 0.0) {
-          arma::vec gr(1);
-          // ef is the assumed RELATIVE ACCURACY of f, and f here is an inner-optimized
-          // profile likelihood: its noise floor is set by the inner optimizer and the ODE
-          // tolerance, not by machine precision.  hessEps (eps^(1/3)) overstates it enough
-          // that the chosen step can land in that noise on a poorly conditioned subject,
-          // which shows up as a sign-flipped omega derivative.
-          double hs = hWarmOm;
-          // Central, not forward -- see the theta block for the measurement that rejected the
-          // forward arrangement.
-          h = shi21Central(shi21LikOmegaSum, om, hs, f0, gr, _fdOmIds[0], q,
-                           std::pow(DBL_EPSILON, 0.25),
-                           1.5,   // rl
-                           4.5,   // ru
-                           3.0,   // nu
-                           op_focei.shi21maxFD,
-                           op_focei.shi21hMax, op_focei.shi21hMin);
-          // Clamped: neither used nor cached, exactly as in the theta block.
-          if (!R_finite(h) || h <= 0.0 ||
-              h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
-            op_focei.nFdStepClamped++;
-            continue;
-          }
-          fdStepCachePut(col, h, _fdOmBlock0[(size_t)q]);
-          hWarmOm = h;
-        }
-        std::vector<double> up, dn;
-        fdOmegaLeg(q, h, fdCores, fdParallel, up);
-        fdOmegaLeg(q, -h, fdCores, fdParallel, dn);
-        if (up.size() != _fdOmIds.size() || dn.size() != _fdOmIds.size()) continue;
-        // Through calcGradCentral, not by hand: it is what every other difference in this
-        // file uses, and it degrades to a one-sided difference against f0Ind when a leg
-        // fails to solve rather than losing the subject.  Its both-legs-failed return is a
-        // plain zero, which a true zero derivative is indistinguishable from, so that case
-        // is caught on the legs instead and left NA.
-        for (size_t r = 0; r < _fdOmIds.size(); ++r) {
-          if (!R_finite(up[r]) && !R_finite(dn[r])) continue;
-          if (!R_finite(up[r]) || !R_finite(dn[r])) op_focei.mixDeriv = 1;
-          arma::vec grPH(1), grMH(1), f0i(1);
-          grPH(0) = up[r]; grMH(0) = dn[r]; f0i(0) = f0Ind[r];
-          arma::vec g = calcGradCentral(grMH, f0i, grPH, h);
-          if (!R_finite(g(0))) continue;
-          out(omK[r], col) = g(0);
-          hOut(omK[r], col) = h;
-        }
-      }
-    }
-    // ---- omega second pass: the same across-subject outlier test as the theta block -----
-    //
-    // Criterion, reference distribution and repair are all the theta pass's: modified
-    // z on a median/MAD centre and scale at the shared 3.5 cut, analytic subjects included
-    // in the distribution, Chartrand TV derivative on the flagged subjects only, and the
-    // same fdChartrand opt-out and counters.  Only the SAMPLING differs (see
-    // fdOmegaTvDeriv).  A shared step makes this pass matter more here than for theta: one
-    // step cannot suit every subject, so a subject whose slope it mis-sizes is exactly what
-    // the outlier test is for.
-    for (int q = 0; q < nom; ++q) {
-      const int col = nth + q;
-      std::vector<double> r;
-      bool refDegraded = false;
-      fdBuildOutlierRef(analyticRef, out, col, nid, r, refDegraded);
-      if (refDegraded) op_focei.nFdRefDegraded++;
-      std::vector<char> isOut;
-      if (!fdOutlierDecide(analyticRef, out, col, nid, r, _fdOutlierMz, isOut)) continue;
-      op_focei.nFdOutlierParam++;
-      if (!op_focei.fdChartrand) continue;
-      const double _spanOm  = (_fdSpanOverride > 0.0) ? _fdSpanOverride : 0.05;
-      const int    _NOm     = 40;
-      const double _alphaOm = -1.0;
-      const int    _itersOm = 12;
-      // Omega uses ONE shared step per parameter, so any subject's recorded h is that step.
-      double hOmCur = NA_REAL;
-      for (int k = 0; k < nid; ++k) {
-        const double hv = hOut(k, col);
-        if (R_finite(hv) && hv > 0.0) { hOmCur = hv; break; }
-      }
-      std::vector<double> dTv;
-      if (op_focei.fdRefine == 1) {
-        fdOmegaLanczos(q, hOmCur, isOut, omK, op_focei.fdLanczosM,
-                       fdCores, fdParallel, dTv);
-      } else if (op_focei.fdRefine == 2) {
-        fdOmegaRichardson(q, hOmCur, isOut, omK,
-                          op_focei.fdRichardsonR, op_focei.fdRichardsonV,
-                          fdCores, fdParallel, dTv);
-      } else {
-        fdOmegaTvDeriv(q, isOut, omK, _spanOm, _NOm, _alphaOm, _itersOm,
-                       fdCores, fdParallel, dTv);
-      }
-      for (size_t rr = 0; rr < dTv.size(); ++rr) {
-        if (!R_finite(dTv[rr])) continue;
-        out(omK[rr], col) = dTv[rr];
-        op_focei.curAnalyticChartrand = 1;
-        op_focei.nFdChartrand++;
-      }
-    }
-    // The R-side Omega is put back by FdOmegaRestore, above, on every exit path.
-    _fdOmIds.clear();
-    _fdOmRefEta.clear();
-  }
-  // Every subject perturbed the shared fullTheta; put it back exactly as found.
+  foceiFdOmegaPass(ids0, out, hOut, analyticRef, pt, thK, nid, nth, nom, nAll,
+                   fdCores, fdParallel, _fdForceH, _fdSpanOverride, _fdOutlierMz);
   for (int t = 0; t < nth; ++t) op_focei.fullTheta[t] = theta0[t];
   for (int q = 0; q < nom; ++q) op_focei.fullTheta[nth + q] = _fdOmBlock0[(size_t)q];
   out.attr("h") = hOut;
