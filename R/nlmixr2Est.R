@@ -76,6 +76,11 @@ nlmixr2Est <- function(env, ...) {
   ## something quietly dropped; checked here so that every method,
   ## including those registered by other packages, is covered
   .nlmixr2AssertPriors(env)
+  ## a registered interceptor may claim the estimation (e.g. nlmixr2nn trains an
+  ## embedded nn() network transparently under a standard est); if it returns
+  ## non-NULL that is the fit.
+  .intercepted <- .nlmixr2RunEstInterceptors(env)
+  if (!is.null(.intercepted)) return(.intercepted)
   UseMethod("nlmixr2Est")
 }
 
