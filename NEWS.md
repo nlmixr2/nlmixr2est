@@ -246,6 +246,18 @@
 
 ### Crashes and stability
 
+- An over-parameterized `est="saem"` fit no longer dies with "nearest PD
+  calculation failed" after the last iteration (#923).  A singular final Omega
+  was already projected to the nearest positive-definite matrix before the
+  residual/table step, but that projection itself errors on the fully degenerate
+  cases -- an all-zero, non-finite, or negative-definite Omega -- which is
+  exactly what an over-parameterized model produces.  Those now fall back to a
+  floored diagonal so the completed run is returned as a fit, with a `$runInfo`
+  note saying the Omega was singular; the reported Omega is left as estimated.
+  A collapsed or non-finite `saem` Omega is also reported in `$runInfo` on its
+  own, and a failure while assembling the fit object retries once without the
+  table step rather than throwing the finished run away.  When `nmNearPD()` does
+  error it now says which degenerate case it hit.
 - The shared solve pool's lhs-width probe could **segfault** instead of
   declining.  It verifies a model by calling that model's `calc_lhs`, and
   generated `calc_lhs` dereferences per-subject pointers that are bound by a

@@ -454,6 +454,40 @@
 #' @return Nothing, environment is assigned the omega
 #' @author Matthew L. Fidler
 #' @noRd
+#' Note a degenerate final SAEM omega in the fit's $runInfo
+#'
+#' A collapsed (zero) or non-finite variance is the visible signature of an
+#' over-parameterized model; the downstream repair (`.foceiRepairOmega`) keeps
+#' the fit running, so without this the fit looks healthy (#923).
+#'
+#' @param ome final SAEM omega
+#' @param fixed names of eta variances that were fixed by the user (a fixed
+#'   zero is a modeling choice, not a collapse)
+#' @return Nothing, called for the warning side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemWarnDegenerateOmega <- function(ome, fixed=character(0)) {
+  if (!is.matrix(ome) || nrow(ome) == 0L) return(invisible())
+  if (any(!is.finite(ome))) {
+    warning("omega has non-finite values; model may be over-parameterized",
+            call.=FALSE)
+    return(invisible())
+  }
+  .d <- diag(ome)
+  .d <- .d[!(names(.d) %in% fixed)]
+  if (length(.d) == 0L) return(invisible())
+  .zero <- names(.d)[.d <= 0]
+  if (length(.zero) == 0L) return(invisible())
+  if (length(.zero) == length(.d)) {
+    warning("all omega variances are zero; model may be over-parameterized",
+            call.=FALSE)
+  } else {
+    .pre <- "omega variance collapsed to zero: "
+    warning(paste0(.pre, .vaeTruncList(.zero, prefix=.pre)), call.=FALSE)
+  }
+  invisible()
+}
+
 .getSaemOmega <- function(env) {
   ## Reorder based on translation
   .saem <- env$saem
@@ -481,6 +515,8 @@
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
   }
   env$omega <- .ome
+  .saemWarnDegenerateOmega(.ome,
+                           fixed=.eta[.eta$neta1 == .eta$neta2 & .eta$fix, "name"])
   # Always save the N-row (per-subject) etaMat so FOCEi post-processing
   # gets the correct number of rows, even for mixture models.
   env$.etaMatBase <- .mat2
@@ -1149,6 +1185,41 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @return fit environment with $saem, $saemControl, $dataSav, $origData, $ui
 #' @author Matthew L. Fidler
 #' @noRd
+#' Build the saem fit object, degrading to a table-free fit on failure
+#'
+#' The SAEM run itself is finished by this point (thetas, omega and the
+#' objective function are already in `env`), so a failure while assembling the
+#' output should not throw the completed run away (#923).  Retry once with the
+#' table/residual step off; only a second failure is an error, and it reports
+#' the original one.
+#'
+#' @param env saem environment ready for `nlmixr2CreateOutputFromUi()`
+#' @return the fit object
+#' @author Matthew L. Fidler
+#' @noRd
+.saemCreateOutput <- function(env) {
+  .snap <- as.list(env, all.names=TRUE)
+  .build <- function() {
+    nlmixr2CreateOutputFromUi(env$ui, data=env$origData, control=env$control,
+                              table=env$table, env=env, est="saem")
+  }
+  .ret <- try(.build(), silent=TRUE)
+  if (!inherits(.ret, "try-error")) return(.ret)
+  .msg <- attr(.ret, "condition")$message
+  # the failed attempt has already written into env; put it back the way it was
+  rm(list=ls(envir=env, all.names=TRUE), envir=env)
+  list2env(.snap, envir=env)
+  env$control$calcTables <- FALSE
+  env$table$cwres <- FALSE
+  env$table$npde <- FALSE
+  .ret <- try(.build(), silent=TRUE)
+  if (inherits(.ret, "try-error")) stop(.msg, call.=FALSE)
+  .pre <- "fit degraded, no tables: "
+  warning(paste0(.pre, .vaeTruncList(gsub("[\r\n]+", " ", .msg), prefix=.pre)),
+          call.=FALSE)
+  .ret
+}
+
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
@@ -1204,7 +1275,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
-    .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+    .ret <- .saemCreateOutput(.ret)
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
     .saemInstallFullCov(.ret)
