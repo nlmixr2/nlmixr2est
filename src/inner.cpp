@@ -17415,10 +17415,41 @@ static bool vaeColinPartner(const VaeColinScratch& sc, const VaeBnbCtx& c,
   return !vaeColinHasBlk(c, cur, bAlt);
 }
 
-// Hysteresis: within each cluster, revert to the covariate selected last
-// iteration when this iteration's winner failed to beat it by `holdTol`
-// penalties.  At most one revert per cluster, best-scoring, tie-broken
-// order-independently.
+// Best revert available inside ONE cluster: swap a block the search added this
+// iteration for a cluster mate it displaced, when the winner failed to beat that
+// mate by `holdTol` penalties.  Returns false when nothing qualifies.
+static bool vaeColinBestRevert(VaeBnbCtx& c, const VaeColinScratch& sc,
+                               const std::vector<char>& prevIn, int cl,
+                               double holdTol, const std::vector<int>& cur,
+                               double scoreCur, std::vector<int>* bestSel,
+                               int* nTest) {
+  double bestScore = 0;
+  bool have = false;
+  for (int bIn = 0; bIn < sc.nBlk; ++bIn) {
+    if (sc.clsOfBlk[(size_t)bIn] != cl || !vaeColinHasBlk(c, cur, bIn)) continue;
+    // only a block the search ADDED this iteration can displace anything
+    if (!vaeColinPrev(c, prevIn, bIn, false)) continue;
+    for (int bAlt = 0; bAlt < sc.nBlk; ++bAlt) {
+      if (!vaeColinPartner(sc, c, cur, bIn, bAlt)) continue;
+      if (!vaeColinPrev(c, prevIn, bAlt, true)) continue;
+      std::vector<int> alt = vaeColinSwap(c, cur, bIn, bAlt);
+      arma::vec coefAlt;
+      bool ok = false;
+      double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
+      if (!ok || !R_FINITE(sAlt)) continue;
+      ++(*nTest);
+      if (sAlt - scoreCur > holdTol * c.penalty) continue;
+      if (!have || sAlt < bestScore ||
+          (sAlt == bestScore && vaeSelLess(alt, *bestSel))) {
+        have = true; bestScore = sAlt; *bestSel = alt;
+      }
+    }
+  }
+  return have;
+}
+
+// Hysteresis: at most one revert per cluster, best-scoring, tie-broken
+// order-independently, clusters visited in ascending id.
 static void vaeColinHoldPass(VaeBnbCtx& c, const VaeColinScratch& sc,
                              const std::vector<int>& cls,
                              const std::vector<char>& prevIn, double holdTol,
@@ -17426,31 +17457,11 @@ static void vaeColinHoldPass(VaeBnbCtx& c, const VaeColinScratch& sc,
                              arma::vec* coefCur, int* nTest, int* nHold) {
   std::vector<int> clsSeen = vaeColinClusters(*cur, cls);
   for (size_t t = 0; t < clsSeen.size(); ++t) {
-    const int cl = clsSeen[t];
-    double bestScore = 0;
     std::vector<int> bestSel;
-    bool have = false;
-    for (int bIn = 0; bIn < sc.nBlk; ++bIn) {
-      if (sc.clsOfBlk[(size_t)bIn] != cl || !vaeColinHasBlk(c, *cur, bIn)) continue;
-      // only a block the search ADDED this iteration can displace anything
-      if (!vaeColinPrev(c, prevIn, bIn, false)) continue;
-      for (int bAlt = 0; bAlt < sc.nBlk; ++bAlt) {
-        if (!vaeColinPartner(sc, c, *cur, bIn, bAlt)) continue;
-        if (!vaeColinPrev(c, prevIn, bAlt, true)) continue;
-        std::vector<int> alt = vaeColinSwap(c, *cur, bIn, bAlt);
-        arma::vec coefAlt;
-        bool ok = false;
-        double sAlt = vaeScoreSupport(c, alt, &coefAlt, &ok);
-        if (!ok || !R_FINITE(sAlt)) continue;
-        ++(*nTest);
-        if (sAlt - *scoreCur > holdTol * c.penalty) continue;
-        if (!have || sAlt < bestScore ||
-            (sAlt == bestScore && vaeSelLess(alt, bestSel))) {
-          have = true; bestScore = sAlt; bestSel = alt;
-        }
-      }
+    if (!vaeColinBestRevert(c, sc, prevIn, clsSeen[t], holdTol, *cur, *scoreCur,
+                            &bestSel, nTest)) {
+      continue;
     }
-    if (!have) continue;
     *cur = bestSel;
     arma::vec coefNew;
     bool ok = false;
