@@ -8,18 +8,37 @@ worst model under `foceif` was the best under `focei`.
 
 ## What it is not
 
-Two plausible explanations were checked and ruled out by measurement:
+Three explanations were checked and ruled out **by measurement**:
 
 - **Not the FOCE-FAST phenomenon** (premature termination because an analytic
   gradient walks into a local minimum, per the NONMEM comparison in
-  PMID 33884580).  Plain `focei` with ordinary finite-difference gradients also
-  stalls at 8 evaluations the moment it is given `outerOpt="lbfgsb3c"`.  No
-  analytic gradient is involved in that run.
-- **Not the #868 whole-gradient FD fallback.**  The `foceif` run's
-  `parHistData` is 9/9 `"Analytic Gradient"`, with no `(finite difference)`,
+  PMID 33884580).  Plain `focei` with finite-difference gradients also stalls at
+  8 evaluations when given `outerOpt="lbfgsb3c"`.  No analytic gradient involved.
+- **Not the #868 whole-gradient FD fallback.**  Every `foceif` run's
+  `parHistData` is 100% `"Analytic Gradient"` -- no `(finite difference)`,
   `(relaxed)` or `(Chartrand)` rows.  The fallback never fired.
+- **Not a missing projected-gradient test.**  This was the first fix attempted
+  and it was WRONG; see below.
 
-## What it is
+## The `pgtol` dead end (implemented, measured, reverted -- 2b0cae85e / 58ea5715d)
+
+The first hypothesis was that `lbfgsPgtol = 0` suppressed the stationarity test
+and left `factr` as "the only stopping rule", so restoring `pgtol` would let the
+fit run to stationarity.
+
+**That does not follow.**  `pgtol` is an ADDITIONAL L-BFGS-B stopping rule, not a
+replacement for `factr` -- the optimizer stops when EITHER fires.  Enabling it
+can only end a fit sooner, so it cannot cure premature termination.
+
+Measured anyway, with the plumbing verified live (`lbfgsPgtolOuter=1e6`
+terminates after one evaluation, so the value does reach the optimizer): at
+`10^-sigdig` it is not binding.  Bit-identical to `pgtol=0` across five problems
+-- same objective to seven digits, same evaluation counts (8, 15, 6, 21, 7).
+
+Reverted.  Keep the lesson: a stopping rule that only ADDS a termination
+condition cannot fix late-stopping OR early-stopping in the direction wanted.
+
+## What it actually is
 
 `.foceiFastCtl()` (`R/foceiFast.R`) does not only set `fast=TRUE`; it lets the
 outer optimizer re-default, and `R/foceiControl.R` splits on that:
@@ -28,73 +47,75 @@ outer optimizer re-default, and `R/foceiControl.R` splits on that:
 outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
 ```
 
-So `focei` vs `foceif` is **bobyqa vs lbfgsb3c**.  The two stop on different
-criteria, which is exactly the reported contrast:
+So `focei` vs `foceif` is **bobyqa vs lbfgsb3c**.  Two effects, of very different
+size:
 
-- **bobyqa** stops when its trust-region radius reaches `rhoend = 10^-sigdig` in
-  scaled parameter space -- a *parameter-space* criterion, so its cost depends on
-  the surface.
-- **lbfgsb3c** ran with `lbfgsPgtol = 0`, which disables the projected-gradient
-  test and leaves `factr` as the ONLY stopping rule.  `factr` tests the objective
-  reduction of a **single step**, so it fires as soon as one step is small,
-  regardless of how far the gradient still is from zero.  The count tracks the
-  parameter count because that is roughly how long L-BFGS-B takes to build its
-  limited-memory curvature model.
+1. **`lbfgsFactr` is too loose** (`10^-sigdig` relative, on the objective
+   reduction of a SINGLE step).  Real, and fixable by tightening.
+2. **Derivative-free beats gradient-based on hard surfaces**, by far the larger
+   effect, and NOT fixable by any tolerance.
 
-`pgtol` is the stationarity test that catches this.  It is only supportable on an
-analytic gradient: a finite-difference gradient never drives `max|proj g|` below
-its own noise floor, so the test would either never fire or fire on noise.
+Effect 2 is not about the gradient's provenance.  On theo_sd with a block omega:
 
-## Phase 1 -- enable pgtol exactly where the gradient is known (DONE)
+| config | gradient | outer optimizer | OFV |
+|---|---|---|---|
+| `focei` bobyqa | finite difference | derivative-free | **95.69** |
+| `foceif` nlminb | analytic | gradient-based | 107.03 |
+| `foceif` lbfgsb3c | analytic | gradient-based | 108.30 |
+| `focei` nlminb | **finite difference** | gradient-based | **113.19** |
 
-`.sigdigPgtol(sigdig) = 10^-sigdig` in `R/sharedControl.R`, alongside the
-existing `.sigdigFactr`.  Applied where the gradient is analytic, left at `0`
-everywhere else:
+`focei`+`nlminb` uses FD and lands worst of the four.  The optimizer class is the
+discriminator.
 
-| surface | gradient | pgtol |
-|---|---|---|
-| `foceiControl()` inner (`innerOpt="BFGS"`) | sensitivity equations, always | `lbfgsPgtol` derived |
-| `foceiControl()` outer, `fast=TRUE` | analytic (Almquist) | `lbfgsPgtolOuter` derived |
-| `foceiControl()` outer, `fast=FALSE` | finite differences | `0` |
-| `lbfgsb3cControl()` | `gr=.nlmixrOptimGradC`, always | derived |
-| `optimControl()`, `L-BFGS-B` + `solveType="grad"` | `gr=.nlmixrOptimGradC` | derived |
-| `optimControl()`, anything else | optim's own FD | `0` |
+## Phase 2 -- tolerance sweep (IN PROGRESS)
 
-`lbfgsPgtol` had to split into inner/outer: one `op_focei` field served both, but
-`FdInnerTolGuard` tightens the inner one and the outer one has to follow `fast`.
-`fast` can also be downgraded AFTER the control is built (linCmt(), out-of-scope
-`ll()`, mixtures), so `.foceiFinalizeFast()` re-suppresses `lbfgsPgtolOuter` when
-that happens and the default was taken -- tracked by `lbfgsPgtolOuterDefault`,
-mirroring the existing `outerOptDefault` idiom so a built control round-trips.
+Sweeping `lbfgsFactr = 10^-(sigdig+k)/eps` and nlminb's `rel.tol`/`x.tol` =
+`10^-(sigdig+k)` for k = 0,1,2,3,4,6,8, against the `focei`/bobyqa reference, on
+five problems: theo 1cmt, theo 1cmt with a block omega, pheno_sd (sparse),
+1-cmt Michaelis-Menten, 2-cmt oral.  `pgtol` pinned to 0 throughout so this
+measures the factr/rel.tol axis alone.
 
-## Phase 2 -- benchmark before touching the default (IN PROGRESS)
+Results so far (`dOfv` vs the bobyqa reference, `evals` = outer evaluations):
 
-The first measurement was `theo_sd`, a toy that does not stress the optimizer, so
-it cannot carry a default change on its own.  Phase 2 measures OFV / outer
-evaluations / wall time / gradient type over problems that do:
+| problem | k=0 (current) | k=1 | k=2 | k>=3 |
+|---|---|---|---|---|
+| theo 1cmt, lbfgsb3c | +0.403 / 8 | **-0.004 / 14** | -0.003 / 21 | -0.003 / 21 |
+| theo 1cmt, nlminb | +0.098 / 43 | -0.003 / 51 | -0.005 / 55 | -0.006 / 72 |
+| theo corOm, lbfgsb3c | +12.61 / 15 | +12.61 / 15 | +12.29 / 29 | +12.09 / 52 |
+| theo corOm, nlminb | +11.34 / 41 | +11.34 / 41 | +11.34 / 41 | +11.34 / 41 |
+| pheno, lbfgsb3c | +0.078 / 7 | **+0.011 / 8** | +0.008 / 9 | +0.004 / 16 |
+| pheno, nlminb | +0.020 / 13 | +0.003 / 17 | +0.003 / 31 | +0.003 / 31 |
 
-- theo 1-cmt (baseline, for continuity)
-- theo 1-cmt with a **block omega** (correlated etas)
-- **2-cmt oral** (the 16-step case from the report)
-- 1-cmt **Michaelis-Menten** (ill-conditioned Vm/Km ridge)
-- **pheno_sd** (sparse, few observations per subject)
+Reading so far: **k=1 captures nearly all the available gain** on well-behaved
+problems for a small evaluation cost; k=2 adds a little; it saturates by k=3-4.
+On the block-omega surface no tolerance closes the gap -- and nlminb is entirely
+insensitive to its tolerance there (41 evaluations at every k), confirming the
+gap is a basin difference rather than early stopping.
 
-crossed with `focei`+bobyqa, `focei`+nlminb, `foceif`+lbfgsb3c at `pgtol=0` (the
-old behavior), `foceif`+lbfgsb3c at the new derived `pgtol`, and `foceif`+nlminb.
+Pending: 1-cmt Michaelis-Menten and 2-cmt oral.
 
 ## Phase 3 -- the default decision (BLOCKED on Phase 2)
 
-Deliberately deferred.  Enabling `pgtol` may repair lbfgsb3c on its own, and
-lbfgsb3c is the optimizer that actually consumes the analytic gradient -- so
-flipping the default to nlminb first would mask that.  Decide from Phase 2:
+Candidate: default `lbfgsFactr` (and nlminb's `rel.tol`/`x.tol`) to
+`10^-(sigdig+1)` or `10^-(sigdig+2)` under `fast=TRUE`.  Decide once the two slow
+problems land, weighing OFV recovered against evaluation cost.
 
-- lbfgsb3c reaches the same optimum with `pgtol` on -> keep it, change nothing.
-- lbfgsb3c still stops short WITH a stationarity test -> flip
-  `R/foceiControl.R`'s `fast=TRUE` branch to `nlminb`.
+Deliberately NOT flipping the `fast=TRUE` outer optimizer to nlminb: it wins 5/5
+against lbfgsb3c, but both sit well above bobyqa on the hard surfaces, so that
+change would trade one poorly-evidenced default for another without addressing
+effect 2.
 
 ## Phase 4 -- regression test
 
-Pin that `foceif` reaches the same optimum as `focei` across outer optimizers, so
-a future default change cannot silently move it.  Per the repo convention the
-test must also assert the mechanism ran (the `parHistData` gradient type is
-analytic), not just that the numbers agree.
+Pin the converged objective across outer optimizers so a future default change
+cannot silently move it.  Per the repo convention the test must also assert the
+mechanism ran (the `parHistData` gradient type is analytic), not just that the
+numbers agree.
+
+## Open question
+
+The five benchmark models were written for this exercise.  The Michaelis-Menten
+and block-omega fits may be badly posed or badly initialized rather than
+revealing an optimizer defect, which would change the reading of effect 2.  Worth
+a second opinion from someone who knows these surfaces before drawing conclusions
+about `foceif` accuracy in general.
