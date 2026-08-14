@@ -1483,6 +1483,15 @@ struct EtaRestoreGuard {
   void disarm() { armed = false; }
 };
 
+// Snapshot / restore one per-subject buffer.  Absent buffers leave the copy empty, and
+// an empty copy restores nothing -- so the eight fields below need no guard of their own.
+static inline void fdSaveVec(std::vector<double> &dst, const double *src, int n) {
+  if (src != NULL && n > 0) dst.assign(src, src + n);
+}
+static inline void fdRestoreVec(const std::vector<double> &src, double *dst) {
+  if (!src.empty()) std::copy(src.begin(), src.end(), dst);
+}
+
 // Everything innerOpt1() moves that must not leak out of a differencing call.
 //
 // EtaRestoreGuard covers par_ptr only, which is NOT where the inner optimizer keeps
@@ -1507,30 +1516,26 @@ struct FdInnerStateGuard {
   FdInnerStateGuard(int cid) : cid_(cid) {
     fInd = &(inds_focei[cid]);
     int ne = op_focei.neta;
-    if (fInd->eta != NULL && ne > 0) eta.assign(&fInd->eta[0], &fInd->eta[0] + ne);
-    if (fInd->oldEta != NULL && ne > 0) oldEta.assign(&fInd->oldEta[0], &fInd->oldEta[0] + ne);
+    fdSaveVec(eta, fInd->eta, ne);
+    fdSaveVec(oldEta, fInd->oldEta, ne);
     // LikInner2() copies eta into saveEta whenever likId==0 -- which is the likId this
     // path uses -- and foceiFinalize reads saveEta to report the subject's ETAs.  Without
     // this the reported ETAs would belong to a perturbed theta.
-    if (fInd->saveEta != NULL && ne > 0) saveEta.assign(&fInd->saveEta[0], &fInd->saveEta[0] + ne);
+    fdSaveVec(saveEta, fInd->saveEta, ne);
     // The INNER problem's own step caches.  innerOpt1() reaches calcEtaHessian(), which
     // fills these when they are still 0 -- at the perturbed theta.  The fit would then
     // reuse eta steps tuned somewhere it never visited.
-    if (fInd->etahf != NULL && ne > 0) etahf.assign(&fInd->etahf[0], &fInd->etahf[0] + ne);
-    if (fInd->etahr != NULL && ne > 0) etahr.assign(&fInd->etahr[0], &fInd->etahr[0] + ne);
-    if (fInd->etahh != NULL && ne > 0) etahh.assign(&fInd->etahh[0], &fInd->etahh[0] + ne);
-    if (fInd->zm != NULL && op_focei.nzm > 0) {
-      zm.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
-    }
+    fdSaveVec(etahf, fInd->etahf, ne);
+    fdSaveVec(etahr, fInd->etahr, ne);
+    fdSaveVec(etahh, fInd->etahh, ne);
+    fdSaveVec(zm, fInd->zm, op_focei.nzm);
     // Per-observation conditional log-likelihoods.  likInner0() overwrites these, and
     // they are handed to R as e["llikObs"], so a perturbed evaluation would otherwise
     // ship in the fit.
     {
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid));
       int nAll = (ind == NULL) ? 0 : getIndNallTimes(ind);
-      if (fInd->llikObs != NULL && nAll > 0) {
-        llikObs.assign(&fInd->llikObs[0], &fInd->llikObs[0] + nAll);
-      }
+      fdSaveVec(llikObs, fInd->llikObs, nAll);
     }
     lik[0] = fInd->lik[0]; lik[1] = fInd->lik[1]; lik[2] = fInd->lik[2];
     setup = fInd->setup; uzm = fInd->uzm; mode = fInd->mode;
@@ -1546,14 +1551,14 @@ struct FdInnerStateGuard {
     }
   }
   ~FdInnerStateGuard() {
-    if (!eta.empty()) std::copy(eta.begin(), eta.end(), &fInd->eta[0]);
-    if (!oldEta.empty()) std::copy(oldEta.begin(), oldEta.end(), &fInd->oldEta[0]);
-    if (!saveEta.empty()) std::copy(saveEta.begin(), saveEta.end(), &fInd->saveEta[0]);
-    if (!etahf.empty()) std::copy(etahf.begin(), etahf.end(), &fInd->etahf[0]);
-    if (!etahr.empty()) std::copy(etahr.begin(), etahr.end(), &fInd->etahr[0]);
-    if (!etahh.empty()) std::copy(etahh.begin(), etahh.end(), &fInd->etahh[0]);
-    if (!zm.empty()) std::copy(zm.begin(), zm.end(), &fInd->zm[0]);
-    if (!llikObs.empty()) std::copy(llikObs.begin(), llikObs.end(), &fInd->llikObs[0]);
+    fdRestoreVec(eta, fInd->eta);
+    fdRestoreVec(oldEta, fInd->oldEta);
+    fdRestoreVec(saveEta, fInd->saveEta);
+    fdRestoreVec(etahf, fInd->etahf);
+    fdRestoreVec(etahr, fInd->etahr);
+    fdRestoreVec(etahh, fInd->etahh);
+    fdRestoreVec(zm, fInd->zm);
+    fdRestoreVec(llikObs, fInd->llikObs);
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
     fInd->stickyRecalcN2 = stickyRecalcN2;
