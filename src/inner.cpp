@@ -11071,6 +11071,103 @@ void impSetInnerNeqOverride() { odeSwapPinAll(odeSlotInner); }
 // cannot be skipped by an early return or a missing call site.
 void impClearInnerNeqOverride() { odeSwapUnpinAll(); }
 
+// Populate the shared scale.h struct unconditionally (even when print is off) so
+// scalePrintFun calls below can no-op via scale.every == 0.  scale.save = 0 since focei
+// keeps its own iteration history in module-level globals.  Split out of foceiFitCpp_
+// because it is setup, not fitting: it only reads the transform vectors and writes
+// op_focei.scale.
+static void foceiFitSetupScale(const CharacterVector &thetaNames,
+                               const IntegerVector &thetaXPar,
+                               const IntegerVector &thetaProbitIdx) {
+  // Build a CharacterVector with the printed column names in the same
+  // order scalePrintFun emits them (print-map order; identity over
+  // fixedTrans when muModel is off).
+  CharacterVector scaleNames(op_focei.nparsPrint);
+  int k = 1;
+  for (unsigned int i = 0; i < op_focei.nparsPrint; i++) {
+    int jj = _printFullIdx[i];
+    if (jj < thetaNames.size()) {
+      scaleNames[i] = thetaNames[jj];
+    } else {
+      scaleNames[i] = "o" + std::to_string(k++);
+    }
+  }
+  if (muPrintActive()) {
+    // Padded per-column buffers: optimizer columns copy the live values;
+    // regression-updated mu columns get identity scaling (their noGrad mask
+    // skips the unscale) plus the model's own back-transform codes so the
+    // X row shows them like any other theta.
+    unsigned int npp = op_focei.nparsPrint;
+    _printXPar.resize(npp); _printProbitIdx.resize(npp);
+    _printInitPar.resize(npp); _printScaleC.resize(npp);
+    for (unsigned int p = 0; p < npp; p++) {
+      int ko = _printOptIdx[p], jj = _printFullIdx[p];
+      if (ko >= 0) {
+        _printXPar[p]      = op_focei.xPar[ko];
+        _printProbitIdx[p] = op_focei.probitIdxArr[ko];
+        _printInitPar[p]   = op_focei.initPar[ko];
+        _printScaleC[p]    = op_focei.scaleC[ko];
+      } else {
+        _printXPar[p]      = (jj < thetaXPar.size()) ? thetaXPar[jj] : 0;
+        _printProbitIdx[p] = (jj < thetaProbitIdx.size()) ? thetaProbitIdx[jj] : 0;
+        _printInitPar[p]   = op_focei.fullTheta[jj];
+        _printScaleC[p]    = 1.0;
+      }
+    }
+    op_focei.scale.npars   = (int)npp;
+    op_focei.scale.initPar = _printInitPar.data();
+    op_focei.scale.scaleC  = _printScaleC.data();
+    op_focei.scale.xPar    = _printXPar.data();
+    op_focei.scale.noGrad  = _printNoGrad.data();
+  } else {
+    op_focei.scale.npars   = op_focei.npars;
+    op_focei.scale.initPar = op_focei.initPar;
+    op_focei.scale.scaleC  = op_focei.scaleC;
+    op_focei.scale.xPar    = op_focei.xPar;
+    op_focei.scale.noGrad  = NULL; // op_focei.scale persists across fits
+  }
+  op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
+  op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
+  op_focei.scale.probitIdx       = muPrintActive() ? _printProbitIdx.data() : op_focei.probitIdxArr;
+  op_focei.scale.probitThetaLow  = op_focei.probitThetaLow.size() ? &op_focei.probitThetaLow[0] : NULL;
+  op_focei.scale.probitThetaHi   = op_focei.probitThetaHi.size()  ? &op_focei.probitThetaHi[0]  : NULL;
+  op_focei.scale.thetaNames    = scaleNames;
+  op_focei.scale.normType      = op_focei.normType;
+  op_focei.scale.scaleType     = op_focei.scaleType;
+  op_focei.scale.scaleCmin     = op_focei.scaleCmin;
+  op_focei.scale.scaleCmax     = op_focei.scaleCmax;
+  op_focei.scale.scaleTo       = op_focei.scaleTo;
+  op_focei.scale.c1            = op_focei.c1;
+  op_focei.scale.c2            = op_focei.c2;
+  op_focei.scale.simple        = 0;
+  // focei configures its scaling struct by hand (no scaleSetup()), so set
+  // showOfv explicitly or the "Function Val." column and gradient-row label
+  // are dropped for every outer optimizer.
+  op_focei.scale.showOfv       = 1;
+  // focei's richer Key suffix (gradient-method legend and omega note),
+  // appended after "X: Back-transformed parameters; " by scalePrintHeader.
+  op_focei.scale.keyExtra = muPrintActive() ?
+    "G: Gill difference gradient approximation\n"
+    "F: Forward difference gradient approximation\n"
+    "C: Central difference gradient approximation\n"
+    "M: Mixed forward and central difference gradient approximation\n"
+    "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
+    "Unscaled parameters for Omegas=chol(solve(omega));\n"
+    "Diagonals are transformed, as specified by foceiControl(diagXform=)\n"
+    "mu-referenced thetas are regression-updated each iteration (blank gradient)\n" :
+    "G: Gill difference gradient approximation\n"
+    "F: Forward difference gradient approximation\n"
+    "C: Central difference gradient approximation\n"
+    "M: Mixed forward and central difference gradient approximation\n"
+    "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
+    "Unscaled parameters for Omegas=chol(solve(omega));\n"
+    "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
+  op_focei.scale.printCount    = 0;
+  op_focei.scale.save          = 0;  // focei records into module-level globals
+  op_focei.scale.cn            = 0;
+  op_focei.scale.showOfv       = 1;
+}
+
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
@@ -11420,98 +11517,7 @@ Environment foceiFitCpp_(Environment e){
     Environment thetaReset = nlmixr2[".thetaReset"];
     restoreFromEnvrionment(thetaReset);
   }
-  // Populate the shared scale.h struct unconditionally (even when print is
-  // off) so scalePrintFun calls below can no-op via scale.every==0. scale.save=0
-  // since focei keeps its own iteration history in module-level globals.
-  {
-    // Build a CharacterVector with the printed column names in the same
-    // order scalePrintFun emits them (print-map order; identity over
-    // fixedTrans when muModel is off).
-    CharacterVector scaleNames(op_focei.nparsPrint);
-    int k = 1;
-    for (unsigned int i = 0; i < op_focei.nparsPrint; i++) {
-      int jj = _printFullIdx[i];
-      if (jj < thetaNames.size()) {
-        scaleNames[i] = thetaNames[jj];
-      } else {
-        scaleNames[i] = "o" + std::to_string(k++);
-      }
-    }
-    if (muPrintActive()) {
-      // Padded per-column buffers: optimizer columns copy the live values;
-      // regression-updated mu columns get identity scaling (their noGrad mask
-      // skips the unscale) plus the model's own back-transform codes so the
-      // X row shows them like any other theta.
-      unsigned int npp = op_focei.nparsPrint;
-      _printXPar.resize(npp); _printProbitIdx.resize(npp);
-      _printInitPar.resize(npp); _printScaleC.resize(npp);
-      for (unsigned int p = 0; p < npp; p++) {
-        int ko = _printOptIdx[p], jj = _printFullIdx[p];
-        if (ko >= 0) {
-          _printXPar[p]      = op_focei.xPar[ko];
-          _printProbitIdx[p] = op_focei.probitIdxArr[ko];
-          _printInitPar[p]   = op_focei.initPar[ko];
-          _printScaleC[p]    = op_focei.scaleC[ko];
-        } else {
-          _printXPar[p]      = (jj < thetaXPar.size()) ? thetaXPar[jj] : 0;
-          _printProbitIdx[p] = (jj < thetaProbitIdx.size()) ? thetaProbitIdx[jj] : 0;
-          _printInitPar[p]   = op_focei.fullTheta[jj];
-          _printScaleC[p]    = 1.0;
-        }
-      }
-      op_focei.scale.npars   = (int)npp;
-      op_focei.scale.initPar = _printInitPar.data();
-      op_focei.scale.scaleC  = _printScaleC.data();
-      op_focei.scale.xPar    = _printXPar.data();
-      op_focei.scale.noGrad  = _printNoGrad.data();
-    } else {
-      op_focei.scale.npars   = op_focei.npars;
-      op_focei.scale.initPar = op_focei.initPar;
-      op_focei.scale.scaleC  = op_focei.scaleC;
-      op_focei.scale.xPar    = op_focei.xPar;
-      op_focei.scale.noGrad  = NULL; // op_focei.scale persists across fits
-    }
-    op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
-    op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
-    op_focei.scale.probitIdx       = muPrintActive() ? _printProbitIdx.data() : op_focei.probitIdxArr;
-    op_focei.scale.probitThetaLow  = op_focei.probitThetaLow.size() ? &op_focei.probitThetaLow[0] : NULL;
-    op_focei.scale.probitThetaHi   = op_focei.probitThetaHi.size()  ? &op_focei.probitThetaHi[0]  : NULL;
-    op_focei.scale.thetaNames    = scaleNames;
-    op_focei.scale.normType      = op_focei.normType;
-    op_focei.scale.scaleType     = op_focei.scaleType;
-    op_focei.scale.scaleCmin     = op_focei.scaleCmin;
-    op_focei.scale.scaleCmax     = op_focei.scaleCmax;
-    op_focei.scale.scaleTo       = op_focei.scaleTo;
-    op_focei.scale.c1            = op_focei.c1;
-    op_focei.scale.c2            = op_focei.c2;
-    op_focei.scale.simple        = 0;
-    // focei configures its scaling struct by hand (no scaleSetup()), so set
-    // showOfv explicitly or the "Function Val." column and gradient-row label
-    // are dropped for every outer optimizer.
-    op_focei.scale.showOfv       = 1;
-    // focei's richer Key suffix (gradient-method legend and omega note),
-    // appended after "X: Back-transformed parameters; " by scalePrintHeader.
-    op_focei.scale.keyExtra = muPrintActive() ?
-      "G: Gill difference gradient approximation\n"
-      "F: Forward difference gradient approximation\n"
-      "C: Central difference gradient approximation\n"
-      "M: Mixed forward and central difference gradient approximation\n"
-      "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
-      "Unscaled parameters for Omegas=chol(solve(omega));\n"
-      "Diagonals are transformed, as specified by foceiControl(diagXform=)\n"
-      "mu-referenced thetas are regression-updated each iteration (blank gradient)\n" :
-      "G: Gill difference gradient approximation\n"
-      "F: Forward difference gradient approximation\n"
-      "C: Central difference gradient approximation\n"
-      "M: Mixed forward and central difference gradient approximation\n"
-      "A: Analytic (forward sensitivity) gradient (fast=TRUE)\n"
-      "Unscaled parameters for Omegas=chol(solve(omega));\n"
-      "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
-    op_focei.scale.printCount    = 0;
-    op_focei.scale.save          = 0;  // focei records into module-level globals
-    op_focei.scale.cn            = 0;
-    op_focei.scale.showOfv       = 1;
-  }
+  foceiFitSetupScale(thetaNames, thetaXPar, thetaProbitIdx);
   if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
     op_focei.t0 = clock();
     scalePrintHeader(&op_focei.scale);
