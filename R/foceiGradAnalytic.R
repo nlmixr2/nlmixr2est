@@ -645,6 +645,9 @@
       ## caller now reads the E structures as they stand, so the zeros went straight
       ## into the covariance as a subject with no prediction and no sensitivity -- and
       ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
+      ##
+      ## The per-individual finite difference lives on the all-C++ route, which owns the
+      ## per-subject gradient columns; this assembly has none to substitute into.
       if (!is.null(.Ec) && length(.Ec) > 0L) {
         .ok <- attr(.Ec, "ok")
         .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
@@ -858,7 +861,14 @@
     if (anyNA(.thv)) .thv <- .thRows$est
     .st <- .foceiAnalyticGradSetup(.ui, stats::setNames(as.numeric(.thv), .thRows$name),
                                    fit$omega)
-    if (is.null(.st)) return(NULL)
+    # Everything from here on only NAMES `.g`, so a naming failure must not discard it.
+    # Returning NULL here reported "no analytic gradient" for a gradient that had in fact
+    # been computed -- exactly what a fix()ed theta did, since .foceiAnalyticGradSetup
+    # declines for one.  That made the analytic path untestable on precisely the models
+    # where full-theta and free-parameter indexing differ, which is the indexing the outer
+    # FD fallback's step store gets wrong when it gets it wrong.  Hand back the unnamed
+    # values; the same reasoning already applies to the gMap branch below.
+    if (is.null(.st)) return(.g)
     # These names are in KERNEL space (nth + nsg + nom).  That is not the outer
     # optimizer's vector whenever a parameter occupies two kernel slots -- an estimated
     # boxCox/yeoJohnson lambda is both a theta direction and a sigma slot, so the kernel
@@ -872,7 +882,7 @@
       .gp <- tryCatch(.foceiGradPooledSetup(.ui), error = function(e) NULL)
       .map <- if (is.null(.gp)) NULL else .gp$gMap
       if (is.null(.map) || length(.map) != length(.g) ||
-            any(.map < 0L) || any(.map >= length(.nmKer))) return(NULL)
+            any(.map < 0L) || any(.map >= length(.nmKer))) return(.g)
       .nm <- .nmKer[.map + 1L]
     }
     stats::setNames(.g, .nm)

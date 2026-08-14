@@ -9,7 +9,10 @@
 #include "inner.h"
 #include "odeSwap.h"
 #include "rxomp.h"
+#include "../inst/include/nlmixr2estLikContrib.h"
+#include "likContribUtil.h"
 #include <atomic>
+#include <limits>
 
 #define _(String) (String)
 
@@ -398,6 +401,13 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
+  // external likelihood-contribution capture for the population (eta-free) nlm
+  // objective: fire the SAME registry likInner0 cycles so a plugin (nlmixr2nn)
+  // records the EXACT per-obs error-model cotangent d(LL)/d(f) here in C++ --
+  // instead of re-deriving a Gaussian approximation in R.  neta == 0 (no random
+  // effects).  Guarded so nlm is bit-identical when nothing is registered.
+  const int _hasContrib = nlmixrHasLikContrib();
+  if (_hasContrib) nlmixrLikContribBeginSubj(id, 0, nobs, NULL);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
@@ -435,9 +445,30 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         }
       }
       ret(k) = val;
+      if (_hasContrib) {
+        int yjC = getIndYj(ind), distC = 0, yj0C = 0;
+        _splitYj(&yjC, &distC, &yj0C);
+        double dvi = getIndDv(ind, kk);
+        double fO = val, rO = 1.0, dLLdf = 1.0, dLLdr = 0.0;
+        // Gaussian endpoint with rx_pred_f_/rx_r_ available: exact cotangents,
+        // honoring censoring exactly as the objective's doCensNormal1 does.  A
+        // general ll() endpoint keeps d(LL)/d(f)=1 (f is itself the log-density),
+        // matching likInner0's non-normal branch.
+        if (nlmOp.hasFR && (distC == rxDistributionNorm || distC == rxDistributionDnorm)) {
+          fO = lhs[po + 1]; rO = lhs[po + 2];
+          int censi = 0;
+          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
+          double limiti = R_NegInf;
+          if (hasRxLimit(rx)) { limiti = getIndLimit(ind, kk); if (ISNA(limiti)) limiti = R_NegInf; }
+          nlmixrLikContribGaussCotan((double)censi, dvi, limiti, fO, rO, &dLLdf, &dLLdr);
+        }
+        double _llAdd = nlmixrLikContribObs1(id, k, 0, fO, dvi, rO, dLLdf, dLLdr, NULL, NULL);
+        ret(k) -= _llAdd;  // objective is -LL; a contributor LL lowers it
+      }
       k++;
     }
   }
+  if (_hasContrib) nlmixrLikContribEndSubj(id, 0, k, NULL);
 }
 
 arma::vec nlmSolveFid(arma::vec &theta, int id) {
