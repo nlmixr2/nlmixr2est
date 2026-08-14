@@ -345,6 +345,10 @@
                     nPhiMove = as.integer(.cd$nPhiMove),
                     nPhiSkipBig = as.integer(.cd$nPhiSkipBig),
                     nPhiSkipDiag = as.integer(.cd$nPhiSkipDiag),
+                    ## sticky adjacency as the run left it: a pair still ON
+                    ## whose correlation has since fallen below covSelectPhiJoin
+                    ## stayed only because membership is sticky
+                    phiPairOn = .cd$phiPairOn,
                     nPhiClamp = as.integer(.cd$nPhiClamp),
                     omOff = as.logical(.cd$omOff),
                     alternates = .vaeColinearAlt(.cd, .selected,

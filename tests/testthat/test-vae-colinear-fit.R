@@ -278,6 +278,43 @@ nmTest({
     }
   })
 
+  test_that("a wider sticky band never joins fewer pairs", {
+    skip_on_cran()
+    ## covSelectPhiLeave below covSelectPhiJoin is what keeps a pair joined when
+    ## its correlation dips into the gap.  Widening the band can therefore only
+    ## ever ADD joined pair-iterations, never remove them, whatever the
+    ## correlation trajectory happens to be -- which is the part of stickiness
+    ## that can be asserted without depending on that trajectory.
+    ##
+    ## KNOWN GAP: the specific case "correlation crossed below join and the pair
+    ## stayed" is not directly asserted.  It needs a fixture whose correlation
+    ## dips into the band and stays there, and on this fixture the effect is a
+    ## single iteration (13 joined pair-iterations against 12).  A test hinging
+    ## on that margin would be decided by differences at the 1e-14 level, which
+    ## this fit already shows across thread counts, so it would be flaky rather
+    ## than informative.  $vae$colinear$phiPairOn exposes the adjacency for
+    ## anyone constructing a sharper fixture later.
+    d <- .phiData(seed = 31L)
+    .pairs <- function(lv) {
+      f <- suppressMessages(suppressWarnings(
+        nlmixr2(.phiBlock, d, est = "vae",
+                control = vaeControl(iters = 80L, itersBurnIn = 15L,
+                                     calcTables = FALSE,
+                                     covSelectPhiCor = "mu",
+                                     covSelectPhiJoin = 0.78,
+                                     covSelectPhiLeave = lv))))
+      list(n = f$vae$colinear$nPhiPair, on = f$vae$colinear$phiPairOn)
+    }
+    none <- .pairs(0.78)     # no band: leave == join
+    wide <- .pairs(0.50)
+    expect_gte(wide$n, none$n)
+    ## the adjacency is surfaced, square, and symmetric -- a pair is a pair
+    ## whichever way round it is read
+    expect_true(is.matrix(wide$on))
+    expect_identical(nrow(wide$on), ncol(wide$on))
+    expect_identical(wide$on, t(wide$on))
+  })
+
   test_that("a bounded intercept is held, and an emptied support survives it", {
     skip_on_cran()
     ## When a joint candidate would push a population intercept past its ini()
