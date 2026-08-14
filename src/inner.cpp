@@ -13379,6 +13379,214 @@ static inline bool declineHere(int site) {
   return false;
 }
 
+// Per-observation blocks for the pooled outer gradient, stacked subject-major:
+// row range [off[i], off[i+1]) belongs to subject i.  Built once by
+// gradPooledStack() and sliced per subject by the kernel.
+struct GradPooledBlocks {
+  std::vector<int> nobs;
+  arma::ivec off;
+  int totObs = 0;
+  arma::mat a, aR;
+  arma::cube A, AR;
+  arma::vec f, y, R;
+  arma::mat Rsig;
+  arma::cube RsigDir;
+  arma::mat dvSens;              // empty unless hasLam
+  arma::ivec cens;               // empty unless hasCens
+  arma::vec lim;
+  arma::mat aRe, aRc, R0sig;     // FOCE only
+  bool hasLam = false, hasCens = false;
+  int fp = 1;                    // 1 = foce+/live R, 0 = the nonmem a0-chain
+};
+
+// FOCE variance blocks for one subject.  foce+ (or no E0) takes everything from the
+// live solve; "nonmem" takes R0 and its sensitivities from the eta=0 solve, leaving
+// aRe zero because R is frozen with respect to eta.
+static bool gradPooledStackFoce(GradPooledBlocks &B, const VaeOuterE &E,
+                                const std::vector<VaeOuterE> &E0s,
+                                int i, int o0, int n, int nsg) {
+  if (B.fp) {
+    B.aRe.rows(o0, o0 + n - 1) = E.aR;
+    B.aRc.rows(o0, o0 + n - 1) = E.aR;
+    if (nsg > 0) B.R0sig.rows(o0, o0 + n - 1) = E.Rsig;
+    return true;
+  }
+  const VaeOuterE &E0 = E0s[(size_t)i];
+  if (E0.nobs != n) return declineHere(14);
+  B.R.subvec(o0, o0 + n - 1) = E0.R;    // the kernel's R0v
+  B.aRc.rows(o0, o0 + n - 1) = E0.aR;
+  if (nsg > 0) B.R0sig.rows(o0, o0 + n - 1) = E0.Rsig;
+  return true;
+}
+
+// DV / CENS / LIMIT for one subject, straight from the individual -- the inner problem
+// reads them the same way -- in the same observation order the solve loop filled E.f
+// with.  Accumulates the DV-transform Jacobian into jacSum.
+static bool gradPooledStackDv(const FoceiGradPooledSetup &G, GradPooledBlocks &B,
+                              const VaeOuterE &E, int i, int o0, int n, double &jacSum) {
+  const int nd = (int)B.a.n_cols;
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+  int ko = 0;
+  for (int q = 0; q < getIndNallTimes(ind) && ko < n; ++q) {
+    int kk = getIndIx(ind, q);
+    if (getIndEvid(ind, kk) != 0) continue;
+    double dv = getIndDv(ind, kk);
+    double yj = G.hasT ? E.trans(ko, 0) : 0.0, lam = G.hasT ? E.trans(ko, 1) : 1.0;
+    double lo = G.hasT ? E.trans(ko, 2) : 0.0, hi = G.hasT ? E.trans(ko, 3) : 1.0;
+    B.y[o0 + ko] = G.hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
+    if (B.hasLam) {
+      double dvs = _powerDLambda(dv, lam, (int)yj, lo, hi);
+      for (size_t L = 0; L < G.lamDir.size(); ++L) {
+        int d = G.lamDir[L] - 1;
+        if (d >= 0 && d < nd) B.dvSens(o0 + ko, d) = dvs;
+      }
+      jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
+    }
+    if (B.hasCens) {
+      B.cens[o0 + ko] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
+      double lim = NA_REAL;
+      if (hasRxLimit(rx)) {
+        lim = getIndLimit(ind, kk);
+        if (!ISNA(lim) && R_FINITE(lim) && G.hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
+      }
+      B.lim[o0 + ko] = lim;
+    }
+    ko++;
+  }
+  if (ko != n) return declineHere(15);
+  return true;
+}
+
+// Stack the per-subject solves into GradPooledBlocks and accumulate the DV-transform
+// Jacobian.  Flagged (finite-differenced) subjects keep zero rows.  Returns false with
+// the decline already recorded.
+static bool gradPooledStack(const FoceiGradPooledSetup &G,
+                            const std::vector<VaeOuterE> &Es,
+                            const std::vector<VaeOuterE> &E0s, bool needE0,
+                            bool isFoce, int nsub, int nd, int nsg,
+                            GradPooledBlocks &B, double &jacSum) {
+  B.nobs.assign((size_t)nsub, 0);
+  B.totObs = 0;
+  for (int i = 0; i < nsub; ++i) {
+    B.nobs[(size_t)i] = Es[(size_t)i].nobs;
+    if (B.nobs[(size_t)i] <= 0) return declineHere(13);
+    B.totObs += B.nobs[(size_t)i];
+  }
+  const int totObs = B.totObs;
+  B.off.set_size((unsigned int)nsub + 1); B.off[0] = 0;
+  for (int i = 0; i < nsub; ++i) B.off[i + 1] = B.off[i] + B.nobs[(size_t)i];
+  B.a.zeros(totObs, nd); B.aR.zeros(totObs, nd);
+  B.A.zeros(totObs, nd, nd); B.AR.zeros(totObs, nd, nd);
+  B.f.zeros(totObs); B.y.zeros(totObs); B.R.zeros(totObs);
+  B.Rsig.zeros(totObs, nsg);
+  B.RsigDir.zeros(totObs, nd, nsg);
+  B.hasLam = (G.nLam > 0) && G.hasT && !G.lamDir.empty();
+  B.dvSens.zeros(totObs, B.hasLam ? nd : 0);
+  B.hasCens = hasRxCens(rx) || hasRxLimit(rx);
+  B.cens.zeros(B.hasCens ? totObs : 0);
+  B.lim.set_size(B.hasCens ? totObs : 0);
+  if (B.hasCens) B.lim.fill(NA_REAL);
+  // The variance sensitivity splits in two: aRe drives the ETA block (zero under
+  // "nonmem", where R is frozen with respect to eta) and aRc the PARAMETER columns
+  // (E0's dR0/ddir under "nonmem", the live dR/ddir under foce+).  There is no AR cube --
+  // the FOCE kernel is gradient-only.
+  B.fp = (G.foceType == 1 || !needE0) ? 1 : 0;
+  B.aRe.zeros(isFoce ? totObs : 0, isFoce ? nd : 0);
+  B.aRc.zeros(isFoce ? totObs : 0, isFoce ? nd : 0);
+  B.R0sig.zeros(isFoce ? totObs : 0, isFoce ? nsg : 0);
+  jacSum = 0.0;
+  for (int i = 0; i < nsub; ++i) {
+    const VaeOuterE& E = Es[(size_t)i];
+    int o0 = B.off[i], n = B.nobs[(size_t)i];
+    if (!E.ok) continue;                     // finite-differenced; rows stay zero
+    B.a.rows(o0, o0 + n - 1) = E.a;
+    B.aR.rows(o0, o0 + n - 1) = E.aR;
+    B.A.rows(o0, o0 + n - 1) = E.A;
+    B.AR.rows(o0, o0 + n - 1) = E.AR;
+    B.f.subvec(o0, o0 + n - 1) = E.f;
+    B.R.subvec(o0, o0 + n - 1) = E.R;
+    if (nsg > 0) {
+      B.Rsig.rows(o0, o0 + n - 1) = E.Rsig;
+      B.RsigDir.rows(o0, o0 + n - 1) = E.RsigDir;
+    }
+    if (isFoce && !gradPooledStackFoce(B, E, E0s, i, o0, n, nsg)) return false;
+    if (!gradPooledStackDv(G, B, E, i, o0, n, jacSum)) return false;
+  }
+  return true;
+}
+
+// AGQ quadrature nodes: Ht per subject, its Cholesky factor, then one order-1 solve
+// per node.  The grid is already in C++ (op_focei.aqx/aqw, filled by setupAq1_ for the
+// objective itself), so nothing here comes from R.  Fills qx/qw and Ek[node][subject].
+static bool gradPooledAgqNodes(const FoceiGradPooledSetup &G,
+                               const std::vector<double> &thVals,
+                               const std::vector<VaeOuterE> &Es,
+                               const arma::mat &ebesUse, const arma::mat &Oi,
+                               const std::vector<int> &nobsAll,
+                               int nn, int nsub, int neta, int cores,
+                               rx_solving_options *op,
+                               arma::mat &qx, arma::mat &qw,
+                               std::vector< std::vector<VaeOuterE> > &Ek) {
+  if (nn <= 0 || op_focei.aqx == NULL || op_focei.aqw == NULL) return declineHere(16);
+  qx = arma::mat(op_focei.aqx, nn, neta, false, true);
+  qw = arma::mat(op_focei.aqw, nn, neta, false, true);
+  std::vector<arma::mat> GinvL((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    const VaeOuterE &E = Es[(size_t)i];
+    if (!E.ok) return declineHere(17);                       // a flagged subject has no Ht
+    arma::mat Ht = Oi;
+    arma::vec eff = 1.0 / E.R, eRR = 0.5 / arma::square(E.R);
+    for (int l = 0; l < neta; ++l)
+      for (int m = 0; m < neta; ++m)
+        Ht(l, m) += arma::accu(eff % E.a.col(l) % E.a.col(m) +
+                               eRR % E.aR.col(l) % E.aR.col(m));
+    // A non-PD Ht means the OBJECTIVE took its nmNearPD/cholSE branch -- a different,
+    // non-smooth function -- so differentiating a Cholesky here would be answering the
+    // wrong question.  arma's is_sympd() and a plain chol() disagree near the boundary,
+    // hence the explicit rcond margin rather than trusting chol() alone.
+    arma::mat ch;
+    if (!arma::chol(ch, Ht)) return declineHere(18);
+    if (!R_finite(arma::rcond(Ht)) || arma::rcond(Ht) < 1e-10) return declineHere(19);
+    arma::mat gi;
+    if (!arma::inv(gi, arma::trimatu(ch))) return declineHere(20);
+    GinvL[(size_t)i] = gi;
+  }
+  // One batched solve per node.  The R route replicated the event data into
+  // nsub*nn pseudo-subjects to get this from a single rxSolve; the pool solves one
+  // individual at a time, so the replication (and its cache) is simply not needed.
+  //
+  // The node model needs its OWN event-sensitivity batch.  It shares the odeEsOuter
+  // ROLE with the gradient model, but OdeSwapEsBatch keys on the SLOT precisely
+  // because they are different compiles with different ES shapes -- order 1 vs order
+  // 2.  Solving it under the gradient model's shape makes handle_evid size its jump
+  // scratch for one model and free it against the other (ASAN: "attempting free on
+  // address which was not malloc()-ed", handle_evid -> odeSwapSolveInd).  Constructed
+  // here, outside outerSolveFill's OpenMP region, because the shape is a process
+  // global; the destructor restores the outer slot for the assembly below.
+  if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return declineHere(21);
+  if (!outerColsWithin(G.colsNode, odeSwapNlhs(odeSlotOuterNode))) return declineHere(25);
+  OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
+  Ek.resize((size_t)nn);
+  for (int k = 0; k < nn; ++k) {
+    arma::mat etaK((unsigned int)nsub, (unsigned int)neta);
+    arma::vec xk = qx.row(k).t();
+    for (int i = 0; i < nsub; ++i) {
+      // sqrt(2) is load bearing: the node SOLVE position must match the kernel's
+      // etaCur = etahat + sqrt(2) * Ginv * x, or the node sensitivities sit at the
+      // wrong eta and the quadrature silently integrates the wrong function.
+      etaK.row(i) = ebesUse.row(i) + (std::sqrt(2.0) * (GinvL[(size_t)i] * xk)).t();
+    }
+    Ek[(size_t)k].resize((size_t)nsub);
+    outerSolveFill(odeSlotOuterNode, &rxOuterNode, thVals, etaK, G.colsNode,
+                   cores, op, nsub, neta, Ek[(size_t)k]);
+    for (int i = 0; i < nsub; ++i) {
+      const VaeOuterE &En = Ek[(size_t)k][(size_t)i];
+      if (!En.ok || En.nobs != nobsAll[(size_t)i]) return declineHere(22);
+    }
+  }
+  return true;
+}
+
 static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const std::vector<double> &thVals, const arma::mat &ebes,
                            const arma::mat &Oi, const arma::cube &dOiEst,
@@ -13459,162 +13667,17 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   }
 
   // ---- stack ------------------------------------------------------------------------
-  std::vector<int> nobsAll((size_t)nsub, 0);
-  int totObs = 0;
-  for (int i = 0; i < nsub; ++i) {
-    nobsAll[(size_t)i] = Es[(size_t)i].nobs;
-    if (nobsAll[(size_t)i] <= 0) return declineHere(13);
-    totObs += nobsAll[(size_t)i];
-  }
-  arma::ivec off((unsigned int)nsub + 1); off[0] = 0;
-  for (int i = 0; i < nsub; ++i) off[i + 1] = off[i] + nobsAll[(size_t)i];
-  arma::mat aB(totObs, nd, arma::fill::zeros), aRB(totObs, nd, arma::fill::zeros);
-  arma::cube AB(totObs, nd, nd, arma::fill::zeros), ARB(totObs, nd, nd, arma::fill::zeros);
-  arma::vec fB(totObs, arma::fill::zeros), yB(totObs, arma::fill::zeros),
-    RB(totObs, arma::fill::zeros);
-  arma::mat RsigB(totObs, nsg, arma::fill::zeros);
-  arma::cube RsigDirB(totObs, nd, nsg, arma::fill::zeros);
-  const bool hasLam = (G.nLam > 0) && G.hasT && !G.lamDir.empty();
-  arma::mat dvSensB(totObs, hasLam ? nd : 0, arma::fill::zeros);
-  const bool hasCens = hasRxCens(rx) || hasRxLimit(rx);
-  arma::ivec censB(hasCens ? totObs : 0, arma::fill::zeros);
-  arma::vec limB(hasCens ? totObs : 0);
-  if (hasCens) limB.fill(NA_REAL);
-  // FOCE blocks.  The variance sensitivity splits in two: aRe drives the ETA block (zero
-  // under "nonmem", where R is frozen with respect to eta) and aRc the PARAMETER columns
-  // (E0's dR0/ddir under "nonmem", the live dR/ddir under foce+).  There is no AR cube --
-  // the FOCE kernel is gradient-only.  fp = 1 selects foce+/live-R, 0 the nonmem a0-chain.
-  const int fp = (G.foceType == 1 || !needE0) ? 1 : 0;
-  arma::mat aReB(isFoce ? totObs : 0, isFoce ? nd : 0, arma::fill::zeros);
-  arma::mat aRcB(isFoce ? totObs : 0, isFoce ? nd : 0, arma::fill::zeros);
-  arma::mat R0sigB(isFoce ? totObs : 0, isFoce ? nsg : 0, arma::fill::zeros);
-  jacSum = 0.0;
-  for (int i = 0; i < nsub; ++i) {
-    VaeOuterE& E = Es[(size_t)i];
-    int o0 = off[i], n = nobsAll[(size_t)i];
-    if (!E.ok) continue;                     // finite-differenced; rows stay zero
-    aB.rows(o0, o0 + n - 1) = E.a;
-    aRB.rows(o0, o0 + n - 1) = E.aR;
-    AB.rows(o0, o0 + n - 1) = E.A;
-    ARB.rows(o0, o0 + n - 1) = E.AR;
-    fB.subvec(o0, o0 + n - 1) = E.f;
-    RB.subvec(o0, o0 + n - 1) = E.R;
-    if (nsg > 0) {
-      RsigB.rows(o0, o0 + n - 1) = E.Rsig;
-      RsigDirB.rows(o0, o0 + n - 1) = E.RsigDir;
-    }
-    if (isFoce) {
-      if (fp) {                              // foce+ / no E0: everything from the live solve
-        aReB.rows(o0, o0 + n - 1) = E.aR;
-        aRcB.rows(o0, o0 + n - 1) = E.aR;
-        if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E.Rsig;
-      } else {                               // nonmem: R0 and its sensitivities from eta=0
-        const VaeOuterE &E0 = E0s[(size_t)i];
-        if (E0.nobs != n) return declineHere(14);
-        RB.subvec(o0, o0 + n - 1) = E0.R;    // the kernel's R0v
-        aRcB.rows(o0, o0 + n - 1) = E0.aR;   // aReB stays zero: R is frozen w.r.t. eta
-        if (nsg > 0) R0sigB.rows(o0, o0 + n - 1) = E0.Rsig;
-      }
-    }
-    // DV / CENS / LIMIT straight from the individual -- the inner problem reads them the
-    // same way -- in the same observation order the solve loop filled E.f with.
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
-    int ko = 0;
-    for (int q = 0; q < getIndNallTimes(ind) && ko < n; ++q) {
-      int kk = getIndIx(ind, q);
-      if (getIndEvid(ind, kk) != 0) continue;
-      double dv = getIndDv(ind, kk);
-      double yj = G.hasT ? E.trans(ko, 0) : 0.0, lam = G.hasT ? E.trans(ko, 1) : 1.0;
-      double lo = G.hasT ? E.trans(ko, 2) : 0.0, hi = G.hasT ? E.trans(ko, 3) : 1.0;
-      yB[o0 + ko] = G.hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
-      if (hasLam) {
-        double dvs = _powerDLambda(dv, lam, (int)yj, lo, hi);
-        for (size_t L = 0; L < G.lamDir.size(); ++L) {
-          int d = G.lamDir[L] - 1;
-          if (d >= 0 && d < nd) dvSensB(o0 + ko, d) = dvs;
-        }
-        jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
-      }
-      if (hasCens) {
-        censB[o0 + ko] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
-        double lim = NA_REAL;
-        if (hasRxLimit(rx)) {
-          lim = getIndLimit(ind, kk);
-          if (!ISNA(lim) && R_FINITE(lim) && G.hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
-        }
-        limB[o0 + ko] = lim;
-      }
-      ko++;
-    }
-    if (ko != n) return declineHere(15);
-  }
+  GradPooledBlocks B;
+  if (!gradPooledStack(G, Es, E0s, needE0, isFoce, nsub, nd, nsg, B, jacSum)) return false;
+  const arma::ivec &off = B.off;
+  const std::vector<int> &nobsAll = B.nobs;
 
   // ---- AGQ quadrature nodes ---------------------------------------------------------
-  // Ht per subject, its Cholesky factor, then one order-1 solve per node.  The grid is
-  // already in C++ (op_focei.aqx/aqw, filled by setupAq1_ for the objective itself), so
-  // nothing here comes from R.
   const int nn = isAgq ? (int)_aqn : 0;
   std::vector< std::vector<VaeOuterE> > Ek;          // [node][subject]
   arma::mat qx, qw;
-  if (isAgq) {
-    if (nn <= 0 || op_focei.aqx == NULL || op_focei.aqw == NULL) return declineHere(16);
-    qx = arma::mat(op_focei.aqx, nn, neta, false, true);
-    qw = arma::mat(op_focei.aqw, nn, neta, false, true);
-    std::vector<arma::mat> GinvL((size_t)nsub);
-    for (int i = 0; i < nsub; ++i) {
-      const VaeOuterE &E = Es[(size_t)i];
-      if (!E.ok) return declineHere(17);                       // a flagged subject has no Ht
-      arma::mat Ht = Oi;
-      arma::vec eff = 1.0 / E.R, eRR = 0.5 / arma::square(E.R);
-      for (int l = 0; l < neta; ++l)
-        for (int m = 0; m < neta; ++m)
-          Ht(l, m) += arma::accu(eff % E.a.col(l) % E.a.col(m) +
-                                 eRR % E.aR.col(l) % E.aR.col(m));
-      // A non-PD Ht means the OBJECTIVE took its nmNearPD/cholSE branch -- a different,
-      // non-smooth function -- so differentiating a Cholesky here would be answering the
-      // wrong question.  arma's is_sympd() and a plain chol() disagree near the boundary,
-      // hence the explicit rcond margin rather than trusting chol() alone.
-      arma::mat ch;
-      if (!arma::chol(ch, Ht)) return declineHere(18);
-      if (!R_finite(arma::rcond(Ht)) || arma::rcond(Ht) < 1e-10) return declineHere(19);
-      arma::mat gi;
-      if (!arma::inv(gi, arma::trimatu(ch))) return declineHere(20);
-      GinvL[(size_t)i] = gi;
-    }
-    // One batched solve per node.  The R route replicated the event data into
-    // nsub*nn pseudo-subjects to get this from a single rxSolve; the pool solves one
-    // individual at a time, so the replication (and its cache) is simply not needed.
-    //
-    // The node model needs its OWN event-sensitivity batch.  It shares the odeEsOuter
-    // ROLE with the gradient model, but OdeSwapEsBatch keys on the SLOT precisely
-    // because they are different compiles with different ES shapes -- order 1 vs order
-    // 2.  Solving it under the gradient model's shape makes handle_evid size its jump
-    // scratch for one model and free it against the other (ASAN: "attempting free on
-    // address which was not malloc()-ed", handle_evid -> odeSwapSolveInd).  Constructed
-    // here, outside outerSolveFill's OpenMP region, because the shape is a process
-    // global; the destructor restores the outer slot for the assembly below.
-    if (!odeSwapCheckLhsWidth(odeSlotOuterNode, &rxOuterNode, rx, op)) return declineHere(21);
-    if (!outerColsWithin(G.colsNode, odeSwapNlhs(odeSlotOuterNode))) return declineHere(25);
-    OdeSwapEsBatch _nodeBatch(odeSlotOuterNode);
-    Ek.resize((size_t)nn);
-    for (int k = 0; k < nn; ++k) {
-      arma::mat etaK((unsigned int)nsub, (unsigned int)neta);
-      arma::vec xk = qx.row(k).t();
-      for (int i = 0; i < nsub; ++i) {
-        // sqrt(2) is load bearing: the node SOLVE position must match the kernel's
-        // etaCur = etahat + sqrt(2) * Ginv * x, or the node sensitivities sit at the
-        // wrong eta and the quadrature silently integrates the wrong function.
-        etaK.row(i) = ebesUse.row(i) + (std::sqrt(2.0) * (GinvL[(size_t)i] * xk)).t();
-      }
-      Ek[(size_t)k].resize((size_t)nsub);
-      outerSolveFill(odeSlotOuterNode, &rxOuterNode, thVals, etaK, G.colsNode,
-                     cores, op, nsub, neta, Ek[(size_t)k]);
-      for (int i = 0; i < nsub; ++i) {
-        const VaeOuterE &En = Ek[(size_t)k][(size_t)i];
-        if (!En.ok || En.nobs != nobsAll[(size_t)i]) return declineHere(22);
-      }
-    }
-  }
+  if (isAgq && !gradPooledAgqNodes(G, thVals, Es, ebesUse, Oi, nobsAll, nn, nsub, neta,
+                                   cores, op, qx, qw, Ek)) return false;
 
   // ---- kernel -----------------------------------------------------------------------
   arma::mat gmat(np, nsub, arma::fill::zeros);
@@ -13630,14 +13693,14 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     if (!Es[(size_t)i].ok) continue;
     try {
       int o0 = off[i], o1 = off[i + 1] - 1;
-      arma::mat ai = aB.rows(o0, o1), aRi = aRB.rows(o0, o1);
-      arma::cube Ai = AB.rows(o0, o1), ARi = ARB.rows(o0, o1);
-      arma::mat Rsigi = (nsg > 0) ? arma::mat(RsigB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
-      arma::cube RsigDiri = (nsg > 0) ? arma::cube(RsigDirB.rows(o0, o1)) :
+      arma::mat ai = B.a.rows(o0, o1), aRi = B.aR.rows(o0, o1);
+      arma::cube Ai = B.A.rows(o0, o1), ARi = B.AR.rows(o0, o1);
+      arma::mat Rsigi = (nsg > 0) ? arma::mat(B.Rsig.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::cube RsigDiri = (nsg > 0) ? arma::cube(B.RsigDir.rows(o0, o1)) :
         arma::cube(o1 - o0 + 1, nd, 0);
-      arma::mat dvi = hasLam ? arma::mat(dvSensB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
-      arma::ivec censi = hasCens ? arma::ivec(censB.subvec(o0, o1)) : arma::ivec();
-      arma::vec limi = hasCens ? arma::vec(limB.subvec(o0, o1)) : arma::vec();
+      arma::mat dvi = B.hasLam ? arma::mat(B.dvSens.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+      arma::ivec censi = B.hasCens ? arma::ivec(B.cens.subvec(o0, o1)) : arma::ivec();
+      arma::vec limi = B.hasCens ? arma::vec(B.lim.subvec(o0, o1)) : arma::vec();
       arma::vec gi; arma::mat etaPi;
       if (isAgq) {
         // Node arrays are NODE-MAJOR for this subject: node k occupies rows
@@ -13659,7 +13722,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         }
         bool okI = false;
         foceiGradSubjectAgqFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri,
-                               fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                               B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                                aN, aRN, RsigN, fN, RN, qx, qw,
                                ebesUse.row(i).t(), Oi, dOiEst, tr28,
                                neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, okI);
@@ -13669,17 +13732,17 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         // check downstream decline the evaluation.
         if (!okI) { gi.set_size(np); gi.fill(arma::datum::nan); etaPi.zeros(neta, np); }
       } else if (isFoce) {
-        // R0v is RB, which the stacking filled from E0 under "nonmem" and from the live
+        // R0v is B.R, which the stacking filled from E0 under "nonmem" and from the live
         // solve under foce+.  ehat is the FOCE mode from the Newton, not the inner eta.
-        arma::mat aRei = aReB.rows(o0, o1), aRci = aRcB.rows(o0, o1);
-        arma::mat R0sigi = (nsg > 0) ? arma::mat(R0sigB.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
+        arma::mat aRei = B.aRe.rows(o0, o1), aRci = B.aRc.rows(o0, o1);
+        arma::mat R0sigi = (nsg > 0) ? arma::mat(B.R0sig.rows(o0, o1)) : arma::mat(o1 - o0 + 1, 0);
         foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi,
-                                fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                                B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                                 ebesUse.row(i).t(), Oi, dOiEst, tr28,
-                                neta, nth, nsg, nom, dirThV, sigColV, fp, gi, etaPi);
+                                neta, nth, nsg, nom, dirThV, sigColV, B.fp, gi, etaPi);
       } else {
         foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
-                            fB.subvec(o0, o1), yB.subvec(o0, o1), RB.subvec(o0, o1),
+                            B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                             ebes.row(i).t(), Oi, dOiEst, tr28,
                             neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi);
       }
