@@ -14737,6 +14737,28 @@ static bool gradPooledStackFoce(GradPooledBlocks &B, const VaeOuterE &E,
   return true;
 }
 
+// The transform quadruple for observation ko, or the identity when there is no transform.
+static void gradPooledObsTrans(const VaeOuterE &E, int ko, bool hasT,
+                               double &yj, double &lam, double &lo, double &hi) {
+  if (!hasT) { yj = 0.0; lam = 1.0; lo = 0.0; hi = 1.0; return; }
+  yj = E.trans(ko, 0); lam = E.trans(ko, 1);
+  lo = E.trans(ko, 2); hi = E.trans(ko, 3);
+}
+
+// CENS / LIMIT for one observation, on the transformed scale.  Takes the output vectors
+// rather than a stack struct so both stacked layouts share the one implementation.
+static void gradPooledObsCens(rx_solving_options_ind *ind, int kk, int row, bool hasT,
+                              double yj, double lam, double lo, double hi,
+                              arma::ivec &censOut, arma::vec &limOut) {
+  censOut[row] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
+  double lim = NA_REAL;
+  if (hasRxLimit(rx)) {
+    lim = getIndLimit(ind, kk);
+    if (!ISNA(lim) && R_FINITE(lim) && hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
+  }
+  limOut[row] = lim;
+}
+
 // DV / CENS / LIMIT for one subject, straight from the individual -- the inner problem
 // reads them the same way -- in the same observation order the solve loop filled E.f
 // with.  Accumulates the DV-transform Jacobian into jacSum.
@@ -14749,8 +14771,8 @@ static bool gradPooledStackDv(const FoceiGradPooledSetup &G, GradPooledBlocks &B
     int kk = getIndIx(ind, q);
     if (getIndEvid(ind, kk) != 0) continue;
     double dv = getIndDv(ind, kk);
-    double yj = G.hasT ? E.trans(ko, 0) : 0.0, lam = G.hasT ? E.trans(ko, 1) : 1.0;
-    double lo = G.hasT ? E.trans(ko, 2) : 0.0, hi = G.hasT ? E.trans(ko, 3) : 1.0;
+    double yj, lam, lo, hi;
+    gradPooledObsTrans(E, ko, G.hasT, yj, lam, lo, hi);
     B.y[o0 + ko] = G.hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
     if (B.hasLam) {
       double dvs = _powerDLambda(dv, lam, (int)yj, lo, hi);
@@ -14761,13 +14783,7 @@ static bool gradPooledStackDv(const FoceiGradPooledSetup &G, GradPooledBlocks &B
       jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
     }
     if (B.hasCens) {
-      B.cens[o0 + ko] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
-      double lim = NA_REAL;
-      if (hasRxLimit(rx)) {
-        lim = getIndLimit(ind, kk);
-        if (!ISNA(lim) && R_FINITE(lim) && G.hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
-      }
-      B.lim[o0 + ko] = lim;
+      gradPooledObsCens(ind, kk, o0 + ko, G.hasT, yj, lam, lo, hi, B.cens, B.lim);
     }
     ko++;
   }
@@ -14775,14 +14791,26 @@ static bool gradPooledStackDv(const FoceiGradPooledSetup &G, GradPooledBlocks &B
   return true;
 }
 
-// Stack the per-subject solves into GradPooledBlocks and accumulate the DV-transform
-// Jacobian.  Flagged (finite-differenced) subjects keep zero rows.  Returns false with
-// the decline already recorded.
-static bool gradPooledStack(const FoceiGradPooledSetup &G,
-                            const std::vector<VaeOuterE> &Es,
-                            const std::vector<VaeOuterE> &E0s, bool needE0,
-                            bool isFoce, int nsub, int nd, int nsg,
-                            GradPooledBlocks &B, double &jacSum) {
+// The FOCE-only blocks.  The variance sensitivity splits in two: aRe drives the ETA
+// block (zero under "nonmem", where R is frozen with respect to eta) and aRc the
+// PARAMETER columns (E0's dR0/ddir under "nonmem", the live dR/ddir under foce+).  There
+// is no AR cube -- the FOCE kernel is gradient-only.  All empty when not FOCE.
+static void gradPooledBlocksSizeFoce(const FoceiGradPooledSetup &G, bool needE0,
+                                     bool isFoce, int nd, int nsg,
+                                     GradPooledBlocks &B) {
+  B.fp = (G.foceType == 1 || !needE0) ? 1 : 0;
+  const int rows = isFoce ? B.totObs : 0;
+  B.aRe.zeros(rows, isFoce ? nd : 0);
+  B.aRc.zeros(rows, isFoce ? nd : 0);
+  B.R0sig.zeros(rows, isFoce ? nsg : 0);
+}
+
+// Count the observations per subject and size every stacked buffer for them.  Returns
+// false with the decline already recorded when a subject reports no observations.
+static bool gradPooledBlocksSize(const FoceiGradPooledSetup &G,
+                                 const std::vector<VaeOuterE> &Es, bool needE0,
+                                 bool isFoce, int nsub, int nd, int nsg,
+                                 GradPooledBlocks &B) {
   B.nobs.assign((size_t)nsub, 0);
   B.totObs = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -14804,14 +14832,19 @@ static bool gradPooledStack(const FoceiGradPooledSetup &G,
   B.cens.zeros(B.hasCens ? totObs : 0);
   B.lim.set_size(B.hasCens ? totObs : 0);
   if (B.hasCens) B.lim.fill(NA_REAL);
-  // The variance sensitivity splits in two: aRe drives the ETA block (zero under
-  // "nonmem", where R is frozen with respect to eta) and aRc the PARAMETER columns
-  // (E0's dR0/ddir under "nonmem", the live dR/ddir under foce+).  There is no AR cube --
-  // the FOCE kernel is gradient-only.
-  B.fp = (G.foceType == 1 || !needE0) ? 1 : 0;
-  B.aRe.zeros(isFoce ? totObs : 0, isFoce ? nd : 0);
-  B.aRc.zeros(isFoce ? totObs : 0, isFoce ? nd : 0);
-  B.R0sig.zeros(isFoce ? totObs : 0, isFoce ? nsg : 0);
+  gradPooledBlocksSizeFoce(G, needE0, isFoce, nd, nsg, B);
+  return true;
+}
+
+// Stack the per-subject solves into GradPooledBlocks and accumulate the DV-transform
+// Jacobian.  Flagged (finite-differenced) subjects keep zero rows.  Returns false with
+// the decline already recorded.
+static bool gradPooledStack(const FoceiGradPooledSetup &G,
+                            const std::vector<VaeOuterE> &Es,
+                            const std::vector<VaeOuterE> &E0s, bool needE0,
+                            bool isFoce, int nsub, int nd, int nsg,
+                            GradPooledBlocks &B, double &jacSum) {
+  if (!gradPooledBlocksSize(G, Es, needE0, isFoce, nsub, nd, nsg, B)) return false;
   jacSum = 0.0;
   for (int i = 0; i < nsub; ++i) {
     const VaeOuterE& E = Es[(size_t)i];
@@ -15541,26 +15574,6 @@ static bool gradPooledFdFailed(const std::vector<VaeOuterE> &Es, int nsub,
   return fd.nrow() == (int)flagged.size();
 }
 
-// The transform quadruple for observation ko, or the identity when there is no transform.
-static void gradPooledObsTrans(const VaeOuterE &E, int ko, bool hasT,
-                               double &yj, double &lam, double &lo, double &hi) {
-  if (!hasT) { yj = 0.0; lam = 1.0; lo = 0.0; hi = 1.0; return; }
-  yj = E.trans(ko, 0); lam = E.trans(ko, 1);
-  lo = E.trans(ko, 2); hi = E.trans(ko, 3);
-}
-
-// CENS / LIMIT for one observation, on the transformed scale.
-static void gradPooledObsCens(rx_solving_options_ind *ind, int kk, int row, bool hasT,
-                              double yj, double lam, double lo, double hi,
-                              GradPooledStack &S) {
-  S.censB[row] = hasRxCens(rx) ? getIndCens(ind, kk) : 0;
-  double lim = NA_REAL;
-  if (hasRxLimit(rx)) {
-    lim = getIndLimit(ind, kk);
-    if (!ISNA(lim) && R_FINITE(lim) && hasT) lim = _powerD(lim, lam, (int)yj, lo, hi);
-  }
-  S.limB[row] = lim;
-}
 
 // DV, CENS and LIMIT come straight from the individual -- the inner problem reads them
 // the same way -- so they never have to cross from R, and they are read in the same
@@ -15584,7 +15597,7 @@ static int gradPooledStackObs(const VaeOuterE &E, rx_solving_options_ind *ind, i
       }
       S.jacSum += _powerDL(dv, lam, (int)yj, lo, hi);
     }
-    if (S.hasCens) gradPooledObsCens(ind, kk, o0 + ko, hasT, yj, lam, lo, hi, S);
+    if (S.hasCens) gradPooledObsCens(ind, kk, o0 + ko, hasT, yj, lam, lo, hi, S.censB, S.limB);
     ko++;
   }
   return ko;
