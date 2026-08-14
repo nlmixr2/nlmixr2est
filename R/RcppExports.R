@@ -227,19 +227,22 @@ foceiIndLik_ <- function(thetaIn, ids0) {
 #' process global that only changes at a batch boundary, so the two cannot interleave.
 #' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
 #'
-#' Differences the subject's own likelihood with shi CENTRAL differences at an
-#' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
-#' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
-#' difference a different problem than the inner problem's etahf is tuned for, so
-#' sharing one store would mis-size both.
+#' Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
+#' optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
+#' flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
+#' subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
+#' differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
+#' the across-subject outlier pass and its TV refinement still work; only the step is pooled.
 #'
-#' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
-#' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
-#' this per-subject phase.  Until that lands the caller must still treat an omega
-#' direction as unavailable.
+#' Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
+#' see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
+#' R call, so it is built once per evaluation outside the parallel region).
 #' @param ids0 0-based subject ids to difference
-#' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
-#'   re-optimized even at a perturbed theta
+#' @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
+#'   the reference distribution of the outlier pass; may be a 0 x 0 matrix
+#' @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
+#'   block then omega block), natural parameter scale.  NA where a subject could not be
+#'   re-optimized even at a perturbed parameter
 #' @noRd
 foceiOuterFdInd_ <- function(ids0, analyticRef) {
     .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)

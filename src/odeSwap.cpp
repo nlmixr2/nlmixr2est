@@ -77,6 +77,7 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   // disabling every compaction.
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
+  m.npars = as<CharacterVector>(mv["params"]).size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
   // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
@@ -624,6 +625,14 @@ static void odeSwapProbeBind(rx_solving_options_ind *ind, rx_solve *rx,
   setIndTolFactor(ind, tf);
 }
 
+// Did the probe write every lhs slot the slot's model declares?  EVERY declared slot must
+// be written, not merely the last one -- a writer that assigns lhs[0] and lhs[want-1] while
+// skipping the middle would otherwise pass.
+static bool odeSwapProbeAllWritten(const std::vector<double> &probe, int want, double sent) {
+  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == sent) return false;
+  return true;
+}
+
 bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
   if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
   int want = odeSwapNlhs(slot);
@@ -640,20 +649,18 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
-  // EVERY declared slot must be written, not merely the last one -- a writer that
-  // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
-  int missing = 0;
-  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
-  if (missing == 0) return true;
-  // A model whose lhs are all inside conditional branches could in principle
-  // report missing here and lose the pooled route.  That is the safe direction:
-  // the caller then takes the rxode2::rxSolve reference path, which is correct,
-  // just slower -- and the counter plus the warning make it visible rather than
-  // silent.  odeSwapCanPool() computes deny reasons on demand.
-  if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
-    Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
+  if (!odeSwapProbeAllWritten(probe, want, _sent)) {
+    // A model whose lhs are all inside conditional branches could in principle
+    // report missing here and lose the pooled route.  That is the safe direction:
+    // the caller then takes the rxode2::rxSolve reference path, which is correct,
+    // just slower -- and the counter plus the warning make it visible rather than
+    // silent.  odeSwapCanPool() computes deny reasons on demand.
+    if (_odeLhsWidthMismatchN.fetch_add(1, std::memory_order_relaxed) == 0) {
+      Rf_warning("analytic gradient: pooled solve disabled (model/code mismatch)");
+    }
+    return false;
   }
-  return false;
+  return true;
 }
 long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_relaxed); }
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }

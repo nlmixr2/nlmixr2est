@@ -28,6 +28,19 @@
                outerMaxOdeRecalc = control$outerMaxOdeRecalc,
                outerOdeRecalcFactor = control$outerOdeRecalcFactor,
                outerStickyRecalcN = control$outerStickyRecalcN,
+               # the per-subject FD step of the outer gradient's fallback: est="vae"
+               # reaches the same code through foceiGradPooledDirect_, so it gets the
+               # same knob rather than a parallel one
+               fdIndividualStep = if (is.null(control$fdIndividualStep)) TRUE
+                                  else isTRUE(control$fdIndividualStep),
+               fdOutlierZ = if (is.null(control$fdOutlierZ)) 3.5
+                            else as.double(control$fdOutlierZ),
+               fdOutlierScale = if (is.null(control$fdOutlierScale)) TRUE
+                                else isTRUE(control$fdOutlierScale),
+               fdRefine = if (is.null(control$fdRefine)) "chartrand"
+                          else as.character(control$fdRefine),
+               fdChartrandAll = isTRUE(control$fdChartrandAll),
+               fdOutlierAny = isTRUE(control$fdOutlierAny),
                print = 0L)
 }
 
