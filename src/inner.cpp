@@ -4354,6 +4354,56 @@ void innerOpt() {
   Rcpp::checkUserInterrupt();
 }
 
+// The mixture branch of foceiLik0: each subject's likelihood is the mixture-weighted
+// sum over its components, with the per-component posterior probabilities and their
+// gradients left on the individual for the M-step.  Split out so the plain path stays
+// readable next to it.
+static double foceiLik0Mix() {
+  double lik = 0.0, cur;
+  focei_ind *fInd;
+  for (int id=getRxNsub(rx); id--;){
+    double tot = 0;
+    bool allZero = true;
+    double explast = 0.0;
+    double mixprob = 0.0;
+    for (unsigned int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
+      fInd = &(inds_focei[id + mn*getRxNsub(rx)]);
+      cur = fInd->lik[0];
+      double ecur = exp(cur);
+      if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
+        fInd->mixProb[mn] = 0.0;
+      } else {
+        allZero = false;
+        fInd->mixProb[mn] = ecur*op_focei.mixProb[mn];
+        tot += fInd->mixProb[mn];
+      }
+      if (mn == op_focei.mixIdxN) {
+        explast = ecur;
+      } else {
+        fInd->mixProbGrad[mn] = ecur;
+      }
+    }
+    for (unsigned int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
+      fInd->mixProb[mn] = fInd->mixProb[mn]/tot;
+      if (mn != op_focei.mixIdxN) {
+        // Finish Calculating the gradient based on the probability
+        fInd->mixProbGrad[mn] = (fInd->mixProbGrad[mn]-explast)/tot;
+      }
+      if (mixprob < fInd->mixProb[mn]) {
+        mixprob = fInd->mixProb[mn];
+        fInd->mixest[0] = mn + 1;
+      }
+    }
+    if (allZero) {
+      cur = -op_focei.badSolveObjfAdj;
+    } else {
+      cur = log(tot);
+    }
+    lik += cur;
+  }
+  return lik;
+}
+
 static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
@@ -4370,47 +4420,7 @@ static inline double foceiLik0(double *theta) {
       lik += cur;
     }
   } else {
-    focei_ind *fInd;
-    for (int id=getRxNsub(rx); id--;){
-      double tot = 0;
-      bool allZero = true;
-      double explast = 0.0;
-      double mixprob = 0.0;
-      for (unsigned int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
-        fInd = &(inds_focei[id + mn*getRxNsub(rx)]);
-        cur = fInd->lik[0];
-        double ecur = exp(cur);
-        if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
-          fInd->mixProb[mn] = 0.0;
-        } else {
-          allZero = false;
-          fInd->mixProb[mn] = ecur*op_focei.mixProb[mn];
-          tot += fInd->mixProb[mn];
-        }
-        if (mn == op_focei.mixIdxN) {
-          explast = ecur;
-        } else {
-          fInd->mixProbGrad[mn] = ecur;
-        }
-      }
-      for (unsigned int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
-        fInd->mixProb[mn] = fInd->mixProb[mn]/tot;
-        if (mn != op_focei.mixIdxN) {
-          // Finish Calculating the gradient based on the probability
-          fInd->mixProbGrad[mn] = (fInd->mixProbGrad[mn]-explast)/tot;
-        }
-        if (mixprob < fInd->mixProb[mn]) {
-          mixprob = fInd->mixProb[mn];
-          fInd->mixest[0] = mn + 1;
-        }
-      }
-      if (allZero) {
-        cur = -op_focei.badSolveObjfAdj;
-      } else {
-        cur = log(tot);
-      }
-      lik += cur;
-    }
+    lik += foceiLik0Mix();
   }
   // Now reset the saved ETAs
   if (op_focei.neta !=0) {
@@ -4577,16 +4587,19 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
   List ret(op_focei.neta+2+mixest);
   CharacterVector nm(op_focei.neta+2+mixest);
   rx = getRxSolve_();
-  IntegerVector ids(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
-  NumericVector ofv(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
-  IntegerVector mixesti(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
+  // One count for the whole function: bestMixEst reports one row per PHYSICAL
+  // subject, otherwise one per (subject, mixture) pair.
+  const int nRow = bestMixEst ? (int)getRxNsub(rx) : (int)getRxNsubAndMix(rx);
+  IntegerVector ids(nRow);
+  NumericVector ofv(nRow);
+  IntegerVector mixesti(nRow);
   int j,eta;
   for (j = op_focei.neta; j--;) {
-    ret[j+1+mixest]=NumericVector(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
+    ret[j+1+mixest]=NumericVector(nRow);
     nm[j+1+mixest] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-  for (j=(bestMixEst ? (int)getRxNsub(rx) : (int)getRxNsubAndMix(rx)); j--;) {
+  for (j=(nRow); j--;) {
     ids[j] = getRxId(j)+1;
     focei_ind *fInd = &(inds_focei[j]);
     // Update based on the best mix estimate when requested
@@ -5121,10 +5134,19 @@ static std::vector<int> _ivFrom(SEXP x) {
 // wider.  outerSolveFill reads every index below with no bound of its own, so this is
 // checked at the entries, which decline to the rxode2::rxSolve route.  Companion to
 // odeSwapCheckLhsWidth, which answers the same question about the MODEL (#870).
+// Fold one column vector into the running maximum; false as soon as any entry is
+// negative (a column the map never resolved, which would read lhs[-1]).
+static bool outerColsScan(const std::vector<int> &v, int &mx) {
+  for (size_t k = 0; k < v.size(); ++k) {
+    int c = v[k];
+    if (c < 0) return false;
+    if (c > mx) mx = c;
+  }
+  return true;
+}
+
 static bool outerColsWithin(const OuterCols &C, int nlhs) {
   if (nlhs <= 0) return false;
-  const std::vector<int> *vs[] = {&C.f1, &C.f2, &C.rvar1, &C.rvar2, &C.rsig, &C.rsig2, &C.tr};
-  const size_t nvs = sizeof(vs) / sizeof(vs[0]);
   // predf/rvarf are read unconditionally (lhs[predf], lhs[rvarf]), and both default to
   // -1 -- so they need their OWN negative test, not just the running maximum: another
   // map pushing that maximum non-negative would otherwise pass a lhs[-1] read.
@@ -5132,19 +5154,12 @@ static bool outerColsWithin(const OuterCols &C, int nlhs) {
   if (C.hasR && C.rvarf < 0) return false;
   int mx = C.predf;
   if (C.hasR && C.rvarf > mx) mx = C.rvarf;
-  for (size_t v = 0; v < nvs; ++v) {
-    for (size_t k = 0; k < vs[v]->size(); ++k) {
-      int c = (*vs[v])[k];
-      if (c < 0) return false;
-      if (c > mx) mx = c;
-    }
+  const std::vector<int> *vs[] = {&C.f1, &C.f2, &C.rvar1, &C.rvar2, &C.rsig, &C.rsig2, &C.tr};
+  for (size_t v = 0; v < sizeof(vs) / sizeof(vs[0]); ++v) {
+    if (!outerColsScan(*vs[v], mx)) return false;
   }
   for (size_t s = 0; s < C.rsig1.size(); ++s) {
-    for (size_t k = 0; k < C.rsig1[s].size(); ++k) {
-      int c = C.rsig1[s][k];
-      if (c < 0) return false;
-      if (c > mx) mx = c;
-    }
+    if (!outerColsScan(C.rsig1[s], mx)) return false;
   }
   return mx >= 0 && mx < nlhs;
 }
@@ -14265,6 +14280,14 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
 // One subject's observation-aligned DV, CENS and LIMIT, on the DV-transform scale the
 // augmented solve reported (E.trans), in the SAME observation order the solve filled E.f.
 //
+// The transform quadruple for observation ko, or the identity when there is no transform.
+static void gradPooledObsTrans(const VaeOuterE &E, int ko, bool hasT,
+                               double &yj, double &lam, double &lo, double &hi) {
+  if (!hasT) { yj = 0.0; lam = 1.0; lo = 0.0; hi = 1.0; return; }
+  yj = E.trans(ko, 0); lam = E.trans(ko, 1);
+  lo = E.trans(ko, 2); hi = E.trans(ko, 3);
+}
+
 // The transform quadruple comes from the augmented model's lhs, NOT from getIndLambda:
 // with an estimated lambda those differ, and the sensitivities were expanded against the
 // model's own.
@@ -14280,8 +14303,8 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
     int kk = getIndIx(ind, q);
     if (getIndEvid(ind, kk) != 0) continue;
     double dv = getIndDv(ind, kk);
-    double yj = hasT ? E.trans(ko, 0) : 0.0, lam = hasT ? E.trans(ko, 1) : 1.0;
-    double lo = hasT ? E.trans(ko, 2) : 0.0, hi = hasT ? E.trans(ko, 3) : 1.0;
+    double yj, lam, lo, hi;
+    gradPooledObsTrans(E, ko, hasT, yj, lam, lo, hi);
     yt[ko] = hasT ? _powerD(dv, lam, (int)yj, lo, hi) : dv;
     if (hasCens || hasLimit) {
       cens[ko] = hasCens ? getIndCens(ind, kk) : 0;
@@ -14767,14 +14790,6 @@ static bool gradPooledStackFoce(GradPooledBlocks &B, const VaeOuterE &E,
   B.aRc.rows(o0, o0 + n - 1) = E0.aR;
   if (nsg > 0) B.R0sig.rows(o0, o0 + n - 1) = E0.Rsig;
   return true;
-}
-
-// The transform quadruple for observation ko, or the identity when there is no transform.
-static void gradPooledObsTrans(const VaeOuterE &E, int ko, bool hasT,
-                               double &yj, double &lam, double &lo, double &hi) {
-  if (!hasT) { yj = 0.0; lam = 1.0; lo = 0.0; hi = 1.0; return; }
-  yj = E.trans(ko, 0); lam = E.trans(ko, 1);
-  lo = E.trans(ko, 2); hi = E.trans(ko, 3);
 }
 
 // CENS / LIMIT for one observation, on the transformed scale.  Takes the output vectors
