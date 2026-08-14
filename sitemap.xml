@@ -2,6 +2,8 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/404.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/CLAUDE.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/LICENSE-text.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/articles/extending-nlmixr2est.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/articles/index.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/authors.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/copilot-instructions.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/index.html</loc></url>
@@ -39,6 +41,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessNpMuExpand.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2FitUpdateParams.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLikContribPtrs.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFunC.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc></url>
@@ -95,6 +98,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmGetParHist.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmObjectiveSetup.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmerSolveGrad.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html</loc></url>
@@ -160,6 +164,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/qrpemControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/reexports.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/registerEstInterceptor.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rmEta.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>

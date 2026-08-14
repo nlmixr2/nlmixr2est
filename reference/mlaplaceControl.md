@@ -126,6 +126,33 @@ mlaplaceControl()
 #> $fast
 #> [1] FALSE
 #> 
+#> $fdOutlierZ
+#> [1] 3.5
+#> 
+#> $fdOutlierScale
+#> [1] 1
+#> 
+#> $fdRefine
+#> [1] "chartrand"
+#> 
+#> $fdLanczosM
+#> [1] 2
+#> 
+#> $fdRichardsonR
+#> [1] 2
+#> 
+#> $fdRichardsonV
+#> [1] 2
+#> 
+#> $fdChartrandAll
+#> [1] 0
+#> 
+#> $fdOutlierAny
+#> [1] 0
+#> 
+#> $fdIndividualStep
+#> [1] 1
+#> 
 #> $fdChartrand
 #> [1] 1
 #> 
@@ -255,7 +282,7 @@ mlaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55809c54f610>
+#> <bytecode: 0x561fa1ba1b40>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

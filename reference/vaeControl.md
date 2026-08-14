@@ -67,6 +67,12 @@ vaeControl(
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
   outerStickyRecalcN = 4,
+  fdIndividualStep = TRUE,
+  fdOutlierZ = 3.5,
+  fdOutlierScale = TRUE,
+  fdRefine = c("chartrand", "lanczos", "richardson"),
+  fdChartrandAll = FALSE,
+  fdOutlierAny = FALSE,
   outerMaxOdeRecalc = 5,
   outerOdeRecalcFactor = 10^(0.5),
   indTolRelax = TRUE,
@@ -726,6 +732,80 @@ vaeControl(
   The number of bad analytic outer solves for a subject before its
   loosened tolerance is kept for the rest of the problem; the outer
   counterpart of \`stickyRecalcN\`.
+
+- fdIndividualStep:
+
+  For the per-subject finite-difference fallback of the analytic outer
+  gradient (\`fast=TRUE\`), search the shi step size separately for
+  every flagged subject (\`TRUE\`, the default) rather than once on the
+  summed objective over them. The subjects that reach this path are the
+  badly conditioned ones, so one shared step cannot suit them all; a
+  per-subject search also supplies the population of converged peers a
+  clamped step is repaired from. \`FALSE\` restores the single shared
+  step, which costs fewer evaluations.
+
+- fdOutlierZ:
+
+  Cut of the Iglewicz-Hoaglin modified z-score that decides whether a
+  finite-differenced subject's slope is an outlier against the exact
+  analytic slopes, and so whether \`fdChartrand\` refines it. The
+  conventional 3.5; lower it to make the pass fire more readily (and to
+  exercise it), raise it to suppress it without turning \`fdChartrand\`
+  off.
+
+- fdOutlierScale:
+
+  Test the outlier criterion on the \*\*per-observation\*\* slope
+  (\`TRUE\`, the default) rather than the raw one. A per-subject slope
+  scales with how much data that subject carries, so raw slopes from a
+  3-observation and a 20-observation subject are not draws from one
+  distribution – pooling them makes a legitimately large slope look like
+  an outlier on unbalanced or sparse data. Only the test is scaled; the
+  gradient itself is untouched. On balanced data this changes nothing,
+  since dividing every slope by the same count leaves the modified
+  z-score unchanged.
+
+- fdRefine:
+
+  Estimator used to recompute a finite-differenced slope once the
+  outlier pass fires. On noisy, hard-to-solve likelihood surfaces the
+  ordering is roughly \`"richardson"\` \< \`"lanczos"\` \<
+  \`"chartrand"\`:
+
+  \* \`"richardson"\` – Richardson extrapolation of central differences
+  at \`h, h/v, h/v^2, ...\`, cancelling the \`h^2, h^4, ...\` truncation
+  terms in turn. Cheapest, and right when the surface is smooth and only
+  truncation matters. It extrapolates toward \`h -\> 0\`, which is
+  \*into\* the noise, so it is the wrong instrument when the noise floor
+  is what limits the difference. \* \`"lanczos"\` – the Lanczos
+  generalized derivative, a least-squares slope through \`2m+1\` points.
+  Same \`O(h^2)\` truncation as a central difference but lower variance,
+  since independent evaluation noise averages down as points are added
+  rather than being amplified. The middle rung. \* \`"chartrand"\`
+  (default) – total-variation regularized differentiation over a wide
+  interval, which absorbs curvature through the regularized derivative
+  itself instead of assuming a stencil. Most expensive and most robust
+  to a genuinely rough surface.
+
+  All three apply identically: they are gated by the same outlier test,
+  touch only the finite-differenced subjects, and never recompute a
+  subject whose analytic gradient is available.
+
+- fdChartrandAll:
+
+  When the outlier pass fires for a parameter, refine \*\*every\*\*
+  finite-differenced subject with the Chartrand TV derivative rather
+  than only the outlying ones. Subjects whose augmented solve succeeded
+  keep their exact analytic gradient either way – only finite
+  differences are ever recomputed. Default \`FALSE\` (refine the
+  outliers only).
+
+- fdOutlierAny:
+
+  Let an outlier among the \*\*exact analytic\*\* slopes fire the
+  outlier pass as well, not only an outlier among the finite
+  differences. Still only the finite differences are recomputed. Default
+  \`FALSE\`.
 
 - outerMaxOdeRecalc:
 

@@ -2,5 +2,5 @@
 
 ### All vignettes
 
-- [Adding an estimation routine to
-  nlmixr2est](https://nlmixr2.github.io/nlmixr2est/articles/adding-estimation-routine.md):
+- [Extending nlmixr2est: custom estimation methods and behavior
+  hooks](https://nlmixr2.github.io/nlmixr2est/articles/extending-nlmixr2est.md):
