@@ -17556,7 +17556,12 @@ static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
     off[a + 1] = off[a] + nc;
   }
   const int M = off[m];
-  if (M <= 0) return std::numeric_limits<double>::infinity();
+  // M == 0 is legitimate, not a failure: every dim in the group has an empty
+  // support AND a held intercept, so there is nothing left to solve for but the
+  // score is perfectly well defined.  Returning +inf here priced the
+  // no-covariate model infinitely badly and blocked the refinement from ever
+  // dropping the last covariate out of a fully clamped group.
+  if (M < 0) return std::numeric_limits<double>::infinity();
   arma::mat A(M, M, arma::fill::zeros);
   arma::vec b(M, arma::fill::zeros);
   // Drop the intercept column when it is being held.  An intercept-only support
@@ -17600,9 +17605,11 @@ static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
     if (Za.n_cols > 0) b.subvec(off[a], off[a + 1] - 1) = Za.t() * rhs;
   }
   arma::vec th;
-  bool ok = arma::solve(th, A, b);
-  if (!ok) ok = arma::solve(th, A, b, arma::solve_opts::force_approx);
-  if (!ok || !th.is_finite()) return std::numeric_limits<double>::infinity();
+  if (M > 0) {
+    bool ok = arma::solve(th, A, b);
+    if (!ok) ok = arma::solve(th, A, b, arma::solve_opts::force_approx);
+    if (!ok || !th.is_finite()) return std::numeric_limits<double>::infinity();
+  }
   // residuals, then Q = sum_kl P_kl r_k'r_l + 2 sum_k r_k'u_k
   std::vector<arma::vec> r(m);
   if (thetaOut != nullptr) thetaOut->resize(m);

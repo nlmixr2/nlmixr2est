@@ -103,6 +103,65 @@ nmTest({
     expect_false(any(grepl("near-tied colinear", fOff$runInfo)))
   })
 
+  ## A deliberately UNSTABLE fixture: a small study, a modest covariate effect
+  ## and a ~0.999 decoy, fitted against the unsmoothed posterior means.  The
+  ## winner genuinely flips between iterations here, which is the only situation
+  ## in which the hold can fire at all.
+  .flipData <- function(nid = 30L, seed = 7L) {
+    .testSeed(seed)
+    wt <- round(stats::runif(nid, 50, 100), 1)
+    lbm <- round(0.75 * wt + stats::rnorm(nid, 0, 0.3), 1)
+    ctr <- stats::median(wt)
+    cl <- 2.7 * exp(0.5 * log(wt / ctr) + stats::rnorm(nid, 0, 0.2))
+    v <- 31 * exp(stats::rnorm(nid, 0, 0.12))
+    ka <- 1.5 * exp(stats::rnorm(nid, 0, 0.35))
+    tms <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
+    do.call(rbind, lapply(seq_len(nid), function(i) {
+      ke <- cl[i] / v[i]
+      f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
+      rbind(data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0,
+                       WT = wt[i], LBM = lbm[i]),
+            data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0,
+                       DV = f + stats::rnorm(length(tms), 0, 0.4),
+                       WT = wt[i], LBM = lbm[i]))
+    }))
+  }
+
+  .flipModel <- function() {
+    ini({
+      tka <- log(1.5); tcl <- log(2.7); tv <- log(31)
+      eta.ka ~ 0.35; eta.cl ~ 0.25; eta.v ~ 0.12
+      add.sd <- 0.4
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("hysteresis actually holds an incumbent, and only because of the margin", {
+    skip_on_cran()
+    d <- .flipData()
+    .fit <- function(h) {
+      suppressMessages(suppressWarnings(
+        nlmixr2(.flipModel, d, est = "vae",
+                control = vaeControl(iters = 90L, itersBurnIn = 15L,
+                                     calcTables = FALSE,
+                                     covSelectSmooth = FALSE,
+                                     covSelectHysteresis = h))))
+    }
+    wide <- .fit(20)
+    ## the mechanism did not merely run -- it retained an incumbent the search
+    ## had displaced
+    expect_gt(wide$vae$colinear$nColinTest, 0L)
+    expect_gt(wide$vae$colinear$nColinHold, 0L)
+    ## and the MARGIN is why.  With no margin the same fixture holds nothing,
+    ## so an implementation that always reverted could not pass both halves.
+    none <- .fit(0)
+    expect_gt(none$vae$colinear$nColinTest, 0L)
+    expect_identical(none$vae$colinear$nColinHold, 0L)
+  })
+
   ## eta.cl and eta.v are correlated BY CONSTRUCTION, which is what the
   ## cross-parameter refinement needs to have anything to arbitrate
   .phiData <- function(nid = 45L, seed = 11L) {
