@@ -2721,12 +2721,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control$fast <- FALSE
   }
-  # Any downgrade above puts the outer gradient back on finite differences, which
-  # cannot support a projected-gradient test; suppress it again unless the user
-  # asked for a specific lbfgsPgtolOuter.
-  if (!isTRUE(.control$fast) && isTRUE(.control$lbfgsPgtolOuterDefault)) {
-    .control$lbfgsPgtolOuter <- 0
-  }
   assign("control", .control, envir=.ui)
 }
 

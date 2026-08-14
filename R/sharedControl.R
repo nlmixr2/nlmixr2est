@@ -185,19 +185,6 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
 
-#' L-BFGS `pgtol` derived from `sigdig` (projected-gradient tolerance)
-#'
-#' Only meaningful where the gradient handed to L-BFGS-B is analytic.  `factr`
-#' tests the objective reduction of a SINGLE step, so on its own it stops as soon
-#' as one step is small rather than when the gradient is flat; `pgtol` is the
-#' stationarity test that catches that.  A finite-difference gradient cannot
-#' support it -- its noise floor keeps `max|proj g|` above any useful threshold --
-#' so FD paths keep `pgtol = 0` (check suppressed).
-#' @param sigdig optimization significant digits
-#' @return the `pgtol` value
-#' @noRd
-.sigdigPgtol <- function(sigdig) 10^(-sigdig)
-
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'
 #' Reproduces the method's historic tuned tolerance at `sigdig = 4` and
