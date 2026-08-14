@@ -10984,6 +10984,33 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   }
 }
 
+// One Gaussian observation's contribution to the theta score and information.
+//
+// Censored (M2/M3/M4): the exact score/information from the analytic partials of
+// rho = -logLik (cp[0]=rho_f, cp[1]=rho_r, cp[2..4]=rho_ff/rho_fr/rho_rr), so the
+// M-step gradient for BLQ points is correct with no finite differences -- the
+// log-likelihood score is -rho_f, -rho_r and the information is the rho second
+// derivatives.  An uncensored observation takes the Gauss-Newton form, which is what
+// the censored one reduces to.
+static void impThetaAccumGauss(const impThetaSensData &c, int jo, double f, double V,
+                               const arma::rowvec &df, const arma::rowvec &dV,
+                               double w, arma::vec &g, arma::mat &H) {
+  const bool isCens = (c.censv[jo] != 0) || (R_FINITE(c.limv[jo]) && !ISNA(c.limv[jo]));
+  if (isCens) {
+    double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
+    censNormalPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, 2, cp);
+    g += w * (-cp[0] * df.t() - cp[1] * dV.t());
+    H += w * (cp[2] * (df.t() * df) +
+              cp[3] * (df.t() * dV + dV.t() * df) +
+              cp[4] * (dV.t() * dV));
+    return;
+  }
+  const double err = f - c.dvv[jo];
+  g += w * ((-err / V) * df.t() +
+            (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+  H += w * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+}
+
 // Cheap arithmetic half of the theta score: accumulate the IS-weighted score `g`
 // and Gauss-Newton Hessian `H` from a subject's collected per-sample sensitivity
 // outputs, in the original (sample, obs) order.  g/H must be pre-sized (nSens).
@@ -11017,25 +11044,7 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
       arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
       if (!df.is_finite() || !dV.is_finite()) continue;
-      bool isCens = (c.censv[jo] != 0) || (R_FINITE(c.limv[jo]) && !ISNA(c.limv[jo]));
-      if (isCens) {
-        // Exact censored score/information from the analytic partials of
-        // rho = -logLik (out[0]=rho_f, out[1]=rho_r, out[2..4]=rho_ff/rho_fr/rho_rr),
-        // so the M-step gradient for BLQ/M2/M3/M4 points is correct (no FD).  The
-        // log-likelihood score is -rho_f, -rho_r; the information is the rho 2nd
-        // derivatives.  A normal obs reduces to the Gauss-Newton form below.
-        double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
-        censNormalPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, 2, cp);
-        g += zk[k] * (-cp[0] * df.t() - cp[1] * dV.t());
-        H += zk[k] * (cp[2] * (df.t() * df) +
-                      cp[3] * (df.t() * dV + dV.t() * df) +
-                      cp[4] * (dV.t() * dV));
-      } else {
-        double err = f - c.dvv[jo];
-        g += zk[k] * ((-err / V) * df.t() +
-                      (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-        H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
-      }
+      impThetaAccumGauss(c, jo, f, V, df, dV, zk[k], g, H);
     }
   }
 }
