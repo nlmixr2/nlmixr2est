@@ -229,3 +229,89 @@ test_that("condThetaGrad matches central differences when wired (#937 + #939)", 
   muCols <- setdiff(seq_len(foceiLikDims_()$ntheta), sensIdx)
   for (t in muCols) expect_true(all(got$dTheta[, t] == 0))
 })
+
+test_that("condBatch value/gradient FD-agree across error families (#937)", {
+  # Direct gradient validation, not convergence side-effects: the NONMEM
+  # comparison suite pins the gradient only through one proportional run's
+  # per-subject outputs (the transform-family expectations are nlmixr2's own
+  # golden values), and an optimizer's line search on the true objective can
+  # rescue a wrong gradient without moving the converged objective past
+  # tolerance.  Here every family's exposed (value, gradient) pair must be
+  # internally consistent by central differences -- this fails on its first
+  # assertion for a sign or term error, for error models NONMEM cannot run.
+  skip_on_cran()
+  d <- .foceiPtrData()
+  .base <- rxode2::rxode2(.foceiPtrMod)
+  .fam <- list(
+    add      = list(mod = function(f) f,
+                    lik = "focei"),
+    prop     = list(mod = function(f) f |>
+                      rxode2::model(cp ~ prop(prop.sd)) |>
+                      rxode2::ini(prop.sd = 0.1),
+                    lik = "focei"),   # R depends on eta: exercises dR/deta
+    propFoce = list(mod = function(f) f |>
+                      rxode2::model(cp ~ prop(prop.sd)) |>
+                      rxode2::ini(prop.sd = 0.1),
+                    lik = "foce"),    # R frozen at eta=0: consistent pair
+    propT    = list(mod = function(f) f |>
+                      rxode2::model(cp ~ propT(prop.sd)) |>
+                      rxode2::ini(prop.sd = 0.1),
+                    lik = "focei"),
+    pow      = list(mod = function(f) f |>
+                      rxode2::model(cp ~ pow(pow.sd, pw)) |>
+                      rxode2::ini(pow.sd = 0.1, pw = 0.5),
+                    lik = "focei"),
+    boxCox   = list(mod = function(f) f |>
+                      rxode2::model(cp ~ add(add.sd) + boxCox(lambda)) |>
+                      rxode2::ini(lambda = 0.5),
+                    lik = "focei"),
+    yeoJohnson = list(mod = function(f) f |>
+                      rxode2::model(cp ~ add(add.sd) + yeoJohnson(lambda)) |>
+                      rxode2::ini(lambda = 0.5),
+                    lik = "focei"),
+    lnorm    = list(mod = function(f) f |>
+                      rxode2::model(cp ~ lnorm(lnorm.sd)) |>
+                      rxode2::ini(lnorm.sd = 0.1),
+                    lik = "focei"))
+  .testSeed(13)
+  for (.n in names(.fam)) {
+    .s <- .fam[[.n]]
+    h <- foceiLikLoad(.s$mod(.base), d, .s$lik)
+    eta <- matrix(stats::rnorm(h$nid * h$neta, 0, 0.2), h$nid, h$neta)
+    expect_equal(foceiLikSetThetaC_(h$initPar), 0L, info = .n)
+    got <- foceiLikCondGrad_(eta, 1L)
+    .h <- 1e-5
+    fd <- matrix(0, h$nid, h$neta)
+    for (k in seq_len(h$neta)) {
+      up <- eta; up[, k] <- up[, k] + .h
+      dn <- eta; dn[, k] <- dn[, k] - .h
+      fd[, k] <- (foceiLikCondGrad_(up, 1L)$value -
+                    foceiLikCondGrad_(dn, 1L)$value) / (2 * .h)
+    }
+    expect_equal(as.numeric(got$grad), as.numeric(fd), tolerance = 1e-4,
+                 info = .n)
+    foceiLikUnload()
+  }
+
+  # focep ("foce+") keeps the live conditional R in the value while lp omits
+  # its dR/deta term: value and gradient are gradients of DIFFERENT functions.
+  # That inconsistency is exactly why dims flags it (0x02) for refusal by
+  # gradient-based callers -- lock the reason in, not just the flag.
+  h <- foceiLikLoad(.base |> rxode2::model(cp ~ prop(prop.sd)) |>
+                      rxode2::ini(prop.sd = 0.1), d, "focep")
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(bitwAnd(foceiLikDims_()$flags, 0x02), 0x02)
+  eta <- matrix(c(-0.2, 0.1, 0.3, -0.15), h$nid, h$neta)
+  expect_equal(foceiLikSetThetaC_(h$initPar), 0L)
+  got <- foceiLikCondGrad_(eta, 1L)
+  .h <- 1e-5
+  fd <- matrix(0, h$nid, h$neta)
+  for (k in seq_len(h$neta)) {
+    up <- eta; up[, k] <- up[, k] + .h
+    dn <- eta; dn[, k] <- dn[, k] - .h
+    fd[, k] <- (foceiLikCondGrad_(up, 1L)$value -
+                  foceiLikCondGrad_(dn, 1L)$value) / (2 * .h)
+  }
+  expect_false(isTRUE(all.equal(as.numeric(got$grad), as.numeric(fd),
+                                tolerance = 1e-3)))
+})
