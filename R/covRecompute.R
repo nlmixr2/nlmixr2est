@@ -59,8 +59,14 @@
   # the nested re-fit resets mu-referencing global state; save + restore
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+  # fixed-parameter re-fit of an already-accepted model: bypass the prior gate
+  # (#938) -- .covRecomputeFo forces est="focei", which declares no prior
+  # support, and the try() below would otherwise silently return NULL for a
+  # prior-carrying fit
   .fit2 <- try(suppressMessages(suppressWarnings(
-    nlmixr2(.a$ui, data = .a$data, est = est, control = control))), silent = TRUE)
+    .nlmixr2PriorGateBypass(
+      nlmixr2(.a$ui, data = .a$data, est = est, control = control)))),
+    silent = TRUE)
   if (inherits(.fit2, "try-error")) return(NULL)
   .cov <- tryCatch(.fit2$cov, error = function(e) NULL)
   if (is.null(.cov) || !is.matrix(.cov)) return(NULL)

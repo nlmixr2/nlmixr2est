@@ -86,6 +86,32 @@
   invisible(ui)
 }
 
+#' Evaluate `expr` with the prior gate bypassed
+#'
+#' For internal re-entries that evaluate an already-accepted model at fixed
+#' parameters: the zero-iteration focei runs behind `setOfv()`, `addCwres()`
+#' and the impmap objective recompute all re-dispatch with `est="focei"`,
+#' which declares no prior support.  By then the priors were already accepted
+#' (or refused) by the estimation method that produced the fit, and the
+#' fixed-parameter evaluation does not use them, so refusing again would only
+#' break post-processing of a prior-carrying fit (#938).
+#'
+#' Scoped: the flag is restored on exit, so a user-initiated estimation is
+#' never affected.  The field is deliberately absent from
+#' `.nlmixr2globalReset()` -- the nested `nlmixr2()` call resets
+#' `nlmixr2global`, and the flag has to survive it (reset assigns known
+#' fields; it does not clear the environment).
+#'
+#' @param expr expression to evaluate
+#' @return the value of `expr`
+#' @noRd
+.nlmixr2PriorGateBypass <- function(expr) {
+  .saved <- nlmixr2global$nlmixr2PriorGateBypass
+  nlmixr2global$nlmixr2PriorGateBypass <- TRUE
+  on.exit(assign("nlmixr2PriorGateBypass", .saved, envir=nlmixr2global))
+  force(expr)
+}
+
 #' Refuse the priors the dispatched estimation method cannot use
 #'
 #' @param env nlmixr2 estimation environment
@@ -93,6 +119,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixr2AssertPriors <- function(env) {
+  if (isTRUE(nlmixr2global$nlmixr2PriorGateBypass)) return(invisible())
   .support <- .nlmixr2PriorSupport(env)
   if (.support == "all") return(invisible())
   .ui <- get("ui", envir=env)

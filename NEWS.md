@@ -12,6 +12,26 @@
   bounds and takes no L-BFGS-B settings.  Passing any of the four never changed a
   fit, so removing them changes no result.
 
+## Bug fixes
+
+- Post-estimation machinery no longer refuses a model whose `ini({})` declares
+  prior distributions (#938).  Two parts:
+
+  - The `"output"` and `"posthoc"` pseudo-methods now declare
+    `nlmixr2Priors = "all"`.  Neither estimates anything -- they evaluate an
+    already-specified model and build its tables -- so there is no prior they
+    could silently ignore.
+
+  - The internal zero-iteration `est="focei"` re-entries behind `setOfv()`,
+    `addCwres()` and the impmap objective recompute now run with the prior
+    gate bypassed (scoped, restored on exit).  By the time they run, the
+    priors were already accepted or refused by the estimation method that
+    produced the fit; refusing again only broke post-processing.  A
+    user-initiated `est="focei"` on a prior-carrying model is still refused.
+
+  This was latent while no estimation method declared prior support; it would
+  have broken assembling a finished fit for the first method that does.
+
 ## New features
 
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
