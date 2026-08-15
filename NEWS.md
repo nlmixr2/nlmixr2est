@@ -1,5 +1,32 @@
 # nlmixr2est 7.0.3
 
+## Internal
+
+- `ini()` on a fit now calls `rxode2::.iniHandleLine()` rather than the
+  `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
+  function; this was the last caller of the old name anywhere in the
+  ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
+## New features
+
+- A prior distribution given in the `ini({})` block is no longer silently
+  ignored.  `nlmixr2Est()` now refuses any prior the estimation method
+  cannot use before dispatching, so a model carrying one fails with an
+  explanation naming the parameter and the `est=` instead of being fit to
+  something other than what it says.
+
+  A method declares what it supports with an attribute on itself, so it
+  can opt in as it gains support:
+
+  ```r
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+  ```
+
+  The levels are `"none"` (the default when the attribute is absent),
+  `"normal"`, `"nwpri"` (normal priors plus omega degrees of freedom) and
+  `"all"`.  Because the check happens in the generic, methods registered
+  by other packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and
+  the rest -- are covered without any change of their own.
+
 ## Breaking changes
 
 - `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have been
@@ -11,6 +38,26 @@
   or `stats::optimize` for a single parameter), which honors the `ini`-block
   bounds and takes no L-BFGS-B settings.  Passing any of the four never changed a
   fit, so removing them changes no result.
+
+## Bug fixes
+
+- Post-estimation machinery no longer refuses a model whose `ini({})` declares
+  prior distributions (#938).  Two parts:
+
+  - The `"output"` and `"posthoc"` pseudo-methods now declare
+    `nlmixr2Priors = "all"`.  Neither estimates anything -- they evaluate an
+    already-specified model and build its tables -- so there is no prior they
+    could silently ignore.
+
+  - The internal zero-iteration `est="focei"` re-entries behind `setOfv()`,
+    `addCwres()` and the impmap objective recompute now run with the prior
+    gate bypassed (scoped, restored on exit).  By the time they run, the
+    priors were already accepted or refused by the estimation method that
+    produced the fit; refusing again only broke post-processing.  A
+    user-initiated `est="focei"` on a prior-carrying model is still refused.
+
+  This was latent while no estimation method declared prior support; it would
+  have broken assembling a finished fit for the first method that does.
 
 ## New features
 
@@ -24,6 +71,10 @@
   estimation method whose capability attributes the pre-process hooks
   consult, turning "the bounds survive preprocessing" from an accident of
   focei's attributes into a guarantee the caller can request.
+
+- `nlmUnscalePar()` is now exported (#940).  External engines that drive the
+  nlm-family objective (e.g. `babelmixr2`'s FME-based methods) previously had
+  to reach it with `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.
 
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity

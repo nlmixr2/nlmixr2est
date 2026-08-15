@@ -3221,6 +3221,12 @@ nlmixr2Est.output <- function(env, ...) {
   if (!exists("est", envir=env)) env$est <- "posthoc"
   .foceiFamilyReturn(env, .ui, ..., est=env$est)
 }
+# "output" is not an estimation method: it takes a completed environment and
+# builds the tables/objDf for it (nlmixr2CreateOutputFromUi).  The priors were
+# already used (or refused) by whichever method actually ran, so there is
+# nothing here that could silently ignore them -- refusing at this point would
+# only break assembling a finished fit from a prior-carrying model (#938).
+attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
 
 #' Create nlmixr output from the UI
 #'
