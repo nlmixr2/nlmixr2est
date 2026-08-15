@@ -86,10 +86,14 @@ test_that("condBatch matches foceiLikRun(type='cond') exactly (#937)", {
 })
 
 test_that("condBatch gradient matches central differences of the value (#937)", {
-  # This is the test that catches the sign convention: fInd->lp is stored as
+  # This is the test that catches the sign convention in the NEW assembly
+  # step (existing focei consumers use lp against likInner0, the objective it
+  # is the gradient of, so they are unaffected): fInd->lp is stored as
   # -(dlogp/deta) + Omega^-1 eta, so the conditional gradient must be
-  # Omega^-1 eta - lp -- PLUS, not minus.  A sign error here is wrong by
-  # 2*Omega^-1*eta and never errors, it just samples the wrong distribution.
+  # Omega^-1 eta - lp -- PLUS, not minus.  The flipped assembly is wrong by
+  # 2*Omega^-1*eta and raises no error anywhere: an MH-corrected sampler
+  # degrades into divergences/zero ESS, and gradient-only consumers
+  # (optimization, VI, autodiff composition) converge to wrong answers.
   skip_on_cran()
   d <- .foceiPtrData()
   h <- foceiLikLoad(.foceiPtrMod, d, "focei")
