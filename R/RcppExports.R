@@ -462,6 +462,27 @@ nlmScalePar <- function(p0) {
     .Call(`_nlmixr2est_nlmScalePar`, p0)
 }
 
+#' Unscale an nlm-family parameter vector back to the natural scale
+#'
+#' Converts a parameter vector from the estimation (scaled) scale used by the
+#' currently loaded nlm-family problem back to the natural scale, using the
+#' scaling that \code{nlmSetup()} installed.  Exported so that external
+#' engines driving the nlm-family objective (e.g. \code{babelmixr2}'s
+#' FME-based methods) do not have to reach into the namespace for it (#940).
+#'
+#' @param p Numeric parameter vector on the estimation scale; its length must
+#'   match the loaded problem's number of parameters.
+#'
+#' @return A numeric vector of the same length (names preserved) on the
+#'   natural scale.
+#'
+#' @details An nlm-family problem must be loaded (via the internal
+#'   \code{.nlmSetupEnv()}/\code{nlmSetup()} path) when this is called; the
+#'   scaling is part of that problem's state.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }

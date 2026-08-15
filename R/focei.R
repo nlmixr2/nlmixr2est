@@ -2164,7 +2164,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # after the inner model, in the symengine pipeline context.
   # "advi" here is the INNER engine marker set by .adviInnerSetup, not a user
   # `est=` value (est="emvi"/"fbvi" both set it); do not "modernize" it.
-  if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") &&
+  # thetaSensLoad is foceiLikLoad(thetaSens=TRUE) (#939): an external caller
+  # wants the same model without being an imp/advi estimation.
+  if ((rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") ||
+         isTRUE(rxode2::rxGetControl(ui, "thetaSensLoad", FALSE))) &&
         is.null(env$model$thetaSens)) {
     env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
                                     error = function(e) NULL)
@@ -3218,6 +3221,12 @@ nlmixr2Est.output <- function(env, ...) {
   if (!exists("est", envir=env)) env$est <- "posthoc"
   .foceiFamilyReturn(env, .ui, ..., est=env$est)
 }
+# "output" is not an estimation method: it takes a completed environment and
+# builds the tables/objDf for it (nlmixr2CreateOutputFromUi).  The priors were
+# already used (or refused) by whichever method actually ran, so there is
+# nothing here that could silently ignore them -- refusing at this point would
+# only break assembling a finished fit from a prior-carrying model (#938).
+attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
 
 #' Create nlmixr output from the UI
 #'

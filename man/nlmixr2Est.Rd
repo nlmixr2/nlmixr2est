@@ -230,6 +230,27 @@ Generic for nlmixr2 estimation methods
 \details{
 This is a S3 generic that allows others to use the nlmixr2
   environment to do their own estimation routines
+
+A prior distribution given in the `ini({})` block is never silently
+ignored.  Before dispatching, `nlmixr2Est()` refuses any prior the
+method cannot use, so a method that does not handle priors gets that
+for free and a model carrying one fails with an explanation instead
+of being fit to something other than what it says.
+
+A method says what it supports with an attribute on itself:
+
+```
+attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+```
+
+- `"none"`, which is also what an absent attribute means -- the
+  method cannot use priors at all
+- `"normal"` -- normal priors only (`dnorm()`, `stdNormal()` and the
+  `multiNormal()` family)
+- `"nwpri"` -- normal priors and degrees of freedom on an omega block
+  (`invWishart(4)`), as a NONMEM NWPRI model works; a normal prior on
+  the omega values themselves is refused
+- `"all"` -- the method handles everything, so nothing is checked
 }
 \author{
 Matthew Fidler
