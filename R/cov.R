@@ -287,8 +287,14 @@
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+  # fixed-parameter re-fit of an already-accepted model: run with the prior
+  # gate bypassed (#938) -- .baseEst (e.g. "focei") declares no prior support,
+  # and the try() below would otherwise silently swallow the gate error and
+  # abort the covariance step of a prior-carrying fit
   .fit2 <- try(suppressMessages(suppressWarnings(
-    nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control))), silent = TRUE)
+    .nlmixr2PriorGateBypass(
+      nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control)))),
+    silent = TRUE)
   if (inherits(.fit2, "try-error") || is.null(.fit2$cov)) return(NULL)
   .env2 <- .fit2$env
   # The base-model re-fit rendered a correct parameter table (SEs computed from its
