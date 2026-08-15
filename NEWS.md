@@ -61,6 +61,17 @@
 
 ## New features
 
+- `foceiLikLoad()` gains three arguments for external callers (#939):
+  `scale="natural"` pins the parameter scaling to the identity so
+  `foceiLikRun()`'s `theta` is directly comparable with `ui$iniDf$est`
+  (no more re-implementing `nlmUnscalePar()` downstream); `thetaSens=TRUE`
+  builds and wires the theta-sensitivity model (the `d(f)/d(theta)` /
+  `d(V)/d(theta)` forward sensitivities the imp/advi engines use), reported
+  on the handle as `thetaSens`/`thetaSensIdx`; and `est=` names the
+  estimation method whose capability attributes the pre-process hooks
+  consult, turning "the bounds survive preprocessing" from an accident of
+  focei's attributes into a guarantee the caller can request.
+
 - `nlmUnscalePar()` is now exported (#940).  External engines that drive the
   nlm-family objective (e.g. `babelmixr2`'s FME-based methods) previously had
   to reach it with `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.

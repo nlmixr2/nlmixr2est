@@ -9,6 +9,9 @@ foceiLikLoad(
   data,
   likelihood = c("focei", "focep", "foce"),
   rxControl = rxode2::rxControl(),
+  scale = c("focei", "natural"),
+  thetaSens = FALSE,
+  est = "focei",
   ...
 )
 }
@@ -26,14 +29,43 @@ frozen at eta=0).}
 
 \item{rxControl}{An [rxode2::rxControl()] object for the ODE solving options.}
 
+\item{scale}{The parameter scale [foceiLikRun()]'s `theta` is on:
+`"focei"` (default) is the FOCEi estimation scale (the historical
+behavior); `"natural"` pins the scaling to the identity
+(`scaleType="mult"`, `scaleTo=0`), so the population thetas in `theta`
+(and in the handle's `initPar`) are the natural-scale values directly
+comparable with `ui$iniDf$est` -- no unscaling step for external callers
+(#939).  With either choice the trailing omega-block entries of the
+parameter vector remain in the internal `diagXform` parameterization of
+`chol(Omega^-1)`; `"natural"` leaves them unscaled but does not change
+that parameterization.}
+
+\item{thetaSens}{When `TRUE`, also build and wire the theta-sensitivity
+model (`d(f)/d(theta)`, `d(V)/d(theta)` forward sensitivities for the
+estimated non-mu structural and residual-error thetas), the model the
+imp/advi engines use for their outer population gradient.  Off by
+default: building it costs compile and solve time a value-only caller
+should not pay (#939).  The handle's `thetaSensIdx` reports which
+`ntheta` indices carry sensitivities (`integer(0)` when none do, e.g.
+when every theta is mu-referenced).}
+
+\item{est}{Estimation-method name the standard pre-process hooks run
+against (default `"focei"`).  The hooks read the named method's
+capability attributes (for example whether a bounded-transform
+reparameterization is wanted), so a caller preparing the problem for a
+different consumer can name it here and get that consumer's
+preprocessing guarantees instead of focei's (#939).  The inner engine
+itself is unaffected.}
+
 \item{...}{Additional solving/model options passed to `.foceiLikControl`
 (e.g. `optExpression`, `addProp`, `eventSens`).}
 }
 \value{
 Invisibly, a handle list with the loaded system's dimensions:
-  `initPar` (the estimation-scale parameter vector at the model's initial
-  estimates, a ready `theta` for [foceiLikRun()]), `npars`, `ntheta`,
-  `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl` and `likelihood`.
+  `initPar` (the parameter vector at the model's initial estimates on the
+  requested `scale`, a ready `theta` for [foceiLikRun()]), `npars`,
+  `ntheta`, `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl`,
+  `likelihood`, `scale`, `thetaSens` and `thetaSensIdx`.
 }
 \description{
 Compiles the inner (FOCEi sensitivity) model from an rxode2 UI model,
