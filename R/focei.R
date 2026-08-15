@@ -2169,8 +2169,15 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   if ((rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") ||
          isTRUE(rxode2::rxGetControl(ui, "thetaSensLoad", FALSE))) &&
         is.null(env$model$thetaSens)) {
-    env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
-                                    error = function(e) NULL)
+    # eventSens follows the control (same source as the inner model): with
+    # "jump" a theta entering dose handling (alag/f/dur/rate) gets its jump
+    # condition at the event, so its d(f)/d(theta) column is real rather
+    # than silently zero (#946)
+    env$model$thetaSens <- tryCatch(
+      .impmapThetaSensModel(ui,
+                            eventSens = rxode2::rxGetControl(ui, "eventSens",
+                                                             "jump")),
+      error = function(e) NULL)
   }
   #} else {
   #env$model <- rxUiGet.ebe(list(ui))

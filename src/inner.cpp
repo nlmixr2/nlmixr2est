@@ -18555,6 +18555,13 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
     const arma::mat omInv = op_focei.omegaInv;
     std::vector<int> bad(nid, 0);
     {
+      // Install the inner model's event ("jump") sensitivity shape for this
+      // batch (a no-op when the model carries none, #946): the eta gradient
+      // of a model whose eta enters dose handling (alag/f/dur/rate) needs
+      // the jump injection into the eta-sensitivity states, and the shape is
+      // a process global whose installer calls into R -- so it must bracket
+      // the parallel region.
+      OdeSwapEsBatch esBatch(odeSlotInner);
       NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
@@ -18574,22 +18581,36 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
   }
 }
 
-// One subject of nlmixr2FoceiCondThetaGrad: solve at this eta first
-// (impThetaScore consumes the sensitivity model at the current subject
-// state, same order as the advi loop), then scatter the theta score into
-// the subject's dTheta row.  Returns 1 when the value was non-finite.
+// One subject of nlmixr2FoceiCondThetaGrad.  impThetaSensCollect is
+// self-contained (it syncs the thetas and this sample's etas into the
+// subject, solves the theta-sensitivity model through its own retry/FD
+// fallback, and resets the subject's solve state for determinism), so it is
+// used directly rather than through likInner0 + impThetaScore -- which also
+// keeps this batch entirely on the theta-sensitivity model, under whose
+// event ("jump") shape the caller has bracketed the loop (#946).  Returns 1
+// when the subject's sample was unusable.
 static int foceiCondThetaGradOne(int id, const double *etaIn, int neta,
                                  int ntheta, int nSens, double *dTheta) {
+  // likInner0 first: it initializes the subject's solve/event state that
+  // impThetaSensCollect's observation walk reads (without it the walk sees
+  // no observations), and its NA refusal gives the bad-subject semantics.
+  // Its VALUE is shape-independent, so running it under the caller's
+  // theta-sensitivity event shape is safe; its eta-sensitivity side effects
+  // are unused here.
   std::vector<double> eta(neta);
   foceiCondSubjectStart(id, etaIn, neta, eta);
   double v = likInner0(&eta[0], id);
   if (ISNA(v) || !std::isfinite(v)) return 1;
   arma::mat S(1, neta);
-  for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
+  for (int k = 0; k < neta; ++k) S(0, k) = etaIn[(size_t)id * neta + k];
+  impThetaSensData c;
+  impThetaSensCollect(id, S, c);
+  if (c.nobs == 0 || c.sampleOk.empty() || c.sampleOk[0] == 0) return 1;
   arma::vec zk(1); zk[0] = 1.0;
   arma::vec g(nSens, arma::fill::zeros);
   arma::mat H(nSens, nSens, arma::fill::zeros);
-  impThetaScore(id, S, zk, g, H);
+  impThetaAccumOne(c, zk, g, H);
+  if (!g.is_finite()) return 1;
   for (int s = 0; s < nSens; ++s) {
     int th = op_focei.impThetaSensIdx[s]; // 0-based ntheta index
     if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[s];
@@ -18611,6 +18632,13 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
     std::vector<int> bad(nid, 0);
     std::fill(dTheta, dTheta + (size_t)nid * ntheta, 0.0);
     {
+      // The theta-sensitivity model's own event ("jump") shape for this
+      // batch (#946): with it, a theta entering dose handling gets its jump
+      // condition at the event; without it the sensitivity column is
+      // silently zero.  Process-global + R-calling installer, so it
+      // brackets the parallel region (a no-op when the model carries no
+      // event sensitivities).
+      OdeSwapEsBatch esBatch(odeSlotThetaSens);
       NpInnerParallelScope npScope(rx, doParallel);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)

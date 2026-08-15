@@ -61,6 +61,20 @@
 
 ## New features
 
+- Dose-handling (`alag()`/`f()`/`dur()`/`rate()`) theta sensitivities are no
+  longer silently zero (#946).  The theta-sensitivity model is now compiled
+  with rxode2's analytic event ("jump") sensitivities (following the
+  control's `eventSens`, the same source the inner model uses), and its
+  solves run under its own event shape (`OdeSwapEsBatch(odeSlotThetaSens)`
+  brackets the batch; the shape is a process global whose installer calls
+  into R, so it cannot be swapped inside the parallel region).  The inner
+  batch in the conditional-likelihood C API likewise installs the inner
+  model's shape, so an eta entering dose handling gets its jump too.  An
+  estimated `alag` theta's derivative now agrees with central differences
+  (~1e-5 relative, ODE-tolerance-limited) where it previously came back
+  identically zero -- the failure mode that made an `alag`-estimating
+  imp/advi theta update a no-op and broke gradient-based samplers.
+
 - New FOCEi conditional-likelihood C API (#937): a plain-C, non-throwing,
   gradient-returning entry-point table over the `foceiLikLoad()`-ed problem,
   exposed to downstream packages through `_nlmixr2est_foceiPtrs()` /

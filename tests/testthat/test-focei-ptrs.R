@@ -315,3 +315,119 @@ test_that("condBatch value/gradient FD-agree across error families (#937)", {
   expect_false(isTRUE(all.equal(as.numeric(got$grad), as.numeric(fd),
                                 tolerance = 1e-3)))
 })
+
+test_that("dose-handling theta sensitivities carry the event jump (#946)", {
+  # An estimated alag theta's derivative needs a jump condition at the dose
+  # event.  The theta-sensitivity model is now compiled with rxode2's
+  # analytic event ("jump") sensitivities and solved under its own event
+  # shape (OdeSwapEsBatch), so the column is real rather than silently zero.
+  skip_on_cran()
+  .lagMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      tlag <- -1
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d / dt(central) <- -cl / v * central
+      alag(central) <- exp(tlag)
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+  .testSeed(42)
+  d <- do.call(rbind, lapply(1:4, function(id) {
+    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+          data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
+                     DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
+                       stats::rnorm(5, 0, 0.5),
+                     AMT = 0, EVID = 0))
+  }))
+  h <- foceiLikLoad(.lagMod, d, "focei", scale = "natural", thetaSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  # tlag (ntheta 3) is a non-mu structural theta and carries a sensitivity
+  expect_true(3L %in% h$thetaSensIdx)
+  expect_equal(bitwAnd(foceiLikDims_()$flags, 0x40), 0x40)
+  th <- c(1, 3, -1, 0.5, h$initPar[5])
+  expect_equal(foceiLikSetThetaC_(th), 0L)
+  eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
+  got <- foceiLikCondThetaGrad_(eta, 1L)
+  expect_equal(got$nBad, 0L)
+  # the derivative through the event is real (nonzero) ...
+  expect_true(all(abs(got$dTheta[, 3]) > 1e-3))
+  # ... and every sensitivity column (tv, tlag, add.sd) FD-agrees
+  .h <- 1e-5
+  for (t in h$thetaSensIdx) {
+    up <- th
+    up[t] <- up[t] + .h
+    dn <- th
+    dn[t] <- dn[t] - .h
+    expect_equal(foceiLikSetThetaC_(up), 0L)
+    vUp <- foceiLikCondGrad_(eta, 1L)$value
+    expect_equal(foceiLikSetThetaC_(dn), 0L)
+    vDn <- foceiLikCondGrad_(eta, 1L)$value
+    fd <- (vUp - vDn) / (2 * .h)
+    expect_equal(as.numeric(got$dTheta[, t]), as.numeric(fd),
+                 tolerance = 1e-3, info = paste0("theta ", t))
+  }
+})
+
+test_that("an eta entering dose handling gets its jump in the eta gradient (#946)", {
+  # The inner batch installs the INNER model's event shape, so d/d(eta) of the
+  # conditional through an eta-in-alag dose event is real, not silently zero.
+  skip_on_cran()
+  .lagEtaMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      tlag <- -1
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+      eta.lag ~ 0.05
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d / dt(central) <- -cl / v * central
+      alag(central) <- exp(tlag + eta.lag)
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+  .testSeed(42)
+  d <- do.call(rbind, lapply(1:4, function(id) {
+    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+          data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
+                     DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
+                       stats::rnorm(5, 0, 0.5),
+                     AMT = 0, EVID = 0))
+  }))
+  h <- foceiLikLoad(.lagEtaMod, d, "focei", scale = "natural")
+  on.exit(foceiLikUnload(), add = TRUE)
+  # full par vector: 4 thetas + the 2 omega parameters at their initials
+  th <- h$initPar
+  th[1:4] <- c(1, 3, -1, 0.5)
+  expect_equal(foceiLikSetThetaC_(th), 0L)
+  eta <- matrix(c(-0.1, 0.05, 0.2, -0.15,
+                  0.08, -0.04, 0.1, -0.06), 4, 2)
+  got <- foceiLikCondGrad_(eta, 1L)
+  expect_equal(got$nBad, 0L)
+  # the eta.lag column runs only through the dose event: it must be real
+  expect_true(all(abs(got$grad[, 2]) > 1e-3))
+  # and both eta columns FD-agree
+  .h <- 1e-5
+  for (k in 1:2) {
+    up <- eta
+    up[, k] <- up[, k] + .h
+    dn <- eta
+    dn[, k] <- dn[, k] - .h
+    fd <- (foceiLikCondGrad_(up, 1L)$value -
+             foceiLikCondGrad_(dn, 1L)$value) / (2 * .h)
+    expect_equal(as.numeric(got$grad[, k]), as.numeric(fd),
+                 tolerance = 1e-3, info = paste0("eta ", k))
+  }
+})
