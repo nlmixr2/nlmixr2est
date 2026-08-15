@@ -120,6 +120,28 @@
 
 ### Estimation
 
+- Fixed the analytic-gradient methods (`est="foceif"` and the rest of the `*f`
+  family, or `foceiControl(fast=TRUE)`) **stopping short of the optimum**, after
+  roughly as many outer evaluations as the model has parameters regardless of the
+  data.  Their outer optimizer is `lbfgsb3c`, whose `lbfgsFactr` rule tests the
+  objective reduction of a *single* step rather than stationarity, so at the
+  previous default of `10^-sigdig` the fit stopped as soon as one step was small.
+  `foceiControl(lbfgsFactr=)` now defaults two orders tighter,
+  `10^(-sigdig-2)/.Machine$double.eps`.  On a 2-compartment oral fit this moves
+  the objective from 8.63 above the derivative-free reference to 0.10 below it,
+  at 13 outer evaluations instead of 6 (the reference needs 96); a 1-compartment
+  fit and a sparse `pheno_sd` fit improve similarly.  Fits that were stopping
+  early now run further and report a lower objective, which can change model
+  ranking.  The other `sigdig`-derived optimizer tolerances are unchanged --
+  tightening `nlminb`'s `rel.tol`/`x.tol` measured no benefit.
+
+  Note that this does not make the analytic-gradient methods interchangeable with
+  the derivative-free default on every surface.  On models where the two
+  optimizer classes converge to different points -- measured on a correlated-eta
+  (block omega) model and a Michaelis-Menten model -- the gap is unaffected by
+  any tolerance, so compare candidate models within one estimation method rather
+  than across `focei` and `foceif`.
+
 - Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
   Gaussian observation** in both its objective function and its standard errors.
   Such an endpoint estimates no residual error, so the residual step never runs
