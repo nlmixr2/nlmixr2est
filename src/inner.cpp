@@ -18351,6 +18351,22 @@ static bool foceiThetaSensWired(void) {
     op_focei.thetaSensNlhs > 0 && rxThetaSens.calc_lhs != NULL;
 }
 
+// Capability/hazard flag word for nlmixr2FoceiDims (bit meanings documented in
+// inst/include/nlmixr2estFoceiPtr.h).
+static int foceiDimsFlags(rx_solving_options *op) {
+  int f = 0;
+  if (op_focei.interaction == 1) f |= 0x01;
+  if (op_focei.foceType == 1)    f |= 0x02;
+  if (op_focei.fo == 1)          f |= 0x04;
+  for (int k = 0; k < op_focei.neta; ++k) {
+    if (op_focei.etaFD[k] == 1) { f |= 0x08; break; }
+  }
+  if (op_focei.mixIdxN != 0)     f |= 0x10;
+  if (solveMethodThreadSafe(op)) f |= 0x20;
+  if (foceiThetaSensWired())     f |= 0x40;
+  return f;
+}
+
 extern "C" int nlmixr2FoceiDims(int *nid, int *neta, int *ntheta,
                                 int *npars, int *flags) {
   if (!foceiLikLoaded) return -1;
@@ -18361,19 +18377,7 @@ extern "C" int nlmixr2FoceiDims(int *nid, int *neta, int *ntheta,
     if (neta)   *neta   = op_focei.neta;
     if (ntheta) *ntheta = (int) op_focei.ntheta;
     if (npars)  *npars  = (int) op_focei.npars;
-    if (flags) {
-      int f = 0;
-      if (op_focei.interaction == 1) f |= 0x01;
-      if (op_focei.foceType == 1)    f |= 0x02;
-      if (op_focei.fo == 1)          f |= 0x04;
-      for (int k = 0; k < op_focei.neta; ++k) {
-        if (op_focei.etaFD[k] == 1) { f |= 0x08; break; }
-      }
-      if (op_focei.mixIdxN != 0)     f |= 0x10;
-      if (solveMethodThreadSafe(op)) f |= 0x20;
-      if (foceiThetaSensWired())     f |= 0x40;
-      *flags = f;
-    }
+    if (flags)  *flags  = foceiDimsFlags(op);
     return 0;
   } catch (...) {
     return -3;
@@ -18463,21 +18467,91 @@ static void foceiCondBatchReset(rx_solving_options *op) {
   resetOpBadSolve(op);
 }
 
+// Shared argument/state guard for the batch entries.  0 ok, -1 not loaded,
+// -2 bad shape / FO (lp never filled) / mixture (id is component*nsub+subject;
+// refuse rather than guess).  Sets `rx` as a side effect.
+static int foceiCondBatchCheck(const double *etaIn, const double *out,
+                               int nid, int neta) {
+  if (!foceiLikLoaded) return -1;
+  if (etaIn == NULL || out == NULL) return -2;
+  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  rx = getRxSolve_();
+  if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
+  return 0;
+}
+
+// Thread-count clamp + parallel decision, shared by the batch entries;
+// rxode2 sizes every per-thread solve buffer by op->cores.
+static bool foceiCondBatchParallel(int &cores, rx_solving_options *op) {
+  if (cores < 1) cores = 1;
+  cores = min2(cores, getOpCores(op));
+  return (cores > 1) && solveMethodThreadSafe(op);
+}
+
+// Per-thread rxode2 slot id around a subject's solve inside an external
+// OpenMP team (the cross-DLL libgomp fix, see innerOpt).
+static inline void foceiCondEnterThread(bool doParallel) {
+#ifdef _OPENMP
+  if (doParallel) setRxThreadId(omp_get_thread_num());
+#else
+  (void)doParallel;
+#endif
+}
+static inline void foceiCondLeaveThread(bool doParallel) {
+#ifdef _OPENMP
+  if (doParallel) setRxThreadId(-1);
+#else
+  (void)doParallel;
+#endif
+}
+
+// History-independence for one subject: defeat the eta memo and reset the
+// solve state to base (same discipline as adviElboGradCore), then copy the
+// subject's eta row out of the row-major input.
+static void foceiCondSubjectStart(int id, const double *etaIn, int neta,
+                                  std::vector<double> &eta) {
+  inds_focei[id].setup = 0;
+  rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
+  setIndTolFactor(indI, 1.0);
+  setIndSolve(indI, -1);
+  for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
+}
+
+// One subject of nlmixr2FoceiCondBatch: conditional value + d/d(eta).
+// Returns 1 when the value was non-finite (gradient row zeroed).
+static int foceiCondBatchOne(int id, const double *etaIn, int neta,
+                             const arma::mat &omInv,
+                             double *value, double *grad) {
+  std::vector<double> eta(neta);
+  foceiCondSubjectStart(id, etaIn, neta, eta);
+  double v = npEvalCondLik(&eta[0], id);
+  value[id] = v;
+  if (!std::isfinite(v)) {
+    for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
+    return 1;
+  }
+  // d/deta log p(y_i|eta_i) = Omega^-1 eta_i - fInd->lp: likInner0
+  // finalizes lp = -(dlogp/deta) + Omega^-1 eta (the same identity
+  // adviElboGradCore's dataScore uses)
+  focei_ind *fInd = &(inds_focei[id]);
+  for (int k = 0; k < neta; ++k) {
+    double s = 0.0;
+    for (int l = 0; l < neta; ++l) s += omInv(k, l) * eta[l];
+    grad[(size_t)id * neta + k] = s - fInd->lp[k];
+  }
+  return 0;
+}
+
 extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
                                      int cores, double *value, double *grad) {
-  if (!foceiLikLoaded) return -1;
-  if (etaIn == NULL || value == NULL || grad == NULL) return -2;
-  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  int rc = foceiCondBatchCheck(etaIn, value, nid, neta);
+  if (rc != 0 || grad == NULL) return rc != 0 ? rc : -2;
   try {
-    rx = getRxSolve_();
     rx_solving_options *op = getSolvingOptions(rx);
-    // mixtures index id as component*nsub+subject; refuse rather than guess
-    if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
     foceiCondBatchReset(op);
-    cores = min2(cores < 1 ? 1 : cores, getOpCores(op));
-    const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    const bool doParallel = foceiCondBatchParallel(cores, op);
     // snapshot on the calling thread: the same Omega^-1 the gradient
-    // correction uses below, so grad is exactly d/deta of the returned value
+    // correction uses, so grad is exactly d/deta of the returned value
     const arma::mat omInv = op_focei.omegaInv;
     std::vector<int> bad(nid, 0);
     {
@@ -18487,36 +18561,9 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
 #endif
       for (int ii = 0; ii < nid; ++ii) {
         int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
-#ifdef _OPENMP
-        if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
-        // history-independent: defeat the eta memo and reset this subject's
-        // solve state to base (same discipline as adviElboGradCore)
-        inds_focei[id].setup = 0;
-        { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
-          setIndTolFactor(indI, 1.0);
-          setIndSolve(indI, -1); }
-        std::vector<double> eta(neta);
-        for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
-        double v = npEvalCondLik(&eta[0], id);
-        value[id] = v;
-        if (!std::isfinite(v)) {
-          bad[id] = 1;
-          for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
-        } else {
-          // d/deta log p(y_i|eta_i) = Omega^-1 eta_i - fInd->lp: likInner0
-          // finalizes lp = -(dlogp/deta) + Omega^-1 eta (the same identity
-          // adviElboGradCore's dataScore uses)
-          focei_ind *fInd = &(inds_focei[id]);
-          for (int k = 0; k < neta; ++k) {
-            double s = 0.0;
-            for (int l = 0; l < neta; ++l) s += omInv(k, l) * eta[l];
-            grad[(size_t)id * neta + k] = s - fInd->lp[k];
-          }
-        }
-#ifdef _OPENMP
-        if (doParallel) setRxThreadId(-1);
-#endif
+        foceiCondEnterThread(doParallel);
+        bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
+        foceiCondLeaveThread(doParallel);
       }
     }
     int nbad = 0;
@@ -18527,21 +18574,40 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
   }
 }
 
+// One subject of nlmixr2FoceiCondThetaGrad: solve at this eta first
+// (impThetaScore consumes the sensitivity model at the current subject
+// state, same order as the advi loop), then scatter the theta score into
+// the subject's dTheta row.  Returns 1 when the value was non-finite.
+static int foceiCondThetaGradOne(int id, const double *etaIn, int neta,
+                                 int ntheta, int nSens, double *dTheta) {
+  std::vector<double> eta(neta);
+  foceiCondSubjectStart(id, etaIn, neta, eta);
+  double v = likInner0(&eta[0], id);
+  if (ISNA(v) || !std::isfinite(v)) return 1;
+  arma::mat S(1, neta);
+  for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
+  arma::vec zk(1); zk[0] = 1.0;
+  arma::vec g(nSens, arma::fill::zeros);
+  arma::mat H(nSens, nSens, arma::fill::zeros);
+  impThetaScore(id, S, zk, g, H);
+  for (int s = 0; s < nSens; ++s) {
+    int th = op_focei.impThetaSensIdx[s]; // 0-based ntheta index
+    if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[s];
+  }
+  return 0;
+}
+
 extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
                                          int cores, double *dTheta) {
-  if (!foceiLikLoaded) return -1;
-  if (etaIn == NULL || dTheta == NULL) return -2;
-  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  int rc = foceiCondBatchCheck(etaIn, dTheta, nid, neta);
+  if (rc != 0) return rc;
   if (!foceiThetaSensWired()) return -4;
   try {
-    rx = getRxSolve_();
     rx_solving_options *op = getSolvingOptions(rx);
-    if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
     const int ntheta = (int)op_focei.ntheta;
     const int nSens = op_focei.impThetaSensIdx.size();
     foceiCondBatchReset(op);
-    cores = min2(cores < 1 ? 1 : cores, getOpCores(op));
-    const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    const bool doParallel = foceiCondBatchParallel(cores, op);
     std::vector<int> bad(nid, 0);
     std::fill(dTheta, dTheta + (size_t)nid * ntheta, 0.0);
     {
@@ -18551,35 +18617,9 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
 #endif
       for (int ii = 0; ii < nid; ++ii) {
         int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
-#ifdef _OPENMP
-        if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
-        inds_focei[id].setup = 0;
-        { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
-          setIndTolFactor(indI, 1.0);
-          setIndSolve(indI, -1); }
-        std::vector<double> eta(neta);
-        for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
-        // solve at this eta first: impThetaScore consumes the sensitivity
-        // model at the current subject state (same order as the advi loop)
-        double v = likInner0(&eta[0], id);
-        if (ISNA(v) || !std::isfinite(v)) {
-          bad[id] = 1;
-        } else {
-          arma::mat S(1, neta);
-          for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
-          arma::vec zk(1); zk[0] = 1.0;
-          arma::vec g(nSens, arma::fill::zeros);
-          arma::mat H(nSens, nSens, arma::fill::zeros);
-          impThetaScore(id, S, zk, g, H);
-          for (int s = 0; s < nSens; ++s) {
-            int th = op_focei.impThetaSensIdx[s]; // 0-based ntheta index
-            if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[s];
-          }
-        }
-#ifdef _OPENMP
-        if (doParallel) setRxThreadId(-1);
-#endif
+        foceiCondEnterThread(doParallel);
+        bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens, dTheta);
+        foceiCondLeaveThread(doParallel);
       }
     }
     int nbad = 0;
