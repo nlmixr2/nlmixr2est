@@ -2164,7 +2164,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # after the inner model, in the symengine pipeline context.
   # "advi" here is the INNER engine marker set by .adviInnerSetup, not a user
   # `est=` value (est="emvi"/"fbvi" both set it); do not "modernize" it.
-  if (rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") &&
+  # thetaSensLoad is foceiLikLoad(thetaSens=TRUE) (#939): an external caller
+  # wants the same model without being an imp/advi estimation.
+  if ((rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") ||
+         isTRUE(rxode2::rxGetControl(ui, "thetaSensLoad", FALSE))) &&
         is.null(env$model$thetaSens)) {
     env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
                                     error = function(e) NULL)

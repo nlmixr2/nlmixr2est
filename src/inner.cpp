@@ -755,6 +755,9 @@ struct focei_options {
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
   bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
   bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
+  bool thetaSensLoad = false; // foceiLikLoad(thetaSens=TRUE) (#939): wire the
+                              // theta-sensitivity model for an external caller
+                              // without being an imp/advi estimation
   double npResidScale = 1.0; // npag/npb residual-error magnitude multiplier (gamma):
                              // likInner0 scales the residual variance r by this^2,
                              // so the conditional likelihood (incl. censoring via
@@ -6384,6 +6387,18 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
     else op_focei.impThetaSensIdx = IntegerVector(0);
   }
+  // foceiLikLoad(thetaSens=TRUE) (#939): an external caller (e.g. a linked
+  // sampler) wants the theta-sensitivity model wired without being an imp/advi
+  // estimation.  Always reassigned (clear-on-absence, like the flags above):
+  // op_focei is a process global, so a stale TRUE from a prior load must not
+  // leak into the next fit.
+  op_focei.thetaSensLoad = foceiO.containsElementNamed("thetaSensLoad") &&
+    as<bool>(foceiO["thetaSensLoad"]);
+  if (op_focei.thetaSensLoad) {
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
+  }
 
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
@@ -11327,7 +11342,8 @@ Environment foceiFitCpp_(Environment e){
       // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
       op_focei.thetaSensOffset = -1;
       op_focei.thetaSensNeq = 0;
-      if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
+      if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
+      model.containsElementNamed("thetaSens")) {
         RObject ts = model["thetaSens"];
         if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
           op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);
@@ -11867,7 +11883,8 @@ RObject vaeInnerSetup_(Environment e) {
   // these in foceiFitCpp_, a code path vaeInnerSetup_ does not go through).
   op_focei.thetaSensOffset = -1;
   op_focei.thetaSensNeq = 0;
-  if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
+  if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
+      model.containsElementNamed("thetaSens")) {
     RObject ts = model["thetaSens"];
     if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
       op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);

@@ -169,3 +169,75 @@ test_that("foceiLikRun() responds to theta changes", {
   ll0b <- foceiLikRun(h$initPar, eta0, type = "cond")
   expect_equal(ll0, ll0b, tolerance = 1e-12)
 })
+
+test_that("foceiLikLoad(scale='natural') makes theta the natural scale (#939)", {
+  skip_on_cran()
+  d <- .foceiLikData()
+  h <- foceiLikLoad(.foceiLikMod, d, "focei", scale = "natural")
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(h$scale, "natural")
+  # at the initial estimates the two scales coincide by construction
+  expect_equal(h$initPar[1:3], c(1, 3, 0.5))
+  # away from them they do not: evaluate at a NATURAL-scale theta and check
+  # against the closed form at those natural values
+  th <- c(1.2, 3.1, 0.6, 0.1^(-0.25))
+  eta0 <- matrix(0, h$nid, h$neta)
+  llNat <- foceiLikRun(th, eta0, type = "cond")
+  ref <- vapply(1:4, function(id) {
+    di <- d[d$ID == id, ]
+    cp <- 100 / exp(th[2]) * exp(-exp(th[1]) / exp(th[2]) * di$TIME)
+    sum(-0.5 * (di$DV - cp)^2 / th[3]^2 - 0.5 * log(th[3]^2))
+  }, numeric(1))
+  expect_equal(as.numeric(llNat), ref, tolerance = 1e-2)
+  foceiLikUnload()
+  # the same numeric vector under the default (focei) scale means something
+  # else (add.sd's scaling constant is not 1), so the values must differ --
+  # this is what proves scale="natural" changed the parameterization
+  h2 <- foceiLikLoad(.foceiLikMod, d, "focei")
+  expect_equal(h2$scale, "focei")
+  llDef <- foceiLikRun(th, eta0, type = "cond")
+  expect_false(isTRUE(all.equal(as.numeric(llNat), as.numeric(llDef),
+                                tolerance = 1e-4)))
+})
+
+test_that("foceiLikLoad(thetaSens=TRUE) builds and reports the sensitivity model (#939)", {
+  skip_on_cran()
+  d <- .foceiLikData()
+  # tcl is mu-referenced (tcl + eta.cl); tv is non-mu structural and add.sd is
+  # the residual error, so both carry theta sensitivities
+  h <- foceiLikLoad(.foceiLikMod, d, "focei", thetaSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_true(h$thetaSens)
+  expect_equal(h$thetaSensIdx, c(2L, 3L))
+  # the loaded system still evaluates
+  eta0 <- matrix(0, h$nid, h$neta)
+  expect_true(all(is.finite(foceiLikRun(h$initPar, eta0))))
+  foceiLikUnload()
+  # default stays off
+  h2 <- foceiLikLoad(.foceiLikMod, d, "focei")
+  expect_false(h2$thetaSens)
+  expect_equal(h2$thetaSensIdx, integer(0))
+})
+
+test_that("foceiLikLoad(est=) names the preprocess-hook consumer (#939)", {
+  skip_on_cran()
+  d <- .foceiLikData()
+  # "posthoc" is a registered method with no bounded-transform request; the
+  # load must work and give the same problem dimensions as the default
+  h <- foceiLikLoad(.foceiLikMod, d, "focei", est = "posthoc")
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(h$npars, 4L)
+  expect_true(all(is.finite(foceiLikRun(h$initPar, matrix(0, 4, 1)))))
+})
+
+test_that("foceiLikLoad(est=) tolerates an unregistered method name (#939)", {
+  skip_on_cran()
+  d <- .foceiLikData()
+  # the named consumer's package need not be loaded: hooks that consult the
+  # method's capability attributes treat an unknown name as "no requirement"
+  # rather than erroring in getS3method
+  h <- foceiLikLoad(.foceiLikMod, d, "focei", est = "zzzNotARealMethod")
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(h$npars, 4L)
+  expect_true(all(is.finite(foceiLikRun(h$initPar, matrix(0, 4, 1)))))
+})
