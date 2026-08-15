@@ -76,6 +76,28 @@
 
 ### New features
 
+- New FOCEi conditional-likelihood C API
+  ([\#937](https://github.com/nlmixr2/nlmixr2est/issues/937)): a
+  plain-C, non-throwing, gradient-returning entry-point table over the
+  [`foceiLikLoad()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.md)-ed
+  problem, exposed to downstream packages through
+  `_nlmixr2est_foceiPtrs()` /
+  [`.nlmixr2estFoceiPtrs()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estFoceiPtrs.md)
+  with the caller side in `inst/include/nlmixr2estFoceiPtr.h` – the same
+  external-pointer idiom as the likelihood-contribution registry. Seven
+  entries: an ABI version, dimensions plus capability/hazard flags (so
+  `focep`/`fo`/finite-difference etas/mixtures are refused at load
+  rather than sampled wrongly), a return-code `setTheta`, the batched
+  per-subject conditional `log p(y_i | eta_i)` with its `d/d(eta)`
+  (subject-parallel, deterministic: the sticky solve-tolerance
+  relaxation is reset every call so the value is a pure function of
+  `(theta, eta)`), a global `Omega^-1` conditioning knob, and the
+  theta-sensitivity index/score pair for `d/d(theta)` of the conditional
+  at fixed eta. The eta gradient is assembled inside nlmixr2est as
+  `Omega^-1 eta - fInd->lp` – the same identity the ADVI outer gradient
+  uses – so no caller ever reconstructs the sign convention. Built for
+  the Stan linkage in `nlmixr2/nlmixr2stan`.
+
 - [`foceiLikLoad()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.md)
   gains three arguments for external callers
   ([\#939](https://github.com/nlmixr2/nlmixr2est/issues/939)):
