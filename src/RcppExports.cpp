@@ -1125,6 +1125,72 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikCondGrad_
+List foceiLikCondGrad_(NumericMatrix etaMat, int cores);
+RcppExport SEXP _nlmixr2est_foceiLikCondGrad_(SEXP etaMatSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikCondGrad_(etaMat, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikCondThetaGrad_
+List foceiLikCondThetaGrad_(NumericMatrix etaMat, int cores);
+RcppExport SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP etaMatSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikCondThetaGrad_(etaMat, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikDims_
+List foceiLikDims_();
+RcppExport SEXP _nlmixr2est_foceiLikDims_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiLikDims_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikSetThetaC_
+int foceiLikSetThetaC_(NumericVector theta);
+RcppExport SEXP _nlmixr2est_foceiLikSetThetaC_(SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikSetThetaC_(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikSetOmegaInvC_
+int foceiLikSetOmegaInvC_(NumericMatrix omegaInv);
+RcppExport SEXP _nlmixr2est_foceiLikSetOmegaInvC_(SEXP omegaInvSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type omegaInv(omegaInvSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikSetOmegaInvC_(omegaInv));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikThetaSensIdxC_
+IntegerVector foceiLikThetaSensIdxC_();
+RcppExport SEXP _nlmixr2est_foceiLikThetaSensIdxC_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiLikThetaSensIdxC_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeElboStepCpp_
 List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR, NumericVector aR, double alphaKL, NumericMatrix epsR, int nMix, NumericVector mixProbR, int cores, bool withGrad);
 RcppExport SEXP _nlmixr2est_vaeElboStepCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP zPopRSEXP, SEXP omegaRSEXP, SEXP aRSEXP, SEXP alphaKLSEXP, SEXP epsRSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP withGradSEXP) {
