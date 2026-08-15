@@ -386,6 +386,30 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikCondGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondGrad_`, etaMat, cores)
+}
+
+foceiLikCondThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondThetaGrad_`, etaMat, cores)
+}
+
+foceiLikDims_ <- function() {
+    .Call(`_nlmixr2est_foceiLikDims_`)
+}
+
+foceiLikSetThetaC_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikSetThetaC_`, theta)
+}
+
+foceiLikSetOmegaInvC_ <- function(omegaInv) {
+    .Call(`_nlmixr2est_foceiLikSetOmegaInvC_`, omegaInv)
+}
+
+foceiLikThetaSensIdxC_ <- function() {
+    .Call(`_nlmixr2est_foceiLikThetaSensIdxC_`)
+}
+
 vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }

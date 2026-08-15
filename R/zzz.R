@@ -157,3 +157,18 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
 .nlmixr2estLikContribPtrs <- function() {
   .Call("_nlmixr2est_likContribPtrs", PACKAGE = "nlmixr2est")
 }
+
+#' FOCEi conditional-likelihood C API pointers
+#'
+#' Returns the small external-pointer table (apiVersion, dims, setTheta,
+#' condBatch, setOmegaInv, thetaSensIdx, condThetaGrad) over the
+#' [foceiLikLoad()]-ed problem that downstream packages (e.g. nlmixr2stan)
+#' install via `inst/include/nlmixr2estFoceiPtr.h`, which also documents the
+#' calling contract (#937).
+#'
+#' @return a named list of external pointers.
+#' @export
+#' @keywords internal
+.nlmixr2estFoceiPtrs <- function() {
+  .Call("_nlmixr2est_foceiPtrs", PACKAGE = "nlmixr2est")
+}

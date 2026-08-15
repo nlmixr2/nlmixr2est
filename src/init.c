@@ -53,6 +53,12 @@ extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
 extern SEXP _nlmixr2est_foceiLikUnload_(void);
 extern SEXP _nlmixr2est_foceiLikSetTheta_(SEXP);
 extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikCondGrad_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikDims_(void);
+extern SEXP _nlmixr2est_foceiLikSetThetaC_(SEXP);
+extern SEXP _nlmixr2est_foceiLikSetOmegaInvC_(SEXP);
+extern SEXP _nlmixr2est_foceiLikThetaSensIdxC_(void);
 extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_odeSwapInfo_(void);
@@ -198,9 +204,11 @@ SEXP _nlmixr2est_getTestContrib(void);
 SEXP _nlmixr2est_setTestContribAddLL(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
+SEXP _nlmixr2est_foceiPtrs(void);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
+  {"_nlmixr2est_foceiPtrs", (DL_FUNC) &_nlmixr2est_foceiPtrs, 0},
   {"_nlmixr2est_registerTestContrib", (DL_FUNC) &_nlmixr2est_registerTestContrib, 0},
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
@@ -230,6 +238,12 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},
   {"_nlmixr2est_foceiLikSetTheta_", (DL_FUNC) &_nlmixr2est_foceiLikSetTheta_, 1},
   {"_nlmixr2est_foceiLikEval_", (DL_FUNC) &_nlmixr2est_foceiLikEval_, 3},
+  {"_nlmixr2est_foceiLikCondGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondGrad_, 2},
+  {"_nlmixr2est_foceiLikCondThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondThetaGrad_, 2},
+  {"_nlmixr2est_foceiLikDims_", (DL_FUNC) &_nlmixr2est_foceiLikDims_, 0},
+  {"_nlmixr2est_foceiLikSetThetaC_", (DL_FUNC) &_nlmixr2est_foceiLikSetThetaC_, 1},
+  {"_nlmixr2est_foceiLikSetOmegaInvC_", (DL_FUNC) &_nlmixr2est_foceiLikSetOmegaInvC_, 1},
+  {"_nlmixr2est_foceiLikThetaSensIdxC_", (DL_FUNC) &_nlmixr2est_foceiLikThetaSensIdxC_, 0},
   {"_nlmixr2est_adviElboGrad_", (DL_FUNC) &_nlmixr2est_adviElboGrad_, 6},
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
   {"_nlmixr2est_odeSwapInfo_", (DL_FUNC) &_nlmixr2est_odeSwapInfo_, 0},

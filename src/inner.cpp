@@ -18308,6 +18308,371 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
   return out;
 }
 
+// ===========================================================================
+// FOCEi conditional-likelihood C API (#937): plain-C, non-throwing,
+// gradient-returning entry points over the foceiLikLoad()-ed problem,
+// exposed to downstream packages (nlmixr2stan) through the external-pointer
+// table _nlmixr2est_foceiPtrs() -- same idiom as _nlmixr2est_likContribPtrs.
+// The downstream side is inst/include/nlmixr2estFoceiPtr.h, which also
+// documents the calling contract (thread rules, return codes, determinism).
+//
+// None of these may longjmp or let an exception escape: they are called from
+// inside a sampler's log-density evaluation.  The one entry that must call
+// into R (the Omega rebuild in SetTheta) contains any R error with
+// R_ToplevelExec and is documented main-R-thread-only.
+
+extern "C" int nlmixr2FoceiApiVersion(void) {
+  return 1; // NLMIXR2EST_FOCEI_API in nlmixr2estFoceiPtr.h
+}
+
+// The exact condition impThetaScore's early-return gate uses (see the theta
+// score accumulation above): every offset resolved and the model bound.
+static bool foceiThetaSensWired(void) {
+  return op_focei.impThetaSensIdx.size() > 0 &&
+    op_focei.thetaSensOffset >= 0 && op_focei.thetaSensDvOffset >= 0 &&
+    op_focei.thetaSensPredOffset >= 0 && op_focei.thetaSensROffset >= 0 &&
+    op_focei.thetaSensNlhs > 0 && rxThetaSens.calc_lhs != NULL;
+}
+
+extern "C" int nlmixr2FoceiDims(int *nid, int *neta, int *ntheta,
+                                int *npars, int *flags) {
+  if (!foceiLikLoaded) return -1;
+  try {
+    rx = getRxSolve_();
+    rx_solving_options *op = getSolvingOptions(rx);
+    if (nid)    *nid    = (int) getRxNsub(rx);
+    if (neta)   *neta   = op_focei.neta;
+    if (ntheta) *ntheta = (int) op_focei.ntheta;
+    if (npars)  *npars  = (int) op_focei.npars;
+    if (flags) {
+      int f = 0;
+      if (op_focei.interaction == 1) f |= 0x01;
+      if (op_focei.foceType == 1)    f |= 0x02;
+      if (op_focei.fo == 1)          f |= 0x04;
+      for (int k = 0; k < op_focei.neta; ++k) {
+        if (op_focei.etaFD[k] == 1) { f |= 0x08; break; }
+      }
+      if (op_focei.mixIdxN != 0)     f |= 0x10;
+      if (solveMethodThreadSafe(op)) f |= 0x20;
+      if (foceiThetaSensWired())     f |= 0x40;
+      *flags = f;
+    }
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// R_ToplevelExec callback: updateTheta() rebuilds Omega through the R-side
+// rxSymInv handle, so an R error is possible and must be contained rather
+// than longjmping through the caller.
+struct foceiSetThetaData {
+  const double *theta;
+  bool ok;
+};
+static void nlmixr2FoceiSetThetaCb(void *pd) {
+  foceiSetThetaData *d = (foceiSetThetaData *)pd;
+  std::vector<double> par(d->theta, d->theta + op_focei.npars);
+  updateTheta(par.data());
+  // likInner0 short-circuits on an unchanged eta (fInd->oldEta), only safe
+  // while theta/omega are fixed -- force a re-solve after a theta change
+  // (same as foceiLikSetTheta_ above).
+  rx = getRxSolve_();
+  for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
+  d->ok = true;
+}
+
+extern "C" int nlmixr2FoceiSetTheta(const double *theta, int npars) {
+  if (!foceiLikLoaded) return -1;
+  if (theta == NULL || npars != (int)op_focei.npars) return -2;
+  foceiSetThetaData d;
+  d.theta = theta;
+  d.ok = false;
+  if (!R_ToplevelExec(nlmixr2FoceiSetThetaCb, &d)) return -3;
+  return d.ok ? 0 : -3;
+}
+
+extern "C" int nlmixr2FoceiSetOmegaInv(const double *omegaInv, int neta) {
+  if (!foceiLikLoaded) return -1;
+  if (omegaInv == NULL || neta != op_focei.neta || neta <= 0) return -2;
+  try {
+    // row-major in, but the matrix is required symmetric so storage order is
+    // moot; validate symmetry cheaply and positive definiteness via chol
+    arma::mat oi(neta, neta);
+    for (int i = 0; i < neta; ++i)
+      for (int j = 0; j < neta; ++j)
+        oi(i, j) = omegaInv[(size_t)i * neta + j];
+    if (!oi.is_symmetric(1e-8)) return -2;
+    arma::mat ch;
+    if (!arma::chol(ch, oi)) return -3;
+    double val, sign;
+    if (!arma::log_det(val, sign, oi) || sign <= 0) return -3;
+    op_focei.omegaInv = oi;
+    op_focei.cholOmegaInv = ch;
+    op_focei.logDetOmegaInv5 = 0.5 * val;
+    // the memoized per-subject inner state was computed against the old
+    // Omega; force a recompute
+    rx = getRxSolve_();
+    for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+extern "C" int nlmixr2FoceiThetaSensIdx(int *idx, int n) {
+  if (!foceiLikLoaded) return -1;
+  // op_focei is a process global and the plain foceiLik load path does not
+  // clear impThetaSensIdx, so a stale index from an earlier imp/advi fit in
+  // the same session could leak through here; only report indices whose
+  // sensitivity model is actually wired for THIS load.
+  if (!foceiThetaSensWired()) return 0;
+  const int nSens = op_focei.impThetaSensIdx.size();
+  if (idx != NULL) {
+    for (int s = 0; s < nSens && s < n; ++s) idx[s] = op_focei.impThetaSensIdx[s];
+  }
+  return nSens;
+}
+
+// Shared determinism reset for the batch entries: the sticky solve-tolerance
+// relaxation otherwise makes the value depend on call history, which
+// silently breaks a sampler's reversibility assumption (same block as
+// adviElboGradCore).  Cost: no eta caching, one full solve per subject per
+// call.
+static void foceiCondBatchReset(rx_solving_options *op) {
+  op_focei.reducedTol.store(0, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(0, std::memory_order_relaxed);
+  op_focei.stickyTol.store(0, std::memory_order_relaxed);
+  resetOpBadSolve(op);
+}
+
+extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
+                                     int cores, double *value, double *grad) {
+  if (!foceiLikLoaded) return -1;
+  if (etaIn == NULL || value == NULL || grad == NULL) return -2;
+  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  try {
+    rx = getRxSolve_();
+    rx_solving_options *op = getSolvingOptions(rx);
+    // mixtures index id as component*nsub+subject; refuse rather than guess
+    if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
+    foceiCondBatchReset(op);
+    cores = min2(cores < 1 ? 1 : cores, getOpCores(op));
+    const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    // snapshot on the calling thread: the same Omega^-1 the gradient
+    // correction uses below, so grad is exactly d/deta of the returned value
+    const arma::mat omInv = op_focei.omegaInv;
+    std::vector<int> bad(nid, 0);
+    {
+      NpInnerParallelScope npScope(rx, doParallel);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+      for (int ii = 0; ii < nid; ++ii) {
+        int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
+#ifdef _OPENMP
+        if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+        // history-independent: defeat the eta memo and reset this subject's
+        // solve state to base (same discipline as adviElboGradCore)
+        inds_focei[id].setup = 0;
+        { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
+          setIndTolFactor(indI, 1.0);
+          setIndSolve(indI, -1); }
+        std::vector<double> eta(neta);
+        for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
+        double v = npEvalCondLik(&eta[0], id);
+        value[id] = v;
+        if (!std::isfinite(v)) {
+          bad[id] = 1;
+          for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
+        } else {
+          // d/deta log p(y_i|eta_i) = Omega^-1 eta_i - fInd->lp: likInner0
+          // finalizes lp = -(dlogp/deta) + Omega^-1 eta (the same identity
+          // adviElboGradCore's dataScore uses)
+          focei_ind *fInd = &(inds_focei[id]);
+          for (int k = 0; k < neta; ++k) {
+            double s = 0.0;
+            for (int l = 0; l < neta; ++l) s += omInv(k, l) * eta[l];
+            grad[(size_t)id * neta + k] = s - fInd->lp[k];
+          }
+        }
+#ifdef _OPENMP
+        if (doParallel) setRxThreadId(-1);
+#endif
+      }
+    }
+    int nbad = 0;
+    for (int i = 0; i < nid; ++i) nbad += bad[i];
+    return nbad;
+  } catch (...) {
+    return -3;
+  }
+}
+
+extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
+                                         int cores, double *dTheta) {
+  if (!foceiLikLoaded) return -1;
+  if (etaIn == NULL || dTheta == NULL) return -2;
+  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  if (!foceiThetaSensWired()) return -4;
+  try {
+    rx = getRxSolve_();
+    rx_solving_options *op = getSolvingOptions(rx);
+    if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
+    const int ntheta = (int)op_focei.ntheta;
+    const int nSens = op_focei.impThetaSensIdx.size();
+    foceiCondBatchReset(op);
+    cores = min2(cores < 1 ? 1 : cores, getOpCores(op));
+    const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    std::vector<int> bad(nid, 0);
+    std::fill(dTheta, dTheta + (size_t)nid * ntheta, 0.0);
+    {
+      NpInnerParallelScope npScope(rx, doParallel);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+      for (int ii = 0; ii < nid; ++ii) {
+        int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
+#ifdef _OPENMP
+        if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+        inds_focei[id].setup = 0;
+        { rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
+          setIndTolFactor(indI, 1.0);
+          setIndSolve(indI, -1); }
+        std::vector<double> eta(neta);
+        for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
+        // solve at this eta first: impThetaScore consumes the sensitivity
+        // model at the current subject state (same order as the advi loop)
+        double v = likInner0(&eta[0], id);
+        if (ISNA(v) || !std::isfinite(v)) {
+          bad[id] = 1;
+        } else {
+          arma::mat S(1, neta);
+          for (int k = 0; k < neta; ++k) S(0, k) = eta[k];
+          arma::vec zk(1); zk[0] = 1.0;
+          arma::vec g(nSens, arma::fill::zeros);
+          arma::mat H(nSens, nSens, arma::fill::zeros);
+          impThetaScore(id, S, zk, g, H);
+          for (int s = 0; s < nSens; ++s) {
+            int th = op_focei.impThetaSensIdx[s]; // 0-based ntheta index
+            if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[s];
+          }
+        }
+#ifdef _OPENMP
+        if (doParallel) setRxThreadId(-1);
+#endif
+      }
+    }
+    int nbad = 0;
+    for (int i = 0; i < nid; ++i) nbad += bad[i];
+    return nbad;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// The external-pointer table (CRAN-preferred over R_RegisterCCallable, like
+// _nlmixr2est_likContribPtrs above); the downstream package installs it via
+// inst/include/nlmixr2estFoceiPtr.h.
+extern "C" SEXP _nlmixr2est_foceiPtrs(void) {
+  const char *nm[7] = {"apiVersion", "dims", "setTheta", "condBatch",
+                       "setOmegaInv", "thetaSensIdx", "condThetaGrad"};
+  DL_FUNC fn[7] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
+                   (DL_FUNC) &nlmixr2FoceiDims,
+                   (DL_FUNC) &nlmixr2FoceiSetTheta,
+                   (DL_FUNC) &nlmixr2FoceiCondBatch,
+                   (DL_FUNC) &nlmixr2FoceiSetOmegaInv,
+                   (DL_FUNC) &nlmixr2FoceiThetaSensIdx,
+                   (DL_FUNC) &nlmixr2FoceiCondThetaGrad};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 7));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 7));
+  for (int i = 0; i < 7; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
+// R-facing shims over the SAME C entry points, so the API is testable from
+// testthat (an external pointer cannot be invoked from R) and usable as the
+// finite-difference oracle without a downstream package in the picture.
+
+//[[Rcpp::export]]
+List foceiLikCondGrad_(NumericMatrix etaMat, int cores) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  // row-major copy in, row-major out
+  std::vector<double> eta((size_t)nid * neta), v(nid), g((size_t)nid * neta);
+  for (int i = 0; i < nid; ++i)
+    for (int j = 0; j < neta; ++j) eta[(size_t)i * neta + j] = etaMat(i, j);
+  int rc = nlmixr2FoceiCondBatch(eta.data(), nid, neta, cores, v.data(), g.data());
+  if (rc < 0) stop("nlmixr2FoceiCondBatch failed with status %d", rc);
+  NumericVector value(nid);
+  NumericMatrix grad(nid, neta);
+  for (int i = 0; i < nid; ++i) {
+    value[i] = v[i];
+    for (int j = 0; j < neta; ++j) grad(i, j) = g[(size_t)i * neta + j];
+  }
+  return List::create(_["value"] = value, _["grad"] = grad, _["nBad"] = rc);
+}
+
+//[[Rcpp::export]]
+List foceiLikCondThetaGrad_(NumericMatrix etaMat, int cores) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  int ntheta = 0;
+  int rc0 = nlmixr2FoceiDims(NULL, NULL, &ntheta, NULL, NULL);
+  if (rc0 < 0) stop("nlmixr2FoceiDims failed with status %d", rc0);
+  std::vector<double> eta((size_t)nid * neta), dTh((size_t)nid * ntheta);
+  for (int i = 0; i < nid; ++i)
+    for (int j = 0; j < neta; ++j) eta[(size_t)i * neta + j] = etaMat(i, j);
+  int rc = nlmixr2FoceiCondThetaGrad(eta.data(), nid, neta, cores, dTh.data());
+  if (rc < 0) stop("nlmixr2FoceiCondThetaGrad failed with status %d", rc);
+  NumericMatrix dTheta(nid, ntheta);
+  for (int i = 0; i < nid; ++i)
+    for (int t = 0; t < ntheta; ++t) dTheta(i, t) = dTh[(size_t)i * ntheta + t];
+  return List::create(_["dTheta"] = dTheta, _["nBad"] = rc);
+}
+
+//[[Rcpp::export]]
+List foceiLikDims_() {
+  int nid = 0, neta = 0, ntheta = 0, npars = 0, flags = 0;
+  int rc = nlmixr2FoceiDims(&nid, &neta, &ntheta, &npars, &flags);
+  return List::create(_["status"] = rc, _["nid"] = nid, _["neta"] = neta,
+                      _["ntheta"] = ntheta, _["npars"] = npars,
+                      _["flags"] = flags,
+                      _["apiVersion"] = nlmixr2FoceiApiVersion());
+}
+
+//[[Rcpp::export]]
+int foceiLikSetThetaC_(NumericVector theta) {
+  std::vector<double> th(theta.begin(), theta.end());
+  return nlmixr2FoceiSetTheta(th.data(), (int)th.size());
+}
+
+//[[Rcpp::export]]
+int foceiLikSetOmegaInvC_(NumericMatrix omegaInv) {
+  const int n = omegaInv.nrow();
+  if (omegaInv.ncol() != n) return -2;
+  std::vector<double> oi((size_t)n * n);
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j) oi[(size_t)i * n + j] = omegaInv(i, j);
+  return nlmixr2FoceiSetOmegaInv(oi.data(), n);
+}
+
+//[[Rcpp::export]]
+IntegerVector foceiLikThetaSensIdxC_() {
+  int n = nlmixr2FoceiThetaSensIdx(NULL, 0);
+  if (n < 0) stop("no general likelihood system loaded");
+  IntegerVector idx(n);
+  if (n > 0) nlmixr2FoceiThetaSensIdx(&idx[0], n);
+  return idx;
+}
+
 
 // ---------------------------------------------------------------------------
 // VAE training loop (est="vae"), fully in C++.  This is a straight port of the
