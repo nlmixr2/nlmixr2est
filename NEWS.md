@@ -14,6 +14,10 @@
 
 ## New features
 
+- `nlmUnscalePar()` is now exported (#940).  External engines that drive the
+  nlm-family objective (e.g. `babelmixr2`'s FME-based methods) previously had
+  to reach it with `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.
+
 - Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
   package build and run against 5.1.5 has been removed, so the event-sensitivity
   shape swap and the CMT re-basing of the shared solve pool always go through
