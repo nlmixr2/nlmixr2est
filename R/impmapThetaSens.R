@@ -139,11 +139,16 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #' Compile the impmap sensitivity model.
 #'
 #' @param ui rxode2 ui object
+#' @param eventSens event-sensitivity mode for the compiled model: "jump"
+#'   attaches rxode2's analytic event sensitivities, so a theta entering dose
+#'   handling (alag/f/dur/rate) gets its jump condition at the event and its
+#'   d(f)/d(theta) column is no longer silently zero (#946); "fd" preserves
+#'   the legacy codegen.
 #' @return a compiled rxode2 model outputting rx__sens_rx_pred__BY_THETA_j___ and
 #'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j, or NULL if
 #'   there are none.
 #' @noRd
-.impmapThetaSensModel <- function(ui) {
+.impmapThetaSensModel <- function(ui, eventSens = "fd") {
   .s <- rxUiGet.impmapThetaSens(list(ui))
   if (is.null(.s)) return(NULL)
   ## Interpolation is carried like the inner model does; splitBolus() is not --
@@ -156,9 +161,7 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
-  # with another build of the same text (nlmixr2/rxode2#1171).  eventSens is left at
-  # the default: switching it to "jump" here changes the impmap thetaSens codegen and
-  # broke 5 assertions in test-impmap.R, so that is a separate question from the
-  # artifact-name collision this fixes.
-  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
+  # with another build of the same text (nlmixr2/rxode2#1171).
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens",
+        eventSens = eventSens)
 }
