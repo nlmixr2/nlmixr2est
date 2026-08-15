@@ -19,9 +19,13 @@ foceiLikRun(
 
 - theta:
 
-  The estimation-scale parameter vector (length \`handle\$npars\`),
-  matching the FOCEi optimizer parameterization: population thetas
-  followed by the estimated Omega elements. \`handle\$initPar\` from
+  The parameter vector (length \`handle\$npars\`) on the scale the
+  system was loaded with: population thetas followed by the estimated
+  Omega elements. With \`foceiLikLoad(scale="focei")\` (the default)
+  this is the FOCEi estimation scale; with \`scale="natural"\` the theta
+  entries are the natural-scale values directly comparable with
+  \`ui\$iniDf\$est\` (the omega entries stay in the internal
+  \`diagXform\` parameterization either way). \`handle\$initPar\` from
   \[foceiLikLoad()\] is a ready starting value.
 
 - eta:

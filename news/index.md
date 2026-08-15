@@ -76,6 +76,29 @@
 
 ### New features
 
+- [`foceiLikLoad()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.md)
+  gains three arguments for external callers
+  ([\#939](https://github.com/nlmixr2/nlmixr2est/issues/939)):
+  `scale="natural"` pins the parameter scaling to the identity so
+  [`foceiLikRun()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikRun.md)’s
+  `theta` is directly comparable with `ui$iniDf$est` (no more
+  re-implementing
+  [`nlmUnscalePar()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmUnscalePar.md)
+  downstream); `thetaSens=TRUE` builds and wires the theta-sensitivity
+  model (the `d(f)/d(theta)` / `d(V)/d(theta)` forward sensitivities the
+  imp/advi engines use), reported on the handle as
+  `thetaSens`/`thetaSensIdx`; and `est=` names the estimation method
+  whose capability attributes the pre-process hooks consult, turning
+  “the bounds survive preprocessing” from an accident of focei’s
+  attributes into a guarantee the caller can request.
+
+- [`nlmUnscalePar()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmUnscalePar.md)
+  is now exported
+  ([\#940](https://github.com/nlmixr2/nlmixr2est/issues/940)). External
+  engines that drive the nlm-family objective (e.g. `babelmixr2`’s
+  FME-based methods) previously had to reach it with
+  `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.
+
 - Requires `rxode2` (\>= 5.1.7). The compatibility layer that also let
   this package build and run against 5.1.5 has been removed, so the
   event-sensitivity shape swap and the CMT re-basing of the shared solve
