@@ -358,7 +358,7 @@ foceiControl(
   fall back to the finite-difference gradient with a message (linCmt()
   and out-of-scope log-likelihood models downgrade to `fast=FALSE` up
   front). When unspecified, the outer optimizer defaults to `"lbfgsb3c"`
-  (vs `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
+  (vs `"bobyqa"` for `fast=FALSE`); pairing `fast=TRUE` with a
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
   (e.g. `foceif`) default this to `TRUE`.
 
@@ -549,8 +549,12 @@ foceiControl(
 
   Convergence factor for "L-BFGS-B": converges when the objective
   reduction is within `lbfgsFactr * .Machine$double.eps`. Derived from
-  `sigdig` as `10^-sigdig / .Machine$double.eps`, so the objective
-  reduction target IS `10^-sigdig`.
+  `sigdig` as `10^(-sigdig-2) / .Machine$double.eps`, two orders tighter
+  than the other `sigdig`-derived tolerances. It tests the objective
+  reduction of a SINGLE step rather than stationarity, so a target of
+  `10^-sigdig` stops as soon as one step is small; the extra two orders
+  are what make the analytic-gradient (`fast=TRUE`) methods reach the
+  same optimum as the derivative-free default.
 
 - eigen:
 

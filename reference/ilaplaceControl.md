@@ -91,7 +91,7 @@ ilaplaceControl()
 #> [1] 0
 #> 
 #> $lbfgsFactr
-#> [1] 4.5036e+12
+#> [1] 4.5036e+10
 #> 
 #> $scaleTo
 #> [1] 1
@@ -282,7 +282,7 @@ ilaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55d4a4048e30>
+#> <bytecode: 0x55bbdcb7f9f0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

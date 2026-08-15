@@ -403,7 +403,7 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 <code>nAGQ &gt; 1</code>; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 <code>fast=FALSE</code> up front).  When unspecified,
-the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"nlminb"</code> for
+the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"bobyqa"</code> for
 <code>fast=FALSE</code>); pairing <code>fast=TRUE</code> with a derivative-free
 <code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
 <code>foceif</code>) default this to <code>TRUE</code>.</p></dd>
@@ -587,8 +587,12 @@ suppressed).</p></dd>
 <dt id="arg-lbfgsfactr">lbfgsFactr<a class="anchor" aria-label="anchor" href="#arg-lbfgsfactr"></a></dt>
 <dd><p>Convergence factor for "L-BFGS-B": converges when the
 objective reduction is within <code>lbfgsFactr * .Machine$double.eps</code>.
-Derived from <code>sigdig</code> as <code>10^-sigdig / .Machine$double.eps</code>, so
-the objective reduction target IS <code>10^-sigdig</code>.</p></dd>
+Derived from <code>sigdig</code> as <code>10^(-sigdig-2) / .Machine$double.eps</code>,
+two orders tighter than the other <code>sigdig</code>-derived tolerances.  It
+tests the objective reduction of a SINGLE step rather than stationarity,
+so a target of <code>10^-sigdig</code> stops as soon as one step is small; the
+extra two orders are what make the analytic-gradient (<code>fast=TRUE</code>)
+methods reach the same optimum as the derivative-free default.</p></dd>
 
 
 <dt id="arg-eigen">eigen<a class="anchor" aria-label="anchor" href="#arg-eigen"></a></dt>
