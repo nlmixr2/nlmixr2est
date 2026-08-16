@@ -18556,15 +18556,21 @@ static void foceiCondBatchReset(rx_solving_options *op) {
 }
 
 // Shared argument/state guard for the batch entries.  0 ok, -1 not loaded,
-// -2 bad shape / FO (lp never filled) / mixture (id is component*nsub+subject;
-// refuse rather than guess).  Sets `rx` as a side effect.
+// -2 bad shape / FO (lp never filled).  Sets `rx` as a side effect.
+// Mixtures (#955): the component-major expanded layout is BLESSED --
+// nid = nsub * nMix with id = component*nsub + subject.  likInner0 pins the
+// subject's component itself on recalc (setIndMixest at the top of its
+// recalc branch, and the batch entries force recalc per subject), and the
+// batch loops run components serial-outer / subjects parallel-inner (the
+// foceiLikEval_ discipline: components share the physical subjects' solve
+// slots, so two components of one subject must never solve concurrently).
 static int foceiCondBatchCheck(const double *etaIn, const double *out,
                                int nid, int neta) {
   if (!foceiLikLoaded) return -1;
   if (etaIn == NULL || out == NULL) return -2;
   if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
   rx = getRxSolve_();
-  if (op_focei.mixIdxN != 0 || nid != (int)getRxNsub(rx)) return -2;
+  if (nid != (int)getRxNsub(rx) * (op_focei.mixIdxN + 1)) return -2;
   return 0;
 }
 
@@ -18651,14 +18657,20 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
       // the parallel region.
       OdeSwapEsBatch esBatch(odeSlotInner);
       NpInnerParallelScope npScope(rx, doParallel);
+      // components serial-outer (they share the physical subjects' solve
+      // slots), subjects parallel-inner; nMix == 1 reduces to the plain loop
+      const int nsub = (int)getRxNsub(rx);
+      const int nMix = op_focei.mixIdxN + 1;
+      for (int m = 0; m < nMix; ++m) {
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
-      for (int ii = 0; ii < nid; ++ii) {
-        int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
-        foceiCondEnterThread(doParallel);
-        bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
-        foceiCondLeaveThread(doParallel);
+        for (int ii = 0; ii < nsub; ++ii) {
+          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          foceiCondEnterThread(doParallel);
+          bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
+          foceiCondLeaveThread(doParallel);
+        }
       }
     }
     int nbad = 0;
@@ -18728,14 +18740,21 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
       // event sensitivities).
       OdeSwapEsBatch esBatch(odeSlotThetaSens);
       NpInnerParallelScope npScope(rx, doParallel);
+      // components serial-outer, subjects parallel-inner (see
+      // foceiCondBatchCheck); nMix == 1 reduces to the plain loop
+      const int nsub = (int)getRxNsub(rx);
+      const int nMix = op_focei.mixIdxN + 1;
+      for (int m = 0; m < nMix; ++m) {
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
-      for (int ii = 0; ii < nid; ++ii) {
-        int id = doParallel ? (getOrdId(rx, ii) - 1) : ii;
-        foceiCondEnterThread(doParallel);
-        bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens, dTheta);
-        foceiCondLeaveThread(doParallel);
+        for (int ii = 0; ii < nsub; ++ii) {
+          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          foceiCondEnterThread(doParallel);
+          bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens,
+                                          dTheta);
+          foceiCondLeaveThread(doParallel);
+        }
       }
     }
     int nbad = 0;
@@ -18746,22 +18765,31 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
   }
 }
 
+// Mixture component count for the blessed component-major layout (#955):
+// 1 for a non-mixture load, K for a K-component mixture; -1 not loaded.
+extern "C" int nlmixr2FoceiNMix(void) {
+  if (!foceiLikLoaded) return -1;
+  return op_focei.mixIdxN + 1;
+}
+
 // The external-pointer table (CRAN-preferred over R_RegisterCCallable, like
 // _nlmixr2est_likContribPtrs above); the downstream package installs it via
 // inst/include/nlmixr2estFoceiPtr.h.
 extern "C" SEXP _nlmixr2est_foceiPtrs(void) {
-  const char *nm[7] = {"apiVersion", "dims", "setTheta", "condBatch",
-                       "setOmegaInv", "thetaSensIdx", "condThetaGrad"};
-  DL_FUNC fn[7] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
+  const char *nm[8] = {"apiVersion", "dims", "setTheta", "condBatch",
+                       "setOmegaInv", "thetaSensIdx", "condThetaGrad",
+                       "nMix"};
+  DL_FUNC fn[8] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
                    (DL_FUNC) &nlmixr2FoceiDims,
                    (DL_FUNC) &nlmixr2FoceiSetTheta,
                    (DL_FUNC) &nlmixr2FoceiCondBatch,
                    (DL_FUNC) &nlmixr2FoceiSetOmegaInv,
                    (DL_FUNC) &nlmixr2FoceiThetaSensIdx,
-                   (DL_FUNC) &nlmixr2FoceiCondThetaGrad};
-  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 7));
-  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 7));
-  for (int i = 0; i < 7; ++i) {
+                   (DL_FUNC) &nlmixr2FoceiCondThetaGrad,
+                   (DL_FUNC) &nlmixr2FoceiNMix};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 8));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 8));
+  for (int i = 0; i < 8; ++i) {
     SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
     SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
   }
@@ -18819,6 +18847,11 @@ List foceiLikDims_() {
                       _["ntheta"] = ntheta, _["npars"] = npars,
                       _["flags"] = flags,
                       _["apiVersion"] = nlmixr2FoceiApiVersion());
+}
+
+//[[Rcpp::export]]
+int foceiLikNMix_() {
+  return nlmixr2FoceiNMix();
 }
 
 //[[Rcpp::export]]
