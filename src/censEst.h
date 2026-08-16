@@ -686,8 +686,14 @@ static inline void censNormalDvPartials(double cens, double limDv, double lim,
     rd = -sgn * cens * exp(ldn - ld) / sd;
   }
   if (!R_FINITE(rd)) rd = 0.0;
+  // With no finite LIMIT (M3, and an uncensored row) there is no limit term at all.
+  // Taking it as -rhoF - rd instead would be 0 only while rhoF is finite: a
+  // non-finite rhoF leaves rhoLim non-finite, and dlim is identically zero on
+  // those rows, so the score picks up Inf*0 = NaN for the whole subject.
+  double rl = hasFin ? (-rhoF - rd) : 0.0;
+  if (!R_FINITE(rl)) rl = 0.0;
   *rhoDv = rd;
-  *rhoLim = (cens == 0.0 && !hasFin) ? 0.0 : (-rhoF - rd);
+  *rhoLim = rl;
 }
 #undef hasFiniteLimit
 #undef isM2

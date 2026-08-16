@@ -507,6 +507,9 @@ test_that("the lambda column is right for censored and multi-endpoint data (#949
   .tbsMod <- rxode2::rxode2(.foceiPtrMod) |>
     rxode2::model(cp ~ add(add.sd) + boxCox(lambda)) |>
     rxode2::ini(lambda = 0.5)
+  .tbsYj <- rxode2::rxode2(.foceiPtrMod) |>
+    rxode2::model(cp ~ add(add.sd) + yeoJohnson(lambda)) |>
+    rxode2::ini(lambda = 0.5)
   eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .fdCheck <- function(h, th, info) {
     expect_equal(foceiLikSetThetaC_(th), 0L, info = info)
@@ -534,14 +537,18 @@ test_that("the lambda column is right for censored and multi-endpoint data (#949
   .cases$M2 <- .censData(TRUE)
   .cases$M2$DV <- .cases$M3$DV
   .cases$M2$CENS <- NULL
-  for (.nm in names(.cases)) {
-    h <- foceiLikLoad(.tbsMod, .cases[[.nm]], "focei", scale = "natural",
-                      thetaSens = TRUE)
-    th <- h$initPar
-    th[1:4] <- c(1, 3, 0.5, 0.5)
-    got <- .fdCheck(h, th, .nm)
-    expect_true(all(abs(got$dTheta[, 4]) > 1e-3), info = .nm)
-    foceiLikUnload()
+  # both transform families: the DV/LIMIT partials run through _powerDLambda, whose
+  # branch differs per transform
+  for (.tr in c("boxCox", "yeoJohnson")) {
+    for (.nm in names(.cases)) {
+      h <- foceiLikLoad(if (.tr == "boxCox") .tbsMod else .tbsYj, .cases[[.nm]],
+                        "focei", scale = "natural", thetaSens = TRUE)
+      th <- h$initPar
+      th[1:4] <- c(1, 3, 0.5, 0.5)
+      got <- .fdCheck(h, th, paste0(.tr, " ", .nm))
+      expect_true(all(abs(got$dTheta[, 4]) > 1e-3), info = paste0(.tr, " ", .nm))
+      foceiLikUnload()
+    }
   }
   # two endpoints, only the first transformed
   .multiMod <- function() {

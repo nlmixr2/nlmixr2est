@@ -11396,8 +11396,16 @@ Environment foceiFitCpp_(Environment e){
       // est="impmap": load the theta-sensitivity model (peer of rxInner/rxPred)
       // and record its ODE state count + the lhs offset of the first
       // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
+      // Every offset resets here, not just thetaSensOffset: the resolves below are
+      // guarded by `if (_iv >= 0)`, so a fit whose firstV name does not resolve
+      // would otherwise keep the PREVIOUS fit's offset -- which impThetaSensCollect's
+      // `< 0` guard cannot catch, and reads land in the wrong lhs columns.
       op_focei.thetaSensOffset = -1;
+      op_focei.thetaSensDvOffset = -1;
+      op_focei.thetaSensPredOffset = -1;
+      op_focei.thetaSensROffset = -1;
       op_focei.thetaSensLambdaOffset = -1;
+      op_focei.thetaSensNlhs = 0;
       op_focei.thetaSensNeq = 0;
       if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
       model.containsElementNamed("thetaSens")) {
@@ -11943,8 +11951,13 @@ RObject vaeInnerSetup_(Environment e) {
   // the first d(f)/d(theta) / d(V)/d(theta) columns) so impThetaScore can supply
   // the outer population gradient -- mirrors the impmap full-fit path (which sets
   // these in foceiFitCpp_, a code path vaeInnerSetup_ does not go through).
+  // all offsets, for the stale-read reason in foceiFitCpp_ above
   op_focei.thetaSensOffset = -1;
+  op_focei.thetaSensDvOffset = -1;
+  op_focei.thetaSensPredOffset = -1;
+  op_focei.thetaSensROffset = -1;
   op_focei.thetaSensLambdaOffset = -1;
+  op_focei.thetaSensNlhs = 0;
   op_focei.thetaSensNeq = 0;
   if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
       model.containsElementNamed("thetaSens")) {
