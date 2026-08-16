@@ -42,9 +42,13 @@ test_that("nlm eval: value is -logLik with constants; gradient is analytic (#953
   expect_equal(.d$status, 0L)
   expect_equal(.d$ntheta, 3L)
   expect_equal(.d$nobs, 20L)
-  # 0x01 gradient model loaded, 0x02 natural scale
+  # 0x01 gradient model loaded, 0x02 natural scale; 0x04 (FD-theta hazard)
+  # clear for this fully-analytic fixture -- event-jump thetas are covered
+  # analytically by the nlm sensitivities, so a positive-0x04 fixture needs
+  # a theta the sens machinery genuinely cannot differentiate
   expect_equal(bitwAnd(.d$flags, 0x01), 0x01)
   expect_equal(bitwAnd(.d$flags, 0x02), 0x02)
+  expect_equal(bitwAnd(.d$flags, 0x04), 0L)
   .th <- c(1, 3, 0.5)
   .e <- nlmLikEvalC_(.th)
   expect_equal(.e$nBad, 0L)

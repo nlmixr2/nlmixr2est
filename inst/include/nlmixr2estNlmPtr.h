@@ -20,6 +20,12 @@
 // NONE of these entry points longjmp (Rf_error/stop) or let a C++ exception
 // escape; failure is a return code, so they are safe to call from inside a
 // sampler's log-density evaluation.
+//
+// Threading: nlmixr2NlmEval parallelizes over SUBJECTS internally (OpenMP,
+// the loaded rxControl's cores).  The caller must NOT layer its own
+// threading on top (run the sampler single-threaded, chains sequential) --
+// the same contract as the FOCEi table, and the reason nlmixr2stan pins
+// Stan to one thread.
 
 #ifdef __cplusplus
 extern "C" {
