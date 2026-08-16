@@ -56,6 +56,7 @@ extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiLikCondGrad_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiLikDims_(void);
+extern SEXP _nlmixr2est_foceiLikNMix_(void);
 extern SEXP _nlmixr2est_foceiLikSetThetaC_(SEXP);
 extern SEXP _nlmixr2est_foceiLikSetOmegaInvC_(SEXP);
 extern SEXP _nlmixr2est_foceiLikThetaSensIdxC_(void);
@@ -247,6 +248,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLikCondGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondGrad_, 2},
   {"_nlmixr2est_foceiLikCondThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondThetaGrad_, 2},
   {"_nlmixr2est_foceiLikDims_", (DL_FUNC) &_nlmixr2est_foceiLikDims_, 0},
+  {"_nlmixr2est_foceiLikNMix_", (DL_FUNC) &_nlmixr2est_foceiLikNMix_, 0},
   {"_nlmixr2est_foceiLikSetThetaC_", (DL_FUNC) &_nlmixr2est_foceiLikSetThetaC_, 1},
   {"_nlmixr2est_foceiLikSetOmegaInvC_", (DL_FUNC) &_nlmixr2est_foceiLikSetOmegaInvC_, 1},
   {"_nlmixr2est_foceiLikThetaSensIdxC_", (DL_FUNC) &_nlmixr2est_foceiLikThetaSensIdxC_, 0},

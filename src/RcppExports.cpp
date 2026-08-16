@@ -1159,6 +1159,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikNMix_
+int foceiLikNMix_();
+RcppExport SEXP _nlmixr2est_foceiLikNMix_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiLikNMix_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLikSetThetaC_
 int foceiLikSetThetaC_(NumericVector theta);
 RcppExport SEXP _nlmixr2est_foceiLikSetThetaC_(SEXP thetaSEXP) {

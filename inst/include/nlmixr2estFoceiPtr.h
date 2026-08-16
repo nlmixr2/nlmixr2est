@@ -50,8 +50,11 @@ extern "C" {
        0x08 some eta uses finite-difference event sensitivities (etaFD):
                                       ~1e-6 gradient noise -- refuse or
                                       accept knowingly
-       0x10 mixture model             per-id indexing is component-major;
-                                      nlmixr2FoceiCondBatch refuses (-2)
+       0x10 mixture model             per-id indexing is component-major
+                                      (id = component*nsub + subject, #955);
+                                      the batch entries ACCEPT the expanded
+                                      nid = nsub * nMix layout -- query nMix
+                                      via the table's "nMix" entry
        0x20 the ODE solve method is thread-safe (cores>1 honored;
                                       otherwise cores is clamped to 1)
        0x40 the theta-sensitivity model is wired
@@ -128,6 +131,14 @@ extern "C" {
                                              int neta, int cores,
                                              double *dTheta);
 
+  /* ---- 7. mixture component count (#955, additive) --------------------- */
+  /* 1 for a non-mixture load, K for a K-component mixture, -1 not loaded.
+     The batch entries take nid = nsub * nMix in component-major order
+     (id = component*nsub + subject); the component-conditional value and
+     gradients land in the matching rows.  NULL when the loaded nlmixr2est
+     predates the entry (treat as refuse-mixtures).                        */
+  typedef int (*nlmixr2FoceiNMix_t)(void);
+
   extern nlmixr2FoceiApiVersion_t    nlmixr2FoceiApiVersionP;
   extern nlmixr2FoceiDims_t          nlmixr2FoceiDimsP;
   extern nlmixr2FoceiSetTheta_t      nlmixr2FoceiSetThetaP;
@@ -135,6 +146,7 @@ extern "C" {
   extern nlmixr2FoceiSetOmegaInv_t   nlmixr2FoceiSetOmegaInvP;
   extern nlmixr2FoceiThetaSensIdx_t  nlmixr2FoceiThetaSensIdxP;
   extern nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP;
+  extern nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP;
 
   // Always refresh: a reloaded nlmixr2est hands back new addresses, and
   // keeping the first set seen would leave the caller calling into an
@@ -147,6 +159,11 @@ extern "C" {
     nlmixr2FoceiSetOmegaInvP   = (nlmixr2FoceiSetOmegaInv_t)   R_ExternalPtrAddrFn(VECTOR_ELT(p, 4));
     nlmixr2FoceiThetaSensIdxP  = (nlmixr2FoceiThetaSensIdx_t)  R_ExternalPtrAddrFn(VECTOR_ELT(p, 5));
     nlmixr2FoceiCondThetaGradP = (nlmixr2FoceiCondThetaGrad_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 6));
+    /* additive entries: read defensively so a downstream built against this
+       header still installs cleanly from an OLDER nlmixr2est's 7-entry
+       table (the missing capability reads as NULL) */
+    nlmixr2FoceiNMixP = (Rf_xlength(p) > 7) ?
+      (nlmixr2FoceiNMix_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 7)) : NULL;
     return R_NilValue;
   }
 
@@ -158,6 +175,7 @@ extern "C" {
   nlmixr2FoceiSetOmegaInv_t   nlmixr2FoceiSetOmegaInvP   = NULL;        \
   nlmixr2FoceiThetaSensIdx_t  nlmixr2FoceiThetaSensIdxP  = NULL;        \
   nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP = NULL;        \
+  nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP          = NULL;        \
   SEXP iniNlmixr2estFocei(SEXP p) { return iniNlmixr2estFocei0(p); }
 
 #ifdef __cplusplus

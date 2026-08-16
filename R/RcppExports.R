@@ -398,6 +398,10 @@ foceiLikDims_ <- function() {
     .Call(`_nlmixr2est_foceiLikDims_`)
 }
 
+foceiLikNMix_ <- function() {
+    .Call(`_nlmixr2est_foceiLikNMix_`)
+}
+
 foceiLikSetThetaC_ <- function(theta) {
     .Call(`_nlmixr2est_foceiLikSetThetaC_`, theta)
 }

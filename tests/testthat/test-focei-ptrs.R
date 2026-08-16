@@ -28,11 +28,12 @@
   }))
 }
 
-test_that("the foceiPtrs table has the documented shape (#937)", {
+test_that("the foceiPtrs table has the documented shape (#937 + #955)", {
   .p <- .nlmixr2estFoceiPtrs()
-  expect_length(.p, 7L)
+  expect_length(.p, 8L)
   expect_equal(names(.p), c("apiVersion", "dims", "setTheta", "condBatch",
-                            "setOmegaInv", "thetaSensIdx", "condThetaGrad"))
+                            "setOmegaInv", "thetaSensIdx", "condThetaGrad",
+                            "nMix"))
   for (.i in seq_along(.p)) expect_true(inherits(.p[[.i]], "externalptr"))
 })
 
@@ -590,4 +591,84 @@ test_that("the lambda column is right for censored and multi-endpoint data (#949
   expect_equal(foceiLikSetThetaC_(th), 0L)
   expect_equal(foceiLikCondThetaGrad_(eta, 4L)$dTheta, got$dTheta,
                tolerance = 1e-12)
+})
+
+test_that("mixture models: the component-major batch layout is blessed (#955)", {
+  # nid = nsub * nMix with id = component*nsub + subject; each row is the
+  # COMPONENT-conditional log-likelihood (p-free -- the mixing probability
+  # enters only the caller's mixture weights, e.g. Stan's log_sum_exp)
+  skip_on_cran()
+  .mixMod <- function() {
+    ini({
+      tcl1 <- 1
+      tcl2 <- 2
+      tv <- 3
+      p1 <- 0.3
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .testSeed(42)
+  .tt <- c(0.5, 1, 2, 4, 8)
+  d <- do.call(rbind, lapply(1:4, function(id) {
+    data.frame(ID = id, TIME = .tt,
+               DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5),
+               AMT = 0, EVID = 0)
+  }))
+  h <- foceiLikLoad(.mixMod, d, "focei", scale = "natural", thetaSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(foceiLikNMix_(), 2L)
+  # flags 0x10 stays set as the LAYOUT marker (no longer a refusal)
+  expect_equal(bitwAnd(foceiLikDims_()$flags, 0x10), 0x10)
+  .th <- h$initPar
+  expect_equal(foceiLikSetThetaC_(.th), 0L)
+  set.seed(7)
+  eta <- matrix(stats::rnorm(8, 0, 0.2), 8, 1) # 2 components x 4 subjects
+  got <- foceiLikCondGrad_(eta, 1L)
+  expect_equal(got$nBad, 0L)
+  # each row is the COMPONENT-conditional density: hand-computable with that
+  # component's cl, up to the adjLik constant (+nobs * 0.5*log(2pi))
+  .hand <- vapply(1:8, function(r) {
+    .i <- ((r - 1) %% 4) + 1
+    .m <- ((r - 1) %/% 4) + 1
+    .di <- d[d$ID == .i, ]
+    .cl <- exp(c(1, 2)[.m] + eta[r, 1])
+    .f <- 100 / exp(3) * exp(-.cl / exp(3) * .di$TIME)
+    sum(stats::dnorm(.di$DV, .f, 0.5, log = TRUE))
+  }, numeric(1))
+  expect_equal(got$value, .hand + 5 * 0.5 * log(2 * pi), tolerance = 1e-8)
+  # eta gradient FD-agrees per expanded row
+  .h <- 1e-5
+  fd <- (foceiLikCondGrad_(eta + .h, 1L)$value -
+           foceiLikCondGrad_(eta - .h, 1L)$value) / (2 * .h)
+  expect_equal(as.numeric(got$grad), as.numeric(fd), tolerance = 1e-4)
+  # theta gradients: component 1 rows respond to tcl1 only, component 2 to
+  # tcl2 only, and NO row responds to the mixing probability (the
+  # conditional is p-free by construction)
+  gt <- foceiLikCondThetaGrad_(eta, 1L)
+  expect_equal(gt$nBad, 0L)
+  for (t in h$thetaSensIdx) {
+    up <- .th
+    up[t] <- up[t] + .h
+    dn <- .th
+    dn[t] <- dn[t] - .h
+    expect_equal(foceiLikSetThetaC_(up), 0L)
+    vUp <- foceiLikCondGrad_(eta, 1L)$value
+    expect_equal(foceiLikSetThetaC_(dn), 0L)
+    vDn <- foceiLikCondGrad_(eta, 1L)$value
+    expect_equal(as.numeric(gt$dTheta[, t]),
+                 as.numeric((vUp - vDn) / (2 * .h)),
+                 tolerance = 1e-3, info = paste0("theta ", t))
+  }
+  expect_equal(foceiLikSetThetaC_(.th), 0L)
+  # determinism in the expanded layout
+  expect_identical(foceiLikCondGrad_(eta, 1L), foceiLikCondGrad_(eta, 1L))
+  # and the WRONG shape still refuses
+  expect_error(foceiLikCondGrad_(eta[1:4, , drop = FALSE], 1L), "-2")
 })
