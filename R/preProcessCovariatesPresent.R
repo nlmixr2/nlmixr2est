@@ -19,7 +19,14 @@
     .covNames <- ui$covariates
     .newNames <- .nmUpcaseNonCov(names(data), .covNames)
     colnames(data) <- .newNames
-    requiredCols <- c("TIME", .covNames)
+    ## A covariate whose value is FORCED on the model (rxForcedPars) is supplied
+    ## by the model itself, so requiring it from the data would reject a perfectly
+    ## well-specified fit.  This is how a model can own parameters the user never
+    ## sees -- e.g. neural-network weights carried on the ui -- without making
+    ## them placeholder data columns.  Same rule rxode2 applies when resolving
+    ## solve parameters.
+    .forced <- tryCatch(names(rxode2::rxForcedPars(ui)), error = function(e) NULL)
+    requiredCols <- c("TIME", setdiff(.covNames, .forced))
     checkmate::assert_names(.newNames, must.include = requiredCols)
   }
   NULL
