@@ -61,6 +61,20 @@
 
 ## New features
 
+- An estimated transform-both-sides `lambda` (`boxCox()`/`yeoJohnson()`) now
+  carries a real theta-sensitivity column instead of a silent zero (#949).
+  The conditional depends on `lambda` through both sides of the residual
+  `h(y; lambda) - h(f; lambda)`: the prediction side now comes from the
+  sensitivity model (the direct partial is taken for residual-error thetas
+  too, not hard-coded to zero, so `rx_pred_`'s `rxTBS()` is differentiated),
+  and the DV side from a new `d(lambda)/d(theta)` output multiplied by the
+  analytic `d(h(y; lambda))/d(lambda)` where the DV transform is applied.
+  The censored (M2/M3/M4) score picks up the matching DV and `LIMIT` partials.
+  The column agrees with central differences to ~1e-9 relative on Box-Cox and
+  Yeo-Johnson fixtures where it was previously identically zero -- the failure
+  mode that made an estimated `lambda` an imp/advi M-step no-op and gave
+  gradient-based callers a wrong direction.
+
 - Dose-handling (`alag()`/`f()`/`dur()`/`rate()`) theta sensitivities are no
   longer silently zero (#946).  The theta-sensitivity model is now compiled
   with rxode2's analytic event ("jump") sensitivities (following the

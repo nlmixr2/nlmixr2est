@@ -319,6 +319,8 @@ struct focei_options {
   int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
   int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
   int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
+  int thetaSensLambdaOffset = -1; // lhs offset of the first d(lambda)/d(theta) output;
+                              // -1 unless the transform-both-sides lambda is estimated (#949)
   int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
   int thetaSensNlhs = 0;      // lhs output count of the sensitivity model (impmap).  Whether
                               // reads need a private buffer is decided by OdeSwapScope: the
@@ -10871,6 +10873,15 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   out.dvv.assign(dvRaw.begin(), dvRaw.end());
   out.limv.assign(limRaw.begin(), limRaw.end());
   out.distv.assign(nobs, rxDistributionNorm);
+  // DV-side lambda sensitivity, only when the model emits d(lambda)/d(theta) (#949).
+  const bool doDvSens = (op_focei.thetaSensLambdaOffset >= 0);
+  if (doDvSens) {
+    out.ddvmat.zeros(nobs, nSens);
+    out.dlimmat.zeros(nobs, nSens);
+  } else {
+    out.ddvmat.reset();
+    out.dlimmat.reset();
+  }
   bool rowInfoDone = false;
   out.fvec.resize(nsamp); out.Vvec.resize(nsamp);
   out.dfmat.resize(nsamp); out.dVmat.resize(nsamp);
@@ -10894,12 +10905,30 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // Transform observation ko's DV/limit and read its endpoint distribution.  Call ONLY
   // from a pass that has just run calc_lhs for that row: rx_yj_/rx_lambda_/rx_low_/
   // rx_hi_ are model assignments, so ind->yj / ind->lambda describe the row only then.
-  auto rowInfoAt = [&](int ko) {
+  auto rowInfoAt = [&](int ko, const double *lhs) {
     out.dvv[ko] = tbs(dvRaw[ko]);
     if (R_FINITE(limRaw[ko])) out.limv[ko] = tbs(limRaw[ko]);
     int _yj = getIndYj(ind), _dist = rxDistributionNorm, _yj0 = 0;
     _splitYj(&_yj, &_dist, &_yj0);
     out.distv[ko] = _dist;
+    if (!doDvSens) return;
+    // d(h(y; lambda))/d(theta) = d(h)/d(lambda) * d(lambda)/d(theta): the transform is
+    // applied to the DV here in C++, so the sensitivity model cannot carry this half.
+    double _dY = _powerDLambda(dvRaw[ko], getIndLambda(ind), getIndLambdaYj(ind),
+                               getIndLogitLow(ind), getIndLogitHi(ind));
+    if (!R_FINITE(_dY)) _dY = 0.0;
+    double _dL = 0.0;
+    if (R_FINITE(limRaw[ko])) {
+      _dL = _powerDLambda(limRaw[ko], getIndLambda(ind), getIndLambdaYj(ind),
+                          getIndLogitLow(ind), getIndLogitHi(ind));
+      if (!R_FINITE(_dL)) _dL = 0.0;
+    }
+    for (int s = 0; s < nSens; ++s) {
+      double _dl = lhs[op_focei.thetaSensLambdaOffset + s];
+      if (!R_FINITE(_dl)) _dl = 0.0;
+      out.ddvmat(ko, s) = _dY * _dl;
+      out.dlimmat(ko, s) = _dL * _dl;
+    }
   };
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
@@ -10948,7 +10977,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
           // ind->yj / ind->lambda now describe THIS row -- the only point in the
           // subject where that is true, so take the per-obs DV transform and
           // distribution here (once; they do not vary across samples).
-          if (!rowInfoDone) rowInfoAt(ko);
+          if (!rowInfoDone) rowInfoAt(ko, lhs);
           fvec[ko] = lhs[op_focei.thetaSensPredOffset];
           Vvec[ko] = lhs[op_focei.thetaSensROffset];
           for (int s = 0; s < nSens; ++s) {
@@ -10992,7 +11021,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       if (!isDose(getIndEvid(ind, kk)) && getIndEvid(ind, kk) != 0) continue;
       rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
       if (getIndEvid(ind, kk) == 0) {
-        rowInfoAt(ko);
+        rowInfoAt(ko, lhs);
         ko++;
       }
     }
@@ -11007,23 +11036,41 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
 // log-likelihood score is -rho_f, -rho_r and the information is the rho second
 // derivatives.  An uncensored observation takes the Gauss-Newton form, which is what
 // the censored one reduces to.
+//
+// `ddv`/`dlim` are d(transformed DV)/d(theta) and d(transformed LIMIT)/d(theta),
+// non-zero only for an estimated transform-both-sides lambda (#949).  Uncensored,
+// the residual direction is then d(err)/d(theta) = d(f)/d(theta) - d(h(y))/d(theta);
+// censored, the dv/limit partials of rho come from censNormalDvPartials (the Hessian
+// keeps the same residual direction -- exact for M3, a Gauss-Newton surrogate
+// otherwise, and H is only the Newton step's information).
 static void impThetaAccumGauss(const impThetaSensData &c, int jo, double f, double V,
                                const arma::rowvec &df, const arma::rowvec &dV,
+                               const arma::rowvec &ddv, const arma::rowvec &dlim,
+                               bool hasDvSens,
                                double w, arma::vec &g, arma::mat &H) {
   const bool isCens = (c.censv[jo] != 0) || (R_FINITE(c.limv[jo]) && !ISNA(c.limv[jo]));
+  arma::rowvec _deBuf;
+  if (hasDvSens) _deBuf = df - ddv;
+  const arma::rowvec &de = hasDvSens ? _deBuf : df;   // d(err)/d(theta)
   if (isCens) {
     double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
     censNormalPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, 2, cp);
     g += w * (-cp[0] * df.t() - cp[1] * dV.t());
-    H += w * (cp[2] * (df.t() * df) +
-              cp[3] * (df.t() * dV + dV.t() * df) +
+    if (hasDvSens) {
+      double rhoDv = 0.0, rhoLim = 0.0;
+      censNormalDvPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, cp[0],
+                           &rhoDv, &rhoLim);
+      g += w * (-rhoDv * ddv.t() - rhoLim * dlim.t());
+    }
+    H += w * (cp[2] * (de.t() * de) +
+              cp[3] * (de.t() * dV + dV.t() * de) +
               cp[4] * (dV.t() * dV));
     return;
   }
   const double err = f - c.dvv[jo];
-  g += w * ((-err / V) * df.t() +
+  g += w * ((-err / V) * de.t() +
             (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-  H += w * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+  H += w * ((de.t() * de) / V + 0.5 * (dV.t() * dV) / (V * V));
 }
 
 // Cheap arithmetic half of the theta score: accumulate the IS-weighted score `g`
@@ -11035,6 +11082,10 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
   if (nSens == 0 || c.nobs == 0) return;
   int nobs = c.nobs;
   int nsamp = (int)c.sampleOk.size();
+  // stand-in DV/limit directions when the transform lambda is not estimated (#949)
+  const bool hasDvSens = ((int)c.ddvmat.n_rows == nobs &&
+                          (int)c.ddvmat.n_cols == nSens);
+  const arma::rowvec zeroDir(nSens, arma::fill::zeros);
   for (int k = 0; k < nsamp; ++k) {
     if (!c.sampleOk[k]) continue;
     const arma::vec& fvec = c.fvec[k];
@@ -11059,7 +11110,12 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
       arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
       if (!df.is_finite() || !dV.is_finite()) continue;
-      impThetaAccumGauss(c, jo, f, V, df, dV, zk[k], g, H);
+      if (hasDvSens) {
+        impThetaAccumGauss(c, jo, f, V, df, dV, c.ddvmat.row(jo), c.dlimmat.row(jo),
+                           true, zk[k], g, H);
+      } else {
+        impThetaAccumGauss(c, jo, f, V, df, dV, zeroDir, zeroDir, false, zk[k], g, H);
+      }
     }
   }
 }
@@ -11341,6 +11397,7 @@ Environment foceiFitCpp_(Environment e){
       // and record its ODE state count + the lhs offset of the first
       // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
       op_focei.thetaSensOffset = -1;
+      op_focei.thetaSensLambdaOffset = -1;
       op_focei.thetaSensNeq = 0;
       if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
       model.containsElementNamed("thetaSens")) {
@@ -11365,6 +11422,11 @@ Environment foceiFitCpp_(Environment e){
             if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
             op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
             op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+            // d(lambda)/d(theta): present only when the model emits it (an estimated
+            // transform-both-sides lambda), absent -> -1 and the DV-side term is skipped
+            std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+            op_focei.thetaSensLambdaOffset =
+              odeSwapLhsIndex(odeSlotThetaSens, firstL.c_str());
           }
         }
         // The pool is sized for the theta-sensitivity model (the largest); pin the
@@ -11882,6 +11944,7 @@ RObject vaeInnerSetup_(Environment e) {
   // the outer population gradient -- mirrors the impmap full-fit path (which sets
   // these in foceiFitCpp_, a code path vaeInnerSetup_ does not go through).
   op_focei.thetaSensOffset = -1;
+  op_focei.thetaSensLambdaOffset = -1;
   op_focei.thetaSensNeq = 0;
   if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
       model.containsElementNamed("thetaSens")) {
@@ -11901,6 +11964,9 @@ RObject vaeInnerSetup_(Environment e) {
         if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
         op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
         op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+        std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+        op_focei.thetaSensLambdaOffset =
+          odeSwapLhsIndex(odeSlotThetaSens, firstL.c_str());
       }
     }
     if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {

@@ -649,6 +649,46 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
     }
   }
 }
+
+// Partials of the SAME rho = -logLik-per-obs w.r.t. the observed value dv and the
+// LIMIT, given rho_f (censNormalPartials' out[0]).  Needed when the transformed DV
+// itself moves with a parameter -- an estimated transform-both-sides lambda, whose
+// h(y; lambda) shifts dv and limit as well as f (#949).
+//
+// rho depends on (dv, lim, f) only through (dv - f) and (lim - f), so
+// rho_dv + rho_lim = -rho_f; the dv half is closed form per method and the limit
+// half is the remainder:
+//   M2 (cens 0, finite lim): dv enters only the ordinary normal density
+//   M3 (cens +/-1, no lim):  the whole density is Phi(cens (dv-f)/sd), so rho_dv = -rho_f
+//   M4 (cens +/-1, finite lim): dv enters only the upper cumulative of Phi1 - Phi2
+// An uncensored observation returns the plain normal rho_dv (and no limit term).
+static inline void censNormalDvPartials(double cens, double limDv, double lim,
+                                        double f, double r, double rhoF,
+                                        double* rhoDv, double* rhoLim) {
+  double dv = limDv;
+  int hasFin = (R_FINITE(lim) && !ISNA(lim));
+  double rd;
+  if (cens == 0.0) {
+    rd = (dv - f) / _safe_zero(r);
+  } else if (!hasFin) {
+    rd = -rhoF;
+  } else {
+    // ll = log|Phi(z1) - Phi(z2)| - log tail; logspace_sub returns the magnitude, so
+    // restore the sign of the difference (= sign of z1 - z2) before dividing by it.
+    double sd = _safe_sqrt(r);
+    double z1 = cens * (dv - f) / sd;
+    double z2 = cens * (lim - f) / sd;
+    double ld = logspace_sub(Rf_pnorm5(z1, 0.0, 1.0, 1, 1),
+                             Rf_pnorm5(z2, 0.0, 1.0, 1, 1));
+    double sgn = (z1 >= z2) ? 1.0 : -1.0;
+    // z1 is already standardized, so the log density is exact inline (no dnorm call)
+    double ldn = -0.5 * z1 * z1 - M_LN_SQRT_2PI;
+    rd = -sgn * cens * exp(ldn - ld) / sd;
+  }
+  if (!R_FINITE(rd)) rd = 0.0;
+  *rhoDv = rd;
+  *rhoLim = (cens == 0.0 && !hasFin) ? 0.0 : (-rhoF - rd);
+}
 #undef hasFiniteLimit
 #undef isM2
 #undef isM3orM4

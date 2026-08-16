@@ -10,13 +10,20 @@
 #
 # Only NON-MU thetas get sensitivities: mu-referenced thetas are updated by the EM
 # closed form.  Among those, structural thetas (which enter the ODE states / f)
-# carry a sensitivity ODE; residual-error (sigma) thetas enter only V algebraically
-# and need no state sensitivity, so restricting the sensitivity ODEs to the
-# structural thetas also keeps the state count bounded for the shared solve buffer.
+# carry a sensitivity ODE; residual-error (sigma) thetas reach f and V only
+# algebraically and need no state sensitivity, so restricting the sensitivity ODEs
+# to the structural thetas also keeps the state count bounded for the shared solve
+# buffer.
 #
 # d(f)/d(theta_j) and d(V)/d(theta_j) share the chain rule
 #   d(g)/d(theta_j) = D(g, THETA_j) + sum_state rx__sens_state_BY_THETA_j * D(g, state)
 # where the state-sensitivity term is present only for the structural thetas.
+#
+# An ESTIMATED transform-both-sides lambda is a residual-error theta that DOES
+# reach f (rx_pred_ applies rxTBS()), and it moves the transformed DV as well.
+# The model therefore also outputs rx__sens_rx_lambda__BY_THETA_j___ =
+# d(lambda)/d(theta_j) -- but only when some column is non-zero -- which the
+# M-step multiplies by the analytic d(h(y; lambda))/d(lambda) on the DV side (#949).
 #
 # rx_pred_ / rx_r_ are retrieved with the `$` accessor via an intermediate
 # variable (the sensitivity setup shadows base get/:: and the `$` NSE misbehaves
@@ -57,6 +64,13 @@
   rxode2::rxFromSE(.l)
 }
 
+#' Direct partial D(target, THETA_j_) with no state-sensitivity chain term.
+#' @noRd
+.impmapDirectD <- function(s, target, j) {
+  .l <- eval(parse(text = paste0("with(s, D(", target, ", THETA_", j, "_))")))
+  rxode2::rxFromSE(.l)
+}
+
 # Build the symengine env carrying the impmap sensitivity model
 # (\code{..thetaSens}).  For each estimated non-mu theta j it outputs
 # rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
@@ -91,31 +105,47 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   .lambda <- .s$`rx_lambda_`
   .hi <- .s$`rx_hi_`
   .low <- .s$`rx_low_`
+  .lambdaStr <- rxode2::rxFromSE(.lambda)
   .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
-            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
+            paste0("rx_lambda_~", .lambdaStr),
             paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
             paste0("rx_low_~", rxode2::rxFromSE(.low)))
   # Also output the residual variance V so the M-step gradient reads f and V from
   # this one solve (no separate inner solve / context interleave).
   .rvar <- .s$`rx_r_`
   .rr <- paste0("rx_r_=", rxode2::rxFromSE(.rvar))
-  # d(f)/d(theta_j): chain rule for structural thetas, 0 for sigma thetas.
+  # d(f)/d(theta_j): chain rule (state sensitivities only for the structural
+  # thetas; .impmapChainRule already restricts them).  A residual-error theta
+  # usually drops out of rx_pred_, but an ESTIMATED transform-both-sides lambda
+  # does not -- it enters through rx_pred_'s rxTBS(), so hard-coding 0 here made
+  # its column silently zero (#949).
   .dfOut <- vapply(.idx$all, function(j) {
-    if (j %in% .idx$struct) {
-      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
-             .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
-    } else {
-      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=0")
-    }
+    paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
+           .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
   }, character(1))
   # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
   .dvOut <- vapply(.idx$all, function(j) {
     paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
            .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
   }, character(1))
+  # d(lambda)/d(theta_j), emitted only when some column is non-zero (an estimated
+  # transform-both-sides lambda).  The conditional depends on lambda through the
+  # TRANSFORMED DV as well, err = h(y; lambda) - h(f; lambda), and h(y) is applied
+  # in C++ (it needs the DV), so the M-step multiplies this column by
+  # d(h(y; lambda))/d(lambda) there (#949).
+  # A constant rx_lambda_ is a plain number here, not a symengine expression, so
+  # guard the D() by looking for a THETA in it first.
+  .dlOut <- character(0)
+  if (grepl("THETA", .lambdaStr, fixed = TRUE)) {
+    .dl <- vapply(.idx$all, function(j) .impmapDirectD(.s, "rx_lambda_", j),
+                  character(1))
+    if (any(!(.dl %in% c("0", "0.0", "-0")))) {
+      .dlOut <- paste0("rx__sens_rx_lambda__BY_THETA_", .idx$all, "___=", .dl)
+    }
+  }
   .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, ""),
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, .dlOut, ""),
                           collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
@@ -145,8 +175,9 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #'   d(f)/d(theta) column is no longer silently zero (#946); "fd" preserves
 #'   the legacy codegen.
 #' @return a compiled rxode2 model outputting rx__sens_rx_pred__BY_THETA_j___ and
-#'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j, or NULL if
-#'   there are none.
+#'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j (plus
+#'   rx__sens_rx_lambda__BY_THETA_j___ when the transform-both-sides lambda is
+#'   itself estimated), or NULL if there are none.
 #' @noRd
 .impmapThetaSensModel <- function(ui, eventSens = "fd") {
   .s <- rxUiGet.impmapThetaSens(list(ui))

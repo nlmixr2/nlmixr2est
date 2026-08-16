@@ -355,6 +355,44 @@ nmTest({
     expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.02)
   })
 
+  test_that("M6b: an estimated transform-both-sides lambda converges to FOCEI (#949)", {
+    # lambda is a residual-error theta, but unlike a sigma it reaches the MEAN:
+    # the conditional depends on it through both sides of h(y; lambda) - h(f; lambda).
+    # Its sensitivity column used to be identically zero, which left the M-step
+    # Newton update singular in that direction and pinned lambda at its initial
+    # value (measured: exactly 0.8 in, exactly 0.8 out, objf 106.2 vs FOCEI's -9.2).
+    mbc <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6
+        add.sd <- 0.7
+        lambda <- c(-2, 0.8, 2)
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd) + boxCox(lambda)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .ff <- suppressWarnings(nlmixr2(mbc, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+    rxode2::rxSetSeed(42)
+    .fi <- suppressWarnings(nlmixr2(mbc, .d, "impmap",
+                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    expect_true(inherits(.fi, "nlmixr2FitCore"))
+    # it MOVED (the historical failure was a fit stuck at the initial estimate) ...
+    expect_true(abs(unname(fixef(.fi)["lambda"]) - 0.8) > 0.1)
+    # ... and it moved to where FOCEI puts it
+    expect_equal(unname(fixef(.fi)["lambda"]), unname(fixef(.ff)["lambda"]),
+                 tolerance = 0.15)
+    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]),
+                 tolerance = 0.1)
+  })
+
   test_that("M7: multiple endpoints with more structural thetas than etas (pool sized for theta-sens)", {
     # 2-endpoint PK/PD (indirect response).  Only eta.cl is random, so the inner
     # model has few states while the theta-sensitivity model (tka, tv, tec50, tkout,
