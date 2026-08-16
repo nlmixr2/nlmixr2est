@@ -64,13 +64,6 @@
   rxode2::rxFromSE(.l)
 }
 
-#' Direct partial D(target, THETA_j_) with no state-sensitivity chain term.
-#' @noRd
-.impmapDirectD <- function(s, target, j) {
-  .l <- eval(parse(text = paste0("with(s, D(", target, ", THETA_", j, "_))")))
-  rxode2::rxFromSE(.l)
-}
-
 # Build the symengine env carrying the impmap sensitivity model
 # (\code{..thetaSens}).  For each estimated non-mu theta j it outputs
 # rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
@@ -105,9 +98,8 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   .lambda <- .s$`rx_lambda_`
   .hi <- .s$`rx_hi_`
   .low <- .s$`rx_low_`
-  .lambdaStr <- rxode2::rxFromSE(.lambda)
   .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
-            paste0("rx_lambda_~", .lambdaStr),
+            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
             paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
             paste0("rx_low_~", rxode2::rxFromSE(.low)))
   # Also output the residual variance V so the M-step gradient reads f and V from
@@ -133,11 +125,16 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   # TRANSFORMED DV as well, err = h(y; lambda) - h(f; lambda), and h(y) is applied
   # in C++ (it needs the DV), so the M-step multiplies this column by
   # d(h(y; lambda))/d(lambda) there (#949).
-  # A constant rx_lambda_ is a plain number here, not a symengine expression, so
-  # guard the D() by looking for a THETA in it first.
+  # A constant rx_lambda_ is a plain number here, not a symengine expression, and
+  # D() would dispatch to stats::D and error.  Test the CLASS rather than grepping
+  # the rendered string for "THETA": boxCox()/yeoJohnson() accept a model variable,
+  # so lambda can be any expression (exp(theta), or one reaching a state).  The
+  # chain rule, not the direct partial, for the same reason.
   .dlOut <- character(0)
-  if (grepl("THETA", .lambdaStr, fixed = TRUE)) {
-    .dl <- vapply(.idx$all, function(j) .impmapDirectD(.s, "rx_lambda_", j),
+  if (inherits(.lambda, "Basic")) {
+    .dl <- vapply(.idx$all,
+                  function(j) .impmapChainRule(.s, "rx_lambda_", j, .stateVars,
+                                               .idx$struct),
                   character(1))
     if (any(!(.dl %in% c("0", "0.0", "-0")))) {
       .dlOut <- paste0("rx__sens_rx_lambda__BY_THETA_", .idx$all, "___=", .dl)
