@@ -61,6 +61,9 @@
   : Control options for the foce estimation method
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   : Control Options for FOCEi
+- [`foceiLikIterPrintStart()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikIterPrintStart.md)
+  [`foceiLikIterPrintEnd()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikIterPrintStart.md)
+  : Iteration printing / parameter history over a loaded likelihood
 - [`foceiLikLoad()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikLoad.md)
   : Load a general FOCE-family likelihood into memory
 - [`foceiLikRun()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikRun.md)
