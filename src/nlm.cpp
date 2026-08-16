@@ -83,6 +83,11 @@ struct nlmOptions {
 
 nlmOptions nlmOp;
 
+// sampler iteration-print cadence counter for nlmixr2NlmEval (reset at
+// nlmSetup); see the print block in nlmixr2NlmEval.  The header itself is
+// printed by the R-side setup (.nlmSetupEnv -> nlmPrintHeader).
+static long _nlmEvalPrintCn = 0;
+
 //[[Rcpp::export]]
 RObject nlmFree() {
   if (nlmOp.thetaFD != NULL) R_Free(nlmOp.thetaFD);
@@ -291,6 +296,7 @@ RObject nlmSetup(Environment e) {
     }
   }
 
+  _nlmEvalPrintCn = 0;
   nlmOp.loaded = true;
   return R_NilValue;
 }
@@ -1239,8 +1245,32 @@ extern "C" int nlmixr2NlmEval(const double *theta, int ntheta,
     arma::mat ret0 = nlmSolveGrad(th);
     arma::vec cs = (arma::sum(ret0, 0)).t();
     *value = cs[0];
+    if (!cs.is_finite()) {
+      // the nlm convention is MINUS log-likelihood: a failed solve is
+      // infinitely BAD, so +Inf (the caller's lp = -value becomes -Inf);
+      // zero the gradient so no partial per-subject sum leaks out
+      *value = R_PosInf;
+      for (int i = 0; i < ntheta; ++i) dTheta[i] = 0.0;
+      return 1;
+    }
     for (int i = 0; i < ntheta; ++i) dTheta[i] = cs[i + 1];
-    if (!cs.is_finite()) return 1;
+    // iteration print through the residency's own scale machinery, at the
+    // control's print cadence, external gating so parHistData records
+    // exactly the printed rows (a sampler makes ~1e5 evaluations)
+    if (nlmOp.scale.every > 0) {
+      // post-increment: the FIRST evaluation prints (immediate feedback),
+      // then every `every`-th thereafter -- same cadence as
+      // nlmixr2FoceiIterPrintRow
+      if ((_nlmEvalPrintCn++) % nlmOp.scale.every == 0) {
+        struct ScaleEveryGuard {
+          scaling *s;
+          int sv;
+          ScaleEveryGuard(scaling *s_) : s(s_), sv(s_->every) { s->every = 1; }
+          ~ScaleEveryGuard() { s->every = sv; }
+        } guard(&(nlmOp.scale));
+        scalePrintFun(&(nlmOp.scale), &th[0], cs[0]);
+      }
+    }
     return 0;
   } catch (...) {
     return -4;

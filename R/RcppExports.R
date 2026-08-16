@@ -386,6 +386,18 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikIterPrintStart_ <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
+    .Call(`_nlmixr2est_foceiLikIterPrintStart_`, every, initPar, names, iterPrintControl, xform)
+}
+
+foceiLikIterPrintEnd_ <- function() {
+    .Call(`_nlmixr2est_foceiLikIterPrintEnd_`)
+}
+
+foceiLikRowTick_ <- function(par, objf) {
+    .Call(`_nlmixr2est_foceiLikRowTick_`, par, objf)
+}
+
 foceiLikCondGrad_ <- function(etaMat, cores) {
     .Call(`_nlmixr2est_foceiLikCondGrad_`, etaMat, cores)
 }

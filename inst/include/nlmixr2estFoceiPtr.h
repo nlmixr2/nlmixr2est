@@ -139,6 +139,15 @@ extern "C" {
      predates the entry (treat as refuse-mixtures).                        */
   typedef int (*nlmixr2FoceiNMix_t)(void);
 
+  /* ---- 8. sampler iteration-print row (additive) ----------------------- */
+  /* One evaluation's FULL natural-scale parameter vector (length npars,
+     the setTheta layout) + objective, printed/recorded through the scale.h
+     machinery at the cadence foceiLikIterPrintStart_() installed.  Plain C,
+     non-throwing; 0 ok, -1 printing inactive, -2 bad shape, -3 exception.
+     NULL when the loaded nlmixr2est predates the entry (skip printing).  */
+  typedef int (*nlmixr2FoceiIterPrintRow_t)(const double *par, int npars,
+                                            double objf);
+
   extern nlmixr2FoceiApiVersion_t    nlmixr2FoceiApiVersionP;
   extern nlmixr2FoceiDims_t          nlmixr2FoceiDimsP;
   extern nlmixr2FoceiSetTheta_t      nlmixr2FoceiSetThetaP;
@@ -147,6 +156,7 @@ extern "C" {
   extern nlmixr2FoceiThetaSensIdx_t  nlmixr2FoceiThetaSensIdxP;
   extern nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP;
   extern nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP;
+  extern nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP;
 
   // Always refresh: a reloaded nlmixr2est hands back new addresses, and
   // keeping the first set seen would leave the caller calling into an
@@ -164,6 +174,8 @@ extern "C" {
        table (the missing capability reads as NULL) */
     nlmixr2FoceiNMixP = (Rf_xlength(p) > 7) ?
       (nlmixr2FoceiNMix_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 7)) : NULL;
+    nlmixr2FoceiIterPrintRowP = (Rf_xlength(p) > 8) ?
+      (nlmixr2FoceiIterPrintRow_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 8)) : NULL;
     return R_NilValue;
   }
 
@@ -176,6 +188,7 @@ extern "C" {
   nlmixr2FoceiThetaSensIdx_t  nlmixr2FoceiThetaSensIdxP  = NULL;        \
   nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP = NULL;        \
   nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP          = NULL;        \
+  nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP  = NULL;        \
   SEXP iniNlmixr2estFocei(SEXP p) { return iniNlmixr2estFocei0(p); }
 
 #ifdef __cplusplus

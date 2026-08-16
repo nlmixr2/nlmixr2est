@@ -30,10 +30,10 @@
 
 test_that("the foceiPtrs table has the documented shape (#937 + #955)", {
   .p <- .nlmixr2estFoceiPtrs()
-  expect_length(.p, 8L)
+  expect_length(.p, 9L)
   expect_equal(names(.p), c("apiVersion", "dims", "setTheta", "condBatch",
                             "setOmegaInv", "thetaSensIdx", "condThetaGrad",
-                            "nMix"))
+                            "nMix", "iterPrintRow"))
   for (.i in seq_along(.p)) expect_true(inherits(.p[[.i]], "externalptr"))
 })
 
@@ -671,4 +671,51 @@ test_that("mixture models: the component-major batch layout is blessed (#955)", 
   expect_identical(foceiLikCondGrad_(eta, 1L), foceiLikCondGrad_(eta, 1L))
   # and the WRONG shape still refuses
   expect_error(foceiLikCondGrad_(eta[1:4, , drop = FALSE], 1L), "-2")
+})
+
+test_that("sampler iteration print: scale.h rows + parHistData over the residency", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .testSeed(42)
+  d <- do.call(rbind, lapply(1:4, function(id) {
+    data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
+               DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
+                 stats::rnorm(5, 0, 0.5),
+               AMT = 0, EVID = 0)
+  }))
+  h <- foceiLikLoad(.mod, d, "focei", scale = "natural")
+  on.exit(foceiLikUnload(), add = TRUE)
+  # display vector: natural-scale thetas + the sampler's current ACTUAL
+  # omega entries (not the internal chol(Omega^-1) diagXform tail), named
+  # om.<eta> for variances / cov.<eta1>.<eta2> for covariances
+  .par <- c(h$initPar[seq_len(h$ntheta)], 0.1)
+  .nm <- c(h$thetaNames, "om.eta.cl")
+  .out <- utils::capture.output(type = "message", {
+    foceiLikIterPrintStart_(2L, .par, .nm)
+    # 5 ticks at cadence 2: the FIRST tick prints, then every 2nd after ->
+    # rows at ticks 1, 3 and 5
+    for (i in 1:5) {
+      expect_equal(foceiLikRowTick_(.par, -100 - i), 0L)
+    }
+    .ph <- foceiLikIterPrintEnd_()
+  })
+  expect_true(is.data.frame(.ph))
+  # two printed rows, each recorded in the history (plus back-transform rows)
+  expect_equal(sum(.ph$type == "Scaled"), 3L)
+  expect_true(all(c("tcl", "tv", "add.sd", "om.eta.cl") %in% names(.ph)))
+  # inactive after End
+  expect_equal(foceiLikRowTick_(h$initPar, -1), -1L)
 })
