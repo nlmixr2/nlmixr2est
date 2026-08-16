@@ -76,6 +76,23 @@
 
 ### New features
 
+- An estimated transform-both-sides `lambda`
+  ([`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md))
+  now carries a real theta-sensitivity column instead of a silent zero
+  ([\#949](https://github.com/nlmixr2/nlmixr2est/issues/949)). The
+  conditional depends on `lambda` through both sides of the residual
+  `h(y; lambda) - h(f; lambda)`: the prediction side now comes from the
+  sensitivity model (the direct partial is taken for residual-error
+  thetas too, not hard-coded to zero, so `rx_pred_`’s `rxTBS()` is
+  differentiated), and the DV side from a new `d(lambda)/d(theta)`
+  output multiplied by the analytic `d(h(y; lambda))/d(lambda)` where
+  the DV transform is applied. The censored (M2/M3/M4) score picks up
+  the matching DV and `LIMIT` partials. The column agrees with central
+  differences to ~1e-9 relative on Box-Cox and Yeo-Johnson fixtures
+  where it was previously identically zero – the failure mode that made
+  an estimated `lambda` an imp/advi M-step no-op and gave gradient-based
+  callers a wrong direction.
+
 - Dose-handling (`alag()`/`f()`/`dur()`/`rate()`) theta sensitivities
   are no longer silently zero
   ([\#946](https://github.com/nlmixr2/nlmixr2est/issues/946)). The
@@ -432,6 +449,22 @@
 
 #### Crashes and stability
 
+- An over-parameterized `est="saem"` fit no longer dies with “nearest PD
+  calculation failed” after the last iteration
+  ([\#923](https://github.com/nlmixr2/nlmixr2est/issues/923)). A
+  singular final Omega was already projected to the nearest
+  positive-definite matrix before the residual/table step, but that
+  projection itself errors on the fully degenerate cases – an all-zero,
+  non-finite, or negative-definite Omega – which is exactly what an
+  over-parameterized model produces. Those now fall back to a floored
+  diagonal so the completed run is returned as a fit, with a `$runInfo`
+  note saying the Omega was singular; the reported Omega is left as
+  estimated. A collapsed or non-finite `saem` Omega is also reported in
+  `$runInfo` on its own, and a failure while assembling the fit object
+  retries once without the table step rather than throwing the finished
+  run away. When
+  [`nmNearPD()`](https://nlmixr2.github.io/nlmixr2est/reference/nmNearPD.md)
+  does error it now says which degenerate case it hit.
 - The shared solve pool’s lhs-width probe could **segfault** instead of
   declining. It verifies a model by calling that model’s `calc_lhs`, and
   generated `calc_lhs` dereferences per-subject pointers that are bound
