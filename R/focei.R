@@ -1724,6 +1724,40 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
 }
 
+#' Repair a non-positive-definite omega so post-fit processing can continue
+#'
+#' `nmNearPD()` itself fails (and errors) on the fully degenerate cases -- an
+#' all-zero omega, one holding NaN/Inf, or a negative-definite one -- which is
+#' exactly what an over-parameterized fit produces (#923).  Fall back to a
+#' floored diagonal there so the fit degrades instead of aborting.
+#'
+#' @param om omega matrix
+#' @return positive-definite matrix with the dimnames of `om`
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiRepairOmega <- function(om) {
+  .om <- om
+  .bad <- !is.finite(.om)
+  .om[.bad] <- 0
+  .r <- try(nmNearPD(.om), silent=TRUE)
+  if (!inherits(.r, "try-error") &&
+        !inherits(try(chol(.r), silent=TRUE), "try-error")) {
+    dimnames(.r) <- dimnames(om)
+    if (any(.bad)) {
+      warning("non-finite omega values zeroed for tables", call.=FALSE)
+    }
+    return(.r)
+  }
+  .d <- diag(.om)
+  .pos <- .d[is.finite(.d) & .d > 0]
+  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
+  .d[!is.finite(.d) | .d < .floor] <- .floor
+  .ret <- diag(.d, nrow=length(.d))
+  dimnames(.ret) <- dimnames(om)
+  warning("singular omega; used a floored diagonal for tables", call.=FALSE)
+  .ret
+}
+
 #'  This sets up the initial omega/eta estimates and the boundaries for the whole system
 #'
 #' @param ui rxode2 UI object
@@ -1784,10 +1818,10 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     # A degenerate fit can collapse an uninformative random-effect variance to
     # exactly 0 (e.g. SAEM with very few subjects), leaving a singular omega
     # whose inverse/chol fails when building the sym-inv-chol env and aborts the
-    # whole fit at the residual/table step.  nearPD the omega in that case so
+    # whole fit at the residual/table step.  Repair the omega in that case so
     # post-fit diagnostics still run; the reported fit omega is left unchanged.
     if (inherits(try(chol(.om0), silent=TRUE), "try-error")) {
-      .om0 <- nmNearPD(.om0)
+      .om0 <- .foceiRepairOmega(.om0)
     }
     env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0, diag.xform = .diagXform)
     env$xType <- env$rxInv$xType
