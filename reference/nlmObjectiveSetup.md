@@ -15,7 +15,13 @@ when done.
 ## Usage
 
 ``` r
-nlmObjectiveSetup(ui, data, control = NULL)
+nlmObjectiveSetup(
+  ui,
+  data,
+  control = NULL,
+  gradient = FALSE,
+  scale = c("control", "natural")
+)
 ```
 
 ## Arguments
