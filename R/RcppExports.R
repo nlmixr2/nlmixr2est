@@ -602,6 +602,14 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+nlmLikDims_ <- function() {
+    .Call(`_nlmixr2est_nlmLikDims_`)
+}
+
+nlmLikEvalC_ <- function(theta) {
+    .Call(`_nlmixr2est_nlmLikEvalC_`, theta)
+}
+
 #' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
 #' @param etaPoints support points, one per row
 #' @param cores threads

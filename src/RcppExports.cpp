@@ -1590,6 +1590,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmLikDims_
+List nlmLikDims_();
+RcppExport SEXP _nlmixr2est_nlmLikDims_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmLikDims_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmLikEvalC_
+List nlmLikEvalC_(NumericVector theta);
+RcppExport SEXP _nlmixr2est_nlmLikEvalC_(SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmLikEvalC_(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npObjAtGamma_
 double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma);
 RcppExport SEXP _nlmixr2est_npObjAtGamma_(SEXP etaPointsSEXP, SEXP coresSEXP, SEXP gammaSEXP) {

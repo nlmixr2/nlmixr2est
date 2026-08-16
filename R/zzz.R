@@ -172,3 +172,17 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
 .nlmixr2estFoceiPtrs <- function() {
   .Call("_nlmixr2est_foceiPtrs", PACKAGE = "nlmixr2est")
 }
+
+#' The nlm population-likelihood C entry-point table (#953)
+#'
+#' Returns the external-pointer table a downstream package installs with
+#' `iniNlmixr2estNlm()` from `inst/include/nlmixr2estNlmPtr.h`: apiVersion,
+#' dims, and the value + analytic theta-gradient evaluation over the
+#' [nlmObjectiveSetup()]-loaded problem.
+#'
+#' @return a named list of external pointers.
+#' @export
+#' @keywords internal
+.nlmixr2estNlmPtrs <- function() {
+  .Call("_nlmixr2est_nlmPtrs", PACKAGE = "nlmixr2est")
+}
