@@ -1188,3 +1188,100 @@ RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   ret.attr("dimnames") = CovIn.attr("dimnames");
   return ret;
 }
+
+// ===========================================================================
+// nlm population-likelihood C API (#953): plain-C, non-throwing entry points
+// over the nlmObjectiveSetup()-loaded problem, exposed as an external-pointer
+// table _nlmixr2est_nlmPtrs() -- same idiom as _nlmixr2est_foceiPtrs.  The
+// downstream contract lives in inst/include/nlmixr2estNlmPtr.h.  Everything
+// crossing the DSO boundary is double*/int; no entry longjmps or lets an
+// exception escape, so they are safe inside a sampler's log-density
+// evaluation.
+
+extern "C" int nlmixr2NlmApiVersion(void) {
+  return 1; // NLMIXR2EST_NLM_API
+}
+
+extern "C" int nlmixr2NlmDims(int *ntheta, int *nobs, int *flags) {
+  if (!nlmOp.loaded) return -1;
+  if (ntheta != NULL) *ntheta = nlmOp.ntheta;
+  if (nobs != NULL) *nobs = nlmOp.nobsTot;
+  if (flags != NULL) {
+    int f = 0;
+    // 0x01 gradient model loaded (grad or hessian solve types)
+    if (nlmOp.solveType == solveType_grad ||
+        nlmOp.solveType == solveType_hess) f |= 0x01;
+    // 0x02 identity (natural) scale: scaleTypeNone + normTypeConstant
+    if (nlmOp.scale.scaleType == 5 && nlmOp.scale.normType == 6) f |= 0x02;
+    // 0x04 some theta's sensitivity is finite-differenced
+    if (nlmOp.needFD) f |= 0x04;
+    *flags = f;
+  }
+  return 0;
+}
+
+extern "C" int nlmixr2NlmEval(const double *theta, int ntheta,
+                              double *value, double *dTheta) {
+  if (!nlmOp.loaded) return -1;
+  if (!(nlmOp.solveType == solveType_grad ||
+        nlmOp.solveType == solveType_hess)) return -2;
+  if (ntheta != nlmOp.ntheta || theta == NULL ||
+      value == NULL || dTheta == NULL) return -3;
+  try {
+    // determinism: clear the shared bad-solve flag so a previous rejected
+    // point cannot leak into this one; the nlm path re-solves every subject
+    // from its inits on each call (no per-subject caching), so the value is
+    // a pure function of theta
+    rx_solving_options *op = getSolvingOptions(rx);
+    resetOpBadSolve(op);
+    arma::vec th(ntheta);
+    std::copy(theta, theta + ntheta, th.begin());
+    arma::mat ret0 = nlmSolveGrad(th);
+    arma::vec cs = (arma::sum(ret0, 0)).t();
+    *value = cs[0];
+    for (int i = 0; i < ntheta; ++i) dTheta[i] = cs[i + 1];
+    if (!cs.is_finite()) return 1;
+    return 0;
+  } catch (...) {
+    return -4;
+  }
+}
+
+extern "C" SEXP _nlmixr2est_nlmPtrs(void) {
+  const char *nm[3] = {"apiVersion", "dims", "eval"};
+  DL_FUNC fn[3] = {(DL_FUNC) &nlmixr2NlmApiVersion,
+                   (DL_FUNC) &nlmixr2NlmDims,
+                   (DL_FUNC) &nlmixr2NlmEval};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 3));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 3));
+  for (int i = 0; i < 3; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
+// R-facing shims over the SAME C entry points, so the API is testable from
+// testthat and usable as the finite-difference oracle without a downstream
+// package in the picture.
+
+//[[Rcpp::export]]
+List nlmLikDims_() {
+  int ntheta = 0, nobs = 0, flags = 0;
+  int rc = nlmixr2NlmDims(&ntheta, &nobs, &flags);
+  return List::create(_["status"] = rc, _["ntheta"] = ntheta,
+                      _["nobs"] = nobs, _["flags"] = flags);
+}
+
+//[[Rcpp::export]]
+List nlmLikEvalC_(NumericVector theta) {
+  const int ntheta = theta.size();
+  double value = NA_REAL;
+  std::vector<double> g(ntheta, 0.0);
+  int rc = nlmixr2NlmEval(&theta[0], ntheta, &value, g.data());
+  if (rc < 0) stop("nlmixr2NlmEval failed with status %d", rc);
+  return List::create(_["value"] = value, _["grad"] = wrap(g),
+                      _["nBad"] = rc);
+}

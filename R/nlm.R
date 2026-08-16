@@ -877,7 +877,9 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @export
 #' @keywords internal
 #' @author Matthew L. Fidler
-nlmObjectiveSetup <- function(ui, data, control = NULL) {
+nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
+                              scale = c("control", "natural")) {
+  scale <- match.arg(scale)
   ## assertRxUi accepts a model function as well as a ui; .copyUi (not
   ## rxUiDecompress) then isolates it, because decompressing an already-
   ## decompressed ui hands back the SAME environment and assigning $control below
@@ -889,14 +891,26 @@ nlmObjectiveSetup <- function(ui, data, control = NULL) {
   .ui$control <- control
   .ctl <- .ui$control
   class(.ctl) <- NULL
+  if (gradient) {
+    ## the C API (#953) hands out value + analytic d/d(theta): load the
+    ## sensitivity model with the gradient solve type
+    .ctl$solveType <- 2L
+  }
+  if (identical(scale, "natural")) {
+    ## identity scale (scaleNone: scaleTypeNone + normTypeConstant), so the
+    ## evaluated theta IS the model's theta -- what a sampler needs
+    .ctl$scaleType <- 5L
+    .ctl$normType <- 6L
+  }
   .ret <- new.env(parent = emptyenv())
   .foceiPreProcessData(data, .ret, .ui, .ctl$rxControl)
   .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
-  ## solveType 1 / nlmRxModel: the objective-only predOnly model (no thetaGrad).
-  ## The hook fires from nlmSolveFid during the objective solve; the caller gets
-  ## the weight gradient from its own augmented-sensitivity solve, so no analytic
-  ## theta gradient is needed here.
-  .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmRxModel, .ctl)
+  ## gradient=FALSE -- solveType 1 / nlmRxModel: the objective-only predOnly
+  ## model (no thetaGrad).  The hook fires from nlmSolveFid during the
+  ## objective solve; the caller gets the weight gradient from its own
+  ## augmented-sensitivity solve, so no analytic theta gradient is needed.
+  .mi <- if (gradient) .ui$nlmSensModel else .ui$nlmRxModel
+  .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .mi, .ctl)
   invisible(.env$par.ini)
 }
 

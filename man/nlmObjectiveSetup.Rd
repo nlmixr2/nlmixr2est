@@ -4,7 +4,13 @@
 \alias{nlmObjectiveSetup}
 \title{Set up an nlm-family objective for repeated hook-firing evaluation}
 \usage{
-nlmObjectiveSetup(ui, data, control = NULL)
+nlmObjectiveSetup(
+  ui,
+  data,
+  control = NULL,
+  gradient = FALSE,
+  scale = c("control", "natural")
+)
 }
 \arguments{
 \item{ui}{rxode2/nlmixr2 model.  Uses \code{ui$control} when present.}

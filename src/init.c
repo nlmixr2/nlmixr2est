@@ -205,10 +205,16 @@ SEXP _nlmixr2est_setTestContribAddLL(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
 SEXP _nlmixr2est_foceiPtrs(void);
+SEXP _nlmixr2est_nlmPtrs(void);
+SEXP _nlmixr2est_nlmLikDims_(void);
+SEXP _nlmixr2est_nlmLikEvalC_(SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
   {"_nlmixr2est_foceiPtrs", (DL_FUNC) &_nlmixr2est_foceiPtrs, 0},
+  {"_nlmixr2est_nlmPtrs", (DL_FUNC) &_nlmixr2est_nlmPtrs, 0},
+  {"_nlmixr2est_nlmLikDims_", (DL_FUNC) &_nlmixr2est_nlmLikDims_, 0},
+  {"_nlmixr2est_nlmLikEvalC_", (DL_FUNC) &_nlmixr2est_nlmLikEvalC_, 1},
   {"_nlmixr2est_registerTestContrib", (DL_FUNC) &_nlmixr2est_registerTestContrib, 0},
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
