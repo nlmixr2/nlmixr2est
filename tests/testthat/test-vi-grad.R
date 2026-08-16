@@ -76,6 +76,69 @@ nmTest({
     }
   })
 
+  test_that("adviElboGrad_ gTheta is right for an ESTIMATED boxCox lambda (#949)", {
+    ## lambda is a residual-error theta that nevertheless reaches the MEAN: the
+    ## ELBO depends on it through both sides of err = h(y; lambda) - h(f; lambda).
+    ## Its theta-sensitivity column used to be identically zero, so the advi outer
+    ## gradient had no lambda direction at all.  This is the advi-side counterpart
+    ## of the C-API check in test-focei-ptrs.R -- adviElboGradCore reaches the same
+    ## impThetaScore/impThetaAccumOne path the impmap M-step uses.
+    mod <- function() {
+      ini({ lka <- log(1.5); lcl <- log(0.09); lv <- log(32)
+        eta.ka ~ 0.3; add.err <- 0.6; lambda <- c(-2, 0.8, 2) })
+      model({ ka <- exp(lka + eta.ka); cl <- exp(lcl); v <- exp(lv)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.err) + boxCox(lambda) })
+    }
+    ui <- rxode2::assertRxUi(mod)
+    ctl <- emviControl(rxControl = rxode2::rxControl(atol = 1e-8, rtol = 1e-8))
+    ## a boxCox endpoint floors a non-positive DV, which puts a kink in the
+    ## objective that no finite difference can resolve -- theo_sd carries 9 such
+    ## rows (DV == 0 pre-dose), really a censoring case.  Drop them for the check.
+    dat <- nlmixr2data::theo_sd
+    dat <- dat[!(dat$EVID == 0 & dat$DV <= 0), ]
+    prep <- .adviDataPrep(ui, dat)
+    N <- prep$N; neta <- 1L
+    muRefIdx <- as.integer(prep$muRefThetaIdx)
+    ntheta <- prep$ntheta
+    ## which theta is lambda (do not hard-code the ini order)
+    .th <- ui$iniDf[!is.na(ui$iniDf$ntheta), ]
+    lamIdx <- .th$ntheta[.th$name == "lambda"]
+    expect_length(lamIdx, 1L)
+
+    .testSeed(11)
+    mu <- matrix(rnorm(N * neta, 0, 0.2), N, neta)
+    omega <- matrix(rnorm(N * neta, -0.7, 0.1), N, neta)
+    theta <- prep$theta
+    logPopOmega <- log(prep$omega)
+    eps <- matrix(rnorm(N * neta), N, neta)
+
+    .adviInnerSetup(ui, dat, mu, ctl)
+    on.exit(.adviInnerFree(), add = TRUE)
+
+    ## the DV-side term is actually WIRED, not merely giving the right number:
+    ## lambdaOffset is >= 0 only when the model emits d(lambda)/d(theta)
+    .info <- adviThetaSensInfo_()
+    expect_true(.info$nSens > 0L)
+    expect_true(.info$lambdaOffset >= 0L)
+
+    elboFun <- function(theta)
+      adviElboGrad_(mu, omega, theta, logPopOmega, eps, muRefIdx)$elbo
+    a <- adviElboGrad_(mu, omega, theta, logPopOmega, eps, muRefIdx)
+    h <- 1e-4
+    relOk <- function(x, fd, tol = 2e-3) abs(x - fd) < tol * (1 + abs(x))
+    for (p in seq_len(ntheta)) {
+      xp <- theta; xp[p] <- theta[p] + h
+      xm <- theta; xm[p] <- theta[p] - h
+      gfd <- (elboFun(xp) - elboFun(xm)) / (2 * h)
+      expect_true(relOk(a$gTheta[p], gfd),
+                  info = paste0("theta ", p, ": analytic ", a$gTheta[p],
+                                " fd ", gfd))
+    }
+    ## and the historical failure -- a lambda direction of exactly zero -- is gone
+    expect_true(abs(a$gTheta[lamIdx]) > 1e-3)
+  })
+
   test_that("adviElboGradFR_ full-rank gradient matches finite differences", {
     ## two correlated etas so the off-diagonal L entries are exercised
     mod <- function() {

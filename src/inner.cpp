@@ -11073,6 +11073,39 @@ static void impThetaAccumGauss(const impThetaSensData &c, int jo, double f, doub
   H += w * ((de.t() * de) / V + 0.5 * (dV.t() * dV) / (V * V));
 }
 
+// One (sample k, observation jo) contribution to the theta score/information.
+// Returns without touching g/H when that observation's outputs are unusable.
+// `zeroDir` stands in for the DV/limit directions when the transform lambda is
+// not estimated (#949).
+static void impThetaAccumObs(const impThetaSensData &c, int k, int jo,
+                             bool hasDvSens, const arma::rowvec &zeroDir,
+                             double w, arma::vec &g, arma::mat &H) {
+  const arma::mat &dfmat = c.dfmat[k];
+  double f = c.fvec[k][jo], V = c.Vvec[k][jo];
+  // General (non-normal) log-likelihood endpoint: rx_pred_ IS the per-obs
+  // log-likelihood and rx_r_ == 0, so the Gauss-Newton (f/V) score below does
+  // not apply.  The theta score is d(ll)/d(theta) (dfmat already holds it) and
+  // the empirical (BHHH) Fisher information is its outer product -- PSD, so the
+  // Newton step ascends the likelihood.  This must run BEFORE the V<=0 guard,
+  // which would otherwise drop every LL obs (V==0) and freeze the M-step.
+  if (jo < (int)c.distv.size() && c.distv[jo] != rxDistributionNorm) {
+    arma::rowvec dll = dfmat.row(jo);
+    if (!R_finite(f) || !dll.is_finite()) return;
+    g += w * dll.t();
+    H += w * (dll.t() * dll);
+    return;
+  }
+  if (!R_finite(V) || V <= 0.0 || !R_finite(f)) return;
+  arma::rowvec df = dfmat.row(jo), dV = c.dVmat[k].row(jo);
+  if (!df.is_finite() || !dV.is_finite()) return;
+  if (hasDvSens) {
+    impThetaAccumGauss(c, jo, f, V, df, dV, c.ddvmat.row(jo), c.dlimmat.row(jo),
+                       true, w, g, H);
+  } else {
+    impThetaAccumGauss(c, jo, f, V, df, dV, zeroDir, zeroDir, false, w, g, H);
+  }
+}
+
 // Cheap arithmetic half of the theta score: accumulate the IS-weighted score `g`
 // and Gauss-Newton Hessian `H` from a subject's collected per-sample sensitivity
 // outputs, in the original (sample, obs) order.  g/H must be pre-sized (nSens).
@@ -11082,40 +11115,13 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
   if (nSens == 0 || c.nobs == 0) return;
   int nobs = c.nobs;
   int nsamp = (int)c.sampleOk.size();
-  // stand-in DV/limit directions when the transform lambda is not estimated (#949)
   const bool hasDvSens = ((int)c.ddvmat.n_rows == nobs &&
                           (int)c.ddvmat.n_cols == nSens);
   const arma::rowvec zeroDir(nSens, arma::fill::zeros);
   for (int k = 0; k < nsamp; ++k) {
     if (!c.sampleOk[k]) continue;
-    const arma::vec& fvec = c.fvec[k];
-    const arma::vec& Vvec = c.Vvec[k];
-    const arma::mat& dfmat = c.dfmat[k];
-    const arma::mat& dVmat = c.dVmat[k];
     for (int jo = 0; jo < nobs; ++jo) {
-      double f = fvec[jo], V = Vvec[jo];
-      // General (non-normal) log-likelihood endpoint: rx_pred_ IS the per-obs
-      // log-likelihood and rx_r_ == 0, so the Gauss-Newton (f/V) score below does
-      // not apply.  The theta score is d(ll)/d(theta) (dfmat already holds it) and
-      // the empirical (BHHH) Fisher information is its outer product -- PSD, so the
-      // Newton step ascends the likelihood.  This must run BEFORE the V<=0 guard,
-      // which would otherwise drop every LL obs (V==0) and freeze the M-step.
-      if (jo < (int)c.distv.size() && c.distv[jo] != rxDistributionNorm) {
-        arma::rowvec dll = dfmat.row(jo);
-        if (!R_finite(f) || !dll.is_finite()) continue;
-        g += zk[k] * dll.t();
-        H += zk[k] * (dll.t() * dll);
-        continue;
-      }
-      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
-      arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
-      if (!df.is_finite() || !dV.is_finite()) continue;
-      if (hasDvSens) {
-        impThetaAccumGauss(c, jo, f, V, df, dV, c.ddvmat.row(jo), c.dlimmat.row(jo),
-                           true, zk[k], g, H);
-      } else {
-        impThetaAccumGauss(c, jo, f, V, df, dV, zeroDir, zeroDir, false, zk[k], g, H);
-      }
+      impThetaAccumObs(c, k, jo, hasDvSens, zeroDir, zk[k], g, H);
     }
   }
 }
@@ -17155,6 +17161,9 @@ List adviThetaSensInfo_() {
                       _["rOffset"] = op_focei.thetaSensROffset,
                       _["fOffset"] = op_focei.thetaSensOffset,
                       _["dvOffset"] = op_focei.thetaSensDvOffset,
+                      // >= 0 only when the transform-both-sides lambda is
+                      // estimated, i.e. the DV-side term is wired (#949)
+                      _["lambdaOffset"] = op_focei.thetaSensLambdaOffset,
                       _["neq"] = op_focei.thetaSensNeq,
                       _["calcLhsNull"] = (rxThetaSens.calc_lhs == NULL),
                       _["isAdvi"] = op_focei.isAdvi,
