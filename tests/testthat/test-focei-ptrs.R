@@ -431,3 +431,163 @@ test_that("an eta entering dose handling gets its jump in the eta gradient (#946
                  tolerance = 1e-3, info = paste0("eta ", k))
   }
 })
+
+test_that("an estimated transform-both-sides lambda carries its column (#949)", {
+  # lambda is a residual-error theta, so the sensitivity model hard-coded
+  # d(f)/d(lambda) = 0 -- but the conditional depends on lambda through BOTH
+  # sides of err = h(y; lambda) - h(f; lambda).  The f side now comes from the
+  # model (rxTBSdL) and the DV side from d(lambda)/d(theta) times the analytic
+  # d(h(y))/d(lambda), applied where the DV transform is (in C++).
+  skip_on_cran()
+  d <- .foceiPtrData()
+  .base <- rxode2::rxode2(.foceiPtrMod)
+  .fam <- list(
+    boxCox = .base |> rxode2::model(cp ~ add(add.sd) + boxCox(lambda)) |>
+      rxode2::ini(lambda = 0.5),
+    yeoJohnson = .base |> rxode2::model(cp ~ add(add.sd) + yeoJohnson(lambda)) |>
+      rxode2::ini(lambda = 0.5),
+    boxCoxProp = .base |> rxode2::model(cp ~ prop(prop.sd) + boxCox(lambda)) |>
+      rxode2::ini(prop.sd = 0.1, lambda = 0.5),
+    # composed transforms: lambda applies to the logit/probit-mapped scale
+    logitYj = .base |>
+      rxode2::model(cp ~ logitNorm(lg.sd, 0, 10) + yeoJohnson(lambda)) |>
+      rxode2::ini(lg.sd = 0.4, lambda = 0.5),
+    probitYj = .base |>
+      rxode2::model(cp ~ probitNorm(pb.sd, 0, 10) + yeoJohnson(lambda)) |>
+      rxode2::ini(pb.sd = 0.4, lambda = 0.5))
+  eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
+  for (.n in names(.fam)) {
+    h <- foceiLikLoad(.fam[[.n]], d, "focei", scale = "natural", thetaSens = TRUE)
+    expect_true(isTRUE(h$thetaSens), info = .n)
+    # lambda is ntheta 4 (tcl, tv, <resid sd>, lambda); tcl is mu-referenced
+    expect_equal(h$thetaSensIdx, c(2L, 3L, 4L), info = .n)
+    th <- h$initPar
+    th[1:4] <- c(1, 3, switch(.n, boxCoxProp = 0.1, logitYj = 0.4,
+                              probitYj = 0.4, 0.5), 0.5)
+    expect_equal(foceiLikSetThetaC_(th), 0L, info = .n)
+    got <- foceiLikCondThetaGrad_(eta, 1L)
+    expect_equal(got$nBad, 0L, info = .n)
+    # the historical zero is gone
+    expect_true(all(abs(got$dTheta[, 4]) > 1e-3), info = .n)
+    .h <- 1e-5
+    for (t in h$thetaSensIdx) {
+      up <- th
+      up[t] <- up[t] + .h
+      dn <- th
+      dn[t] <- dn[t] - .h
+      expect_equal(foceiLikSetThetaC_(up), 0L)
+      vUp <- foceiLikCondGrad_(eta, 1L)$value
+      expect_equal(foceiLikSetThetaC_(dn), 0L)
+      vDn <- foceiLikCondGrad_(eta, 1L)$value
+      fd <- (vUp - vDn) / (2 * .h)
+      expect_equal(as.numeric(got$dTheta[, t]), as.numeric(fd),
+                   tolerance = 1e-4, info = paste0(.n, " theta ", t))
+    }
+    foceiLikUnload()
+  }
+})
+
+test_that("the lambda column is right for censored and multi-endpoint data (#949)", {
+  # The DV-side term also moves the censoring bounds (M3/M4 read the TRANSFORMED
+  # DV and LIMIT), and with several endpoints rx_lambda_ is a CMT switch so only
+  # the transformed endpoint's rows may pick the term up.
+  skip_on_cran()
+  .testSeed(42)
+  .censData <- function(limit = FALSE) {
+    do.call(rbind, lapply(1:4, function(id) {
+      tt <- c(0.5, 1, 2, 4, 8)
+      dv <- 5 * exp(-0.05 * tt) + stats::rnorm(5, 0, 0.5)
+      d <- data.frame(ID = id, TIME = tt, DV = dv, AMT = 0, EVID = 0,
+                      CENS = c(0, 0, 0, -1, -1))
+      d$DV[d$CENS == -1] <- 4.6
+      if (limit) d$LIMIT <- ifelse(d$CENS == -1, 3.5, NA_real_)
+      d
+    }))
+  }
+  .tbsMod <- rxode2::rxode2(.foceiPtrMod) |>
+    rxode2::model(cp ~ add(add.sd) + boxCox(lambda)) |>
+    rxode2::ini(lambda = 0.5)
+  .tbsYj <- rxode2::rxode2(.foceiPtrMod) |>
+    rxode2::model(cp ~ add(add.sd) + yeoJohnson(lambda)) |>
+    rxode2::ini(lambda = 0.5)
+  eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
+  .fdCheck <- function(h, th, info) {
+    expect_equal(foceiLikSetThetaC_(th), 0L, info = info)
+    got <- foceiLikCondThetaGrad_(eta, 1L)
+    expect_equal(got$nBad, 0L, info = info)
+    .h <- 1e-5
+    for (t in h$thetaSensIdx) {
+      up <- th
+      up[t] <- up[t] + .h
+      dn <- th
+      dn[t] <- dn[t] - .h
+      expect_equal(foceiLikSetThetaC_(up), 0L)
+      vUp <- foceiLikCondGrad_(eta, 1L)$value
+      expect_equal(foceiLikSetThetaC_(dn), 0L)
+      vDn <- foceiLikCondGrad_(eta, 1L)$value
+      expect_equal(as.numeric(got$dTheta[, t]),
+                   as.numeric((vUp - vDn) / (2 * .h)),
+                   tolerance = 1e-4, info = paste0(info, " theta ", t))
+    }
+    got
+  }
+  # M3 (CENS only), M4 (CENS + LIMIT) and M2 (finite LIMIT, CENS 0): each takes a
+  # different branch of the dv/limit partials
+  .cases <- list(M3 = .censData(FALSE), M4 = .censData(TRUE))
+  .cases$M2 <- .censData(TRUE)
+  .cases$M2$DV <- .cases$M3$DV
+  .cases$M2$CENS <- NULL
+  # both transform families: the DV/LIMIT partials run through _powerDLambda, whose
+  # branch differs per transform
+  for (.tr in c("boxCox", "yeoJohnson")) {
+    for (.nm in names(.cases)) {
+      h <- foceiLikLoad(if (.tr == "boxCox") .tbsMod else .tbsYj, .cases[[.nm]],
+                        "focei", scale = "natural", thetaSens = TRUE)
+      th <- h$initPar
+      th[1:4] <- c(1, 3, 0.5, 0.5)
+      got <- .fdCheck(h, th, paste0(.tr, " ", .nm))
+      expect_true(all(abs(got$dTheta[, 4]) > 1e-3), info = paste0(.tr, " ", .nm))
+      foceiLikUnload()
+    }
+  }
+  # two endpoints, only the first transformed
+  .multiMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- 0.5
+      lambda <- c(-2, 0.5, 2)
+      ef.sd <- 0.7
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      ef <- 10 - cp
+      cp ~ add(add.sd) + boxCox(lambda)
+      ef ~ add(ef.sd)
+    })
+  }
+  .testSeed(42)
+  dm <- do.call(rbind, lapply(1:4, function(id) {
+    tt <- c(0.5, 1, 2, 4, 8)
+    rbind(data.frame(ID = id, TIME = tt, DVID = "cp",
+                     DV = 5 * exp(-0.05 * tt) + stats::rnorm(5, 0, 0.5)),
+          data.frame(ID = id, TIME = tt, DVID = "ef",
+                     DV = 5 + 0.05 * tt + stats::rnorm(5, 0, 0.7)))
+  }))
+  dm$AMT <- 0
+  dm$EVID <- 0
+  h <- foceiLikLoad(.multiMod, dm, "focei", scale = "natural", thetaSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  expect_equal(h$thetaSensIdx, c(2L, 3L, 4L, 5L))
+  th <- h$initPar
+  th[1:5] <- c(1, 3, 0.5, 0.5, 0.7)
+  got <- .fdCheck(h, th, "multi")
+  expect_true(all(abs(got$dTheta[, 4]) > 1e-3))
+  # and thread-count invariant with the extra per-row term
+  expect_equal(foceiLikSetThetaC_(th), 0L)
+  expect_equal(foceiLikCondThetaGrad_(eta, 4L)$dTheta, got$dTheta,
+               tolerance = 1e-12)
+})

@@ -104,6 +104,11 @@ struct impThetaSensData {
   std::vector<arma::vec> fvec, Vvec;    // [nsamp], each length nobs
   std::vector<arma::mat> dfmat, dVmat;  // [nsamp], each nobs x nSens
   std::vector<char> sampleOk;           // [nsamp], 0 = drop this sample
+  // d(transformed DV)/d(theta) and d(transformed LIMIT)/d(theta), nobs x nSens.
+  // Empty unless the transform-both-sides lambda is itself estimated (#949): then
+  // the residual err = h(y; lambda) - h(f; lambda) moves on BOTH sides, and the
+  // DV side is applied here because the sensitivity model never sees the DV.
+  arma::mat ddvmat, dlimmat;
 };
 void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out);
 void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
