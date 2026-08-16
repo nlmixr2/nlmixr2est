@@ -4,6 +4,15 @@
 
 ### Internal
 
+- A covariate whose value is carried on the model in
+  [`rxode2::rxForcedPars()`](https://nlmixr2.github.io/rxode2/reference/rxForcedPars.html)
+  is no longer required to be a column of the data. Such a covariate is
+  supplied by the model itself, so demanding it from the data rejected a
+  well-specified fit and forced the caller to add a placeholder column.
+  This is the same rule rxode2 applies when resolving solve parameters,
+  and it lets a model own parameters the user never sees – for example
+  neural-network weights.
+
 - [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) on a
   fit now calls
   [`rxode2::.iniHandleLine()`](https://nlmixr2.github.io/rxode2/reference/dot-iniHandleLine.html)
