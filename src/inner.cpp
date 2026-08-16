@@ -18619,8 +18619,27 @@ static int foceiCondBatchOne(int id, const double *etaIn, int neta,
   std::vector<double> eta(neta);
   foceiCondSubjectStart(id, etaIn, neta, eta);
   double v = npEvalCondLik(&eta[0], id);
+  focei_ind *fIndF = &(inds_focei[id]);
+  if (!std::isfinite(v) && op_focei.canDoFD && op_focei.fallbackFD) {
+    // the inner SENSITIVITY solve failed even after likInner0's tolerance
+    // retry ladder; fall back to the simpler prediction model with shi21
+    // central-difference eta gradients -- the same cascade the focei
+    // optimizer uses (didInnerResetFail).  doFD is scoped to this
+    // evaluation, and the fallback fires as a pure function of the point,
+    // so determinism is preserved.
+    fIndF->setup = 0;
+    fIndF->doFD = 1;
+    v = npEvalCondLik(&eta[0], id);
+    fIndF->doFD = 0;
+  }
   value[id] = v;
   if (!std::isfinite(v)) {
+    // the documented contract is -Inf (a sampler REJECTION); writing the
+    // raw NaN through instead poisons NUTS's stepsize adaptation
+    // permanently (observed: a warmup excursion into an ODE-overflow
+    // region left stepsize = NaN and the chain dead for the whole run,
+    // where -Inf recovers as an ordinary divergence)
+    value[id] = R_NegInf;
     for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
     return 1;
   }
@@ -18628,10 +18647,22 @@ static int foceiCondBatchOne(int id, const double *etaIn, int neta,
   // finalizes lp = -(dlogp/deta) + Omega^-1 eta (the same identity
   // adviElboGradCore's dataScore uses)
   focei_ind *fInd = &(inds_focei[id]);
+  bool gradOk = true;
   for (int k = 0; k < neta; ++k) {
     double s = 0.0;
     for (int l = 0; l < neta; ++l) s += omInv(k, l) * eta[l];
-    grad[(size_t)id * neta + k] = s - fInd->lp[k];
+    double g = s - fInd->lp[k];
+    if (!std::isfinite(g)) gradOk = false;
+    grad[(size_t)id * neta + k] = g;
+  }
+  if (!gradOk) {
+    // a finite value with a non-finite gradient (lp overflow at an extreme
+    // eta) must also become a clean rejection: a NaN partial reaching the
+    // sampler's autodiff tape kills stepsize adaptation the same way a
+    // NaN value does
+    value[id] = R_NegInf;
+    for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
+    return 1;
   }
   return 0;
 }
@@ -18700,6 +18731,18 @@ static int foceiCondThetaGradOne(int id, const double *etaIn, int neta,
   std::vector<double> eta(neta);
   foceiCondSubjectStart(id, etaIn, neta, eta);
   double v = likInner0(&eta[0], id);
+  if ((ISNA(v) || !std::isfinite(v)) &&
+      op_focei.canDoFD && op_focei.fallbackFD) {
+    // same fallback cascade as foceiCondBatchOne: pred model + shi21 FD
+    // (scoped), so a subject that only solves under the fallback is not
+    // spuriously flagged bad in the theta pass while the value pass
+    // succeeded
+    focei_ind *fIndF = &(inds_focei[id]);
+    fIndF->setup = 0;
+    fIndF->doFD = 1;
+    v = likInner0(&eta[0], id);
+    fIndF->doFD = 0;
+  }
   if (ISNA(v) || !std::isfinite(v)) return 1;
   arma::mat S(1, neta);
   for (int k = 0; k < neta; ++k) S(0, k) = etaIn[(size_t)id * neta + k];
@@ -18765,6 +18808,130 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
   }
 }
 
+// ===========================================================================
+// External-sampler iteration print over the foceiLik residency: the same
+// scale.h machinery every nlmixr2est method prints with (the impmap
+// iter-print pattern), exposed so a downstream sampler (nlmixr2stan's
+// est="stan") shows the familiar iteration table and records parHistData.
+// Start/End are R-callable (main thread, before/after sampling); the ROW
+// entry is plain C (an additive foceiPtrs table entry) called from inside
+// the sampler's gradient evaluations.  Cadence is gated HERE (the scale's
+// own `every` is pinned to 1) so the history records exactly the printed
+// rows -- a sampler makes ~1e5 gradient evaluations and recording all of
+// them would bloat parHistData.  The FIRST call prints (immediate
+// feedback at the starting point), then every `every`-th call after.
+// Own scaling struct (the vae/advi pattern): op_focei.scale is populated
+// only by the full focei outer setup, which the foceiLik residency never
+// runs, so the residency print carries its own buffers.
+static scaling _foceiLikIterScale;
+static std::vector<double> _foceiLikIterInit;
+static std::vector<double> _foceiLikIterScaleC;
+static std::vector<int> _foceiLikIterXPar;
+static bool _foceiLikIterOn = false;
+static int _foceiLikIterEvery = 0;
+static long _foceiLikIterCnt = 0;
+
+//[[Rcpp::export]]
+RObject foceiLikIterPrintStart_(int every, NumericVector initPar,
+                                CharacterVector names,
+                                RObject iterPrintControl = R_NilValue,
+                                RObject xform = R_NilValue) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  // The print vector is CALLER-defined, not the internal focei parameter
+  // vector: the internal vector's omega tail is chol(Omega^-1) diagXform
+  // values, which a Bayesian sampler neither uses nor understands.  The
+  // caller passes natural-scale thetas plus the sampler's current ACTUAL
+  // omega entries, named om.<eta> (variance) / cov.<eta1>.<eta2>
+  // (covariance) -- so np here is the display width, not op_focei.npars.
+  int np = initPar.size();
+  if (names.size() != np) {
+    stop("names length (%d) must match initPar length (%d)",
+         (int)names.size(), np);
+  }
+  _foceiLikIterInit.assign(initPar.begin(), initPar.end());
+  _foceiLikIterScaleC.assign(np, 1.0);
+  scaling *s = &_foceiLikIterScale;
+  scaleSetup(s, _foceiLikIterInit.data(), _foceiLikIterScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  if (!Rf_isNull(iterPrintControl)) {
+    scaleApplyIterPrintControl(s, as<List>(iterPrintControl));
+  }
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(s, as<List>(xform));
+  }
+  if (s->xPar == NULL) {
+    // no xform: natural-scale values, no back-transform row. xPar must be
+    // non-NULL because scalePrintFun indexes it unconditionally.
+    _foceiLikIterXPar.assign(np, 0);
+    s->xPar = _foceiLikIterXPar.data();
+    s->probitIdx = NULL;
+    s->logitThetaLow = s->logitThetaHi = NULL;
+    s->probitThetaLow = s->probitThetaHi = NULL;
+  }
+  s->save = 1; s->showOfv = 1;
+  s->keyExtra =
+    "objective = -2 * sum of the conditional log-likelihood at the sampler's current point\n"
+    "om.<eta>/cov.<eta1>.<eta2> columns are the sampler's current omega values\n";
+  // cadence is gated in nlmixr2FoceiIterPrintRow (this file), NOT by the
+  // scale's own counter, so parHistData records exactly the printed rows
+  _foceiLikIterEvery = (every < 0) ? 0 : every;
+  s->every = (_foceiLikIterEvery > 0) ? 1 : 0;
+  _foceiLikIterCnt = 0;
+  if (_foceiLikIterEvery != 0) scalePrintHeader(s);
+  _foceiLikIterOn = true;
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject foceiLikIterPrintEnd_() {
+  if (!_foceiLikIterOn) return R_NilValue;
+  scaling *s = &_foceiLikIterScale;
+  s->save = 0;
+  if (_foceiLikIterEvery != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  RObject ph = scaleParHisDf(s);
+  _foceiLikIterOn = false;
+  _foceiLikIterEvery = 0;
+  s->every = 0;
+  return ph;
+}
+
+// Plain C, non-throwing: one sampler evaluation's (full, natural-scale)
+// parameter vector + objective.  Gated to the Start cadence; scalePrintFun
+// allocates only through the C++ heap and prints via REprintf, so it is
+// safe inside a log-density evaluation.  0 ok, -1 inactive, -2 bad shape.
+extern "C" int nlmixr2FoceiIterPrintRow(const double *par, int npars,
+                                        double objf) {
+  if (!foceiLikLoaded || !_foceiLikIterOn) return -1;
+  if (par == NULL || npars != _foceiLikIterScale.npars) return -2;
+  if (_foceiLikIterEvery <= 0) return 0;
+  int doPrint = 0;
+#ifdef _OPENMP
+#pragma omp critical(nlmixr2FoceiIterPrintRow)
+#endif
+  {
+    if ((_foceiLikIterCnt++) % _foceiLikIterEvery == 0) doPrint = 1;
+  }
+  if (!doPrint) return 0;
+  try {
+#ifdef _OPENMP
+#pragma omp critical(nlmixr2FoceiIterPrintRow)
+#endif
+    {
+      scalePrintFun(&_foceiLikIterScale, (double *)par, objf);
+    }
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+//[[Rcpp::export]]
+int foceiLikRowTick_(NumericVector par, double objf) {
+  return nlmixr2FoceiIterPrintRow(&par[0], (int)par.size(), objf);
+}
+
 // Mixture component count for the blessed component-major layout (#955):
 // 1 for a non-mixture load, K for a K-component mixture; -1 not loaded.
 extern "C" int nlmixr2FoceiNMix(void) {
@@ -18776,20 +18943,21 @@ extern "C" int nlmixr2FoceiNMix(void) {
 // _nlmixr2est_likContribPtrs above); the downstream package installs it via
 // inst/include/nlmixr2estFoceiPtr.h.
 extern "C" SEXP _nlmixr2est_foceiPtrs(void) {
-  const char *nm[8] = {"apiVersion", "dims", "setTheta", "condBatch",
+  const char *nm[9] = {"apiVersion", "dims", "setTheta", "condBatch",
                        "setOmegaInv", "thetaSensIdx", "condThetaGrad",
-                       "nMix"};
-  DL_FUNC fn[8] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
+                       "nMix", "iterPrintRow"};
+  DL_FUNC fn[9] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
                    (DL_FUNC) &nlmixr2FoceiDims,
                    (DL_FUNC) &nlmixr2FoceiSetTheta,
                    (DL_FUNC) &nlmixr2FoceiCondBatch,
                    (DL_FUNC) &nlmixr2FoceiSetOmegaInv,
                    (DL_FUNC) &nlmixr2FoceiThetaSensIdx,
                    (DL_FUNC) &nlmixr2FoceiCondThetaGrad,
-                   (DL_FUNC) &nlmixr2FoceiNMix};
-  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 8));
-  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 8));
-  for (int i = 0; i < 8; ++i) {
+                   (DL_FUNC) &nlmixr2FoceiNMix,
+                   (DL_FUNC) &nlmixr2FoceiIterPrintRow};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 9));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 9));
+  for (int i = 0; i < 9; ++i) {
     SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
     SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
   }

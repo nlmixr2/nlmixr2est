@@ -16,7 +16,8 @@
                              literalFix = FALSE, addProp = "combined2",
                              eventSens = "jump", indTolRelax = TRUE,
                              maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5,
-                             scaleType = "nlmixr2", scaleTo = 1.0) {
+                             scaleType = "nlmixr2", scaleTo = 1.0,
+                             fallbackFD = FALSE) {
   .interaction <- if (likelihood %in% c("foce", "focep")) 0L else 1L
   .foce <- if (identical(likelihood, "focep")) "foce+" else "nonmem"
   foceiControl(rxControl = rxControl, maxOuterIterations = 0L,
@@ -27,7 +28,8 @@
                calcTables = FALSE, compress = FALSE, eventSens = eventSens,
                indTolRelax = indTolRelax, maxOdeRecalc = maxOdeRecalc,
                odeRecalcFactor = odeRecalcFactor, print = 0L,
-               scaleType = scaleType, scaleTo = scaleTo)
+               scaleType = scaleType, scaleTo = scaleTo,
+               fallbackFD = fallbackFD)
 }
 
 #' Load a general FOCE-family likelihood into memory
@@ -373,4 +375,52 @@ foceiLikUnload <- function() {
   foceiLikUnload_()
   nlmixr2global$foceiLikEnv <- NULL
   invisible(TRUE)
+}
+
+#' Iteration printing / parameter history over a loaded likelihood
+#'
+#' The standard nlmixr2est iteration table (the shared `scale.h` machinery
+#' behind every estimation method's printout) exposed for an EXTERNAL
+#' sampler driving [foceiLikLoad()]'s conditional likelihood -- e.g.
+#' nlmixr2stan's `est="stan"`.  `foceiLikIterPrintStart()` prints the header
+#' and arms the row entry (entry 8 of the FOCEi C API table,
+#' `nlmixr2FoceiIterPrintRow`), which the sampler's gradient evaluations
+#' call from C; every `every`-th call prints a row AND records it, so the
+#' returned history holds exactly the printed rows.
+#' `foceiLikIterPrintEnd()` prints the closing line and returns the history
+#' as a `parHistData`-style data frame.
+#'
+#' The display vector is CALLER-defined, not the internal focei parameter
+#' vector: pass natural-scale thetas plus (optionally) the sampler's current
+#' actual omega entries, named `om.<eta>` for variances and
+#' `cov.<eta1>.<eta2>` for covariances.  (The internal vector's omega tail
+#' is `chol(Omega^-1)` in the `diagXform` parameterization, which a
+#' Bayesian sampler neither uses nor understands, so it is NOT printed.)
+#'
+#' @param every print/record cadence in row-entry calls (0 arms nothing;
+#'   the row entry then records nothing and returns immediately)
+#' @param initPar display vector at the starting point (defines the width)
+#' @param names column names, same length as `initPar`
+#' @param iterPrintControl optional list applied via the shared
+#'   `scaleApplyIterPrintControl` (e.g. `list(useColor=FALSE, printNcol=6L)`)
+#' @param xform optional back-transform list (the `.iterPrintXParFromUi`
+#'   shape) driving the `X` row
+#' @return `foceiLikIterPrintStart()`: invisibly `NULL`;
+#'   `foceiLikIterPrintEnd()`: the recorded history data frame (or `NULL`
+#'   when printing was never started)
+#' @export
+#' @author Matthew L. Fidler
+foceiLikIterPrintStart <- function(every, initPar, names,
+                                   iterPrintControl = NULL, xform = NULL) {
+  checkmate::assertIntegerish(every, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(initPar, min.len = 1, any.missing = FALSE)
+  checkmate::assertCharacter(names, len = length(initPar))
+  invisible(foceiLikIterPrintStart_(as.integer(every), as.double(initPar),
+                                    names, iterPrintControl, xform))
+}
+
+#' @rdname foceiLikIterPrintStart
+#' @export
+foceiLikIterPrintEnd <- function() {
+  foceiLikIterPrintEnd_()
 }

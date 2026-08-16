@@ -1125,6 +1125,43 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikIterPrintStart_
+RObject foceiLikIterPrintStart_(int every, NumericVector initPar, CharacterVector names, RObject iterPrintControl, RObject xform);
+RcppExport SEXP _nlmixr2est_foceiLikIterPrintStart_(SEXP everySEXP, SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type every(everySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type initPar(initParSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    Rcpp::traits::input_parameter< RObject >::type iterPrintControl(iterPrintControlSEXP);
+    Rcpp::traits::input_parameter< RObject >::type xform(xformSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikIterPrintStart_(every, initPar, names, iterPrintControl, xform));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikIterPrintEnd_
+RObject foceiLikIterPrintEnd_();
+RcppExport SEXP _nlmixr2est_foceiLikIterPrintEnd_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiLikIterPrintEnd_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiLikRowTick_
+int foceiLikRowTick_(NumericVector par, double objf);
+RcppExport SEXP _nlmixr2est_foceiLikRowTick_(SEXP parSEXP, SEXP objfSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type par(parSEXP);
+    Rcpp::traits::input_parameter< double >::type objf(objfSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikRowTick_(par, objf));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLikCondGrad_
 List foceiLikCondGrad_(NumericMatrix etaMat, int cores);
 RcppExport SEXP _nlmixr2est_foceiLikCondGrad_(SEXP etaMatSEXP, SEXP coresSEXP) {
