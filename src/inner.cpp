@@ -1337,8 +1337,139 @@ static inline double scalePar(double *x, int i){
 // covariance's foceiFdSetOmega() is its variance-covariance-scale, pure-C++ sibling.
 // Shared by updateTheta(), the final-Omega refresh and the per-individual FD's omega phase,
 // which all used to inline the same five lines.
+// Memo of the last omega tail updateTheta() rebuilt Omega from: the
+// rebuild goes through rxode2's symbolic-inverse machinery (R-level
+// symengine environment calls, ~1 ms), and within an outer iteration's
+// gradient evaluations -- and for EVERY est="stan" evaluation, where Stan
+// owns Omega -- the tail does not change.  Cleared whenever the omega
+// state is rebuilt or set outside updateTheta (setup, direct
+// setOmegaTheta callers, the external SetOmegaInv), so a stale skip can
+// never leave the caller's omega in force by accident.
+static std::vector<double> _updateThetaOmegaTail;
+
+// ---- C-side Omega rebuild (#958 follow-on) --------------------------------
+// The omega tail parameterizes chol(Omega^-1) directly (one tail entry per
+// factor entry; diagonals stored through sqrt/log/identity), but the values
+// were fetched by evaluating rxode2's precomputed R closure -- an R round
+// trip (~1 ms) in the per-evaluation hot path.  The map {tail k -> (i,j),
+// diagonal transform} is discovered EMPIRICALLY on first use by probing the
+// env one entry at a time and then VERIFIED against the env at a displaced
+// tail; any mismatch, ambiguity, or unsupported structure falls back to the
+// R path permanently for the loaded problem.  fo==1 (needs omega itself)
+// keeps the R path.
+static std::vector<int> _omFastRow, _omFastCol, _omFastXf; // xf: 0 id, 1 sqrt, 2 log, -1 offdiag
+static int _omFastNeta = 0;
+static int _omFastState = 0; // 0 untried, 1 ok, -1 unavailable
+void foceiOmegaFastReset(void) { _omFastState = 0; }
+
+// Under the fast path updateTheta() no longer pushes the tail into the
+// _rxInv env each evaluation, so any argument-less env read (the "omega"
+// matrix, the d(omegaInv) lists, ...) must sync the env itself first.
+// One R call at OUTER-iteration frequency; a no-op-cost guard elsewhere.
+static void foceiOmegaEnvSyncFromTail(void) {
+  if (op_focei.omegan == 0) return;
+  NumericVector ot((int)op_focei.omegan);
+  std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
+            &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
+            ot.begin());
+  setOmegaTheta(ot);
+}
+void foceiOmegaTailMemoClear(void) { _updateThetaOmegaTail.clear(); }
+
+static void foceiOmegaFastCompute(const double *omBlock) {
+  const int n = _omFastNeta;
+  arma::mat U(n, n, arma::fill::zeros);
+  double ld = 0.0;
+  for (unsigned int k = 0; k < op_focei.omegan; ++k) {
+    double v = omBlock[k];
+    switch (_omFastXf[k]) {
+    case 1: v = v * v; break;
+    case 2: v = std::exp(v); break;
+    default: break;
+    }
+    U(_omFastRow[k], _omFastCol[k]) = v;
+  }
+  for (int i = 0; i < n; ++i) ld += std::log(U(i, i));
+  op_focei.cholOmegaInv = U;
+  op_focei.omegaInv = U.t() * U;
+  op_focei.logDetOmegaInv5 = ld;
+}
+
+static void foceiOmegaFastTry(const double *omBlock) {
+  _omFastState = -1; // pessimistic until verified
+  const int n = (int)op_focei.neta;
+  const unsigned int m = op_focei.omegan;
+  if (n <= 0 || m == 0) return;
+  std::vector<double> t0(omBlock, omBlock + m);
+  NumericVector ot((int)m);
+  std::copy(t0.begin(), t0.end(), ot.begin());
+  setOmegaTheta(ot);
+  arma::mat U0 = getCholOmegaInv();
+  if ((int)U0.n_rows != n) return;
+  _omFastNeta = n;
+  _omFastRow.assign(m, -1); _omFastCol.assign(m, -1); _omFastXf.assign(m, -1);
+  const double dlt = 0.25;
+  for (unsigned int k = 0; k < m; ++k) {
+    NumericVector tp((int)m);
+    std::copy(t0.begin(), t0.end(), tp.begin());
+    tp[(int)k] += dlt;
+    setOmegaTheta(tp);
+    arma::mat Uk = getCholOmegaInv();
+    int nz = 0, ri = -1, ci = -1;
+    for (int i = 0; i < n; ++i) {
+      for (int jj = 0; jj < n; ++jj) {
+        if (std::fabs(Uk(i, jj) - U0(i, jj)) > 1e-12) { nz++; ri = i; ci = jj; }
+      }
+    }
+    if (nz != 1) return; // not a one-entry-per-theta parameterization
+    _omFastRow[k] = ri; _omFastCol[k] = ci;
+    if (ri != ci) {
+      // off-diagonal must be the raw theta (linear, coefficient 1)
+      if (std::fabs((Uk(ri, ci) - U0(ri, ci)) - dlt) > 1e-9) return;
+      _omFastXf[k] = 0;
+    } else {
+      const double th = t0[k], b0 = U0(ri, ci), b1 = Uk(ri, ci);
+      if (std::fabs(b1 - (th + dlt)) < 1e-9 && std::fabs(b0 - th) < 1e-9) {
+        _omFastXf[k] = 0;
+      } else if (std::fabs(b1 - (th + dlt) * (th + dlt)) < 1e-9 &&
+                 std::fabs(b0 - th * th) < 1e-9) {
+        _omFastXf[k] = 1;
+      } else if (std::fabs(b1 - std::exp(th + dlt)) < 1e-9 &&
+                 std::fabs(b0 - std::exp(th)) < 1e-9) {
+        _omFastXf[k] = 2;
+      } else {
+        return; // unrecognized diagonal transform
+      }
+    }
+  }
+  // verification at a displaced tail: the C-side rebuild must reproduce the
+  // env exactly (up to numerical noise) for omegaInv, chol and logdet
+  std::vector<double> tv(t0);
+  for (unsigned int k = 0; k < m; ++k) tv[k] += 0.1 + 0.03 * (double)k;
+  NumericVector tvv((int)m);
+  std::copy(tv.begin(), tv.end(), tvv.begin());
+  setOmegaTheta(tvv);
+  arma::mat oiR = getOmegaInv();
+  arma::mat chR = getCholOmegaInv();
+  double ldR = getOmegaDet();
+  _omFastState = 1; // arm so the compute below uses the map
+  foceiOmegaFastCompute(tv.data());
+  bool ok = arma::approx_equal(op_focei.omegaInv, oiR, "absdiff", 1e-10) &&
+    arma::approx_equal(op_focei.cholOmegaInv, chR, "absdiff", 1e-10) &&
+    std::fabs(op_focei.logDetOmegaInv5 - ldR) < 1e-10;
+  if (!ok) { _omFastState = -1; return; }
+  _omFastState = 1;
+}
+
 static void foceiOmegaFromTheta(const double *omBlock) {
   if (op_focei.omegan == 0) return;
+  if (getenv("NLMIXR2_NO_FAST_OMEGA") == NULL && op_focei.fo != 1) {
+    if (_omFastState == 0) foceiOmegaFastTry(omBlock);
+    if (_omFastState == 1) {
+      foceiOmegaFastCompute(omBlock);
+      return;
+    }
+  }
   NumericVector omegaTheta(op_focei.omegan);
   std::copy(omBlock, omBlock + op_focei.omegan, omegaTheta.begin());
   setOmegaTheta(omegaTheta);
@@ -1393,9 +1524,21 @@ void updateTheta(double *theta){
     NumericVector mixJac = f(curTheta, mixIdx);
     std::copy(mixJac.begin(), mixJac.end(), &op_focei.mixProbGrad[0]);
   }
-  // Update setOmegaTheta
+  // Update setOmegaTheta -- skipped when the omega tail is UNCHANGED
+  // since the last rebuild (the symbolic-inverse rebuild costs ~1 ms of
+  // R-level calls; a sampler that owns Omega, or an outer gradient
+  // varying one theta at a time, pays it only when the tail moves)
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {
-    foceiOmegaFromTheta(&op_focei.fullTheta[0] + op_focei.ntheta);
+    const double *omTail = &op_focei.fullTheta[0] + op_focei.ntheta;
+    const size_t omN = (size_t)op_focei.omegan;
+    bool same = getenv("NLMIXR2_NO_OMEGA_MEMO") == NULL &&
+      _updateThetaOmegaTail.size() == omN && omN > 0 &&
+      std::memcmp(_updateThetaOmegaTail.data(), omTail,
+                  sizeof(double) * omN) == 0;
+    if (!same) {
+      foceiOmegaFromTheta(omTail);
+      _updateThetaOmegaTail.assign(omTail, omTail + omN);
+    }
   }
   //Now Setup Last theta
   if (!op_focei.calcGrad){
@@ -4207,6 +4350,7 @@ void innerOpt() {
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
+    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
   }
@@ -6408,6 +6552,10 @@ NumericVector foceiSetup_(const RObject &obj,
   // #958 combined build: same process-global hygiene as thetaSensLoad
   op_focei.combSens = foceiO.containsElementNamed("combSens") &&
     as<bool>(foceiO["combSens"]);
+  // fresh problem: never inherit a previous fit's omega-tail memo or its
+  // fast chol(Omega^-1) map (the _rxInv env is new)
+  foceiOmegaTailMemoClear();
+  foceiOmegaFastReset();
 
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
@@ -10530,6 +10678,7 @@ double impGetOmegaThetaVal(int m) { return op_focei.fullTheta[op_focei.ntheta + 
 // updateTheta() takes), so likInner0's prior term and the objective normalizer
 // both reflect it.
 void impSetOmegaThetaAll(int m, double val) {
+  foceiOmegaTailMemoClear(); // omega state moves outside updateTheta
   op_focei.fullTheta[op_focei.ntheta + m] = val;
   NumericVector omegaTheta(op_focei.omegan);
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
@@ -10551,6 +10700,7 @@ void impSetEta(int id, const arma::vec& eta) {
 
 // Current Omega matrix (its zero pattern gives the estimated-element structure).
 void impGetOmega(arma::mat& Om) {
+  foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
   Om = getOmegaMat();
 }
 
@@ -10678,6 +10828,8 @@ void impReMap() {
 // determinant, and copy the new Omega thetas into fullTheta so the next MAP and
 // the output see them.
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+  foceiOmegaFastReset(); // the _rxInv env is replaced; the map may change
+  foceiOmegaTailMemoClear();
   Environment rxode2ns = Environment::namespace_env("rxode2");
   Function f = rxode2ns["rxSymInvCholCreate"];
   // positive-definite guard: a support-point covariance can be numerically
@@ -13175,6 +13327,7 @@ static std::vector<double> _fdOmTheta0;
 // _fdOmBlock0 when it is done.
 static bool fdOmegaBuild(const std::vector<double> &blk, arma::mat &oiOut, double &ldOut) {
   if (op_focei.omegan == 0) return false;
+  foceiOmegaTailMemoClear(); // _rxInv moves outside updateTheta
   NumericVector ot((int)op_focei.omegan);
   for (unsigned int q = 0; q < op_focei.omegan; ++q) ot[(int)q] = blk[(size_t)q];
   setOmegaTheta(ot);
@@ -15392,6 +15545,7 @@ static bool gradDirectEbes(int nsub, int neta, arma::mat &ebes) {
 static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
                             arma::cube &dOiEst, arma::vec &tr28) {
   try {
+    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     Oi = getOmegaInv();
     List dOiL = getDOmegaInvL();
     NumericVector tr = getTr28V();
@@ -18578,6 +18732,9 @@ extern "C" int nlmixr2FoceiSetOmegaInv(const double *omegaInv, int neta) {
     op_focei.omegaInv = oi;
     op_focei.cholOmegaInv = ch;
     op_focei.logDetOmegaInv5 = 0.5 * val;
+    // preserve pre-memo semantics: the next updateTheta rebuilds Omega
+    // from the theta tail even if the tail is unchanged
+    foceiOmegaTailMemoClear();
     // the memoized per-subject inner state was computed against the old
     // Omega; force a recompute
     rx = getRxSolve_();
