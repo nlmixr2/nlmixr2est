@@ -110,7 +110,11 @@ struct impThetaSensData {
   // DV side is applied here because the sensitivity model never sees the DV.
   arma::mat ddvmat, dlimmat;
 };
-void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out);
+// reuseSolve (#958): the caller has JUST solved the combined inner model at
+// this exact (theta, eta) point on this thread (single-sample case), so the
+// read pass consumes that solution instead of re-solving.
+void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
+                         bool reuseSolve = false);
 void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
                       arma::vec& g, arma::mat& H);
 

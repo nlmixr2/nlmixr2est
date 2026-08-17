@@ -148,6 +148,23 @@ extern "C" {
   typedef int (*nlmixr2FoceiIterPrintRow_t)(const double *par, int npars,
                                             double objf);
 
+  /* #958 fused tier-2 entry: value + d/d(eta) + d/d(theta) from ONE
+     combined-model solve per subject.  Same contracts as condBatch +
+     condThetaGrad merged: value/gradEta as condBatch (row-major
+     nid x neta, -Inf + zeroed rows on rejection), dTheta as condThetaGrad
+     (row-major nid x ntheta; sensitivity columns filled, mu-referenced
+     columns zero for the caller's identity).  >=0 bad-subject count;
+     -4 theta sensitivities not wired; -5 the loaded problem is not a
+     combined build (foceiLikLoad(combSens=TRUE)).  NULL when the loaded
+     nlmixr2est predates the entry.  */
+  /* dims flag 0x80: the loaded problem is a combined-sensitivity build
+     (foceiLikLoad(combSens=TRUE)) and the fused entry below works. */
+  typedef int (*nlmixr2FoceiCondBatchThetaGrad_t)(const double *eta, int nid,
+                                                  int neta, int cores,
+                                                  double *value,
+                                                  double *gradEta,
+                                                  double *dTheta);
+
   extern nlmixr2FoceiApiVersion_t    nlmixr2FoceiApiVersionP;
   extern nlmixr2FoceiDims_t          nlmixr2FoceiDimsP;
   extern nlmixr2FoceiSetTheta_t      nlmixr2FoceiSetThetaP;
@@ -157,6 +174,7 @@ extern "C" {
   extern nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP;
   extern nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP;
   extern nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP;
+  extern nlmixr2FoceiCondBatchThetaGrad_t nlmixr2FoceiCondBatchThetaGradP;
 
   // Always refresh: a reloaded nlmixr2est hands back new addresses, and
   // keeping the first set seen would leave the caller calling into an
@@ -176,6 +194,8 @@ extern "C" {
       (nlmixr2FoceiNMix_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 7)) : NULL;
     nlmixr2FoceiIterPrintRowP = (Rf_xlength(p) > 8) ?
       (nlmixr2FoceiIterPrintRow_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 8)) : NULL;
+    nlmixr2FoceiCondBatchThetaGradP = (Rf_xlength(p) > 9) ?
+      (nlmixr2FoceiCondBatchThetaGrad_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 9)) : NULL;
     return R_NilValue;
   }
 
@@ -189,6 +209,7 @@ extern "C" {
   nlmixr2FoceiCondThetaGrad_t nlmixr2FoceiCondThetaGradP = NULL;        \
   nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP          = NULL;        \
   nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP  = NULL;        \
+  nlmixr2FoceiCondBatchThetaGrad_t nlmixr2FoceiCondBatchThetaGradP = NULL; \
   SEXP iniNlmixr2estFocei(SEXP p) { return iniNlmixr2estFocei0(p); }
 
 #ifdef __cplusplus

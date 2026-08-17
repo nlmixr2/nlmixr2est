@@ -673,7 +673,7 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 #' @author Matthew L. Fidler
 #' @export
 #' @keywords internal
-.sensEtaOrTheta <- function(s, theta=FALSE) {
+.sensEtaOrTheta <- function(s, theta=FALSE, extraThetaVars=NULL) {
   .etaVars <- NULL
   if (theta && exists("..maxTheta", s)) {
     .etaVars <- paste0("THETA_", seq(1, s$..maxTheta), "_")
@@ -683,6 +683,11 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
   if (length(.etaVars) == 0L) {
     stop("cannot identify parameters for sensitivity analysis\n   with nlmixr2 an 'eta' initial estimate must use '~'", call. = FALSE)
   }
+  # combined eta+theta build (#958): the UNION goes through the same single
+  # .rxJacobian/.rxSens pair (proven to accept a mixed ETA_/THETA_ list by
+  # the augmented-outer builder); eta-sens states keep their positions, the
+  # theta-sens states append after them
+  .etaVars <- c(.etaVars, extraThetaVars)
   .stateVars <- .rxode2stateOdeNoOutput(s)
   # matExp() models are handled transparently here: rxode2::.rxJacobian calls
   # .rxInjectMatExpOdes(), which materializes the implied d/dt() from the
@@ -697,7 +702,23 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
   .s <- rxUiGet.loadPruneSens(x, ...)
-  .sensEtaOrTheta(.s)
+  .extra <- NULL
+  if (isTRUE(rxode2::rxGetControl(x[[1]], "combSens", FALSE))) {
+    # combined eta+theta sensitivity build (#958): the inner model also
+    # carries d/d(theta) forward sensitivities for the estimated non-mu
+    # thetas, so one solve serves value + d/d(eta) + d/d(theta)
+    .idx <- .impmapEstTheta(x[[1]])
+    if (length(.idx$all) > 0L) {
+      # paste0 recycles a zero-length index to "" (R >= 4.0), which would
+      # fabricate a malformed "THETA__" sensitivity variable
+      if (length(.idx$struct) > 0L) {
+        .extra <- paste0("THETA_", .idx$struct, "_")
+      }
+      assign("..combThetaStruct", .idx$struct, envir = .s)
+      assign("..combThetaIdx", .idx$all, envir = .s)
+    }
+  }
+  .sensEtaOrTheta(.s, extraThetaVars = .extra)
 }
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiEtaS, "rstudio") <- emptyenv()
@@ -948,6 +969,39 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # rx_pred_ so the FOCEi column block stays contiguous.
   .arEtaSens <- .s$..arEtaSens
   if (is.null(.arEtaSens)) .arEtaSens <- character(0)
+  # Combined eta+theta sensitivity columns (#958): computed against THIS
+  # env (whose union .rxSens defined the rx__sens_<state>_BY_THETA_j___
+  # symbols) with the impmap chain rule, and APPENDED after the FOCEi
+  # eta block -- likInner0 reads predOffset+k arithmetically, so the
+  # block through rx__sens_rx_r__BY_ETA_<neta>___ must stay untouched;
+  # the theta consumers resolve their offsets by name.
+  .combTheta <- character(0)
+  if (!is.null(.s$..combThetaIdx)) {
+    .stV <- .rxode2stateOdeNoOutput(.s)
+    .idxAll <- .s$..combThetaIdx
+    .idxStruct <- .s$..combThetaStruct
+    .combDf <- vapply(.idxAll, function(j) {
+      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
+             .impmapChainRule(.s, "rx_pred_", j, .stV, .idxStruct))
+    }, character(1))
+    .combDv <- vapply(.idxAll, function(j) {
+      paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
+             .impmapChainRule(.s, "rx_r_", j, .stV, .idxStruct))
+    }, character(1))
+    .combDl <- character(0)
+    .lambdaSym <- get("rx_lambda_", envir = .s)
+    if (inherits(.lambdaSym, "Basic")) {
+      .dl <- vapply(.idxAll,
+                    function(j) .impmapChainRule(.s, "rx_lambda_", j, .stV,
+                                                 .idxStruct),
+                    character(1))
+      if (any(!(.dl %in% c("0", "0.0", "-0")))) {
+        .combDl <- paste0("rx__sens_rx_lambda__BY_THETA_", .idxAll, "___=",
+                          .dl)
+      }
+    }
+    .combTheta <- c(.combDf, .combDv, .combDl)
+  }
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -966,6 +1020,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .s$..HdEta,
     .r,
     .s$..REta,
+    .combTheta,
     .adjLhs,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
@@ -1585,7 +1640,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## text, so they must key the persisted cache too, else two fits of the same model
   ## whose datasets differ only in covariate-constancy would collide.
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
-  digest::digest(c(all(is.na(.iniDf$neta1)),
+  ## combined eta+theta sensitivity build (#958) changes the inner model text
+  .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
+  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens,
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
@@ -2202,7 +2259,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # wants the same model without being an imp/advi estimation.
   if ((rxode2::rxGetControl(ui, "est", "") %in% c("impmap", "imp", "qrpem", "advi") ||
          isTRUE(rxode2::rxGetControl(ui, "thetaSensLoad", FALSE))) &&
+        !isTRUE(rxode2::rxGetControl(ui, "combSens", FALSE)) &&
         is.null(env$model$thetaSens)) {
+    # (combSens (#958): the INNER model carries the theta columns, so the
+    # separate theta-sensitivity model is neither built nor compiled)
     # eventSens follows the control (same source as the inner model): with
     # "jump" a theta entering dose handling (alag/f/dur/rate) gets its jump
     # condition at the event, so its d(f)/d(theta) column is real rather

@@ -132,6 +132,7 @@ foceiLikLoad <- function(object, data,
                          rxControl = rxode2::rxControl(),
                          scale = c("focei", "natural"),
                          thetaSens = FALSE,
+                         combSens = FALSE,
                          est = "focei", ...) {
   likelihood <- match.arg(likelihood)
   scale <- match.arg(scale)
@@ -176,6 +177,17 @@ foceiLikLoad <- function(object, data,
     .control$thetaSensLoad <- TRUE
     .control$impThetaSensIdx <- .thetaSensIdx - 1L
   }
+  # combined eta+theta sensitivity build (#958): the INNER model carries the
+  # theta columns, so one solve serves value + d/d(eta) + d/d(theta); implies
+  # a theta-sensitivity request
+  if (isTRUE(combSens)) {
+    if (!isTRUE(thetaSens)) {
+      .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
+      .control$thetaSensLoad <- TRUE
+      .control$impThetaSensIdx <- .thetaSensIdx - 1L
+    }
+    .control$combSens <- TRUE
+  }
   # vi-style inner setup on the hooked ui
   .ui$control <- .control
   .env <- .ui$foceiOptEnv
@@ -184,12 +196,13 @@ foceiLikLoad <- function(object, data,
   .env$table <- NULL
   .foceiPreProcessData(.data, .env, .ui, .control$rxControl)
   .env$control$est <- "focei"
-  if (isTRUE(thetaSens)) {
+  if (isTRUE(thetaSens) || isTRUE(combSens)) {
     # foceiSetup_ reads thetaSensLoad/impThetaSensIdx from e$control (foceiO);
     # make sure both are present there (not only on the pre-build .control) so
     # op_focei wires the offsets -- same defensive re-set as .adviInnerSetup.
     .env$control$thetaSensLoad <- TRUE
     .env$control$impThetaSensIdx <- .thetaSensIdx - 1L
+    if (isTRUE(combSens)) .env$control$combSens <- TRUE
   }
   .env$control$printTop <- FALSE
   if (is.null(.env$control$nF)) .env$control$nF <- 0L

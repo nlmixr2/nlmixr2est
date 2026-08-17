@@ -1174,6 +1174,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikCondBatchThetaGrad_
+List foceiLikCondBatchThetaGrad_(NumericMatrix etaMat, int cores);
+RcppExport SEXP _nlmixr2est_foceiLikCondBatchThetaGrad_(SEXP etaMatSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type etaMat(etaMatSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikCondBatchThetaGrad_(etaMat, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLikCondThetaGrad_
 List foceiLikCondThetaGrad_(NumericMatrix etaMat, int cores);
 RcppExport SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP etaMatSEXP, SEXP coresSEXP) {
