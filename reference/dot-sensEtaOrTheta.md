@@ -5,7 +5,7 @@ Calculate d(state)/d(eta) or d(state)/d(theta) sensitivities
 ## Usage
 
 ``` r
-.sensEtaOrTheta(s, theta = FALSE)
+.sensEtaOrTheta(s, theta = FALSE, extraThetaVars = NULL)
 ```
 
 ## Arguments

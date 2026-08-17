@@ -18,6 +18,7 @@ foceiLikLoad(
   rxControl = rxode2::rxControl(),
   scale = c("focei", "natural"),
   thetaSens = FALSE,
+  combSens = FALSE,
   est = "focei",
   ...
 )
@@ -69,6 +70,17 @@ foceiLikLoad(
   \`ntheta\` indices carry sensitivities (\`integer(0)\` when none do,
   e.g. when every theta is mu-referenced).
 
+- combSens:
+
+  When \`TRUE\`, use the combined eta+theta sensitivity build (#958):
+  the INNER model itself carries the theta-sensitivity columns (appended
+  after the FOCEi block), so one ODE integration per subject serves the
+  value, \`d/d(eta)\` AND \`d/d(theta)\` – the fused batch entry
+  \`nlmixr2FoceiCondBatchThetaGrad\` reads all three from a single solve
+  (~2x cheaper per evaluation than the two-model path). Implies a
+  theta-sensitivity request; the separate theta-sensitivity model is
+  neither built nor compiled.
+
 - est:
 
   Estimation-method name the standard pre-process hooks run against
@@ -89,7 +101,8 @@ Invisibly, a handle list with the loaded system's dimensions:
 \`initPar\` (the parameter vector at the model's initial estimates on
 the requested \`scale\`, a ready \`theta\` for \[foceiLikRun()\]),
 \`npars\`, \`ntheta\`, \`neta\`, \`nid\`, \`thetaNames\`, \`etaNames\`,
-\`idLvl\`, \`likelihood\`, \`scale\`, \`thetaSens\` and
+\`idLvl\`, \`likelihood\`, \`scale\`, \`thetaSens\` (theta sensitivities
+wired, by either build), \`combSens\` (the \#958 combined build) and
 \`thetaSensIdx\`.
 
 ## Details
