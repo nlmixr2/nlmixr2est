@@ -85,7 +85,9 @@
 #'   `initPar` (the parameter vector at the model's initial estimates on the
 #'   requested `scale`, a ready `theta` for [foceiLikRun()]), `npars`,
 #'   `ntheta`, `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl`,
-#'   `likelihood`, `scale`, `thetaSens` and `thetaSensIdx`.
+#'   `likelihood`, `scale`, `thetaSens` (theta sensitivities wired, by
+#'   either build), `combSens` (the #958 combined build) and
+#'   `thetaSensIdx`.
 #' @seealso [foceiLikRun()], [foceiLikUnload()]
 #'
 #' @examples
@@ -216,7 +218,11 @@ foceiLikLoad <- function(object, data,
   # report what was actually wired, not what was asked for: the sensitivity
   # model build is a tryCatch(NULL) in .foceiOptEnvLik, so a request can fail
   # (and with no eligible thetas there is nothing to differentiate)
-  .thetaSensBuilt <- isTRUE(thetaSens) && !is.null(.env$model$thetaSens)
+  # handle$thetaSens reports whether theta sensitivities are WIRED, however
+  # they are carried: the separate theta-sensitivity model, or (#958) the
+  # combined build whose inner model holds the columns
+  .thetaSensBuilt <- (isTRUE(thetaSens) && !is.null(.env$model$thetaSens)) ||
+    (isTRUE(combSens) && length(.thetaSensIdx) > 0L)
   if (isTRUE(thetaSens) && !.thetaSensBuilt && length(.thetaSensIdx) > 0L) {
     warning("the theta-sensitivity model could not be built; handle$thetaSens is FALSE",
             call. = FALSE)
@@ -233,6 +239,7 @@ foceiLikLoad <- function(object, data,
                   likelihood = likelihood,
                   scale = scale,
                   thetaSens = .thetaSensBuilt,
+                  combSens = isTRUE(combSens),
                   thetaSensIdx = .thetaSensIdx)
   nlmixr2global$foceiLikEnv <- .handle
   invisible(.handle)

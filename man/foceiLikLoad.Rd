@@ -11,6 +11,7 @@ foceiLikLoad(
   rxControl = rxode2::rxControl(),
   scale = c("focei", "natural"),
   thetaSens = FALSE,
+  combSens = FALSE,
   est = "focei",
   ...
 )
@@ -65,7 +66,9 @@ Invisibly, a handle list with the loaded system's dimensions:
   `initPar` (the parameter vector at the model's initial estimates on the
   requested `scale`, a ready `theta` for [foceiLikRun()]), `npars`,
   `ntheta`, `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl`,
-  `likelihood`, `scale`, `thetaSens` and `thetaSensIdx`.
+  `likelihood`, `scale`, `thetaSens` (theta sensitivities wired, by
+  either build), `combSens` (the #958 combined build) and
+  `thetaSensIdx`.
 }
 \description{
 Compiles the inner (FOCEi sensitivity) model from an rxode2 UI model,
