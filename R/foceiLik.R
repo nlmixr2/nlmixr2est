@@ -64,6 +64,10 @@
 #'   parameter vector remain in the internal `diagXform` parameterization of
 #'   `chol(Omega^-1)`; `"natural"` leaves them unscaled but does not change
 #'   that parameterization.
+#' @param iovXform Transformation carrying the IOV magnitude theta (the
+#'   `.uiApplyIov` hook): `"sd"` (default), `"var"`, `"logsd"`,
+#'   `"logvar"`.  The presence of this argument also marks the loaded
+#'   nlmixr2est as carrying the exact IOV magnitude sensitivity (#952)
 #' @param combSens When `TRUE`, use the combined eta+theta sensitivity
 #'   build (#958): the INNER model itself carries the theta-sensitivity
 #'   columns (appended after the FOCEi block), so one ODE integration per
@@ -143,6 +147,7 @@ foceiLikLoad <- function(object, data,
                          scale = c("focei", "natural"),
                          thetaSens = FALSE,
                          combSens = FALSE,
+                         iovXform = c("sd", "var", "logsd", "logvar"),
                          est = "focei", ...) {
   likelihood <- match.arg(likelihood)
   scale <- match.arg(scale)
@@ -153,14 +158,17 @@ foceiLikLoad <- function(object, data,
          call. = FALSE)
   }
   .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(object))
+  iovXform <- match.arg(iovXform)
   if (identical(scale, "natural")) {
     # identity scale/unscale: scaleType="mult" with scaleTo=0 returns the
     # parameter unchanged in both directions (see unscalePar()/scalePar(),
     # src/inner.cpp), so the estimation scale IS the natural scale (#939)
     .control <- .foceiLikControl(likelihood, rxControl,
-                                 scaleType = "mult", scaleTo = 0, ...)
+                                 scaleType = "mult", scaleTo = 0,
+                                 iovXform = iovXform, ...)
   } else {
-    .control <- .foceiLikControl(likelihood, rxControl, ...)
+    .control <- .foceiLikControl(likelihood, rxControl,
+                                 iovXform = iovXform, ...)
   }
   .control$est <- "focei"
   # Run the standard pre-process hooks (bounded transforms, covariates,
