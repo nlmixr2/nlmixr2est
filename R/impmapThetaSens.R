@@ -78,7 +78,14 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   if (!exists("..maxTheta", .s)) return(NULL)
   .stateVars <- .rxode2stateOdeNoOutput(.s)
   # State sensitivities only for the structural thetas.
-  .thetaVars <- paste0("THETA_", .idx$struct, "_")
+  # paste0 recycles a zero-length struct index to "" (R >= 4.0), which
+  # would fabricate a malformed "THETA__" sensitivity variable when every
+  # structural theta is mu-referenced and only sigma thetas remain
+  .thetaVars <- if (length(.idx$struct) > 0L) {
+    paste0("THETA_", .idx$struct, "_")
+  } else {
+    character(0)
+  }
   if (length(.thetaVars) > 0L) {
     rxode2::.rxJacobian(.s, c(.stateVars, .thetaVars))
     rxode2::.rxSens(.s, .thetaVars)

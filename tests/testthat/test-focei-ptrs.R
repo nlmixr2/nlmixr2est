@@ -30,10 +30,10 @@
 
 test_that("the foceiPtrs table has the documented shape (#937 + #955)", {
   .p <- .nlmixr2estFoceiPtrs()
-  expect_length(.p, 9L)
+  expect_length(.p, 10L)
   expect_equal(names(.p), c("apiVersion", "dims", "setTheta", "condBatch",
                             "setOmegaInv", "thetaSensIdx", "condThetaGrad",
-                            "nMix", "iterPrintRow"))
+                            "nMix", "iterPrintRow", "condBatchThetaGrad"))
   for (.i in seq_along(.p)) expect_true(inherits(.p[[.i]], "externalptr"))
 })
 
@@ -718,4 +718,78 @@ test_that("sampler iteration print: scale.h rows + parHistData over the residenc
   expect_true(all(c("tcl", "tv", "add.sd", "om.eta.cl") %in% names(.ph)))
   # inactive after End
   expect_equal(foceiLikRowTick_(h$initPar, -1), -1L)
+})
+
+test_that("combined eta+theta sensitivity build (#958): layout, parity, fused entry", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      kout <- 0.2
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center - kout * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .testSeed(11)
+  .eta <- matrix(stats::rnorm(24, 0, 0.2), 12, 2)
+  # reference: the two-model path
+  .h1 <- foceiLikLoad(.mod, .d, "focei", scale = "natural", thetaSens = TRUE)
+  .v1 <- foceiLikCondGrad_(.eta, 1L)
+  .t1 <- foceiLikCondThetaGrad_(.eta, 1L)
+  foceiLikUnload()
+  # combined build
+  .h2 <- foceiLikLoad(.mod, .d, "focei", scale = "natural", combSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  .d2 <- foceiLikDims_()
+  expect_true(bitwAnd(.d2[["flags"]], 0x40L) != 0L) # theta sens wired
+  expect_true(bitwAnd(.d2[["flags"]], 0x80L) != 0L) # combined build
+  .v2 <- foceiLikCondGrad_(.eta, 1L)
+  .t2 <- foceiLikCondThetaGrad_(.eta, 1L)
+  # value/eta grad agree at solver tolerance (the theta-sens states ride the
+  # same adaptive integration, so bit-parity is impossible by construction)
+  expect_equal(.v1$value, .v2$value, tolerance = 1e-6)
+  expect_equal(.v1$grad, .v2$grad, tolerance = 1e-5)
+  # theta gradient from the combined solve == two-model path (solver tol)
+  expect_equal(.t1$dTheta, .t2$dTheta, tolerance = 1e-5)
+  # fused entry: one solve per subject, all three outputs; value/etaGrad
+  # BITWISE equal to the separate combined-path calls, dTheta bitwise too
+  # (the reuse pass reads the very solve the value pass produced)
+  .f <- foceiLikCondBatchThetaGrad_(.eta, 1L)
+  expect_identical(.f$value, .v2$value)
+  expect_identical(.f$gradEta, .v2$grad)
+  expect_identical(.f$dTheta, .t2$dTheta)
+  expect_equal(.f$nBad, 0L)
+})
+
+test_that("combined build: sigma-only theta set adds columns, no states (#958)", {
+  skip_on_cran()
+  # every structural theta mu-referenced; only add.sd (sigma) remains -- the
+  # paste0-recycling guard keeps a malformed THETA__ variable out of the build
+  .mod <- function() {
+    ini({
+      tcl <- 1
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      cp <- 100 * exp(-cl * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- data.frame(ID = rep(1:4, each = 3), TIME = rep(c(1, 2, 4), 4),
+                   DV = 3, AMT = 0, EVID = 0)
+  .h <- foceiLikLoad(.mod, .d, "focei", scale = "natural", combSens = TRUE)
+  on.exit(foceiLikUnload(), add = TRUE)
+  .f <- foceiLikCondBatchThetaGrad_(matrix(0, 4, 1), 1L)
+  expect_equal(.f$nBad, 0L)
+  expect_true(all(is.finite(.f$value)))
 })

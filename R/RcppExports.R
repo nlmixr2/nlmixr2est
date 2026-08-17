@@ -402,6 +402,10 @@ foceiLikCondGrad_ <- function(etaMat, cores) {
     .Call(`_nlmixr2est_foceiLikCondGrad_`, etaMat, cores)
 }
 
+foceiLikCondBatchThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondBatchThetaGrad_`, etaMat, cores)
+}
+
 foceiLikCondThetaGrad_ <- function(etaMat, cores) {
     .Call(`_nlmixr2est_foceiLikCondThetaGrad_`, etaMat, cores)
 }

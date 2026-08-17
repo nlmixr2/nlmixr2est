@@ -64,6 +64,14 @@
 #'   parameter vector remain in the internal `diagXform` parameterization of
 #'   `chol(Omega^-1)`; `"natural"` leaves them unscaled but does not change
 #'   that parameterization.
+#' @param combSens When `TRUE`, use the combined eta+theta sensitivity
+#'   build (#958): the INNER model itself carries the theta-sensitivity
+#'   columns (appended after the FOCEi block), so one ODE integration per
+#'   subject serves the value, `d/d(eta)` AND `d/d(theta)` -- the fused
+#'   batch entry `nlmixr2FoceiCondBatchThetaGrad` reads all three from a
+#'   single solve (~2x cheaper per evaluation than the two-model path).
+#'   Implies a theta-sensitivity request; the separate theta-sensitivity
+#'   model is neither built nor compiled.
 #' @param thetaSens When `TRUE`, also build and wire the theta-sensitivity
 #'   model (`d(f)/d(theta)`, `d(V)/d(theta)` forward sensitivities for the
 #'   estimated non-mu structural and residual-error thetas), the model the
@@ -85,7 +93,9 @@
 #'   `initPar` (the parameter vector at the model's initial estimates on the
 #'   requested `scale`, a ready `theta` for [foceiLikRun()]), `npars`,
 #'   `ntheta`, `neta`, `nid`, `thetaNames`, `etaNames`, `idLvl`,
-#'   `likelihood`, `scale`, `thetaSens` and `thetaSensIdx`.
+#'   `likelihood`, `scale`, `thetaSens` (theta sensitivities wired, by
+#'   either build), `combSens` (the #958 combined build) and
+#'   `thetaSensIdx`.
 #' @seealso [foceiLikRun()], [foceiLikUnload()]
 #'
 #' @examples
@@ -132,6 +142,7 @@ foceiLikLoad <- function(object, data,
                          rxControl = rxode2::rxControl(),
                          scale = c("focei", "natural"),
                          thetaSens = FALSE,
+                         combSens = FALSE,
                          est = "focei", ...) {
   likelihood <- match.arg(likelihood)
   scale <- match.arg(scale)
@@ -176,6 +187,17 @@ foceiLikLoad <- function(object, data,
     .control$thetaSensLoad <- TRUE
     .control$impThetaSensIdx <- .thetaSensIdx - 1L
   }
+  # combined eta+theta sensitivity build (#958): the INNER model carries the
+  # theta columns, so one solve serves value + d/d(eta) + d/d(theta); implies
+  # a theta-sensitivity request
+  if (isTRUE(combSens)) {
+    if (!isTRUE(thetaSens)) {
+      .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
+      .control$thetaSensLoad <- TRUE
+      .control$impThetaSensIdx <- .thetaSensIdx - 1L
+    }
+    .control$combSens <- TRUE
+  }
   # vi-style inner setup on the hooked ui
   .ui$control <- .control
   .env <- .ui$foceiOptEnv
@@ -184,12 +206,13 @@ foceiLikLoad <- function(object, data,
   .env$table <- NULL
   .foceiPreProcessData(.data, .env, .ui, .control$rxControl)
   .env$control$est <- "focei"
-  if (isTRUE(thetaSens)) {
+  if (isTRUE(thetaSens) || isTRUE(combSens)) {
     # foceiSetup_ reads thetaSensLoad/impThetaSensIdx from e$control (foceiO);
     # make sure both are present there (not only on the pre-build .control) so
     # op_focei wires the offsets -- same defensive re-set as .adviInnerSetup.
     .env$control$thetaSensLoad <- TRUE
     .env$control$impThetaSensIdx <- .thetaSensIdx - 1L
+    if (isTRUE(combSens)) .env$control$combSens <- TRUE
   }
   .env$control$printTop <- FALSE
   if (is.null(.env$control$nF)) .env$control$nF <- 0L
@@ -203,7 +226,11 @@ foceiLikLoad <- function(object, data,
   # report what was actually wired, not what was asked for: the sensitivity
   # model build is a tryCatch(NULL) in .foceiOptEnvLik, so a request can fail
   # (and with no eligible thetas there is nothing to differentiate)
-  .thetaSensBuilt <- isTRUE(thetaSens) && !is.null(.env$model$thetaSens)
+  # handle$thetaSens reports whether theta sensitivities are WIRED, however
+  # they are carried: the separate theta-sensitivity model, or (#958) the
+  # combined build whose inner model holds the columns
+  .thetaSensBuilt <- (isTRUE(thetaSens) && !is.null(.env$model$thetaSens)) ||
+    (isTRUE(combSens) && length(.thetaSensIdx) > 0L)
   if (isTRUE(thetaSens) && !.thetaSensBuilt && length(.thetaSensIdx) > 0L) {
     warning("the theta-sensitivity model could not be built; handle$thetaSens is FALSE",
             call. = FALSE)
@@ -220,6 +247,7 @@ foceiLikLoad <- function(object, data,
                   likelihood = likelihood,
                   scale = scale,
                   thetaSens = .thetaSensBuilt,
+                  combSens = isTRUE(combSens),
                   thetaSensIdx = .thetaSensIdx)
   nlmixr2global$foceiLikEnv <- .handle
   invisible(.handle)
