@@ -793,3 +793,51 @@ test_that("combined build: sigma-only theta set adds columns, no states (#958)",
   expect_equal(.f$nBad, 0L)
   expect_true(all(is.finite(.f$value)))
 })
+
+test_that("IOV magnitude theta sensitivity column FD-agrees (#952)", {
+  skip_on_cran()
+  # the sd/var transforms used abs(theta), whose symengine rewrite carries
+  # an indicator with a tanh-SMOOTHED derivative -- the column came out
+  # wrong by 1 + 10*theta*(1 - tanh(10*theta)^2) (x1.42 at theta=0.1).
+  # |theta| is now emitted as sqrt(theta^2) (identical value, exact
+  # derivative), and this locks the FD agreement in for every transform.
+  .mod <- function() {
+    ini({
+      tcl <- 1.05; tv <- 2.95; add.sd <- 0.55
+      eta.cl ~ 0.1
+      iov.cl ~ 0.02 | OCC
+    })
+    model({
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .testSeed(7)
+  .d <- expand.grid(ID = 1:4, OCC = 1:2, TIME = c(1, 2, 4))
+  .d <- .d[order(.d$ID, .d$OCC, .d$TIME), ]
+  .d$DV <- 3 + stats::rnorm(nrow(.d), 0, 0.5)
+  .d$AMT <- 0; .d$EVID <- 0
+  for (.xf in c("sd", "logsd", "var", "logvar")) {
+    .h <- foceiLikLoad(.mod, .d, "focei", scale = "natural",
+                       thetaSens = TRUE, iovXform = .xf)
+    .th <- .h$initPar
+    .iov <- grep("iov", .h$thetaNames)
+    .testSeed(3)
+    .eta <- matrix(stats::rnorm(.h$nid * .h$neta, 0, 0.3), .h$nid, .h$neta)
+    .th2 <- .th
+    .th2[.iov] <- if (.xf %in% c("logsd", "logvar")) -1.5 else 0.15
+    foceiLikSetTheta_(.th2)
+    .an <- foceiLikCondThetaGrad_(.eta, 1L)$dTheta[, .iov]
+    .hs <- 1e-5
+    .tp <- .th2; .tp[.iov] <- .tp[.iov] + .hs
+    .tm <- .th2; .tm[.iov] <- .tm[.iov] - .hs
+    foceiLikSetTheta_(.tp); .vp <- foceiLikCondGrad_(.eta, 1L)$value
+    foceiLikSetTheta_(.tm); .vm <- foceiLikCondGrad_(.eta, 1L)$value
+    .fd <- (.vp - .vm) / (2 * .hs)
+    expect_lt(max(abs(.an / .fd - 1)), 1e-6,
+              label = paste0("iovXform=", .xf, " analytic/FD"))
+    foceiLikUnload()
+  }
+})

@@ -17,7 +17,7 @@
                              eventSens = "jump", indTolRelax = TRUE,
                              maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5,
                              scaleType = "nlmixr2", scaleTo = 1.0,
-                             fallbackFD = FALSE) {
+                             fallbackFD = FALSE, iovXform = "sd") {
   .interaction <- if (likelihood %in% c("foce", "focep")) 0L else 1L
   .foce <- if (identical(likelihood, "focep")) "foce+" else "nonmem"
   foceiControl(rxControl = rxControl, maxOuterIterations = 0L,
@@ -29,7 +29,7 @@
                indTolRelax = indTolRelax, maxOdeRecalc = maxOdeRecalc,
                odeRecalcFactor = odeRecalcFactor, print = 0L,
                scaleType = scaleType, scaleTo = scaleTo,
-               fallbackFD = fallbackFD)
+               fallbackFD = fallbackFD, iovXform = iovXform)
 }
 
 #' Load a general FOCE-family likelihood into memory
