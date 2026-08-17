@@ -1395,6 +1395,70 @@ static void foceiOmegaFastCompute(const double *omBlock) {
   op_focei.logDetOmegaInv5 = ld;
 }
 
+// Classify the diagonal transform at (probe) tail value th, given the base
+// and displaced factor entries; -1 when no candidate matches.
+static int foceiOmegaFastXfClassify(double th, double dlt, double b0,
+                                    double b1) {
+  if (std::fabs(b1 - (th + dlt)) < 1e-9 && std::fabs(b0 - th) < 1e-9) {
+    return 0; // identity
+  }
+  if (std::fabs(b1 - (th + dlt) * (th + dlt)) < 1e-9 &&
+      std::fabs(b0 - th * th) < 1e-9) {
+    return 1; // sqrt storage: factor entry = theta^2
+  }
+  if (std::fabs(b1 - std::exp(th + dlt)) < 1e-9 &&
+      std::fabs(b0 - std::exp(th)) < 1e-9) {
+    return 2; // log storage: factor entry = exp(theta)
+  }
+  return -1;
+}
+
+// Probe tail entry k: displace it, locate the ONE factor entry that moved,
+// and record its position + transform.  FALSE aborts the fast path (not a
+// one-entry-per-theta parameterization, or an unrecognized transform).
+static bool foceiOmegaFastProbeOne(unsigned int k, const std::vector<double> &t0,
+                                   const arma::mat &U0, double dlt) {
+  const int n = _omFastNeta;
+  NumericVector tp((int)t0.size());
+  std::copy(t0.begin(), t0.end(), tp.begin());
+  tp[(int)k] += dlt;
+  setOmegaTheta(tp);
+  arma::mat Uk = getCholOmegaInv();
+  int nz = 0, ri = -1, ci = -1;
+  for (int i = 0; i < n; ++i) {
+    for (int jj = 0; jj < n; ++jj) {
+      if (std::fabs(Uk(i, jj) - U0(i, jj)) > 1e-12) { nz++; ri = i; ci = jj; }
+    }
+  }
+  if (nz != 1) return false;
+  _omFastRow[k] = ri; _omFastCol[k] = ci;
+  if (ri != ci) {
+    // off-diagonal must be the raw theta (linear, coefficient 1)
+    if (std::fabs((Uk(ri, ci) - U0(ri, ci)) - dlt) > 1e-9) return false;
+    _omFastXf[k] = 0;
+    return true;
+  }
+  _omFastXf[k] = foceiOmegaFastXfClassify(t0[k], dlt, U0(ri, ci), Uk(ri, ci));
+  return _omFastXf[k] >= 0;
+}
+
+// Verify the mapped C-side rebuild against the env at a displaced tail:
+// omegaInv, chol and logdet must agree to numerical noise.
+static bool foceiOmegaFastVerify(const std::vector<double> &t0) {
+  std::vector<double> tv(t0);
+  for (size_t k = 0; k < tv.size(); ++k) tv[k] += 0.1 + 0.03 * (double)k;
+  NumericVector tvv((int)tv.size());
+  std::copy(tv.begin(), tv.end(), tvv.begin());
+  setOmegaTheta(tvv);
+  arma::mat oiR = getOmegaInv();
+  arma::mat chR = getCholOmegaInv();
+  double ldR = getOmegaDet();
+  foceiOmegaFastCompute(tv.data());
+  return arma::approx_equal(op_focei.omegaInv, oiR, "absdiff", 1e-10) &&
+    arma::approx_equal(op_focei.cholOmegaInv, chR, "absdiff", 1e-10) &&
+    std::fabs(op_focei.logDetOmegaInv5 - ldR) < 1e-10;
+}
+
 static void foceiOmegaFastTry(const double *omBlock) {
   _omFastState = -1; // pessimistic until verified
   const int n = (int)op_focei.neta;
@@ -1408,57 +1472,10 @@ static void foceiOmegaFastTry(const double *omBlock) {
   if ((int)U0.n_rows != n) return;
   _omFastNeta = n;
   _omFastRow.assign(m, -1); _omFastCol.assign(m, -1); _omFastXf.assign(m, -1);
-  const double dlt = 0.25;
   for (unsigned int k = 0; k < m; ++k) {
-    NumericVector tp((int)m);
-    std::copy(t0.begin(), t0.end(), tp.begin());
-    tp[(int)k] += dlt;
-    setOmegaTheta(tp);
-    arma::mat Uk = getCholOmegaInv();
-    int nz = 0, ri = -1, ci = -1;
-    for (int i = 0; i < n; ++i) {
-      for (int jj = 0; jj < n; ++jj) {
-        if (std::fabs(Uk(i, jj) - U0(i, jj)) > 1e-12) { nz++; ri = i; ci = jj; }
-      }
-    }
-    if (nz != 1) return; // not a one-entry-per-theta parameterization
-    _omFastRow[k] = ri; _omFastCol[k] = ci;
-    if (ri != ci) {
-      // off-diagonal must be the raw theta (linear, coefficient 1)
-      if (std::fabs((Uk(ri, ci) - U0(ri, ci)) - dlt) > 1e-9) return;
-      _omFastXf[k] = 0;
-    } else {
-      const double th = t0[k], b0 = U0(ri, ci), b1 = Uk(ri, ci);
-      if (std::fabs(b1 - (th + dlt)) < 1e-9 && std::fabs(b0 - th) < 1e-9) {
-        _omFastXf[k] = 0;
-      } else if (std::fabs(b1 - (th + dlt) * (th + dlt)) < 1e-9 &&
-                 std::fabs(b0 - th * th) < 1e-9) {
-        _omFastXf[k] = 1;
-      } else if (std::fabs(b1 - std::exp(th + dlt)) < 1e-9 &&
-                 std::fabs(b0 - std::exp(th)) < 1e-9) {
-        _omFastXf[k] = 2;
-      } else {
-        return; // unrecognized diagonal transform
-      }
-    }
+    if (!foceiOmegaFastProbeOne(k, t0, U0, 0.25)) return;
   }
-  // verification at a displaced tail: the C-side rebuild must reproduce the
-  // env exactly (up to numerical noise) for omegaInv, chol and logdet
-  std::vector<double> tv(t0);
-  for (unsigned int k = 0; k < m; ++k) tv[k] += 0.1 + 0.03 * (double)k;
-  NumericVector tvv((int)m);
-  std::copy(tv.begin(), tv.end(), tvv.begin());
-  setOmegaTheta(tvv);
-  arma::mat oiR = getOmegaInv();
-  arma::mat chR = getCholOmegaInv();
-  double ldR = getOmegaDet();
-  _omFastState = 1; // arm so the compute below uses the map
-  foceiOmegaFastCompute(tv.data());
-  bool ok = arma::approx_equal(op_focei.omegaInv, oiR, "absdiff", 1e-10) &&
-    arma::approx_equal(op_focei.cholOmegaInv, chR, "absdiff", 1e-10) &&
-    std::fabs(op_focei.logDetOmegaInv5 - ldR) < 1e-10;
-  if (!ok) { _omFastState = -1; return; }
-  _omFastState = 1;
+  if (foceiOmegaFastVerify(t0)) _omFastState = 1;
 }
 
 static void foceiOmegaFromTheta(const double *omBlock) {
