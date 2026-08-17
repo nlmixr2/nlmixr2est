@@ -64,6 +64,14 @@
 #'   parameter vector remain in the internal `diagXform` parameterization of
 #'   `chol(Omega^-1)`; `"natural"` leaves them unscaled but does not change
 #'   that parameterization.
+#' @param combSens When `TRUE`, use the combined eta+theta sensitivity
+#'   build (#958): the INNER model itself carries the theta-sensitivity
+#'   columns (appended after the FOCEi block), so one ODE integration per
+#'   subject serves the value, `d/d(eta)` AND `d/d(theta)` -- the fused
+#'   batch entry `nlmixr2FoceiCondBatchThetaGrad` reads all three from a
+#'   single solve (~2x cheaper per evaluation than the two-model path).
+#'   Implies a theta-sensitivity request; the separate theta-sensitivity
+#'   model is neither built nor compiled.
 #' @param thetaSens When `TRUE`, also build and wire the theta-sensitivity
 #'   model (`d(f)/d(theta)`, `d(V)/d(theta)` forward sensitivities for the
 #'   estimated non-mu structural and residual-error thetas), the model the

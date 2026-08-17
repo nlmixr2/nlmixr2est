@@ -50,6 +50,15 @@ should not pay (#939).  The handle's `thetaSensIdx` reports which
 `ntheta` indices carry sensitivities (`integer(0)` when none do, e.g.
 when every theta is mu-referenced).}
 
+\item{combSens}{When `TRUE`, use the combined eta+theta sensitivity
+build (#958): the INNER model itself carries the theta-sensitivity
+columns (appended after the FOCEi block), so one ODE integration per
+subject serves the value, `d/d(eta)` AND `d/d(theta)` -- the fused
+batch entry `nlmixr2FoceiCondBatchThetaGrad` reads all three from a
+single solve (~2x cheaper per evaluation than the two-model path).
+Implies a theta-sensitivity request; the separate theta-sensitivity
+model is neither built nor compiled.}
+
 \item{est}{Estimation-method name the standard pre-process hooks run
 against (default `"focei"`).  The hooks read the named method's
 capability attributes (for example whether a bounded-transform
