@@ -122,6 +122,19 @@
   would have broken assembling a finished fit for the first method that
   does.
 
+- The Hessian-based covariance for every NLM-family method (`nlm`,
+  `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nlminb`,
+  `nls`) was 4x too large (SEs 2x too large), for both built-in error
+  models and custom `ll()` likelihoods.
+  [`.nlmFinalizeList()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.md)
+  converted the Hessian to a covariance using the `R = 0.5*Hessian`,
+  `cov = 2*solve(R)` convention that is only correct when the Hessian is
+  of a `-2*log-likelihood` objective (as FOCEI/FOCE/SAEM/ Laplace/AGQ
+  use). NLM-family methods instead optimize a plain `-log-likelihood`,
+  so their Hessian already is the observed information; halving then
+  doubling compounded into a 4x inflated covariance. Point estimates,
+  the objective value, and the log-likelihood were unaffected.
+
 ### New features
 
 - `est="saem"` gained controls for the cost of the
