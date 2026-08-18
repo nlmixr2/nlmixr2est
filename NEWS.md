@@ -21,10 +21,16 @@
   moving-boundary (dose-time) contribution of a modeled `alag()` is now added
   via rxode2's `linCmtB(which1=-3)` (nlmixr2/rxode2#1235), and the
   bioavailability contribution via the exact `d(pred)/dF = pred/F` identity
-  (issue #920).  A model with more than one lagged `linCmt()` compartment is
-  left as before (rxode2/rxode2#1237 -- `which1=-3` is a single shared
-  delay), and `foceiControl(eventSens="fd")` opts back out for a model that
-  infuses a dose into the lagged/scaled compartment (rxode2/rxode2#1236).
+  (issue #920).
+
+  Both corrections require every dose reaching the linear system to share the
+  same `alag()`/`f()` (rxode2/rxode2#1237); a model declaring more than one
+  is left as before.  This cannot be checked for a regimen that doses an
+  *unlagged/unscaled* compartment alongside the lagged/scaled one (a common
+  design for estimating `f()` from paired IV+oral data) -- that combination
+  returns a biased, not obviously wrong, gradient.  An infused dose into the
+  lagged/scaled compartment also cannot be checked, and returns `NA`
+  (rxode2/rxode2#1236).  `foceiControl(eventSens="fd")` opts out of both.
 
 - A prior distribution given in the `ini({})` block is no longer silently
   ignored.  `nlmixr2Est()` now refuses any prior the estimation method

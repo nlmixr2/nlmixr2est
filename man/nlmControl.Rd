@@ -157,7 +157,10 @@ finite-difference Hessian that already reflects censoring exactly.}
 uses the legacy finite-difference behavior.  Also gates the analytic
 moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
 compartment; set `"fd"` if that model infuses a dose into the
-lagged/scaled compartment (rxode2/rxode2#1236).}
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;

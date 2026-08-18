@@ -31,6 +31,22 @@
 # `foceiControl(eventSens=)` -- already the documented opt-out for the
 # analogous ODE jump-sensitivity feature -- so `eventSens="fd"` is the escape
 # hatch for a model that infuses into a lagged/F'd linCmt() compartment.
+#
+# rxode2/rxode2#1237 (mixed-route dosing) -- CONFIRMED, and BROADER than "two
+# explicitly different alag()/f() declarations": per rxode2's own doc comment
+# on `linCmtB` (src/linCmt.cpp), which1=-3 "requires that EVERY dose reaching
+# the linear system carr[y] the same alag()" -- an oral depot with a modeled
+# alag() PLUS an unlagged IV bolus/infusion into central in the SAME regimen
+# is just as out of scope as two differently-lagged compartments (an unlagged
+# dose is a lag of 0, still a different delay). Confirmed by direct
+# comparison to central differences: a mixed depot+central regimen returns a
+# gradient biased by a roughly constant, nonzero amount, not NA -- worse than
+# #1236 in that it fails silently rather than loudly. `.rxFoceiLinCmtEventRows()`
+# only sees the MODEL's alag()/f() declarations, not the DATA's dosing
+# routes, so it cannot detect this case; it is the same class of build-time
+# blind spot as #1236 and shares its `eventSens="fd"` escape hatch. This
+# matters most for f() (bioavailability), which is routinely estimated from
+# exactly this kind of paired IV+oral study design.
 
 #' Discover (linCmt compartment, driving ETA/THETA, symengine expr) for a
 #' modeled alag()/f() on a linCmt() compartment
@@ -121,15 +137,19 @@
   if (length(.lin) == 0L) return(NULL)
   .lagRows <- .rxFoceiLinCmtEventRows(s, .lin, "lag", etaVars)
   .fRows <- .rxFoceiLinCmtEventRows(s, .lin, "f", etaVars)
-  # rxode2/rxode2#1237: which1=-3 is the derivative wrt ONE delay applied to
-  # every dose, not a per-compartment one -- more than one lagged linCmt()
-  # compartment (with different driving params) is out of scope; leave the
-  # existing (structural-only, still-incomplete) gradient unchanged rather
-  # than emit a call that answers a different question.
+  # rxode2/rxode2#1237: which1=-3 is the derivative wrt ONE delay shared by
+  # EVERY dose reaching the linear system, not a per-compartment one -- more
+  # than one MODELED alag() is only the detectable half of that; a regimen
+  # that also doses an unlagged compartment (a delay of 0) is the same
+  # violation and is NOT detectable here (that is data, not model,
+  # structure -- see the file banner). Skip when the model-visible half is
+  # present; leave the existing (structural-only, still-incomplete) gradient
+  # unchanged rather than emit a call that answers a different question.
   if (length(.lagRows) > 1L) .lagRows <- list()
-  # d(pred)/dF = pred/F assumes a single F-scaled compartment feeds the
-  # reported prediction; with more than one, their contributions to `pred`
-  # cannot be told apart from `pred` alone.
+  # d(pred)/dF = pred/F assumes ALL of `pred` comes from the F-scaled
+  # compartment's dose; more than one MODELED f() is the detectable half of
+  # that (same data-invisible caveat as alag() above -- an unscaled dose
+  # elsewhere in the regimen breaks the identity too).
   if (length(.fRows) > 1L) .fRows <- list()
   if (length(.lagRows) == 0L && length(.fRows) == 0L) return(NULL)
   .extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
