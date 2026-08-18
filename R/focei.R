@@ -807,9 +807,22 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   })
   .any.zero <- FALSE
   .all.zero <- TRUE
+  # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
+  # folded into each row's assigned value BELOW the zero-check so a model
+  # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
+  # is not misreported as "does not depend on ETA".
+  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
+  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
+    if (!is.null(.linCmtExtraPred)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      if (!is.null(.linCmtExtraPred[[.p]])) {
+        .l <- .l + .linCmtExtraPred[[.p]]
+        assign(x["dfe"], .l, envir = .s)
+      }
+    }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
@@ -838,6 +851,8 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .ret <- paste0(.ret, .arCorr)
   }
   .s$..HdEta <- .ret
+  .s$..linCmtEtaVars <- .linCmtEtaVars
+  .s$..linCmtExtraPred <- .linCmtExtraPred
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
   .progressStopped <- TRUE
@@ -1116,6 +1131,19 @@ rxUiGet.foceiEnv <- function(x, ...) {
   } else {
     .malert("calculate d(R^2)/d(eta)")
   }
+  # linCmt() alag()/f() moving-boundary correction (#920): rx_r_ embeds
+  # rx_pred_'s linCmtB() call directly (fully substituted, not a reference to
+  # the rx_pred_ symbol), so its own d(rx_r_)/d(eta) misses the same term;
+  # chain it through via .rxFoceiLinCmtEventChain() -- computed BEFORE the
+  # apply loop below and folded into each affected row's expression so it
+  # goes through the SAME single rxFromSE() call as the base term.  rxFromSE()
+  # of a Basic holding a linCmtB() call poisons the env's next get()/[[ read
+  # (same hazard documented on .rxPastFromEnv() in rxode2's R/dde.R), so a
+  # SEPARATE rxFromSE() call after the loop (once its rxFromSE() calls have
+  # already run) errors on the poisoned env with "user function '[[' requires
+  # 0 arguments" when rendering the cached extra terms.
+  .linCmtExtraR <- .rxFoceiLinCmtEventChain(
+    get("rx_r_", envir = .s), get("rx_pred_", envir = .s), .s$..linCmtExtraPred)
   rxode2::rxProgress(dim(.grd)[1])
   on.exit({
     rxode2::rxProgressAbort()
@@ -1123,6 +1151,10 @@ rxUiGet.foceiEnv <- function(x, ...) {
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
+    if (!is.null(.linCmtExtraR)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
+    }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
     rxode2::rxTick()
     .ret
