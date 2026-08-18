@@ -34,6 +34,18 @@
   return(.ret)
 }
 
+# newuoa refinement of the non-mu (phi0) thetas, saemControl(nonMuThetaOpt="newuoa").
+# Warnings are suppressed because this runs once per SAEM iteration and stopping on
+# the evaluation budget is the expected outcome, not a problem to report -- an
+# unsuppressed warning here would be collected into the fit's $runInfo every
+# iteration.
+.saemPhi0Newuoa <- function(par, fn, maxfun, rhobeg, rhoend, npt) {
+  suppressWarnings(
+    .newuoa(par = par, fn = fn,
+            control = list(maxfun = maxfun, rhobeg = rhobeg,
+                           rhoend = rhoend, npt = npt)))
+}
+
 .saemCheckCfg <- function(cfg) {
   checkmate::assertIntegerish(cfg$itmax, lower=1, len=1, .var.name="saem.cfg$itmax")
   checkmate::assertNumeric(cfg$tol, lower=0, len=1, .var.name="saem.cfg$tol")
@@ -267,6 +279,17 @@
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
     # for normal models too, not just general-likelihood.
     .cfg$nonMuThetaRegress <- as.integer(identical(.cfg$nonMuTheta, "regress"))
+    # cost controls for that refinement; it re-solves the ODE per objective
+    # evaluation, so it is the dominant per-iteration cost for a model whose
+    # non-mu thetas are structural
+    .cfg$nonMuThetaOptType <- as.integer(match(
+      rxode2::rxGetControl(ui, "nonMuThetaOpt", "newuoa"),
+      c("optimize", "nelderMead", "newuoa"), nomatch = 1L) - 1L)
+    .cfg$nonMuThetaSweeps <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaSweeps", 2L))
+    .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
+    .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
+                                                          .Machine$double.eps^0.25))
+    .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
     # warm-start residual params from observed per-endpoint moments (npag-style)
     .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
     # mixProbMethod="regress": fix per-subject mixture membership (hard classify

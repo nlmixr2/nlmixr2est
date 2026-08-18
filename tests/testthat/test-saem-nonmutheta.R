@@ -65,3 +65,89 @@ test_that("saemControl(nonMuTheta='regress') recovers no-eta thetas and engages 
   expect_lte(abs(.eReg[["tka"]] - .truth[["tka"]]),
              abs(.eEta[["tka"]] - .truth[["tka"]]) + 0.05)
 })
+
+test_that("the non-mu theta refinement back-solve is per phi0 column (no singular solve)", {
+  skip_on_cran()
+
+  # Two thetas with no eta (tka, tv) make nphi0 = 2.  With no phi0 covariate
+  # every column of COV0 is the same intercept column, so a back-solve against
+  # all of COV0 at once is exactly rank deficient and armadillo printed
+  # "solve(): system is singular" on every iteration from niter_phi0 on.
+  .mod <- function() {
+    ini({
+      tka <- log(1.57)
+      tcl <- log(2.72)
+      tv  <- log(31.5)
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v  <- exp(tv)
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  # niter_phi0 is half of nBurn+nEm, so this runs 10 refined iterations.
+  .msg <- capture.output(
+    .fit <- suppressWarnings(
+      nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+              control = saemControl(nBurn = 10, nEm = 10, print = 0,
+                                    calcTables = FALSE, covMethod = ""))),
+    type = "message")
+
+  expect_false(any(grepl("singular", .msg, fixed = TRUE)))
+  expect_true(all(is.finite(fixef(.fit))))
+})
+
+test_that("the multivariate nonMuThetaOpt= optimizers refine the non-mu thetas", {
+  skip_on_cran()
+
+  .mod <- function() {
+    ini({
+      tka <- log(1.57)
+      tcl <- log(2.72)
+      tv  <- log(31.5)
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v  <- exp(tv)
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  .ctl <- function(...) {
+    saemControl(nBurn = 100, nEm = 100, print = 0, calcTables = FALSE,
+                covMethod = "", seed = 1042, ...)
+  }
+  .fitNm  <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+                                      control = .ctl(nonMuThetaOpt = "nelderMead")))
+  .fitNu  <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+                                      control = .ctl(nonMuThetaOpt = "newuoa")))
+  .fitOpt <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+                                      control = .ctl(nonMuThetaOpt = "optimize")))
+  .fitEta <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+                                      control = .ctl(nonMuTheta = "eta")))
+
+  for (.f in list(.fitNm, .fitNu)) {
+    expect_true(all(is.finite(fixef(.f))))
+    # each is a different optimizer, so it must not reproduce the unrefined phi0
+    # path bit-for-bit -- that would mean the refinement never ran
+    expect_false(isTRUE(all.equal(fixef(.f), fixef(.fitEta), tolerance = 1e-8)))
+    # but it refines to the same place as the coordinate-descent default
+    expect_equal(fixef(.f)[["tka"]], fixef(.fitOpt)[["tka"]], tolerance = 0.1)
+    expect_equal(fixef(.f)[["tv"]],  fixef(.fitOpt)[["tv"]],  tolerance = 0.1)
+  }
+  # nelder-mead and newuoa are distinct optimizers under the same budget
+  expect_false(isTRUE(all.equal(fixef(.fitNm), fixef(.fitNu), tolerance = 1e-8)))
+})

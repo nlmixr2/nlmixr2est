@@ -565,6 +565,19 @@ static int gPhi0Coord = 0;
 static arma::vec gPhi0Full;
 static std::vector<int> gPhi0FreeIx;
 static double gPhi0Obj1DR(double x);
+// Shared state for the multivariate phi0 refinements (nelder-mead and newuoa).
+// Both are unbounded, so the objective clamps each candidate into the trust
+// region before evaluating it, and both need their evaluation budget enforced
+// here: nelder_fn's itmax counts IMPROVING iterations rather than evaluations,
+// and newuoa's own maxfun stop still returns whatever point it was holding.  The
+// objective therefore tracks the best point it actually saw, and the caller
+// takes that rather than whatever the optimizer reports.
+static arma::vec gPhi0Lo, gPhi0Hi, gPhi0RefBest;
+static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
+static double gPhi0RefBestF = 0.0;
+static double gPhi0RefObj(const double *p);
+static void gPhi0NmFn(double *p, double *fx);
+static double gPhi0RefObjR(Rcpp::NumericVector p);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -894,25 +907,87 @@ public:
     if (localTrust) {
       // Normal-model phi0 objective is extremely ill-conditioned (a tiny
       // proportional-error SD makes it change by orders of magnitude over a
-      // small phi0 step), which breaks bobyqa's quadratic model.  Use robust
-      // coordinate descent with R's golden-section optimize() (no quadratic
-      // model), a few sweeps, within the local trust bounds.
+      // small phi0 step), which breaks bobyqa's quadratic model.  Two
+      // derivative-free options within the local trust bounds:
+      //   nonMuThetaOpt="optimize"   -- coordinate descent with R's golden-section
+      //     optimize(); exact per coordinate but costs sweeps*nphi0*~20 objective
+      //     evaluations, each a full ODE re-solve when phi0 drives the model.
+      //   nonMuThetaOpt="nelderMead" -- one clamped nelder-mead over all free
+      //     coordinates; a fixed, much smaller budget, and it sees the coupling
+      //     between coordinates that coordinate descent cannot.
+      //   nonMuThetaOpt="newuoa"     -- the same, with newuoa's quadratic model
+      //     built from those evaluations instead of a simplex.
+      // Both spend at most nonMuThetaMaxEval objective evaluations (enforced by
+      // gPhi0RefObj) and both are clamped into the trust region.
       gPhi0Self = this;
       gPhi0Work.set_size(nphi0);
       for (int c = 0; c < nphi0; c++) gPhi0Work[c] = par0[c];
-      Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
-      Rcpp::Function optimize = stats["optimize"];
-      Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
-      for (int sweep = 0; sweep < 2; sweep++) {
-        for (int c = 0; c < nphi0; c++) {
-          if (phi0Fix[(size_t)c]) continue;
-          if (!(hi[c] > lo[c])) continue;
-          gPhi0Coord = c;
-          Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
-                                  Rcpp::_["lower"] = lo[c],
-                                  Rcpp::_["upper"] = hi[c]);
-          double xm = Rcpp::as<double>(o["minimum"]);
-          gPhi0Work[c] = xm;
+      int nFree = (int)gPhi0FreeIx.size();
+      if (nonMuThetaOptType > 0 && nFree > 1) {
+        gPhi0Lo.set_size(nphi0);
+        gPhi0Hi.set_size(nphi0);
+        for (int c = 0; c < nphi0; c++) { gPhi0Lo(c) = lo[c]; gPhi0Hi(c) = hi[c]; }
+        gPhi0RefBest.set_size(nFree);
+        gPhi0RefEvalN = 0;
+        gPhi0RefBestF = 0.0;
+        gPhi0RefEvalMax = (nonMuThetaMaxEval > 0) ? nonMuThetaMaxEval : 10*nFree;
+        if (nonMuThetaOptType == 1) {
+          std::vector<double> st((size_t)nFree), stp((size_t)nFree), xm((size_t)nFree);
+          for (int fi = 0; fi < nFree; fi++) {
+            int c = gPhi0FreeIx[(size_t)fi];
+            st[(size_t)fi] = par0[c];
+            xm[(size_t)fi] = par0[c];
+            double span = hi[c] - lo[c];
+            stp[(size_t)fi] = (R_finite(span) && span > 0.0) ? 0.1*span : 0.1;
+          }
+          int iconv, it, nfcall, iprint = 0;
+          double ynewlo;
+          // itmax is deliberately generous; gPhi0RefObj owns the real budget
+          nelder_fn(gPhi0NmFn, nFree, st.data(), stp.data(), 100*nFree,
+                    nonMuThetaTol, 1.0, 2.0, 0.5,
+                    &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+        } else {
+          // newuoa needs npt = 2n+1 interpolation points before it can move, so
+          // a budget below that leaves it no working evaluations at all.
+          int npt = 2*nFree + 1;
+          if (gPhi0RefEvalMax < npt + 2) gPhi0RefEvalMax = npt + 2;
+          Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+          Rcpp::Function phi0Newuoa = nlmixr2[".saemPhi0Newuoa"];
+          Rcpp::InternalFunction fnRef(&gPhi0RefObjR);
+          Rcpp::NumericVector parFree(nFree);
+          double rhobeg = R_PosInf;
+          for (int fi = 0; fi < nFree; fi++) {
+            int c = gPhi0FreeIx[(size_t)fi];
+            parFree[fi] = par0[c];
+            double span = hi[c] - lo[c];
+            if (R_finite(span) && span > 0.0 && 0.2*span < rhobeg) rhobeg = 0.2*span;
+          }
+          if (!R_finite(rhobeg) || rhobeg <= 0.0) rhobeg = 0.2;
+          phi0Newuoa(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fnRef,
+                     Rcpp::_["maxfun"] = gPhi0RefEvalMax,
+                     Rcpp::_["rhobeg"] = rhobeg,
+                     Rcpp::_["rhoend"] = nonMuThetaTol,
+                     Rcpp::_["npt"] = npt);
+        }
+        for (int fi = 0; fi < nFree; fi++) {
+          gPhi0Work[gPhi0FreeIx[(size_t)fi]] = gPhi0RefBest(fi);
+        }
+      } else {
+        Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+        Rcpp::Function optimize = stats["optimize"];
+        Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
+        for (int sweep = 0; sweep < nonMuThetaSweeps; sweep++) {
+          for (int c = 0; c < nphi0; c++) {
+            if (phi0Fix[(size_t)c]) continue;
+            if (!(hi[c] > lo[c])) continue;
+            gPhi0Coord = c;
+            Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
+                                    Rcpp::_["lower"] = lo[c],
+                                    Rcpp::_["upper"] = hi[c],
+                                    Rcpp::_["tol"] = nonMuThetaTol);
+            double xm = Rcpp::as<double>(o["minimum"]);
+            gPhi0Work[c] = xm;
+          }
         }
       }
       for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
@@ -943,7 +1018,22 @@ public:
       double cur = mprior_phi0(0, c);
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
-    MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+    // MCOV0 is BLOCK structured by LCOV0 -- each lambda row belongs to exactly one
+    // phi0 column -- so a single least-squares against all of COV0 is rank
+    // deficient whenever nphi0 > 1: with no phi0 covariate every column of COV0 is
+    // the same intercept column, and arma warns "solve(): system is singular"
+    // every iteration from niter_phi0 on.  It also fills MCOV0 off-structure, so a
+    // FIXED phi0 no longer reproduces its value through COV0*MCOV0.  Back-solve
+    // each phi0 column against only its own design columns instead.
+    for (int c = 0; c < nphi0; c++) {
+      uvec li = arma::find(LCOV0.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV0.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+      }
+    }
     if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
   }
 
@@ -1460,6 +1550,17 @@ public:
     distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
+    nonMuThetaOptType = x.containsElementNamed("nonMuThetaOptType") ?
+      as<int>(x["nonMuThetaOptType"]) : 0;
+    nonMuThetaMaxEval = x.containsElementNamed("nonMuThetaMaxEval") ?
+      as<int>(x["nonMuThetaMaxEval"]) : 25;
+    nonMuThetaSweeps = x.containsElementNamed("nonMuThetaSweeps") ?
+      as<int>(x["nonMuThetaSweeps"]) : 2;
+    nonMuThetaEvery = x.containsElementNamed("nonMuThetaEvery") ?
+      as<int>(x["nonMuThetaEvery"]) : 1;
+    if (nonMuThetaEvery < 1) nonMuThetaEvery = 1;
+    nonMuThetaTol = x.containsElementNamed("nonMuThetaTol") ?
+      as<double>(x["nonMuThetaTol"]) : 1.0e-4;
     residWarmStart = x.containsElementNamed("residWarmStart") ?
       as<int>(x["residWarmStart"]) : 1;
     mixProbRegress = x.containsElementNamed("mixProbRegress") ?
@@ -2502,8 +2603,12 @@ public:
       // (distribution==4) and, via nonMuTheta="regress", for normal models --
       // keeping non-mu thetas as directly-optimized, bound-respecting regressors
       // instead of stochastic phi0 draws.
+      // nonMuThetaEvery>1 refines only every k-th iteration; mprior_phi0 holds its
+      // last refined value in between (the SA step pas(kiter) moves it a fraction
+      // of one optimizer step anyway, so refining every iteration buys little).
       if ((distribution == 4 || nonMuThetaRegress) &&
-          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+          nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
+          (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
@@ -3534,6 +3639,19 @@ private:
   // with directly-optimized, bound-respecting values (no shrinking phi0
   // variance).  0 = classic phi0, 1 = direct-optimize.
   int nonMuThetaRegress;
+  // Cost controls for that refinement (it is the dominant per-iteration cost when
+  // the phi0 thetas drive the ODE): nonMuThetaOptType picks the optimizer
+  // (0 = coordinate descent, 1 = nelder-mead, 2 = newuoa -- the latter two over
+  // all free coordinates at once), nonMuThetaMaxEval is their objective-
+  // evaluation budget (0 means 10 per free coordinate), nonMuThetaSweeps the
+  // coordinate-descent sweep count,
+  // nonMuThetaTol the inner convergence tolerance and nonMuThetaEvery how often
+  // (in iterations) the refinement runs at all.
+  int nonMuThetaOptType;
+  int nonMuThetaMaxEval;
+  int nonMuThetaSweeps;
+  int nonMuThetaEvery;
+  double nonMuThetaTol;
   // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
@@ -4093,6 +4211,36 @@ static double gPhi0ObjR(Rcpp::NumericVector p) {
 static double gPhi0Obj1DR(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
+}
+
+static double gPhi0RefObj(const double *p) {
+  if (gPhi0RefEvalN >= gPhi0RefEvalMax) {
+    // Out of budget: report a value worse than anything seen so the optimizer
+    // collapses onto the best point instead of wandering.
+    return gPhi0RefBestF + 1.0e10;
+  }
+  for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+    int c = gPhi0FreeIx[i];
+    double v = p[i];
+    if (v < gPhi0Lo(c)) v = gPhi0Lo(c);
+    if (v > gPhi0Hi(c)) v = gPhi0Hi(c);
+    gPhi0Work[c] = v;
+  }
+  double f = gPhi0Self->phi0Objective(gPhi0Work.memptr());
+  gPhi0RefEvalN++;
+  if (gPhi0RefEvalN == 1 || f < gPhi0RefBestF) {
+    gPhi0RefBestF = f;
+    for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+      gPhi0RefBest(i) = gPhi0Work[gPhi0FreeIx[i]];
+    }
+  }
+  return f;
+}
+
+static void gPhi0NmFn(double *p, double *fx) { *fx = gPhi0RefObj(p); }
+
+static double gPhi0RefObjR(Rcpp::NumericVector p) {
+  return gPhi0RefObj(&(p[0]));
 }
 
 

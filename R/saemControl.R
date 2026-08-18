@@ -271,6 +271,33 @@
 #'   * `"eta"`: the historic SAEM treatment (the parameter is carried through
 #'     the stochastic `phi0` block).
 #'
+#' @param nonMuThetaOpt Optimizer for the `nonMuTheta="regress"` refinement.
+#'   `"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
+#'   optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
+#'   evaluation budget; `"optimize"` is the historic coordinate descent with R's
+#'   golden-section `optimize()`.  When the non-mu thetas drive the ODE, every
+#'   objective evaluation is a full re-solve, so this refinement can dominate the
+#'   run time; the multivariate options spend a much smaller fixed budget and
+#'   account for the coupling between coordinates that coordinate descent cannot
+#'   see.
+#'
+#' @param nonMuThetaSweeps Number of coordinate-descent sweeps per refinement
+#'   for `nonMuThetaOpt="optimize"` (default 2).
+#'
+#' @param nonMuThetaMaxEval Objective-evaluation budget of one refinement for
+#'   `nonMuThetaOpt="newuoa"` or `"nelderMead"` (default 25); 0 means ten
+#'   evaluations per free non-mu theta instead.  `"newuoa"` needs `2n+3`
+#'   evaluations to build its first quadratic model, and is raised to that when
+#'   the budget is smaller.
+#'
+#' @param nonMuThetaTol Convergence tolerance of the `nonMuTheta="regress"`
+#'   refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
+#'   tolerance, or the `optimize()` `tol`).
+#'
+#' @param nonMuThetaEvery Run the `nonMuTheta="regress"` refinement every
+#'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
+#'   between, `phi0` keeps its last refined value.
+#'
 #' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
 #'   parameters from the observed per-endpoint moments at the initial predictions
 #'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
@@ -344,6 +371,11 @@ saemControl <- function(seed = 99,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         nonMuTheta = c("regress", "eta"),
+                        nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+                        nonMuThetaSweeps = 2L,
+                        nonMuThetaMaxEval = 25L,
+                        nonMuThetaTol = .Machine$double.eps^0.25,
+                        nonMuThetaEvery = 1L,
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
                         ...) {
@@ -417,6 +449,11 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   mixSampleMethod <- match.arg(mixSampleMethod)
   nonMuTheta <- match.arg(nonMuTheta)
+  nonMuThetaOpt <- match.arg(nonMuThetaOpt)
+  checkmate::assertIntegerish(nonMuThetaSweeps, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing=FALSE, len=1, lower=0)
+  checkmate::assertNumeric(nonMuThetaTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
 
@@ -537,6 +574,11 @@ saemControl <- function(seed = 99,
     mixProbPriorN=mixProbPriorN,
     mixSampleMethod=mixSampleMethod,
     nonMuTheta=nonMuTheta,
+    nonMuThetaOpt=nonMuThetaOpt,
+    nonMuThetaSweeps=as.integer(nonMuThetaSweeps),
+    nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
+    nonMuThetaTol=nonMuThetaTol,
+    nonMuThetaEvery=as.integer(nonMuThetaEvery),
     residWarmStart=residWarmStart
   )
   class(.ret) <- "saemControl"
