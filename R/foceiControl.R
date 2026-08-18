@@ -652,7 +652,10 @@
 #'   differences.  `"jump"` (the default) uses the analytic event ("jump")
 #'   sensitivities provided by `rxode2`, which add accuracy and can speed
 #'   up the gradient/Hessian by avoiding the extra finite-difference
-#'   solves for these parameters.
+#'   solves for these parameters.  Also gates the analytic moving-boundary
+#'   correction for a modeled `alag()`/`f()` on a `linCmt()` compartment; set
+#'   `"fd"` if that model infuses a dose into the lagged/scaled compartment
+#'   (rxode2/rxode2#1236).
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -762,7 +765,10 @@
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-#'   uses the legacy finite-difference behavior.
+#'   uses the legacy finite-difference behavior.  Also gates the analytic
+#'   moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+#'   compartment; set `"fd"` if that model infuses a dose into the
+#'   lagged/scaled compartment (rxode2/rxode2#1236).
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;

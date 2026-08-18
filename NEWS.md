@@ -15,6 +15,17 @@
   ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
 ## New features
 
+- A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
+  FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
+  structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
+  moving-boundary (dose-time) contribution of a modeled `alag()` is now added
+  via rxode2's `linCmtB(which1=-3)` (nlmixr2/rxode2#1235), and the
+  bioavailability contribution via the exact `d(pred)/dF = pred/F` identity
+  (issue #920).  A model with more than one lagged `linCmt()` compartment is
+  left as before (rxode2/rxode2#1237 -- `which1=-3` is a single shared
+  delay), and `foceiControl(eventSens="fd")` opts back out for a model that
+  infuses a dose into the lagged/scaled compartment (rxode2/rxode2#1236).
+
 - A prior distribution given in the `ini({})` block is no longer silently
   ignored.  `nlmixr2Est()` now refuses any prior the estimation method
   cannot use before dispatching, so a model carrying one fails with an

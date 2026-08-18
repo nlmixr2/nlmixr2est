@@ -197,7 +197,10 @@ skips the final back-transform.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236).}
 
 \item{...}{Ignored parameters}
 }
