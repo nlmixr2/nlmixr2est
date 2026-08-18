@@ -331,7 +331,13 @@ optimControl(
   Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
   \`dur\`) sensitivities are computed for THETA/ETA gradients:
   \`"jump"\` (default) uses rxode2's analytic event sensitivities;
-  \`"fd"\` uses the legacy finite-difference behavior.
+  \`"fd"\` uses the legacy finite-difference behavior. Also gates the
+  analytic moving-boundary correction for a modeled \`alag()\`/\`f()\`
+  on a \`linCmt()\` compartment; set \`"fd"\` if that model infuses a
+  dose into the lagged/scaled compartment (rxode2/rxode2#1236), or if
+  the regimen also doses an \*unlagged/unscaled\* compartment alongside
+  the lagged/scaled one – a common design for estimating \`f()\` from
+  paired IV+oral data (rxode2/rxode2#1237).
 
 - sensMethod:
 
@@ -470,9 +476,9 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3807746 0.5707897  6.229e-06      0.045       0.005 0.024    0.001
+#> elapsed 0.3911031 0.6214007  7.802e-06       0.05       0.006 0.025    0.001
 #>              other
-#> elapsed 0.08842951
+#> elapsed 0.09748834
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

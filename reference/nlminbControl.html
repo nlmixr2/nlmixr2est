@@ -346,7 +346,13 @@ sd, c = power exponent (1 in the proportional case).</p></dd>
 <dd><p>Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.</p></dd>
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+– a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).</p></dd>
 
 
 <dt id="arg-sensmethod">sensMethod<a class="anchor" aria-label="anchor" href="#arg-sensmethod"></a></dt>
@@ -478,9 +484,9 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3789594 0.6388318   6.45e-06      0.047       0.006 0.024    0.011</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3962267 0.6741412  9.213e-06      0.058       0.006 0.028    0.012</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08620231</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09562285</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

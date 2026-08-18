@@ -21,6 +21,25 @@
   anywhere in the ecosystem, so rxode2 can now drop it
   (nlmixr2/rxode2#1250). \## New features
 
+- A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an
+  exact FOCEi/FOCE eta gradient instead of a silently incomplete one.
+  The structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/…; the
+  moving-boundary (dose-time) contribution of a modeled `alag()` is now
+  added via rxode2’s `linCmtB(which1=-3)` (nlmixr2/rxode2#1235), and the
+  bioavailability contribution via the exact `d(pred)/dF = pred/F`
+  identity (issue
+  [\#920](https://github.com/nlmixr2/nlmixr2est/issues/920)).
+
+  Both corrections require every dose reaching the linear system to
+  share the same `alag()`/`f()` (rxode2/rxode2#1237); a model declaring
+  more than one is left as before. This cannot be checked for a regimen
+  that doses an *unlagged/unscaled* compartment alongside the
+  lagged/scaled one (a common design for estimating `f()` from paired
+  IV+oral data) – that combination returns a biased, not obviously
+  wrong, gradient. An infused dose into the lagged/scaled compartment
+  also cannot be checked, and returns `NA` (rxode2/rxode2#1236).
+  `foceiControl(eventSens="fd")` opts out of both.
+
 - A prior distribution given in the `ini({})` block is no longer
   silently ignored.
   [`nlmixr2Est()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Est.md)
