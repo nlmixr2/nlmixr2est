@@ -65,6 +65,7 @@ MCMC/SAMBA-style callers (issue #414).</p>
 <span>  scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"natural"</span><span class="op">)</span>,</span>
 <span>  thetaSens <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  combSens <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  est <span class="op">=</span> <span class="st">"focei"</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -128,6 +129,13 @@ batch entry `nlmixr2FoceiCondBatchThetaGrad` reads all three from a
 single solve (~2x cheaper per evaluation than the two-model path).
 Implies a theta-sensitivity request; the separate theta-sensitivity
 model is neither built nor compiled.</p></dd>
+
+
+<dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
+<dd><p>Transformation carrying the IOV magnitude theta (the
+`.uiApplyIov` hook): `"sd"` (default), `"var"`, `"logsd"`,
+`"logvar"`.  The presence of this argument also marks the loaded
+nlmixr2est as carrying the exact IOV magnitude sensitivity (#952)</p></dd>
 
 
 <dt id="arg-est">est<a class="anchor" aria-label="anchor" href="#arg-est"></a></dt>

@@ -55,6 +55,11 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   nonMuTheta = c("regress", "eta"),
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaSweeps = 2L,
+  nonMuThetaMaxEval = 25L,
+  nonMuThetaTol = .Machine$double.eps^0.25,
+  nonMuThetaEvery = 1L,
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
   ...
@@ -537,6 +542,43 @@ saemControl(
 
   \* \`"eta"\`: the historic SAEM treatment (the parameter is carried
   through the stochastic \`phi0\` block).
+
+- nonMuThetaOpt:
+
+  Optimizer for the \`nonMuTheta="regress"\` refinement. \`"newuoa"\`
+  (default) and \`"nelderMead"\` each run one clamped multivariate
+  optimization over all free \`phi0\` coordinates under the
+  \`nonMuThetaMaxEval\` evaluation budget; \`"optimize"\` is the
+  historic coordinate descent with R's golden-section \`optimize()\`.
+  When the non-mu thetas drive the ODE, every objective evaluation is a
+  full re-solve, so this refinement can dominate the run time; the
+  multivariate options spend a much smaller fixed budget and account for
+  the coupling between coordinates that coordinate descent cannot see.
+
+- nonMuThetaSweeps:
+
+  Number of coordinate-descent sweeps per refinement for
+  \`nonMuThetaOpt="optimize"\` (default 2).
+
+- nonMuThetaMaxEval:
+
+  Objective-evaluation budget of one refinement for
+  \`nonMuThetaOpt="newuoa"\` or \`"nelderMead"\` (default 25); 0 means
+  ten evaluations per free non-mu theta instead. \`"newuoa"\` needs
+  \`2n+3\` evaluations to build its first quadratic model, and is raised
+  to that when the budget is smaller.
+
+- nonMuThetaTol:
+
+  Convergence tolerance of the \`nonMuTheta="regress"\` refinement
+  (\`newuoa\`'s \`rhoend\`, the nelder-mead relative objective
+  tolerance, or the \`optimize()\` \`tol\`).
+
+- nonMuThetaEvery:
+
+  Run the \`nonMuTheta="regress"\` refinement every \`nonMuThetaEvery\`
+  iterations instead of every iteration (default 1). In between,
+  \`phi0\` keeps its last refined value.
 
 - residWarmStart:
 

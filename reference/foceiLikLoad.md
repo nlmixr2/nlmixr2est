@@ -19,6 +19,7 @@ foceiLikLoad(
   scale = c("focei", "natural"),
   thetaSens = FALSE,
   combSens = FALSE,
+  iovXform = c("sd", "var", "logsd", "logvar"),
   est = "focei",
   ...
 )
@@ -80,6 +81,13 @@ foceiLikLoad(
   (~2x cheaper per evaluation than the two-model path). Implies a
   theta-sensitivity request; the separate theta-sensitivity model is
   neither built nor compiled.
+
+- iovXform:
+
+  Transformation carrying the IOV magnitude theta (the \`.uiApplyIov\`
+  hook): \`"sd"\` (default), \`"var"\`, \`"logsd"\`, \`"logvar"\`. The
+  presence of this argument also marks the loaded nlmixr2est as carrying
+  the exact IOV magnitude sensitivity (#952)
 
 - est:
 

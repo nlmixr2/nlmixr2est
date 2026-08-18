@@ -43,6 +43,26 @@
   registered by other packages – `babelmixr2`’s `nonmem`, `monolix`,
   `saemix` and the rest – are covered without any change of their own.
 
+### Changed defaults
+
+- `est="saem"` now refines a population theta that carries no random
+  effect with `newuoa` over all such thetas at once, under a budget of
+  25 objective evaluations per iteration
+  (`saemControl(nonMuThetaOpt="newuoa", nonMuThetaMaxEval=25)`), rather
+  than with sweeps of golden-section coordinate descent. That refinement
+  is where such a model spends most of its time – each of its
+  evaluations re-solves every subject and chain – and the sweeps solved
+  it far more precisely than a stochastic-approximation step that then
+  moves a fraction of the way there can use. Fits of models that have a
+  non-mu theta will report slightly different estimates. Measured by the
+  FOCEi conditional objective at each run’s converged estimates: on the
+  nimotuzumab target-mediated model 1.6x faster at an indistinguishable
+  objective (143.53 vs 143.48), and on the mavoglurant PBPK model 1.9x
+  faster at a clearly better one (1977.0 vs 2055.8), where the cheaper
+  refinement escapes a poor additive-error basin the old default settles
+  into. Pass `saemControl(nonMuThetaOpt="optimize")` for the previous
+  behavior.
+
 ### Breaking changes
 
 - `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have
@@ -84,6 +104,25 @@
   does.
 
 ### New features
+
+- `est="saem"` gained controls for the cost of the
+  `nonMuTheta="regress"` refinement, which estimates population thetas
+  that carry no random effect:
+  `saemControl(nonMuThetaOpt=, nonMuThetaSweeps=, nonMuThetaMaxEval=, nonMuThetaTol=, nonMuThetaEvery=)`.
+  That refinement runs every iteration of the second half of the fit,
+  and when the non-mu thetas are structural (they drive the ODE) each of
+  its objective evaluations is a full re-solve of every subject and
+  chain, so it can cost more than the rest of the algorithm put together
+  – on the nimotuzumab target-mediated example and the mavoglurant PBPK
+  example (both with five non-mu thetas) it is around 60% of the run
+  time. `nonMuThetaOpt="newuoa"` (the new default, see **Changed
+  defaults**) and `nonMuThetaOpt="nelderMead"` run one clamped
+  multivariate optimization over all free `phi0` coordinates under a
+  fixed evaluation budget (`nonMuThetaMaxEval`); both see the coupling
+  between those coordinates, which the previous coordinate descent
+  (`nonMuThetaOpt="optimize"`, still available) cannot.
+  `nonMuThetaEvery` additionally runs the refinement only every k-th
+  iteration.
 
 - An estimated transform-both-sides `lambda`
   ([`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md))
@@ -212,6 +251,22 @@
 ### Bug fixes
 
 #### Estimation
+
+- `est="saem"` no longer prints
+  `solve(): system is singular; attempting approx solution` **on every
+  iteration of the second half of the fit** when the model has more than
+  one population theta without a random effect. The
+  `nonMuTheta="regress"` refinement (the default) wrote its result back
+  with one least-squares against the whole `phi0` design, but that
+  design is block structured – each coefficient belongs to exactly one
+  `phi0` theta – and with no `phi0` covariate every one of its columns
+  is the same intercept column, so the normal equations are exactly rank
+  deficient. The back-solve is now done per `phi0` theta against its own
+  columns. The rank-deficient solution also filled the coefficient
+  matrix off-structure, which is why a
+  [`fix()`](https://rdrr.io/r/utils/fix.html)ed non-mu theta of a
+  general log-likelihood model did not reproduce its fixed value; that
+  is fixed with it. Estimates are otherwise unchanged.
 
 - Fixed the analytic-gradient methods (`est="foceif"` and the rest of
   the `*f` family, or `foceiControl(fast=TRUE)`) **stopping short of the
