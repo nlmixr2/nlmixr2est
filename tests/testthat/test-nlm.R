@@ -308,4 +308,46 @@ nmTest({
     expect_equal(.fMat$objf, .fOde$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fMat)), unname(fixef(.fOde)), tolerance = 1e-3)
   })
+
+  test_that("nlm-family covariance from a ll() model matches the Poisson GLM (#issue not doubled)", {
+    # A constant-hazard RTTE ll() model is, up to a constant, the same
+    # likelihood as a Poisson GLM with a log-time offset -- so their SEs
+    # should agree.  Before the fix, nlm-family covariances (bobyqa/nlm/...)
+    # were 4x too large (SE 2x too large) because the objective is built as
+    # a plain -1*LL (not -2*LL like FOCEI/SAEM), while the Hessian->cov step
+    # in `.nlmFinalizeList()` assumed a -2*LL scale.
+    set.seed(1099)
+    .n <- 60L
+    .trt <- rep(0:1, each = .n)
+    .h <- exp(-2 + -0.4 * .trt)
+    .time <- pmin(stats::rexp(length(.trt), rate = .h), 5)
+    .event <- as.integer(.time < 5)
+    .dat <- data.frame(id = seq_along(.trt), time = .time, event = .event,
+                       trt = .trt, dv = .time, evid = 0L)
+
+    .mod <- function() {
+      ini({
+        log_h0 <- log(0.2)
+        log_hr <- -0.1
+      })
+      model({
+        log_h <- log_h0 + log_hr * trt
+        h <- exp(log_h)
+        H <- h * time
+        tte_ll <- event * log_h - H
+        ll(tte) ~ tte_ll
+      })
+    }
+
+    .fit <- suppressMessages(
+      .nlmixr(.mod, .dat, est = "bobyqa", bobyqaControl(print = 0))
+    )
+
+    .glm <- glm(event ~ trt, offset = log(time), family = poisson(), data = .dat)
+
+    .seNlmixr <- .fit$parFixedDf[c("log_h0", "log_hr"), "SE"]
+    .seGlm <- summary(.glm)$coefficients[, "Std. Error"]
+
+    expect_equal(unname(.seNlmixr), unname(.seGlm), tolerance = 0.1)
+  })
 })
