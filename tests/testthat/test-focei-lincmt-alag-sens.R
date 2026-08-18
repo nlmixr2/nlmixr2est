@@ -99,11 +99,9 @@ nmTest({
     }
 
     ui <- one.cmt.f()
-    s <- rxUiGet.foceiEnv(list(ui))
-    nlmixr2est:::.rxFinalizeInner(s, FALSE, FALSE, 0L)
-    mod <- suppressMessages(rxode2::rxode2(s$..inner))
+    mod <- suppressMessages(ui$focei$inner)
 
-    ev <- rxode2::et(amt = 100, cmt = "depot") %>% rxode2::et(seq(0.1, 24, by = 0.5))
+    ev <- rxode2::et(amt = 100, cmt = "depot") |> rxode2::et(seq(0.1, 24, by = 0.5))
     THETA <- c(log(1.15), log(0.135), log(8), log(0.8), 0.15, 0.6)
     ETA0 <- c(0.1, -0.05, 0.02, 0.2)
 
@@ -219,11 +217,9 @@ nmTest({
     }
 
     ui <- one.cmt.lag()
-    s <- rxUiGet.foceiEnv(list(ui))
-    nlmixr2est:::.rxFinalizeInner(s, FALSE, FALSE, 0L)
-    mod <- suppressMessages(rxode2::rxode2(s$..inner))
+    mod <- suppressMessages(ui$focei$inner)
 
-    ev <- rxode2::et(amt = 100, cmt = "depot") %>% rxode2::et(seq(0.1, 24, by = 0.5))
+    ev <- rxode2::et(amt = 100, cmt = "depot") |> rxode2::et(seq(0.1, 24, by = 0.5))
     THETA <- c(log(1.15), log(0.135), log(8), log(0.2), 0.15, 0.6)
     ETA0 <- c(0.1, -0.05, 0.02, 0.3)
 
