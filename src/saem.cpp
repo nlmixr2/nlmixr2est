@@ -108,6 +108,18 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
   return fa;
 }
 
+// Per-observation combined-error SD for the E-step/simulation, matching the
+// per-endpoint combined1/combined2 branch the M-step objective functions use
+// (obj()/objH()/objI(): combined1 g = a + b*|f|, combined2 g = sqrt(a^2+b^2*f^2)).
+static inline vec saemFormG(const vec &a, const vec &b, const vec &ftAbs, const uvec &addPropVec) {
+  vec g = a + b % ftAbs;
+  uvec ic2 = find(addPropVec != 1);
+  if (ic2.n_elem > 0) {
+    g.elem(ic2) = sqrt(square(a.elem(ic2)) + square(b.elem(ic2)) % square(ftAbs.elem(ic2)));
+  }
+  return g;
+}
+
 static inline void ensureSaemFixedTransformCache() {
   if (_saemCacheYptr == _saemYptr &&
       _saemCacheFptr == _saemFptr &&
@@ -1467,6 +1479,7 @@ public:
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
+    vecaddProp = addProp(ix_endpnt);
     // Pre-allocate per-chain scratch buffers for the distribution==1 hot loops
     _scratch_ft.set_size(ntotal);
     _scratch_limitT.set_size(ntotal);
@@ -1873,7 +1886,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2073,7 +2086,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2349,7 +2362,7 @@ public:
               _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3595,7 +3608,7 @@ private:
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
-  uvec res_mod, yj, propT, addProp;
+  uvec res_mod, yj, propT, addProp, vecaddProp;
 
   mat DYF;
   cube phi;
@@ -3861,7 +3874,7 @@ private:
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3972,7 +3985,7 @@ private:
               _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4085,7 +4098,7 @@ private:
             _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
             _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
           }
-          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          _scratch_g = saemFormG(vecares, vecbres, abs(_scratch_ftT), vecaddProp);
           _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4507,4 +4520,17 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;
+}
+
+// Test-only wrapper: exposes the E-step's per-observation combined-error SD
+// (saemFormG(), used at every _scratch_g site) so it can be pinned against
+// the M-step's combined1/combined2 formulas without running a full fit.
+//[[Rcpp::export]]
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFtAbs, SEXP inAddProp) {
+  vec a = as<vec>(inA);
+  vec b = as<vec>(inB);
+  vec ftAbs = as<vec>(inFtAbs);
+  uvec addPropVec = as<uvec>(inAddProp);
+  vec g = saemFormG(a, b, ftAbs, addPropVec);
+  return wrap(g);
 }

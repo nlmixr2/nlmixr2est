@@ -112,6 +112,16 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"`'s E-step (the simulated chain and mixture responsibilities) now
+  honors `saemControl(addProp=)` instead of always forming the combined-error
+  SD as `a + b*|f|` (`combined1`) (#912). The M-step objective already branched
+  on `addProp`, so a `combined2` endpoint (`a + b*f` combined as
+  `sqrt(a^2+b^2*f^2)`, the default) was simulated under the wrong SD: the chain
+  targeted a different posterior than the one being estimated. Only
+  `addProp="combined2"` (or model-declared `combined2()`) fits with both an
+  additive and a proportional/power term move; `combined1` fits are bit-for-bit
+  unchanged since that branch's formula did not change.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`
