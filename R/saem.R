@@ -637,21 +637,35 @@
     .ord <- c(.i1, .i0) + 1L
     .tn <- .pars[.ord]; .fx <- .fixed[.ord]
     .phi0Nm <- .pars[.i0 + 1L]
+  } else if (isTRUE(.saemCfg$nphi0 > 0L)) {
+    # Without a verified i1/i0 partition (an old cached fit that predates
+    # saving them, or a mu-ref covariate that makes saemParamsToEstimate
+    # interleave covariate coefficients so it no longer lines up 1:1 with the
+    # phi block) there is no safe way to tell which FIM rows are phi0 --
+    # reporting from raw model order risks exactly the silent mislabeling
+    # this function exists to fix (#906).  Only safe to proceed unordered
+    # when there is no phi0 row to get wrong.
+    return(NULL)
   } else {
     .tn <- .pars; .fx <- .fixed
     .phi0Nm <- character(0)
   }
-  .tn <- .tn[!.fx]
-  .phi0Nm <- .phi0Nm[.phi0Nm %in% .tn]
   if (length(.tn) == 0L || .np < length(.tn)) return(NULL)
-  # drop the degenerate phi0 mu rows/cols before inverting (#906 defect 1); as
-  # gamma2_phi0 -> 0 the marginal covariance of the surviving parameters
-  # (Schur complement of the full inverse) converges to this reduced inverse
-  # anyway, since the correction term vanishes with 1/gamma2_phi0 -> Inf
-  .drop <- match(.phi0Nm, .tn)
+  # .tn is in the SAME raw row order as .H's leading structural block -- the
+  # kernel keeps a row for a fix()ed theta too (nb_param in src/saem.cpp does
+  # not subtract fixed thetas), so drop positions must be computed against
+  # this UNFILTERED order, not a fixed-filtered one (a fixed theta ahead of a
+  # kept one would otherwise shift every later position and drop the wrong
+  # row).  Drop the degenerate phi0 mu rows/cols before inverting (#906
+  # defect 1; as gamma2_phi0 -> 0 the marginal covariance of the surviving
+  # parameters -- the Schur complement of the full inverse -- converges to
+  # this reduced inverse anyway, since the correction term vanishes with
+  # 1/gamma2_phi0 -> Inf) along with the fixed rows (nothing to report --
+  # known, not estimated).
+  .drop <- union(which(.fx), match(.phi0Nm, .tn))
   .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
-  .tn <- .tn[!(.tn %in% .phi0Nm)]
-  # covariance = inverse of the (phi0-reduced) FIM, in (theta, log-Omega-variance,
+  .tn <- if (length(.drop) > 0L) .tn[-.drop] else .tn
+  # covariance = inverse of the reduced FIM, in (theta, log-Omega-variance,
   # log-sigma2) coords
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)

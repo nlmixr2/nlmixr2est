@@ -329,6 +329,66 @@ nmTest({
     expect_true(abs(seSa[["tv"]] - seLin[["tv"]]) < abs(seSa[["tv"]] - seLin[["tcl"]]))
   })
 
+  test_that("covMethod='fim' drops phi0/fixed rows by raw FIM position, not fixed-filtered position (#906 review)", {
+    # Antigravity review of #906 caught a follow-on bug in the fix itself: the
+    # kernel's FIM keeps a row for a fix()ed theta (nb_param in src/saem.cpp
+    # does not subtract fixed thetas), so computing the phi0 drop position
+    # against a fixed-FILTERED name vector silently drops the wrong row
+    # whenever a fixed phi1 theta sits ahead of the (correctly identified)
+    # phi0 theta in kernel order.  Here tcl (phi1, mu-referenced) is fixed and
+    # sits before tka (phi0) in kernel order ([phi1 mu][phi0 mu] = tcl,tv,tka).
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- fix(1); tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctlFim <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "fim")
+    fFim <- .nlmixr(m, theo_sd, est = "saem", control = ctlFim)
+    skip_if_not(identical(fFim$covMethod, "fim"))
+
+    # tcl is fixed -- no row reported for it at all
+    expect_false("tcl" %in% rownames(fFim$cov))
+    # tka (phi0) and tv (phi1) must each carry a real, correctly-labeled SE,
+    # not a near-zero one (the wrong-row-dropped failure mode kept the
+    # degenerate phi0 row in the inverted block instead of removing it)
+    .se <- sqrt(diag(fFim$cov))
+    expect_true(all(c("tka", "tv") %in% names(.se)))
+    expect_true(all(.se[c("tka", "tv")] > 1e-3))
+
+    .saem <- fFim$saem
+    attr(.saem, "env") <- fFim$env
+    .cm <- suppressWarnings(calc.COV(.saem))
+    .tn <- fFim$ui$saemParamsToEstimate[!fFim$ui$saemFixed]
+    dimnames(.cm) <- list(.tn, .tn)
+    seLin <- sqrt(diag(.cm))
+    expect_equal(unname(.se[["tka"]]), unname(seLin[["tka"]]), tolerance = 1e-8)
+    expect_true(abs(.se[["tv"]] - seLin[["tv"]]) < abs(.se[["tv"]] - seLin[["tka"]]))
+  })
+
+  test_that("covMethod='fim'/'sa' refuses (falls back to linFim) rather than mislabel a phi0 covariate model (#906 review)", {
+    # A mu-ref covariate makes saemParamsToEstimate interleave covariate
+    # coefficient names with the plain thetas, so it no longer lines up 1:1
+    # with the kernel's phi block -- there is no known-good FIM row order for
+    # a model with BOTH a covariate and a phi0 theta.  Silently reporting from
+    # raw model order would reintroduce #906; the safe behavior is to refuse
+    # and fall back, the same way a general likelihood is refused.
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            wt.cl <- 0.1
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({
+        ka <- exp(tka)   # phi0
+        cl <- exp(tcl + eta.cl + wt.cl * WT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ctlFim <- saemControl(nBurn = 100, nEm = 100, print = 0, seed = 1L, covMethod = "fim")
+    fFim <- .nlmixr(m, theo_sd, est = "saem", control = ctlFim)
+    expect_equal(fFim$covMethod, "linFim")
+  })
+
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
     .ix <- c(1L, 1L, 2L, 2L)
     # res.mod present: per-observation, res.mod == 0 marks the ll() endpoint

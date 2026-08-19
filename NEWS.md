@@ -124,6 +124,13 @@
   near-zero SE when inverted in place. The Fisher information block is now
   read out in its actual order, and non-mu-referenced theta rows are dropped
   before inverting and their SE spliced in from the linearized FIM instead.
+  The kernel keeps a Fisher information row for a `fix()`ed theta too, so that
+  drop is computed against the FIM's raw row order rather than a
+  fixed-filtered one (a fixed theta ahead of the dropped row previously
+  shifted every later position and dropped the wrong one); a model whose
+  Fisher information order cannot be verified (a mu-referencing covariate, or
+  an old cached fit) now refuses `"sa"`/`"fim"` and falls back to the
+  linearized FIM instead of reporting from an unverified order.
 
 ## New features
 
