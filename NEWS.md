@@ -120,6 +120,23 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"`'s E-step (the simulated chain and mixture responsibilities) now
+  honors `saemControl(addProp=)` instead of always forming the combined-error
+  SD as `a + b*|f|` (`combined1`) (#912). The M-step objective already branched
+  on `addProp`, so a `combined2` endpoint (`a + b*f` combined as
+  `sqrt(a^2+b^2*f^2)`, the default) was simulated under the wrong SD: the chain
+  targeted a different posterior than the one being estimated. Only
+  `addProp="combined2"` (or model-declared `combined2()`) fits with both an
+  additive and a proportional/power term move; `combined1` fits are bit-for-bit
+  unchanged since that branch's formula did not change.
+
+- `est="saem"`'s M-step objective for a plain `add()+pow()` endpoint (no
+  `boxCox()`/`yeoJohnson()`) formed the `combined2` residual SD as
+  `a^2+b^2*f^(2*pw)` and used it directly in place of the SD, missing the
+  `sqrt()` every sibling combined objective (`add()+prop()`, and
+  `add()+pow()+boxCox()`/`yeoJohnson()`) applies. Found while auditing the
+  `addProp` branches for the E-step fix above; only a plain `add()+pow()`
+  endpoint under the default `addProp="combined2"` was affected.
 - `"indLin"` is no longer excluded from the ODE-method fallback candidates a
   post-fit table/residual solve tries when the fit's own ODE method is
   neither `"dop853"`, `"liblsoda"`, nor `"lsoda"` (#858). rxode2/#1183-#1185
