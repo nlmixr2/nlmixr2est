@@ -730,7 +730,12 @@
   attr(.saem, "env") <- env
   .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
   if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
+  # calc.COV()'s theta covariance covers only the phi/lambda block (nphi columns
+  # of saem.cfg$inits$theta); a nonMuEta is estimated through a different
+  # mechanism entirely and is never one of those columns, so it must be
+  # excluded here too or the dimension check below always fails
   .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
+  .tn <- .tn[!(.tn %in% .ui$nonMuEtas)]
   if (!identical(dim(.cm), c(length(.tn), length(.tn)))) return(NULL)
   dimnames(.cm) <- list(.tn, .tn)
   .miss <- .miss[.miss %in% .tn]
@@ -817,6 +822,15 @@
       if (!is.null(.cov)) .cov <- .saemSpliceLinFimVar(.cov, env)
     })
     if (!is.null(.cov)) {
+      # the kernel's Fisher information (and so .saemFimToCov's row order) is
+      # [phi1 mu][phi0 mu], not iniDf/model order -- reorder the reported theta
+      # block back to iniDf order so it does not depend on which parameters
+      # happen to be mu-referenced (names carry identity everywhere this cov
+      # is consumed, but a predictable row order is still worth keeping)
+      .thOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta) & is.na(.ui$iniDf$err)]
+      .thOrd <- .thOrd[.thOrd %in% rownames(.cov)]
+      .rest <- rownames(.cov)[!(rownames(.cov) %in% .thOrd)]
+      .cov <- .cov[c(.thOrd, .rest), c(.thOrd, .rest), drop = FALSE]
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.
