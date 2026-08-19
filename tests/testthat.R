@@ -73,7 +73,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
     "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",
-    "optexpression-saem-nlme"),
+    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904"),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
   # in two.  Both TIMED OUT on the weekly runner (run 30688874991, 2026-08-01):

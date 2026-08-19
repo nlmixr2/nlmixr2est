@@ -15,6 +15,14 @@
   ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
 ## New features
 
+- A pure-linear `matExp()` model now solves natively through rxode2's
+  matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
+  of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
+  analytic-sensitivity consumer of the state derivatives, so native solving
+  is all that changes; `focei`/`nlm`/`nls` are unaffected, and a model with
+  an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
+  #859).
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
   structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
@@ -83,6 +91,14 @@
 
 ## Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) row on an `ar()` endpoint against
+  the marginal normal distribution instead of the AR(1) conditional one that
+  its uncensored neighbors already used (#918). `arDYFhyp` whitened a
+  discarded copy of the prediction/SD to build the uncensored loss, then
+  handed the censored-loss calculation the original marginal values. The
+  whitened prediction/SD are now kept and passed through, so a BQL row after
+  an AR-active observation is scored consistently with the rest of its chain.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 
@@ -127,6 +143,47 @@
   component defect also affected the plain (non-`boxCox`/`yeoJohnson`) pure
   power error model `pow()` with no `add()`/`prop()` term, which shares the
   same fix.
+- SAEM's analytic Fisher information (`covMethod="fim"`/`"sa"`) had exactly one
+  residual slot no matter how many endpoints a model declared, so a
+  multi-endpoint fit's residual score/Hessian always came from whichever
+  endpoint the internal loop happened to process last, divided by the *first*
+  endpoint's residual variance (#893). Because that slot is coupled to the
+  fixed-effect/BSV block through the full Fisher information matrix, this
+  corrupted the reported theta and Omega standard errors for any multi-endpoint
+  `fim`/`sa` fit, not just the (previously unreported) residual SE. The
+  analytic FIM now carries one residual slot per endpoint; a pure additive
+  endpoint gets a real entry, and any other endpoint's slot is held at exactly
+  zero and dropped before the matrix is inverted, falling back to the
+  linearized FIM for that endpoint's residual SE as before.
+- `calc.COV()`'s `covFull` residual-variance block (`saemix` `func_FIM.R`
+  `blocB`) is now masked to the endpoint each residual parameter belongs to
+  (#904). For a multi-endpoint SAEM model with separate residuals per
+  endpoint, every residual parameter's `dVi/d(param)` previously spanned all
+  endpoints' observation rows instead of only its own, so the reported
+  residual standard errors were wrong. Single-endpoint models, including
+  combined `add()+prop()`, were unaffected.
+- `est="saem"`'s E-step (the simulated chain and mixture responsibilities) now
+  honors `saemControl(addProp=)` instead of always forming the combined-error
+  SD as `a + b*|f|` (`combined1`) (#912). The M-step objective already branched
+  on `addProp`, so a `combined2` endpoint (`a + b*f` combined as
+  `sqrt(a^2+b^2*f^2)`, the default) was simulated under the wrong SD: the chain
+  targeted a different posterior than the one being estimated. Only
+  `addProp="combined2"` (or model-declared `combined2()`) fits with both an
+  additive and a proportional/power term move; `combined1` fits are bit-for-bit
+  unchanged since that branch's formula did not change.
+
+- `est="saem"`'s M-step objective for a plain `add()+pow()` endpoint (no
+  `boxCox()`/`yeoJohnson()`) formed the `combined2` residual SD as
+  `a^2+b^2*f^(2*pw)` and used it directly in place of the SD, missing the
+  `sqrt()` every sibling combined objective (`add()+prop()`, and
+  `add()+pow()+boxCox()`/`yeoJohnson()`) applies. Found while auditing the
+  `addProp` branches for the E-step fix above; only a plain `add()+pow()`
+  endpoint under the default `addProp="combined2"` was affected.
+- `"indLin"` is no longer excluded from the ODE-method fallback candidates a
+  post-fit table/residual solve tries when the fit's own ODE method is
+  neither `"dop853"`, `"liblsoda"`, nor `"lsoda"` (#858). rxode2/#1183-#1185
+  restored `indLin()`/matrix-exponential correctness, which was the reason
+  for the exclusion.
 
 ## New features
 
@@ -341,6 +398,21 @@
   the tolerance.  On a warfarin fit started from `k=1/h` (true value near `0.02/h`)
   this froze the volume eta for 19 of 32 subjects, biasing the population
   estimates and shrinking that eta's variance about fourfold.
+
+- Fixed `est="saem"` erroring with `missing value where TRUE/FALSE needed`
+  while finalizing a fit with an unfixed `logitNorm()`, `probitNorm()`,
+  `propF()`, `powF()` or `powF2()` residual sd (#915).  `.getSaemTheta()`
+  copied the saem-estimated residual sd back into `ui$iniDf$est` for the
+  `add()`/`lnorm()`/`prop()`/`pow()`/`pow2()`-family endpoints but not for
+  these, so the value stayed `NA` and the FOCEi scaleC setup that reenters
+  to build the fit table hit it during an `if()` test.
+
+  A second, independent gap in the same error types was found alongside it:
+  `rxUiGet.saemAres`/`saemBres`/`saemCres` also never matched
+  `logitNorm()`/`probitNorm()`/`propF()`/`powF()`/`powF2()`, so the SAEM
+  kernel silently *started* every such fit from the hardcoded fallback
+  (`10`/`1`) instead of the residual sd given in `ini()`.
+
 - Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
   discarding a usable analytic outer gradient and paying for a full
   finite-difference gradient instead.  FOCE freezes the residual variance, so its

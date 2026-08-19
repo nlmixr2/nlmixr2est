@@ -436,7 +436,10 @@
   nlambda <- nlambda1 + nlambda0
   nd1 <- nphi1 + nlambda1 + 1
   nd2 <- nphi1 + nlambda1 + nlambda0
-  nb_param <- nd2 + 1
+  # one FIM residual slot per endpoint, none for a general log-likelihood
+  # model (distribution==4) -- must stay in sync with src/saem.cpp's nb_param
+  nResidEp <- if (distribution == 4) 0L else model$nendpnt
+  nb_param <- nd2 + nResidEp
   Mcovariables <- cbind(rep(1, N), covariables)[, 1:nrow(mcov)]
   dim(Mcovariables) <- c(length(Mcovariables) / nrow(mcov), nrow(mcov)) # FIXME
 
