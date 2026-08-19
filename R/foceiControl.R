@@ -191,7 +191,7 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
@@ -281,8 +281,12 @@
 #'
 #' @param lbfgsFactr Convergence factor for "L-BFGS-B": converges when the
 #'     objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-#'     Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
-#'     the objective reduction target IS \code{10^-sigdig}.
+#'     Derived from \code{sigdig} as \code{10^(-sigdig-2) / .Machine$double.eps},
+#'     two orders tighter than the other \code{sigdig}-derived tolerances.  It
+#'     tests the objective reduction of a SINGLE step rather than stationarity,
+#'     so a target of \code{10^-sigdig} stops as soon as one step is small; the
+#'     extra two orders are what make the analytic-gradient (\code{fast=TRUE})
+#'     methods reach the same optimum as the derivative-free default.
 #'
 #' @param diagXform Transformation used on the diagonal of
 #'     \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
@@ -648,7 +652,12 @@
 #'   differences.  `"jump"` (the default) uses the analytic event ("jump")
 #'   sensitivities provided by `rxode2`, which add accuracy and can speed
 #'   up the gradient/Hessian by avoiding the extra finite-difference
-#'   solves for these parameters.
+#'   solves for these parameters.  Also gates the analytic moving-boundary
+#'   correction for a modeled `alag()`/`f()` on a `linCmt()` compartment; set
+#'   `"fd"` if that model infuses a dose into the lagged/scaled compartment
+#'   (rxode2/rxode2#1236), or if the regimen also doses an *unlagged/unscaled*
+#'   compartment alongside the lagged/scaled one -- a common design for
+#'   estimating `f()` from paired IV+oral data (rxode2/rxode2#1237).
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -758,7 +767,13 @@
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-#'   uses the legacy finite-difference behavior.
+#'   uses the legacy finite-difference behavior.  Also gates the analytic
+#'   moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+#'   compartment; set `"fd"` if that model infuses a dose into the
+#'   lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+#'   doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+#'   -- a common design for estimating `f()` from paired IV+oral data
+#'   (rxode2/rxode2#1237).
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
@@ -992,7 +1007,18 @@ foceiControl <- function(sigdig = 3, #
       rhoend <- 10^(-sigdig)
     }
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
+      # Two orders TIGHTER than the plain 10^-sigdig the other optimizer
+      # tolerances use.  `factr` tests the objective reduction of a SINGLE step,
+      # so at 10^-sigdig L-BFGS-B stops as soon as one step is small rather than
+      # when the gradient is flat -- measured on a 2-cmt oral fit, that left 8.6
+      # OFV units on the table (6 outer evaluations); at 10^-(sigdig+2) the same
+      # fit beats the bobyqa reference in 13.  See plans/foceif-outer-opt-pgtol.md.
+      # Floor at 1: `factr` is a MULTIPLE of machine epsilon, so factr < 1 asks
+      # for a reduction smaller than eps itself.  That is unreachable, and since
+      # lbfgsPgtol is 0 by default it would leave L-BFGS-B with no active
+      # stopping rule at all.  Reached at sigdig >= 14 here (>= 16 before the
+      # two-order tightening).
+      lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
     }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)

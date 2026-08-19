@@ -319,6 +319,8 @@ struct focei_options {
   int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
   int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
   int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
+  int thetaSensLambdaOffset = -1; // lhs offset of the first d(lambda)/d(theta) output;
+                              // -1 unless the transform-both-sides lambda is estimated (#949)
   int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
   int thetaSensNlhs = 0;      // lhs output count of the sensitivity model (impmap).  Whether
                               // reads need a private buffer is decided by OdeSwapScope: the
@@ -755,6 +757,13 @@ struct focei_options {
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
   bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
   bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
+  bool thetaSensLoad = false; // foceiLikLoad(thetaSens=TRUE) (#939): wire the
+                              // theta-sensitivity model for an external caller
+                              // without being an imp/advi estimation
+  bool combSens = false; // #958: the INNER model carries the theta-sensitivity
+                         // columns too (appended after the FOCEi block), so the
+                         // theta gradient reads the inner solve -- no separate
+                         // theta-sensitivity model, one integration per subject
   double npResidScale = 1.0; // npag/npb residual-error magnitude multiplier (gamma):
                              // likInner0 scales the residual variance r by this^2,
                              // so the conditional likelihood (incl. censoring via
@@ -1328,8 +1337,156 @@ static inline double scalePar(double *x, int i){
 // covariance's foceiFdSetOmega() is its variance-covariance-scale, pure-C++ sibling.
 // Shared by updateTheta(), the final-Omega refresh and the per-individual FD's omega phase,
 // which all used to inline the same five lines.
+// Memo of the last omega tail updateTheta() rebuilt Omega from: the
+// rebuild goes through rxode2's symbolic-inverse machinery (R-level
+// symengine environment calls, ~1 ms), and within an outer iteration's
+// gradient evaluations -- and for EVERY est="stan" evaluation, where Stan
+// owns Omega -- the tail does not change.  Cleared whenever the omega
+// state is rebuilt or set outside updateTheta (setup, direct
+// setOmegaTheta callers, the external SetOmegaInv), so a stale skip can
+// never leave the caller's omega in force by accident.
+static std::vector<double> _updateThetaOmegaTail;
+
+// ---- C-side Omega rebuild (#958 follow-on) --------------------------------
+// The omega tail parameterizes chol(Omega^-1) directly (one tail entry per
+// factor entry; diagonals stored through sqrt/log/identity), but the values
+// were fetched by evaluating rxode2's precomputed R closure -- an R round
+// trip (~1 ms) in the per-evaluation hot path.  The map {tail k -> (i,j),
+// diagonal transform} is discovered EMPIRICALLY on first use by probing the
+// env one entry at a time and then VERIFIED against the env at a displaced
+// tail; any mismatch, ambiguity, or unsupported structure falls back to the
+// R path permanently for the loaded problem.  fo==1 (needs omega itself)
+// keeps the R path.
+static std::vector<int> _omFastRow, _omFastCol, _omFastXf; // xf: 0 id, 1 sqrt, 2 log, -1 offdiag
+static int _omFastNeta = 0;
+static int _omFastState = 0; // 0 untried, 1 ok, -1 unavailable
+void foceiOmegaFastReset(void) { _omFastState = 0; }
+
+// Under the fast path updateTheta() no longer pushes the tail into the
+// _rxInv env each evaluation, so any argument-less env read (the "omega"
+// matrix, the d(omegaInv) lists, ...) must sync the env itself first.
+// One R call at OUTER-iteration frequency; a no-op-cost guard elsewhere.
+static void foceiOmegaEnvSyncFromTail(void) {
+  if (op_focei.omegan == 0) return;
+  NumericVector ot((int)op_focei.omegan);
+  std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
+            &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
+            ot.begin());
+  setOmegaTheta(ot);
+}
+void foceiOmegaTailMemoClear(void) { _updateThetaOmegaTail.clear(); }
+
+static void foceiOmegaFastCompute(const double *omBlock) {
+  const int n = _omFastNeta;
+  arma::mat U(n, n, arma::fill::zeros);
+  double ld = 0.0;
+  for (unsigned int k = 0; k < op_focei.omegan; ++k) {
+    double v = omBlock[k];
+    switch (_omFastXf[k]) {
+    case 1: v = v * v; break;
+    case 2: v = std::exp(v); break;
+    default: break;
+    }
+    U(_omFastRow[k], _omFastCol[k]) = v;
+  }
+  for (int i = 0; i < n; ++i) ld += std::log(U(i, i));
+  op_focei.cholOmegaInv = U;
+  op_focei.omegaInv = U.t() * U;
+  op_focei.logDetOmegaInv5 = ld;
+}
+
+// Classify the diagonal transform at (probe) tail value th, given the base
+// and displaced factor entries; -1 when no candidate matches.
+static int foceiOmegaFastXfClassify(double th, double dlt, double b0,
+                                    double b1) {
+  if (std::fabs(b1 - (th + dlt)) < 1e-9 && std::fabs(b0 - th) < 1e-9) {
+    return 0; // identity
+  }
+  if (std::fabs(b1 - (th + dlt) * (th + dlt)) < 1e-9 &&
+      std::fabs(b0 - th * th) < 1e-9) {
+    return 1; // sqrt storage: factor entry = theta^2
+  }
+  if (std::fabs(b1 - std::exp(th + dlt)) < 1e-9 &&
+      std::fabs(b0 - std::exp(th)) < 1e-9) {
+    return 2; // log storage: factor entry = exp(theta)
+  }
+  return -1;
+}
+
+// Probe tail entry k: displace it, locate the ONE factor entry that moved,
+// and record its position + transform.  FALSE aborts the fast path (not a
+// one-entry-per-theta parameterization, or an unrecognized transform).
+static bool foceiOmegaFastProbeOne(unsigned int k, const std::vector<double> &t0,
+                                   const arma::mat &U0, double dlt) {
+  const int n = _omFastNeta;
+  NumericVector tp((int)t0.size());
+  std::copy(t0.begin(), t0.end(), tp.begin());
+  tp[(int)k] += dlt;
+  setOmegaTheta(tp);
+  arma::mat Uk = getCholOmegaInv();
+  int nz = 0, ri = -1, ci = -1;
+  for (int i = 0; i < n; ++i) {
+    for (int jj = 0; jj < n; ++jj) {
+      if (std::fabs(Uk(i, jj) - U0(i, jj)) > 1e-12) { nz++; ri = i; ci = jj; }
+    }
+  }
+  if (nz != 1) return false;
+  _omFastRow[k] = ri; _omFastCol[k] = ci;
+  if (ri != ci) {
+    // off-diagonal must be the raw theta (linear, coefficient 1)
+    if (std::fabs((Uk(ri, ci) - U0(ri, ci)) - dlt) > 1e-9) return false;
+    _omFastXf[k] = 0;
+    return true;
+  }
+  _omFastXf[k] = foceiOmegaFastXfClassify(t0[k], dlt, U0(ri, ci), Uk(ri, ci));
+  return _omFastXf[k] >= 0;
+}
+
+// Verify the mapped C-side rebuild against the env at a displaced tail:
+// omegaInv, chol and logdet must agree to numerical noise.
+static bool foceiOmegaFastVerify(const std::vector<double> &t0) {
+  std::vector<double> tv(t0);
+  for (size_t k = 0; k < tv.size(); ++k) tv[k] += 0.1 + 0.03 * (double)k;
+  NumericVector tvv((int)tv.size());
+  std::copy(tv.begin(), tv.end(), tvv.begin());
+  setOmegaTheta(tvv);
+  arma::mat oiR = getOmegaInv();
+  arma::mat chR = getCholOmegaInv();
+  double ldR = getOmegaDet();
+  foceiOmegaFastCompute(tv.data());
+  return arma::approx_equal(op_focei.omegaInv, oiR, "absdiff", 1e-10) &&
+    arma::approx_equal(op_focei.cholOmegaInv, chR, "absdiff", 1e-10) &&
+    std::fabs(op_focei.logDetOmegaInv5 - ldR) < 1e-10;
+}
+
+static void foceiOmegaFastTry(const double *omBlock) {
+  _omFastState = -1; // pessimistic until verified
+  const int n = (int)op_focei.neta;
+  const unsigned int m = op_focei.omegan;
+  if (n <= 0 || m == 0) return;
+  std::vector<double> t0(omBlock, omBlock + m);
+  NumericVector ot((int)m);
+  std::copy(t0.begin(), t0.end(), ot.begin());
+  setOmegaTheta(ot);
+  arma::mat U0 = getCholOmegaInv();
+  if ((int)U0.n_rows != n) return;
+  _omFastNeta = n;
+  _omFastRow.assign(m, -1); _omFastCol.assign(m, -1); _omFastXf.assign(m, -1);
+  for (unsigned int k = 0; k < m; ++k) {
+    if (!foceiOmegaFastProbeOne(k, t0, U0, 0.25)) return;
+  }
+  if (foceiOmegaFastVerify(t0)) _omFastState = 1;
+}
+
 static void foceiOmegaFromTheta(const double *omBlock) {
   if (op_focei.omegan == 0) return;
+  if (getenv("NLMIXR2_NO_FAST_OMEGA") == NULL && op_focei.fo != 1) {
+    if (_omFastState == 0) foceiOmegaFastTry(omBlock);
+    if (_omFastState == 1) {
+      foceiOmegaFastCompute(omBlock);
+      return;
+    }
+  }
   NumericVector omegaTheta(op_focei.omegan);
   std::copy(omBlock, omBlock + op_focei.omegan, omegaTheta.begin());
   setOmegaTheta(omegaTheta);
@@ -1384,9 +1541,21 @@ void updateTheta(double *theta){
     NumericVector mixJac = f(curTheta, mixIdx);
     std::copy(mixJac.begin(), mixJac.end(), &op_focei.mixProbGrad[0]);
   }
-  // Update setOmegaTheta
+  // Update setOmegaTheta -- skipped when the omega tail is UNCHANGED
+  // since the last rebuild (the symbolic-inverse rebuild costs ~1 ms of
+  // R-level calls; a sampler that owns Omega, or an outer gradient
+  // varying one theta at a time, pays it only when the tail moves)
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {
-    foceiOmegaFromTheta(&op_focei.fullTheta[0] + op_focei.ntheta);
+    const double *omTail = &op_focei.fullTheta[0] + op_focei.ntheta;
+    const size_t omN = (size_t)op_focei.omegan;
+    bool same = getenv("NLMIXR2_NO_OMEGA_MEMO") == NULL &&
+      _updateThetaOmegaTail.size() == omN && omN > 0 &&
+      std::memcmp(_updateThetaOmegaTail.data(), omTail,
+                  sizeof(double) * omN) == 0;
+    if (!same) {
+      foceiOmegaFromTheta(omTail);
+      _updateThetaOmegaTail.assign(omTail, omTail + omN);
+    }
   }
   //Now Setup Last theta
   if (!op_focei.calcGrad){
@@ -4198,6 +4367,7 @@ void innerOpt() {
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
+    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
   }
@@ -6384,6 +6554,25 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
     else op_focei.impThetaSensIdx = IntegerVector(0);
   }
+  // foceiLikLoad(thetaSens=TRUE) (#939): an external caller (e.g. a linked
+  // sampler) wants the theta-sensitivity model wired without being an imp/advi
+  // estimation.  Always reassigned (clear-on-absence, like the flags above):
+  // op_focei is a process global, so a stale TRUE from a prior load must not
+  // leak into the next fit.
+  op_focei.thetaSensLoad = foceiO.containsElementNamed("thetaSensLoad") &&
+    as<bool>(foceiO["thetaSensLoad"]);
+  if (op_focei.thetaSensLoad) {
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
+    else op_focei.impThetaSensIdx = IntegerVector(0);
+  }
+  // #958 combined build: same process-global hygiene as thetaSensLoad
+  op_focei.combSens = foceiO.containsElementNamed("combSens") &&
+    as<bool>(foceiO["combSens"]);
+  // fresh problem: never inherit a previous fit's omega-tail memo or its
+  // fast chol(Omega^-1) map (the _rxInv env is new)
+  foceiOmegaTailMemoClear();
+  foceiOmegaFastReset();
 
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
@@ -10506,6 +10695,7 @@ double impGetOmegaThetaVal(int m) { return op_focei.fullTheta[op_focei.ntheta + 
 // updateTheta() takes), so likInner0's prior term and the objective normalizer
 // both reflect it.
 void impSetOmegaThetaAll(int m, double val) {
+  foceiOmegaTailMemoClear(); // omega state moves outside updateTheta
   op_focei.fullTheta[op_focei.ntheta + m] = val;
   NumericVector omegaTheta(op_focei.omegan);
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
@@ -10527,6 +10717,7 @@ void impSetEta(int id, const arma::vec& eta) {
 
 // Current Omega matrix (its zero pattern gives the estimated-element structure).
 void impGetOmega(arma::mat& Om) {
+  foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
   Om = getOmegaMat();
 }
 
@@ -10654,6 +10845,8 @@ void impReMap() {
 // determinant, and copy the new Omega thetas into fullTheta so the next MAP and
 // the output see them.
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+  foceiOmegaFastReset(); // the _rxInv env is replaced; the map may change
+  foceiOmegaTailMemoClear();
   Environment rxode2ns = Environment::namespace_env("rxode2");
   Function f = rxode2ns["rxSymInvCholCreate"];
   // positive-definite guard: a support-point covariance can be numerically
@@ -10792,17 +10985,23 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
 //   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
 // and the (mean+variance) Fisher information is
 //   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
-void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
+void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
+                         bool reuseSolve) {
   out.nobs = 0; out.fvec.clear(); out.Vvec.clear(); out.dfmat.clear();
   out.dVmat.clear(); out.sampleOk.clear(); out.dvv.clear(); out.limv.clear();
   out.censv.clear(); out.distv.clear();
+  // #958 combined build: the theta columns live on the INNER model (appended
+  // after the FOCEi block), so the whole read pass runs against the inner
+  // slot/model; otherwise the separate theta-sensitivity model as before.
+  const int tsSlot = op_focei.combSens ? odeSlotInner : odeSlotThetaSens;
+  rxSolveF &tsModel = op_focei.combSens ? rxInner : rxThetaSens;
   int nSens = op_focei.impThetaSensIdx.size();
   // thetaSensNlhs is the sensitivity model's true lhs width (set at setup); it sizes
   // the calc_lhs output buffer below.  If it is unset (<=0) we cannot size the buffer
   // to the width calc_lhs will write, so bail rather than risk a buffer overflow.
   if (nSens == 0 || op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
       op_focei.thetaSensPredOffset < 0 || op_focei.thetaSensROffset < 0 ||
-      op_focei.thetaSensNlhs <= 0 || rxThetaSens.calc_lhs == NULL) return;
+      op_focei.thetaSensNlhs <= 0 || tsModel.calc_lhs == NULL) return;
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
@@ -10817,7 +11016,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
   // to thetaSensNeq for these solves and restore on exit (mirrors the predNeq FD
   // pattern).
-  OdeSwapScope neqGuard(odeSlotThetaSens, ind, op);
+  OdeSwapScope neqGuard(tsSlot, ind, op);
   // Sync the current thetas into this subject before solving (etas set per sample).
   arma::vec curTheta((unsigned int)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
@@ -10856,6 +11055,15 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   out.dvv.assign(dvRaw.begin(), dvRaw.end());
   out.limv.assign(limRaw.begin(), limRaw.end());
   out.distv.assign(nobs, rxDistributionNorm);
+  // DV-side lambda sensitivity, only when the model emits d(lambda)/d(theta) (#949).
+  const bool doDvSens = (op_focei.thetaSensLambdaOffset >= 0);
+  if (doDvSens) {
+    out.ddvmat.zeros(nobs, nSens);
+    out.dlimmat.zeros(nobs, nSens);
+  } else {
+    out.ddvmat.reset();
+    out.dlimmat.reset();
+  }
   bool rowInfoDone = false;
   out.fvec.resize(nsamp); out.Vvec.resize(nsamp);
   out.dfmat.resize(nsamp); out.dVmat.resize(nsamp);
@@ -10879,12 +11087,30 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
   // Transform observation ko's DV/limit and read its endpoint distribution.  Call ONLY
   // from a pass that has just run calc_lhs for that row: rx_yj_/rx_lambda_/rx_low_/
   // rx_hi_ are model assignments, so ind->yj / ind->lambda describe the row only then.
-  auto rowInfoAt = [&](int ko) {
+  auto rowInfoAt = [&](int ko, const double *lhs) {
     out.dvv[ko] = tbs(dvRaw[ko]);
     if (R_FINITE(limRaw[ko])) out.limv[ko] = tbs(limRaw[ko]);
     int _yj = getIndYj(ind), _dist = rxDistributionNorm, _yj0 = 0;
     _splitYj(&_yj, &_dist, &_yj0);
     out.distv[ko] = _dist;
+    if (!doDvSens) return;
+    // d(h(y; lambda))/d(theta) = d(h)/d(lambda) * d(lambda)/d(theta): the transform is
+    // applied to the DV here in C++, so the sensitivity model cannot carry this half.
+    double _dY = _powerDLambda(dvRaw[ko], getIndLambda(ind), getIndLambdaYj(ind),
+                               getIndLogitLow(ind), getIndLogitHi(ind));
+    if (!R_FINITE(_dY)) _dY = 0.0;
+    double _dL = 0.0;
+    if (R_FINITE(limRaw[ko])) {
+      _dL = _powerDLambda(limRaw[ko], getIndLambda(ind), getIndLambdaYj(ind),
+                          getIndLogitLow(ind), getIndLogitHi(ind));
+      if (!R_FINITE(_dL)) _dL = 0.0;
+    }
+    for (int s = 0; s < nSens; ++s) {
+      double _dl = lhs[op_focei.thetaSensLambdaOffset + s];
+      if (!R_FINITE(_dl)) _dl = 0.0;
+      out.ddvmat(ko, s) = _dY * _dl;
+      out.dlimmat(ko, s) = _dL * _dl;
+    }
   };
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
@@ -10901,9 +11127,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
     // re-solve.  Deterministic for a fixed thread count, though not bit-identical
     // to the serial global-relaxation path.
     FoceiRetryHooks _hk;
-    odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
-                      [&]{ odeSwapSolveInd(odeSlotThetaSens, _rxId); },
-                      foceiRetryOpts(odeRelaxInd), _hk);
+    if (!(reuseSolve && nsamp == 1)) {
+      odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
+                        [&]{ odeSwapSolveInd(tsSlot, _rxId); },
+                        foceiRetryOpts(odeRelaxInd), _hk);
+    }
     bool okRow = true;
     if (!indHasBadSolve(op, ind)) {
       // Re-point this subject's per-thread pointers (ind->lhs etc.) for the
@@ -10911,10 +11139,10 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       // likInner0 / shi21ThetaGeneral do (iniSubjectE with inLhs=1).  Serially this
       // is a no-op (thread 0), but under the parallel M-step it is what makes the
       // lhs reads land in this thread's slice instead of a stale one.
-      iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
+      iniSubjectE(_rxId, 1, ind, op, rx, tsModel.update_inis);
       // pooled table -> the theta-sensitivity model's own CMT basis.  A no-op while
       // thetaSens IS the pool (est="impmap"/"advi"), but not if a wider peer sizes it.
-      OdeSwapCmtScope _tsCmt(odeSlotThetaSens, op, ind);
+      OdeSwapCmtScope _tsCmt(tsSlot, op, ind);
       // Read through the scope's buffer: it is rxode2's per-thread slice when the
       // pool is at least this wide, and a private buffer when this model is wider
       // -- writing past the slice would spill into the neighbouring thread's,
@@ -10926,14 +11154,14 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
       for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
         setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
         if (isDose(getIndEvid(ind, kk))) {
-          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           continue;
         } else if (getIndEvid(ind, kk) == 0) {
-          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           // ind->yj / ind->lambda now describe THIS row -- the only point in the
           // subject where that is true, so take the per-obs DV transform and
           // distribution here (once; they do not vary across samples).
-          if (!rowInfoDone) rowInfoAt(ko);
+          if (!rowInfoDone) rowInfoAt(ko, lhs);
           fvec[ko] = lhs[op_focei.thetaSensPredOffset];
           Vvec[ko] = lhs[op_focei.thetaSensROffset];
           for (int s = 0; s < nSens; ++s) {
@@ -10967,17 +11195,17 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
     // rx_yj_/rx_lambda_, which are functions of CMT and the thetas and NOT of the ODE
     // state -- so the values are right even though the sensitivity solve behind this
     // buffer failed.  f/V/df/dV are not read here; they come from the FD fallback.
-    iniSubjectE(_rxId, 1, ind, op, rx, rxThetaSens.update_inis);
-    OdeSwapCmtScope _riCmt(odeSlotThetaSens, op, ind);
+    iniSubjectE(_rxId, 1, ind, op, rx, tsModel.update_inis);
+    OdeSwapCmtScope _riCmt(tsSlot, op, ind);
     double *lhs = neqGuard.lhs();
     int ko = 0, kk;
     double curT;
     for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
       if (!isDose(getIndEvid(ind, kk)) && getIndEvid(ind, kk) != 0) continue;
-      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+      tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
       if (getIndEvid(ind, kk) == 0) {
-        rowInfoAt(ko);
+        rowInfoAt(ko, lhs);
         ko++;
       }
     }
@@ -10992,23 +11220,74 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out) {
 // log-likelihood score is -rho_f, -rho_r and the information is the rho second
 // derivatives.  An uncensored observation takes the Gauss-Newton form, which is what
 // the censored one reduces to.
+//
+// `ddv`/`dlim` are d(transformed DV)/d(theta) and d(transformed LIMIT)/d(theta),
+// non-zero only for an estimated transform-both-sides lambda (#949).  Uncensored,
+// the residual direction is then d(err)/d(theta) = d(f)/d(theta) - d(h(y))/d(theta);
+// censored, the dv/limit partials of rho come from censNormalDvPartials (the Hessian
+// keeps the same residual direction -- exact for M3, a Gauss-Newton surrogate
+// otherwise, and H is only the Newton step's information).
 static void impThetaAccumGauss(const impThetaSensData &c, int jo, double f, double V,
                                const arma::rowvec &df, const arma::rowvec &dV,
+                               const arma::rowvec &ddv, const arma::rowvec &dlim,
+                               bool hasDvSens,
                                double w, arma::vec &g, arma::mat &H) {
   const bool isCens = (c.censv[jo] != 0) || (R_FINITE(c.limv[jo]) && !ISNA(c.limv[jo]));
+  arma::rowvec _deBuf;
+  if (hasDvSens) _deBuf = df - ddv;
+  const arma::rowvec &de = hasDvSens ? _deBuf : df;   // d(err)/d(theta)
   if (isCens) {
     double cp[9]; for (int _i = 0; _i < 9; ++_i) cp[_i] = 0.0;
     censNormalPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, 2, cp);
     g += w * (-cp[0] * df.t() - cp[1] * dV.t());
-    H += w * (cp[2] * (df.t() * df) +
-              cp[3] * (df.t() * dV + dV.t() * df) +
+    if (hasDvSens) {
+      double rhoDv = 0.0, rhoLim = 0.0;
+      censNormalDvPartials((double)c.censv[jo], c.dvv[jo], c.limv[jo], f, V, cp[0],
+                           &rhoDv, &rhoLim);
+      g += w * (-rhoDv * ddv.t() - rhoLim * dlim.t());
+    }
+    H += w * (cp[2] * (de.t() * de) +
+              cp[3] * (de.t() * dV + dV.t() * de) +
               cp[4] * (dV.t() * dV));
     return;
   }
   const double err = f - c.dvv[jo];
-  g += w * ((-err / V) * df.t() +
+  g += w * ((-err / V) * de.t() +
             (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-  H += w * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+  H += w * ((de.t() * de) / V + 0.5 * (dV.t() * dV) / (V * V));
+}
+
+// One (sample k, observation jo) contribution to the theta score/information.
+// Returns without touching g/H when that observation's outputs are unusable.
+// `zeroDir` stands in for the DV/limit directions when the transform lambda is
+// not estimated (#949).
+static void impThetaAccumObs(const impThetaSensData &c, int k, int jo,
+                             bool hasDvSens, const arma::rowvec &zeroDir,
+                             double w, arma::vec &g, arma::mat &H) {
+  const arma::mat &dfmat = c.dfmat[k];
+  double f = c.fvec[k][jo], V = c.Vvec[k][jo];
+  // General (non-normal) log-likelihood endpoint: rx_pred_ IS the per-obs
+  // log-likelihood and rx_r_ == 0, so the Gauss-Newton (f/V) score below does
+  // not apply.  The theta score is d(ll)/d(theta) (dfmat already holds it) and
+  // the empirical (BHHH) Fisher information is its outer product -- PSD, so the
+  // Newton step ascends the likelihood.  This must run BEFORE the V<=0 guard,
+  // which would otherwise drop every LL obs (V==0) and freeze the M-step.
+  if (jo < (int)c.distv.size() && c.distv[jo] != rxDistributionNorm) {
+    arma::rowvec dll = dfmat.row(jo);
+    if (!R_finite(f) || !dll.is_finite()) return;
+    g += w * dll.t();
+    H += w * (dll.t() * dll);
+    return;
+  }
+  if (!R_finite(V) || V <= 0.0 || !R_finite(f)) return;
+  arma::rowvec df = dfmat.row(jo), dV = c.dVmat[k].row(jo);
+  if (!df.is_finite() || !dV.is_finite()) return;
+  if (hasDvSens) {
+    impThetaAccumGauss(c, jo, f, V, df, dV, c.ddvmat.row(jo), c.dlimmat.row(jo),
+                       true, w, g, H);
+  } else {
+    impThetaAccumGauss(c, jo, f, V, df, dV, zeroDir, zeroDir, false, w, g, H);
+  }
 }
 
 // Cheap arithmetic half of the theta score: accumulate the IS-weighted score `g`
@@ -11020,31 +11299,13 @@ void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
   if (nSens == 0 || c.nobs == 0) return;
   int nobs = c.nobs;
   int nsamp = (int)c.sampleOk.size();
+  const bool hasDvSens = ((int)c.ddvmat.n_rows == nobs &&
+                          (int)c.ddvmat.n_cols == nSens);
+  const arma::rowvec zeroDir(nSens, arma::fill::zeros);
   for (int k = 0; k < nsamp; ++k) {
     if (!c.sampleOk[k]) continue;
-    const arma::vec& fvec = c.fvec[k];
-    const arma::vec& Vvec = c.Vvec[k];
-    const arma::mat& dfmat = c.dfmat[k];
-    const arma::mat& dVmat = c.dVmat[k];
     for (int jo = 0; jo < nobs; ++jo) {
-      double f = fvec[jo], V = Vvec[jo];
-      // General (non-normal) log-likelihood endpoint: rx_pred_ IS the per-obs
-      // log-likelihood and rx_r_ == 0, so the Gauss-Newton (f/V) score below does
-      // not apply.  The theta score is d(ll)/d(theta) (dfmat already holds it) and
-      // the empirical (BHHH) Fisher information is its outer product -- PSD, so the
-      // Newton step ascends the likelihood.  This must run BEFORE the V<=0 guard,
-      // which would otherwise drop every LL obs (V==0) and freeze the M-step.
-      if (jo < (int)c.distv.size() && c.distv[jo] != rxDistributionNorm) {
-        arma::rowvec dll = dfmat.row(jo);
-        if (!R_finite(f) || !dll.is_finite()) continue;
-        g += zk[k] * dll.t();
-        H += zk[k] * (dll.t() * dll);
-        continue;
-      }
-      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
-      arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
-      if (!df.is_finite() || !dV.is_finite()) continue;
-      impThetaAccumGauss(c, jo, f, V, df, dV, zk[k], g, H);
+      impThetaAccumObs(c, k, jo, hasDvSens, zeroDir, zk[k], g, H);
     }
   }
 }
@@ -11325,9 +11586,40 @@ Environment foceiFitCpp_(Environment e){
       // est="impmap": load the theta-sensitivity model (peer of rxInner/rxPred)
       // and record its ODE state count + the lhs offset of the first
       // d(f)/d(theta) output rx__sens_rx_pred__BY_THETA_1___.
+      // Every offset resets here, not just thetaSensOffset: the resolves below are
+      // guarded by `if (_iv >= 0)`, so a fit whose firstV name does not resolve
+      // would otherwise keep the PREVIOUS fit's offset -- which impThetaSensCollect's
+      // `< 0` guard cannot catch, and reads land in the wrong lhs columns.
       op_focei.thetaSensOffset = -1;
+      op_focei.thetaSensDvOffset = -1;
+      op_focei.thetaSensPredOffset = -1;
+      op_focei.thetaSensROffset = -1;
+      op_focei.thetaSensLambdaOffset = -1;
+      op_focei.thetaSensNlhs = 0;
       op_focei.thetaSensNeq = 0;
-      if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
+      if (op_focei.combSens) {
+        // #958 combined build: the INNER model carries the theta-sensitivity
+        // columns (appended after the FOCEi block), so every offset resolves
+        // against odeSlotInner and there is no separate model to register or
+        // pin around (the inner IS the largest peer).
+        op_focei.thetaSensNeq = 0;
+        op_focei.thetaSensNlhs = odeSwapNlhs(odeSlotInner);
+        if (op_focei.impThetaSensIdx.size() > 0) {
+          std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
+          std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
+          std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
+          int _if = odeSwapLhsIndex(odeSlotInner, firstF.c_str());
+          int _iv = odeSwapLhsIndex(odeSlotInner, firstV.c_str());
+          if (_if >= 0) op_focei.thetaSensOffset = _if;
+          if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
+          op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
+          op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotInner, "rx_r_");
+          std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+          op_focei.thetaSensLambdaOffset =
+            odeSwapLhsIndex(odeSlotInner, firstL.c_str());
+        }
+      } else if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
+      model.containsElementNamed("thetaSens")) {
         RObject ts = model["thetaSens"];
         if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
           op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);
@@ -11349,6 +11641,11 @@ Environment foceiFitCpp_(Environment e){
             if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
             op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
             op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+            // d(lambda)/d(theta): present only when the model emits it (an estimated
+            // transform-both-sides lambda), absent -> -1 and the DV-side term is skipped
+            std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+            op_focei.thetaSensLambdaOffset =
+              odeSwapLhsIndex(odeSlotThetaSens, firstL.c_str());
           }
         }
         // The pool is sized for the theta-sensitivity model (the largest); pin the
@@ -11865,9 +12162,36 @@ RObject vaeInnerSetup_(Environment e) {
   // the first d(f)/d(theta) / d(V)/d(theta) columns) so impThetaScore can supply
   // the outer population gradient -- mirrors the impmap full-fit path (which sets
   // these in foceiFitCpp_, a code path vaeInnerSetup_ does not go through).
+  // all offsets, for the stale-read reason in foceiFitCpp_ above
   op_focei.thetaSensOffset = -1;
+  op_focei.thetaSensDvOffset = -1;
+  op_focei.thetaSensPredOffset = -1;
+  op_focei.thetaSensROffset = -1;
+  op_focei.thetaSensLambdaOffset = -1;
+  op_focei.thetaSensNlhs = 0;
   op_focei.thetaSensNeq = 0;
-  if ((op_focei.isImpmap || op_focei.isAdvi) && model.containsElementNamed("thetaSens")) {
+  if (op_focei.combSens) {
+    // #958 combined build: the INNER model carries the theta columns
+    // (appended after the FOCEi block); resolve against odeSlotInner --
+    // there is no separate model to register or pin around.
+    op_focei.thetaSensNeq = 0;
+    op_focei.thetaSensNlhs = odeSwapNlhs(odeSlotInner);
+    if (op_focei.impThetaSensIdx.size() > 0) {
+      std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
+      std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
+      std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
+      int _if = odeSwapLhsIndex(odeSlotInner, firstF.c_str());
+      int _iv = odeSwapLhsIndex(odeSlotInner, firstV.c_str());
+      if (_if >= 0) op_focei.thetaSensOffset = _if;
+      if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
+      op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
+      op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotInner, "rx_r_");
+      std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+      op_focei.thetaSensLambdaOffset =
+        odeSwapLhsIndex(odeSlotInner, firstL.c_str());
+    }
+  } else if ((op_focei.isImpmap || op_focei.isAdvi || op_focei.thetaSensLoad) &&
+      model.containsElementNamed("thetaSens")) {
     RObject ts = model["thetaSens"];
     if (odeSwapRegister(odeSlotThetaSens, "thetaSens", ts, &rxThetaSens)) {
       op_focei.thetaSensNeq = odeSwapNeq(odeSlotThetaSens);
@@ -11884,6 +12208,9 @@ RObject vaeInnerSetup_(Environment e) {
         if (_iv >= 0) op_focei.thetaSensDvOffset = _iv;
         op_focei.thetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
         op_focei.thetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+        std::string firstL = "rx__sens_rx_lambda__BY_THETA_" + j0 + "___";
+        op_focei.thetaSensLambdaOffset =
+          odeSwapLhsIndex(odeSlotThetaSens, firstL.c_str());
       }
     }
     if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
@@ -13017,6 +13344,7 @@ static std::vector<double> _fdOmTheta0;
 // _fdOmBlock0 when it is done.
 static bool fdOmegaBuild(const std::vector<double> &blk, arma::mat &oiOut, double &ldOut) {
   if (op_focei.omegan == 0) return false;
+  foceiOmegaTailMemoClear(); // _rxInv moves outside updateTheta
   NumericVector ot((int)op_focei.omegan);
   for (unsigned int q = 0; q < op_focei.omegan; ++q) ot[(int)q] = blk[(size_t)q];
   setOmegaTheta(ot);
@@ -14113,6 +14441,27 @@ static void outerSolveFill(int slot, rxSolveF *fns,
           fin = E.Rsig.is_finite() && E.RsigDir.is_finite() && E.Rsig2.is_finite();
       }
       if (fin && hasT) fin = E.trans.is_finite();
+    }
+    if (fin && hasT) {
+      // A log/boxCox transform floors a non-positive UNtransformed prediction at
+      // _eps (rxode2's TBS lowering: rxode2_model_shared.h::_safe_log_ /
+      // rxode2.h::_powerD case 0/3), so a clamped row's E.f is finite but the
+      // objective is LOCALLY CONSTANT there while this augmented model keeps
+      // differentiating the unclamped expression -- the analytic gradient is then
+      // not the gradient of the objective being minimized (nlmixr2/nlmixr2est#867).
+      // Detect it by round-tripping the inverse transform: a floored value lands
+      // back at <= _eps.  Treat the whole subject as unsolved so it takes the same
+      // per-subject finite-difference fallback a failed augmented solve already
+      // uses -- that differences the ACTUAL (clamped) objective, so it stays
+      // consistent with it at exactly the rows where the analytic assembly cannot.
+      for (int ko = 0; ko < nobs && fin; ++ko) {
+        int _tYj0 = (int)E.trans(ko, 0), _tDist = 0, _tTrans = 0;
+        _splitYj(&_tYj0, &_tDist, &_tTrans);
+        if (_tTrans != 0 && _tTrans != 3) continue;   // not boxCox(0) or log/lnorm(3)
+        double _rawF = _powerDi(E.f[ko], E.trans(ko, 1), (int)E.trans(ko, 0),
+                                E.trans(ko, 2), E.trans(ko, 3));
+        if (!R_finite(_rawF) || _rawF <= _eps) fin = false;
+      }
     }
     return fin;
     };
@@ -15234,6 +15583,7 @@ static bool gradDirectEbes(int nsub, int neta, arma::mat &ebes) {
 static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
                             arma::cube &dOiEst, arma::vec &tr28) {
   try {
+    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     Oi = getOmegaInv();
     List dOiL = getDOmegaInvL();
     NumericVector tr = getTr28V();
@@ -17059,6 +17409,9 @@ List adviThetaSensInfo_() {
                       _["rOffset"] = op_focei.thetaSensROffset,
                       _["fOffset"] = op_focei.thetaSensOffset,
                       _["dvOffset"] = op_focei.thetaSensDvOffset,
+                      // >= 0 only when the transform-both-sides lambda is
+                      // estimated, i.e. the DV-side term is wired (#949)
+                      _["lambdaOffset"] = op_focei.thetaSensLambdaOffset,
                       _["neq"] = op_focei.thetaSensNeq,
                       _["calcLhsNull"] = (rxThetaSens.calc_lhs == NULL),
                       _["isAdvi"] = op_focei.isAdvi,
@@ -18306,6 +18659,757 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
     sortIds(rx, 0);
   }
   return out;
+}
+
+// ===========================================================================
+// FOCEi conditional-likelihood C API (#937): plain-C, non-throwing,
+// gradient-returning entry points over the foceiLikLoad()-ed problem,
+// exposed to downstream packages (nlmixr2stan) through the external-pointer
+// table _nlmixr2est_foceiPtrs() -- same idiom as _nlmixr2est_likContribPtrs.
+// The downstream side is inst/include/nlmixr2estFoceiPtr.h, which also
+// documents the calling contract (thread rules, return codes, determinism).
+//
+// None of these may longjmp or let an exception escape: they are called from
+// inside a sampler's log-density evaluation.  The one entry that must call
+// into R (the Omega rebuild in SetTheta) contains any R error with
+// R_ToplevelExec and is documented main-R-thread-only.
+
+extern "C" int nlmixr2FoceiApiVersion(void) {
+  return 1; // NLMIXR2EST_FOCEI_API in nlmixr2estFoceiPtr.h
+}
+
+// The exact condition impThetaScore's early-return gate uses (see the theta
+// score accumulation above): every offset resolved and the model bound.
+static bool foceiThetaSensWired(void) {
+  return op_focei.impThetaSensIdx.size() > 0 &&
+    op_focei.thetaSensOffset >= 0 && op_focei.thetaSensDvOffset >= 0 &&
+    op_focei.thetaSensPredOffset >= 0 && op_focei.thetaSensROffset >= 0 &&
+    op_focei.thetaSensNlhs > 0 &&
+    (op_focei.combSens ? rxInner.calc_lhs : rxThetaSens.calc_lhs) != NULL;
+}
+
+// Capability/hazard flag word for nlmixr2FoceiDims (bit meanings documented in
+// inst/include/nlmixr2estFoceiPtr.h).
+static int foceiDimsFlags(rx_solving_options *op) {
+  int f = 0;
+  if (op_focei.interaction == 1) f |= 0x01;
+  if (op_focei.foceType == 1)    f |= 0x02;
+  if (op_focei.fo == 1)          f |= 0x04;
+  for (int k = 0; k < op_focei.neta; ++k) {
+    if (op_focei.etaFD[k] == 1) { f |= 0x08; break; }
+  }
+  if (op_focei.mixIdxN != 0)     f |= 0x10;
+  if (solveMethodThreadSafe(op)) f |= 0x20;
+  if (foceiThetaSensWired())     f |= 0x40;
+  // #958: combined build loaded -- the fused condBatchThetaGrad entry works
+  if (op_focei.combSens && foceiThetaSensWired()) f |= 0x80;
+  return f;
+}
+
+extern "C" int nlmixr2FoceiDims(int *nid, int *neta, int *ntheta,
+                                int *npars, int *flags) {
+  if (!foceiLikLoaded) return -1;
+  try {
+    rx = getRxSolve_();
+    rx_solving_options *op = getSolvingOptions(rx);
+    if (nid)    *nid    = (int) getRxNsub(rx);
+    if (neta)   *neta   = op_focei.neta;
+    if (ntheta) *ntheta = (int) op_focei.ntheta;
+    if (npars)  *npars  = (int) op_focei.npars;
+    if (flags)  *flags  = foceiDimsFlags(op);
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// R_ToplevelExec callback: updateTheta() rebuilds Omega through the R-side
+// rxSymInv handle, so an R error is possible and must be contained rather
+// than longjmping through the caller.
+struct foceiSetThetaData {
+  const double *theta;
+  bool ok;
+};
+static void nlmixr2FoceiSetThetaCb(void *pd) {
+  foceiSetThetaData *d = (foceiSetThetaData *)pd;
+  std::vector<double> par(d->theta, d->theta + op_focei.npars);
+  updateTheta(par.data());
+  // likInner0 short-circuits on an unchanged eta (fInd->oldEta), only safe
+  // while theta/omega are fixed -- force a re-solve after a theta change
+  // (same as foceiLikSetTheta_ above).
+  rx = getRxSolve_();
+  for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
+  d->ok = true;
+}
+
+extern "C" int nlmixr2FoceiSetTheta(const double *theta, int npars) {
+  if (!foceiLikLoaded) return -1;
+  if (theta == NULL || npars != (int)op_focei.npars) return -2;
+  foceiSetThetaData d;
+  d.theta = theta;
+  d.ok = false;
+  if (!R_ToplevelExec(nlmixr2FoceiSetThetaCb, &d)) return -3;
+  return d.ok ? 0 : -3;
+}
+
+extern "C" int nlmixr2FoceiSetOmegaInv(const double *omegaInv, int neta) {
+  if (!foceiLikLoaded) return -1;
+  if (omegaInv == NULL || neta != op_focei.neta || neta <= 0) return -2;
+  try {
+    // row-major in, but the matrix is required symmetric so storage order is
+    // moot; validate symmetry cheaply and positive definiteness via chol
+    arma::mat oi(neta, neta);
+    for (int i = 0; i < neta; ++i)
+      for (int j = 0; j < neta; ++j)
+        oi(i, j) = omegaInv[(size_t)i * neta + j];
+    if (!oi.is_symmetric(1e-8)) return -2;
+    arma::mat ch;
+    if (!arma::chol(ch, oi)) return -3;
+    double val, sign;
+    if (!arma::log_det(val, sign, oi) || sign <= 0) return -3;
+    op_focei.omegaInv = oi;
+    op_focei.cholOmegaInv = ch;
+    op_focei.logDetOmegaInv5 = 0.5 * val;
+    // preserve pre-memo semantics: the next updateTheta rebuilds Omega
+    // from the theta tail even if the tail is unchanged
+    foceiOmegaTailMemoClear();
+    // the memoized per-subject inner state was computed against the old
+    // Omega; force a recompute
+    rx = getRxSolve_();
+    for (int id = foceiIndSetupN(rx); id--;) inds_focei[id].setup = 0;
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+extern "C" int nlmixr2FoceiThetaSensIdx(int *idx, int n) {
+  if (!foceiLikLoaded) return -1;
+  // op_focei is a process global and the plain foceiLik load path does not
+  // clear impThetaSensIdx, so a stale index from an earlier imp/advi fit in
+  // the same session could leak through here; only report indices whose
+  // sensitivity model is actually wired for THIS load.
+  if (!foceiThetaSensWired()) return 0;
+  const int nSens = op_focei.impThetaSensIdx.size();
+  if (idx != NULL) {
+    for (int s = 0; s < nSens && s < n; ++s) idx[s] = op_focei.impThetaSensIdx[s];
+  }
+  return nSens;
+}
+
+// Shared determinism reset for the batch entries: the sticky solve-tolerance
+// relaxation otherwise makes the value depend on call history, which
+// silently breaks a sampler's reversibility assumption (same block as
+// adviElboGradCore).  Cost: no eta caching, one full solve per subject per
+// call.
+static void foceiCondBatchReset(rx_solving_options *op) {
+  op_focei.reducedTol.store(0, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(0, std::memory_order_relaxed);
+  op_focei.stickyTol.store(0, std::memory_order_relaxed);
+  resetOpBadSolve(op);
+}
+
+// Shared argument/state guard for the batch entries.  0 ok, -1 not loaded,
+// -2 bad shape / FO (lp never filled).  Sets `rx` as a side effect.
+// Mixtures (#955): the component-major expanded layout is BLESSED --
+// nid = nsub * nMix with id = component*nsub + subject.  likInner0 pins the
+// subject's component itself on recalc (setIndMixest at the top of its
+// recalc branch, and the batch entries force recalc per subject), and the
+// batch loops run components serial-outer / subjects parallel-inner (the
+// foceiLikEval_ discipline: components share the physical subjects' solve
+// slots, so two components of one subject must never solve concurrently).
+static int foceiCondBatchCheck(const double *etaIn, const double *out,
+                               int nid, int neta) {
+  if (!foceiLikLoaded) return -1;
+  if (etaIn == NULL || out == NULL) return -2;
+  if (neta != op_focei.neta || neta <= 0 || op_focei.fo == 1) return -2;
+  rx = getRxSolve_();
+  if (nid != (int)getRxNsub(rx) * (op_focei.mixIdxN + 1)) return -2;
+  return 0;
+}
+
+// Thread-count clamp + parallel decision, shared by the batch entries;
+// rxode2 sizes every per-thread solve buffer by op->cores.
+static bool foceiCondBatchParallel(int &cores, rx_solving_options *op) {
+  if (cores < 1) cores = 1;
+  cores = min2(cores, getOpCores(op));
+  return (cores > 1) && solveMethodThreadSafe(op);
+}
+
+// Per-thread rxode2 slot id around a subject's solve inside an external
+// OpenMP team (the cross-DLL libgomp fix, see innerOpt).
+static inline void foceiCondEnterThread(bool doParallel) {
+#ifdef _OPENMP
+  if (doParallel) setRxThreadId(omp_get_thread_num());
+#else
+  (void)doParallel;
+#endif
+}
+static inline void foceiCondLeaveThread(bool doParallel) {
+#ifdef _OPENMP
+  if (doParallel) setRxThreadId(-1);
+#else
+  (void)doParallel;
+#endif
+}
+
+// History-independence for one subject: defeat the eta memo and reset the
+// solve state to base (same discipline as adviElboGradCore), then copy the
+// subject's eta row out of the row-major input.
+static void foceiCondSubjectStart(int id, const double *etaIn, int neta,
+                                  std::vector<double> &eta) {
+  inds_focei[id].setup = 0;
+  rx_solving_options_ind *indI = getSolvingOptionsInd(rx, getRxId(id));
+  setIndTolFactor(indI, 1.0);
+  setIndSolve(indI, -1);
+  for (int j = 0; j < neta; ++j) eta[j] = etaIn[(size_t)id * neta + j];
+}
+
+// One subject of nlmixr2FoceiCondBatch: conditional value + d/d(eta).
+// Returns 1 when the value was non-finite (gradient row zeroed).
+static int foceiCondBatchOne(int id, const double *etaIn, int neta,
+                             const arma::mat &omInv,
+                             double *value, double *grad,
+                             int *usedFD = NULL) {
+  std::vector<double> eta(neta);
+  foceiCondSubjectStart(id, etaIn, neta, eta);
+  double v = npEvalCondLik(&eta[0], id);
+  focei_ind *fIndF = &(inds_focei[id]);
+  if (usedFD != NULL) *usedFD = 0;
+  if (!std::isfinite(v) && op_focei.canDoFD && op_focei.fallbackFD) {
+    // the inner SENSITIVITY solve failed even after likInner0's tolerance
+    // retry ladder; fall back to the simpler prediction model with shi21
+    // central-difference eta gradients -- the same cascade the focei
+    // optimizer uses (didInnerResetFail).  doFD is scoped to this
+    // evaluation, and the fallback fires as a pure function of the point,
+    // so determinism is preserved.
+    fIndF->setup = 0;
+    fIndF->doFD = 1;
+    v = npEvalCondLik(&eta[0], id);
+    fIndF->doFD = 0;
+    if (usedFD != NULL) *usedFD = 1;
+  }
+  value[id] = v;
+  if (!std::isfinite(v)) {
+    // the documented contract is -Inf (a sampler REJECTION); writing the
+    // raw NaN through instead poisons NUTS's stepsize adaptation
+    // permanently (observed: a warmup excursion into an ODE-overflow
+    // region left stepsize = NaN and the chain dead for the whole run,
+    // where -Inf recovers as an ordinary divergence)
+    value[id] = R_NegInf;
+    for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
+    return 1;
+  }
+  // d/deta log p(y_i|eta_i) = Omega^-1 eta_i - fInd->lp: likInner0
+  // finalizes lp = -(dlogp/deta) + Omega^-1 eta (the same identity
+  // adviElboGradCore's dataScore uses)
+  focei_ind *fInd = &(inds_focei[id]);
+  bool gradOk = true;
+  for (int k = 0; k < neta; ++k) {
+    double s = 0.0;
+    for (int l = 0; l < neta; ++l) s += omInv(k, l) * eta[l];
+    double g = s - fInd->lp[k];
+    if (!std::isfinite(g)) gradOk = false;
+    grad[(size_t)id * neta + k] = g;
+  }
+  if (!gradOk) {
+    // a finite value with a non-finite gradient (lp overflow at an extreme
+    // eta) must also become a clean rejection: a NaN partial reaching the
+    // sampler's autodiff tape kills stepsize adaptation the same way a
+    // NaN value does
+    value[id] = R_NegInf;
+    for (int k = 0; k < neta; ++k) grad[(size_t)id * neta + k] = 0.0;
+    return 1;
+  }
+  return 0;
+}
+
+extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
+                                     int cores, double *value, double *grad) {
+  int rc = foceiCondBatchCheck(etaIn, value, nid, neta);
+  if (rc != 0 || grad == NULL) return rc != 0 ? rc : -2;
+  try {
+    rx_solving_options *op = getSolvingOptions(rx);
+    foceiCondBatchReset(op);
+    const bool doParallel = foceiCondBatchParallel(cores, op);
+    // snapshot on the calling thread: the same Omega^-1 the gradient
+    // correction uses, so grad is exactly d/deta of the returned value
+    const arma::mat omInv = op_focei.omegaInv;
+    std::vector<int> bad(nid, 0);
+    {
+      // Install the inner model's event ("jump") sensitivity shape for this
+      // batch (a no-op when the model carries none, #946): the eta gradient
+      // of a model whose eta enters dose handling (alag/f/dur/rate) needs
+      // the jump injection into the eta-sensitivity states, and the shape is
+      // a process global whose installer calls into R -- so it must bracket
+      // the parallel region.
+      OdeSwapEsBatch esBatch(odeSlotInner);
+      NpInnerParallelScope npScope(rx, doParallel);
+      // components serial-outer (they share the physical subjects' solve
+      // slots), subjects parallel-inner; nMix == 1 reduces to the plain loop
+      const int nsub = (int)getRxNsub(rx);
+      const int nMix = op_focei.mixIdxN + 1;
+      for (int m = 0; m < nMix; ++m) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+        for (int ii = 0; ii < nsub; ++ii) {
+          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          foceiCondEnterThread(doParallel);
+          bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
+          foceiCondLeaveThread(doParallel);
+        }
+      }
+    }
+    int nbad = 0;
+    for (int i = 0; i < nid; ++i) nbad += bad[i];
+    return nbad;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// One subject of nlmixr2FoceiCondThetaGrad.  impThetaSensCollect is
+// self-contained (it syncs the thetas and this sample's etas into the
+// subject, solves the theta-sensitivity model through its own retry/FD
+// fallback, and resets the subject's solve state for determinism), so it is
+// used directly rather than through likInner0 + impThetaScore -- which also
+// keeps this batch entirely on the theta-sensitivity model, under whose
+// event ("jump") shape the caller has bracketed the loop (#946).  Returns 1
+// when the subject's sample was unusable.
+static int foceiCondThetaGradOne(int id, const double *etaIn, int neta,
+                                 int ntheta, int nSens, double *dTheta) {
+  // likInner0 first: it initializes the subject's solve/event state that
+  // impThetaSensCollect's observation walk reads (without it the walk sees
+  // no observations), and its NA refusal gives the bad-subject semantics.
+  // Its VALUE is shape-independent, so running it under the caller's
+  // theta-sensitivity event shape is safe; its eta-sensitivity side effects
+  // are unused here.
+  std::vector<double> eta(neta);
+  foceiCondSubjectStart(id, etaIn, neta, eta);
+  double v = likInner0(&eta[0], id);
+  if ((ISNA(v) || !std::isfinite(v)) &&
+      op_focei.canDoFD && op_focei.fallbackFD) {
+    // same fallback cascade as foceiCondBatchOne: pred model + shi21 FD
+    // (scoped), so a subject that only solves under the fallback is not
+    // spuriously flagged bad in the theta pass while the value pass
+    // succeeded
+    focei_ind *fIndF = &(inds_focei[id]);
+    fIndF->setup = 0;
+    fIndF->doFD = 1;
+    v = likInner0(&eta[0], id);
+    fIndF->doFD = 0;
+  }
+  if (ISNA(v) || !std::isfinite(v)) return 1;
+  arma::mat S(1, neta);
+  for (int k = 0; k < neta; ++k) S(0, k) = etaIn[(size_t)id * neta + k];
+  impThetaSensData c;
+  impThetaSensCollect(id, S, c);
+  if (c.nobs == 0 || c.sampleOk.empty() || c.sampleOk[0] == 0) return 1;
+  arma::vec zk(1); zk[0] = 1.0;
+  arma::vec g(nSens, arma::fill::zeros);
+  arma::mat H(nSens, nSens, arma::fill::zeros);
+  impThetaAccumOne(c, zk, g, H);
+  if (!g.is_finite()) return 1;
+  for (int s = 0; s < nSens; ++s) {
+    int th = op_focei.impThetaSensIdx[s]; // 0-based ntheta index
+    if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[s];
+  }
+  return 0;
+}
+
+extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
+                                         int cores, double *dTheta) {
+  int rc = foceiCondBatchCheck(etaIn, dTheta, nid, neta);
+  if (rc != 0) return rc;
+  if (!foceiThetaSensWired()) return -4;
+  try {
+    rx_solving_options *op = getSolvingOptions(rx);
+    const int ntheta = (int)op_focei.ntheta;
+    const int nSens = op_focei.impThetaSensIdx.size();
+    foceiCondBatchReset(op);
+    const bool doParallel = foceiCondBatchParallel(cores, op);
+    std::vector<int> bad(nid, 0);
+    std::fill(dTheta, dTheta + (size_t)nid * ntheta, 0.0);
+    {
+      // The theta-sensitivity model's own event ("jump") shape for this
+      // batch (#946): with it, a theta entering dose handling gets its jump
+      // condition at the event; without it the sensitivity column is
+      // silently zero.  Process-global + R-calling installer, so it
+      // brackets the parallel region (a no-op when the model carries no
+      // event sensitivities).
+      // #958 combined build: the theta columns ride the inner model, so
+      // the inner event-sensitivity shape is the right one for this batch
+      OdeSwapEsBatch esBatch(op_focei.combSens ? odeSlotInner
+                                               : odeSlotThetaSens);
+      NpInnerParallelScope npScope(rx, doParallel);
+      // components serial-outer, subjects parallel-inner (see
+      // foceiCondBatchCheck); nMix == 1 reduces to the plain loop
+      const int nsub = (int)getRxNsub(rx);
+      const int nMix = op_focei.mixIdxN + 1;
+      for (int m = 0; m < nMix; ++m) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+        for (int ii = 0; ii < nsub; ++ii) {
+          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          foceiCondEnterThread(doParallel);
+          bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens,
+                                          dTheta);
+          foceiCondLeaveThread(doParallel);
+        }
+      }
+    }
+    int nbad = 0;
+    for (int i = 0; i < nid; ++i) nbad += bad[i];
+    return nbad;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// ===========================================================================
+// External-sampler iteration print over the foceiLik residency: the same
+// scale.h machinery every nlmixr2est method prints with (the impmap
+// iter-print pattern), exposed so a downstream sampler (nlmixr2stan's
+// est="stan") shows the familiar iteration table and records parHistData.
+// Start/End are R-callable (main thread, before/after sampling); the ROW
+// entry is plain C (an additive foceiPtrs table entry) called from inside
+// the sampler's gradient evaluations.  Cadence is gated HERE (the scale's
+// own `every` is pinned to 1) so the history records exactly the printed
+// rows -- a sampler makes ~1e5 gradient evaluations and recording all of
+// them would bloat parHistData.  The FIRST call prints (immediate
+// feedback at the starting point), then every `every`-th call after.
+// Own scaling struct (the vae/advi pattern): op_focei.scale is populated
+// only by the full focei outer setup, which the foceiLik residency never
+// runs, so the residency print carries its own buffers.
+static scaling _foceiLikIterScale;
+static std::vector<double> _foceiLikIterInit;
+static std::vector<double> _foceiLikIterScaleC;
+static std::vector<int> _foceiLikIterXPar;
+static bool _foceiLikIterOn = false;
+static int _foceiLikIterEvery = 0;
+static long _foceiLikIterCnt = 0;
+
+//[[Rcpp::export]]
+RObject foceiLikIterPrintStart_(int every, NumericVector initPar,
+                                CharacterVector names,
+                                RObject iterPrintControl = R_NilValue,
+                                RObject xform = R_NilValue) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  // The print vector is CALLER-defined, not the internal focei parameter
+  // vector: the internal vector's omega tail is chol(Omega^-1) diagXform
+  // values, which a Bayesian sampler neither uses nor understands.  The
+  // caller passes natural-scale thetas plus the sampler's current ACTUAL
+  // omega entries, named om.<eta> (variance) / cov.<eta1>.<eta2>
+  // (covariance) -- so np here is the display width, not op_focei.npars.
+  int np = initPar.size();
+  if (names.size() != np) {
+    stop("names length (%d) must match initPar length (%d)",
+         (int)names.size(), np);
+  }
+  _foceiLikIterInit.assign(initPar.begin(), initPar.end());
+  _foceiLikIterScaleC.assign(np, 1.0);
+  scaling *s = &_foceiLikIterScale;
+  scaleSetup(s, _foceiLikIterInit.data(), _foceiLikIterScaleC.data(), names,
+             /*useColor*/ 0, /*printNcol*/ np, /*print*/ 1,
+             /*normType*/ normTypeConstant, /*scaleType*/ scaleTypeNone,
+             /*scaleCmin*/ 0.0, /*scaleCmax*/ 0.0, /*scaleTo*/ 0.0, np);
+  if (!Rf_isNull(iterPrintControl)) {
+    scaleApplyIterPrintControl(s, as<List>(iterPrintControl));
+  }
+  if (!Rf_isNull(xform)) {
+    scaleAttachXform(s, as<List>(xform));
+  }
+  if (s->xPar == NULL) {
+    // no xform: natural-scale values, no back-transform row. xPar must be
+    // non-NULL because scalePrintFun indexes it unconditionally.
+    _foceiLikIterXPar.assign(np, 0);
+    s->xPar = _foceiLikIterXPar.data();
+    s->probitIdx = NULL;
+    s->logitThetaLow = s->logitThetaHi = NULL;
+    s->probitThetaLow = s->probitThetaHi = NULL;
+  }
+  s->save = 1; s->showOfv = 1;
+  s->keyExtra =
+    "objective = -2 * sum of the conditional log-likelihood at the sampler's current point\n"
+    "om.<eta>/cov.<eta1>.<eta2> columns are the sampler's current omega values\n";
+  // cadence is gated in nlmixr2FoceiIterPrintRow (this file), NOT by the
+  // scale's own counter, so parHistData records exactly the printed rows
+  _foceiLikIterEvery = (every < 0) ? 0 : every;
+  s->every = (_foceiLikIterEvery > 0) ? 1 : 0;
+  _foceiLikIterCnt = 0;
+  if (_foceiLikIterEvery != 0) scalePrintHeader(s);
+  _foceiLikIterOn = true;
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject foceiLikIterPrintEnd_() {
+  if (!_foceiLikIterOn) return R_NilValue;
+  scaling *s = &_foceiLikIterScale;
+  s->save = 0;
+  if (_foceiLikIterEvery != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  RObject ph = scaleParHisDf(s);
+  _foceiLikIterOn = false;
+  _foceiLikIterEvery = 0;
+  s->every = 0;
+  return ph;
+}
+
+// Plain C, non-throwing: one sampler evaluation's (full, natural-scale)
+// parameter vector + objective.  Gated to the Start cadence; scalePrintFun
+// allocates only through the C++ heap and prints via REprintf, so it is
+// safe inside a log-density evaluation.  0 ok, -1 inactive, -2 bad shape.
+extern "C" int nlmixr2FoceiIterPrintRow(const double *par, int npars,
+                                        double objf) {
+  if (!foceiLikLoaded || !_foceiLikIterOn) return -1;
+  if (par == NULL || npars != _foceiLikIterScale.npars) return -2;
+  if (_foceiLikIterEvery <= 0) return 0;
+  int doPrint = 0;
+#ifdef _OPENMP
+#pragma omp critical(nlmixr2FoceiIterPrintRow)
+#endif
+  {
+    if ((_foceiLikIterCnt++) % _foceiLikIterEvery == 0) doPrint = 1;
+  }
+  if (!doPrint) return 0;
+  try {
+#ifdef _OPENMP
+#pragma omp critical(nlmixr2FoceiIterPrintRow)
+#endif
+    {
+      scalePrintFun(&_foceiLikIterScale, (double *)par, objf);
+    }
+    return 0;
+  } catch (...) {
+    return -3;
+  }
+}
+
+//[[Rcpp::export]]
+int foceiLikRowTick_(NumericVector par, double objf) {
+  return nlmixr2FoceiIterPrintRow(&par[0], (int)par.size(), objf);
+}
+
+// #958 fused tier-2 entry: value + d/d(eta) + d/d(theta) from ONE inner
+// solve per subject.  Requires the combined-sensitivity build
+// (foceiLikLoad(combSens=TRUE)): the inner model carries the theta columns,
+// so the theta read pass consumes the SAME solution likInner0 just
+// produced (impThetaSensCollect reuseSolve).  When the value came from the
+// prediction-model FD fallback the inner solution is not populated, so the
+// theta pass re-solves (and falls back to impThetaSensFD if that fails).
+static int foceiCondBatchThetaGradOne(int id, const double *etaIn, int neta,
+                                      int ntheta, int nSens,
+                                      const arma::mat &omInv,
+                                      double *value, double *gradEta,
+                                      double *dTheta) {
+  int usedFD = 0;
+  int bad = foceiCondBatchOne(id, etaIn, neta, omInv, value, gradEta,
+                              &usedFD);
+  for (int t = 0; t < ntheta; ++t) dTheta[(size_t)id * ntheta + t] = 0.0;
+  if (bad != 0) return bad;
+  arma::mat S(1, neta);
+  for (int k = 0; k < neta; ++k) S(0, k) = etaIn[(size_t)id * neta + k];
+  impThetaSensData c;
+  impThetaSensCollect(id, S, c, /*reuseSolve=*/usedFD == 0);
+  if (c.nobs == 0 || c.sampleOk.empty() || c.sampleOk[0] == 0) return 1;
+  arma::vec zk(1); zk[0] = 1.0;
+  arma::vec g(nSens, arma::fill::zeros);
+  arma::mat H(nSens, nSens, arma::fill::zeros);
+  impThetaAccumOne(c, zk, g, H);
+  if (!g.is_finite()) return 1;
+  for (int ss = 0; ss < nSens; ++ss) {
+    int th = op_focei.impThetaSensIdx[ss];
+    if (th >= 0 && th < ntheta) dTheta[(size_t)id * ntheta + th] = g[ss];
+  }
+  return 0;
+}
+
+extern "C" int nlmixr2FoceiCondBatchThetaGrad(const double *etaIn, int nid,
+                                              int neta, int cores,
+                                              double *value, double *gradEta,
+                                              double *dTheta) {
+  int rc = foceiCondBatchCheck(etaIn, value, nid, neta);
+  if (rc != 0 || gradEta == NULL || dTheta == NULL) return rc != 0 ? rc : -2;
+  if (!op_focei.combSens) return -5; // needs the combined build
+  if (!foceiThetaSensWired()) return -4;
+  try {
+    rx_solving_options *op = getSolvingOptions(rx);
+    const int ntheta = (int)op_focei.ntheta;
+    const int nSens = op_focei.impThetaSensIdx.size();
+    foceiCondBatchReset(op);
+    const bool doParallel = foceiCondBatchParallel(cores, op);
+    const arma::mat omInv = op_focei.omegaInv;
+    std::vector<int> bad(nid, 0);
+    {
+      // ONE event-sensitivity shape for the whole fused batch: the combined
+      // model owns both the eta and theta jump sensitivities
+      OdeSwapEsBatch esBatch(odeSlotInner);
+      NpInnerParallelScope npScope(rx, doParallel);
+      const int nsub = (int)getRxNsub(rx);
+      const int nMix = op_focei.mixIdxN + 1;
+      for (int m = 0; m < nMix; ++m) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+        for (int ii = 0; ii < nsub; ++ii) {
+          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          foceiCondEnterThread(doParallel);
+          bad[id] = foceiCondBatchThetaGradOne(id, etaIn, neta, ntheta,
+                                               nSens, omInv, value, gradEta,
+                                               dTheta);
+          foceiCondLeaveThread(doParallel);
+        }
+      }
+    }
+    int nbad = 0;
+    for (int i = 0; i < nid; ++i) nbad += bad[i];
+    return nbad;
+  } catch (...) {
+    return -3;
+  }
+}
+
+// Mixture component count for the blessed component-major layout (#955):
+// 1 for a non-mixture load, K for a K-component mixture; -1 not loaded.
+extern "C" int nlmixr2FoceiNMix(void) {
+  if (!foceiLikLoaded) return -1;
+  return op_focei.mixIdxN + 1;
+}
+
+// The external-pointer table (CRAN-preferred over R_RegisterCCallable, like
+// _nlmixr2est_likContribPtrs above); the downstream package installs it via
+// inst/include/nlmixr2estFoceiPtr.h.
+extern "C" SEXP _nlmixr2est_foceiPtrs(void) {
+  const char *nm[10] = {"apiVersion", "dims", "setTheta", "condBatch",
+                        "setOmegaInv", "thetaSensIdx", "condThetaGrad",
+                        "nMix", "iterPrintRow", "condBatchThetaGrad"};
+  DL_FUNC fn[10] = {(DL_FUNC) &nlmixr2FoceiApiVersion,
+                    (DL_FUNC) &nlmixr2FoceiDims,
+                    (DL_FUNC) &nlmixr2FoceiSetTheta,
+                    (DL_FUNC) &nlmixr2FoceiCondBatch,
+                    (DL_FUNC) &nlmixr2FoceiSetOmegaInv,
+                    (DL_FUNC) &nlmixr2FoceiThetaSensIdx,
+                    (DL_FUNC) &nlmixr2FoceiCondThetaGrad,
+                    (DL_FUNC) &nlmixr2FoceiNMix,
+                    (DL_FUNC) &nlmixr2FoceiIterPrintRow,
+                    (DL_FUNC) &nlmixr2FoceiCondBatchThetaGrad};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 10));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 10));
+  for (int i = 0; i < 10; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
+// R-facing shims over the SAME C entry points, so the API is testable from
+// testthat (an external pointer cannot be invoked from R) and usable as the
+// finite-difference oracle without a downstream package in the picture.
+
+//[[Rcpp::export]]
+List foceiLikCondGrad_(NumericMatrix etaMat, int cores) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  // row-major copy in, row-major out
+  std::vector<double> eta((size_t)nid * neta), v(nid), g((size_t)nid * neta);
+  for (int i = 0; i < nid; ++i)
+    for (int j = 0; j < neta; ++j) eta[(size_t)i * neta + j] = etaMat(i, j);
+  int rc = nlmixr2FoceiCondBatch(eta.data(), nid, neta, cores, v.data(), g.data());
+  if (rc < 0) stop("nlmixr2FoceiCondBatch failed with status %d", rc);
+  NumericVector value(nid);
+  NumericMatrix grad(nid, neta);
+  for (int i = 0; i < nid; ++i) {
+    value[i] = v[i];
+    for (int j = 0; j < neta; ++j) grad(i, j) = g[(size_t)i * neta + j];
+  }
+  return List::create(_["value"] = value, _["grad"] = grad, _["nBad"] = rc);
+}
+
+//[[Rcpp::export]]
+List foceiLikCondBatchThetaGrad_(NumericMatrix etaMat, int cores) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  int ntheta = 0;
+  int rc0 = nlmixr2FoceiDims(NULL, NULL, &ntheta, NULL, NULL);
+  if (rc0 < 0) stop("nlmixr2FoceiDims failed with status %d", rc0);
+  std::vector<double> eta((size_t)nid * neta), v(nid),
+    gE((size_t)nid * neta), dTh((size_t)nid * ntheta);
+  for (int i = 0; i < nid; ++i)
+    for (int j = 0; j < neta; ++j) eta[(size_t)i * neta + j] = etaMat(i, j);
+  int rc = nlmixr2FoceiCondBatchThetaGrad(eta.data(), nid, neta, cores,
+                                          v.data(), gE.data(), dTh.data());
+  if (rc < 0) stop("nlmixr2FoceiCondBatchThetaGrad failed with status %d", rc);
+  NumericVector value(nid);
+  NumericMatrix gradEta(nid, neta), dTheta(nid, ntheta);
+  for (int i = 0; i < nid; ++i) {
+    value[i] = v[i];
+    for (int j = 0; j < neta; ++j) gradEta(i, j) = gE[(size_t)i * neta + j];
+    for (int t = 0; t < ntheta; ++t) dTheta(i, t) = dTh[(size_t)i * ntheta + t];
+  }
+  return List::create(_["value"] = value, _["gradEta"] = gradEta,
+                      _["dTheta"] = dTheta, _["nBad"] = rc);
+}
+
+//[[Rcpp::export]]
+List foceiLikCondThetaGrad_(NumericMatrix etaMat, int cores) {
+  const int nid = etaMat.nrow();
+  const int neta = etaMat.ncol();
+  int ntheta = 0;
+  int rc0 = nlmixr2FoceiDims(NULL, NULL, &ntheta, NULL, NULL);
+  if (rc0 < 0) stop("nlmixr2FoceiDims failed with status %d", rc0);
+  std::vector<double> eta((size_t)nid * neta), dTh((size_t)nid * ntheta);
+  for (int i = 0; i < nid; ++i)
+    for (int j = 0; j < neta; ++j) eta[(size_t)i * neta + j] = etaMat(i, j);
+  int rc = nlmixr2FoceiCondThetaGrad(eta.data(), nid, neta, cores, dTh.data());
+  if (rc < 0) stop("nlmixr2FoceiCondThetaGrad failed with status %d", rc);
+  NumericMatrix dTheta(nid, ntheta);
+  for (int i = 0; i < nid; ++i)
+    for (int t = 0; t < ntheta; ++t) dTheta(i, t) = dTh[(size_t)i * ntheta + t];
+  return List::create(_["dTheta"] = dTheta, _["nBad"] = rc);
+}
+
+//[[Rcpp::export]]
+List foceiLikDims_() {
+  int nid = 0, neta = 0, ntheta = 0, npars = 0, flags = 0;
+  int rc = nlmixr2FoceiDims(&nid, &neta, &ntheta, &npars, &flags);
+  return List::create(_["status"] = rc, _["nid"] = nid, _["neta"] = neta,
+                      _["ntheta"] = ntheta, _["npars"] = npars,
+                      _["flags"] = flags,
+                      _["apiVersion"] = nlmixr2FoceiApiVersion());
+}
+
+//[[Rcpp::export]]
+int foceiLikNMix_() {
+  return nlmixr2FoceiNMix();
+}
+
+//[[Rcpp::export]]
+int foceiLikSetThetaC_(NumericVector theta) {
+  std::vector<double> th(theta.begin(), theta.end());
+  return nlmixr2FoceiSetTheta(th.data(), (int)th.size());
+}
+
+//[[Rcpp::export]]
+int foceiLikSetOmegaInvC_(NumericMatrix omegaInv) {
+  const int n = omegaInv.nrow();
+  if (omegaInv.ncol() != n) return -2;
+  std::vector<double> oi((size_t)n * n);
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j) oi[(size_t)i * n + j] = omegaInv(i, j);
+  return nlmixr2FoceiSetOmegaInv(oi.data(), n);
+}
+
+//[[Rcpp::export]]
+IntegerVector foceiLikThetaSensIdxC_() {
+  int n = nlmixr2FoceiThetaSensIdx(NULL, 0);
+  if (n < 0) stop("no general likelihood system loaded");
+  IntegerVector idx(n);
+  if (n > 0) nlmixr2FoceiThetaSensIdx(&idx[0], n);
+  return idx;
 }
 
 

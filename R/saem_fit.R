@@ -436,7 +436,10 @@
   nlambda <- nlambda1 + nlambda0
   nd1 <- nphi1 + nlambda1 + 1
   nd2 <- nphi1 + nlambda1 + nlambda0
-  nb_param <- nd2 + 1
+  # one FIM residual slot per endpoint, none for a general log-likelihood
+  # model (distribution==4) -- must stay in sync with src/saem.cpp's nb_param
+  nResidEp <- if (distribution == 4) 0L else model$nendpnt
+  nb_param <- nd2 + nResidEp
   Mcovariables <- cbind(rep(1, N), covariables)[, 1:nrow(mcov)]
   dim(Mcovariables) <- c(length(Mcovariables) / nrow(mcov), nrow(mcov)) # FIXME
 
@@ -760,8 +763,16 @@
   cfg$lambda <- rep(1.0, cfg$nendpnt)
   cfg$low <- rep(0.0, cfg$nendpnt)
   cfg$hi <- rep(1.0, cfg$nendpnt)
-  cfg$ares[cfg$res.mod == 2] <- 0
-  cfg$bres[cfg$res.mod == 1] <- 0
+  # res.mod codes without an additive/proportional component leave that
+  # component's cfg value at its nonzero default (10/1) forever: the M-step
+  # switch for that res.mod never assigns it (src/saem.cpp), so an unzeroed
+  # bres/ares corrupts g = ares + bres*|ft| with a spurious component (#914).
+  cfg$ares[cfg$res.mod == 2] <- 0  # prop
+  cfg$ares[cfg$res.mod == 3] <- 0  # pow
+  cfg$ares[cfg$res.mod == 7] <- 0  # prop + lambda
+  cfg$ares[cfg$res.mod == 8] <- 0  # pow + lambda
+  cfg$bres[cfg$res.mod == 1] <- 0  # add
+  cfg$bres[cfg$res.mod == 6] <- 0  # add + lambda
   cfg$res_offset <- cumsum(c(0L, nres))
   nMix <- max(1L, length(mixProb))
   cfg$nMix <- nMix

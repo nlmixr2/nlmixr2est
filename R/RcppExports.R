@@ -386,6 +386,50 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikIterPrintStart_ <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
+    .Call(`_nlmixr2est_foceiLikIterPrintStart_`, every, initPar, names, iterPrintControl, xform)
+}
+
+foceiLikIterPrintEnd_ <- function() {
+    .Call(`_nlmixr2est_foceiLikIterPrintEnd_`)
+}
+
+foceiLikRowTick_ <- function(par, objf) {
+    .Call(`_nlmixr2est_foceiLikRowTick_`, par, objf)
+}
+
+foceiLikCondGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondGrad_`, etaMat, cores)
+}
+
+foceiLikCondBatchThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondBatchThetaGrad_`, etaMat, cores)
+}
+
+foceiLikCondThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondThetaGrad_`, etaMat, cores)
+}
+
+foceiLikDims_ <- function() {
+    .Call(`_nlmixr2est_foceiLikDims_`)
+}
+
+foceiLikNMix_ <- function() {
+    .Call(`_nlmixr2est_foceiLikNMix_`)
+}
+
+foceiLikSetThetaC_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikSetThetaC_`, theta)
+}
+
+foceiLikSetOmegaInvC_ <- function(omegaInv) {
+    .Call(`_nlmixr2est_foceiLikSetOmegaInvC_`, omegaInv)
+}
+
+foceiLikThetaSensIdxC_ <- function() {
+    .Call(`_nlmixr2est_foceiLikThetaSensIdxC_`)
+}
+
 vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }
@@ -438,6 +482,27 @@ nlmScalePar <- function(p0) {
     .Call(`_nlmixr2est_nlmScalePar`, p0)
 }
 
+#' Unscale an nlm-family parameter vector back to the natural scale
+#'
+#' Converts a parameter vector from the estimation (scaled) scale used by the
+#' currently loaded nlm-family problem back to the natural scale, using the
+#' scaling that \code{nlmSetup()} installed.  Exported so that external
+#' engines driving the nlm-family objective (e.g. \code{babelmixr2}'s
+#' FME-based methods) do not have to reach into the namespace for it (#940).
+#'
+#' @param p Numeric parameter vector on the estimation scale; its length must
+#'   match the loaded problem's number of parameters.
+#'
+#' @return A numeric vector of the same length (names preserved) on the
+#'   natural scale.
+#'
+#' @details An nlm-family problem must be loaded (via the internal
+#'   \code{.nlmSetupEnv()}/\code{nlmSetup()} path) when this is called; the
+#'   scaling is part of that problem's state.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }
@@ -555,6 +620,14 @@ nlmAdjustHessian <- function(Hin, theta) {
 
 nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
+}
+
+nlmLikDims_ <- function() {
+    .Call(`_nlmixr2est_nlmLikDims_`)
+}
+
+nlmLikEvalC_ <- function(theta) {
+    .Call(`_nlmixr2est_nlmLikEvalC_`, theta)
 }
 
 #' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
@@ -693,6 +766,10 @@ saem_do_pred <- function(in_phi, in_evt, in_opt) {
 
 saem_fit <- function(xSEXP) {
     .Call(`_nlmixr2est_saem_fit`, xSEXP)
+}
+
+saemFormGTest <- function(inA, inB, inFt, inAddProp) {
+    .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inAddProp)
 }
 
 nlmixr2Parameters <- function(theta, eta) {

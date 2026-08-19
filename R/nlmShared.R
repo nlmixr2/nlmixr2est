@@ -206,8 +206,11 @@
     if (any(is.na(.hess))) {
       .ret$covMethod <- "failed"
     } else {
-      # r matrix
-      .r <- 0.5 * .hess
+      # r matrix: nlm-family objectives (`.nlmixrNlmFunC`/optim's `fn`) are
+      # built as a plain -1*LL, not the -2*LL scale FOCEI/SAEM/etc use -- so
+      # .hess is already the Fisher information (unlike the FOCEI R matrix,
+      # which halves a -2*LL Hessian to get there).  Do not rescale here.
+      .r <- .hess
       .ch <- try(cholSE(.r), silent = TRUE)
       .covType <- "r"
       if (inherits(.ch, "try-error")) {
@@ -233,7 +236,7 @@
       if (!inherits(.ch, "try-error")) {
         .rinv <- rxode2::rxInv(.ch)
         .rinv <- .rinv %*% t(.rinv)
-        .cov <- 2*.rinv
+        .cov <- .rinv
         dimnames(.cov) <- list(.name, .name)
         dimnames(.rinv) <- list(.name, .name)
         .ret$covMethod <- .covType

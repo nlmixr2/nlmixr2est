@@ -108,6 +108,24 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
   return fa;
 }
 
+// Per-observation combined-error SD for the E-step/simulation, matching the
+// per-endpoint combined1/combined2 branch the M-step objective functions use
+// (obj()/objH()/objI(): combined1 g = a + b*|f|, combined2 g = sqrt(a^2+b^2*f^2)).
+// Fills g in place (a scalar loop, no temporaries) so it can run inside the
+// pre-allocated per-chain E-step scratch buffers (_scratch_g) without
+// defeating their point.
+static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, const uvec &addPropVec) {
+  const arma::uword n = ft.n_elem;
+  for (arma::uword i = 0; i < n; ++i) {
+    double fa = std::fabs(ft[i]);
+    if (addPropVec[i] == 1) {
+      g[i] = a[i] + b[i]*fa;
+    } else {
+      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*fa*fa);
+    }
+  }
+}
+
 static inline void ensureSaemFixedTransformCache() {
   if (_saemCacheYptr == _saemYptr &&
       _saemCacheFptr == _saemFptr &&
@@ -219,7 +237,7 @@ void objC(double *ab, double *fx) {
     } else {
       double ab0 = ab02*ab02;
       double ab1 = ab12*ab12;
-      g = ab0*ab0 + ab1*ab1*pow(fa, 2*pw);
+      g = sqrt(ab0*ab0 + ab1*ab1*pow(fa, 2*pw));
     }
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
@@ -565,6 +583,19 @@ static int gPhi0Coord = 0;
 static arma::vec gPhi0Full;
 static std::vector<int> gPhi0FreeIx;
 static double gPhi0Obj1DR(double x);
+// Shared state for the multivariate phi0 refinements (nelder-mead and newuoa).
+// Both are unbounded, so the objective clamps each candidate into the trust
+// region before evaluating it, and both need their evaluation budget enforced
+// here: nelder_fn's itmax counts IMPROVING iterations rather than evaluations,
+// and newuoa's own maxfun stop still returns whatever point it was holding.  The
+// objective therefore tracks the best point it actually saw, and the caller
+// takes that rather than whatever the optimizer reports.
+static arma::vec gPhi0Lo, gPhi0Hi, gPhi0RefBest;
+static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
+static double gPhi0RefBestF = 0.0;
+static double gPhi0RefObj(const double *p);
+static void gPhi0NmFn(double *p, double *fx);
+static double gPhi0RefObjR(Rcpp::NumericVector p);
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -894,25 +925,87 @@ public:
     if (localTrust) {
       // Normal-model phi0 objective is extremely ill-conditioned (a tiny
       // proportional-error SD makes it change by orders of magnitude over a
-      // small phi0 step), which breaks bobyqa's quadratic model.  Use robust
-      // coordinate descent with R's golden-section optimize() (no quadratic
-      // model), a few sweeps, within the local trust bounds.
+      // small phi0 step), which breaks bobyqa's quadratic model.  Two
+      // derivative-free options within the local trust bounds:
+      //   nonMuThetaOpt="optimize"   -- coordinate descent with R's golden-section
+      //     optimize(); exact per coordinate but costs sweeps*nphi0*~20 objective
+      //     evaluations, each a full ODE re-solve when phi0 drives the model.
+      //   nonMuThetaOpt="nelderMead" -- one clamped nelder-mead over all free
+      //     coordinates; a fixed, much smaller budget, and it sees the coupling
+      //     between coordinates that coordinate descent cannot.
+      //   nonMuThetaOpt="newuoa"     -- the same, with newuoa's quadratic model
+      //     built from those evaluations instead of a simplex.
+      // Both spend at most nonMuThetaMaxEval objective evaluations (enforced by
+      // gPhi0RefObj) and both are clamped into the trust region.
       gPhi0Self = this;
       gPhi0Work.set_size(nphi0);
       for (int c = 0; c < nphi0; c++) gPhi0Work[c] = par0[c];
-      Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
-      Rcpp::Function optimize = stats["optimize"];
-      Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
-      for (int sweep = 0; sweep < 2; sweep++) {
-        for (int c = 0; c < nphi0; c++) {
-          if (phi0Fix[(size_t)c]) continue;
-          if (!(hi[c] > lo[c])) continue;
-          gPhi0Coord = c;
-          Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
-                                  Rcpp::_["lower"] = lo[c],
-                                  Rcpp::_["upper"] = hi[c]);
-          double xm = Rcpp::as<double>(o["minimum"]);
-          gPhi0Work[c] = xm;
+      int nFree = (int)gPhi0FreeIx.size();
+      if (nonMuThetaOptType > 0 && nFree > 1) {
+        gPhi0Lo.set_size(nphi0);
+        gPhi0Hi.set_size(nphi0);
+        for (int c = 0; c < nphi0; c++) { gPhi0Lo(c) = lo[c]; gPhi0Hi(c) = hi[c]; }
+        gPhi0RefBest.set_size(nFree);
+        gPhi0RefEvalN = 0;
+        gPhi0RefBestF = 0.0;
+        gPhi0RefEvalMax = (nonMuThetaMaxEval > 0) ? nonMuThetaMaxEval : 10*nFree;
+        if (nonMuThetaOptType == 1) {
+          std::vector<double> st((size_t)nFree), stp((size_t)nFree), xm((size_t)nFree);
+          for (int fi = 0; fi < nFree; fi++) {
+            int c = gPhi0FreeIx[(size_t)fi];
+            st[(size_t)fi] = par0[c];
+            xm[(size_t)fi] = par0[c];
+            double span = hi[c] - lo[c];
+            stp[(size_t)fi] = (R_finite(span) && span > 0.0) ? 0.1*span : 0.1;
+          }
+          int iconv, it, nfcall, iprint = 0;
+          double ynewlo;
+          // itmax is deliberately generous; gPhi0RefObj owns the real budget
+          nelder_fn(gPhi0NmFn, nFree, st.data(), stp.data(), 100*nFree,
+                    nonMuThetaTol, 1.0, 2.0, 0.5,
+                    &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+        } else {
+          // newuoa needs npt = 2n+1 interpolation points before it can move, so
+          // a budget below that leaves it no working evaluations at all.
+          int npt = 2*nFree + 1;
+          if (gPhi0RefEvalMax < npt + 2) gPhi0RefEvalMax = npt + 2;
+          Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+          Rcpp::Function phi0Newuoa = nlmixr2[".saemPhi0Newuoa"];
+          Rcpp::InternalFunction fnRef(&gPhi0RefObjR);
+          Rcpp::NumericVector parFree(nFree);
+          double rhobeg = R_PosInf;
+          for (int fi = 0; fi < nFree; fi++) {
+            int c = gPhi0FreeIx[(size_t)fi];
+            parFree[fi] = par0[c];
+            double span = hi[c] - lo[c];
+            if (R_finite(span) && span > 0.0 && 0.2*span < rhobeg) rhobeg = 0.2*span;
+          }
+          if (!R_finite(rhobeg) || rhobeg <= 0.0) rhobeg = 0.2;
+          phi0Newuoa(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fnRef,
+                     Rcpp::_["maxfun"] = gPhi0RefEvalMax,
+                     Rcpp::_["rhobeg"] = rhobeg,
+                     Rcpp::_["rhoend"] = nonMuThetaTol,
+                     Rcpp::_["npt"] = npt);
+        }
+        for (int fi = 0; fi < nFree; fi++) {
+          gPhi0Work[gPhi0FreeIx[(size_t)fi]] = gPhi0RefBest(fi);
+        }
+      } else {
+        Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+        Rcpp::Function optimize = stats["optimize"];
+        Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
+        for (int sweep = 0; sweep < nonMuThetaSweeps; sweep++) {
+          for (int c = 0; c < nphi0; c++) {
+            if (phi0Fix[(size_t)c]) continue;
+            if (!(hi[c] > lo[c])) continue;
+            gPhi0Coord = c;
+            Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
+                                    Rcpp::_["lower"] = lo[c],
+                                    Rcpp::_["upper"] = hi[c],
+                                    Rcpp::_["tol"] = nonMuThetaTol);
+            double xm = Rcpp::as<double>(o["minimum"]);
+            gPhi0Work[c] = xm;
+          }
         }
       }
       for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
@@ -943,7 +1036,22 @@ public:
       double cur = mprior_phi0(0, c);
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
-    MCOV0 = solve(COV0.t() * COV0, COV0.t() * mprior_phi0);
+    // MCOV0 is BLOCK structured by LCOV0 -- each lambda row belongs to exactly one
+    // phi0 column -- so a single least-squares against all of COV0 is rank
+    // deficient whenever nphi0 > 1: with no phi0 covariate every column of COV0 is
+    // the same intercept column, and arma warns "solve(): system is singular"
+    // every iteration from niter_phi0 on.  It also fills MCOV0 off-structure, so a
+    // FIXED phi0 no longer reproduces its value through COV0*MCOV0.  Back-solve
+    // each phi0 column against only its own design columns instead.
+    for (int c = 0; c < nphi0; c++) {
+      uvec li = arma::find(LCOV0.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV0.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+      }
+    }
     if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
   }
 
@@ -974,11 +1082,16 @@ public:
   }
 
   // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
-  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).  Also
+  // writes the whitened (conditional) prediction/SD into _scratch_ftAr/_scratch_gAr
+  // so a censored row on the SAME chain can be scored against the AR(1)
+  // conditional distribution, not the marginal (ft, g) -- see #918.
   vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
     vec e = yt - ft;
     vec gg = g;
     arWhiten(e, gg);
+    _scratch_ftAr = yt - e;
+    _scratch_gAr = gg;
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
@@ -1088,6 +1201,29 @@ public:
       }
     }
     return resk;
+  }
+
+  // Fill this chain's per-endpoint residual log-sigma2 score/Hessian entries
+  // from resy(b,k) (endpoint b's residual SSR for MCMC chain k).  Only a pure
+  // additive endpoint (res_mod==rmAdd) has a valid single-parameter
+  // log-sigma2 score; every other endpoint's slot is held at exactly 0 (see
+  // the nb_param comment in inits()).  d1_logsigma2 must already be sized
+  // nResidEp; d2logk is nb_param x nb_param.
+  void fillResidLogSigma2(int k, const mat &resy, vec &d1_logsigma2, mat &d2logk) {
+    int resBase = nlambda + nphi1;
+    for (int b = 0; b < nendpnt; b++) {
+      int idx = residEpIdx[b];
+      if (idx < 0) continue;
+      int col = resBase + idx;
+      if (res_mod(b) == rmAdd) {
+        double nb = (double)(y_offset(b + 1) - y_offset(b));
+        d1_logsigma2[idx] = 0.5 * resy(b, k) / sigma2[b] - 0.5 * nb;
+        d2logk(col, col) = -0.5 * resy(b, k) / sigma2[b];
+      } else {
+        d1_logsigma2[idx] = 0.0;
+        d2logk(col, col) = 0.0;
+      }
+    }
   }
 
   mat get_resMat() {
@@ -1316,7 +1452,6 @@ public:
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
     nlambda = nlambda1 + nlambda0;
-    nb_param = nphi1 + nlambda + 1;
     nphi = nphi1+nphi0;
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
@@ -1327,6 +1462,23 @@ public:
 
     //FIXME
     nendpnt=as<int>(x["nendpnt"]);
+    distribution=as<int>(x["distribution"]);
+    // One FIM residual slot per endpoint that carries a residual parameter --
+    // none when the whole model is a general log-likelihood (distribution==4;
+    // "any LL endpoint" forces the WHOLE model to distribution==4, so no
+    // endpoint has a real residual in that case).  Sizing to nendpnt (not
+    // nres, the total residual PARAMETER count) is deliberate: the analytic
+    // Louis FIM only ever tracks a single log-sigma2 score/Hessian per
+    // endpoint, valid only for a pure additive residual (res_mod==rmAdd);
+    // any other endpoint's slot exists (so nb_param has a fixed layout) but
+    // its d1_logsigma2/d2logk entries are held at exactly 0 in every
+    // iteration, so its row/col of Ha/HaSa stays exactly 0 and
+    // .saemFimToCov (R/saem.R) can drop it and fall back to the linFim
+    // splice for that endpoint's residual SE.
+    nResidEp = (distribution == 4) ? 0 : nendpnt;
+    for (int b = 0; b < MAXENDPNT; ++b) residEpIdx[b] = -1;
+    for (int b = 0; b < nResidEp; ++b) residEpIdx[b] = b;
+    nb_param = nphi1 + nlambda + nResidEp;
     ix_sorting=as<uvec>(x["ix_sorting"]);
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
     y_offset=as<uvec>(x["y_offset"]);
@@ -1337,7 +1489,10 @@ public:
     lres = as<vec>(x["lres"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
-    lambda = as<vec>(x["lambda"]);
+    // lambda mirrors lres (the M-step's working boxCox/yeoJohnson estimate);
+    // seed it from lres, not x["lambda"] (which the R side always ships as 1),
+    // and keep it synced wherever lres is updated below (#914).
+    lambda = lres;
     low = as<vec>(x["low"]);
     hi = as<vec>(x["hi"]);
 
@@ -1377,11 +1532,14 @@ public:
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
+    vecaddProp = addProp(ix_endpnt);
     // Pre-allocate per-chain scratch buffers for the distribution==1 hot loops
     _scratch_ft.set_size(ntotal);
     _scratch_limitT.set_size(ntotal);
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
+    _scratch_ftAr.set_size(ntotal);
+    _scratch_gAr.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
     _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
@@ -1457,9 +1615,19 @@ public:
     mx.evtM   = evt;
     mx.optM   = optM;
 
-    distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
+    nonMuThetaOptType = x.containsElementNamed("nonMuThetaOptType") ?
+      as<int>(x["nonMuThetaOptType"]) : 0;
+    nonMuThetaMaxEval = x.containsElementNamed("nonMuThetaMaxEval") ?
+      as<int>(x["nonMuThetaMaxEval"]) : 25;
+    nonMuThetaSweeps = x.containsElementNamed("nonMuThetaSweeps") ?
+      as<int>(x["nonMuThetaSweeps"]) : 2;
+    nonMuThetaEvery = x.containsElementNamed("nonMuThetaEvery") ?
+      as<int>(x["nonMuThetaEvery"]) : 1;
+    if (nonMuThetaEvery < 1) nonMuThetaEvery = 1;
+    nonMuThetaTol = x.containsElementNamed("nonMuThetaTol") ?
+      as<double>(x["nonMuThetaTol"]) : 1.0e-4;
     residWarmStart = x.containsElementNamed("residWarmStart") ?
       as<int>(x["residWarmStart"]) : 1;
     mixProbRegress = x.containsElementNamed("mixProbRegress") ?
@@ -1711,7 +1879,7 @@ public:
       mat D11 = zeros<mat>(nb_param, nb_param);
       mat D2 = zeros<mat>(nb_param, nb_param);
       mat d2logk = zeros<mat>(nb_param, nb_param);
-      vec resy(nmc);
+      mat resy(nendpnt, nmc);  // resy(b, k): endpoint b's residual SSR for chain k
       vec fsM;
       fsM.set_size(0);
 
@@ -1772,7 +1940,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -1780,7 +1948,7 @@ public:
               DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           } else if (distribution == 2) {
@@ -1896,7 +2064,7 @@ public:
               resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           mat dphi1k = phi1k - mprior_phi1;
@@ -1907,8 +2075,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -1923,7 +2091,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
       } else if (nMix > 1) {
@@ -1972,7 +2139,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -1980,7 +2147,7 @@ public:
               cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       cur_DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           } else if (distribution == 2) {
@@ -2181,7 +2348,7 @@ public:
               resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           vec sdg1 = sdg1_w / gamma2_phi1;
@@ -2190,8 +2357,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2206,7 +2373,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
         for (int k = 0; k < nmc; k++) {
@@ -2248,7 +2414,7 @@ public:
               _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2256,7 +2422,7 @@ public:
             DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                     DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
             }
           }
         } else if (distribution == 2){
@@ -2372,7 +2538,7 @@ public:
             }
 
             statr[b]=statr[b]+resk;
-            resy(k) = resk;                                          //FIXME: resy(b,k)?
+            resy(b, k) = resk;
           }
           if (DEBUG>1) Rcout << "star[] successful\n";
 
@@ -2384,9 +2550,10 @@ public:
           vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
-          vec d1_logsigma2(1);
-          // general log-likelihood: no residual param, so its FIM row is 0
-          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          // general log-likelihood (distribution==4): no residual param, so
+          // nResidEp==0 and this block is empty
+          vec d1_logsigma2(nResidEp);
+          if (distribution != 4) fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -2401,7 +2568,6 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
           D2=D2+d2logk;
         }
       }//k
@@ -2502,8 +2668,12 @@ public:
       // (distribution==4) and, via nonMuTheta="regress", for normal models --
       // keeping non-mu thetas as directly-optimized, bound-respecting regressors
       // instead of stochastic phi0 draws.
+      // nonMuThetaEvery>1 refines only every k-th iteration; mprior_phi0 holds its
+      // last refined value in between (the SA step pas(kiter) moves it a fraction
+      // of one optimizer step anyway, so refining every iteration buys little).
       if ((distribution == 4 || nonMuThetaRegress) &&
-          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+          nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
+          (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
@@ -2949,6 +3119,7 @@ public:
               ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPropLam:
@@ -3012,6 +3183,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPowLam:
@@ -3088,6 +3260,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPropLam:
@@ -3164,6 +3337,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPowLam:
@@ -3253,6 +3427,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         }
@@ -3412,6 +3587,7 @@ public:
       Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
       mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
       lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      lambda = lres;
       if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
     }
     phiFile.close();
@@ -3481,6 +3657,11 @@ private:
 
   int nlambda1, nlambda0, nlambda, nb_param;
   uvec ilambda1, ilambda0;
+  // one FIM residual slot per endpoint (see the nb_param comment in inits());
+  // residEpIdx[b] is that endpoint's compacted slot, or -1 when the whole
+  // model is a general log-likelihood (nResidEp==0)
+  int nResidEp;
+  int residEpIdx[MAXENDPNT];
 
   mat statphi01, statphi02, statphi11, statphi12;
   // Per-component, unblended sufficient statistic (never mixed across components); used to fix
@@ -3490,7 +3671,7 @@ private:
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
-  uvec res_mod, yj, propT, addProp;
+  uvec res_mod, yj, propT, addProp, vecaddProp;
 
   mat DYF;
   cube phi;
@@ -3534,6 +3715,19 @@ private:
   // with directly-optimized, bound-respecting values (no shrinking phi0
   // variance).  0 = classic phi0, 1 = direct-optimize.
   int nonMuThetaRegress;
+  // Cost controls for that refinement (it is the dominant per-iteration cost when
+  // the phi0 thetas drive the ODE): nonMuThetaOptType picks the optimizer
+  // (0 = coordinate descent, 1 = nelder-mead, 2 = newuoa -- the latter two over
+  // all free coordinates at once), nonMuThetaMaxEval is their objective-
+  // evaluation budget (0 means 10 per free coordinate), nonMuThetaSweeps the
+  // coordinate-descent sweep count,
+  // nonMuThetaTol the inner convergence tolerance and nonMuThetaEvery how often
+  // (in iterations) the refinement runs at all.
+  int nonMuThetaOptType;
+  int nonMuThetaMaxEval;
+  int nonMuThetaSweeps;
+  int nonMuThetaEvery;
+  double nonMuThetaTol;
   // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
@@ -3582,6 +3776,8 @@ private:
   vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
   vec _scratch_g;       // residual SD per chain (replaces gk/gck)
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
+  vec _scratch_ftAr;    // AR(1)-conditional prediction, filled by arDYFhyp()
+  vec _scratch_gAr;     // AR(1)-conditional SD, filled by arDYFhyp()
 
   uvec obs_subject;
 
@@ -3743,7 +3939,7 @@ private:
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3751,7 +3947,7 @@ private:
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           }
@@ -3854,7 +4050,7 @@ private:
               _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3862,7 +4058,7 @@ private:
             DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                     DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                     DYFm(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
             }
           }
         }
@@ -3967,7 +4163,7 @@ private:
             _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
             _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
           }
-          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
           _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3975,7 +4171,7 @@ private:
           DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
           for (int j = ntotal; j--;) {
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                   DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
           }
         }
       } else if (distribution == 2) {
@@ -4093,6 +4289,36 @@ static double gPhi0ObjR(Rcpp::NumericVector p) {
 static double gPhi0Obj1DR(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
+}
+
+static double gPhi0RefObj(const double *p) {
+  if (gPhi0RefEvalN >= gPhi0RefEvalMax) {
+    // Out of budget: report a value worse than anything seen so the optimizer
+    // collapses onto the best point instead of wandering.
+    return gPhi0RefBestF + 1.0e10;
+  }
+  for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+    int c = gPhi0FreeIx[i];
+    double v = p[i];
+    if (v < gPhi0Lo(c)) v = gPhi0Lo(c);
+    if (v > gPhi0Hi(c)) v = gPhi0Hi(c);
+    gPhi0Work[c] = v;
+  }
+  double f = gPhi0Self->phi0Objective(gPhi0Work.memptr());
+  gPhi0RefEvalN++;
+  if (gPhi0RefEvalN == 1 || f < gPhi0RefBestF) {
+    gPhi0RefBestF = f;
+    for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
+      gPhi0RefBest(i) = gPhi0Work[gPhi0FreeIx[i]];
+    }
+  }
+  return f;
+}
+
+static void gPhi0NmFn(double *p, double *fx) { *fx = gPhi0RefObj(p); }
+
+static double gPhi0RefObjR(Rcpp::NumericVector p) {
+  return gPhi0RefObj(&(p[0]));
 }
 
 
@@ -4359,4 +4585,18 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;
+}
+
+// Test-only wrapper: exposes the E-step's per-observation combined-error SD
+// (saemFormG(), used at every _scratch_g site) so it can be pinned against
+// the M-step's combined1/combined2 formulas without running a full fit.
+//[[Rcpp::export]]
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inAddProp) {
+  vec a = as<vec>(inA);
+  vec b = as<vec>(inB);
+  vec ft = as<vec>(inFt);
+  uvec addPropVec = as<uvec>(inAddProp);
+  vec g(a.n_elem);
+  saemFormG(g, a, b, ft, addPropVec);
+  return wrap(g);
 }

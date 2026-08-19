@@ -53,6 +53,17 @@ extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
 extern SEXP _nlmixr2est_foceiLikUnload_(void);
 extern SEXP _nlmixr2est_foceiLikSetTheta_(SEXP);
 extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikCondGrad_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikCondBatchThetaGrad_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikDims_(void);
+extern SEXP _nlmixr2est_foceiLikNMix_(void);
+extern SEXP _nlmixr2est_foceiLikIterPrintStart_(SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikIterPrintEnd_(void);
+extern SEXP _nlmixr2est_foceiLikRowTick_(SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikSetThetaC_(SEXP);
+extern SEXP _nlmixr2est_foceiLikSetOmegaInvC_(SEXP);
+extern SEXP _nlmixr2est_foceiLikThetaSensIdxC_(void);
 extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_odeSwapInfo_(void);
@@ -119,6 +130,7 @@ SEXP _nlmixr2est_nlmixr2Unscaled_(SEXP, SEXP);
 
 SEXP _nlmixr2est_saem_fit(SEXP);
 SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
                               SEXP);
@@ -198,9 +210,17 @@ SEXP _nlmixr2est_getTestContrib(void);
 SEXP _nlmixr2est_setTestContribAddLL(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
+SEXP _nlmixr2est_foceiPtrs(void);
+SEXP _nlmixr2est_nlmPtrs(void);
+SEXP _nlmixr2est_nlmLikDims_(void);
+SEXP _nlmixr2est_nlmLikEvalC_(SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
+  {"_nlmixr2est_foceiPtrs", (DL_FUNC) &_nlmixr2est_foceiPtrs, 0},
+  {"_nlmixr2est_nlmPtrs", (DL_FUNC) &_nlmixr2est_nlmPtrs, 0},
+  {"_nlmixr2est_nlmLikDims_", (DL_FUNC) &_nlmixr2est_nlmLikDims_, 0},
+  {"_nlmixr2est_nlmLikEvalC_", (DL_FUNC) &_nlmixr2est_nlmLikEvalC_, 1},
   {"_nlmixr2est_registerTestContrib", (DL_FUNC) &_nlmixr2est_registerTestContrib, 0},
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
@@ -230,6 +250,17 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},
   {"_nlmixr2est_foceiLikSetTheta_", (DL_FUNC) &_nlmixr2est_foceiLikSetTheta_, 1},
   {"_nlmixr2est_foceiLikEval_", (DL_FUNC) &_nlmixr2est_foceiLikEval_, 3},
+  {"_nlmixr2est_foceiLikCondGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondGrad_, 2},
+  {"_nlmixr2est_foceiLikCondThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondThetaGrad_, 2},
+  {"_nlmixr2est_foceiLikCondBatchThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondBatchThetaGrad_, 2},
+  {"_nlmixr2est_foceiLikDims_", (DL_FUNC) &_nlmixr2est_foceiLikDims_, 0},
+  {"_nlmixr2est_foceiLikNMix_", (DL_FUNC) &_nlmixr2est_foceiLikNMix_, 0},
+  {"_nlmixr2est_foceiLikIterPrintStart_", (DL_FUNC) &_nlmixr2est_foceiLikIterPrintStart_, 5},
+  {"_nlmixr2est_foceiLikIterPrintEnd_", (DL_FUNC) &_nlmixr2est_foceiLikIterPrintEnd_, 0},
+  {"_nlmixr2est_foceiLikRowTick_", (DL_FUNC) &_nlmixr2est_foceiLikRowTick_, 2},
+  {"_nlmixr2est_foceiLikSetThetaC_", (DL_FUNC) &_nlmixr2est_foceiLikSetThetaC_, 1},
+  {"_nlmixr2est_foceiLikSetOmegaInvC_", (DL_FUNC) &_nlmixr2est_foceiLikSetOmegaInvC_, 1},
+  {"_nlmixr2est_foceiLikThetaSensIdxC_", (DL_FUNC) &_nlmixr2est_foceiLikThetaSensIdxC_, 0},
   {"_nlmixr2est_adviElboGrad_", (DL_FUNC) &_nlmixr2est_adviElboGrad_, 6},
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
   {"_nlmixr2est_odeSwapInfo_", (DL_FUNC) &_nlmixr2est_odeSwapInfo_, 0},
@@ -318,6 +349,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_setSilentErr", (DL_FUNC) &_nlmixr2est_setSilentErr, 1},
   {"_nlmixr2est_saem_fit", (DL_FUNC) &_nlmixr2est_saem_fit, 1},
   {"_nlmixr2est_saem_do_pred", (DL_FUNC) &_nlmixr2est_saem_do_pred, 3},
+  {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 4},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},

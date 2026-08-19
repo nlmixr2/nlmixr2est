@@ -1,5 +1,3 @@
-## FIXME: g by endpoint
-
 #' Per-observation mask of general log-likelihood (`ll()`) rows
 #'
 #' `res.mod == 0` marks an `ll()` endpoint and `ix_endpnt` maps each observation
@@ -31,6 +29,23 @@
   if (!.gen) return(rep(FALSE, length(ixEndpnt)))
   if (max(ixEndpnt) > 1L) .bad()
   rep(TRUE, length(ixEndpnt))
+}
+
+#' 1-based endpoint index of a residual parameter, aligned to `ix_endpnt`
+#'
+#' `ares`/`bres`/... (and so `ix_endpnt`) are built in `predDf` row order
+#' (`saemRxUiGet.R`); match a residual parameter's `iniDf$condition` to
+#' `predDf$cond` the same way rather than assuming row order lines up with
+#' `.ri`, so a residual parameter's `dVi/d(param)` can be masked to only its
+#' own endpoint's observations (#904).
+#'
+#' @param condition character vector, the `condition` of each residual `iniDf` row
+#' @param cond character vector, `predDf$cond` in endpoint (`ix_endpnt`) order
+#' @return integer vector, one 1-based endpoint index per `condition` entry;
+#'   `NA_integer_` where no endpoint matches
+#' @noRd
+.saemResEndpointIdx <- function(condition, cond) {
+  match(as.character(condition), as.character(cond))
 }
 
 #' Elementwise log(exp(a) + exp(b)) without overflowing
@@ -528,6 +543,7 @@ calc.COV <- function(fit0) {
   .ui <- if (is.environment(.env)) .env$ui else NULL
   .covFull <- !is.null(.ui) && isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
   .omPairs <- NULL; .omNames <- character(0); .resNames <- character(0); .resType <- integer(0)
+  .resEndpnt <- integer(0)
   if (.covFull) {
     .idf <- .ui$iniDf
     .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
@@ -541,6 +557,20 @@ calc.COV <- function(fit0) {
     if (nrow(.ri) > 0L) {
       .resNames <- .ri$name
       .resType  <- ifelse(grepl("prop|pow", .ri$err), 2L, 1L)   # 1 = additive (a), 2 = proportional (b)
+      # dVi/d(residual param) is only nonzero on its OWN endpoint's rows (#904).
+      # Fail rather than guess a wrong endpoint (#856).
+      .resEndpnt <- .saemResEndpointIdx(.ri$condition, .ui$predDf$cond)
+      if (anyNA(.resEndpnt)) {
+        # drop the WHOLE variance block, not just the residual rows: leaving
+        # .omPairs in place would still invert an Omega-only blocB submatrix,
+        # silently discarding its (generally nonzero) correlation with the
+        # residual parameters this cfg cannot place -- an unflagged, degraded
+        # Omega covariance is worse than reporting no variance block at all.
+        warning("saem covFull: residual parameter endpoint unknown; variance block dropped",
+                call. = FALSE)
+        .resNames <- character(0); .resType <- integer(0); .resEndpnt <- integer(0)
+        .omPairs <- NULL; .omNames <- character(0)
+      }
     }
   }
   .nom <- if (is.null(.omPairs)) 0L else nrow(.omPairs)
@@ -581,12 +611,13 @@ calc.COV <- function(fit0) {
     .b <- NULL
     if (.doVar) {
       invVi <- crossprod(invVi.5)                            # Vi^{-1}
-      .gix <- g[ix]; .fix <- .absF0[ix]
+      .gix <- g[ix]; .fix <- .absF0[ix]; .eix <- ix_endpnt[ix]
       # A_k = Vi^{-1} dVi/d(param_k) for each variance parameter
       .A <- vector("list", .nvar); .k <- 0L
       for (r in seq_along(.resNames)) {
         .k <- .k + 1L
         .dv <- if (.resType[r] == 1L) 2 * .gix else 2 * .gix * .fix   # dVi/da = 2 diag(g); dVi/db = 2 diag(g|f|)
+        .dv[.eix != .resEndpnt[r]] <- 0                       # mask to the owning endpoint (#904)
         .A[[.k]] <- sweep(invVi, 2L, .dv, "*")               # Vi^{-1} diag(.dv)
       }
       if (.nom > 0L) for (pp in seq_len(.nom)) {

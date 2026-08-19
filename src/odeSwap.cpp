@@ -950,7 +950,8 @@ RObject odeSwapEsNoteInstalled_(int slot) {
 List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
   CharacterVector nm(odeSlotN);
-  IntegerVector neq(odeSlotN), nlhs(odeSlotN), npars(odeSlotN), deny(odeSlotN);
+  IntegerVector neq(odeSlotN), nlhs(odeSlotN), npars(odeSlotN), deny(odeSlotN),
+    esActive(odeSlotN);
   LogicalVector loaded(odeSlotN), sizesPool(odeSlotN), parLayoutOk(odeSlotN);
   rx_solve *_rxl = getRxSolve_();
   for (int s = 0; s < odeSlotN; ++s) {
@@ -962,12 +963,13 @@ List odeSwapInfo_() {
     sizesPool[s] = (s == p.poolSlot);
     deny[s] = odeSwapCanPool(s);
     parLayoutOk[s] = _odeReg[s].loaded ? odeSwapParLayoutOk(s, _rxl) : NA_LOGICAL;
+    esActive[s] = _odeReg[s].esActive;
   }
   List models = List::create(_["slot"] = seq_len(odeSlotN) - 1, _["name"] = nm,
                              _["neq"] = neq, _["nlhs"] = nlhs, _["npars"] = npars,
                              _["loaded"] = loaded, _["sizesPool"] = sizesPool,
                              _["parLayoutOk"] = parLayoutOk,
-                             _["deny"] = deny);
+                             _["deny"] = deny, _["esActive"] = esActive);
   models.attr("class") = "data.frame";
   models.attr("row.names") = IntegerVector::create(NA_INTEGER, -odeSlotN);
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
