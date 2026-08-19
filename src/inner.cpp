@@ -14443,6 +14443,27 @@ static void outerSolveFill(int slot, rxSolveF *fns,
       }
       if (fin && hasT) fin = E.trans.is_finite();
     }
+    if (fin && hasT) {
+      // A log/boxCox transform floors a non-positive UNtransformed prediction at
+      // _eps (rxode2's TBS lowering: rxode2_model_shared.h::_safe_log_ /
+      // rxode2.h::_powerD case 0/3), so a clamped row's E.f is finite but the
+      // objective is LOCALLY CONSTANT there while this augmented model keeps
+      // differentiating the unclamped expression -- the analytic gradient is then
+      // not the gradient of the objective being minimized (nlmixr2/nlmixr2est#867).
+      // Detect it by round-tripping the inverse transform: a floored value lands
+      // back at <= _eps.  Treat the whole subject as unsolved so it takes the same
+      // per-subject finite-difference fallback a failed augmented solve already
+      // uses -- that differences the ACTUAL (clamped) objective, so it stays
+      // consistent with it at exactly the rows where the analytic assembly cannot.
+      for (int ko = 0; ko < nobs && fin; ++ko) {
+        int _tYj0 = (int)E.trans(ko, 0), _tDist = 0, _tTrans = 0;
+        _splitYj(&_tYj0, &_tDist, &_tTrans);
+        if (_tTrans != 0 && _tTrans != 3) continue;   // not boxCox(0) or log/lnorm(3)
+        double _rawF = _powerDi(E.f[ko], E.trans(ko, 1), (int)E.trans(ko, 0),
+                                E.trans(ko, 2), E.trans(ko, 3));
+        if (!R_finite(_rawF) || _rawF <= _eps) fin = false;
+      }
+    }
     return fin;
     };
     bool fin = fillFromSolve();
