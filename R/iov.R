@@ -260,14 +260,22 @@ nlmixr2iovVarSd <- function(val) {
                                                    collapse="+"),
                                              ")"))
                          } else if (.xform == "sd") {
-                           str2lang(paste0("rx.", v, " <- abs(", v, ")*(",
+                           # |theta| written as sqrt(theta^2): identical value,
+                           # but symengine differentiates it EXACTLY
+                           # (theta/sqrt(theta^2) = sign) -- abs() is rewritten
+                           # to an indicator form whose derivative is a
+                           # tanh-SMOOTHED step, making the theta-sensitivity
+                           # column wrong by a theta-dependent factor (#952)
+                           str2lang(paste0("rx.", v, " <- sqrt((", v, ")^2)*(",
                                            paste(paste0("rx.", v, ".", .lvls[[l1]],
                                                         "*(", l1,
                                                         " == ", .lvls[[l1]], ")"),
                                                  collapse="+"),
                                            ")"))
                          } else if (.xform == "var") {
-                           str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
+                           # sqrt(|theta|) as (theta^2)^(1/4), same reasoning
+                           # as the "sd" branch above (#952)
+                           str2lang(paste0("rx.", v, " <- ((", v, ")^2)^0.25*(",
                                            paste(paste0("rx.", v, ".", .lvls[[l1]],
                                                         "*(", l1,
                                                         " == ", .lvls[[l1]], ")"),

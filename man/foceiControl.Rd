@@ -30,6 +30,15 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  fdOutlierZ = 3.5,
+  fdOutlierScale = TRUE,
+  fdRefine = c("chartrand", "lanczos", "richardson"),
+  fdLanczosM = 2L,
+  fdRichardsonR = 2L,
+  fdRichardsonV = 2,
+  fdChartrandAll = FALSE,
+  fdOutlierAny = FALSE,
+  fdIndividualStep = TRUE,
   fdChartrand = TRUE,
   foceEbeTol = NULL,
   hessEps = (.Machine$double.eps)^(1/3),
@@ -303,10 +312,72 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 \code{fast=FALSE} up front).  When unspecified,
-the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
+whether a finite-differenced subject's slope is an outlier against the exact
+analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+3.5; lower it to make the pass fire more readily (and to exercise it), raise
+it to suppress it without turning `fdChartrand` off.}
+
+\item{fdOutlierScale}{Test the outlier criterion on the **per-observation**
+slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+scales with how much data that subject carries, so raw slopes from a
+3-observation and a 20-observation subject are not draws from one
+distribution -- pooling them makes a legitimately large slope look like an
+outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+itself is untouched.  On balanced data this changes nothing, since dividing
+every slope by the same count leaves the modified z-score unchanged.}
+
+\item{fdRefine}{Estimator used to recompute a finite-differenced slope once
+  the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+  ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+
+  * `"richardson"` -- Richardson extrapolation of central differences at
+    `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+    turn.  Cheapest, and right when the surface is smooth and only truncation
+    matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+    is the wrong instrument when the noise floor is what limits the difference.
+  * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+    through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+    lower variance, since independent evaluation noise averages down as points
+    are added rather than being amplified.  The middle rung.
+  * `"chartrand"` (default) -- total-variation regularized differentiation over
+    a wide interval, which absorbs curvature through the regularized derivative
+    itself instead of assuming a stencil.  Most expensive and most robust to a
+    genuinely rough surface.
+
+  All three apply identically: they are gated by the same outlier test, touch
+  only the finite-differenced subjects, and never recompute a subject whose
+  analytic gradient is available.}
+
+\item{fdLanczosM}{Half-width `m` of the `"lanczos"` estimator (`2m` evaluations).}
+
+\item{fdRichardsonR}{Depth of the `"richardson"` extrapolation table.}
+
+\item{fdRichardsonV}{Step-shrink ratio `v` of the `"richardson"` estimator.}
+
+\item{fdChartrandAll}{When the outlier pass fires for a parameter, refine
+**every** finite-differenced subject with the Chartrand TV derivative rather
+than only the outlying ones.  Subjects whose augmented solve succeeded keep
+their exact analytic gradient either way -- only finite differences are ever
+recomputed.  Default `FALSE` (refine the outliers only).}
+
+\item{fdOutlierAny}{Let an outlier among the **exact analytic** slopes fire the
+outlier pass as well, not only an outlier among the finite differences.
+Still only the finite differences are recomputed.  Default `FALSE`.}
+
+\item{fdIndividualStep}{For the per-subject finite-difference fallback of the
+analytic outer gradient (`fast=TRUE`), search the shi step size separately
+for every flagged subject (`TRUE`, the default) rather than once on the
+summed objective over them.  The subjects that reach this path are the badly
+conditioned ones, so one shared step cannot suit them all; a per-subject
+search also supplies the population of converged peers a clamped step is
+repaired from.  `FALSE` restores the single shared step, which costs fewer
+evaluations.}
 
 \item{fdChartrand}{Refine finite-difference slopes that the robust outlier
     test flags (default \code{TRUE}).  When a subject's per-parameter slope
@@ -370,7 +441,13 @@ finite-difference Hessian that already reflects censoring exactly.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
 \item{centralDerivEps}{Central difference tolerances (relative,
 absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.}
@@ -385,8 +462,12 @@ suppressed).}
 
 \item{lbfgsFactr}{Convergence factor for "L-BFGS-B": converges when the
 objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
-the objective reduction target IS \code{10^-sigdig}.}
+Derived from \code{sigdig} as \code{10^(-sigdig-2) / .Machine$double.eps},
+two orders tighter than the other \code{sigdig}-derived tolerances.  It
+tests the objective reduction of a SINGLE step rather than stationarity,
+so a target of \code{10^-sigdig} stops as soon as one step is small; the
+extra two orders are what make the analytic-gradient (\code{fast=TRUE})
+methods reach the same optimum as the derivative-free default.}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}

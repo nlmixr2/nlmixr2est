@@ -149,7 +149,7 @@ bool odeSwapHasEs(int slot);
 
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
-int  odeSwapNpars(int slot);     // 0 when unloaded; length($params)
+int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter count
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
 
@@ -387,6 +387,35 @@ int odeSwapRetryCore(int &stickyRecalcN2, SolveFn solve, BadFn bad, RelaxFn rela
 // (op_focei's atomic or nlmOp's plain int -- hence the template).  Hooks supplies
 // onRetry() ("tolerances were reduced") and onSticky() ("budget exhausted, the
 // loosening is now permanent").
+// As odeSwapSolveRetry below, but with the failure test supplied by the caller.
+//
+// The augmented outer solve needs this.  rxode2's own test (odeSwapIndBadSolve) asks
+// whether the INTEGRATION failed; a solve can pass it and still have produced non-finite
+// lhs values, and that subject deserves the SAME tolerance relaxation before it is written
+// off to the per-subject finite-difference fallback.  Judging only the integration sent it
+// straight to FD, skipping the rung that was measured to rescue it.
+template <typename SolveFn, typename BadFn, typename Hooks>
+int odeSwapSolveRetryIf(rx_solving_options *op, rx_solving_options_ind *ind,
+                        int &stickyRecalcN2, SolveFn solveFn, BadFn badFn,
+                        const OdeRetryOpts &o, Hooks &h) {
+  return odeSwapRetryCore(
+    stickyRecalcN2,
+    [&]{ solveFn(); },
+    [&]{ return badFn(); },
+    [&](int mode) {
+      if (mode == odeRelaxInd) {
+        setIndTolFactor(ind, getIndTolFactor(ind) * o.odeRecalcFactor);
+      } else {
+        atolRtolFactor_(o.odeRecalcFactor);
+      }
+      setIndSolve(ind, -1);
+      if (o.resetBadSolveEachRetry) resetOpBadSolve(op);
+    },
+    [&]{ return getIndTolFactor(ind); },
+    [&](double x){ setIndTolFactor(ind, x); },
+    o, h);
+}
+
 template <typename SolveFn, typename Hooks>
 int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
                       int &stickyRecalcN2, SolveFn solveFn,

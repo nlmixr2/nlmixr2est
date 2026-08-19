@@ -42,11 +42,19 @@ RObject nmNearPD_(RObject x
                   , bool trace = false // set to TRUE (or 1 ..) to trace iterations
                   ){
   arma::mat ret;
-  if (nmNearPD(ret, as<arma::mat>(x), keepDiag, do2eigen,
+  arma::mat xM = as<arma::mat>(x);
+  if (nmNearPD(ret, xM, keepDiag, do2eigen,
                doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)) {
     return wrap(ret);
   } else {
-    stop("nearest PD calculation failed");
+    // say which degenerate case it was; "failed" alone gives the caller nothing
+    // to act on (#923)
+    if (!xM.is_finite()) {
+      stop("nearest PD calculation failed: matrix has non-finite values");
+    } else if (arma::all(arma::vectorise(xM) == 0.0)) {
+      stop("nearest PD calculation failed: matrix is all zero");
+    }
+    stop("nearest PD calculation failed: matrix may be negative definite");
   }
   return R_NilValue;
 }

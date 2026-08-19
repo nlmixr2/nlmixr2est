@@ -54,6 +54,11 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   nonMuTheta = c("regress", "eta"),
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaSweeps = 2L,
+  nonMuThetaMaxEval = 25L,
+  nonMuThetaTol = .Machine$double.eps^0.25,
+  nonMuThetaEvery = 1L,
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
   fast = FALSE,
@@ -64,10 +69,6 @@ saemControl(
   fastFallback = c("skip", "prior"),
   fastMode = c("map", "chainMean"),
   fastHRefresh = 1L,
-  lbfgsLmm = 5L,
-  lbfgsFactr = NULL,
-  lbfgsPgtol = NULL,
-  lbfgsMaxIter = 20L,
   nRetry = 10L,
   ...
 )
@@ -368,7 +369,13 @@ skips the final back-transform.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
 \item{mixProbMethod}{For mixture models (`mix()`, more than one
   component), stabilizes the mixing-probability estimate against
@@ -451,6 +458,33 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
 
   * `"eta"`: the historic SAEM treatment (the parameter is carried through
     the stochastic `phi0` block).}
+
+\item{nonMuThetaOpt}{Optimizer for the `nonMuTheta="regress"` refinement.
+`"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
+optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
+evaluation budget; `"optimize"` is the historic coordinate descent with R's
+golden-section `optimize()`.  When the non-mu thetas drive the ODE, every
+objective evaluation is a full re-solve, so this refinement can dominate the
+run time; the multivariate options spend a much smaller fixed budget and
+account for the coupling between coordinates that coordinate descent cannot
+see.}
+
+\item{nonMuThetaSweeps}{Number of coordinate-descent sweeps per refinement
+for `nonMuThetaOpt="optimize"` (default 2).}
+
+\item{nonMuThetaMaxEval}{Objective-evaluation budget of one refinement for
+`nonMuThetaOpt="newuoa"` or `"nelderMead"` (default 25); 0 means ten
+evaluations per free non-mu theta instead.  `"newuoa"` needs `2n+3`
+evaluations to build its first quadratic model, and is raised to that when
+the budget is smaller.}
+
+\item{nonMuThetaTol}{Convergence tolerance of the `nonMuTheta="regress"`
+refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
+tolerance, or the `optimize()` `tol`).}
+
+\item{nonMuThetaEvery}{Run the `nonMuTheta="regress"` refinement every
+`nonMuThetaEvery` iterations instead of every iteration (default 1).  In
+between, `phi0` keeps its last refined value.}
 
 \item{residWarmStart}{Boolean (default `TRUE`); warm-start the residual-error
 parameters from the observed per-endpoint moments at the initial predictions
@@ -550,23 +584,6 @@ iterations: `1` recomputes every iteration, `k` reuses the previous ones for
 independent Metropolis-Hastings kernel -- it costs acceptance, not
 correctness -- and saves one inner optimization per subject per skipped
 iteration.}
-
-\item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
-memory) used when refining the fixed-effect-only parameters of a general
-log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
-optimization of the observation likelihood.  Default 5.}
-
-\item{lbfgsFactr}{Convergence tolerance on the relative reduction in the
-objective for that L-BFGS-B refinement (the `factr` control, in units of
-machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).}
-
-\item{lbfgsPgtol}{Convergence tolerance on the projected gradient for that
-L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-derived from `sigdig` (`10^(-sigdig)`).}
-
-\item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
-refinement.  Default 20.}
 
 \item{nRetry}{Integer number of times a bounded log-likelihood parameter's
 f-SAEM IMH proposal is re-drawn when it lands outside the parameter's

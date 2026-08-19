@@ -9,7 +9,10 @@
 #include "inner.h"
 #include "odeSwap.h"
 #include "rxomp.h"
+#include "../inst/include/nlmixr2estLikContrib.h"
+#include "likContribUtil.h"
 #include <atomic>
+#include <limits>
 
 #define _(String) (String)
 
@@ -79,6 +82,11 @@ struct nlmOptions {
 };
 
 nlmOptions nlmOp;
+
+// sampler iteration-print cadence counter for nlmixr2NlmEval (reset at
+// nlmSetup); see the print block in nlmixr2NlmEval.  The header itself is
+// printed by the R-side setup (.nlmSetupEnv -> nlmPrintHeader).
+static long _nlmEvalPrintCn = 0;
 
 //[[Rcpp::export]]
 RObject nlmFree() {
@@ -288,12 +296,17 @@ RObject nlmSetup(Environment e) {
     }
   }
 
+  _nlmEvalPrintCn = 0;
   nlmOp.loaded = true;
   return R_NilValue;
 }
 
 //[[Rcpp::export]]
 RObject nlmScalePar(RObject p0) {
+  // nlmFree() releases the buffers scaleScalePar reads (initPar slices
+  // nlmOp.thetahf) but leaves ntheta at its old value, so without this guard a
+  // stale-length vector would pass the dimension check and read freed memory.
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (p0.sexp_type() != REALSXP) {
     return p0;
   }
@@ -306,8 +319,34 @@ RObject nlmScalePar(RObject p0) {
   return ret;
 }
 
+//' Unscale an nlm-family parameter vector back to the natural scale
+//'
+//' Converts a parameter vector from the estimation (scaled) scale used by the
+//' currently loaded nlm-family problem back to the natural scale, using the
+//' scaling that \code{nlmSetup()} installed.  Exported so that external
+//' engines driving the nlm-family objective (e.g. \code{babelmixr2}'s
+//' FME-based methods) do not have to reach into the namespace for it (#940).
+//'
+//' @param p Numeric parameter vector on the estimation scale; its length must
+//'   match the loaded problem's number of parameters.
+//'
+//' @return A numeric vector of the same length (names preserved) on the
+//'   natural scale.
+//'
+//' @details An nlm-family problem must be loaded (via the internal
+//'   \code{.nlmSetupEnv()}/\code{nlmSetup()} path) when this is called; the
+//'   scaling is part of that problem's state.
+//'
+//' @author Matthew L. Fidler
+//' @keywords internal
+//' @export
 //[[Rcpp::export]]
 NumericVector nlmUnscalePar(NumericVector p) {
+  // Same guard as every other nlm entry point: nlmFree() releases the buffers
+  // scaleUnscalePar reads but leaves ntheta at its old value, so without this
+  // a stale-length vector passes the dimension check and reads freed memory --
+  // which matters more now that the function is exported (#940).
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (p.size() != nlmOp.ntheta) stop("parameter dimension mismatch");
   NumericVector ret(nlmOp.ntheta);
   for (int i = 0; i < nlmOp.ntheta; i++) {
@@ -398,6 +437,13 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
+  // external likelihood-contribution capture for the population (eta-free) nlm
+  // objective: fire the SAME registry likInner0 cycles so a plugin (nlmixr2nn)
+  // records the EXACT per-obs error-model cotangent d(LL)/d(f) here in C++ --
+  // instead of re-deriving a Gaussian approximation in R.  neta == 0 (no random
+  // effects).  Guarded so nlm is bit-identical when nothing is registered.
+  const int _hasContrib = nlmixrHasLikContrib();
+  if (_hasContrib) nlmixrLikContribBeginSubj(id, 0, nobs, NULL);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
@@ -435,9 +481,30 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         }
       }
       ret(k) = val;
+      if (_hasContrib) {
+        int yjC = getIndYj(ind), distC = 0, yj0C = 0;
+        _splitYj(&yjC, &distC, &yj0C);
+        double dvi = getIndDv(ind, kk);
+        double fO = val, rO = 1.0, dLLdf = 1.0, dLLdr = 0.0;
+        // Gaussian endpoint with rx_pred_f_/rx_r_ available: exact cotangents,
+        // honoring censoring exactly as the objective's doCensNormal1 does.  A
+        // general ll() endpoint keeps d(LL)/d(f)=1 (f is itself the log-density),
+        // matching likInner0's non-normal branch.
+        if (nlmOp.hasFR && (distC == rxDistributionNorm || distC == rxDistributionDnorm)) {
+          fO = lhs[po + 1]; rO = lhs[po + 2];
+          int censi = 0;
+          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
+          double limiti = R_NegInf;
+          if (hasRxLimit(rx)) { limiti = getIndLimit(ind, kk); if (ISNA(limiti)) limiti = R_NegInf; }
+          nlmixrLikContribGaussCotan((double)censi, dvi, limiti, fO, rO, &dLLdf, &dLLdr);
+        }
+        double _llAdd = nlmixrLikContribObs1(id, k, 0, fO, dvi, rO, dLLdf, dLLdr, NULL, NULL);
+        ret(k) -= _llAdd;  // objective is -LL; a contributor LL lowers it
+      }
       k++;
     }
   }
+  if (_hasContrib) nlmixrLikContribEndSubj(id, 0, k, NULL);
 }
 
 arma::vec nlmSolveFid(arma::vec &theta, int id) {
@@ -1126,4 +1193,125 @@ RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   RObject ret = wrap(Cov);
   ret.attr("dimnames") = CovIn.attr("dimnames");
   return ret;
+}
+
+// ===========================================================================
+// nlm population-likelihood C API (#953): plain-C, non-throwing entry points
+// over the nlmObjectiveSetup()-loaded problem, exposed as an external-pointer
+// table _nlmixr2est_nlmPtrs() -- same idiom as _nlmixr2est_foceiPtrs.  The
+// downstream contract lives in inst/include/nlmixr2estNlmPtr.h.  Everything
+// crossing the DSO boundary is double*/int; no entry longjmps or lets an
+// exception escape, so they are safe inside a sampler's log-density
+// evaluation.
+
+extern "C" int nlmixr2NlmApiVersion(void) {
+  return 1; // NLMIXR2EST_NLM_API
+}
+
+extern "C" int nlmixr2NlmDims(int *ntheta, int *nobs, int *flags) {
+  if (!nlmOp.loaded) return -1;
+  if (ntheta != NULL) *ntheta = nlmOp.ntheta;
+  if (nobs != NULL) *nobs = nlmOp.nobsTot;
+  if (flags != NULL) {
+    int f = 0;
+    // 0x01 gradient model loaded (grad or hessian solve types)
+    if (nlmOp.solveType == solveType_grad ||
+        nlmOp.solveType == solveType_hess) f |= 0x01;
+    // 0x02 identity (natural) scale: scaleTypeNone + normTypeConstant
+    if (nlmOp.scale.scaleType == 5 && nlmOp.scale.normType == 6) f |= 0x02;
+    // 0x04 some theta's sensitivity is finite-differenced
+    if (nlmOp.needFD) f |= 0x04;
+    *flags = f;
+  }
+  return 0;
+}
+
+extern "C" int nlmixr2NlmEval(const double *theta, int ntheta,
+                              double *value, double *dTheta) {
+  if (!nlmOp.loaded) return -1;
+  if (!(nlmOp.solveType == solveType_grad ||
+        nlmOp.solveType == solveType_hess)) return -2;
+  if (ntheta != nlmOp.ntheta || theta == NULL ||
+      value == NULL || dTheta == NULL) return -3;
+  try {
+    // determinism: clear the shared bad-solve flag so a previous rejected
+    // point cannot leak into this one; the nlm path re-solves every subject
+    // from its inits on each call (no per-subject caching), so the value is
+    // a pure function of theta
+    rx_solving_options *op = getSolvingOptions(rx);
+    resetOpBadSolve(op);
+    arma::vec th(ntheta);
+    std::copy(theta, theta + ntheta, th.begin());
+    arma::mat ret0 = nlmSolveGrad(th);
+    arma::vec cs = (arma::sum(ret0, 0)).t();
+    *value = cs[0];
+    if (!cs.is_finite()) {
+      // the nlm convention is MINUS log-likelihood: a failed solve is
+      // infinitely BAD, so +Inf (the caller's lp = -value becomes -Inf);
+      // zero the gradient so no partial per-subject sum leaks out
+      *value = R_PosInf;
+      for (int i = 0; i < ntheta; ++i) dTheta[i] = 0.0;
+      return 1;
+    }
+    for (int i = 0; i < ntheta; ++i) dTheta[i] = cs[i + 1];
+    // iteration print through the residency's own scale machinery, at the
+    // control's print cadence, external gating so parHistData records
+    // exactly the printed rows (a sampler makes ~1e5 evaluations)
+    if (nlmOp.scale.every > 0) {
+      // post-increment: the FIRST evaluation prints (immediate feedback),
+      // then every `every`-th thereafter -- same cadence as
+      // nlmixr2FoceiIterPrintRow
+      if ((_nlmEvalPrintCn++) % nlmOp.scale.every == 0) {
+        struct ScaleEveryGuard {
+          scaling *s;
+          int sv;
+          ScaleEveryGuard(scaling *s_) : s(s_), sv(s_->every) { s->every = 1; }
+          ~ScaleEveryGuard() { s->every = sv; }
+        } guard(&(nlmOp.scale));
+        scalePrintFun(&(nlmOp.scale), &th[0], cs[0]);
+      }
+    }
+    return 0;
+  } catch (...) {
+    return -4;
+  }
+}
+
+extern "C" SEXP _nlmixr2est_nlmPtrs(void) {
+  const char *nm[3] = {"apiVersion", "dims", "eval"};
+  DL_FUNC fn[3] = {(DL_FUNC) &nlmixr2NlmApiVersion,
+                   (DL_FUNC) &nlmixr2NlmDims,
+                   (DL_FUNC) &nlmixr2NlmEval};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 3));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 3));
+  for (int i = 0; i < 3; ++i) {
+    SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
+    SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
+  }
+  Rf_setAttrib(ret, R_NamesSymbol, retN);
+  UNPROTECT(2);
+  return ret;
+}
+
+// R-facing shims over the SAME C entry points, so the API is testable from
+// testthat and usable as the finite-difference oracle without a downstream
+// package in the picture.
+
+//[[Rcpp::export]]
+List nlmLikDims_() {
+  int ntheta = 0, nobs = 0, flags = 0;
+  int rc = nlmixr2NlmDims(&ntheta, &nobs, &flags);
+  return List::create(_["status"] = rc, _["ntheta"] = ntheta,
+                      _["nobs"] = nobs, _["flags"] = flags);
+}
+
+//[[Rcpp::export]]
+List nlmLikEvalC_(NumericVector theta) {
+  const int ntheta = theta.size();
+  double value = NA_REAL;
+  std::vector<double> g(ntheta, 0.0);
+  int rc = nlmixr2NlmEval(&theta[0], ntheta, &value, g.data());
+  if (rc < 0) stop("nlmixr2NlmEval failed with status %d", rc);
+  return List::create(_["value"] = value, _["grad"] = wrap(g),
+                      _["nBad"] = rc);
 }

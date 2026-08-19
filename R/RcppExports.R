@@ -227,19 +227,22 @@ foceiIndLik_ <- function(thetaIn, ids0) {
 #' process global that only changes at a batch boundary, so the two cannot interleave.
 #' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
 #'
-#' Differences the subject's own likelihood with shi CENTRAL differences at an
-#' optimized step size, re-optimizing the subject through innerOpt1() at each perturbed
-#' theta.  The step sizes get their OWN per-subject store (fInd->outerThetaHf): they
-#' difference a different problem than the inner problem's etahf is tuned for, so
-#' sharing one store would mis-size both.
+#' Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
+#' optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
+#' flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
+#' subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
+#' differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
+#' the across-subject outlier pass and its TV refinement still work; only the step is pooled.
 #'
-#' Omega directions are NOT covered yet -- omega reaches an individual likelihood only
-#' through Omega^-1 and log|Omega|, so those perturbations are precomputed once outside
-#' this per-subject phase.  Until that lands the caller must still treat an omega
-#' direction as unavailable.
+#' Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
+#' see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
+#' R call, so it is built once per evaluation outside the parallel region).
 #' @param ids0 0-based subject ids to difference
-#' @return nid x ntheta matrix of d(llik_i)/d(theta), NA where a subject could not be
-#'   re-optimized even at a perturbed theta
+#' @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
+#'   the reference distribution of the outlier pass; may be a 0 x 0 matrix
+#' @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
+#'   block then omega block), natural parameter scale.  NA where a subject could not be
+#'   re-optimized even at a perturbed parameter
 #' @noRd
 foceiOuterFdInd_ <- function(ids0, analyticRef) {
     .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
@@ -415,6 +418,50 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikIterPrintStart_ <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
+    .Call(`_nlmixr2est_foceiLikIterPrintStart_`, every, initPar, names, iterPrintControl, xform)
+}
+
+foceiLikIterPrintEnd_ <- function() {
+    .Call(`_nlmixr2est_foceiLikIterPrintEnd_`)
+}
+
+foceiLikRowTick_ <- function(par, objf) {
+    .Call(`_nlmixr2est_foceiLikRowTick_`, par, objf)
+}
+
+foceiLikCondGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondGrad_`, etaMat, cores)
+}
+
+foceiLikCondBatchThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondBatchThetaGrad_`, etaMat, cores)
+}
+
+foceiLikCondThetaGrad_ <- function(etaMat, cores) {
+    .Call(`_nlmixr2est_foceiLikCondThetaGrad_`, etaMat, cores)
+}
+
+foceiLikDims_ <- function() {
+    .Call(`_nlmixr2est_foceiLikDims_`)
+}
+
+foceiLikNMix_ <- function() {
+    .Call(`_nlmixr2est_foceiLikNMix_`)
+}
+
+foceiLikSetThetaC_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikSetThetaC_`, theta)
+}
+
+foceiLikSetOmegaInvC_ <- function(omegaInv) {
+    .Call(`_nlmixr2est_foceiLikSetOmegaInvC_`, omegaInv)
+}
+
+foceiLikThetaSensIdxC_ <- function() {
+    .Call(`_nlmixr2est_foceiLikThetaSensIdxC_`)
+}
+
 vaeElboStepCpp_ <- function(params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad = TRUE) {
     .Call(`_nlmixr2est_vaeElboStepCpp_`, params, prep, zPopR, omegaR, aR, alphaKL, epsR, nMix, mixProbR, cores, withGrad)
 }
@@ -467,6 +514,27 @@ nlmScalePar <- function(p0) {
     .Call(`_nlmixr2est_nlmScalePar`, p0)
 }
 
+#' Unscale an nlm-family parameter vector back to the natural scale
+#'
+#' Converts a parameter vector from the estimation (scaled) scale used by the
+#' currently loaded nlm-family problem back to the natural scale, using the
+#' scaling that \code{nlmSetup()} installed.  Exported so that external
+#' engines driving the nlm-family objective (e.g. \code{babelmixr2}'s
+#' FME-based methods) do not have to reach into the namespace for it (#940).
+#'
+#' @param p Numeric parameter vector on the estimation scale; its length must
+#'   match the loaded problem's number of parameters.
+#'
+#' @return A numeric vector of the same length (names preserved) on the
+#'   natural scale.
+#'
+#' @details An nlm-family problem must be loaded (via the internal
+#'   \code{.nlmSetupEnv()}/\code{nlmSetup()} path) when this is called; the
+#'   scaling is part of that problem's state.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
 nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }
@@ -584,6 +652,14 @@ nlmAdjustHessian <- function(Hin, theta) {
 
 nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
+}
+
+nlmLikDims_ <- function() {
+    .Call(`_nlmixr2est_nlmLikDims_`)
+}
+
+nlmLikEvalC_ <- function(theta) {
+    .Call(`_nlmixr2est_nlmLikEvalC_`, theta)
 }
 
 #' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
@@ -730,6 +806,10 @@ saem_do_pred <- function(in_phi, in_evt, in_opt) {
 
 saem_fit <- function(xSEXP) {
     .Call(`_nlmixr2est_saem_fit`, xSEXP)
+}
+
+saemFormGTest <- function(inA, inB, inFt, inAddProp) {
+    .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inAddProp)
 }
 
 nlmixr2Parameters <- function(theta, eta) {

@@ -112,3 +112,7 @@ nlmixr2Est.posthoc <- function(env, ...) {
 }
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
 attr(nlmixr2Est.posthoc, "unbounded") <- FALSE
+# Like "output", posthoc does not estimate anything (maxOuterIterations=0); it
+# evaluates an already-specified model, so a prior in ini({}) is not something
+# it could silently ignore.  See #938.
+attr(nlmixr2Est.posthoc, "nlmixr2Priors") <- "all"

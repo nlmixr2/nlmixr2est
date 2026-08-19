@@ -103,6 +103,59 @@
 #'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
 #'     installs only the structural-theta block (the historical shape).
 #'
+#' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
+#'   whether a finite-differenced subject's slope is an outlier against the exact
+#'   analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+#'   3.5; lower it to make the pass fire more readily (and to exercise it), raise
+#'   it to suppress it without turning `fdChartrand` off.
+#' @param fdOutlierScale Test the outlier criterion on the **per-observation**
+#'   slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+#'   scales with how much data that subject carries, so raw slopes from a
+#'   3-observation and a 20-observation subject are not draws from one
+#'   distribution -- pooling them makes a legitimately large slope look like an
+#'   outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+#'   itself is untouched.  On balanced data this changes nothing, since dividing
+#'   every slope by the same count leaves the modified z-score unchanged.
+#' @param fdRefine Estimator used to recompute a finite-differenced slope once
+#'   the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+#'   ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+#'
+#'   * `"richardson"` -- Richardson extrapolation of central differences at
+#'     `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+#'     turn.  Cheapest, and right when the surface is smooth and only truncation
+#'     matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+#'     is the wrong instrument when the noise floor is what limits the difference.
+#'   * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+#'     through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+#'     lower variance, since independent evaluation noise averages down as points
+#'     are added rather than being amplified.  The middle rung.
+#'   * `"chartrand"` (default) -- total-variation regularized differentiation over
+#'     a wide interval, which absorbs curvature through the regularized derivative
+#'     itself instead of assuming a stencil.  Most expensive and most robust to a
+#'     genuinely rough surface.
+#'
+#'   All three apply identically: they are gated by the same outlier test, touch
+#'   only the finite-differenced subjects, and never recompute a subject whose
+#'   analytic gradient is available.
+#' @param fdLanczosM Half-width `m` of the `"lanczos"` estimator (`2m` evaluations).
+#' @param fdRichardsonR Depth of the `"richardson"` extrapolation table.
+#' @param fdRichardsonV Step-shrink ratio `v` of the `"richardson"` estimator.
+#' @param fdChartrandAll When the outlier pass fires for a parameter, refine
+#'   **every** finite-differenced subject with the Chartrand TV derivative rather
+#'   than only the outlying ones.  Subjects whose augmented solve succeeded keep
+#'   their exact analytic gradient either way -- only finite differences are ever
+#'   recomputed.  Default `FALSE` (refine the outliers only).
+#' @param fdOutlierAny Let an outlier among the **exact analytic** slopes fire the
+#'   outlier pass as well, not only an outlier among the finite differences.
+#'   Still only the finite differences are recomputed.  Default `FALSE`.
+#' @param fdIndividualStep For the per-subject finite-difference fallback of the
+#'   analytic outer gradient (`fast=TRUE`), search the shi step size separately
+#'   for every flagged subject (`TRUE`, the default) rather than once on the
+#'   summed objective over them.  The subjects that reach this path are the badly
+#'   conditioned ones, so one shared step cannot suit them all; a per-subject
+#'   search also supplies the population of converged peers a clamped step is
+#'   repaired from.  `FALSE` restores the single shared step, which costs fewer
+#'   evaluations.
 #' @param fdChartrand Refine finite-difference slopes that the robust outlier
 #'     test flags (default \code{TRUE}).  When a subject's per-parameter slope
 #'     sits far outside the modified z-score interval of the others, its central
@@ -138,7 +191,7 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
@@ -228,8 +281,12 @@
 #'
 #' @param lbfgsFactr Convergence factor for "L-BFGS-B": converges when the
 #'     objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-#'     Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
-#'     the objective reduction target IS \code{10^-sigdig}.
+#'     Derived from \code{sigdig} as \code{10^(-sigdig-2) / .Machine$double.eps},
+#'     two orders tighter than the other \code{sigdig}-derived tolerances.  It
+#'     tests the objective reduction of a SINGLE step rather than stationarity,
+#'     so a target of \code{10^-sigdig} stops as soon as one step is small; the
+#'     extra two orders are what make the analytic-gradient (\code{fast=TRUE})
+#'     methods reach the same optimum as the derivative-free default.
 #'
 #' @param diagXform Transformation used on the diagonal of
 #'     \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
@@ -595,7 +652,12 @@
 #'   differences.  `"jump"` (the default) uses the analytic event ("jump")
 #'   sensitivities provided by `rxode2`, which add accuracy and can speed
 #'   up the gradient/Hessian by avoiding the extra finite-difference
-#'   solves for these parameters.
+#'   solves for these parameters.  Also gates the analytic moving-boundary
+#'   correction for a modeled `alag()`/`f()` on a `linCmt()` compartment; set
+#'   `"fd"` if that model infuses a dose into the lagged/scaled compartment
+#'   (rxode2/rxode2#1236), or if the regimen also doses an *unlagged/unscaled*
+#'   compartment alongside the lagged/scaled one -- a common design for
+#'   estimating `f()` from paired IV+oral data (rxode2/rxode2#1237).
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -705,7 +767,13 @@
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-#'   uses the legacy finite-difference behavior.
+#'   uses the legacy finite-difference behavior.  Also gates the analytic
+#'   moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+#'   compartment; set `"fd"` if that model infuses a dose into the
+#'   lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+#'   doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+#'   -- a common design for estimating `f()` from paired IV+oral data
+#'   (rxode2/rxode2#1237).
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
@@ -768,6 +836,15 @@ foceiControl <- function(sigdig = 3, #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
+                         fdOutlierZ = 3.5, #
+                         fdOutlierScale = TRUE, #
+                         fdRefine = c("chartrand", "lanczos", "richardson"), #
+                         fdLanczosM = 2L, #
+                         fdRichardsonR = 2L, #
+                         fdRichardsonV = 2.0, #
+                         fdChartrandAll = FALSE, #
+                         fdOutlierAny = FALSE, #
+                         fdIndividualStep = TRUE, #
                          fdChartrand = TRUE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
@@ -930,7 +1007,18 @@ foceiControl <- function(sigdig = 3, #
       rhoend <- 10^(-sigdig)
     }
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
+      # Two orders TIGHTER than the plain 10^-sigdig the other optimizer
+      # tolerances use.  `factr` tests the objective reduction of a SINGLE step,
+      # so at 10^-sigdig L-BFGS-B stops as soon as one step is small rather than
+      # when the gradient is flat -- measured on a 2-cmt oral fit, that left 8.6
+      # OFV units on the table (6 outer evaluations); at 10^-(sigdig+2) the same
+      # fit beats the bobyqa reference in 13.  See plans/foceif-outer-opt-pgtol.md.
+      # Floor at 1: `factr` is a MULTIPLE of machine epsilon, so factr < 1 asks
+      # for a reduction smaller than eps itself.  That is unreachable, and since
+      # lbfgsPgtol is 0 by default it would leave L-BFGS-B with no active
+      # stopping rule at all.  Reached at sigdig >= 14 here (>= 16 before the
+      # two-order tightening).
+      lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
     }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)
@@ -987,6 +1075,16 @@ foceiControl <- function(sigdig = 3, #
     covTryHarder <- as.integer(covTryHarder)
   } else {
     checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
+    checkmate::assertNumeric(fdOutlierZ, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdOutlierScale, any.missing=FALSE, len=1)
+    fdRefine <- match.arg(fdRefine)
+    checkmate::assertIntegerish(fdLanczosM, lower=1, any.missing=FALSE, len=1)
+    checkmate::assertIntegerish(fdRichardsonR, lower=1, any.missing=FALSE, len=1)
+    checkmate::assertNumeric(fdRichardsonV, lower=1.0000001, finite=TRUE,
+                             any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdChartrandAll, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdOutlierAny, any.missing=FALSE, len=1)
+    checkmate::assertLogical(fdIndividualStep, any.missing=FALSE, len=1)
     checkmate::assertLogical(fdChartrand, any.missing=FALSE, len=1)
     covTryHarder <- as.integer(covTryHarder)
   }
@@ -1438,6 +1536,20 @@ foceiControl <- function(sigdig = 3, #
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,
+    fdOutlierZ = as.double(fdOutlierZ),
+    # Kept as the CHARACTER name, and read as a string in C++.  Storing the integer code
+    # instead does not round-trip: a control is re-passed through foceiControl() (as named
+    # arguments -- every field here must be a formal, which is why there is no companion
+    # "fdRefineMethod" field), and match.arg() on an integer yields NA silently rather than
+    # erroring, so the setting was quietly lost and the default estimator used.
+    fdOutlierScale = as.integer(fdOutlierScale),
+    fdRefine = fdRefine,
+    fdLanczosM = as.integer(fdLanczosM),
+    fdRichardsonR = as.integer(fdRichardsonR),
+    fdRichardsonV = as.double(fdRichardsonV),
+    fdChartrandAll = as.integer(fdChartrandAll),
+    fdOutlierAny = as.integer(fdOutlierAny),
+    fdIndividualStep = as.integer(fdIndividualStep),
     fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,

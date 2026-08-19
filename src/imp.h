@@ -104,8 +104,17 @@ struct impThetaSensData {
   std::vector<arma::vec> fvec, Vvec;    // [nsamp], each length nobs
   std::vector<arma::mat> dfmat, dVmat;  // [nsamp], each nobs x nSens
   std::vector<char> sampleOk;           // [nsamp], 0 = drop this sample
+  // d(transformed DV)/d(theta) and d(transformed LIMIT)/d(theta), nobs x nSens.
+  // Empty unless the transform-both-sides lambda is itself estimated (#949): then
+  // the residual err = h(y; lambda) - h(f; lambda) moves on BOTH sides, and the
+  // DV side is applied here because the sensitivity model never sees the DV.
+  arma::mat ddvmat, dlimmat;
 };
-void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out);
+// reuseSolve (#958): the caller has JUST solved the combined inner model at
+// this exact (theta, eta) point on this thread (single-sample case), so the
+// read pass consumes that solution instead of re-solving.
+void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
+                         bool reuseSolve = false);
 void impThetaAccumOne(const impThetaSensData& c, const arma::vec& zk,
                       arma::vec& g, arma::mat& H);
 
@@ -134,7 +143,7 @@ double impMixProb(int j);                          // population proportion of c
 void impUpdateMixProbs();                          // recompute mixProb from the mix() proportion thetas (npag/npb setup)
 void impSetMixThetas(const arma::vec& theta);      // install absolute mixture-proportion thetas (EM) + recompute proportions
 void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores); // EM update of the mixture proportions (support/weights fixed)
-void npbSampleMixProbs(const arma::mat& subEta, double alpha0);     // npb Gibbs: Dirichlet draw of the mixture proportions
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed);     // npb Gibbs: Dirichlet draw of the mixture proportions
 
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas

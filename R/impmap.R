@@ -774,7 +774,8 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
               silent=TRUE)
   if (inherits(.ctl, "try-error")) return(invisible(FALSE))
   .f2 <- try(suppressMessages(suppressWarnings(
-    nlmixr2(.ui, data=nlme::getData(fit), est="focei", control=.ctl))),
+    .nlmixr2PriorGateBypass(
+      nlmixr2(.ui, data=nlme::getData(fit), est="focei", control=.ctl)))),
     silent=TRUE)
   if (inherits(.f2, "try-error")) return(invisible(FALSE))
   .e2 <- tryCatch(.f2$env, error=function(e) NULL)

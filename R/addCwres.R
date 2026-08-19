@@ -87,8 +87,9 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .foceiControl$covMethod <- 0L
     .foceiControl$interaction <- focei
     .foceiControl$nAGQ <- 0L # focei/foce objective row, not the fit's quadrature
-    .newFit <- nlmixr2(fit, data=nlme::getData(fit), est="focei",
-                       control = .foceiControl)
+    .newFit <- .nlmixr2PriorGateBypass(
+      nlmixr2(fit, data=nlme::getData(fit), est="focei",
+              control = .foceiControl))
     .extra <- setdiff(names(.newFit), names(fit))
     .extra <- as.data.frame(.newFit)[, .extra]
     .origFitEnv <- fit$env

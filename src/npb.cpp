@@ -17,11 +17,45 @@
 // intervals).  The reported objective is the nonparametric -2LL, NOT comparable
 // to the NONMEM/FOCEI OFV.
 #include <RcppArmadillo.h>
+#include <rxode2ptr.h>
+#include "nmMcmcRng.h"
 #include "np.h"
 #include "npCommon.h"
 #include "imp.h"
 
 using namespace Rcpp;
+
+// Iteration/group-indexed threefry stream seed for the NPB Gibbs sampler's
+// serial draw groups (categorical z_i, mixture proportions, stick-breaking
+// v_k, MH proposal/prior/acceptU) -- same mixing scheme as saem.cpp's
+// _saemSeedDoMcmc/_saemSeedCensAug.  Reseeding fresh before every group
+// (rather than letting one stream free-run across the whole chain) means a
+// solve's per-subject mid-solve reseed of the shared threefry engine
+// (npBuildPsiCore/npbSupportMHContrib, both called BETWEEN groups) can never
+// desync this sampler's draws from run to run: the next group's draws never
+// depend on where a prior solve happened to leave the engine.
+static inline uint32_t npbGroupSeed(uint32_t baseSeed, int chain, int it, int group) {
+  uint32_t s = baseSeed;
+  s = s * 2654435761u + 0x6e706200u;   // "npb" namespace tag
+  s = s * 2654435761u + (uint32_t)chain;
+  s = s * 2654435761u + (uint32_t)it;
+  s = s * 2654435761u + (uint32_t)group;
+  return s;
+}
+static inline void npbSeedEng(uint32_t baseSeed, int chain, int it, int group) {
+  setRxThreadId(0);
+  nmSetSeedEng1(npbGroupSeed(baseSeed, chain, it, group));
+}
+
+// Beta(a,b) draw via inverse-CDF from a single threefry uniform -- only
+// rxNormEng/rxUnifEng are on the thread-safe per-fit engine, so this is the
+// same technique imp.cpp's impChisqQuantile() uses for its chi-square draw.
+static inline double npbRbeta(double a, double b) {
+  double u = rxUnifEng(0.0, 1.0);
+  if (u <= 0.0) u = 1e-12;
+  if (u >= 1.0) u = 1.0 - 1e-12;
+  return R::qbeta(u, a, b, 1, 0);
+}
 
 // Gelman-Rubin potential-scale-reduction factor (R-hat) per parameter across
 // chains.  Each chain matrix is (draws x params); returns one R-hat per param
@@ -180,7 +214,6 @@ void npbOuter(Environment e) {
   // bound the in-burn-in optimization rounds (each is a bounded bobyqa with a Psi
   // rebuild) so a long burn-in does not multiply the cost.
   int residEvery = std::max(1, nBurn / 10);
-  Function setSeed("set.seed");
 
   // pooled across chains
   std::vector<double> mixProbSum(std::max(nMix, 1), 0.0);   // post-burn-in proportion draws
@@ -199,13 +232,11 @@ void npbOuter(Environment e) {
 
   // Independent chains (seed offset per chain) for Gelman-Rubin R-hat.
   for (int chain = 0; chain < nchains; ++chain) {
-  // reproducible RNG seeded from the control (via R's RNG so set.seed also works)
-  setSeed(seed + chain);
-  GetRNGstate();
   // initialize support points from G_0, uniform weights
+  npbSeedEng((uint32_t)seed, chain, -1, 0);
   arma::mat phi(K, neta);
   for (int k = 0; k < K; ++k)
-    for (int j = 0; j < neta; ++j) phi(k, j) = R::rnorm(0.0, g0sd[j]);
+    for (int j = 0; j < neta; ++j) phi(k, j) = rxNormEng(0.0, g0sd[j]);
   arma::vec w(K); w.fill(1.0 / K);
   std::vector<int> z(nsub, 0);
   arma::mat chainMd(nSamp, neta, arma::fill::zeros);
@@ -218,10 +249,7 @@ void npbOuter(Environment e) {
     // per-sweep parameter-history row (chain 0), reusing the just-built psi for
     // the marginal -2LL of the incoming (phi, w) draw.  Pushing the support
     // covariance into op_focei is safe (npBuildPsiCore sums llikObs and does not
-    // use omegaInv) and is overwritten by npFinalizeFit.  impSetOmega calls back
-    // into R (rxSymInvCholCreate), so -- exactly as the npOptimizeResid step does
-    // -- bracket it with Put/GetRNGstate to preserve the sampler's RNG stream
-    // (and thus reproducibility) across the R call.
+    // use omegaInv) and is overwritten by npFinalizeFit.
     if (chain == 0) {
       double llit = 0.0;
       for (int i = 0; i < nsub; ++i)
@@ -231,22 +259,24 @@ void npbOuter(Environment e) {
       for (int k = 0; k < K; ++k) {
         arma::rowvec d = phi.row(k) - meanEta; Om += w[k] * (d.t() * d);
       }
-      PutRNGstate();
       impSetOmega(npMaskedOmega(Om, omModel), impDiagXform());
-      GetRNGstate();
       arma::vec par; impGetEstPar(par);
       impIterPrintRow(par, -2.0 * llit);
     }
+    // Reseed before this sweep's first draw group: npBuildPsiCore's parallel
+    // solve above may have touched thread-0's engine slot via its own
+    // per-subject mid-solve reseeding (see npbSeedEng's comment).
+    npbSeedEng((uint32_t)seed, chain, it, 0);
     std::vector<int> nk(K, 0);
     for (int i = 0; i < nsub; ++i) {
       arma::rowvec p = psi.row(i) % w.t();
       double s = arma::accu(p);
       int zi = 0;
       if (s > 0.0) {
-        double u = R::unif_rand() * s, c = 0.0;
+        double u = rxUnifEng(0.0, 1.0) * s, c = 0.0;
         for (int k = 0; k < K; ++k) { c += p[k]; zi = k; if (u <= c) break; }
       } else {
-        zi = (int)(R::unif_rand() * K);
+        zi = (int)(rxUnifEng(0.0, 1.0) * K);
         if (zi >= K) zi = K - 1;
       }
       z[i] = zi; nk[zi]++;
@@ -256,34 +286,36 @@ void npbOuter(Environment e) {
     if (mixOpt && nMix > 1) {
       arma::mat subEta(nsub, neta);
       for (int i = 0; i < nsub; ++i) subEta.row(i) = phi.row(z[i]);
-      npbSampleMixProbs(subEta, mixAlpha0);
+      npbSampleMixProbs(subEta, mixAlpha0, npbGroupSeed((uint32_t)seed, chain, it, 1));
     }
     // (b) stick-breaking weights  v_k ~ Beta(1 + n_k, alpha + sum_{j>k} n_j)
+    npbSeedEng((uint32_t)seed, chain, it, 2);
     std::vector<int> tail(K, 0);
     { int acc = 0; for (int k = K - 1; k >= 0; --k) { tail[k] = acc; acc += nk[k]; } }
     double cumLog1mV = 0.0;
     for (int k = 0; k < K; ++k) {
-      double vv = (k == K - 1) ? 1.0 : R::rbeta(1.0 + nk[k], alpha + (double)tail[k]);
+      double vv = (k == K - 1) ? 1.0 : npbRbeta(1.0 + nk[k], alpha + (double)tail[k]);
       w[k] = std::exp(cumLog1mV) * vv;
       cumLog1mV += std::log(std::max(1e-300, 1.0 - vv));
     }
     // (c) support locations: MH for occupied clusters, fresh G_0 draw otherwise.
     // The proposal + accept/reject draws stay serial and in their original order
-    // (so the RNG stream, and thus reproducibility, is unchanged); only the
+    // (so the draw stream, and thus reproducibility, is unchanged); only the
     // per-subject conditional-likelihood solves are parallelized
     // (npbSupportMHContrib).  Serial pre-pass draws the proposals and priors:
+    npbSeedEng((uint32_t)seed, chain, it, 3);
     std::vector<char> occ(K, 0);
     std::vector<std::vector<double> > curLoc(K), propLoc(K);
     std::vector<double> curPrior(K, 0.0), propPrior(K, 0.0), acceptU(K, 0.0);
     for (int k = 0; k < K; ++k) {
       if (nk[k] == 0) {
-        for (int j = 0; j < neta; ++j) phi(k, j) = R::rnorm(0.0, g0sd[j]);
+        for (int j = 0; j < neta; ++j) phi(k, j) = rxNormEng(0.0, g0sd[j]);
         continue;
       }
       occ[k] = 1;
       arma::rowvec cur = phi.row(k), prop = cur;
-      for (int j = 0; j < neta; ++j) prop[j] += R::rnorm(0.0, propSd);
-      acceptU[k] = R::unif_rand();  // drawn now (before the solves) to keep RNG order
+      for (int j = 0; j < neta; ++j) prop[j] += rxNormEng(0.0, propSd);
+      acceptU[k] = rxUnifEng(0.0, 1.0);  // drawn now (before the solves) to keep draw order
       double cP = 0.0, pP = 0.0;
       for (int j = 0; j < neta; ++j) {
         cP += -0.5 * cur[j] * cur[j] / g0var[j];
@@ -312,16 +344,13 @@ void npbOuter(Environment e) {
     // (c2) residual/regressor optimization (alternate): re-fit the residual thetas
     // against the current draw's mixing distribution during burn-in, then hold them
     // for the sampling phase so every collected draw shares the converged residual
-    // scale.  Chain 0 only; later chains inherit the fitted residuals.  Bracketed by
-    // Put/GetRNGstate because npOptimizeResid calls back into R (bobyqa).
+    // scale.  Chain 0 only; later chains inherit the fitted residuals.
     if (hasResidOpt && residMode == 1 && chain == 0 && it > 0 && it < nBurn &&
         (it % residEvery == 0)) {
       arma::mat rsup; arma::vec rwt;
       npbCompactSupport(phi, w, rsup, rwt);
-      PutRNGstate();
       npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
                       obsEndpoint, optEnd, optProp, useRegress, npbResidRhoend);
-      GetRNGstate();
     }
     // (d) accumulate post-burn-in draws
     if (it >= nBurn) {
@@ -337,7 +366,6 @@ void npbOuter(Environment e) {
       drawn++;
     }
   }
-  PutRNGstate();
   chainMeanDraws[chain] = chainMd;
   wLast = w;
   phiLast = phi;

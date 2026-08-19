@@ -206,8 +206,11 @@
     if (any(is.na(.hess))) {
       .ret$covMethod <- "failed"
     } else {
-      # r matrix
-      .r <- 0.5 * .hess
+      # r matrix: nlm-family objectives (`.nlmixrNlmFunC`/optim's `fn`) are
+      # built as a plain -1*LL, not the -2*LL scale FOCEI/SAEM/etc use -- so
+      # .hess is already the Fisher information (unlike the FOCEI R matrix,
+      # which halves a -2*LL Hessian to get there).  Do not rescale here.
+      .r <- .hess
       .ch <- try(cholSE(.r), silent = TRUE)
       .covType <- "r"
       if (inherits(.ch, "try-error")) {
@@ -233,7 +236,7 @@
       if (!inherits(.ch, "try-error")) {
         .rinv <- rxode2::rxInv(.ch)
         .rinv <- .rinv %*% t(.rinv)
-        .cov <- 2*.rinv
+        .cov <- .rinv
         dimnames(.cov) <- list(.name, .name)
         dimnames(.rinv) <- list(.name, .name)
         .ret$covMethod <- .covType
@@ -507,9 +510,6 @@
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list = "control", envir = .ui)
-  }
   .ret$est <- method
   if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
@@ -518,6 +518,11 @@
   .ret$model <- nlmixrWithTiming("setup", {
     .ui$ebe
   })
+  # The control must stay on the ui until the EBE model is built; the build reads
+  # optExpression/sumProd/eventSens off of it (#864)
+  if (exists("control", .ui)) {
+    rm(list = "control", envir = .ui)
+  }
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame

@@ -72,7 +72,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
-    "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp"),
+    "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",
+    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904"),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
   # in two.  Both TIMED OUT on the weekly runner (run 30688874991, 2026-08-01):
@@ -87,7 +88,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "nlme", "focei-fast-grad", "lincmt-ode-fit"),
   # batch 5
   c("focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
-    "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit"),
+    "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
+    "focei-factr-fit"),
   # batch 6
   c("focei-llik", "iov", "iov-zero-eta", "fsaem-iov", "saem-mix", "saem-mix-regress",
     "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit"),
@@ -109,7 +111,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
   # in the push/PR subset) and run weekly only.
   c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
-    "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand", "npag-golden")
+    "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand",
+    "npag-golden", "lik-contrib-methods")
 )
 .slowAll <- unlist(.slowBatches)
 

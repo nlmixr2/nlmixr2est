@@ -4,7 +4,7 @@
 \alias{.sensEtaOrTheta}
 \title{Calculate d(state)/d(eta) or d(state)/d(theta) sensitivities}
 \usage{
-.sensEtaOrTheta(s, theta = FALSE)
+.sensEtaOrTheta(s, theta = FALSE, extraThetaVars = NULL)
 }
 \arguments{
 \item{s}{symengine environment (from `.loadSymengine()`)}

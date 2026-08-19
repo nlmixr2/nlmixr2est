@@ -277,6 +277,33 @@
 #'   * `"eta"`: the historic SAEM treatment (the parameter is carried through
 #'     the stochastic `phi0` block).
 #'
+#' @param nonMuThetaOpt Optimizer for the `nonMuTheta="regress"` refinement.
+#'   `"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
+#'   optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
+#'   evaluation budget; `"optimize"` is the historic coordinate descent with R's
+#'   golden-section `optimize()`.  When the non-mu thetas drive the ODE, every
+#'   objective evaluation is a full re-solve, so this refinement can dominate the
+#'   run time; the multivariate options spend a much smaller fixed budget and
+#'   account for the coupling between coordinates that coordinate descent cannot
+#'   see.
+#'
+#' @param nonMuThetaSweeps Number of coordinate-descent sweeps per refinement
+#'   for `nonMuThetaOpt="optimize"` (default 2).
+#'
+#' @param nonMuThetaMaxEval Objective-evaluation budget of one refinement for
+#'   `nonMuThetaOpt="newuoa"` or `"nelderMead"` (default 25); 0 means ten
+#'   evaluations per free non-mu theta instead.  `"newuoa"` needs `2n+3`
+#'   evaluations to build its first quadratic model, and is raised to that when
+#'   the budget is smaller.
+#'
+#' @param nonMuThetaTol Convergence tolerance of the `nonMuTheta="regress"`
+#'   refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
+#'   tolerance, or the `optimize()` `tol`).
+#'
+#' @param nonMuThetaEvery Run the `nonMuTheta="regress"` refinement every
+#'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
+#'   between, `phi0` keeps its last refined value.
+#'
 #' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
 #'   parameters from the observed per-endpoint moments at the initial predictions
 #'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
@@ -367,23 +394,6 @@
 #'   correctness -- and saves one inner optimization per subject per skipped
 #'   iteration.
 #'
-#' @param lbfgsLmm Integer number of BFGS corrections (the L-BFGS-B `lmm`
-#'   memory) used when refining the fixed-effect-only parameters of a general
-#'   log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
-#'   optimization of the observation likelihood.  Default 5.
-#'
-#' @param lbfgsFactr Convergence tolerance on the relative reduction in the
-#'   objective for that L-BFGS-B refinement (the `factr` control, in units of
-#'   machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-#'   same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).
-#'
-#' @param lbfgsPgtol Convergence tolerance on the projected gradient for that
-#'   L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-#'   derived from `sigdig` (`10^(-sigdig)`).
-#'
-#' @param lbfgsMaxIter Integer maximum number of iterations for that L-BFGS-B
-#'   refinement.  Default 20.
-#'
 #' @param nRetry Integer number of times a bounded log-likelihood parameter's
 #'   f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
 #'   bounds before being clamped to the violated boundary.  Default 10.
@@ -454,6 +464,11 @@ saemControl <- function(seed = 99,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         nonMuTheta = c("regress", "eta"),
+                        nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+                        nonMuThetaSweeps = 2L,
+                        nonMuThetaMaxEval = 25L,
+                        nonMuThetaTol = .Machine$double.eps^0.25,
+                        nonMuThetaEvery = 1L,
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
                         fast = FALSE,
@@ -464,10 +479,6 @@ saemControl <- function(seed = 99,
                         fastFallback = c("skip", "prior"),
                         fastMode = c("map", "chainMean"),
                         fastHRefresh = 1L,
-                        lbfgsLmm = 5L,
-                        lbfgsFactr = NULL,
-                        lbfgsPgtol = NULL,
-                        lbfgsMaxIter = 20L,
                         nRetry = 10L,
                         ...) {
   .xtra <- list(...)
@@ -544,6 +555,11 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   mixSampleMethod <- match.arg(mixSampleMethod)
   nonMuTheta <- match.arg(nonMuTheta)
+  nonMuThetaOpt <- match.arg(nonMuThetaOpt)
+  checkmate::assertIntegerish(nonMuThetaSweeps, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing=FALSE, len=1, lower=0)
+  checkmate::assertNumeric(nonMuThetaTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(fast, any.missing=FALSE, len=1)
@@ -554,6 +570,7 @@ saemControl <- function(seed = 99,
   fastFallback <- match.arg(fastFallback)
   fastMode <- match.arg(fastMode)
   checkmate::assertIntegerish(fastHRefresh, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertIntegerish(nRetry, lower=0, len=1, any.missing=FALSE)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -577,27 +594,7 @@ saemControl <- function(seed = 99,
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
-    # L-BFGS-B tolerances for the general-likelihood phi0 direct optimization,
-    # derived from sigdig the same way foceiControl() does (factr = tol/eps)
-    if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
-    }
-    if (is.null(lbfgsPgtol)) {
-      lbfgsPgtol <- 10^(-sigdig)
-    }
   }
-  # defaults when sigdig is not supplied (~4 significant digits)
-  if (is.null(lbfgsFactr)) {
-    lbfgsFactr <- 1e7
-  }
-  if (is.null(lbfgsPgtol)) {
-    lbfgsPgtol <- 0
-  }
-  checkmate::assertIntegerish(lbfgsLmm, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(lbfgsFactr, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(lbfgsPgtol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(lbfgsMaxIter, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(nRetry, lower=0, len=1, any.missing=FALSE)
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
@@ -692,6 +689,11 @@ saemControl <- function(seed = 99,
     mixProbPriorN=mixProbPriorN,
     mixSampleMethod=mixSampleMethod,
     nonMuTheta=nonMuTheta,
+    nonMuThetaOpt=nonMuThetaOpt,
+    nonMuThetaSweeps=as.integer(nonMuThetaSweeps),
+    nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
+    nonMuThetaTol=nonMuThetaTol,
+    nonMuThetaEvery=as.integer(nonMuThetaEvery),
     residWarmStart=residWarmStart,
     fast=fast,
     fastKernel=fastKernel,
@@ -701,10 +703,6 @@ saemControl <- function(seed = 99,
     fastFallback=fastFallback,
     fastMode=fastMode,
     fastHRefresh=as.integer(fastHRefresh),
-    lbfgsLmm=as.integer(lbfgsLmm),
-    lbfgsFactr=lbfgsFactr,
-    lbfgsPgtol=lbfgsPgtol,
-    lbfgsMaxIter=as.integer(lbfgsMaxIter),
     nRetry=as.integer(nRetry)
   )
   class(.ret) <- "saemControl"
