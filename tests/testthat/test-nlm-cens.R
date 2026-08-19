@@ -206,4 +206,33 @@ nmTest({
     })
   }
 
+  test_that("nlm-family M3-censored parameter estimates match focei (#976)", {
+    # #976: nlm-family forces every normal endpoint through the log-likelihood
+    # path, which always emitted `rx_r_ ~ 0`; the M2/M3/M4 censoring
+    # correction (doCensNormal1()) then divided by a zero variance, silently
+    # corrupting every censored fit (no ar() needed).  The checks above only
+    # ever assert that a fit "runs" and reports the right censoring text, so
+    # a corrupted objective/parameter set passed them undetected.  Derivative-
+    # free (bobyqa/newuoa/uobyqa) and FD-gradient (nlminb) nlm-family members
+    # should now recover parameters close to focei's on the same censored
+    # data.  The analytic-gradient members (nlm/n1qn1/lbfgsb3c/optim) have a
+    # separate, pre-existing convergence stall on this bounded-tcl model that
+    # reproduces even without censoring -- out of scope here, so they are not
+    # checked for parameter accuracy.
+    f.focei <- .nlmixr(one.cmt, .datM3, est = "focei", control = foceiControl(print = 0))
+    for (meth in c("bobyqa", "newuoa", "uobyqa", "nlminb")) {
+      fit <- .nlmixr(one.cmt, .datM3, est = meth, control = nlmControl(print = 0))
+      expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]),
+                   tolerance = 0.1, info = meth)
+      expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]),
+                   tolerance = 0.1, info = meth)
+      expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]),
+                   tolerance = 0.1, info = meth)
+      # add.sd is the parameter the r=0 bug corrupted most (it inflated it
+      # ~9x in the reproduction that motivated #976); give it a bit more room
+      expect_equal(as.numeric(fit$theta[["add.sd"]]), as.numeric(f.focei$theta[["add.sd"]]),
+                   tolerance = 0.2, info = meth)
+    }
+  })
+
 })
